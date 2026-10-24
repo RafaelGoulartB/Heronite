@@ -157,6 +157,16 @@ pub(super) static OPTS: &[Opt] = &[
     tgl!("hero.facts", Hero, n_!("Store, installed, time played and status"), "", &[], theme.hero.facts),
     tgl!("hero.overview", Hero, n_!("Description"), "", &[], theme.hero.overview),
     sel!("hero.size", Hero, n_!("Height of the hero"), "", &[Layout::Shelves], Size3, size3_name, theme.hero.size),
+    sel!("hero.fact_style", Hero, n_!("Facts as"), "", &[], FactStyle, fact_style_name, theme.hero.fact_style),
+    sel!("hero.align", Hero, n_!("Position of the game"), "", &[Layout::Cinema], HeroAlign, hero_align_name, theme.hero.align),
+    tgl!(
+        "hero.stats",
+        Hero,
+        n_!("Numbers at the right edge"),
+        n_!("Time played, last played, size on disk and score."),
+        &[Layout::Shelves, Layout::Cinema],
+        theme.hero.stats
+    ),
     sel!(
         "tiles.shape",
         Covers,
@@ -169,10 +179,20 @@ pub(super) static OPTS: &[Opt] = &[
     ),
     sel!("tiles.size", Covers, n_!("Size"), "", &[], TileSize, tile_size_name, theme.tiles.size),
     sel!("tiles.titles", Covers, n_!("Name below the cover"), "", &[], TileTitles, tile_titles_name, theme.tiles.titles),
-    sel!("tiles.badges", Covers, n_!("Badges"), n_!("All adds favourite and downloading."), &[], Badges, badges_name, theme.tiles.badges),
+    sel!(
+        "tiles.badges",
+        Covers,
+        n_!("Badges"),
+        n_!("All adds favourite, downloading and new games."),
+        &[],
+        Badges,
+        badges_name,
+        theme.tiles.badges
+    ),
     sel!("tiles.corners", Covers, n_!("Corners"), "", &[], Corners, corners_name, theme.tiles.corners),
     sel!("tiles.focus", Covers, n_!("Focus"), "", &[], FocusStyle, focus_name, theme.tiles.focus),
     tgl!("tiles.grey", Covers, n_!("Grey out games that are not installed"), "", &[], theme.tiles.grey_uninstalled),
+    tgl!("tiles.header", Covers, n_!("Store above the cover"), "", &[], theme.tiles.header),
     sel!("background.source", Background, n_!("Picture"), "", &[], BackgroundSource, background_name, theme.background.source),
     Opt {
         id: "background.image",
@@ -203,6 +223,17 @@ pub(super) static OPTS: &[Opt] = &[
         "%",
         u16,
         theme.interface.scale
+    ),
+    sel!("interface.tab_bar", Interface, n_!("Tabs"), "", &[], TabBar, tab_bar_name, theme.interface.tab_bar),
+    sel!(
+        "interface.headings",
+        Interface,
+        n_!("Shelf titles"),
+        "",
+        &[Layout::Shelves, Layout::Cinema, Layout::Xbox],
+        Headings,
+        headings_name,
+        theme.interface.headings
     ),
     sel!("interface.clock", Interface, n_!("Clock"), "", &[], Clock, clock_name, theme.interface.clock),
     tgl!("interface.date", Interface, n_!("Date next to the clock"), "", &[], theme.interface.date),

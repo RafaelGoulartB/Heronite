@@ -35,10 +35,17 @@ label_fn!(layout_name, Layout {
 label_fn!(start_on_name, StartOn { First => n_!("First tab"), Last => n_!("Last tab used") });
 label_fn!(a_button_name, AButton { Details => n_!("Opens the page"), Play => n_!("Plays") });
 label_fn!(hero_title_name, HeroTitle { Text => n_!("Text"), Logo => n_!("Logo, if there is one") });
+label_fn!(fact_style_name, FactStyle { Line => n_!("One line"), Chips => n_!("Chips and genres") });
+label_fn!(hero_align_name, HeroAlign { Left => n_!("Left"), Center => n_!("Centred at the top") });
 label_fn!(size3_name, Size3 { Small => n_!("Low"), Medium => n_!("Medium"), Large => n_!("High") });
 label_fn!(tile_shape_name, TileShape { Portrait => n_!("Portrait"), Landscape => n_!("Landscape"), Square => n_!("Square") });
 label_fn!(tile_size_name, TileSize { Small => n_!("Small"), Medium => n_!("Medium"), Large => n_!("Large"), Huge => n_!("Extra large") });
-label_fn!(tile_titles_name, TileTitles { Never => n_!("Never"), Focused => n_!("On the focused one"), Always => n_!("Always") });
+label_fn!(tile_titles_name, TileTitles {
+    Never => n_!("Never"),
+    Focused => n_!("On the focused one"),
+    Always => n_!("Always"),
+    Bar => n_!("In a strip under the cover"),
+});
 label_fn!(badges_name, Badges { Off => n_!("None"), Running => n_!("Running"), All => n_!("All") });
 label_fn!(corners_name, Corners { Square => n_!("Square"), Soft => n_!("Soft"), Round => n_!("Round") });
 label_fn!(focus_name, FocusStyle { Ring => n_!("Ring"), Glow => n_!("Glow"), Lift => n_!("Lift"), Underline => n_!("Underline") });
@@ -58,6 +65,12 @@ label_fn!(font_name, ConsoleFont {
     System => n_!("System"),
     Mono => n_!("Monospace"),
 });
+label_fn!(tab_bar_name, TabBar {
+    Top => n_!("Along the top"),
+    Bottom => n_!("Along the bottom, with icons"),
+    Title => n_!("Only the current one, centred"),
+});
+label_fn!(headings_name, Headings { Normal => n_!("As written"), Spaced => n_!("Spaced capitals") });
 label_fn!(clock_name, Clock { H24 => n_!("24 h"), H12 => n_!("12 h"), Off => n_!("Hidden") });
 label_fn!(motion_name, Motion { Full => n_!("Full"), Reduced => n_!("Reduced"), Off => n_!("Off") });
 label_fn!(glyphs_name, Glyphs {
@@ -70,7 +83,7 @@ label_fn!(glyphs_name, Glyphs {
 });
 label_fn!(hints_name, Hints { Always => n_!("Always"), Auto => n_!("Fades by itself"), Off => n_!("Hidden") });
 label_fn!(game_page_name, GamePage { Classic => n_!("Classic"), Hero => n_!("Hero"), Tabs => n_!("Tabs"), Sheet => n_!("Sheet") });
-label_fn!(menu_style_name, MenuStyle { Sidebar => n_!("Sidebar"), Grid => n_!("Grid"), Dock => n_!("Dock") });
+label_fn!(menu_style_name, MenuStyle { Sidebar => n_!("Sidebar"), Grid => n_!("Grid"), Dock => n_!("Dock"), Rail => n_!("Rail of icons") });
 label_fn!(side_name, Side { Left => n_!("Left"), Right => n_!("Right") });
 label_fn!(grid_panel_name, GridPanel { Title => n_!("Name above"), Right => n_!("Panel on the right") });
 label_fn!(wheel_items_name, WheelItems { Name => n_!("Name"), Logo => n_!("Logo") });

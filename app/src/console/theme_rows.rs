@@ -26,8 +26,9 @@ use gpui_kit::SharedString;
 use heronite_data::categories::Categories;
 use heronite_data::console_theme::{
     parse_hex, presets, slug, AButton, AutoConsole, BackgroundMotion, BackgroundSource, Badges, Clock, ConsoleFont, ConsolePrefs,
-    ConsoleTheme, Corners, FocusStyle, GamePage, Glyphs, GridPanel, HeroTitle, Hints, Idle, Layout, MenuStyle, Motion, OpenIn, ShelfSpec,
-    Side, Size3, StartOn, TabSpec, TileShape, TileSize, TileTitles, WheelItems, MAX_TABS, MENU_LOCKED,
+    ConsoleTheme, Corners, FactStyle, FocusStyle, GamePage, Glyphs, GridPanel, Headings, HeroAlign, HeroTitle, Hints, Idle, Layout,
+    MenuStyle, Motion, OpenIn, ShelfSpec, Side, Size3, StartOn, TabBar, TabSpec, TileShape, TileSize, TileTitles, WheelItems, MAX_TABS,
+    MENU_LOCKED,
 };
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr, trc};

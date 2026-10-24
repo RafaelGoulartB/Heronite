@@ -94,7 +94,7 @@ impl CollectionView {
         let name_under = match theme.tiles.titles {
             TileTitles::Always => true,
             TileTitles::Focused => focused,
-            TileTitles::Never => false,
+            TileTitles::Never | TileTitles::Bar => false,
         };
         let style = theme.tiles.focus;
         let radius = look::tile_radius();

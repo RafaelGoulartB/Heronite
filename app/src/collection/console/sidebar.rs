@@ -215,7 +215,7 @@ impl CollectionView {
         let items = items();
         let focused = focused.min(items.len().saturating_sub(1));
         Some(match menu.style {
-            MenuStyle::Sidebar => self.render_menu_sidebar(&items, focused, menu.side, downloads),
+            MenuStyle::Sidebar | MenuStyle::Rail => self.render_menu_sidebar(&items, focused, menu.side, downloads),
             MenuStyle::Grid => self.render_menu_grid(&items, focused, downloads),
             MenuStyle::Dock => self.render_menu_dock(&items, focused, downloads),
         })

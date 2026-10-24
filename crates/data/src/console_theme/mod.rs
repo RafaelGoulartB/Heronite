@@ -102,6 +102,15 @@ str_enum! {
     pub enum HeroTitle { Text = "text", Logo = "logo" } default Text
 }
 str_enum! {
+    /// How the hero shows the game's facts: one line of text, or chips (the
+    /// store, the year, the score) with the genres.
+    pub enum FactStyle { Line = "line", Chips = "chips" } default Line
+}
+str_enum! {
+    /// Where the hero sits: at the left, or centred at the top (Cinema).
+    pub enum HeroAlign { Left = "left", Center = "center" } default Left
+}
+str_enum! {
     pub enum Size3 { Small = "small", Medium = "medium", Large = "large" } default Medium
 }
 str_enum! {
@@ -111,11 +120,13 @@ str_enum! {
     pub enum TileSize { Small = "s", Medium = "m", Large = "l", Huge = "xl" } default Medium
 }
 str_enum! {
-    pub enum TileTitles { Never = "never", Focused = "focused", Always = "always" } default Never
+    /// The name under the covers: on the page, or (`bar`) in a strip joined
+    /// to the cover's bottom edge.
+    pub enum TileTitles { Never = "never", Focused = "focused", Always = "always", Bar = "bar" } default Never
 }
 str_enum! {
     /// Badges on the covers: none, only "Playing" / "Preparing", or also
-    /// favourite and downloading.
+    /// favourite, downloading and "New" (added in the last two weeks).
     pub enum Badges { Off = "off", Running = "running", All = "all" } default Running
 }
 str_enum! {
@@ -151,6 +162,21 @@ str_enum! {
     pub enum Clock { H24 = "24h", H12 = "12h", Off = "off" } default H24
 }
 str_enum! {
+    /// Where the LB / RB tabs show.
+    pub enum TabBar {
+        /// Their names along the top bar.
+        Top = "top",
+        /// An icon and a name each, in a bar along the bottom.
+        Bottom = "bottom",
+        /// Only the current tab's name, centred in the top bar.
+        Title = "title",
+    } default Top
+}
+str_enum! {
+    /// Shelf titles as written, or in spaced capitals.
+    pub enum Headings { Normal = "normal", Spaced = "spaced" } default Normal
+}
+str_enum! {
     pub enum Motion { Full = "full", Reduced = "reduced", Off = "off" } default Full
 }
 str_enum! {
@@ -164,7 +190,8 @@ str_enum! {
     pub enum GamePage { Classic = "classic", Hero = "hero", Tabs = "tabs", Sheet = "sheet" } default Classic
 }
 str_enum! {
-    pub enum MenuStyle { Sidebar = "sidebar", Grid = "grid", Dock = "dock" } default Sidebar
+    /// `rail`: a column of icons always on screen that opens into the sidebar.
+    pub enum MenuStyle { Sidebar = "sidebar", Grid = "grid", Dock = "dock", Rail = "rail" } default Sidebar
 }
 str_enum! {
     pub enum Side { Left = "left", Right = "right" } default Left
@@ -253,11 +280,24 @@ pub struct HeroOptions {
     pub facts: bool,
     pub overview: bool,
     pub size: Size3,
+    pub fact_style: FactStyle,
+    pub align: HeroAlign,
+    /// A panel of numbers at the right edge: time played, last played,
+    /// size on disk, score, genre.
+    pub stats: bool,
 }
 
 impl Default for HeroOptions {
     fn default() -> Self {
-        Self { title: HeroTitle::Text, facts: true, overview: true, size: Size3::Medium }
+        Self {
+            title: HeroTitle::Text,
+            facts: true,
+            overview: true,
+            size: Size3::Medium,
+            fact_style: FactStyle::Line,
+            align: HeroAlign::Left,
+            stats: false,
+        }
     }
 }
 
@@ -271,6 +311,8 @@ pub struct TileOptions {
     pub corners: Corners,
     pub focus: FocusStyle,
     pub grey_uninstalled: bool,
+    /// The store's name in a strip above the cover.
+    pub header: bool,
 }
 
 impl Default for TileOptions {
@@ -283,6 +325,7 @@ impl Default for TileOptions {
             corners: Corners::Round,
             focus: FocusStyle::Ring,
             grey_uninstalled: false,
+            header: false,
         }
     }
 }
@@ -323,6 +366,8 @@ pub struct InterfaceOptions {
     /// Controller, downloads and battery icons in the top bar.
     pub status_icons: bool,
     pub motion: Motion,
+    pub tab_bar: TabBar,
+    pub headings: Headings,
 }
 
 impl Default for InterfaceOptions {
@@ -336,11 +381,15 @@ impl Default for InterfaceOptions {
             label: String::new(),
             status_icons: true,
             motion: Motion::Full,
+            tab_bar: TabBar::Top,
+            headings: Headings::Normal,
         }
     }
 }
 
-/// Colours a theme can replace (`#rrggbb`; empty keeps the built-in one).
+/// Colours a theme can replace (`#rrggbb`; empty keeps the built-in one). A
+/// light `background` makes the whole console light: the built-in text and
+/// surfaces turn dark and the art is washed out instead of darkened.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ColourOptions {
@@ -506,6 +555,24 @@ pub fn parse_hex(s: &str) -> Option<(u8, u8, u8)> {
     }
     let b = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
     Some((b(0)?, b(2)?, b(4)?))
+}
+
+impl ColourOptions {
+    /// The background is a light colour (relative luminance over 0.5): the
+    /// console is drawn light.
+    pub fn is_light(&self) -> bool {
+        parse_hex(&self.background).is_some_and(|(r, g, b)| {
+            let lin = |c: u8| {
+                let c = f32::from(c) / 255.;
+                if c <= 0.04045 {
+                    c / 12.92
+                } else {
+                    ((c + 0.055) / 1.055).powf(2.4)
+                }
+            };
+            0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b) > 0.5
+        })
+    }
 }
 
 /// Lower-case `[a-z0-9-]` from a name, for ids and file names.
