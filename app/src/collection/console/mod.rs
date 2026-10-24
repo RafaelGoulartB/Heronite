@@ -39,6 +39,7 @@ use crate::theme;
 use heronite_i18n::tr;
 
 pub(crate) use backdrop::Scrim;
+pub(crate) use sources::{kind_label, shelf_title};
 
 /// How long the hint bar of `Hints::Auto` stays after a press.
 const HINTS_FOR: Duration = Duration::from_millis(3500);
