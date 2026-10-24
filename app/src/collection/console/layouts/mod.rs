@@ -53,7 +53,7 @@ pub(super) fn scrim(layout: Layout) -> Scrim {
         Layout::Dashboard | Layout::Wheel | Layout::Carousel => Scrim::Full,
         // The game panel sits over the art: evenly dark, like the lists.
         Layout::Grid if look::theme().layouts.grid_panel == GridPanel::Right => Scrim::Full,
-        Layout::Grid => Scrim::Classic,
+        Layout::Grid => Scrim::Library,
     }
 }
 

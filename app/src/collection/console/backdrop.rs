@@ -24,6 +24,9 @@ pub(super) const ART_FADE_MS: u64 = 520;
 pub(crate) enum Scrim {
     /// Dark from the left, the bottom and the top (text on the left, covers below).
     Classic,
+    /// Classic's, denser where the grid of covers and its filters sit, so
+    /// the art stays a colour behind them rather than a second picture.
+    Library,
     /// Lighter: the art shows most (Spotlight, Xbox).
     Spot,
     /// Dark at the bottom only (Cinema).
@@ -47,6 +50,7 @@ fn backing(a: f32) -> Rgba {
 fn light_wash(scrim: Scrim) -> f32 {
     match scrim {
         Scrim::Classic => 0.6,
+        Scrim::Library => 0.66,
         Scrim::Spot => 0.5,
         Scrim::Cinema => 0.62,
         Scrim::Full => 0.68,
@@ -61,6 +65,7 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
     match scrim {
         // The top too, where the name and the overview sit over bright art.
         Scrim::Classic => vec![layer(90., 0.96, 0.35, 1.), layer(0., 0.98, 0., 0.75), layer(180., 0.6, 0., 0.45)],
+        Scrim::Library => vec![layer(90., 0.95, 0.58, 1.), layer(0., 0.97, 0.3, 0.85), layer(180., 0.55, 0., 0.3)],
         Scrim::Spot => vec![layer(90., 0.88, 0.1, 0.7), layer(0., 0.92, 0., 0.5), layer(180., 0.6, 0., 0.25)],
         Scrim::Cinema => vec![layer(0., 0.97, 0., 0.62), layer(90., 0.55, 0., 0.5), layer(180., 0.45, 0., 0.16)],
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],

@@ -295,21 +295,33 @@ impl CollectionView {
                     .child(div().text_size(u(16.)).font_weight(theme::W_BOLD).max_w(u(260.)).truncate().child(value.clone()))
             }));
         let game = focused.as_ref().and_then(|k| lib.get(k)).cloned();
+        // The focused game's name and facts over the grid, where it is in
+        // the list at the right end.
         let title_line = game.as_ref().filter(|_| !panel).map(|g| {
+            let facts = look::theme().hero.facts.then(|| self.console_fact_line(g, Self::console_facts(g), 15.).flex_none());
+            let about = div()
+                .relative()
+                .flex()
+                .items_center()
+                .gap(u(18.))
+                .min_w_0()
+                .child(kit::title(g.title.clone(), 28.).min_w_0().truncate())
+                .children(facts);
             div()
                 .flex()
-                .items_baseline()
+                .items_center()
                 .gap(u(14.))
+                .h(u(44.))
                 .px(u(SIDE))
                 .pb(u(6.))
-                .child(motion::enter_from(
+                .child(div().flex_1().min_w_0().overflow_hidden().child(motion::enter_from(
                     SharedString::from(format!("lib-title-{}", g.key)),
-                    kit::title(g.title.clone(), 28.).relative().truncate(),
+                    about,
                     240,
                     10.,
                     0.,
                     0.3,
-                ))
+                )))
                 .child(div().flex_none().text_size(u(15.)).text_color(theme::text_muted()).child(tr!(
                     "{index} of {total}",
                     index = index + 1,
