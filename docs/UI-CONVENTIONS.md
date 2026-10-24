@@ -435,13 +435,17 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   puts the game's facts beside its name over a denser scrim (`Scrim::Library`); the Classic game page has the time
   played, last played, time to beat and score above the overview and the facts not shown elsewhere; new art settles
   in from a touch closer on these screens (`Scrim::Classic` / `Library`, not with Reduced motion).
+  Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
+  and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
+  Status and Category; X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
+  first change switches to it), else a results grid over the tab (`ConsoleUi::results`, B leaves it), so every theme has them.
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
   Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). A new option = a field in
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
-- Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`) starts in console mode
+- Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
   without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
   that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
   `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`).
