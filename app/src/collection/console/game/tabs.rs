@@ -354,6 +354,8 @@ impl CollectionView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `gpui_kit::*` brings gpui's `test` macro into scope.
+    use core::prelude::v1::test;
 
     #[test]
     fn the_rows_split_at_the_manage_header() {

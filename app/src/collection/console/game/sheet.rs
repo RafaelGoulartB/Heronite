@@ -147,6 +147,8 @@ impl CollectionView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `gpui_kit::*` brings gpui's `test` macro into scope.
+    use core::prelude::v1::test;
 
     #[test]
     fn the_sheet_keeps_the_main_rows_and_ends_with_the_full_page() {

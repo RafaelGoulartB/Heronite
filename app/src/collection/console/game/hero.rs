@@ -565,6 +565,8 @@ fn hero_button(b: Button, rows: &[Row], g: &CollectionGame, focused: bool) -> Di
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `gpui_kit::*` brings gpui's `test` macro into scope.
+    use core::prelude::v1::test;
 
     #[test]
     fn the_buttons_follow_the_available_actions() {
