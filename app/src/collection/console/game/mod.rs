@@ -1,8 +1,14 @@
-//! Console game page (A on a cover): the game large over its art
-//! (header: cover, kicker, title, facts), the actions as console
-//! rows on the left (Play / Install / Stop, Status ◀ ▶, Favourite, Game
-//! settings, Hidden...) and what the desktop focus panel shows on the right
-//! (the description scrolls with the right stick).
+//! Console game page (A on a cover), in the style the theme picks
+//! (`game_page`): Classic (here: the game large over its art, the actions as
+//! rows on the left — Play / Install / Stop, Status ◀ ▶, Favourite, Game
+//! settings, Hidden... — and what the desktop focus panel shows on the right,
+//! the description scrolling with the right stick), Hero (`hero.rs`), Tabs
+//! (`tabs.rs`) or a quick Sheet over the tab (`sheet.rs`). All of them use
+//! the same actions ([`CollectionView::game_rows`]).
+
+mod hero;
+mod sheet;
+mod tabs;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -10,22 +16,34 @@ use heronite_data::CollectionGame;
 
 use super::super::vm::DetailValue;
 use super::super::CollectionView;
+use super::backdrop::Scrim;
 use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row, Value};
+use crate::console::look;
 use crate::console::motion::{Axis, Glide};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
+use heronite_data::console_theme::{GamePage, TabSpec};
 use heronite_i18n::tr;
 
 pub(super) struct GameNav {
     list: ListNav,
     about: Glide,
+    hero: hero::Nav,
+    tabs: tabs::Nav,
+    sheet: sheet::Nav,
 }
 
 impl Default for GameNav {
     fn default() -> Self {
-        Self { list: ListNav::default(), about: Glide::new(Axis::Y) }
+        Self {
+            list: ListNav::default(),
+            about: Glide::new(Axis::Y),
+            hero: Default::default(),
+            tabs: Default::default(),
+            sheet: Default::default(),
+        }
     }
 }
 
@@ -175,7 +193,63 @@ impl CollectionView {
         rows
     }
 
+    /// "Play", "Install" or "Stop" for the X shortcut.
+    pub(super) fn primary_label(&self, g: &CollectionGame) -> &'static str {
+        if self.preparing.contains_key(&g.app_name) {
+            tr!("Cancel launch")
+        } else if self.playing.contains_key(&g.app_name) {
+            tr!("Stop")
+        } else if g.installed {
+            tr!("Play")
+        } else {
+            tr!("Install")
+        }
+    }
+
+    /// The game page in the theme's style.
     pub(super) fn render_console_game(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        match look::theme().game_page {
+            GamePage::Classic => self.render_game_classic(key, window, cx),
+            GamePage::Hero => self.render_game_hero(key, window, cx),
+            GamePage::Tabs => self.render_game_tabs(key, window, cx),
+            GamePage::Sheet => self.render_game_sheet(key, window, cx),
+        }
+    }
+
+    /// `false` lets the shell use the press (B goes back).
+    pub(super) fn game_pad(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        match look::theme().game_page {
+            GamePage::Classic => self.game_pad_classic(key, pad, window, cx),
+            GamePage::Hero => self.game_pad_hero(key, pad, window, cx),
+            GamePage::Tabs => self.game_pad_tabs(key, pad, window, cx),
+            GamePage::Sheet => self.game_pad_sheet(key, pad, window, cx),
+        }
+    }
+
+    pub(super) fn game_hints(&self, key: &SharedString) -> Vec<Hint> {
+        match look::theme().game_page {
+            GamePage::Classic => self.game_hints_classic(key),
+            GamePage::Hero => self.game_hints_hero(key),
+            GamePage::Tabs => self.game_hints_tabs(key),
+            GamePage::Sheet => self.game_hints_sheet(key),
+        }
+    }
+
+    /// The background shading of the game page (the Sheet keeps the tab's).
+    pub(super) fn game_scrim(&self, spec: &TabSpec) -> Scrim {
+        match look::theme().game_page {
+            GamePage::Classic | GamePage::Tabs => Scrim::Classic,
+            GamePage::Hero => Scrim::Spot,
+            GamePage::Sheet => super::layouts::scrim(spec.layout),
+        }
+    }
+
+    /// The Sheet opens over the tab: its top bar stays.
+    pub(super) fn game_page_keeps_tabs(&self) -> bool {
+        look::theme().game_page == GamePage::Sheet
+    }
+
+    fn render_game_classic(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else {
             return kit::empty(Icon::Warning, tr!("This game is gone"), tr!("Press B to go back.")).into_any_element();
         };
@@ -295,7 +369,7 @@ impl CollectionView {
             .into_any_element()
     }
 
-    pub(super) fn game_pad(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
+    fn game_pad_classic(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return false };
         if matches!(pad, Pad::ScrollUp | Pad::ScrollDown) {
             let step = f32::from(u(120.));
@@ -378,7 +452,7 @@ impl CollectionView {
         true
     }
 
-    pub(super) fn game_hints(&self, key: &SharedString) -> Vec<Hint> {
+    fn game_hints_classic(&self, key: &SharedString) -> Vec<Hint> {
         let primary = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| self.primary_label(g)).unwrap_or(tr!("Play"));
         vec![
             hint(Btn::A, tr!("Select")),

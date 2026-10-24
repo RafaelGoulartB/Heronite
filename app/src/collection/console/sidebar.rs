@@ -1,6 +1,7 @@
-//! The console menu (Start / Menu, or B on a top screen): a full-height
-//! sidebar over the dimmed screen with every page, Add game,
-//! Settings, the way back to desktop mode and Power.
+//! The console menu (Start / Menu, or B on a top screen): every page, Add
+//! game, Customize, Settings, the way back to desktop mode and Power, in the
+//! order and with the items the theme's `menu` says (Settings and Desktop
+//! mode always stay), as a full-height sidebar over the dimmed screen.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -22,6 +23,8 @@ pub(super) enum Item {
     /// Epic Games, GOG and Amazon Games: the store page shown last.
     Stores,
     AddGame,
+    /// ☰ → Customize: the console theme over the live screen.
+    Customize,
     Desktop,
     /// Suspend, restart, shut down (`power.rs`).
     Power,
@@ -41,6 +44,7 @@ impl Item {
             Item::Go(p) => p.title(),
             Item::Stores => crate::pages::stores::title(),
             Item::AddGame => tr!("Add game"),
+            Item::Customize => tr!("Customize"),
             Item::Desktop => tr!("Desktop mode"),
             Item::Power => tr!("Power"),
             Item::Separator => "",
@@ -52,6 +56,7 @@ impl Item {
             Item::Go(p) => p.icon(),
             Item::Stores => Icon::Storefront,
             Item::AddGame => Icon::Add,
+            Item::Customize => Icon::Tune,
             Item::Desktop => Icon::Logout,
             Item::Power => Icon::PowerSettingsNew,
             Item::Separator => Icon::Menu,
@@ -59,48 +64,86 @@ impl Item {
     }
 }
 
-pub(super) const ITEMS: [Item; 12] = [
-    Item::Go(Page::Collection),
-    Item::Go(Page::Downloads),
-    Item::Go(Page::WineManager),
-    Item::Stores,
-    Item::Go(Page::Emulators),
-    Item::Go(Page::Statistics),
-    Item::Separator,
-    Item::AddGame,
-    Item::Go(Page::Settings),
-    Item::Separator,
-    Item::Desktop,
-    Item::Power,
-];
+impl Item {
+    /// A `MenuItemSpec::item` name.
+    pub fn parse(name: &str) -> Option<Item> {
+        Some(match name {
+            "collection" => Item::Go(Page::Collection),
+            "downloads" => Item::Go(Page::Downloads),
+            "wine-manager" => Item::Go(Page::WineManager),
+            "stores" => Item::Stores,
+            "emulators" => Item::Go(Page::Emulators),
+            "statistics" => Item::Go(Page::Statistics),
+            "separator" => Item::Separator,
+            "add-game" => Item::AddGame,
+            "customize" => Item::Customize,
+            "settings" => Item::Go(Page::Settings),
+            "desktop" => Item::Desktop,
+            "power" => Item::Power,
+            _ => return None,
+        })
+    }
+}
 
-fn step(from: usize, down: bool) -> usize {
+/// The menu of the theme: hidden items left out, no separator at an end or
+/// next to another.
+pub(super) fn items() -> Vec<Item> {
+    let theme = crate::console::look::theme();
+    let mut out: Vec<Item> = Vec::new();
+    for spec in &theme.menu.items {
+        let Some(item) = Item::parse(&spec.item) else { continue };
+        if !spec.on && !heronite_data::console_theme::MENU_LOCKED.contains(&spec.item.as_str()) {
+            continue;
+        }
+        if item == Item::Separator && out.last().is_none_or(|l| *l == Item::Separator) {
+            continue;
+        }
+        if item != Item::Separator && out.contains(&item) {
+            continue;
+        }
+        out.push(item);
+    }
+    while out.last() == Some(&Item::Separator) {
+        out.pop();
+    }
+    out
+}
+
+fn step(items: &[Item], from: usize, down: bool) -> usize {
     let mut i = from;
     loop {
         let next = if down { i + 1 } else { i.wrapping_sub(1) };
-        if next >= ITEMS.len() {
+        if next >= items.len() {
             return from;
         }
         i = next;
-        if ITEMS[i] != Item::Separator {
+        if items[i] != Item::Separator {
             return i;
         }
     }
 }
 
 impl CollectionView {
+    /// The menu item of the page shown (where the menu opens).
+    pub(super) fn sidebar_current(&self) -> usize {
+        let items = items();
+        items.iter().position(|i| i.page() == Some(self.page)).or_else(|| items.iter().position(|i| *i != Item::Separator)).unwrap_or(0)
+    }
+
     pub(super) fn sidebar_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
         let Some(cur) = self.console.sidebar else { return };
+        let items = items();
+        let cur = cur.min(items.len().saturating_sub(1));
         match pad {
-            Pad::Up | Pad::Down => self.console.sidebar = Some(step(cur, pad == Pad::Down)),
+            Pad::Up | Pad::Down => self.console.sidebar = Some(step(&items, cur, pad == Pad::Down)),
             Pad::B | Pad::Start | Pad::Right => self.console.sidebar = None,
             Pad::A => {
                 self.console.sidebar = None;
-                match ITEMS[cur] {
+                match items[cur] {
                     Item::Go(Page::Collection) => {
                         self.navigate(Page::Collection, window, cx);
                         if matches!(self.console.screen, Screen::Game(_)) {
-                            self.console.screen = Screen::Home;
+                            self.console.screen = Screen::Tabs;
                         }
                     }
                     Item::Go(page) => self.navigate(page, window, cx),
@@ -109,6 +152,7 @@ impl CollectionView {
                         self.navigate(page, window, cx);
                     }
                     Item::AddGame => self.console_add_game(window, cx),
+                    Item::Customize => self.open_console_customize(),
                     Item::Desktop => self.set_console(false, window, cx),
                     Item::Power => self.console_power_menu(cx),
                     Item::Separator => {}
@@ -124,7 +168,7 @@ impl CollectionView {
         let downloads = crate::services::try_downloads(cx).and_then(|s| super::super::nav::downloads_meta(Some(s.read(cx))));
         // Sized so every item fits the 800-unit console height (the list does not scroll).
         let mut list = div().flex().flex_col().gap(u(4.));
-        for (i, item) in ITEMS.iter().enumerate() {
+        for (i, item) in items().iter().enumerate() {
             if *item == Item::Separator {
                 list = list.child(div().my(u(10.)).mx(u(18.)).h(px(1.)).bg(theme::white_a(0.1)));
                 continue;
@@ -173,12 +217,11 @@ impl CollectionView {
                         .flex()
                         .flex_col()
                         .px(u(16.))
-                        .pt(u(30.))
+                        .pt(u(36.))
                         .bg(theme::console_sidebar())
                         .border_r_1()
                         .border_color(theme::white_a(0.08))
                         .shadow(kit::shadow(0.5, 0., 40.))
-                        .child(div().px(u(18.)).pb(u(26.)).child(kit::wordmark("HERONITE")))
                         .child(list),
                     280,
                     -40.,
@@ -191,14 +234,15 @@ impl CollectionView {
 
 #[cfg(test)]
 mod tests {
-    use super::{step, Item, ITEMS};
+    use super::{items, step, Item};
 
     #[test]
     fn steps_skip_separators_and_stop_at_the_ends() {
-        let add = ITEMS.iter().position(|i| *i == Item::AddGame).unwrap();
-        assert_eq!(step(add - 2, true), add);
-        assert_eq!(step(add, false), add - 2);
-        assert_eq!(step(0, false), 0);
-        assert_eq!(step(ITEMS.len() - 1, true), ITEMS.len() - 1);
+        let items = items();
+        let add = items.iter().position(|i| *i == Item::AddGame).unwrap();
+        assert_eq!(step(&items, add - 2, true), add);
+        assert_eq!(step(&items, add, false), add - 2);
+        assert_eq!(step(&items, 0, false), 0);
+        assert_eq!(step(&items, items.len() - 1, true), items.len() - 1);
     }
 }
