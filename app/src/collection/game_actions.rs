@@ -226,7 +226,7 @@ impl CollectionView {
                 "native port pc version executable linux windows nativo versao pc executavel",
             ));
         }
-        // The focus panel has its own button; the palette keeps it.
+        // Game settings has its own button; the palette keeps it.
         v.push(
             item(
                 A::Metadata,

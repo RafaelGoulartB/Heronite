@@ -101,6 +101,8 @@ pub struct MetadataDialog {
     igdb_id: Option<i64>,
     busy: Option<Busy>,
     error: String,
+    /// What Apply saved, for a host that shows the game's details itself.
+    applied: Option<CollectionGameMetadata>,
 }
 
 impl EventEmitter<DialogEvent> for MetadataDialog {}
@@ -136,6 +138,7 @@ impl MetadataDialog {
             igdb_id,
             busy: None,
             error: String::new(),
+            applied: None,
         };
         if auto_fetch {
             this.run_preview(None, cx);
@@ -225,6 +228,11 @@ impl MetadataDialog {
         cx.notify();
     }
 
+    /// The metadata Apply saved (set before `ChangedAndClose`).
+    pub fn applied(&self) -> Option<&CollectionGameMetadata> {
+        self.applied.as_ref()
+    }
+
     fn apply(&mut self, cx: &mut Context<Self>) {
         let Some(preview) = self.preview.clone().filter(|_| self.busy.is_none()) else { return };
         self.busy = Some(Busy::Apply);
@@ -239,7 +247,10 @@ impl MetadataDialog {
             this.update(cx, |this, cx| {
                 this.busy = None;
                 match res {
-                    Ok(_) => cx.emit(DialogEvent::ChangedAndClose),
+                    Ok(md) => {
+                        this.applied = Some(md);
+                        cx.emit(DialogEvent::ChangedAndClose);
+                    }
                     Err(err) => this.error = format!("{err:#}"),
                 }
                 cx.notify();

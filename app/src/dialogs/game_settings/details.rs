@@ -1,6 +1,8 @@
 //! The Details tab: the metadata form and the time played, their dirty
 //! check and saving.
 
+use std::sync::Arc;
+
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -10,9 +12,11 @@ use heronite_data::playtime::{clamp_number, set_playtime_minutes, split_minutes}
 use heronite_i18n::{n_, tr};
 use heronite_metadata::{DetailsPatch, DetailsResult};
 
-use super::{block, Busy, GameSettingsDialog};
+use super::{block, Busy, GameSettingsDialog, Nested};
+use crate::dialogs::metadata::MetadataDialog;
 use crate::dialogs::{DialogCtx, DialogEvent};
-use crate::ui::controls::{caption, card, help_text, row};
+use crate::icons::Icon;
+use crate::ui::controls::{caption, card, help_text, icon_button_sm, row, ButtonKind};
 use crate::ui::fields::{duration_field, input_box, labeled, new_input, new_textarea, textarea_box, TagEvent, TagField};
 
 #[derive(Clone, PartialEq, Default)]
@@ -268,6 +272,36 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
+    /// "Fetch metadata": the Collection metadata dialog over this one.
+    fn open_metadata(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (ctx, game) = (self.ctx.clone(), self.game.clone());
+        let view = cx.new(|cx| MetadataDialog::new(ctx, game, window, cx));
+        let sub = cx.subscribe_in(&view, window, Self::on_metadata_event);
+        self.nested = Some(Nested::Metadata(view, sub));
+        cx.notify();
+    }
+
+    /// After Apply: the cover, background and form show what was fetched
+    /// (the form only when nothing in it was edited yet).
+    fn on_metadata_event(&mut self, view: &Entity<MetadataDialog>, ev: &DialogEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if matches!(ev, DialogEvent::Changed | DialogEvent::ChangedAndClose) {
+            if let Some(md) = view.read(cx).applied().cloned() {
+                let untouched = !self.game_tab_dirty(cx);
+                let old = self.metadata.replace(Arc::new(md));
+                self.metadata_art_changed(old.as_deref());
+                if untouched {
+                    self.initial = form_from(&self.game.title, self.metadata.as_deref(), self.game.meta.as_deref());
+                    self.details = Self::build_details(&self.ctx, &self.initial, self.initial_playtime, window, cx);
+                }
+            }
+            cx.emit(DialogEvent::Changed);
+        }
+        if matches!(ev, DialogEvent::Close | DialogEvent::ChangedAndClose) {
+            self.nested = None;
+        }
+        cx.notify();
+    }
+
     pub(super) fn details_tab(&mut self, cx: &mut Context<Self>) -> Div {
         let d = &self.details;
         let general = card([
@@ -293,7 +327,19 @@ impl GameSettingsDialog {
             .flex()
             .flex_col()
             .gap(px(6.))
-            .child(caption(tr!("Details")))
+            .child(
+                div().flex().items_end().justify_between().child(caption(tr!("Details"))).child(
+                    icon_button_sm(
+                        "gs-fetch-metadata",
+                        ButtonKind::Primary,
+                        Icon::TravelExplore,
+                        tr!("Fetch metadata"),
+                        self.busy.is_none(),
+                        cx.listener(|this, _, window, cx| this.open_metadata(window, cx)),
+                    )
+                    .mb(px(4.)),
+                ),
+            )
             .child(help_text(tr!("Fetching metadata again keeps what you edit here.")).px(px(6.)))
             .child(general)
             .child(caption(tr!("Playtime")))

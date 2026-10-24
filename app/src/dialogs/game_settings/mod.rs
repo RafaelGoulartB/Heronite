@@ -14,12 +14,13 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
-use heronite_data::models::CollectionGameArt;
+use heronite_data::models::{CollectionGameArt, CollectionGameMetadata};
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService};
 
 use super::art_images::{picture, DialogImages};
+use super::metadata::MetadataDialog;
 use super::metadata_wizard::hub;
 use super::save_backups::{self, SaveBackupsView};
 use super::screenshot_art::ScreenshotArtDialog;
@@ -110,6 +111,7 @@ enum Busy {
 enum Nested {
     Web(Entity<WebImageDialog>, #[allow(dead_code)] Subscription),
     Screenshot(Entity<ScreenshotArtDialog>, #[allow(dead_code)] Subscription),
+    Metadata(Entity<MetadataDialog>, #[allow(dead_code)] Subscription),
 }
 
 pub struct GameSettingsDialog {
@@ -117,6 +119,8 @@ pub struct GameSettingsDialog {
     service: Arc<MetadataService>,
     images: Entity<DialogImages>,
     game: Game,
+    /// The game's fetched metadata: `game`'s, until "Fetch metadata" applies new.
+    metadata: Option<Arc<CollectionGameMetadata>>,
     title: String,
     tab: Tab,
     art: CollectionGameArt,
@@ -185,6 +189,7 @@ impl GameSettingsDialog {
             service,
             images,
             title: game.title.clone(),
+            metadata: game.metadata.clone(),
             tab,
             art: game.art.as_deref().cloned().unwrap_or_default(),
             default_cover,
@@ -408,6 +413,7 @@ impl Render for GameSettingsDialog {
         let nested: Option<AnyView> = match &self.nested {
             Some(Nested::Web(v, _)) => Some(v.clone().into()),
             Some(Nested::Screenshot(v, _)) => Some(v.clone().into()),
+            Some(Nested::Metadata(v, _)) => Some(v.clone().into()),
             None => None,
         };
         div().absolute().inset_0().child(main).children(nested).into_any_element()

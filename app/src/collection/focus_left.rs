@@ -1,5 +1,5 @@
 //! Left column of the focus panel: the cover, Play (or the Epic progress),
-//! the status selector with favourite / metadata / settings, the user's star
+//! the status selector with favourite / settings, the user's star
 //! rating and a facts card (score, library, save backup, Linux). When the
 //! panel is narrow the same pieces sit in a row under the title.
 
@@ -160,7 +160,7 @@ impl CollectionView {
         div().flex().flex_col().gap(px(8.)).children(play).children(epic_el).into_any_element()
     }
 
-    /// Status selector, favourite, metadata and game settings.
+    /// Status selector, favourite and game settings.
     pub(super) fn focus_status_row(&mut self, vm: &FocusVm, vh: f32, cx: &mut Context<Self>) -> Div {
         let open = self.facts.status_open;
         let (name, color) = match &vm.status {
@@ -199,10 +199,6 @@ impl CollectionView {
             .child(
                 round_button("focus-fav", if vm.favourite { Icon::Star } else { Icon::StarBorder }, 36., 0.72)
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_favourite(cx))),
-            )
-            .child(
-                round_button("focus-meta", Icon::TravelExplore, 36., 0.72)
-                    .on_click(cx.listener(|this, _, window, cx| this.open_metadata(window, cx))),
             )
             .child(
                 round_button("focus-settings", Icon::Settings, 36., 0.72)
