@@ -13,6 +13,7 @@ pub mod input;
 pub mod kit;
 pub mod layers;
 pub mod list;
+pub mod look;
 pub mod motion;
 pub mod osk;
 pub mod registry;

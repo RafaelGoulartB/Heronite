@@ -30,7 +30,7 @@ thread_local! {
 /// once at the start of every console frame.
 pub fn set_scale(window: &Window) {
     let h = f32::from(window.viewport_size().height);
-    SCALE.store((h / 800.).clamp(1., 2.).to_bits(), Ordering::Relaxed);
+    SCALE.store(((h / 800.).clamp(1., 2.) * super::look::scale()).to_bits(), Ordering::Relaxed);
     PILLS.with(|c| c.set(0));
 }
 
@@ -59,7 +59,7 @@ pub fn shadow(alpha: f32, y: f32, blur: f32) -> Vec<BoxShadow> {
 pub fn wordmark(text: &str) -> Div {
     let spaced: String = text.chars().flat_map(|c| [c, '\u{2009}']).collect();
     div()
-        .font_family(theme::font_heading())
+        .font_family(heading_font())
         .font_weight(theme::W_BOLD)
         .text_size(u(14.))
         .text_color(theme::text_muted())
@@ -74,7 +74,7 @@ pub fn kicker(text: &str) -> Div {
 /// Rubik title.
 pub fn title(text: impl Into<SharedString>, size: f32) -> Div {
     div()
-        .font_family(theme::font_heading())
+        .font_family(heading_font())
         .font_weight(theme::W_BOLD)
         .text_size(u(size))
         .line_height(u(size * 1.15))
@@ -314,15 +314,33 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
                         .whitespace_nowrap()
                         .child(label),
                 )
-                .child(div().h(u(3.)).w(u(28. * k)).rounded_full().bg(white()).opacity(k))
+                .child(div().h(u(3.)).w(u(28. * k)).rounded_full().bg(theme::console_focus()).opacity(k))
             })
         }))
         .child(glyph(Btn::RB))
 }
 
-/// "21:04".
+/// "21:04" (or 12 h, with the date, or nothing: the console theme says).
 pub fn clock() -> Div {
-    div().text_size(u(16.)).text_color(theme::text_primary()).child(chrono::Local::now().format("%H:%M").to_string())
+    div().text_size(u(16.)).text_color(theme::text_primary()).children(super::look::clock_text(chrono::Local::now()))
+}
+
+/// Title font of console mode: the console theme's while it is on, else the app's.
+pub fn heading_font() -> SharedString {
+    if super::active() {
+        super::look::fonts().0.into()
+    } else {
+        theme::font_heading().into()
+    }
+}
+
+/// Body font of console mode (see [`heading_font`]).
+pub fn body_font() -> SharedString {
+    if super::active() {
+        super::look::fonts().1.into()
+    } else {
+        theme::font_body().into()
+    }
 }
 
 /// Section caption inside a list ("Display", "Controls").

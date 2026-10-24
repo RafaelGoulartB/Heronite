@@ -222,13 +222,22 @@ pub fn selected_ring() -> Rgba {
     cpick(0xe8dcc0, 0x2a313b, |p| p.text)
 }
 
-/// Console mode (proposal "2 · Console"): dark surfaces, a light pill for
-/// the focused row, controller button colours.
+/// A console theme's colour (`console::look`) while console mode is on, else `default`.
+fn themed(pick: fn() -> Option<Rgba>, default: u32) -> Rgba {
+    if crate::console::active() {
+        pick().unwrap_or_else(|| rgb(default))
+    } else {
+        rgb(default)
+    }
+}
+
+/// Console mode: dark surfaces, a light pill for the focused row,
+/// controller button colours (a console theme may replace them).
 pub fn console_bg() -> Rgba {
-    rgb(0x0b0e13)
+    themed(crate::console::look::background, 0x0b0e13)
 }
 pub fn console_sidebar() -> Rgba {
-    rgb(0x0e1218)
+    themed(crate::console::look::panel, 0x0e1218)
 }
 /// The in-game overlay's panels: the console sidebar, nearly opaque over the game.
 pub fn overlay_fill() -> Rgba {
@@ -242,13 +251,17 @@ pub fn overlay_bar_muted() -> Rgba {
     rgb(0x6b7480)
 }
 pub fn console_focus() -> Rgba {
-    rgb(0xeef2f7)
+    if crate::console::active() {
+        crate::console::look::focus()
+    } else {
+        rgb(0xeef2f7)
+    }
 }
 pub fn console_on_focus() -> Rgba {
-    rgb(0x0d1117)
+    themed(crate::console::look::focus_text, 0x0d1117)
 }
 pub fn console_on() -> Rgba {
-    rgb(0x3dd68c)
+    themed(crate::console::look::on, 0x3dd68c)
 }
 pub fn console_btn_a() -> Rgba {
     rgb(0x3ecf8e)
@@ -318,10 +331,16 @@ pub fn status_color(slug: &str) -> Rgba {
 
 // Text.
 pub fn text_primary() -> Rgba {
+    if let Some(c) = crate::console::active().then(crate::console::look::text).flatten() {
+        return c;
+    }
     cpick(0xe8edf4, 0x20262f, |p| p.text)
 }
 /// Captions, leads, labels above fields (`#9aa6b6`).
 pub fn text_muted() -> Rgba {
+    if let Some(c) = crate::console::active().then(crate::console::look::muted).flatten() {
+        return c;
+    }
     if high_contrast() {
         cpick(0xc8d0dc, 0x333b46, |p| mix(p.muted, p.text, 0.5))
     } else {

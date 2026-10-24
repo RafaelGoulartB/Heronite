@@ -18,7 +18,12 @@ use super::kit::u;
 use crate::theme;
 
 pub fn on() -> bool {
-    theme::animations()
+    theme::animations() && !(super::active() && super::look::motion() == heronite_data::console_theme::Motion::Off)
+}
+
+/// The console theme's "Reduced" motion: fades stay, things no longer slide.
+pub fn reduced() -> bool {
+    super::active() && super::look::motion() == heronite_data::console_theme::Motion::Reduced
 }
 
 /// Scrolling: critically damped, ~90% of the way in 170ms, keeps its speed
@@ -232,7 +237,7 @@ pub fn enter_from<E: Styled + IntoElement + 'static>(id: impl Into<ElementId>, e
     if !on() {
         return el.into_any_element();
     }
-    let (dx, dy) = (u(dx), u(dy));
+    let (dx, dy) = if reduced() { (px(0.), px(0.)) } else { (u(dx), u(dy)) };
     el.with_animation(id, Animation::new(Duration::from_millis(ms)).with_easing(ease_out_quint()), move |el, t| {
         let mut s = el.opacity(from + (1. - from) * t);
         if dx != px(0.) {
@@ -253,7 +258,7 @@ pub fn layer_in(id: impl Into<ElementId>, child: impl IntoElement, ms: u64, dy: 
     if !on() {
         return layer.into_any_element();
     }
-    let dy = u(dy);
+    let dy = if reduced() { px(0.) } else { u(dy) };
     layer
         .with_animation(id, Animation::new(Duration::from_millis(ms)).with_easing(ease_out_quint()), move |el, t| {
             let off = dy * (1. - t);
