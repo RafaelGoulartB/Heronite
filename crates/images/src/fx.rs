@@ -58,6 +58,30 @@ pub fn compress_highlights(buf: &mut [u8], knee: f32, cap: f32) {
     }
 }
 
+/// Turns the light, nearly colourless parts of straight-alpha RGBA pixels (the
+/// white of a logo) to `ink`, softly, so they read on a light surface; dark
+/// and coloured parts stay.
+pub fn ink_light_parts(buf: &mut [u8], ink: (u8, u8, u8)) {
+    let smooth = |e0: f32, e1: f32, x: f32| {
+        let t = ((x - e0) / (e1 - e0)).clamp(0., 1.);
+        t * t * (3. - 2. * t)
+    };
+    for p in buf.as_chunks_mut::<4>().0 {
+        if p[3] == 0 {
+            continue;
+        }
+        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+        let (hi, lo) = (r.max(g).max(b), r.min(g).min(b));
+        let l = (0.299 * r + 0.587 * g + 0.114 * b) / 255.;
+        let sat = if hi > 0. { (hi - lo) / hi } else { 0. };
+        let w = smooth(0.62, 0.85, l) * (1. - smooth(0.18, 0.4, sat));
+        if w > 0. {
+            let mix = |c: f32, i: u8| (c + (i as f32 - c) * w).round() as u8;
+            (p[0], p[1], p[2]) = (mix(r, ink.0), mix(g, ink.1), mix(b, ink.2));
+        }
+    }
+}
+
 /// CSS `saturate(s)` (feColorMatrix type=saturate, in sRGB space like CSS
 /// filter shorthand). Works for RGBA or BGRA alike when `bgra` is set.
 pub fn saturate(buf: &mut [u8], s: f32, bgra: bool) {
@@ -202,6 +226,16 @@ pub fn gaussian_blur(buf: &mut Vec<u8>, w: usize, h: usize, sigma: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn white_turns_to_ink_and_colour_stays() {
+        let mut px = [255, 255, 255, 255, 200, 30, 40, 255, 20, 20, 20, 255, 255, 255, 255, 0];
+        ink_light_parts(&mut px, (10, 20, 30));
+        assert_eq!(px[..4], [10, 20, 30, 255]);
+        assert_eq!(px[4..8], [200, 30, 40, 255]);
+        assert_eq!(px[8..12], [20, 20, 20, 255]);
+        assert_eq!(px[12..], [255, 255, 255, 0]);
+    }
 
     #[test]
     fn box_radii_variance_matches_sigma() {

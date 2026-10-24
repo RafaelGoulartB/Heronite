@@ -13,10 +13,15 @@ pub mod input;
 pub mod kit;
 pub mod layers;
 pub mod list;
+pub mod look;
 pub mod motion;
 pub mod osk;
 pub mod registry;
 pub mod sheet;
+pub mod spatial;
+pub mod startup;
+pub mod theme_rows;
+pub mod themes;
 
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -57,6 +62,18 @@ pub enum Pad {
     /// Right stick: scroll long text.
     ScrollUp,
     ScrollDown,
+}
+
+impl Pad {
+    /// Which way the press goes along a list: 1 for → ↓ RB RT and the stick
+    /// down, -1 for ← ↑ LB LT and the stick up, 0 for any other.
+    pub fn dir(self) -> isize {
+        match self {
+            Pad::Right | Pad::Down | Pad::RB | Pad::RT | Pad::ScrollDown => 1,
+            Pad::Left | Pad::Up | Pad::LB | Pad::LT | Pad::ScrollUp => -1,
+            _ => 0,
+        }
+    }
 }
 
 /// Button glyph in the hint bar.

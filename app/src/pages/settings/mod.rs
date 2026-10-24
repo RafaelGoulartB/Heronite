@@ -13,18 +13,21 @@
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
 //!   `screenshots.rs`, `saves.rs` + `backup/`). Any write ends in
 //!   [`SettingsPage::saved`].
+//! - Console mode: the console themes and every option of console mode
+//!   (`console_mode/`; its state exists only once the section was shown).
 //! - About: updates (`updates.rs`), version, folders and system information
 //!   (`about.rs`).
 //!
 //! Emulators and ROM folders are not here: they live on the ☰ Emulators page.
 //!
-//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
+//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
 
 mod about;
 mod advanced;
 mod appearance;
 mod backup;
 mod console;
+mod console_mode;
 mod launchers;
 mod library;
 pub mod logs;
@@ -126,6 +129,7 @@ pub struct SettingsPage {
     advanced: advanced::State,
     about: about::State,
     logs: logs::State,
+    console_mode: Option<console_mode::State>,
     /// Console mode focus, keyboard and pickers.
     console: console::ConsoleState,
     /// The section list's scroll, for its scrollbar.
@@ -177,6 +181,7 @@ impl SettingsPage {
             advanced: advanced::State::default(),
             about: about::State::default(),
             logs: logs::State::default(),
+            console_mode: None,
             console: Default::default(),
             nav_scroll: ScrollHandle::new(),
             ctx,
@@ -312,6 +317,7 @@ impl SettingsPage {
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
             Section::Backups => backup::shown(self, cx),
+            Section::ConsoleMode => console_mode::shown(self, window, cx),
             _ => {}
         }
     }
@@ -462,6 +468,7 @@ impl SettingsPage {
                 Self::collection_section(body, self.error.clone())
             }
             Section::Backups => Self::collection_section(backup::render(self, window, cx), self.error.clone()),
+            Section::ConsoleMode => console_mode::render(self, window, cx),
             Section::Logs => self.logs_section(cx),
             Section::About => self.about_section(cx).into_any_element(),
         }

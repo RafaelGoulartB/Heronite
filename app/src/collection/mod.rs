@@ -35,7 +35,7 @@ mod metadata_ui;
 mod nav;
 mod onboarding;
 mod open_links;
-mod organize;
+pub(crate) mod organize;
 mod palette;
 mod pumps;
 mod render_focus;

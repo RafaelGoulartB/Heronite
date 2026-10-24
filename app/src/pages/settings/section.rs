@@ -10,6 +10,8 @@ use crate::icons::Icon;
 pub enum Section {
     General,
     Appearance,
+    /// Console mode's themes and options (also ☰ → Customize).
+    ConsoleMode,
     Advanced,
     GameDefaults,
     Downloads,
@@ -35,7 +37,7 @@ pub enum Section {
 impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 4] = [
-        (n_!("App"), &[Section::General, Section::Appearance, Section::Advanced]),
+        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode, Section::Advanced]),
         (
             n_!("Games"),
             &[
@@ -53,9 +55,10 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 16] = [
+    pub const ALL: [Section; 17] = [
         Section::General,
         Section::Appearance,
+        Section::ConsoleMode,
         Section::Advanced,
         Section::GameDefaults,
         Section::Downloads,
@@ -76,6 +79,7 @@ impl Section {
         match self {
             Section::General => tr!("General"),
             Section::Appearance => tr!("Appearance"),
+            Section::ConsoleMode => tr!("Console mode"),
             Section::Advanced => tr!("Advanced"),
             Section::GameDefaults => tr!("Game defaults"),
             Section::Downloads => tr!("Downloads"),
@@ -97,6 +101,7 @@ impl Section {
         match self {
             Section::General => Icon::Settings,
             Section::Appearance => Icon::Visibility,
+            Section::ConsoleMode => Icon::Tv,
             Section::Advanced => Icon::Build,
             Section::GameDefaults => Icon::Tune,
             Section::Downloads => Icon::Download,
@@ -119,6 +124,7 @@ impl Section {
         match self {
             Section::General => tr!("Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically."),
             Section::Appearance => tr!("Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout."),
+            Section::ConsoleMode => tr!("The controller-first TV mode: its themes, tabs and shelves, covers, background, interface and controls. Changes show at once; ☰ → Customize in console mode has the same options."),
             Section::Advanced => tr!("Logs, folders and cache."),
             Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
@@ -141,6 +147,7 @@ impl Section {
         match self {
             Section::General => "general folders tray shortcuts wine proton language theme geral pastas bandeja atalhos idioma tema",
             Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast font density corners badges hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste fonte densidade cantos selos estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
+            Section::ConsoleMode => "console mode tv couch controller gamepad theme themes tabs shelves layout covers background font scale clock accent colours glyphs hints menu startup customize export import preset modo console televisao sofa controle tema temas abas prateleiras capas fundo fonte tamanho relogio destaque cores botoes dicas menu personalizar exportar importar perfil",
             Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
             Section::GameDefaults => "game defaults wine prefix gamescope launch options new games padroes dos jogos prefixo opcoes de inicializacao novos jogos",
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
@@ -171,6 +178,7 @@ impl Section {
         match s {
             "general" => Some(Section::General),
             "appearance" => Some(Section::Appearance),
+            "console-mode" | "console" => Some(Section::ConsoleMode),
             "advanced" => Some(Section::Advanced),
             "defaults" => Some(Section::GameDefaults),
             "downloads" => Some(Section::Downloads),
@@ -209,6 +217,7 @@ mod tests {
         assert_eq!(Section::parse("storage"), Some(Section::Storage));
         assert_eq!(Section::parse("defaults"), Some(Section::GameDefaults));
         assert_eq!(Section::parse("replay"), Some(Section::Replay));
+        assert_eq!(Section::parse("console-mode"), Some(Section::ConsoleMode));
         assert_eq!(Section::parse("nope"), None);
         assert_eq!(crate::pages::Page::from_debug("settings"), Some(crate::pages::Page::Settings));
         assert_eq!(crate::pages::Page::from_debug("settings:about"), Some(crate::pages::Page::Settings));

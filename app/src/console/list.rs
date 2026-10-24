@@ -324,7 +324,7 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
             .h(u(40.))
             .rounded(u(8.))
             .overflow_hidden()
-            .bg(theme::white_a(0.06))
+            .bg(kit::ink(0.06))
             .child(img(path.clone()).size_full().object_fit(ObjectFit::Cover))
             .into_any_element(),
         None => value,
@@ -347,12 +347,15 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
                         .child(div().text_size(u(18.)).text_color(label_color).truncate().child(r.label.clone()))
                         .when(r.changed, |d| d.child(div().flex_none().size(u(7.)).rounded_full().bg(theme::accent()))),
                 )
-                .children(
-                    r.desc
-                        .clone()
-                        .filter(|_| focused)
-                        .map(|d| div().text_size(u(13.)).line_height(u(18.)).text_color(Hsla { a: 0.7, ..label_color }).child(d)),
-                ),
+                .children(r.desc.clone().filter(|_| focused).map(|d| {
+                    div()
+                        .text_size(u(13.))
+                        .line_height(u(18.))
+                        // One line: a longer one ends in "…" instead of growing the row.
+                        .truncate()
+                        .text_color(Hsla { a: 0.7, ..label_color })
+                        .child(d)
+                })),
         )
         .child(value)
 }

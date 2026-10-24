@@ -172,7 +172,12 @@ impl ImageStore {
     /// by the next [`drop_evicted`](Self::drop_evicted)): used when a whole
     /// kind of texture is switched off (stage art, glass backdrop).
     pub fn forget_prefix(&mut self, prefix: &str) {
-        let ids: Vec<SharedString> = self.ready.keys().filter(|k| k.starts_with(prefix)).cloned().collect();
+        self.forget_matching(|id| id.starts_with(prefix));
+    }
+
+    /// [`forget_prefix`](Self::forget_prefix) for the ids `hit` says yes to.
+    pub fn forget_matching(&mut self, hit: impl Fn(&str) -> bool) {
+        let ids: Vec<SharedString> = self.ready.keys().filter(|k| hit(k)).cloned().collect();
         for id in ids {
             self.remove(&id);
             self.order.retain(|k| k != &id);

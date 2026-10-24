@@ -13,7 +13,7 @@ import json,sys
 for c in json.load(sys.stdin):
   if c['class']=='com.heronite.rs': print(c['stableId'], c['pid'])"; }
 BEFORE=$(list | cut -d' ' -f1 | tr '\n' ' ')
-hyprctl eval "hl.exec_cmd(\"env HERONITE_NO_ANIMATIONS=1 HERONITE_NO_SINGLE_INSTANCE=1 HERONITE_NO_TRAY=1 HERONITE_NO_ONBOARDING=1 ${SHOT_ENV:-} $BIN > $LOG 2>&1\", { workspace = \"7 silent\" })" >/dev/null
+hyprctl eval "hl.exec_cmd(\"env HERONITE_NO_ANIMATIONS=1 HERONITE_NO_SINGLE_INSTANCE=1 HERONITE_NO_TRAY=1 HERONITE_NO_ONBOARDING=1 HERONITE_NO_GAMEPAD=1 ${SHOT_ENV:-} $BIN > $LOG 2>&1\", { workspace = \"7 silent\" })" >/dev/null
 ID=""; P=""
 for _ in $(seq 1 200); do
   while read -r sid pid; do
@@ -23,6 +23,9 @@ for _ in $(seq 1 200); do
   [ -n "$ID" ] && break; sleep 0.05
 done
 [ -z "$ID" ] && { echo "window did not appear"; cat "$LOG"; exit 1; }
+# Closed even when a step below fails (a copy left running keeps a window and
+# a GPU context on the hidden workspace).
+trap 'kill "$P" 2>/dev/null || true' EXIT
 sleep "$WAIT"
 # On a hidden workspace the window only repaints after a first capture wakes
 # the compositor: capture once to warm up, then the real one.

@@ -16,6 +16,8 @@ pub mod carry_over;
 pub mod categories;
 pub mod collection;
 pub mod config_games;
+pub mod console_art;
+pub mod console_theme;
 pub mod details_url;
 pub mod field_names;
 pub mod focus;

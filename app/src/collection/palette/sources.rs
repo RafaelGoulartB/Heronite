@@ -172,6 +172,7 @@ fn section_help(s: Section) -> &'static str {
     match s {
         Section::General => tr!("Folders, tray, Wine and Proton lookup"),
         Section::Appearance => tr!("Page background, blur, covers"),
+        Section::ConsoleMode => tr!("Themes, tabs, covers and controls of the TV mode"),
         Section::Advanced => tr!("Folders, cache, copy settings"),
         Section::GameDefaults => tr!("Values new games start with"),
         Section::Downloads => tr!("Store downloads and updates"),

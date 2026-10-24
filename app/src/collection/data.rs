@@ -299,3 +299,14 @@ pub(super) fn days_ago(days: i64) -> String {
         _ => tr!("{months} months ago", months = days / 30),
     }
 }
+
+/// The day of a "YYYY-MM-DD..." text (a date or the start of a timestamp).
+pub(super) fn parse_day(text: &str) -> Option<chrono::NaiveDate> {
+    chrono::NaiveDate::parse_from_str(text.get(..10)?, "%Y-%m-%d").ok()
+}
+
+/// [`days_ago`] for a last-played moment: an RFC 3339 time, or just a day.
+pub(super) fn played_ago(last_played: &str) -> Option<String> {
+    let days = days_since(last_played).or_else(|| Some((chrono::Local::now().date_naive() - parse_day(last_played)?).num_days().max(0)))?;
+    Some(days_ago(days))
+}

@@ -211,7 +211,7 @@ impl Render for Browser {
                     .rounded(u(24.))
                     .bg(theme::console_sidebar())
                     .border_1()
-                    .border_color(theme::white_a(0.1))
+                    .border_color(kit::ink(0.1))
                     .child(kit::title(self.title.clone(), 24.))
                     .child(div().text_size(u(14.)).text_color(theme::text_muted()).truncate().child(self.dir.display().to_string()))
                     .shadow(kit::shadow(0.5, 18., 48.))
