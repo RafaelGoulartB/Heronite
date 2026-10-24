@@ -41,6 +41,27 @@ pub(crate) fn clip(text: &str, max: usize) -> String {
     format!("{}\u{2026}", cut.trim_end_matches([',', ';', ':', '.', ' ']))
 }
 
+/// A logo fitted in a `w`×`h` design px box at its own proportions (a small
+/// one grows up to twice its size), laid out at the size it shows at so the
+/// column under it stays in place.
+pub(crate) fn logo_element(src: ImageSource, w: f32, h: f32, window: &Window) -> AnyElement {
+    let el = img(src.clone()).flex_none();
+    match &src {
+        ImageSource::Render(r) => {
+            let size = r.size(0);
+            let scale = window.scale_factor();
+            let (lw, lh) = (size.width.0 as f32 / scale, size.height.0 as f32 / scale);
+            if lw <= 0. || lh <= 0. {
+                return el.into_any_element();
+            }
+            let (bw, bh) = (f32::from(u(w)), f32::from(u(h)));
+            let k = (bw / lw).min(bh / lh).min(2.);
+            el.w(px(lw * k)).h(px(lh * k)).into_any_element()
+        }
+        _ => el.w(u(w)).h(u(h)).object_fit(ObjectFit::Contain).into_any_element(),
+    }
+}
+
 impl CollectionView {
     /// "Steam · Installed · 3h 54m played".
     pub(super) fn console_facts(g: &CollectionGame) -> String {
@@ -71,11 +92,7 @@ impl CollectionView {
         if look::theme().hero.title == HeroTitle::Logo {
             let key = SharedString::from(g.key.clone());
             if let Some(src) = self.console_logo(&key, size.logo.0, size.logo.1, window) {
-                return div()
-                    .w(u(size.logo.0))
-                    .h(u(size.logo.1))
-                    .child(img(src).size_full().object_fit(ObjectFit::Contain))
-                    .into_any_element();
+                return logo_element(src, size.logo.0, size.logo.1, window);
             }
         }
         kit::title(g.title.clone(), size.title).into_any_element()

@@ -81,10 +81,21 @@ impl CollectionView {
         let games: Vec<&CollectionGame> =
             lib.games.iter().map(|g| g.as_ref()).filter(|g| self.console_in_source(&lib, g, source)).collect();
         let limit = if theme.shelf_limit == 0 { usize::MAX } else { theme.shelf_limit as usize };
-        theme
+        // `statuses` stands for one shelf per status of the library, in its order.
+        let specs: Vec<ShelfSpec> = theme
             .shelves
             .iter()
             .filter(|s| s.on)
+            .flat_map(|s| {
+                if s.kind == "statuses" {
+                    lib.statuses.iter().map(|st| ShelfSpec::new(&format!("status:{}", st.id), true)).collect()
+                } else {
+                    vec![s.clone()]
+                }
+            })
+            .collect();
+        specs
+            .iter()
             .filter_map(|spec| {
                 let mut keys = keys(self.shelf_games(&lib, &games, &spec.kind));
                 keys.truncate(limit);
@@ -171,6 +182,7 @@ pub(crate) fn kind_label(lib: &Library, kind: &str) -> String {
         "backlog-short" => tr!("Short ones from the backlog").into(),
         "random" => tr!("Pick of the day").into(),
         "forgotten" => tr!("Installed and forgotten").into(),
+        "statuses" => tr!("One per status").into(),
         "status" => lib
             .statuses
             .iter()

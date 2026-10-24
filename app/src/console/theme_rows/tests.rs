@@ -131,7 +131,8 @@ fn only_missing_shelf_kinds_are_offered() {
     assert!(again.contains(&"random".to_string()));
     assert!(kinds.contains(&"platform:PlayStation 2".to_string()));
     assert!(kinds.contains(&"genre:Adventure".to_string()));
-    assert!(!kinds.contains(&"status:playing".to_string()), "the default shelves have it");
+    assert!(!kinds.contains(&"statuses".to_string()), "the default shelves have it");
+    assert!(kinds.contains(&"status:playing".to_string()), "a single status can still be added on its own");
 }
 
 #[test]

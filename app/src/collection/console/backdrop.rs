@@ -67,7 +67,18 @@ impl CollectionView {
         let (chain, variant, tag): (Vec<ImageRef>, Variant, String) = match theme.background.source {
             BackgroundSource::Solid | BackgroundSource::GameColour => return None,
             BackgroundSource::Art => {
-                (self.stage_chains.get(key).cloned().unwrap_or_default(), Variant::Stage { blur_px: blur, saturation: 1. }, "art".into())
+                let chain = self.stage_chains.get(key).cloned().unwrap_or_default();
+                let art_id: SharedString = format!("s:{key}:art:{pw}x{ph}:{blur}:console").into();
+                if chain.is_empty() || self.images.is_failed(&art_id) {
+                    // No wide art: the cover, blurred, rather than nothing.
+                    (
+                        self.cover_chains.get(key).cloned().unwrap_or_default(),
+                        Variant::Stage { blur_px: blur.max(30.), saturation: 1.2 },
+                        "cover".into(),
+                    )
+                } else {
+                    (chain, Variant::Stage { blur_px: blur, saturation: 1. }, "art".into())
+                }
             }
             BackgroundSource::Cover => (
                 self.cover_chains.get(key).cloned().unwrap_or_default(),

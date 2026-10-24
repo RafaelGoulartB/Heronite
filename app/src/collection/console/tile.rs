@@ -35,12 +35,13 @@ impl CollectionView {
         look::tile_size(t.tiles.shape, t.tiles.size, self.cover_aspect)
     }
 
-    /// Wide art of `key` cropped to `w`×`h` design px (its cover when it has none).
+    /// Wide art of `key` cropped to `w`×`h` design px (its cover when it has
+    /// none or it fails to load).
     pub(super) fn console_wide_art(&mut self, key: &SharedString, w: f32, h: f32, priority: i32, window: &Window) -> Option<ImageSource> {
         let s = kit::scale() * window.scale_factor();
         let (pw, ph) = ((w * s).round() as u32, (h * s).round() as u32);
-        if self.stage_chains.get(key).is_some_and(|c| !c.is_empty()) {
-            let id: SharedString = format!("cw:{key}:{pw}x{ph}").into();
+        let id: SharedString = format!("cw:{key}:{pw}x{ph}").into();
+        if self.stage_chains.get(key).is_some_and(|c| !c.is_empty()) && !self.images.is_failed(&id) {
             let chains = &self.stage_chains;
             return self
                 .images
@@ -98,8 +99,9 @@ impl CollectionView {
         let style = theme.tiles.focus;
         let radius = look::tile_radius();
         let ring_colour: Hsla = theme::console_focus().into();
-        let wide_title =
-            (shape == TileShape::Landscape && theme.tiles.titles == TileTitles::Never && logo.is_none()).then(|| title.clone());
+        // Over the art only: without one the tile shows the name itself.
+        let wide_title = (shape == TileShape::Landscape && theme.tiles.titles == TileTitles::Never && logo.is_none() && src.is_some())
+            .then(|| title.clone());
         let (wpx, hpx) = (u(w), u(h));
         let face = move |t: f32| {
             let grow = match style {

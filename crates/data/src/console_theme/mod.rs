@@ -208,7 +208,8 @@ impl Default for TabSpec {
 #[serde(default, rename_all = "camelCase")]
 pub struct ShelfSpec {
     /// `recent`, `favourites`, `installed`, `added`, `backlog-short`,
-    /// `random`, `forgotten`, `status:<id>`, `store:<label>`,
+    /// `random`, `forgotten`, `statuses` (one shelf per status of the
+    /// library), `status:<id>`, `store:<label>`,
     /// `platform:<name>`, `genre:<name>`, `category:<name>`.
     pub kind: String,
     pub on: bool,

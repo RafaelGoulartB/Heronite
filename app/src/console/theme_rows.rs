@@ -362,6 +362,7 @@ pub fn kind_label(facts: &Facts, kind: &str) -> String {
         "backlog-short" => tr!("Short ones from the backlog").into(),
         "random" => tr!("Pick of the day").into(),
         "forgotten" => tr!("Installed and forgotten").into(),
+        "statuses" => tr!("One per status").into(),
         "status" => facts.status_name(value),
         _ => value.to_string(),
     }
@@ -375,6 +376,7 @@ pub fn kind_group(kind: &str) -> &'static str {
         "backlog-short" => tr!("Plan to play, up to 15 hours"),
         "random" => tr!("Six from the backlog, new every day"),
         "forgotten" => tr!("Installed, not played for 3 months"),
+        "statuses" => tr!("A shelf for each status of the library"),
         "status" => tr!("Status"),
         "platform" => tr!("Platform"),
         "store" => tr!("Store"),
@@ -411,7 +413,7 @@ pub fn addable_kinds(cx: &Ctx) -> Vec<(&'static str, String, String)> {
     let f = &cx.data.facts;
     let have: BTreeSet<&str> = cx.prefs.theme.shelves.iter().map(|s| s.kind.as_str()).collect();
     let mut out = Vec::new();
-    for k in ["recent", "favourites", "installed", "added", "backlog-short", "random", "forgotten"] {
+    for k in ["recent", "favourites", "installed", "statuses", "added", "backlog-short", "random", "forgotten"] {
         out.push((tr!("Shelves"), k.to_string(), kind_label(f, k)));
     }
     out.extend(f.statuses.iter().map(|(k, n)| (tr!("Status"), format!("status:{k}"), n.clone())));
