@@ -10,7 +10,7 @@ mod hero;
 mod sheet;
 mod tabs;
 
-use hero::{detail_facts, facts_table, hltb_line};
+use hero::facts_table;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -23,7 +23,7 @@ use super::hero::card_surface;
 use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row, Value};
 use crate::console::look;
-use crate::console::motion::{Axis, Glide};
+use crate::console::motion::{self, Axis, Glide};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -59,6 +59,13 @@ fn detail_text(v: &DetailValue) -> String {
             None => path.to_string(),
         },
     }
+}
+
+/// The facts of Classic's card, without what it shows above them: the
+/// status and the store are in the header, the times in the numbers.
+fn classic_facts(f: &super::super::vm::FocusVm) -> Vec<(SharedString, String)> {
+    let shown = [tr!("Last Played"), tr!("Playtime")];
+    f.details.iter().filter(|d| !shown.contains(&d.label.as_ref())).map(|d| (d.label.clone(), detail_text(&d.value))).collect()
 }
 
 impl CollectionView {
@@ -258,52 +265,73 @@ impl CollectionView {
         let rows = self.game_rows(&g, cx);
         let list = self.console.game.list.render("console-game-actions", &rows, true);
         let s = kit::scale();
-        let (cw, ch) = (130., 130. * self.cover_aspect);
+        let (cw, ch) = (136., 136. * self.cover_aspect);
         let cover = self.cover(key, cw * s, ch * s, window.scale_factor(), 300);
         let focus = self.focus.clone().filter(|f| f.key == *key);
 
+        let title = super::hero::fitted_title(52., g.title.chars().count());
         let header = div()
             .flex()
             .items_end()
-            .gap(u(26.))
+            .gap(u(28.))
             .px(u(46.))
-            .pt(u(70.))
-            .pb(u(22.))
+            .pt(u(64.))
+            .pb(u(24.))
             .child(
                 div()
                     .flex_none()
                     .w(u(cw))
                     .h(u(ch))
-                    .rounded(u(12.))
+                    .rounded(u(look::tile_radius() + 2.))
                     .overflow_hidden()
                     .bg(kit::ink(0.08))
-                    .shadow(kit::shadow(0.6, 10., 30.))
+                    .border_1()
+                    .border_color(kit::ink(0.12))
+                    .shadow(kit::shadow(0.6, 12., 34.))
                     .children(cover.map(|c| img(c).size_full().object_fit(ObjectFit::Cover))),
             )
-            .child(
+            .child(motion::enter(
+                SharedString::from(format!("game-head-{key}")),
                 div()
+                    .relative()
                     .flex()
                     .flex_col()
-                    .gap(u(6.))
+                    .gap(u(8.))
                     .min_w_0()
-                    .child(kit::kicker(tr!("Game")))
-                    .child(kit::title(g.title.clone(), 52.))
-                    .child(div().text_size(u(16.)).text_color(theme::text_muted()).child(Self::console_facts(&g)))
+                    .max_w(u(900.))
+                    .pb(u(4.))
+                    .child(kit::title(g.title.clone(), title).line_clamp(2))
+                    .child(self.console_fact_line(&g, Self::console_facts(&g), 16.))
                     .children(
                         focus
                             .as_ref()
                             .map(|f| f.meta_line.clone())
                             .filter(|m| !m.is_empty())
-                            .map(|m| div().text_size(u(14.)).text_color(theme::text_dim()).child(m)),
+                            .map(|m| div().text_size(u(14.)).text_color(theme::text_dim()).truncate().child(m)),
                     ),
-            );
+                320,
+                0.,
+                10.,
+            ));
 
+        // Wide enough for the facts in two columns (design px of the card).
+        let vw = f32::from(window.viewport_size().width) / s;
+        let card_w = vw - 2. * 46. - 560. - 40.;
         let mut about =
-            div().id("console-game-about").flex().flex_col().gap(u(14.)).overflow_y_scroll().track_scroll(self.console.game.about.handle());
+            div().id("console-game-about").flex().flex_col().gap(u(20.)).overflow_y_scroll().track_scroll(self.console.game.about.handle());
+        about = about.child(self.classic_numbers(&g, focus.as_ref()));
         if let Some(f) = &focus {
-            about = about.child(facts_table(&detail_facts(f), 1)).children(hltb_line(f));
             if let Some(o) = &f.overview {
-                about = about.child(kit::body_text(o.clone()));
+                // Lines a reader can follow on a wide screen.
+                about = about.child(
+                    kit::body_text(o.clone()).max_w(u(980.)).text_size(u(16.)).line_height(u(25.)).text_color(theme::text_primary()),
+                );
+            }
+            let facts = classic_facts(f);
+            if !facts.is_empty() {
+                about = about
+                    .child(div().h(px(1.)).flex_none().bg(kit::ink(0.08)))
+                    .child(facts_table(&facts, if card_w > 760. { 2 } else { 1 }));
             }
         }
 
@@ -322,9 +350,53 @@ impl CollectionView {
                     .px(u(46.))
                     .pb(u(20.))
                     .child(div().flex_none().w(u(560.)).flex().flex_col().child(list.flex_1().min_h_0()))
-                    .child(card_surface().flex_1().min_w_0().p(u(22.)).rounded(u(18.)).flex().flex_col().child(about.flex_1().min_h_0())),
+                    .child(card_surface().flex_1().min_w_0().p(u(26.)).rounded(u(20.)).flex().flex_col().child(motion::fade_in(
+                        SharedString::from(format!("game-about-{key}")),
+                        about.flex_1().min_h_0(),
+                        360,
+                    ))),
             )
             .into_any_element()
+    }
+
+    /// The numbers at the top of Classic's card: the time played (once
+    /// played), when it was last played, How Long To Beat's main story and
+    /// the score when known.
+    fn classic_numbers(&self, g: &CollectionGame, f: Option<&super::super::vm::FocusVm>) -> Div {
+        let played = super::hero::played_time(g);
+        let last = g.last_played.as_deref().and_then(super::super::data::played_ago).unwrap_or_else(|| tr!("Never").to_string());
+        let beat = f.and_then(|f| f.hltb.as_ref()?.main).filter(|h| *h > 0.).map(|h| format!("{h:.0}h"));
+        let score = g.details.critic_score.filter(|s| *s > 0.);
+        let cell = |label: &str, value: String, colour: Option<Rgba>| {
+            div()
+                .flex_1()
+                .min_w_0()
+                .max_w(u(260.))
+                .flex()
+                .flex_col()
+                .gap(u(4.))
+                .px(u(16.))
+                .py(u(12.))
+                .rounded(u(14.))
+                .bg(kit::ink(0.05))
+                .child(div().text_size(u(13.)).text_color(theme::text_dim()).truncate().child(label.to_string()))
+                .child(
+                    div()
+                        .text_size(u(22.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(colour.map_or_else(theme::text_primary, kit::tint))
+                        .truncate()
+                        .child(value),
+                )
+        };
+        div()
+            .flex()
+            .flex_none()
+            .gap(u(12.))
+            .children(played.map(|p| cell(tr!("Playtime"), p, None)))
+            .child(cell(tr!("Last played"), last, None))
+            .children(beat.map(|b| cell(tr!("Main story"), b, None)))
+            .children(score.map(|s| cell(tr!("Score"), format!("{s:.0}"), Some(super::super::focus_left::score_color(s)))))
     }
 
     fn game_pad_classic(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
