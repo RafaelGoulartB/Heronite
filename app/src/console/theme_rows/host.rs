@@ -311,7 +311,7 @@ fn write_export<H: Host>(h: &mut H, theme: &ConsoleTheme, to: &Path, cx: &mut Co
 fn export<H: Host>(h: &mut H, theme: ConsoleTheme, window: &mut Window, cx: &mut Context<H>) {
     let name = export_name(&theme);
     if crate::console::active() {
-        h.open_browser(&tr!("Export to this folder (X)"), PickKind::Folder, Some(downloads()), window, cx, move |h, dir, _, cx| {
+        h.open_browser(tr!("Export to this folder (X)"), PickKind::Folder, Some(downloads()), window, cx, move |h, dir, _, cx| {
             write_export(h, &theme, &dir.join(&name), cx);
         });
         return;
@@ -326,7 +326,7 @@ fn export<H: Host>(h: &mut H, theme: ConsoleTheme, window: &mut Window, cx: &mut
 
 fn import<H: Host>(h: &mut H, window: &mut Window, cx: &mut Context<H>) {
     if crate::console::active() {
-        h.open_browser(&tr!("Import a theme"), PickKind::File(vec!["json".into()]), Some(downloads()), window, cx, |h, path, _, cx| {
+        h.open_browser(tr!("Import a theme"), PickKind::File(vec!["json".into()]), Some(downloads()), window, cx, |h, path, _, cx| {
             import_from(h, path, cx);
         });
         return;

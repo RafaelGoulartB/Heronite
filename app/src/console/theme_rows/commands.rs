@@ -112,7 +112,7 @@ pub fn activate(id: &str, cx: &Ctx) -> Step {
         "theme.delete" => {
             let name = based_on_saved(p, &cx.data.saved).map(|t| t.name.clone()).unwrap_or_default();
             return Step::Confirm {
-                title: tr!("Delete “{name}”?", name).into(),
+                title: tr!("Delete “{name}”?", name),
                 message: tr!("The theme file is deleted. The look on screen stays as it is.").into(),
                 yes: tr!("Delete").into(),
                 then: StoreOp::Delete,
@@ -309,4 +309,3 @@ pub fn export_name(theme: &ConsoleTheme) -> String {
     let id = if theme.id.is_empty() { slug(&theme.name) } else { theme.id.clone() };
     format!("{id}.{}", heronite_data::console_theme::store::EXTENSION)
 }
-

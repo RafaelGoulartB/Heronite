@@ -324,4 +324,3 @@ pub fn normalize_colour(s: &str) -> Option<String> {
     let (r, g, b) = parse_hex(s)?;
     Some(format!("#{r:02x}{g:02x}{b:02x}"))
 }
-

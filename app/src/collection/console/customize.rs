@@ -206,9 +206,8 @@ impl CollectionView {
         if matches!(pad, Pad::B | Pad::Start) {
             return false;
         }
-        match nav.list.on_pad(pad, &rows) {
-            outcome @ (Outcome::Changed(..) | Outcome::Activate(_)) => theme_rows::on_outcome(self, outcome, window, cx),
-            _ => {}
+        if let outcome @ (Outcome::Changed(..) | Outcome::Activate(_)) = nav.list.on_pad(pad, &rows) {
+            theme_rows::on_outcome(self, outcome, window, cx);
         }
         true
     }
