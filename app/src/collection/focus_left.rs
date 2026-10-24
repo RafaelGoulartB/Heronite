@@ -317,7 +317,7 @@ impl CollectionView {
                     .child(icon(
                         if on { Icon::Star } else { Icon::StarBorder },
                         px(20.),
-                        if on { theme::readable(rgb(STAR)) } else { theme::ink_a(0.3) },
+                        if on { theme::readable(rgb(STAR)) } else { theme::ink_a(0.42) },
                     ))
                     .on_hover(cx.listener(move |this, h: &bool, _, cx| {
                         if *h {
@@ -355,7 +355,7 @@ impl CollectionView {
                 .items_center()
                 .justify_end()
                 .gap(px(8.))
-                .children(vm.score_source.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.45)).child(s)))
+                .children(vm.score_source.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.6)).child(s)))
                 .child(
                     div()
                         .px(px(7.))
@@ -380,7 +380,7 @@ impl CollectionView {
                 rows.push(self.backup_row(&vm.key, div().text_color(theme::readable(color)).child(text), cx));
             }
             Some(Backup::Never) => {
-                rows.push(self.backup_row(&vm.key, div().text_color(theme::ink_a(0.52)).child(tr!("Never")), cx));
+                rows.push(self.backup_row(&vm.key, div().text_color(theme::ink_a(0.66)).child(tr!("Never")), cx));
             }
             Some(Backup::Off) | None => {}
         }
@@ -423,7 +423,7 @@ fn fact_row(label: &'static str, value: Div) -> Div {
         .gap(px(12.))
         .py(px(7.))
         .text_size(px(13.))
-        .child(div().flex_none().text_color(theme::ink_a(0.52)).child(label))
+        .child(div().flex_none().text_color(theme::ink_a(0.66)).child(label))
         .child(value.min_w_0().truncate().text_color(theme::ink_a(0.94)))
 }
 

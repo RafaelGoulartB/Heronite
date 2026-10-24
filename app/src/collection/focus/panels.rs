@@ -66,8 +66,8 @@ pub(super) fn details_panel(
             .items_center()
             .gap(px(6.4))
             .line_height(px(18.2))
-            .text_color(theme::ink_a(0.52))
-            .when(matches!(row.value, DetailValue::Folder { .. }), |d| d.child(icon(Icon::FolderOpen, px(15.2), theme::ink_a(0.52 * 0.72))))
+            .text_color(theme::ink_a(0.66))
+            .when(matches!(row.value, DetailValue::Folder { .. }), |d| d.child(icon(Icon::FolderOpen, px(15.2), theme::ink_a(0.66 * 0.72))))
             .child(row.label.clone());
         let value: AnyElement = match &row.value {
             DetailValue::Text(t) => div().line_height(px(18.2)).child(t.clone()).into_any_element(),
@@ -127,7 +127,7 @@ pub(super) fn details_panel(
                         .on_click(move |_, w, cx| open_dir(target.clone(), w, cx))
                         .child(path.clone())
                 })
-                .children(size.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.52)).child(s)))
+                .children(size.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.62)).child(s)))
                 .into_any_element(),
         };
         p = p.child(

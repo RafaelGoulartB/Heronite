@@ -273,7 +273,7 @@ fn number_tile(label: &'static str, value: SharedString) -> Div {
         .bg(theme::ink_a(0.05))
         .border_1()
         .border_color(theme::ink_a(0.08))
-        .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.52)).child(label))
+        .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.66)).child(label))
         .child(
             div()
                 .truncate()
