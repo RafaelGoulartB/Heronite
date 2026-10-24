@@ -428,7 +428,13 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
   The built-in themes (`presets.rs`): Classic (the default), Minimal, and Cinema, Pulse and Series X, modelled on
-  other launchers' fullscreen themes and consoles' home screens.
+  other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
+  before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
+  that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
+  the focus came from (with "Last played", a long name shrinks) over a soft shade of its own; the Grid without a panel
+  puts the game's facts beside its name over a denser scrim (`Scrim::Library`); the Classic game page has the time
+  played, last played, time to beat and score above the overview and the facts not shown elsewhere; new art settles
+  in from a touch closer on these screens (`Scrim::Classic` / `Library`, not with Reduced motion).
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
   Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). A new option = a field in
