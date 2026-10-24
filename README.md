@@ -115,10 +115,10 @@ A single native process that draws its UI on the GPU, with no bundled browser en
 
 | | Heronite |
 |---|---|
-| Memory while idle | **~200 MB** in a single process |
+| Memory while idle | **~190 MB** in a single process, **~95 MB** closed to the tray |
 | CPU while idle | **~0.1%** (0.05 s of CPU time over 60 s) |
 | Install size | **64 MB** (app + store login helper) |
-| Start to library on screen | **~300 ms** median |
+| Start to library on screen | **~215 ms** median |
 
 ## Your data
 
