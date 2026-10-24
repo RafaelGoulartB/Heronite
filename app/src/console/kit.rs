@@ -17,6 +17,7 @@ use super::{Btn, Hint};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
+use heronite_data::console_theme::Glyphs;
 use heronite_i18n::tr;
 
 static SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
@@ -86,35 +87,177 @@ pub fn body_text(text: impl Into<SharedString>) -> Div {
     div().text_size(u(15.)).line_height(u(23.)).text_color(theme::text_muted()).child(text.into())
 }
 
-/// Controller glyph: coloured circle for A/B/X/Y, dark keycap for the rest.
-pub fn glyph(btn: Btn) -> Div {
-    let circle = |letter: &str, color: Rgba| {
-        div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(u(22.))
-            .rounded_full()
-            .bg(color)
-            .text_size(u(11.))
-            .font_weight(theme::W_BOLD)
-            .text_color(theme::console_on_focus())
-            .child(letter.to_string())
+/// Which of the four face buttons, by position on the pad.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Face {
+    South,
+    East,
+    West,
+    North,
+}
+
+/// What a hint glyph draws.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Mark {
+    /// A letter on a round button.
+    Letter(&'static str, Face),
+    /// A PlayStation symbol (cross, circle, square, triangle) on a round button.
+    Shape(Face),
+    /// A dark keycap with a label.
+    Cap(&'static str),
+    /// A keycap with the menu icon.
+    Menu,
+    Pair(&'static str, &'static str),
+    Arrows,
+}
+
+/// The button a hint stands for, by position: A confirms (south, or east when
+/// the theme swaps A and B), B goes back.
+pub(crate) fn face(btn: Btn, swap_ab: bool) -> Option<Face> {
+    Some(match (btn, swap_ab) {
+        (Btn::A, false) | (Btn::B, true) => Face::South,
+        (Btn::B, false) | (Btn::A, true) => Face::East,
+        (Btn::X, _) => Face::West,
+        (Btn::Y, _) => Face::North,
+        _ => return None,
+    })
+}
+
+/// What `btn` looks like in `style` (`Auto` is resolved by the caller).
+pub(crate) fn mark(style: Glyphs, btn: Btn, swap_ab: bool) -> Mark {
+    if let Some(f) = face(btn, swap_ab) {
+        return match style {
+            Glyphs::PlayStation => Mark::Shape(f),
+            // The labels follow the positions: Nintendo's south button is B.
+            Glyphs::Nintendo => Mark::Letter(["B", "A", "Y", "X"][f as usize], f),
+            _ => Mark::Letter(["A", "B", "X", "Y"][f as usize], f),
+        };
+    }
+    // Xbox, Steam Deck and Auto (resolved before) share the names; the others differ.
+    let names = |xbox: [&'static str; 3], ps: [&'static str; 3], nin: [&'static str; 3]| match style {
+        Glyphs::PlayStation => ps,
+        Glyphs::Nintendo => nin,
+        Glyphs::Deck => ["L1", "R1", "L2"],
+        _ => xbox,
     };
-    let cap = key_cap;
+    let [lb, rb, lt] = names(["LB", "RB", "LT"], ["L1", "R1", "L2"], ["L", "R", "ZL"]);
     match btn {
-        Btn::A => circle("A", theme::console_btn_a()),
-        Btn::B => circle("B", theme::console_btn_b()),
-        Btn::X => circle("X", theme::console_btn_x()),
-        Btn::Y => circle("Y", theme::console_btn_y()),
-        Btn::LB => cap("LB"),
-        Btn::RB => cap("RB"),
-        Btn::LT => cap("LT"),
-        Btn::Start => cap("\u{2630}"),
-        Btn::Bumpers => div().flex().gap(u(4.)).child(cap("LB")).child(cap("RB")),
+        Btn::LB => Mark::Cap(lb),
+        Btn::RB => Mark::Cap(rb),
+        Btn::Bumpers => Mark::Pair(lb, rb),
+        Btn::LT => Mark::Cap(lt),
+        Btn::Start => match style {
+            Glyphs::PlayStation => Mark::Cap("Options"),
+            Glyphs::Nintendo => Mark::Cap("+"),
+            Glyphs::Deck => Mark::Menu,
+            _ => Mark::Cap("\u{2630}"),
+        },
+        Btn::LeftRight => Mark::Arrows,
+        _ => unreachable!("face buttons are handled above"),
+    }
+}
+
+/// Controller glyph in the style the console theme asks for (`Auto` follows
+/// the connected controller): Xbox coloured letters, PlayStation symbols,
+/// Nintendo and Steam Deck letters, or the keyboard keys.
+pub fn glyph(btn: Btn) -> Div {
+    let style = super::look::glyphs();
+    if style == Glyphs::Keyboard {
+        return key_glyph(btn);
+    }
+    draw(mark(style, btn, super::look::theme().controls.swap_ab), style)
+}
+
+fn draw(m: Mark, style: Glyphs) -> Div {
+    match m {
+        Mark::Letter(text, f) => letter_button(text, f, style),
+        Mark::Shape(f) => shape_button(f),
+        Mark::Cap(label) => key_cap(label),
+        Mark::Menu => arrow_cap(Icon::Menu),
+        Mark::Pair(a, b) => div().flex().gap(u(4.)).child(key_cap(a)).child(key_cap(b)),
         // Icons: the fonts have no ◀ ▶, and the fallback draws them as emoji.
-        Btn::LeftRight => div().flex().gap(u(4.)).child(arrow_cap(Icon::ChevronLeft)).child(arrow_cap(Icon::ChevronRight)),
+        Mark::Arrows => div().flex().gap(u(4.)).child(arrow_cap(Icon::ChevronLeft)).child(arrow_cap(Icon::ChevronRight)),
+    }
+}
+
+/// The round base of a face button.
+fn round_button() -> Div {
+    div().relative().flex().flex_none().items_center().justify_center().size(u(22.)).rounded_full()
+}
+
+fn letter_button(text: &str, f: Face, style: Glyphs) -> Div {
+    let (bg, fg): (Hsla, Hsla) = match style {
+        Glyphs::Nintendo => (rgb(0xe3e6ea).into(), rgb(0x1a1d23).into()),
+        Glyphs::Deck => (theme::white_a(0.22), theme::text_primary().into()),
+        _ => (
+            match f {
+                Face::South => theme::console_btn_a(),
+                Face::East => theme::console_btn_b(),
+                Face::West => theme::console_btn_x(),
+                Face::North => theme::console_btn_y(),
+            }
+            .into(),
+            theme::console_on_focus().into(),
+        ),
+    };
+    round_button().bg(bg).text_size(u(11.)).font_weight(theme::W_BOLD).text_color(fg).child(text.to_string())
+}
+
+/// PlayStation colours of the symbols.
+fn shape_color(f: Face) -> Rgba {
+    match f {
+        Face::South => rgb(0x7aa8ff),
+        Face::East => rgb(0xff6f7d),
+        Face::West => rgb(0xf4a3d4),
+        Face::North => rgb(0x5fe0b4),
+    }
+}
+
+/// A PlayStation button. The symbols are drawn: the fonts have no ✕ ○ □ △,
+/// and the fallback draws emoji.
+fn shape_button(f: Face) -> Div {
+    let color: Hsla = shape_color(f).into();
+    round_button()
+        .bg(theme::white_a(0.16))
+        .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint_shape(bounds, f, color, window)).absolute().inset_0())
+}
+
+fn paint_shape(bounds: Bounds<Pixels>, f: Face, color: Hsla, window: &mut Window) {
+    let w = f32::from(bounds.size.width);
+    let c = bounds.center();
+    let at = |dx: f32, dy: f32| point(c.x + px(dx * w), c.y + px(dy * w));
+    let stroke = |points: &[Point<Pixels>], closed: bool, window: &mut Window| {
+        let mut b = PathBuilder::stroke(px(w * 0.1));
+        for (i, p) in points.iter().enumerate() {
+            if i == 0 {
+                b.move_to(*p);
+            } else {
+                b.line_to(*p);
+            }
+        }
+        if closed {
+            b.line_to(points[0]);
+        }
+        if let Ok(path) = b.build() {
+            window.paint_path(path, color);
+        }
+    };
+    match f {
+        Face::South => {
+            stroke(&[at(-0.19, -0.19), at(0.19, 0.19)], false, window);
+            stroke(&[at(0.19, -0.19), at(-0.19, 0.19)], false, window);
+        }
+        Face::East => {
+            let ring: Vec<_> = (0..32)
+                .map(|i| {
+                    let a = i as f32 / 32. * std::f32::consts::TAU;
+                    at(0.25 * a.cos(), 0.25 * a.sin())
+                })
+                .collect();
+            stroke(&ring, true, window);
+        }
+        Face::West => stroke(&[at(-0.2, -0.2), at(0.2, -0.2), at(0.2, 0.2), at(-0.2, 0.2)], true, window),
+        Face::North => stroke(&[at(0., -0.27), at(0.25, 0.17), at(-0.25, 0.17)], true, window),
     }
 }
 
@@ -128,9 +271,10 @@ pub fn key_glyph(btn: Btn) -> Div {
         Btn::Y => key_cap("Y"),
         Btn::LB => key_cap("Q"),
         Btn::RB => key_cap("E"),
-        Btn::Bumpers => div().flex().gap(u(4.)).child(key_cap("Q")).child(key_cap("E")),
+        Btn::Bumpers => draw(Mark::Pair("Q", "E"), Glyphs::Keyboard),
         Btn::Start => key_cap("M"),
-        Btn::LT | Btn::LeftRight => glyph(btn),
+        // No key for these: the pad's own look.
+        Btn::LT | Btn::LeftRight => draw(mark(Glyphs::Xbox, btn, false), Glyphs::Xbox),
     }
 }
 
@@ -418,4 +562,47 @@ pub fn window_layer(window: &Window, child: impl IntoElement) -> AnyElement {
     deferred(anchored().position(point(px(0.), px(0.))).child(div().relative().w(size.width).h(size.height).child(child)))
         .with_priority(5)
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn xbox_and_deck_name_the_buttons_by_letter() {
+        assert_eq!(mark(Glyphs::Xbox, Btn::A, false), Mark::Letter("A", Face::South));
+        assert_eq!(mark(Glyphs::Deck, Btn::Y, false), Mark::Letter("Y", Face::North));
+        assert_eq!(mark(Glyphs::Xbox, Btn::Bumpers, false), Mark::Pair("LB", "RB"));
+        assert_eq!(mark(Glyphs::Deck, Btn::LB, false), Mark::Cap("L1"));
+        assert_eq!(mark(Glyphs::Deck, Btn::Start, false), Mark::Menu);
+    }
+
+    #[test]
+    fn nintendo_labels_follow_the_positions() {
+        // Confirm is the south button, which Nintendo calls B.
+        assert_eq!(mark(Glyphs::Nintendo, Btn::A, false), Mark::Letter("B", Face::South));
+        assert_eq!(mark(Glyphs::Nintendo, Btn::B, false), Mark::Letter("A", Face::East));
+        assert_eq!(mark(Glyphs::Nintendo, Btn::X, false), Mark::Letter("Y", Face::West));
+        assert_eq!(mark(Glyphs::Nintendo, Btn::Y, false), Mark::Letter("X", Face::North));
+        assert_eq!(mark(Glyphs::Nintendo, Btn::LT, false), Mark::Cap("ZL"));
+        assert_eq!(mark(Glyphs::Nintendo, Btn::Start, false), Mark::Cap("+"));
+    }
+
+    #[test]
+    fn playstation_draws_symbols_and_names_l1_r1() {
+        assert_eq!(mark(Glyphs::PlayStation, Btn::A, false), Mark::Shape(Face::South));
+        assert_eq!(mark(Glyphs::PlayStation, Btn::B, false), Mark::Shape(Face::East));
+        assert_eq!(mark(Glyphs::PlayStation, Btn::RB, false), Mark::Cap("R1"));
+        assert_eq!(mark(Glyphs::PlayStation, Btn::Start, false), Mark::Cap("Options"));
+    }
+
+    #[test]
+    fn swapping_a_and_b_moves_confirm_to_the_east_button() {
+        assert_eq!(mark(Glyphs::Xbox, Btn::A, true), Mark::Letter("B", Face::East));
+        assert_eq!(mark(Glyphs::Xbox, Btn::B, true), Mark::Letter("A", Face::South));
+        assert_eq!(mark(Glyphs::Nintendo, Btn::A, true), Mark::Letter("A", Face::East));
+        assert_eq!(mark(Glyphs::PlayStation, Btn::A, true), Mark::Shape(Face::East));
+        // X and Y stay where they are.
+        assert_eq!(mark(Glyphs::Xbox, Btn::X, true), Mark::Letter("X", Face::West));
+    }
 }
