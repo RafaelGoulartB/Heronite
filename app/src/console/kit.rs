@@ -17,7 +17,7 @@ use super::{Btn, Hint};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
-use heronite_data::console_theme::Glyphs;
+use heronite_data::console_theme::{Glyphs, Layout};
 use heronite_i18n::tr;
 
 static SCALE: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
@@ -462,6 +462,92 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
             })
         }))
         .child(glyph(Btn::RB))
+}
+
+/// The icon of a tab: by what it shows (its `source`), else by its layout.
+pub fn tab_icon(source: &str, layout: Layout) -> Icon {
+    let source = source.trim();
+    let kind = source.split_once(':').map_or(source, |(k, _)| k);
+    match kind {
+        "all" => Icon::Collections,
+        "installed" => Icon::Download,
+        "not-installed" => Icon::CloudDownload,
+        "favourites" => Icon::Favorite,
+        "pc" => Icon::Tv,
+        "emulated" | "platform" => Icon::SportsEsports,
+        "status" => Icon::Flag,
+        "category" => Icon::Label,
+        "store" => Icon::Storefront,
+        _ => match layout {
+            Layout::Grid => Icon::GridView,
+            Layout::Dashboard => Icon::Home,
+            _ => Icon::Collections,
+        },
+    }
+}
+
+/// Spaced capitals ("A L L  G A M E S"): GPUI has no letter spacing, so the
+/// letters get thin spaces between them.
+pub fn spaced_caps(text: &str) -> String {
+    let words: Vec<String> =
+        text.split_whitespace().map(|w| w.to_uppercase().chars().map(String::from).collect::<Vec<_>>().join("\u{2009}")).collect();
+    words.join("\u{2002}")
+}
+
+/// The tabs as a bar along the bottom: an icon and a name each, the current
+/// one bright, the others dim, LB / RB at the ends.
+pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .gap(u(40.))
+        .h(u(56.))
+        .px(u(46.))
+        .border_t_1()
+        .border_color(theme::white_a(0.08))
+        .child(glyph(Btn::LB))
+        .children(items.iter().enumerate().map(|(i, (name, ic))| {
+            let on = i == active;
+            let (name, ic) = (name.clone(), *ic);
+            let id = SharedString::from(format!("tab-bottom-{name}"));
+            motion::spring(id, div().flex().items_center().gap(u(9.)), motion::SOFT, on, move |d, k| {
+                let k = k.clamp(0., 1.);
+                d.opacity(0.4 + 0.6 * k).child(icon(ic, u(20.), theme::text_primary())).child(
+                    div()
+                        .text_size(u(17.))
+                        .text_color(theme::text_primary())
+                        .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
+                        .whitespace_nowrap()
+                        .child(name),
+                )
+            })
+        }))
+        .child(glyph(Btn::RB))
+}
+
+/// The current tab alone, big and centred, with LB / RB at its sides when
+/// there are others (`spaced`: in spaced capitals).
+pub fn tab_title(name: &str, ic: Icon, more: bool, spaced: bool) -> Div {
+    let text = if spaced { spaced_caps(name) } else { name.to_string() };
+    div()
+        .flex()
+        .items_center()
+        .gap(u(18.))
+        .when(more, |d| d.child(glyph(Btn::LB)))
+        .child(
+            div().flex().items_center().gap(u(12.)).child(icon(ic, u(26.), theme::text_primary())).child(
+                div()
+                    .font_family(heading_font())
+                    .font_weight(theme::W_BOLD)
+                    .text_size(u(28.))
+                    .text_color(theme::text_primary())
+                    .whitespace_nowrap()
+                    .child(text),
+            ),
+        )
+        .when(more, |d| d.child(glyph(Btn::RB)))
 }
 
 /// "21:04" (or 12 h, with the date, or nothing: the console theme says).

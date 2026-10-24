@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{AButton, BackgroundSource, Hints, Layout, StartOn, TabSpec};
+use heronite_data::console_theme::{AButton, BackgroundSource, Headings, Hints, Layout, StartOn, TabBar, TabSpec};
 use heronite_images::Variant;
 
 use super::CollectionView;
@@ -543,13 +543,17 @@ impl CollectionView {
         }
     }
 
-    /// Top bar: the theme's label (nothing unless it has one), the tabs,
-    /// status icons, clock.
+    /// Top bar: the theme's label (nothing unless it has one), the tabs (or,
+    /// with `tab_bar: title`, only the current one's name, centred), status
+    /// icons, clock.
     fn console_top_bar(&self) -> Div {
         let theme = look::theme();
         let names: Vec<SharedString> = theme.tabs.iter().map(|t| SharedString::from(t.name.clone())).collect();
         let label = theme.interface.label.trim().to_string();
+        let tab = self.console.tab.min(names.len().saturating_sub(1));
+        let tab_bar = theme.interface.tab_bar;
         div()
+            .relative()
             .flex()
             .flex_none()
             .items_center()
@@ -557,7 +561,12 @@ impl CollectionView {
             .h(u(76.))
             .px(u(46.))
             .when(!label.is_empty(), |d| d.child(kit::wordmark(&label)))
-            .when(names.len() > 1, |d| d.child(kit::tabs(&names, self.console.tab.min(names.len() - 1))))
+            .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(kit::tabs(&names, tab)))
+            .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
+                let spaced = theme.interface.headings == Headings::Spaced;
+                let title = kit::tab_title(&t.name, kit::tab_icon(&t.source, t.layout), names.len() > 1, spaced);
+                d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
+            })
             .child(div().flex_1())
             .when(theme.interface.status_icons, |d| {
                 d.when(self.console.controller.is_some(), |d| {
@@ -565,6 +574,16 @@ impl CollectionView {
                 })
             })
             .child(kit::clock())
+    }
+
+    /// The tabs along the bottom (`tab_bar: bottom`), when there are several.
+    fn console_bottom_tabs(&self) -> Option<Div> {
+        let theme = look::theme();
+        (theme.interface.tab_bar == TabBar::Bottom && theme.tabs.len() > 1).then(|| {
+            let items: Vec<(SharedString, crate::icons::Icon)> =
+                theme.tabs.iter().map(|t| (SharedString::from(t.name.clone()), kit::tab_icon(&t.source, t.layout))).collect();
+            kit::tabs_bottom(&items, self.console.tab.min(items.len() - 1))
+        })
     }
 
     pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -607,7 +626,9 @@ impl CollectionView {
             )
         };
         self.sync_console_colour();
-        let top_bar = (!on_page && (game_key.is_none() || self.game_page_keeps_tabs())).then(|| self.console_top_bar());
+        let keeps_tabs = !on_page && (game_key.is_none() || self.game_page_keeps_tabs());
+        let top_bar = keeps_tabs.then(|| self.console_top_bar());
+        let bottom_tabs = if keeps_tabs { self.console_bottom_tabs() } else { None };
         let scrim = if on_page {
             Scrim::Page
         } else if game_key.is_some() {
@@ -634,10 +655,19 @@ impl CollectionView {
                 div()
                     .absolute()
                     .inset_0()
+                    // The Rail of the menu keeps its column.
+                    .when_some(sidebar::rail_inset(), |d, (side, w)| {
+                        if side == heronite_data::console_theme::Side::Right {
+                            d.right(w)
+                        } else {
+                            d.left(w)
+                        }
+                    })
                     .flex()
                     .flex_col()
                     .children(top_bar)
                     .child(div().flex_1().min_h_0().child(body))
+                    .children(bottom_tabs)
                     .when(hints_on, |d| d.child(div().flex_none().h(u(60.)))),
             )
             .children(self.render_sidebar(cx))
