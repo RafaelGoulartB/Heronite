@@ -202,7 +202,9 @@ impl CollectionView {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Explicit imports: `use super::*` would bring in gpui's `test` macro and shadow `#[test]`.
+    use super::{shuffled, MAX_SLIDES};
+    use gpui_kit::SharedString;
 
     fn keys(n: usize) -> Vec<SharedString> {
         (0..n).map(|i| SharedString::from(format!("g{i}"))).collect()

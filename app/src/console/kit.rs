@@ -566,7 +566,10 @@ pub fn window_layer(window: &Window, child: impl IntoElement) -> AnyElement {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // Explicit imports: `use super::*` would bring in gpui's `test` macro and shadow `#[test]`.
+    use super::{mark, Face, Mark};
+    use crate::console::Btn;
+    use heronite_data::console_theme::Glyphs;
 
     #[test]
     fn xbox_and_deck_name_the_buttons_by_letter() {
