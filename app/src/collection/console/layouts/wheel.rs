@@ -403,6 +403,8 @@ impl CollectionView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `gpui_kit::*` above brings gpui's own `test` macro.
+    use core::prelude::v1::test;
 
     #[test]
     fn rows_fade_and_bend_with_distance() {

@@ -305,6 +305,8 @@ impl CollectionView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `gpui_kit::*` above brings gpui's own `test` macro.
+    use core::prelude::v1::test;
 
     #[test]
     fn poses_shrink_fade_and_mirror() {

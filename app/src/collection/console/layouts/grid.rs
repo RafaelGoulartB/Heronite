@@ -542,6 +542,8 @@ fn letter_rail(current: char) -> Div {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // `gpui_kit::*` above brings gpui's own `test` macro.
+    use core::prelude::v1::test;
 
     #[test]
     fn letters_ignore_accents_and_group_symbols() {
