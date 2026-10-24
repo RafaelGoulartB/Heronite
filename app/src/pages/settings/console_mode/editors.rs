@@ -13,23 +13,12 @@ use crate::console::list::{Outcome, Value};
 use crate::console::theme_rows::{self, Arg, Card, Command};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{button_sm, card_box, toggle, ButtonKind};
+use crate::ui::controls::{button_sm, card_box, icon_button, toggle, ButtonKind};
 use crate::ui::fields::{meta_text, select_menu_field, SelectOption};
-use crate::ui::icon;
 
 /// A small round icon button.
 fn tool(id: SharedString, ic: Icon, enabled: bool) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex_none()
-        .size(px(28.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded_full()
-        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.08))))
-        .when(!enabled, |d| d.opacity(0.3))
-        .child(icon(ic, px(16.), theme::text_muted()))
+    icon_button(id, ic, 16., enabled)
 }
 
 pub(super) fn tabs(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> Div {
@@ -72,7 +61,7 @@ pub(super) fn tabs(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<S
                         div()
                             .text_size(px(11.5))
                             .text_color(if on { theme::text_primary() } else { theme::text_muted() })
-                            .child(tr(theme_rows::layout_label(l))),
+                            .child(tr(theme_rows::layout_name(l))),
                     ),
             );
         }
@@ -122,7 +111,7 @@ pub(super) fn shelves(d: &mut SettingsPage, window: &mut Window, cx: &mut Contex
     let Some(s) = d.console_mode.as_ref() else { return div() };
     let theme = s.theme.prefs.theme.clone();
     let facts = s.theme.data.facts.clone();
-    let uses = theme.tabs.iter().any(|t| matches!(t.layout, Layout::Shelves | Layout::Cinema | Layout::Spotlight | Layout::Xbox));
+    let uses = theme_rows::uses_shelves(&theme);
     let n = theme.shelves.len();
     let mut col = card_box().py(px(12.)).gap(px(6.));
     col = col.child(meta_text(if uses {
@@ -131,7 +120,7 @@ pub(super) fn shelves(d: &mut SettingsPage, window: &mut Window, cx: &mut Contex
         tr!("No tab uses a layout with shelves.")
     }));
     for (i, sh) in theme.shelves.iter().enumerate() {
-        let default = theme_rows::kind_label(&facts, &sh.kind);
+        let default = theme_rows::kind_label(&sh.kind, |k| facts.status_name(k));
         let title = text_input(d, &format!("title:shelf.{i}"), &format!("shelf.{i}"), &sh.title, &default, window, cx);
         let on = sh.on;
         col =

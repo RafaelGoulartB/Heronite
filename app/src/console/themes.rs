@@ -17,8 +17,28 @@ static WRITING: AtomicBool = AtomicBool::new(false);
 
 /// The prefs, read from disk the first time.
 pub fn prefs(app: &AppPaths) -> ConsolePrefs {
+    read(app, ConsolePrefs::clone)
+}
+
+/// `f` over the prefs without copying them (it must be quick: it holds the lock).
+pub fn read<R>(app: &AppPaths, f: impl FnOnce(&ConsolePrefs) -> R) -> R {
     let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
-    cur.get_or_insert_with(|| ConsolePrefs::load(app)).clone()
+    f(cur.get_or_insert_with(|| ConsolePrefs::load(app)))
+}
+
+/// Keeps `tab` as the one console mode reopens on. Unlike [`update`] it leaves
+/// the theme in use alone (installing it again would restart the screen's animations).
+pub fn remember_tab(app: &AppPaths, tab: usize) {
+    let next = {
+        let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
+        let p = cur.get_or_insert_with(|| ConsolePrefs::load(app));
+        if p.last_tab == tab {
+            return;
+        }
+        p.last_tab = tab;
+        p.clone()
+    };
+    save(app, next);
 }
 
 /// Changes the prefs, installs the theme while console mode is on and saves.

@@ -12,6 +12,7 @@ use heronite_data::console_theme::Idle as IdleMode;
 use heronite_images::Variant;
 
 use super::super::super::CollectionView;
+use super::super::backdrop::{backdrop_id, backdrop_size};
 use crate::console::kit::{self, u};
 use crate::console::{look, motion};
 use crate::theme;
@@ -97,7 +98,7 @@ impl CollectionView {
     }
 
     /// The idle layer, drawn over everything while it shows.
-    pub(super) fn render_idle(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(in super::super) fn render_idle(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let idle = self.console.controls.idle.as_ref()?;
         let (mode, key) = (idle.mode, idle.order.get(idle.at).cloned());
         let layer = div()
@@ -122,13 +123,11 @@ impl CollectionView {
 
     /// The picture of `key` (slowly growing), fading in over the last one.
     fn slide(&mut self, key: &SharedString, window: &Window) -> Div {
-        let scale = window.scale_factor();
         let size = window.viewport_size();
         let (w, h) = (f32::from(size.width), f32::from(size.height));
-        let shrink = (1920. / (w * scale)).min(1.);
-        let (pw, ph) = ((w * scale * shrink) as u32, (h * scale * shrink) as u32);
+        let (pw, ph) = backdrop_size(window);
         // The id of the console background with no blur: the texture is shared.
-        let id: SharedString = format!("s:{key}:art:{pw}x{ph}:0:console").into();
+        let id = backdrop_id(Some(key), "art", (pw, ph), 0.);
         let chains = &self.stage_chains;
         let ready = self.images.get_or_request(
             &id,

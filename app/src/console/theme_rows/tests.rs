@@ -81,7 +81,7 @@ fn a_tab_follows_its_layout_name_until_renamed() {
     run(&mut p, &Command::new("tab.add", Arg::Press), &data());
     let added = p.theme.tabs.len() - 1;
     let name = p.theme.tabs[added].name.clone();
-    assert_eq!(name, tr(layout_label(p.theme.tabs[added].layout)));
+    assert_eq!(name, tr(layout_name(p.theme.tabs[added].layout)));
     change(&mut p, &format!("tab.{added}.layout"), choice(2));
     assert_eq!(p.theme.tabs[added].name, "Cinema", "a tab named after its layout follows it");
 }

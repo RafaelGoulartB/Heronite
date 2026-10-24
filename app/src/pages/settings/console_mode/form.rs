@@ -11,7 +11,7 @@ use heronite_i18n::tr;
 use super::{send, SettingsPage};
 use crate::console::list::{Outcome, Row, Value};
 use crate::theme;
-use crate::ui::controls::{button_sm, row, toggle_row, ButtonKind};
+use crate::ui::controls::{button_sm, row, segmented, toggle_row, ButtonKind};
 use crate::ui::fields::{input_box, new_input, on_commit, select_field};
 
 /// A text input kept between frames: `shown` is the text last put in it.
@@ -22,48 +22,6 @@ pub(in crate::pages::settings) struct Field {
 
 /// More choices than this become a select instead of segments.
 const SEG_MAX: usize = 4;
-
-/// Segmented pills like `controls::tabs`, with runtime labels.
-pub(super) fn seg(
-    id: &str,
-    options: &[SharedString],
-    active: usize,
-    enabled: bool,
-    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
-) -> Div {
-    let on_pick = std::rc::Rc::new(on_pick);
-    let mut track = div()
-        .id(SharedString::from(format!("{id}-seg")))
-        .flex()
-        .items_center()
-        .gap(px(2.))
-        .p(px(4.))
-        .flex_wrap()
-        .max_w_full()
-        .rounded(px(18.))
-        .bg(theme::seg_track())
-        .when(!enabled, |d| d.opacity(0.45));
-    for (i, label) in options.iter().enumerate() {
-        let on = i == active;
-        let cb = on_pick.clone();
-        track = track.child(
-            div()
-                .id(SharedString::from(format!("{id}-tab-{i}")))
-                .flex_none()
-                .px(px(12.))
-                .py(px(6.))
-                .rounded_full()
-                .text_size(px(13.))
-                .whitespace_nowrap()
-                .text_color(if on { theme::text_bright() } else { theme::seg_text().into() })
-                .when(on, |d| d.bg(theme::seg_active()))
-                .when(enabled && !on, |d| d.cursor_pointer().hover(|s| s.text_color(theme::text_bright())))
-                .when(enabled, |d| d.on_click(move |_, w, cx| cb(i, w, cx)))
-                .child(label.clone()),
-        );
-    }
-    div().flex().min_w_0().child(track)
-}
 
 /// The input kept under `key`, created on first use; it shows `current`
 /// unless it is being typed in. Pressing Enter or leaving it sends the text
@@ -128,7 +86,8 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
             let control = if options.len() <= SEG_MAX {
                 let (id2, opts) = (id.clone(), options.clone());
                 let entity = cx.entity().downgrade();
-                seg(&format!("cm-{id}"), &options, *index, enabled, move |i, window, cx| {
+                let items: Vec<(usize, SharedString)> = options.iter().cloned().enumerate().collect();
+                segmented(&format!("cm-{id}"), &items, *index, enabled, move |i, window, cx| {
                     let v = Value::Choice { options: opts.clone(), index: i };
                     let o = Outcome::Changed(id2.clone(), v);
                     entity.update(cx, |d, cx| send(d, o, window, cx)).ok();

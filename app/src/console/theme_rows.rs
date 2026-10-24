@@ -23,7 +23,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use gpui_kit::SharedString;
-use heronite_data::categories::Categories;
+use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::console_theme::{
     parse_hex, presets, slug, AButton, AutoConsole, BackgroundMotion, BackgroundSource, Badges, Clock, ConsoleFont, ConsolePrefs,
     ConsoleTheme, Corners, FactStyle, FocusStyle, GamePage, Glyphs, GridPanel, Headings, HeroAlign, HeroTitle, Hints, Idle, Layout,
@@ -34,7 +34,9 @@ use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr, trc};
 
 use super::list::{Row, Value};
+use super::look::ACCENTS;
 use crate::icons::Icon;
+pub use labels::layout_name;
 use labels::*;
 
 /// What the library has, for the pickers (a tab's games, a shelf's kind).
@@ -77,7 +79,8 @@ impl Facts {
         }
     }
 
-    fn status_name(&self, key: &str) -> String {
+    /// The name of the status `key` (the key itself when the library has no such status).
+    pub fn status_name(&self, key: &str) -> String {
         self.statuses.iter().find(|(k, _)| k == key).map_or_else(|| key.to_string(), |(_, n)| n.clone())
     }
 }
@@ -232,6 +235,11 @@ pub fn applies(id: &str, theme: &ConsoleTheme) -> bool {
     opt(id).is_none_or(|o| o.on.is_empty() || o.on.iter().any(|l| theme.uses(*l)))
 }
 
+/// Whether a tab of the theme shows shelves (a layout with them).
+pub fn uses_shelves(theme: &ConsoleTheme) -> bool {
+    SHELF_LAYOUTS.iter().any(|l| theme.uses(*l))
+}
+
 /// The theme in use differs from the preset or saved theme it started from.
 pub fn is_edited(prefs: &ConsolePrefs, saved: &[ConsoleTheme]) -> bool {
     base_theme(prefs, saved).is_none_or(|b| b != prefs.theme)
@@ -293,11 +301,6 @@ pub fn theme_note(p: &ConsolePrefs, saved: &[ConsoleTheme], edited: bool) -> Str
     }
 }
 
-/// The English key of a layout's name.
-pub fn layout_label(l: Layout) -> &'static str {
-    layout_name(l)
-}
-
 fn layout_names() -> Vec<&'static str> {
     names(Layout::ALL, layout_name)
 }
@@ -352,8 +355,9 @@ pub fn source_options(facts: &Facts, current: &str) -> Vec<(String, String)> {
     v
 }
 
-/// The name a shelf kind shows when it has no title of its own.
-pub fn kind_label(facts: &Facts, kind: &str) -> String {
+/// The name a shelf kind shows when it has no title of its own;
+/// `status_name` gives that of a status (by its slug or id).
+pub fn kind_label(kind: &str, status_name: impl Fn(&str) -> String) -> String {
     let (k, value) = kind.split_once(':').unwrap_or((kind, ""));
     match k {
         "recent" => tr!("Continue playing").into(),
@@ -364,7 +368,8 @@ pub fn kind_label(facts: &Facts, kind: &str) -> String {
         "random" => tr!("Pick of the day").into(),
         "forgotten" => tr!("Installed and forgotten").into(),
         "statuses" => tr!("One per status").into(),
-        "status" => facts.status_name(value),
+        "status" => status_name(value),
+        "category" if value == UNCATEGORIZED => tr!("Uncategorized").into(),
         _ => value.to_string(),
     }
 }
@@ -387,9 +392,10 @@ pub fn kind_group(kind: &str) -> &'static str {
     }
 }
 
-pub fn shelf_title(facts: &Facts, s: &ShelfSpec) -> String {
+/// The name a shelf shows: its own title, else its kind's.
+pub fn shelf_title(s: &ShelfSpec, status_name: impl Fn(&str) -> String) -> String {
     if s.title.trim().is_empty() {
-        kind_label(facts, &s.kind)
+        kind_label(&s.kind, status_name)
     } else {
         s.title.clone()
     }
@@ -402,7 +408,7 @@ fn shelf_rows(cx: &Ctx) -> Vec<Row> {
         .shelves
         .iter()
         .enumerate()
-        .map(|(i, s)| Row::toggle(format!("shelf.{i}"), shelf_title(&cx.data.facts, s), s.on).desc(kind_group(&s.kind)))
+        .map(|(i, s)| Row::toggle(format!("shelf.{i}"), shelf_title(s, |k| cx.data.facts.status_name(k)), s.on).desc(kind_group(&s.kind)))
         .collect();
     v.push(Row::action("shelf.add", tr!("Add a shelf…")).icon(Icon::Add));
     v
@@ -415,7 +421,7 @@ pub fn addable_kinds(cx: &Ctx) -> Vec<(&'static str, String, String)> {
     let have: BTreeSet<&str> = cx.prefs.theme.shelves.iter().map(|s| s.kind.as_str()).collect();
     let mut out = Vec::new();
     for k in ["recent", "favourites", "installed", "statuses", "added", "backlog-short", "random", "forgotten"] {
-        out.push((tr!("Shelves"), k.to_string(), kind_label(f, k)));
+        out.push((tr!("Shelves"), k.to_string(), kind_label(k, |k| f.status_name(k))));
     }
     out.extend(f.statuses.iter().map(|(k, n)| (tr!("Status"), format!("status:{k}"), n.clone())));
     out.extend(f.platforms.iter().map(|n| (tr!("Platform"), format!("platform:{n}"), n.clone())));
@@ -439,10 +445,9 @@ fn pick_rows(cx: &Ctx) -> Vec<Row> {
     v
 }
 
-const ACCENT_NAMES: [&str; 7] = ["white", "game", "ice", "green", "amber", "pink", "violet"];
-
+/// The place of a named focus colour among [`ACCENTS`] (their number for a custom one).
 fn accent_index(accent: &str) -> usize {
-    ACCENT_NAMES.iter().position(|n| *n == accent).unwrap_or(ACCENT_NAMES.len())
+    ACCENTS.iter().position(|(n, _)| *n == accent).unwrap_or(ACCENTS.len())
 }
 
 fn accent_rows(cx: &Ctx) -> Vec<Row> {
@@ -458,7 +463,7 @@ fn accent_rows(cx: &Ctx) -> Vec<Row> {
         tr!("Custom").into(),
     ];
     let mut v = vec![Row::choice("interface.accent", tr!("Focus colour"), names, accent_index(accent)).compact()];
-    if accent_index(accent) == ACCENT_NAMES.len() {
+    if accent_index(accent) == ACCENTS.len() {
         v.push(Row::text("interface.accent_hex", tr!("Custom focus colour"), accent.clone()).desc(tr!("A colour as #rrggbb.")));
     }
     v

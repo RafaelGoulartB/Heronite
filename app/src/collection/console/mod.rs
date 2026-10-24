@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{AButton, BackgroundSource, Headings, Hints, Layout, StartOn, TabBar, TabSpec};
+use heronite_data::console_theme::{AButton, BackgroundSource, Clock, Headings, Hints, Layout, StartOn, TabBar, TabSpec};
 use heronite_images::Variant;
 
 use super::CollectionView;
@@ -85,6 +85,9 @@ pub(super) struct ConsoleUi {
     /// Colour of the focused game's cover (the `game` focus colour and the
     /// game-colour background).
     pub game_colour: Option<(u8, u8, u8)>,
+    /// The game `game_colour` is sampled for, and whether the sample is in.
+    colour_for: Option<SharedString>,
+    colour_taken: bool,
     /// `Hints::Auto`: the bar shows until then.
     hints_until: Option<Instant>,
     hints_task: Option<Task<()>>,
@@ -92,9 +95,16 @@ pub(super) struct ConsoleUi {
     theme_epoch: u64,
     ticker: Option<Task<()>>,
     script_started: bool,
+    /// The games and shelves of the sources in use (see [`sources::SourceCache`]).
+    sources: std::cell::RefCell<sources::SourceCache>,
     logos: art::LogoCache,
     controls: controls::ControlsState,
     customize: Option<customize::CustomizeNav>,
+}
+
+/// A tab's name as shown (built-in themes name their tabs with English keys).
+fn tab_label(t: &TabSpec) -> SharedString {
+    SharedString::from(tr(&t.name).to_string())
 }
 
 impl CollectionView {
@@ -140,13 +150,19 @@ impl CollectionView {
             // Textures only console mode draws: logos and wide covers.
             self.images.forget_prefix("l:");
             self.images.forget_prefix("cw:");
+            self.images.forget_matching(|id| backdrop::is_backdrop_id(id) || id.starts_with("a:"));
             self.console_controls_ended(window, cx);
-            self.dialog = None;
-            self.dialog_sub = None;
-            self.dialog_hook = None;
+            self.close_console_dialog();
             self.page = Page::Collection;
             cx.notify();
         }
+    }
+
+    /// Closes the dialog over the console and its controller hook.
+    fn close_console_dialog(&mut self) {
+        self.dialog = None;
+        self.dialog_sub = None;
+        self.dialog_hook = None;
     }
 
     fn enter_console(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -166,9 +182,7 @@ impl CollectionView {
         console::set_active(true);
         self.open_menu = None;
         self.context_menu = None;
-        self.dialog = None;
-        self.dialog_sub = None;
-        self.dialog_hook = None;
+        self.close_console_dialog();
         self.close_palette(window, cx);
         self.page = Page::Collection;
         self.console = ConsoleUi::default();
@@ -180,10 +194,15 @@ impl CollectionView {
             self.console.thread = Some(thread);
             Self::spawn_pad_pump(rx, window, cx);
         }
-        // The clock in the top bar.
+        // The clock in the top bar (nothing to redraw while the theme hides it).
         self.console.ticker = Some(cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(20)).await;
-            if this.update(cx, |_, cx| cx.notify()).is_err() {
+            let shown = this.update(cx, |_, cx| {
+                if look::theme().interface.clock != Clock::Off {
+                    cx.notify();
+                }
+            });
+            if shown.is_err() {
                 break;
             }
         }));
@@ -304,7 +323,7 @@ impl CollectionView {
         self.console.tab_dir = delta.signum() as f32;
         let tab = self.console.tab;
         if look::theme().nav.start_on == StartOn::Last {
-            console::themes::update(&self.app_paths, |p| p.last_tab = tab);
+            console::themes::remember_tab(&self.app_paths, tab);
         }
     }
 
@@ -322,9 +341,7 @@ impl CollectionView {
         if self.dialog.is_some() {
             let used = self.dialog_hook.clone().is_some_and(|h| h.pad(pad, window, cx));
             if !used && pad == Pad::B {
-                self.dialog = None;
-                self.dialog_sub = None;
-                self.dialog_hook = None;
+                self.close_console_dialog();
             }
             return;
         }
@@ -446,8 +463,8 @@ impl CollectionView {
         let theme = look::theme();
         let mut h = Vec::new();
         if theme.tabs.len() > 1 {
-            let next = &theme.tabs[(self.console.tab + 1) % theme.tabs.len()].name;
-            h.push(hint(Btn::Bumpers, if theme.tabs.len() == 2 { next.clone() } else { tr!("Tabs").to_string() }));
+            let next = &theme.tabs[(self.console.tab + 1) % theme.tabs.len()];
+            h.push(hint(Btn::Bumpers, if theme.tabs.len() == 2 { tab_label(next).to_string() } else { tr!("Tabs").to_string() }));
         }
         h.push(hint(Btn::Start, tr!("Menu")));
         h
@@ -523,33 +540,46 @@ impl CollectionView {
         }));
     }
 
-    /// The colour of the focused cover, sampled only when the theme uses it.
+    /// The colour of the focused cover, sampled only when the theme uses it:
+    /// once per game, when its small cover arrives.
     fn sync_console_colour(&mut self) {
-        let theme = look::theme();
-        let wanted = look::wants_game_accent() || theme.background.source == BackgroundSource::GameColour;
+        let wanted = look::wants_game_accent() || look::theme().background.source == BackgroundSource::GameColour;
         let Some(key) = self.console.art_want.clone().filter(|_| wanted) else {
-            self.console.game_colour = None;
-            look::set_game_accent(None);
+            if self.console.game_colour.take().is_some() {
+                look::set_game_accent(None);
+            }
+            self.console.colour_for = None;
             return;
         };
         let (w, h) = super::look::ACCENT_SAMPLE;
+        if self.console.colour_for.as_ref() == Some(&key) {
+            // Sampled already, or still waiting for the cover.
+            if self.console.colour_taken {
+                return;
+            }
+        } else {
+            self.console.colour_for = Some(key.clone());
+            self.console.colour_taken = false;
+        }
         let id: SharedString = format!("a:{key}").into();
         let chains = &self.cover_chains;
         let img = self.images.get_or_request(&id, || chains.get(&key).cloned().unwrap_or_default(), w, h, Variant::Cover, 200);
         // Keep the last colour while the next one loads.
         if let Some(rgb) = img.as_ref().and_then(|img| img.as_bytes(0)).and_then(super::look::accent_from_bgra) {
+            self.console.colour_taken = true;
             self.console.game_colour = Some(rgb);
             look::set_game_accent(Some(rgb));
         }
     }
 
-    /// Top bar: the theme's label (nothing unless it has one), the tabs (or,
-    /// with `tab_bar: title`, only the current one's name, centred), status
-    /// icons, clock.
+    /// Top bar: the theme's label (nothing unless it has one), then what
+    /// `tab_bar` asks for: the tabs (`Top`), their names only (`Names`), only
+    /// the current one's name, centred (`Title`) or nothing (`Bottom`: the
+    /// tabs go along the bottom, see `console_bottom_tabs`); status icons,
+    /// clock.
     fn console_top_bar(&self) -> Div {
         let theme = look::theme();
-        // Built-in themes name their tabs with English keys.
-        let names: Vec<SharedString> = theme.tabs.iter().map(|t| SharedString::from(tr(&t.name).to_string())).collect();
+        let names: Vec<SharedString> = theme.tabs.iter().map(tab_label).collect();
         let label = theme.interface.label.trim().to_string();
         let tab = self.console.tab.min(names.len().saturating_sub(1));
         let tab_bar = theme.interface.tab_bar;
@@ -566,7 +596,7 @@ impl CollectionView {
             .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
             .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
                 let spaced = theme.interface.headings == Headings::Spaced;
-                let title = kit::tab_title(tr(&t.name), kit::tab_icon(&t.source, t.layout), names.len() > 1, spaced);
+                let title = kit::tab_title(&tab_label(t), kit::tab_icon(&t.source, t.layout), names.len() > 1, spaced);
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
             .child(div().flex_1())
@@ -583,7 +613,7 @@ impl CollectionView {
         let theme = look::theme();
         (theme.interface.tab_bar == TabBar::Bottom && theme.tabs.len() > 1).then(|| {
             let items: Vec<(SharedString, crate::icons::Icon)> =
-                theme.tabs.iter().map(|t| (SharedString::from(tr(&t.name).to_string()), kit::tab_icon(&t.source, t.layout))).collect();
+                theme.tabs.iter().map(|t| (tab_label(t), kit::tab_icon(&t.source, t.layout))).collect();
             kit::tabs_bottom(&items, self.console.tab.min(items.len() - 1))
         })
     }
@@ -640,9 +670,9 @@ impl CollectionView {
         };
         let backdrop = self.render_console_backdrop(scrim, window, cx);
         let hints_on = self.hints_visible();
-        let hints = self.console_hints(cx);
-        let idle = self.render_console_idle(window, cx);
-        let customize = self.render_console_customize(window, cx);
+        let hints = if hints_on { self.console_hints(cx) } else { Vec::new() };
+        let idle = self.render_idle(window, cx);
+        let customize = self.render_console_customize();
         let (_, body_font) = look::fonts();
         div()
             .id("console")

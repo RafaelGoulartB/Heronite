@@ -4,6 +4,7 @@
 //! the extra darkening and the shading the current screen wants ([`Scrim`]).
 //! The art follows the focus after a short pause and cross-fades.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use gpui_kit::prelude::*;
@@ -33,7 +34,8 @@ pub(crate) enum Scrim {
     Page,
 }
 
-fn ink(a: f32) -> Rgba {
+/// The console background colour at alpha `a`.
+fn backing(a: f32) -> Rgba {
     let mut c = theme::console_bg();
     c.a = a;
     c
@@ -54,7 +56,7 @@ fn light_wash(scrim: Scrim) -> f32 {
 
 fn scrim_layers(scrim: Scrim) -> Vec<Div> {
     let layer = |angle: f32, from: f32, to: f32, until: f32| {
-        div().absolute().inset_0().bg(linear_gradient(angle, linear_color_stop(ink(from), 0.), linear_color_stop(ink(to), until)))
+        div().absolute().inset_0().bg(linear_gradient(angle, linear_color_stop(backing(from), 0.), linear_color_stop(backing(to), until)))
     };
     match scrim {
         Scrim::Classic => vec![layer(90., 0.96, 0.35, 1.), layer(0., 0.98, 0., 0.75)],
@@ -65,71 +67,87 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
     }
 }
 
+/// The size of the background texture: the window's, shrunk to 1920 wide at
+/// most. Under the gradients a smaller texture looks the same and keeps the
+/// covers in the cache budget (a full ultrawide frame is ~20 MB).
+pub(super) fn backdrop_size(window: &Window) -> (u32, u32) {
+    let scale = window.scale_factor();
+    let size = window.viewport_size();
+    let (w, h) = (f32::from(size.width) * scale, f32::from(size.height) * scale);
+    let shrink = (1920. / w).min(1.);
+    ((w * shrink) as u32, (h * shrink) as u32)
+}
+
+/// The texture id of the background `tag` ("art", "cover"...) of game
+/// `owner` (the theme's own picture when `None`) at `size` and `blur`.
+pub(super) fn backdrop_id(owner: Option<&str>, tag: &str, (pw, ph): (u32, u32), blur: f32) -> SharedString {
+    match owner {
+        Some(key) => format!("s:{key}:{tag}:{pw}x{ph}:{blur}:console"),
+        None => format!("s:console-bg:{tag}:{pw}x{ph}:{blur}"),
+    }
+    .into()
+}
+
+/// Whether `id` is one of the textures of [`backdrop_id`].
+pub(super) fn is_backdrop_id(id: &str) -> bool {
+    id.starts_with("s:console-bg:") || (id.starts_with("s:") && id.ends_with(":console"))
+}
+
+/// Where the image of a background comes from (resolved only when it loads).
+enum Pick {
+    Stage,
+    Cover,
+    Own(ImageRef),
+}
+
 impl CollectionView {
     /// The texture behind the screen for `key`, sized to the window.
     fn backdrop_image(&mut self, key: &SharedString, window: &Window) -> Option<Arc<RenderImage>> {
         let theme = look::theme();
-        let scale = window.scale_factor();
-        let size = window.viewport_size();
-        // Under the gradients a smaller texture looks the same and keeps the
-        // covers in the cache budget (a full ultrawide frame is ~20 MB).
-        let (w, h) = (f32::from(size.width) * scale, f32::from(size.height) * scale);
-        let shrink = (1920. / w).min(1.);
-        let (pw, ph) = ((w * shrink) as u32, (h * shrink) as u32);
+        let size = backdrop_size(window);
         let blur = f32::from(theme.background.blur);
-        let (chain, variant, tag): (Vec<ImageRef>, Variant, String) = match theme.background.source {
+        let plain = Variant::Stage { blur_px: blur, saturation: 1. };
+        // What to load, how, under which tag, and the id when already built.
+        let (pick, variant, tag, mut id): (Pick, Variant, Cow<'static, str>, Option<SharedString>) = match theme.background.source {
             BackgroundSource::Solid | BackgroundSource::GameColour => return None,
             BackgroundSource::Art => {
-                let chain = self.stage_chains.get(key).cloned().unwrap_or_default();
-                let art_id: SharedString = format!("s:{key}:art:{pw}x{ph}:{blur}:console").into();
-                if chain.is_empty() || self.images.is_failed(&art_id) {
+                let art_id = self.stage_chains.get(key).is_some_and(|c| !c.is_empty()).then(|| backdrop_id(Some(key), "art", size, blur));
+                match art_id {
+                    Some(id) if !self.images.is_failed(&id) => (Pick::Stage, plain, "art".into(), Some(id)),
                     // No wide art: the cover, blurred, rather than nothing.
-                    (
-                        self.cover_chains.get(key).cloned().unwrap_or_default(),
-                        Variant::Stage { blur_px: blur.max(30.), saturation: 1.2 },
-                        "cover".into(),
-                    )
-                } else {
-                    (chain, Variant::Stage { blur_px: blur, saturation: 1. }, "art".into())
+                    _ => (Pick::Cover, Variant::Stage { blur_px: blur.max(30.), saturation: 1.2 }, "cover".into(), None),
                 }
             }
-            BackgroundSource::Cover => (
-                self.cover_chains.get(key).cloned().unwrap_or_default(),
-                Variant::Stage { blur_px: blur.max(28.), saturation: 1.3 },
-                "cover".into(),
-            ),
+            BackgroundSource::Cover => (Pick::Cover, Variant::Stage { blur_px: blur.max(28.), saturation: 1.3 }, "cover".into(), None),
             BackgroundSource::Screenshots => {
                 let shot = (self.shots.game.as_ref() == Some(key)).then(|| self.shots.items.first().map(|s| s.path.clone())).flatten();
                 match shot {
-                    Some(p) => {
-                        (vec![ImageRef::File(p.clone())], Variant::Stage { blur_px: blur, saturation: 1. }, format!("shot:{}", p.display()))
-                    }
-                    None => (
-                        self.stage_chains.get(key).cloned().unwrap_or_default(),
-                        Variant::Stage { blur_px: blur, saturation: 1. },
-                        "art".into(),
-                    ),
+                    Some(p) => (Pick::Own(ImageRef::File(p.clone())), plain, format!("shot:{}", p.display()).into(), None),
+                    None => (Pick::Stage, plain, "art".into(), None),
                 }
             }
             BackgroundSource::Image => {
-                let src = theme.background.image.trim().to_string();
+                let src = theme.background.image.trim();
                 if src.is_empty() {
                     return None;
                 }
                 let r = if src.starts_with("http://") || src.starts_with("https://") {
-                    ImageRef::Url(src.clone())
+                    ImageRef::Url(src.to_string())
                 } else {
-                    ImageRef::File(src.clone().into())
+                    ImageRef::File(src.into())
                 };
-                (vec![r], Variant::Stage { blur_px: blur, saturation: 1. }, format!("img:{src}"))
+                (Pick::Own(r), plain, format!("img:{src}").into(), None)
             }
         };
-        let id: SharedString = if theme.background.source == BackgroundSource::Image {
-            format!("s:console-bg:{tag}:{pw}x{ph}:{blur}").into()
-        } else {
-            format!("s:{key}:{tag}:{pw}x{ph}:{blur}:console").into()
+        let owner = (theme.background.source != BackgroundSource::Image).then_some(key.as_ref());
+        let id = id.take().unwrap_or_else(|| backdrop_id(owner, &tag, size, blur));
+        let (stage, covers) = (&self.stage_chains, &self.cover_chains);
+        let chain = || match pick {
+            Pick::Stage => stage.get(key).cloned().unwrap_or_default(),
+            Pick::Cover => covers.get(key).cloned().unwrap_or_default(),
+            Pick::Own(r) => vec![r],
         };
-        self.images.get_or_request(&id, || chain, pw, ph, variant, 1000)
+        self.images.get_or_request(&id, chain, size.0, size.1, variant, 1000)
     }
 
     /// The art behind the screen and the one it fades from.
@@ -209,8 +227,8 @@ impl CollectionView {
         let dim = f32::from(theme.background.dim) / 100.;
         let wash = if look::light() { light_wash(scrim) } else { 0. };
         layer
-            .when(dim > 0., |d| d.child(div().absolute().inset_0().bg(ink(dim))))
-            .when(wash > 0., |d| d.child(div().absolute().inset_0().bg(ink(wash))))
+            .when(dim > 0., |d| d.child(div().absolute().inset_0().bg(backing(dim))))
+            .when(wash > 0., |d| d.child(div().absolute().inset_0().bg(backing(wash))))
             .children(scrim_layers(scrim))
     }
 }

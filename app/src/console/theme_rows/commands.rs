@@ -79,13 +79,9 @@ impl Command {
     }
 }
 
-fn part<'a>(id: &'a str, prefix: &str) -> Option<&'a str> {
-    id.strip_prefix(prefix)
-}
-
 /// `tab.2.name` with `("tab.", ".name")` gives 2.
 fn indexed(id: &str, prefix: &str, suffix: &str) -> Option<usize> {
-    part(id, prefix)?.strip_suffix(suffix)?.parse().ok()
+    id.strip_prefix(prefix)?.strip_suffix(suffix)?.parse().ok()
 }
 
 fn tab_index(id: &str, suffix: &str) -> Option<usize> {
@@ -93,7 +89,7 @@ fn tab_index(id: &str, suffix: &str) -> Option<usize> {
 }
 
 fn flat_index(id: &str, prefix: &str) -> Option<usize> {
-    part(id, prefix)?.parse().ok()
+    id.strip_prefix(prefix)?.parse().ok()
 }
 
 /// What A on `id` does.
@@ -206,9 +202,9 @@ fn apply(prefs: &mut ConsolePrefs, cmd: &Command, data: &Data) {
             }
         }
         ("interface.accent", Arg::Value(Value::Choice { index, .. })) => {
-            t.interface.accent = match ACCENT_NAMES.get(*index) {
-                Some(n) => (*n).to_string(),
-                None if accent_index(&t.interface.accent) == ACCENT_NAMES.len() => t.interface.accent.clone(),
+            t.interface.accent = match ACCENTS.get(*index) {
+                Some((n, _)) => (*n).to_string(),
+                None if accent_index(&t.interface.accent) == ACCENTS.len() => t.interface.accent.clone(),
                 None => "#a5dceb".into(),
             };
         }
@@ -237,7 +233,7 @@ fn apply_indexed(prefs: &mut ConsolePrefs, cmd: &Command, data: &Data) {
         if let (Arg::Value(Value::Choice { index, .. }), Some(tab)) = (&cmd.arg, t.tabs.get_mut(i)) {
             if let Some(l) = Layout::ALL.get(*index) {
                 // A tab still called by its layout's name follows it.
-                if tab.name == tr(layout_name(tab.layout)) {
+                if tr(&tab.name) == tr(layout_name(tab.layout)) {
                     tab.name = tr(layout_name(*l)).to_string();
                 }
                 tab.layout = *l;

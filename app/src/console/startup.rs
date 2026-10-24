@@ -5,8 +5,8 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
@@ -22,20 +22,19 @@ pub fn set_open_in(app: &AppPaths, v: OpenIn) {
 }
 
 pub fn set_auto_console(app: &AppPaths, v: AutoConsole) {
-    LATEST_AUTO.store(AutoConsole::ALL.iter().position(|a| *a == v).map_or(NONE, |i| i as u8), Ordering::Relaxed);
+    *LATEST_AUTO.lock().unwrap_or_else(|e| e.into_inner()) = Some(v);
     super::themes::update(app, |p| p.auto_console = v);
     if let Err(e) = ui_state::set_console_auto(app, v) {
         log::warn!("mirroring autoConsole: {e:#}");
     }
 }
 
-/// The last `autoConsole` set in this run, as an index of `AutoConsole::ALL`.
-static LATEST_AUTO: AtomicU8 = AtomicU8::new(NONE);
-const NONE: u8 = u8::MAX;
+/// The last `autoConsole` set in this run.
+static LATEST_AUTO: Mutex<Option<AutoConsole>> = Mutex::new(None);
 
 /// `autoConsole` as it is now: what was set in this run, else `loaded`.
 pub fn auto_console(loaded: AutoConsole) -> AutoConsole {
-    AutoConsole::ALL.get(usize::from(LATEST_AUTO.load(Ordering::Relaxed))).copied().unwrap_or(loaded)
+    LATEST_AUTO.lock().unwrap_or_else(|e| e.into_inner()).unwrap_or(loaded)
 }
 
 /// Whether the app starts in console mode: `Last` repeats how it was left.

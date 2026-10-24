@@ -14,7 +14,7 @@ pub(super) fn index<E: Copy + PartialEq>(all: &[E], v: E) -> usize {
 
 macro_rules! label_fn {
     ($f:ident, $ty:ident { $($v:ident => $s:expr),+ $(,)? }) => {
-        pub(super) fn $f(v: $ty) -> &'static str {
+        pub fn $f(v: $ty) -> &'static str {
             match v {
                 $($ty::$v => $s),+
             }

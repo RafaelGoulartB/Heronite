@@ -8,9 +8,8 @@ use std::path::PathBuf;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::store;
-use heronite_data::organize::Organize;
 use heronite_data::paths::AppPaths;
-use heronite_i18n::{tr, tr as tr_};
+use heronite_i18n::tr;
 
 use super::super::CollectionView;
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
@@ -108,16 +107,16 @@ impl CollectionView {
         let mut state = ThemeState::new(&self.app_paths);
         state.data.saved = store::list(&self.app_paths);
         if let Some(lib) = self.lib.as_ref() {
-            let org = Organize { extras: Some(&self.game_extras), ..Default::default() };
+            let org = self.organize();
             state.data.facts = Facts::build(lib, &self.categories, |g| org.platform(g));
         }
         self.console.customize = Some(CustomizeNav { group: 0, list: ListNav::default(), state, peek: false });
     }
 
-    pub(super) fn render_console_customize(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn render_console_customize(&mut self) -> Option<AnyElement> {
         let nav = self.console.customize.as_mut().filter(|n| !n.peek)?;
         let rows = theme_rows::group_rows(nav.group, &nav.state.ctx());
-        let groups: Vec<SharedString> = PANEL.iter().map(|(g, _)| SharedString::from(tr_(g))).collect();
+        let groups: Vec<SharedString> = PANEL.iter().map(|(g, _)| SharedString::from(tr(g))).collect();
         let mut strip = div().flex().items_center().gap(u(14.)).child(kit::glyph(Btn::LB));
         for (i, g) in groups.iter().enumerate() {
             let on = i == nav.group;

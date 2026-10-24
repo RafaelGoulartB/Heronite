@@ -166,7 +166,7 @@ impl SettingsPage {
             CSec::Rows(Section::About) => about::console_apply(self, outcome, cx),
             CSec::Rows(Section::Logs) => logs::console_apply(self, outcome, cx),
             CSec::Rows(Section::Appearance) => appearance::console_apply(self, outcome, window, cx),
-            CSec::Rows(Section::ConsoleMode) => console_mode::console_apply(self, outcome, window, cx),
+            CSec::Rows(Section::ConsoleMode) => console_mode::send(self, outcome, window, cx),
             CSec::Rows(Section::Metadata) => metadata::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Screenshots) => screenshots::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Saves) => saves::console_apply(self, outcome, window, cx),
@@ -311,7 +311,7 @@ impl PadTarget for SettingsPage {
             }
             _ => {
                 // X moves a shelf or menu item, LT removes a shelf.
-                if sec == CSec::Rows(Section::ConsoleMode) && console_mode::console_extra_pad(self, pad, window, cx) {
+                if sec == CSec::Rows(Section::ConsoleMode) && console_mode::console_extra_pad(self, pad, cx) {
                     cx.notify();
                     return true;
                 }

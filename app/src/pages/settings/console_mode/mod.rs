@@ -22,6 +22,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::categories::Categories;
+use heronite_data::organize::Organize;
 use heronite_data::paths::AppPaths;
 use heronite_data::{DataPaths, Library};
 use heronite_i18n::tr;
@@ -86,23 +87,9 @@ pub(super) fn shown(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<
 /// The statuses, categories, platforms, stores and genres of the library.
 fn facts_of(paths: &DataPaths) -> Facts {
     let Ok(lib) = Library::load(paths) else { return Facts::default() };
-    let systems: HashMap<String, String> = heronite_emulation::catalog::emulator_definitions()
-        .iter()
-        .flat_map(|d| d.profiles.iter())
-        .map(|p| (p.platform_id.clone(), p.platform_name.clone()))
-        .collect();
-    Facts::build(&lib, &Categories::load(paths), |g| {
-        if g.launch_kind.as_deref() == Some("emulator") {
-            if let Some(name) = g.meta.as_deref().and_then(|m| m.platform_id.as_deref()).and_then(|id| systems.get(id)) {
-                return name.clone();
-            }
-        }
-        match g.game.install.platform.as_deref().map(str::to_ascii_lowercase).as_deref() {
-            Some("linux") => "Linux".into(),
-            Some("osx" | "mac") => "Mac".into(),
-            _ => "PC".into(),
-        }
-    })
+    let extras = crate::collection::organize::system_extras(&lib);
+    let org = Organize { extras: Some(&extras), ..Default::default() };
+    Facts::build(&lib, &Categories::load(paths), |g| org.platform(g))
 }
 
 impl HasLayer for SettingsPage {
@@ -221,12 +208,8 @@ pub(super) fn console_rows(d: &SettingsPage) -> Vec<Row> {
     }
 }
 
-pub(super) fn console_apply(d: &mut SettingsPage, outcome: Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
-    send(d, outcome, window, cx);
-}
-
 /// X, LT and the moving of a row; whether the press was used.
-pub(super) fn console_extra_pad(d: &mut SettingsPage, pad: Pad, _window: &mut Window, cx: &mut Context<SettingsPage>) -> bool {
+pub(super) fn console_extra_pad(d: &mut SettingsPage, pad: Pad, cx: &mut Context<SettingsPage>) -> bool {
     let rows = console_rows(d);
     let focused = d.console.list.focused(&rows).map(|r| r.id.to_string());
     let Some(s) = d.console_mode.as_mut() else { return false };

@@ -86,7 +86,7 @@ impl CollectionView {
 
     /// Console mode just started, its theme installed.
     pub(super) fn console_controls_started(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.ui.console_auto = themes::prefs(&self.app_paths).auto_console;
+        self.ui.console_auto = themes::read(&self.app_paths, |p| p.auto_console);
         self.console.controls.last_press = Instant::now();
         // `HERONITE_DEBUG_IDLE_SECS=<n>`: the idle screen after `n` seconds of quiet (checked every second).
         let debug_secs = crate::env::parse::<u64>("HERONITE_DEBUG_IDLE_SECS");
@@ -114,15 +114,9 @@ impl CollectionView {
         if !look::theme().controls.sounds {
             st.sounds = None;
         } else if let Some(sound) = sound::for_pad(pad) {
-            let dir = self.app_paths.cache.join("console-sounds");
-            st.sounds.get_or_insert_with(|| sound::Player::new(dir)).play(sound);
+            st.sounds.get_or_insert_with(|| sound::Player::new(self.app_paths.cache.join("console-sounds"))).play(sound);
         }
         false
-    }
-
-    /// Drawn over everything when shown (the idle screen).
-    pub(super) fn render_console_idle(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        self.render_idle(window, cx)
     }
 
     /// Every [`CHECK_EVERY`] while console mode is on: shows the idle screen
@@ -141,7 +135,7 @@ impl CollectionView {
         }
         // Not set: look again after another quiet spell.
         st.last_press = Instant::now();
-        let mode = themes::prefs(&self.app_paths).idle;
+        let mode = themes::read(&self.app_paths, |p| p.idle);
         self.start_idle(mode, cx);
     }
 
