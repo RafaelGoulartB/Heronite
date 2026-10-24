@@ -289,7 +289,7 @@ impl CollectionView {
                 d.child(div().absolute().inset_0().flex().items_center().justify_center().child(
                     crate::ui::icon(Icon::FaSpinner, px(28.), theme::white_a(0.7)).with_animation(
                         "shot-loading",
-                        Animation::new(Duration::from_secs(1)).repeat(),
+                        Animation::new(Duration::from_secs(1)).repeat().with_max_fps(30.),
                         |s, t| s.with_transformation(Transformation::rotate(percentage(t))),
                     ),
                 ))

@@ -31,11 +31,9 @@ pub fn busy_bar(id: impl Into<ElementId>, height: f32) -> AnyElement {
         return track.child(sweep.left(relative(0.35))).into_any_element();
     }
     track
-        .child(
-            sweep.with_animation(id, Animation::new(std::time::Duration::from_millis(1400)).repeat(), |s, t| {
-                s.left(relative(t * 1.3 - 0.3))
-            }),
-        )
+        .child(sweep.with_animation(id, Animation::new(std::time::Duration::from_millis(1400)).repeat().with_max_fps(30.), |s, t| {
+            s.left(relative(t * 1.3 - 0.3))
+        }))
         .into_any_element()
 }
 
@@ -84,6 +82,13 @@ impl Covers {
         })
         .detach();
         Self { store }
+    }
+
+    /// Frees every cover texture (the page went out of sight; they reload
+    /// from the disk cache when it comes back).
+    pub fn release(&mut self, window: &mut Window) {
+        self.store.forget_prefix("");
+        self.store.drop_evicted(window);
     }
 
     /// Texture of the cover at `url`, sized `w`x`h` logical px (requested on

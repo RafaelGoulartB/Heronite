@@ -31,6 +31,8 @@ pub struct Pages {
     meta: NavMeta,
     /// The store page "Stores" opens: the one shown last (Epic at first).
     last_store: Option<Page>,
+    /// The page the lifecycle hooks last treated as shown (`sync_shown`).
+    shown: Option<Page>,
     /// Controller hooks of the pages (console mode).
     hooks: std::collections::HashMap<Page, crate::console::PadHook>,
 }
@@ -339,7 +341,71 @@ impl CollectionView {
             self.pages.last_store = Some(page);
         }
         self.ensure_page(page, window, cx);
+        self.sync_shown(window, cx);
         cx.notify();
+    }
+
+    /// Tells the pages which one is on screen. The one that left frees what only
+    /// a visible page needs (textures, loaded logs) and stops its polling; the
+    /// one that comes back starts again. Compared with `Pages::shown` and not
+    /// with the page before: a few paths set `self.page` to the Collection directly.
+    fn sync_shown(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pages.shown == Some(self.page) {
+            return;
+        }
+        if let Some(left) = self.pages.shown.replace(self.page) {
+            self.page_hidden(left, window, cx);
+        }
+        self.page_shown(self.page, cx);
+    }
+
+    fn page_hidden(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
+        let p = &self.pages;
+        match page {
+            Page::Downloads => {
+                if let Some(v) = p.downloads.clone().and_then(|v| v.downcast::<pages::downloads::DownloadsPage>().ok()) {
+                    v.update(cx, |p, _| p.hidden(window));
+                }
+            }
+            Page::Statistics => {
+                if let Some(v) = p.stats.clone().and_then(|v| v.downcast::<pages::stats::StatsPage>().ok()) {
+                    v.update(cx, |p, _| p.hidden(window));
+                }
+            }
+            Page::Settings => {
+                if let Some(v) = p.settings.clone().and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok()) {
+                    v.update(cx, |p, _| p.hidden(window));
+                }
+            }
+            Page::WineManager => {
+                if let Some(v) = p.wine.clone().and_then(|v| v.downcast::<pages::wine_manager::WineManagerPage>().ok()) {
+                    v.update(cx, |p, cx| p.set_shown(false, cx));
+                }
+            }
+            Page::Emulators => {
+                if let Some(v) = p.emulators.clone().and_then(|v| v.downcast::<pages::emulators::EmulatorsPage>().ok()) {
+                    v.update(cx, |p, cx| p.set_shown(false, cx));
+                }
+            }
+            Page::Collection | Page::Epic | Page::Gog | Page::Amazon | Page::Steam => {}
+        }
+    }
+
+    fn page_shown(&mut self, page: Page, cx: &mut Context<Self>) {
+        let p = &self.pages;
+        match page {
+            Page::WineManager => {
+                if let Some(v) = p.wine.clone().and_then(|v| v.downcast::<pages::wine_manager::WineManagerPage>().ok()) {
+                    v.update(cx, |p, cx| p.set_shown(true, cx));
+                }
+            }
+            Page::Emulators => {
+                if let Some(v) = p.emulators.clone().and_then(|v| v.downcast::<pages::emulators::EmulatorsPage>().ok()) {
+                    v.update(cx, |p, cx| p.set_shown(true, cx));
+                }
+            }
+            _ => {}
+        }
     }
 
     fn page_ctx(&self) -> PageCtx {
@@ -515,9 +581,18 @@ impl CollectionView {
     pub(super) fn nav_library_loaded(&mut self, cx: &mut Context<Self>) {
         self.pages.meta.loaded_at = None;
         self.sync_nav_meta(cx);
-        self.offer_stats_data(cx);
+        self.offer_stats_library(cx);
         self.offer_settings_library(cx);
         self.mods_library_loaded(cx);
+    }
+
+    /// Gives the Statistics page the reloaded library while it is on screen
+    /// (rebuilding its history is costly); otherwise it gets the Collection's
+    /// current library when it is shown next (`ensure_page`).
+    fn offer_stats_library(&self, cx: &mut Context<Self>) {
+        if self.page == Page::Statistics {
+            self.offer_stats_data(cx);
+        }
     }
 
     /// Gives the Settings page the reloaded library while it is on screen

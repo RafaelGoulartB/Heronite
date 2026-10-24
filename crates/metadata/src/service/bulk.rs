@@ -5,10 +5,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use heronite_data::json_store;
+use heronite_data::library::metadata_key;
 use heronite_data::models::{CollectionGameMetadata, LocalMetaFile};
 
 use super::{is_offline, MetadataService};
-use crate::store::{as_runner, get_game_metadata};
+use crate::store::{as_runner, get_all_game_metadata};
 use crate::types::*;
 use crate::util::now_ms;
 
@@ -91,6 +92,9 @@ impl MetadataService {
         let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
         let mut errors: Vec<String> = Vec::new();
         let (mut updated, mut skipped, mut failed) = (0usize, 0usize, 0usize);
+        // One read of metadata.json instead of one per game; saves are mirrored
+        // into it below. A read error fails every game, as a read per game did.
+        let mut known = get_all_game_metadata(&self.paths);
 
         if total == 0 {
             let done = BulkProgress { state: BulkState::Done, percent: 100, ..Default::default() };
@@ -117,9 +121,9 @@ impl MetadataService {
                 on_progress,
             );
             let step = || -> Result<Option<CollectionGameMetadata>> {
-                let current = get_game_metadata(&self.paths, as_runner(&game.runner), &game.app_name)?;
-                if !overwrite
-                    && current.as_ref().is_some_and(|c| c.fetched_at.as_deref().is_some_and(|f| !f.is_empty()) && c.fetch_error.is_none())
+                let games = known.as_ref().map_err(|e| anyhow::anyhow!("{e}"))?;
+                let current = games.get(&metadata_key(as_runner(&game.runner), &game.app_name));
+                if !overwrite && current.is_some_and(|c| c.fetched_at.as_deref().is_some_and(|f| !f.is_empty()) && c.fetch_error.is_none())
                 {
                     return Ok(None);
                 }
@@ -138,13 +142,18 @@ impl MetadataService {
             };
             match step() {
                 Ok(None) => skipped += 1,
-                Ok(Some(saved)) => match saved.fetch_error {
-                    Some(err) => {
-                        failed += 1;
-                        errors.push(format!("{}: {err}", game.title));
+                Ok(Some(saved)) => {
+                    match &saved.fetch_error {
+                        Some(err) => {
+                            failed += 1;
+                            errors.push(format!("{}: {err}", game.title));
+                        }
+                        None => updated += 1,
                     }
-                    None => updated += 1,
-                },
+                    if let Ok(games) = known.as_mut() {
+                        games.insert(metadata_key(&saved.runner, &saved.app_name), saved);
+                    }
+                }
                 Err(e) => {
                     failed += 1;
                     errors.push(format!("{}: {e}", game.title));
@@ -195,10 +204,11 @@ impl MetadataService {
             return Ok(0);
         }
         let overlay: LocalMetaFile = json_store::read(&self.paths.local_meta())?;
+        // Nothing writes metadata.json while this scan runs.
+        let known = get_all_game_metadata(&self.paths)?;
         let mut missing = Vec::new();
         for meta in overlay.games.values() {
-            let current = get_game_metadata(&self.paths, &meta.runner, &meta.app_name)?;
-            let needs = match current {
+            let needs = match known.get(&metadata_key(&meta.runner, &meta.app_name)) {
                 None => true,
                 Some(c) if c.fetch_error.is_some() => match c.fetched_at.as_deref() {
                     None | Some("") => true,

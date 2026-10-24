@@ -3,12 +3,13 @@
 //! (GNOME 47+, KDE Plasma 6, COSMIC), else KDE's `kdeglobals` or GNOME's
 //! `accent-color` setting; the windows' background from KDE's colour scheme,
 //! or libadwaita's on GNOME. Other desktops give what the portal knows.
-//! Read on a thread of its own, again each time the portal says they changed.
+//! Read on a thread of its own (one per process), again each time the portal
+//! says they changed.
 
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
-use futures::channel::mpsc::{unbounded, UnboundedReceiver};
+use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use heronite_data::appearance::{is_light_colour, Rgb};
 
 use crate::theme::DesktopColours;
@@ -116,12 +117,40 @@ async fn portal_accent(settings: &ashpd::desktop::settings::Settings) -> Option<
     portal_rgb((c.red(), c.green(), c.blue()))
 }
 
+/// The one watcher thread: the latest reading and who wants the next ones.
+struct Watcher {
+    latest: Option<DesktopColours>,
+    subscribers: Vec<UnboundedSender<DesktopColours>>,
+}
+
+static WATCHER: Mutex<Option<Watcher>> = Mutex::new(None);
+
+/// Hands a reading to every subscriber still listening.
+fn publish(c: DesktopColours) {
+    let mut guard = WATCHER.lock().unwrap();
+    let Some(w) = guard.as_mut() else { return };
+    w.latest = Some(c);
+    w.subscribers.retain(|tx| tx.unbounded_send(c).is_ok());
+}
+
 /// Reads the desktop's colours on a thread of its own, then again each time
 /// the portal says the appearance changed, sending each new reading. The
 /// first one is also returned when it comes within `wait`, so a look that
-/// uses them starts in them.
+/// uses them starts in them. One thread for the whole process: the window
+/// (and with it each subscriber) comes and goes from the tray.
 pub fn watch(wait: Duration) -> (Option<DesktopColours>, UnboundedReceiver<DesktopColours>) {
     let (tx, rx) = unbounded();
+    {
+        let mut guard = WATCHER.lock().unwrap();
+        if let Some(w) = guard.as_mut() {
+            if let Some(c) = w.latest {
+                let _ = tx.unbounded_send(c);
+            }
+            w.subscribers.push(tx);
+            return (w.latest, rx);
+        }
+        *guard = Some(Watcher { latest: None, subscribers: vec![tx] });
+    }
     let (first_tx, first_rx) = mpsc::sync_channel(1);
     let started = std::thread::Builder::new()
         .name("desktop-colours".into())
@@ -137,7 +166,7 @@ pub fn watch(wait: Duration) -> (Option<DesktopColours>, UnboundedReceiver<Deskt
                         None => None,
                     });
                     let _ = first_tx.send(last);
-                    let _ = tx.unbounded_send(last);
+                    publish(last);
                     let Some(settings) = settings else { return };
                     let Ok(mut changes) = settings.receive_setting_changed().await else { return };
                     while let Some(s) = changes.next().await {
@@ -151,9 +180,7 @@ pub fn watch(wait: Duration) -> (Option<DesktopColours>, UnboundedReceiver<Deskt
                         let now = read(portal_accent(&settings).await);
                         if now != last {
                             last = now;
-                            if tx.unbounded_send(now).is_err() {
-                                return;
-                            }
+                            publish(now);
                         }
                     }
                 }
@@ -161,7 +188,7 @@ pub fn watch(wait: Duration) -> (Option<DesktopColours>, UnboundedReceiver<Deskt
                 {
                     let now = read(None);
                     let _ = first_tx.send(now);
-                    let _ = tx.unbounded_send(now);
+                    publish(now);
                 }
             })
         })

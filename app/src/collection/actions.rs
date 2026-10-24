@@ -203,6 +203,23 @@ impl CollectionView {
         }
     }
 
+    /// Writes a changed focused game once the selection rests for a moment.
+    pub(super) fn schedule_ui_save(&mut self, cx: &mut Context<Self>) {
+        if !self.ui_focus_dirty || self.ui_save.is_some() {
+            return;
+        }
+        self.ui_save = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(400)).await;
+            this.update(cx, |this, _| {
+                this.ui_save = None;
+                if std::mem::take(&mut this.ui_focus_dirty) {
+                    this.save_ui();
+                }
+            })
+            .ok();
+        }));
+    }
+
     pub(super) fn toggle_facet(&mut self, kind: &str, value: &str) {
         if let Some(kind) = FacetKind::parse(kind) {
             self.ui.toggle_facet(kind, value);
@@ -294,7 +311,7 @@ impl CollectionView {
         self.grid.drawer_closed = false;
         if persist {
             self.ui.focused_game = Some(key.to_string());
-            self.save_ui();
+            self.ui_focus_dirty = true;
         }
     }
 }

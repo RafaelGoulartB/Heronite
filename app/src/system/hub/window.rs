@@ -20,13 +20,17 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<
         window_min_size: Some(size(px(640.), px(480.))),
         ..Default::default()
     };
-    match gpui_kit::open_window(options, cx, |window, cx| {
+    // The library loads while the window and the GPU come up.
+    crate::collection::preload_library(cx);
+    let opened = gpui_kit::open_window(options, cx, |window, cx| {
         window.set_window_title("Heronite");
         // The close button / compositor "close": ask first when quitting
         // would leave games or post-game work behind.
         window.on_window_should_close(cx, |_, cx| allow_user_close(cx));
         cx.new(|cx| CollectionView::new(started, window, cx))
-    }) {
+    });
+    crate::collection::discard_preload();
+    match opened {
         Ok((handle, view)) => {
             cx.activate(true);
             Some(MainWindow { handle, view: view.downgrade() })
@@ -131,7 +135,9 @@ pub(super) fn on_window_closed(cx: &mut App, id: WindowId) {
     };
     if keep {
         log::info!("window closed, staying in the tray");
-        // The Collection, its textures and caches were just dropped.
+        // The Collection, its textures and caches were just dropped; the
+        // glass backdrop it published goes too.
+        crate::ui::glass::set_backdrop(None);
         crate::trim_heap_later();
         // Nothing left to wait for when the last game already ended.
         maybe_exit_idle(cx);

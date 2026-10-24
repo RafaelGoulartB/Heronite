@@ -58,7 +58,7 @@ pub(super) fn spinner(id: &'static str, size: f32, color: Rgba) -> AnyElement {
     if !theme::animations() {
         return i.into_any_element();
     }
-    i.with_animation(id, Animation::new(std::time::Duration::from_secs(1)).repeat(), |s, t| {
+    i.with_animation(id, Animation::new(std::time::Duration::from_secs(1)).repeat().with_max_fps(30.), |s, t| {
         s.with_transformation(Transformation::rotate(percentage(t)))
     })
     .into_any_element()

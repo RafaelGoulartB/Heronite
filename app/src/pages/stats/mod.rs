@@ -387,6 +387,13 @@ impl StatsPage {
         self.covers.get_blurred(&key, chain, w, h, 34., 1.6)
     }
 
+    /// The Collection hid the page: frees the cover and screenshot textures (a
+    /// hidden page never renders to do it); they load again from the disk cache
+    /// when it comes back.
+    pub fn hidden(&mut self, window: &mut Window) {
+        self.covers.release(window);
+    }
+
     /// Shows the Year in review of `year` (once the history is read).
     pub fn open_review(&mut self, year: i32, cx: &mut Context<Self>) {
         let Some(h) = self.history.clone() else {

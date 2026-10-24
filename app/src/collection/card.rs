@@ -289,7 +289,7 @@ fn playtime_label(vm: &CardVm) -> Div {
         .when(vm.playing, |d| {
             d.child(div().size(px(6.)).rounded_full().bg(theme::success()).with_animation(
                 ElementId::Name(format!("live-{}", vm.key).into()),
-                Animation::new(Duration::from_millis(1600)).repeat().with_easing(ease_in_out),
+                Animation::new(Duration::from_millis(1600)).repeat().with_max_fps(20.).with_easing(ease_in_out),
                 |el, t| el.opacity(0.4 + 0.6 * (1. - (2. * t - 1.).abs())),
             ))
         })

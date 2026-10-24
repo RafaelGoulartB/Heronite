@@ -27,6 +27,14 @@ impl State {
     }
 }
 
+impl State {
+    /// Drops the viewer (it holds up to 32 MiB of lines): the section was left
+    /// or the page hidden. Shown again, it reads the logs from the start.
+    pub fn release(&mut self) {
+        self.viewer = None;
+    }
+}
+
 /// Where the viewer starts: `HERONITE_DEBUG_LOG` or the newest log.
 fn start() -> Start {
     match crate::env::value("HERONITE_DEBUG_LOG").as_deref() {
