@@ -75,7 +75,7 @@ fn prefs_and_store_on_disk() {
     p.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.tabs[0].layout, Layout::Cinema);
 
-    let mut mine = presets::retro();
+    let mut mine = presets::handheld();
     mine.name = "Meu Tema Ção".into();
     let saved = store::save(&paths, &mine).unwrap();
     assert_eq!(saved.id, "meu-tema-cao");

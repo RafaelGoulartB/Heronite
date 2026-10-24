@@ -103,38 +103,59 @@ pub const ACCENTS: [(&str, u32); 7] = [
     ("violet", 0xb9a4fb),
 ];
 
+/// Focus colour of a light theme for the `white` and `game` accents (white
+/// would not show on it).
+const LIGHT_FOCUS: u32 = 0x1f232a;
+
+/// The theme's background is a light colour: the console is drawn light
+/// (dark text, white panels, the art washed out).
+pub fn light() -> bool {
+    theme().colors.is_light()
+}
+
 /// The focus colour (the light pill, the ring around covers).
 pub fn focus() -> Rgba {
     let t = theme();
     let a = t.interface.accent.as_str();
+    let light = t.colors.is_light();
     if a == "game" {
         if let Some((r, g, b)) = *GAME_ACCENT.read().unwrap_or_else(|e| e.into_inner()) {
-            // Light enough for the dark focus text.
-            let lift = |c: u8| (f32::from(c) * 0.45 + 255. * 0.55) as u32;
+            // Light enough for the dark focus text (dark enough for white
+            // text on a light theme).
+            let (k, to) = if light { (0.55, 0.) } else { (0.45, 255.) };
+            let lift = |c: u8| (f32::from(c) * k + to * (1. - k)) as u32;
             return rgb(lift(r) << 16 | lift(g) << 8 | lift(b));
         }
     }
     if let Some(c) = hex(a) {
         return c;
     }
+    if light && matches!(a, "white" | "game") {
+        return rgb(LIGHT_FOCUS);
+    }
     rgb(ACCENTS.iter().find(|(n, _)| *n == a).map_or(0xeef2f7, |(_, c)| *c))
 }
 
-/// Text on the focus colour.
+/// Text on the focus colour (white on a light theme's dark focus).
 pub fn focus_text() -> Option<Rgba> {
-    hex(&theme().colors.focus_text)
+    let t = theme();
+    hex(&t.colors.focus_text)
+        .or_else(|| (t.colors.is_light() && matches!(t.interface.accent.as_str(), "white" | "game")).then(|| rgb(0xffffff)))
 }
 pub fn background() -> Option<Rgba> {
     hex(&theme().colors.background)
 }
 pub fn panel() -> Option<Rgba> {
-    hex(&theme().colors.panel)
+    let t = theme();
+    hex(&t.colors.panel).or_else(|| t.colors.is_light().then(|| rgb(0xffffff)))
 }
 pub fn text() -> Option<Rgba> {
-    hex(&theme().colors.text)
+    let t = theme();
+    hex(&t.colors.text).or_else(|| t.colors.is_light().then(|| rgb(0x15191f)))
 }
 pub fn muted() -> Option<Rgba> {
-    hex(&theme().colors.muted)
+    let t = theme();
+    hex(&t.colors.muted).or_else(|| t.colors.is_light().then(|| rgb(0x58606e)))
 }
 pub fn on() -> Option<Rgba> {
     hex(&theme().colors.on)
