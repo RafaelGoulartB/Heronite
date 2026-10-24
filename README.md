@@ -165,4 +165,4 @@ See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CODE-STYLE.md](docs/CODE-STYLE.md)
 
 Copyright (C) 2026 [Rafael Goulart](https://www.linkedin.com/in/rafael-goulartb/)
 
-Licensed under the [GNU General Public License v3.0](LICENSE). Heronite builds on the [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher), also GPL-3.0. Third-party components keep their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Licensed under the [GNU General Public License v3.0](LICENSE). Third-party components keep their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
