@@ -414,9 +414,24 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   `row_base` focus pills pop in on every press; covers lift with `motion::spring`; screens, pages, dialogs, the menu
   and panels (`kit::panel_in`, `kit::scrim`) fade / slide in with `motion::enter` (new id = replay). Only moving
   things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
-- Layout: top bar = `kit::wordmark` + LB/RB `kit::tabs` + `kit::clock`, content padded `u(46.)`, lists about `u(900.)`
+- Layout: top bar = the theme's tabs (`kit::tabs`) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
   wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
-- Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page) starts in console mode without saving it;
+- **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
+  machine options, `console-themes/` the saved ones): the shell (`collection/console/mod.rs`) reads
+  `console::look::theme()` every frame and never caches it. Tabs (`TabSpec`: name, layout, source) dispatch to
+  `collection/console/layouts/<layout>.rs` (`render_<l>`, `<l>_pad`, `<l>_hints`, a `Nav` in `TabNav`, a `SCRIM`);
+  covers come from `tile.rs` (shape, size, corners, focus style, badges, name), the background from `backdrop.rs`,
+  names / logos / facts from `hero.rs` (logos: `art.rs`), shelves and tab games from `sources.rs`; game pages
+  (`game/`: classic, hero, tabs, sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock) follow the theme too.
+  Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
+  mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
+  Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). A new option = a field in
+  `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
+  `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
+  no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
+- Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`) starts in console mode
+  without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
+  that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
   `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`).
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square

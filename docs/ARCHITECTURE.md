@@ -77,6 +77,9 @@ device when the last window closes (the app lives on in the tray); see its
   `journal` (each game's notes in `local_library/journal.json`: the moment
   they are about, placed on the timeline's days by the screenshots' rule in
   `timeline`, an optional screenshot or replay, and "where I left off"),
+  `console_theme` (console mode themes: the shareable JSON format with every option, read leniently so themes of
+  other versions load; built-in `presets`; `store` for saved themes, export and import; `ConsolePrefs` in
+  `console.json`), `console_art` (where console mode finds a game's logo),
   `replay_prefs` (Settings → Replay, `replay.json` in the app state: the
   switch, the options every game uses and the games that have it on or off on their own),
   `language`, `install_size` (size on disk of a game its store gives none for: ROM files, a bounded and cached folder walk), `field_names` (the library fields manager: renames, merges and

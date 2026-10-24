@@ -351,7 +351,7 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
                     r.desc
                         .clone()
                         .filter(|_| focused)
-                        .map(|d| div().text_size(u(13.)).line_height(u(18.)).text_color(Hsla { a: 0.7, ..label_color }).child(d)),
+                        .map(|d| div().text_size(u(13.)).line_height(u(18.)).line_clamp(2).text_ellipsis().text_color(Hsla { a: 0.7, ..label_color }).child(d)),
                 ),
         )
         .child(value)
