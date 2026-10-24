@@ -138,6 +138,7 @@ impl CollectionView {
             look::clear();
             console::themes::forget();
             self.console = ConsoleUi::default();
+            self.console_controls_ended(window, cx);
             self.dialog = None;
             self.dialog_sub = None;
             self.dialog_hook = None;
@@ -308,7 +309,10 @@ impl CollectionView {
     /// Routes one press.
     pub(super) fn console_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
         cx.notify();
-        self.console_controls_press(pad, cx);
+        // A press that only woke the idle screen goes no further.
+        if self.console_controls_press(pad, cx) {
+            return;
+        }
         if !matches!(pad, Pad::ScrollUp | Pad::ScrollDown) {
             motion::press();
         }
