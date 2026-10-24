@@ -38,6 +38,24 @@ fn hero_height(size: Size3) -> f32 {
     }
 }
 
+/// A soft shade with no edges behind the focused game's text (a blurred
+/// shadow of the background colour), so it reads over bright art without
+/// darkening the rest of the picture. A shadow is not drawn inside its
+/// element: the element is a line with no height and the shadow spreads
+/// from it.
+fn text_shade(hero_h: f32) -> Div {
+    let mut c = theme::console_bg();
+    c.a = if kit::light() { 0.6 } else { 0.62 };
+    let half = (hero_h - 50.).max(60.) / 2.;
+    div().absolute().top(u(20. + half)).left(u(-20.)).w(u(860.)).h(px(0.)).shadow(vec![BoxShadow {
+        color: c.into(),
+        offset: point(px(0.), px(0.)),
+        blur_radius: u(64.),
+        spread_radius: u(half),
+        inset: false,
+    }])
+}
+
 /// The tile at the end of a cut shelf: "View all" and how many games it has.
 fn more_tile(id: impl Into<ElementId>, focused: bool, total: usize, w: f32, h: f32) -> Div {
     let radius = u(look::tile_radius());
@@ -167,6 +185,7 @@ impl CollectionView {
             .flex()
             .flex_col()
             .size_full()
+            .child(text_shade(hero_h))
             .child(div().flex_none().h(u(hero_h)).px(u(SIDE)).pt(u(20.)).overflow_hidden().child(hero))
             .child(list.flex_1().min_h_0())
             .children(stats.flatten())

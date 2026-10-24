@@ -22,7 +22,7 @@ pub(super) const ART_FADE_MS: u64 = 520;
 /// How the screen shades the art so its text reads.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Scrim {
-    /// Dark from the left and the bottom (text on the left, covers below).
+    /// Dark from the left, the bottom and the top (text on the left, covers below).
     Classic,
     /// Lighter: the art shows most (Spotlight, Xbox).
     Spot,
@@ -59,7 +59,8 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         div().absolute().inset_0().bg(linear_gradient(angle, linear_color_stop(backing(from), 0.), linear_color_stop(backing(to), until)))
     };
     match scrim {
-        Scrim::Classic => vec![layer(90., 0.96, 0.35, 1.), layer(0., 0.98, 0., 0.75)],
+        // The top too, where the name and the overview sit over bright art.
+        Scrim::Classic => vec![layer(90., 0.96, 0.35, 1.), layer(0., 0.98, 0., 0.75), layer(180., 0.6, 0., 0.45)],
         Scrim::Spot => vec![layer(90., 0.88, 0.1, 0.7), layer(0., 0.92, 0., 0.5), layer(180., 0.6, 0., 0.25)],
         Scrim::Cinema => vec![layer(0., 0.97, 0., 0.62), layer(90., 0.55, 0., 0.5), layer(180., 0.45, 0., 0.16)],
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],
