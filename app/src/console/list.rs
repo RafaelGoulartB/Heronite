@@ -351,8 +351,8 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
                     div()
                         .text_size(u(13.))
                         .line_height(u(18.))
-                        .line_clamp(2)
-                        .text_ellipsis()
+                        // One line: a longer one ends in "…" instead of growing the row.
+                        .truncate()
                         .text_color(Hsla { a: 0.7, ..label_color })
                         .child(d)
                 })),

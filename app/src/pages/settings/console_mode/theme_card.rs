@@ -61,9 +61,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
                         d.child(div().flex_none().text_size(px(11.)).text_color(theme::accent()).child(tr!("edited")))
                     }),
             )
-            .child(
-                div().text_size(px(11.5)).line_height(px(15.)).text_color(theme::text_dim()).overflow_hidden().max_h(px(46.)).child(about),
-            );
+            .child(div().text_size(px(11.5)).line_height(px(15.)).text_color(theme::text_dim()).line_clamp(2).text_ellipsis().child(about));
         tiles = tiles.child(tile);
     }
 
