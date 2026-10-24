@@ -174,12 +174,18 @@ impl CollectionView {
                         linear_color_stop(fade, 1.),
                     ))),
             )
-            .child(close_button("grid-drawer-close").absolute().top(px(12.)).right(px(12.)).bg(theme::art_button_fill()).on_click(
-                cx.listener(|this, _, _, cx| {
-                    this.grid.drawer_closed = true;
-                    cx.notify();
-                }),
-            ))
+            .child(
+                close_button("grid-drawer-close")
+                    .absolute()
+                    .top(px(12.))
+                    .right(px(12.))
+                    .bg(theme::art_button_fill())
+                    .tooltip(crate::ui::tooltip(tr!("Close")))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.grid.drawer_closed = true;
+                        cx.notify();
+                    })),
+            )
             .child(
                 div()
                     .absolute()
@@ -273,7 +279,7 @@ fn number_tile(label: &'static str, value: SharedString) -> Div {
         .bg(theme::ink_a(0.05))
         .border_1()
         .border_color(theme::ink_a(0.08))
-        .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.52)).child(label))
+        .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.66)).child(label))
         .child(
             div()
                 .truncate()

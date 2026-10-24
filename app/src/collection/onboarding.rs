@@ -13,7 +13,8 @@ use heronite_data::onboarding::Onboarding;
 use super::CollectionView;
 use crate::dialogs::onboarding::{Action, OnboardingDialog, Step};
 use crate::icons::Icon;
-use crate::ui::tool_button;
+use crate::ui::{tool_button, tooltip};
+use heronite_i18n::tr;
 
 pub(super) struct OnboardingGlue {
     state: Onboarding,
@@ -137,7 +138,10 @@ impl CollectionView {
 
     /// The bulb next to the View button, until "Don't show again".
     pub(super) fn onboarding_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
-        (!self.onboarding.state.hidden)
-            .then(|| tool_button("btn-onboarding", Icon::Lightbulb, false).on_click(cx.listener(|this, _, _, cx| this.open_onboarding(cx))))
+        (!self.onboarding.state.hidden).then(|| {
+            tool_button("btn-onboarding", Icon::Lightbulb, false)
+                .tooltip(tooltip(tr!("Getting started")))
+                .on_click(cx.listener(|this, _, _, cx| this.open_onboarding(cx)))
+        })
     }
 }

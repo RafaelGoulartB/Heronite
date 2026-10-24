@@ -62,6 +62,7 @@ pub fn card(
     // Hover effects stay off while picking games (the tick says it all).
     let lift = s.hovered && s.pick.is_none() && look.hover == CoverHover::Lift;
     let glow = s.hovered && s.pick.is_none() && look.hover == CoverHover::Glow;
+    let halo = s.selected && !vm.playing && s.pick.is_none();
     let ring: Option<Rgba> = if vm.playing || s.pick == Some(true) {
         Some(theme::accent())
     } else if s.selected {
@@ -123,7 +124,20 @@ pub fn card(
                     .child(vm.title.clone()),
             )
             .into_any_element(),
-        None => div().size_full().into_any_element(),
+        // Still loading: a soft pulse where the cover goes.
+        None => {
+            let wait = div().size_full().bg(theme::ink_a(0.08));
+            if theme::animations() {
+                wait.with_animation(
+                    ElementId::Name(format!("cover-wait-{}", vm.key).into()),
+                    Animation::new(Duration::from_millis(1400)).repeat().with_max_fps(30.),
+                    |el, t| el.opacity(0.35 + 0.65 * (1. - (2. * t - 1.).abs())),
+                )
+                .into_any_element()
+            } else {
+                wait.into_any_element()
+            }
+        }
     };
 
     // Hover bar: slides up from translateY(100%) in 200ms.
@@ -208,6 +222,21 @@ pub fn card(
                         .border_2()
                         .border_color(color)
                 }))
+                // The selected card also gets a halo around its ring, to find it
+                // at a glance (keyboard, controller, across the room).
+                .when_some(ring.filter(|_| halo), |d, color| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .top(px(-5.))
+                            .left(px(-5.))
+                            .right(px(-5.))
+                            .bottom(px(-5.))
+                            .rounded(px(r + 5.))
+                            .border(px(3.))
+                            .border_color(Rgba { a: 0.14, ..color }),
+                    )
+                })
                 .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(r)).overflow_hidden().child(bar)))
                 .children(s.pick.map(tick_circle)),
         )

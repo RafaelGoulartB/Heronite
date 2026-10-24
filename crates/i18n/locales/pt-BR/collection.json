@@ -43,6 +43,8 @@
   "Could not update favourites: {err}": "Não foi possível atualizar os favoritos: {err}",
   "No status": "Sem status",
   "Your rating": "Sua avaliação",
+  "Other ways to install": "Outras formas de instalar",
+  "Show titles": "Mostrar títulos",
   "On Linux": "No Linux",
   "Save backup": "Backup de saves",
   "Today": "Hoje",

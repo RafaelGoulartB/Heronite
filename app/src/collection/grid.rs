@@ -132,6 +132,7 @@ impl CollectionView {
                 )
                 .child(
                     tool_button_base("grid-titles", titles)
+                        .tooltip(crate::ui::tooltip(tr!("Show titles")))
                         .w_auto()
                         .px(px(9.))
                         .text_size(px(13.))

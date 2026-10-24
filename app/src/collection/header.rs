@@ -217,26 +217,31 @@ impl CollectionView {
     fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let refreshing = self.refreshing;
         let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::tool_icon());
-        tool_button_base("hdr-refresh", false).on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx))).child(if refreshing {
-            refresh_icon
-                .with_animation("refresh-spin", Animation::new(Duration::from_secs(1)).repeat().with_max_fps(30.), |svg, t| {
-                    svg.with_transformation(Transformation::rotate(percentage(t)))
-                })
-                .into_any_element()
-        } else {
-            refresh_icon.into_any_element()
-        })
+        tool_button_base("hdr-refresh", false)
+            .tooltip(crate::ui::tooltip(tr!("Refresh library")))
+            .on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx)))
+            .child(if refreshing {
+                refresh_icon
+                    .with_animation("refresh-spin", Animation::new(Duration::from_secs(1)).repeat().with_max_fps(30.), |svg, t| {
+                        svg.with_transformation(Transformation::rotate(percentage(t)))
+                    })
+                    .into_any_element()
+            } else {
+                refresh_icon.into_any_element()
+            })
     }
 
     /// Closes the focus panel (deselects the game); only shown while it is
     /// open (the grid's drawer has its own).
     fn focus_close_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         (self.focus.is_some() && !self.ui.grid_view).then(|| {
-            tool_button("hdr-focus-close", Icon::Close, false).on_click(cx.listener(|this, _, _, cx| {
-                this.focus = None;
-                this.selected = None;
-                cx.notify();
-            }))
+            tool_button("hdr-focus-close", Icon::Close, false).tooltip(crate::ui::tooltip(tr!("Close"))).on_click(cx.listener(
+                |this, _, _, cx| {
+                    this.focus = None;
+                    this.selected = None;
+                    cx.notify();
+                },
+            ))
         })
     }
 
