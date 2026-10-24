@@ -427,7 +427,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
-  The built-in themes (`presets.rs`): Classic (the default), Minimal, and Cinema, Pulse and Series X, modelled on
+  The built-in themes (`presets.rs`): Classic (the default), Minimal, and Cinema and Pulse, modelled on
   other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
   before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side

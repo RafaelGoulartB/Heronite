@@ -113,19 +113,6 @@ pub fn pulse() -> ConsoleTheme {
     })
 }
 
-/// A row of square tiles over the game's art (the newest one wide, groups
-/// below), a green focus and the system font.
-pub fn series() -> ConsoleTheme {
-    from_classic("series", n_!("Series X"), n_!("A row of tiles over the game's art, the newest one wide, groups below."), |t| {
-        t.tabs = vec![TabSpec::new(n_!("Home"), Layout::Xbox, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
-        t.tiles.corners = Corners::Soft;
-        t.tiles.shape = TileShape::Square;
-        t.interface.accent = "green".into();
-        t.interface.font = ConsoleFont::System;
-        t.layouts.grid_panel = GridPanel::Right;
-    })
-}
-
 /// Only covers: a carousel over the blurred cover, no hints or badges.
 pub fn minimal() -> ConsoleTheme {
     from_classic("minimal", n_!("Minimal"), n_!("Only the covers: a carousel, no hints, no badges."), |t| {
@@ -142,7 +129,7 @@ pub fn minimal() -> ConsoleTheme {
 
 /// Every built-in theme, Classic first.
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![classic(), minimal(), cinema(), pulse(), series()]
+    vec![classic(), minimal(), cinema(), pulse()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {

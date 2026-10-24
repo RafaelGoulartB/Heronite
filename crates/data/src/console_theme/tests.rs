@@ -88,7 +88,7 @@ fn prefs_and_store_on_disk() {
     assert_eq!(imported.name, "Meu Tema Ção");
     store::delete(&paths, &saved.id).unwrap();
     assert!(store::find(&paths, "meu-tema-cao").is_none());
-    assert!(store::find(&paths, "series").is_some());
+    assert!(store::find(&paths, "pulse").is_some());
 }
 
 #[test]
