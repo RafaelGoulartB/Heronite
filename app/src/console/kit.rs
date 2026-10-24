@@ -644,11 +644,11 @@ pub fn tab_title(name: &str, ic: Icon, more: bool, spaced: bool) -> Div {
         .gap(u(18.))
         .when(more, |d| d.child(glyph(Btn::LB)))
         .child(
-            div().flex().items_center().gap(u(12.)).child(icon(ic, u(26.), theme::text_primary())).child(
+            div().flex().items_center().gap(u(10.)).child(icon(ic, u(20.), theme::text_primary())).child(
                 div()
                     .font_family(heading_font())
                     .font_weight(theme::W_BOLD)
-                    .text_size(u(28.))
+                    .text_size(u(20.))
                     .text_color(theme::text_primary())
                     .whitespace_nowrap()
                     .child(text),

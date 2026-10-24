@@ -33,6 +33,9 @@ const SCROLL: SpringConfig = SpringConfig::new(380., 39., 1.);
 pub const LIFT: SpringConfig = SpringConfig::new(520., 36., 1.);
 /// Fades between focused / unfocused states.
 pub const SOFT: SpringConfig = SpringConfig::new(300., 34.6, 1.);
+/// Slower and critically damped (~300 ms, no overshoot): sizes that change
+/// as the focus moves along a row.
+pub const GENTLE: SpringConfig = SpringConfig::new(170., 26.1, 1.);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Axis {

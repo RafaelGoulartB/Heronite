@@ -34,15 +34,23 @@ const PAD: f32 = 10.;
 /// The window heights (design px) that have room for the cards and the overview.
 const CARDS_FROM: f32 = 700.;
 const OVERVIEW_FROM: f32 = 760.;
-/// Size of the row's icons and of the focused one, by the theme's cover size.
-fn icon_sizes() -> (f32, f32) {
-    let k = match look::theme().tiles.size {
+/// Width and height of the row's icons and of the focused one, by the
+/// theme's cover size and shape (a portrait cover keeps the app's cover
+/// proportions, so nothing of it is cut).
+fn icon_sizes(cover_aspect: f32) -> ((f32, f32), (f32, f32)) {
+    let t = look::theme();
+    let k = match t.tiles.size {
         TileSize::Small => 0.85,
         TileSize::Medium => 1.,
         TileSize::Large => 1.2,
         TileSize::Huge => 1.4,
     };
-    (ICON * k, ICON_ON * k)
+    let dims = |side: f32| match t.tiles.shape {
+        TileShape::Square => (side, side),
+        TileShape::Portrait => (side * 0.8, side * 0.8 * cover_aspect),
+        TileShape::Landscape => (side * 1.6, side * 1.6 * 9. / 16.),
+    };
+    (dims(ICON * k), dims(ICON_ON * k))
 }
 
 /// Buttons: Play, Status, Favourite, More (or Play and More).
@@ -155,19 +163,19 @@ fn wide_button(focused: bool, ic: Icon, label: SharedString) -> Div {
 }
 
 /// The "All games" icon.
-fn all_tile(size: f32, ring: bool) -> Div {
+fn all_tile(w: f32, h: f32, ring: bool) -> Div {
     div()
         .relative()
         .flex_none()
         .flex()
         .items_center()
         .justify_center()
-        .w(u(size))
-        .h(u(size))
+        .w(u(w))
+        .h(u(h))
         .rounded(u(look::tile_radius()))
         .bg(kit::ink(0.1))
         .when(ring, |d| d.border_3().border_color(theme::console_focus()).shadow(kit::shadow(0.6, 8., 24.)))
-        .child(crate::ui::icon(Icon::GridView, u(size * 0.4), theme::text_primary()))
+        .child(crate::ui::icon(Icon::GridView, u(w.min(h) * 0.4), theme::text_primary()))
 }
 
 impl CollectionView {
@@ -282,8 +290,9 @@ impl CollectionView {
         let game_key = found.get(index).cloned();
         self.console_focus_game(Some(game_key.clone().unwrap_or_else(|| found[0].clone())), cx);
 
-        let (icon, icon_on) = icon_sizes();
-        let step = f32::from(u(icon + GAP));
+        let (icon, icon_on) = icon_sizes(self.cover_aspect);
+        let shape = look::theme().tiles.shape;
+        let step = f32::from(u(icon.0 + GAP));
         let per_row = (f32::from(window.viewport_size().width) / step).ceil() as usize + 1;
         let first = (-f32::from(glide.handle().offset().x) / step).floor().max(0.) as usize;
         let ring = zone == Zone::Row;
@@ -299,11 +308,11 @@ impl CollectionView {
             .track_scroll(glide.handle());
         for j in 0..=n {
             let on = j == index;
-            let size = if on { icon_on } else { icon };
+            let (w, h) = if on { icon_on } else { icon };
             let visible = (first..=first + per_row).contains(&j) || j.abs_diff(index) <= 2;
             let tile = match found.get(j) {
-                Some(key) => self.console_tile_shaped(key, TileShape::Square, size, size, on && ring, visible, window),
-                None => all_tile(size, on && ring),
+                Some(key) => self.console_tile_shaped(key, shape, w, h, on && ring, visible, window),
+                None => all_tile(w, h, on && ring),
             };
             // The focused icon keeps a thin ring while the focus is below.
             let tile =
@@ -317,8 +326,8 @@ impl CollectionView {
                 motion::enter_from(
                     id,
                     div().relative().flex_none().max_w(u(320.)).truncate().text_size(u(19.)).font_weight(theme::W_BOLD).child(text),
-                    220,
-                    12.,
+                    320,
+                    8.,
                     0.,
                     0.,
                 )
@@ -327,11 +336,11 @@ impl CollectionView {
             let grow = motion::spring(
                 ("spot-icon", j),
                 div().flex().items_center().justify_center().child(tile),
-                motion::SOFT,
+                motion::GENTLE,
                 on,
                 move |d, t| {
-                    let s = u(icon + (icon_on - icon) * t.clamp(0., 1.));
-                    d.w(s).h(s)
+                    let t = t.clamp(0., 1.);
+                    d.w(u(icon.0 + (icon_on.0 - icon.0) * t)).h(u(icon.1 + (icon_on.1 - icon.1) * t))
                 },
             );
             row = row.child(div().flex_none().flex().items_center().gap(u(10.)).child(grow).children(name));

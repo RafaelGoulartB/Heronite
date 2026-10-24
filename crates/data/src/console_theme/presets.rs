@@ -111,7 +111,6 @@ pub fn pulse() -> ConsoleTheme {
         t.hero.overview = false;
         t.hero.size = Size3::Large;
         t.tiles.size = TileSize::Large;
-        t.tiles.shape = TileShape::Square;
         t.tiles.corners = Corners::Soft;
         t.interface.tab_bar = TabBar::Names;
         t.interface.font = ConsoleFont::System;
@@ -141,7 +140,6 @@ pub fn storefront() -> ConsoleTheme {
             t.tiles.shape = TileShape::Square;
             t.tiles.corners = Corners::Square;
             t.tiles.titles = TileTitles::Bar;
-            t.tiles.badges = Badges::All;
             t.interface.headings = Headings::Spaced;
             t.interface.tab_bar = TabBar::Title;
             t.interface.font = ConsoleFont::Cabin;
