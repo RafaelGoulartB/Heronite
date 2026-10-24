@@ -39,6 +39,19 @@ fn ink(a: f32) -> Rgba {
     c
 }
 
+/// The even wash a light theme puts over the art under each shading (the
+/// background colour at this alpha), so dark text reads anywhere on it; the
+/// shading then adds more where the text sits.
+fn light_wash(scrim: Scrim) -> f32 {
+    match scrim {
+        Scrim::Classic => 0.6,
+        Scrim::Spot => 0.5,
+        Scrim::Cinema => 0.62,
+        Scrim::Full => 0.68,
+        Scrim::Page => 0.,
+    }
+}
+
 fn scrim_layers(scrim: Scrim) -> Vec<Div> {
     let layer = |angle: f32, from: f32, to: f32, until: f32| {
         div().absolute().inset_0().bg(linear_gradient(angle, linear_color_stop(ink(from), 0.), linear_color_stop(ink(to), until)))
@@ -194,6 +207,10 @@ impl CollectionView {
             layer = layer.children(art_prev.map(art_img)).children(current);
         }
         let dim = f32::from(theme.background.dim) / 100.;
-        layer.when(dim > 0., |d| d.child(div().absolute().inset_0().bg(ink(dim)))).children(scrim_layers(scrim))
+        let wash = if look::light() { light_wash(scrim) } else { 0. };
+        layer
+            .when(dim > 0., |d| d.child(div().absolute().inset_0().bg(ink(dim))))
+            .when(wash > 0., |d| d.child(div().absolute().inset_0().bg(ink(wash))))
+            .children(scrim_layers(scrim))
     }
 }

@@ -324,7 +324,7 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
             .h(u(40.))
             .rounded(u(8.))
             .overflow_hidden()
-            .bg(theme::white_a(0.06))
+            .bg(kit::ink(0.06))
             .child(img(path.clone()).size_full().object_fit(ObjectFit::Cover))
             .into_any_element(),
         None => value,

@@ -51,9 +51,99 @@ pub fn u(v: f32) -> Pixels {
     px(v * scale())
 }
 
+/// A light console theme is on (dark text over washed-out art): the surfaces
+/// and tints below flip their ink.
+pub fn light() -> bool {
+    super::look::light()
+}
+
+/// Ink of the console at alpha `a`: white on a dark console, near black on a
+/// light one. Faint fills, borders, dividers and idle text of the surfaces;
+/// what sits on a picture with its own dark gradient keeps `white()`.
+pub fn ink(a: f32) -> Hsla {
+    if light() {
+        theme::rgba_hsla(0x15, 0x19, 0x1f, a)
+    } else {
+        theme::white_a(a)
+    }
+}
+
+/// Text a step above the primary one on a picture or tile that is washed
+/// like the console (white on a dark console, the text colour on a light one).
+pub fn strong() -> Hsla {
+    if light() {
+        theme::text_primary().into()
+    } else {
+        white()
+    }
+}
+
+/// Text on a fill of colour `bg` (a badge, the On pill): the focus text, or
+/// near-black when the console is light and `bg` is too bright for white.
+pub fn on_fill(bg: Rgba) -> Rgba {
+    if light() && 0.2126 * bg.r + 0.7152 * bg.g + 0.0722 * bg.b > 0.6 {
+        rgb(0x15191f)
+    } else {
+        theme::console_on_focus()
+    }
+}
+
+/// A status or score colour as text or icon on the console: darkened on a
+/// light one, where the pale colours would vanish.
+pub fn tint(c: Rgba) -> Rgba {
+    if light() {
+        motion::mix(c, rgb(0x15191f), 0.4)
+    } else {
+        c
+    }
+}
+
+/// A backing behind small controls (the hint bar, keys): black at `a` on a
+/// dark console, white on a light one.
+pub fn shade(a: f32) -> Hsla {
+    if light() {
+        theme::white_a((a * 1.6).min(1.))
+    } else {
+        theme::black_a(a)
+    }
+}
+
+/// A recess in a panel (a text field, a picture's backing): black at `a` on
+/// a dark console, a faint ink on a light one.
+pub fn well(a: f32) -> Hsla {
+    if light() {
+        ink(a * 0.2)
+    } else {
+        theme::black_a(a)
+    }
+}
+
+/// A dim over content (behind modals and menus): black at `a` on a dark
+/// console, the background colour (a wash) on a light one.
+pub fn dim(a: f32) -> Hsla {
+    if light() {
+        veil(a * 0.8)
+    } else {
+        theme::black_a(a)
+    }
+}
+
+/// The console's background colour at alpha `a` on a light console, washing
+/// out what is behind it; `black_a` on a dark one.
+pub fn veil(a: f32) -> Hsla {
+    if light() {
+        let mut c = theme::console_bg();
+        c.a = a;
+        c.into()
+    } else {
+        theme::black_a(a)
+    }
+}
+
 /// Soft drop shadow (`y` and `blur` in design px).
 pub fn shadow(alpha: f32, y: f32, blur: f32) -> Vec<BoxShadow> {
-    vec![BoxShadow { color: theme::black_a(alpha), offset: point(px(0.), u(y)), blur_radius: u(blur), spread_radius: px(0.), inset: false }]
+    let color = if light() { ink(alpha * 0.4) } else { theme::black_a(alpha) };
+    vec![BoxShadow { color, offset: point(px(0.), u(y)), blur_radius: u(blur), spread_radius: px(0.), inset: false }]
 }
 
 /// Letter-spaced small caps title ("HERONITE", "SETTINGS").
@@ -188,7 +278,7 @@ fn round_button() -> Div {
 fn letter_button(text: &str, f: Face, style: Glyphs) -> Div {
     let (bg, fg): (Hsla, Hsla) = match style {
         Glyphs::Nintendo => (rgb(0xe3e6ea).into(), rgb(0x1a1d23).into()),
-        Glyphs::Deck => (theme::white_a(0.22), theme::text_primary().into()),
+        Glyphs::Deck => (ink(0.2), theme::text_primary().into()),
         _ => (
             match f {
                 Face::South => theme::console_btn_a(),
@@ -217,8 +307,9 @@ fn shape_color(f: Face) -> Rgba {
 /// and the fallback draws emoji.
 fn shape_button(f: Face) -> Div {
     let color: Hsla = shape_color(f).into();
+    // The symbols are light: on a dark disc when the console is light.
     round_button()
-        .bg(theme::white_a(0.16))
+        .bg(if light() { ink(0.82) } else { theme::white_a(0.16) })
         .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint_shape(bounds, f, color, window)).absolute().inset_0())
 }
 
@@ -289,7 +380,7 @@ fn key_cap(label: &str) -> Div {
         .min_w(u(26.))
         .px(u(5.))
         .rounded(u(5.))
-        .bg(theme::white_a(0.16))
+        .bg(ink(0.16))
         .text_size(u(10.))
         .font_weight(theme::W_BOLD)
         .text_color(theme::text_primary())
@@ -298,7 +389,7 @@ fn key_cap(label: &str) -> Div {
 
 /// A dark keycap holding an icon.
 fn arrow_cap(ic: Icon) -> Div {
-    div().flex().flex_none().items_center().justify_center().h(u(22.)).min_w(u(26.)).rounded(u(5.)).bg(theme::white_a(0.16)).child(icon(
+    div().flex().flex_none().items_center().justify_center().h(u(22.)).min_w(u(26.)).rounded(u(5.)).bg(ink(0.16)).child(icon(
         ic,
         u(16.),
         theme::text_primary(),
@@ -307,17 +398,8 @@ fn arrow_cap(ic: Icon) -> Div {
 
 /// Footer with the button hints of the current screen.
 pub fn hint_bar(hints: &[Hint]) -> Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(u(26.))
-        .h(u(60.))
-        .px(u(46.))
-        .border_t_1()
-        .border_color(theme::white_a(0.08))
-        .bg(theme::black_a(0.35))
-        .children(hints.iter().map(|h| {
+    div().flex().flex_none().items_center().gap(u(26.)).h(u(60.)).px(u(46.)).border_t_1().border_color(ink(0.08)).bg(shade(0.35)).children(
+        hints.iter().map(|h| {
             div()
                 .flex()
                 .items_center()
@@ -326,7 +408,8 @@ pub fn hint_bar(hints: &[Hint]) -> Div {
                 .text_color(theme::text_muted())
                 .child(glyph(h.btn))
                 .child(h.label.clone())
-        }))
+        }),
+    )
 }
 
 /// The light focus pill behind a row. It pops in (grows from a little
@@ -395,13 +478,21 @@ pub fn toggle_pill(on: bool, focused: bool) -> Div {
         .font_weight(theme::W_BOLD);
     if on {
         d.bg(theme::console_on())
-            .text_color(theme::console_on_focus())
+            .text_color(on_fill(theme::console_on()))
             .when(focused, |d| d.border_2().border_color(theme::console_on_focus()))
             .child(tr!("On"))
     } else {
-        d.bg(if focused { theme::black_a(0.12) } else { theme::white_a(0.1) })
-            .text_color(if focused { theme::console_on_focus() } else { theme::text_muted() })
-            .child(tr!("Off"))
+        d.bg(if focused {
+            if light() {
+                theme::white_a(0.16)
+            } else {
+                theme::black_a(0.12)
+            }
+        } else {
+            ink(0.1)
+        })
+        .text_color(if focused { theme::console_on_focus() } else { theme::text_muted() })
+        .child(tr!("Off"))
     }
 }
 
@@ -453,7 +544,7 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
                 d.child(
                     div()
                         .text_size(u(17.))
-                        .text_color(motion::mix(theme::text_muted(), white(), k))
+                        .text_color(motion::mix(theme::text_muted(), strong(), k))
                         .font_weight(if on { theme::W_BOLD } else { theme::W_REGULAR })
                         .whitespace_nowrap()
                         .child(label),
@@ -506,7 +597,7 @@ pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
         .h(u(56.))
         .px(u(46.))
         .border_t_1()
-        .border_color(theme::white_a(0.08))
+        .border_color(ink(0.08))
         .child(glyph(Btn::LB))
         .children(items.iter().enumerate().map(|(i, (name, ic))| {
             let on = i == active;
@@ -580,13 +671,13 @@ pub fn badge(text: impl Into<SharedString>, color: Rgba) -> Div {
         .bg(c)
         .text_size(u(12.))
         .font_weight(theme::W_BOLD)
-        .text_color(theme::console_on_focus())
+        .text_color(on_fill(color))
         .child(text.into())
 }
 
 /// Full-window dim behind an overlay (fades in).
 pub fn scrim() -> AnyElement {
-    motion::fade_in("scrim", div().absolute().inset_0().bg(theme::black_a(0.62)), 180)
+    motion::fade_in("scrim", div().absolute().inset_0().bg(dim(0.62)), 180)
 }
 
 /// A centred panel's entrance: fades in while rising into place.
@@ -624,7 +715,7 @@ pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElemen
                 .rounded(u(24.))
                 .bg(theme::console_sidebar())
                 .border_1()
-                .border_color(theme::white_a(0.1))
+                .border_color(ink(0.1))
                 .shadow(shadow(0.5, 18., 48.))
                 .child(title(heading, 26.))
                 .child(div().flex().flex_col().flex_1().min_h_0().gap(u(14.)).child(body)),

@@ -193,10 +193,15 @@ impl CollectionView {
                     .font_family(kit::heading_font())
                     .font_weight(theme::W_BOLD)
                     .text_size(u(72.))
-                    .text_color(theme::text_primary())
+                    .text_color(if kit::light() { white() } else { theme::text_primary().into() })
                     .children(look::clock_text(chrono::Local::now())),
             )
-            .child(div().text_size(u(18.)).text_color(theme::text_muted()).child(title))
+            .child(
+                div()
+                    .text_size(u(18.))
+                    .text_color(if kit::light() { theme::white_a(0.7) } else { theme::text_muted().into() })
+                    .child(title),
+            )
     }
 }
 

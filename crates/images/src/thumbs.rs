@@ -49,6 +49,7 @@ pub fn thumb_key(identity: &str, variant: Variant, tw: u32, th: u32, opts: &Opts
     match variant {
         Variant::Cover => h.update([0u8]),
         Variant::Fit => h.update([4u8]),
+        Variant::FitInk => h.update([5u8]),
         Variant::Stage { blur_px, saturation } => {
             h.update([1u8]);
             h.update(blur_px.to_bits().to_le_bytes());

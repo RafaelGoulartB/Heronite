@@ -69,9 +69,10 @@ fn to_chain(sources: &[LogoSource]) -> Vec<ImageRef> {
         .collect()
 }
 
-/// Texture id of a logo at a physical size (one texture per size).
-fn logo_id(key: &SharedString, pw: u32, ph: u32) -> SharedString {
-    format!("l:{key}:{pw}x{ph}").into()
+/// Texture id of a logo at a physical size (one texture per size; the inked
+/// one apart).
+fn logo_id(key: &SharedString, pw: u32, ph: u32, ink: bool) -> SharedString {
+    format!("l:{key}:{pw}x{ph}{}", if ink { ":ink" } else { "" }).into()
 }
 
 impl CollectionView {
@@ -80,8 +81,10 @@ impl CollectionView {
     /// game has none (callers then show the name as text). The image keeps
     /// the logo's aspect ratio, so it is usually smaller than the box: draw
     /// it with `ObjectFit::Contain` in a box of that size, or let the `img`
-    /// take its own size.
-    pub(super) fn console_logo(&mut self, key: &SharedString, w: f32, h: f32, window: &Window) -> Option<ImageSource> {
+    /// take its own size. `on_art`: it sits over a picture with its own dark
+    /// gradient, so it keeps its light colours; else, on a light console
+    /// theme, its white parts are inked dark (they would vanish).
+    pub(super) fn console_logo(&mut self, key: &SharedString, w: f32, h: f32, on_art: bool, window: &Window) -> Option<ImageSource> {
         let game = self.lib.as_ref()?.get(key)?.clone();
         let shots = self.lib.as_ref().and_then(|l| Some(&l.settings.screenshots.folder).filter(|f| !f.is_empty())).map(PathBuf::from);
         let paths = &self.data_paths;
@@ -94,8 +97,10 @@ impl CollectionView {
         }
         let px = kit::scale() * window.scale_factor();
         let (pw, ph) = ((w * px).round().max(1.) as u32, (h * px).round().max(1.) as u32);
-        let id = logo_id(key, pw, ph);
-        self.images.get_or_request(&id, || chain.to_vec(), pw, ph, Variant::Fit, LOGO_PRIORITY).map(ImageSource::Render)
+        let ink = !on_art && kit::light();
+        let id = logo_id(key, pw, ph, ink);
+        let variant = if ink { Variant::FitInk } else { Variant::Fit };
+        self.images.get_or_request(&id, || chain.to_vec(), pw, ph, variant, LOGO_PRIORITY).map(ImageSource::Render)
     }
 }
 
@@ -174,7 +179,8 @@ mod tests {
     #[test]
     fn logo_ids_follow_the_size() {
         let key: SharedString = "epic_Abc".into();
-        assert_eq!(logo_id(&key, 400, 120), "l:epic_Abc:400x120");
-        assert_ne!(logo_id(&key, 400, 120), logo_id(&key, 800, 240));
+        assert_eq!(logo_id(&key, 400, 120, false), "l:epic_Abc:400x120");
+        assert_eq!(logo_id(&key, 400, 120, true), "l:epic_Abc:400x120:ink");
+        assert_ne!(logo_id(&key, 400, 120, false), logo_id(&key, 800, 240, false));
     }
 }

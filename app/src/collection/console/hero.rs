@@ -81,7 +81,7 @@ fn outlined(text: impl Into<SharedString>, size: f32) -> Div {
         .py(u(2.))
         .rounded(u(4.))
         .border_1()
-        .border_color(theme::ink_a(0.55))
+        .border_color(kit::ink(0.55))
         .text_size(u(size))
         .text_color(theme::text_primary())
         .whitespace_nowrap()
@@ -186,7 +186,7 @@ impl CollectionView {
                 .whitespace_nowrap();
             for (i, t) in g.details.genres.iter().take(3).enumerate() {
                 if i > 0 {
-                    line = line.child(div().w(px(1.5)).h(u(20.)).bg(theme::ink_a(0.45)));
+                    line = line.child(div().w(px(1.5)).h(u(20.)).bg(kit::ink(0.45)));
                 }
                 line = line.child(t.clone());
             }
@@ -234,7 +234,12 @@ impl CollectionView {
             .text_color(theme::text_primary())
             .whitespace_nowrap()
             .children(lines.into_iter().map(|(ic, text, colour)| {
-                div().flex().items_center().gap(u(12.)).child(icon(ic, u(18.), colour.unwrap_or_else(theme::text_muted))).child(text)
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(u(12.))
+                    .child(icon(ic, u(18.), colour.map_or_else(theme::text_muted, kit::tint)))
+                    .child(text)
             }));
         // Slides in from the edge when the game changes.
         motion::enter_from(SharedString::from(format!("hero-stats-{}", g.key)), panel, 280, 16., 0., 0.3)
@@ -250,7 +255,7 @@ impl CollectionView {
     pub(super) fn console_name(&mut self, g: &CollectionGame, size: HeroSize, window: &Window) -> AnyElement {
         if look::theme().hero.title == HeroTitle::Logo {
             let key = SharedString::from(g.key.clone());
-            if let Some(src) = self.console_logo(&key, size.logo.0, size.logo.1, window) {
+            if let Some(src) = self.console_logo(&key, size.logo.0, size.logo.1, false, window) {
                 return logo_element(src, size.logo.0, size.logo.1, window);
             }
         }

@@ -203,7 +203,8 @@ impl CollectionView {
         }
         let g = self.lib.as_ref()?.get(key)?.clone();
         let tag = self.wheel_tag(&g);
-        let logo = (look::theme().layouts.wheel_items == WheelItems::Logo).then(|| self.console_logo(key, 200., 34., window)).flatten();
+        let logo =
+            (look::theme().layouts.wheel_items == WheelItems::Logo).then(|| self.console_logo(key, 200., 34., focused, window)).flatten();
         let what = match logo {
             Some(src) => div()
                 .flex_1()
@@ -228,7 +229,7 @@ impl CollectionView {
                             .h(u(42.))
                             .rounded(u(4.))
                             .overflow_hidden()
-                            .bg(theme::white_a(0.1))
+                            .bg(kit::ink(0.1))
                             .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
                     )
                     .child(
@@ -247,7 +248,15 @@ impl CollectionView {
             div()
                 .flex_none()
                 .text_size(u(12.))
-                .text_color(if focused { theme::black_a(0.55) } else { theme::text_dim().into() })
+                .text_color(if focused {
+                    if kit::light() {
+                        Hsla { a: 0.65, ..theme::console_on_focus().into() }
+                    } else {
+                        theme::black_a(0.55)
+                    }
+                } else {
+                    theme::text_dim().into()
+                })
                 .child(tag),
         );
         Some(
@@ -271,7 +280,7 @@ impl CollectionView {
         let key = SharedString::from(g.key.clone());
         let art_h = (w * 9. / 16.).min(vh - 76. - HEAD - 230.).max(120.).round();
         let art = self.console_wide_art(&key, w, art_h, 200, window);
-        let logo = self.console_logo(&key, w * 0.55, art_h * 0.34, window);
+        let logo = self.console_logo(&key, w * 0.55, art_h * 0.34, true, window);
         let no_logo = logo.is_none();
         let dash = || "\u{2014}".to_string();
         let status = self
@@ -305,7 +314,7 @@ impl CollectionView {
                     .child(fact_cell(
                         tr!("Status"),
                         match status {
-                            Some((label, colour)) => value(label).text_color(colour),
+                            Some((label, colour)) => value(label).text_color(kit::tint(colour)),
                             None => value(dash()),
                         },
                     ))
@@ -320,8 +329,8 @@ impl CollectionView {
             .rounded(u(16.))
             .overflow_hidden()
             .border_1()
-            .border_color(theme::white_a(0.08))
-            .bg(theme::white_a(0.07))
+            .border_color(kit::ink(0.08))
+            .bg(kit::ink(0.07))
             .shadow(kit::shadow(0.55, 18., 44.))
             .children(art.map(|s| img(s).size_full().object_fit(ObjectFit::Cover)))
             .child(div().absolute().inset_0().bg(linear_gradient(

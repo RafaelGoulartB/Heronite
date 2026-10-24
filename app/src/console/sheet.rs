@@ -93,7 +93,7 @@ impl Render for Sheet {
                     .rounded(u(24.))
                     .bg(theme::console_sidebar())
                     .border_1()
-                    .border_color(theme::white_a(0.1))
+                    .border_color(kit::ink(0.1))
                     .child(kit::title(self.title.clone(), 26.))
                     .children(self.message.clone().map(kit::body_text))
                     .shadow(kit::shadow(0.5, 18., 48.))

@@ -112,6 +112,10 @@ pub enum Variant {
     /// crop, no blur) and never enlarged: a logo. The result is smaller than
     /// the target unless the image fills it on one axis.
     Fit,
+    /// [`Variant::Fit`] with the light, colourless parts of the image (the
+    /// white of a logo) turned to a near-black ink: a logo on a light
+    /// surface, where white would vanish.
+    FitInk,
     /// Full-window background: cover + `blur(blur_px) saturate(saturation)`.
     Stage { blur_px: f32, saturation: f32 },
     /// Same as `Stage` but cached separately; meant for a stronger blur.
@@ -128,12 +132,16 @@ impl std::hash::Hash for Variant {
         match *self {
             Variant::Cover => 0u8.hash(h),
             Variant::Fit => 4u8.hash(h),
+            Variant::FitInk => 5u8.hash(h),
             Variant::Stage { blur_px, saturation } => (1u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Glass { blur_px, saturation } => (2u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Backdrop { blur_px, saturation } => (3u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
         }
     }
 }
+
+/// Ink the light parts of a [`Variant::FitInk`] image turn to (RGB).
+pub const LOGO_INK: (u8, u8, u8) = (0x15, 0x19, 0x1f);
 
 /// Pipeline configuration. Cheap to clone.
 #[derive(Debug, Clone)]
@@ -288,10 +296,13 @@ fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> 
         ImageRef::Find { .. } => fetch::read_file(&cand.local_path().ok_or_else(|| ImageError::Io(format!("{cand:?}: not found")))?)?,
     };
     match variant {
-        Variant::Fit => {
+        Variant::Fit | Variant::FitInk => {
             let raster = decode::decode(&bytes, tw, th, opts.jpeg_scaled_decode)?;
             drop(bytes);
             let (w, h, mut px) = resize::fit_to_rgba(raster, tw, th, opts.filter)?;
+            if variant == Variant::FitInk {
+                fx::ink_light_parts(&mut px, LOGO_INK);
+            }
             fx::swap_rb(&mut px);
             Ok(Decoded { width: w, height: h, bgra: px })
         }

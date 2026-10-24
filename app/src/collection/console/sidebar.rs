@@ -258,7 +258,7 @@ impl CollectionView {
         }
         for (i, item) in items.iter().enumerate() {
             if *item == Item::Separator {
-                list = list.child(if rail { div().h(u(16.)) } else { div().my(u(10.)).mx(u(18.)).h(px(1.)).bg(theme::white_a(0.1)) });
+                list = list.child(if rail { div().h(u(16.)) } else { div().my(u(10.)).mx(u(18.)).h(px(1.)).bg(kit::ink(0.1)) });
                 continue;
             }
             let on = focused == Some(i);
@@ -266,7 +266,7 @@ impl CollectionView {
             let fg: Hsla = if on {
                 theme::console_on_focus().into()
             } else if current && !rail {
-                white()
+                kit::strong()
             } else {
                 theme::text_primary().into()
             };
@@ -322,7 +322,7 @@ impl CollectionView {
             .px(u(16.))
             .pt(u(36.))
             .bg(theme::console_sidebar())
-            .border_color(theme::white_a(0.08))
+            .border_color(kit::ink(0.08))
             .shadow(kit::shadow(0.5, 0., 40.))
             .child(list);
         let panel = if right { panel.right_0().border_l_1() } else { panel.left_0().border_r_1() };
@@ -343,7 +343,7 @@ impl CollectionView {
         let right = side == Side::Right;
         let list = self.menu_list(items, focused, true, &downloads).w(u(PANEL_W - 32.)).flex_none();
         let edge = if right { 270. } else { 90. };
-        let panel = div().absolute().top_0().bottom_0().flex().flex_col().pt(u(28.)).overflow_hidden().border_color(theme::white_a(0.08));
+        let panel = div().absolute().top_0().bottom_0().flex().flex_col().pt(u(28.)).overflow_hidden().border_color(kit::ink(0.08));
         let panel = if right { panel.right_0().border_l_1() } else { panel.left_0().border_r_1() };
         let panel = motion::spring("console-rail", panel, motion::SOFT, open, move |d, t| {
             let fade = |c: Hsla, a: f32| Hsla { a: c.a * a, ..c };
@@ -352,14 +352,12 @@ impl CollectionView {
                 .w(u(RAIL_W + (PANEL_W - RAIL_W) * t))
                 .px(u(16. * t))
                 .bg(fade(theme::console_sidebar().into(), t))
-                .border_color(fade(theme::white_a(0.08), t))
+                .border_color(fade(kit::ink(0.08), t))
                 .shadow(kit::shadow(0.5 * t, 0., 40.));
-            let shade =
-                linear_gradient(edge, linear_color_stop(theme::black_a(0.4 * (1. - t)), 0.), linear_color_stop(theme::black_a(0.), 1.));
+            let shade = linear_gradient(edge, linear_color_stop(kit::dim(0.4 * (1. - t)), 0.), linear_color_stop(kit::dim(0.), 1.));
             d.child(div().absolute().inset_0().bg(shade)).child(div().relative().opacity(0.55 + 0.45 * t).child(list))
         });
-        let scrim =
-            motion::spring("console-rail-scrim", div().absolute().inset_0(), motion::SOFT, open, |d, t| d.bg(theme::black_a(0.62 * t)));
+        let scrim = motion::spring("console-rail-scrim", div().absolute().inset_0(), motion::SOFT, open, |d, t| d.bg(kit::dim(0.62 * t)));
         div().absolute().inset_0().child(scrim).child(panel).into_any_element()
     }
 
@@ -383,7 +381,7 @@ impl CollectionView {
                     .h(u(130.))
                     .rounded(u(18.))
                     .border_1()
-                    .border_color(theme::white_a(0.08))
+                    .border_color(kit::ink(0.08))
                     // Solid: the screen behind must not show through the tiles.
                     .bg(theme::console_sidebar())
                     .text_color(fg);
@@ -398,7 +396,7 @@ impl CollectionView {
         div()
             .absolute()
             .inset_0()
-            .child(motion::fade_in("console-menu-dim", div().absolute().inset_0().bg(theme::black_a(0.9)), 180))
+            .child(motion::fade_in("console-menu-dim", div().absolute().inset_0().bg(kit::veil(0.9)), 180))
             .child(div().absolute().inset_0().flex().items_center().justify_center().child(motion::enter(
                 "console-menu-grid",
                 div().relative().child(rows),
@@ -420,7 +418,7 @@ impl CollectionView {
             .rounded(u(26.))
             .bg(theme::console_sidebar())
             .border_1()
-            .border_color(theme::white_a(0.1))
+            .border_color(kit::ink(0.1))
             .shadow(kit::shadow(0.6, 20., 50.))
             .children(items.iter().enumerate().filter(|(_, i)| **i != Item::Separator).map(|(i, item)| {
                 let on = i == focused;
@@ -435,7 +433,7 @@ impl CollectionView {
                     .w(u(size))
                     .h(u(size))
                     .rounded_full()
-                    .bg(theme::white_a(0.08));
+                    .bg(kit::ink(0.08));
                 let round = if on { round.child(kit::focus_pill(size / 2.)) } else { round };
                 // The focused one sits a little higher than its neighbours.
                 div().flex().items_center().h(u(92.)).pb(u(if on { 14. } else { 0. })).child(

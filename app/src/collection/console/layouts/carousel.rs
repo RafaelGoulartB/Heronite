@@ -131,8 +131,8 @@ impl CollectionView {
                 kit::row_base(on)
                     .min_h(u(38.))
                     .px(u(20.))
-                    .when(!on, |d| d.bg(theme::white_a(if current { 0.16 } else { 0.07 })))
-                    .when(current && !on, |d| d.text_color(white()))
+                    .when(!on, |d| d.bg(kit::ink(if current { 0.16 } else { 0.07 })))
+                    .when(current && !on, |d| d.text_color(kit::strong()))
                     .child(div().text_size(u(15.)).font_weight(theme::W_BOLD).child(heronite_i18n::tr(label)))
             }));
         let Some(focused) = focused else {
@@ -172,43 +172,46 @@ impl CollectionView {
             let title = g.title.clone();
             let d = i as f32 - index as f32;
             let centre = vw / 2.;
-            stage =
-                stage.child(turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute(), d, move |el, d| {
-                    let (s, off, op) = pose(d);
-                    let (w, h) = (cwp * s, chp * s);
-                    // Scaled around a point at 60% of the height.
-                    let top = chp * 0.6 - h * 0.6;
-                    let near = (1. - d.abs()).clamp(0., 1.);
-                    let ring_colour: Hsla = theme::console_focus().into();
-                    let face = div()
-                        .size_full()
-                        .rounded(px(radius))
-                        .overflow_hidden()
-                        .bg(theme::white_a(0.08))
-                        .shadow(kit::shadow(0.55, 14., 30.))
-                        .child(match src {
-                            Some(s) => img(s).size_full().object_fit(ObjectFit::Cover).grayscale(grey).into_any_element(),
-                            None => div()
-                                .size_full()
-                                .flex()
-                                .items_end()
-                                .p(px(10. * k))
-                                .text_size(px(15. * k * s))
-                                .font_weight(theme::W_BOLD)
-                                .text_color(theme::text_primary())
-                                .child(title)
-                                .into_any_element(),
-                        })
-                        .when(ring, |d| {
-                            d.child(div().absolute().inset_0().rounded(px(radius)).border_3().border_color(Hsla { a: near, ..ring_colour }))
-                        });
-                    el.left(px(centre - w / 2. + off * cwp)).top(px(top)).w(px(w)).h(px(h)).opacity(op).child(face).when(reflect, |el| {
-                        // A faded floor under the cover (images cannot be flipped).
-                        el.child(div().absolute().left_0().right_0().top(px(h + 6. * k)).h(px(h * 0.22)).rounded(px(radius)).bg(
-                            linear_gradient(180., linear_color_stop(theme::white_a(0.16), 0.), linear_color_stop(theme::white_a(0.), 1.)),
-                        ))
+            stage = stage.child(turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute(), d, move |el, d| {
+                let (s, off, op) = pose(d);
+                let (w, h) = (cwp * s, chp * s);
+                // Scaled around a point at 60% of the height.
+                let top = chp * 0.6 - h * 0.6;
+                let near = (1. - d.abs()).clamp(0., 1.);
+                let ring_colour: Hsla = theme::console_focus().into();
+                let face = div()
+                    .size_full()
+                    .rounded(px(radius))
+                    .overflow_hidden()
+                    .bg(kit::ink(0.08))
+                    .shadow(kit::shadow(0.55, 14., 30.))
+                    .child(match src {
+                        Some(s) => img(s).size_full().object_fit(ObjectFit::Cover).grayscale(grey).into_any_element(),
+                        None => div()
+                            .size_full()
+                            .flex()
+                            .items_end()
+                            .p(px(10. * k))
+                            .text_size(px(15. * k * s))
+                            .font_weight(theme::W_BOLD)
+                            .text_color(theme::text_primary())
+                            .child(title)
+                            .into_any_element(),
                     })
-                }));
+                    .when(ring, |d| {
+                        d.child(div().absolute().inset_0().rounded(px(radius)).border_3().border_color(Hsla { a: near, ..ring_colour }))
+                    });
+                el.left(px(centre - w / 2. + off * cwp)).top(px(top)).w(px(w)).h(px(h)).opacity(op).child(face).when(reflect, |el| {
+                    // A faded floor under the cover (images cannot be flipped).
+                    el.child(
+                        div().absolute().left_0().right_0().top(px(h + 6. * k)).h(px(h * 0.22)).rounded(px(radius)).bg(linear_gradient(
+                            180.,
+                            linear_color_stop(kit::ink(0.16), 0.),
+                            linear_color_stop(kit::ink(0.), 1.),
+                        )),
+                    )
+                })
+            }));
         }
 
         let g = self.lib.as_ref().and_then(|l| l.get(&focused)).cloned();

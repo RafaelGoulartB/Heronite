@@ -362,16 +362,7 @@ fn kicker_with(icon: Option<Icon>, text: &str) -> Div {
 
 /// A widget's base: a soft panel with padding.
 fn panel() -> Div {
-    div()
-        .relative()
-        .size_full()
-        .p(u(16.))
-        .rounded(u(look::tile_radius()))
-        .overflow_hidden()
-        .bg(theme::white_a(0.08))
-        .flex()
-        .flex_col()
-        .gap(u(6.))
+    div().relative().size_full().p(u(16.)).rounded(u(look::tile_radius())).overflow_hidden().bg(kit::ink(0.08)).flex().flex_col().gap(u(6.))
 }
 
 impl CollectionView {
@@ -509,7 +500,7 @@ impl CollectionView {
             .inset_0()
             .rounded(u(look::tile_radius()))
             .overflow_hidden()
-            .bg(theme::white_a(0.07))
+            .bg(kit::ink(0.07))
             .children(src.map(|s| img(s).absolute().inset_0().size_full().object_fit(ObjectFit::Cover)))
     }
 
@@ -521,8 +512,8 @@ impl CollectionView {
             .child(art)
             .child(div().absolute().inset_0().rounded(r).bg(linear_gradient(
                 0.,
-                linear_color_stop(theme::black_a(0.8), 0.),
-                linear_color_stop(theme::black_a(0.), 0.62),
+                linear_color_stop(kit::veil(0.8), 0.),
+                linear_color_stop(kit::veil(0.), 0.62),
             )))
             .children(game.map(|g| {
                 div()
@@ -532,7 +523,7 @@ impl CollectionView {
                     .bottom(u(10.))
                     .flex()
                     .flex_col()
-                    .child(div().truncate().text_size(u(15.)).font_weight(theme::W_BOLD).text_color(white()).child(g.title.clone()))
+                    .child(div().truncate().text_size(u(15.)).font_weight(theme::W_BOLD).text_color(kit::strong()).child(g.title.clone()))
                     .children(
                         g.last_played
                             .as_deref()
@@ -550,12 +541,13 @@ impl CollectionView {
         let label = if game.installed && !running { tr!("Continue") } else { self.primary_label(&game) };
         let line = played_line(&game, false);
         let r = u(look::tile_radius());
+        let pill_ink: Rgba = if kit::light() { rgb(0xffffff) } else { rgb(DARK) };
         div()
             .child(art)
             .child(div().absolute().inset_0().rounded(r).bg(linear_gradient(
                 0.,
-                linear_color_stop(theme::black_a(0.88), 0.),
-                linear_color_stop(theme::black_a(0.05), 0.75),
+                linear_color_stop(kit::veil(0.88), 0.),
+                linear_color_stop(kit::veil(0.05), 0.75),
             )))
             .child(
                 div()
@@ -582,11 +574,11 @@ impl CollectionView {
                                     .h(u(38.))
                                     .px(u(16.))
                                     .rounded_full()
-                                    .bg(white().opacity(0.92))
+                                    .bg(if kit::light() { kit::ink(0.92) } else { white().opacity(0.92) })
                                     .text_size(u(15.))
                                     .font_weight(theme::W_BOLD)
-                                    .text_color(rgb(DARK))
-                                    .child(crate::ui::icon(Icon::PlayArrow, u(18.), rgb(DARK)))
+                                    .text_color(pill_ink)
+                                    .child(crate::ui::icon(Icon::PlayArrow, u(18.), pill_ink))
                                     .child(label),
                             )
                             .child(div().truncate().text_size(u(14.)).text_color(theme::text_muted()).child(line)),
@@ -617,7 +609,7 @@ impl CollectionView {
                     .h(u(ph))
                     .rounded(u(8.))
                     .overflow_hidden()
-                    .bg(theme::white_a(0.07))
+                    .bg(kit::ink(0.07))
                     .children(cover.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
             )
             .child(
@@ -760,7 +752,7 @@ fn dash_week(week: Option<[f64; 7]>, _w: f32, h: f32) -> Div {
         div().flex_1().h(u((bars_h * (*secs / most) as f32).max(5.))).rounded(u(3.)).bg(if today {
             Hsla::from(theme::console_focus())
         } else {
-            theme::white_a(0.28)
+            kit::ink(0.28)
         })
     }));
     panel()
@@ -787,7 +779,7 @@ fn dash_downloads(download: Option<&Download>, w: f32) -> Div {
                 .mt(u(4.))
                 .h(u(6.))
                 .rounded_full()
-                .bg(theme::white_a(0.14))
+                .bg(kit::ink(0.14))
                 .child(div().h_full().w(u(filled)).rounded_full().bg(theme::console_focus())),
         )
         .children(d.meta.clone().map(|m| div().text_size(u(12.)).text_color(theme::text_muted()).child(m)))

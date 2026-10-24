@@ -55,13 +55,13 @@ pub(super) fn side_sheet(id: &'static str, body: impl IntoElement) -> AnyElement
         .flex_col()
         .bg(theme::console_sidebar())
         .border_l_1()
-        .border_color(theme::white_a(0.08))
+        .border_color(kit::ink(0.08))
         .shadow(kit::shadow(0.5, 0., 40.))
         .child(body);
     div()
         .absolute()
         .inset_0()
-        .child(motion::fade_in("console-sheet-dim", div().absolute().inset_0().bg(theme::black_a(0.4)), 180))
+        .child(motion::fade_in("console-sheet-dim", div().absolute().inset_0().bg(kit::dim(0.4)), 180))
         .child(motion::enter(id, panel, 280, 40., 0.))
         .into_any_element()
 }
@@ -105,7 +105,7 @@ impl CollectionView {
                     .h(u(ch))
                     .rounded(u(10.))
                     .overflow_hidden()
-                    .bg(theme::white_a(0.08))
+                    .bg(kit::ink(0.08))
                     .shadow(kit::shadow(0.5, 10., 26.))
                     .children(cover.map(|c| img(c).size_full().object_fit(ObjectFit::Cover))),
             )

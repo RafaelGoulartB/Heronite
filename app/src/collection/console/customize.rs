@@ -159,7 +159,7 @@ impl CollectionView {
             .pb(u(70.))
             .bg(theme::console_sidebar())
             .border_l_1()
-            .border_color(theme::white_a(0.08))
+            .border_color(kit::ink(0.08))
             .shadow(kit::shadow(0.5, 0., 40.))
             .child(div().px(u(8.)).child(kit::title(tr!("Customize"), 30.)))
             .child(div().px(u(8.)).child(strip))

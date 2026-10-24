@@ -93,7 +93,7 @@ fn button(focused: bool, ic: Icon, label: Option<SharedString>, tint: Option<Rgb
     let d = if focused {
         d.border_color(transparent_black()).child(kit::focus_pill(25.))
     } else {
-        d.border_color(theme::white_a(0.08)).bg(theme::white_a(0.1))
+        d.border_color(kit::ink(0.08)).bg(kit::ink(0.1))
     };
     d.child(crate::ui::icon(ic, u(22.), colour)).children(label)
 }
@@ -106,9 +106,9 @@ fn card(focused: bool, c: &Card) -> Div {
         .px(u(18.))
         .py(u(14.))
         .rounded(u(16.))
-        .bg(theme::black_a(0.35))
+        .bg(kit::shade(0.35))
         .border_2()
-        .border_color(if focused { Hsla::from(theme::console_focus()) } else { theme::white_a(0.08) })
+        .border_color(if focused { Hsla::from(theme::console_focus()) } else { kit::ink(0.08) })
         .when(focused, |d| d.top(-u(3.)).shadow(kit::shadow(0.5, 8., 22.)))
         .child(div().text_size(u(13.)).text_color(theme::text_dim()).child(c.title.clone()))
         .child(kit::title(c.value.clone(), 22.).truncate())
@@ -126,7 +126,7 @@ fn all_tile(size: f32, ring: bool) -> Div {
         .w(u(size))
         .h(u(size))
         .rounded(u(look::tile_radius()))
-        .bg(theme::white_a(0.1))
+        .bg(kit::ink(0.1))
         .when(ring, |d| d.border_3().border_color(theme::console_focus()).shadow(kit::shadow(0.6, 8., 24.)))
         .child(crate::ui::icon(Icon::GridView, u(size * 0.4), theme::text_primary()))
 }
@@ -256,8 +256,8 @@ impl CollectionView {
                 None => all_tile(size, on && ring),
             };
             // The focused icon keeps a thin ring while the focus is below.
-            let tile = tile
-                .when(on && !ring, |d| d.child(div().absolute().inset_0().rounded(u(radius)).border_2().border_color(theme::white_a(0.5))));
+            let tile =
+                tile.when(on && !ring, |d| d.child(div().absolute().inset_0().rounded(u(radius)).border_2().border_color(kit::ink(0.5))));
             let name = on.then(|| {
                 let text = match found.get(j).and_then(|k| self.lib.as_ref()?.get(k)) {
                     Some(g) => g.title.clone(),

@@ -251,7 +251,7 @@ impl CollectionView {
             .relative()
             .size_full()
             .rounded(u(look::tile_radius()))
-            .bg(theme::white_a(0.12))
+            .bg(kit::ink(0.12))
             .flex()
             .flex_col()
             .items_center()

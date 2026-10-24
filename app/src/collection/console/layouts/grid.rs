@@ -272,7 +272,7 @@ impl CollectionView {
                 kit::row_base(on)
                     .min_h(u(46.))
                     .px(u(18.))
-                    .when(!on, |d| d.bg(theme::white_a(0.07)))
+                    .when(!on, |d| d.bg(kit::ink(0.07)))
                     .child(
                         div()
                             .text_size(u(14.))
@@ -388,7 +388,7 @@ impl CollectionView {
                     .h(u((w * 9. / 16.).round()))
                     .rounded(u(14.))
                     .overflow_hidden()
-                    .bg(theme::white_a(0.07))
+                    .bg(kit::ink(0.07))
                     .shadow(kit::shadow(0.45, 14., 30.))
                     .children(art.map(|s| img(s).size_full().object_fit(ObjectFit::Cover))),
             )

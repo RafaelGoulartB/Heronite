@@ -136,7 +136,7 @@ impl CollectionView {
                             .h(u(30. * self.cover_aspect))
                             .rounded(u(6.))
                             .overflow_hidden()
-                            .bg(theme::white_a(0.08))
+                            .bg(kit::ink(0.08))
                             .children(small.map(|c| img(c).size_full().object_fit(ObjectFit::Cover))),
                     )
                     .child(kit::title(g.title.clone(), 18.).truncate()),
@@ -185,7 +185,7 @@ impl CollectionView {
                     .h(u(ch))
                     .rounded(u(14.))
                     .overflow_hidden()
-                    .bg(theme::white_a(0.08))
+                    .bg(kit::ink(0.08))
                     .shadow(kit::shadow(0.55, 16., 40.))
                     .children(cover.map(|c| img(c).size_full().object_fit(ObjectFit::Cover))),
             )
@@ -226,9 +226,9 @@ impl CollectionView {
                 .w(u(480.))
                 .p(u(22.))
                 .rounded(u(18.))
-                .bg(theme::black_a(0.35))
+                .bg(kit::shade(0.35))
                 .border_1()
-                .border_color(theme::white_a(0.08))
+                .border_color(kit::ink(0.08))
                 .child(facts_table(&detail_facts(f), 1))
                 .children(hltb_line(f))
         });

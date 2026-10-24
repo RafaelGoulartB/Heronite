@@ -29,7 +29,11 @@ const NEW_DAYS: i64 = 14;
 /// Room a tile needs under it for its name (design px), per the theme. The
 /// name bar is part of the tile, so it needs none.
 pub(crate) fn label_room() -> f32 {
-    if matches!(look::theme().tiles.titles, TileTitles::Never | TileTitles::Bar) { 0. } else { 26. }
+    if matches!(look::theme().tiles.titles, TileTitles::Never | TileTitles::Bar) {
+        0.
+    } else {
+        26.
+    }
 }
 
 /// Whether a game added on `added` ("YYYY-MM-DD...") is still new.
@@ -42,7 +46,11 @@ fn is_new(added: &str) -> bool {
 /// `e` with its top and/or bottom corners rounded by `r`.
 fn round<E: Styled>(e: E, top: bool, bottom: bool, r: Pixels) -> E {
     let e = if top { e.rounded_tl(r).rounded_tr(r) } else { e };
-    if bottom { e.rounded_bl(r).rounded_br(r) } else { e }
+    if bottom {
+        e.rounded_bl(r).rounded_br(r)
+    } else {
+        e
+    }
 }
 
 impl CollectionView {
@@ -97,7 +105,7 @@ impl CollectionView {
             _ => self.cover(key, w * kit::scale(), art_h * kit::scale(), window.scale_factor(), priority),
         };
         let logo = (shape == TileShape::Landscape && theme.tiles.titles == TileTitles::Never)
-            .then(|| self.console_logo(key, w * 0.62, art_h * 0.36, window))
+            .then(|| self.console_logo(key, w * 0.62, art_h * 0.36, true, window))
             .flatten();
         let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
         let title = game.as_ref().map_or(String::new(), |g| g.title.clone());
@@ -137,8 +145,7 @@ impl CollectionView {
             let (gx, gy) = (wpx * (grow * t), hpx * (grow * t));
             let rise = if style == FocusStyle::Lift { u(10.) * t } else { px(0.) };
             let t1 = t.clamp(0., 1.);
-            let mut d =
-                div().absolute().top(-gy - rise).bottom(-gy + rise).left(-gx).right(-gx).rounded(u(radius)).bg(theme::white_a(0.07));
+            let mut d = div().absolute().top(-gy - rise).bottom(-gy + rise).left(-gx).right(-gx).rounded(u(radius)).bg(kit::ink(0.07));
             d = match style {
                 FocusStyle::Ring => d
                     .border_3()
@@ -176,11 +183,7 @@ impl CollectionView {
                             .justify_end()
                             .p(u(12.))
                             .overflow_hidden()
-                            .bg(linear_gradient(
-                                180.,
-                                linear_color_stop(theme::white_a(0.02), 0.),
-                                linear_color_stop(theme::white_a(0.09), 1.),
-                            ))
+                            .bg(linear_gradient(180., linear_color_stop(kit::ink(0.02), 0.), linear_color_stop(kit::ink(0.09), 1.)))
                             .child(
                                 div()
                                     .w_full()
