@@ -112,6 +112,7 @@ pub fn showcase() -> ConsoleTheme {
         t.tiles.corners = Corners::Soft;
         t.tiles.focus = FocusStyle::Glow;
         t.interface.accent = "ice".into();
+        t.background.motion = BackgroundMotion::Drift;
         t.layouts.grid_panel = GridPanel::Right;
     })
 }
