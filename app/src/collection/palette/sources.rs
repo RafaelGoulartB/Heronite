@@ -178,6 +178,7 @@ fn section_help(s: Section) -> &'static str {
         Section::Library => tr!("Hidden games, favourites, recent games"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
+        Section::Mods => tr!("Nexus Mods account, mod links, applying mods"),
         Section::Overlay => tr!("Guide button panel over games (beta)"),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),

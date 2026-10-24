@@ -376,6 +376,14 @@ impl CollectionView {
                 .on_click(cx.listener(move |this, _, _, cx| this.filter_by_store_of(&key, cx)))
                 .into_any_element(),
         );
+        if let Some(text) = self.mods_counts_text(&vm.key, cx).filter(|_| !crate::console::active()) {
+            let key = vm.key.clone();
+            rows.push(
+                clickable(fact_row(tr!("Mods"), div().child(text)), "focus-mods")
+                    .on_click(cx.listener(move |this, _, window, cx| this.open_mods(&key, window, cx)))
+                    .into_any_element(),
+            );
+        }
         match &self.facts.backup {
             Some(Backup::At(at)) => {
                 let (text, color) = backup_age(*at);

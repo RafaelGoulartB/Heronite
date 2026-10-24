@@ -1128,3 +1128,128 @@ fn a_prefix_whose_creation_was_stopped_is_created_again() {
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     assert!(!marker.exists(), "removed once the prefix was created");
 }
+
+/// Mods for the tests: records when the guard is dropped.
+struct FakeMods {
+    fail: bool,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+struct DropFlag(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl heronite_launch::GameMods for FakeMods {
+    fn apply(&self, app_name: &str, _runner: &str, status: &mut dyn FnMut(&str)) -> Result<Option<heronite_launch::AppliedMods>, String> {
+        status("Applying mods...");
+        if self.fail {
+            return Err("no FUSE".into());
+        }
+        if app_name != "modded" {
+            return Ok(None);
+        }
+        Ok(Some(heronite_launch::AppliedMods {
+            env: vec![("WINEDLLOVERRIDES".into(), "winhttp=n,b".into())],
+            summary: "Mods: 1 of 1 enabled".into(),
+            guard: Box::new(DropFlag(self.dropped.clone())),
+        }))
+    }
+}
+
+#[test]
+fn mods_are_applied_for_the_session_and_taken_away_after() {
+    let r = rig();
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    r.launcher.set_game_mods(Arc::new(FakeMods { fail: false, dropped: dropped.clone() }));
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.command.env.insert("WINEDLLOVERRIDES".into(), "dxgi=n".into());
+    r.launcher.launch(request("modded", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "modded".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.spawned()[0].env["WINEDLLOVERRIDES"], "dxgi=n;winhttp=n,b");
+    assert!(!dropped.load(std::sync::atomic::Ordering::SeqCst), "mods stay while the game runs");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    wait_until("mods taken away", || dropped.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+fn mods_that_cannot_be_applied_stop_the_launch() {
+    let r = rig();
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    r.launcher.set_game_mods(Arc::new(FakeMods { fail: true, dropped }));
+    r.launcher.launch(request("modded", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "modded".into() });
+    let LaunchEvent::Error { message, .. } = next(&r.rx) else { panic!() };
+    assert_eq!(message, "no FUSE");
+    assert!(r.spawner.spawned().is_empty());
+    assert!(!r.launcher.is_running("modded"));
+}
+
+/// Mods that note how many commands had run when they were applied.
+struct OrderedMods {
+    spawner: Arc<FakeSpawner>,
+    spawned_when_applied: Arc<std::sync::Mutex<Option<usize>>>,
+}
+
+impl heronite_launch::GameMods for OrderedMods {
+    fn apply(&self, _app: &str, _runner: &str, _status: &mut dyn FnMut(&str)) -> Result<Option<heronite_launch::AppliedMods>, String> {
+        *self.spawned_when_applied.lock().unwrap() = Some(self.spawner.spawned().len());
+        Ok(None)
+    }
+}
+
+#[test]
+fn mods_are_applied_after_the_launch_preparation() {
+    let r = rig();
+    let seen = Arc::new(std::sync::Mutex::new(None));
+    r.launcher.set_game_mods(Arc::new(OrderedMods { spawner: r.spawner.clone(), spawned_when_applied: seen.clone() }));
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.pre_commands = vec![Command { program: "/w/wineboot".into(), ..Default::default() }];
+    r.launcher.launch(request("modded", LaunchPlan::Native(plan))).unwrap();
+    wait_until("the prefix command", || !r.spawner.spawned().is_empty());
+    std::thread::sleep(Duration::from_millis(60));
+    assert_eq!(*seen.lock().unwrap(), None, "not applied while the prefix is being made");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(*seen.lock().unwrap(), Some(1), "applied once the prefix command ran, before the game spawned");
+    assert_eq!(r.spawner.spawned()[1].program, "/games/run.sh");
+}
+
+/// Mods that note which games were released.
+struct ReleaseMods(Arc<std::sync::Mutex<Vec<(String, String)>>>);
+
+impl heronite_launch::GameMods for ReleaseMods {
+    fn apply(&self, _app: &str, _runner: &str, _status: &mut dyn FnMut(&str)) -> Result<Option<heronite_launch::AppliedMods>, String> {
+        Ok(None)
+    }
+
+    fn release(&self, app_name: &str, runner: &str) {
+        self.0.lock().unwrap().push((app_name.into(), runner.into()));
+    }
+}
+
+#[test]
+fn the_mods_of_an_adopted_game_are_taken_away_when_it_ends() {
+    let r = rig();
+    r.procs.start(40_001, "game", None);
+    r.procs.set_start_ticks(40_001, 777);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/game", &[])))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { pid: 40_001, .. }));
+    // The app quits (the guard of the mount is gone with it) and starts again.
+    let (again, rx) = restarted(&r);
+    let released = Arc::new(std::sync::Mutex::new(Vec::new()));
+    again.set_game_mods(Arc::new(ReleaseMods(released.clone())));
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    next(&rx);
+    assert!(released.lock().unwrap().is_empty(), "the game still runs");
+    r.procs.exit(40_001);
+    assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
+    assert_eq!(*released.lock().unwrap(), [("g".to_string(), "sideload".to_string())]);
+}

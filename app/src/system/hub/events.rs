@@ -169,6 +169,11 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
     if !hide {
         apply_window_flags(cx, msg.console, msg.fullscreen);
     }
+    if let Some(link) = msg.mod_link {
+        show_window(cx);
+        crate::services::mods::open_link(cx, link);
+        return;
+    }
     match msg.launch {
         // Heroic's `second-instance`: show the window unless the launch hides it.
         None => {

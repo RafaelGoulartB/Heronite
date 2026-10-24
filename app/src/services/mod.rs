@@ -3,8 +3,10 @@
 
 pub mod compression;
 pub mod downloads;
+pub mod game_folders;
 pub mod launch_blocker;
 pub mod launcher_imports;
+pub mod mods;
 pub mod proton_setup;
 pub mod replay;
 pub mod script_install;

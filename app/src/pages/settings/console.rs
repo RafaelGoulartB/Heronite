@@ -10,7 +10,7 @@ use gpui_kit::*;
 use heronite_i18n::{n_, tr};
 
 use super::{
-    about, advanced, appearance, backup, launchers, library, logs, metadata, overlay, replay, saves, screenshots, storage, Section,
+    about, advanced, appearance, backup, launchers, library, logs, metadata, mods, overlay, replay, saves, screenshots, storage, Section,
     SettingsPage,
 };
 use crate::console::kit::{self, u};
@@ -47,6 +47,7 @@ const GROUPS: [(&str, &[CSec]); 4] = [
             CSec::Rows(Section::Library),
             CSec::Rows(Section::Launchers),
             CSec::Rows(Section::Storage),
+            CSec::Rows(Section::Mods),
             CSec::Rows(Section::Overlay),
             CSec::Rows(Section::Replay),
         ],
@@ -132,6 +133,7 @@ impl SettingsPage {
             CSec::Rows(Section::Library) => library::console_rows(self),
             CSec::Rows(Section::Launchers) => launchers::console_rows(self, cx),
             CSec::Rows(Section::Storage) => storage::console_rows(self),
+            CSec::Rows(Section::Mods) => mods::console_rows(self, cx),
             CSec::Rows(Section::Overlay) => overlay::console_rows(self, cx),
             CSec::Rows(Section::Replay) => replay::console_rows(self, cx),
             CSec::Rows(Section::About) => about::console_rows(self, cx),
@@ -151,6 +153,7 @@ impl SettingsPage {
             CSec::Rows(Section::Library) => library::console_apply(self, outcome, cx),
             CSec::Rows(Section::Launchers) => launchers::console_apply(self, outcome, cx),
             CSec::Rows(Section::Storage) => storage::console_apply(self, outcome, cx),
+            CSec::Rows(Section::Mods) => mods::console_apply(self, outcome, window, cx),
             CSec::Rows(Section::Overlay) => overlay::console_apply(self, outcome, cx),
             CSec::Rows(Section::Replay) => replay::console_apply(self, outcome, cx),
             CSec::Rows(Section::About) => about::console_apply(self, outcome, cx),

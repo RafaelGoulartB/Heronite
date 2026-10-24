@@ -36,8 +36,8 @@ pub use adopt::AdoptedGame;
 pub use fake::{FakeHandleState, FakeSpawner};
 pub use spawner::{ExitInfo, ProcessHandle, Spawner, SystemSpawner};
 pub use types::{
-    failed_launch, HandoffConfig, LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices, StopOptions, SystemInfoFn,
-    CHECKPOINT_INTERVAL, FAILED_LAUNCH_WINDOW,
+    failed_launch, AppliedMods, GameMods, HandoffConfig, LaunchError, LaunchEvent, LaunchRequest, LauncherConfig, PrepServices,
+    StopOptions, SystemInfoFn, CHECKPOINT_INTERVAL, FAILED_LAUNCH_WINDOW,
 };
 
 /// Tracks running games. Cheap to clone.
@@ -61,6 +61,7 @@ impl Launcher {
                 services: Mutex::new(PrepServices::default()),
                 epic: Mutex::new(None),
                 store_setup: Mutex::new(None),
+                mods: Mutex::new(None),
                 paths,
                 spawner,
                 procs,
@@ -93,6 +94,11 @@ impl Launcher {
     /// (redistributables, the game's install scripts).
     pub fn set_store_setup(&self, store: Arc<dyn StoreSetup>) {
         *self.shared.store_setup.lock().unwrap() = Some(store);
+    }
+
+    /// What puts a game's mods in place around its sessions.
+    pub fn set_game_mods(&self, mods: Arc<dyn GameMods>) {
+        *self.shared.mods.lock().unwrap() = Some(mods);
     }
 
     /// Changes how often running games' playtime is saved (tests).

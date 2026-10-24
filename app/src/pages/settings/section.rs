@@ -18,6 +18,8 @@ pub enum Section {
     Launchers,
     /// What the games take on disk, and cleaning it up.
     Storage,
+    /// Mods: the Nexus Mods account, the mod links, what applying mods needs.
+    Mods,
     /// The in-game overlay (Guide button).
     Overlay,
     /// The replay buffer: the last seconds of a game, saved on request.
@@ -44,6 +46,7 @@ impl Section {
                 Section::Library,
                 Section::Launchers,
                 Section::Storage,
+                Section::Mods,
                 Section::Overlay,
                 Section::Replay,
             ],
@@ -53,7 +56,7 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 16] = [
+    pub const ALL: [Section; 17] = [
         Section::General,
         Section::Appearance,
         Section::Advanced,
@@ -62,6 +65,7 @@ impl Section {
         Section::Library,
         Section::Launchers,
         Section::Storage,
+        Section::Mods,
         Section::Overlay,
         Section::Replay,
         Section::Metadata,
@@ -82,6 +86,7 @@ impl Section {
             Section::Library => tr!("Library"),
             Section::Launchers => tr!("Other launchers"),
             Section::Storage => tr!("Storage"),
+            Section::Mods => tr!("Mods"),
             Section::Overlay => tr!("Overlay"),
             Section::Replay => tr!("Replay"),
             Section::Metadata => tr!("Metadata"),
@@ -103,6 +108,7 @@ impl Section {
             Section::Library => Icon::GridView,
             Section::Launchers => Icon::CallMerge,
             Section::Storage => Icon::FaHardDrive,
+            Section::Mods => Icon::CallMerge,
             Section::Overlay => Icon::SportsEsports,
             Section::Replay => Icon::Videocam,
             Section::Metadata => Icon::TravelExplore,
@@ -125,6 +131,7 @@ impl Section {
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
             Section::Launchers => tr!("Bring in the games of Heroic, Lutris, Bottles and Faugus. While on, a game added there shows up here too."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
+            Section::Mods => tr!("Your Nexus Mods account, the download buttons of the mod sites, and what Heronite needs to apply mods when a game starts. Each game's mods are managed from its own Mods."),
             Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags."),
@@ -147,6 +154,7 @@ impl Section {
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
             Section::Launchers => "other launchers import heroic lutris bottles faugus sync bring in outros launchers importar sincronizar trazer",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
+            Section::Mods => "mods nexus thunderstore nxm ror2mm api key account premium links fuse overlayfs fomod mod manager modding mods conta chave link modificacoes gerenciador",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
@@ -177,6 +185,7 @@ impl Section {
             "library" => Some(Section::Library),
             "launchers" | "import" => Some(Section::Launchers),
             "storage" | "disk" => Some(Section::Storage),
+            "mods" | "nexus" => Some(Section::Mods),
             "overlay" => Some(Section::Overlay),
             "replay" => Some(Section::Replay),
             "metadata" => Some(Section::Metadata),
@@ -209,6 +218,7 @@ mod tests {
         assert_eq!(Section::parse("storage"), Some(Section::Storage));
         assert_eq!(Section::parse("defaults"), Some(Section::GameDefaults));
         assert_eq!(Section::parse("replay"), Some(Section::Replay));
+        assert_eq!(Section::parse("mods"), Some(Section::Mods));
         assert_eq!(Section::parse("nope"), None);
         assert_eq!(crate::pages::Page::from_debug("settings"), Some(crate::pages::Page::Settings));
         assert_eq!(crate::pages::Page::from_debug("settings:about"), Some(crate::pages::Page::Settings));
