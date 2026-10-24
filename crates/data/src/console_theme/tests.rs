@@ -75,7 +75,7 @@ fn prefs_and_store_on_disk() {
     p.save(&paths).unwrap();
     assert_eq!(ConsolePrefs::load(&paths).theme.tabs[0].layout, Layout::Cinema);
 
-    let mut mine = presets::handheld();
+    let mut mine = presets::pulse();
     mine.name = "Meu Tema Ção".into();
     let saved = store::save(&paths, &mine).unwrap();
     assert_eq!(saved.id, "meu-tema-cao");
@@ -88,7 +88,7 @@ fn prefs_and_store_on_disk() {
     assert_eq!(imported.name, "Meu Tema Ção");
     store::delete(&paths, &saved.id).unwrap();
     assert!(store::find(&paths, "meu-tema-cao").is_none());
-    assert!(store::find(&paths, "xbox").is_some());
+    assert!(store::find(&paths, "series").is_some());
 }
 
 #[test]

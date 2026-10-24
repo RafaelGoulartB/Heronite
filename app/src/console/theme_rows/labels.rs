@@ -30,7 +30,7 @@ label_fn!(layout_name, Layout {
     Grid => n_!("Grid"),
     Wheel => n_!("Wheel"),
     Carousel => n_!("Carousel"),
-    Xbox => n_!("Xbox"),
+    Xbox => n_!("Series X"),
 });
 label_fn!(start_on_name, StartOn { First => n_!("First tab"), Last => n_!("Last tab used") });
 label_fn!(a_button_name, AButton { Details => n_!("Opens the page"), Play => n_!("Plays") });

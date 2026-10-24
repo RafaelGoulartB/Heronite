@@ -102,30 +102,24 @@ pub fn cinema() -> ConsoleTheme {
 
 /// A console's home screen: a row of square icons on top (the focused one
 /// grows, its name beside it), the game's art and logo, a wide Play button
-/// and cards; the tabs as plain names, the menu as a dock.
-pub fn showcase() -> ConsoleTheme {
-    from_classic(
-        "showcase",
-        n_!("Showcase"),
-        n_!("Like a PlayStation: icons on top, the game's art and logo, a wide Play button and cards."),
-        |t| {
-            t.tabs = vec![tab(n_!("Games"), Layout::Spotlight), tab(n_!("Library"), Layout::Grid)];
-            t.hero.title = HeroTitle::Logo;
-            t.hero.facts = false;
-            t.hero.overview = false;
-            t.hero.size = Size3::Large;
-            t.tiles.size = TileSize::Large;
-            t.tiles.shape = TileShape::Square;
-            t.tiles.corners = Corners::Soft;
-            t.interface.tab_bar = TabBar::Names;
-            t.interface.font = ConsoleFont::System;
-            t.controls.glyphs = Glyphs::PlayStation;
-            t.controls.hints = Hints::Auto;
-            t.layouts.spotlight_actions = SpotActions::Play;
-            t.layouts.grid_panel = GridPanel::Right;
-            t.menu.style = MenuStyle::Dock;
-        },
-    )
+/// and cards; the tabs as plain names.
+pub fn pulse() -> ConsoleTheme {
+    from_classic("pulse", n_!("Pulse"), n_!("A console home: icons on top, the game's art and logo, a wide Play button and cards."), |t| {
+        t.tabs = vec![tab(n_!("Games"), Layout::Spotlight), tab(n_!("Library"), Layout::Grid)];
+        t.hero.title = HeroTitle::Logo;
+        t.hero.facts = false;
+        t.hero.overview = false;
+        t.hero.size = Size3::Large;
+        t.tiles.size = TileSize::Large;
+        t.tiles.shape = TileShape::Square;
+        t.tiles.corners = Corners::Soft;
+        t.interface.tab_bar = TabBar::Names;
+        t.interface.font = ConsoleFont::System;
+        t.controls.glyphs = Glyphs::PlayStation;
+        t.controls.hints = Hints::Auto;
+        t.layouts.spotlight_actions = SpotActions::Play;
+        t.layouts.grid_panel = GridPanel::Right;
+    })
 }
 
 /// A store front: a rail of icons, the game's details and tags, shelves of
@@ -158,7 +152,7 @@ pub fn storefront() -> ConsoleTheme {
 }
 
 /// A light theme: the art washed out, the logo centred at the top, square
-/// covers under their store's name and a dock for the menu.
+/// covers under their store's name.
 pub fn daylight() -> ConsoleTheme {
     from_classic(
         "daylight",
@@ -177,39 +171,18 @@ pub fn daylight() -> ConsoleTheme {
             t.dim_others = false;
             t.colors.background = "#eceef2".into();
             t.interface.font = ConsoleFont::Rubik;
-            t.menu.style = MenuStyle::Dock;
         },
     )
 }
 
-pub fn xbox() -> ConsoleTheme {
-    from_classic("xbox", n_!("Xbox"), n_!("A row of tiles over the game's art, the newest one wide, groups below."), |t| {
+pub fn series() -> ConsoleTheme {
+    from_classic("series", n_!("Series X"), n_!("A row of tiles over the game's art, the newest one wide, groups below."), |t| {
         t.tabs = vec![tab(n_!("Home"), Layout::Xbox), tab(n_!("Library"), Layout::Grid)];
         t.tiles.corners = Corners::Soft;
         t.tiles.shape = TileShape::Square;
         t.interface.accent = "green".into();
         t.interface.font = ConsoleFont::System;
         t.layouts.grid_panel = GridPanel::Right;
-        t.menu.style = MenuStyle::Dock;
-    })
-}
-
-/// Handhelds: bigger, the tab's name at the top, portrait covers with a
-/// sharp ring, the connected controller's buttons.
-pub fn handheld() -> ConsoleTheme {
-    from_classic("handheld", n_!("Handheld"), n_!("For handhelds: bigger, the tab's name at the top, covers with a sharp ring."), |t| {
-        t.tabs = vec![
-            tab_of(n_!("All games"), Layout::Cinema, "all"),
-            tab_of(n_!("Installed games"), Layout::Cinema, "installed"),
-            tab_of(n_!("List"), Layout::Wheel, "all"),
-        ];
-        t.interface.scale = 115;
-        t.interface.tab_bar = TabBar::Title;
-        t.interface.accent = "ice".into();
-        t.hero.title = HeroTitle::Logo;
-        t.hero.overview = false;
-        t.tiles.corners = Corners::Square;
-        t.controls.glyphs = Glyphs::Auto;
     })
 }
 
@@ -228,7 +201,7 @@ pub fn minimal() -> ConsoleTheme {
 
 /// Every built-in theme, Classic first.
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![classic(), cinema(), showcase(), storefront(), daylight(), xbox(), handheld(), minimal()]
+    vec![classic(), cinema(), pulse(), series(), storefront(), daylight(), minimal()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {

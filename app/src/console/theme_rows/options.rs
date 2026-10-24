@@ -327,7 +327,7 @@ pub(super) static OPTS: &[Opt] = &[
         theme.layouts.spotlight_actions
     ),
     tgl!("layouts.carousel_reflect", Layouts, n_!("Carousel: reflection"), "", &[Layout::Carousel], theme.layouts.carousel_reflect),
-    tgl!("layouts.xbox_groups", Layouts, n_!("Xbox: groups under the tiles"), "", &[Layout::Xbox], theme.layouts.xbox_groups),
+    tgl!("layouts.xbox_groups", Layouts, n_!("Series X: groups under the tiles"), "", &[Layout::Xbox], theme.layouts.xbox_groups),
     tgl!("layouts.dashboard.week", Layouts, n_!("Dashboard: this week"), "", &[Layout::Dashboard], theme.layouts.dashboard.week),
     tgl!("layouts.dashboard.downloads", Layouts, n_!("Dashboard: downloads"), "", &[Layout::Dashboard], theme.layouts.dashboard.downloads),
     tgl!(

@@ -219,7 +219,7 @@ fn picking_a_theme_replaces_the_theme_and_its_base() {
 
 #[test]
 fn saved_themes_get_save_rename_and_delete_rows() {
-    let mut saved = presets::xbox();
+    let mut saved = presets::series();
     saved.id = "mine".into();
     saved.name = "Mine".into();
     let d = Data { saved: vec![saved.clone()], ..Default::default() };
