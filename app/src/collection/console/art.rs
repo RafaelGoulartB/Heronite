@@ -101,7 +101,13 @@ impl CollectionView {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{logo_id, to_chain, LogoCache};
+    use gpui_kit::SharedString;
+    use heronite_data::console_art::LogoSource;
+    use heronite_images::ImageRef;
+    use std::collections::HashMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::Arc;
 
     /// Stands in for a library game: its logo sources are what the test says.
     fn sources(logo: &str) -> impl FnOnce(Option<&Path>) -> Vec<LogoSource> + '_ {
