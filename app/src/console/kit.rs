@@ -619,11 +619,7 @@ pub fn spaced_caps(text: &str) -> String {
 /// `text` as the theme writes headings: in [`spaced_caps`] when it asks for
 /// them, as is otherwise.
 pub fn heading_text(text: &str) -> String {
-    caps_if(text, look::theme().interface.headings == Headings::Spaced)
-}
-
-fn caps_if(text: &str, spaced: bool) -> String {
-    if spaced {
+    if look::theme().interface.headings == Headings::Spaced {
         spaced_caps(text)
     } else {
         text.to_string()
@@ -662,9 +658,9 @@ pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
 }
 
 /// The current tab alone, big and centred, with LB / RB at its sides when
-/// there are others (`spaced`: in spaced capitals).
-pub fn tab_title(name: &str, ic: Icon, more: bool, spaced: bool) -> Div {
-    let text = caps_if(name, spaced);
+/// there are others, written as the theme writes headings.
+pub fn tab_title(name: &str, ic: Icon, more: bool) -> Div {
+    let text = heading_text(name);
     div()
         .flex()
         .items_center()

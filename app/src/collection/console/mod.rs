@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{AButton, BackgroundSource, Clock, Headings, Hints, Layout, StartOn, TabBar, TabSpec};
+use heronite_data::console_theme::{AButton, BackgroundSource, Clock, Hints, Layout, StartOn, TabBar, TabSpec};
 use heronite_images::Variant;
 
 use super::CollectionView;
@@ -595,8 +595,7 @@ impl CollectionView {
             .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(kit::tabs(&names, tab)))
             .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
             .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
-                let spaced = theme.interface.headings == Headings::Spaced;
-                let title = kit::tab_title(&tab_label(t), kit::tab_icon(&t.source, t.layout), names.len() > 1, spaced);
+                let title = kit::tab_title(&tab_label(t), kit::tab_icon(&t.source, t.layout), names.len() > 1);
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
             .child(div().flex_1())
