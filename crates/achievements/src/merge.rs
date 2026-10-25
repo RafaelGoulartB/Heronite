@@ -26,6 +26,9 @@ pub fn merge(old: Option<&AchievementSet>, mut fresh: AchievementSet, now: DateT
             }
             _ if a.unlocked => {
                 a.noticed_at = Some(now);
+                // Sources without unlock times (RetroAchievements without
+                // the Web API key): it happened in the session just read.
+                a.unlocked_at = a.unlocked_at.or(Some(now));
                 new_unlocks.push(a.clone());
             }
             _ => {}
@@ -81,6 +84,15 @@ mod tests {
         assert_eq!(new[0].id, "y");
         assert_eq!(merged.achievements[1].noticed_at, Some(at(20)));
         assert_eq!(merged.achievements[0].noticed_at, None);
+    }
+
+    #[test]
+    fn a_new_unlock_without_a_time_takes_the_time_it_is_noticed() {
+        let old = set(vec![a("x", None)]);
+        let (merged, _) = merge(Some(&old), set(vec![Achievement { unlocked: true, ..a("x", None) }]), at(20));
+        assert_eq!(merged.achievements[0].unlocked_at, Some(at(20)));
+        let (first, _) = merge(None, set(vec![Achievement { unlocked: true, ..a("y", None) }]), at(20));
+        assert_eq!(first.achievements[0].unlocked_at, None);
     }
 
     #[test]

@@ -85,7 +85,7 @@ pub fn validate_account(http: &Http, username: &str, api_key: &str) -> Result<Pr
 }
 
 fn validate_account_at(http: &Http, base: &str, username: &str, api_key: &str) -> Result<Profile> {
-    let account = RetroAccount { username: username.trim().to_owned(), api_key: api_key.trim().to_owned() };
+    let account = RetroAccount { username: username.trim().to_owned(), api_key: api_key.trim().to_owned(), ..Default::default() };
     let doc = get(http, base, &account, "API_GetUserProfile.php", &[("u", account.username.as_str())], false)?;
     parse_profile(&doc).ok_or_else(|| anyhow!("RetroAchievements does not know the user {}", account.username))
 }
@@ -173,11 +173,9 @@ pub(super) fn game_list_at(ctx: &Ctx, base: &str, console: u32, now: DateTime<Ut
     }
 }
 
+/// Through the client API: it needs no login.
 fn fetch_list(ctx: &Ctx, base: &str, console: u32) -> Result<Vec<Listed>> {
-    let account = ctx.accounts.retro_achievements.as_ref().ok_or_else(|| anyhow!("no RetroAchievements account"))?;
-    let console_id = console.to_string();
-    let doc = get(ctx.http, base, account, "API_GetGameList.php", &[("i", &console_id), ("h", "1"), ("f", "1")], true)?;
-    parse_game_list(&doc).context("RetroAchievements sent a game list in an unknown shape")
+    super::connect::system_games(ctx.http, base, console)
 }
 
 /// A game picked from the lists.
@@ -233,8 +231,8 @@ fn cached_consoles(paths: &DataPaths) -> Vec<u32> {
     out
 }
 
-/// A game's achievements with the user's progress
-/// (`API_GetGameInfoAndUserProgress`).
+/// A game's achievements with the user's progress and the times of the
+/// unlocks (`API_GetGameInfoAndUserProgress`, with the Web API key).
 pub fn game_progress(ctx: &Ctx, base: &str, account: &RetroAccount, game_id: u32) -> Result<AchievementSet> {
     let id = game_id.to_string();
     let doc =
@@ -251,7 +249,7 @@ fn text(doc: &Value, key: &str) -> String {
     doc.get(key).and_then(Value::as_str).unwrap_or_default().to_owned()
 }
 
-fn kind_of(name: &str) -> Option<Kind> {
+pub(super) fn kind_of(name: &str) -> Option<Kind> {
     match name {
         "progression" => Some(Kind::Progression),
         "win_condition" => Some(Kind::WinCondition),

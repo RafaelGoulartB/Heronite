@@ -18,7 +18,7 @@ pub struct Server {
 }
 
 impl Server {
-    /// The head (request line and headers) of every request so far.
+    /// Every request so far: request line, headers and body.
     pub fn requests(&self) -> Vec<String> {
         self.log.lock().unwrap().clone()
     }
@@ -49,11 +49,21 @@ fn answer(mut stream: std::net::TcpStream, routes: &[(&'static str, u16, String)
         head.push(byte[0]);
     }
     let head = String::from_utf8_lossy(&head).into_owned();
+    let length = head
+        .lines()
+        .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap_or(0)))
+        .unwrap_or(0);
+    let mut sent = vec![0u8; length];
+    if stream.read_exact(&mut sent).is_err() {
+        return;
+    }
+    // The request line and a POST's form: `dorequest.php` calls differ by `r=`.
+    let target = format!("{} {}", head.lines().next().unwrap_or(""), String::from_utf8_lossy(&sent));
     let (status, body) = routes
         .iter()
-        .find(|(fragment, _, _)| head.lines().next().is_some_and(|l| l.contains(fragment)))
+        .find(|(fragment, _, _)| target.contains(fragment))
         .map_or((404, "{}".to_owned()), |(_, status, body)| (*status, body.clone()));
-    seen.lock().unwrap().push(head);
+    seen.lock().unwrap().push(format!("{head}{}", String::from_utf8_lossy(&sent)));
     let reply = format!(
         "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()

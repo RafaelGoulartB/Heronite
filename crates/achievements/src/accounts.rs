@@ -1,5 +1,6 @@
 //! What the sources without a store sign-in need: the RetroAchievements
-//! account and an optional Steam Web API key. Kept in
+//! account (the token its login gives, never the password) and an optional
+//! Steam Web API key. Kept in
 //! `local_library/achievement-accounts.json`, readable only by the user
 //! (backups count it with the store sign-ins). Settings never shows the keys
 //! back.
@@ -22,8 +23,21 @@ pub struct Accounts {
 #[serde(rename_all = "camelCase")]
 pub struct RetroAccount {
     pub username: String,
-    /// The read-only Web API key of retroachievements.org → Settings → Keys.
+    /// The token of the login (`dorequest.php?r=login2`), the one emulators
+    /// keep too: it reads the user's progress and signs the emulators in.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub token: String,
+    /// Optional: the read-only Web API key of retroachievements.org →
+    /// Settings → Keys, which adds the unlock times of past unlocks.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub api_key: String,
+}
+
+impl RetroAccount {
+    /// It can read the user's progress.
+    pub fn usable(&self) -> bool {
+        !self.username.is_empty() && (!self.token.is_empty() || !self.api_key.is_empty())
+    }
 }
 
 pub fn read(paths: &DataPaths) -> Accounts {
@@ -59,7 +73,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
         assert_eq!(read(&paths), Accounts::default());
-        update(&paths, |a| a.retro_achievements = Some(RetroAccount { username: "me".into(), api_key: "k".into() })).unwrap();
+        update(&paths, |a| a.retro_achievements = Some(RetroAccount { username: "me".into(), token: "t".into(), ..Default::default() }))
+            .unwrap();
         assert_eq!(read(&paths).retro_achievements.unwrap().username, "me");
         let mode = std::fs::metadata(paths.achievement_accounts()).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o600);
