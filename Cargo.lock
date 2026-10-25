@@ -3541,6 +3541,7 @@ dependencies = [
  "heronite-data",
  "heronite-epic",
  "heronite-gog",
+ "heronite-launch",
  "heronite-metadata",
  "heronite-steam",
  "log",
