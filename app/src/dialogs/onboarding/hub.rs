@@ -110,6 +110,7 @@ impl OnboardingDialog {
             line(step.icon(), step.title(), right).into_any_element()
         };
         let total = f.games();
+        let launchers = self.launchers_line(cx);
         let visual = div()
             .absolute()
             .inset_0()
@@ -131,12 +132,33 @@ impl OnboardingDialog {
                 source(Step::Steam, tr!("open Steam")),
                 source(Step::Stores, tr!("log in")),
                 source(Step::Emulators, tr!("set up")),
+                launchers,
                 line(Icon::Add, tr!("Add a game"), dim(tr!("Linux, Windows, web"))).into_any_element(),
             ],
         )
         .cursor_pointer()
         .hover(|s| s.bg(theme::ink_a(0.06)).border_color(theme::ink_a(0.16)))
         .on_click(cx.listener(|this, _, _, cx| this.open(View::Games, cx)))
+    }
+
+    /// Heroic, Lutris, Bottles and Faugus: the games brought in from them,
+    /// and a click to Settings → Other launchers.
+    fn launchers_line(&self, cx: &mut Context<Self>) -> AnyElement {
+        let n: usize = crate::services::launcher_imports(cx).read(cx).in_collection.values().sum();
+        let right = if n > 0 {
+            done_label(trn!(n, "{n} game", "{n} games")).into_any_element()
+        } else {
+            dim(tr!("Heroic, Lutris and more")).into_any_element()
+        };
+        line(Icon::CallMerge, tr!("Other launchers"), right)
+            .id("onb-line-launchers")
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| {
+                // Not the card's click (which opens "Your games").
+                cx.stop_propagation();
+                this.go(Step::Stores, Action::Settings(Section::Launchers), cx);
+            }))
+            .into_any_element()
     }
 
     fn look_card(&self, art: &Art, cx: &mut Context<Self>) -> Stateful<Div> {
