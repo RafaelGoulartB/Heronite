@@ -74,6 +74,8 @@ pub fn language_keys(lang: &str) -> Vec<&'static str> {
         keys.extend(["brazilian", "portuguese"]);
     } else if lang.starts_with("es") {
         keys.extend(["latam", "spanish"]);
+    } else if lang.starts_with("de") {
+        keys.push("german");
     }
     keys.push("english");
     keys
@@ -266,6 +268,7 @@ mod tests {
     fn language_choice() {
         assert_eq!(language_keys("pt-BR"), ["brazilian", "portuguese", "english"]);
         assert_eq!(language_keys("es-MX"), ["latam", "spanish", "english"]);
+        assert_eq!(language_keys("de"), ["german", "english"]);
         assert_eq!(language_keys("en"), ["english"]);
         assert_eq!(web_language("es"), "latam");
     }

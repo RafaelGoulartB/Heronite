@@ -73,6 +73,7 @@ fn locale(lang: &str) -> &'static str {
     match lang {
         l if l.starts_with("pt") => "pt-BR",
         l if l.starts_with("es") => "es-ES",
+        l if l.starts_with("de") => "de-DE",
         _ => "en-US",
     }
 }
@@ -133,6 +134,7 @@ mod tests {
     fn locales() {
         assert_eq!(locale("pt-BR"), "pt-BR");
         assert_eq!(locale("es"), "es-ES");
+        assert_eq!(locale("de"), "de-DE");
         assert_eq!(locale("en"), "en-US");
     }
 }
