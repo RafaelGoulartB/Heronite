@@ -118,10 +118,10 @@ pub(super) fn picks(set: &AchievementSet) -> (Vec<&Achievement>, Vec<&Achievemen
 pub(super) fn view(body: Body, actions: Actions) -> AnyElement {
     match body {
         Body::Set { set, recent, next, refreshing } => set_view(&set, recent, next, refreshing, actions),
-        Body::Loading => panel(false)
-            .child(h3(tr!("Achievements")))
-            .child(div().text_size(px(12.5)).text_color(theme::ink_a(0.52)).child(tr!("Reading the achievements…")))
-            .into_any_element(),
+        Body::Loading => section(
+            None,
+            panel(false).child(div().text_size(px(12.5)).text_color(theme::ink_a(0.52)).child(tr!("Reading the achievements…"))),
+        ),
         Body::Connect => notice(
             Source::RetroAchievements,
             tr!("Connect your RetroAchievements account to see and track this game's achievements."),
@@ -159,19 +159,13 @@ fn set_view(set: &AchievementSet, recent: Vec<Row>, next: Vec<Row>, refreshing: 
         summary.push(tr!("{n} rare", n = rare));
     }
 
-    let mut body = panel(false)
-        .when(complete, |d| d.border_color(theme::achievement_gold()))
-        .child(
-            h3(tr!("Achievements")).flex().justify_between().gap(px(12.8)).child(
-                div()
-                    .text_size(px(13.6))
-                    .font_weight(theme::W_500)
-                    .text_color(if complete { theme::achievement_gold().into() } else { theme::ink_a(0.62) })
-                    .child(format!("{unlocked}/{total}")),
-            ),
-        )
-        .child(bar(pct as f32 / 100., complete, 6.))
-        .child(
+    let count = div()
+        .text_size(px(13.6))
+        .font_weight(theme::W_500)
+        .text_color(if complete { theme::achievement_gold().into() } else { theme::ink_a(0.62) })
+        .child(format!("{unlocked}/{total}"));
+    let mut body =
+        panel(false).when(complete, |d| d.border_color(theme::achievement_gold())).child(bar(pct as f32 / 100., complete, 6.)).child(
             div()
                 .mt(px(8.))
                 .flex()
@@ -212,7 +206,7 @@ fn set_view(set: &AchievementSet, recent: Vec<Row>, next: Vec<Row>, refreshing: 
         body = body.child(caption(tr!("Up next"))).children(next.into_iter().map(row));
     }
     let status = if refreshing { tr!("Updating…").to_string() } else { synced_label(set.fetched_at) };
-    body.child(
+    let body = body.child(
         div()
             .mt(px(12.))
             .pt(px(10.))
@@ -250,14 +244,24 @@ fn set_view(set: &AchievementSet, recent: Vec<Row>, next: Vec<Row>, refreshing: 
                         move |_, w, cx| refresh(w, cx)
                     }),
             ),
-    )
-    .into_any_element()
+    );
+    section(Some(count.into_any_element()), body)
+}
+
+/// The title above the panel, like the other sections ("Details",
+/// "Timeline"), with `meta` on its right.
+fn section(meta: Option<AnyElement>, panel: Div) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .child(h3(tr!("Achievements")).flex().justify_between().items_center().gap(px(12.8)).children(meta))
+        .child(panel)
+        .into_any_element()
 }
 
 /// A panel with only a message and a button (no set to show).
 fn notice(source: Source, text: &str, detail: Option<SharedString>, button: Stateful<Div>) -> AnyElement {
-    panel(false)
-        .child(h3(tr!("Achievements")).flex().justify_between().items_center().child(source_chip(source)))
+    let body = panel(false)
         .child(
             div()
                 .flex()
@@ -279,8 +283,8 @@ fn notice(source: Source, text: &str, detail: Option<SharedString>, button: Stat
                         .children(detail.map(|d| div().text_size(px(11.5)).text_color(theme::ink_a(0.45)).child(d))),
                 ),
         )
-        .child(div().mt(px(12.)).flex().child(button))
-        .into_any_element()
+        .child(div().mt(px(12.)).flex().child(button));
+    section(Some(source_chip(source).into_any_element()), body)
 }
 
 fn caption(text: &str) -> Div {

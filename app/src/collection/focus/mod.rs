@@ -457,7 +457,7 @@ fn body(lay: &Layout, s: Sections) -> Div {
         .order()
         .into_iter()
         .filter(is_side)
-        .fold(div().flex().flex_col().gap(px(14.4)).min_w_0(), |col, section| col.children(side_part(section)));
+        .fold(div().flex().flex_col().gap(px(24.)).min_w_0(), |col, section| col.children(side_part(section)));
     div().flex().items_start().gap(px(COL_GAP)).child(main.flex_1()).child(side.w(px(lay.side_w)).flex_none())
 }
 
