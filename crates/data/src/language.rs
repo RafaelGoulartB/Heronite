@@ -1,5 +1,5 @@
 //! The interface language picked in Settings (`language` in
-//! `AppPaths::appearance()`): `"system"` (the default), `"en"` or `"pt-BR"`.
+//! `AppPaths::appearance()`): `"system"` (the default), `"en"`, `"pt-BR"` or `"es"`.
 
 use anyhow::Result;
 use heronite_i18n::Preference;

@@ -1,0 +1,8 @@
+{
+  "Could not load the save folders: {error}": "No se pudieron cargar las carpetas de guardados: {error}",
+  "Default folder": "Carpeta por defecto",
+  "GOG lists these folders. They are kept in the game's settings (gogSaves); refresh them after changing the Wine prefix.": "GOG indica estas carpetas. Se guardan en los ajustes del juego (gogSaves); actualízalas tras cambiar el prefijo de Wine.",
+  "Loading the save folders…": "Cargando las carpetas de guardados…",
+  "Refresh locations": "Actualizar rutas",
+  "Save folders": "Guardados"
+}

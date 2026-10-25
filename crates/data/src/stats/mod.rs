@@ -54,12 +54,13 @@ pub struct Period {
 
 pub use heronite_i18n::{month_name, month_short};
 
-/// The month name in the middle of a sentence (Portuguese writes it in
-/// lower case).
+/// The month name in the middle of a sentence (Portuguese and Spanish write
+/// it in lower case).
 pub fn month_in_sentence(month: u32) -> String {
-    match heronite_i18n::current() {
-        heronite_i18n::Lang::En => month_name(month).to_string(),
-        heronite_i18n::Lang::PtBr => month_name(month).to_lowercase(),
+    if heronite_i18n::current().lowercase_names() {
+        month_name(month).to_lowercase()
+    } else {
+        month_name(month).to_string()
     }
 }
 

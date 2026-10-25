@@ -45,9 +45,9 @@ pub fn file_size_local(bytes: f64) -> String {
 /// A size text made by [`file_size`] (stored, e.g. in the queue) shown in the
 /// language's number format.
 pub fn localize_size(text: &str) -> String {
-    match heronite_i18n::current() {
-        heronite_i18n::Lang::En => text.to_string(),
-        heronite_i18n::Lang::PtBr => text.replace('.', ","),
+    match heronite_i18n::current().decimal_separator() {
+        '.' => text.to_string(),
+        sep => text.replace('.', &sep.to_string()),
     }
 }
 
