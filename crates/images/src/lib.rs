@@ -43,6 +43,8 @@ pub const PANEL_GLASS_BLUR_PX: f32 = 20.0;
 /// contrast over the brightest art once the Collection's scrims are on top.
 pub const BACKDROP_KNEE: f32 = 0.15;
 pub const BACKDROP_CAP: f32 = 0.26;
+/// The part of a cover's height its [`Variant::Reflection`] mirrors.
+pub const REFLECTION_PART: f32 = 0.3;
 
 /// One place an image can come from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -123,6 +125,12 @@ pub enum Variant {
     /// with [`BACKDROP_KNEE`] / [`BACKDROP_CAP`]) so white text stays legible
     /// over white or bright art, while darker art is untouched.
     Backdrop { blur_px: f32, saturation: f32 },
+    /// A cover's reflection on a glossy floor (console mode's Carousel): the
+    /// image covered to the target like [`Variant::Cover`], then its bottom
+    /// [`REFLECTION_PART`] upside down, softened and fading out downwards
+    /// (opaque at the top row, clear at the last). The result is `target_w`
+    /// wide and that part of `target_h` high.
+    Reflection,
 }
 
 impl std::hash::Hash for Variant {
@@ -134,6 +142,7 @@ impl std::hash::Hash for Variant {
             Variant::Stage { blur_px, saturation } => (1u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Glass { blur_px, saturation } => (2u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Backdrop { blur_px, saturation } => (3u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
+            Variant::Reflection => 6u8.hash(h),
         }
     }
 }
@@ -322,6 +331,19 @@ fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> 
             let mut px = resize::cover_to_rgba(raster, tw, th, opts.filter)?;
             fx::swap_rb(&mut px);
             Ok(Decoded { width: tw, height: th, bgra: px })
+        }
+        Variant::Reflection => {
+            let raster = decode::decode(&bytes, tw, th, opts.jpeg_scaled_decode)?;
+            drop(bytes);
+            let mut px = resize::cover_to_rgba(raster, tw, th, opts.filter)?;
+            fx::flatten_over_black(&mut px);
+            let rows = ((th as f32 * REFLECTION_PART).round() as u32).clamp(1, th);
+            let mut px = fx::mirror_bottom(&px, tw as usize, th as usize, rows as usize);
+            // A floor is a little blurry: about 1/160 of the width.
+            fx::gaussian_blur(&mut px, tw as usize, rows as usize, (tw as f32 / 160.).max(1.));
+            fx::fade_down(&mut px, tw as usize, rows as usize);
+            fx::swap_rb(&mut px);
+            Ok(Decoded { width: tw, height: rows, bgra: px })
         }
         Variant::Stage { blur_px, saturation } | Variant::Glass { blur_px, saturation } | Variant::Backdrop { blur_px, saturation } => {
             let (ow, oh, scale) = geometry::stage_size(tw, th, blur_px, opts.stage_max_width, opts.stage_sigma_out);

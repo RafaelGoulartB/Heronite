@@ -49,6 +49,10 @@ pub fn thumb_key(identity: &str, variant: Variant, tw: u32, th: u32, opts: &Opts
     match variant {
         Variant::Cover => h.update([0u8]),
         Variant::Fit { ink: None } => h.update([4u8]),
+        Variant::Reflection => {
+            h.update([6u8]);
+            h.update(crate::REFLECTION_PART.to_bits().to_le_bytes());
+        }
         Variant::Fit { ink: Some(ink) } => {
             h.update([5u8]);
             h.update(ink);

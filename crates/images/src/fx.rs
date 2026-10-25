@@ -21,6 +21,32 @@ pub fn flatten_over_black(buf: &mut [u8]) {
     }
 }
 
+/// The bottom `rows` rows of a `w`×`h` 4-channel image, upside down (its last
+/// row first): what a floor under it reflects.
+pub fn mirror_bottom(buf: &[u8], w: usize, h: usize, rows: usize) -> Vec<u8> {
+    let stride = w * 4;
+    let rows = rows.min(h);
+    let mut out = Vec::with_capacity(stride * rows);
+    for y in 0..rows {
+        let src = h - 1 - y;
+        out.extend_from_slice(&buf[src * stride..(src + 1) * stride]);
+    }
+    out
+}
+
+/// Fades a `w`×`h` RGBA / BGRA image out downwards: its alpha scaled from 1
+/// on the top row to 0 below the last, along a curve (a reflection fades
+/// fast near the floor, then trails off).
+pub fn fade_down(buf: &mut [u8], w: usize, h: usize) {
+    for y in 0..h {
+        let t = 1. - y as f32 / h as f32;
+        let k = t * t;
+        for p in buf[y * w * 4..(y + 1) * w * 4].as_chunks_mut::<4>().0 {
+            p[3] = (p[3] as f32 * k).round() as u8;
+        }
+    }
+}
+
 /// Soft-caps the brightness of RGBA pixels so white text stays legible over
 /// them: relative luminance (linear light) above `knee` is rolled off towards
 /// `cap`, scaling the pixel's linear RGB so the hue is kept. Pixels at or

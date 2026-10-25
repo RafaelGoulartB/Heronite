@@ -303,6 +303,28 @@ fn fit_keeps_aspect_and_transparency() {
 }
 
 #[test]
+fn reflection_mirrors_the_bottom_and_fades_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("cover.png");
+    // Red on top, blue in the bottom quarter.
+    write_png(&p, 200, 300, |_, y| if y < 225 { [255, 0, 0, 255] } else { [0, 0, 255, 255] });
+    let o = opts(dir.path());
+    let chain = [ImageRef::File(p)];
+    let d = load(&chain, 100, 150, Variant::Reflection, &o).unwrap();
+    assert_eq!((d.width, d.height), (100, 45));
+    let px = |y: usize| &d.bgra[(y * 100 + 50) * 4..][..4];
+    // The cover's bottom edge comes first, opaque (BGRA: blue).
+    assert!(px(0)[0] > 240 && px(0)[2] < 15 && px(0)[3] == 255, "{:?}", px(0));
+    // Further down: the red above it, almost clear.
+    assert!(px(44)[2] > 240 && px(44)[3] < 5, "{:?}", px(44));
+    assert!(px(10)[3] > px(30)[3]);
+    // Cached apart from the cover of the same size.
+    let again = load(&chain, 100, 150, Variant::Reflection, &o).unwrap();
+    assert_eq!(again, d);
+    assert_eq!(load_cover(&chain, 100, 150, &o).unwrap().height, 150);
+}
+
+#[test]
 fn find_looks_in_subfolders_and_skips_missing() {
     let dir = tempfile::tempdir().unwrap();
     let game = dir.path().join("570");
