@@ -32,8 +32,12 @@ pub(crate) enum Scrim {
     /// Classic's, denser where the grid of covers and its filters sit, so
     /// the art stays a colour behind them rather than a second picture.
     Library,
-    /// Lighter: the art shows most (Spotlight, Xbox).
+    /// Lighter: the art shows most (Xbox).
     Spot,
+    /// A console's home (Spotlight): the art bright in the middle and to the
+    /// right, darker along the top (the tabs and the row of icons), the left
+    /// (the logo and Play) and the bottom (the cards).
+    Home,
     /// Dark at the bottom only (Cinema).
     Cinema,
     /// A vignette: the art glows behind the covers in the middle, darker
@@ -60,6 +64,7 @@ fn light_wash(scrim: Scrim) -> f32 {
         Scrim::Classic => 0.6,
         Scrim::Library => 0.66,
         Scrim::Spot => 0.5,
+        Scrim::Home => 0.52,
         Scrim::Cinema => 0.62,
         Scrim::Carousel => 0.56,
         Scrim::Full => 0.68,
@@ -76,6 +81,7 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         Scrim::Classic => vec![layer(90., 0.96, 0.35, 1.), layer(0., 0.98, 0., 0.75), layer(180., 0.6, 0., 0.45)],
         Scrim::Library => vec![layer(90., 0.95, 0.58, 1.), layer(0., 0.97, 0.3, 0.85), layer(180., 0.55, 0., 0.3)],
         Scrim::Spot => vec![layer(90., 0.88, 0.1, 0.7), layer(0., 0.92, 0., 0.5), layer(180., 0.6, 0., 0.25)],
+        Scrim::Home => vec![layer(180., 0.78, 0., 0.36), layer(90., 0.82, 0., 0.58), layer(0., 0.9, 0., 0.42)],
         Scrim::Cinema => vec![layer(0., 0.97, 0., 0.62), layer(90., 0.55, 0., 0.5), layer(180., 0.45, 0., 0.16)],
         Scrim::Carousel => vec![layer(0., 0.94, 0., 0.5), layer(180., 0.72, 0., 0.34), layer(90., 0.6, 0., 0.3), layer(270., 0.6, 0., 0.3)],
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],
@@ -204,8 +210,8 @@ impl CollectionView {
         let theme = look::theme();
         let (art_prev, art) = self.console_art(window, cx);
         let drift = theme.background.motion == BackgroundMotion::Drift && motion::on();
-        // Classic's screens: new art settles in from a touch closer while it fades.
-        let settle = !drift && matches!(scrim, Scrim::Classic | Scrim::Library) && motion::on() && !motion::reduced();
+        // Classic's and Spotlight's screens: new art settles in from a touch closer while it fades.
+        let settle = !drift && matches!(scrim, Scrim::Classic | Scrim::Library | Scrim::Home) && motion::on() && !motion::reduced();
         let art_img = move |i: Arc<RenderImage>| img(ImageSource::Render(i)).absolute().inset_0().size_full().object_fit(ObjectFit::Cover);
         let colour =
             (theme.background.source == BackgroundSource::GameColour).then_some(self.console.game_colour).flatten().map(|(r, g, b)| {

@@ -50,7 +50,8 @@ pub(crate) struct TabNav {
 pub(super) fn scrim(layout: Layout) -> Scrim {
     match layout {
         Layout::Shelves => Scrim::Classic,
-        Layout::Spotlight | Layout::Xbox => Scrim::Spot,
+        Layout::Spotlight => Scrim::Home,
+        Layout::Xbox => Scrim::Spot,
         Layout::Cinema => Scrim::Cinema,
         Layout::Carousel => Scrim::Carousel,
         Layout::Dashboard | Layout::Wheel => Scrim::Full,
