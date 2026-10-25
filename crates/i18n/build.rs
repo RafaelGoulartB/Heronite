@@ -8,7 +8,8 @@ use std::path::Path;
 fn main() {
     let root = Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("locales");
     println!("cargo:rerun-if-changed={}", root.display());
-    let mut langs: Vec<_> = std::fs::read_dir(&root).expect("locales").filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
+    let mut langs: Vec<_> =
+        std::fs::read_dir(&root).expect("locales").filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.is_dir()).collect();
     langs.sort();
     let mut out = String::new();
     for dir in &langs {
