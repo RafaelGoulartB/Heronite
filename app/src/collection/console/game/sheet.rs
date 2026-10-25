@@ -1,7 +1,7 @@
-//! The game page as Sheet: a side sheet over the tab with the essentials
-//! (cover, name, facts, status, Play, Status, Favourite, Game settings);
-//! "Full page" shows the Classic page until the game page closes. The sheet
-//! shell ([`side_sheet`]) also holds Hero's "More".
+//! The game page as Sheet: a window floating along the left edge over the
+//! tab with the essentials (cover, name, facts, status, Play, Status,
+//! Favourite, Game settings); "Full page" shows the Classic page until the
+//! game page closes. The side sheet shell ([`side_sheet`]) holds Hero's "More".
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -32,6 +32,9 @@ impl Nav {
 
 /// Design width of the sheet.
 const WIDTH: f32 = 440.;
+/// The floating sheet's space from the window's edges and its corners, design px.
+const MARGIN: f32 = 18.;
+const RADIUS: f32 = 26.;
 
 /// The rows the sheet shows: the main ones of the game's actions, then "Full page".
 fn sheet_rows(all: Vec<Row>) -> Vec<Row> {
@@ -66,6 +69,31 @@ pub(super) fn side_sheet(id: &'static str, body: impl IntoElement) -> AnyElement
         .into_any_element()
 }
 
+/// A window floating along the left edge over a light dim of the whole
+/// screen (the top bar too), sliding in from the left as it fades in. `id`
+/// restarts the slide.
+fn floating_sheet(id: &'static str, body: impl IntoElement) -> AnyElement {
+    let panel = div()
+        .relative()
+        .size_full()
+        .flex()
+        .flex_col()
+        .rounded(u(RADIUS))
+        .overflow_hidden()
+        .bg(theme::console_sidebar())
+        .border_1()
+        .border_color(kit::ink(0.1))
+        .shadow(kit::shadow(0.55, 18., 56.))
+        .child(body);
+    let place = div().absolute().top(u(MARGIN)).bottom(u(MARGIN)).left(u(MARGIN)).w(u(WIDTH));
+    div()
+        .absolute()
+        .inset_0()
+        .child(motion::fade_in("console-sheet-dim", div().absolute().inset_0().bg(kit::dim(0.45)), 220))
+        .child(place.child(motion::enter(id, panel, 340, -(WIDTH * 0.4), 0.)))
+        .into_any_element()
+}
+
 impl CollectionView {
     /// Presses `pad` on the row `id` of the game's actions as the Classic page
     /// does, so every page runs an action the same way.
@@ -77,12 +105,24 @@ impl CollectionView {
         self.game_pad_classic(key, pad, window, cx);
     }
 
+    /// The tab, as it was, under the floating sheet (see
+    /// [`Self::render_game_sheet_layer`]); the Classic page after "Full page".
     pub(super) fn render_game_sheet(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let g = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
-        let Some(g) = g.filter(|_| !self.console.game.sheet.full) else { return self.render_game_classic(key, window, cx) };
-        // The tab stays under the sheet, as it was.
+        if self.console.game.sheet.full {
+            return self.render_game_classic(key, window, cx);
+        }
         let (tab, spec) = self.console_tab_spec();
-        let under = self.render_layout(tab, &spec, window, cx);
+        self.render_layout(tab, &spec, window, cx)
+    }
+
+    /// The floating sheet, over the whole window; `None` once "Full page" took over.
+    pub(super) fn render_game_sheet_layer(
+        &mut self,
+        key: &SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let g = self.lib.as_ref().and_then(|l| l.get(key)).cloned().filter(|_| !self.console.game.sheet.full)?;
         let rows = sheet_rows(self.game_rows(&g, cx));
         let list = self.console.game.sheet.list.render("console-game-sheet", &rows, true);
 
@@ -103,7 +143,7 @@ impl CollectionView {
                     .flex_none()
                     .w(u(cw))
                     .h(u(ch))
-                    .rounded(u(10.))
+                    .rounded(u(12.))
                     .overflow_hidden()
                     .bg(kit::ink(0.08))
                     .shadow(kit::shadow(0.5, 10., 26.))
@@ -120,7 +160,7 @@ impl CollectionView {
                     .children(self.console_status_badge(&g).map(|b| div().flex().child(b))),
             );
         let body = div().flex().flex_col().size_full().child(head).child(div().flex_1().min_h_0().px(u(12.)).py(u(6.)).child(list));
-        div().relative().size_full().child(under).child(side_sheet("console-game-sheet-panel", body)).into_any_element()
+        Some(floating_sheet("console-game-sheet-panel", body))
     }
 
     pub(super) fn game_pad_sheet(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {

@@ -223,6 +223,19 @@ impl CollectionView {
         }
     }
 
+    /// What the game page draws over the whole window (the Sheet's floating panel).
+    pub(super) fn render_console_game_layer(
+        &mut self,
+        key: &SharedString,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        match look::theme().game_page {
+            GamePage::Sheet => self.render_game_sheet_layer(key, window, cx),
+            _ => None,
+        }
+    }
+
     /// `false` lets the shell use the press (B goes back).
     pub(super) fn game_pad(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         match look::theme().game_page {

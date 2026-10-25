@@ -706,6 +706,11 @@ impl CollectionView {
         let idle = self.render_idle(window, cx);
         let customize = self.render_console_customize();
         let filters = self.render_console_filters();
+        // Over the whole window but the hint bar (the Sheet game page floats).
+        let game_layer = game_key
+            .as_ref()
+            .and_then(|k| self.render_console_game_layer(k, window, cx))
+            .map(|layer| div().absolute().top_0().left_0().right_0().bottom(if hints_on { u(60.) } else { px(0.) }).child(layer));
         let (_, body_font) = look::fonts();
         div()
             .id("console")
@@ -735,6 +740,7 @@ impl CollectionView {
                     .children(bottom_tabs)
                     .when(hints_on, |d| d.child(div().flex_none().h(u(60.)))),
             )
+            .children(game_layer)
             .children(self.render_sidebar(cx))
             .children(customize)
             .children(filters)
