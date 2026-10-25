@@ -101,7 +101,7 @@ pub fn cinema() -> ConsoleTheme {
     })
 }
 
-/// A console's home screen: a row of covers on top (the focused one
+/// A console's home screen: a row of square icons on top (the focused one
 /// grows, its name beside it), the game's art and logo, a wide Play button
 /// and cards; the tabs as plain names.
 pub fn pulse() -> ConsoleTheme {
@@ -111,7 +111,7 @@ pub fn pulse() -> ConsoleTheme {
         t.hero.facts = false;
         t.hero.overview = false;
         t.hero.size = Size3::Large;
-        t.tiles.size = TileSize::Large;
+        t.tiles.shape = TileShape::Square;
         t.tiles.corners = Corners::Soft;
         t.interface.tab_bar = TabBar::Names;
         t.interface.font = ConsoleFont::System;
