@@ -122,10 +122,13 @@ fn deprecated_ge_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(GE|Wine|Proton)-(Proton[7-8]|[4-7].*-GE|GE-4.[0-9]*)").unwrap())
 }
 
-/// `WINEDEBUG` of a Proton game without verbose logs. Proton's own default
-/// (`-all`) hides the loader's errors, so a game that cannot start for want
-/// of a DLL leaves no trace; these lines only appear when a DLL fails to
-/// load, which costs nothing while the game runs.
+/// `WINEDEBUG` of a Proton game whose settings do not turn `verboseLogs`
+/// on. Proton's own default (`-all`) hides the loader's errors; these lines
+/// only appear when a DLL fails to load, which costs nothing while the game
+/// runs. Only reaches the log when the key is absent: the launch log is then
+/// on (`log_writer::launch_log_switches`), while `verboseLogs: false` turns
+/// it off altogether and `true` (the default of a new game) already logs
+/// Wine's errors through `+fixme`.
 pub const QUIET_WINEDEBUG: &str = "-all,err+module";
 
 /// `setupWineEnvVars`. `runtime_dir` is `<data>/tools/runtimes`.

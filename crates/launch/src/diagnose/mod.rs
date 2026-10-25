@@ -14,8 +14,11 @@
 //! explain, a likely cause, an anti-cheat that refuses Linux) are only for
 //! the player who asks ("Troubleshoot"), whenever the game ended.
 //!
-//! Proton games are logged with [`crate::env::QUIET_WINEDEBUG`], so the
-//! loader's "DLL not found" errors reach the log even without verbose logs.
+//! The log-based findings need the launch log, which `verboseLogs: false`
+//! turns off (then [`Problem::LogsOff`] asks to turn it on). With the log on,
+//! Wine's "DLL not found" errors reach it: through `+fixme` with verbose
+//! logs, through [`crate::env::QUIET_WINEDEBUG`] for a Proton game whose
+//! settings leave the key out.
 
 mod dlls;
 mod log;
