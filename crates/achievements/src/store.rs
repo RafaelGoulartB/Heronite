@@ -114,7 +114,7 @@ mod tests {
                 Achievement { id: "b".into(), ..Default::default() },
             ],
         };
-        let game = GameAchievements { sets: vec![set], retro_game_id: None };
+        let game = GameAchievements { sets: vec![set], ..Default::default() };
         write(&paths, "gog", "1", &game, &[Source::Gog]).unwrap();
         assert_eq!(read(&paths, "gog", "1"), game);
         let s = &read_index(&paths).games["gog_1"];

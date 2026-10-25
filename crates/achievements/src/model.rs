@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Where a set of achievements comes from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Source {
     Steam,
@@ -184,7 +184,7 @@ impl AchievementSet {
     }
 
     /// Unlocked achievements rarer than this share of players count as rare.
-    pub const RARE_BELOW: f32 = 10.;
+    pub const RARE_BELOW: f32 = 15.;
 
     pub fn rare_unlocked(&self) -> usize {
         self.achievements.iter().filter(|a| a.unlocked && a.rarity.is_some_and(|r| r < Self::RARE_BELOW)).count()
@@ -202,6 +202,10 @@ pub struct GameAchievements {
     /// matches no set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retro_game_id: Option<u32>,
+    /// When a source last said the game has no achievements there (so it is
+    /// not asked again at every start).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub none_at: std::collections::BTreeMap<Source, DateTime<Utc>>,
 }
 
 impl GameAchievements {
@@ -212,6 +216,13 @@ impl GameAchievements {
     /// The set to show: the first, in `order`, that has achievements.
     pub fn primary(&self, order: &[Source]) -> Option<&AchievementSet> {
         order.iter().filter_map(|s| self.set(*s)).find(|s| !s.achievements.is_empty())
+    }
+
+    /// When `source` was last read with an answer (a set, or "none").
+    pub fn checked_at(&self, source: Source) -> Option<DateTime<Utc>> {
+        let set = self.set(source).map(|s| s.fetched_at);
+        let none = self.none_at.get(&source).copied();
+        set.max(none)
     }
 }
 
@@ -283,7 +294,8 @@ mod tests {
     fn json_keys_are_camel_case_and_lean() {
         let v = serde_json::to_value(a("x", None, 5.)).unwrap();
         assert_eq!(v, serde_json::json!({"id":"x","name":"x","description":"","icon":"","iconLocked":"","rarity":5.0}));
-        let g = GameAchievements { sets: vec![set(vec![])], retro_game_id: None };
+        let mut g = GameAchievements { sets: vec![set(vec![])], ..Default::default() };
+        g.none_at.insert(Source::Epic, Utc::now());
         let back: GameAchievements = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
         assert_eq!(back, g);
         assert_eq!(serde_json::to_value(Source::RetroAchievements).unwrap(), "retroachievements");
