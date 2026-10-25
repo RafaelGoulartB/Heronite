@@ -19,7 +19,7 @@ use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use gpui_kit::*;
-use heronite_data::console_theme::{GridPanel, Layout, TabSpec};
+use heronite_data::console_theme::{GridPanel, Hints, Layout, TabSpec};
 use heronite_data::CollectionGame;
 use heronite_i18n::tr;
 
@@ -58,6 +58,13 @@ pub(super) fn scrim(layout: Layout) -> Scrim {
         Layout::Grid if look::theme().layouts.grid_panel == GridPanel::Right => Scrim::Full,
         Layout::Grid => Scrim::Library,
     }
+}
+
+/// Whether the hint bar floats over the layout and fades in and out
+/// (`Hints::Auto`) instead of taking its room: the screen never moves when it
+/// comes and goes. Spotlight keeps that room clear itself.
+pub(super) fn hints_float(layout: Layout) -> bool {
+    layout == Layout::Spotlight && look::theme().controls.hints == Hints::Auto
 }
 
 /// `i` moved by `delta` in `0..n`, going round when `wrap`.

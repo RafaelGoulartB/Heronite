@@ -109,6 +109,24 @@ pub(super) struct ConsoleUi {
     customize: Option<customize::CustomizeNav>,
 }
 
+/// The hint bar over the bottom of the screen, on a fade of the background
+/// colour; it fades in and rises a little while `shown`, and back out.
+fn floating_hints(hints: &[Hint], shown: bool) -> AnyElement {
+    let (mut top, mut bottom) = (theme::console_bg(), theme::console_bg());
+    top.a = 0.;
+    bottom.a = 0.9;
+    let bar = kit::hint_bar(hints).border_color(transparent_black()).bg(linear_gradient(
+        0.,
+        linear_color_stop(bottom, 0.),
+        linear_color_stop(top, 1.),
+    ));
+    let layer = div().absolute().left_0().right_0().bottom_0();
+    motion::spring("console-hints-float", layer.child(bar), motion::SOFT, shown, |d, k| {
+        let k = k.clamp(0., 1.);
+        d.opacity(k).bottom(u(-10. * (1. - k)))
+    })
+}
+
 /// A tab's name as shown (built-in themes name their tabs with English keys).
 fn tab_label(t: &TabSpec) -> SharedString {
     SharedString::from(tr(&t.name).to_string())
@@ -718,7 +736,8 @@ impl CollectionView {
         };
         let backdrop = self.render_console_backdrop(scrim, window, cx);
         let hints_on = self.hints_visible();
-        let hints = if hints_on { self.console_hints(cx) } else { Vec::new() };
+        let float = !on_page && game_key.is_none() && layouts::hints_float(spec.layout);
+        let hints = if hints_on || float { self.console_hints(cx) } else { Vec::new() };
         let idle = self.render_idle(window, cx);
         let customize = self.render_console_customize();
         let filters = self.render_console_filters();
@@ -754,7 +773,7 @@ impl CollectionView {
                     .children(top_bar)
                     .child(div().flex_1().min_h_0().child(body))
                     .children(bottom_tabs)
-                    .when(hints_on, |d| d.child(div().flex_none().h(u(60.)))),
+                    .when(hints_on && !float, |d| d.child(div().flex_none().h(u(60.)))),
             )
             .children(game_layer)
             .children(self.render_sidebar(cx))
@@ -767,9 +786,10 @@ impl CollectionView {
             }))
             .children(self.render_toast(cx))
             // Above the overlays: the hints of whatever has the focus.
-            .when(hints_on, |d| {
+            .when(hints_on && !float, |d| {
                 d.child(div().absolute().left_0().right_0().bottom_0().child(kit::hint_bar(&hints).bg(theme::console_bg())))
             })
+            .when(float, |d| d.child(floating_hints(&hints, hints_on)))
             .children(idle)
             .into_any_element()
     }
