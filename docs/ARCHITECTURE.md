@@ -22,7 +22,7 @@ the UI.
 
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
- ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR and es strings (no GPUI)
+ ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es and de strings (no GPUI)
  ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
@@ -93,8 +93,8 @@ device when the last window closes (the app lives on in the tray); see its
   owned on Steam that the Collection has from another source joins that
   entry instead of getting a Steam entry of its own).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
-  lives in `locales/pt-BR/*.json` and Spanish (neutral, `tú`) in
-  `locales/es/*.json`, embedded at build time (one folder per language) and
+  lives in `locales/pt-BR/*.json`, Spanish (neutral, `tú`) in
+  `locales/es/*.json` and German (`du`) in `locales/de/*.json`, embedded at build time (one folder per language) and
   loaded the first time it is needed. The language follows the system unless one is
   picked in Settings → General (`language` in `appearance.json`); switching
   redraws the windows. `tests/coverage.rs` scans the workspace: every key
