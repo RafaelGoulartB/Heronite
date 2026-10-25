@@ -557,9 +557,13 @@ the panel's size follows it.
   `tr!("{n} of {total}", n, total)`, `trn!(count, "{n} game", "{n} games")`,
   `n_!` for constant tables. Never build a sentence from fragments
   (word order differs); never translate ids, keys or values that are saved or
-  parsed. Add the Portuguese to `crates/i18n/locales/pt-BR/<area>.json`;
-  `cargo test -p heronite-i18n` fails on a missing or unused key. Portuguese
-  runs ~25% longer than English: leave room in buttons and pills.
+  parsed. Add the Portuguese to `crates/i18n/locales/pt-BR/<area>.json` and
+  the Spanish to `crates/i18n/locales/es/<area>.json`;
+  `cargo test -p heronite-i18n` fails on a missing or unused key in either.
+  Community terms stay in English in every language (Wine, Proton, DXVK,
+  shaders, overlay, runner, launcher, preset, backlog, replay, sandbox, logs,
+  store and tool names). Portuguese and Spanish run
+  ~25% longer than English: leave room in buttons and pills.
 
 ## Verifying visually (mandatory for UI work)
 - Build: `cargo build -p heronite`.

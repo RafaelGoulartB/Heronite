@@ -22,7 +22,7 @@ the UI.
 
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
- ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR strings (no GPUI)
+ ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR and es strings (no GPUI)
  ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
@@ -89,11 +89,12 @@ device when the last window closes (the app lives on in the tray); see its
   owned on Steam that the Collection has from another source joins that
   entry instead of getting a Steam entry of its own).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
-  lives in `locales/pt-BR/*.json`, embedded at build time and loaded the
-  first time it is needed. The language follows the system unless one is
+  lives in `locales/pt-BR/*.json` and Spanish (neutral, `tú`) in
+  `locales/es/*.json`, embedded at build time (one folder per language) and
+  loaded the first time it is needed. The language follows the system unless one is
   picked in Settings → General (`language` in `appearance.json`); switching
   redraws the windows. `tests/coverage.rs` scans the workspace: every key
-  needs a translation and every translation a key.
+  needs a translation in every language and every translation a key.
 - **heronite-launch:** `plan` turns a game plus settings into a `LaunchPlan`
   and does no I/O beyond reads. `runtime::Launcher` runs the plan through a
   `Spawner`, tracks the process group and emits `LaunchEvent`s. `record`

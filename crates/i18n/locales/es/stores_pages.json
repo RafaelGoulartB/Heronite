@@ -32,7 +32,7 @@
   "Add the games of your Steam library": "Añade los juegos de tu biblioteca de Steam",
   "Checking Steam…": "Comprobando Steam…",
   "Heronite reads your library from the Steam client, so there is no login: only games are added (no tools, soundtracks, demos or games you hid in Steam). A game you already have from another store or added yourself is not added twice: it gets Steam's install instead. Steam keeps installing, updating and launching its games.": "Heronite lee tu biblioteca desde el cliente de Steam, así que no hace falta iniciar sesión: solo se añaden juegos (sin herramientas, bandas sonoras, demos ni juegos que ocultaste en Steam). Un juego que ya tienes de otra tienda o que añadiste tú no se añade dos veces: recibe la instalación de Steam. Steam sigue instalando, actualizando y lanzando sus juegos.",
-  "Last read {when}": "Leída {when}",
+  "Last read {when}": "Última lectura {when}",
   "Not read yet": "Aún sin leer",
   "Play with Steam": "Jugar con Steam",
   "Read library now": "Leer biblioteca ahora",
