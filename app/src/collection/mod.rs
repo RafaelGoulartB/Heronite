@@ -388,7 +388,8 @@ impl CollectionView {
                     .border_color(if error { theme::danger().into() } else { theme::ink_a(0.12) })
                     .text_size(px(13.33))
                     .text_color(theme::ink_a(0.92))
-                    .child(text)
+                    // A long text wraps instead of pushing the button out.
+                    .child(div().flex_1().min_w_0().child(text))
                     .children(action.map(|action| {
                         div()
                             .id("toast-action")
