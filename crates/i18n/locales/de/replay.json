@@ -93,7 +93,7 @@
   "The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes.": "Die letzten Sekunden eines Spiels, die im Speicher gehalten und mit Guide + X als Moment gespeichert werden, und der Speicher, den das belegt.",
   "The last {n} s of the game, marked as a moment.": "Die letzten {n} s des Spiels, als Moment markiert.",
   "The last {n} s, in its replays folder.": "Die letzten {n} s, in seinem Replays-Ordner.",
-  "The last {n} s. Write about it in Notes.": "Die letzten {n} s. Schreibe in den Notizen darüber.",
+  "The last {n} s. Write about it in Notes.": "Die letzten {n} s. Schreib dazu eine Notiz.",
   "The monitor was not found": "Der Monitor wurde nicht gefunden",
   "The replay is no longer at {path}": "Das Replay befindet sich nicht mehr unter {path}",
   "The screen could not be captured": "Der Bildschirm konnte nicht aufgenommen werden",
