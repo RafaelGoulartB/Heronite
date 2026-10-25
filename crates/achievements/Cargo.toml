@@ -16,6 +16,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"
 log = "0.4"
+sha2 = "0.10"
+aes = "0.8"
+cbc = "0.1"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 
 [dev-dependencies]

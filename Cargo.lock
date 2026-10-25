@@ -3537,7 +3537,10 @@ dependencies = [
 name = "heronite-achievements"
 version = "0.15.0"
 dependencies = [
+ "aes",
  "anyhow",
+ "base64 0.22.1",
+ "cbc",
  "cc",
  "chrono",
  "heronite-data",
@@ -3549,6 +3552,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
 ]
 

@@ -7,6 +7,7 @@
 //! Every function here is blocking; the app calls them from worker threads.
 
 pub mod accounts;
+pub mod emulators;
 pub mod merge;
 pub mod migrate;
 pub mod model;
