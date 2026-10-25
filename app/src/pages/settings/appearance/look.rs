@@ -102,6 +102,7 @@ pub(super) fn section_label(s: Section) -> &'static str {
         Section::Screenshots => tr!("Screenshots"),
         Section::Overview => tr!("Overview"),
         Section::Details => tr!("Details"),
+        Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
     }

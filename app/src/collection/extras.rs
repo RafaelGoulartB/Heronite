@@ -380,7 +380,7 @@ impl CollectionView {
         }
     }
 
-    /// Achievements (above Details).
+    /// The Achievements section.
     pub(super) fn focus_extras(&mut self, key: &str, scale: f32, cx: &mut Context<Self>) -> focus::FocusExtras {
         let mut extras = focus::FocusExtras::default();
         let Some(game) = self.lib.as_ref().and_then(|lib| lib.get(key)).cloned() else { return extras };
@@ -418,7 +418,7 @@ impl CollectionView {
                 weak.update(cx, |this, cx| this.open_settings_section(crate::pages::settings::Section::Achievements, window, cx)).ok();
             }),
         };
-        extras.top = Some(achievements::view(body, actions));
+        extras.achievements = Some(achievements::view(body, actions));
         extras
     }
 

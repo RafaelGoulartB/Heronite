@@ -1,8 +1,9 @@
-//! "Achievements" panel of the focus panel's side column (above Details): the
-//! count and a progress bar, the latest three unlocks, the two closest to
-//! being unlocked, and "View all". A game at 100% turns gold. For a ROM the
-//! panel asks for the RetroAchievements account, or says its file matches
-//! no set.
+//! "Achievements" section of the focus panel (in the side column, under
+//! Details by default; Settings → Appearance → Game sections moves or hides
+//! it): the count and a progress bar, the latest three unlocks, the two
+//! closest to being unlocked, and "View all". A game at 100% turns gold. For
+//! a ROM the panel asks for the RetroAchievements account, or says its file
+//! matches no set.
 
 use std::rc::Rc;
 

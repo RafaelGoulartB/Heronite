@@ -212,29 +212,34 @@ choice! {
         Screenshots = "screenshots",
         Overview = "overview",
         Details = "details",
+        /// The achievements panel (it keeps to "Details"' column).
+        Achievements = "achievements",
         Timeline = "timeline",
         Related = "related",
     } default Overview
 }
 
 /// Order and visibility of the [`Section`]s. In the Focus panel's two
-/// columns "Details" stays in the side column; the others keep this order.
+/// columns "Details" and "Achievements" stay in the side column; the others
+/// keep this order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Sections {
-    order: [Section; 5],
+    order: [Section; 6],
     /// Bit `1 << index in Section::ALL` set = hidden.
     hidden: u8,
 }
 
 impl Sections {
-    pub const DEFAULT: Sections =
-        Sections { order: [Section::Screenshots, Section::Overview, Section::Details, Section::Timeline, Section::Related], hidden: 0 };
+    pub const DEFAULT: Sections = Sections {
+        order: [Section::Screenshots, Section::Overview, Section::Details, Section::Achievements, Section::Timeline, Section::Related],
+        hidden: 0,
+    };
 
     fn bit(s: Section) -> u8 {
         1 << Section::ALL.iter().position(|x| *x == s).unwrap_or(0)
     }
 
-    pub fn order(&self) -> [Section; 5] {
+    pub fn order(&self) -> [Section; 6] {
         self.order
     }
 
@@ -268,21 +273,28 @@ impl Sections {
     }
 
     /// From stored names: unknown names are dropped, missing sections are
-    /// added in their default place.
+    /// added at the end, except "Achievements" (newer than a stored order),
+    /// which goes right under "Details".
     pub fn from_names<'a>(order: impl IntoIterator<Item = &'a str>, hidden: impl IntoIterator<Item = &'a str>) -> Self {
-        let mut seen: Vec<Section> = Vec::with_capacity(5);
+        let mut seen: Vec<Section> = Vec::with_capacity(6);
         for s in order.into_iter().filter_map(Section::parse) {
             if !seen.contains(&s) {
                 seen.push(s);
             }
         }
+        let had_achievements = seen.contains(&Section::Achievements);
         for s in Self::DEFAULT.order {
             if !seen.contains(&s) {
                 seen.push(s);
             }
         }
+        if !had_achievements {
+            seen.retain(|s| *s != Section::Achievements);
+            let at = seen.iter().position(|s| *s == Section::Details).map_or(seen.len(), |i| i + 1);
+            seen.insert(at, Section::Achievements);
+        }
         let mut out = Self { order: Self::DEFAULT.order, hidden: 0 };
-        out.order.copy_from_slice(&seen[..5]);
+        out.order.copy_from_slice(&seen[..6]);
         for s in hidden.into_iter().filter_map(Section::parse) {
             out.hidden |= Self::bit(s);
         }
@@ -329,7 +341,7 @@ mod tests {
         assert_eq!(s.order()[..3], [Section::Screenshots, Section::Overview, Section::Related]);
         let s = s.toggled(Section::Timeline);
         assert!(!s.shown(Section::Timeline));
-        assert_eq!(s.visible().count(), 4);
+        assert_eq!(s.visible().count(), 5);
         assert_eq!(s.hidden_names(), ["timeline"]);
         assert!(s.toggled(Section::Timeline).shown(Section::Timeline));
     }
@@ -337,8 +349,23 @@ mod tests {
     #[test]
     fn sections_from_partial_names() {
         let s = Sections::from_names(["related", "bogus", "related", "overview"], ["details", "x"]);
-        assert_eq!(s.order(), [Section::Related, Section::Overview, Section::Screenshots, Section::Details, Section::Timeline]);
+        assert_eq!(
+            s.order(),
+            [Section::Related, Section::Overview, Section::Screenshots, Section::Details, Section::Achievements, Section::Timeline]
+        );
         assert!(!s.shown(Section::Details));
         assert_eq!(Sections::from_names([], []), Sections::DEFAULT);
+    }
+
+    #[test]
+    fn achievements_join_a_stored_order_under_details() {
+        let s = Sections::from_names(["timeline", "details", "screenshots", "overview", "related"], []);
+        assert_eq!(
+            s.order(),
+            [Section::Timeline, Section::Details, Section::Achievements, Section::Screenshots, Section::Overview, Section::Related]
+        );
+        let kept = Sections::from_names(["achievements", "screenshots"], ["achievements"]);
+        assert_eq!(kept.order()[0], Section::Achievements);
+        assert!(!kept.shown(Section::Achievements));
     }
 }

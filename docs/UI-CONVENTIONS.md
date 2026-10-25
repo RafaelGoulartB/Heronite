@@ -567,7 +567,10 @@ the panel's size follows it.
   ~25% longer than English: leave room in buttons and pills.
 
 ## Achievements
-- The focus panel's side column (and the Grid drawer) has the Achievements panel (`collection/achievements.rs`):
+- The focus panel's side column (and the Grid drawer) has the Achievements section (`collection/achievements.rs`),
+  a game section of its own (Settings → Appearance → Game sections; under Details by default, kept in the
+  side column next to Details in the two-column layout). It shows whenever a source gave a list, even with
+  nothing unlocked:
   count and bar, the three latest unlocks, the two closest locked ones (progress when the source counts),
   "View all" (`dialogs/achievements.rs`) and "Updated … ago" with a refresh. A game at 100% turns the panel
   gold (`theme::achievement_gold`). For a ROM it asks for the RetroAchievements account or says the file
