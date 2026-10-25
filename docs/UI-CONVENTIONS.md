@@ -411,13 +411,68 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   (folder / file picker; the portal file chooser cannot be driven by a controller).
 - Motion (`console::motion`): scroll areas that follow the focus use a `Glide` (`go(Goal::Reveal{..})` / `Start` /
   `by(px)`, its `driver()` as the last child of the area) instead of `scroll_to_item`, so they glide on a spring;
-  `row_base` focus pills pop in on every press; covers lift with `motion::spring`; screens, pages, dialogs, the menu
+  `row_base` focus pills pop in on every press; covers lift with `motion::spring`; one value that drives many
+  elements (a whole row) is a `motion::Follow` its owner steps each frame; screens, pages, dialogs, the menu
   and panels (`kit::panel_in`, `kit::scrim`) fade / slide in with `motion::enter` (new id = replay). Only moving
   things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
-- Layout: top bar = `kit::wordmark` + LB/RB `kit::tabs` + `kit::clock`, content padded `u(46.)`, lists about `u(900.)`
+- Layout: top bar = the theme's tabs (`kit::tabs`; `interface.tabBar` may move them to a bar along the bottom, show only
+  the current one as a centred title, or show the names alone) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
   wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
-- Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page) starts in console mode without saving it;
-  `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`).
+- **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
+  machine options, `console-themes/` the saved ones): the shell (`collection/console/mod.rs`) reads
+  `console::look::theme()` every frame and never caches it. Tabs (`TabSpec`: name, layout, source) dispatch to
+  `collection/console/layouts/<layout>.rs` (`render_<l>`, `<l>_pad`, `<l>_hints`, a `Nav` in `TabNav`, a `SCRIM`);
+  covers come from `tile.rs` (shape, size, corners, focus style, badges and "New", store strip, name below or in a
+  bar), the background from `backdrop.rs`, names / logos / facts (a line or chips and genre tags) and the stats panel
+  from `hero.rs` (logos: `art.rs`), shelves and tab games from `sources.rs`; game pages (`game/`: classic, hero, tabs,
+  sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
+  follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
+  light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
+  The built-in themes (`presets.rs`), in the order they are listed: Minimal (what a new install uses,
+  `presets::DEFAULT`, and what Reset goes back to), Classic (the base the others start from and what missing keys of a
+  theme file read as), and Cinema and Pulse, modelled on
+  other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
+  before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
+  that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
+  the focus came from (with "Last played", a long name shrinks) over a soft shade of its own; the Grid without a panel
+  puts the game's facts beside its name over a denser scrim (`Scrim::Library`); the Classic game page has the time
+  played, last played, time to beat and score above the overview and the facts not shown elsewhere; new art settles
+  in from a touch closer on these screens (`Scrim::Classic` / `Library`, not with Reduced motion).
+  Minimal's Carousel: covers spaced evenly (a fixed gap at every step of the turn), the far ones smaller, darker and
+  rising a little, each over its real reflection (`heronite_images::Variant::Reflection`, `cr:` textures) on the
+  blurred cover glowing through a vignette (`Scrim::Carousel`); a thin ring a little way out marks the focus; under it
+  the name (long ones shrink), the facts and the place in the list (letter, a line with a gliding mark, "n of N"),
+  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), LB / RB
+  change the filter when the theme has one tab (the focused game stays when it passes it), the covers fan out from the
+  middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
+  along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
+  (`render_console_game_layer`, drawn by the shell above the top bar).
+  Pulse's Spotlight (`layouts/spotlight/`), a console's home: a row of square icons along the top, the focused one at
+  the left edge, larger, with a thin ring a little way out and its name beside it; the next icons after the name, the
+  ones before it sliding off to the left. Every icon's place and size and the names come from one number, the row's
+  position gliding on a spring (`motion::Follow`, stepped each frame with a `FrameClock`), so a held direction glides
+  and the room for a longer name opens smoothly (an arriving name is revealed as its room opens, the leaving one fades
+  with its icon). Below, the logo (or the name) with a wide Play and More, then when it was last played; the cards
+  (playtime, How Long To Beat with a bar of how far along the main story, journal) peek in at the bottom, and going
+  down to them slides the whole screen up, the row fading and the art darkening from the bottom. Buttons and cards
+  ease into the focus colour. The art is shaded for the row, the logo and the cards (`Scrim::Home`) and settles in
+  like Classic's. With `Hints::Auto` the hint bar floats over the bottom and fades in and out
+  (`layouts::hints_float`) instead of taking room, so nothing moves when it comes and goes; the cards that peek step
+  back while it shows.
+  Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
+  and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
+  Status and Category; X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
+  first change switches to it), else a results grid over the tab (`ConsoleUi::results`, B leaves it), so every theme has them.
+  Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
+  mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
+  Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). A new option = a field in
+  `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
+  `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
+  no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
+- Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
+  without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
+  that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
+  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`).
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,

@@ -29,6 +29,16 @@ pub fn cover_scale(sw: u32, sh: u32, tw: u32, th: u32) -> f64 {
     (tw as f64 / sw as f64).max(th as f64 / sh as f64)
 }
 
+/// Size of a `sw x sh` source scaled to fit inside `tw x th` (CSS
+/// `object-fit: contain`) without ever growing past its own size: each side
+/// is at least 1 px and never above the box.
+pub fn fit_size(sw: u32, sh: u32, tw: u32, th: u32) -> (u32, u32) {
+    let scale = (tw as f64 / sw as f64).min(th as f64 / sh as f64).min(1.0);
+    let w = ((sw as f64 * scale).round() as u32).clamp(1, tw.max(1));
+    let h = ((sh as f64 * scale).round() as u32).clamp(1, th.max(1));
+    (w, h)
+}
+
 /// Size of the (reduced-resolution) stage raster for a full-window target.
 ///
 /// A Gaussian blur of `blur_px` (physical px at target resolution) removes all
@@ -85,6 +95,18 @@ mod tests {
     fn scale_is_max_axis() {
         assert!((cover_scale(600, 900, 250, 375) - 250.0 / 600.0).abs() < 1e-12);
         assert!((cover_scale(1920, 620, 250, 375) - 375.0 / 620.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn fit_keeps_aspect_and_never_grows() {
+        // A wide logo in a square box: limited by the width.
+        assert_eq!(fit_size(1280, 640, 400, 400), (400, 200));
+        // A tall one: limited by the height.
+        assert_eq!(fit_size(300, 900, 400, 300), (100, 300));
+        // Smaller than the box: left as it is.
+        assert_eq!(fit_size(120, 60, 400, 400), (120, 60));
+        // Extreme aspect keeps at least one pixel.
+        assert_eq!(fit_size(10_000, 10, 100, 100), (100, 1));
     }
 
     #[test]

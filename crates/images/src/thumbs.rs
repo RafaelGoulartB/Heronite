@@ -32,8 +32,9 @@ pub struct ThumbKey(pub String);
 pub fn source_identity(c: &ImageRef) -> Option<String> {
     match c {
         ImageRef::Url(u) => Some(format!("url:{u}")),
-        ImageRef::File(p) => {
-            let m = std::fs::metadata(p).ok()?;
+        ImageRef::File(_) | ImageRef::Find { .. } => {
+            let p = c.local_path()?;
+            let m = std::fs::metadata(&p).ok()?;
             let mt = m.modified().ok()?.duration_since(SystemTime::UNIX_EPOCH).ok()?;
             Some(format!("file:{}|{}|{}.{:09}", p.display(), m.len(), mt.as_secs(), mt.subsec_nanos()))
         }
@@ -47,6 +48,15 @@ pub fn thumb_key(identity: &str, variant: Variant, tw: u32, th: u32, opts: &Opts
     h.update(th.to_le_bytes());
     match variant {
         Variant::Cover => h.update([0u8]),
+        Variant::Fit { ink: None } => h.update([4u8]),
+        Variant::Reflection => {
+            h.update([6u8]);
+            h.update(crate::REFLECTION_PART.to_bits().to_le_bytes());
+        }
+        Variant::Fit { ink: Some(ink) } => {
+            h.update([5u8]);
+            h.update(ink);
+        }
         Variant::Stage { blur_px, saturation } => {
             h.update([1u8]);
             h.update(blur_px.to_bits().to_le_bytes());
@@ -310,6 +320,11 @@ mod tests {
         let s1 = thumb_key("url:a", Variant::Stage { blur_px: 40.0, saturation: 1.2 }, 250, 375, &o);
         let s2 = thumb_key("url:a", Variant::Stage { blur_px: 41.0, saturation: 1.2 }, 250, 375, &o);
         let s3 = thumb_key("url:a", Variant::Stage { blur_px: 40.0, saturation: 1.3 }, 250, 375, &o);
+        let fit = thumb_key("url:a", Variant::Fit { ink: None }, 250, 375, &o);
+        assert_ne!(base, fit);
+        let inked = thumb_key("url:a", Variant::Fit { ink: Some([1, 2, 3]) }, 250, 375, &o);
+        assert_ne!(fit, inked);
+        assert_ne!(inked, thumb_key("url:a", Variant::Fit { ink: Some([1, 2, 4]) }, 250, 375, &o));
         let g1 = thumb_key("url:a", Variant::Glass { blur_px: 40.0, saturation: 1.2 }, 250, 375, &o);
         let b1 = thumb_key("url:a", Variant::Backdrop { blur_px: 40.0, saturation: 1.2 }, 250, 375, &o);
         let all = [&base, &s1, &s2, &s3, &g1, &b1];

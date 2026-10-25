@@ -16,9 +16,8 @@ use crate::icons::Icon;
 use crate::pages::PageEvent;
 use crate::theme;
 use crate::ui::colour_picker::{ColourPicker, PickerEvent};
-use crate::ui::controls::{button, card, row, tabs, toggle, toggle_row, with_sub_rows, ButtonKind};
+use crate::ui::controls::{button, card, icon_button, row, tabs, toggle, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::select_field;
-use crate::ui::icon;
 
 /// Changes the look, applies it and saves it.
 pub(super) fn set_look(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, edit: impl FnOnce(&mut Appearance)) {
@@ -424,19 +423,9 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
         let shown = sections.shown(section);
         let id = section.as_str();
         let arrow = |dir: &'static str, ic: Icon, delta: i32, enabled: bool| {
-            div()
-                .id(SharedString::from(format!("sec-{id}-{dir}")))
-                .size(px(28.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .when(enabled, |d| {
-                    d.cursor_pointer()
-                        .hover(|s| s.bg(theme::ink_a(0.08)))
-                        .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.sections = a.sections.moved(section, delta))))
-                })
-                .child(icon(ic, px(18.), if enabled { theme::text_muted().into() } else { theme::ink_a(0.15) }))
+            icon_button(SharedString::from(format!("sec-{id}-{dir}")), ic, 18., enabled).when(enabled, |b| {
+                b.on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.sections = a.sections.moved(section, delta))))
+            })
         };
         rows.push(
             div()

@@ -1,6 +1,9 @@
-//! The console menu (Start / Menu, or B on a top screen): a full-height
-//! sidebar over the dimmed screen with every page, Add game,
-//! Settings, the way back to desktop mode and Power.
+//! The console menu (Start / Menu, or B on a top screen): every page, Add
+//! game, Customize, Settings, the way back to desktop mode and Power, in the
+//! order and with the items the theme's `menu` says (Settings and Desktop
+//! mode always stay), as a full-height sidebar over the dimmed screen. The
+//! Rail style keeps a thin column of their icons on screen while the menu is
+//! closed and widens it into the sidebar when it opens.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -8,12 +11,13 @@ use gpui_kit::*;
 use super::super::CollectionView;
 use super::Screen;
 use crate::console::kit::{self, u};
-use crate::console::motion;
 use crate::console::Pad;
+use crate::console::{look, motion};
 use crate::icons::Icon;
 use crate::pages::Page;
 use crate::theme;
 use crate::ui::icon;
+use heronite_data::console_theme::{MenuStyle, Side};
 use heronite_i18n::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -22,6 +26,8 @@ pub(super) enum Item {
     /// Epic Games, GOG and Amazon Games: the store page shown last.
     Stores,
     AddGame,
+    /// ☰ → Customize: the console theme over the live screen.
+    Customize,
     Desktop,
     /// Suspend, restart, shut down (`power.rs`).
     Power,
@@ -41,6 +47,7 @@ impl Item {
             Item::Go(p) => p.title(),
             Item::Stores => crate::pages::stores::title(),
             Item::AddGame => tr!("Add game"),
+            Item::Customize => tr!("Customize"),
             Item::Desktop => tr!("Desktop mode"),
             Item::Power => tr!("Power"),
             Item::Separator => "",
@@ -52,6 +59,7 @@ impl Item {
             Item::Go(p) => p.icon(),
             Item::Stores => Icon::Storefront,
             Item::AddGame => Icon::Add,
+            Item::Customize => Icon::Tune,
             Item::Desktop => Icon::Logout,
             Item::Power => Icon::PowerSettingsNew,
             Item::Separator => Icon::Menu,
@@ -59,146 +67,467 @@ impl Item {
     }
 }
 
-pub(super) const ITEMS: [Item; 12] = [
-    Item::Go(Page::Collection),
-    Item::Go(Page::Downloads),
-    Item::Go(Page::WineManager),
-    Item::Stores,
-    Item::Go(Page::Emulators),
-    Item::Go(Page::Statistics),
-    Item::Separator,
-    Item::AddGame,
-    Item::Go(Page::Settings),
-    Item::Separator,
-    Item::Desktop,
-    Item::Power,
-];
+impl Item {
+    /// A `MenuItemSpec::item` name.
+    pub fn parse(name: &str) -> Option<Item> {
+        Some(match name {
+            "collection" => Item::Go(Page::Collection),
+            "downloads" => Item::Go(Page::Downloads),
+            "wine-manager" => Item::Go(Page::WineManager),
+            "stores" => Item::Stores,
+            "emulators" => Item::Go(Page::Emulators),
+            "statistics" => Item::Go(Page::Statistics),
+            "separator" => Item::Separator,
+            "add-game" => Item::AddGame,
+            "customize" => Item::Customize,
+            "settings" => Item::Go(Page::Settings),
+            "desktop" => Item::Desktop,
+            "power" => Item::Power,
+            _ => return None,
+        })
+    }
+}
 
-fn step(from: usize, down: bool) -> usize {
+/// The menu of the theme: hidden items left out, no separator at an end or
+/// next to another.
+pub(super) fn items() -> Vec<Item> {
+    let theme = crate::console::look::theme();
+    let mut out: Vec<Item> = Vec::new();
+    for spec in &theme.menu.items {
+        let Some(item) = Item::parse(&spec.item) else { continue };
+        if !spec.on && !heronite_data::console_theme::MENU_LOCKED.contains(&spec.item.as_str()) {
+            continue;
+        }
+        if item == Item::Separator && out.last().is_none_or(|l| *l == Item::Separator) {
+            continue;
+        }
+        if item != Item::Separator && out.contains(&item) {
+            continue;
+        }
+        out.push(item);
+    }
+    while out.last() == Some(&Item::Separator) {
+        out.pop();
+    }
+    out
+}
+
+fn step(items: &[Item], from: usize, down: bool) -> usize {
     let mut i = from;
     loop {
         let next = if down { i + 1 } else { i.wrapping_sub(1) };
-        if next >= ITEMS.len() {
+        if next >= items.len() {
             return from;
         }
         i = next;
-        if ITEMS[i] != Item::Separator {
+        if items[i] != Item::Separator {
             return i;
         }
     }
 }
 
+/// Width of the sidebar (design px).
+const PANEL_W: f32 = 360.;
+/// Width of the Rail while the menu is closed, and the height of its rows.
+const RAIL_W: f32 = 74.;
+const RAIL_ROW: f32 = 46.;
+
+/// The side and width of the Rail when the theme has one: the content keeps
+/// clear of it.
+pub(super) fn rail_inset() -> Option<(Side, Pixels)> {
+    let menu = &look::theme().menu;
+    (menu.style == MenuStyle::Rail).then(|| (menu.side, u(RAIL_W)))
+}
+
+/// Tiles per row of the Grid menu.
+const GRID_COLS: usize = 4;
+
+/// What a press does to the menu.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Move {
+    /// The focus goes to this item (an index in `items`).
+    To(usize),
+    Close,
+    Keep,
+}
+
+/// The press `pad` with the focus on `cur`. The Sidebar moves with ▲ ▼ and
+/// closes with the arrow that pushes it back towards its side; the Grid moves
+/// in 2D and the Dock with ◀ ▶ (separators only exist in the Sidebar).
+fn navigate(style: MenuStyle, side: Side, items: &[Item], cur: usize, pad: Pad) -> Move {
+    if matches!(pad, Pad::B | Pad::Start) {
+        return Move::Close;
+    }
+    if matches!(style, MenuStyle::Sidebar | MenuStyle::Rail) {
+        return match pad {
+            Pad::Up | Pad::Down => Move::To(step(items, cur, pad == Pad::Down)),
+            Pad::Right if side == Side::Left => Move::Close,
+            Pad::Left if side == Side::Right => Move::Close,
+            _ => Move::Keep,
+        };
+    }
+    let shown: Vec<usize> = (0..items.len()).filter(|&i| items[i] != Item::Separator).collect();
+    let (Some(last), Some(at)) = (shown.len().checked_sub(1), shown.iter().position(|&i| i >= cur).or(shown.len().checked_sub(1))) else {
+        return Move::Keep;
+    };
+    let to = match (pad, style) {
+        (Pad::Left, _) => at.saturating_sub(1),
+        (Pad::Right, _) => (at + 1).min(last),
+        (Pad::Up, MenuStyle::Grid) => at.saturating_sub(GRID_COLS),
+        // The last row may be short: Down reaches its last tile.
+        (Pad::Down, MenuStyle::Grid) if at + GRID_COLS <= last => at + GRID_COLS,
+        (Pad::Down, MenuStyle::Grid) if at / GRID_COLS < last / GRID_COLS => last,
+        _ => return Move::Keep,
+    };
+    Move::To(shown[to])
+}
+
 impl CollectionView {
+    /// The menu item of the page shown (where the menu opens).
+    pub(super) fn sidebar_current(&self) -> usize {
+        let items = items();
+        items.iter().position(|i| i.page() == Some(self.page)).or_else(|| items.iter().position(|i| *i != Item::Separator)).unwrap_or(0)
+    }
+
     pub(super) fn sidebar_pad(&mut self, pad: Pad, window: &mut Window, cx: &mut Context<Self>) {
         let Some(cur) = self.console.sidebar else { return };
-        match pad {
-            Pad::Up | Pad::Down => self.console.sidebar = Some(step(cur, pad == Pad::Down)),
-            Pad::B | Pad::Start | Pad::Right => self.console.sidebar = None,
-            Pad::A => {
-                self.console.sidebar = None;
-                match ITEMS[cur] {
-                    Item::Go(Page::Collection) => {
-                        self.navigate(Page::Collection, window, cx);
-                        if matches!(self.console.screen, Screen::Game(_)) {
-                            self.console.screen = Screen::Home;
-                        }
+        let items = items();
+        let cur = cur.min(items.len().saturating_sub(1));
+        let theme = look::theme();
+        match navigate(theme.menu.style, theme.menu.side, &items, cur, pad) {
+            Move::To(i) => self.console.sidebar = Some(i),
+            Move::Close => self.console.sidebar = None,
+            Move::Keep => {}
+        }
+        if pad == Pad::A {
+            self.console.sidebar = None;
+            match items[cur] {
+                Item::Go(Page::Collection) => {
+                    self.navigate(Page::Collection, window, cx);
+                    if matches!(self.console.screen, Screen::Game(_)) {
+                        self.console.screen = Screen::Tabs;
                     }
-                    Item::Go(page) => self.navigate(page, window, cx),
-                    Item::Stores => {
-                        let page = self.pages.stores_page();
-                        self.navigate(page, window, cx);
-                    }
-                    Item::AddGame => self.console_add_game(window, cx),
-                    Item::Desktop => self.set_console(false, window, cx),
-                    Item::Power => self.console_power_menu(cx),
-                    Item::Separator => {}
                 }
+                Item::Go(page) => self.navigate(page, window, cx),
+                Item::Stores => {
+                    let page = self.pages.stores_page();
+                    self.navigate(page, window, cx);
+                }
+                Item::AddGame => self.console_add_game(window, cx),
+                Item::Customize => self.open_console_customize(),
+                Item::Desktop => self.set_console(false, window, cx),
+                Item::Power => self.console_power_menu(cx),
+                Item::Separator => {}
             }
-            _ => {}
         }
         cx.notify();
     }
 
     pub(super) fn render_sidebar(&self, cx: &App) -> Option<AnyElement> {
-        let focused = self.console.sidebar?;
+        let menu = look::theme().menu.clone();
+        let open = self.console.sidebar;
+        // The Rail is on screen (and animates) even while the menu is closed.
+        if menu.style != MenuStyle::Rail && open.is_none() {
+            return None;
+        }
         let downloads = crate::services::try_downloads(cx).and_then(|s| super::super::nav::downloads_meta(Some(s.read(cx))));
+        let items = items();
+        let focused = open.map(|f| f.min(items.len().saturating_sub(1)));
+        Some(match (menu.style, focused) {
+            (MenuStyle::Rail, focused) => self.render_menu_rail(&items, focused, menu.side, downloads),
+            (_, None) => return None,
+            (MenuStyle::Sidebar, Some(f)) => self.render_menu_sidebar(&items, f, menu.side, downloads),
+            (MenuStyle::Grid, Some(f)) => self.render_menu_grid(&items, f, downloads),
+            (MenuStyle::Dock, Some(f)) => self.render_menu_dock(&items, f, downloads),
+        })
+    }
+
+    /// Whether `item` is the page shown (drawn bold).
+    fn menu_current(&self, item: Item) -> bool {
+        item.page() == Some(self.page) || (item == Item::Stores && crate::pages::stores::is_store_page(self.page))
+    }
+
+    /// The rows of the sidebar (`focused` none: the menu is closed, only the
+    /// Rail shows). `rail` makes them compact, with a ☰ on top and gaps for
+    /// separators.
+    fn menu_list(&self, items: &[Item], focused: Option<usize>, rail: bool, downloads: &Option<String>) -> Div {
         // Sized so every item fits the 800-unit console height (the list does not scroll).
-        let mut list = div().flex().flex_col().gap(u(4.));
-        for (i, item) in ITEMS.iter().enumerate() {
+        let mut list = div().flex().flex_col().gap(u(if rail { 2. } else { 4. }));
+        if rail {
+            list = list.child(div().h(u(RAIL_ROW)).px(u(24.)).flex().items_center().child(icon(Icon::Menu, u(26.), theme::text_muted())));
+        }
+        for (i, item) in items.iter().enumerate() {
             if *item == Item::Separator {
-                list = list.child(div().my(u(10.)).mx(u(18.)).h(px(1.)).bg(theme::white_a(0.1)));
+                list = list.child(if rail { div().h(u(16.)) } else { div().my(u(10.)).mx(u(18.)).h(px(1.)).bg(kit::ink(0.1)) });
                 continue;
             }
-            let on = i == focused;
-            let current = item.page() == Some(self.page) || (*item == Item::Stores && crate::pages::stores::is_store_page(self.page));
+            let on = focused == Some(i);
+            let current = self.menu_current(*item);
             let fg: Hsla = if on {
                 theme::console_on_focus().into()
-            } else if current {
-                white()
+            } else if current && !rail {
+                kit::strong()
             } else {
                 theme::text_primary().into()
             };
-            let badge = match item {
-                Item::Go(Page::Downloads) => downloads.clone(),
-                _ => None,
+            let ic: Hsla = if on {
+                fg
+            } else if current && rail {
+                theme::text_primary().into()
+            } else {
+                theme::text_muted().into()
             };
+            let mut row = kit::row_base(on);
+            if rail {
+                row = row.min_h(u(RAIL_ROW)).h(u(RAIL_ROW));
+            } else {
+                row = row.h(u(54.));
+            }
             list = list.child(
-                kit::row_base(on)
-                    .h(u(54.))
-                    .child(icon(item.icon(), u(26.), if on { fg } else { theme::text_muted().into() }))
+                row.child(icon(item.icon(), u(26.), ic))
                     .child(
                         div()
                             .flex_1()
+                            .whitespace_nowrap()
+                            // The Rail shows icons only.
+                            .when(rail && focused.is_none(), |d| d.opacity(0.))
                             .text_size(u(21.))
                             .text_color(fg)
                             .when(current && !on, |d| d.font_weight(theme::W_BOLD))
                             .child(item.label()),
                     )
-                    .children(badge.map(|b| kit::badge(b, theme::console_btn_a()))),
+                    // The Rail has no room for the count: a dot on the icon.
+                    .children(if rail && focused.is_none() {
+                        menu_badge(*item, downloads)
+                            .map(|_| div().absolute().top(u(8.)).left(u(40.)).size(u(10.)).rounded_full().bg(theme::console_btn_a()))
+                    } else {
+                        menu_badge(*item, downloads)
+                    }),
             );
         }
-        Some(
-            div()
-                .absolute()
-                .inset_0()
-                .child(kit::scrim())
-                .child(motion::enter(
-                    "console-sidebar",
-                    div()
-                        .absolute()
-                        .top_0()
-                        .bottom_0()
-                        .left_0()
-                        .w(u(360.))
-                        .flex()
-                        .flex_col()
-                        .px(u(16.))
-                        .pt(u(30.))
-                        .bg(theme::console_sidebar())
-                        .border_r_1()
-                        .border_color(theme::white_a(0.08))
-                        .shadow(kit::shadow(0.5, 0., 40.))
-                        .child(div().px(u(18.)).pb(u(26.)).child(kit::wordmark("HERONITE")))
-                        .child(list),
-                    280,
-                    -40.,
+        list
+    }
+
+    /// A full-height panel on the theme's side, over the dimmed screen.
+    fn render_menu_sidebar(&self, items: &[Item], focused: usize, side: Side, downloads: Option<String>) -> AnyElement {
+        let list = self.menu_list(items, Some(focused), false, &downloads);
+        let right = side == Side::Right;
+        let panel = div()
+            .absolute()
+            .top_0()
+            .bottom_0()
+            .w(u(PANEL_W))
+            .flex()
+            .flex_col()
+            .px(u(16.))
+            .pt(u(36.))
+            .bg(theme::console_sidebar())
+            .border_color(kit::ink(0.08))
+            .shadow(kit::shadow(0.5, 0., 40.))
+            .child(list);
+        let panel = if right { panel.right_0().border_l_1() } else { panel.left_0().border_r_1() };
+        div()
+            .absolute()
+            .inset_0()
+            .child(kit::scrim())
+            .child(motion::enter("console-sidebar", panel, 280, if right { 40. } else { -40. }, 0.))
+            .into_any_element()
+    }
+
+    /// The Rail: a column of muted icons on the theme's side that widens into
+    /// the sidebar (names, panel, scrim) while the menu is open. One element
+    /// per layer keeps its spring across the two states, so it animates both
+    /// ways and draws nothing while it rests.
+    fn render_menu_rail(&self, items: &[Item], focused: Option<usize>, side: Side, downloads: Option<String>) -> AnyElement {
+        let open = focused.is_some();
+        let right = side == Side::Right;
+        let list = self.menu_list(items, focused, true, &downloads).w(u(PANEL_W - 32.)).flex_none();
+        let edge = if right { 270. } else { 90. };
+        let panel = div().absolute().top_0().bottom_0().flex().flex_col().pt(u(28.)).overflow_hidden().border_color(kit::ink(0.08));
+        let panel = if right { panel.right_0().border_l_1() } else { panel.left_0().border_r_1() };
+        let panel = motion::spring("console-rail", panel, motion::SOFT, open, move |d, t| {
+            let fade = |c: Hsla, a: f32| Hsla { a: c.a * a, ..c };
+            // Muted over the art while closed.
+            let d = d
+                .w(u(RAIL_W + (PANEL_W - RAIL_W) * t))
+                .px(u(16. * t))
+                .bg(fade(theme::console_sidebar().into(), t))
+                .border_color(fade(kit::ink(0.08), t))
+                .shadow(kit::shadow(0.5 * t, 0., 40.));
+            let shade = linear_gradient(edge, linear_color_stop(kit::dim(0.4 * (1. - t)), 0.), linear_color_stop(kit::dim(0.), 1.));
+            d.child(div().absolute().inset_0().bg(shade)).child(div().relative().opacity(0.55 + 0.45 * t).child(list))
+        });
+        let scrim = motion::spring("console-rail-scrim", div().absolute().inset_0(), motion::SOFT, open, |d, t| d.bg(kit::dim(0.62 * t)));
+        div().absolute().inset_0().child(scrim).child(panel).into_any_element()
+    }
+
+    /// Big icon tiles, four to a row, centred over a strong dim.
+    fn render_menu_grid(&self, items: &[Item], focused: usize, downloads: Option<String>) -> AnyElement {
+        let tiles: Vec<(usize, Item)> = items.iter().copied().enumerate().filter(|(_, i)| *i != Item::Separator).collect();
+        let mut rows = div().flex().flex_col().gap(u(16.));
+        for chunk in tiles.chunks(GRID_COLS) {
+            rows = rows.child(div().flex().gap(u(16.)).children(chunk.iter().map(|(i, item)| {
+                let on = *i == focused;
+                let fg: Hsla = if on { theme::console_on_focus().into() } else { theme::text_primary().into() };
+                let tile = div()
+                    .relative()
+                    .flex()
+                    .flex_none()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap(u(12.))
+                    .w(u(180.))
+                    .h(u(130.))
+                    .rounded(u(18.))
+                    .border_1()
+                    .border_color(kit::ink(0.08))
+                    // Solid: the screen behind must not show through the tiles.
+                    .bg(theme::console_sidebar())
+                    .text_color(fg);
+                let tile = if on { tile.child(kit::focus_pill(18.)) } else { tile };
+                tile.child(icon(item.icon(), u(38.), if on { fg } else { theme::text_muted().into() }))
+                    .child(
+                        div().text_size(u(16.)).when(self.menu_current(*item) && !on, |d| d.font_weight(theme::W_BOLD)).child(item.label()),
+                    )
+                    .children(menu_badge(*item, &downloads).map(|b| div().absolute().top(u(10.)).right(u(10.)).child(b)))
+            })));
+        }
+        div()
+            .absolute()
+            .inset_0()
+            .child(motion::fade_in("console-menu-dim", div().absolute().inset_0().bg(kit::veil(0.9)), 180))
+            .child(div().absolute().inset_0().flex().items_center().justify_center().child(motion::enter(
+                "console-menu-grid",
+                div().relative().child(rows),
+                260,
+                0.,
+                18.,
+            )))
+            .into_any_element()
+    }
+
+    /// A row of round icons at the bottom with the focused item's name above it.
+    fn render_menu_dock(&self, items: &[Item], focused: usize, downloads: Option<String>) -> AnyElement {
+        let dock = div()
+            .flex()
+            .items_center()
+            .gap(u(14.))
+            .px(u(18.))
+            .py(u(10.))
+            .rounded(u(26.))
+            .bg(theme::console_sidebar())
+            .border_1()
+            .border_color(kit::ink(0.1))
+            .shadow(kit::shadow(0.6, 20., 50.))
+            .children(items.iter().enumerate().filter(|(_, i)| **i != Item::Separator).map(|(i, item)| {
+                let on = i == focused;
+                let size = if on { 76. } else { 64. };
+                let fg: Hsla = if on { theme::console_on_focus().into() } else { theme::text_primary().into() };
+                let round = div()
+                    .relative()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .justify_center()
+                    .w(u(size))
+                    .h(u(size))
+                    .rounded_full()
+                    .bg(kit::ink(0.08));
+                let round = if on { round.child(kit::focus_pill(size / 2.)) } else { round };
+                // The focused one sits a little higher than its neighbours.
+                div().flex().items_center().h(u(92.)).pb(u(if on { 14. } else { 0. })).child(
+                    round
+                        .child(icon(item.icon(), u(30.), fg))
+                        .children(menu_badge(*item, &downloads).map(|b| div().absolute().top(u(-2.)).right(u(-2.)).child(b))),
+                )
+            }));
+        let label = items.get(focused).map(|i| i.label()).unwrap_or_default();
+        div()
+            .absolute()
+            .inset_0()
+            .child(motion::fade_in(
+                "console-menu-dim",
+                div().absolute().inset_0().bg(linear_gradient(
                     0.,
-                ))
-                .into_any_element(),
-        )
+                    linear_color_stop(Rgba { a: 0.88, ..theme::console_bg() }, 0.),
+                    linear_color_stop(Rgba { a: 0.25, ..theme::console_bg() }, 0.7),
+                )),
+                180,
+            ))
+            .child(motion::enter(
+                "console-menu-dock",
+                div()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom(u(84.))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(u(10.))
+                    .child(kit::title(label, 24.))
+                    .child(dock),
+                260,
+                0.,
+                30.,
+            ))
+            .into_any_element()
+    }
+}
+
+/// The count on the Downloads item.
+fn menu_badge(item: Item, downloads: &Option<String>) -> Option<Div> {
+    match item {
+        Item::Go(Page::Downloads) => downloads.clone().map(|b| kit::badge(b, theme::console_btn_a())),
+        _ => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{step, Item, ITEMS};
+    use super::{items, navigate, step, Item, Move};
+    use crate::console::Pad;
+    use heronite_data::console_theme::{MenuStyle, Side};
 
     #[test]
     fn steps_skip_separators_and_stop_at_the_ends() {
-        let add = ITEMS.iter().position(|i| *i == Item::AddGame).unwrap();
-        assert_eq!(step(add - 2, true), add);
-        assert_eq!(step(add, false), add - 2);
-        assert_eq!(step(0, false), 0);
-        assert_eq!(step(ITEMS.len() - 1, true), ITEMS.len() - 1);
+        let items = items();
+        let add = items.iter().position(|i| *i == Item::AddGame).unwrap();
+        assert_eq!(step(&items, add - 2, true), add);
+        assert_eq!(step(&items, add, false), add - 2);
+        assert_eq!(step(&items, 0, false), 0);
+        assert_eq!(step(&items, items.len() - 1, true), items.len() - 1);
+    }
+
+    #[test]
+    fn the_sidebar_closes_towards_its_side() {
+        let items = items();
+        let nav = |side, pad| navigate(MenuStyle::Sidebar, side, &items, 0, pad);
+        assert_eq!(nav(Side::Left, Pad::Right), Move::Close);
+        assert_eq!(nav(Side::Left, Pad::Left), Move::Keep);
+        assert_eq!(nav(Side::Right, Pad::Left), Move::Close);
+        assert_eq!(nav(Side::Right, Pad::Right), Move::Keep);
+        assert_eq!(nav(Side::Left, Pad::B), Move::Close);
+    }
+
+    #[test]
+    fn grid_and_dock_skip_separators_and_grid_moves_in_2d() {
+        // Six items with separators between: positions 0, 2, 3, 5, 6, 8.
+        let s = Item::Separator;
+        let items = [Item::AddGame, s, Item::Customize, Item::Desktop, s, Item::Power, Item::Stores, s, Item::Customize];
+        let grid = |cur, pad| navigate(MenuStyle::Grid, Side::Left, &items, cur, pad);
+        let dock = |cur, pad| navigate(MenuStyle::Dock, Side::Left, &items, cur, pad);
+        assert_eq!(dock(0, Pad::Right), Move::To(2));
+        assert_eq!(dock(3, Pad::Left), Move::To(2));
+        assert_eq!(dock(0, Pad::Left), Move::To(0));
+        assert_eq!(dock(8, Pad::Right), Move::To(8));
+        assert_eq!(dock(0, Pad::Down), Move::Keep);
+        // Shown: [0, 2, 3, 5 | 6, 8]: a short second row.
+        assert_eq!(grid(2, Pad::Down), Move::To(8));
+        assert_eq!(grid(0, Pad::Down), Move::To(6));
+        assert_eq!(grid(6, Pad::Up), Move::To(0));
+        assert_eq!(grid(6, Pad::Down), Move::Keep);
+        assert_eq!(grid(0, Pad::Up), Move::To(0));
     }
 }

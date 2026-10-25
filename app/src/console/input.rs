@@ -124,9 +124,14 @@ impl Repeater {
     }
 }
 
-fn button_pad(b: gilrs::Button) -> Option<Pad> {
+/// The press a controller button makes. With `swap_ab` the east button
+/// confirms and the south one goes back (`controls.swapAb` of the console
+/// theme).
+fn button_pad(b: gilrs::Button, swap_ab: bool) -> Option<Pad> {
     use gilrs::Button as B;
     Some(match b {
+        B::South if swap_ab => Pad::B,
+        B::East if swap_ab => Pad::A,
         B::South => Pad::A,
         B::East => Pad::B,
         B::West => Pad::X,
@@ -145,6 +150,11 @@ fn button_pad(b: gilrs::Button) -> Option<Pad> {
     })
 }
 
+/// The theme in use, read per press so a change applies at once.
+fn swap_ab() -> bool {
+    super::look::theme().controls.swap_ab
+}
+
 fn is_direction(p: Pad) -> bool {
     matches!(p, Pad::Up | Pad::Down | Pad::Left | Pad::Right)
 }
@@ -160,8 +170,13 @@ impl Drop for PadThread {
     }
 }
 
-/// Starts reading controllers. `None` when gilrs cannot start (no udev, ...).
+/// Starts reading controllers. `None` when gilrs cannot start (no udev, ...)
+/// or `HERONITE_NO_GAMEPAD` is set (test copies on a hidden workspace must not
+/// follow the controller of the app in use).
 pub fn start() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
+    if crate::env::flag("HERONITE_NO_GAMEPAD") {
+        return None;
+    }
     let (tx, rx) = unbounded();
     let stop = Arc::new(AtomicBool::new(false));
     let flag = stop.clone();
@@ -203,9 +218,9 @@ fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>) {
         }
         use gilrs::{Axis, EventType as E};
         let out = match ev.event {
-            E::ButtonPressed(b, _) => button_pad(b).map(|p| if is_direction(p) { rep.press(p, now) } else { p }),
+            E::ButtonPressed(b, _) => button_pad(b, swap_ab()).map(|p| if is_direction(p) { rep.press(p, now) } else { p }),
             E::ButtonReleased(b, _) => {
-                if let Some(p) = button_pad(b) {
+                if let Some(p) = button_pad(b, swap_ab()) {
                     rep.release(p);
                 }
                 None
@@ -315,8 +330,9 @@ pub fn parse_script(text: &str) -> Vec<(Duration, Pad)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_script, Repeater, REPEAT_AFTER, REPEAT_EVERY};
+    use super::{button_pad, parse_script, Repeater, REPEAT_AFTER, REPEAT_EVERY};
     use crate::console::Pad;
+    use gilrs::Button;
     use std::time::{Duration, Instant};
 
     #[test]
@@ -346,6 +362,19 @@ mod tests {
         assert_eq!(r.stick(false, 0.9, 0.1, t0), Some(Pad::Right));
         assert_eq!(r.stick(false, -0.9, 0.1, t0), Some(Pad::Left));
         assert_eq!(r.stick(true, 0.0, -0.8, t0), Some(Pad::ScrollDown));
+    }
+
+    #[test]
+    fn south_confirms_and_east_goes_back_unless_swapped() {
+        assert_eq!(button_pad(Button::South, false), Some(Pad::A));
+        assert_eq!(button_pad(Button::East, false), Some(Pad::B));
+        assert_eq!(button_pad(Button::South, true), Some(Pad::B));
+        assert_eq!(button_pad(Button::East, true), Some(Pad::A));
+        // Everything else ignores the swap.
+        assert_eq!(button_pad(Button::West, true), Some(Pad::X));
+        assert_eq!(button_pad(Button::North, true), Some(Pad::Y));
+        assert_eq!(button_pad(Button::DPadUp, true), Some(Pad::Up));
+        assert_eq!(button_pad(Button::C, true), None);
     }
 
     #[test]

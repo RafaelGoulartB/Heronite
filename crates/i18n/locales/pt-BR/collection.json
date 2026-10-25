@@ -252,6 +252,7 @@
   "Covers across the window, the game in a side panel": "Capas em toda a janela, o jogo num painel lateral",
   "Filter by genre, studio, store, status…": "Filtrar por gênero, estúdio, loja, status…",
   "Add a filter…": "Adicionar filtro…",
+  "Filters": "Filtros",
   "No filter matches “{query}”": "Nenhum filtro corresponde a “{query}”",
   "All {n} in {kind}…": "Todos os {n} em {kind}…",
   "Presets": "Presets",

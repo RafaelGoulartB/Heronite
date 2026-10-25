@@ -21,6 +21,32 @@ pub fn flatten_over_black(buf: &mut [u8]) {
     }
 }
 
+/// The bottom `rows` rows of a `w`×`h` 4-channel image, upside down (its last
+/// row first): what a floor under it reflects.
+pub fn mirror_bottom(buf: &[u8], w: usize, h: usize, rows: usize) -> Vec<u8> {
+    let stride = w * 4;
+    let rows = rows.min(h);
+    let mut out = Vec::with_capacity(stride * rows);
+    for y in 0..rows {
+        let src = h - 1 - y;
+        out.extend_from_slice(&buf[src * stride..(src + 1) * stride]);
+    }
+    out
+}
+
+/// Fades a `w`×`h` RGBA / BGRA image out downwards: its alpha scaled from 1
+/// on the top row to 0 below the last, along a curve (a reflection fades
+/// fast near the floor, then trails off).
+pub fn fade_down(buf: &mut [u8], w: usize, h: usize) {
+    for y in 0..h {
+        let t = 1. - y as f32 / h as f32;
+        let k = t * t;
+        for p in buf[y * w * 4..(y + 1) * w * 4].as_chunks_mut::<4>().0 {
+            p[3] = (p[3] as f32 * k).round() as u8;
+        }
+    }
+}
+
 /// Soft-caps the brightness of RGBA pixels so white text stays legible over
 /// them: relative luminance (linear light) above `knee` is rolled off towards
 /// `cap`, scaling the pixel's linear RGB so the hue is kept. Pixels at or
@@ -55,6 +81,30 @@ pub fn compress_highlights(buf: &mut [u8], knee: f32, cap: f32) {
         let k = (knee + span * (1. - (-(l - knee) / span).exp())) / l;
         let enc = |c: f32| to_srgb[((c * k).clamp(0., 1.) * (STEPS - 1) as f32).round() as usize];
         (p[0], p[1], p[2]) = (enc(r), enc(g), enc(b));
+    }
+}
+
+/// Turns the light, nearly colourless parts of straight-alpha RGBA pixels (the
+/// white of a logo) to `ink`, softly, so they read on a light surface; dark
+/// and coloured parts stay.
+pub fn ink_light_parts(buf: &mut [u8], ink: (u8, u8, u8)) {
+    let smooth = |e0: f32, e1: f32, x: f32| {
+        let t = ((x - e0) / (e1 - e0)).clamp(0., 1.);
+        t * t * (3. - 2. * t)
+    };
+    for p in buf.as_chunks_mut::<4>().0 {
+        if p[3] == 0 {
+            continue;
+        }
+        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+        let (hi, lo) = (r.max(g).max(b), r.min(g).min(b));
+        let l = (0.299 * r + 0.587 * g + 0.114 * b) / 255.;
+        let sat = if hi > 0. { (hi - lo) / hi } else { 0. };
+        let w = smooth(0.62, 0.85, l) * (1. - smooth(0.18, 0.4, sat));
+        if w > 0. {
+            let mix = |c: f32, i: u8| (c + (i as f32 - c) * w).round() as u8;
+            (p[0], p[1], p[2]) = (mix(r, ink.0), mix(g, ink.1), mix(b, ink.2));
+        }
     }
 }
 
@@ -202,6 +252,16 @@ pub fn gaussian_blur(buf: &mut Vec<u8>, w: usize, h: usize, sigma: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn white_turns_to_ink_and_colour_stays() {
+        let mut px = [255, 255, 255, 255, 200, 30, 40, 255, 20, 20, 20, 255, 255, 255, 255, 0];
+        ink_light_parts(&mut px, (10, 20, 30));
+        assert_eq!(px[..4], [10, 20, 30, 255]);
+        assert_eq!(px[4..8], [200, 30, 40, 255]);
+        assert_eq!(px[8..12], [20, 20, 20, 255]);
+        assert_eq!(px[12..], [255, 255, 255, 0]);
+    }
 
     #[test]
     fn box_radii_variance_matches_sigma() {

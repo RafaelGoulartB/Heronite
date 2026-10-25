@@ -355,10 +355,21 @@ pub fn action_button(
 /// (`rgba(255,255,255,.14)`, white text on the dark theme). Tabs that do not fit the width
 /// (it depends on the language, not on how many there are) wrap to another
 /// row; one row keeps the pill look.
-pub fn tabs<T: Copy + PartialEq + 'static>(
+pub fn tabs<T: Copy + PartialEq + 'static, L: Clone + Into<SharedString>>(
     id: &str,
-    items: &[(T, &'static str)],
+    items: &[(T, L)],
     active: T,
+    on_select: impl Fn(T, &mut Window, &mut App) + 'static,
+) -> Div {
+    segmented(id, items, active, true, on_select)
+}
+
+/// [`tabs`] that can be switched off (`enabled` false: dimmed, nothing happens on a click).
+pub fn segmented<T: Copy + PartialEq + 'static, L: Clone + Into<SharedString>>(
+    id: &str,
+    items: &[(T, L)],
+    active: T,
+    enabled: bool,
     on_select: impl Fn(T, &mut Window, &mut App) + 'static,
 ) -> Div {
     let on_select = std::rc::Rc::new(on_select);
@@ -371,7 +382,8 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
         .flex_wrap()
         .max_w_full()
         .rounded(px(18.))
-        .bg(theme::seg_track());
+        .bg(theme::seg_track())
+        .when(!enabled, |d| d.opacity(0.45));
     for (i, (value, label)) in items.iter().enumerate() {
         let is_active = *value == active;
         let v = *value;
@@ -385,13 +397,28 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
                 .rounded_full()
                 .text_size(px(13.))
                 .whitespace_nowrap()
-                .cursor_pointer()
                 .text_color(if is_active { theme::text_bright() } else { theme::seg_text().into() })
                 .when(is_active, |d| d.bg(theme::seg_active()))
-                .when(!is_active, |d| d.hover(|s| s.text_color(theme::text_bright())))
-                .on_click(move |_, w, cx| cb(v, w, cx))
-                .child(*label),
+                .when(enabled, |d| d.cursor_pointer().on_click(move |_, w, cx| cb(v, w, cx)))
+                .when(enabled && !is_active, |d| d.hover(|s| s.text_color(theme::text_bright())))
+                .child(label.clone().into()),
         );
     }
     div().flex().min_w_0().child(track)
+}
+
+/// A small round button holding an icon of `size` px (dimmed, and without
+/// the hover, when `enabled` is false; the click is the caller's).
+pub fn icon_button(id: impl Into<ElementId>, ic: Icon, size: f32, enabled: bool) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .size(px(28.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.08))))
+        .when(!enabled, |d| d.opacity(0.3))
+        .child(icon(ic, px(size), theme::text_muted()))
 }

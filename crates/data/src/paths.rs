@@ -335,6 +335,14 @@ impl AppPaths {
     pub fn screenshot_prefs(&self) -> PathBuf {
         self.config.join("screenshots.json")
     }
+    /// Console mode's theme and options (see `heronite_data::console_theme`).
+    pub fn console_prefs(&self) -> PathBuf {
+        self.config.join("console.json")
+    }
+    /// The user's saved console themes, one JSON file each.
+    pub fn console_themes_dir(&self) -> PathBuf {
+        self.config.join("console-themes")
+    }
     /// In-game overlay options (see `heronite_data::overlay_prefs`).
     pub fn overlay_prefs(&self) -> PathBuf {
         self.config.join("overlay.json")

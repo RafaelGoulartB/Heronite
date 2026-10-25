@@ -18,7 +18,12 @@ use super::kit::u;
 use crate::theme;
 
 pub fn on() -> bool {
-    theme::animations()
+    theme::animations() && !(super::active() && super::look::motion() == heronite_data::console_theme::Motion::Off)
+}
+
+/// The console theme's "Reduced" motion: fades stay, things no longer slide.
+pub fn reduced() -> bool {
+    super::active() && super::look::motion() == heronite_data::console_theme::Motion::Reduced
 }
 
 /// Scrolling: critically damped, ~90% of the way in 170ms, keeps its speed
@@ -28,6 +33,9 @@ const SCROLL: SpringConfig = SpringConfig::new(380., 39., 1.);
 pub const LIFT: SpringConfig = SpringConfig::new(520., 36., 1.);
 /// Fades between focused / unfocused states.
 pub const SOFT: SpringConfig = SpringConfig::new(300., 34.6, 1.);
+/// Slower and critically damped (~300 ms, no overshoot): sizes that change
+/// as the focus moves along a row.
+pub const GENTLE: SpringConfig = SpringConfig::new(170., 26.1, 1.);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Axis {
@@ -207,6 +215,74 @@ impl Glide {
     }
 }
 
+/// A number that follows its target on a spring, stepped by its owner once
+/// a frame ([`Follow::step`]): one value can then drive a whole row (every
+/// icon's size and place), where a spring per element could not share it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Follow {
+    pub value: f32,
+    velocity: f32,
+    target: f32,
+}
+
+impl Follow {
+    pub fn new(value: f32) -> Self {
+        Self { value, velocity: 0., target: value }
+    }
+
+    /// Heads for `target` (at once without animations).
+    pub fn go(&mut self, target: f32) {
+        self.target = target;
+        if !on() {
+            self.snap(target);
+        }
+    }
+
+    pub fn snap(&mut self, value: f32) {
+        *self = Self::new(value);
+    }
+
+    /// Moves `dt` seconds along; `true` while it has not settled.
+    pub fn step(&mut self, cfg: SpringConfig, dt: f32) -> bool {
+        if self.value == self.target && self.velocity == 0. {
+            return false;
+        }
+        let next = cfg.step(SpringState { position: self.value, velocity: self.velocity }, self.target, dt);
+        if (next.position - self.target).abs() < 0.0005 && next.velocity.abs() < 0.01 {
+            self.snap(self.target);
+            return false;
+        }
+        self.value = next.position;
+        self.velocity = next.velocity;
+        true
+    }
+}
+
+/// The time since the last frame of a set of [`Follow`]s (1/60 s on the
+/// first one after a rest, at most 1/20 s so a stall never jumps).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FrameClock {
+    last: Option<Instant>,
+}
+
+impl FrameClock {
+    pub fn dt(&mut self) -> f32 {
+        let now = Instant::now();
+        let dt = self.last.map_or(1. / 60., |l| now.duration_since(l).as_secs_f32()).clamp(0.001, 0.05);
+        self.last = Some(now);
+        dt
+    }
+
+    /// Ends a frame: the next one is asked for while something `moving`.
+    pub fn done(&mut self, moving: bool, window: &mut Window) {
+        if moving {
+            window.request_animation_frame();
+        } else {
+            self.last = None;
+        }
+    }
+}
+
 static EPOCH: AtomicU64 = AtomicU64::new(0);
 
 /// Called on every controller press: the focused row replays its pop, so
@@ -232,7 +308,7 @@ pub fn enter_from<E: Styled + IntoElement + 'static>(id: impl Into<ElementId>, e
     if !on() {
         return el.into_any_element();
     }
-    let (dx, dy) = (u(dx), u(dy));
+    let (dx, dy) = if reduced() { (px(0.), px(0.)) } else { (u(dx), u(dy)) };
     el.with_animation(id, Animation::new(Duration::from_millis(ms)).with_easing(ease_out_quint()), move |el, t| {
         let mut s = el.opacity(from + (1. - from) * t);
         if dx != px(0.) {
@@ -253,7 +329,7 @@ pub fn layer_in(id: impl Into<ElementId>, child: impl IntoElement, ms: u64, dy: 
     if !on() {
         return layer.into_any_element();
     }
-    let dy = u(dy);
+    let dy = if reduced() { px(0.) } else { u(dy) };
     layer
         .with_animation(id, Animation::new(Duration::from_millis(ms)).with_easing(ease_out_quint()), move |el, t| {
             let off = dy * (1. - t);

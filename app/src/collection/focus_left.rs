@@ -18,7 +18,8 @@ use crate::theme;
 use crate::ui::{icon, round_button, tooltip};
 use heronite_i18n::tr;
 
-const STAR: u32 = 0xf4d35e;
+/// Gold of a favourite heart and of the rating stars.
+pub(super) const STAR: u32 = 0xf4d35e;
 const NARROW_COVER_W: f32 = 120.;
 
 impl CollectionView {
@@ -436,7 +437,7 @@ fn clickable(row: Div, id: &'static str) -> Stateful<Div> {
 }
 
 /// Critic score colour: green from 75, amber from 50, red below.
-fn score_color(score: f64) -> Rgba {
+pub(super) fn score_color(score: f64) -> Rgba {
     match score {
         s if s >= 75. => rgb(0x3ecf8e),
         s if s >= 50. => rgb(0xf0a202),
