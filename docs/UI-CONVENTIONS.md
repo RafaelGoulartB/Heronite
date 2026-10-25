@@ -427,7 +427,9 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   sheet) and the ☰ menu (`sidebar.rs`: sidebar, grid, dock, rail — the rail stays on screen and insets the content)
   follow the theme too. A light `colors.background` (`ColourOptions::is_light`, `look::light()`) makes the console
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
-  The built-in themes (`presets.rs`): Classic (the default), Minimal, and Cinema and Pulse, modelled on
+  The built-in themes (`presets.rs`), in the order they are listed: Minimal (what a new install uses,
+  `presets::DEFAULT`, and what Reset goes back to), Classic (the base the others start from and what missing keys of a
+  theme file read as), and Cinema and Pulse, modelled on
   other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
   before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
@@ -435,6 +437,15 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   puts the game's facts beside its name over a denser scrim (`Scrim::Library`); the Classic game page has the time
   played, last played, time to beat and score above the overview and the facts not shown elsewhere; new art settles
   in from a touch closer on these screens (`Scrim::Classic` / `Library`, not with Reduced motion).
+  Minimal's Carousel: covers spaced evenly (a fixed gap at every step of the turn), the far ones smaller, darker and
+  rising a little, each over its real reflection (`heronite_images::Variant::Reflection`, `cr:` textures) on the
+  blurred cover glowing through a vignette (`Scrim::Carousel`); a thin ring a little way out marks the focus; under it
+  the name (long ones shrink), the facts and the place in the list (letter, a line with a gliding mark, "n of N"),
+  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), LB / RB
+  change the filter when the theme has one tab (the focused game stays when it passes it), the covers fan out from the
+  middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
+  along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
+  (`render_console_game_layer`, drawn by the shell above the top bar).
   Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
   and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
   Status and Category; X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
