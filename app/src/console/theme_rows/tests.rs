@@ -24,9 +24,22 @@ fn choice(index: usize) -> Value {
     Value::Choice { options: Vec::new(), index }
 }
 
+/// The prefs of a machine on Classic (two tabs, shelves and a grid).
+fn classic() -> ConsolePrefs {
+    ConsolePrefs { theme: presets::classic(), based_on: "classic".into(), ..ConsolePrefs::default() }
+}
+
 fn rows_of(prefs: &ConsolePrefs, card: Card) -> Vec<Row> {
     let d = data();
     rows(card, &Ctx { prefs, data: &d })
+}
+
+#[test]
+fn a_new_machine_starts_on_minimal_listed_first() {
+    let p = ConsolePrefs::default();
+    assert_eq!((p.theme.id.as_str(), p.based_on.as_str()), ("minimal", "minimal"));
+    assert_eq!(theme_list(&[])[0].0, "minimal");
+    assert!(!is_edited(&p, &[]));
 }
 
 #[test]
@@ -73,7 +86,7 @@ fn tabs_stay_between_one_and_four() {
 
 #[test]
 fn a_tab_follows_its_layout_name_until_renamed() {
-    let mut p = ConsolePrefs::default();
+    let mut p = classic();
     run(&mut p, &Command::new("tab.1.name", Arg::Text("Games".into())), &data());
     change(&mut p, "tab.1.layout", choice(5));
     assert_eq!(p.theme.tabs[1].layout, Layout::Wheel);
@@ -180,7 +193,7 @@ fn colours_take_hex_or_empty() {
 
 #[test]
 fn layout_options_wait_for_a_tab_that_uses_them() {
-    let mut p = ConsolePrefs::default();
+    let mut p = classic();
     let row = |p: &ConsolePrefs, id: &str| rows_of(p, Card::Layouts).into_iter().find(|r| r.id.as_ref() == id).unwrap();
     assert!(row(&p, "layouts.jump_letters").enabled, "Classic has a grid");
     assert!(!row(&p, "layouts.dashboard.week").enabled);
@@ -214,7 +227,8 @@ fn picking_a_theme_replaces_the_theme_and_its_base() {
     assert_eq!(p.theme, presets::cinema());
     assert!(!is_edited(&p, &[]));
     assert!(run(&mut p, &Command::new("theme.reset", Arg::Press), &data()));
-    assert_eq!(p.theme, presets::classic());
+    assert_eq!(p.theme, presets::minimal());
+    assert_eq!(p.based_on, "minimal");
 }
 
 #[test]
@@ -237,7 +251,7 @@ fn saved_themes_get_save_rename_and_delete_rows() {
 
 #[test]
 fn activating_rows_asks_for_the_right_thing() {
-    let p = ConsolePrefs::default();
+    let p = classic();
     let d = data();
     let cx = Ctx { prefs: &p, data: &d };
     assert!(matches!(activate("tab.0.name", &cx), Step::Text { initial, .. } if initial == "Home"));

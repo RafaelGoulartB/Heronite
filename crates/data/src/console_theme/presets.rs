@@ -1,10 +1,19 @@
-//! The built-in console themes. `classic` is the default; the others start
-//! from it and change what makes them different. Their names and descriptions are English keys translated
+//! The built-in console themes. [`minimal`] is the one a new install uses
+//! ([`DEFAULT`]); `classic` is the base the others start from (and what a
+//! theme file's missing keys read as), each changing what makes it different. Their names and descriptions are English keys translated
 //! where they are shown (`n_!` marks them for the translation coverage test).
 
 use heronite_i18n::n_;
 
 use super::*;
+
+/// The id of the theme a new install uses (and "Reset" goes back to).
+pub const DEFAULT: &str = "minimal";
+
+/// The theme a new install uses.
+pub fn default_theme() -> ConsoleTheme {
+    minimal()
+}
 
 /// Classic's ☰ menu (Customize included).
 pub fn default_menu() -> Vec<MenuItemSpec> {
@@ -36,7 +45,7 @@ pub fn default_shelves() -> Vec<ShelfSpec> {
     on.into_iter().map(|k| ShelfSpec::new(k, true)).chain(off.into_iter().map(|k| ShelfSpec::new(k, false))).collect()
 }
 
-/// The default: shelves on Home, a cover grid in Library, the sidebar menu.
+/// The base of every theme: shelves on Home, a cover grid in Library, the sidebar menu.
 pub fn classic() -> ConsoleTheme {
     ConsoleTheme {
         format: FORMAT,
@@ -129,9 +138,9 @@ pub fn minimal() -> ConsoleTheme {
     })
 }
 
-/// Every built-in theme, Classic first.
+/// Every built-in theme, the default ([`minimal`]) first.
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![classic(), minimal(), cinema(), pulse()]
+    vec![minimal(), classic(), cinema(), pulse()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {

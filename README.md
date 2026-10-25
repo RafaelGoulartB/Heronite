@@ -84,7 +84,7 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
 A controller-first layout for the couch or a TV that covers the whole app, with an on-screen keyboard and a Power menu to suspend or shut down. Turn it on from the palette, the ☰ menu, or with `--console`.
 
 - **Console themes:** every part of it is yours to change, in Settings → Console mode or from the couch (☰ → Customize, live over the screen). Up to four tabs (LB / RB), each in its own layout: Shelves, Spotlight, Cinema, Dashboard, Grid, Wheel, Carousel or Series X; the shelves and their order; cover shape, size, corners, focus, badges, the store above and the name below; the game's facts as a line or as chips, a panel of numbers at the edge; tabs along the top, along the bottom or as a centred title; the background (the game's art, its cover blurred, its screenshots, its colour, a colour or your picture); colours, font, size for the sofa, clock; button glyphs (Xbox, PlayStation, Nintendo, Steam Deck, keyboard or the connected controller's), hints, navigation sounds; four game pages and four menus (sidebar, grid, dock or a rail of icons); light themes too.
-- **Share them:** four themes come built in (Classic, Minimal, Cinema, Pulse). Save your own, export one to a `.heronite-theme.json` file and import it on another PC.
+- **Share them:** four themes come built in (Minimal, the default, Classic, Cinema and Pulse). Save your own, export one to a `.heronite-theme.json` file and import it on another PC.
 - **Light when off:** nothing of it loads, runs or reads a file while console mode is off. It can also open the app in console mode, or offer it when a controller connects.
 
 <table>

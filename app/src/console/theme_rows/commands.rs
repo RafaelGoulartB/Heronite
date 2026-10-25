@@ -192,8 +192,8 @@ fn apply(prefs: &mut ConsolePrefs, cmd: &Command, data: &Data) {
             }
         }
         ("theme.reset", Arg::Press) => {
-            prefs.theme = presets::classic();
-            prefs.based_on = "classic".into();
+            prefs.theme = presets::default_theme();
+            prefs.based_on = presets::DEFAULT.into();
         }
         ("tab.add", Arg::Press) => {
             if t.tabs.len() < MAX_TABS {

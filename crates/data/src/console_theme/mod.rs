@@ -672,8 +672,8 @@ pub struct ConsolePrefs {
 impl Default for ConsolePrefs {
     fn default() -> Self {
         Self {
-            theme: presets::classic(),
-            based_on: "classic".into(),
+            theme: presets::default_theme(),
+            based_on: presets::DEFAULT.into(),
             auto_console: AutoConsole::Off,
             open_in: OpenIn::Last,
             idle: Idle::Off,
@@ -684,7 +684,7 @@ impl Default for ConsolePrefs {
 }
 
 impl ConsolePrefs {
-    /// A missing or unreadable file gives the defaults (Classic).
+    /// A missing or unreadable file gives the defaults (the Minimal theme).
     pub fn load(paths: &AppPaths) -> Self {
         let value = json_store::read_value(&paths.console_prefs()).unwrap_or(Value::Null);
         if !value.is_object() {
