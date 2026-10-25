@@ -561,7 +561,8 @@ the panel's size follows it.
   the Spanish to `crates/i18n/locales/es/<area>.json`;
   `cargo test -p heronite-i18n` fails on a missing or unused key in either.
   Community terms stay in English in every language (Wine, Proton, DXVK,
-  shaders, overlay, runner, launcher, preset, backlog, replay, sandbox, logs,
+  shaders, frame generation, overlay, runner, launcher, preset, backlog,
+  replay, sandbox, logs,
   store and tool names). Portuguese and Spanish run
   ~25% longer than English: leave room in buttons and pills.
 
