@@ -131,6 +131,14 @@ impl DataPaths {
     pub fn game_actions(&self) -> PathBuf {
         self.j("local_library/actions.json")
     }
+    /// The local copy of every game's achievements (`heronite_achievements::store`).
+    pub fn achievements_dir(&self) -> PathBuf {
+        self.j("local_library/achievements")
+    }
+    /// The RetroAchievements account and the optional Steam Web API key.
+    pub fn achievement_accounts(&self) -> PathBuf {
+        self.j("local_library/achievement-accounts.json")
+    }
 
     // Core stores (Heroic's layout and formats).
     pub fn sideload_library(&self) -> PathBuf {
@@ -338,6 +346,10 @@ impl AppPaths {
     /// Console mode's theme and options (see `heronite_data::console_theme`).
     pub fn console_prefs(&self) -> PathBuf {
         self.config.join("console.json")
+    }
+    /// Settings → Achievements options (see `heronite_achievements::prefs`).
+    pub fn achievement_prefs(&self) -> PathBuf {
+        self.config.join("achievements.json")
     }
     /// The user's saved console themes, one JSON file each.
     pub fn console_themes_dir(&self) -> PathBuf {

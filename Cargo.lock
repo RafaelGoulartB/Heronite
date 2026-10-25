@@ -3533,6 +3533,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-achievements"
+version = "0.15.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-gog",
+ "heronite-metadata",
+ "heronite-steam",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "heronite-amazon"
 version = "0.15.0"
 dependencies = [

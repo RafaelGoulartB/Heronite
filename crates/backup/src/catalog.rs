@@ -102,8 +102,13 @@ impl Side {
 const KEPT_STORE_CACHE: [&str; 5] =
     ["gog_library.json", "nile_library.json", "steam_library.json", "gog_playtime_sync_queue.json", "gog_playtime_import.json"];
 
-const LOGINS: [&str; 4] =
-    ["legendaryConfig/legendary/user.json", "gog_store/auth.json", "nile_config/nile/user.json", "nile_config/nile/current_user.json"];
+const LOGINS: [&str; 5] = [
+    "legendaryConfig/legendary/user.json",
+    "gog_store/auth.json",
+    "nile_config/nile/user.json",
+    "nile_config/nile/current_user.json",
+    "local_library/achievement-accounts.json",
+];
 
 /// Files the app writes while it runs, or that are stale copies.
 fn is_temp(rel: &str) -> bool {
@@ -244,6 +249,8 @@ mod tests {
             ("legendaryConfig/legendary/user.json", In(Part::Logins)),
             ("gog_store/auth.json", In(Part::Logins)),
             ("nile_config/nile/user.json", In(Part::Logins)),
+            ("local_library/achievement-accounts.json", In(Part::Logins)),
+            ("local_library/achievements/gog/1207658924.json", In(Part::Collection)),
             ("local_library/art/sideload_x/hero-1.png", In(Part::Art)),
             ("local_library/metadata-art/x/h.jpg", In(Part::Art)),
             ("tools/proton/GE/bin/wine", Out(Left::Tools)),
