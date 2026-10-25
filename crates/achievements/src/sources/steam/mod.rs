@@ -1,8 +1,10 @@
 //! Steam: the stats files the Steam client keeps on this PC (no key, works
 //! offline), the Web API for the share of players that have each
-//! achievement, and, with the user's Web API key, for the games the client
-//! has no stats of.
+//! achievement, and, for the games the client has no stats of, the Web API
+//! with the user's key or else the game's public list on Steam Community
+//! (every achievement locked: the local copy keeps what was seen unlocked).
 
+mod community;
 mod kv;
 mod local;
 mod web;
@@ -27,6 +29,7 @@ pub const CDN_BASE: &str = "https://cdn.cloudflare.steamstatic.com";
 struct Bases<'a> {
     api: &'a str,
     cdn: &'a str,
+    community: &'a str,
 }
 
 /// A Steam install and the account whose stats it keeps.
@@ -37,7 +40,7 @@ struct Install {
 
 pub fn fetch(ctx: &Ctx, app_id: &str) -> Fetch {
     let locator = SteamLocator::detect(&GlobalSettings::load(ctx.paths), &SystemProbe);
-    fetch_from(ctx, &Bases { api: API_BASE, cdn: CDN_BASE }, &locator, app_id)
+    fetch_from(ctx, &Bases { api: API_BASE, cdn: CDN_BASE, community: community::COMMUNITY_BASE }, &locator, app_id)
 }
 
 fn fetch_from(ctx: &Ctx, bases: &Bases, locator: &SteamLocator, app_id: &str) -> Fetch {
@@ -62,7 +65,13 @@ fn fetch_from(ctx: &Ctx, bases: &Bases, locator: &SteamLocator, app_id: &str) ->
             (schema, unlocks)
         }
         None => {
-            let (Some(key), Some(account)) = (key, account) else { return Fetch::None };
+            let (Some(key), Some(account)) = (key, account) else {
+                return match community::schema(ctx.http, bases.community, app_id, web_lang) {
+                    Ok(schema) if schema.entries.is_empty() => Fetch::None,
+                    Ok(schema) => Fetch::Set(build(app_id, &schema, None, &web::rarity(ctx.http, bases.api, app_id), bases.cdn)),
+                    Err(e) => Fetch::Failed(format!("Steam Community: {e}")),
+                };
+            };
             let schema = match web::schema(ctx.http, bases.api, key, app_id, web_lang) {
                 Ok(schema) if schema.entries.is_empty() => return Fetch::None,
                 Ok(schema) => schema,
@@ -205,7 +214,7 @@ mod tests {
     }
 
     /// Nothing listens there: the Web API is unreachable.
-    const OFFLINE: Bases = Bases { api: "http://127.0.0.1:9", cdn: "https://cdn.test" };
+    const OFFLINE: Bases = Bases { api: "http://127.0.0.1:9", cdn: "https://cdn.test", community: "http://127.0.0.1:9" };
 
     fn run(dir: &Path, locator: &SteamLocator, key: Option<&str>, app_id: &str) -> Fetch {
         let paths = DataPaths::at(dir);
@@ -244,9 +253,10 @@ mod tests {
     }
 
     #[test]
-    fn no_schema_anywhere_is_none() {
+    fn without_a_local_schema_or_a_key_steam_community_is_asked() {
         let (dir, locator) = steam_with(Some(1));
-        assert_eq!(run(dir.path(), &locator, None, "999"), Fetch::None);
+        let Fetch::Failed(message) = run(dir.path(), &locator, None, "999") else { panic!("expected the community page") };
+        assert!(message.starts_with("Steam Community: "), "{message}");
     }
 
     #[test]

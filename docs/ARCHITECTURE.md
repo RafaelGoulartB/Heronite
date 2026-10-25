@@ -287,8 +287,9 @@ device when the last window closes (the app lives on in the tray); see its
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the
   client's `appcache/stats` files (binary KeyValues, offline, any Steam
-  root) plus the public global percentages, with an optional Web API key for
-  games never played on this PC; `gog` `gameplay.gog.com` with gogdl's token;
+  root) plus the public global percentages; for games never played on this
+  PC the Web API with an optional key, else the game's public list on Steam
+  Community (`community`: the page's `valve-ssr-data` JSON, all locked); `gog` `gameplay.gog.com` with gogdl's token;
   `epic` the store's GraphQL (`launcher.store.epicgames.com`, legendary's
   token, the namespace as sandbox, the launcher's User-Agent); `retro` the
   RetroAchievements Web API with the user's key, the ROM matched by its

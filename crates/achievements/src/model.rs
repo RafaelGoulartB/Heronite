@@ -205,7 +205,7 @@ pub struct GameAchievements {
     /// When a source last said the game has no achievements there (so it is
     /// not asked again at every start).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub none_at: std::collections::BTreeMap<Source, DateTime<Utc>>,
+    pub empty_at: std::collections::BTreeMap<Source, DateTime<Utc>>,
 }
 
 impl GameAchievements {
@@ -221,7 +221,7 @@ impl GameAchievements {
     /// When `source` was last read with an answer (a set, or "none").
     pub fn checked_at(&self, source: Source) -> Option<DateTime<Utc>> {
         let set = self.set(source).map(|s| s.fetched_at);
-        let none = self.none_at.get(&source).copied();
+        let none = self.empty_at.get(&source).copied();
         set.max(none)
     }
 }
@@ -295,7 +295,7 @@ mod tests {
         let v = serde_json::to_value(a("x", None, 5.)).unwrap();
         assert_eq!(v, serde_json::json!({"id":"x","name":"x","description":"","icon":"","iconLocked":"","rarity":5.0}));
         let mut g = GameAchievements { sets: vec![set(vec![])], ..Default::default() };
-        g.none_at.insert(Source::Epic, Utc::now());
+        g.empty_at.insert(Source::Epic, Utc::now());
         let back: GameAchievements = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
         assert_eq!(back, g);
         assert_eq!(serde_json::to_value(Source::RetroAchievements).unwrap(), "retroachievements");

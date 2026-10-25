@@ -45,11 +45,11 @@ pub fn refresh(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget]
                     Some(i) => game.sets[i] = merged,
                     None => game.sets.push(merged),
                 }
-                game.none_at.remove(&source);
+                game.empty_at.remove(&source);
                 changed = true;
             }
             Fetch::None => {
-                game.none_at.insert(source, Utc::now());
+                game.empty_at.insert(source, Utc::now());
                 changed = true;
             }
             Fetch::NeedsAccount => out.problems.push((source, Problem::NeedsAccount)),

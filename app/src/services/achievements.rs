@@ -164,7 +164,7 @@ impl Achievements {
             this.update(cx, |this, cx| {
                 let Some(entry) = this.games.get_mut(&key) else { return };
                 let now = Utc::now();
-                let stale = entry.order.iter().any(|s| match (copy.set(*s), copy.none_at.get(s)) {
+                let stale = entry.order.iter().any(|s| match (copy.set(*s), copy.empty_at.get(s)) {
                     (Some(set), _) => now - set.fetched_at > STALE,
                     (None, Some(at)) => now - *at > STALE_NONE,
                     (None, None) => true,
