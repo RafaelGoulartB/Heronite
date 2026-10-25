@@ -36,6 +36,9 @@ pub(crate) enum Scrim {
     Spot,
     /// Dark at the bottom only (Cinema).
     Cinema,
+    /// A vignette: the art glows behind the covers in the middle, darker
+    /// at the edges and most under the name at the bottom (Carousel).
+    Carousel,
     /// Evenly dark (grids and lists over busy art).
     Full,
     /// Nearly opaque (pages).
@@ -58,6 +61,7 @@ fn light_wash(scrim: Scrim) -> f32 {
         Scrim::Library => 0.66,
         Scrim::Spot => 0.5,
         Scrim::Cinema => 0.62,
+        Scrim::Carousel => 0.56,
         Scrim::Full => 0.68,
         Scrim::Page => 0.,
     }
@@ -73,6 +77,7 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
         Scrim::Library => vec![layer(90., 0.95, 0.58, 1.), layer(0., 0.97, 0.3, 0.85), layer(180., 0.55, 0., 0.3)],
         Scrim::Spot => vec![layer(90., 0.88, 0.1, 0.7), layer(0., 0.92, 0., 0.5), layer(180., 0.6, 0., 0.25)],
         Scrim::Cinema => vec![layer(0., 0.97, 0., 0.62), layer(90., 0.55, 0., 0.5), layer(180., 0.45, 0., 0.16)],
+        Scrim::Carousel => vec![layer(0., 0.94, 0., 0.5), layer(180., 0.72, 0., 0.34), layer(90., 0.6, 0., 0.3), layer(270., 0.6, 0., 0.3)],
         Scrim::Full => vec![layer(0., 0.86, 0.7, 1.)],
         Scrim::Page => vec![layer(90., 0.96, 0.96, 1.)],
     }

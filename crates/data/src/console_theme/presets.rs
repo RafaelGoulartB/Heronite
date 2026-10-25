@@ -122,7 +122,8 @@ pub fn minimal() -> ConsoleTheme {
         t.tiles.badges = Badges::Off;
         t.background.source = BackgroundSource::Cover;
         t.background.blur = 40;
-        t.background.dim = 40;
+        t.background.dim = 20;
+        t.tiles.size = TileSize::Large;
         t.layouts.carousel_reflect = true;
     })
 }

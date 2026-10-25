@@ -158,9 +158,10 @@ impl CollectionView {
             look::clear();
             console::themes::forget();
             self.console = ConsoleUi::default();
-            // Textures only console mode draws: logos and wide covers.
+            // Textures only console mode draws: logos, wide covers and reflections.
             self.images.forget_prefix("l:");
             self.images.forget_prefix("cw:");
+            self.images.forget_prefix("cr:");
             self.images.forget_matching(|id| backdrop::is_backdrop_id(id) || id.starts_with("a:"));
             self.console_controls_ended(window, cx);
             self.close_console_dialog();

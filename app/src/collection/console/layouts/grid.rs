@@ -168,7 +168,7 @@ fn rail_letters() -> impl Iterator<Item = char> {
 
 /// The rail letter of a title: its first letter without accents, `#` for
 /// digits and symbols (they sort before A).
-fn letter_of(title: &str) -> char {
+pub(super) fn letter_of(title: &str) -> char {
     let first = title.trim_start().chars().next().unwrap_or('#');
     heronite_data::fuzzy::fold(first.encode_utf8(&mut [0; 4]))
         .chars()
@@ -180,7 +180,7 @@ fn letter_of(title: &str) -> char {
 /// Where LT / RT land among games sorted A–Z whose letters are `letters`:
 /// the first game of the next letter, or of the previous one (of the
 /// current one when the focus is not on its first game). Stays put at the ends.
-fn jump_letter(letters: &[char], i: usize, forward: bool) -> usize {
+pub(super) fn jump_letter(letters: &[char], i: usize, forward: bool) -> usize {
     let n = letters.len();
     if n == 0 {
         return 0;

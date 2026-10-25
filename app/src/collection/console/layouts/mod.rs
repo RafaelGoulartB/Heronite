@@ -52,7 +52,8 @@ pub(super) fn scrim(layout: Layout) -> Scrim {
         Layout::Shelves => Scrim::Classic,
         Layout::Spotlight | Layout::Xbox => Scrim::Spot,
         Layout::Cinema => Scrim::Cinema,
-        Layout::Dashboard | Layout::Wheel | Layout::Carousel => Scrim::Full,
+        Layout::Carousel => Scrim::Carousel,
+        Layout::Dashboard | Layout::Wheel => Scrim::Full,
         // The game panel sits over the art: evenly dark, like the lists.
         Layout::Grid if look::theme().layouts.grid_panel == GridPanel::Right => Scrim::Full,
         Layout::Grid => Scrim::Library,
