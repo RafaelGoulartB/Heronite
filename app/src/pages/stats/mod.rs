@@ -93,7 +93,7 @@ fn day_part(i: usize) -> (&'static str, &'static str) {
 }
 
 /// A name in the middle of a sentence (Portuguese and Spanish write weekdays
-/// and months in lower case).
+/// and months in lower case, German keeps the capital).
 fn in_text(name: &str) -> String {
     if heronite_i18n::current().lowercase_names() {
         name.to_lowercase()
