@@ -183,7 +183,8 @@ impl CollectionView {
 
     /// Asks the achievements service for the newly focused game.
     fn sync_achievements(&mut self, cx: &mut Context<Self>) {
-        let target = self.selected.clone();
+        // Off: ask again for the focused game once they are turned on.
+        let target = self.selected.clone().filter(|_| crate::services::achievements::enabled());
         if self.extras.ach_key == target {
             return;
         }
@@ -383,6 +384,9 @@ impl CollectionView {
     /// The Achievements section.
     pub(super) fn focus_extras(&mut self, key: &str, scale: f32, cx: &mut Context<Self>) -> focus::FocusExtras {
         let mut extras = focus::FocusExtras::default();
+        if !crate::services::achievements::enabled() {
+            return extras;
+        }
         let Some(game) = self.lib.as_ref().and_then(|lib| lib.get(key)).cloned() else { return extras };
         let (hide_secrets, entry) = {
             let service = crate::services::achievements::get(cx);

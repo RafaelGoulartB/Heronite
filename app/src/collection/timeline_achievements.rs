@@ -51,7 +51,7 @@ impl CollectionView {
         let Some(game) = self.lib.as_ref().and_then(|lib| lib.get(key)).cloned() else { return DayUnlocks::new() };
         let service = crate::services::achievements::get(cx);
         let service = service.read(cx);
-        if !service.prefs().timeline {
+        if !service.prefs().timeline || !crate::services::achievements::enabled() {
             return DayUnlocks::new();
         }
         let Some(set) = service.entry(&crate::services::achievements::key_of(&game.runner, &game.app_name)).and_then(|e| e.primary())
