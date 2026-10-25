@@ -41,7 +41,7 @@ const PAUSE_MIN_DAYS: i64 = 3;
 
 impl CollectionView {
     /// The section (none when the game was never played and has no screenshots).
-    pub(super) fn timeline_section(&mut self, key: &SharedString, main_w: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn timeline_section(&mut self, key: &SharedString, main_w: f32, scale: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
         let days = self.timeline_days(key)?;
         let current = self.journal.is_for(key);
         let has_notes = current && self.journal.data.as_ref().is_some_and(|d| !d.entries.is_empty() || d.left_off.is_some());
@@ -61,13 +61,19 @@ impl CollectionView {
         let best = days.iter().map(|d| d.played_secs).fold(0., f64::max);
         let played_days = days.iter().filter(|d| d.played_secs > 0.).count();
         let this_year = chrono::Local::now().year();
+        let unlocks = self.timeline_unlocks(key, cx);
 
         let mut list = div().flex().flex_col();
         for (i, day) in days[..shown].iter().enumerate() {
             let is_best = played_days > 1 && day.played_secs > 0. && day.played_secs >= best;
             let tiles = self.day_tiles(i, day, max_tiles, cx);
             let chip = notes.get(&day.date).map(|n| self.notes_chip(i, *n, cx));
-            list = list.child(day_row(day, this_year, i + 1 < shown, is_best, chip, tiles));
+            let day_unlocks = unlocks.get(&day.date);
+            let ach_chip = day_unlocks.map(|l| self.achievements_chip(i, l.len(), key, cx));
+            let ach_line = day_unlocks.map(|l| self.achievements_line(i, l, key, scale, cx));
+            let row =
+                DayRow { day, this_year, has_next: i + 1 < shown, is_best, notes: chip, achievements: ach_chip, tiles, unlocks: ach_line };
+            list = list.child(day_row(row));
             if let Some(older) = days.get(i + 1).filter(|_| i + 1 < shown) {
                 let off = (day.date - older.date).num_days() - 1;
                 if off >= PAUSE_MIN_DAYS {
@@ -288,7 +294,23 @@ impl CollectionView {
     }
 }
 
-fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, notes: Option<AnyElement>, tiles: Option<Div>) -> Div {
+/// What one day of the list shows.
+struct DayRow<'a> {
+    day: &'a TimelineDay,
+    this_year: i32,
+    has_next: bool,
+    is_best: bool,
+    /// "3 notes" (opens the Journal).
+    notes: Option<AnyElement>,
+    /// "4 achievements" (opens the list).
+    achievements: Option<AnyElement>,
+    tiles: Option<Div>,
+    /// The icons of the day's unlocks.
+    unlocks: Option<AnyElement>,
+}
+
+fn day_row(r: DayRow) -> Div {
+    let DayRow { day, this_year, has_next, is_best, notes, achievements, tiles, unlocks } = r;
     let sub = match (day.sessions, day.first_start) {
         (1, Some(t)) => t.format(trc!("time format", "%-I:%M %p")).to_string(),
         (0, _) => String::new(),
@@ -321,7 +343,7 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, not
                 .child(tr!("Longest day")),
         );
     }
-    line = line.children(notes);
+    line = line.children(notes).children(achievements);
     div()
         .flex()
         .gap(px(GAP))
@@ -357,7 +379,7 @@ fn day_row(day: &TimelineDay, this_year: i32, has_next: bool, is_best: bool, not
                     d.child(div().absolute().top(px(20.)).bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::ink_a(0.1)))
                 }),
         )
-        .child(div().flex_1().min_w_0().child(line).children(tiles))
+        .child(div().flex_1().min_w_0().child(line).children(tiles).children(unlocks))
 }
 
 /// Between two days far apart: how long the game was left, on a fainter rail.

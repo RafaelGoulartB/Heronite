@@ -49,6 +49,7 @@ mod sideload_uninstall;
 mod steam_copy;
 mod system_glue;
 mod timeline;
+mod timeline_achievements;
 mod update_banner;
 mod user_actions;
 mod view_filters;
