@@ -411,7 +411,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   (folder / file picker; the portal file chooser cannot be driven by a controller).
 - Motion (`console::motion`): scroll areas that follow the focus use a `Glide` (`go(Goal::Reveal{..})` / `Start` /
   `by(px)`, its `driver()` as the last child of the area) instead of `scroll_to_item`, so they glide on a spring;
-  `row_base` focus pills pop in on every press; covers lift with `motion::spring`; screens, pages, dialogs, the menu
+  `row_base` focus pills pop in on every press; covers lift with `motion::spring`; one value that drives many
+  elements (a whole row) is a `motion::Follow` its owner steps each frame; screens, pages, dialogs, the menu
   and panels (`kit::panel_in`, `kit::scrim`) fade / slide in with `motion::enter` (new id = replay). Only moving
   things request frames; `HERONITE_NO_ANIMATIONS=1` jumps instead. Off-screen covers are empty boxes of the same size.
 - Layout: top bar = the theme's tabs (`kit::tabs`; `interface.tabBar` may move them to a bar along the bottom, show only
@@ -446,6 +447,18 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
   along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
   (`render_console_game_layer`, drawn by the shell above the top bar).
+  Pulse's Spotlight (`layouts/spotlight/`), a console's home: a row of square icons along the top, the focused one at
+  the left edge, larger, with a thin ring a little way out and its name beside it; the next icons after the name, the
+  ones before it sliding off to the left. Every icon's place and size and the names come from one number, the row's
+  position gliding on a spring (`motion::Follow`, stepped each frame with a `FrameClock`), so a held direction glides
+  and the room for a longer name opens smoothly (an arriving name is revealed as its room opens, the leaving one fades
+  with its icon). Below, the logo (or the name) with a wide Play and More, then when it was last played; the cards
+  (playtime, How Long To Beat with a bar of how far along the main story, journal) peek in at the bottom, and going
+  down to them slides the whole screen up, the row fading and the art darkening from the bottom. Buttons and cards
+  ease into the focus colour. The art is shaded for the row, the logo and the cards (`Scrim::Home`) and settles in
+  like Classic's. With `Hints::Auto` the hint bar floats over the bottom and fades in and out
+  (`layouts::hints_float`) instead of taking room, so nothing moves when it comes and goes; the cards that peek step
+  back while it shows.
   Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
   and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
   Status and Category; X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the

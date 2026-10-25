@@ -159,7 +159,6 @@ pub(crate) struct PillSize {
 }
 
 impl PillSize {
-    pub const SMALL: Self = Self { height: 50., pad: 22., text: 17., icon: 22., fill: 0.1 };
     pub const LARGE: Self = Self { height: 52., pad: 26., text: 18., icon: 24., fill: 0.12 };
 }
 
@@ -344,12 +343,7 @@ impl CollectionView {
         kit::title(g.title.clone(), size.title).into_any_element()
     }
 
-    /// Name, facts and overview of `key`, sliding in when the game changes.
-    pub(super) fn console_hero(&mut self, key: Option<&SharedString>, size: HeroSize, window: &Window) -> Div {
-        self.console_hero_with(key, size, HeroMotion::default(), window)
-    }
-
-    /// [`Self::console_hero`] brought in as `how` says.
+    /// Name, facts and overview of `key`, brought in as `how` says when the game changes.
     pub(super) fn console_hero_with(&mut self, key: Option<&SharedString>, size: HeroSize, how: HeroMotion, window: &Window) -> Div {
         let Some(g) = key.and_then(|k| self.lib.as_ref()?.get(k)).cloned() else { return div() };
         let theme = look::theme();
