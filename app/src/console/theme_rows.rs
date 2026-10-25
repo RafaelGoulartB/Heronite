@@ -245,7 +245,8 @@ pub fn is_edited(prefs: &ConsolePrefs, saved: &[ConsoleTheme]) -> bool {
     base_theme(prefs, saved).is_none_or(|b| b != prefs.theme)
 }
 
-fn base_theme(prefs: &ConsolePrefs, saved: &[ConsoleTheme]) -> Option<ConsoleTheme> {
+/// The preset or saved theme the prefs started from (`None` once it was deleted).
+pub fn base_theme(prefs: &ConsolePrefs, saved: &[ConsoleTheme]) -> Option<ConsoleTheme> {
     presets::by_id(&prefs.based_on).or_else(|| saved.iter().find(|t| t.id == prefs.based_on).cloned())
 }
 

@@ -308,3 +308,18 @@ fn export_names_follow_the_id() {
     t.name = "My Look!".into();
     assert_eq!(export_name(&t), "my-look.heronite-theme.json");
 }
+
+#[test]
+fn a_theme_is_picked_by_id_and_changes_go_back_to_its_base() {
+    let mut p = classic();
+    assert!(run(&mut p, &Command::new("theme.use", Arg::Pick("pulse".into())), &data()));
+    assert_eq!((p.theme.id.as_str(), p.based_on.as_str()), ("pulse", "pulse"));
+    assert!(!run(&mut p, &Command::new("theme.use", Arg::Pick("nope".into())), &data()), "an unknown id changes nothing");
+    assert!(change(&mut p, "nav.wrap", Value::Toggle(true)));
+    assert!(is_edited(&p, &[]));
+    assert!(run(&mut p, &Command::new("theme.revert", Arg::Press), &data()));
+    assert!(!is_edited(&p, &[]));
+    assert_eq!(p.based_on, "pulse");
+    p.based_on.clear();
+    assert!(!run(&mut p, &Command::new("theme.revert", Arg::Press), &data()), "nothing to go back to");
+}

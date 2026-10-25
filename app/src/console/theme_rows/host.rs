@@ -248,37 +248,53 @@ pub fn store_op<H: Host>(h: &mut H, op: StoreOp, window: &mut Window, cx: &mut C
             t.name = name;
             save_job(h, app, t, tr!("Renamed.").into(), cx);
         }
+        StoreOp::SaveDetails { name, author } => {
+            let mut t = current;
+            t.name = name;
+            t.author = author;
+            save_job(h, app, t, tr!("Saved.").into(), cx);
+        }
         StoreOp::Delete => {
             let id = h.theme_state().map(|st| st.prefs.based_on.clone()).unwrap_or_default();
-            cx.spawn(async move |this, cx| {
-                let res = cx
-                    .background_spawn({
-                        let app = app.clone();
-                        async move { store::delete(&app, &id).map(|()| store::list(&app)) }
-                    })
-                    .await;
-                this.update(cx, |h, cx| match res {
-                    Ok(list) => {
-                        let app = h.app();
-                        let prefs = themes::update(&app, |p| p.based_on.clear());
-                        if let Some(st) = h.theme_state() {
-                            st.data.saved = list;
-                            st.prefs = prefs;
-                            st.notice = Some((tr!("Deleted.").into(), false));
-                        }
-                        cx.notify();
-                    }
-                    Err(e) => {
-                        fail(h, e, cx);
-                    }
-                })
-                .ok();
-            })
-            .detach();
+            delete_job(h, app, id, cx);
         }
+        StoreOp::DeleteSaved(id) => delete_job(h, app, id, cx),
         StoreOp::Export => export(h, current, window, cx),
         StoreOp::Import => import(h, window, cx),
     }
+}
+
+/// Deletes the saved theme `id`; the theme in use stops being based on it
+/// (it stays on screen, as "Customised").
+fn delete_job<H: Host>(_h: &mut H, app: AppPaths, id: String, cx: &mut Context<H>) {
+    cx.spawn(async move |this, cx| {
+        let res = cx
+            .background_spawn({
+                let (app, id) = (app.clone(), id.clone());
+                async move { store::delete(&app, &id).map(|()| store::list(&app)) }
+            })
+            .await;
+        this.update(cx, |h, cx| match res {
+            Ok(list) => {
+                let app = h.app();
+                let in_use = h.theme_state().is_some_and(|st| st.prefs.based_on == id);
+                let prefs = in_use.then(|| themes::update(&app, |p| p.based_on.clear()));
+                if let Some(st) = h.theme_state() {
+                    st.data.saved = list;
+                    if let Some(p) = prefs {
+                        st.prefs = p;
+                    }
+                    st.notice = Some((tr!("Deleted.").into(), false));
+                }
+                cx.notify();
+            }
+            Err(e) => {
+                fail(h, e, cx);
+            }
+        })
+        .ok();
+    })
+    .detach();
 }
 
 fn save_job<H: Host>(_h: &mut H, app: AppPaths, theme: ConsoleTheme, done: String, cx: &mut Context<H>) {

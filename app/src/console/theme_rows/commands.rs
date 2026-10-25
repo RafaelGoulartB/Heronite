@@ -12,7 +12,15 @@ pub enum StoreOp {
         author: String,
     },
     Rename(String),
+    /// Overwrite the saved theme in use under this name and author.
+    SaveDetails {
+        name: String,
+        author: String,
+    },
+    /// Delete the saved theme in use.
     Delete,
+    /// Delete the saved theme with this id (in use or not).
+    DeleteSaved(String),
     Export,
     Import,
 }
@@ -189,6 +197,17 @@ fn apply(prefs: &mut ConsolePrefs, cmd: &Command, data: &Data) {
                     prefs.theme = next;
                     prefs.based_on = tid.clone();
                 }
+            }
+        }
+        ("theme.use", Arg::Pick(tid)) => {
+            if let Some(next) = presets::by_id(tid).or_else(|| data.saved.iter().find(|s| s.id == *tid).cloned()) {
+                prefs.theme = next;
+                prefs.based_on = tid.clone();
+            }
+        }
+        ("theme.revert", Arg::Press) => {
+            if let Some(base) = base_theme(prefs, &data.saved) {
+                prefs.theme = base;
             }
         }
         ("theme.reset", Arg::Press) => {

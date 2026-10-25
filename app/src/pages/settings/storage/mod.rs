@@ -127,6 +127,14 @@ impl State {
         true
     }
 
+    /// The library the Collection handed over with its cover and wide-art
+    /// chains (by game key), for the other sections' pictures.
+    pub(in crate::pages::settings) fn library_art(
+        &self,
+    ) -> Option<(&Library, &HashMap<SharedString, Vec<ImageRef>>, &HashMap<SharedString, Vec<ImageRef>>)> {
+        self.lib.as_deref().map(|l| (l, &self.chains, &self.stages))
+    }
+
     /// Stops the walk running (another section is shown).
     pub fn stop(&mut self) {
         if self.loading {

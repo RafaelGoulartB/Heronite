@@ -233,6 +233,7 @@ impl SettingsPage {
             self.appearance.set_chain(offer.chain);
             if let Some(l) = offer.library {
                 self.storage.set_library(l.lib, l.chains, l.stages);
+                console_mode::library_changed(self);
             }
         }
         if let Some(section) = take_requested_section(cx) {
@@ -260,6 +261,7 @@ impl SettingsPage {
     /// needs (`refresh` brings it back when the page is shown).
     pub fn hidden(&mut self, window: &mut Window) {
         self.storage.hidden(window);
+        console_mode::hidden(self, window);
         self.logs.release();
     }
 
@@ -267,6 +269,7 @@ impl SettingsPage {
     /// game was uninstalled from Storage): Storage looks again.
     pub fn set_library(&mut self, offer: LibraryOffer, cx: &mut Context<Self>) {
         let changed = self.storage.set_library(offer.lib, offer.chains, offer.stages);
+        console_mode::library_changed(self);
         if changed && self.section == Section::Storage {
             storage::State::shown(self, cx);
         }
@@ -306,6 +309,9 @@ impl SettingsPage {
         }
         if self.section != Section::Logs {
             self.logs.release();
+        }
+        if self.section != Section::ConsoleMode {
+            console_mode::hidden(self, window);
         }
         match self.section {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),
