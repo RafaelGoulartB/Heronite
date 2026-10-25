@@ -24,7 +24,7 @@ pub struct Prefs {
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { notify: true, timeline: true, hide_secrets: true, emulators: true, hardcore: false }
+        Self { notify: false, timeline: true, hide_secrets: true, emulators: true, hardcore: false }
     }
 }
 
@@ -42,7 +42,7 @@ mod tests {
 
     #[test]
     fn missing_keys_take_the_defaults() {
-        let p: Prefs = serde_json::from_str(r#"{"notify":false}"#).unwrap();
-        assert_eq!(p, Prefs { notify: false, ..Prefs::default() });
+        let p: Prefs = serde_json::from_str(r#"{"notify":true}"#).unwrap();
+        assert_eq!(p, Prefs { notify: true, ..Prefs::default() });
     }
 }
