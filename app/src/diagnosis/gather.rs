@@ -15,11 +15,17 @@ use super::{Ended, Report};
 /// a log this size still holds for a run that ended within seconds).
 const LOG_TAIL: u64 = 1 << 20;
 
+/// Whether Heronite starts `game` itself, with a launch log of its own (not
+/// Steam, another launcher or an emulator).
+pub fn reads(game: &CollectionGame) -> bool {
+    !(game.via_steam || game.runner == "steam" || matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | "launcher")))
+}
+
 /// Diagnoses the last launch of `game` (`log`: another log file to read,
-/// for the debug hooks). `None`: a game this cannot help with (Steam starts
-/// it, or another launcher or an emulator).
+/// for the debug hooks). `None`: a game this cannot help with ([`reads`]),
+/// or one with no log that says how it runs and no Wine or Proton set.
 pub fn gather(paths: &DataPaths, game: &CollectionGame, ended: Option<Ended>, log: Option<&Path>) -> Option<Report> {
-    if game.via_steam || game.runner == "steam" || matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | "launcher")) {
+    if !reads(game) {
         return None;
     }
     let path =

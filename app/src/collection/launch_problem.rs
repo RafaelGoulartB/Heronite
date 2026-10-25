@@ -65,10 +65,18 @@ impl CollectionView {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let report = cx.background_spawn(async move { crate::diagnosis::gather(&paths, &game, None, log.as_deref()) }).await;
+            let g = game.clone();
+            let report = cx.background_spawn(async move { crate::diagnosis::gather(&paths, &g, None, log.as_deref()) }).await;
             this.update(cx, |this, cx| match report {
                 Some(r) => this.open_launch_problem(Arc::new(r), cx),
-                None => this.show_toast(heronite_i18n::tr!("Steam starts this game: its launch problems show in Steam."), false, cx),
+                None if !crate::diagnosis::reads(&game) => {
+                    this.show_toast(heronite_i18n::tr!("Steam starts this game: its launch problems show in Steam."), false, cx)
+                }
+                None => this.show_toast(
+                    heronite_i18n::tr!("There is nothing to read about {title} yet: play it once, then try again.", title = game.title),
+                    false,
+                    cx,
+                ),
             })
             .ok();
         })

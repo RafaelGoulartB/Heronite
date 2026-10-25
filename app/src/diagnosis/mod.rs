@@ -24,7 +24,7 @@ use heronite_launch::diagnose::{Finding, Fix, RunKind};
 use heronite_launch::ExitInfo;
 
 pub use apply::apply;
-pub use gather::gather;
+pub use gather::{gather, reads};
 
 /// How the run that is diagnosed ended.
 #[derive(Debug, Clone, Copy)]

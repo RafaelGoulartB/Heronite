@@ -255,7 +255,7 @@ impl CollectionView {
         }
         v.push(item(A::Log, "log", tr!("View log"), Icon::Description, "logs debug output ver registro depuracao saida"));
         // What Steam starts has no launch log of ours.
-        if game.installed && !game.via_steam && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | "launcher")) {
+        if game.installed && crate::diagnosis::reads(game) {
             v.push(item(
                 A::Troubleshoot,
                 "troubleshoot",

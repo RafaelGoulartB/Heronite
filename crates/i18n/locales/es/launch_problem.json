@@ -46,6 +46,7 @@
   "The memory map limit is low": "El límite de mapas de memoria es bajo",
   "The old wineserver stopped. Starting {title}…": "El wineserver antiguo se cerró. Abriendo {title}…",
   "The password was not given: nothing changed.": "No se dio la contraseña: nada cambió.",
+  "There is nothing to read about {title} yet: play it once, then try again.": "Todavía no hay nada que leer sobre {title}: juega una vez y vuelve a intentarlo.",
   "This Wine needs its 32-bit part, which is not installed. Proton brings its own.": "Este Wine necesita su parte de 32 bits, que no está instalada. Proton trae la suya.",
   "This game has no launch log yet: start it once, then look again.": "Este juego aún no tiene log de inicio: ábrelo una vez y vuelve a mirar.",
   "This game uses {anticheat}, which works on Linux through Proton's anti-cheat runtime. The runtime is off for this game.": "Este juego usa {anticheat}, que funciona en Linux con el runtime anti-cheat de Proton. El runtime está desactivado para este juego.",
