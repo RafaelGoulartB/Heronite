@@ -1,6 +1,6 @@
 //! Applying a fix of the launch diagnosis.
 
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 use heronite_data::DataPaths;
@@ -16,15 +16,26 @@ use super::Report;
 const WINESERVER_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Applies `fix` to the game of `report`. `pid` gets the process group of
-/// what runs for it (winetricks), which a cancel signals; its output goes
-/// to `line`. [`Fix::Terminal`] and [`Fix::Repair`] are the UI's (a copy to
-/// the clipboard, the store's verify).
-pub fn apply(paths: &DataPaths, report: &Report, fix: &Fix, pid: &AtomicU32, line: &(dyn Fn(String) + Sync)) -> Result<(), String> {
+/// what runs for it (winetricks), which a cancel signals; `stop` set by the
+/// cancel keeps the next component from starting. The output goes to
+/// `line`. [`Fix::Terminal`] and [`Fix::Repair`] are the UI's (a copy to the
+/// clipboard, the store's verify).
+pub fn apply(
+    paths: &DataPaths,
+    report: &Report,
+    fix: &Fix,
+    pid: &AtomicU32,
+    stop: &AtomicBool,
+    line: &(dyn Fn(String) + Sync),
+) -> Result<(), String> {
     let home = heronite_launch::probe::dirs_home();
     let app = report.app_name.as_str();
     match fix {
         Fix::Winetricks(verbs) => {
             for verb in verbs {
+                if stop.load(Ordering::SeqCst) {
+                    return Err("cancelled".into());
+                }
                 line(tr!("Installing {verb}\u{2026}", verb));
                 crate::runtime::winetricks_install_blocking(paths, &home, app, Err(()), verb, pid, line)
                     .map_err(|e| tr!("{verb} could not be installed: {why}", verb, why = e))?;

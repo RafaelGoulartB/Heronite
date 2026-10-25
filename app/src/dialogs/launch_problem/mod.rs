@@ -10,7 +10,7 @@ mod console;
 mod render;
 
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 use futures::channel::mpsc::unbounded;
@@ -42,8 +42,17 @@ type At = (usize, usize);
 
 enum State {
     Idle,
-    Working { at: At, lines: Vec<String>, pid: Arc<AtomicU32>, cancelled: bool },
-    Failed { at: At, message: String },
+    /// `stop`: cancelled (no further winetricks component starts).
+    Working {
+        at: At,
+        lines: Vec<String>,
+        pid: Arc<AtomicU32>,
+        stop: Arc<AtomicBool>,
+    },
+    Failed {
+        at: At,
+        message: String,
+    },
 }
 
 enum Msg {
@@ -115,7 +124,8 @@ impl LaunchProblemDialog {
             return;
         }
         let pid = Arc::new(AtomicU32::new(0));
-        self.state = State::Working { at, lines: Vec::new(), pid: pid.clone(), cancelled: false };
+        let stop = Arc::new(AtomicBool::new(false));
+        self.state = State::Working { at, lines: Vec::new(), pid: pid.clone(), stop: stop.clone() };
         let (tx, mut rx) = unbounded::<Msg>();
         let (paths, report, job) = (self.paths.clone(), self.report.clone(), fix.clone());
         std::thread::Builder::new()
@@ -124,7 +134,7 @@ impl LaunchProblemDialog {
                 let line = |l: String| {
                     let _ = tx.unbounded_send(Msg::Line(l));
                 };
-                let res = diagnosis::apply(&paths, &report, &job, &pid, &line);
+                let res = diagnosis::apply(&paths, &report, &job, &pid, &stop, &line);
                 let _ = tx.unbounded_send(Msg::Done(res));
             })
             .ok();
@@ -147,7 +157,8 @@ impl LaunchProblemDialog {
     }
 
     fn on_msg(&mut self, msg: Msg, cx: &mut Context<Self>) {
-        let State::Working { at, lines, cancelled, .. } = &mut self.state else { return };
+        let State::Working { at, lines, stop, .. } = &mut self.state else { return };
+        let cancelled = stop.load(Ordering::SeqCst);
         let at = *at;
         match msg {
             Msg::Line(l) => {
@@ -156,7 +167,7 @@ impl LaunchProblemDialog {
                     lines.remove(0);
                 }
             }
-            Msg::Done(_) if *cancelled => self.state = State::Idle,
+            Msg::Done(_) if cancelled => self.state = State::Idle,
             Msg::Done(Ok(())) => {
                 self.state = State::Idle;
                 if let Some(fix) = self.fix(at).cloned() {
@@ -170,18 +181,17 @@ impl LaunchProblemDialog {
         cx.notify();
     }
 
-    /// Stops winetricks (its process group).
+    /// Stops winetricks (its process group) and the components after it.
     fn cancel(&mut self, cx: &mut Context<Self>) {
-        let State::Working { pid, cancelled, .. } = &mut self.state else { return };
+        let State::Working { pid, stop, .. } = &self.state else { return };
+        stop.store(true, Ordering::SeqCst);
         let pid = pid.load(Ordering::SeqCst);
-        if pid == 0 {
-            return;
-        }
-        *cancelled = true;
-        // SAFETY: signals the process group winetricks leads (started with
-        // `process_group(0)`), so its Wine children stop too.
-        unsafe {
-            libc::kill(-(pid as i32), libc::SIGTERM);
+        if pid != 0 {
+            // SAFETY: signals the process group winetricks leads (started
+            // with `process_group(0)`), so its Wine children stop too.
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGTERM);
+            }
         }
         cx.notify();
     }
@@ -208,7 +218,7 @@ impl LaunchProblemDialog {
                 at,
                 lines: vec!["Executing w_do_call vcrun2022".into(), "Executing wine VC_redist.x64.exe /q".into()],
                 pid: Arc::new(AtomicU32::new(0)),
-                cancelled: false,
+                stop: Arc::new(AtomicBool::new(false)),
             },
             "failed" => State::Failed { at, message: "vcrun2022 could not be installed: winetricks exited with exit status: 1".into() },
             _ => State::Idle,
