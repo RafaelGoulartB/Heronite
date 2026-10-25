@@ -33,6 +33,8 @@ pub struct Actions {
     pub view_log: Rc<dyn Fn(&mut App)>,
     /// The store's verify of the game's files.
     pub repair: Rc<dyn Fn(&mut App)>,
+    /// The game runs or is starting ("Troubleshoot" is there meanwhile).
+    pub running: Rc<dyn Fn(&App) -> bool>,
 }
 
 /// A fix of the report: (finding, fix) indices.
@@ -103,6 +105,14 @@ impl LaunchProblemDialog {
                 return;
             }
             _ => {}
+        }
+        // A fix changes the prefix or the settings under the game, and
+        // starting it again would stop it instead.
+        if (self.actions.running)(cx) {
+            let message = heronite_i18n::tr!("{title} is running. Close the game to apply this fix.", title = self.report.title);
+            self.state = State::Failed { at, message };
+            cx.notify();
+            return;
         }
         let pid = Arc::new(AtomicU32::new(0));
         self.state = State::Working { at, lines: Vec::new(), pid: pid.clone(), cancelled: false };

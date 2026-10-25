@@ -87,5 +87,6 @@
   "{title} closed {n} seconds after starting.": "{title} wurde {n} Sekunden nach dem Start beendet.",
   "{title} crashed {n} second after starting (signal {signal}).": "{title} ist {n} Sekunde nach dem Start abgestürzt (Signal {signal}).",
   "{title} crashed {n} seconds after starting (signal {signal}).": "{title} ist {n} Sekunden nach dem Start abgestürzt (Signal {signal}).",
+  "{title} is running. Close the game to apply this fix.": "{title} läuft. Beende das Spiel, um diese Korrektur anzuwenden.",
   "{title} now runs with {proton}. Starting it…": "{title} läuft jetzt mit {proton}. Wird gestartet…"
 }

@@ -95,6 +95,11 @@ impl CollectionView {
                 weak.update(cx, |this, cx| {
                     this.dialog = None;
                     this.dialog_sub = None;
+                    // The Play button of a running game stops it.
+                    if this.is_running(&key) {
+                        this.reload(cx);
+                        return;
+                    }
                     this.show_toast(toast, false, cx);
                     this.primary_action(&key, cx);
                     this.reload(cx);
@@ -109,6 +114,10 @@ impl CollectionView {
                 weak.update(cx, |this, cx| this.open_game_log(&key, cx)).ok();
             })
         };
+        let running = {
+            let (weak, key) = (weak.clone(), key.clone());
+            Rc::new(move |cx: &App| weak.upgrade().is_some_and(|this| this.read(cx).is_running(&key)))
+        };
         let repair = Rc::new(move |cx: &mut App| {
             weak.update(cx, |this, cx| {
                 this.dialog = None;
@@ -118,13 +127,19 @@ impl CollectionView {
             })
             .ok();
         });
-        let actions = Actions { play, view_log, repair };
+        let actions = Actions { play, view_log, repair, running };
         let paths = self.data_paths.clone();
         let view = cx.new(|_| LaunchProblemDialog::new(paths, report, actions));
         if let Some(which) = crate::env::value("HERONITE_DEBUG_LAUNCH_FIX") {
             view.update(cx, |d, _| d.debug_state(&which));
         }
         self.open_dialog(view, cx);
+    }
+
+    /// The game of `key` plays or is starting.
+    fn is_running(&self, key: &str) -> bool {
+        let app = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| g.app_name.as_str());
+        app.is_some_and(|a| self.playing.contains_key(a) || self.preparing.contains_key(a))
     }
 
     /// A game that died right after starting, when the analysis cannot tell
