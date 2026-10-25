@@ -57,12 +57,13 @@ impl CollectionView {
         .detach();
     }
 
-    /// "Troubleshoot": the report of the game's last session.
-    pub(super) fn troubleshoot_launch(&mut self, key: &str, cx: &mut Context<Self>) {
+    /// "Troubleshoot": the report of the game's last session (`log`:
+    /// another log to read, debug hooks).
+    pub(super) fn troubleshoot_launch(&mut self, key: &str, log: Option<PathBuf>, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let report = cx.background_spawn(async move { crate::diagnosis::gather(&paths, &game, None, None) }).await;
+            let report = cx.background_spawn(async move { crate::diagnosis::gather(&paths, &game, None, log.as_deref()) }).await;
             this.update(cx, |this, cx| match report {
                 Some(r) => this.open_launch_problem(Arc::new(r), cx),
                 None => this.show_toast(heronite_i18n::tr!("Steam starts this game: its launch problems show in Steam."), false, cx),

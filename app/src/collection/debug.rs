@@ -186,9 +186,11 @@ impl CollectionView {
             }
             w if w.starts_with("launch-problem:") => self.debug_launch_problem(&w["launch-problem:".len()..], false, cx),
             w if w.starts_with("launch-problem-toast:") => self.debug_launch_problem(&w["launch-problem-toast:".len()..], true, cx),
-            "troubleshoot" => {
+            // troubleshoot[:<log>]: "Troubleshoot", reading that log.
+            w if w == "troubleshoot" || w.starts_with("troubleshoot:") => {
                 if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
-                    self.troubleshoot_launch(&key, cx);
+                    let log = w.strip_prefix("troubleshoot:").map(std::path::PathBuf::from);
+                    self.troubleshoot_launch(&key, log, cx);
                 }
             }
             "viewlog" => {

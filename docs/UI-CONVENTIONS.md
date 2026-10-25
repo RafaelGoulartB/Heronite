@@ -305,8 +305,8 @@ again, closing the dialog with a toast. A fix tried before this run is no longer
 rows under "Also found". The footer has View log, ProtonDB and Close. A running fix shows a busy bar and its last output
 lines (winetricks can be cancelled); a failed one its error. "Troubleshoot" (context menu, under View log, always there;
 palette) opens it for the last session. `HERONITE_DEBUG_DIALOG=launch-problem:<log>[@<code>]` diagnoses the selected
-game as if it had just ended with that log (`launch-problem-toast:` for the toast, `troubleshoot` for the on-demand
-check) and `HERONITE_DEBUG_LAUNCH_FIX=working|failed` shows a fix's progress or failure; nothing is applied.
+game as if it had just ended with that log (`launch-problem-toast:` for the toast, `troubleshoot[:<log>]` for the
+on-demand check) and `HERONITE_DEBUG_LAUNCH_FIX=working|failed` shows a fix's progress or failure; nothing is applied.
 
 **Controls** (`ui::controls`):
 - `toggle(id, on, disabled)` 40x24 switch (spring-animated knob unless
