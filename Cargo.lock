@@ -3537,6 +3537,7 @@ name = "heronite-achievements"
 version = "0.15.0"
 dependencies = [
  "anyhow",
+ "cc",
  "chrono",
  "heronite-data",
  "heronite-epic",
