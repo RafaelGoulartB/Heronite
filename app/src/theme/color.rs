@@ -334,6 +334,45 @@ pub fn status_color(slug: &str) -> Rgba {
     }
 }
 
+/// Achievements: an ultra rare unlock and a game at 100% (darker on the
+/// light theme so it reads on paper).
+pub fn achievement_gold() -> Rgba {
+    if super::scheme::is_light() {
+        rgb(0xa86b00)
+    } else {
+        rgb(0xf5c26b)
+    }
+}
+
+/// The colour of an achievement's rarity tier ([`rarity_tier`]).
+pub fn rarity_colour(tier: RarityTier) -> Rgba {
+    let light = super::scheme::is_light();
+    match tier {
+        RarityTier::UltraRare => achievement_gold(),
+        RarityTier::Rare => rgb(if light { 0x7c4dd6 } else { 0xc49bff }),
+        RarityTier::Uncommon => rgb(if light { 0x1f6fc5 } else { 0x6cb6ff }),
+        RarityTier::Common => text_muted(),
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RarityTier {
+    UltraRare,
+    Rare,
+    Uncommon,
+    Common,
+}
+
+/// The tier of a share of players (`0..=100`).
+pub fn rarity_tier(percent: f32) -> RarityTier {
+    match percent {
+        p if p < 5. => RarityTier::UltraRare,
+        p if p < 15. => RarityTier::Rare,
+        p if p < 40. => RarityTier::Uncommon,
+        _ => RarityTier::Common,
+    }
+}
+
 // Text.
 pub fn text_primary() -> Rgba {
     if let Some(c) = crate::console::active().then(crate::console::look::text).flatten() {

@@ -20,7 +20,7 @@ use crate::ui::controls::{button, card, icon_button, row, tabs, toggle, toggle_r
 use crate::ui::fields::select_field;
 
 /// Changes the look, applies it and saves it.
-pub(super) fn set_look(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, edit: impl FnOnce(&mut Appearance)) {
+pub(in crate::pages::settings) fn set_look(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, edit: impl FnOnce(&mut Appearance)) {
     edit(&mut d.appearance.ui);
     apply_interface(d, true, cx);
     cx.emit(PageEvent::AppearanceChanged);
@@ -102,6 +102,7 @@ pub(super) fn section_label(s: Section) -> &'static str {
         Section::Screenshots => tr!("Screenshots"),
         Section::Overview => tr!("Overview"),
         Section::Details => tr!("Details"),
+        Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
     }

@@ -1,6 +1,7 @@
 //! Long-lived services shared by pages, dialogs and the Collection. They are
 //! GPUI entities kept in a global, created on first use.
 
+pub mod achievements;
 pub mod compression;
 pub mod downloads;
 pub mod launch_blocker;

@@ -103,17 +103,17 @@ pub(super) struct FocusProps {
     pub screenshots: Option<AnyElement>,
     /// Sessions and screenshots by day (after the overview).
     pub timeline: Option<AnyElement>,
-    /// Achievements and session history panels of the side column.
+    /// The achievements panel.
     pub extras: FocusExtras,
     pub related_ui: RelatedUi,
     pub details_ui: DetailsUi,
 }
 
-/// Extra panels of the side column (see `extras.rs`).
+/// Panels built outside the focus panel (see `extras.rs`).
 #[derive(Default)]
 pub(super) struct FocusExtras {
-    /// Above "Details" (`collectionFocus__panel` of achievements).
-    pub top: Option<AnyElement>,
+    /// The "Achievements" section.
+    pub achievements: Option<AnyElement>,
 }
 
 pub(super) struct FocusActions {
@@ -242,7 +242,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         timeline,
         related: (!vm.related.is_empty())
             .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
-        top: extras.top,
+        achievements: extras.achievements,
         details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
         hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
     };
@@ -358,7 +358,7 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
             timeline,
             related: (!vm.related.is_empty())
                 .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
-            top: extras.top,
+            achievements: extras.achievements,
             details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
             hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
         },
@@ -391,8 +391,7 @@ struct Sections {
     overview: Div,
     timeline: Option<AnyElement>,
     related: Option<Div>,
-    /// Extra panel above "Details" (achievements).
-    top: Option<AnyElement>,
+    achievements: Option<AnyElement>,
     details: Div,
     hltb: Option<Div>,
 }
@@ -411,14 +410,14 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
     })
 }
 
-/// Two columns (screenshots, overview, timeline, related | extra panel,
-/// details, How Long To Beat), or one when stacked. The order and the hidden
+/// Two columns (screenshots, overview, timeline, related | details, How Long
+/// To Beat, achievements), or one when stacked. The order and the hidden
 /// sections come from Settings → Appearance (by default the short side
 /// sections come right after the overview when stacked, so a long timeline
-/// does not push them out of sight). The extra panel and How Long To Beat
-/// travel with "Details" but stay when it is hidden.
+/// does not push them out of sight). How Long To Beat travels with
+/// "Details" but stays when it is hidden.
 fn body(lay: &Layout, s: Sections) -> Div {
-    let Sections { screenshots, overview, timeline, related, top, details, hltb } = s;
+    let Sections { screenshots, overview, timeline, related, achievements, details, hltb } = s;
     let look = theme::appearance().sections;
     let mut main_parts = [
         (Section::Screenshots, screenshots),
@@ -427,24 +426,38 @@ fn body(lay: &Layout, s: Sections) -> Div {
         (Section::Related, related.map(IntoElement::into_any_element)),
     ];
     let mut take = |section: Section| main_parts.iter_mut().find(|(s, _)| *s == section).and_then(|(_, el)| el.take());
-    let details = look.shown(Section::Details).then_some(details);
+    let mut details = Some(
+        div().flex().flex_col().gap(px(14.4)).children(look.shown(Section::Details).then_some(details)).children(hltb).into_any_element(),
+    );
+    let mut achievements = achievements.filter(|_| look.shown(Section::Achievements));
+    let mut side_part = |section: Section| match section {
+        Section::Details => details.take(),
+        Section::Achievements => achievements.take(),
+        _ => None,
+    };
+    let is_side = |s: &Section| matches!(s, Section::Details | Section::Achievements);
     if lay.stacked {
         let mut col = div().flex().flex_col().gap(px(24.)).min_w_0();
-        let (mut hltb, mut top, mut details) = (hltb, top, details);
         for section in look.order() {
-            col = match section {
-                Section::Details => col.children(hltb.take()).children(top.take()).children(details.take()),
-                _ if look.shown(section) => col.children(take(section)),
-                _ => col,
+            col = if is_side(&section) {
+                col.children(side_part(section))
+            } else if look.shown(section) {
+                col.children(take(section))
+            } else {
+                col
             };
         }
         return col;
     }
     let main = look
         .visible()
-        .filter(|s| *s != Section::Details)
+        .filter(|s| !is_side(s))
         .fold(div().flex().flex_col().gap(px(24.)).min_w_0(), |col, section| col.children(take(section)));
-    let side = div().flex().flex_col().gap(px(14.4)).min_w_0().children(top).children(details).children(hltb);
+    let side = look
+        .order()
+        .into_iter()
+        .filter(is_side)
+        .fold(div().flex().flex_col().gap(px(24.)).min_w_0(), |col, section| col.children(side_part(section)));
     div().flex().items_start().gap(px(COL_GAP)).child(main.flex_1()).child(side.w(px(lay.side_w)).flex_none())
 }
 

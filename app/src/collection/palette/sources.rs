@@ -182,6 +182,7 @@ fn section_help(s: Section) -> &'static str {
         Section::Overlay => tr!("Guide button panel over games (beta)"),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),
+        Section::Achievements => tr!("RetroAchievements account, Steam key, notifications"),
         Section::Screenshots => tr!("Folder, capture shortcut, preview cache"),
         Section::Saves => tr!("Ludusavi save backups and restoring them"),
         Section::Backups => tr!("Scheduled copy of the data folder"),

@@ -1,5 +1,6 @@
 //! Small styled building blocks shared by the Collection screens.
 
+pub mod achievements;
 pub mod colour_picker;
 pub mod controls;
 pub mod dialog;

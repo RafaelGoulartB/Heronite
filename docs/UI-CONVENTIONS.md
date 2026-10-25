@@ -566,6 +566,25 @@ the panel's size follows it.
   store and tool names). Portuguese and Spanish run
   ~25% longer than English: leave room in buttons and pills.
 
+## Achievements
+- The focus panel's side column (and the Grid drawer) has the Achievements section (`collection/achievements.rs`),
+  a game section of its own (Settings → Appearance → Game sections; under Details by default, kept in the
+  side column next to Details in the two-column layout). It shows whenever a source gave a list, even with
+  nothing unlocked:
+  count and bar, the three latest unlocks, the two closest locked ones (progress when the source counts),
+  "View all" (`dialogs/achievements.rs`) and "Updated … ago" with a refresh. A game at 100% turns the panel
+  gold (`theme::achievement_gold`). For a ROM it asks for the RetroAchievements account or says the file
+  matches no set ("Pick the game…" opens the dialog's search).
+- The Timeline puts each unlock on its day by the screenshots' rule: a chip ("3 achievements") and the icons
+  under the day (`collection/timeline_achievements.rs`); it never adds days.
+- Settings → Achievements → RetroAchievements signs in with the username and password (`pages/settings/achievements/retro.rs`;
+  the password field is emptied at once, only the token is kept), then shows the account's points, "Sign the
+  emulators in too" with each emulator's state under it, hardcore mode and the optional Web API key.
+- Rarity colours come from `theme::rarity_tier` / `rarity_colour` (ultra rare < 5 %, rare < 15 %, uncommon
+  < 40 %); icons, bars, pills and dates from `ui::achievements`.
+- `scripts/shot.sh` on a hidden workspace paints only the frames it captures: textures that arrive late (an
+  achievement icon, the focus cover) show after a few more captures.
+
 ## Verifying visually (mandatory for UI work)
 - Build: `cargo build -p heronite`.
 - `scripts/shot.sh /tmp/x.png [wait_s]` opens the app **on Hyprland

@@ -4,9 +4,11 @@
 //! messages.
 //!
 //! The data work lives in `heronite-data` (playtime, sessions, details URL),
-//! `heronite-metadata` (remove, achievements) and `heronite-emulation`
-//! (Ludusavi); this file only wires it to the screen.
+//! `heronite-metadata` (remove), `heronite-achievements` (through
+//! `services::achievements`) and `heronite-emulation` (Ludusavi); this file
+//! only wires it to the screen.
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui_kit::prelude::*;
@@ -16,8 +18,6 @@ use heronite_data::CollectionGame;
 use heronite_emulation::ludusavi::{LudusaviGame, SystemRunner};
 use heronite_emulation::settings_ext::set_auto_backup;
 use heronite_images::{ImageRef, Variant};
-use heronite_metadata::achievements::{load_achievements, Achievement};
-use heronite_metadata::{Endpoints, Http};
 
 use super::game_actions::{GameAction, GameActionItem};
 use super::{achievements, focus, CollectionView};
@@ -44,9 +44,8 @@ fn is_steam_missing(error: &str) -> bool {
 
 #[derive(Default)]
 pub(super) struct Extras {
-    /// Game whose achievements are loaded (or loading).
+    /// Game whose achievements were asked for.
     ach_key: Option<SharedString>,
-    ach: Vec<Achievement>,
     steam_missing: bool,
     /// A Windows game could not start: no Wine/Proton on this PC.
     wine_missing: bool,
@@ -182,37 +181,17 @@ impl CollectionView {
         }
     }
 
+    /// Asks the achievements service for the newly focused game.
     fn sync_achievements(&mut self, cx: &mut Context<Self>) {
-        let target = self.selected.clone();
+        // Off: ask again for the focused game once they are turned on.
+        let target = self.selected.clone().filter(|_| crate::services::achievements::enabled());
         if self.extras.ach_key == target {
             return;
         }
         self.extras.ach_key = target.clone();
-        self.extras.ach.clear();
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };
-        let Some(game) = lib.get(&key) else { return };
-        // Only GOG has achievements (Heroic's `getAchievements`).
-        if game.runner != "gog" {
-            return;
-        }
-        // The cache is a small local file: show it right away, no flicker.
-        if let Some(cached) = heronite_metadata::achievements::read_cache(&self.data_paths, &game.app_name) {
-            self.extras.ach = cached;
-            return;
-        }
-        let (paths, runner, app_name) = (self.data_paths.clone(), game.runner.clone(), game.app_name.clone());
-        cx.spawn(async move |this, cx| {
-            let items =
-                cx.background_spawn(async move { load_achievements(&paths, &Http::new(Endpoints::default()), &runner, &app_name) }).await;
-            this.update(cx, |this, cx| {
-                if this.extras.ach_key.as_ref() == Some(&key) {
-                    this.extras.ach = items;
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
+        let Some(game) = lib.get(&key).cloned() else { return };
+        crate::services::achievements::get(cx).update(cx, |s, cx| s.want(&game, cx));
     }
 
     /// A launch/install failed: a missing Steam client gets Heronite's
@@ -402,26 +381,70 @@ impl CollectionView {
         }
     }
 
-    /// Achievements (above Details).
-    pub(super) fn focus_extras(&mut self, key: &str, scale: f32) -> focus::FocusExtras {
+    /// The Achievements section.
+    pub(super) fn focus_extras(&mut self, key: &str, scale: f32, cx: &mut Context<Self>) -> focus::FocusExtras {
         let mut extras = focus::FocusExtras::default();
-        if self.lib.as_ref().and_then(|lib| lib.get(key)).is_none() {
+        if !crate::services::achievements::enabled() {
             return extras;
         }
-
-        if self.extras.ach_key.as_deref() == Some(key) && !self.extras.ach.is_empty() {
-            let total = self.extras.ach.len();
-            let (unlocked, mut rows) = achievements::rows(&self.extras.ach);
-            let (pw, ph) = ((28. * scale).round() as u32, (28. * scale).round() as u32);
-            for row in rows.iter_mut().filter(|r| !r.image_url.is_empty()) {
-                let url = row.image_url.clone();
-                let id: SharedString = format!("ach:{url}:{pw}x{ph}").into();
-                let chain = if url.starts_with("http") { ImageRef::Url(url) } else { ImageRef::File(std::path::PathBuf::from(url)) };
-                row.image = self.images.get_or_request(&id, || vec![chain], pw, ph, Variant::Cover, 30).map(ImageSource::Render);
-            }
-            extras.top = Some(achievements::view(unlocked, total, rows));
-        }
+        let Some(game) = self.lib.as_ref().and_then(|lib| lib.get(key)).cloned() else { return extras };
+        let (hide_secrets, entry) = {
+            let service = crate::services::achievements::get(cx);
+            let service = service.read(cx);
+            (service.prefs().hide_secrets, service.entry(&crate::services::achievements::key_of(&game.runner, &game.app_name)).cloned())
+        };
+        let Some(entry) = entry else { return extras };
+        let body = achievements::body_of(&entry, |set| {
+            let (recent, next) = achievements::picks(set);
+            let mut row = |a: &heronite_achievements::Achievement| {
+                let image = self.achievement_icon(a.icon_now(), achievements::ROW_ICON, scale);
+                achievements::Row::of(a, hide_secrets, image)
+            };
+            (recent.into_iter().map(&mut row).collect(), next.into_iter().map(&mut row).collect())
+        });
+        let Some(body) = body else { return extras };
+        let weak = cx.entity().downgrade();
+        let k = SharedString::from(key.to_string());
+        let actions = achievements::Actions {
+            view_all: Rc::new({
+                let (weak, k) = (weak.clone(), k.clone());
+                move |window, cx| {
+                    weak.update(cx, |this, cx| this.open_achievements(&k, window, cx)).ok();
+                }
+            }),
+            refresh: Rc::new({
+                let key = crate::services::achievements::key_of(&game.runner, &game.app_name);
+                move |_, cx| {
+                    crate::services::achievements::get(cx).update(cx, |s, cx| s.refresh(&key, cx));
+                }
+            }),
+            settings: Rc::new(move |window, cx| {
+                weak.update(cx, |this, cx| this.open_settings_section(crate::pages::settings::Section::Achievements, window, cx)).ok();
+            }),
+        };
+        extras.achievements = Some(achievements::view(body, actions));
         extras
+    }
+
+    /// "All achievements" of a game (`key` = its Collection key).
+    pub(super) fn open_achievements(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(game) = self.lib.as_ref().and_then(|lib| lib.get(key)).cloned() else { return };
+        let Some(ctx) = self.dialog_ctx() else { return };
+        let service_key = crate::services::achievements::key_of(&game.runner, &game.app_name);
+        let title = game.title.clone();
+        let view = cx.new(|cx| crate::dialogs::achievements::AchievementsDialog::new(ctx, service_key, title, window, cx));
+        self.open_dialog(view, cx);
+    }
+
+    /// An achievement icon (URL or file) at `size` logical px, once loaded.
+    pub(super) fn achievement_icon(&mut self, url: &str, size: f32, scale: f32) -> Option<ImageSource> {
+        if url.is_empty() {
+            return None;
+        }
+        let px_size = (size * scale).round() as u32;
+        let id: SharedString = format!("ach:{url}:{px_size}").into();
+        let chain = if url.starts_with("http") { ImageRef::Url(url.to_string()) } else { ImageRef::File(std::path::PathBuf::from(url)) };
+        self.images.get_or_request(&id, || vec![chain], px_size, px_size, Variant::Cover, 30).map(ImageSource::Render)
     }
 }
 

@@ -49,6 +49,7 @@ mod sideload_uninstall;
 mod steam_copy;
 mod system_glue;
 mod timeline;
+mod timeline_achievements;
 mod update_banner;
 mod user_actions;
 mod view_filters;
@@ -266,6 +267,9 @@ impl CollectionView {
         // Installs from a script that end while their dialog is closed.
         let script_install = crate::services::script_install::get(cx);
         cx.subscribe(&script_install, |this, _, ev, cx| this.on_script_install_event(ev, cx)).detach();
+        // The focused game's achievements and the Timeline's days.
+        let achievements = crate::services::achievements::get(cx);
+        cx.observe(&achievements, |_, _, cx| cx.notify()).detach();
         // The update banner and the ☰ Settings row.
         if let Some(updater) = crate::services::update::get(cx) {
             cx.observe(&updater, |_, _, cx| cx.notify()).detach();

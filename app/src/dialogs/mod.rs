@@ -10,6 +10,7 @@
 //! - Emit `DialogEvent::Changed` after writing data the Collection shows
 //!   (it reloads the library), `DialogEvent::Close` to close.
 
+pub mod achievements;
 pub mod add_game;
 pub mod art_images;
 pub mod batch_edit;

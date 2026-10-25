@@ -479,7 +479,7 @@ mod tests {
             motion: Motion::Reduced,
             start_view: StartView::Grid,
             auto_view: AutoView { on: true, width: 1600. },
-            sections: Sections::DEFAULT.moved(Section::Related, -4).toggled(Section::Timeline),
+            sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
         };
         a.save(&p).unwrap();
         assert_eq!(Appearance::load(&p), a);

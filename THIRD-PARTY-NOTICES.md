@@ -33,6 +33,12 @@ The AppImage carries these libraries in `usr/lib` because not every system has t
 | [libxcb](https://xcb.freedesktop.org) | `libxcb-xkb.so.1` | Copyright (C) 2001-2006 Bart Massey, Jamey Sharp, and Josh Triplett | MIT ([`licenses/MIT-libxcb.txt`](licenses/MIT-libxcb.txt)) |
 | libudev, from [systemd](https://github.com/systemd/systemd) | `libudev.so.1` | the systemd contributors | LGPL-2.1-or-later ([`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt)); source: the [`systemd` package of Ubuntu 22.04](https://launchpad.net/ubuntu/jammy/+source/systemd) |
 
+## Vendored C code
+
+| Project | Files | Copyright | License |
+|---|---|---|---|
+| [rcheevos](https://github.com/RetroAchievements/rcheevos) v12.5.0 (only the ROM hashing, `rc_hash`) | `crates/achievements/vendor/rcheevos/` | Copyright (c) 2018 RetroAchievements.org | MIT ([`licenses/MIT-rcheevos.txt`](licenses/MIT-rcheevos.txt)) |
+
 ## Rust crates
 
 The Rust crates Heronite depends on are listed in [`Cargo.lock`](Cargo.lock). Each one is distributed under its own license, mostly MIT and/or Apache-2.0. To list them all with their license texts, run [`cargo about`](https://github.com/EmbarkStudios/cargo-about) or [`cargo license`](https://github.com/onur/cargo-license).

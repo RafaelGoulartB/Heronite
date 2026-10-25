@@ -1,0 +1,32 @@
+[package]
+name = "heronite-achievements"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Achievements of every game (Steam, GOG, Epic, RetroAchievements) and the local copy the app keeps of them"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-metadata = { path = "../metadata" }
+heronite-gog = { path = "../gog" }
+heronite-epic = { path = "../epic" }
+heronite-steam = { path = "../steam" }
+heronite-launch = { path = "../launch" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+anyhow = "1"
+log = "0.4"
+sha2 = "0.10"
+aes = "0.8"
+cbc = "0.1"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[build-dependencies]
+cc = "1"
+
+[lints]
+workspace = true
