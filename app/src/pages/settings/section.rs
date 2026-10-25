@@ -25,6 +25,9 @@ pub enum Section {
     /// The replay buffer: the last seconds of a game, saved on request.
     Replay,
     Metadata,
+    /// The RetroAchievements account, the optional Steam Web API key and
+    /// how achievements show.
+    Achievements,
     Screenshots,
     /// Ludusavi: game save backups and restoring them.
     Saves,
@@ -50,12 +53,12 @@ impl Section {
                 Section::Replay,
             ],
         ),
-        (n_!("Collection"), &[Section::Metadata, Section::Screenshots, Section::Saves, Section::Backups]),
+        (n_!("Collection"), &[Section::Metadata, Section::Achievements, Section::Screenshots, Section::Saves, Section::Backups]),
         (n_!("Help"), &[Section::Logs, Section::About]),
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 17] = [
+    pub const ALL: [Section; 18] = [
         Section::General,
         Section::Appearance,
         Section::ConsoleMode,
@@ -68,6 +71,7 @@ impl Section {
         Section::Overlay,
         Section::Replay,
         Section::Metadata,
+        Section::Achievements,
         Section::Screenshots,
         Section::Saves,
         Section::Backups,
@@ -89,6 +93,7 @@ impl Section {
             Section::Overlay => tr!("Overlay"),
             Section::Replay => tr!("Replay"),
             Section::Metadata => tr!("Metadata"),
+            Section::Achievements => tr!("Achievements"),
             Section::Screenshots => tr!("Screenshots"),
             Section::Saves => tr!("Saves"),
             Section::Backups => tr!("Backups"),
@@ -111,6 +116,7 @@ impl Section {
             Section::Overlay => Icon::SportsEsports,
             Section::Replay => Icon::Videocam,
             Section::Metadata => Icon::TravelExplore,
+            Section::Achievements => Icon::Trophy,
             Section::Screenshots => Icon::Fullscreen,
             Section::Saves => Icon::Save,
             Section::Backups => Icon::History,
@@ -134,6 +140,7 @@ impl Section {
             Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags."),
+            Section::Achievements => tr!("Achievements from Steam, GOG, Epic Games and RetroAchievements. Heronite keeps its own copy of them, so your history stays even if a store or an account goes away."),
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
             Section::Saves => tr!("Game saves backed up with Ludusavi after you close a game, and the folders a game's Saves tab restores them from."),
             Section::Backups => tr!("Scheduled backups of your Collection, play history and settings, and putting one back."),
@@ -156,6 +163,7 @@ impl Section {
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
+            Section::Achievements => "achievements trophies retroachievements retro emulator rom steam gog epic unlocked rare points hardcore web api key conquistas trofeus emulador desbloqueadas raras pontos chave",
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
             Section::Screenshots => "screenshots capture shortcut hotkey folder thumbnails cache gallery capturas de tela atalho pasta miniaturas galeria",
             Section::Saves => "saves ludusavi backup restore retention locked differential zip compression game list manifest salvamentos restaurar retencao travado diferencial compressao lista de jogos",
@@ -188,6 +196,7 @@ impl Section {
             "overlay" => Some(Section::Overlay),
             "replay" => Some(Section::Replay),
             "metadata" => Some(Section::Metadata),
+            "achievements" | "retroachievements" => Some(Section::Achievements),
             "screenshots" => Some(Section::Screenshots),
             "saves" | "ludusavi" => Some(Section::Saves),
             "backups" | "backup" => Some(Section::Backups),

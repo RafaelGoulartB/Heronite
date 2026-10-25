@@ -105,6 +105,10 @@ pub enum Icon {
     Image,
     InfoOutlined,
     Link,
+    /// An achievement.
+    Trophy,
+    /// A locked achievement.
+    Lock,
     /// Multi-colour 32px circle buttons (rendered with `img`, not `svg`).
     PlayCircle,
     InstallCircle,
@@ -211,6 +215,8 @@ impl Icon {
             WifiOff => "icons/wifi-off.svg",
             Language => "icons/language.svg",
             Memory => "icons/memory.svg",
+            Trophy => "icons/trophy.svg",
+            Lock => "icons/lock.svg",
             PlayCircle => "icons/play-circle.svg",
             InstallCircle => "icons/install-circle.svg",
             StopCircle => "icons/stop-circle.svg",

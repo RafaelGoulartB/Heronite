@@ -23,6 +23,7 @@
 //! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
 
 mod about;
+mod achievements;
 mod advanced;
 mod appearance;
 mod backup;
@@ -113,6 +114,7 @@ pub struct SettingsPage {
     error: Option<SharedString>,
     appearance: appearance::State,
     screenshots: screenshots::State,
+    achievements: achievements::State,
     metadata: metadata::State,
     backup: backup::State,
     saves: saves::State,
@@ -161,6 +163,7 @@ impl SettingsPage {
         }
         let appearance = appearance::State::new(&ctx, &settings, chain, window, cx);
         let screenshots = screenshots::State::new(&ctx, &settings, window, cx);
+        let achievements = achievements::State::new(window, cx);
         let metadata = metadata::State::new(&ctx, &settings, window, cx);
         let backup = backup::State::new(&ctx, &settings, window, cx);
         let saves = saves::State::new(&ctx, &settings, window, cx);
@@ -169,6 +172,7 @@ impl SettingsPage {
             error: None,
             appearance,
             screenshots,
+            achievements,
             metadata,
             backup,
             saves,
@@ -317,6 +321,7 @@ impl SettingsPage {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
+            Section::Achievements => achievements::shown(self, cx),
             Section::Overlay => overlay::shown(cx),
             Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),
@@ -462,6 +467,7 @@ impl SettingsPage {
             Section::Replay => replay::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
+            Section::Achievements => achievements::render(self, window, cx),
             Section::Screenshots => Self::collection_section(screenshots::render(self, window, cx), self.error.clone()),
             Section::Saves => {
                 let body = div()
