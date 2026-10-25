@@ -557,14 +557,18 @@ the panel's size follows it.
   `tr!("{n} of {total}", n, total)`, `trn!(count, "{n} game", "{n} games")`,
   `n_!` for constant tables. Never build a sentence from fragments
   (word order differs); never translate ids, keys or values that are saved or
-  parsed. Add the Portuguese to `crates/i18n/locales/pt-BR/<area>.json` and
-  the Spanish to `crates/i18n/locales/es/<area>.json`;
-  `cargo test -p heronite-i18n` fails on a missing or unused key in either.
+  parsed. Add the Portuguese to `crates/i18n/locales/pt-BR/<area>.json`, the
+  Spanish to `crates/i18n/locales/es/<area>.json` and the German to
+  `crates/i18n/locales/de/<area>.json`;
+  `cargo test -p heronite-i18n` fails on a missing or unused key in any.
   Community terms stay in English in every language (Wine, Proton, DXVK,
   shaders, frame generation, overlay, runner, launcher, preset, backlog,
   replay, sandbox, logs,
   store and tool names). Portuguese and Spanish run
-  ~25% longer than English: leave room in buttons and pills.
+  ~25% longer than English and German up to ~35%, with long compound words
+  that cannot break: leave room in buttons and pills, and let a label that can
+  meet a long word truncate (`truncate()` on a `min_w_0()` box) instead of
+  pushing its neighbours out.
 
 ## Achievements
 - The focus panel's side column (and the Grid drawer) has the Achievements section (`collection/achievements.rs`),

@@ -1,11 +1,19 @@
 //! The names of the option values, English keys translated when drawn.
 
 use heronite_data::console_theme::*;
-use heronite_i18n::{n_, tr};
+use heronite_i18n::{n_, tr, tr_ctx};
 
-/// The translated names of `all`.
+/// The translated names of `all` (a `context|text` name is `text` in English).
 pub(super) fn names<E: Copy>(all: &'static [E], name: fn(E) -> &'static str) -> Vec<&'static str> {
-    all.iter().map(|e| tr(name(*e))).collect()
+    all.iter()
+        .map(|e| {
+            let key = name(*e);
+            match key.split_once('|') {
+                Some((_, english)) => tr_ctx(key, english),
+                None => tr(key),
+            }
+        })
+        .collect()
 }
 
 pub(super) fn index<E: Copy + PartialEq>(all: &[E], v: E) -> usize {
@@ -38,7 +46,7 @@ label_fn!(hero_title_name, HeroTitle { Text => n_!("Text"), Logo => n_!("Logo, i
 label_fn!(fact_style_name, FactStyle { Line => n_!("One line"), Chips => n_!("Chips and genres") });
 label_fn!(hero_align_name, HeroAlign { Left => n_!("Left"), Center => n_!("Centred at the top") });
 label_fn!(size3_name, Size3 { Small => n_!("Low"), Medium => n_!("Medium"), Large => n_!("High") });
-label_fn!(tile_shape_name, TileShape { Portrait => n_!("Portrait"), Landscape => n_!("Landscape"), Square => n_!("Square") });
+label_fn!(tile_shape_name, TileShape { Portrait => n_!("Portrait"), Landscape => n_!("Landscape"), Square => n_!("shape|Square") });
 label_fn!(tile_size_name, TileSize { Small => n_!("Small"), Medium => n_!("Medium"), Large => n_!("Large"), Huge => n_!("Extra large") });
 label_fn!(tile_titles_name, TileTitles {
     Never => n_!("Never"),
