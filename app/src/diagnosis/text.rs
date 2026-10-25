@@ -225,7 +225,14 @@ pub fn summary(r: &Report) -> String {
 /// How the run ended, for the dialog's first line.
 pub fn how_it_ended(r: &Report) -> String {
     let title = r.title.as_str();
-    let Some(ended) = r.ended else { return tr!("From the last launch of {title}.", title) };
+    let Some(ended) = r.ended else {
+        return match r.last_exit.map(|e| (e.code, e.signal)) {
+            Some((Some(0), _)) => tr!("The last session of {title} ended normally.", title),
+            Some((Some(code), _)) => tr!("The last session of {title} ended with exit code {code}.", title, code),
+            Some((None, Some(signal))) => tr!("The last session of {title} crashed (signal {signal}).", title, signal),
+            _ => tr!("From the last launch of {title}.", title),
+        };
+    };
     let seconds = ended.elapsed.as_secs().max(1);
     match ended.exit.map(|e| (e.code, e.signal)) {
         Some((Some(code), _)) if code != 0 => {

@@ -49,6 +49,8 @@ pub struct Report {
     pub kind: RunKind,
     /// `None` when the user asked ("Troubleshoot") about the last session.
     pub ended: Option<Ended>,
+    /// Asked about later: how the last session ended, as its log says.
+    pub last_exit: Option<ExitInfo>,
     pub findings: Vec<Finding>,
     /// There is a launch log to read.
     pub has_log: bool,

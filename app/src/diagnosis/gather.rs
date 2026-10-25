@@ -36,9 +36,11 @@ pub fn gather(paths: &DataPaths, game: &CollectionGame, ended: Option<Ended>, lo
     let winetricks = if windows { heronite_launch::winetricks::installed(&settings.wine_prefix) } else { Vec::new() };
     let anticheat = windows.then(|| heronite_data::anticheat::lookup(paths, game.steam_app_id.as_deref(), &game.title)).flatten();
     let system = System::read(&SystemProbe);
+    // Asked about later: the log's last line says how the session ended.
+    let last_exit = text.as_deref().and_then(last_exit);
     let failed = match ended {
         Some(e) => e.failed(),
-        None => text.as_deref().is_some_and(last_run_failed),
+        None => last_exit.is_some_and(|e| e.signal.is_some() || e.code.is_some_and(|c| c != 0)),
     };
     let protons = protons(paths);
     let best_proton = heronite_wine::default::best(&protons).cloned();
@@ -69,6 +71,7 @@ pub fn gather(paths: &DataPaths, game: &CollectionGame, ended: Option<Ended>, lo
         title: game.title.clone(),
         kind,
         ended,
+        last_exit: ended.is_none().then_some(last_exit).flatten(),
         findings,
         has_log: text.is_some(),
         steam_app_id: game.steam_app_id.clone(),
@@ -107,23 +110,29 @@ fn protons(paths: &DataPaths) -> Vec<heronite_wine::WineInstallation> {
     heronite_wine::list_installations(paths).into_iter().filter(|w| w.kind == "proton" && heronite_wine::default::usable(w)).collect()
 }
 
-/// The log's last exit line says the game ended badly.
-fn last_run_failed(log: &str) -> bool {
-    let Some(line) = log.lines().rev().find(|l| l.contains("Game process exited with code") || l.contains("terminated by signal")) else {
-        return false;
-    };
-    line.contains("terminated by signal") || !line.trim_end().ends_with("code 0")
+/// How the session of the log ended, from its last exit line (written by
+/// the runtime: `Game process exited with code 0`, `... terminated by signal
+/// 11`). `None`: no such line (still running, or stopped by the user).
+fn last_exit(log: &str) -> Option<heronite_launch::ExitInfo> {
+    let line = log.lines().rev().find(|l| l.contains("Game process exited with code") || l.contains("terminated by signal"))?;
+    let n = line.trim_end().rsplit(' ').next()?.parse::<i32>().ok()?;
+    Some(match line.contains("terminated by signal") {
+        true => heronite_launch::ExitInfo { code: None, signal: Some(n) },
+        false => heronite_launch::ExitInfo { code: Some(n), signal: None },
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::last_run_failed;
+    use super::last_exit;
 
     #[test]
-    fn the_last_exit_line_tells_a_failed_run() {
-        assert!(last_run_failed("(10:00:01) [INFO]:    Game process exited with code 53\n============= End of log ============="));
-        assert!(last_run_failed("Game process was terminated by signal 11"));
-        assert!(!last_run_failed("Game process exited with code 0\n"));
-        assert!(!last_run_failed("no exit line"));
+    fn the_last_exit_line_tells_how_the_session_ended() {
+        let e = last_exit("(10:00:01) [INFO]:    Game process exited with code 53\n============= End of log =============").unwrap();
+        assert_eq!((e.code, e.signal), (Some(53), None));
+        let e = last_exit("Game process exited with code 0\nGame process was terminated by signal 11").unwrap();
+        assert_eq!((e.code, e.signal), (None, Some(11)));
+        assert!(last_exit("Game process exited with code 0\n").is_some_and(|e| e.code == Some(0)));
+        assert!(last_exit("still running").is_none());
     }
 }
