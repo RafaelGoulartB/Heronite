@@ -360,6 +360,80 @@ pub fn toggle_tool_blocking(
     prep.toggle_tool(&ctx, settings, tool, action)
 }
 
+/// Runs `winetricks -q <verb>` in the game's prefix (`steam`: the settings
+/// of a Steam game's prefix, else the game's own); every output line goes to
+/// `line`. `pid` gets winetricks' process group, which a cancel signals.
+/// Blocks until winetricks exits.
+pub fn winetricks_install_blocking(
+    paths: &DataPaths,
+    home: &str,
+    app: &str,
+    steam: Result<heronite_launch::settings::GameSettings, ()>,
+    verb: &str,
+    pid: &std::sync::atomic::AtomicU32,
+    line: &(dyn Fn(String) + Sync),
+) -> Result<(), String> {
+    use heronite_launch::settings::GameSettings;
+    let ctx = PlanContext::load(paths);
+    let settings = match steam {
+        Ok(s) => s,
+        Err(()) => {
+            let s = GameSettings::from_map(&heronite_data::game_config::load_game(paths, app, home), home);
+            // A new prefix is created first, as the other tools do.
+            heronite_launch::shared_folders::create_prefix_first(&ctx, &SystemProbe, &s)?;
+            s
+        }
+    };
+    let built = heronite_launch::wine_tools::winetricks_install_command(&ctx, &SystemProbe, &settings, verb)?;
+    for n in built.notes {
+        line(n);
+    }
+    // While the game plays in its sandbox, Winetricks joins it.
+    let c = &heronite_launch::sandbox::into_running(built.command, &settings.wine_prefix, None)?;
+    let mut cmd = std::process::Command::new(&c.program);
+    heronite_launch::wine::drop_host_certs(c, &mut cmd);
+    cmd.args(&c.args)
+        .envs(&c.env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
+    pid.store(child.id(), std::sync::atomic::Ordering::SeqCst);
+    let err = child.stderr.take();
+    let out = child.stdout.take();
+    std::thread::scope(|scope| {
+        if let Some(err) = err {
+            scope.spawn(|| forward_lines(err, line));
+        }
+        if let Some(out) = out {
+            forward_lines(out, line);
+        }
+    });
+    let status = child.wait().map_err(|e| format!("{}: {e}", c.program))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(tr!("winetricks exited with {status}", status))
+    }
+}
+
+/// Sends each line of `pipe`; a line redrawn with `\r` (download progress)
+/// keeps only its last state.
+fn forward_lines(pipe: impl std::io::Read, line: &dyn Fn(String)) {
+    use std::io::BufRead;
+    let mut reader = std::io::BufReader::new(pipe);
+    let mut buf = Vec::new();
+    while reader.read_until(b'\n', &mut buf).map(|n| n > 0).unwrap_or(false) {
+        let text = String::from_utf8_lossy(&buf);
+        let last = text.trim_end().rsplit('\r').find(|s| !s.trim().is_empty()).unwrap_or("").trim();
+        if !last.is_empty() {
+            line(last.chars().take(300).collect());
+        }
+        buf.clear();
+    }
+}
+
 /// Heroic refreshes DXVK, VKD3D, DXVK-NVAPI and winetricks a few seconds after
 /// start (`DXVK.getLatest()`, `Winetricks.download()` in `main.ts`), so the
 /// first launch that needs them finds them. Off with

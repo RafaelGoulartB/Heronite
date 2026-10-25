@@ -7,19 +7,18 @@
 //! mode its rows replace the tab's rows (B goes back). The catalog and the
 //! installed list come from `heronite_launch::winetricks`.
 
-use std::io::{BufRead, BufReader, Read};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use futures::channel::mpsc::{unbounded, UnboundedSender};
+use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
 use heronite_launch::settings::GameSettings;
-use heronite_launch::wine_tools::{winetricks_install_command, winetricks_path, WineTool};
+use heronite_launch::wine_tools::{winetricks_path, WineTool};
 use heronite_launch::winetricks::{self, Category, Verb};
-use heronite_launch::{PlanContext, SystemProbe};
+use heronite_launch::PlanContext;
 
 use super::parts::{column, heading, help, rows};
 use super::{Notice, SettingsPanel};
@@ -153,7 +152,10 @@ impl SettingsPanel {
         std::thread::Builder::new()
             .name("winetricks".into())
             .spawn(move || {
-                let res = run_install(&paths, &home, &app, steam, &job_verb, &pid, &tx);
+                let line = |l: String| {
+                    let _ = tx.unbounded_send(Msg::Line(l));
+                };
+                let res = crate::runtime::winetricks_install_blocking(&paths, &home, &app, steam, &job_verb, &pid, &line);
                 let _ = tx.unbounded_send(Msg::Done(res));
             })
             .ok();
@@ -431,78 +433,5 @@ impl SettingsPanel {
                     }),
             )
             .child(div().flex_none().child(right))
-    }
-}
-
-/// Runs `winetricks -q <verb>` in the game's prefix; every output line goes
-/// to `tx`. Blocks until winetricks exits.
-fn run_install(
-    paths: &heronite_data::DataPaths,
-    home: &str,
-    app: &str,
-    steam: Result<GameSettings, ()>,
-    verb: &str,
-    pid: &AtomicU32,
-    tx: &UnboundedSender<Msg>,
-) -> Result<(), String> {
-    let ctx = PlanContext::load(paths);
-    let settings = match steam {
-        Ok(s) => s,
-        Err(()) => {
-            let s = GameSettings::from_map(&heronite_data::game_config::load_game(paths, app, home), home);
-            // A new prefix is created first, as the other tools do.
-            heronite_launch::shared_folders::create_prefix_first(&ctx, &SystemProbe, &s)?;
-            s
-        }
-    };
-    let built = winetricks_install_command(&ctx, &SystemProbe, &settings, verb)?;
-    for n in built.notes {
-        let _ = tx.unbounded_send(Msg::Line(n));
-    }
-    // While the game plays in its sandbox, Winetricks joins it.
-    let c = &heronite_launch::sandbox::into_running(built.command, &settings.wine_prefix, None)?;
-    let mut cmd = std::process::Command::new(&c.program);
-    heronite_launch::wine::drop_host_certs(c, &mut cmd);
-    cmd.args(&c.args)
-        .envs(&c.env)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-    let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
-    pid.store(child.id(), Ordering::SeqCst);
-    let err_pipe = child.stderr.take().map(|err| {
-        let tx = tx.clone();
-        std::thread::spawn(move || forward_lines(err, &tx))
-    });
-    if let Some(out) = child.stdout.take() {
-        forward_lines(out, tx);
-    }
-    if let Some(h) = err_pipe {
-        let _ = h.join();
-    }
-    let status = child.wait().map_err(|e| format!("{}: {e}", c.program))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(tr!("winetricks exited with {status}", status))
-    }
-}
-
-/// Sends each line of `pipe`; a line redrawn with `\r` (download progress)
-/// keeps only its last state.
-fn forward_lines(pipe: impl Read, tx: &UnboundedSender<Msg>) {
-    let mut reader = BufReader::new(pipe);
-    let mut buf = Vec::new();
-    while reader.read_until(b'\n', &mut buf).map(|n| n > 0).unwrap_or(false) {
-        let text = String::from_utf8_lossy(&buf);
-        let line = text.trim_end().rsplit('\r').find(|s| !s.trim().is_empty()).unwrap_or("").trim();
-        if !line.is_empty() {
-            let short: String = line.chars().take(300).collect();
-            if tx.unbounded_send(Msg::Line(short)).is_err() {
-                break;
-            }
-        }
-        buf.clear();
     }
 }
