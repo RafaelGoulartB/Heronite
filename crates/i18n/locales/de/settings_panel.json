@@ -232,7 +232,7 @@
   "last used": "zuletzt verwendet",
   "{build} (in use)": "{build} (in Verwendung)",
   "{build}, from the Wine Manager": "{build}, aus dem Wine Manager",
-  "ProtonDB has no reports for this game, or it was not found on Steam under this name.": "ProtonDB hat keine Berichte zu diesem Spiel, oder es wurde unter diesem Namen auf Steam nicht gefunden.",
+  "ProtonDB has no reports for this game, or it was not found on Steam under this name.": "Keine ProtonDB-Berichte zu diesem Spiel, oder es wurde auf Steam nicht gefunden.",
   "ProtonDB: no rating": "ProtonDB: keine Bewertung",
   "The prefix does not exist yet: it is created the first time the game runs.": "Der Prefix existiert noch nicht: Er wird erstellt, wenn das Spiel zum ersten Mal läuft.",
   "Wine / Proton": "Wine / Proton",

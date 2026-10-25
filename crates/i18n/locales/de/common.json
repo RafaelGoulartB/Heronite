@@ -68,7 +68,7 @@
   "Update failed": "Update fehlgeschlagen",
   "Could not update to {version}": "Update auf Version {version} nicht möglich",
   "Update available": "Update verfügbar",
-  "Skip this version": "Diese Version überspringen",
+  "Skip this version": "Version überspringen",
   "Update": "Aktualisieren",
   "Download": "Herunterladen",
   "Cancel": "Abbrechen",
