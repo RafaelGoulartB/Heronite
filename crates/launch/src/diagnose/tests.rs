@@ -150,13 +150,24 @@ fn wine_mono_missing_offers_dotnet() {
 
 #[test]
 fn dx12_under_plain_wine_needs_vkd3d() {
-    let mut c = Case::new("");
+    let mut c = Case::new("0124:err:d3d12:d3d12_create_device Failed to create device");
     c.kind = RunKind::Wine;
     c.settings = wine();
     c.imports = vec!["kernel32.dll".into(), "d3d12.dll".into()];
     let f = c.run();
     assert_eq!(problems(&f)[0], &Problem::Dx12WithoutVkd3d);
     assert_eq!(f[0].fixes[0], Fix::Settings(vec![("autoInstallVkd3d", Value::Bool(true))]));
+    assert!(f[0].actionable());
+    // The import alone is only a likely cause: Wine has its own Direct3D 12.
+    c.log = log("");
+    let f = c.run();
+    let dx12 = f.iter().find(|f| f.problem == Problem::Dx12WithoutVkd3d).unwrap();
+    assert!(!dx12.sure);
+    assert!(!opens_by_itself(&f));
+    // CrossOver has no VKD3D-Proton switch.
+    c.log = log("0124:err:d3d12:d3d12_create_device Failed to create device");
+    c.settings = settings(json!({"wineVersion": {"bin": "/opt/cxoffice/bin/wine", "name": "CrossOver", "type": "crossover"}}));
+    assert!(!problems(&c.run()).contains(&&Problem::Dx12WithoutVkd3d));
     // Proton has VKD3D-Proton already.
     let mut c = Case::new("");
     c.imports = vec!["d3d12.dll".into()];
@@ -177,6 +188,9 @@ fn wined3d_failing_without_dxvk_offers_dxvk() {
     let f = c.run();
     assert_eq!(problems(&f), [&Problem::Direct3dWithoutDxvk]);
     assert_eq!(f[0].fixes, [Fix::Settings(vec![("autoInstallDxvk", Value::Bool(true))])]);
+    // DXVK is not installed into a CrossOver prefix.
+    c.settings = settings(json!({"wineVersion": {"bin": "/opt/cxoffice/bin/wine", "name": "CrossOver", "type": "crossover"}}));
+    assert!(!problems(&c.run()).contains(&&Problem::Direct3dWithoutDxvk));
 }
 
 fn anticheat(status: &str, names: &[&str]) -> Option<AntiCheatInfo> {
@@ -347,7 +361,7 @@ fn the_max_map_count_script_writes_the_file_and_applies_it() {
 
 #[test]
 fn what_can_be_fixed_comes_first() {
-    let mut c = Case::new("");
+    let mut c = Case::new("0124:err:d3d12:d3d12_create_device Failed to create device");
     c.kind = RunKind::Wine;
     c.settings = wine();
     c.anticheat = anticheat("Denied", &["BattlEye"]);

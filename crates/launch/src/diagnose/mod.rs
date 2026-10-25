@@ -31,6 +31,7 @@ use heronite_data::anticheat::AntiCheatInfo;
 use serde_json::Value;
 
 use crate::settings::GameSettings;
+use crate::tools::Tool;
 
 pub use dlls::verb_for_dll;
 pub use system::{max_map_count_script, Distro, System, MAX_MAP_COUNT, SYSCTL_FILE};
@@ -349,23 +350,38 @@ fn anticheat(i: &Inputs<'_>) -> Option<Finding> {
     Some(Finding { problem: Problem::AntiCheat { names, status }, evidence, fixes: vec![fix], sure: true })
 }
 
+/// Whether turning `tool` on changes anything for the game's Wine (not
+/// for CrossOver, nor DXVK for Game Porting Toolkit or `-DXMT` builds).
+fn tool_applies(i: &Inputs<'_>, tool: Tool) -> bool {
+    crate::dxvk::toggle_action(tool, &i.settings.wine_version, true).is_some()
+}
+
+/// Importing `d3d12.dll` alone is no proof: Wine has its own Direct3D 12,
+/// and many games load DirectX 11 when 12 fails. Only the log's errors make
+/// it the known cause.
 fn dx12(i: &Inputs<'_>, out: &str) -> Option<Finding> {
-    if i.kind != RunKind::Wine || i.settings.auto_install_vkd3d || !i.imports.iter().any(|d| d == "d3d12.dll") {
+    if i.kind != RunKind::Wine
+        || i.settings.auto_install_vkd3d
+        || !tool_applies(i, Tool::Vkd3d)
+        || !i.imports.iter().any(|d| d == "d3d12.dll")
+    {
         return None;
     }
+    let lines = log::lines(out, log::D3D12, EVIDENCE - 1);
+    let sure = !lines.is_empty();
     let mut evidence = vec!["d3d12.dll".to_string()];
-    evidence.extend(log::lines(out, log::D3D12, EVIDENCE - 1));
+    evidence.extend(lines);
     Some(Finding {
         problem: Problem::Dx12WithoutVkd3d,
         evidence,
         fixes: vec![Fix::Settings(on(&["autoInstallVkd3d"])), Fix::UseProton(Vec::new())],
-        sure: true,
+        sure,
     })
 }
 
 fn direct3d(i: &Inputs<'_>, out: &str) -> Option<Finding> {
     const D3D: [&str; 5] = ["d3d9.dll", "d3d10.dll", "d3d10_1.dll", "d3d11.dll", "dxgi.dll"];
-    if i.kind != RunKind::Wine || i.settings.auto_install_dxvk {
+    if i.kind != RunKind::Wine || i.settings.auto_install_dxvk || !tool_applies(i, Tool::Dxvk) {
         return None;
     }
     let evidence = log::lines(out, log::WINED3D, EVIDENCE);
