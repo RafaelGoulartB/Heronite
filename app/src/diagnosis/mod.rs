@@ -6,9 +6,11 @@
 //! `FAILED_LAUNCH_WINDOW` and opens `dialogs::launch_problem` by itself only
 //! for a known cause with a fix ([`Report::opens_by_itself`]); without a
 //! window that cause goes into the notification (`system::hub::events`).
-//! "Troubleshoot launch" shows every finding. The fixes applied this run are remembered
-//! ([`remember_tried`]), so a fix that did not help is not offered as the
-//! answer again.
+//! "Troubleshoot" (the game's context menu, always there) shows every
+//! finding of the last session, however long the game ran (a .NET error
+//! after a minute, a crash after an hour), including the ones nothing fixes.
+//! The fixes applied this run are remembered ([`remember_tried`]), so a fix
+//! that did not help is not offered as the answer again.
 
 mod apply;
 mod gather;
@@ -45,7 +47,7 @@ pub struct Report {
     pub app_name: String,
     pub title: String,
     pub kind: RunKind,
-    /// `None` when the user asked about the last launch.
+    /// `None` when the user asked ("Troubleshoot") about the last session.
     pub ended: Option<Ended>,
     pub findings: Vec<Finding>,
     /// There is a launch log to read.

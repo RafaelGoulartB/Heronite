@@ -47,7 +47,7 @@
   "This game has no launch log yet: start it once, then look again.": "Este juego aún no tiene log de inicio: ábrelo una vez y vuelve a mirar.",
   "This game uses {anticheat}, which works on Linux through Proton's anti-cheat runtime. The runtime is off for this game.": "Este juego usa {anticheat}, que funciona en Linux con el runtime anti-cheat de Proton. El runtime está desactivado para este juego.",
   "This game uses {anticheat}, which works on Linux with Proton and its anti-cheat runtime. The game runs with plain Wine now.": "Este juego usa {anticheat}, que funciona en Linux con Proton y su runtime anti-cheat. Ahora el juego usa Wine sin más.",
-  "Troubleshoot launch": "Resolver problema al abrir",
+  "Troubleshoot": "Solucionar problemas",
   "Try {proton}": "Probar {proton}",
   "Turn on DXVK and play": "Activar DXVK y jugar",
   "Turn on VKD3D-Proton and play": "Activar VKD3D-Proton y jugar",

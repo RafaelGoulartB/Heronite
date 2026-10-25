@@ -80,7 +80,7 @@ impl LaunchProblemDialog {
         }
         let entity = cx.entity().downgrade();
         dialog_scrolled(
-            DialogProps { id: "launch-problem".into(), title: tr!("Launch problem").into(), width: 620., height: None },
+            DialogProps { id: "launch-problem".into(), title: self.title().into(), width: 620., height: None },
             &self.scroll,
             body.into_any_element(),
             Some(self.footer(cx).into_any_element()),

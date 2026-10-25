@@ -259,9 +259,9 @@ impl CollectionView {
             v.push(item(
                 A::Troubleshoot,
                 "troubleshoot",
-                tr!("Troubleshoot launch"),
+                tr!("Troubleshoot"),
                 Icon::Build,
-                "crash fix error not starting closes problem diagnose falha erro nao abre fecha problema corrigir diagnostico",
+                "troubleshoot launch crash fix error not starting closes problem diagnose falha erro nao abre fecha problema corrigir diagnostico solucionar",
             ));
         }
         v.extend(self.extras_actions(game));

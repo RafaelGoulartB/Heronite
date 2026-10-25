@@ -3,8 +3,8 @@
 //! problem" dialog by itself only for a known cause with a fix (a toast
 //! offers it while another dialog is open). A bad exit without one keeps the
 //! plain "closed right after starting" toast, whose Details shows what was
-//! found. "Troubleshoot launch" opens it for the last launch on demand, with
-//! every finding.
+//! found. "Troubleshoot" (the context menu, always there) opens it for the
+//! last session on demand, with every finding, however long the game ran.
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -57,7 +57,7 @@ impl CollectionView {
         .detach();
     }
 
-    /// "Troubleshoot launch": the report of the game's last launch.
+    /// "Troubleshoot": the report of the game's last session.
     pub(super) fn troubleshoot_launch(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         let paths = self.data_paths.clone();

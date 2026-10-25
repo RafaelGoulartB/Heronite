@@ -12,7 +12,7 @@
 //! and a fix solves it) are worth interrupting the player right after a
 //! failed start ([`opens_by_itself`]); the others (a crash the log does not
 //! explain, a likely cause, an anti-cheat that refuses Linux) are only for
-//! the player who asks ("Troubleshoot launch"), whenever the game ended.
+//! the player who asks ("Troubleshoot"), whenever the game ended.
 //!
 //! Proton games are logged with [`crate::env::QUIET_WINEDEBUG`], so the
 //! loader's "DLL not found" errors reach the log even without verbose logs.
@@ -199,7 +199,7 @@ pub fn diagnose(i: &Inputs<'_>) -> Vec<Finding> {
 }
 
 /// Whether the dialog should open by itself after a failed start: only for
-/// a known cause with a fix. Anything else waits for "Troubleshoot launch".
+/// a known cause with a fix. Anything else waits for "Troubleshoot".
 pub fn opens_by_itself(findings: &[Finding]) -> bool {
     findings.iter().any(Finding::actionable)
 }

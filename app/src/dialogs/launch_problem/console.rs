@@ -48,7 +48,8 @@ impl LaunchProblemDialog {
             State::Failed { message, .. } => Some(SharedString::from(message.clone())),
             _ => None,
         };
-        crate::console::list::simple_dialog(&mut self.console_list, "console-launch-problem", tr!("Launch problem"), &message, error, &rows)
+        let title = self.title();
+        crate::console::list::simple_dialog(&mut self.console_list, "console-launch-problem", title, &message, error, &rows)
     }
 }
 

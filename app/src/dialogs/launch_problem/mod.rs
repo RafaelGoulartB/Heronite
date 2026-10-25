@@ -4,7 +4,7 @@
 //! command to run in a terminal is copied instead.
 //!
 //! The Collection opens it with the report of a run that just ended, or
-//! from "Troubleshoot launch" with the report of the last launch.
+//! from "Troubleshoot" with the report of the last session.
 
 mod console;
 mod render;
@@ -69,6 +69,14 @@ impl LaunchProblemDialog {
 
     fn fix(&self, at: At) -> Option<&Fix> {
         self.report.findings.get(at.0)?.fixes.get(at.1)
+    }
+
+    /// "Launch problem" right after a failed start, "Troubleshoot" when asked.
+    fn title(&self) -> &'static str {
+        match self.report.ended {
+            Some(_) => heronite_i18n::tr!("Launch problem"),
+            None => heronite_i18n::tr!("Troubleshoot"),
+        }
     }
 
     fn busy(&self) -> bool {

@@ -114,7 +114,7 @@ device when the last window closes (the app lives on in the tray); see its
   carries its fixes. An `actionable` finding (the cause is shown and a fix
   solves it) opens the dialog by itself after a failed start; the others
   (crashes the log does not explain, likely causes, anti-cheats that refuse
-  Linux) only show in "Troubleshoot launch". It is pure; the app applies the
+  Linux) only show in "Troubleshoot". It is pure; the app applies the
   fixes. `prepare` does the work
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
   first time it runs in a Wine prefix. `lsfg` finds lsfg-vk (Lossless
