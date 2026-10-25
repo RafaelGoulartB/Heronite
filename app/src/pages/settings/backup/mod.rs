@@ -103,7 +103,7 @@ pub fn format_time(iso: &str) -> String {
             let local = dt.with_timezone(&Utc).with_timezone(&Local);
             match heronite_i18n::current() {
                 heronite_i18n::Lang::En => local.format("%b %-d, %Y, %-I:%M %p").to_string(),
-                heronite_i18n::Lang::PtBr => {
+                heronite_i18n::Lang::PtBr | heronite_i18n::Lang::Es => {
                     format!(
                         "{} {} {}, {}",
                         local.day(),

@@ -1,5 +1,5 @@
 //! Scans the workspace sources for `tr!`, `trn!`, `trc!` and `n_!` and checks
-//! them against `locales/pt-BR/*.json`:
+//! them against every `locales/<lang>/*.json` (`pt-BR`, `es`):
 //!
 //! - every key has a translation, and every translation is a key in use;
 //! - a key translated in two files gets the same text;
@@ -222,29 +222,36 @@ fn every_key_is_translated_and_every_translation_used() {
         scan(&f, &std::fs::read_to_string(&f).unwrap(), &mut uses);
     }
     assert!(uses.len() > 10, "the scan found almost nothing ({} keys)", uses.len());
-
-    let mut translations: BTreeMap<String, (String, &str)> = BTreeMap::new();
     let mut problems = Vec::new();
-    for (file, text) in embedded_files(Lang::PtBr) {
+    for lang in Lang::TRANSLATED {
+        check_language(lang, &uses, &mut problems);
+    }
+    assert!(problems.is_empty(), "{} problem(s):\n{}", problems.len(), problems.join("\n"));
+}
+
+fn check_language(lang: Lang, uses: &[Use], problems: &mut Vec<String>) {
+    let code = lang.code();
+    let mut translations: BTreeMap<String, (String, &str)> = BTreeMap::new();
+    for (file, text) in embedded_files(lang) {
         let map: serde_json::Map<String, serde_json::Value> = match serde_json::from_str(text) {
             Ok(m) => m,
             Err(e) => {
-                problems.push(format!("locales/pt-BR/{file}: not a JSON object of strings: {e}"));
+                problems.push(format!("locales/{code}/{file}: not a JSON object of strings: {e}"));
                 continue;
             }
         };
         for (k, v) in map {
             let Some(v) = v.as_str() else {
-                problems.push(format!("locales/pt-BR/{file}: {k:?} is not a string"));
+                problems.push(format!("locales/{code}/{file}: {k:?} is not a string"));
                 continue;
             };
             if v.trim().is_empty() {
-                problems.push(format!("locales/pt-BR/{file}: {k:?} has an empty translation"));
+                problems.push(format!("locales/{code}/{file}: {k:?} has an empty translation"));
                 continue;
             }
             if let Some((prev, prev_file)) = translations.get(&k) {
                 if prev != v {
-                    problems.push(format!("{k:?}: {prev:?} in {prev_file}, {v:?} in {file}"));
+                    problems.push(format!("{code} {k:?}: {prev:?} in {prev_file}, {v:?} in {file}"));
                 }
                 continue;
             }
@@ -254,7 +261,7 @@ fn every_key_is_translated_and_every_translation_used() {
 
     let used: BTreeSet<&str> = uses.iter().map(|u| u.key.as_str()).collect();
     let mut missing: BTreeMap<&str, &Use> = BTreeMap::new();
-    for u in &uses {
+    for u in uses {
         match translations.get(&u.key) {
             None => {
                 missing.entry(&u.key).or_insert(u);
@@ -266,25 +273,24 @@ fn every_key_is_translated_and_every_translation_used() {
                 }
                 let extra: Vec<_> = placeholders(v).difference(&allowed).cloned().collect();
                 if !extra.is_empty() {
-                    problems.push(format!("{} ({file}): {:?} uses {extra:?}, which {:?} does not have", u.at, v, u.key));
+                    problems.push(format!("{} ({code}/{file}): {:?} uses {extra:?}, which {:?} does not have", u.at, v, u.key));
                 }
             }
         }
     }
     for (k, (_, file)) in &translations {
         if !used.contains(k.as_str()) {
-            problems.push(format!("locales/pt-BR/{file}: {k:?} is not used anywhere"));
+            problems.push(format!("locales/{code}/{file}: {k:?} is not used anywhere"));
         }
     }
     if crate::env_flag("HERONITE_I18N_MISSING") {
         for (k, u) in &missing {
-            println!("  {}: \"\",  // {}", serde_json::to_string(k).unwrap(), u.at);
+            println!("  [{code}] {}: \"\",  // {}", serde_json::to_string(k).unwrap(), u.at);
         }
     }
     for (k, u) in &missing {
-        problems.push(format!("{}: {k:?} has no pt-BR translation", u.at));
+        problems.push(format!("{}: {k:?} has no {code} translation", u.at));
     }
-    assert!(problems.is_empty(), "{} problem(s):\n{}", problems.len(), problems.join("\n"));
 }
 
 fn env_flag(name: &str) -> bool {

@@ -560,7 +560,18 @@ impl CollectionView {
             .justify_center()
             .gap(u(8.))
             .child(crate::ui::icon(icon, u(34.), theme::text_primary()))
-            .child(div().text_size(u(18.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(label))
+            // One line: a long word ("Estadísticas") gets a smaller size, and
+            // an ellipsis past that, never a break mid-word.
+            .child(
+                div()
+                    .w_full()
+                    .text_center()
+                    .truncate()
+                    .text_size(u(if label.chars().count() > 9 { 15. } else { 18. }))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::text_primary())
+                    .child(label),
+            )
             .children(sub.map(|s| div().text_size(u(12.)).text_color(theme::text_muted()).child(s)))
     }
 

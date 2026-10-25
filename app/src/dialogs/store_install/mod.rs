@@ -85,6 +85,7 @@ fn ui_language() -> &'static str {
     match heronite_i18n::current() {
         Lang::En => "en-US",
         Lang::PtBr => "pt-BR",
+        Lang::Es => "es-ES",
     }
 }
 
