@@ -2,7 +2,7 @@
 //! what `heronite_launch::diagnose` needs for one game and runs it, [`apply`]
 //! applies a fix. Both block (files, processes): call them off the UI thread.
 //!
-//! The Collection runs [`gather`] when a game ends within
+//! The Collection runs [`gather`] when a game ends badly within
 //! `FAILED_LAUNCH_WINDOW` and opens `dialogs::launch_problem` by itself only
 //! for a known cause with a fix ([`Report::opens_by_itself`]); without a
 //! window that cause goes into the notification (`system::hub::events`).

@@ -131,22 +131,20 @@ fn tell_compression(cx: &mut App, ev: &LaunchEvent) {
 fn notify_without_window(cx: &App, ev: &LaunchEvent) {
     match ev {
         LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
-            if *stopped || *elapsed >= heronite_launch::runtime::FAILED_LAUNCH_WINDOW {
-                return;
-            }
+            // A game that ended well within seconds says nothing.
+            let Some(failed) = heronite_launch::failed_launch(*exit, *stopped, *elapsed) else { return };
             let title = hub(cx).0.borrow().runtime.session_info(app_name).map_or_else(|| app_name.clone(), |s| s.title);
             let paths = hub(cx).0.borrow().data_paths.clone();
             let (app_name, ended) = (app_name.clone(), crate::diagnosis::Ended { elapsed: *elapsed, exit: *exit });
-            let plain = heronite_launch::failed_launch(*exit, false, *elapsed);
             let spawned = std::thread::Builder::new().name("launch-diagnosis".into()).spawn(move || {
                 let lib = heronite_data::Library::load_with(&paths, true).ok();
                 let game = lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name));
                 let report = game.and_then(|g| crate::diagnosis::gather(&paths, g, Some(ended), None));
-                match (report, plain) {
-                    (Some(r), _) if r.opens_by_itself() => crate::system::notify::send("Heronite", crate::diagnosis::text::summary(&r)),
-                    (_, Some(exit)) => crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit)),
-                    _ => {}
-                }
+                let text = match report {
+                    Some(r) if r.opens_by_itself() => crate::diagnosis::text::summary(&r),
+                    _ => crate::runtime::failed_launch_message(&title, failed),
+                };
+                crate::system::notify::send("Heronite", text);
             });
             if let Err(e) = spawned {
                 log::warn!("launch diagnosis: {e}");

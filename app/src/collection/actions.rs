@@ -147,8 +147,8 @@ impl CollectionView {
                 log::info!("{app_name} exited after {elapsed:?}");
                 self.preparing.remove(&app_name);
                 self.playing.remove(&app_name);
-                // Ended at once on its own: maybe it could not start.
-                if !stopped && elapsed < heronite_launch::runtime::FAILED_LAUNCH_WINDOW {
+                // Ended at once on its own, badly: maybe it could not start.
+                if heronite_launch::failed_launch(exit, stopped, elapsed).is_some() {
                     self.diagnose_exit(&app_name, crate::diagnosis::Ended { elapsed, exit }, None, cx);
                 }
                 // Post-game work is `services::session`'s; the library only

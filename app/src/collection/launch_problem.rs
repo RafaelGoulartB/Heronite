@@ -24,6 +24,9 @@ const TOAST_SECS: u64 = 12;
 impl CollectionView {
     /// `app_name` ended `elapsed` after starting, on its own: tells why
     /// when the analysis knows (`log`: another log to read, debug hooks).
+    /// A run that ended well (exit code 0, or no exit known) says nothing:
+    /// what the game's data alone suggests (an anti-cheat runtime, DirectX
+    /// 12) is no reason to interrupt a player who closed the game.
     pub(super) fn diagnose_exit(&mut self, app_name: &str, ended: Ended, log: Option<PathBuf>, cx: &mut Context<Self>) {
         self.diagnose_exit_with(app_name, ended, log, false, cx);
     }
@@ -31,6 +34,7 @@ impl CollectionView {
     /// [`Self::diagnose_exit`]; `toast`: offer the dialog in a toast even
     /// when nothing else is open.
     fn diagnose_exit_with(&mut self, app_name: &str, ended: Ended, log: Option<PathBuf>, toast: bool, cx: &mut Context<Self>) {
+        let Some(exit) = ended.exit.filter(|_| ended.failed()) else { return };
         let Some(game) = self.lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name)).cloned() else { return };
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
@@ -42,11 +46,9 @@ impl CollectionView {
                     // No known cause with a fix, or a game the analysis does
                     // not read (Steam starts it): the plain toast.
                     report => {
-                        if let Some(exit) = ended.exit.filter(|_| ended.failed()) {
-                            this.show_failed_launch_toast(&game.title, &game.key, exit, cx);
-                            if let Some(r) = report.filter(|r| !r.findings.is_empty()) {
-                                this.toast_action = Some(ToastAction::LaunchProblem(Arc::new(r)));
-                            }
+                        this.show_failed_launch_toast(&game.title, &game.key, exit, cx);
+                        if let Some(r) = report.filter(|r| !r.findings.is_empty()) {
+                            this.toast_action = Some(ToastAction::LaunchProblem(Arc::new(r)));
                         }
                     }
                 }
