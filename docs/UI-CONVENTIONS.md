@@ -465,7 +465,16 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   first change switches to it), else a results grid over the tab (`ConsoleUi::results`, B leaves it), so every theme has them.
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
-  Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). A new option = a field in
+  Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). On the desktop, Settings → Console
+  mode (`pages/settings/console_mode/`) has three views: Home (the themes as cards with a picture each, the user's
+  with a delete, "Create a new theme" last; the theme in use with its live picture, All options, save, undo and the
+  "Quick changes" beside it; the startup options), the editor (name, author, save, undo, export under the live
+  picture, then the Customize panel's groups as tabs; options no tab uses are hidden and counted) and New theme
+  (start from a theme or the one in use, a name). Clicking a theme while the one in use has changes asks first. The
+  pictures (`preview/`) draw a theme's first tab's layout, covers, background, tab bar, clock, hint bar, colours and
+  font on a 640 x 360 canvas with the covers and art of the games played last (the library Storage gets from the
+  Collection; tinted blocks without it); their textures are freed when the section leaves the screen.
+  `HERONITE_DEBUG_CONSOLE_SETTINGS=editor[:<group>]|create|pending:<theme id>` opens a view. A new option = a field in
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).
