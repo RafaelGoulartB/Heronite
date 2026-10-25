@@ -66,6 +66,10 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     if let Some(replay) = crate::services::replay::get(cx) {
         replay.update(cx, |r, cx| r.on_launch_event(&ev, cx));
     }
+    if matches!(ev, LaunchEvent::Exited { .. }) {
+        let achievements = crate::services::achievements::get(cx);
+        achievements.update(cx, |a, cx| a.on_launch_event(&ev, cx));
+    }
     tell_downloads(cx, &ev);
     tell_compression(cx, &ev);
     // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
