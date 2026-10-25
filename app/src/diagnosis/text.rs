@@ -62,7 +62,7 @@ pub fn headline(f: &Finding) -> String {
         Problem::MissingLibs { .. } => tr!("Linux libraries are missing").into(),
         Problem::ExecutableMissing => tr!("The game's program is missing").into(),
         Problem::Wineserver => tr!("Another Wine still runs on the prefix").into(),
-        Problem::Crash if f.sure => tr!("The game crashed").into(),
+        Problem::Crash if !f.evidence.is_empty() => tr!("The game crashed").into(),
         Problem::Crash => tr!("The game closed with an error").into(),
         Problem::LogsOff => tr!("The launch log is off").into(),
     }
@@ -136,7 +136,7 @@ pub fn explanation(f: &Finding, r: &Report) -> String {
             "A wineserver of another Wine or Proton version still runs in this game's prefix, and the new one cannot start next to it."
         )
         .into(),
-        Problem::Crash if f.sure => {
+        Problem::Crash if !f.evidence.is_empty() => {
             tr!("Wine reported a crash, with no known cause in the log. Another Proton version often helps, and ProtonDB has what worked for other players.").into()
         }
         Problem::Crash => tr!(

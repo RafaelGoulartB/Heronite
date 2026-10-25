@@ -69,7 +69,6 @@ pub fn gather(paths: &DataPaths, game: &CollectionGame, ended: Option<Ended>, lo
         title: game.title.clone(),
         kind,
         ended,
-        failed,
         findings,
         has_log: text.is_some(),
         steam_app_id: game.steam_app_id.clone(),

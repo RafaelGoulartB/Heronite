@@ -8,6 +8,12 @@
 //! that show it and the [`Fix`]es that solve it, the one to offer first at
 //! the front. Nothing here changes anything: the app applies the fixes.
 //!
+//! Two kinds of findings: [`Finding::actionable`] ones (the cause is shown
+//! and a fix solves it) are worth interrupting the player right after a
+//! failed start ([`opens_by_itself`]); the others (a crash the log does not
+//! explain, a likely cause, an anti-cheat that refuses Linux) are only for
+//! the player who asks ("Troubleshoot launch"), whenever the game ended.
+//!
 //! Proton games are logged with [`crate::env::QUIET_WINEDEBUG`], so the
 //! loader's "DLL not found" errors reach the log even without verbose logs.
 
@@ -120,9 +126,16 @@ pub struct Finding {
     /// The fixes, the one to offer first at the front. Empty: nothing the
     /// app can do (a denied anti-cheat).
     pub fixes: Vec<Fix>,
-    /// Shown by the log or by the game's data, not merely likely: worth
-    /// telling even when the game exited with code 0.
+    /// The cause is known: shown by the log or by the game's data, not
+    /// merely likely (a crash alone never says its cause).
     pub sure: bool,
+}
+
+impl Finding {
+    /// A known cause with a fix: worth opening the dialog for by itself.
+    pub fn actionable(&self) -> bool {
+        self.sure && !self.fixes.is_empty()
+    }
 }
 
 /// What [`diagnose`] reads.
@@ -180,16 +193,15 @@ pub fn diagnose(i: &Inputs<'_>) -> Vec<Finding> {
             sure: false,
         });
     }
+    // What can be fixed first; the order of each part stays.
+    found.sort_by_key(|f| !f.actionable());
     found
 }
 
-/// Whether what [`diagnose`] found is worth telling about a run that ended
-/// with code 0 (a launcher that hands over to the game ends like that too).
-pub fn worth_telling(findings: &[Finding], failed: bool) -> bool {
-    match failed {
-        true => true,
-        false => findings.iter().any(|f| f.sure),
-    }
+/// Whether the dialog should open by itself after a failed start: only for
+/// a known cause with a fix. Anything else waits for "Troubleshoot launch".
+pub fn opens_by_itself(findings: &[Finding]) -> bool {
+    findings.iter().any(Finding::actionable)
 }
 
 /// `(key, true)` settings changes.
@@ -379,8 +391,8 @@ fn crash(i: &Inputs<'_>, out: &str) -> Option<Finding> {
         return None;
     }
     let fixes = if i.kind == RunKind::Wine { vec![Fix::UseProton(Vec::new())] } else { vec![Fix::OtherProton] };
-    let sure = !evidence.is_empty();
-    Some(Finding { problem: Problem::Crash, evidence, fixes, sure })
+    // Another Proton may help; the cause is still unknown.
+    Some(Finding { problem: Problem::Crash, evidence, fixes, sure: false })
 }
 
 /// How the run was started, from its log's header (`Native? true`) and the

@@ -1,8 +1,10 @@
 //! A game that closed right after starting: the Collection diagnoses the
 //! run (`crate::diagnosis`, off the UI thread) and opens the "Launch
-//! problem" dialog when it found something, or offers it in a toast while
-//! another dialog is open. "Troubleshoot launch" opens it for the last
-//! launch on demand.
+//! problem" dialog by itself only for a known cause with a fix (a toast
+//! offers it while another dialog is open). A bad exit without one keeps the
+//! plain "closed right after starting" toast, whose Details shows what was
+//! found. "Troubleshoot launch" opens it for the last launch on demand, with
+//! every finding.
 
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -36,12 +38,15 @@ impl CollectionView {
             let report = cx.background_spawn(async move { crate::diagnosis::gather(&paths, &g, Some(ended), log.as_deref()) }).await;
             this.update(cx, |this, cx| {
                 match report {
-                    Some(r) if r.worth_telling() => this.show_launch_problem(Arc::new(r), toast, cx),
-                    Some(_) => {}
-                    // Not one the analysis reads (Steam starts it): the plain toast.
-                    None => {
+                    Some(r) if r.opens_by_itself() => this.show_launch_problem(Arc::new(r), toast, cx),
+                    // No known cause with a fix, or a game the analysis does
+                    // not read (Steam starts it): the plain toast.
+                    report => {
                         if let Some(exit) = ended.exit.filter(|_| ended.failed()) {
                             this.show_failed_launch_toast(&game.title, &game.key, exit, cx);
+                            if let Some(r) = report.filter(|r| !r.findings.is_empty()) {
+                                this.toast_action = Some(ToastAction::LaunchProblem(Arc::new(r)));
+                            }
                         }
                     }
                 }

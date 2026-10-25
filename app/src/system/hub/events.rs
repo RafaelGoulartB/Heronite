@@ -143,8 +143,8 @@ fn notify_without_window(cx: &App, ev: &LaunchEvent) {
                 let game = lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name));
                 let report = game.and_then(|g| crate::diagnosis::gather(&paths, g, Some(ended), None));
                 match (report, plain) {
-                    (Some(r), _) if r.worth_telling() => crate::system::notify::send("Heronite", crate::diagnosis::text::summary(&r)),
-                    (None, Some(exit)) => crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit)),
+                    (Some(r), _) if r.opens_by_itself() => crate::system::notify::send("Heronite", crate::diagnosis::text::summary(&r)),
+                    (_, Some(exit)) => crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit)),
                     _ => {}
                 }
             });

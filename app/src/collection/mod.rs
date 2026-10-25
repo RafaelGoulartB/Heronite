@@ -416,7 +416,7 @@ impl CollectionView {
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
                                 ToastAction::ReviewDuplicates => heronite_i18n::tr!("Review"),
-                                ToastAction::LaunchProblem(r) if r.main().is_some_and(|f| !f.fixes.is_empty()) => {
+                                ToastAction::LaunchProblem(r) if r.opens_by_itself() => {
                                     heronite_i18n::tr!("How to fix")
                                 }
                                 ToastAction::LaunchProblem(_) => heronite_i18n::tr!("Details"),

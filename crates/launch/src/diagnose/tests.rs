@@ -81,7 +81,8 @@ fn missing_visual_cpp_offers_its_redistributable() {
     );
     assert_eq!(f[0].fixes, [Fix::Winetricks(vec!["vcrun2022".into()])]);
     assert_eq!(f[0].evidence.len(), 2);
-    assert!(f[0].sure);
+    assert!(f[0].actionable());
+    assert!(opens_by_itself(&f));
 }
 
 #[test]
@@ -115,7 +116,7 @@ fn a_clean_exit_with_nothing_known_says_nothing() {
     c.failed = false;
     let f = c.run();
     assert!(f.is_empty());
-    assert!(!worth_telling(&f, false));
+    assert!(!opens_by_itself(&f));
 }
 
 #[test]
@@ -123,7 +124,9 @@ fn a_crash_without_a_known_cause_offers_another_proton() {
     let f = Case::new("wine: Unhandled page fault on read access to 0000000000000000 at address 0000000140001000").run();
     assert_eq!(problems(&f), [&Problem::Crash]);
     assert_eq!(f[0].fixes, [Fix::OtherProton]);
-    assert!(f[0].sure);
+    // Told when asked, never by itself: the cause is unknown.
+    assert!(!f[0].sure);
+    assert!(!opens_by_itself(&f));
     let mut c = Case::new("wine: Unhandled page fault");
     c.kind = RunKind::Wine;
     c.settings = wine();
@@ -135,7 +138,7 @@ fn a_failed_run_with_a_quiet_log_is_a_likely_crash() {
     let f = Case::new("").run();
     assert_eq!(problems(&f), [&Problem::Crash]);
     assert!(!f[0].sure);
-    assert!(worth_telling(&f, true));
+    assert!(!opens_by_itself(&f));
 }
 
 #[test]
@@ -188,7 +191,7 @@ fn a_supported_anticheat_turns_its_runtime_on() {
     let f = c.run();
     assert_eq!(f[0].problem, Problem::AntiCheat { names: vec!["Easy Anti-Cheat".into()], status: AntiCheatStatus::Works });
     assert_eq!(f[0].fixes, [Fix::Settings(vec![("eacRuntime", Value::Bool(true))])]);
-    assert!(worth_telling(&f, false));
+    assert!(opens_by_itself(&f));
     // Plain Wine cannot load it: Proton first.
     c.kind = RunKind::Wine;
     c.settings = wine();
@@ -211,8 +214,10 @@ fn a_denied_anticheat_is_explained_without_a_fix() {
         Problem::AntiCheat { names: vec!["Easy Anti-Cheat".into(), "BattlEye".into()], status: AntiCheatStatus::Denied }
     );
     assert!(f[0].fixes.is_empty());
-    // A known cause: no guessing about crashes.
+    // A known cause: no guessing about crashes. Nothing to fix: only told
+    // when asked.
     assert_eq!(f.len(), 1);
+    assert!(!opens_by_itself(&f));
 }
 
 #[test]
@@ -338,4 +343,17 @@ fn the_max_map_count_script_writes_the_file_and_applies_it() {
     let s = max_map_count_script();
     assert!(s.contains(SYSCTL_FILE));
     assert!(s.contains("sysctl -q -w vm.max_map_count=1048576"));
+}
+
+#[test]
+fn what_can_be_fixed_comes_first() {
+    let mut c = Case::new("");
+    c.kind = RunKind::Wine;
+    c.settings = wine();
+    c.anticheat = anticheat("Denied", &["BattlEye"]);
+    c.imports = vec!["d3d12.dll".into()];
+    let f = c.run();
+    assert_eq!(f[0].problem, Problem::Dx12WithoutVkd3d);
+    assert!(matches!(f[1].problem, Problem::AntiCheat { .. }));
+    assert!(opens_by_itself(&f));
 }

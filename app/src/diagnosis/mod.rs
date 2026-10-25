@@ -3,9 +3,10 @@
 //! applies a fix. Both block (files, processes): call them off the UI thread.
 //!
 //! The Collection runs [`gather`] when a game ends within
-//! `FAILED_LAUNCH_WINDOW` and opens `dialogs::launch_problem` with the
-//! report; without a window the cause goes into the notification
-//! (`system::hub::events`). The fixes applied this run are remembered
+//! `FAILED_LAUNCH_WINDOW` and opens `dialogs::launch_problem` by itself only
+//! for a known cause with a fix ([`Report::opens_by_itself`]); without a
+//! window that cause goes into the notification (`system::hub::events`).
+//! "Troubleshoot launch" shows every finding. The fixes applied this run are remembered
 //! ([`remember_tried`]), so a fix that did not help is not offered as the
 //! answer again.
 
@@ -46,8 +47,6 @@ pub struct Report {
     pub kind: RunKind,
     /// `None` when the user asked about the last launch.
     pub ended: Option<Ended>,
-    /// The run ended badly (from `ended`, or the log's last line).
-    pub failed: bool,
     pub findings: Vec<Finding>,
     /// There is a launch log to read.
     pub has_log: bool,
@@ -60,10 +59,10 @@ pub struct Report {
 }
 
 impl Report {
-    /// Worth showing on its own after a launch (see
-    /// `heronite_launch::diagnose::worth_telling`).
-    pub fn worth_telling(&self) -> bool {
-        heronite_launch::diagnose::worth_telling(&self.findings, self.failed)
+    /// Worth opening the dialog for right after a failed start (see
+    /// `heronite_launch::diagnose::opens_by_itself`).
+    pub fn opens_by_itself(&self) -> bool {
+        heronite_launch::diagnose::opens_by_itself(&self.findings)
     }
 
     /// The finding the dialog leads with.
