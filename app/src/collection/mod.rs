@@ -25,6 +25,7 @@ mod html;
 mod install_options;
 mod journal;
 mod launch_options;
+mod launch_problem;
 mod launch_progress;
 mod launchers;
 mod list;
@@ -95,6 +96,8 @@ enum ToastAction {
     /// Opens Settings → Other launchers, where games in the Collection twice
     /// are merged.
     ReviewDuplicates,
+    /// Opens "Launch problem" with this report.
+    LaunchProblem(std::sync::Arc<crate::diagnosis::Report>),
 }
 
 pub struct CollectionView {
@@ -413,6 +416,10 @@ impl CollectionView {
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
                                 ToastAction::ReviewDuplicates => heronite_i18n::tr!("Review"),
+                                ToastAction::LaunchProblem(r) if r.main().is_some_and(|f| !f.fixes.is_empty()) => {
+                                    heronite_i18n::tr!("How to fix")
+                                }
+                                ToastAction::LaunchProblem(_) => heronite_i18n::tr!("Details"),
                             })
                             .when(matches!(action, ToastAction::Undo), |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
                             .on_click(cx.listener(move |this, _, window, cx| {
@@ -431,6 +438,10 @@ impl CollectionView {
                                     ToastAction::ReviewDuplicates => {
                                         this.toast = None;
                                         this.open_settings_section(crate::pages::settings::Section::Launchers, window, cx);
+                                    }
+                                    ToastAction::LaunchProblem(report) => {
+                                        this.toast = None;
+                                        this.open_launch_problem(report.clone(), cx);
                                     }
                                     ToastAction::RestoreNote(key, entry) => {
                                         this.toast = None;

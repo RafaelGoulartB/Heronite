@@ -126,13 +126,30 @@ fn tell_compression(cx: &mut App, ev: &LaunchEvent) {
 
 /// With the window closed to the tray nobody sees toasts: problems of a
 /// launch (it failed, cloud saves could not be synced, the game closed right
-/// after starting) become notifications.
+/// after starting, with its cause when the diagnosis knows it) become
+/// notifications.
 fn notify_without_window(cx: &App, ev: &LaunchEvent) {
     match ev {
         LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
-            if let Some(exit) = heronite_launch::failed_launch(*exit, *stopped, *elapsed) {
-                let title = hub(cx).0.borrow().runtime.session_info(app_name).map_or_else(|| app_name.clone(), |s| s.title);
-                crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit));
+            if *stopped || *elapsed >= heronite_launch::runtime::FAILED_LAUNCH_WINDOW {
+                return;
+            }
+            let title = hub(cx).0.borrow().runtime.session_info(app_name).map_or_else(|| app_name.clone(), |s| s.title);
+            let paths = hub(cx).0.borrow().data_paths.clone();
+            let (app_name, ended) = (app_name.clone(), crate::diagnosis::Ended { elapsed: *elapsed, exit: *exit });
+            let plain = heronite_launch::failed_launch(*exit, false, *elapsed);
+            let spawned = std::thread::Builder::new().name("launch-diagnosis".into()).spawn(move || {
+                let lib = heronite_data::Library::load_with(&paths, true).ok();
+                let game = lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name));
+                let report = game.and_then(|g| crate::diagnosis::gather(&paths, g, Some(ended), None));
+                match (report, plain) {
+                    (Some(r), _) if r.worth_telling() => crate::system::notify::send("Heronite", crate::diagnosis::text::summary(&r)),
+                    (None, Some(exit)) => crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit)),
+                    _ => {}
+                }
+            });
+            if let Err(e) = spawned {
+                log::warn!("launch diagnosis: {e}");
             }
         }
         LaunchEvent::Error { message, .. } => crate::system::notify::send("Heronite", message.clone()),

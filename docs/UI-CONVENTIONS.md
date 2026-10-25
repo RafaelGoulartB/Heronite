@@ -293,6 +293,18 @@ its own for scripts (the palette still opens them directly). `HERONITE_DEBUG_DIA
 `+`): `windows`, `linux`, `command`, `browser`, `shared`, `wine`, `wine-open`, `art-menu`, `address`, `no-note`,
 `script`, `picker`, `art=<cover url>[,<background url>]`.
 
+**Launch problem** (`dialogs/launch_problem/`, `crate::diagnosis`): when a game ends on its own within 30 s and the
+diagnosis finds a cause (or the exit was bad), the dialog opens by itself (a toast with "How to fix" while another dialog
+is open). The first line says how the game ended; the main finding is a card (a tinted badge, red with a lock when nothing
+can be done, the headline, one or two sentences, "What the log says" with the log lines in a mono box, a command to copy
+for packages) whose first fix is the Primary button: it applies the fix and starts the game again, closing the dialog with
+a toast. A fix tried before this run is no longer Primary and says so. Other findings are rows under "Also found". The
+footer has View log, ProtonDB and Close. A running fix shows a busy bar and its last output lines (winetricks can be
+cancelled); a failed one its error. "Troubleshoot launch" (context menu, under View log; palette) opens it for the last
+launch. `HERONITE_DEBUG_DIALOG=launch-problem:<log>[@<code>]` diagnoses the selected game as if it had just ended with
+that log (`launch-problem-toast:` for the toast, `troubleshoot` for the on-demand check) and
+`HERONITE_DEBUG_LAUNCH_FIX=working|failed` shows a fix's progress or failure; nothing is applied.
+
 **Controls** (`ui::controls`):
 - `toggle(id, on, disabled)` 40x24 switch (spring-animated knob unless
   `HERONITE_NO_ANIMATIONS`), `toggle_row(id, label, desc, on)`, legacy

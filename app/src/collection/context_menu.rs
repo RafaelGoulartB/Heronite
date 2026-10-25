@@ -84,6 +84,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::LocalUninstall => (5, 2),
         A::RemoveFromCollection => (5, 3),
         A::Log => (6, 0),
+        A::Troubleshoot => (6, 1),
     }
 }
 

@@ -34,6 +34,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::scan_roms::ScanRomsDialog,
         crate::dialogs::pick_rom::PickRomDialog,
         crate::dialogs::launch_state::LaunchStateDialog,
+        crate::dialogs::launch_problem::LaunchProblemDialog,
     );
     None
 }
