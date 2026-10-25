@@ -32,6 +32,8 @@ mod look;
 mod profiles;
 mod scheme;
 
+pub(super) use look::set_look;
+
 use gpui_kit::component::input::InputState;
 use heronite_data::appearance::Profile;
 

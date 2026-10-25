@@ -5,6 +5,8 @@
 //! Settings observe it (`cx.notify`); new unlocks become a desktop
 //! notification.
 
+mod emulators;
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -84,6 +86,11 @@ pub struct Achievements {
     known: HashMap<String, Known>,
     queue: VecDeque<String>,
     pub bulk: Bulk,
+    /// What each emulator's RetroAchievements login looks like, at the last
+    /// write or check.
+    emulators: Vec<heronite_achievements::emulators::Status>,
+    /// The user's home (where the emulators keep their settings).
+    home: std::path::PathBuf,
 }
 
 struct AchievementsGlobal(Entity<Achievements>);
@@ -98,7 +105,16 @@ pub fn get(cx: &mut App) -> Entity<Achievements> {
     let app_paths = AppPaths::for_data(&data_paths);
     let entity = cx.new(|cx| Achievements::new(data_paths, app_paths, cx));
     cx.set_global(AchievementsGlobal(entity.clone()));
+    // A newly installed emulator gets the login too.
+    entity.update(cx, |s, cx| s.sync_emulators(None, cx));
     entity
+}
+
+/// Achievements are on: their game section (Settings → Appearance → Game
+/// sections, which Settings → Achievements switches too) is shown. Off, no
+/// game is read or refreshed and nothing is notified.
+pub fn enabled() -> bool {
+    crate::theme::appearance().sections.shown(heronite_data::appearance::Section::Achievements)
 }
 
 pub fn key_of(runner: &str, app_name: &str) -> String {
@@ -128,6 +144,8 @@ impl Achievements {
             known: HashMap::new(),
             queue: VecDeque::new(),
             bulk: Bulk::default(),
+            emulators: Vec::new(),
+            home: dirs::home_dir().unwrap_or_default(),
         }
     }
 
@@ -145,6 +163,9 @@ impl Achievements {
 
     /// The Collection shows `game`: read its copy, and refresh it when old.
     pub fn want(&mut self, game: &CollectionGame, cx: &mut Context<Self>) {
+        if !enabled() {
+            return;
+        }
         let targets = heronite_achievements::targets_of(game);
         if targets.is_empty() {
             return;
@@ -184,6 +205,9 @@ impl Achievements {
     /// Reads every source of a game again (no-op while it is being read, or
     /// when it was read less than a minute ago).
     pub fn refresh(&mut self, key: &str, cx: &mut Context<Self>) {
+        if !enabled() {
+            return;
+        }
         let Some(known) = self.known.values().find(|k| key_of(&k.runner, &k.app_name) == key).cloned() else { return };
         let entry =
             self.games.entry(key.to_string()).or_insert_with(|| GameEntry { order: order_of(&known.targets), ..Default::default() });
@@ -225,6 +249,10 @@ impl Achievements {
     /// little later.
     pub fn on_launch_event(&mut self, ev: &LaunchEvent, cx: &mut Context<Self>) {
         let LaunchEvent::Exited { app_name, .. } = ev else { return };
+        self.retry_running_emulators(cx);
+        if !enabled() {
+            return;
+        }
         let app_name = app_name.clone();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(AFTER_EXIT).await;
@@ -254,7 +282,7 @@ impl Achievements {
 
     /// Settings → "Update now": every game of the Collection with a source.
     pub fn refresh_all(&mut self, cx: &mut Context<Self>) {
-        if self.bulk.running {
+        if self.bulk.running || !enabled() {
             return;
         }
         self.bulk = Bulk { done: 0, total: 0, running: true };
@@ -300,7 +328,20 @@ impl Achievements {
     /// Saves the RetroAchievements account (`None` signs out) and reads the
     /// games that were waiting for it.
     pub fn set_retro_account(&mut self, account: Option<accounts::RetroAccount>, cx: &mut Context<Self>) {
+        let before = self.signed_in_user();
         self.accounts.retro_achievements = account;
+        self.save_accounts(Source::RetroAchievements, cx);
+        self.sync_emulators(before, cx);
+    }
+
+    /// The optional Web API key of the RetroAchievements account.
+    pub fn set_retro_api_key(&mut self, key: String, cx: &mut Context<Self>) {
+        let Some(account) = self.accounts.retro_achievements.as_mut() else { return };
+        let key = key.trim().to_string();
+        if account.api_key == key {
+            return;
+        }
+        account.api_key = key;
         self.save_accounts(Source::RetroAchievements, cx);
     }
 
@@ -333,7 +374,12 @@ impl Achievements {
     }
 
     pub fn set_prefs(&mut self, prefs: Prefs, cx: &mut Context<Self>) {
+        let emulators_changed = (prefs.emulators, prefs.hardcore) != (self.prefs.emulators, self.prefs.hardcore);
+        let user = self.signed_in_user();
         self.prefs = prefs;
+        if emulators_changed {
+            self.sync_emulators(user, cx);
+        }
         let app = self.app_paths.clone();
         cx.background_spawn(async move {
             if let Err(e) = prefs::write(&app, &prefs) {
@@ -386,6 +432,19 @@ impl Achievements {
         })
         .detach();
     }
+}
+
+/// Settings → Achievements' test buttons: the notification of `n` made-up
+/// unlocks, as a real refresh would send it.
+pub fn notify_test(n: usize) {
+    let names = [tr!("First Steps"), tr!("Treasure Hunter"), tr!("Untouchable"), tr!("Speed Demon")];
+    let unlocks: Vec<(Source, Achievement)> = names
+        .iter()
+        .cycle()
+        .take(n)
+        .map(|name| (Source::Steam, Achievement { name: name.to_string(), unlocked: true, ..Default::default() }))
+        .collect();
+    notify_unlocks(tr!("Heronite (test)"), &unlocks);
 }
 
 fn notify_unlocks(title: &str, unlocks: &[(Source, Achievement)]) {

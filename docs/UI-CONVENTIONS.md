@@ -577,6 +577,9 @@ the panel's size follows it.
   matches no set ("Pick the game…" opens the dialog's search).
 - The Timeline puts each unlock on its day by the screenshots' rule: a chip ("3 achievements") and the icons
   under the day (`collection/timeline_achievements.rs`); it never adds days.
+- Settings → Achievements → RetroAchievements signs in with the username and password (`pages/settings/achievements/retro.rs`;
+  the password field is emptied at once, only the token is kept), then shows the account's points, "Sign the
+  emulators in too" with each emulator's state under it, hardcore mode and the optional Web API key.
 - Rarity colours come from `theme::rarity_tier` / `rarity_colour` (ultra rare < 5 %, rare < 15 %, uncommon
   < 40 %); icons, bars, pills and dates from `ui::achievements`.
 - `scripts/shot.sh` on a hidden workspace paints only the frames it captures: textures that arrive late (an

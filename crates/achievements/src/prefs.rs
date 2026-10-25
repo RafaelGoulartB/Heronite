@@ -14,11 +14,17 @@ pub struct Prefs {
     /// Secret achievements keep their name and description hidden until
     /// they are unlocked.
     pub hide_secrets: bool,
+    /// The RetroAchievements login is written into the emulators that
+    /// support it (`emulators`).
+    pub emulators: bool,
+    /// The emulators play in hardcore mode (no save states, rewind or
+    /// cheats; hardcore points).
+    pub hardcore: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { notify: true, timeline: true, hide_secrets: true }
+        Self { notify: true, timeline: true, hide_secrets: true, emulators: true, hardcore: false }
     }
 }
 
