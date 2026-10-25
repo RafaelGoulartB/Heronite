@@ -11,7 +11,7 @@ use heronite_i18n::tr;
 use super::{send, SettingsPage};
 use crate::console::list::{Outcome, Row, Value};
 use crate::theme;
-use crate::ui::controls::{button_sm, row, segmented, toggle_row, ButtonKind};
+use crate::ui::controls::{button_sm, row, segmented, toggle, toggle_row, ButtonKind};
 use crate::ui::fields::{input_box, new_input, on_commit, select_field};
 
 /// A text input kept between frames: `shown` is the text last put in it.
@@ -66,24 +66,38 @@ fn commit(d: &mut SettingsPage, key: &str, id: &str, text: String, window: &mut 
 
 /// One option as a row of a card.
 pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
-    let desc = r.desc.clone();
+    let desc = r.desc.as_deref();
+    if let Value::Toggle(on) = r.value {
+        let id = r.id.clone();
+        let sw = toggle_row(SharedString::from(format!("cm-{id}")), r.label.clone(), desc, on).when(!r.enabled, |d| d.opacity(0.45));
+        if !r.enabled {
+            return sw.into_any_element();
+        }
+        return sw
+            .on_click(cx.listener(move |d, _, window, cx| send(d, Outcome::Changed(id.clone(), Value::Toggle(!on)), window, cx)))
+            .into_any_element();
+    }
+    let Some(control) = control(d, r, window, cx) else { return div().into_any_element() };
+    row(r.label.clone(), desc, div().max_w(px(520.)).child(control)).when(!r.enabled, |d| d.opacity(0.45)).into_any_element()
+}
+
+/// The control of an option alone (segments, a select, a stepper, a text
+/// input, a switch), for rows laid out another way.
+pub(super) fn control(d: &mut SettingsPage, r: &Row, window: &mut Window, cx: &mut Context<SettingsPage>) -> Option<AnyElement> {
     let id = r.id.clone();
     let enabled = r.enabled;
-    let label = r.label.clone();
-    let desc_str = desc.as_deref();
-    match &r.value {
+    Some(match &r.value {
         Value::Toggle(on) => {
             let on = *on;
-            let sw = toggle_row(SharedString::from(format!("cm-{id}")), label, desc_str, on).when(!enabled, |d| d.opacity(0.45));
-            if !enabled {
-                return sw.into_any_element();
-            }
-            sw.on_click(cx.listener(move |d, _, window, cx| send(d, Outcome::Changed(id.clone(), Value::Toggle(!on)), window, cx)))
+            toggle(SharedString::from(format!("cm-{id}-switch")), on, !enabled)
+                .when(enabled, |t| {
+                    t.on_click(cx.listener(move |d, _, window, cx| send(d, Outcome::Changed(id.clone(), Value::Toggle(!on)), window, cx)))
+                })
                 .into_any_element()
         }
         Value::Choice { options, index } => {
             let options = options.clone();
-            let control = if options.len() <= SEG_MAX {
+            if options.len() <= SEG_MAX {
                 let (id2, opts) = (id.clone(), options.clone());
                 let entity = cx.entity().downgrade();
                 let items: Vec<(usize, SharedString)> = options.iter().cloned().enumerate().collect();
@@ -92,10 +106,10 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
                     let o = Outcome::Changed(id2.clone(), v);
                     entity.update(cx, |d, cx| send(d, o, window, cx)).ok();
                 })
+                .into_any_element()
             } else {
-                choice_select(d, &id, &options, *index, enabled, cx)
-            };
-            row(label, desc_str, div().max_w(px(520.)).child(control)).when(!enabled, |d| d.opacity(0.45)).into_any_element()
+                choice_select(d, &id, &options, *index, enabled, cx).into_any_element()
+            }
         }
         Value::Number { value, min, max, step, suffix } => {
             let (value, min, max, step) = (*value, *min, *max, *step);
@@ -111,7 +125,7 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
                         }))
                     })
             };
-            let control = div()
+            div()
                 .flex()
                 .items_center()
                 .gap(px(8.))
@@ -125,32 +139,31 @@ pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx:
                         .text_color(theme::text_primary())
                         .child(format!("{value}{suffix}")),
                 )
-                .child(make(id.clone(), step, "+"));
-            row(label, desc_str, control).when(!enabled, |d| d.opacity(0.45)).into_any_element()
+                .child(make(id.clone(), step, "+"))
+                .into_any_element()
         }
         Value::Text(text) => {
             let key = id.to_string();
             let input = text_input(d, &key, &id, text, "", window, cx).w(px(260.));
-            let control = if id.as_ref() == "background.image" {
+            if id.as_ref() == "background.image" {
                 let browse = button_sm("cm-bg-browse", ButtonKind::Glass, tr!("Browse")).on_click(cx.listener(|_, _, window, cx| {
                     crate::ui::fields::choose_path(window, cx, false, tr!("Select"), |d, path, window, cx| {
                         crate::console::theme_rows::text_done(d, "background.image", path, window, cx);
                     });
                 }));
-                div().flex().items_center().gap(px(8.)).child(input).child(browse)
+                div().flex().items_center().gap(px(8.)).child(input).child(browse).into_any_element()
             } else if id.starts_with("colors.") {
                 let id2 = id.to_string();
                 let reset = button_sm(SharedString::from(format!("cm-{id}-reset")), ButtonKind::Ghost, tr!("Reset")).on_click(
                     cx.listener(move |d, _, window, cx| crate::console::theme_rows::text_done(d, &id2, String::new(), window, cx)),
                 );
-                div().flex().items_center().gap(px(8.)).child(input).child(reset)
+                div().flex().items_center().gap(px(8.)).child(input).child(reset).into_any_element()
             } else {
-                div().child(input)
-            };
-            row(label, desc_str, control).when(!enabled, |d| d.opacity(0.45)).into_any_element()
+                div().child(input).into_any_element()
+            }
         }
-        Value::Action | Value::Info(_) | Value::Header => div().into_any_element(),
-    }
+        Value::Action | Value::Info(_) | Value::Header => return None,
+    })
 }
 
 pub(super) fn choice_select(
