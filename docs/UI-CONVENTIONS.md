@@ -488,9 +488,11 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). On the desktop, Settings → Console
   mode (`pages/settings/console_mode/`) has three views: Home (the themes on one row that scrolls sideways, however many
   there are: ‹ › and the filters All / Built-in / Yours in its title, a swipe, or the mouse wheel while the row can
-  still move, like Related; about three cards in view, the next one cut at the edge; it brings the theme in use into
+  still move, like Related; about three cards in view, the next one cut at the edge, and under the row a dot per page
+  of cards, the current one a longer accent pill, a click goes to that page (`Pages`); it brings the theme in use into
   view when shown or filtered; each card a picture, the name and two lines, the rest in a tooltip, Edit / Make a copy /
-  Export / Delete over the picture under the pointer; "Create a new theme" and "Import…" in the title; a theme file chosen with Import… or dropped on
+  Export / Delete over the picture under the pointer; "New theme" and "Import…" (its tooltip says a file can be
+  dropped on the themes) in the title; a theme file chosen with Import… or dropped on
   the themes is shown first, `import.rs`, with its picture, author, version and how it stands with the saved ones
   (`store::compare`: the same, another version of one, new) and is only added or used when asked; the theme in use
   with its live picture, All options, save, undo and the "Quick changes" beside it, each with its ↺; the startup

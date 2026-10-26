@@ -298,8 +298,13 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
             let scroll = scroll.clone();
             move |ev, window, cx| {
                 let d = ev.delta.pixel_delta(window.line_height());
-                if d.y.abs() > d.x.abs() && slide(&scroll, d.y) {
-                    cx.stop_propagation();
+                if d.y.abs() > d.x.abs() {
+                    if slide(&scroll, d.y) {
+                        cx.stop_propagation();
+                        window.refresh();
+                    }
+                } else {
+                    // A sideways swipe moves the row itself: the dots follow.
                     window.refresh();
                 }
             }
@@ -311,13 +316,15 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
         row = row.child(theme_card(t, yours, current, current && st.edited, deleting, pic, card_w, cx));
     }
 
+    let pages = Pages::of(&scroll, card_w + TILE_GAP, col_w);
     let import = icon_button_sm("cm-import", ButtonKind::Ghost, Icon::Download, tr!("Import…"), true, {
         let entity = cx.entity().downgrade();
         move |_, _, cx| {
             entity.update(cx, |_, cx| super::import::choose(cx)).ok();
         }
-    });
-    let create = icon_button_sm("cm-theme-create", ButtonKind::Glass, Icon::Add, tr!("Create a new theme"), true, {
+    })
+    .tooltip(crate::ui::tooltip(tr!("Choose a theme file, or drop one on the themes.")));
+    let create = icon_button_sm("cm-theme-create", ButtonKind::Glass, Icon::Add, tr!("New theme"), true, {
         let entity = cx.entity().downgrade();
         move |_, window, cx| {
             entity.update(cx, |d, cx| open_create(d, window, cx)).ok();
@@ -363,7 +370,7 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
         .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Themes")))
         .child(pills)
         .child(div().flex_1())
-        .children(arrows(&scroll, card_w + TILE_GAP))
+        .children(pages.map(|p| p.arrows(&scroll)))
         .child(create)
         .child(import);
     let importing = super::import::render(d, st, col_w, window, cx);
@@ -379,12 +386,10 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
             }
         }))
         .child(bar)
-        .child(div().px(px(6.)).pb(px(10.)).child(meta_text(tr!(
-            "A theme is the whole look of console mode: its screens, covers, background and controls. Click one to use it, or drop a theme file here to import it."
-        ))))
         .children(importing)
         .children(pending.map(|id| pending_banner(st, &id, cx)))
         .child(row)
+        .children(pages.map(|p| p.dots(&scroll)))
 }
 
 /// Moves the gallery by `delta` (negative: towards its end), within its
@@ -399,30 +404,84 @@ fn slide(scroll: &ScrollHandle, delta: Pixels) -> bool {
     true
 }
 
-/// ‹ › while the gallery is wider than the page (known from the last
-/// frame); each moves it by a page of cards, the one at an end is dimmed.
-fn arrows(scroll: &ScrollHandle, card: f32) -> Option<Div> {
-    let max = scroll.max_offset().x;
-    if max <= px(0.) {
-        return None;
+/// The gallery seen as pages of the cards that fit across it, for the
+/// arrows and the dots; `None` while every card fits (known from the last
+/// frame).
+#[derive(Clone, Copy)]
+struct Pages {
+    /// Pixels of one page.
+    step: f32,
+    count: usize,
+    current: usize,
+    /// How far the row can move, px.
+    max: f32,
+    at: f32,
+}
+
+impl Pages {
+    fn of(scroll: &ScrollHandle, card: f32, view_w: f32) -> Option<Self> {
+        let max = f32::from(scroll.max_offset().x);
+        if max <= 0.5 {
+            return None;
+        }
+        let step = (((view_w + TILE_GAP) / card).floor().max(1.)) * card;
+        let at = -f32::from(scroll.offset().x);
+        let count = 1 + (max / step).ceil() as usize;
+        // The end of the row is the last page, even when it is a short one.
+        let current = if at >= max - 1. { count - 1 } else { ((at / step).round() as usize).min(count - 1) };
+        Some(Self { step, count, current, max, at })
     }
-    let x = scroll.offset().x;
-    let step = (CARDS_IN_VIEW.floor() * card).max(card);
-    let arrow = |id: &'static str, ic: Icon, delta: f32, live: bool| {
-        let scroll = scroll.clone();
-        icon_button(id, ic, 18., live).on_click(move |_, window, _| {
-            if slide(&scroll, px(delta)) {
-                window.refresh();
-            }
-        })
-    };
-    Some(
-        div()
-            .flex()
-            .gap(px(2.))
-            .child(arrow("cm-gallery-prev", Icon::ChevronLeft, step, x < px(0.)))
-            .child(arrow("cm-gallery-next", Icon::ChevronRight, -step, x > -max)),
-    )
+
+    fn go(&self, scroll: &ScrollHandle, page: usize) {
+        let x = (page as f32 * self.step).min(self.max);
+        scroll.set_offset(point(px(-x), scroll.offset().y));
+    }
+
+    /// ‹ › of the title, a page each; the one at an end is dimmed.
+    fn arrows(&self, scroll: &ScrollHandle) -> Div {
+        let arrow = |id: &'static str, ic: Icon, to: Option<usize>| {
+            let (scroll, pages) = (scroll.clone(), *self);
+            icon_button(id, ic, 18., to.is_some()).on_click(move |_, window, _| {
+                if let Some(page) = to {
+                    pages.go(&scroll, page);
+                    window.refresh();
+                }
+            })
+        };
+        let prev = (self.at > 0.5).then(|| self.current.saturating_sub(1));
+        let next = (self.at < self.max - 0.5).then(|| (self.current + 1).min(self.count - 1));
+        div().flex().gap(px(2.)).child(arrow("cm-gallery-prev", Icon::ChevronLeft, prev)).child(arrow("cm-gallery-next", Icon::ChevronRight, next))
+    }
+
+    /// A dot per page under the row, the current one a longer pill; a click
+    /// goes to that page.
+    fn dots(&self, scroll: &ScrollHandle) -> Div {
+        let mut row = div().flex().justify_center().items_center().gap(px(6.)).pt(px(8.));
+        for i in 0..self.count {
+            let on = i == self.current;
+            let (scroll, pages) = (scroll.clone(), *self);
+            row = row.child(
+                div()
+                    .id(SharedString::from(format!("cm-gallery-page-{i}")))
+                    // A bigger target than the dot itself.
+                    .p(px(4.))
+                    .cursor_pointer()
+                    .on_click(move |_, window, _| {
+                        pages.go(&scroll, i);
+                        window.refresh();
+                    })
+                    .child(
+                        div()
+                            .h(px(6.))
+                            .w(px(if on { 20. } else { 6. }))
+                            .rounded_full()
+                            .bg(if on { theme::accent().into() } else { theme::ink_a(0.22) })
+                            .when(!on, |d| d.hover(|s| s.bg(theme::ink_a(0.4)))),
+                    ),
+            );
+        }
+        row
+    }
 }
 
 /// "Your changes are not saved": shown when a theme is clicked while the

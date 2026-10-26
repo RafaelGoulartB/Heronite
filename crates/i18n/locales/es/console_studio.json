@@ -8,7 +8,6 @@
   "A file, or https://…": "Un archivo, o https://…",
   "A light background makes the whole console light. A colour left empty keeps the built-in one, which always reads.": "Un fondo claro aclara toda la consola. Un color vacío usa el predeterminado, que siempre se lee bien.",
   "Another version of “{name}” is with your themes.": "Otra versión de “{name}” ya está en tus temas.",
-  "A theme is the whole look of console mode: its screens, covers, background and controls. Click one to use it, or drop a theme file here to import it.": "Un tema es todo el aspecto del console mode: pantallas, portadas, fondo y controles. Haz clic en uno para usarlo, o suelta aquí un archivo de tema para importarlo.",
   "A theme to import": "Un tema para importar",
   "Back to how {name} has it": "Volver a como lo tiene {name}",
   "Behind the art, and the whole screen with a plain background.": "Detrás del arte, y toda la pantalla con un fondo liso.",
@@ -40,5 +39,6 @@
   "What it looks like, in a sentence": "Cómo es, en una frase",
   "You already have this theme: “{name}”.": "Ya tienes este tema: “{name}”.",
   "Your changes to “{name}” are not saved: using another theme replaces them.": "Tus cambios en “{name}” no están guardados: usar otro tema los reemplaza.",
-  "Yours ({n})": "Tuyos ({n})"
+  "Yours ({n})": "Tuyos ({n})",
+  "Choose a theme file, or drop one on the themes.": "Elige un archivo de tema, o suéltalo sobre los temas."
 }
