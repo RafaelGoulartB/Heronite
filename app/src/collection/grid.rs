@@ -20,7 +20,7 @@ const GRID_GAP_X: f32 = 16.;
 const GRID_GAP_Y: f32 = 20.;
 /// Default drawer width; narrow windows get less (see [`drawer_width`]). The
 /// user can drag it wider (`resize.rs`).
-const DRAWER_W: f32 = 460.;
+const DRAWER_W: f32 = 483.;
 /// Space around the drawer (and between it and the grid).
 pub(super) const DRAWER_INSET: f32 = 10.;
 
@@ -56,7 +56,7 @@ pub(super) fn grid_columns(width: f32, min_card: f32, gap: f32) -> (usize, f32) 
 
 /// Default width of the drawer, also its narrowest.
 pub(super) fn drawer_width(viewport_w: f32) -> f32 {
-    DRAWER_W.min((viewport_w * 0.45).max(340.))
+    DRAWER_W.min((viewport_w * 0.4725).max(357.))
 }
 
 impl CollectionView {
