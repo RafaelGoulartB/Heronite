@@ -71,6 +71,9 @@ pub struct State {
     pub(super) author: Entity<InputState>,
     pub(super) description: Entity<InputState>,
     pub(super) version: Entity<InputState>,
+    /// The saved theme whose details the fields hold (`Some("")`: a theme
+    /// not saved yet, so they start empty).
+    pub(super) details_of: Option<String>,
     /// The editor's search across every group.
     pub(super) search: Entity<InputState>,
     /// What the editor's picture shows.
@@ -122,6 +125,7 @@ impl State {
             author: new_input(window, cx, "", tr!("Author")),
             description: new_input(window, cx, "", tr!("What it looks like, in a sentence")),
             version: new_input(window, cx, "", "1.0"),
+            details_of: None,
             search,
             screen: Shown::Tab(0),
             colour_open: None,

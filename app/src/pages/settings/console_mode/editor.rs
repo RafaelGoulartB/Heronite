@@ -24,17 +24,32 @@ use crate::ui::fields::{input_box, labeled, meta_text, search_box_with};
 /// Below this width the editor is one column.
 const STUDIO_MIN_W: f32 = 1040.;
 
-/// Opens the editor on the theme in use; the details start from the saved
-/// theme it is based on (empty for a built-in one).
+/// Opens the editor on the theme in use.
 pub(super) fn open(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
-    let Some(st) = Status::of(d) else { return };
     let Some(s) = d.console_mode.as_mut() else { return };
-    let mine = st.own.is_some();
-    let own = st.own.unwrap_or_default();
     s.view = View::Editor;
     s.pending = None;
     s.theme.notice = None;
     s.screen = Shown::Tab(0);
+    s.details_of = None;
+    s.search.update(cx, |i, cx| i.set_value("", window, cx));
+    fill_details(d, window, cx);
+    cx.notify();
+}
+
+/// Puts the details of the saved theme the one in use is based on in the
+/// fields (empty for a built-in one), once per theme: also when the saved
+/// themes arrive after the editor opened, or a save gave the theme an id.
+fn fill_details(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    let Some(st) = Status::of(d) else { return };
+    let Some(s) = d.console_mode.as_mut() else { return };
+    let id = st.own.as_ref().map(|t| t.id.clone()).unwrap_or_default();
+    if s.details_of.as_deref() == Some(id.as_str()) {
+        return;
+    }
+    s.details_of = Some(id);
+    let mine = st.own.is_some();
+    let own = st.own.unwrap_or_default();
     for (input, value) in [
         (&s.name, if mine { own.name } else { String::new() }),
         (&s.author, if mine { own.author } else { String::new() }),
@@ -43,8 +58,6 @@ pub(super) fn open(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<S
     ] {
         input.update(cx, |i, cx| i.set_value(value, window, cx));
     }
-    s.search.update(cx, |i, cx| i.set_value("", window, cx));
-    cx.notify();
 }
 
 fn back_button(cx: &mut Context<SettingsPage>) -> Stateful<Div> {
@@ -108,6 +121,7 @@ fn save(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage
 }
 
 pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> Div {
+    fill_details(d, window, cx);
     let Some(st) = Status::of(d) else { return div() };
     let w = studio_width(window);
     let wide = w >= STUDIO_MIN_W;
