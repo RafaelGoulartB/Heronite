@@ -293,20 +293,22 @@ its own for scripts (the palette still opens them directly). `HERONITE_DEBUG_DIA
 `+`): `windows`, `linux`, `command`, `browser`, `shared`, `wine`, `wine-open`, `art-menu`, `address`, `no-note`,
 `script`, `picker`, `art=<cover url>[,<background url>]`.
 
-**Launch problem** (`dialogs/launch_problem/`, `crate::diagnosis`): when a game ends on its own within 30 s and the
-diagnosis knows the cause and a fix for it, the dialog opens by itself (a toast with "How to fix" while another dialog
-is open). Anything else (a crash the log does not explain, a likely cause, an anti-cheat that refuses Linux) never
-interrupts: a bad exit keeps the plain "closed right after starting" toast, with "Details" when something was found, and
-"Troubleshoot" shows every finding of the last session, however long the game ran. The first line says how the game
-ended (how the last session ended, from its log, in "Troubleshoot"); the main finding is a card (a tinted badge, red
-with a lock when nothing can be done, the headline, one or two sentences, "What the log says" with the log lines in a
-mono box, a command to copy for packages) whose first fix is the Primary button: it applies the fix and starts the game
-again, closing the dialog with a toast. A fix tried before this run is no longer Primary and says so. Other findings are
-rows under "Also found". The footer has View log, ProtonDB and Close. A running fix shows a busy bar and its last output
-lines (winetricks can be cancelled); a failed one its error. "Troubleshoot" (context menu, under View log, always there;
-palette) opens it for the last session. `HERONITE_DEBUG_DIALOG=launch-problem:<log>[@<code>]` diagnoses the selected
-game as if it had just ended with that log (`launch-problem-toast:` for the toast, `troubleshoot[:<log>]` for the
-on-demand check) and `HERONITE_DEBUG_LAUNCH_FIX=working|failed` shows a fix's progress or failure; nothing is applied.
+**Launch problem** (`dialogs/launch_problem/`, `crate::diagnosis`): when a game ends on its own within 30 s with an
+error (a non-zero exit code or a signal; an exit code 0 opens nothing) and the diagnosis knows the cause and a fix for
+it, the dialog opens by itself (a toast with "How to fix" while another dialog is open). Anything else (a crash the log
+does not explain, a likely cause, an anti-cheat that refuses Linux) never interrupts: a bad exit keeps the plain "closed
+right after starting" toast, with "Details" when something was found, and "Troubleshoot" shows every finding of the last
+session, however long the game ran. The first line says how the game ended (how the last session ended, from its log, in
+"Troubleshoot"); the main finding is a card (a tinted badge, red with a lock when nothing can be done, the headline, one
+or two sentences, "What the log says" with the log lines in a mono box, a command to copy for packages) whose first fix
+is the Primary button: it applies the fix and starts the game again, closing the dialog with a toast. A fix tried before
+this run is no longer Primary and says so. No fix is applied while the game runs (it asks to close the game first); one
+that ends after the game started says it takes effect at the next start. Other findings are rows under "Also found". The
+footer has View log, ProtonDB and Close. A running fix shows a busy bar and its last output lines (winetricks can be
+cancelled); a failed one its error. "Troubleshoot" (context menu, under View log, always there; palette) opens it for
+the last session. `HERONITE_DEBUG_DIALOG=launch-problem:<log>[@<code>]` diagnoses the selected game as if it had just
+ended with that log (`launch-problem-toast:` for the toast, `troubleshoot[:<log>]` for the on-demand check) and
+`HERONITE_DEBUG_LAUNCH_FIX=working|failed` shows a fix's progress or failure; nothing is applied.
 
 **Controls** (`ui::controls`):
 - `toggle(id, on, disabled)` 40x24 switch (spring-animated knob unless
