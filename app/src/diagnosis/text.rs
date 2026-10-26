@@ -48,7 +48,8 @@ pub fn headline(f: &Finding) -> String {
         }
         Problem::MissingDlls { dlls, .. } => tr!("{file} is missing", file = dlls.first().cloned().unwrap_or_default()),
         Problem::DotNet => tr!(".NET Framework is missing").into(),
-        Problem::Dx12WithoutVkd3d => tr!("DirectX 12 needs VKD3D-Proton").into(),
+        Problem::Dx12WithoutVkd3d if f.sure => tr!("DirectX 12 needs VKD3D-Proton").into(),
+        Problem::Dx12WithoutVkd3d => tr!("DirectX 12 may need VKD3D-Proton").into(),
         Problem::Direct3dWithoutDxvk => tr!("Direct3D failed without DXVK").into(),
         Problem::AntiCheat { names, status } => match status {
             AntiCheatStatus::Works => tr!("{anticheat} needs its runtime", anticheat = anticheats(names)),
@@ -83,8 +84,12 @@ pub fn explanation(f: &Finding, r: &Report) -> String {
             "The game runs on Microsoft .NET, and Wine Mono, Wine's own replacement, could not start it. Installing .NET Framework 4.8 takes a few minutes."
         )
         .into(),
-        Problem::Dx12WithoutVkd3d => tr!(
+        Problem::Dx12WithoutVkd3d if f.sure => tr!(
             "The game draws with DirectX 12, which plain Wine runs through VKD3D-Proton. It is off for this game; Proton has it built in."
+        )
+        .into(),
+        Problem::Dx12WithoutVkd3d => tr!(
+            "The game can draw with DirectX 12, which plain Wine runs best through VKD3D-Proton, off for this game. The log shows no DirectX 12 error, so this is only a likely cause."
         )
         .into(),
         Problem::Direct3dWithoutDxvk => {
