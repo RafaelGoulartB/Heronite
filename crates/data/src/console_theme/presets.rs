@@ -138,9 +138,70 @@ pub fn minimal() -> ConsoleTheme {
     })
 }
 
+/// An arcade cabinet: a wheel of logos over the game's art, deep purple
+/// and pink, square corners and spaced capitals.
+pub fn arcade() -> ConsoleTheme {
+    from_classic("arcade", n_!("Arcade"), n_!("A wheel of logos over the art, in neon colours, like an arcade cabinet."), |t| {
+        t.tabs = vec![TabSpec::new(n_!("Games"), Layout::Wheel, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
+        t.layouts.wheel_items = WheelItems::Logo;
+        t.hero.title = HeroTitle::Logo;
+        t.background.dim = 30;
+        t.tiles.corners = Corners::Square;
+        t.tiles.focus = FocusStyle::Glow;
+        t.interface.headings = Headings::Spaced;
+        t.interface.font = ConsoleFont::Rubik;
+        t.interface.accent = "pink".into();
+        t.colors = ColourOptions {
+            background: "#0d0221".into(),
+            panel: "#1a0b3a".into(),
+            text: "#f5f0ff".into(),
+            muted: "#b9a8e0".into(),
+            focus_text: String::new(),
+            on: "#2de2e6".into(),
+        };
+        t.controls.glyphs = Glyphs::Auto;
+    })
+}
+
+/// A dashboard of tiles first, the library and the installed games after,
+/// with the menu as a rail always on screen.
+pub fn hub() -> ConsoleTheme {
+    from_classic("hub", n_!("Hub"), n_!("A dashboard first: what you play, the week, downloads and a pick; the menu always at hand."), |t| {
+        t.tabs = vec![
+            TabSpec::new(n_!("Home"), Layout::Dashboard, "all"),
+            TabSpec::new(n_!("Library"), Layout::Grid, "all"),
+            TabSpec::new(n_!("Installed games"), Layout::Shelves, "installed"),
+        ];
+        t.background.source = BackgroundSource::Cover;
+        t.background.blur = 28;
+        t.background.dim = 40;
+        t.tiles.corners = Corners::Soft;
+        t.tiles.titles = TileTitles::Focused;
+        t.menu.style = MenuStyle::Rail;
+        t.interface.accent = "ice".into();
+        t.controls.hints = Hints::Auto;
+    })
+}
+
+/// A home in the style of a living-room console: a row of wide tiles over
+/// the art, the newest one larger, groups below.
+pub fn living_room() -> ConsoleTheme {
+    from_classic("living-room", n_!("Living room"), n_!("A row of wide tiles over the art, the newest one larger, groups below."), |t| {
+        t.tabs = vec![TabSpec::new(n_!("Home"), Layout::Xbox, "all"), TabSpec::new(n_!("Library"), Layout::Grid, "all")];
+        t.hero.title = HeroTitle::Logo;
+        t.hero.overview = false;
+        t.tiles.shape = TileShape::Landscape;
+        t.tiles.corners = Corners::Soft;
+        t.tiles.badges = Badges::All;
+        t.interface.accent = "green".into();
+        t.interface.font = ConsoleFont::System;
+        t.layouts.grid_panel = GridPanel::Right;
+    })
+}
+
 /// Every built-in theme, the default ([`minimal`]) first.
 pub fn all() -> Vec<ConsoleTheme> {
-    vec![minimal(), classic(), cinema(), pulse()]
+    vec![minimal(), classic(), cinema(), pulse(), arcade(), hub(), living_room()]
 }
 
 pub fn by_id(id: &str) -> Option<ConsoleTheme> {
