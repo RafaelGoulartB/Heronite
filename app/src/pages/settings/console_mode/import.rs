@@ -85,10 +85,15 @@ fn finish(d: &mut SettingsPage, use_it: bool, replace: bool, cx: &mut Context<Se
             match res {
                 Ok((t, list)) => {
                     let name = t.name.clone();
+                    // The theme replaced was in use and unchanged: the new version shows.
+                    let replaced_in_use = replace
+                        && d.console_mode.as_ref().is_some_and(|s| {
+                            s.theme.prefs.based_on == t.id && !theme_rows::is_edited(&s.theme.prefs, &s.theme.data.saved)
+                        });
                     if let Some(s) = d.console_mode.as_mut() {
                         s.theme.data.saved = list;
                     }
-                    if use_it {
+                    if use_it || replaced_in_use {
                         theme_rows::change(d, &Command::new("theme.use", Arg::Pick(t.id.clone())), cx);
                     }
                     if let Some(s) = d.console_mode.as_mut() {

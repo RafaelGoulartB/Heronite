@@ -234,8 +234,10 @@ pub(super) fn open_create(d: &mut SettingsPage, window: &mut Window, cx: &mut Co
     s.pending = None;
     s.start_from = (!st.edited && !st.based_on.is_empty()).then(|| st.based_on.clone());
     s.theme.notice = None;
-    s.name.update(cx, |i, cx| i.set_value("", window, cx));
-    s.author.update(cx, |i, cx| i.set_value("", window, cx));
+    s.details_of = None;
+    for input in [&s.name, &s.author, &s.description, &s.version] {
+        input.update(cx, |i, cx| i.set_value("", window, cx));
+    }
     cx.notify();
 }
 
@@ -391,6 +393,11 @@ fn theme_card(
         let id = id.clone();
         tools = tools.child(tool("edit", Icon::Edit, tr!("Edit")).on_click(cx.listener(move |d, _, window, cx| {
             cx.stop_propagation();
+            // The theme in use opens as it is, changes and all.
+            if d.console_mode.as_ref().is_some_and(|s| s.theme.prefs.based_on == id) {
+                super::editor::open(d, window, cx);
+                return;
+            }
             pick(d, &id, cx);
             if d.console_mode.as_ref().is_some_and(|s| s.pending.is_none()) {
                 super::editor::open(d, window, cx);
@@ -458,7 +465,7 @@ fn theme_card(
             )
     };
     div()
-        .id(SharedString::from(format!("cm-theme-{}", t.id)))
+        .id(SharedString::from(format!("cm-theme-card-{}", t.id)))
         .relative()
         .flex()
         .flex_col()
@@ -670,7 +677,7 @@ fn quick_changes(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Set
                 .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.)).child(control).children(reset)),
         );
         if id == "interface.accent" {
-            if let Some(p) = d.console_mode.as_ref().filter(|s| s.colour_open.as_deref() == Some(id)).and_then(|s| s.picker.clone()) {
+            if let Some(p) = super::colours::open_picker_of(d, id, window, cx) {
                 col = col.child(div().pl(px(116.)).pb(px(8.)).child(div().w(px(280.)).child(p)));
             }
         }

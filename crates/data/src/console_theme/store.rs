@@ -86,9 +86,7 @@ pub fn delete(paths: &AppPaths, id: &str) -> Result<()> {
     if p.exists() {
         std::fs::remove_file(&p).with_context(|| p.display().to_string())?;
     }
-    let in_use = super::ConsolePrefs::load(paths).theme.background.image;
-    let keep = Path::new(&in_use).file_name().map(|n| n.to_string_lossy().into_owned());
-    remove_pictures(paths, id, keep.as_deref());
+    remove_pictures(paths, id, None);
     Ok(())
 }
 
@@ -216,11 +214,10 @@ fn own_picture(paths: &AppPaths, t: &mut ConsoleTheme) -> Result<()> {
     let prefix = picture_prefix(&t.id);
     let dir = paths.console_themes_dir();
     write_picture(&dir, &prefix, t)?;
+    // The pictures it had before go, unless it still has one of them.
     let image = t.background.image.clone();
-    let keep = Path::new(&image).file_name().map(|n| n.to_string_lossy().into_owned());
-    if keep.as_deref().is_some_and(|n| n.starts_with(&prefix)) {
-        remove_pictures(paths, &t.id, keep.as_deref());
-    }
+    let keep = Path::new(&image).file_name().map(|n| n.to_string_lossy().into_owned()).filter(|n| n.starts_with(&prefix));
+    remove_pictures(paths, &t.id, keep.as_deref());
     Ok(())
 }
 
@@ -257,13 +254,17 @@ fn write_picture(dir: &Path, prefix: &str, t: &mut ConsoleTheme) -> Result<()> {
     Ok(())
 }
 
-/// Removes the pictures of theme `id` but `keep`.
+/// Removes the pictures of theme `id` but `keep` and the one the theme in
+/// use (`console.json`) shows: deleting or saving over the theme in use
+/// leaves its look on screen.
 fn remove_pictures(paths: &AppPaths, id: &str, keep: Option<&str>) {
+    let in_use = super::ConsolePrefs::load(paths).theme.background.image;
+    let in_use = Path::new(&in_use).file_name().map(|n| n.to_string_lossy().into_owned());
     let prefix = picture_prefix(id);
     let Ok(dir) = std::fs::read_dir(paths.console_themes_dir()) else { return };
     for e in dir.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
-        if name.starts_with(&prefix) && Some(name.as_str()) != keep {
+        if name.starts_with(&prefix) && Some(name.as_str()) != keep && Some(&name) != in_use.as_ref() {
             std::fs::remove_file(e.path()).ok();
         }
     }

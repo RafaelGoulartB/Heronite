@@ -349,12 +349,7 @@ pub(super) fn cards(d: &mut SettingsPage, cards: &[Card], window: &mut Window, c
             _ => {
                 let rows = card_rows(d, c);
                 let total = rows.len();
-                let rows: Vec<Row> = rows.into_iter().filter(|r| theme_rows::applies(&r.id, &theme)).collect();
-                // The focus colour's picker stands for its hex row; the picture's
-                // file matters only while the picture is the theme's own.
-                let own_picture = theme.background.source == heronite_data::console_theme::BackgroundSource::Image;
-                let rows: Vec<Row> =
-                    rows.into_iter().filter(|r| r.id.as_ref() != "interface.accent_hex" && (own_picture || r.id.as_ref() != "background.image")).collect();
+                let rows: Vec<Row> = rows.into_iter().filter(|r| shows(r, &theme)).collect();
                 hidden += total - rows.len();
                 if rows.is_empty() {
                     continue;
@@ -366,6 +361,14 @@ pub(super) fn cards(d: &mut SettingsPage, cards: &[Card], window: &mut Window, c
         col = col.child(div().flex().flex_col().gap(px(6.)).child(caption(c.title())).child(body));
     }
     (col, hidden)
+}
+
+/// Whether the desktop shows the option row `r`: options no tab uses are
+/// left out, the focus colour's picker stands for its hex row, and the
+/// picture's file matters only while the picture is the theme's own.
+pub(super) fn shows(r: &Row, theme: &heronite_data::console_theme::ConsoleTheme) -> bool {
+    let own_picture = theme.background.source == heronite_data::console_theme::BackgroundSource::Image;
+    theme_rows::applies(&r.id, theme) && r.id.as_ref() != "interface.accent_hex" && (own_picture || r.id.as_ref() != "background.image")
 }
 
 /// The window's room for the section's column (the page caps it at 880px).

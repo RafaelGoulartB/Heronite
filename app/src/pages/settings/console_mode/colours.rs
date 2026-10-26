@@ -73,10 +73,22 @@ pub(super) fn open_picker(d: &mut SettingsPage, id: &str, window: &mut Window, c
     cx.notify();
 }
 
-/// The open picker under a row, when it belongs to the row `id`.
-fn picker_under(d: &SettingsPage, id: &str, cx: &mut Context<SettingsPage>) -> Option<Div> {
+/// The open picker of the row `id`, moved to the colour the row holds now
+/// (a ↺, Undo or another theme changed it under the picker).
+pub(super) fn open_picker_of(d: &SettingsPage, id: &str, window: &mut Window, cx: &mut Context<SettingsPage>) -> Option<Entity<ColourPicker>> {
     let s = d.console_mode.as_ref()?;
     let picker = s.picker.clone().filter(|_| s.colour_open.as_deref() == Some(id))?;
+    if let Some(c) = current(&s.theme.prefs.theme, id) {
+        if picker.read(cx).colour() != c {
+            picker.update(cx, |p, cx| p.set(c, window, cx));
+        }
+    }
+    Some(picker)
+}
+
+/// The open picker under a row, when it belongs to the row `id`.
+fn picker_under(d: &SettingsPage, id: &str, window: &mut Window, cx: &mut Context<SettingsPage>) -> Option<Div> {
+    let picker = open_picker_of(d, id, window, cx)?;
     let close = button_sm(SharedString::from(format!("cm-{id}-picker-done")), ButtonKind::Glass, tr!("Done")).on_click(cx.listener(
         |d, _, _, cx| {
             if let Some(s) = d.console_mode.as_mut() {
@@ -162,11 +174,11 @@ fn dot_frame(id: impl Into<ElementId>, on: bool, size: f32) -> Stateful<Div> {
 }
 
 /// The focus colour as a row of the Interface card, with its picker under it.
-pub(super) fn accent_row(d: &mut SettingsPage, r: &Row, cx: &mut Context<SettingsPage>) -> AnyElement {
+pub(super) fn accent_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let reset = reset_button(d, "interface.accent", cx);
     let dots = accent_dots(d, r, 30., cx);
     let line = crate::ui::controls::row(r.label.clone(), None, div().flex().items_center().gap(px(6.)).children(reset).child(dots));
-    div().flex().flex_col().child(line).children(picker_under(d, "interface.accent", cx)).into_any_element()
+    div().flex().flex_col().child(line).children(picker_under(d, "interface.accent", window, cx)).into_any_element()
 }
 
 /// The Colours card: the sets, then one row per colour, then what does not read.
@@ -298,5 +310,5 @@ fn colour_row(d: &mut SettingsPage, r: &Row, theme: &ConsoleTheme, window: &mut 
     let reset = reset_button(d, &id, cx);
     let control = div().flex().items_center().gap(px(8.)).children(reset).children(builtin).child(hex).child(pick);
     let line = crate::ui::controls::row(r.label.clone(), role_note(&id), control);
-    div().flex().flex_col().child(line).children(picker_under(d, &id, cx)).into_any_element()
+    div().flex().flex_col().child(line).children(picker_under(d, &id, window, cx)).into_any_element()
 }

@@ -92,6 +92,9 @@ pub(super) fn reset_button(d: &SettingsPage, id: &str, cx: &mut Context<Settings
             .child(crate::ui::icon(Icon::Replay, px(15.), theme::text_dim()).group_hover(hover, |s| s.text_color(theme::accent())))
             .on_click(cx.listener(move |d, _, _, cx| {
                 cx.stop_propagation();
+                if let Some(s) = d.console_mode.as_mut() {
+                    s.theme.end_step();
+                }
                 theme_rows::change(d, &cmd, cx);
             })),
     )
@@ -106,7 +109,7 @@ fn theme_rows_name(p: &heronite_data::console_theme::ConsolePrefs, saved: &[hero
 /// theme it started from.
 pub(super) fn option_row(d: &mut SettingsPage, r: &Row, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     if r.id.as_ref() == "interface.accent" {
-        return super::colours::accent_row(d, r, cx);
+        return super::colours::accent_row(d, r, window, cx);
     }
     let desc = r.desc.as_deref();
     let reset = if r.enabled { reset_button(d, &r.id, cx) } else { None };

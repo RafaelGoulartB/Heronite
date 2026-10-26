@@ -321,7 +321,7 @@ fn found(d: &mut SettingsPage, query: &str, window: &mut Window, cx: &mut Contex
                 continue;
             }
             let theme = d.console_mode.as_ref().map(|s| s.theme.prefs.theme.clone()).unwrap_or_default();
-            let rows: Vec<Row> = card_rows(d, c).into_iter().filter(|r| hit(r) && theme_rows::applies(&r.id, &theme)).collect();
+            let rows: Vec<Row> = card_rows(d, c).into_iter().filter(|r| hit(r) && super::shows(r, &theme)).collect();
             if rows.is_empty() {
                 continue;
             }
