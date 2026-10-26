@@ -13,6 +13,8 @@ pub enum StoreOp {
         name: String,
         author: String,
         description: String,
+        /// Empty gives "1".
+        version: String,
     },
     /// Renames the saved theme in use (its file only: unsaved changes stay unsaved).
     Rename(String),

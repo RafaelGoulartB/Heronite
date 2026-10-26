@@ -2,32 +2,39 @@
 //! - Home (`home.rs`): the themes as cards with a picture of each, the
 //!   theme in use with a few quick changes beside its picture, and the
 //!   startup options of this PC;
-//! - the editor (`editor.rs`): every option of the theme in use, in the
-//!   groups of the console's Customize panel, under its live picture, with
-//!   its name, author, save, undo and export;
+//! - the editor (`editor.rs`, a studio in a wide window): every option of
+//!   the theme in use in the groups of the console's Customize panel, each
+//!   with a ↺ while it differs from the theme it started from, a search
+//!   across them, Undo / Redo, and beside them the live picture of the
+//!   screen being changed with the theme's name, author, description and
+//!   version;
 //! - New theme (`editor.rs`): where to start from and a name.
 //!
 //! The options are the console rows of `console::theme_rows`, drawn here as
 //! cards (`form.rs`) and on the TV as one list, so each is written once; the
-//! tabs, shelves and menu have their own editors (`editors.rs`, `thumbs.rs`)
-//! and the pictures are drawn by `preview/`.
+//! tabs, shelves and menu have their own editors (`editors.rs`, `thumbs.rs`),
+//! the colours theirs (`colours.rs`: sets, pickers, contrast), a theme file
+//! is looked at before it is imported (`import.rs`) and the pictures are
+//! drawn by `preview/`.
 //!
 //! The state exists only once the section was shown: a user who never opens
 //! it reads no `console.json` and no library for it. Every change goes
 //! through `console::themes::update`, which saves off the UI thread and
 //! updates the console on screen.
 
+mod colours;
 mod editor;
 mod editors;
 mod form;
 mod home;
+mod import;
 mod preview;
 mod thumbs;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use gpui_kit::component::input::InputState;
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::categories::Categories;
@@ -59,9 +66,21 @@ pub struct State {
     pub(super) fields: HashMap<String, form::Field>,
     /// The select whose list is open.
     pub(super) open: Option<String>,
-    /// Name and author of the theme being saved or created.
+    /// Name, author, description and version of the theme being saved or created.
     pub(super) name: Entity<InputState>,
     pub(super) author: Entity<InputState>,
+    pub(super) description: Entity<InputState>,
+    pub(super) version: Entity<InputState>,
+    /// The editor's search across every group.
+    pub(super) search: Entity<InputState>,
+    /// What the editor's picture shows.
+    pub(super) screen: Shown,
+    /// The colour whose picker is open (a row id: `colors.text`,
+    /// `interface.accent`), and the picker.
+    pub(super) colour_open: Option<String>,
+    pub(super) picker: Option<Entity<crate::ui::colour_picker::ColourPicker>>,
+    /// A theme file read and shown before it is imported.
+    pub(super) importing: Option<import::Import>,
     pub(super) view: View,
     /// A theme clicked while the one in use has changes no saved theme
     /// holds: it waits for "Switch anyway".
@@ -78,14 +97,36 @@ pub struct State {
     covers: Option<Covers>,
 }
 
+/// The screen of the theme the editor's picture shows.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Shown {
+    Tab(usize),
+    GamePage,
+    Menu,
+}
+
 impl State {
     fn new(app: &AppPaths, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
+        let search = new_input(window, cx, "", tr!("Find an option"));
+        cx.subscribe(&search, |_, _, ev: &InputEvent, cx| {
+            if matches!(ev, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
         Self {
             theme: ThemeState::new(app),
             fields: HashMap::new(),
             open: None,
             name: new_input(window, cx, "", tr!("Name of the theme")),
             author: new_input(window, cx, "", tr!("Author")),
+            description: new_input(window, cx, "", tr!("What it looks like, in a sentence")),
+            version: new_input(window, cx, "", "1.0"),
+            search,
+            screen: Shown::Tab(0),
+            colour_open: None,
+            picker: None,
+            importing: None,
             view: View::Home,
             pending: None,
             confirm_delete: None,
@@ -110,18 +151,33 @@ pub(super) fn shown(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<
             p.console_mode.as_mut().and_then(|s| s.covers.as_mut()).expect("made before any picture is drawn")
         }));
     }
-    // `HERONITE_DEBUG_CONSOLE_SETTINGS=editor[:<group>]|create|pending:<theme id>`
+    // `HERONITE_DEBUG_CONSOLE_SETTINGS=editor[:<group>]|search:<text>|colour:<row id>|create|pending:<theme id>|import:<file>`
     // opens that view (screenshots).
-    match crate::env::value("HERONITE_DEBUG_CONSOLE_SETTINGS").as_deref().map(|v| v.split_once(':').unwrap_or((v, ""))) {
-        Some(("editor", group)) => {
-            state.view = View::Editor;
-            state.group = group.parse().unwrap_or(0);
-        }
+    let debug = crate::env::value("HERONITE_DEBUG_CONSOLE_SETTINGS");
+    let debug = debug.as_deref().map(|v| v.split_once(':').unwrap_or((v, "")));
+    match debug {
         Some(("create", _)) => state.view = View::Create,
         Some(("pending", id)) => state.pending = Some(id.to_string()),
         _ => {}
     }
     d.console_mode = Some(state);
+    match debug {
+        Some(("editor" | "search" | "colour", arg)) => {
+            editor::open(d, window, cx);
+            if let Some(s) = d.console_mode.as_mut() {
+                match debug.map(|(k, _)| k) {
+                    Some("search") => s.search.update(cx, |i, cx| i.set_value(arg, window, cx)),
+                    Some("colour") => s.group = 3,
+                    _ => s.group = arg.parse().unwrap_or(0),
+                }
+            }
+            if let Some(("colour", id)) = debug {
+                colours::open_picker(d, id, window, cx);
+            }
+        }
+        Some(("import", file)) => import::read(d, PathBuf::from(file), cx),
+        _ => {}
+    }
     library_changed(d);
     theme_rows::load_saved(d, cx);
     let paths = d.ctx.data_paths.clone();
@@ -218,11 +274,34 @@ impl Host for SettingsPage {
 }
 
 /// Runs an outcome of a row (a click on the desktop, a press on the TV) and
-/// shows an error the way the other sections do.
+/// shows an error the way the other sections do. The editor's picture turns
+/// to the screen the option changes.
 pub(super) fn send(d: &mut SettingsPage, outcome: Outcome, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    if let (Outcome::Changed(id, _) | Outcome::Activate(id), Some(s)) = (&outcome, d.console_mode.as_mut()) {
+        follow(s, id);
+    }
     theme_rows::on_outcome(d, outcome, window, cx);
     sync_error(d);
     cx.notify();
+}
+
+/// Turns the editor's picture to the screen the option `id` changes.
+pub(super) fn follow(s: &mut State, id: &str) {
+    let tab = id.strip_prefix("tab.").and_then(|r| r.split('.').next()).and_then(|n| n.parse::<usize>().ok());
+    s.screen = match (tab, id) {
+        (Some(i), _) => Shown::Tab(i),
+        (_, "game_page") => Shown::GamePage,
+        (_, "menu.style" | "menu.side") => Shown::Menu,
+        _ if id.starts_with("menu.") => Shown::Menu,
+        _ if matches!(s.screen, Shown::Tab(_)) => s.screen,
+        _ => Shown::Tab(0),
+    };
+}
+
+/// The editor is on screen: it lays itself out to the window's height, with
+/// its own scrolling parts.
+pub(super) fn is_studio(d: &SettingsPage) -> bool {
+    d.console_mode.as_ref().is_some_and(|s| s.view == View::Editor)
 }
 
 fn sync_error(d: &mut SettingsPage) {
@@ -240,7 +319,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
     };
     let body = match view {
         View::Home => home::render(d, window, cx),
-        View::Editor => editor::render(d, window, cx),
+        View::Editor => return editor::render(d, window, cx).into_any_element(),
         View::Create => editor::render_create(d, window, cx),
     };
     SettingsPage::collection_section(body.into_any_element(), d.error.clone())
@@ -262,10 +341,16 @@ pub(super) fn cards(d: &mut SettingsPage, cards: &[Card], window: &mut Window, c
             ))),
             Card::Shelves => editors::shelves(d, window, cx),
             Card::Menu => editors::menu(d, cx),
+            Card::Colours => colours::card(d, window, cx),
             _ => {
                 let rows = card_rows(d, c);
                 let total = rows.len();
                 let rows: Vec<Row> = rows.into_iter().filter(|r| theme_rows::applies(&r.id, &theme)).collect();
+                // The focus colour's picker stands for its hex row; the picture's
+                // file matters only while the picture is the theme's own.
+                let own_picture = theme.background.source == heronite_data::console_theme::BackgroundSource::Image;
+                let rows: Vec<Row> =
+                    rows.into_iter().filter(|r| r.id.as_ref() != "interface.accent_hex" && (own_picture || r.id.as_ref() != "background.image")).collect();
                 hidden += total - rows.len();
                 if rows.is_empty() {
                     continue;
@@ -281,8 +366,20 @@ pub(super) fn cards(d: &mut SettingsPage, cards: &[Card], window: &mut Window, c
 
 /// The window's room for the section's column (the page caps it at 880px).
 pub(super) fn column_width(window: &Window) -> f32 {
+    room(window).clamp(480., 880.)
+}
+
+/// The editor's column is wider: the options and the picture side by side.
+pub(super) const STUDIO_MAX_W: f32 = 1720.;
+
+/// The window's room for the editor's column.
+pub(super) fn studio_width(window: &Window) -> f32 {
+    room(window).clamp(480., STUDIO_MAX_W)
+}
+
+fn room(window: &Window) -> f32 {
     // The sheet's inset (12 + 12), the section list (230) and the body's padding (36 + 36).
-    (f32::from(window.viewport_size().width) - 24. - 230. - 72.).clamp(480., 880.)
+    f32::from(window.viewport_size().width) - 24. - 230. - 72.
 }
 
 /// The options of `card`, without the lists the editors draw.

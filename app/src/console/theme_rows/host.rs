@@ -243,7 +243,7 @@ pub fn text_done<H: Host>(h: &mut H, id: &str, text: String, window: &mut Window
         "theme.save-as" => {
             let name = text.trim().to_string();
             if !name.is_empty() {
-                store_op(h, StoreOp::SaveAs { name, author: String::new(), description: String::new() }, window, cx);
+                store_op(h, StoreOp::SaveAs { name, author: String::new(), description: String::new(), version: String::new() }, window, cx);
             }
         }
         "theme.rename" => {
@@ -292,12 +292,12 @@ pub fn store_op<H: Host>(h: &mut H, op: StoreOp, window: &mut Window, cx: &mut C
     let Some(current) = h.theme_state().map(|st| st.prefs.theme.clone()) else { return };
     match op {
         StoreOp::Save => save_job(h, app, current, tr!("Saved.").into(), cx),
-        StoreOp::SaveAs { name, author, description } => {
+        StoreOp::SaveAs { name, author, description, version } => {
             let mut t = current;
             t.name = name;
             t.author = author;
             t.description = description;
-            t.version = "1".into();
+            t.version = if version.is_empty() { "1".into() } else { version };
             t.id.clear();
             save_job(h, app, t, tr!("Saved as a new theme.").into(), cx);
         }

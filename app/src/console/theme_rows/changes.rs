@@ -3,7 +3,6 @@
 //! one option back, and the ready-made colour sets.
 
 use heronite_data::appearance::{contrast, readable_on, Rgb};
-use heronite_data::console_theme::ACCENT_NAMES;
 
 use super::*;
 
@@ -238,6 +237,7 @@ pub fn make_readable(t: &mut ConsoleTheme) {
 }
 
 /// Whether `s` is a focus colour a theme can have.
+#[cfg(test)]
 pub fn is_accent(s: &str) -> bool {
-    ACCENT_NAMES.contains(&s) || parse_hex(s).is_some()
+    heronite_data::console_theme::ACCENT_NAMES.contains(&s) || parse_hex(s).is_some()
 }

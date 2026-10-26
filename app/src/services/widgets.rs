@@ -133,11 +133,19 @@ impl Covers {
         self.store.get_or_request(&id, || chain.to_vec(), pw, ph, Variant::Stage { blur_px, saturation }, 80).map(ImageSource::Render)
     }
 
-    /// An image file (a screenshot) cropped to `w`x`h`.
+    /// An image file (a screenshot) cropped to `w`x`h`; an http(s) address
+    /// (a console theme's picture) is fetched instead.
     pub fn get_file(&mut self, path: &std::path::Path, w: f32, h: f32, scale: f32) -> Option<ImageSource> {
         let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
         let id: SharedString = format!("f:{}:{pw}x{ph}", path.display()).into();
-        let chain = || vec![ImageRef::File(path.to_path_buf())];
+        let text = path.to_string_lossy();
+        let chain = || {
+            if text.starts_with("http://") || text.starts_with("https://") {
+                vec![ImageRef::Url(text.to_string())]
+            } else {
+                vec![ImageRef::File(path.to_path_buf())]
+            }
+        };
         self.store.get_or_request(&id, chain, pw, ph, Variant::Cover, 70).map(ImageSource::Render)
     }
 

@@ -5,13 +5,11 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::console_theme::{parse_hex, presets, ConsoleTheme};
+use heronite_data::console_theme::{presets, store, BackgroundSource, ConsoleTheme};
 use heronite_i18n::{tr, trn};
 
 use super::preview::{self, Art};
-use super::{card_rows, column_width, form, send, SettingsPage, View};
-use crate::console::list::{Outcome, Row, Value};
-use crate::console::look::ACCENTS;
+use super::{card_rows, column_width, form, SettingsPage, Shown, View};
 use crate::console::theme_rows::{self, Arg, Card, Command, StoreOp};
 use crate::icons::Icon;
 use crate::pages::caption_with;
@@ -22,12 +20,15 @@ use crate::ui::icon;
 
 /// The options the "Quick changes" list offers, in its order: the ones that
 /// change the look most and need no knowledge of the layouts.
-const QUICK: [&str; 8] = [
+const QUICK: [&str; 11] = [
     "interface.accent",
     "tiles.shape",
     "tiles.size",
+    "tiles.corners",
     "background.source",
     "background.dim",
+    "background.blur",
+    "interface.font",
     "controls.hints",
     "controls.glyphs",
     "interface.scale",
@@ -113,6 +114,101 @@ pub(super) fn picture(d: &mut SettingsPage, t: &ConsoleTheme, w: f32, window: &W
     preview::picture(t, w, PIC_R, &mut art)
 }
 
+/// The picture of one screen of `t`, `w` px wide.
+pub(super) fn draw(d: &mut SettingsPage, t: &ConsoleTheme, shown: Shown, w: f32, window: &Window) -> Div {
+    let scale = window.scale_factor();
+    let Some(s) = d.console_mode.as_mut() else { return div() };
+    let mut art = Art { samples: &s.samples, covers: s.covers.as_mut(), scale };
+    let screen = match shown {
+        Shown::Tab(i) => preview::Screen::Tab(i),
+        Shown::GamePage => preview::Screen::GamePage,
+        Shown::Menu => preview::Screen::Menu,
+    };
+    preview::screen(t, screen, w, PIC_R, &mut art)
+}
+
+/// A small picture of the image file (or web address) `path`.
+pub(super) fn file_thumb(d: &mut SettingsPage, path: &str, w: f32, h: f32, window: &Window) -> Div {
+    let scale = window.scale_factor();
+    let src = d
+        .console_mode
+        .as_mut()
+        .and_then(|s| s.covers.as_mut())
+        .filter(|_| !path.trim().is_empty())
+        .and_then(|c| c.get_file(std::path::Path::new(path.trim()), w, h, scale));
+    div()
+        .flex_none()
+        .w(px(w))
+        .h(px(h))
+        .rounded(px(6.))
+        .overflow_hidden()
+        .bg(theme::ink_a(0.06))
+        .border_1()
+        .border_color(theme::card_border())
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(match src {
+            Some(src) => img(src).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+            None => icon(Icon::Image, px(16.), theme::text_dim()).into_any_element(),
+        })
+}
+
+/// Saves a copy of `t` with the user's themes, named "<name> (copy)"; the
+/// theme in use does not change.
+fn duplicate(d: &mut SettingsPage, t: ConsoleTheme, cx: &mut Context<SettingsPage>) {
+    let app = d.ctx.app.clone();
+    let mut copy = t;
+    copy.name = tr!("{name} (copy)", name = shown_name(&copy));
+    copy.id.clear();
+    if presets::by_id(&copy.id).is_none() && copy.author == "Heronite" {
+        copy.author.clear();
+    }
+    cx.spawn(async move |this, cx| {
+        let res = cx.background_spawn(async move { store::save(&app, &copy).map(|t| (t, store::list(&app))) }).await;
+        this.update(cx, |d, cx| {
+            match res {
+                Ok((t, list)) => {
+                    if let Some(s) = d.console_mode.as_mut() {
+                        s.theme.data.saved = list;
+                        s.theme.notice = Some((tr!("“{name}” is with your themes.", name = t.name), false));
+                    }
+                }
+                Err(e) => d.error = Some(format!("{e:#}").into()),
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+}
+
+/// Exports `t` (any theme, in use or not) to a file the user picks.
+fn export(t: ConsoleTheme, cx: &mut Context<SettingsPage>) {
+    let name = theme_rows::export_name(&t);
+    let dir = dirs::download_dir().or_else(dirs::home_dir).unwrap_or_else(|| std::path::PathBuf::from("."));
+    let rx = cx.prompt_for_new_path(&dir, Some(&name));
+    cx.spawn(async move |this, cx| {
+        let Ok(Ok(Some(path))) = rx.await else { return };
+        let res = cx.background_spawn({
+            let path = path.clone();
+            async move { store::export(&t, &path) }
+        });
+        let res = res.await;
+        this.update(cx, |d, cx| {
+            if let Some(s) = d.console_mode.as_mut() {
+                s.theme.notice = Some(match res {
+                    Ok(()) => (tr!("Exported to {path}", path = path.display()), false),
+                    Err(e) => (format!("{e:#}"), true),
+                });
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+}
+
 /// Picks the theme `id`, or asks first when that would lose changes.
 pub(super) fn pick(d: &mut SettingsPage, id: &str, cx: &mut Context<SettingsPage>) {
     let Some(st) = Status::of(d) else { return };
@@ -149,7 +245,7 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
     div().flex().flex_col().child(themes(d, &st, col_w, window, cx)).child(in_use(d, &st, col_w, window, cx)).child(startup(d, window, cx))
 }
 
-fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx: &mut Context<SettingsPage>) -> Div {
+fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
     let cols = if col_w >= 720. { 3 } else { 2 };
     let tile_w = ((col_w - GAP * (cols - 1) as f32) / cols as f32).floor();
     let (pending, confirm) = d.console_mode.as_ref().map(|s| (s.pending.clone(), s.confirm_delete.clone())).unwrap_or_default();
@@ -167,17 +263,27 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
 
     let import = icon_button_sm("cm-import", ButtonKind::Ghost, Icon::Download, tr!("Import…"), true, {
         let entity = cx.entity().downgrade();
-        move |_, window, cx| {
-            entity.update(cx, |d, cx| theme_rows::store_op(d, StoreOp::Import, window, cx)).ok();
+        move |_, _, cx| {
+            entity.update(cx, |_, cx| super::import::choose(cx)).ok();
         }
     });
+    let importing = super::import::render(d, st, col_w, window, cx);
     div()
+        .id("cm-themes")
         .flex()
         .flex_col()
+        .rounded(px(theme::R_CARD))
+        .drag_over::<ExternalPaths>(|s, _, _, _| s.bg(theme::accent_alpha(0.06)))
+        .on_drop(cx.listener(|d, paths: &ExternalPaths, _, cx| {
+            if let Some(p) = paths.paths().iter().find(|p| p.extension().is_some_and(|x| x == "json")) {
+                super::import::read(d, p.clone(), cx);
+            }
+        }))
         .child(caption_with(tr!("Themes"), import))
         .child(div().px(px(6.)).pb(px(10.)).child(meta_text(tr!(
-            "A theme is the whole look of console mode: its screens, covers, background and controls. Click one to use it."
+            "A theme is the whole look of console mode: its screens, covers, background and controls. Click one to use it, or drop a theme file here to import it."
         ))))
+        .children(importing)
         .children(pending.map(|id| pending_banner(st, &id, cx)))
         .child(grid)
 }
@@ -230,7 +336,7 @@ fn pending_banner(st: &Status, id: &str, cx: &mut Context<SettingsPage>) -> Div 
         )
 }
 
-fn pill(text: impl Into<SharedString>, strong: bool) -> Div {
+pub(super) fn pill(text: impl Into<SharedString>, strong: bool) -> Div {
     div()
         .flex_none()
         .px(px(8.))
@@ -265,30 +371,52 @@ fn theme_card(
     } else if yours && !current {
         badges = badges.child(pill(tr!("Yours"), false));
     }
-    let delete = yours.then(|| {
-        let id = id.clone();
+    // Over the picture: what can be done with the theme besides using it.
+    let tool = |key: &str, ic: Icon, tip: &'static str| {
         div()
-            .id(SharedString::from(format!("cm-theme-{}-delete", t.id)))
-            .absolute()
-            .top(px(16.))
-            .right(px(16.))
-            .size(px(26.))
+            .id(SharedString::from(format!("cm-theme-{}-{key}", t.id)))
+            .size(px(28.))
             .flex()
             .items_center()
             .justify_center()
             .rounded_full()
             .bg(theme::black_a(0.55))
             .cursor_pointer()
-            .hover(|s| s.bg(theme::black_a(0.8)))
-            .child(icon(Icon::DeleteOutline, px(15.), theme::white_a(0.85)))
-            .on_click(cx.listener(move |d, _, _, cx| {
-                cx.stop_propagation();
-                if let Some(s) = d.console_mode.as_mut() {
-                    s.confirm_delete = Some(id.clone());
-                }
-                cx.notify();
-            }))
-    });
+            .hover(|s| s.bg(theme::black_a(0.85)))
+            .tooltip(crate::ui::tooltip(tip))
+            .child(icon(ic, px(15.), theme::white_a(0.9)))
+    };
+    let mut tools = div().absolute().top(px(14.)).right(px(14.)).flex().gap(px(6.));
+    if yours {
+        let id = id.clone();
+        tools = tools.child(tool("edit", Icon::Edit, tr!("Edit")).on_click(cx.listener(move |d, _, window, cx| {
+            cx.stop_propagation();
+            pick(d, &id, cx);
+            if d.console_mode.as_ref().is_some_and(|s| s.pending.is_none()) {
+                super::editor::open(d, window, cx);
+            }
+        })));
+    }
+    let copy = t.clone();
+    tools = tools.child(tool("copy", Icon::ContentCopy, tr!("Make a copy")).on_click(cx.listener(move |d, _, _, cx| {
+        cx.stop_propagation();
+        duplicate(d, copy.clone(), cx);
+    })));
+    let shared = t.clone();
+    tools = tools.child(tool("export", Icon::OpenInNew, tr!("Export…")).on_click(cx.listener(move |_, _, _, cx| {
+        cx.stop_propagation();
+        export(shared.clone(), cx);
+    })));
+    if yours {
+        let id = id.clone();
+        tools = tools.child(tool("delete", Icon::DeleteOutline, tr!("Delete")).on_click(cx.listener(move |d, _, _, cx| {
+            cx.stop_propagation();
+            if let Some(s) = d.console_mode.as_mut() {
+                s.confirm_delete = Some(id.clone());
+            }
+            cx.notify();
+        })));
+    }
     let footer = if deleting {
         let id = id.clone();
         div()
@@ -378,7 +506,7 @@ fn theme_card(
                 )
                 .child(footer),
         )
-        .children(delete)
+        .child(tools)
 }
 
 /// The last card of the gallery: makes a theme of one's own.
@@ -512,77 +640,51 @@ fn in_use(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
     div().flex().flex_col().child(caption(tr!("The theme in use"))).child(card_box().p(px(16.)).child(body))
 }
 
-/// The [`QUICK`] options, each with its label above its control.
+/// The [`QUICK`] options, each with its label beside its control and a ↺
+/// while it differs from the theme it started from.
 fn quick_changes(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> Div {
     let Some(s) = d.console_mode.as_ref() else { return div() };
     let all = theme_rows::all_rows(&s.theme.ctx());
-    let accent = s.theme.prefs.theme.interface.accent.clone();
     let mut col = div()
         .flex()
         .flex_col()
-        .gap(px(4.))
+        .gap(px(2.))
         .child(div().text_size(px(14.)).text_color(theme::text_primary()).font_weight(theme::W_500).child(tr!("Quick changes")))
         .child(div().pb(px(6.)).child(meta_text(tr!("The changes everyone makes. They show in console mode at once."))));
     for id in QUICK {
         let Some(r) = all.iter().find(|r| r.id.as_ref() == id) else { continue };
-        let control =
-            if id == "interface.accent" { Some(accent_dots(r, &accent, cx).into_any_element()) } else { form::control(d, r, window, cx) };
+        let control = if id == "interface.accent" {
+            Some(super::colours::accent_dots(d, r, 26., cx).into_any_element())
+        } else {
+            form::control_in(d, r, 22, window, cx)
+        };
         let Some(control) = control else { continue };
+        let reset = form::reset_button(d, id, cx);
         col = col.child(
             div()
                 .flex()
                 .items_center()
                 .gap(px(12.))
                 .min_h(px(40.))
-                .child(div().w(px(116.)).flex_none().text_size(px(13.)).text_color(theme::text_muted()).child(r.label.clone()))
-                .child(div().flex_1().min_w_0().flex().child(control)),
+                .child(div().w(px(104.)).flex_none().text_size(px(13.)).text_color(theme::text_muted()).child(r.label.clone()))
+                .child(div().flex_1().min_w_0().flex().items_center().gap(px(6.)).child(control).children(reset)),
         );
+        if id == "interface.accent" {
+            if let Some(p) = d.console_mode.as_ref().filter(|s| s.colour_open.as_deref() == Some(id)).and_then(|s| s.picker.clone()) {
+                col = col.child(div().pl(px(116.)).pb(px(8.)).child(div().w(px(280.)).child(p)));
+            }
+        }
+        // "Your own picture" asks for the picture right there.
+        let own = d.console_mode.as_ref().is_some_and(|s| s.theme.prefs.theme.background.source == BackgroundSource::Image);
+        if id == "background.source" && own {
+            if let Some(r) = all.iter().find(|r| r.id.as_ref() == "background.image") {
+                if let Some(c) = form::control(d, r, window, cx) {
+                    col = col.child(div().pl(px(116.)).pb(px(6.)).child(c));
+                }
+            }
+        }
     }
     col
-}
-
-/// The focus colours as dots; a colour of one's own shows as one more.
-fn accent_dots(r: &Row, accent: &str, cx: &mut Context<SettingsPage>) -> Div {
-    let Value::Choice { options, index } = &r.value else { return div() };
-    let custom = parse_hex(accent).map(|(r, g, b)| theme::rgb_a(r, g, b, 1.));
-    let mut row = div().flex().flex_wrap().items_center().gap(px(8.));
-    let count = ACCENTS.len() + usize::from(custom.is_some());
-    for i in 0..count {
-        let selected = i == *index;
-        let fill: Background = match ACCENTS.get(i) {
-            // The colour of the focused game: a blend stands for "any colour".
-            Some(("game", _)) => linear_gradient(135., linear_color_stop(rgb(0xf7c46c), 0.), linear_color_stop(rgb(0xb9a4fb), 1.)),
-            Some((_, c)) => rgb(*c).into(),
-            None => custom.unwrap_or(rgb(0xeef2f7)).into(),
-        };
-        let options = options.clone();
-        let name = options.get(i).cloned().unwrap_or_default();
-        row = row.child(
-            div()
-                .id(SharedString::from(format!("cm-accent-{i}")))
-                .size(px(30.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .border_2()
-                .border_color(if selected { theme::text_primary().into() } else { gpui_kit::transparent_black() })
-                .cursor_pointer()
-                .tooltip(crate::ui::tooltip(name))
-                .child(div().size(px(22.)).rounded_full().bg(fill).border_1().border_color(theme::ink_a(0.15)))
-                .when(i < ACCENTS.len(), |d| {
-                    d.on_click(cx.listener(move |d, _, window, cx| {
-                        send(
-                            d,
-                            Outcome::Changed("interface.accent".into(), Value::Choice { options: options.clone(), index: i }),
-                            window,
-                            cx,
-                        );
-                    }))
-                }),
-        );
-    }
-    row
 }
 
 fn startup(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> Div {

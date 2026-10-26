@@ -194,17 +194,39 @@ fn short_hash(bytes: &[u8]) -> String {
     format!("{:08x}", h as u32)
 }
 
+/// Writes the `data:` picture of a theme file to `dir` and points the theme
+/// at it, so the theme can be shown before it is saved (saving copies it).
+pub fn unpack_picture(dir: &Path, t: &mut ConsoleTheme) -> Result<()> {
+    if !t.background.image.trim().starts_with("data:") {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dir)?;
+    write_picture(dir, "import-", t)
+}
+
 /// Makes the picture of `t` a file of the theme folder: a `data:` URL (an
 /// imported theme) is written out and a file elsewhere copied, so it
 /// survives the original moving and goes away with the theme. A file that
 /// cannot be read keeps its path.
 fn own_picture(paths: &AppPaths, t: &mut ConsoleTheme) -> Result<()> {
+    let prefix = picture_prefix(&t.id);
+    let dir = paths.console_themes_dir();
+    write_picture(&dir, &prefix, t)?;
+    let image = t.background.image.clone();
+    let keep = Path::new(&image).file_name().map(|n| n.to_string_lossy().into_owned());
+    if keep.as_deref().is_some_and(|n| n.starts_with(&prefix)) {
+        remove_pictures(paths, &t.id, keep.as_deref());
+    }
+    Ok(())
+}
+
+/// Puts the picture of `t` in `dir` as `<prefix><hash>.<ext>` (unless it is
+/// one of those already, a web address or unreadable).
+fn write_picture(dir: &Path, prefix: &str, t: &mut ConsoleTheme) -> Result<()> {
     let image = t.background.image.trim().to_string();
     if image.is_empty() || is_url(&image) {
         return Ok(());
     }
-    let dir = paths.console_themes_dir();
-    let prefix = picture_prefix(&t.id);
     let (bytes, ext) = if let Some(data) = image.strip_prefix("data:") {
         let (head, body) = data.split_once(',').context("a picture in the theme is not readable")?;
         let mime = head.strip_suffix(";base64").context("a picture in the theme is not readable")?;
@@ -213,7 +235,7 @@ fn own_picture(paths: &AppPaths, t: &mut ConsoleTheme) -> Result<()> {
         (bytes, ext.to_string())
     } else {
         let from = PathBuf::from(&image);
-        let ours = from.parent() == Some(dir.as_path()) && from.file_name().is_some_and(|n| n.to_string_lossy().starts_with(&prefix));
+        let ours = from.parent() == Some(dir) && from.file_name().is_some_and(|n| n.to_string_lossy().starts_with(prefix));
         if ours {
             return Ok(());
         }
@@ -225,9 +247,7 @@ fn own_picture(paths: &AppPaths, t: &mut ConsoleTheme) -> Result<()> {
             }
         }
     };
-    let name = format!("{prefix}{}.{ext}", short_hash(&bytes));
-    let to = dir.join(&name);
-    remove_pictures(paths, &t.id, Some(&name));
+    let to = dir.join(format!("{prefix}{}.{ext}", short_hash(&bytes)));
     std::fs::write(&to, bytes).with_context(|| to.display().to_string())?;
     t.background.image = to.display().to_string();
     Ok(())
