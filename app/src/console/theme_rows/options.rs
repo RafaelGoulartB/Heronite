@@ -202,8 +202,12 @@ pub(super) static OPTS: &[Opt] = &[
         on: &[],
         kind: Kind::File {
             get: |p| p.theme.background.image.clone(),
+            // A picture chosen is a picture wanted: it becomes the background.
             set: |p, s| {
                 p.theme.background.image = s.trim().to_string();
+                if !p.theme.background.image.is_empty() {
+                    p.theme.background.source = BackgroundSource::Image;
+                }
                 true
             },
         },

@@ -25,13 +25,31 @@ pub struct ThemeState {
     pub notice: Option<(String, bool)>,
     /// ↑ ↓ move the focused row (after X).
     pub moving: bool,
+    /// The theme before each change, for Undo (the latest last), and the
+    /// ones undone, for Redo. Cleared when another theme is put in use.
+    pub undo: Vec<ConsoleTheme>,
+    pub redo: Vec<ConsoleTheme>,
+    /// The option changed last: more changes of the same number or colour
+    /// (a drag) make one step of Undo.
+    pub(super) last_change: Option<String>,
 }
+
+/// Steps of Undo kept.
+const UNDO_MAX: usize = 100;
 
 impl ThemeState {
     /// Reads `console.json` (once per run); the saved themes come with
     /// [`load_saved`].
     pub fn new(app: &AppPaths) -> Self {
-        Self { prefs: themes::prefs(app), data: Data::default(), notice: None, moving: false }
+        Self {
+            prefs: themes::prefs(app),
+            data: Data::default(),
+            notice: None,
+            moving: false,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            last_change: None,
+        }
     }
 
     pub fn ctx(&self) -> Ctx<'_> {
@@ -116,6 +134,7 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
             themes::prefs(&app)
         }
         _ => {
+            st.remember(cmd);
             let data = &st.data;
             themes::update(&app, |p| {
                 run(p, cmd, data);
@@ -125,6 +144,43 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
     st.notice = None;
     cx.notify();
     true
+}
+
+impl ThemeState {
+    /// Keeps the theme as it is before `cmd` changes it, for Undo.
+    fn remember(&mut self, cmd: &Command) {
+        if matches!(cmd.id.as_str(), "theme.use" | "theme.reset") {
+            self.undo.clear();
+            self.redo.clear();
+            self.last_change = None;
+            return;
+        }
+        let drag = matches!(cmd.arg, Arg::Text(_) | Arg::Value(crate::console::list::Value::Number { .. }));
+        let same = drag && self.last_change.as_deref() == Some(cmd.id.as_str());
+        self.last_change = Some(cmd.id.clone());
+        if same {
+            return;
+        }
+        self.undo.push(self.prefs.theme.clone());
+        if self.undo.len() > UNDO_MAX {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
+    }
+}
+
+/// Puts back the theme as it was before the last change (`back`), or the
+/// change undone last.
+pub fn undo<H: Host>(h: &mut H, back: bool, cx: &mut Context<H>) {
+    let app = h.app();
+    let Some(st) = h.theme_state() else { return };
+    let (from, to) = if back { (&mut st.undo, &mut st.redo) } else { (&mut st.redo, &mut st.undo) };
+    let Some(theme) = from.pop() else { return };
+    to.push(st.prefs.theme.clone());
+    st.last_change = None;
+    st.prefs = themes::update(&app, |p| p.theme = theme);
+    st.notice = None;
+    cx.notify();
 }
 
 /// What came out of a row list: a changed value or an activated row.

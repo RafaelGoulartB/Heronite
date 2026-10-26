@@ -10,11 +10,13 @@
 //! switch, a choice, a number, a text); tabs, shelves, the menu, the accent
 //! and the theme card are written out.
 
+mod changes;
 mod commands;
 mod host;
 mod labels;
 mod options;
 
+pub use changes::*;
 pub use commands::*;
 pub use host::*;
 use options::*;
