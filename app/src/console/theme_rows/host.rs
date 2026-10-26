@@ -446,19 +446,17 @@ fn import<H: Host>(h: &mut H, window: &mut Window, cx: &mut Context<H>) {
 fn import_from<H: Host>(h: &mut H, path: PathBuf, cx: &mut Context<H>) {
     let app = h.app();
     cx.spawn(async move |this, cx| {
-        let res = cx
-            .background_spawn(async move {
-                let text = std::fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
-                let mut t = ConsoleTheme::from_json(&text)?;
-                // A theme that is already saved keeps its copy: this one gets a new id.
-                if t.id.is_empty() || store::list(&app).iter().any(|s| s.id == t.id) {
-                    t.id.clear();
-                }
-                let t = store::save(&app, &t)?;
-                anyhow::Ok((t, store::list(&app)))
-            })
-            .await;
+        // A theme that is already saved keeps its copy: this one gets a new id.
+        let res = cx.background_spawn(async move { store::import(&app, &path).map(|t| (t, store::list(&app))) }).await;
         this.update(cx, |h, cx| match res {
+            // Unsaved changes on screen are never replaced: the theme waits in the list.
+            Ok((t, list)) if h.theme_state().is_some_and(|st| super::is_edited(&st.prefs, &st.data.saved)) => {
+                if let Some(st) = h.theme_state() {
+                    st.data.saved = list;
+                    st.notice = Some((tr!("“{name}” is with your themes.", name = t.name), false));
+                }
+                cx.notify();
+            }
             Ok((t, list)) => adopt(h, t, list, tr!("Imported.").into(), cx),
             Err(e) => {
                 fail(h, e, cx);
