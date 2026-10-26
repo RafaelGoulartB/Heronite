@@ -19,6 +19,7 @@ rusty-leveldb = "4"
 tempfile = "3"
 icu_collator = "2"
 unicode-normalization = "0.1"
+base64 = "0.22"
 
 [dev-dependencies]
 
