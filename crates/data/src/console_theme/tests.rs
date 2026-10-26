@@ -199,3 +199,19 @@ fn an_id_cannot_leave_the_themes_folder() {
     let dup = ConsoleTheme { shelves: vec![ShelfSpec::new("recent", true), ShelfSpec::new("recent", false)], ..ConsoleTheme::default() };
     assert_eq!(dup.normalized().shelves.len(), 1);
 }
+
+#[test]
+fn deleting_the_theme_in_use_keeps_the_picture_on_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let picture = dir.path().join("wall.png");
+    std::fs::write(&picture, b"png").unwrap();
+    let mut t = presets::classic();
+    t.name = "Wall".into();
+    t.background.source = BackgroundSource::Image;
+    t.background.image = picture.display().to_string();
+    let saved = store::save(&paths, &t).unwrap();
+    ConsolePrefs { theme: saved.clone(), based_on: saved.id.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    store::delete(&paths, &saved.id).unwrap();
+    assert!(std::path::Path::new(&saved.background.image).exists());
+}

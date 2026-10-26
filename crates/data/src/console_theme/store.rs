@@ -78,13 +78,17 @@ pub fn save(paths: &AppPaths, theme: &ConsoleTheme) -> Result<ConsoleTheme> {
     Ok(t)
 }
 
-/// Deletes the saved theme `id` and its picture.
+/// Deletes the saved theme `id` and its picture, unless the theme in use
+/// (`console.json`) still shows that picture: deleting the theme in use
+/// leaves its look on screen.
 pub fn delete(paths: &AppPaths, id: &str) -> Result<()> {
     let p = path_of(paths, id);
     if p.exists() {
         std::fs::remove_file(&p).with_context(|| p.display().to_string())?;
     }
-    remove_pictures(paths, id, None);
+    let in_use = super::ConsolePrefs::load(paths).theme.background.image;
+    let keep = Path::new(&in_use).file_name().map(|n| n.to_string_lossy().into_owned());
+    remove_pictures(paths, id, keep.as_deref());
     Ok(())
 }
 
