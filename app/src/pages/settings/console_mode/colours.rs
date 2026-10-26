@@ -31,7 +31,11 @@ fn current(theme: &ConsoleTheme, id: &str) -> Option<Rgb> {
     parse_hex(match id {
         "interface.accent" => {
             let a = theme.interface.accent.as_str();
-            return ACCENTS.iter().find(|(n, _)| *n == a).map(|(_, v)| ((v >> 16) as u8, (v >> 8) as u8, *v as u8)).or_else(|| parse_hex(a));
+            return ACCENTS
+                .iter()
+                .find(|(n, _)| *n == a)
+                .map(|(_, v)| ((v >> 16) as u8, (v >> 8) as u8, *v as u8))
+                .or_else(|| parse_hex(a));
         }
         "colors.background" => &c.background,
         "colors.panel" => &c.panel,
@@ -75,7 +79,12 @@ pub(super) fn open_picker(d: &mut SettingsPage, id: &str, window: &mut Window, c
 
 /// The open picker of the row `id`, moved to the colour the row holds now
 /// (a ↺, Undo or another theme changed it under the picker).
-pub(super) fn open_picker_of(d: &SettingsPage, id: &str, window: &mut Window, cx: &mut Context<SettingsPage>) -> Option<Entity<ColourPicker>> {
+pub(super) fn open_picker_of(
+    d: &SettingsPage,
+    id: &str,
+    window: &mut Window,
+    cx: &mut Context<SettingsPage>,
+) -> Option<Entity<ColourPicker>> {
     let s = d.console_mode.as_ref()?;
     let picker = s.picker.clone().filter(|_| s.colour_open.as_deref() == Some(id))?;
     if let Some(c) = current(&s.theme.prefs.theme, id) {
@@ -147,14 +156,11 @@ pub(super) fn accent_dots(d: &SettingsPage, r: &Row, size: f32, cx: &mut Context
         .tooltip(crate::ui::tooltip(tr!("Your own colour")))
         .child(match own {
             Some(c) => swatch(Some(c), inner),
-            None => div()
-                .size(px(inner))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .bg(theme::ink_a(0.08))
-                .child(icon(Icon::Palette, px(13.), theme::text_muted())),
+            None => div().size(px(inner)).flex().items_center().justify_center().rounded_full().bg(theme::ink_a(0.08)).child(icon(
+                Icon::Palette,
+                px(13.),
+                theme::text_muted(),
+            )),
         })
         .on_click(cx.listener(|d, _, window, cx| toggle_picker(d, "interface.accent", window, cx)));
     row.child(div().w(px(1.)).h(px(20.)).mx(px(2.)).bg(theme::ink_a(0.12))).child(custom)
@@ -234,7 +240,9 @@ pub(super) fn card(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<S
     if !problems.is_empty() {
         let (text, under, ratio) = problems[0];
         let what = match (text, under) {
-            ("text", "background") => tr!("The text is hard to read on the background ({ratio}:1; 4.5:1 reads).", ratio = format!("{ratio:.1}")),
+            ("text", "background") => {
+                tr!("The text is hard to read on the background ({ratio}:1; 4.5:1 reads).", ratio = format!("{ratio:.1}"))
+            }
             ("text", _) => tr!("The text is hard to read on the panels ({ratio}:1; 4.5:1 reads).", ratio = format!("{ratio:.1}")),
             (_, "background") => {
                 tr!("The secondary text is hard to read on the background ({ratio}:1; 4.5:1 reads).", ratio = format!("{ratio:.1}"))

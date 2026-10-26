@@ -166,21 +166,26 @@ pub fn arcade() -> ConsoleTheme {
 /// A dashboard of tiles first, the library and the installed games after,
 /// with the menu as a rail always on screen.
 pub fn hub() -> ConsoleTheme {
-    from_classic("hub", n_!("Hub"), n_!("A dashboard first: what you play, the week, downloads and a pick; the menu always at hand."), |t| {
-        t.tabs = vec![
-            TabSpec::new(n_!("Home"), Layout::Dashboard, "all"),
-            TabSpec::new(n_!("Library"), Layout::Grid, "all"),
-            TabSpec::new(n_!("Installed games"), Layout::Shelves, "installed"),
-        ];
-        t.background.source = BackgroundSource::Cover;
-        t.background.blur = 28;
-        t.background.dim = 40;
-        t.tiles.corners = Corners::Soft;
-        t.tiles.titles = TileTitles::Focused;
-        t.menu.style = MenuStyle::Rail;
-        t.interface.accent = "ice".into();
-        t.controls.hints = Hints::Auto;
-    })
+    from_classic(
+        "hub",
+        n_!("Hub"),
+        n_!("A dashboard first: what you play, the week, downloads and a pick; the menu always at hand."),
+        |t| {
+            t.tabs = vec![
+                TabSpec::new(n_!("Home"), Layout::Dashboard, "all"),
+                TabSpec::new(n_!("Library"), Layout::Grid, "all"),
+                TabSpec::new(n_!("Installed games"), Layout::Shelves, "installed"),
+            ];
+            t.background.source = BackgroundSource::Cover;
+            t.background.blur = 28;
+            t.background.dim = 40;
+            t.tiles.corners = Corners::Soft;
+            t.tiles.titles = TileTitles::Focused;
+            t.menu.style = MenuStyle::Rail;
+            t.interface.accent = "ice".into();
+            t.controls.hints = Hints::Auto;
+        },
+    )
 }
 
 /// A home in the style of a living-room console: a row of wide tiles over

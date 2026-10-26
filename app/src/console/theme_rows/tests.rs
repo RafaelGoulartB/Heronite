@@ -289,7 +289,15 @@ fn shifting_stops_at_the_ends() {
 
 #[test]
 fn extra_pads_move_and_remove() {
-    let mut st = ThemeState { prefs: ConsolePrefs::default(), data: data(), notice: None, moving: false, undo: Vec::new(), redo: Vec::new(), last_change: None };
+    let mut st = ThemeState {
+        prefs: ConsolePrefs::default(),
+        data: data(),
+        notice: None,
+        moving: false,
+        undo: Vec::new(),
+        redo: Vec::new(),
+        last_change: None,
+    };
     assert!(matches!(extra_pad(&mut st, Pad::X, Some("nav.wrap")), Extra::Pass));
     assert!(matches!(extra_pad(&mut st, Pad::X, Some("shelf.2")), Extra::Handled));
     assert!(st.moving);

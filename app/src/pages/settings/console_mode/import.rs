@@ -11,7 +11,7 @@ use gpui_kit::*;
 use heronite_data::console_theme::{store, ConsoleTheme};
 use heronite_i18n::tr;
 
-use super::home::{picture, pick, tabs_line, Status, PIC_R};
+use super::home::{pick, picture, tabs_line, Status, PIC_R};
 use super::{SettingsPage, View};
 use crate::console::theme_rows::{self, Arg, Command};
 use crate::icons::Icon;
@@ -87,9 +87,9 @@ fn finish(d: &mut SettingsPage, use_it: bool, replace: bool, cx: &mut Context<Se
                     let name = t.name.clone();
                     // The theme replaced was in use and unchanged: the new version shows.
                     let replaced_in_use = replace
-                        && d.console_mode.as_ref().is_some_and(|s| {
-                            s.theme.prefs.based_on == t.id && !theme_rows::is_edited(&s.theme.prefs, &s.theme.data.saved)
-                        });
+                        && d.console_mode
+                            .as_ref()
+                            .is_some_and(|s| s.theme.prefs.based_on == t.id && !theme_rows::is_edited(&s.theme.prefs, &s.theme.data.saved));
                     if let Some(s) = d.console_mode.as_mut() {
                         s.theme.data.saved = list;
                     }
@@ -129,12 +129,10 @@ pub(super) fn render(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut
             let id = id.clone();
             (
                 tr!("You already have this theme: “{name}”.", name = saved_name(&id)),
-                vec![
-                    button_sm("cm-import-use-saved", ButtonKind::Primary, tr!("Use it")).on_click(cx.listener(move |d, _, _, cx| {
-                        cancel(d, cx);
-                        pick(d, &id, cx);
-                    })),
-                ],
+                vec![button_sm("cm-import-use-saved", ButtonKind::Primary, tr!("Use it")).on_click(cx.listener(move |d, _, _, cx| {
+                    cancel(d, cx);
+                    pick(d, &id, cx);
+                }))],
             )
         }
         store::Match::SameId(id) => (
@@ -142,14 +140,17 @@ pub(super) fn render(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut
             vec![
                 button_sm("cm-import-replace", ButtonKind::Primary, tr!("Replace mine"))
                     .on_click(cx.listener(|d, _, _, cx| finish(d, false, true, cx))),
-                button_sm("cm-import-both", ButtonKind::Glass, tr!("Keep both")).on_click(cx.listener(|d, _, _, cx| finish(d, false, false, cx))),
+                button_sm("cm-import-both", ButtonKind::Glass, tr!("Keep both"))
+                    .on_click(cx.listener(|d, _, _, cx| finish(d, false, false, cx))),
             ],
         ),
         store::Match::New => (
             String::new(),
             vec![
-                button_sm("cm-import-use", ButtonKind::Primary, tr!("Add and use it")).on_click(cx.listener(|d, _, _, cx| finish(d, true, false, cx))),
-                button_sm("cm-import-add", ButtonKind::Glass, tr!("Only add it")).on_click(cx.listener(|d, _, _, cx| finish(d, false, false, cx))),
+                button_sm("cm-import-use", ButtonKind::Primary, tr!("Add and use it"))
+                    .on_click(cx.listener(|d, _, _, cx| finish(d, true, false, cx))),
+                button_sm("cm-import-add", ButtonKind::Glass, tr!("Only add it"))
+                    .on_click(cx.listener(|d, _, _, cx| finish(d, false, false, cx))),
             ],
         ),
     };
@@ -159,37 +160,41 @@ pub(super) fn render(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut
     let version = (!t.version.trim().is_empty()).then(|| tr!("version {version}", version = t.version.clone()));
     let meta = [by, version, Some(tabs_line(&t))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
 
-    let info = div()
-        .flex()
-        .flex_col()
-        .gap(px(8.))
-        .flex_1()
-        .min_w_0()
-        .child(div().flex().items_center().gap(px(8.)).child(icon(Icon::Download, px(16.), theme::accent())).child(meta_text(tr!("A theme to import"))))
-        .child(
-            div()
-                .font_family(theme::font_heading())
-                .font_weight(theme::W_BOLD)
-                .text_size(px(19.))
-                .text_color(theme::text_primary())
-                .truncate()
-                .child(t.name.clone()),
-        )
-        .child(meta_text(meta))
-        .when(!t.description.trim().is_empty(), |d| {
-            d.child(div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(t.description.clone()))
-        })
-        .when(!note.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::text_primary()).child(note)))
-        .children(warn)
-        .child(
-            div()
-                .flex()
-                .flex_wrap()
-                .gap(px(8.))
-                .pt(px(4.))
-                .children(buttons)
-                .child(button_sm("cm-import-cancel", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|d, _, _, cx| cancel(d, cx)))),
-        );
+    let info =
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(8.))
+            .flex_1()
+            .min_w_0()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(icon(Icon::Download, px(16.), theme::accent()))
+                    .child(meta_text(tr!("A theme to import"))),
+            )
+            .child(
+                div()
+                    .font_family(theme::font_heading())
+                    .font_weight(theme::W_BOLD)
+                    .text_size(px(19.))
+                    .text_color(theme::text_primary())
+                    .truncate()
+                    .child(t.name.clone()),
+            )
+            .child(meta_text(meta))
+            .when(!t.description.trim().is_empty(), |d| {
+                d.child(div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(t.description.clone()))
+            })
+            .when(!note.is_empty(), |d| d.child(div().text_size(px(13.)).text_color(theme::text_primary()).child(note)))
+            .children(warn)
+            .child(
+                div().flex().flex_wrap().gap(px(8.)).pt(px(4.)).children(buttons).child(
+                    button_sm("cm-import-cancel", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|d, _, _, cx| cancel(d, cx))),
+                ),
+            );
     let pic = div().flex_none().rounded(px(PIC_R)).child(pic);
     let body = if wide {
         div().flex().items_start().gap(px(20.)).child(pic).child(info)

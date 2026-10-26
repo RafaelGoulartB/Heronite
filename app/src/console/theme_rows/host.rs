@@ -256,7 +256,12 @@ pub fn text_done<H: Host>(h: &mut H, id: &str, text: String, window: &mut Window
         "theme.save-as" => {
             let name = text.trim().to_string();
             if !name.is_empty() {
-                store_op(h, StoreOp::SaveAs { name, author: String::new(), description: String::new(), version: String::new() }, window, cx);
+                store_op(
+                    h,
+                    StoreOp::SaveAs { name, author: String::new(), description: String::new(), version: String::new() },
+                    window,
+                    cx,
+                );
             }
         }
         "theme.rename" => {

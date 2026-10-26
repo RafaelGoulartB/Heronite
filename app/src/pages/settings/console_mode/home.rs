@@ -375,7 +375,9 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
             entity.update(cx, |d, cx| open_create(d, window, cx)).ok();
         }
     })
-    .tooltip(crate::ui::tooltip(tr!("Start from any theme and change everything: tabs, layouts, covers, background, colours and controls.")));
+    .tooltip(crate::ui::tooltip(tr!(
+        "Start from any theme and change everything: tabs, layouts, covers, background, colours and controls."
+    )));
 
     let mut filters = vec![(Gallery::All, tr!("All").to_string()), (Gallery::BuiltIn, tr!("Built-in").to_string())];
     if yours_n > 0 {
@@ -509,7 +511,11 @@ impl Pages {
         };
         let prev = (target > 0.5).then(|| page.saturating_sub(1));
         let next = (target < self.max - 0.5).then(|| (page + 1).min(self.count - 1));
-        div().flex().gap(px(2.)).child(arrow("cm-gallery-prev", Icon::ChevronLeft, prev)).child(arrow("cm-gallery-next", Icon::ChevronRight, next))
+        div().flex().gap(px(2.)).child(arrow("cm-gallery-prev", Icon::ChevronLeft, prev)).child(arrow(
+            "cm-gallery-next",
+            Icon::ChevronRight,
+            next,
+        ))
     }
 
     /// A dot per page under the row; the one of the page in view is a longer
@@ -711,7 +717,8 @@ fn theme_card(
             .into_any_element()
     } else {
         // Two lines; the whole description, the screens and the author in the tooltip.
-        let tip = [Some(about.clone()), Some(tabs_line(&t)), by].into_iter().flatten().filter(|x| !x.is_empty()).collect::<Vec<_>>().join("\n");
+        let tip =
+            [Some(about.clone()), Some(tabs_line(&t)), by].into_iter().flatten().filter(|x| !x.is_empty()).collect::<Vec<_>>().join("\n");
         div()
             .id(SharedString::from(format!("cm-theme-{}-about", t.id)))
             .text_size(px(11.5))

@@ -10,9 +10,9 @@ use heronite_i18n::tr;
 
 use super::{send, SettingsPage};
 use crate::console::list::{Outcome, Row, Value};
-use crate::theme;
 use crate::console::theme_rows;
 use crate::icons::Icon;
+use crate::theme;
 use crate::ui::controls::{button_sm, row, segmented, toggle, ButtonKind};
 use crate::ui::fields::{input_box, new_input, on_commit, select_field};
 
@@ -234,8 +234,9 @@ fn picture_control(d: &mut SettingsPage, current: &str, window: &mut Window, cx:
         });
     }));
     let remove = (!current.is_empty()).then(|| {
-        button_sm("cm-bg-remove", ButtonKind::Ghost, tr!("Remove"))
-            .on_click(cx.listener(|d, _, window, cx| crate::console::theme_rows::text_done(d, "background.image", String::new(), window, cx)))
+        button_sm("cm-bg-remove", ButtonKind::Ghost, tr!("Remove")).on_click(
+            cx.listener(|d, _, window, cx| crate::console::theme_rows::text_done(d, "background.image", String::new(), window, cx)),
+        )
     });
     let thumb = super::home::file_thumb(d, current, 64., 36., window);
     div().flex().items_center().gap(px(8.)).child(thumb).child(input).child(browse).children(remove)

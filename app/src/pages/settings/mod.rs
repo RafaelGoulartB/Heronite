@@ -512,7 +512,17 @@ impl Render for SettingsPage {
         };
         let column = div().flex().flex_col().w_full().max_w(max_w).mx_auto().gap(px(14.)).child(title).child(body);
         let content = if studio {
-            div().id("page-settings").flex_1().min_w_0().h_full().flex().flex_col().px(px(36.)).pt(px(26.)).pb(px(18.)).child(column.flex_1().min_h_0())
+            div()
+                .id("page-settings")
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .flex()
+                .flex_col()
+                .px(px(36.))
+                .pt(px(26.))
+                .pb(px(18.))
+                .child(column.flex_1().min_h_0())
         } else {
             div().id("page-settings").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(36.)).pt(px(26.)).pb(px(32.)).child(column)
         };

@@ -80,7 +80,17 @@ pub struct ColourSet {
 
 /// The colour sets the editor offers, the built-in colours first.
 pub const COLOUR_SETS: [ColourSet; 9] = [
-    ColourSet { id: "built-in", name: n_!("Built-in"), background: "", panel: "", text: "", muted: "", accent: "white", focus_text: "", on: "" },
+    ColourSet {
+        id: "built-in",
+        name: n_!("Built-in"),
+        background: "",
+        panel: "",
+        text: "",
+        muted: "",
+        accent: "white",
+        focus_text: "",
+        on: "",
+    },
     ColourSet {
         id: "midnight",
         name: n_!("Midnight"),

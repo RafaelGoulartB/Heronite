@@ -139,9 +139,10 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
             .child(details_card(d, &st, cx))
             .children(error)
             .child(options(d, window, cx));
-        return div().flex_1().min_h_0().child(
-            div().id("cm-studio").size_full().overflow_y_scroll().child(div().max_w(px(880.)).mx_auto().pb(px(24.)).child(body)),
-        );
+        return div()
+            .flex_1()
+            .min_h_0()
+            .child(div().id("cm-studio").size_full().overflow_y_scroll().child(div().max_w(px(880.)).mx_auto().pb(px(24.)).child(body)));
     }
     let side_w = (w * 0.42).clamp(420., 640.);
     let left = div()
@@ -151,21 +152,15 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
         .h_full()
         .overflow_y_scroll()
         .child(div().pr(px(10.)).pb(px(24.)).flex().flex_col().gap(px(14.)).children(error).child(options(d, window, cx)));
-    let right = div()
-        .id("cm-studio-side")
-        .flex_none()
-        .w(px(side_w))
-        .h_full()
-        .overflow_y_scroll()
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(14.))
-                .pb(px(24.))
-                .child(preview_card(d, &st, side_w - 34., window, cx))
-                .child(details_card(d, &st, cx)),
-        );
+    let right = div().id("cm-studio-side").flex_none().w(px(side_w)).h_full().overflow_y_scroll().child(
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(14.))
+            .pb(px(24.))
+            .child(preview_card(d, &st, side_w - 34., window, cx))
+            .child(details_card(d, &st, cx)),
+    );
     div()
         .flex_1()
         .min_h_0()
@@ -178,11 +173,8 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
 
 /// Back, the theme's name and state, Undo / Redo, Undo changes, Export, Save.
 fn header(d: &mut SettingsPage, st: &Status, cx: &mut Context<SettingsPage>) -> Div {
-    let (can_undo, can_redo, notice) = d
-        .console_mode
-        .as_ref()
-        .map(|s| (!s.theme.undo.is_empty(), !s.theme.redo.is_empty(), s.theme.notice.clone()))
-        .unwrap_or_default();
+    let (can_undo, can_redo, notice) =
+        d.console_mode.as_ref().map(|s| (!s.theme.undo.is_empty(), !s.theme.redo.is_empty(), s.theme.notice.clone())).unwrap_or_default();
     let status = match (&st.own, st.edited, &st.base_name) {
         (Some(_), false, _) => tr!("Saved on this PC.").to_string(),
         (Some(_), true, _) => tr!("Changed since it was saved.").to_string(),
@@ -273,7 +265,10 @@ fn options(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsP
             cx.notify();
         }))
     });
-    let search = div().w(px(220.)).flex_none().child(search_box_with(&search, clear.map_or_else(|| div().into_any_element(), |c| c.into_any_element())));
+    let search = div()
+        .w(px(220.))
+        .flex_none()
+        .child(search_box_with(&search, clear.map_or_else(|| div().into_any_element(), |c| c.into_any_element())));
     let top = div().flex().flex_wrap().items_center().gap(px(10.)).child(div().flex_1().min_w_0().child(bar)).child(search);
 
     let body = if query.is_empty() {
@@ -370,12 +365,7 @@ fn preview_card(d: &mut SettingsPage, st: &Status, pic_w: f32, window: &mut Wind
                 })),
         );
     }
-    card_box()
-        .p(px(16.))
-        .gap(px(10.))
-        .child(pic)
-        .child(chips)
-        .child(meta_text(tr!("Every change shows here and in console mode at once.")))
+    card_box().p(px(16.)).gap(px(10.)).child(pic).child(chips).child(meta_text(tr!("Every change shows here and in console mode at once.")))
 }
 
 /// Name, author, description and version: what others see of a shared theme.
@@ -400,14 +390,9 @@ fn details_card(d: &mut SettingsPage, st: &Status, cx: &mut Context<SettingsPage
                 .child(div().w(px(110.)).flex_none().child(labeled(tr!("Version"), input_box(&version, false)))),
         )
         .child(labeled(tr!("Description"), input_box(&description, false)))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(10.))
-                .child(div().flex_1().child(meta_text(note)))
-                .child(button_sm("cm-details-save", ButtonKind::Glass, tr!("Save")).on_click(cx.listener(|d, _, window, cx| save(d, window, cx)))),
-        )
+        .child(div().flex().items_center().gap(px(10.)).child(div().flex_1().child(meta_text(note))).child(
+            button_sm("cm-details-save", ButtonKind::Glass, tr!("Save")).on_click(cx.listener(|d, _, window, cx| save(d, window, cx))),
+        ))
 }
 
 /// A theme New theme can start from: `None` is the theme in use, changes and all.
