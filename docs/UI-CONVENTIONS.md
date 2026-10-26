@@ -488,10 +488,13 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   "Quick changes" beside it; the startup options), the editor (name, author, save, undo, export under the live
   picture, then the Customize panel's groups as tabs; options no tab uses are hidden and counted) and New theme
   (start from a theme or the one in use, a name). Clicking a theme while the one in use has changes asks first. The
-  pictures (`preview/`) draw a theme's first tab's layout, covers, background, tab bar, clock, hint bar, colours and
+  pictures (`preview/`) draw a screen of a theme (`Screen`: a tab, the game page in its style, or the open ☰ menu;
+  the rail's column and inset included): the layout, covers (shape, size, corners, focus, badges, greys, store strip,
+  names where the layout shows them), background, tab bar, clock, hint bar, colours and
   font on a 640 x 360 canvas with the covers and art of the games played last (the library Storage gets from the
   Collection; tinted blocks without it); their textures are freed when the section leaves the screen.
-  `HERONITE_DEBUG_CONSOLE_SETTINGS=editor[:<group>]|create|pending:<theme id>` opens a view. A new option = a field in
+  `HERONITE_DEBUG_CONSOLE_SETTINGS=editor[:<group>]|create|pending:<theme id>` opens a view. `HERONITE_DEBUG_CONSOLE_SCREEN=tab:<n>|game|menu`
+  makes the pictures draw that screen. A new option = a field in
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
   no "HERONITE" wordmark in console screens (the theme's `interface.label` may add a text of its own).

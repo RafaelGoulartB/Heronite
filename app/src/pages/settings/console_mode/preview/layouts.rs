@@ -1,21 +1,24 @@
-//! The content of a picture, by the first tab's layout. Positions are in
+//! The content of a picture, by the layout of its tab. Positions are in
 //! canvas units (640 x 360); the console's own screens are the model
 //! (`collection/console/layouts/`), drawn small and simplified.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{
-    FactStyle, GridPanel, Headings, HeroAlign, HeroTitle, Layout, Size3, SpotActions, TileShape, TileTitles, WheelItems,
+    FactStyle, GridPanel, Headings, HeroAlign, HeroTitle, Layout, Size3, SpotActions, TileShape, TileSize, TileTitles, WheelItems,
 };
 use heronite_i18n::tr;
 
-use super::{Pic, CANVAS_H, CANVAS_W};
+use super::tile::Dress;
+use super::{Pic, CANVAS_H};
+use crate::console::kit::spaced_caps;
 use crate::console::theme_rows;
-use crate::theme::W_BOLD;
+use crate::icons::Icon;
+use crate::theme::{W_BOLD, W_REGULAR};
 
-/// The first tab's layout drawn over the background.
+/// The layout of the tab shown, drawn over the background.
 pub(super) fn content(p: &mut Pic) -> Div {
-    let layout = p.t.tabs.first().map(|t| t.layout).unwrap_or_default();
+    let layout = p.t.tabs.get(p.tab).map(|t| t.layout).unwrap_or_default();
     let layer = div().absolute().inset_0();
     match layout {
         Layout::Shelves => shelves(p, layer),
@@ -31,12 +34,12 @@ pub(super) fn content(p: &mut Pic) -> Div {
 
 impl Pic<'_, '_> {
     /// `child` placed at `x`, `y`.
-    fn at(&self, x: f32, y: f32, child: impl IntoElement) -> Div {
+    pub(super) fn at(&self, x: f32, y: f32, child: impl IntoElement) -> Div {
         div().absolute().left(self.u(x)).top(self.u(y)).child(child)
     }
 
     /// The focused game's facts: a line of text bars or chips, as the theme says.
-    fn facts(&self) -> Div {
+    pub(super) fn facts(&self) -> Div {
         let mut row = div().flex().items_center().gap(self.u(5.));
         match self.t.hero.fact_style {
             FactStyle::Line => {
@@ -65,15 +68,16 @@ impl Pic<'_, '_> {
     }
 
     /// The focused game's name (or its logo, drawn as a heavier name),
-    /// facts and description, as the hero options say.
-    fn hero(&self, w: f32, big: f32) -> Div {
+    /// facts and, where the layout shows it, the description, as the hero
+    /// options say.
+    fn hero(&self, w: f32, big: f32, overview: bool) -> Div {
         let h = &self.t.hero;
         let size = if h.title == HeroTitle::Logo { big * 1.3 } else { big };
         let mut col = div().flex().flex_col().gap(self.u(6.)).child(self.game_name(0, size, w));
         if h.facts {
             col = col.child(self.facts());
         }
-        if h.overview {
+        if h.overview && overview {
             col =
                 col.child(div().flex().flex_col().gap(self.u(3.)).child(self.line(w * 0.9, 3.5, 0.4)).child(self.line(w * 0.7, 3.5, 0.4)));
         }
@@ -84,8 +88,31 @@ impl Pic<'_, '_> {
     fn shelf_heading(&self, n: usize) -> Div {
         let spec = self.t.shelves.iter().filter(|s| s.on).nth(n);
         let name = spec.map(|s| theme_rows::shelf_title(s, |k| k.to_string())).unwrap_or_default();
-        let name = if self.t.interface.headings == Headings::Spaced { name.to_uppercase() } else { name };
-        self.label(name, 8.5, self.text).font_weight(W_BOLD)
+        // Spaced capitals are lighter and a little smaller, as in the console.
+        if self.t.interface.headings == Headings::Spaced {
+            self.label(spaced_caps(&name), 8.5 * 0.95, self.text).font_weight(W_REGULAR)
+        } else {
+            self.label(name, 8.5, self.text).font_weight(W_BOLD)
+        }
+    }
+
+    /// The stats panel at the right edge: time played, last played, size,
+    /// score and genre as an icon and a line each.
+    fn stats(&self) -> Div {
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .gap(self.u(6.))
+            .px(self.u(8.))
+            .py(self.u(7.))
+            .rounded_l(self.u(7.))
+            .bg(Rgba { a: 0.72, ..self.sidebar });
+        for (ic, w) in [(Icon::AccessTime, 24.), (Icon::History, 30.), (Icon::Star, 12.), (Icon::Label, 26.)] {
+            col = col.child(
+                div().flex().items_center().gap(self.u(5.)).child(crate::ui::icon(ic, self.u(7.), self.muted)).child(self.line(w, 4., 0.7)),
+            );
+        }
+        col
     }
 }
 
@@ -98,14 +125,10 @@ fn shelves(p: &mut Pic, layer: Div) -> Div {
             Size3::Large => 132.,
         };
     let h = 74. * p.size();
-    let hero = p.hero(250., 18.);
-    let stats = p.t.hero.stats.then(|| {
-        let mut col = div().flex().flex_col().items_end().gap(p.u(6.));
-        for w in [30., 38., 26.] {
-            col = col.child(p.line(w, 5., 0.7));
-        }
-        p.at(CANVAS_W - 70., top + 8., col)
-    });
+    // The names under the covers take room of their own.
+    let names = if matches!(p.t.tiles.titles, TileTitles::Always | TileTitles::Focused) { 11. } else { 0. };
+    let hero = p.hero(250., 18., true);
+    let stats = p.t.hero.stats.then(|| div().absolute().right_0().top(p.u(top + 8.)).child(p.stats()));
     let first = p.tile_row(0, h, 8., 9, true);
     let second = p.tile_row(4, h, 8., 9, false);
     let dim = if p.t.dim_others { 0.45 } else { 1. };
@@ -115,33 +138,57 @@ fn shelves(p: &mut Pic, layer: Div) -> Div {
         .child(p.at(26., top, hero))
         .children(stats)
         .child(p.at(26., shelf_y, div().flex().flex_col().gap(p.u(6.)).child(p.shelf_heading(0)).child(first)))
-        .child(p.at(26., shelf_y + h + 32., div().flex().flex_col().gap(p.u(6.)).opacity(dim).child(p.shelf_heading(1)).child(second)))
+        .child(p.at(
+            26.,
+            shelf_y + h + 32. + names,
+            div().flex().flex_col().gap(p.u(6.)).opacity(dim).child(p.shelf_heading(1)).child(second),
+        ))
 }
 
 fn cinema(p: &mut Pic, layer: Div) -> Div {
     let h = 82. * p.size();
     let row_y = p.bottom() - h - if p.t.tiles.titles == TileTitles::Always { 22. } else { 10. };
     let centred = p.t.hero.align == HeroAlign::Center;
-    let hero = p.hero(300., 22.);
+    // The real Cinema never shows the description; its stats panel sits at
+    // the right edge, centred in the room above the covers.
+    let hero = p.hero(300., 22., false);
+    let stats = p.t.hero.stats.then(|| {
+        let (from, to) = (p.top(), row_y - 22.);
+        div().absolute().right_0().top(p.u(from)).h(p.u(to - from)).flex().items_center().child(p.stats())
+    });
     let hero = if centred {
         div().absolute().left_0().right_0().top(p.u(p.top() + 24.)).flex().justify_center().child(hero.items_center())
     } else {
         p.at(26., p.top() + 30., hero)
     };
     let row = p.tile_row(0, h, 10., 8, true);
-    layer.child(p.scrim_left(0.55)).child(p.scrim_bottom(0.65)).child(hero).child(p.at(26., row_y, row))
+    let heading = p.at(26., row_y - 16., p.shelf_heading(0));
+    layer.child(p.scrim_left(0.55)).child(p.scrim_bottom(0.65)).child(hero).children(stats).child(heading).child(p.at(26., row_y, row))
 }
 
 fn spotlight(p: &mut Pic, layer: Div) -> Div {
     let top = p.top() + 4.;
-    let big = 54. * p.s;
-    let small = 38. * p.s;
-    let shape = Some(if p.t.tiles.shape == TileShape::Portrait { TileShape::Square } else { p.t.tiles.shape });
+    // The icons keep the cover's shape: a portrait one is taller than a
+    // square one, a wide one shorter; the size choice scales them.
+    let (shape, k) = match p.t.tiles.shape {
+        TileShape::Portrait => (TileShape::Portrait, 1.2),
+        TileShape::Landscape => (TileShape::Landscape, 0.9),
+        TileShape::Square => (TileShape::Square, 1.),
+    };
+    let size = match p.t.tiles.size {
+        TileSize::Small => 0.85,
+        TileSize::Medium => 1.,
+        TileSize::Large => 1.2,
+        TileSize::Huge => 1.4,
+    };
+    let k = k * size * p.s;
+    let (big, small) = ((54. * k).min(100.), (38. * k).min(70.));
+    let shape = Some(shape);
     let mut icons = div().flex().items_center().gap(p.u(9.));
-    icons = icons.child(p.tile(0, big, shape, true));
+    icons = icons.child(p.tile_as(Dress::SPOT, 0, big, shape, true));
     icons = icons.child(div().w(p.u(96.)).child(p.game_name(0, 10., 96.)));
     for i in 1..8 {
-        icons = icons.child(p.tile(i, small, shape, false));
+        icons = icons.child(p.tile_as(Dress::SPOT, i, small, shape, false));
     }
     let mut buttons = div().flex().items_center().gap(p.u(7.)).child(
         div()
@@ -197,19 +244,19 @@ fn carousel(p: &mut Pic, layer: Div) -> Div {
             }
             let f = [1., 0.8, 0.66, 0.56][d as usize];
             let (ch, cw) = (h * f, w * f);
-            let mut x = CANVAS_W / 2. - cw / 2.;
+            let mut x = p.width() / 2. - cw / 2.;
             if d > 0 {
                 let mut off = w / 2. + gap;
                 for j in 1..d {
                     off += w * [1., 0.8, 0.66, 0.56][j as usize] + gap;
                 }
                 off += cw / 2.;
-                x = CANVAS_W / 2. + side as f32 * off - cw / 2.;
+                x = p.width() / 2. + side as f32 * off - cw / 2.;
             }
             // The far ones rise a little.
             let y = top + (h - ch) * 0.35;
             let i = (side * d).rem_euclid(12) as usize;
-            let mut cover = p.tile(i, ch, None, d == 0);
+            let mut cover = p.tile_as(Dress::GREY, i, ch, None, d == 0);
             if d > 0 {
                 cover = cover.child(div().absolute().inset_0().rounded(p.u(p.radius(ch))).bg(p.shade(0.18 * d as f32)));
             }
@@ -261,7 +308,7 @@ fn grid(p: &mut Pic, layer: Div) -> Div {
     }
     let right = if panel { 200. } else { 26. };
     let w = h * p.aspect(p.t.tiles.shape);
-    let cols = (((CANVAS_W - 26. - right) + 10.) / (w + 10.)).floor().max(1.) as usize;
+    let cols = (((p.width() - 26. - right) + 10.) / (w + 10.)).floor().max(1.) as usize;
     let mut rows = div().flex().flex_col().gap(p.u(12.));
     for r in 0..3 {
         let mut row = div().flex().gap(p.u(10.));
@@ -287,7 +334,7 @@ fn grid(p: &mut Pic, layer: Div) -> Div {
             .child(p.game_name(0, 11., 160.))
             .child(p.line(120., 4., 0.5))
             .child(p.line(90., 4., 0.5));
-        out = out.child(p.at(CANVAS_W - 190., top, side));
+        out = out.child(p.at(p.width() - 190., top, side));
     }
     out
 }
@@ -313,9 +360,9 @@ fn wheel(p: &mut Pic, layer: Div) -> Div {
         let fade = 1. - (j as f32 - 3.).abs() * 0.22;
         col = col.child(div().opacity(fade).child(name));
     }
-    let cover = p.tile(0, 150. * p.s, Some(TileShape::Portrait), false);
+    let cover = p.tile_as(Dress::PLAIN, 0, 150. * p.s, Some(TileShape::Portrait), false);
     let facts = div().flex().flex_col().gap(p.u(6.)).child(cover).child(p.facts());
-    layer.child(p.scrim_left(0.75)).child(p.at(30., p.top() + 22., col)).child(p.at(CANVAS_W - 200., p.top() + 14., facts))
+    layer.child(p.scrim_left(0.75)).child(p.at(30., p.top() + 22., col)).child(p.at(p.width() - 200., p.top() + 14., facts))
 }
 
 fn dashboard(p: &mut Pic, layer: Div) -> Div {
@@ -363,7 +410,9 @@ fn dashboard(p: &mut Pic, layer: Div) -> Div {
 
 fn xbox(p: &mut Pic, layer: Div) -> Div {
     let top = p.top() + 30.;
-    let h = 112. * p.s;
+    // The squares follow the size choice; the shelves under them keep their room.
+    let room = p.bottom() - top - if p.t.layouts.xbox_groups { 30. + 73. } else { 8. };
+    let h = (112. * p.size()).min(room.max(60.));
     let mut row = div().flex().items_start().gap(p.u(9.));
     row = row.child(p.tile(0, h, Some(TileShape::Landscape), true));
     for i in 1..6 {
