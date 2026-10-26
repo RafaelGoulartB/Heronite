@@ -12,9 +12,8 @@ use super::preview::{self, Art};
 use super::{card_rows, column_width, form, SettingsPage, Shown, View};
 use crate::console::theme_rows::{self, Arg, Card, Command, StoreOp};
 use crate::icons::Icon;
-use crate::pages::caption_with;
 use crate::theme;
-use crate::ui::controls::{button_sm, caption, card, card_box, icon_button_sm, ButtonKind};
+use crate::ui::controls::{button_sm, caption, card, card_box, icon_button, icon_button_sm, ButtonKind};
 use crate::ui::fields::meta_text;
 use crate::ui::icon;
 
@@ -36,7 +35,7 @@ const QUICK: [&str; 11] = [
 
 const GAP: f32 = 14.;
 /// Between the cards of the gallery.
-const TILE_GAP: f32 = 10.;
+const TILE_GAP: f32 = 12.;
 /// Corner radius of the pictures.
 pub(super) const PIC_R: f32 = 10.;
 
@@ -249,26 +248,67 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
     div().flex().flex_col().child(themes(d, &st, col_w, window, cx)).child(in_use(d, &st, col_w, window, cx)).child(startup(d, window, cx))
 }
 
-fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
-    // Small cards: the gallery is for picking, the picture of the one in use is below.
-    let cols = if col_w >= 640. {
-        4
-    } else if col_w >= 420. {
-        3
-    } else {
-        2
-    };
-    let tile_w = ((col_w - TILE_GAP * (cols - 1) as f32) / cols as f32).floor();
-    let (pending, confirm) = d.console_mode.as_ref().map(|s| (s.pending.clone(), s.confirm_delete.clone())).unwrap_or_default();
+/// Which themes the gallery shows.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub(in crate::pages::settings) enum Gallery {
+    #[default]
+    All,
+    BuiltIn,
+    Yours,
+}
 
-    let mut list: Vec<(ConsoleTheme, bool)> = presets::all().into_iter().map(|t| (t, false)).collect();
-    list.extend(st.saved.iter().cloned().map(|t| (t, true)));
-    let mut grid = div().flex().flex_wrap().gap(px(TILE_GAP));
+/// One more of the gallery's cards is cut off at the right edge: there are more.
+const CARDS_IN_VIEW: f32 = 3.3;
+
+fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
+    let card_w = ((col_w - 2. * TILE_GAP) / CARDS_IN_VIEW).clamp(200., 300.).floor();
+    let Some(s) = d.console_mode.as_ref() else { return div().id("cm-themes") };
+    let (pending, confirm) = (s.pending.clone(), s.confirm_delete.clone());
+    let (filter, scroll, reveal) = (s.gallery_filter, s.gallery.clone(), s.reveal);
+
+    let yours_n = st.saved.len();
+    let filter = if filter == Gallery::Yours && yours_n == 0 { Gallery::All } else { filter };
+    let mut list: Vec<(ConsoleTheme, bool)> = Vec::new();
+    if filter != Gallery::Yours {
+        list.extend(presets::all().into_iter().map(|t| (t, false)));
+    }
+    if filter != Gallery::BuiltIn {
+        // The user's own first in "All" would hide the built-in ones a new user looks for.
+        list.extend(st.saved.iter().cloned().map(|t| (t, true)));
+    }
+    if reveal {
+        // Opened, or another filter: the theme in use comes into view.
+        if let Some(i) = list.iter().position(|(t, _)| t.id == st.based_on) {
+            scroll.scroll_to_item(i);
+        }
+        if let Some(s) = d.console_mode.as_mut() {
+            s.reveal = false;
+        }
+    }
+    let mut row = div()
+        .id("cm-gallery")
+        .flex()
+        .gap(px(TILE_GAP))
+        .pb(px(6.))
+        .overflow_x_scroll()
+        // Sideways swipes only; the wheel goes through `slide` below.
+        .restrict_scroll_to_axis()
+        .track_scroll(&scroll)
+        .on_scroll_wheel({
+            let scroll = scroll.clone();
+            move |ev, window, cx| {
+                let d = ev.delta.pixel_delta(window.line_height());
+                if d.y.abs() > d.x.abs() && slide(&scroll, d.y) {
+                    cx.stop_propagation();
+                    window.refresh();
+                }
+            }
+        });
     for (t, yours) in list {
         let current = t.id == st.based_on;
         let deleting = confirm.as_deref() == Some(t.id.as_str());
-        let pic = picture(d, &t, tile_w - 12., window);
-        grid = grid.child(theme_card(t, yours, current, current && st.edited, deleting, pic, tile_w, cx));
+        let pic = picture(d, &t, card_w - 12., window);
+        row = row.child(theme_card(t, yours, current, current && st.edited, deleting, pic, card_w, cx));
     }
 
     let import = icon_button_sm("cm-import", ButtonKind::Ghost, Icon::Download, tr!("Import…"), true, {
@@ -284,7 +324,48 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
         }
     })
     .tooltip(crate::ui::tooltip(tr!("Start from any theme and change everything: tabs, layouts, covers, background, colours and controls.")));
-    let actions = div().flex().items_center().gap(px(6.)).child(create).child(import);
+
+    let mut filters = vec![(Gallery::All, tr!("All").to_string()), (Gallery::BuiltIn, tr!("Built-in").to_string())];
+    if yours_n > 0 {
+        filters.push((Gallery::Yours, tr!("Yours ({n})", n = yours_n)));
+    }
+    let mut pills = div().flex().items_center().gap(px(4.));
+    for (i, (g, label)) in filters.into_iter().enumerate() {
+        let on = g == filter;
+        pills = pills.child(
+            div()
+                .id(SharedString::from(format!("cm-gallery-filter-{i}")))
+                .px(px(10.))
+                .py(px(3.))
+                .rounded_full()
+                .text_size(px(12.))
+                .cursor_pointer()
+                .when(on, |d| d.bg(theme::accent_tint()).text_color(theme::text_primary()))
+                .when(!on, |d| d.text_color(theme::text_muted()).hover(|s| s.bg(theme::ink_a(0.06))))
+                .child(label)
+                .on_click(cx.listener(move |d, _, _, cx| {
+                    if let Some(s) = d.console_mode.as_mut() {
+                        s.gallery_filter = g;
+                        s.reveal = true;
+                        s.gallery.set_offset(point(px(0.), px(0.)));
+                    }
+                    cx.notify();
+                })),
+        );
+    }
+    let bar = div()
+        .flex()
+        .flex_wrap()
+        .items_center()
+        .gap(px(10.))
+        .px(px(6.))
+        .pb(px(8.))
+        .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Themes")))
+        .child(pills)
+        .child(div().flex_1())
+        .children(arrows(&scroll, card_w + TILE_GAP))
+        .child(create)
+        .child(import);
     let importing = super::import::render(d, st, col_w, window, cx);
     div()
         .id("cm-themes")
@@ -297,13 +378,51 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
                 super::import::read(d, p.clone(), cx);
             }
         }))
-        .child(caption_with(tr!("Themes"), actions))
+        .child(bar)
         .child(div().px(px(6.)).pb(px(10.)).child(meta_text(tr!(
             "A theme is the whole look of console mode: its screens, covers, background and controls. Click one to use it, or drop a theme file here to import it."
         ))))
         .children(importing)
         .children(pending.map(|id| pending_banner(st, &id, cx)))
-        .child(grid)
+        .child(row)
+}
+
+/// Moves the gallery by `delta` (negative: towards its end), within its
+/// bounds; false when it could not move (already at that end).
+fn slide(scroll: &ScrollHandle, delta: Pixels) -> bool {
+    let (offset, max) = (scroll.offset(), scroll.max_offset().x);
+    let x = (offset.x + delta).clamp(-max, px(0.));
+    if x == offset.x {
+        return false;
+    }
+    scroll.set_offset(point(x, offset.y));
+    true
+}
+
+/// ‹ › while the gallery is wider than the page (known from the last
+/// frame); each moves it by a page of cards, the one at an end is dimmed.
+fn arrows(scroll: &ScrollHandle, card: f32) -> Option<Div> {
+    let max = scroll.max_offset().x;
+    if max <= px(0.) {
+        return None;
+    }
+    let x = scroll.offset().x;
+    let step = (CARDS_IN_VIEW.floor() * card).max(card);
+    let arrow = |id: &'static str, ic: Icon, delta: f32, live: bool| {
+        let scroll = scroll.clone();
+        icon_button(id, ic, 18., live).on_click(move |_, window, _| {
+            if slide(&scroll, px(delta)) {
+                window.refresh();
+            }
+        })
+    };
+    Some(
+        div()
+            .flex()
+            .gap(px(2.))
+            .child(arrow("cm-gallery-prev", Icon::ChevronLeft, step, x < px(0.)))
+            .child(arrow("cm-gallery-next", Icon::ChevronRight, -step, x > -max)),
+    )
 }
 
 /// "Your changes are not saved": shown when a theme is clicked while the
@@ -470,15 +589,15 @@ fn theme_card(
             ))
             .into_any_element()
     } else {
-        // One line; the whole description, the screens and the author in the tooltip.
+        // Two lines; the whole description, the screens and the author in the tooltip.
         let tip = [Some(about.clone()), Some(tabs_line(&t)), by].into_iter().flatten().filter(|x| !x.is_empty()).collect::<Vec<_>>().join("\n");
         div()
             .id(SharedString::from(format!("cm-theme-{}-about", t.id)))
             .text_size(px(11.5))
             .line_height(px(15.))
-            .h(px(15.))
+            .h(px(30.))
             .text_color(theme::text_dim())
-            .truncate()
+            .line_clamp(2)
             .tooltip(crate::ui::tooltip(tip))
             .child(if about.is_empty() { tabs_line(&t) } else { about })
             .into_any_element()

@@ -39,5 +39,6 @@
   "version {version}": "Version {version}",
   "What it looks like, in a sentence": "Wie es aussieht, in einem Satz",
   "You already have this theme: “{name}”.": "Du hast dieses Theme schon: „{name}“.",
-  "Your changes to “{name}” are not saved: using another theme replaces them.": "Deine Änderungen an „{name}“ sind nicht gespeichert: ein anderes Theme ersetzt sie."
+  "Your changes to “{name}” are not saved: using another theme replaces them.": "Deine Änderungen an „{name}“ sind nicht gespeichert: ein anderes Theme ersetzt sie.",
+  "Yours ({n})": "Deine ({n})"
 }

@@ -82,6 +82,11 @@ pub struct State {
     /// `interface.accent`), and the picker.
     pub(super) colour_open: Option<String>,
     pub(super) picker: Option<Entity<crate::ui::colour_picker::ColourPicker>>,
+    /// The gallery of themes on Home: its row, which themes it shows, and
+    /// whether it should bring the theme in use into view (opened, filtered).
+    pub(super) gallery: ScrollHandle,
+    pub(super) gallery_filter: home::Gallery,
+    pub(super) reveal: bool,
     /// A theme file read and shown before it is imported.
     pub(super) importing: Option<import::Import>,
     pub(super) view: View,
@@ -130,6 +135,9 @@ impl State {
             screen: Shown::Tab(0),
             colour_open: None,
             picker: None,
+            gallery: ScrollHandle::new(),
+            gallery_filter: home::Gallery::All,
+            reveal: true,
             importing: None,
             view: View::Home,
             pending: None,
