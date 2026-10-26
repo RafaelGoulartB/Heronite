@@ -19,6 +19,7 @@ pub mod presets;
 pub mod store;
 
 use anyhow::Result;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -34,6 +35,9 @@ pub const MAX_TABS: usize = 4;
 pub const SCALE_RANGE: (u16, u16) = (80, 140);
 pub const DIM_MAX: u8 = 90;
 pub const BLUR_MAX: u8 = 40;
+
+/// The named focus colours (`interface.accent`); anything else is `#rrggbb`.
+pub const ACCENT_NAMES: [&str; 7] = ["white", "game", "ice", "green", "amber", "pink", "violet"];
 
 /// A string-backed enum: written as its string, and read leniently (an
 /// unknown or missing value gives the default) so themes from other app
@@ -599,6 +603,10 @@ impl ConsoleTheme {
     /// tabs, no empty names, the locked menu items present.
     pub fn normalized(mut self) -> Self {
         self.format = FORMAT;
+        // The id names the theme's file: nothing but `[a-z0-9-]`.
+        if !self.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+            self.id = slug(&self.id);
+        }
         if self.tabs.is_empty() {
             self.tabs = presets::classic().tabs;
         }
@@ -611,11 +619,13 @@ impl ConsoleTheme {
                 t.source = "all".into();
             }
         }
-        self.shelves.retain(|s| !s.kind.trim().is_empty());
+        let mut kinds = std::collections::HashSet::new();
+        self.shelves.retain(|s| !s.kind.trim().is_empty() && kinds.insert(s.kind.clone()));
         self.background.dim = self.background.dim.min(DIM_MAX);
         self.background.blur = self.background.blur.min(BLUR_MAX);
         self.interface.scale = self.interface.scale.clamp(SCALE_RANGE.0, SCALE_RANGE.1);
-        if self.interface.accent.trim().is_empty() {
+        let accent = self.interface.accent.trim();
+        if !ACCENT_NAMES.contains(&accent) && parse_hex(accent).is_none() {
             self.interface.accent = "white".into();
         }
         self.menu.items.retain(|m| !m.item.trim().is_empty());
@@ -634,17 +644,18 @@ impl ConsoleTheme {
     }
 
     /// Reads a theme from JSON (an export, a saved theme): refused when its
-    /// `format` is newer than this app's; normalized.
+    /// `format` is newer than this app's; a value of the wrong type reads as
+    /// that field's default; normalized.
     pub fn from_json(text: &str) -> Result<Self> {
         let value: Value = serde_json::from_str(text)?;
+        if !value.is_object() {
+            anyhow::bail!("not a console theme");
+        }
         let format = value.get("format").and_then(Value::as_u64).unwrap_or(1);
         if format > u64::from(FORMAT) {
             anyhow::bail!("this theme needs a newer version of Heronite (theme format {format}, this app reads {FORMAT})");
         }
-        if !value.is_object() {
-            anyhow::bail!("not a console theme");
-        }
-        Ok(serde_json::from_value::<ConsoleTheme>(value)?.normalized())
+        lenient::<ConsoleTheme>(value).map(Self::normalized).ok_or_else(|| anyhow::anyhow!("not a console theme"))
     }
 
     pub fn to_json(&self) -> Result<String> {
@@ -690,13 +701,13 @@ impl ConsolePrefs {
         if !value.is_object() {
             return Self::default();
         }
-        match serde_json::from_value::<ConsolePrefs>(value) {
-            Ok(mut p) => {
+        match lenient::<ConsolePrefs>(value) {
+            Some(mut p) => {
                 p.theme = p.theme.normalized();
                 p
             }
-            Err(e) => {
-                log::warn!("console.json: {e:#}; using the defaults");
+            None => {
+                log::warn!("console.json is not readable; using the defaults");
                 Self::default()
             }
         }
@@ -705,6 +716,64 @@ impl ConsolePrefs {
     pub fn save(&self, paths: &AppPaths) -> Result<()> {
         json_store::write_indented(&paths.console_prefs(), self, b"  ")
     }
+}
+
+/// `T` from `value`, leaving out what does not read: a value of the wrong
+/// type (`"shelfLimit": "x"`) gives that field's default instead of losing
+/// the whole theme. Each key is tried in turn; an object that does not read
+/// is gone through key by key.
+fn lenient<T: DeserializeOwned>(value: Value) -> Option<T> {
+    if let Ok(t) = serde_json::from_value(value.clone()) {
+        return Some(t);
+    }
+    let Value::Object(map) = value else { return None };
+    let mut root = Map::new();
+    keep_readable::<T>(&mut root, &[], map);
+    serde_json::from_value(Value::Object(root)).ok()
+}
+
+fn keep_readable<T: DeserializeOwned>(root: &mut Map<String, Value>, path: &[String], map: Map<String, Value>) {
+    let reads = |root: &Map<String, Value>| serde_json::from_value::<T>(Value::Object(root.clone())).is_ok();
+    for (key, value) in map {
+        let mut at = path.to_vec();
+        at.push(key);
+        set_at(root, &at, value.clone());
+        if reads(root) {
+            continue;
+        }
+        if let Value::Object(inner) = value {
+            set_at(root, &at, Value::Object(Map::new()));
+            if reads(root) {
+                keep_readable::<T>(root, &at, inner);
+                continue;
+            }
+        }
+        log::warn!("console theme: {} is not readable, using the default", at.join("."));
+        remove_at(root, &at);
+    }
+}
+
+fn set_at(root: &mut Map<String, Value>, path: &[String], value: Value) {
+    let (last, parents) = path.split_last().expect("a path has a key");
+    let mut map = root;
+    for p in parents {
+        let next = map.entry(p.clone()).or_insert_with(|| Value::Object(Map::new()));
+        if !next.is_object() {
+            *next = Value::Object(Map::new());
+        }
+        map = next.as_object_mut().expect("made an object above");
+    }
+    map.insert(last.clone(), value);
+}
+
+fn remove_at(root: &mut Map<String, Value>, path: &[String]) {
+    let (last, parents) = path.split_last().expect("a path has a key");
+    let mut map = root;
+    for p in parents {
+        let Some(next) = map.get_mut(p).and_then(Value::as_object_mut) else { return };
+        map = next;
+    }
+    map.remove(last);
 }
 
 #[cfg(test)]

@@ -172,3 +172,30 @@ fn an_import_is_compared_with_the_saved_themes() {
     assert_eq!(replaced.id, saved.id);
     assert_eq!(store::list(&paths).len(), 2);
 }
+
+#[test]
+fn a_wrong_value_loses_only_itself() {
+    let text = json!({
+        "name": "Odd",
+        "shelfLimit": "lots",
+        "tiles": {"size": "xl", "greyUninstalled": "yes"},
+        "background": {"dim": 400, "blur": 8},
+        "interface": {"accent": "not a colour"},
+    })
+    .to_string();
+    let t = ConsoleTheme::from_json(&text).unwrap();
+    assert_eq!(t.name, "Odd");
+    assert_eq!(t.shelf_limit, presets::classic().shelf_limit);
+    assert_eq!(t.tiles.size, TileSize::Huge);
+    assert!(!t.tiles.grey_uninstalled);
+    assert_eq!(t.background.blur, 8);
+    assert_eq!(t.interface.accent, "white");
+}
+
+#[test]
+fn an_id_cannot_leave_the_themes_folder() {
+    let t = ConsoleTheme { id: "../../evil".into(), ..ConsoleTheme::default() }.normalized();
+    assert_eq!(t.id, "evil");
+    let dup = ConsoleTheme { shelves: vec![ShelfSpec::new("recent", true), ShelfSpec::new("recent", false)], ..ConsoleTheme::default() };
+    assert_eq!(dup.normalized().shelves.len(), 1);
+}

@@ -39,10 +39,9 @@ pub fn list(paths: &AppPaths) -> Vec<ConsoleTheme> {
         .filter_map(|e| {
             let text = std::fs::read_to_string(e.path()).ok()?;
             match ConsoleTheme::from_json(&text) {
+                // The file name is the id: saving and deleting go by it.
                 Ok(mut t) => {
-                    if t.id.is_empty() {
-                        t.id = e.path().file_stem()?.to_string_lossy().into_owned();
-                    }
+                    t.id = e.path().file_stem()?.to_string_lossy().into_owned();
                     Some(t)
                 }
                 Err(err) => {
