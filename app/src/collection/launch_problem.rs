@@ -103,8 +103,12 @@ impl CollectionView {
                 weak.update(cx, |this, cx| {
                     this.dialog = None;
                     this.dialog_sub = None;
-                    // The Play button of a running game stops it.
+                    // Started meanwhile: its Play button would stop it.
                     if this.is_running(&key) {
+                        let title = this.lib.as_ref().and_then(|l| l.get(&key)).map(|g| g.title.clone()).unwrap_or_default();
+                        let text =
+                            heronite_i18n::tr!("Fix applied. {title} is running: it takes effect the next time the game starts.", title);
+                        this.show_toast(text, false, cx);
                         this.reload(cx);
                         return;
                     }

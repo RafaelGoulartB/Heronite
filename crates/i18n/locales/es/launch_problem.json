@@ -14,6 +14,7 @@
   "DirectX 12 needs VKD3D-Proton": "DirectX 12 necesita VKD3D-Proton",
   "Ending the wineserver of the prefix…": "Cerrando el wineserver del prefijo…",
   "Finds the packages that have these files. Install the one it names, then play again.": "Busca los paquetes que tienen estos archivos. Instala el que indique y vuelve a jugar.",
+  "Fix applied. {title} is running: it takes effect the next time the game starts.": "Corrección aplicada. {title} está en ejecución: se aplica la próxima vez que se abra el juego.",
   "From the last launch of {title}.": "De la última vez que se abrió {title}.",
   "Heronite already tried this, and the game still closes.": "Heronite ya probó esto y el juego sigue cerrándose.",
   "How to fix": "Cómo arreglarlo",
