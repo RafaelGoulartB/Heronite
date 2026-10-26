@@ -362,7 +362,9 @@ pub fn toggle_tool_blocking(
 
 /// Runs `winetricks -q <verb>` in the game's prefix (`steam`: the settings
 /// of a Steam game's prefix, else the game's own); every output line goes to
-/// `line`. `pid` gets winetricks' process group, which a cancel signals.
+/// `line`. `pid` holds winetricks' process group while it runs (0 before and
+/// after: a group that ended may be another program's by then), which a
+/// cancel signals; `cancelled` asked before it starts keeps it from running.
 /// Blocks until winetricks exits.
 pub fn winetricks_install_blocking(
     paths: &DataPaths,
@@ -371,9 +373,11 @@ pub fn winetricks_install_blocking(
     steam: Result<heronite_launch::settings::GameSettings, ()>,
     verb: &str,
     pid: &std::sync::atomic::AtomicU32,
+    cancelled: &(dyn Fn() -> bool + Sync),
     line: &(dyn Fn(String) + Sync),
 ) -> Result<(), String> {
     use heronite_launch::settings::GameSettings;
+    use std::sync::atomic::Ordering;
     let ctx = PlanContext::load(paths);
     let settings = match steam {
         Ok(s) => s,
@@ -398,8 +402,20 @@ pub fn winetricks_install_blocking(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    // Cancelled while the prefix was made: nothing to stop yet.
+    if cancelled() {
+        return Err(tr!("{verb}: installation canceled.", verb));
+    }
     let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
-    pid.store(child.id(), std::sync::atomic::Ordering::SeqCst);
+    pid.store(child.id(), Ordering::SeqCst);
+    // A cancel between the check above and the store found no group to signal.
+    if cancelled() {
+        // SAFETY: the group winetricks leads (`process_group(0)`), alive
+        // until the `wait` below reaps it.
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGTERM);
+        }
+    }
     let err = child.stderr.take();
     let out = child.stdout.take();
     std::thread::scope(|scope| {
@@ -410,7 +426,9 @@ pub fn winetricks_install_blocking(
             forward_lines(out, line);
         }
     });
-    let status = child.wait().map_err(|e| format!("{}: {e}", c.program))?;
+    let status = child.wait();
+    pid.store(0, Ordering::SeqCst);
+    let status = status.map_err(|e| format!("{}: {e}", c.program))?;
     if status.success() {
         Ok(())
     } else {

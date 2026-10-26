@@ -155,7 +155,7 @@ impl SettingsPanel {
                 let line = |l: String| {
                     let _ = tx.unbounded_send(Msg::Line(l));
                 };
-                let res = crate::runtime::winetricks_install_blocking(&paths, &home, &app, steam, &job_verb, &pid, &line);
+                let res = crate::runtime::winetricks_install_blocking(&paths, &home, &app, steam, &job_verb, &pid, &|| false, &line);
                 let _ = tx.unbounded_send(Msg::Done(res));
             })
             .ok();

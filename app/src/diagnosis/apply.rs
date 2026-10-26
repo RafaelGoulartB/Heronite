@@ -37,7 +37,8 @@ pub fn apply(
                     return Err("cancelled".into());
                 }
                 line(tr!("Installing {verb}\u{2026}", verb));
-                crate::runtime::winetricks_install_blocking(paths, &home, app, Err(()), verb, pid, line)
+                let cancelled = || stop.load(Ordering::SeqCst);
+                crate::runtime::winetricks_install_blocking(paths, &home, app, Err(()), verb, pid, &cancelled, line)
                     .map_err(|e| tr!("{verb} could not be installed: {why}", verb, why = e))?;
             }
             Ok(())
