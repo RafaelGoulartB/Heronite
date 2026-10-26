@@ -50,6 +50,8 @@ pub(super) enum GameAction {
     Hide,
     RemoveRecent,
     Log,
+    /// Why the game closed right after starting, and the fixes.
+    Troubleshoot,
     Details,
     EditPlaytime,
     Ludusavi,
@@ -252,6 +254,16 @@ impl CollectionView {
             ));
         }
         v.push(item(A::Log, "log", tr!("View log"), Icon::Description, "logs debug output ver registro depuracao saida"));
+        // What Steam starts has no launch log of ours.
+        if game.installed && crate::diagnosis::reads(game) {
+            v.push(item(
+                A::Troubleshoot,
+                "troubleshoot",
+                tr!("Troubleshoot"),
+                Icon::Build,
+                "troubleshoot launch crash fix error not starting closes problem diagnose falha erro nao abre fecha problema corrigir diagnostico solucionar",
+            ));
+        }
         v.extend(self.extras_actions(game));
         v.extend(self.steam_copy_actions(game));
         v.extend(self.epic_actions(game, cx));
@@ -319,6 +331,7 @@ impl CollectionView {
             A::PlayAsPc => self.open_play_as_pc(key, window, cx),
             A::Metadata => self.open_metadata_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
+            A::Troubleshoot => self.troubleshoot_launch(key, None, cx),
             A::Details => self.open_details(key, cx),
             A::EditPlaytime => self.open_playtime_settings(key, window, cx),
             A::Ludusavi => self.open_ludusavi_backup(key, cx),

@@ -1,6 +1,7 @@
 mod assets;
 mod collection;
 mod console;
+mod diagnosis;
 mod dialogs;
 mod env;
 mod icons;

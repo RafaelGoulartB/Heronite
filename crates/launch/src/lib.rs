@@ -11,6 +11,7 @@
 pub mod actions;
 pub mod anticheat_data;
 pub mod companions;
+pub mod diagnose;
 pub mod dxvk;
 pub mod emulators;
 pub mod env;

@@ -184,6 +184,15 @@ impl CollectionView {
             "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage" | "wizard" => {
                 self.open_metadata_debug(which.as_str(), window, cx)
             }
+            w if w.starts_with("launch-problem:") => self.debug_launch_problem(&w["launch-problem:".len()..], false, cx),
+            w if w.starts_with("launch-problem-toast:") => self.debug_launch_problem(&w["launch-problem-toast:".len()..], true, cx),
+            // troubleshoot[:<log>]: "Troubleshoot", reading that log.
+            w if w == "troubleshoot" || w.starts_with("troubleshoot:") => {
+                if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
+                    let log = w.strip_prefix("troubleshoot:").map(std::path::PathBuf::from);
+                    self.troubleshoot_launch(&key, log, cx);
+                }
+            }
             "viewlog" => {
                 if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
                     self.open_game_log(&key, cx);

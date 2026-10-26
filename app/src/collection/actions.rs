@@ -88,10 +88,21 @@ impl CollectionView {
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
+        self.show_toast_for(text, error, std::time::Duration::from_secs(5), cx);
+    }
+
+    /// A toast that stays `shown`.
+    pub(super) fn show_toast_for(
+        &mut self,
+        text: impl Into<SharedString>,
+        error: bool,
+        shown: std::time::Duration,
+        cx: &mut Context<Self>,
+    ) {
         self.toast_action = None;
         self.toast = Some((text.into(), error));
         self.toast_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
+            cx.background_executor().timer(shown).await;
             this.update(cx, |this, cx| {
                 this.toast = None;
                 cx.notify();
@@ -105,13 +116,6 @@ impl CollectionView {
     pub(super) fn show_undo_toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.show_toast(text, false, cx);
         self.toast_action = Some(ToastAction::Undo);
-    }
-
-    /// A game that died right after starting: says so, and offers its log.
-    fn show_failed_launch_toast(&mut self, app_name: &str, exit: heronite_launch::ExitInfo, cx: &mut Context<Self>) {
-        let Some(game) = self.lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name)).cloned() else { return };
-        self.show_toast(crate::runtime::failed_launch_message(&game.title, exit), true, cx);
-        self.toast_action = Some(ToastAction::ViewLog(game.key.clone()));
     }
 
     /// For launches that skip the Play button's dialogs: refuses (with a
@@ -143,8 +147,9 @@ impl CollectionView {
                 log::info!("{app_name} exited after {elapsed:?}");
                 self.preparing.remove(&app_name);
                 self.playing.remove(&app_name);
-                if let Some(exit) = heronite_launch::failed_launch(exit, stopped, elapsed) {
-                    self.show_failed_launch_toast(&app_name, exit, cx);
+                // Ended at once on its own, badly: maybe it could not start.
+                if heronite_launch::failed_launch(exit, stopped, elapsed).is_some() {
+                    self.diagnose_exit(&app_name, crate::diagnosis::Ended { elapsed, exit }, None, cx);
                 }
                 // Post-game work is `services::session`'s; the library only
                 // reloads what changed on disk (playtime, last played, recent).
