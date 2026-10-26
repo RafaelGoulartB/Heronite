@@ -436,7 +436,10 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   the current one as a centred title, or show the names alone) + `kit::clock` (pages keep their own title with `kit::wordmark`), content padded `u(46.)`, lists about `u(900.)`
   wide; the shell draws the hint bar from `hints()` (it adds Back / Menu). B goes back; Start opens the menu.
 - **Console themes** (`heronite_data::console_theme`, shareable JSON; `console.json` holds the one in use and the
-  machine options, `console-themes/` the saved ones): the shell (`collection/console/mod.rs`) reads
+  machine options, `console-themes/` the saved ones, each with its picture as `<id>.background-<hash>.<ext>`; an
+  export carries the picture inside as a `data:` URL and leaves out a local path it does not use, an import writes it
+  out again; a value of the wrong type reads as that field's default, an id is kept to `[a-z0-9-]` and a saved
+  theme's id is its file name): the shell (`collection/console/mod.rs`) reads
   `console::look::theme()` every frame and never caches it. Tabs (`TabSpec`: name, layout, source) dispatch to
   `collection/console/layouts/<layout>.rs` (`render_<l>`, `<l>_pad`, `<l>_hints`, a `Nav` in `TabNav`, a `SCRIM`);
   covers come from `tile.rs` (shape, size, corners, focus style, badges and "New", store strip, name below or in a
@@ -447,8 +450,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   light: dark text and focus, white panels, the art washed out; surfaces use the scheme's ink, never a bare white.
   The built-in themes (`presets.rs`), in the order they are listed: Minimal (what a new install uses,
   `presets::DEFAULT`, and what Reset goes back to), Classic (the base the others start from and what missing keys of a
-  theme file read as), and Cinema and Pulse, modelled on
-  other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
+  theme file read as), and Cinema, Pulse, Arcade (Wheel), Hub (Dashboard, the rail) and Living room (Series X),
+  modelled on other launchers' fullscreen themes and consoles' home screens. Classic's screens: Shelves count a shelf's games
   before `shelfLimit` cuts it and end a cut one with a "View all" tile (A opens the first Grid tab with the filters
   that show them, `grid::Nav::show_like`), LT / RT page along a shelf, the focused game's text slides in from the side
   the focus came from (with "Last played", a long name shrinks) over a soft shade of its own; the Grid without a panel
@@ -483,17 +486,29 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
   Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). On the desktop, Settings → Console
-  mode (`pages/settings/console_mode/`) has three views: Home (the themes as cards with a picture each, the user's
-  with a delete, "Create a new theme" last; the theme in use with its live picture, All options, save, undo and the
-  "Quick changes" beside it; the startup options), the editor (name, author, save, undo, export under the live
-  picture, then the Customize panel's groups as tabs; options no tab uses are hidden and counted) and New theme
-  (start from a theme or the one in use, a name). Clicking a theme while the one in use has changes asks first. The
+  mode (`pages/settings/console_mode/`) has three views: Home (the themes as cards with a picture each, Edit / Make a
+  copy / Export / Delete over the picture, "Create a new theme" last; a theme file chosen with Import… or dropped on
+  the themes is shown first, `import.rs`, with its picture, author, version and how it stands with the saved ones
+  (`store::compare`: the same, another version of one, new) and is only added or used when asked; the theme in use
+  with its live picture, All options, save, undo and the "Quick changes" beside it, each with its ↺; the startup
+  options), the editor (`editor.rs`; in a window wider than 1040px of content a studio filling the page's height, the
+  page itself not scrolling: the Customize panel's groups as tabs with a dot while they hold changes and a search
+  across them on the left, scrolling; the live picture with chips for each tab, the game page and the menu (it turns
+  to the screen an option changes, `follow`) and the details (name, author, version, description) on the right; Undo /
+  Redo (`ThemeState::undo`, a drag is one step), Undo all changes, Export and Save in the header; every option a ↺
+  while it differs from the theme it started from, `theme_rows::{differs, reset_command}`; options no tab uses are
+  hidden and counted; colours in `colours.rs`: the ready-made `COLOUR_SETS`, a swatch per colour opening the colour
+  picker, back to the built-in colour, a warning with "Make it readable" below 4.5:1, the focus colour as dots with a
+  picker of its own) and New theme (start from a theme or the one in use, a name, an author, a description). Clicking
+  a theme while the one in use has changes asks first; an import never replaces unsaved changes (on the TV it is only
+  added to the list). The
   pictures (`preview/`) draw a screen of a theme (`Screen`: a tab, the game page in its style, or the open ☰ menu;
   the rail's column and inset included): the layout, covers (shape, size, corners, focus, badges, greys, store strip,
   names where the layout shows them), background, tab bar, clock, hint bar, colours and
   font on a 640 x 360 canvas with the covers and art of the games played last (the library Storage gets from the
   Collection; tinted blocks without it); their textures are freed when the section leaves the screen.
-  `HERONITE_DEBUG_CONSOLE_SETTINGS=editor[:<group>]|create|pending:<theme id>` opens a view. `HERONITE_DEBUG_CONSOLE_SCREEN=tab:<n>|game|menu`
+  `HERONITE_DEBUG_CONSOLE_SETTINGS=editor[:<group>]|search:<text>|colour:<row id>|create|pending:<theme id>|import:<file>`
+  opens a view. `HERONITE_DEBUG_CONSOLE_SCREEN=tab:<n>|game|menu`
   makes the pictures draw that screen. A new option = a field in
   `ConsoleTheme` (with a default and `#[serde(default)]`, so old and new theme files keep loading), its rows in
   `theme_rows`, and its use. Nothing console-only may run, read files or allocate while console mode is off;
