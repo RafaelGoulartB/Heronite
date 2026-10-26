@@ -235,7 +235,7 @@ edition words, cached in `~/.cache/heronite/protondb/titles.json`); emulated gam
 palette) shows the covers across the whole window instead of the list next to the focus panel. Same groups, sticky
 headers, cards, context menu and stage; the cards share each row's width (`grid_columns`: at least `gridCoverWidth`,
 110-240, set by the header slider; covers are requested in 16px steps). The selected game opens in a glass drawer on the
-right (460px at most, inset 10px, the grid narrows beside it): sharp hero art on top with a close button, the cover
+right (480px at most, inset 10px, the grid narrows beside it): sharp hero art on top with a close button, the cover
 reaching into it next to the title and meta line, then the focus panel's own pieces (Play, status row, rating, facts
 card), three tiles (Played, Last played, Sessions) and the details stacked in one column (`focus::stacked_details`),
 ending in "Open game page" (back to the Focus view). Keys while nothing floats over it: arrows move the selection
