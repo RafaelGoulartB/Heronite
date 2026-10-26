@@ -35,6 +35,8 @@ const QUICK: [&str; 11] = [
 ];
 
 const GAP: f32 = 14.;
+/// Between the cards of the gallery.
+const TILE_GAP: f32 = 10.;
 /// Corner radius of the pictures.
 pub(super) const PIC_R: f32 = 10.;
 
@@ -248,20 +250,26 @@ pub(super) fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context
 }
 
 fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
-    let cols = if col_w >= 720. { 3 } else { 2 };
-    let tile_w = ((col_w - GAP * (cols - 1) as f32) / cols as f32).floor();
+    // Small cards: the gallery is for picking, the picture of the one in use is below.
+    let cols = if col_w >= 640. {
+        4
+    } else if col_w >= 420. {
+        3
+    } else {
+        2
+    };
+    let tile_w = ((col_w - TILE_GAP * (cols - 1) as f32) / cols as f32).floor();
     let (pending, confirm) = d.console_mode.as_ref().map(|s| (s.pending.clone(), s.confirm_delete.clone())).unwrap_or_default();
 
     let mut list: Vec<(ConsoleTheme, bool)> = presets::all().into_iter().map(|t| (t, false)).collect();
     list.extend(st.saved.iter().cloned().map(|t| (t, true)));
-    let mut grid = div().flex().flex_wrap().gap(px(GAP));
+    let mut grid = div().flex().flex_wrap().gap(px(TILE_GAP));
     for (t, yours) in list {
         let current = t.id == st.based_on;
         let deleting = confirm.as_deref() == Some(t.id.as_str());
-        let pic = picture(d, &t, tile_w - 18., window);
+        let pic = picture(d, &t, tile_w - 12., window);
         grid = grid.child(theme_card(t, yours, current, current && st.edited, deleting, pic, tile_w, cx));
     }
-    grid = grid.child(create_tile(tile_w, cx));
 
     let import = icon_button_sm("cm-import", ButtonKind::Ghost, Icon::Download, tr!("Import…"), true, {
         let entity = cx.entity().downgrade();
@@ -269,6 +277,14 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
             entity.update(cx, |_, cx| super::import::choose(cx)).ok();
         }
     });
+    let create = icon_button_sm("cm-theme-create", ButtonKind::Glass, Icon::Add, tr!("Create a new theme"), true, {
+        let entity = cx.entity().downgrade();
+        move |_, window, cx| {
+            entity.update(cx, |d, cx| open_create(d, window, cx)).ok();
+        }
+    })
+    .tooltip(crate::ui::tooltip(tr!("Start from any theme and change everything: tabs, layouts, covers, background, colours and controls.")));
+    let actions = div().flex().items_center().gap(px(6.)).child(create).child(import);
     let importing = super::import::render(d, st, col_w, window, cx);
     div()
         .id("cm-themes")
@@ -281,7 +297,7 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
                 super::import::read(d, p.clone(), cx);
             }
         }))
-        .child(caption_with(tr!("Themes"), import))
+        .child(caption_with(tr!("Themes"), actions))
         .child(div().px(px(6.)).pb(px(10.)).child(meta_text(tr!(
             "A theme is the whole look of console mode: its screens, covers, background and controls. Click one to use it, or drop a theme file here to import it."
         ))))
@@ -374,10 +390,11 @@ fn theme_card(
         badges = badges.child(pill(tr!("Yours"), false));
     }
     // Over the picture: what can be done with the theme besides using it.
+    let group = SharedString::from(format!("cm-theme-card-{}", t.id));
     let tool = |key: &str, ic: Icon, tip: &'static str| {
         div()
             .id(SharedString::from(format!("cm-theme-{}-{key}", t.id)))
-            .size(px(28.))
+            .size(px(24.))
             .flex()
             .items_center()
             .justify_center()
@@ -386,9 +403,10 @@ fn theme_card(
             .cursor_pointer()
             .hover(|s| s.bg(theme::black_a(0.85)))
             .tooltip(crate::ui::tooltip(tip))
-            .child(icon(ic, px(15.), theme::white_a(0.9)))
+            .child(icon(ic, px(13.), theme::white_a(0.9)))
     };
-    let mut tools = div().absolute().top(px(14.)).right(px(14.)).flex().gap(px(6.));
+    // Shown under the pointer only: the small pictures stay clear.
+    let mut tools = div().absolute().top(px(10.)).right(px(10.)).flex().gap(px(4.)).invisible().group_hover(group.clone(), |s| s.visible());
     if yours {
         let id = id.clone();
         tools = tools.child(tool("edit", Icon::Edit, tr!("Edit")).on_click(cx.listener(move |d, _, window, cx| {
@@ -431,7 +449,7 @@ fn theme_card(
             .flex_wrap()
             .items_center()
             .gap(px(8.))
-            .child(div().w_full().text_size(px(13.)).text_color(theme::text_primary()).child(tr!("Delete “{name}”?", name = name.clone())))
+            .child(div().w_full().text_size(px(12.5)).text_color(theme::text_primary()).child(tr!("Delete “{name}”?", name = name.clone())))
             .child(button_sm(SharedString::from(format!("cm-theme-{id}-delete-yes")), ButtonKind::Danger, tr!("Delete it")).on_click(
                 cx.listener(move |d, _, window, cx| {
                     cx.stop_propagation();
@@ -450,31 +468,33 @@ fn theme_card(
                     cx.notify();
                 }),
             ))
+            .into_any_element()
     } else {
+        // One line; the whole description, the screens and the author in the tooltip.
+        let tip = [Some(about.clone()), Some(tabs_line(&t)), by].into_iter().flatten().filter(|x| !x.is_empty()).collect::<Vec<_>>().join("\n");
         div()
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).line_clamp(2).h(px(32.)).child(about))
-            .child(
-                div()
-                    .text_size(px(11.5))
-                    .text_color(theme::text_dim())
-                    .truncate()
-                    .child(by.map(|b| format!("{} · {b}", tabs_line(&t))).unwrap_or_else(|| tabs_line(&t))),
-            )
+            .id(SharedString::from(format!("cm-theme-{}-about", t.id)))
+            .text_size(px(11.5))
+            .line_height(px(15.))
+            .h(px(15.))
+            .text_color(theme::text_dim())
+            .truncate()
+            .tooltip(crate::ui::tooltip(tip))
+            .child(if about.is_empty() { tabs_line(&t) } else { about })
+            .into_any_element()
     };
     div()
-        .id(SharedString::from(format!("cm-theme-card-{}", t.id)))
+        .id(group.clone())
+        .group(group)
         .relative()
         .flex()
         .flex_col()
-        .gap(px(10.))
+        .gap(px(8.))
         .w(px(w))
         .flex_none()
-        .p(px(8.))
-        .pb(px(12.))
-        .rounded(px(theme::R_CARD))
+        .p(px(6.))
+        .pb(px(10.))
+        .rounded(px(theme::R_TILE))
         .border_1()
         .border_color(if current { theme::accent().into() } else { theme::card_border() })
         .bg(if current { theme::accent_tint() } else { theme::card_fill() })
@@ -491,13 +511,14 @@ fn theme_card(
             div()
                 .flex()
                 .flex_col()
-                .gap(px(6.))
+                .gap(px(3.))
                 .px(px(4.))
                 .child(
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(8.))
+                        .gap(px(6.))
+                        .h(px(20.))
                         .child(
                             div()
                                 .flex_1()
@@ -505,7 +526,7 @@ fn theme_card(
                                 .truncate()
                                 .font_family(theme::font_heading())
                                 .font_weight(theme::W_BOLD)
-                                .text_size(px(15.))
+                                .text_size(px(13.5))
                                 .text_color(theme::text_primary())
                                 .child(name),
                         )
@@ -514,50 +535,6 @@ fn theme_card(
                 .child(footer),
         )
         .child(tools)
-}
-
-/// The last card of the gallery: makes a theme of one's own.
-fn create_tile(w: f32, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
-    div()
-        .id("cm-theme-create")
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(10.))
-        .w(px(w))
-        .min_h(px(w * 9. / 16. + 96.))
-        .flex_none()
-        .p(px(20.))
-        .rounded(px(theme::R_CARD))
-        .border_1()
-        .border_color(theme::card_border())
-        .bg(theme::ink_a(0.02))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::ink_a(0.05)).border_color(theme::accent_alpha(0.7)))
-        .on_click(cx.listener(|d, _, window, cx| open_create(d, window, cx)))
-        .child(div().size(px(48.)).flex().items_center().justify_center().rounded_full().bg(theme::accent_tint()).child(icon(
-            Icon::Add,
-            px(26.),
-            theme::accent(),
-        )))
-        .child(
-            div()
-                .font_family(theme::font_heading())
-                .font_weight(theme::W_BOLD)
-                .text_size(px(15.))
-                .text_color(theme::text_primary())
-                .child(tr!("Create a new theme")),
-        )
-        .child(
-            div()
-                .max_w(px(240.))
-                .text_center()
-                .text_size(px(12.))
-                .line_height(px(16.))
-                .text_color(theme::text_dim())
-                .child(tr!("Start from any theme and change everything: tabs, layouts, covers, background, colours and controls.")),
-        )
 }
 
 /// The theme in use: its live picture and actions, the quick changes beside.

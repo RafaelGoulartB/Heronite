@@ -486,8 +486,9 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
   Settings → Console mode and ☰ → Customize share their rows (`console::theme_rows`). On the desktop, Settings → Console
-  mode (`pages/settings/console_mode/`) has three views: Home (the themes as cards with a picture each, Edit / Make a
-  copy / Export / Delete over the picture, "Create a new theme" last; a theme file chosen with Import… or dropped on
+  mode (`pages/settings/console_mode/`) has three views: Home (the themes as small cards, four to a row, with a picture,
+  the name and one line each, the rest in a tooltip; Edit / Make a copy / Export / Delete over the picture under the
+  pointer; "Create a new theme" and "Import…" beside the caption; a theme file chosen with Import… or dropped on
   the themes is shown first, `import.rs`, with its picture, author, version and how it stands with the saved ones
   (`store::compare`: the same, another version of one, new) and is only added or used when asked; the theme in use
   with its live picture, All options, save, undo and the "Quick changes" beside it, each with its ↺; the startup
