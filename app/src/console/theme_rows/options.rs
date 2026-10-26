@@ -156,7 +156,7 @@ pub(super) static OPTS: &[Opt] = &[
     sel!("hero.title", Hero, n_!("Game name"), "", &[], HeroTitle, hero_title_name, theme.hero.title),
     tgl!("hero.facts", Hero, n_!("Store, installed, time played and status"), "", &[], theme.hero.facts),
     tgl!("hero.overview", Hero, n_!("Description"), "", &[], theme.hero.overview),
-    sel!("hero.size", Hero, n_!("Height of the hero"), "", &[Layout::Shelves], Size3, size3_name, theme.hero.size),
+    sel!("hero.size", Hero, n_!("Height of the hero"), "", &[Layout::Shelves, Layout::Spotlight], Size3, size3_name, theme.hero.size),
     sel!("hero.fact_style", Hero, n_!("Facts as"), "", &[], FactStyle, fact_style_name, theme.hero.fact_style),
     sel!("hero.align", Hero, n_!("Position of the game"), "", &[Layout::Cinema], HeroAlign, hero_align_name, theme.hero.align),
     tgl!(

@@ -16,7 +16,6 @@
   "Ask": "Fragen",
   "Author": "Autor",
   "Automatic (the controller's)": "Automatisch (die des Controllers)",
-  "Back to Classic": "Zurück zu Klassisch",
   "Background colour": "Hintergrundfarbe",
   "Badges": "Badges",
   "Blurred cover": "Unscharfes Cover",
@@ -213,5 +212,6 @@
   "{n} tab": "{n} Tab",
   "{n} tabs": "{n} Tabs",
   "{tabs} · {layouts}": "{tabs} · {layouts}",
-  "“On” switches": "„Ein“-Schalter"
+  "“On” switches": "„Ein“-Schalter",
+  "Back to {name}": "Zurück zu {name}"
 }

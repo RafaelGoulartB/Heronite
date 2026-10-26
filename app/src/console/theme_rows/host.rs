@@ -187,7 +187,7 @@ pub fn text_done<H: Host>(h: &mut H, id: &str, text: String, window: &mut Window
         "theme.save-as" => {
             let name = text.trim().to_string();
             if !name.is_empty() {
-                store_op(h, StoreOp::SaveAs { name, author: String::new() }, window, cx);
+                store_op(h, StoreOp::SaveAs { name, author: String::new(), description: String::new() }, window, cx);
             }
         }
         "theme.rename" => {
@@ -236,18 +236,16 @@ pub fn store_op<H: Host>(h: &mut H, op: StoreOp, window: &mut Window, cx: &mut C
     let Some(current) = h.theme_state().map(|st| st.prefs.theme.clone()) else { return };
     match op {
         StoreOp::Save => save_job(h, app, current, tr!("Saved.").into(), cx),
-        StoreOp::SaveAs { name, author } => {
+        StoreOp::SaveAs { name, author, description } => {
             let mut t = current;
             t.name = name;
             t.author = author;
+            t.description = description;
+            t.version = "1".into();
             t.id.clear();
             save_job(h, app, t, tr!("Saved as a new theme.").into(), cx);
         }
-        StoreOp::Rename(name) => {
-            let mut t = current;
-            t.name = name;
-            save_job(h, app, t, tr!("Renamed.").into(), cx);
-        }
+        StoreOp::Rename(name) => rename_job(h, app, name, cx),
         StoreOp::SaveDetails { name, author } => {
             let mut t = current;
             t.name = name;
@@ -291,6 +289,38 @@ fn delete_job<H: Host>(_h: &mut H, app: AppPaths, id: String, cx: &mut Context<H
             Err(e) => {
                 fail(h, e, cx);
             }
+        })
+        .ok();
+    })
+    .detach();
+}
+
+/// Renames the saved theme in use on disk and in use, leaving its other
+/// unsaved changes as they are.
+fn rename_job<H: Host>(h: &mut H, app: AppPaths, name: String, cx: &mut Context<H>) {
+    let Some(saved) = h.theme_state().and_then(|st| super::based_on_saved(&st.prefs, &st.data.saved).cloned()) else { return };
+    cx.spawn(async move |this, cx| {
+        let res = cx
+            .background_spawn({
+                let app = app.clone();
+                async move {
+                    let mut t = saved;
+                    t.name = name;
+                    store::save(&app, &t).map(|t| (t, store::list(&app)))
+                }
+            })
+            .await;
+        this.update(cx, |h, cx| match res {
+            Ok((t, list)) => {
+                let prefs = themes::update(&app, |p| p.theme.name = t.name.clone());
+                if let Some(st) = h.theme_state() {
+                    st.prefs = prefs;
+                    st.data.saved = list;
+                    st.notice = Some((tr!("Renamed.").into(), false));
+                }
+                cx.notify();
+            }
+            Err(e) => fail(h, e, cx),
         })
         .ok();
     })

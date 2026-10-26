@@ -16,7 +16,6 @@
   "Ask": "Preguntar",
   "Author": "Autor",
   "Automatic (the controller's)": "Automático (el del mando)",
-  "Back to Classic": "Volver a Clásico",
   "Background colour": "Color de fondo",
   "Badges": "Insignias",
   "Blurred cover": "Portada desenfocada",
@@ -213,5 +212,6 @@
   "{n} tab": "{n} pestaña",
   "{n} tabs": "{n} pestañas",
   "{tabs} · {layouts}": "{tabs} · {layouts}",
-  "“On” switches": "Interruptores “activados”"
+  "“On” switches": "Interruptores “activados”",
+  "Back to {name}": "Volver a {name}"
 }

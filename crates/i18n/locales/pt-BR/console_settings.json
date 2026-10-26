@@ -16,7 +16,6 @@
   "Ask": "Perguntar",
   "Author": "Autor",
   "Automatic (the controller's)": "Automático (o do controle)",
-  "Back to Classic": "Voltar ao Clássico",
   "Background colour": "Cor do fundo",
   "Badges": "Selos",
   "Blurred cover": "Capa desfocada",
@@ -213,5 +212,6 @@
   "{n} tab": "{n} aba",
   "{n} tabs": "{n} abas",
   "{tabs} · {layouts}": "{tabs} · {layouts}",
-  "“On” switches": "Chaves “ligadas”"
+  "“On” switches": "Chaves “ligadas”",
+  "Back to {name}": "Voltar ao {name}"
 }

@@ -7,10 +7,14 @@ use super::*;
 pub enum StoreOp {
     /// Overwrite the saved theme in use.
     Save,
+    /// A new saved theme from the one in use, with its own name, author and
+    /// description (never the ones of the theme it started from).
     SaveAs {
         name: String,
         author: String,
+        description: String,
     },
+    /// Renames the saved theme in use (its file only: unsaved changes stay unsaved).
     Rename(String),
     /// Overwrite the saved theme in use under this name and author.
     SaveDetails {

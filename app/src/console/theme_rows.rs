@@ -286,7 +286,8 @@ fn theme_rows(cx: &Ctx) -> Vec<Row> {
     }
     v.push(Row::action("theme.export", tr!("Export to a file…")).icon(Icon::OpenInNew));
     v.push(Row::action("theme.import", tr!("Import from a file…")).icon(Icon::Download));
-    v.push(Row::action("theme.reset", tr!("Back to Classic")).icon(Icon::History));
+    let default = presets::default_theme();
+    v.push(Row::action("theme.reset", tr!("Back to {name}", name = tr(&default.name))).icon(Icon::History));
     v
 }
 

@@ -132,7 +132,7 @@ fn identity(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, 
                 ask_for_a_name(d, cx);
                 return;
             }
-            theme_rows::store_op(d, StoreOp::SaveAs { name, author }, window, cx);
+            theme_rows::store_op(d, StoreOp::SaveAs { name, author, description: String::new() }, window, cx);
         }))
     };
     let mut actions = div().flex().flex_wrap().items_center().gap(px(8.)).child(save);
@@ -256,7 +256,7 @@ pub(super) fn render_create(d: &mut SettingsPage, window: &mut Window, cx: &mut 
         if let Some(id) = start {
             theme_rows::change(d, &Command::new("theme.use", Arg::Pick(id)), cx);
         }
-        theme_rows::store_op(d, StoreOp::SaveAs { name, author }, window, cx);
+        theme_rows::store_op(d, StoreOp::SaveAs { name, author, description: String::new() }, window, cx);
         if let Some(s) = d.console_mode.as_mut() {
             s.view = View::Editor;
             s.group = 0;
