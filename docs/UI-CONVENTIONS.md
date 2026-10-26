@@ -489,7 +489,9 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   mode (`pages/settings/console_mode/`) has three views: Home (the themes on one row that scrolls sideways, however many
   there are: ‹ › and the filters All / Built-in / Yours in its title, a swipe, or the mouse wheel while the row can
   still move, like Related; about three cards in view, the next one cut at the edge, and under the row a dot per page
-  of cards, the current one a longer accent pill, a click goes to that page (`Pages`); it brings the theme in use into
+  of cards, the current one a longer accent pill, a click goes to that page (`Pages`); an arrow or a dot slides the row
+  there (`Slide`, 280 ms ease-out, frames asked for only while it runs; the wheel or a swipe cancels it; a jump with
+  Animations Reduced or Off) and the pill flows from dot to dot with the row's position; it brings the theme in use into
   view when shown or filtered; each card a picture, the name and two lines, the rest in a tooltip, Edit / Make a copy /
   Export / Delete over the picture under the pointer; "New theme" and "Import…" (its tooltip says a file can be
   dropped on the themes) in the title; a theme file chosen with Import… or dropped on

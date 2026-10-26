@@ -87,6 +87,8 @@ pub struct State {
     pub(super) gallery: ScrollHandle,
     pub(super) gallery_filter: home::Gallery,
     pub(super) reveal: bool,
+    /// The gallery sliding to another page.
+    pub(super) slide: home::SlideCell,
     /// A theme file read and shown before it is imported.
     pub(super) importing: Option<import::Import>,
     pub(super) view: View,
@@ -138,6 +140,7 @@ impl State {
             gallery: ScrollHandle::new(),
             gallery_filter: home::Gallery::All,
             reveal: true,
+            slide: Default::default(),
             importing: None,
             view: View::Home,
             pending: None,

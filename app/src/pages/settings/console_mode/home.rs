@@ -259,12 +259,55 @@ pub(in crate::pages::settings) enum Gallery {
 
 /// One more of the gallery's cards is cut off at the right edge: there are more.
 const CARDS_IN_VIEW: f32 = 3.3;
+/// How long the gallery takes to slide to another page.
+const SLIDE: std::time::Duration = std::time::Duration::from_millis(280);
+
+/// The gallery sliding to another page (an arrow or a dot): the row's
+/// offset goes from `from` to `to` (px, negative) on an ease-out curve. The
+/// page asks for frames only while one runs; the wheel and swipes cancel it.
+#[derive(Clone, Copy, Debug)]
+pub(in crate::pages::settings) struct Slide {
+    from: f32,
+    to: f32,
+    start: std::time::Instant,
+}
+
+/// The slide shared by the row's handlers and the render that steps it.
+pub(in crate::pages::settings) type SlideCell = std::rc::Rc<std::cell::Cell<Option<Slide>>>;
+
+/// Moves the row to `x` (px, negative): a slide when animations are on.
+fn slide_to(scroll: &ScrollHandle, cell: &SlideCell, x: f32) {
+    let from = f32::from(scroll.offset().x);
+    if (from - x).abs() < 0.5 {
+        return;
+    }
+    if theme::animations() {
+        cell.set(Some(Slide { from, to: x, start: std::time::Instant::now() }));
+    } else {
+        cell.set(None);
+        scroll.set_offset(point(px(x), scroll.offset().y));
+    }
+}
+
+/// One frame of the slide running, if any; asks for the next frame until it ends.
+fn step_slide(scroll: &ScrollHandle, cell: &SlideCell, window: &mut Window) {
+    let Some(s) = cell.get() else { return };
+    let t = (s.start.elapsed().as_secs_f32() / SLIDE.as_secs_f32()).min(1.);
+    let eased = 1. - (1. - t).powi(3);
+    scroll.set_offset(point(px(s.from + (s.to - s.from) * eased), scroll.offset().y));
+    if t < 1. {
+        window.request_animation_frame();
+    } else {
+        cell.set(None);
+    }
+}
 
 fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx: &mut Context<SettingsPage>) -> Stateful<Div> {
     let card_w = ((col_w - 2. * TILE_GAP) / CARDS_IN_VIEW).clamp(200., 300.).floor();
     let Some(s) = d.console_mode.as_ref() else { return div().id("cm-themes") };
     let (pending, confirm) = (s.pending.clone(), s.confirm_delete.clone());
-    let (filter, scroll, reveal) = (s.gallery_filter, s.gallery.clone(), s.reveal);
+    let (filter, scroll, reveal, sliding) = (s.gallery_filter, s.gallery.clone(), s.reveal, s.slide.clone());
+    step_slide(&scroll, &sliding, window);
 
     let yours_n = st.saved.len();
     let filter = if filter == Gallery::Yours && yours_n == 0 { Gallery::All } else { filter };
@@ -295,8 +338,10 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
         .restrict_scroll_to_axis()
         .track_scroll(&scroll)
         .on_scroll_wheel({
-            let scroll = scroll.clone();
+            let (scroll, sliding) = (scroll.clone(), sliding.clone());
             move |ev, window, cx| {
+                // The hand takes over from a slide.
+                sliding.set(None);
                 let d = ev.delta.pixel_delta(window.line_height());
                 if d.y.abs() > d.x.abs() {
                     if slide(&scroll, d.y) {
@@ -354,6 +399,7 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
                     if let Some(s) = d.console_mode.as_mut() {
                         s.gallery_filter = g;
                         s.reveal = true;
+                        s.slide.set(None);
                         s.gallery.set_offset(point(px(0.), px(0.)));
                     }
                     cx.notify();
@@ -370,7 +416,7 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
         .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Themes")))
         .child(pills)
         .child(div().flex_1())
-        .children(pages.map(|p| p.arrows(&scroll)))
+        .children(pages.map(|p| p.arrows(&scroll, &sliding)))
         .child(create)
         .child(import);
     let importing = super::import::render(d, st, col_w, window, cx);
@@ -389,7 +435,7 @@ fn themes(d: &mut SettingsPage, st: &Status, col_w: f32, window: &mut Window, cx
         .children(importing)
         .children(pending.map(|id| pending_banner(st, &id, cx)))
         .child(row)
-        .children(pages.map(|p| p.dots(&scroll)))
+        .children(pages.map(|p| p.dots(&scroll, &sliding)))
 }
 
 /// Moves the gallery by `delta` (negative: towards its end), within its
@@ -412,7 +458,6 @@ struct Pages {
     /// Pixels of one page.
     step: f32,
     count: usize,
-    current: usize,
     /// How far the row can move, px.
     max: f32,
     at: f32,
@@ -426,40 +471,57 @@ impl Pages {
         }
         let step = (((view_w + TILE_GAP) / card).floor().max(1.)) * card;
         let at = -f32::from(scroll.offset().x);
-        let count = 1 + (max / step).ceil() as usize;
-        // The end of the row is the last page, even when it is a short one.
-        let current = if at >= max - 1. { count - 1 } else { ((at / step).round() as usize).min(count - 1) };
-        Some(Self { step, count, current, max, at })
+        Some(Self { step, count: 1 + (max / step).ceil() as usize, max, at })
     }
 
-    fn go(&self, scroll: &ScrollHandle, page: usize) {
-        let x = (page as f32 * self.step).min(self.max);
-        scroll.set_offset(point(px(-x), scroll.offset().y));
+    /// Where the row is, in pages (`1.5`: halfway from the second page to the
+    /// third). The last page is the end of the row, however short.
+    fn position(&self) -> f32 {
+        let before_last = (self.count - 2) as f32 * self.step;
+        if self.at <= before_last {
+            self.at / self.step
+        } else {
+            (self.count - 2) as f32 + (self.at - before_last) / (self.max - before_last).max(1.)
+        }
+    }
+
+    fn current(&self) -> usize {
+        (self.position().round().max(0.) as usize).min(self.count - 1)
+    }
+
+    fn offset_of(&self, page: usize) -> f32 {
+        -(page as f32 * self.step).min(self.max)
     }
 
     /// ‹ › of the title, a page each; the one at an end is dimmed.
-    fn arrows(&self, scroll: &ScrollHandle) -> Div {
+    fn arrows(&self, scroll: &ScrollHandle, sliding: &SlideCell) -> Div {
+        // From where a slide is going, so quick presses add up.
+        let target = sliding.get().map_or(self.at, |s| -s.to);
+        let page = Pages { at: target, ..*self }.current();
         let arrow = |id: &'static str, ic: Icon, to: Option<usize>| {
-            let (scroll, pages) = (scroll.clone(), *self);
+            let (scroll, sliding, x) = (scroll.clone(), sliding.clone(), to.map(|p| self.offset_of(p)));
             icon_button(id, ic, 18., to.is_some()).on_click(move |_, window, _| {
-                if let Some(page) = to {
-                    pages.go(&scroll, page);
+                if let Some(x) = x {
+                    slide_to(&scroll, &sliding, x);
                     window.refresh();
                 }
             })
         };
-        let prev = (self.at > 0.5).then(|| self.current.saturating_sub(1));
-        let next = (self.at < self.max - 0.5).then(|| (self.current + 1).min(self.count - 1));
+        let prev = (target > 0.5).then(|| page.saturating_sub(1));
+        let next = (target < self.max - 0.5).then(|| (page + 1).min(self.count - 1));
         div().flex().gap(px(2.)).child(arrow("cm-gallery-prev", Icon::ChevronLeft, prev)).child(arrow("cm-gallery-next", Icon::ChevronRight, next))
     }
 
-    /// A dot per page under the row, the current one a longer pill; a click
-    /// goes to that page.
-    fn dots(&self, scroll: &ScrollHandle) -> Div {
+    /// A dot per page under the row; the one of the page in view is a longer
+    /// accent pill, and while the row moves the pill flows from dot to dot
+    /// (its share of each comes from the row's position). A click goes to
+    /// that page.
+    fn dots(&self, scroll: &ScrollHandle, sliding: &SlideCell) -> Div {
+        let pos = self.position();
         let mut row = div().flex().justify_center().items_center().gap(px(6.)).pt(px(8.));
         for i in 0..self.count {
-            let on = i == self.current;
-            let (scroll, pages) = (scroll.clone(), *self);
+            let w = (1. - (pos - i as f32).abs()).clamp(0., 1.);
+            let (scroll, sliding, x) = (scroll.clone(), sliding.clone(), self.offset_of(i));
             row = row.child(
                 div()
                     .id(SharedString::from(format!("cm-gallery-page-{i}")))
@@ -467,16 +529,16 @@ impl Pages {
                     .p(px(4.))
                     .cursor_pointer()
                     .on_click(move |_, window, _| {
-                        pages.go(&scroll, i);
+                        slide_to(&scroll, &sliding, x);
                         window.refresh();
                     })
                     .child(
                         div()
                             .h(px(6.))
-                            .w(px(if on { 20. } else { 6. }))
+                            .w(px(6. + 14. * w))
                             .rounded_full()
-                            .bg(if on { theme::accent().into() } else { theme::ink_a(0.22) })
-                            .when(!on, |d| d.hover(|s| s.bg(theme::ink_a(0.4)))),
+                            .bg(if w > 0.01 { Hsla::from(theme::accent_alpha(0.3 + 0.7 * w)) } else { theme::ink_a(0.22) })
+                            .when(w < 0.5, |d| d.hover(|s| s.bg(theme::ink_a(0.4)))),
                     ),
             );
         }
@@ -858,4 +920,23 @@ fn startup(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsP
         .child(caption(Card::Startup.title()))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!("Not part of a theme: these stay on this PC."))))
         .child(card(els))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Pages;
+
+    #[test]
+    fn the_row_maps_to_pages_with_a_short_last_one() {
+        // Pages of 600px over a row that moves 1400px: 0, 600, 1200 and the end.
+        let at = |at: f32| Pages { step: 600., count: 4, max: 1400., at };
+        assert_eq!(at(0.).position(), 0.);
+        assert_eq!(at(300.).position(), 0.5);
+        assert_eq!(at(600.).current(), 1);
+        // The short last page still takes the pill the whole way.
+        assert_eq!(at(1300.).position(), 2.5);
+        assert_eq!(at(1400.).current(), 3);
+        assert_eq!(at(0.).offset_of(3), -1400.);
+        assert_eq!(at(0.).offset_of(1), -600.);
+    }
 }
