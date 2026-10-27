@@ -29,6 +29,12 @@ pub fn to_unix(wine_prefix: &Path, win: &str) -> Option<PathBuf> {
     Some(normal(&out))
 }
 
+/// `rel` (parts separated by `/`) below `dir`, each part with the case the
+/// folder has on disk. Parts that do not exist are kept as written.
+pub(crate) fn join_ci(dir: &Path, rel: &str) -> PathBuf {
+    rel.split('/').filter(|p| !p.is_empty()).fold(dir.to_path_buf(), |dir, part| child(&dir, part))
+}
+
 /// `dir/part`, with the existing entry's case when only the case differs.
 fn child(dir: &Path, part: &str) -> PathBuf {
     let exact = dir.join(part);

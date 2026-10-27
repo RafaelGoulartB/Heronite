@@ -17,6 +17,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 
 [dev-dependencies]
 tempfile = "3"
+shlex = "1"
 
 [lints]
 workspace = true
