@@ -6,6 +6,7 @@
 //! to Settings → Other launchers under them.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -265,26 +266,90 @@ fn other_launchers<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) ->
         }))
 }
 
+/// Where the list and each store page are scrolled. The store pages are
+/// separate views drawn one at a time, so the list keeps its place from one
+/// store to the next; each page keeps its own.
+struct Scrolls {
+    nav: ScrollHandle,
+    pages: HashMap<Page, ScrollHandle>,
+}
+
+impl Global for Scrolls {}
+
+/// The list's scroll (`None`) or a page's.
+fn scroll_of(page: Option<Page>, cx: &mut App) -> ScrollHandle {
+    if !cx.has_global::<Scrolls>() {
+        cx.set_global(Scrolls { nav: ScrollHandle::new(), pages: HashMap::new() });
+    }
+    let s = cx.global_mut::<Scrolls>();
+    match page {
+        None => s.nav.clone(),
+        Some(p) => s.pages.entry(p).or_default().clone(),
+    }
+}
+
+/// `area` (which holds the element scrolled by `scroll`) with its
+/// scrollbar `right` px from its edge, when the content is taller than it.
+fn with_scrollbar<V: 'static>(area: Div, id: &'static str, scroll: &ScrollHandle, right: f32, cx: &mut Context<V>) -> Div {
+    let (offset, max, height) = (scroll.offset().y, scroll.max_offset().y, scroll.bounds().size.height);
+    // The sizes are known only once laid out, after this draw: when they
+    // differ from the ones drawn (the first time, the window resized, the
+    // page grew), draw once more so the bar follows.
+    let (laid_out, view) = (scroll.clone(), cx.entity_id());
+    let watch = canvas(
+        move |_, _, cx| {
+            if laid_out.max_offset().y != max || laid_out.bounds().size.height != height {
+                cx.notify(view);
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .size_0();
+    let (to, weak) = (scroll.clone(), cx.entity().downgrade());
+    let bar = crate::ui::scrollbar_draggable(
+        id,
+        offset,
+        max,
+        height,
+        move |distance, _, cx| {
+            to.set_offset(point(px(0.), px(-distance)));
+            weak.update(cx, |_, cx| cx.notify()).ok();
+        },
+        None,
+    );
+    area.child(watch).children(bar.map(|b| b.right(px(right))))
+}
+
 /// The list on the left of a store page: "Stores", the stores in their
 /// groups, and Other launchers at the bottom.
 fn nav<V: EventEmitter<PageEvent> + 'static>(active: Page, cx: &mut Context<V>) -> Div {
-    let mut list = div().id("stores-nav").flex_1().min_h_0().overflow_y_scroll().flex().flex_col().child(
-        div()
-            .flex()
-            .items_center()
-            .gap(px(10.))
-            .px(px(12.))
-            .pb(px(10.))
-            .child(icon(Icon::Storefront, px(18.), theme::text_primary()))
-            .child(
-                div()
-                    .font_family(theme::font_heading())
-                    .text_size(px(19.))
-                    .font_weight(theme::W_BOLD)
-                    .text_color(theme::text_primary())
-                    .child(title()),
-            ),
-    );
+    let scroll = scroll_of(None, cx);
+    let mut list = div()
+        .id("stores-nav")
+        .size_full()
+        .overflow_y_scroll()
+        .track_scroll(&scroll)
+        .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .px(px(12.))
+                .pb(px(10.))
+                .child(icon(Icon::Storefront, px(18.), theme::text_primary()))
+                .child(
+                    div()
+                        .font_family(theme::font_heading())
+                        .text_size(px(19.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(theme::text_primary())
+                        .child(title()),
+                ),
+        );
     let page = cx.entity().downgrade();
     for (group, pages) in GROUPS {
         list = list.child(
@@ -310,12 +375,13 @@ fn nav<V: EventEmitter<PageEvent> + 'static>(active: Page, cx: &mut Context<V>) 
         .pb(px(14.))
         .border_r_1()
         .border_color(theme::row_separator())
-        .child(list)
+        .child(with_scrollbar(div().relative().flex_1().min_h_0().child(list), "stores-nav-scrollbar", &scroll, -11., cx))
         .child(div().pt(px(12.)).child(other_launchers(cx)))
 }
 
 /// A store page: the list of stores on the left; the store's name, `lead`
-/// and `body` (at most 1320px wide) on the right, scrolling. The round
+/// and `body` (at most 1320px wide) on the right, scrolling. Both have a
+/// scrollbar when the window is too short for them. The round
 /// close button goes back to the Collection.
 pub fn sheet<V: EventEmitter<PageEvent> + 'static>(
     id: impl Into<ElementId>,
@@ -325,12 +391,13 @@ pub fn sheet<V: EventEmitter<PageEvent> + 'static>(
     body: impl IntoElement,
 ) -> Div {
     let header = div().flex().flex_col().gap(px(4.)).pr(px(48.)).pb(px(18.)).child(page_heading(active.title())).child(help_text(lead));
+    let scroll = scroll_of(Some(active), cx);
     let content = div()
         .id(id.into())
-        .flex_1()
-        .min_w_0()
-        .h_full()
+        .size_full()
         .overflow_y_scroll()
+        .track_scroll(&scroll)
+        .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
         .px(px(32.))
         .pt(px(26.))
         .pb(px(28.))
@@ -348,7 +415,7 @@ pub fn sheet<V: EventEmitter<PageEvent> + 'static>(
             .text_color(theme::text_primary())
             .font_family(theme::font_body())
             .child(nav(active, cx))
-            .child(content)
+            .child(with_scrollbar(div().relative().flex_1().min_w_0().h_full().child(content), "stores-page-scrollbar", &scroll, 4., cx))
             .child(close),
     )
 }
