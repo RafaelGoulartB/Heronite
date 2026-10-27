@@ -281,11 +281,12 @@ impl CollectionView {
                     },
                 };
                 let mut p = glass::glass_panel(theme::R_POPOVER).w(px(300.)).p(px(6.)).flex().flex_col().gap(px(2.));
-                // Where the games are, then what sets them up. The three
-                // stores are one "Stores" row (their pages switch with tabs).
+                // Where the games are, then where they come from and what
+                // runs them. The stores are one "Stores" row (their pages
+                // list each other).
                 let stores = this.pages.stores_page();
                 for (i, group) in
-                    [&[Page::Collection, Page::Downloads, Page::Statistics][..], &[stores, Page::WineManager, Page::Emulators][..]]
+                    [&[Page::Collection, Page::Downloads, Page::Statistics][..], &[stores, Page::Emulators, Page::WineManager][..]]
                         .into_iter()
                         .enumerate()
                 {

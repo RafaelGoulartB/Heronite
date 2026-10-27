@@ -205,7 +205,7 @@ values of a kind add up (any of them); kinds combine. While its box has the keyb
 a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, the
 Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or
 after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
-pages grouped (Collection, Downloads, Statistics | Stores, Wine Manager, Emulators), then Add game, Console mode,
+pages grouped (Collection, Downloads, Statistics | Stores, Emulators, Wine Manager), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
 row for Epic Games, GOG, Amazon Games, Steam and the store clients under Wine (Battle.net, EA app, Ubisoft Connect,
 Rockstar Games): each store keeps its own page, laid out by `pages::stores::sheet`: on the left, as in Settings, the
