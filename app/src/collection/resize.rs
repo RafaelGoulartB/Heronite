@@ -1,12 +1,13 @@
 //! Wider side panels: the Focus list column and the grid's drawer grow when
 //! their inner edge is dragged. The default width for the window is the
-//! narrowest they get; dragging back to it (or a double click on the edge)
-//! returns to the default. `ui-state.json` keeps the widths.
+//! narrowest the list gets; the drawer can also go a little under it.
+//! Dragging back to the default (or a double click on the edge) returns to
+//! it. `ui-state.json` keeps the widths.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::grid::{drawer_width, DRAWER_INSET};
+use super::grid::{drawer_min_width, drawer_width, DRAWER_INSET};
 use super::CollectionView;
 use crate::theme;
 use crate::ui::NoDragView;
@@ -20,6 +21,8 @@ const HANDLE_IN: f32 = 2.;
 const FOCUS_MIN_W: f32 = 560.;
 /// Room the grid keeps next to a widened drawer.
 const GRID_MIN_W: f32 = 320.;
+/// A drag ending this close to the default width snaps back to it.
+const SNAP_W: f32 = 6.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Panel {
@@ -30,19 +33,30 @@ pub(super) enum Panel {
 /// Marker for the active drag of a panel edge.
 struct EdgeDrag(Panel);
 
-/// `wanted` (`None` = the default) kept between the default `base` and `max`.
-fn widened(base: f32, wanted: Option<f32>, max: f32) -> f32 {
-    wanted.map_or(base, |w| w.min(max).max(base))
+/// Narrowest, default and widest width of a panel.
+#[derive(Clone, Copy)]
+struct Range {
+    min: f32,
+    base: f32,
+    max: f32,
+}
+
+/// `wanted` (`None` = the default) kept within `r`.
+fn widened(r: Range, wanted: Option<f32>) -> f32 {
+    wanted.map_or(r.base, |w| w.min(r.max).max(r.min))
 }
 
 impl CollectionView {
-    /// Default and widest width of `panel` in a window `vw` wide.
-    fn panel_range(&self, panel: Panel, vw: f32) -> (f32, f32) {
-        let (base, max) = match panel {
-            Panel::List => (Self::list_column_width(vw).0, vw - FOCUS_MIN_W),
-            Panel::Drawer => (drawer_width(vw), vw - 2. * DRAWER_INSET - GRID_MIN_W),
+    /// Width range of `panel` in a window `vw` wide.
+    fn panel_range(&self, panel: Panel, vw: f32) -> Range {
+        let (min, base, max) = match panel {
+            Panel::List => {
+                let base = Self::list_column_width(vw).0;
+                (base, base, vw - FOCUS_MIN_W)
+            }
+            Panel::Drawer => (drawer_min_width(vw), drawer_width(vw), vw - 2. * DRAWER_INSET - GRID_MIN_W),
         };
-        (base, max.max(base))
+        Range { min, base, max: max.max(base) }
     }
 
     fn wanted_width(&mut self, panel: Panel) -> &mut Option<f32> {
@@ -53,12 +67,11 @@ impl CollectionView {
     }
 
     pub(super) fn panel_width(&self, panel: Panel, vw: f32) -> f32 {
-        let (base, max) = self.panel_range(panel, vw);
         let wanted = match panel {
             Panel::List => self.ui.list_column_w,
             Panel::Drawer => self.ui.grid_drawer_w,
         };
-        widened(base, wanted, max)
+        widened(self.panel_range(panel, vw), wanted)
     }
 
     /// Width and columns of the Focus list: a widened list fits more covers.
@@ -81,15 +94,17 @@ impl CollectionView {
         }
     }
 
-    /// Moves the edge of `panel` to window x `x`; at the default width or
-    /// below the panel goes back to following the window.
+    /// Moves the edge of `panel` to window x `x`; at (or near) the default
+    /// width, or below it when the panel can't get narrower, the panel goes
+    /// back to following the window.
     fn drag_edge(&mut self, panel: Panel, x: f32, vw: f32) {
         let w = match panel {
             Panel::List => x,
             Panel::Drawer => vw - DRAWER_INSET - x,
         };
-        let (base, max) = self.panel_range(panel, vw);
-        *self.wanted_width(panel) = (w > base).then(|| w.min(max));
+        let r = self.panel_range(panel, vw);
+        let at_base = (w - r.base).abs() < SNAP_W || (w < r.base && r.min >= r.base);
+        *self.wanted_width(panel) = (!at_base).then(|| w.min(r.max).max(r.min));
     }
 
     fn end_resize(&mut self, cx: &mut Context<Self>) {
@@ -156,13 +171,24 @@ impl CollectionView {
 
 #[cfg(test)]
 mod tests {
-    use super::widened;
+    use super::{widened, Range};
+    use crate::collection::grid::{drawer_min_width, drawer_width};
 
     #[test]
-    fn default_width_is_the_narrowest() {
-        assert_eq!(widened(432., None, 1000.), 432.);
-        assert_eq!(widened(432., Some(300.), 1000.), 432.);
-        assert_eq!(widened(432., Some(600.), 1000.), 600.);
-        assert_eq!(widened(432., Some(1400.), 1000.), 1000.);
+    fn width_stays_in_range() {
+        let r = Range { min: 410., base: 432., max: 1000. };
+        assert_eq!(widened(r, None), 432.);
+        assert_eq!(widened(r, Some(300.)), 410.);
+        assert_eq!(widened(r, Some(420.)), 420.);
+        assert_eq!(widened(r, Some(600.)), 600.);
+        assert_eq!(widened(r, Some(1400.)), 1000.);
+    }
+
+    #[test]
+    fn drawer_goes_five_percent_under_the_default() {
+        assert_eq!(drawer_width(1600.), 480.);
+        assert_eq!(drawer_min_width(1600.), 460.);
+        assert_eq!(drawer_width(600.), 360.);
+        assert_eq!(drawer_min_width(600.), 340.);
     }
 }
