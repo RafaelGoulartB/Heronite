@@ -16,6 +16,9 @@ use crate::ui::controls::{button_sm, ButtonKind};
 use crate::ui::icon;
 use heronite_i18n::tr;
 
+type OnClick = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type OnHover = Box<dyn Fn(&bool, &mut Window, &mut App)>;
+
 impl CollectionView {
     pub(super) fn list_column_width(viewport_w: f32) -> (f32, usize) {
         if viewport_w <= 780. {
@@ -107,14 +110,9 @@ impl CollectionView {
         let (rw, rh) = self.cover_request();
         let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
         let no_art = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
-        let (k1, k2, k3, k4) = (key.clone(), key.clone(), key.clone(), key.clone());
         let a = theme::appearance();
-        let look = card::CardLook {
-            radius: a.cover_corners.radius(),
-            hover: a.cover_hover,
-            badges: a.cover_badges,
-            caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
-        };
+        let look = card_look();
+        let (on_select, on_hover, on_play) = self.card_listeners(&key, cx);
         let el = card::card(
             card::CardState {
                 vm: &c,
@@ -131,11 +129,23 @@ impl CollectionView {
                 epic: self.epic_card(&key, cx),
                 look,
             },
-            cx.listener(move |this, ev: &ClickEvent, _, cx| {
+            on_select,
+            on_hover,
+            on_play,
+        );
+        self.with_context_menu(key, el, cx)
+    }
+
+    /// What a card (or a row) of the game under `key` does when clicked,
+    /// hovered and when its play button is clicked.
+    fn card_listeners(&self, key: &SharedString, cx: &mut Context<Self>) -> (OnClick, OnHover, OnClick) {
+        let (k1, k2, k3) = (key.clone(), key.clone(), key.clone());
+        (
+            Box::new(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                 this.card_clicked(k1.clone(), ev);
                 cx.notify();
-            }),
-            cx.listener(move |this, hovered: &bool, _, cx| {
+            })),
+            Box::new(cx.listener(move |this, hovered: &bool, _, cx| {
                 if *hovered {
                     this.hovered = Some(k2.clone());
                 } else if this.hovered.as_ref() == Some(&k2) {
@@ -143,17 +153,21 @@ impl CollectionView {
                     this.leaving = Some(k2.clone());
                 }
                 cx.notify();
-            }),
-            cx.listener(move |this, _, _, cx| {
+            })),
+            Box::new(cx.listener(move |this, _, _, cx| {
                 this.primary_action(&k3, cx);
                 cx.notify();
-            }),
-        );
+            })),
+        )
+    }
+
+    /// `el` with the game's context menu on a right click.
+    fn with_context_menu(&self, key: SharedString, el: AnyElement, cx: &mut Context<Self>) -> AnyElement {
         div()
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, ev: &MouseDownEvent, _, cx| {
-                    this.open_context_menu(k4.clone(), ev.position, cx);
+                    this.open_context_menu(key.clone(), ev.position, cx);
                 }),
             )
             .child(el)
@@ -338,6 +352,17 @@ impl CollectionView {
                     cx.notify();
                 },
             ))))
+    }
+}
+
+/// How every card looks, from Settings → Appearance → Covers.
+fn card_look() -> card::CardLook {
+    let a = theme::appearance();
+    card::CardLook {
+        radius: a.cover_corners.radius(),
+        hover: a.cover_hover,
+        badges: a.cover_badges,
+        caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
     }
 }
 
