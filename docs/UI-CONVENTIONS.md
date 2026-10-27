@@ -263,8 +263,8 @@ ending in "Open game page" (back to the Focus view). Keys while nothing floats o
 it again). The Focus list takes the same arrows and Enter (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
 
 **Wider panels** (`collection/resize.rs`): the Focus list column and the grid's drawer grow when their inner edge is
-dragged (the cursor turns to col-resize over it; nothing else is drawn). Their default width for the window is the narrowest they get;
-dragging back to it, or a double click on the edge, returns to the default. A wider Focus list fits more columns of the
+dragged (the cursor turns to col-resize over it; nothing else is drawn). Their default width for the window is the narrowest the list gets;
+the drawer can also go 5% under it, to the nearest 10px (480 → 460). Dragging back to the default (within 6px), or a double click on the edge, returns to the default. A wider Focus list fits more columns of the
 same covers; the focus panel keeps at least 560px and the grid 320px. `ui-state.json` keeps `listColumnWidth` and
 `gridDrawerWidth` (`null` = default); Settings → Appearance → Layout → "Reset widths" clears both.
 
