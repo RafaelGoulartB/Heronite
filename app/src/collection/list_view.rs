@@ -9,12 +9,16 @@ use heronite_data::appearance::CoverLabel;
 use heronite_images::Variant;
 
 use super::vm::{CardVm, ListItem};
-use super::{card, list, CollectionView};
+use super::{card, list, list_row, CollectionView};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button_sm, ButtonKind};
 use crate::ui::icon;
 use heronite_i18n::tr;
+
+/// How far a Focus list row reaches past the covers' padding on each side:
+/// its highlight has room around the thumbnail and the caption.
+pub(super) const ROW_INSET: f32 = 4.;
 
 type OnClick = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 type OnHover = Box<dyn Fn(&bool, &mut Window, &mut App)>;
@@ -30,6 +34,11 @@ impl CollectionView {
         }
     }
 
+    /// The Focus list shows one game per row (`focusList`), not covers.
+    pub(super) fn focus_rows(&self) -> bool {
+        !self.ui.grid_view && self.ui.focus_list
+    }
+
     pub(super) fn cover_h(&self) -> f32 {
         self.card_w * self.cover_aspect
     }
@@ -38,6 +47,9 @@ impl CollectionView {
     /// the window and the drawer: steps of 16px keep a resize from decoding
     /// every cover again for each pixel (the image scales to the card).
     fn cover_request(&self) -> (f32, f32) {
+        if self.focus_rows() {
+            return (list_row::THUMB_W, list_row::THUMB_W * self.cover_aspect);
+        }
         if !self.ui.grid_view {
             return (self.card_w, self.cover_h());
         }
@@ -79,6 +91,18 @@ impl CollectionView {
                 // both show, a few pixels apart, while it scrolls under.
                 let stuck = self.stuck_group == Some(group);
                 div().pl(px(m.pad_l)).pr(px(m.pad_r)).when(stuck, |d| d.opacity(0.)).child(header).into_any_element()
+            }
+            ListItem::Row { group, start } if self.focus_rows() => {
+                let c = self.groups[group].cards[start].clone();
+                let last_row = start + 1 == self.groups[group].cards.len();
+                let m = self.list_metrics();
+                div()
+                    .pl(px(m.pad_l - ROW_INSET))
+                    .pr(px(m.pad_r - ROW_INSET))
+                    .pt(px(if start == 0 { 2. } else { 0. }))
+                    .pb(px(if last_row { 12. } else { 2. }))
+                    .child(self.render_row(c, window.scale_factor(), cx))
+                    .into_any_element()
             }
             ListItem::Row { group, start } => {
                 let cards: Vec<Arc<CardVm>> = {
@@ -128,6 +152,31 @@ impl CollectionView {
                 pick: self.sel.active().then(|| self.sel.contains(&key)),
                 epic: self.epic_card(&key, cx),
                 look,
+            },
+            on_select,
+            on_hover,
+            on_play,
+        );
+        self.with_context_menu(key, el, cx)
+    }
+
+    fn render_row(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
+        let key = c.key.clone();
+        let (rw, rh) = self.cover_request();
+        let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
+        let (on_select, on_hover, on_play) = self.card_listeners(&key, cx);
+        let el = list_row::row(
+            list_row::RowState {
+                vm: &c,
+                cover,
+                width: self.card_w,
+                thumb_h: rh,
+                selected: !self.sel.active() && self.selected.as_ref() == Some(&key),
+                hovered: self.hovered.as_ref() == Some(&key),
+                grey_uninstalled: self.grey_uninstalled,
+                pick: self.sel.active().then(|| self.sel.contains(&key)),
+                epic: self.epic_card(&key, cx),
+                look: card_look(),
             },
             on_select,
             on_hover,
@@ -241,6 +290,7 @@ impl CollectionView {
         let no_match = self.lib.as_ref().is_some_and(|lib| !lib.games.is_empty()) && self.groups.iter().all(|g| g.cards.is_empty());
         let m = self.list_metrics();
         let grid = self.ui.grid_view;
+        let rows = self.focus_rows();
         let sticky = self.sticky();
         self.stuck_group = sticky.map(|(g, _)| g);
         let sticky = sticky.map(|(g, shift)| {
@@ -252,7 +302,7 @@ impl CollectionView {
                 .right_0()
                 .pl(px(m.pad_l))
                 .pr(px(m.pad_r))
-                .child(list::stuck_scrim(grid))
+                .child(if rows { list::stuck_scrim_rows() } else { list::stuck_scrim(grid) })
                 .child(list::group_header(&self.groups[g]).children(pick))
         });
         div()

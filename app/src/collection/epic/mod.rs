@@ -158,6 +158,31 @@ pub(super) fn card_overlay(e: &CardEpic, radius: f32) -> Div {
     layer
 }
 
+/// The end of a Focus list row: the label over its bar, else the "Update"
+/// pill.
+pub(super) fn row_status(e: &CardEpic) -> Div {
+    if e.label.is_empty() {
+        return div()
+            .flex_none()
+            .px(px(6.))
+            .py(px(1.5))
+            .rounded_full()
+            .bg(theme::accent())
+            .text_color(theme::on_accent())
+            .text_size(px(10.5))
+            .font_weight(theme::W_BOLD)
+            .child(tr!("UPDATE"));
+    }
+    div()
+        .flex_none()
+        .w(px(92.))
+        .flex()
+        .flex_col()
+        .gap(px(4.))
+        .child(div().truncate().text_size(px(11.5)).font_weight(theme::W_BOLD).text_color(theme::text_bright()).child(e.label.clone()))
+        .child(progress_bar(e.percent, 3., theme::accent()))
+}
+
 /// The game keeps cloud saves its store can sync: Epic says so in its
 /// library; GOG keeps them for its Windows builds (whether this game has any
 /// is known when the sync runs).

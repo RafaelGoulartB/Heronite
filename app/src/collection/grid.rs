@@ -85,8 +85,11 @@ impl CollectionView {
     /// card width.
     pub(super) fn list_layout(&mut self, viewport_w: f32) -> (f32, usize) {
         if !self.ui.grid_view {
-            self.card_w = theme::CARD_W;
-            return self.focus_list_layout(viewport_w);
+            let (w, cols) = self.focus_list_layout(viewport_w);
+            let m = self.list_metrics();
+            let inset = 2. * super::list_view::ROW_INSET;
+            self.card_w = if self.ui.focus_list { w - m.pad_l - m.pad_r + inset } else { theme::CARD_W };
+            return (w, cols);
         }
         let w = if self.drawer_open() {
             viewport_w - self.panel_width(super::resize::Panel::Drawer, viewport_w) - 2. * DRAWER_INSET

@@ -74,10 +74,14 @@ impl CollectionView {
         widened(self.panel_range(panel, vw), wanted)
     }
 
-    /// Width and columns of the Focus list: a widened list fits more covers.
+    /// Width and columns of the Focus list: a widened list fits more covers;
+    /// rows take one column at any width.
     pub(super) fn focus_list_layout(&self, vw: f32) -> (f32, usize) {
         let (base, cols) = Self::list_column_width(vw);
         let w = self.panel_width(Panel::List, vw);
+        if self.ui.focus_list {
+            return (w.max(base), 1);
+        }
         if w <= base {
             return (base, cols);
         }
