@@ -28,6 +28,16 @@ use heronite_i18n::tr;
 
 /// What "Install" does today for `game`, if its store can install it.
 pub(super) fn store_install_label(game: &CollectionGame) -> Option<&'static str> {
+    use heronite_data::clients::Client;
+    if let Some(client) = game.client() {
+        // The client installs its games: "Install" opens it.
+        return Some(match client {
+            Client::BattleNet => tr!("Install with Battle.net"),
+            Client::Ea => tr!("Install with the EA app"),
+            Client::Ubisoft => tr!("Install with Ubisoft Connect"),
+            Client::Rockstar => tr!("Install with the Rockstar Games Launcher"),
+        });
+    }
     if game.runner == "legendary" {
         Some(tr!("Install with Epic Games"))
     } else if game.runner == "gog" {
@@ -42,9 +52,10 @@ pub(super) fn store_install_label(game: &CollectionGame) -> Option<&'static str>
 }
 
 /// The game can be installed from files: every game that is not installed
-/// (an emulated one becomes an executable game), except a DLC.
+/// (an emulated one becomes an executable game), except a DLC and a store
+/// client's game (the client installs it).
 pub(super) fn can_install_manually(game: &CollectionGame) -> bool {
-    !game.installed && game.game.install.is_dlc != Some(true)
+    !game.installed && game.game.install.is_dlc != Some(true) && game.client().is_none()
 }
 
 /// "Install" has other ways next to it: the arrow / submenu are shown.

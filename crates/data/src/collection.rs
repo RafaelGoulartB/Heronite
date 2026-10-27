@@ -329,6 +329,10 @@ pub fn store_facet(source: Option<&str>, runner: &str, steam_entry: bool, also_o
         ("lutris", _) => "Lutris",
         ("bottles", _) => "Bottles",
         ("faugus", _) => "Faugus",
+        ("battlenet", _) => "Battle.net",
+        ("ea", _) => "EA app",
+        ("ubisoft", _) => "Ubisoft Connect",
+        ("rockstar", _) => "Rockstar Games",
         ("heroic", _) => "Heroic",
         ("other", _) => heronite_i18n::tr!("Other"),
         _ => heronite_i18n::tr!("Added manually"),
@@ -708,6 +712,18 @@ mod tests {
 
     fn g(app: &str, title: &str, f: impl FnOnce(&mut crate::library::tests_support::Spec)) -> Game {
         game(app, title, f)
+    }
+
+    #[test]
+    fn the_store_facet_names_each_source() {
+        let stores = |source: &str, steam: bool| -> Vec<String> {
+            store_facet(Some(source), "sideload", false, steam).into_iter().map(|i| i.value).collect()
+        };
+        assert_eq!(stores("battlenet", false), ["Battle.net"]);
+        assert_eq!(stores("ea", false), ["EA app"]);
+        assert_eq!(stores("ubisoft", true), ["Ubisoft Connect", "Steam"]);
+        assert_eq!(stores("rockstar", false), ["Rockstar Games"]);
+        assert_eq!(stores("lutris", false), ["Lutris"]);
     }
 
     #[test]

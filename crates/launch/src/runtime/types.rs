@@ -96,11 +96,28 @@ pub struct HandoffConfig {
     /// Gone this long: the game is over (a game restarting itself shows up
     /// again within it).
     pub gone: Duration,
+    /// A game a store client starts (`plan::ClientHandoff`): how long it has
+    /// to show up. The client may update itself or ask the user to sign in
+    /// first.
+    pub client_wait: Duration,
+    /// Gone this long: the game is over (some games restart through their
+    /// launcher).
+    pub client_gone: Duration,
+    /// After the client was asked, how long before a client with none of its
+    /// programs running counts as closed instead of starting.
+    pub client_settle: Duration,
 }
 
 impl Default for HandoffConfig {
     fn default() -> Self {
-        Self { soon: Duration::from_secs(20), wait: Duration::from_secs(45), gone: Duration::from_secs(5) }
+        Self {
+            soon: Duration::from_secs(20),
+            wait: Duration::from_secs(45),
+            gone: Duration::from_secs(5),
+            client_wait: Duration::from_secs(600),
+            client_gone: Duration::from_secs(10),
+            client_settle: Duration::from_secs(15),
+        }
     }
 }
 

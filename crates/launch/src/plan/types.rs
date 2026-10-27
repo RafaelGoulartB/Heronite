@@ -76,8 +76,8 @@ pub struct ProcessPlan {
     /// legendary starts the game through umu (a Wine plan says it with
     /// [`WineRuntime::Umu`]): its `GAMEID` picks the protonfixes.
     pub through_umu: bool,
-    /// Another launcher starts the game and may hand it to its own running
-    /// instance (see [`Handoff`]).
+    /// Another launcher or a store client starts the game and may hand it to
+    /// its own running instance (see [`Handoff`]).
     pub handoff: Option<Handoff>,
     /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
     /// alongside it join that sandbox.
@@ -92,6 +92,26 @@ pub struct ProcessPlan {
 pub struct Handoff {
     pub prefix: Option<String>,
     pub folder: Option<String>,
+    /// A store client starts the game: the session follows the game, not the
+    /// command.
+    pub client: Option<ClientHandoff>,
+}
+
+/// A Windows store client (Battle.net, the EA app...) that starts the game
+/// in its own Wine prefix and stays open after the game ends, maybe started
+/// long before it was asked for the game.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ClientHandoff {
+    /// The client's brand, for the log and messages ("Battle.net").
+    pub name: String,
+    /// Lowercase program names of the client and its helpers
+    /// (`Client::programs()`): never the game.
+    pub programs: Vec<String>,
+    /// The client's main program (`Client::main_program()`): while it runs in
+    /// the prefix, `join` is spawned instead of the command.
+    pub main: String,
+    /// Asks the client that already runs to start the game.
+    pub join: Command,
 }
 
 /// A program run alongside the game (see [`crate::companions`]).

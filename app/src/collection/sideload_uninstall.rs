@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::clients::Client;
 use heronite_data::sideload_uninstall::{guess_game_folder, plan, uninstall, UninstallInput, UninstallPlan};
 use heronite_data::{CollectionGame, DataPaths, Library};
 use heronite_launch::native::{effective_platform, Platform};
@@ -41,8 +42,13 @@ impl Job {
 }
 
 /// A sideloaded program installed from files on this computer (not a Steam,
-/// emulated or browser entry, nor one another launcher has).
+/// emulated or browser entry, nor one another launcher has), or an installed
+/// game of a store client, whose uninstall is the client's
+/// ([`CollectionView::open_sideload_uninstall`] sends the user there).
 pub(super) fn can_uninstall_local(game: &CollectionGame) -> bool {
+    if game.client().is_some() {
+        return game.installed;
+    }
     game.runner == "sideload"
         && game.installed
         && game.steam_launch_id.is_none()
@@ -144,6 +150,10 @@ impl CollectionView {
             self.show_toast(tr!("{title} is running. Close the game to uninstall it.", title = game.title), true, cx);
             return;
         }
+        if let Some(client) = game.client() {
+            self.ask_client_uninstall(&game.title, client, window, cx);
+            return;
+        }
         let job = job_for(&lib, &game);
         let paths = self.data_paths.clone();
         cx.spawn_in(window, async move |this, cx| {
@@ -157,6 +167,29 @@ impl CollectionView {
         })
         .detach();
         cx.notify();
+    }
+
+    /// A store client's game is uninstalled in the client: offers to open it.
+    fn ask_client_uninstall(&mut self, title: &str, client: Client, window: &mut Window, cx: &mut Context<Self>) {
+        let name = client.name();
+        let mut spec = Confirm::new(
+            "client-uninstall",
+            tr!("Uninstall"),
+            tr!("\"{title}\" belongs to {client}, so {client} uninstalls it. Open {client} to uninstall it there?", title, client = name),
+        );
+        spec.confirm = Some(tr!("Open {client}", client = name));
+        let view = cx.new(|cx| {
+            EpicConfirmDialog::new(
+                spec,
+                move |_, cx| {
+                    let svc = crate::services::clients(cx);
+                    svc.update(cx, |s, cx| s.open(client, cx));
+                },
+                window,
+                cx,
+            )
+        });
+        self.open_dialog(view, cx);
     }
 
     fn ask_sideload_uninstall(&mut self, job: Job, plan: UninstallPlan, window: &mut Window, cx: &mut Context<Self>) {

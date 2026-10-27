@@ -46,6 +46,8 @@ pub struct SessionInfo {
     pub rom: Option<String>,
     /// The game's selected ROM in the overlay meta (fallback for `rom`).
     pub selected_rom: Option<String>,
+    /// The store client the game is started through (Battle.net...).
+    pub client: Option<heronite_data::clients::Client>,
 }
 
 pub struct GameRuntime {
@@ -119,6 +121,7 @@ impl GameRuntime {
                 is_emulator: false,
                 rom: None,
                 selected_rom: None,
+                client: None,
             });
             if let Ok(mut s) = self.sessions.lock() {
                 s.insert(g.app_name.clone(), info);
@@ -330,7 +333,17 @@ fn session_info(game: &CollectionGame, rom: Option<String>) -> SessionInfo {
         is_emulator: game.launch_kind.as_deref() == Some("emulator"),
         rom,
         selected_rom: game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()),
+        client: client_of(game),
     }
+}
+
+/// The store client that starts `game` (its meta's `source`), when it is
+/// one of the client games (`launchKind` `client`).
+fn client_of(game: &CollectionGame) -> Option<heronite_data::clients::Client> {
+    if game.launch_kind.as_deref() != Some(heronite_data::clients::LAUNCH_KIND) {
+        return None;
+    }
+    game.meta.as_ref().and_then(|m| heronite_data::clients::Client::from_id(&m.source))
 }
 
 /// Game settings switch "Auto Install/Update DXVK / DXVK-NVAPI / VKD3D on

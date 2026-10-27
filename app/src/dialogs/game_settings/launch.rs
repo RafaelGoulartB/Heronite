@@ -82,9 +82,13 @@ pub(super) fn detect(path: &str) -> (bool, ExecutableKind) {
 impl GameSettingsDialog {
     pub(super) fn build_launch(game: &Game, window: &mut Window, cx: &mut Context<Self>) -> Option<LaunchState> {
         // A game started by a command is edited in "Edit game" (folder and
-        // command); one another launcher starts, in that launcher.
+        // command); one another launcher or a store client starts, in that
+        // launcher or client.
         let show_launch = game.runner == "sideload"
-            && !matches!(game.launch_kind.as_deref(), Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND));
+            && !matches!(
+                game.launch_kind.as_deref(),
+                Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+            );
         show_launch.then(|| {
             let exe = game.game.install.executable.clone().unwrap_or_default();
             let run_as = game.meta.as_deref().and_then(|m| m.run_as.clone()).unwrap_or_else(|| "auto".into());

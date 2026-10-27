@@ -4,6 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::clients::{self, Client};
 use heronite_data::launchers::Launcher;
 use heronite_data::{DataPaths, Library};
 use heronite_i18n::tr;
@@ -53,18 +54,38 @@ pub fn remove_from_collection(paths: &DataPaths, runner: &str, app_name: &str) -
     remove_collection_game(paths, &ShortcutDirs::none(), app_name, runner)
 }
 
-/// The launcher a game of `lib` was brought in from (Heroic, Lutris,
-/// Bottles, Faugus), whose import must leave it out once it is removed.
-pub fn launcher_of(lib: &Library, app_name: &str) -> Option<Launcher> {
-    let game = lib.games.iter().find(|g| g.app_name == app_name)?;
-    Launcher::from_source(&game.meta.as_ref()?.source)
+/// Who brought a game into the Collection and keeps it in sync.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Origin {
+    Launcher(Launcher),
+    Client(Client),
 }
 
-/// Tells the import of `launcher` that the user removed `app_name`.
-pub fn note_removed(launcher: Option<Launcher>, app_name: &str, cx: &mut App) {
-    if let Some(launcher) = launcher {
-        let svc = crate::services::launcher_imports(cx);
-        svc.update(cx, |s, cx| s.note_removed(launcher, app_name, cx));
+/// The launcher (Heroic, Lutris, Bottles, Faugus) or the store client a game
+/// of `lib` was brought in from, whose import must leave it out once it is
+/// removed.
+pub fn launcher_of(lib: &Library, app_name: &str) -> Option<Origin> {
+    let game = lib.games.iter().find(|g| g.app_name == app_name)?;
+    let meta = game.meta.as_ref()?;
+    match Client::from_id(&meta.source).filter(|_| meta.launch_kind == clients::LAUNCH_KIND) {
+        Some(client) => Some(Origin::Client(client)),
+        None => Launcher::from_source(&meta.source).map(Origin::Launcher),
+    }
+}
+
+/// Tells the import of the launcher, or the sync of the store client, that
+/// the user removed `app_name`.
+pub fn note_removed(origin: Option<Origin>, app_name: &str, cx: &mut App) {
+    match origin {
+        Some(Origin::Launcher(launcher)) => {
+            let svc = crate::services::launcher_imports(cx);
+            svc.update(cx, |s, cx| s.note_removed(launcher, app_name, cx));
+        }
+        Some(Origin::Client(client)) => {
+            let svc = crate::services::clients(cx);
+            svc.update(cx, |s, cx| s.note_removed(client, app_name, cx));
+        }
+        None => {}
     }
 }
 
@@ -80,7 +101,7 @@ impl RemoveGameDialog {
         self.working = true;
         self.error = None;
         let (paths, app_name, runner) = (self.ctx.data_paths.clone(), self.app_name.clone(), self.runner.clone());
-        let launcher = launcher_of(&self.ctx.lib, &self.app_name);
+        let origin = launcher_of(&self.ctx.lib, &self.app_name);
         cx.spawn(async move |this, cx| {
             let result =
                 cx.background_spawn(async move { remove_from_collection(&paths, &runner, &app_name).map_err(|e| format!("{e:#}")) }).await;
@@ -88,7 +109,7 @@ impl RemoveGameDialog {
                 this.working = false;
                 match result {
                     Ok(_) => {
-                        note_removed(launcher, &this.app_name, cx);
+                        note_removed(origin, &this.app_name, cx);
                         cx.emit(DialogEvent::ChangedAndClose);
                     }
                     Err(message) => {

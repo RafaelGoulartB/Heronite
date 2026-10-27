@@ -43,6 +43,41 @@ pub trait Procs: Send + Sync {
     /// The user namespace of a process (`user:[4026531837]`), which tells a
     /// sandboxed one (see [`crate::sandbox::find_sandbox`]).
     fn user_ns(&self, pid: u32) -> Option<String>;
+    /// The Windows programs (not Wine's own, see [`WINE_SERVICES`]) running in
+    /// the Wine prefix `prefix` or from `folder`. A store client's game is
+    /// told from the client by name and by where it runs from.
+    fn prefix_programs(&self, prefix: &str, folder: Option<&str>) -> Vec<WinProgram>;
+}
+
+/// A Windows program running in a Wine prefix (see [`Procs::prefix_programs`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WinProgram {
+    pub pid: u32,
+    /// Lowercase file name (`game.exe`).
+    pub name: String,
+    /// The Windows path Wine gives it (`C:\games\Game.exe`).
+    pub path: String,
+    /// Its working folder is the folder asked for, or inside it.
+    pub from_folder: bool,
+}
+
+/// Whether the Windows path `win` of a program in `prefix` is inside the
+/// Linux folder `folder`: `C:` is the prefix's drive (`pfx/drive_c` with
+/// Proton), `Z:` the root, as Wine sets them up. Wine's paths ignore case.
+pub fn windows_path_under(win: &str, prefix: &str, folder: &str) -> bool {
+    let b = win.as_bytes();
+    if b.len() < 3 || b[1] != b':' || !matches!(b[2], b'\\' | b'/') {
+        return false;
+    }
+    let rest = win[3..].replace('\\', "/").to_lowercase();
+    let prefix = prefix.trim_end_matches('/');
+    let roots: Vec<String> = match b[0].to_ascii_lowercase() {
+        b'c' => vec![format!("{prefix}/pfx/drive_c"), format!("{prefix}/drive_c")],
+        b'z' => vec![String::new()],
+        _ => return false,
+    };
+    let folder = format!("{}/", folder.trim_end_matches('/').to_lowercase());
+    roots.iter().any(|root| format!("{}/{rest}", root.to_lowercase()).starts_with(&folder))
 }
 
 /// Wine's own programs, running in every prefix in use, and Proton's
@@ -60,6 +95,8 @@ pub(crate) const WINE_SERVICES: &[&str] = &[
     "wineboot.exe",
     "winemenubuilder.exe",
     "start.exe",
+    // Proton's accessibility helper (`PROTON_USE_XALIA`).
+    "xalia.exe",
 ];
 
 /// `path` is `folder` or inside it.
@@ -291,13 +328,7 @@ impl Procs for SystemProcs {
             let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { continue };
             let argv0 = String::from_utf8_lossy(cmdline.split(|b| *b == 0).next().unwrap_or_default()).into_owned();
             let Some(name) = windows_file_name(&argv0) else { continue };
-            // Other users' processes are not readable: they are not ours anyway.
-            let Ok(environ) = std::fs::read(format!("/proc/{pid}/environ")) else { continue };
-            let in_prefix = environ
-                .split(|b| *b == 0)
-                .filter_map(|kv| kv.strip_prefix(b"WINEPREFIX="))
-                .any(|v| same_prefix(&String::from_utf8_lossy(v), prefix));
-            if in_prefix && self.is_alive(pid) {
+            if in_wine_prefix(pid, prefix) && self.is_alive(pid) {
                 out.push(name);
             }
         }
@@ -364,14 +395,7 @@ impl Procs for SystemProcs {
                 continue;
             }
             let from_folder = folder.is_some_and(|f| link("cwd").is_some_and(|cwd| under(&cwd, f)));
-            let in_prefix = prefix.is_some_and(|prefix| {
-                std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|env| {
-                    env.split(|b| *b == 0)
-                        .filter_map(|kv| kv.strip_prefix(b"WINEPREFIX="))
-                        .any(|v| same_prefix(&String::from_utf8_lossy(v), prefix))
-                })
-            });
-            if from_folder || in_prefix {
+            if from_folder || prefix.is_some_and(|prefix| in_wine_prefix(pid, prefix)) {
                 out.push(pid);
             }
         }
@@ -381,6 +405,34 @@ impl Procs for SystemProcs {
     fn user_ns(&self, pid: u32) -> Option<String> {
         std::fs::read_link(format!("/proc/{pid}/ns/user")).ok().map(|l| l.to_string_lossy().into_owned())
     }
+
+    fn prefix_programs(&self, prefix: &str, folder: Option<&str>) -> Vec<WinProgram> {
+        let me = std::process::id();
+        let Ok(rd) = std::fs::read_dir("/proc") else { return Vec::new() };
+        let mut out = Vec::new();
+        for e in rd.flatten() {
+            let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
+            if pid == me {
+                continue;
+            }
+            let Ok(cmdline) = std::fs::read(format!("/proc/{pid}/cmdline")) else { continue };
+            let argv0 = String::from_utf8_lossy(cmdline.split(|b| *b == 0).next().unwrap_or_default()).into_owned();
+            let Some(name) = windows_file_name(&argv0).filter(|n| !WINE_SERVICES.contains(&n.as_str())) else { continue };
+            let from_folder = folder.is_some_and(|f| std::fs::read_link(format!("/proc/{pid}/cwd")).is_ok_and(|cwd| under(&cwd, f)));
+            if (from_folder || in_wine_prefix(pid, prefix)) && self.is_alive(pid) {
+                out.push(WinProgram { pid, name, path: argv0, from_folder });
+            }
+        }
+        out
+    }
+}
+
+/// Whether the process runs in the Wine prefix `prefix` (its `WINEPREFIX`).
+/// Other users' processes are not readable: they are not ours anyway.
+fn in_wine_prefix(pid: u32, prefix: &str) -> bool {
+    std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|env| {
+        env.split(|b| *b == 0).filter_map(|kv| kv.strip_prefix(b"WINEPREFIX=")).any(|v| same_prefix(&String::from_utf8_lossy(v), prefix))
+    })
 }
 
 /// Scriptable process table for tests.
@@ -407,6 +459,8 @@ struct FakeState {
     game: Vec<u32>,
     /// User namespace of a pid; "host" when not set.
     user_ns: HashMap<u32, String>,
+    /// What [`Procs::prefix_programs`] reports (alive ones only).
+    programs: Vec<WinProgram>,
 }
 
 impl FakeProcs {
@@ -451,6 +505,19 @@ impl FakeProcs {
     /// Puts `pid` in another user namespace (a sandbox).
     pub fn set_user_ns(&self, pid: u32, ns: &str) {
         self.inner.lock().unwrap().user_ns.insert(pid, ns.to_string());
+    }
+    /// The programs [`Procs::prefix_programs`] finds, whatever the prefix
+    /// (while alive), each running from the folder asked for.
+    pub fn set_prefix_programs(&self, programs: &[(u32, &str)]) {
+        let programs = programs
+            .iter()
+            .map(|(pid, name)| WinProgram { pid: *pid, name: name.to_string(), path: format!("C:\\games\\{name}"), from_folder: true })
+            .collect();
+        self.set_win_programs(programs);
+    }
+    /// [`set_prefix_programs`](Self::set_prefix_programs) with every detail.
+    pub fn set_win_programs(&self, programs: Vec<WinProgram>) {
+        self.inner.lock().unwrap().programs = programs;
     }
 }
 
@@ -500,6 +567,11 @@ impl Procs for FakeProcs {
     fn user_ns(&self, pid: u32) -> Option<String> {
         Some(self.inner.lock().unwrap().user_ns.get(&pid).cloned().unwrap_or_else(|| "host".into()))
     }
+
+    fn prefix_programs(&self, _prefix: &str, _folder: Option<&str>) -> Vec<WinProgram> {
+        let s = self.inner.lock().unwrap();
+        s.programs.iter().filter(|p| s.alive.contains(&p.pid)).cloned().collect()
+    }
 }
 
 #[cfg(test)]
@@ -514,6 +586,53 @@ mod tests {
         assert_eq!(windows_file_name("C:"), None);
         assert!(same_prefix("/p/game/pfx/", "/p/game") && same_prefix("/p/game", "/p/game/"));
         assert!(!same_prefix("/p/game2", "/p/game") && !same_prefix("/p/game/other", "/p/game") && !same_prefix("/x", ""));
+    }
+
+    /// A program Wine would name `C:\\games\\Game.EXE` (the name is argv[0]).
+    fn windows_program(argv0: &str, prefix: Option<&str>, cwd: Option<&std::path::Path>) -> std::process::Child {
+        use std::os::unix::process::CommandExt;
+        let mut c = std::process::Command::new("sleep");
+        c.arg0(argv0).arg("5").env_remove("WINEPREFIX");
+        if let Some(p) = prefix {
+            c.env("WINEPREFIX", p);
+        }
+        if let Some(d) = cwd {
+            c.current_dir(d);
+        }
+        c.spawn().unwrap()
+    }
+
+    #[test]
+    fn the_windows_programs_of_a_prefix_come_with_their_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut game = windows_program("C:\\games\\Game.EXE", Some("/pfx/store/pfx"), None);
+        let mut service = windows_program("C:\\windows\\system32\\services.exe", Some("/pfx/store/pfx"), None);
+        let mut elsewhere = windows_program("C:\\games\\Other.exe", Some("/pfx/other"), None);
+        let mut from_folder = windows_program("Z:\\g\\Folder.exe", None, Some(dir.path()));
+        let found: Vec<(u32, String, bool)> =
+            SystemProcs.prefix_programs("/pfx/store", dir.path().to_str()).into_iter().map(|p| (p.pid, p.name, p.from_folder)).collect();
+        assert!(found.contains(&(game.id(), "game.exe".to_string(), false)), "{found:?}");
+        assert!(found.contains(&(from_folder.id(), "folder.exe".to_string(), true)), "{found:?}");
+        assert!(found.iter().all(|(pid, ..)| *pid != service.id() && *pid != elsewhere.id()), "{found:?}");
+        let by_prefix = SystemProcs.prefix_programs("/pfx/store", None);
+        assert!(by_prefix.iter().any(|p| p.pid == game.id() && p.path == "C:\\games\\Game.EXE"));
+        assert!(by_prefix.iter().all(|p| p.pid != from_folder.id()));
+        for child in [&mut game, &mut service, &mut elsewhere, &mut from_folder] {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    #[test]
+    fn a_windows_path_is_under_a_folder_of_the_prefix() {
+        let wow = "/pfx/bnet/pfx/drive_c/Program Files (x86)/World of Warcraft";
+        assert!(windows_path_under("C:\\Program Files (x86)\\World of Warcraft\\_retail_\\Wow.exe", "/pfx/bnet", wow));
+        assert!(windows_path_under("c:/program files (x86)/world of warcraft/Wow.exe", "/pfx/bnet/", wow));
+        assert!(!windows_path_under("C:\\Program Files (x86)\\World of Warcraft Classic\\Wow.exe", "/pfx/bnet", wow));
+        assert!(!windows_path_under("C:\\Program Files (x86)\\Battle.net\\Battle.net.exe", "/pfx/bnet", wow));
+        assert!(windows_path_under("Z:\\games\\wow\\Wow.exe", "/pfx/bnet", "/games/wow"));
+        assert!(!windows_path_under("D:\\games\\wow\\Wow.exe", "/pfx/bnet", "/games/wow"));
+        assert!(!windows_path_under("Wow.exe", "/pfx/bnet", "/games/wow"));
     }
 
     #[test]

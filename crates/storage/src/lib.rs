@@ -173,6 +173,10 @@ pub struct Item {
     pub needs_walk: bool,
     /// Collection keys of the installed games using it (a game: itself).
     pub games: Vec<String>,
+    /// The store clients (Battle.net, the EA app...) keeping a prefix or a
+    /// Wine build in use by themselves: they are no game of the Collection,
+    /// so [`games`](Self::games) may be empty while the item is in use.
+    pub clients: Vec<String>,
     /// Store or source shown next to the title (a game's "Steam", "Epic"...).
     pub source: Option<String>,
     /// When it was last played (games; RFC 3339 as the library keeps it).
@@ -197,6 +201,7 @@ impl Item {
             size: None,
             needs_walk: true,
             games: Vec::new(),
+            clients: Vec::new(),
             source: None,
             last_played: None,
             disk: None,

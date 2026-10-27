@@ -49,8 +49,9 @@ pub fn next_install_state(
         };
     }
 
-    // Installed in the launcher it came from, while its folder is there.
-    if meta.launch_kind == heronite_data::launchers::LAUNCH_KIND {
+    // Installed in the launcher or store client it came from (their sync says
+    // so; there is no executable), while its folder is there.
+    if matches!(meta.launch_kind.as_str(), heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND) {
         let folder = game.install.install_path.as_deref().filter(|f| !f.is_empty());
         return InstallState { is_installed: game.is_installed && folder.is_none_or(|f| probe.exists(f)), executable: String::new() };
     }
@@ -331,6 +332,25 @@ mod tests {
         let s = next_install_state(&ctx(), &probe, &game(""), &meta, &HashSet::new(), None);
         assert!(!s.is_installed);
         assert_eq!(s.executable, "/emu/pcsx2", "emulator itself is still present");
+    }
+
+    #[test]
+    fn games_of_a_launcher_or_a_client_keep_the_state_their_sync_gave() {
+        let probe = FakeProbe::new("/h").with_path("/pfx/drive_c/Games/Diablo IV");
+        let installed = |folder: Option<&str>| GameInfo {
+            is_installed: true,
+            install: InstallInfo { install_path: folder.map(Into::into), ..Default::default() },
+            ..game("")
+        };
+        for kind in [heronite_data::launchers::LAUNCH_KIND, heronite_data::clients::LAUNCH_KIND] {
+            let meta = LocalGameMeta { launch_kind: kind.into(), ..Default::default() };
+            let state = |g: &GameInfo| next_install_state(&ctx(), &probe, g, &meta, &HashSet::new(), None);
+            let kept = state(&installed(Some("/pfx/drive_c/Games/Diablo IV")));
+            assert_eq!(kept, InstallState { is_installed: true, executable: String::new() }, "{kind}");
+            assert!(state(&installed(None)).is_installed, "{kind}: no folder to check");
+            assert!(!state(&installed(Some("/pfx/drive_c/Games/Gone"))).is_installed, "{kind}: its folder is gone");
+            assert!(!state(&game("")).is_installed, "{kind}: not installed in the sync");
+        }
     }
 
     #[test]

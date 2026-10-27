@@ -13,7 +13,7 @@ use gpui_kit::*;
 use heronite_epic::eos_overlay;
 use heronite_epic::user::BROWSER_LOGIN_URL;
 
-use super::{columns, content_width, page_close, sheet, status_pill, stores, Page, PageCtx, PageEvent};
+use super::{columns, status_pill, stores, Page, PageCtx, PageEvent};
 use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::DialogEvent;
@@ -60,6 +60,7 @@ impl EpicPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
+        stores::watch(cx);
         let code = new_input(window, cx, "", tr!("Authorization code or the page's JSON"));
         // Installed version and the latest one (Heroic asks when the settings open).
         svc.update(cx, |s, cx| s.eos_reload(true, cx));
@@ -474,22 +475,12 @@ impl Render for EpicPage {
             .child(self.eos_panel(cx))
             .child(div().mt(px(18.)).mx(px(6.)).child(meta_text(tr!("Games are installed, updated and verified with legendary."))));
         // Wide: the account on the left, the EOS Overlay on the right.
-        let wide = content_width(window) >= 1000.;
-
-        let close = page_close(cx);
+        let wide = stores::content_width(window) >= 1000.;
+        let body = columns(wide, [column, eos]);
         div()
             .size_full()
             .relative()
-            .child(sheet(
-                "page-epic",
-                stores::title(),
-                Some(tr!("Your account, library and the EOS Overlay.").into()),
-                None,
-                1320.,
-                window,
-                close,
-                div().flex().flex_col().child(stores::tabs(Page::Epic, cx)).child(columns(wide, [column, eos])),
-            ))
+            .child(stores::sheet("page-epic", Page::Epic, tr!("Your account, library and the EOS Overlay."), cx, body))
             .children(self.dialog.clone())
             .into_any_element()
     }

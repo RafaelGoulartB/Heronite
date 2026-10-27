@@ -186,6 +186,10 @@ impl CollectionView {
         if game.installed && self.start_emulated(&game, cx) {
             return;
         }
+        // A store client installs its games: it opens, on its page for them.
+        if !game.installed && game.client().is_some() {
+            return self.open_client_of(key, cx);
+        }
         let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
         if let Err(err) = result {
             self.report_launch_error(err, cx);

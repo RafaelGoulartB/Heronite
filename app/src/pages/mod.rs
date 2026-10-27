@@ -7,6 +7,7 @@
 //! UI thread, shared files only through the backend crates. Lay the content
 //! out with [`sheet`] so pages share the chrome, width and padding.
 
+pub mod clients;
 pub mod commands;
 pub mod downloads;
 pub mod emulators;
@@ -36,8 +37,14 @@ pub enum Page {
     Epic,
     Gog,
     Amazon,
-    /// The Steam tab of the Stores (the library read from the Steam client).
+    /// The Steam page of the Stores (the library read from the Steam client).
     Steam,
+    /// The pages of the Stores that run the store's own program under Wine
+    /// (`heronite_clients`).
+    BattleNet,
+    Ea,
+    Ubisoft,
+    Rockstar,
     Emulators,
     Statistics,
     /// Global settings (☰ → Settings, listed last).
@@ -55,6 +62,10 @@ impl Page {
             Page::Gog => "GOG",
             Page::Amazon => "Amazon Games",
             Page::Steam => "Steam",
+            Page::BattleNet => "Battle.net",
+            Page::Ea => "EA app",
+            Page::Ubisoft => "Ubisoft Connect",
+            Page::Rockstar => "Rockstar Games",
             Page::Emulators => tr!("Emulators"),
             Page::Statistics => tr!("Statistics"),
             Page::Settings => tr!("Settings"),
@@ -70,9 +81,24 @@ impl Page {
             Page::Gog => Icon::Storefront,
             Page::Amazon => Icon::ShoppingBag,
             Page::Steam => Icon::SportsEsports,
+            Page::BattleNet => Icon::Language,
+            Page::Ea => Icon::PowerSettingsNew,
+            Page::Ubisoft => Icon::Link,
+            Page::Rockstar => Icon::Star,
             Page::Emulators => Icon::SportsEsports,
             Page::Statistics => Icon::BarChart,
             Page::Settings => Icon::Settings,
+        }
+    }
+
+    /// The page of a store client run by Wine.
+    pub fn of_client(client: heronite_data::clients::Client) -> Page {
+        use heronite_data::clients::Client;
+        match client {
+            Client::BattleNet => Page::BattleNet,
+            Client::Ea => Page::Ea,
+            Client::Ubisoft => Page::Ubisoft,
+            Client::Rockstar => Page::Rockstar,
         }
     }
 
@@ -86,6 +112,10 @@ impl Page {
             "gog" => Some(Page::Gog),
             "amazon" => Some(Page::Amazon),
             "steam" => Some(Page::Steam),
+            "battlenet" => Some(Page::BattleNet),
+            "ea" => Some(Page::Ea),
+            "ubisoft" => Some(Page::Ubisoft),
+            "rockstar" => Some(Page::Rockstar),
             "emulators" => Some(Page::Emulators),
             // `stats[:week|month|year|all]`, see `stats::StatsPage`.
             s if s == "stats" || s.starts_with("stats:") => Some(Page::Statistics),

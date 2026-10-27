@@ -26,6 +26,7 @@ pub fn hook_for(view: &AnyView) -> Option<PadHook> {
         crate::dialogs::store_import::StoreImportPicker,
         crate::dialogs::epic_modify::EpicModifyDialog,
         crate::dialogs::game_settings::GameSettingsDialog,
+        crate::dialogs::client_settings::ClientSettingsDialog,
         crate::dialogs::add_game::AddGameDialog,
         crate::dialogs::emulator_edit::EmulatorEditDialog,
         crate::dialogs::emulator_detect::DetectEmulatorsDialog,

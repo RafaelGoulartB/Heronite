@@ -16,9 +16,11 @@ use super::{Ended, Report};
 const LOG_TAIL: u64 = 1 << 20;
 
 /// Whether Heronite starts `game` itself, with a launch log of its own (not
-/// Steam, another launcher or an emulator).
+/// Steam, another launcher, a store client or an emulator).
 pub fn reads(game: &CollectionGame) -> bool {
-    !(game.via_steam || game.runner == "steam" || matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | "launcher")))
+    !(game.via_steam
+        || game.runner == "steam"
+        || matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | "launcher" | heronite_data::clients::LAUNCH_KIND)))
 }
 
 /// Diagnoses the last launch of `game` (`log`: another log file to read,

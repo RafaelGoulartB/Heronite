@@ -14,6 +14,7 @@ pub mod appearance;
 pub mod art;
 pub mod carry_over;
 pub mod categories;
+pub mod clients;
 pub mod collection;
 pub mod config_games;
 pub mod console_art;

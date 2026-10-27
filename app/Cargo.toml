@@ -15,6 +15,7 @@ log.workspace = true
 rust-embed = "8"
 heronite-achievements = { path = "../crates/achievements" }
 heronite-backup = { path = "../crates/backup" }
+heronite-clients = { path = "../crates/clients" }
 heronite-data = { path = "../crates/data" }
 heronite-i18n = { path = "../crates/i18n" }
 heronite-images = { path = "../crates/images" }

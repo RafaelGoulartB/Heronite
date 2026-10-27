@@ -509,6 +509,8 @@ fn item_meta(st: &State, item: &Item) -> String {
             }
         }
         Kind::Prefix { .. } | Kind::Build { .. } if !item.games.is_empty() => join_titles(&titles(&item.games)),
+        // A store client's prefix or Wine, before it installed a game.
+        Kind::Prefix { .. } | Kind::Build { .. } if !item.clients.is_empty() => join_titles(&item.clients),
         Kind::Prefix { default: true } | Kind::Build { default: true, .. } => tr!("Games without a choice of their own use it").into(),
         Kind::Build { .. } if item.state == Use::InUse => tr!("Used by Steam").into(),
         Kind::Prefix { .. } | Kind::Build { .. } => tr!("No installed game uses it").into(),

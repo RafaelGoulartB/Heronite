@@ -16,12 +16,13 @@ use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::clients::Client;
 use heronite_emulation::setup::SetupReport;
 use heronite_i18n::{tr, trn};
 
 mod parts;
 
-use self::parts::{label, shelf, source_row, status, tile, Status};
+use self::parts::{client_tile, label, shelf, source_row, status, tile, Status};
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::pages::Page;
@@ -251,6 +252,7 @@ impl CollectionView {
             .child(store("welcome-epic", Page::Epic, "Epic Games", (226, 232, 240)))
             .child(store("welcome-gog", Page::Gog, "GOG", (185, 166, 255)))
             .child(store("welcome-amazon", Page::Amazon, "Amazon Games", (255, 196, 107)));
+        let clients = self.client_tiles(cx);
         let add = div().mt(px(10.)).flex().child(icon_button_sm(
             "welcome-add",
             ButtonKind::Ghost,
@@ -293,6 +295,7 @@ impl CollectionView {
             })
             .child(label(Icon::Storefront, tr!("Log in to a store")))
             .child(stores)
+            .child(clients)
             .child(add)
             .child(
                 div()
@@ -305,6 +308,27 @@ impl CollectionView {
                     .child(icon(Icon::Lightbulb, px(14.), theme::text_dim()))
                     .child(tr!("Getting started opens by itself once your first games arrive.")),
             )
+    }
+
+    /// The stores that run their own program under Wine (Battle.net, the EA
+    /// app, Ubisoft Connect, Rockstar Games): "Set up", or "Ready" once they
+    /// are. A click opens their page.
+    fn client_tiles(&self, cx: &mut Context<Self>) -> Div {
+        let svc = crate::services::clients_started(cx);
+        let tiles = Client::ALL.into_iter().map(|client| {
+            let page = Page::of_client(client);
+            let ready = svc.as_ref().is_some_and(|s| s.read(cx).state(client).installed());
+            let tint = match client {
+                Client::BattleNet => (110, 180, 255),
+                Client::Ea => (255, 125, 125),
+                Client::Ubisoft => (130, 225, 205),
+                Client::Rockstar => (255, 205, 90),
+            };
+            let action = if ready { tr!("Ready") } else { tr!("Set up") };
+            client_tile(SharedString::from(format!("welcome-{}", client.id())), page.icon(), page.title(), action, ready, tint)
+                .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
+        });
+        div().mt(px(10.)).flex().gap(px(8.)).children(tiles)
     }
 
     /// The launchers on this PC with games to bring in (Heroic, Lutris,

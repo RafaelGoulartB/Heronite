@@ -193,13 +193,14 @@ pub fn duplicate(source: &Path, name: &str, cancel: &Cancel) -> Result<PathBuf> 
 
 /// Moves a prefix to the trash (it can be restored from there). Refuses the
 /// default and shared folders, the home folder, the prefixes of the games
-/// Lutris, Bottles and Faugus start, and anything that does not look like a prefix.
+/// Lutris, Bottles and Faugus start, the prefix of a store client, and anything
+/// that does not look like a prefix.
 pub fn trash(data_paths: &DataPaths, home: &str, path: &Path) -> Result<()> {
-    if let Some(m) = managed_by(&managed_paths(data_paths), path) {
+    if let Some(m) = managed_by(&managed_paths(data_paths, home), path) {
         bail!(tr!(
             "Won't delete {path}: {launcher} keeps {title} there. Uninstall it from {launcher}",
             path = path.display(),
-            launcher = m.launcher.name(),
+            launcher = m.owner,
             title = m.title
         ));
     }
@@ -327,5 +328,23 @@ mod tests {
         let err = trash(&s.paths, &s.home, &lutris).unwrap_err().to_string();
         assert!(err.contains("Lutris keeps Heroes III there"), "{err}");
         assert!(lutris.join("drive_c").exists());
+    }
+
+    #[test]
+    fn the_prefix_of_a_store_client_is_listed_and_never_trashed() {
+        use heronite_data::clients::Client;
+        let s = setup();
+        let battlenet = s.prefixes.join("Battle.net");
+        proton_prefix(&battlenet);
+        game(&s, Client::BattleNet.config_app(), Some(&battlenet));
+        let listed = list(&s.paths, &s.home);
+        let found = listed.iter().find(|p| p.path == battlenet).unwrap();
+        assert_eq!(found.games, [Client::BattleNet.config_app()]);
+
+        let err = trash(&s.paths, &s.home, &battlenet).unwrap_err().to_string();
+        assert!(err.contains("Battle.net keeps Battle.net there. Uninstall it from Battle.net"), "{err}");
+        assert!(battlenet.join("pfx/drive_c").exists());
+        // Nor the folder that holds it.
+        assert!(trash(&s.paths, &s.home, &s.prefixes).is_err());
     }
 }

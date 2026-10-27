@@ -51,7 +51,10 @@ impl Editor {
 pub(super) const KINDS: [ActionKind; 3] = [ActionKind::Program, ActionKind::Command, ActionKind::Open];
 
 /// How Play starts this game (it cannot change here except for local programs).
-pub(super) fn play_summary(game: &Game) -> &'static str {
+pub(super) fn play_summary(game: &Game) -> String {
+    if let Some(client) = game.client() {
+        return tr!("Starts through {client}.", client = client.name());
+    }
     match (game.runner.as_str(), game.launch_kind.as_deref()) {
         _ if game.steam_launch_id.is_some() => tr!("Starts through Steam."),
         (_, Some("emulator")) => tr!("Starts the ROM in its emulator."),
@@ -60,6 +63,7 @@ pub(super) fn play_summary(game: &Game) -> &'static str {
         ("nile", _) => tr!("Starts through Amazon Games."),
         _ => tr!("Starts the game's program."),
     }
+    .to_string()
 }
 
 impl GameSettingsDialog {
@@ -162,7 +166,7 @@ impl GameSettingsDialog {
     pub(super) fn play_card(&self) -> Div {
         div().flex().flex_col().child(caption(tr!("Play"))).child(card([row(
             tr!("Play"),
-            Some(play_summary(&self.game)),
+            Some(&play_summary(&self.game)),
             div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Default")),
         )
         .into_any_element()]))

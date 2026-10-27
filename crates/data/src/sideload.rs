@@ -415,8 +415,8 @@ pub fn check_prefix_removable(prefix: &Path, protected: &[PathBuf], home: &Path)
 
 /// Deletes the Wine prefix of a game (Heroic's `removePrefix`). Never touches
 /// the shared prefix, the default install/prefix folders, a folder or prefix
-/// of a game another launcher starts, or anything that does not look like a
-/// prefix.
+/// of a game another launcher starts, a store client's prefix or the folder of
+/// one of its games, or anything that does not look like a prefix.
 pub fn remove_prefix(paths: &DataPaths, app_name: &str, home: &str) -> PrefixOutcome {
     let settings = game_config::load_game(paths, app_name, home);
     let global = game_config::load_global(paths, home);
@@ -435,11 +435,11 @@ pub fn remove_prefix(paths: &DataPaths, app_name: &str, home: &str) -> PrefixOut
     .map(PathBuf::from)
     .collect();
     let prefix = PathBuf::from(prefix);
-    if let Some(m) = crate::launchers::managed_by(&crate::launchers::managed_paths(paths), &prefix) {
+    if let Some(m) = crate::launchers::managed_by(&crate::launchers::managed_paths(paths, home), &prefix) {
         return PrefixOutcome::Skipped(tr!(
             "Won't delete {path}: {launcher} keeps {title} there. Uninstall it from {launcher}",
             path = prefix.display(),
-            launcher = m.launcher.name(),
+            launcher = m.owner,
             title = m.title
         ));
     }

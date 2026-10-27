@@ -26,6 +26,15 @@ pub fn build_plan_with_settings(
     settings: &GameSettings,
     opts: &LaunchOptions,
 ) -> LaunchPlan {
+    // A store client starts these games, with the client's settings (its
+    // sandbox and Wine), not the game's. Their umu id stays `umu-0`.
+    if let Some(m) = meta.filter(|m| game.runner == "sideload" && m.launch_kind == heronite_data::clients::LAUNCH_KIND) {
+        let mut plan = crate::clients::build(ctx, probe, game, m);
+        crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+        crate::scripts::attach(&mut plan, probe, game, settings);
+        crate::clients::attach_companions(&mut plan, ctx, probe, game, settings);
+        return plan;
+    }
     let mut plan = match game.runner.as_str() {
         "sideload" => build_sideload(ctx, probe, game, meta, settings, opts),
         "legendary" => crate::legendary::build(ctx, probe, game, settings, opts),
@@ -125,7 +134,7 @@ fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> La
     LaunchPlan::Native(ProcessPlan {
         command: Command { program, args, env: Default::default(), cwd: folder.clone() },
         // Nothing to find the game by: the session ends with the command.
-        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder }),
+        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder, client: None }),
         ..Default::default()
     })
 }

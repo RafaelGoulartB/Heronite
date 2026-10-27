@@ -201,6 +201,10 @@ fn page_name_en(p: Page) -> &'static str {
         Page::Gog => "gog",
         Page::Amazon => "amazon games",
         Page::Steam => "steam",
+        Page::BattleNet => "battle.net",
+        Page::Ea => "ea app",
+        Page::Ubisoft => "ubisoft connect",
+        Page::Rockstar => "rockstar games",
         Page::Emulators => "emulators",
         Page::Statistics => "statistics",
         Page::Settings => "settings",
@@ -235,6 +239,10 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(page(Page::Gog, tr!("Account and library"), "", "gog galaxy store account login gogdl loja conta entrar biblioteca"));
     v.push(page(Page::Amazon, tr!("Account and library"), "", "amazon prime gaming store account login nile loja conta entrar biblioteca"));
     v.push(page(Page::Steam, tr!("Your Steam library"), "", "steam valve store library import loja biblioteca importar"));
+    v.push(page(Page::BattleNet, tr!("Blizzard games, under Wine"), "", "battle.net battlenet blizzard wow overwatch diablo loja"));
+    v.push(page(Page::Ea, tr!("EA games, under Wine"), "", "ea app origin electronic arts loja"));
+    v.push(page(Page::Ubisoft, tr!("Ubisoft games, under Wine"), "", "ubisoft connect uplay loja"));
+    v.push(page(Page::Rockstar, tr!("Rockstar games, under Wine"), "", "rockstar social club gta red dead loja"));
     v.push(page(Page::Emulators, tr!("Emulators and ROM folders"), "Ctrl 5", "emulator rom retro console emulador emuladores"));
     v.push(page(
         Page::Statistics,
@@ -777,6 +785,10 @@ mod tests {
                 "GOG",
                 "Amazon Games",
                 "Steam",
+                "Battle.net",
+                "EA app",
+                "Ubisoft Connect",
+                "Rockstar Games",
                 "Emulators",
                 "Statistics",
                 "Settings"

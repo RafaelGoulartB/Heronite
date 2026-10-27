@@ -163,6 +163,11 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     steps.done("script before launch");
     log.info(&steps.summary());
+    // A store client starts the game: the session follows the game, not the command.
+    if let Some((handoff, client)) = plan.handoff.as_ref().and_then(|h| Some((h, h.client.as_ref()?))) {
+        let session = super::client::Session { shared, log, req, control, plan, probe: &*services.probe, prep: &prep, status: &status };
+        return session.run(handoff, client);
+    }
     // MangoHud's limit moves into a file of ours so the overlay can change it.
     let mut command = plan.command.clone();
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
@@ -438,7 +443,7 @@ pub(super) fn run_script(
     run_to_completion(shared, control, script, Some(log))
 }
 
-fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest) {
+pub(super) fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest) {
     log.info("Launch stopped before the game started");
     log.close();
     // Stopped before the game even started: nothing was played.

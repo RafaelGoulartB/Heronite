@@ -16,5 +16,6 @@ pub(crate) use build::{native_plan, split_args};
 pub use context::{LaunchOptions, PlanContext};
 pub use emulator::{emulator_executable, open_emulator_command, pick_rom_path};
 pub use types::{
-    CloudSaves, Command, CompanionPlan, FirstLaunch, Handoff, LaunchPlan, PrepSpec, ProcessPlan, SetupStep, StopSpec, WineRuntime,
+    ClientHandoff, CloudSaves, Command, CompanionPlan, FirstLaunch, Handoff, LaunchPlan, PrepSpec, ProcessPlan, SetupStep, StopSpec,
+    WineRuntime,
 };

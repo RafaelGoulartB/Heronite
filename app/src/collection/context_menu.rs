@@ -55,7 +55,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
     use super::epic::EpicAction as E;
     use GameAction as A;
     match action {
-        A::Primary | A::PlayWith(_) | A::User(_) | A::EditActions | A::InstallWay(_) => (0, 0),
+        A::Primary | A::PlayWith(_) | A::User(_) | A::OpenClient | A::EditActions | A::InstallWay(_) => (0, 0),
         A::SteamPlay => (0, 1),
         A::SteamInstall => (0, 2),
         A::Epic(E::Update) => (0, 3),
