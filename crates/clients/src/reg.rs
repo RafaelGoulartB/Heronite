@@ -100,9 +100,9 @@ pub fn parse_keys(text: &str, under: &[&str]) -> Vec<RegKey> {
         };
         let (name, value) = if let Some(rest) = line.strip_prefix('@') {
             (String::new(), rest.strip_prefix('='))
-        } else if line.starts_with('"') {
-            match string_end(&line[1..]) {
-                Some(end) => (unescape(&line[1..1 + end]).to_lowercase(), line[2 + end..].strip_prefix('=')),
+        } else if let Some(quoted) = line.strip_prefix('"') {
+            match string_end(quoted) {
+                Some(end) => (unescape(&quoted[..end]).to_lowercase(), quoted[end + 1..].strip_prefix('=')),
                 None => continue,
             }
         } else {
