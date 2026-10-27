@@ -1,7 +1,9 @@
 //! Grid view of the Collection: the covers across the whole window, the
 //! selected game in a glass drawer on the right (`grid_drawer.rs`). The
 //! header's Focus / Grid switch picks it; the choice, the cover size and the
-//! titles under the covers are remembered in `ui-state.json`.
+//! titles under the covers are remembered in `ui-state.json`, as is whether
+//! the Focus list shows covers or rows (its switch takes the grid controls'
+//! place in the Focus view).
 
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
@@ -122,8 +124,21 @@ impl CollectionView {
         true
     }
 
-    /// Header controls: in the grid the cover size and the titles switch,
-    /// then the Focus / Grid switch.
+    /// The Focus list as rows or as covers.
+    pub(super) fn set_focus_list(&mut self, on: bool, cx: &mut Context<Self>) {
+        if self.ui.focus_list == on {
+            return;
+        }
+        self.ui.focus_list = on;
+        self.save_ui();
+        // The rows change height even when the columns stay the same.
+        self.rebuild_items();
+        self.grid.reveal = true;
+        cx.notify();
+    }
+
+    /// Header controls: in the grid the cover size and the titles switch, in
+    /// the Focus view the covers / rows switch; then the Focus / Grid switch.
     pub(super) fn view_mode_controls(&mut self, cx: &mut Context<Self>) -> Div {
         let grid = self.ui.grid_view;
         let mut row = div().flex().flex_none().items_center().gap(px(6.)).mr(px(6.));
@@ -154,15 +169,22 @@ impl CollectionView {
                             cx.notify();
                         })),
                 );
+        } else {
+            let rows = self.ui.focus_list;
+            row = row.child(
+                segmented()
+                    .child(
+                        mode_icon("focus-covers", Icon::ViewCovers, tr!("Covers"), !rows)
+                            .on_click(cx.listener(|this, _, _, cx| this.set_focus_list(false, cx))),
+                    )
+                    .child(
+                        mode_icon("focus-rows", Icon::ViewList, tr!("List"), rows)
+                            .on_click(cx.listener(|this, _, _, cx| this.set_focus_list(true, cx))),
+                    ),
+            );
         }
         row.child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(2.))
-                .p(px(3.))
-                .rounded_full()
-                .bg(theme::ink_a(0.06))
+            segmented()
                 .child(
                     mode_button("view-focus", Icon::ViewSidebar, tr!("Focus"), !grid)
                         .on_click(cx.listener(|this, _, _, cx| this.set_grid_view(false, cx))),
@@ -301,24 +323,34 @@ impl CollectionView {
     }
 }
 
+/// The track of the header's switches.
+fn segmented() -> Div {
+    div().flex().items_center().gap(px(2.)).p(px(3.)).rounded_full().bg(theme::ink_a(0.06))
+}
+
 /// One half of the Focus / Grid switch: a solid pill when active.
 fn mode_button(id: &'static str, ic: Icon, label: &'static str, active: bool) -> Stateful<Div> {
+    mode_pill(id, ic, active).gap(px(6.)).px(px(11.)).text_size(px(12.5)).child(label)
+}
+
+/// One half of the covers / rows switch: [`mode_button`] without its label.
+fn mode_icon(id: &'static str, ic: Icon, tip: &'static str, active: bool) -> Stateful<Div> {
+    mode_pill(id, ic, active).w(px(28.)).justify_center().tooltip(crate::ui::tooltip(tip))
+}
+
+fn mode_pill(id: &'static str, ic: Icon, active: bool) -> Stateful<Div> {
     let fg: Hsla = if active { theme::on_solid_pill().into() } else { theme::ink_a(0.68) };
     div()
         .id(id)
         .flex()
         .items_center()
-        .gap(px(6.))
         .h(px(26.))
-        .px(px(11.))
         .rounded_full()
         .cursor_pointer()
-        .text_size(px(12.5))
         .text_color(fg)
         .when(active, |d| d.bg(theme::solid_pill()))
         .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.08))))
         .child(icon(ic, px(15.), fg))
-        .child(label)
 }
 
 #[cfg(test)]

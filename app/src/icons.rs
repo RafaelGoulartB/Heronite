@@ -55,6 +55,10 @@ pub enum Icon {
     AccountCircle,
     GridView,
     ViewSidebar,
+    /// Covers side by side (the Focus list as covers).
+    ViewCovers,
+    /// Bulleted lines (the Focus list as rows).
+    ViewList,
     Downloading,
     Pause,
     Build,
@@ -237,6 +241,8 @@ impl Icon {
             AccountCircle => "icons/account-circle.svg",
             GridView => "icons/grid-view.svg",
             ViewSidebar => "icons/view-sidebar.svg",
+            ViewCovers => "icons/view-covers.svg",
+            ViewList => "icons/view-list.svg",
             Downloading => "icons/downloading.svg",
             Pause => "icons/pause.svg",
             Build => "icons/build.svg",
