@@ -207,8 +207,13 @@ Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view
 after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
 pages grouped (Collection, Downloads, Statistics | Stores, Wine Manager, Emulators), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
-row for Epic Games, GOG and Amazon Games: each store keeps its own page, titled "Stores", and the three switch with the
-tabs of `pages::stores` (LB / RB in console mode); the row (and the console sidebar's) opens the store shown last.
+row for Epic Games, GOG, Amazon Games, Steam and the store clients under Wine (Battle.net, EA app, Ubisoft Connect,
+Rockstar Games): each store keeps its own page, titled "Stores", and they switch with the tabs of `pages::stores` (LB /
+RB in console mode); the row (and the console sidebar's) opens the store shown last. A client's page
+(`pages/clients/`, one `ClientPage<K>` for the four) is a card with the client's state and its main action (Set up, the
+setup's step with Cancel, Open, Close), its prefix and Wine with "Wine settings" (`dialogs/client_settings`: the game
+settings panel bound to the client's own settings), the sign-in the client's files show, the games it installed (Show
+selects one in the Collection) and an About card with the anti-cheats that keep some of its games off Linux.
 
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
 (`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, the journal's "Where I left off"
