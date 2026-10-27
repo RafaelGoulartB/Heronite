@@ -57,6 +57,24 @@ pub(super) fn glance(s: &EmulatorSummary) -> (Dot, String) {
     }
 }
 
+/// An action in a caption's line (`caption_with`): accent text with an
+/// icon, as tall as the caption, so it does not reach into the card under
+/// it as a button would.
+fn caption_action(id: impl Into<ElementId>, ic: Icon, label: impl Into<SharedString>) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .mx(px(6.))
+        .text_size(px(12.5))
+        .text_color(theme::accent())
+        .cursor_pointer()
+        .hover(|s| s.text_color(theme::text_bright()))
+        .child(icon(ic, px(14.), theme::accent()))
+        .child(label.into())
+}
+
 /// Where it starts from: the executable, or the Flatpak's id.
 fn location(s: &EmulatorSummary) -> String {
     let e = &s.emulator;
@@ -406,7 +424,7 @@ impl EmulatorsPage {
                     .into_any_element(),
             );
         }
-        let add_folder = button_sm("emus-add-folder-all", ButtonKind::Glass, tr!("Add ROM folder"))
+        let add_folder = caption_action("emus-add-folder-all", Icon::Add, tr!("Add ROM folder"))
             .on_click(cx.listener(|this, _, window, cx| this.open_folder_dialog(None, None, window, cx)));
         let left = div().child(caption(tr!("Needs attention"))).child(card(attention));
         let right = div().child(caption_with(tr!("ROM folders"), add_folder)).child(card(folders));
@@ -486,7 +504,7 @@ impl EmulatorsPage {
             s.scanners.iter().map(|sc| self.render_folder_row(s, sc, false, cx).into_any_element()).collect();
         let add_folder = {
             let id = id.clone();
-            button_sm(SharedString::from(format!("emu-addfolder-{id}")), ButtonKind::Glass, tr!("Add ROM folder"))
+            caption_action(SharedString::from(format!("emu-addfolder-{id}")), Icon::Add, tr!("Add ROM folder"))
                 .on_click(cx.listener(move |this, _, window, cx| this.open_folder_dialog(Some(id.clone()), None, window, cx)))
         };
         if folders.is_empty() {
