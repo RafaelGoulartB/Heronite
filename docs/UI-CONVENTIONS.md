@@ -208,8 +208,13 @@ after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The
 pages grouped (Collection, Downloads, Statistics | Stores, Wine Manager, Emulators), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
 row for Epic Games, GOG, Amazon Games, Steam and the store clients under Wine (Battle.net, EA app, Ubisoft Connect,
-Rockstar Games): each store keeps its own page, titled "Stores", and they switch with the tabs of `pages::stores` (LB /
-RB in console mode); the row (and the console sidebar's) opens the store shown last. A client's page
+Rockstar Games): each store keeps its own page, laid out by `pages::stores::sheet`: on the left, as in Settings, the
+list of the stores in two groups (Stores: Epic Games, GOG, Amazon Games, Steam; Store apps: the clients under Wine), each
+with its icon, a line on where it stands (its games, "Not logged in", "Not set up", "Restart once"...) and a dot (green
+signed in / set up, amber something to do, accent working, ring not used), then a dashed "Other launchers" link at the
+bottom that opens Settings → Other launchers; on the right the store's name, its lead and its page (LB / RB switch
+stores in console mode, whose pages keep their tabs). The list reads the services and repaints only when what it shows
+changes (`stores::watch`); the row (and the console sidebar's) opens the store shown last. A client's page
 (`pages/clients/`, one `ClientPage<K>` for the four) is a card with the client's state and its main action (Set up, the
 setup's step with Cancel, Open, Close), its prefix and Wine with "Wine settings" (`dialogs/client_settings`: the game
 settings panel bound to the client's own settings), the sign-in the client's files show, the games it installed (Show
