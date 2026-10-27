@@ -63,7 +63,7 @@ pub(super) fn row(
             div()
                 .min_w_0()
                 .truncate()
-                .text_size(px(13.))
+                .text_size(px(14.))
                 .font_weight(theme::W_500)
                 .text_color(theme::ink_a(if grey { 0.6 } else { 0.9 }))
                 .child(vm.title.clone()),
@@ -72,7 +72,9 @@ pub(super) fn row(
         .when(vm.hidden, |d| d.child(icon(Icon::VisibilityOff, px(12.), theme::ink_a(0.5))));
     let status = match &s.epic {
         Some(e) => Some(super::epic::row_status(e)),
-        None => (s.look.caption && s.width >= CAPTION_MIN_W).then(|| caption_line(vm).flex_none().max_w(px(s.width * 0.4))),
+        None => {
+            (s.look.caption && s.width >= CAPTION_MIN_W).then(|| caption_line(vm).flex_none().max_w(px(s.width * 0.4)).text_size(px(13.)))
+        }
     };
     let play_icon = if vm.playing {
         Icon::StopCircle
