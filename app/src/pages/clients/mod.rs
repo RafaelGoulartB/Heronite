@@ -85,6 +85,9 @@ impl<K: ClientKind> ClientPage<K> {
             cx.notify();
         })
         .detach();
+        // A window closed to the tray takes its pages without hiding them
+        // first: the client is not asked whether it runs any more.
+        cx.on_release(|this, cx| this.svc.update(cx, |s, cx| s.set_visible(K::CLIENT, false, cx))).detach();
         let mut this = Self {
             ctx,
             svc,
