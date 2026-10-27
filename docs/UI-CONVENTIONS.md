@@ -202,8 +202,8 @@ with move, store current state, rename and delete, plus "Restore default presets
 Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…" and "Library fields…", the fields manager
 `dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
-a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, the
-Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or
+a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, in the Focus view the covers / list
+switch, the Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or
 after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
 pages grouped (Collection, Downloads, Statistics | Stores, Emulators, Wine Manager), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
@@ -261,6 +261,14 @@ card), three tiles (Played, Last played, Sessions) and the details stacked in on
 ending in "Open game page" (back to the Focus view). Keys while nothing floats over it: arrows move the selection
 (the drawer follows), Enter plays an installed game, Esc closes the drawer (the selection stays; selecting a game opens
 it again). The Focus list takes the same arrows and Enter (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
+
+**Focus list as rows** (`collection/list_row.rs`, by user decision): in the Focus view the header's covers / list icons
+(where the grid shows its slider and "Aa"; also in the palette) turn the list into one game per row, 44px tall: a 26px
+cover thumbnail, the title (a star on a favourite with badges on, the hidden icon), the card's caption line on the right
+(dropped under 220px of row) and the play button under the pointer. Same groups, sticky headers (on a denser shade:
+the rows' titles would read through the label), selection (accent tint and border), selecting several games (the tick
+before the thumbnail), context menu, keys and Epic progress (label over a bar, or the "Update" pill, instead of the
+caption). The list keeps its width, dragged or not, and takes one column. `ui-state.json` keeps `focusList`.
 
 **Wider panels** (`collection/resize.rs`): the Focus list column and the grid's drawer grow when their inner edge is
 dragged (the cursor turns to col-resize over it; nothing else is drawn). Their default width for the window is the narrowest the list gets;
