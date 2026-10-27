@@ -208,7 +208,7 @@ after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The
 pages grouped (Collection, Downloads, Statistics | Stores, Emulators, Wine Manager), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
 row for Epic Games, GOG, Amazon Games, Steam and the store clients under Wine (Battle.net, EA app, Ubisoft Connect,
-Rockstar Games): each store keeps its own page, laid out by `pages::stores::sheet`: on the left, as in Settings, the
+Rockstar Games): each store keeps its own page, laid out by `pages::stores::sheet` (on `pages::side_nav`): on the left, as in Settings, the
 list of the stores in two groups (Stores: Epic Games, GOG, Amazon Games, Steam; Store apps: the clients under Wine), each
 with its icon, a line on where it stands (its games, "Not logged in", "Not set up", "Restart once"...) and a dot (green
 signed in / set up, amber something to do, accent working, ring not used), then a dashed "Other launchers" link at the
@@ -219,6 +219,15 @@ changes (`stores::watch`); the row (and the console sidebar's) opens the store s
 setup's step with Cancel, Open, Close), its prefix and Wine with "Wine settings" (`dialogs/client_settings`: the game
 settings panel bound to the client's own settings), the sign-in the client's files show, the games it installed (Show
 selects one in the Collection) and an About card with the anti-cheats that keep some of its games off Linux.
+The ☰ Emulators page (`pages/emulators/`) has the same layout (`side_nav`): the list holds "All emulators" (counts, what
+needs attention with its fix, every ROM folder, "Scan all folders now"), then each emulator with its icon
+(`emulators::icon`: Dolphin's and RetroArch's logos, an icon drawn for each other emulator of the catalog, a gamepad
+for a custom one), a line ("10 games · 1 folder", "No ROM folders", "Executable not found") and a dot (red when it does
+not start), a search field from 8 emulators on, and "+ Add emulator" (a menu: Add emulator…, Detect emulators…, Scan a
+folder for emulators…); a dashed link at the bottom opens the stores. An emulator's page: Open, Edit and ⋯ (Duplicate,
+Remove…) in the header, a red banner when it does not start, its ROM folders (Scan now, Review…, ⋯ with Edit and
+Remove…) on the left, its games, platforms and profiles on the right. With no emulator, the page offers the three ways
+to add one.
 
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
 (`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, the journal's "Where I left off"
@@ -379,7 +388,7 @@ folders go to the trash, caches and Wine Manager builds are deleted; a game's re
 `page_close(cx)` in the sheet's top-right corner, which navigates back to the Collection, then a scrolling body). Title
 and body share one column of at most `max_w`, **centred**: never leave content stuck to the left of a wide window.
 Use the width instead of a narrow strip: pick the layout from `content_width(window)` — `columns(wide, [a, b])` puts
-blocks side by side (stacked when narrow), a `grid().grid_cols(n)` holds repeated cards (Emulators), and a fixed side
+blocks side by side (stacked when narrow), a `grid().grid_cols(n)` holds repeated cards, and a fixed side
 column + the main list suits browsers (Wine Manager). Check new pages at ~1000px and on an ultrawide. Fill the column
 with `caption` + `card`/`card_box` + `row`. List helpers: `list_item(leading, content, trailing)` (card row with cover/icon),
 `icon_action(id, icon, enabled)` (round 32px list button), `status_pill(text, colour)` / `tag_pill(text)`,
