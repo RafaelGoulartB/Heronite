@@ -1,24 +1,28 @@
-//! A picture of a console theme: a small TV drawn from the theme's own
-//! values (its first tab's layout, the covers' shape, size, corners and
-//! focus, the background, the tab bar, the clock, the hint bar, the colours
-//! and the font) with the covers and art of games of the library, so the
-//! theme cards and the editor show what the console will look like and
-//! follow every change at once. Without a library the covers are tinted
-//! blocks.
+//! Pictures of a console theme: a small TV drawn from the theme's own values
+//! (a tab's layout, the covers' shape, size, corners, focus, badges and
+//! store strip, the background, the tab bar, the clock, the hint bar, the
+//! menu, the colours and the font) with the covers and art of games of the
+//! library, so the theme cards and the editor show what the console will
+//! look like and follow every change at once. A [`Screen`] picks what is
+//! drawn: a tab, the game page or the open menu. Without a library the
+//! covers are tinted blocks.
 //!
 //! Everything is laid out on a 640 x 360 canvas scaled to the picture's
-//! width; `layouts.rs` draws each layout.
+//! width; `layouts.rs` draws each layout, `game_page.rs` the game pages and
+//! `menu.rs` the menu; `tile.rs` draws the covers and `chrome.rs` the bars.
 
+mod chrome;
+mod game_page;
 mod layouts;
+mod menu;
+mod tile;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{
-    parse_hex, BackgroundSource, Clock, ConsoleFont, ConsoleTheme, Corners, FocusStyle, Glyphs, Hints, TabBar, TileShape, TileSize,
-    TileTitles,
+    parse_hex, BackgroundSource, ConsoleFont, ConsoleTheme, Corners, GamePage, Hints, Side, TabBar, TileShape, TileSize,
 };
 use heronite_data::Library;
-use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use std::collections::HashMap;
 
@@ -78,13 +82,62 @@ pub(super) struct Art<'a> {
 /// Placeholder tints for covers when the library has no art.
 const TINTS: [u32; 6] = [0x3d5a80, 0x7a4b63, 0x3f6f5e, 0x806a3d, 0x5b4a86, 0x3e6878];
 
-/// The picture of `t`, `w` px wide (16:9), its corners rounded by `r` px.
+/// What a picture shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Screen {
+    /// Tab `n` (clamped to the theme's tabs), highlighted in the tab bar.
+    Tab(usize),
+    /// A game's page in the theme's `game_page` style.
+    GamePage,
+    /// The first tab dimmed with the ☰ menu open.
+    Menu,
+}
+
+impl Screen {
+    /// `HERONITE_DEBUG_CONSOLE_SCREEN`: `tab:<n>`, `game` or `menu`.
+    fn parse(s: &str) -> Option<Self> {
+        match s {
+            "game" => Some(Screen::GamePage),
+            "menu" => Some(Screen::Menu),
+            _ => s.strip_prefix("tab:")?.parse().ok().map(Screen::Tab),
+        }
+    }
+}
+
+/// The picture of `t`'s first tab, `w` px wide (16:9), its corners rounded
+/// by `r` px. `HERONITE_DEBUG_CONSOLE_SCREEN=tab:<n>|game|menu` draws that
+/// screen instead (to look at every state of a theme).
 pub(super) fn picture(t: &ConsoleTheme, w: f32, r: f32, art: &mut Art) -> Div {
+    let which = crate::env::value("HERONITE_DEBUG_CONSOLE_SCREEN").and_then(|v| Screen::parse(&v)).unwrap_or(Screen::Tab(0));
+    screen(t, which, w, r, art)
+}
+
+/// The picture of `which` screen of `t`, `w` px wide (16:9), its corners
+/// rounded by `r` px.
+pub(super) fn screen(t: &ConsoleTheme, which: Screen, w: f32, r: f32, art: &mut Art) -> Div {
     let mut p = Pic::new(t, w, art);
     p.frame_r = r;
+    if let Screen::Tab(i) = which {
+        p.tab = i.min(t.tabs.len().saturating_sub(1));
+    }
     let h = w * CANVAS_H / CANVAS_W;
     let background = p.background();
-    let body = layouts::content(&mut p);
+    let page = which == Screen::GamePage;
+    let body = if page { game_page::content(&mut p) } else { layouts::content(&mut p) };
+    // The Sheet floats over a tab, which keeps its bars.
+    let bars = !page || t.game_page == GamePage::Sheet;
+    let (left, right) = p.inset;
+    // The rail keeps its column: the bars and the content sit beside it.
+    let mut stage = div().absolute().top_0().bottom_0().left(p.u(left)).right(p.u(right)).child(body);
+    if bars {
+        stage = stage.child(p.top_bar()).children(p.bottom_bar());
+    }
+    let overlay = match which {
+        Screen::Menu => Some(menu::open(&mut p)),
+        Screen::GamePage => game_page::sheet(&mut p),
+        Screen::Tab(_) => None,
+    };
+    let rail = if which == Screen::Menu { None } else { menu::rail(&p) };
     // `overflow_hidden` clips to a rectangle, not to the rounded corners:
     // the layers that reach the edges round their own.
     div()
@@ -97,10 +150,20 @@ pub(super) fn picture(t: &ConsoleTheme, w: f32, r: f32, art: &mut Art) -> Div {
         .bg(p.bg)
         .font_family(p.body_font)
         .child(background)
-        .child(body)
-        .child(p.top_bar())
-        .children(p.bottom_bar())
+        .child(stage)
+        .children(rail)
+        .children(overlay)
         .children(p.hint_bar())
+}
+
+/// `e` with its top and/or bottom corners rounded by `r`.
+fn round_sides<E: Styled>(e: E, top: bool, bottom: bool, r: Pixels) -> E {
+    let e = if top { e.rounded_tl(r).rounded_tr(r) } else { e };
+    if bottom {
+        e.rounded_bl(r).rounded_br(r)
+    } else {
+        e
+    }
 }
 
 /// The theme's values, worked out once per picture.
@@ -114,14 +177,25 @@ pub(super) struct Pic<'a, 'b> {
     pub bg: Rgba,
     pub text: Rgba,
     pub muted: Rgba,
+    /// Panels over the art (the hint bar, cards, the stats).
     pub panel: Hsla,
+    /// Solid surfaces: the menu, sheets, strips on covers.
+    pub sidebar: Rgba,
     pub accent: Rgba,
+    /// Text on the focus colour.
+    pub focus_text: Rgba,
+    /// The "On" switches.
+    pub on: Rgba,
     pub light: bool,
     pub head_font: &'static str,
     pub body_font: &'static str,
     n: usize,
     /// The frame's corner radius, px.
     frame_r: f32,
+    /// The tab shown (an index in the theme's tabs).
+    pub tab: usize,
+    /// Canvas units the Rail takes at the left and at the right.
+    pub inset: (f32, f32),
 }
 
 impl<'a, 'b> Pic<'a, 'b> {
@@ -136,18 +210,33 @@ impl<'a, 'b> Pic<'a, 'b> {
         } else {
             theme::black_a(0.42)
         });
-        let accent = ACCENTS
-            .iter()
-            .find(|(n, _)| *n == t.interface.accent)
-            .map(|(_, c)| rgb(*c))
-            .or_else(|| colour(&t.interface.accent))
-            .unwrap_or(rgb(0xeef2f7));
+        let sidebar = colour(&t.colors.panel).unwrap_or(rgb(if light { 0xffffff } else { 0x0e1218 }));
+        let name = t.interface.accent.as_str();
+        // The focus colour of the game: the sample's tint, lifted like the console does.
+        let game = {
+            let tint = rgb(TINTS[0]);
+            let (k, to) = if light { (0.55, 0.) } else { (0.45, 1.) };
+            let lift = |c: f32| c * k + to * (1. - k);
+            Rgba { r: lift(tint.r), g: lift(tint.g), b: lift(tint.b), a: 1. }
+        };
+        let accent = match name {
+            "game" => game,
+            "white" if light => rgb(0x1f232a),
+            _ => ACCENTS.iter().find(|(n, _)| *n == name).map(|(_, c)| rgb(*c)).or_else(|| colour(name)).unwrap_or(rgb(0xeef2f7)),
+        };
+        // The dark focus of a light theme takes white text.
+        let white_focus = light && matches!(name, "white" | "game");
         let (head_font, body_font) = match t.interface.font {
             ConsoleFont::Heronite => ("Rubik", "Cabin"),
             ConsoleFont::Cabin => ("Cabin", "Cabin"),
             ConsoleFont::Rubik => ("Rubik", "Rubik"),
             ConsoleFont::System => (".SystemUIFont", ".SystemUIFont"),
             ConsoleFont::Mono => (theme::FONT_MONO, theme::FONT_MONO),
+        };
+        let inset = match (t.menu.style == heronite_data::console_theme::MenuStyle::Rail, t.menu.side) {
+            (true, Side::Left) => (menu::RAIL_W, 0.),
+            (true, Side::Right) => (0., menu::RAIL_W),
+            _ => (0., 0.),
         };
         let n = art.samples.len();
         Self {
@@ -159,18 +248,28 @@ impl<'a, 'b> Pic<'a, 'b> {
             text,
             muted,
             panel,
-            accent: if light && matches!(t.interface.accent.as_str(), "white" | "game") { rgb(0x1f232a) } else { accent },
+            sidebar,
+            accent,
+            focus_text: colour(&t.colors.focus_text).unwrap_or(rgb(if white_focus { 0xffffff } else { 0x0d1117 })),
+            on: colour(&t.colors.on).unwrap_or(rgb(0x3dd68c)),
             light,
             head_font,
             body_font,
             n,
             frame_r: 0.,
+            tab: 0,
+            inset,
         }
     }
 
     /// Canvas units to px.
     pub fn u(&self, v: f32) -> Pixels {
         px(v * self.k)
+    }
+
+    /// The width the content has, the rail's column left out.
+    pub fn width(&self) -> f32 {
+        CANVAS_W - self.inset.0 - self.inset.1
     }
 
     pub fn title(&self, i: usize) -> Option<SharedString> {
@@ -183,6 +282,24 @@ impl<'a, 'b> Pic<'a, 'b> {
             theme::white_a(a)
         } else {
             theme::black_a(a)
+        }
+    }
+
+    /// What washes out the screen behind an overlay: black, or the light background.
+    pub fn veil(&self, a: f32) -> Hsla {
+        if self.light {
+            Rgba { a, ..self.bg }.into()
+        } else {
+            theme::black_a(a)
+        }
+    }
+
+    /// The text colour on `fill` (dark on a pale fill of a light theme).
+    pub fn on_fill(&self, fill: Rgba) -> Rgba {
+        if self.light && 0.2126 * fill.r + 0.7152 * fill.g + 0.0722 * fill.b > 0.6 {
+            rgb(INK)
+        } else {
+            self.focus_text
         }
     }
 
@@ -233,7 +350,7 @@ impl<'a, 'b> Pic<'a, 'b> {
         }
     }
 
-    /// The covers' size choice as a factor.
+    /// The covers' size choice as a factor (the interface size included).
     pub fn size(&self) -> f32 {
         let f = match self.t.tiles.size {
             TileSize::Small => 0.84,
@@ -269,93 +386,30 @@ impl<'a, 'b> Pic<'a, 'b> {
 
     /// Game `i`'s picture filling a box `w` x `h` with corners `r`.
     pub fn picture_box(&mut self, i: usize, wide: bool, w: f32, h: f32, r: f32) -> Div {
+        self.picture_part(i, wide, w, h, r, (true, true), false)
+    }
+
+    /// [`Self::picture_box`] rounding only the top and/or the bottom corners
+    /// (a strip joins the other side), in greys when `grey`.
+    pub fn picture_part(&mut self, i: usize, wide: bool, w: f32, h: f32, r: f32, sides: (bool, bool), grey: bool) -> Div {
         let src = self.image(i, wide, w, h);
         let tint = rgb(TINTS[i % TINTS.len()]);
+        let tint = if grey {
+            let l = 0.3 * tint.r + 0.59 * tint.g + 0.11 * tint.b;
+            Rgba { r: l, g: l, b: l, a: 1. }
+        } else {
+            tint
+        };
         let fill = linear_gradient(
             150.,
             linear_color_stop(Rgba { a: 1., ..tint }, 0.),
             linear_color_stop(Rgba { a: 1., r: tint.r * 0.45, g: tint.g * 0.45, b: tint.b * 0.45 }, 1.),
         );
-        div()
-            .flex_none()
-            .relative()
-            .w(self.u(w))
-            .h(self.u(h))
-            .rounded(self.u(r))
-            .overflow_hidden()
-            .bg(fill)
-            .children(src.map(|s| img(s).absolute().inset_0().size_full().rounded(self.u(r)).object_fit(ObjectFit::Cover)))
-    }
-
-    /// A cover of game `i`, `h` units tall in the theme's shape (or `shape`),
-    /// with its focus and, as the theme says, its name.
-    pub fn tile(&mut self, i: usize, h: f32, shape: Option<TileShape>, focused: bool) -> Div {
-        let shape = shape.unwrap_or(self.t.tiles.shape);
-        let w = h * self.aspect(shape);
-        let r = self.radius(h);
-        let mut cover = self.picture_box(i, shape == TileShape::Landscape, w, h, r);
-        let titles = self.t.tiles.titles;
-        if titles == TileTitles::Bar {
-            let name = self.title(i);
-            let strip = div().absolute().left_0().right_0().bottom_0().px(self.u(4.)).py(self.u(2.5)).bg(self.panel).child(match name {
-                Some(n) => self.label(n, 7., self.text),
-                None => self.line(w * 0.6, 4., 0.7),
-            });
-            cover = cover.child(strip);
-        }
-        let mut frame = div().flex_none().relative().child(cover);
-        if focused {
-            let a = self.accent;
-            frame = match self.t.tiles.focus {
-                FocusStyle::Ring => frame.child(
-                    div()
-                        .absolute()
-                        .top(self.u(-3.5))
-                        .left(self.u(-3.5))
-                        .w(self.u(w + 7.))
-                        .h(self.u(h + 7.))
-                        .rounded(self.u(r + 3.5))
-                        .border(self.u(1.6).max(px(1.)))
-                        .border_color(a),
-                ),
-                FocusStyle::Glow => frame.rounded(self.u(r)).shadow(vec![BoxShadow {
-                    color: Hsla { a: 0.7, ..Hsla::from(a) },
-                    offset: point(px(0.), px(0.)),
-                    blur_radius: self.u(16.),
-                    spread_radius: self.u(1.),
-                    inset: false,
-                }]),
-                FocusStyle::Lift => frame.mt(self.u(-7.)).mb(self.u(7.)).rounded(self.u(r)).shadow(vec![BoxShadow {
-                    color: theme::black_a(0.6),
-                    offset: point(px(0.), self.u(6.)),
-                    blur_radius: self.u(12.),
-                    spread_radius: px(0.),
-                    inset: false,
-                }]),
-                FocusStyle::Underline => frame.child(
-                    div().absolute().left(self.u(w * 0.2)).bottom(self.u(-6.)).w(self.u(w * 0.6)).h(self.u(2.5)).rounded(self.u(2.)).bg(a),
-                ),
-            };
-        }
-        let named = matches!((titles, focused), (TileTitles::Always, _) | (TileTitles::Focused, true));
-        let mut col = div().flex_none().flex().flex_col().gap(self.u(5.)).w(self.u(w)).child(frame);
-        if named {
-            col = col.child(match self.title(i) {
-                Some(n) => self.label(n, 8., if focused { self.text } else { self.muted }),
-                None => self.line(w * 0.7, 4., 0.6),
-            });
-        }
-        col
-    }
-
-    /// A row of covers from `first`, the first one focused, starting `x`
-    /// units in; it runs off the right edge like the console's.
-    pub fn tile_row(&mut self, first: usize, h: f32, gap: f32, count: usize, focus: bool) -> Div {
-        let mut row = div().flex().items_start().gap(self.u(gap));
-        for j in 0..count {
-            row = row.child(self.tile(first + j, h, None, focus && j == 0));
-        }
-        row
+        let r = self.u(r);
+        let image = src.map(|s| {
+            round_sides(img(s).grayscale(grey).absolute().inset_0().size_full().object_fit(ObjectFit::Cover), sides.0, sides.1, r)
+        });
+        round_sides(div().flex_none().relative().w(self.u(w)).h(self.u(h)).overflow_hidden().bg(fill), sides.0, sides.1, r).children(image)
     }
 
     /// The background: the art the theme asks for, its blur and darkening.
@@ -414,8 +468,14 @@ impl<'a, 'b> Pic<'a, 'b> {
         self.art.covers.as_mut()?.get_blurred(&key, chain, 160., 90., blur * 160. / 1280., 1.2)
     }
 
-    /// A layer over the whole picture, with its corners.
+    /// A layer over the whole picture, with its corners; inside the stage it
+    /// reaches under the rail's column too, as the console's scrims do.
     pub fn cover_all(&self) -> Div {
+        div().absolute().top_0().bottom_0().left(self.u(-self.inset.0)).right(self.u(-self.inset.1)).rounded(px(self.frame_r))
+    }
+
+    /// A layer over the whole picture, outside the stage.
+    pub fn full(&self) -> Div {
         div().absolute().inset_0().rounded(px(self.frame_r))
     }
 
@@ -449,158 +509,5 @@ impl<'a, 'b> Pic<'a, 'b> {
             } else {
                 12.
             }
-    }
-
-    fn tab_names(&self) -> Vec<SharedString> {
-        self.t.tabs.iter().map(|t| SharedString::from(tr(&t.name).to_string())).collect()
-    }
-
-    /// A controller button: `text` in a small circle (a key on the keyboard).
-    fn glyph(&self, text: &'static str, fill: Rgba) -> Div {
-        let wide = text.chars().count() > 1;
-        div()
-            .flex_none()
-            .h(self.u(11.))
-            .min_w(self.u(11.))
-            .when(wide, |d| d.px(self.u(3.)))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(self.u(if wide { 3. } else { 6. }))
-            .bg(fill)
-            .text_size(self.u(6.5))
-            .text_color(theme::white_a(0.95))
-            .font_weight(theme::W_BOLD)
-            .child(text)
-    }
-
-    fn top_bar(&self) -> Div {
-        let i = &self.t.interface;
-        let names = self.tab_names();
-        let mut left = div().flex().items_center().gap(self.u(10.));
-        if !i.label.is_empty() {
-            left = left.child(self.heading(i.label.clone(), 10.));
-        }
-        let grey = Rgba { a: 0.5, ..self.text };
-        match i.tab_bar {
-            TabBar::Top => {
-                let mut tabs = div().flex().items_center().gap(self.u(4.)).child(self.glyph("LB", grey));
-                for (n, name) in names.iter().enumerate() {
-                    let on = n == 0;
-                    tabs = tabs.child(
-                        div()
-                            .px(self.u(6.))
-                            .py(self.u(2.))
-                            .rounded(self.u(8.))
-                            .when(on, |d| d.bg(Rgba { a: 0.16, ..self.text }))
-                            .child(self.label(name.clone(), 9., if on { self.text } else { self.muted })),
-                    );
-                }
-                left = left.child(tabs.child(self.glyph("RB", grey)));
-            }
-            TabBar::Names => {
-                for (n, name) in names.iter().enumerate() {
-                    let on = n == 0;
-                    left = left.child(
-                        self.label(name.clone(), 11., if on { self.text } else { self.muted }).when(on, |d| d.font_weight(theme::W_BOLD)),
-                    );
-                }
-            }
-            TabBar::Title | TabBar::Bottom => {}
-        }
-        let mut right = div().flex().items_center().gap(self.u(6.));
-        if i.status_icons {
-            right = right.child(div().size(self.u(7. * self.s)).rounded_full().border(self.u(1.)).border_color(self.muted)).child(
-                div().w(self.u(10. * self.s)).h(self.u(5. * self.s)).rounded(self.u(1.5)).border(self.u(1.)).border_color(self.muted),
-            );
-        }
-        if i.date && i.clock != Clock::Off {
-            right = right.child(self.line(18., 4., 0.7));
-        }
-        match i.clock {
-            Clock::H24 => right = right.child(self.label("21:30", 10., self.text)),
-            Clock::H12 => right = right.child(self.label("9:30", 10., self.text)),
-            Clock::Off => {}
-        }
-        let title = (i.tab_bar == TabBar::Title).then(|| {
-            div()
-                .absolute()
-                .left_0()
-                .right_0()
-                .top(self.u(14.))
-                .flex()
-                .justify_center()
-                .child(self.heading(names.first().cloned().unwrap_or_default(), 11.))
-        });
-        div()
-            .absolute()
-            .top_0()
-            .left_0()
-            .right_0()
-            .child(div().flex().items_center().justify_between().px(self.u(22.)).pt(self.u(14.)).child(left).child(right))
-            .children(title)
-    }
-
-    fn bottom_bar(&self) -> Option<Div> {
-        (self.t.interface.tab_bar == TabBar::Bottom).then(|| {
-            let mut bar = div().flex().items_center().justify_center().gap(self.u(20.));
-            for (n, name) in self.tab_names().into_iter().enumerate() {
-                let on = n == 0;
-                bar = bar.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(self.u(4.))
-                        .px(self.u(7.))
-                        .py(self.u(3.))
-                        .rounded(self.u(8.))
-                        .when(on, |d| d.bg(Rgba { a: 0.16, ..self.text }))
-                        .child(div().size(self.u(7.)).rounded(self.u(2.)).bg(if on { self.text } else { self.muted }))
-                        .child(self.label(name, 8.5, if on { self.text } else { self.muted })),
-                );
-            }
-            div()
-                .absolute()
-                .left_0()
-                .right_0()
-                .bottom_0()
-                .h(self.u(32.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_b(px(self.frame_r))
-                .bg(self.panel)
-                .child(bar)
-        })
-    }
-
-    fn hint_bar(&self) -> Option<Div> {
-        let c = &self.t.controls;
-        if c.hints == Hints::Off {
-            return None;
-        }
-        let (a, b): ((&'static str, Rgba), (&'static str, Rgba)) = match c.glyphs {
-            Glyphs::Xbox | Glyphs::Auto => (("A", rgb(0x4f9f45)), ("B", rgb(0xc8453c))),
-            Glyphs::PlayStation => (("\u{2715}", rgb(0x5a7bd6)), ("\u{25cb}", rgb(0xd0545f))),
-            Glyphs::Nintendo => (("A", rgb(0x4b4f58)), ("B", rgb(0x4b4f58))),
-            Glyphs::Deck => (("A", rgb(0x3a3f48)), ("B", rgb(0x3a3f48))),
-            Glyphs::Keyboard => (("Enter", rgb(0x3a3f48)), ("Esc", rgb(0x3a3f48))),
-        };
-        let floating = c.hints == Hints::Auto;
-        let bottom = if self.t.interface.tab_bar == TabBar::Bottom { 38. } else { 9. };
-        let hint = |g: (&'static str, Rgba), text: &'static str| {
-            div().flex().items_center().gap(self.u(4.)).child(self.glyph(g.0, g.1)).child(self.label(text, 8., self.muted))
-        };
-        Some(
-            div().absolute().right(self.u(18.)).bottom(self.u(bottom)).child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(self.u(10.))
-                    .when(floating, |d| d.px(self.u(8.)).py(self.u(4.)).rounded(self.u(10.)).bg(self.panel))
-                    .child(hint(a, tr!("Select")))
-                    .child(hint(b, tr!("Back"))),
-            ),
-        )
     }
 }

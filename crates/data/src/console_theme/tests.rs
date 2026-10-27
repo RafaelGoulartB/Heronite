@@ -107,3 +107,111 @@ fn a_light_background_makes_the_theme_light() {
     assert!(!with("#808080").is_light());
     assert!(!ColourOptions::default().is_light());
 }
+
+#[test]
+fn an_export_carries_its_picture_to_another_machine() {
+    let here = tempfile::tempdir().unwrap();
+    let there = tempfile::tempdir().unwrap();
+    let paths = |d: &tempfile::TempDir| AppPaths { config: d.path().join("config"), cache: d.path().join("cache") };
+    let picture = here.path().join("wall.png");
+    std::fs::write(&picture, b"\x89PNG not really").unwrap();
+    let mut t = presets::classic();
+    t.name = "Wall".into();
+    t.background.source = BackgroundSource::Image;
+    t.background.image = picture.display().to_string();
+
+    // Saving copies the picture into the theme folder: it survives the original moving.
+    let saved = store::save(&paths(&here), &t).unwrap();
+    let own = std::path::PathBuf::from(&saved.background.image);
+    assert!(own.starts_with(paths(&here).console_themes_dir()));
+    std::fs::remove_file(&picture).unwrap();
+    assert!(own.exists());
+
+    let file = here.path().join(format!("wall.{}", store::EXTENSION));
+    store::export(&saved, &file).unwrap();
+    let shared = store::read(&file).unwrap();
+    assert!(shared.background.image.starts_with("data:image/png;base64,"));
+
+    let imported = store::import(&paths(&there), &file).unwrap();
+    let back = std::path::PathBuf::from(&imported.background.image);
+    assert!(back.starts_with(paths(&there).console_themes_dir()));
+    assert_eq!(std::fs::read(&back).unwrap(), b"\x89PNG not really");
+
+    // Deleting the theme takes its picture with it.
+    store::delete(&paths(&there), &imported.id).unwrap();
+    assert!(!back.exists());
+}
+
+#[test]
+fn an_unused_local_picture_stays_out_of_an_export() {
+    let mut t = presets::classic();
+    t.background.image = "/home/someone/wall.png".into();
+    assert_eq!(store::portable(&t).background.image, "");
+    t.background.image = "https://example.com/wall.png".into();
+    assert_eq!(store::portable(&t).background.image, "https://example.com/wall.png");
+}
+
+#[test]
+fn an_import_is_compared_with_the_saved_themes() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let mut mine = presets::pulse();
+    mine.name = "Mine".into();
+    let saved = store::save(&paths, &mine).unwrap();
+    let list = store::list(&paths);
+    assert_eq!(store::compare(&saved, &list), store::Match::Same(saved.id.clone()));
+    let mut newer = saved.clone();
+    newer.tiles.size = TileSize::Huge;
+    assert_eq!(store::compare(&newer, &list), store::Match::SameId(saved.id.clone()));
+    assert_eq!(store::compare(&presets::cinema(), &list), store::Match::New);
+
+    // Kept apart unless asked to replace.
+    let both = store::add(&paths, &newer, false).unwrap();
+    assert_ne!(both.id, saved.id);
+    let replaced = store::add(&paths, &newer, true).unwrap();
+    assert_eq!(replaced.id, saved.id);
+    assert_eq!(store::list(&paths).len(), 2);
+}
+
+#[test]
+fn a_wrong_value_loses_only_itself() {
+    let text = json!({
+        "name": "Odd",
+        "shelfLimit": "lots",
+        "tiles": {"size": "xl", "greyUninstalled": "yes"},
+        "background": {"dim": 400, "blur": 8},
+        "interface": {"accent": "not a colour"},
+    })
+    .to_string();
+    let t = ConsoleTheme::from_json(&text).unwrap();
+    assert_eq!(t.name, "Odd");
+    assert_eq!(t.shelf_limit, presets::classic().shelf_limit);
+    assert_eq!(t.tiles.size, TileSize::Huge);
+    assert!(!t.tiles.grey_uninstalled);
+    assert_eq!(t.background.blur, 8);
+    assert_eq!(t.interface.accent, "white");
+}
+
+#[test]
+fn an_id_cannot_leave_the_themes_folder() {
+    let t = ConsoleTheme { id: "../../evil".into(), ..ConsoleTheme::default() }.normalized();
+    assert_eq!(t.id, "evil");
+    let dup = ConsoleTheme { shelves: vec![ShelfSpec::new("recent", true), ShelfSpec::new("recent", false)], ..ConsoleTheme::default() };
+    assert_eq!(dup.normalized().shelves.len(), 1);
+}
+
+#[test]
+fn deleting_the_theme_in_use_keeps_the_picture_on_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+    let picture = dir.path().join("wall.png");
+    std::fs::write(&picture, b"png").unwrap();
+    let mut t = presets::classic();
+    t.name = "Wall".into();
+    t.background.source = BackgroundSource::Image;
+    t.background.image = picture.display().to_string();
+    let saved = store::save(&paths, &t).unwrap();
+    ConsolePrefs { theme: saved.clone(), based_on: saved.id.clone(), ..ConsolePrefs::default() }.save(&paths).unwrap();
+    store::delete(&paths, &saved.id).unwrap();
+    assert!(std::path::Path::new(&saved.background.image).exists());
+}

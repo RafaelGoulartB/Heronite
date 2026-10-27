@@ -25,13 +25,31 @@ pub struct ThemeState {
     pub notice: Option<(String, bool)>,
     /// ↑ ↓ move the focused row (after X).
     pub moving: bool,
+    /// The theme before each change, for Undo (the latest last), and the
+    /// ones undone, for Redo. Cleared when another theme is put in use.
+    pub undo: Vec<ConsoleTheme>,
+    pub redo: Vec<ConsoleTheme>,
+    /// The option changed last: more changes of the same number or colour
+    /// (a drag) make one step of Undo.
+    pub(super) last_change: Option<String>,
 }
+
+/// Steps of Undo kept.
+const UNDO_MAX: usize = 100;
 
 impl ThemeState {
     /// Reads `console.json` (once per run); the saved themes come with
     /// [`load_saved`].
     pub fn new(app: &AppPaths) -> Self {
-        Self { prefs: themes::prefs(app), data: Data::default(), notice: None, moving: false }
+        Self {
+            prefs: themes::prefs(app),
+            data: Data::default(),
+            notice: None,
+            moving: false,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            last_change: None,
+        }
     }
 
     pub fn ctx(&self) -> Ctx<'_> {
@@ -116,6 +134,7 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
             themes::prefs(&app)
         }
         _ => {
+            st.remember(cmd);
             let data = &st.data;
             themes::update(&app, |p| {
                 run(p, cmd, data);
@@ -125,6 +144,56 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
     st.notice = None;
     cx.notify();
     true
+}
+
+impl ThemeState {
+    /// Empties Undo and Redo (another theme is in use, or it was saved).
+    pub fn forget_steps(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+        self.last_change = None;
+    }
+
+    /// The next change is a step of its own, even of the option changed last
+    /// (a ↺ after a drag).
+    pub fn end_step(&mut self) {
+        self.last_change = None;
+    }
+
+    /// Keeps the theme as it is before `cmd` changes it, for Undo.
+    fn remember(&mut self, cmd: &Command) {
+        if matches!(cmd.id.as_str(), "theme.use" | "theme.reset") {
+            self.forget_steps();
+            return;
+        }
+        let drag = matches!(cmd.arg, Arg::Text(_) | Arg::Value(crate::console::list::Value::Number { .. }));
+        let same = drag && self.last_change.as_deref() == Some(cmd.id.as_str());
+        self.last_change = Some(cmd.id.clone());
+        if same {
+            return;
+        }
+        self.undo.push(self.prefs.theme.clone());
+        if self.undo.len() > UNDO_MAX {
+            self.undo.remove(0);
+        }
+        self.redo.clear();
+    }
+}
+
+/// Puts back the theme as it was before the last change (`back`), or the
+/// change undone last.
+pub fn undo<H: Host>(h: &mut H, back: bool, cx: &mut Context<H>) {
+    let app = h.app();
+    let Some(st) = h.theme_state() else { return };
+    let (from, to) = if back { (&mut st.undo, &mut st.redo) } else { (&mut st.redo, &mut st.undo) };
+    let Some(mut theme) = from.pop() else { return };
+    // The id says which saved theme Save writes: it stays the current one.
+    theme.id = st.prefs.theme.id.clone();
+    to.push(st.prefs.theme.clone());
+    st.last_change = None;
+    st.prefs = themes::update(&app, |p| p.theme = theme);
+    st.notice = None;
+    cx.notify();
 }
 
 /// What came out of a row list: a changed value or an activated row.
@@ -187,7 +256,12 @@ pub fn text_done<H: Host>(h: &mut H, id: &str, text: String, window: &mut Window
         "theme.save-as" => {
             let name = text.trim().to_string();
             if !name.is_empty() {
-                store_op(h, StoreOp::SaveAs { name, author: String::new() }, window, cx);
+                store_op(
+                    h,
+                    StoreOp::SaveAs { name, author: String::new(), description: String::new(), version: String::new() },
+                    window,
+                    cx,
+                );
             }
         }
         "theme.rename" => {
@@ -226,6 +300,8 @@ fn adopt<H: Host>(h: &mut H, theme: ConsoleTheme, list: Vec<ConsoleTheme>, note:
         st.prefs = next;
         st.data.saved = list;
         st.notice = Some((note, false));
+        // A step from before would bring back another theme's id or picture.
+        st.forget_steps();
     }
     cx.notify();
 }
@@ -235,24 +311,22 @@ pub fn store_op<H: Host>(h: &mut H, op: StoreOp, window: &mut Window, cx: &mut C
     let app = h.app();
     let Some(current) = h.theme_state().map(|st| st.prefs.theme.clone()) else { return };
     match op {
-        StoreOp::Save => save_job(h, app, current, tr!("Saved.").into(), cx),
-        StoreOp::SaveAs { name, author } => {
-            let mut t = current;
+        StoreOp::Save => save_job(h, app, current.clone(), current, tr!("Saved.").into(), cx),
+        StoreOp::SaveAs { name, author, description, version } => {
+            let mut t = current.clone();
             t.name = name;
             t.author = author;
+            t.description = description;
+            t.version = if version.is_empty() { "1".into() } else { version };
             t.id.clear();
-            save_job(h, app, t, tr!("Saved as a new theme.").into(), cx);
+            save_job(h, app, current, t, tr!("Saved as a new theme.").into(), cx);
         }
-        StoreOp::Rename(name) => {
-            let mut t = current;
-            t.name = name;
-            save_job(h, app, t, tr!("Renamed.").into(), cx);
-        }
+        StoreOp::Rename(name) => rename_job(h, app, name, cx),
         StoreOp::SaveDetails { name, author } => {
-            let mut t = current;
+            let mut t = current.clone();
             t.name = name;
             t.author = author;
-            save_job(h, app, t, tr!("Saved.").into(), cx);
+            save_job(h, app, current, t, tr!("Saved.").into(), cx);
         }
         StoreOp::Delete => {
             let id = h.theme_state().map(|st| st.prefs.based_on.clone()).unwrap_or_default();
@@ -283,6 +357,7 @@ fn delete_job<H: Host>(_h: &mut H, app: AppPaths, id: String, cx: &mut Context<H
                     st.data.saved = list;
                     if let Some(p) = prefs {
                         st.prefs = p;
+                        st.forget_steps();
                     }
                     st.notice = Some((tr!("Deleted.").into(), false));
                 }
@@ -297,11 +372,68 @@ fn delete_job<H: Host>(_h: &mut H, app: AppPaths, id: String, cx: &mut Context<H
     .detach();
 }
 
-fn save_job<H: Host>(_h: &mut H, app: AppPaths, theme: ConsoleTheme, done: String, cx: &mut Context<H>) {
+/// Renames the saved theme in use on disk and in use, leaving its other
+/// unsaved changes as they are.
+fn rename_job<H: Host>(h: &mut H, app: AppPaths, name: String, cx: &mut Context<H>) {
+    let Some(saved) = h.theme_state().and_then(|st| super::based_on_saved(&st.prefs, &st.data.saved).cloned()) else { return };
+    cx.spawn(async move |this, cx| {
+        let res = cx
+            .background_spawn({
+                let app = app.clone();
+                async move {
+                    let mut t = saved;
+                    t.name = name;
+                    store::save(&app, &t).map(|t| (t, store::list(&app)))
+                }
+            })
+            .await;
+        this.update(cx, |h, cx| match res {
+            Ok((t, list)) => {
+                let prefs = themes::update(&app, |p| p.theme.name = t.name.clone());
+                if let Some(st) = h.theme_state() {
+                    st.prefs = prefs;
+                    st.data.saved = list;
+                    st.notice = Some((tr!("Renamed.").into(), false));
+                }
+                cx.notify();
+            }
+            Err(e) => fail(h, e, cx),
+        })
+        .ok();
+    })
+    .detach();
+}
+
+/// Saves `theme` (made from `start`, the theme in use when the save began)
+/// and makes it the one in use. A change made while the file was written is
+/// kept: only what the save gave the theme (its id, details and picture's
+/// path) is put on it.
+fn save_job<H: Host>(_h: &mut H, app: AppPaths, start: ConsoleTheme, theme: ConsoleTheme, done: String, cx: &mut Context<H>) {
     cx.spawn(async move |this, cx| {
         let res = cx.background_spawn(async move { store::save(&app, &theme).map(|t| (t, store::list(&app))) }).await;
         this.update(cx, |h, cx| match res {
-            Ok((t, list)) => adopt(h, t, list, done, cx),
+            Ok((t, list)) if h.theme_state().is_none_or(|st| st.prefs.theme == start) => adopt(h, t, list, done, cx),
+            Ok((t, list)) => {
+                let app = h.app();
+                let next = themes::update(&app, |p| {
+                    if p.theme.background.image == start.background.image {
+                        p.theme.background.image = t.background.image.clone();
+                    }
+                    p.theme.id = t.id.clone();
+                    p.theme.name = t.name.clone();
+                    p.theme.author = t.author.clone();
+                    p.theme.description = t.description.clone();
+                    p.theme.version = t.version.clone();
+                    p.based_on = t.id.clone();
+                });
+                if let Some(st) = h.theme_state() {
+                    st.prefs = next;
+                    st.data.saved = list;
+                    st.notice = Some((done, false));
+                    st.forget_steps();
+                }
+                cx.notify();
+            }
             Err(e) => {
                 fail(h, e, cx);
             }
@@ -360,19 +492,17 @@ fn import<H: Host>(h: &mut H, window: &mut Window, cx: &mut Context<H>) {
 fn import_from<H: Host>(h: &mut H, path: PathBuf, cx: &mut Context<H>) {
     let app = h.app();
     cx.spawn(async move |this, cx| {
-        let res = cx
-            .background_spawn(async move {
-                let text = std::fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
-                let mut t = ConsoleTheme::from_json(&text)?;
-                // A theme that is already saved keeps its copy: this one gets a new id.
-                if t.id.is_empty() || store::list(&app).iter().any(|s| s.id == t.id) {
-                    t.id.clear();
-                }
-                let t = store::save(&app, &t)?;
-                anyhow::Ok((t, store::list(&app)))
-            })
-            .await;
+        // A theme that is already saved keeps its copy: this one gets a new id.
+        let res = cx.background_spawn(async move { store::import(&app, &path).map(|t| (t, store::list(&app))) }).await;
         this.update(cx, |h, cx| match res {
+            // Unsaved changes on screen are never replaced: the theme waits in the list.
+            Ok((t, list)) if h.theme_state().is_some_and(|st| super::is_edited(&st.prefs, &st.data.saved)) => {
+                if let Some(st) = h.theme_state() {
+                    st.data.saved = list;
+                    st.notice = Some((tr!("“{name}” is with your themes.", name = t.name), false));
+                }
+                cx.notify();
+            }
             Ok((t, list)) => adopt(h, t, list, tr!("Imported.").into(), cx),
             Err(e) => {
                 fail(h, e, cx);

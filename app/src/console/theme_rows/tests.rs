@@ -289,7 +289,15 @@ fn shifting_stops_at_the_ends() {
 
 #[test]
 fn extra_pads_move_and_remove() {
-    let mut st = ThemeState { prefs: ConsolePrefs::default(), data: data(), notice: None, moving: false };
+    let mut st = ThemeState {
+        prefs: ConsolePrefs::default(),
+        data: data(),
+        notice: None,
+        moving: false,
+        undo: Vec::new(),
+        redo: Vec::new(),
+        last_change: None,
+    };
     assert!(matches!(extra_pad(&mut st, Pad::X, Some("nav.wrap")), Extra::Pass));
     assert!(matches!(extra_pad(&mut st, Pad::X, Some("shelf.2")), Extra::Handled));
     assert!(st.moving);
@@ -322,4 +330,56 @@ fn a_theme_is_picked_by_id_and_changes_go_back_to_its_base() {
     assert_eq!(p.based_on, "pulse");
     p.based_on.clear();
     assert!(!run(&mut p, &Command::new("theme.revert", Arg::Press), &data()), "nothing to go back to");
+}
+
+#[test]
+fn an_option_knows_it_changed_and_goes_back() {
+    let mut p = classic();
+    let base = presets::classic();
+    assert_eq!(changed_in(&CARDS, &p, &base), 0);
+    assert!(change(&mut p, "tiles.corners", choice(0)));
+    assert!(change(&mut p, "background.dim", Value::Number { value: 40, min: 0, max: 90, step: 10, suffix: "%" }));
+    assert!(run(&mut p, &Command::new("interface.accent_hex", Arg::Text("#123456".into())), &data()));
+    assert!(differs("tiles.corners", &p, &base));
+    assert!(differs("interface.accent", &p, &base));
+    assert!(!differs("tiles.shape", &p, &base));
+    assert_eq!(changed_in(&[Card::Covers], &p, &base), 1);
+    assert_eq!(changed_in(&CARDS, &p, &base), 3);
+    for id in ["tiles.corners", "background.dim", "interface.accent"] {
+        let cmd = reset_command(id, &p, &base).unwrap();
+        assert!(run(&mut p, &cmd, &data()), "{id}");
+    }
+    assert_eq!(p.theme, base);
+}
+
+#[test]
+fn colour_sets_read_and_apply_whole() {
+    use heronite_data::appearance::{contrast, parse_hex};
+    for set in &COLOUR_SETS {
+        let mut p = classic();
+        assert!(run(&mut p, &Command::new("colors.set", Arg::Pick(set.id.into())), &data()) || set.id == "built-in", "{}", set.id);
+        assert!(set.is_on(&p.theme), "{}", set.id);
+        assert!(hard_to_read(&p.theme).is_empty(), "{}: {:?}", set.id, hard_to_read(&p.theme));
+        if let (Some(fg), Some(bg)) = (parse_hex(set.focus_text), parse_hex(set.accent)) {
+            assert!(contrast(fg, bg) >= 4.5, "{} focus text", set.id);
+        }
+        assert!(is_accent(set.accent), "{}", set.id);
+    }
+}
+
+#[test]
+fn unreadable_text_is_made_readable() {
+    let mut p = classic();
+    p.theme.colors.background = "#202020".into();
+    p.theme.colors.text = "#303030".into();
+    assert_eq!(hard_to_read(&p.theme).len(), 1);
+    assert!(run(&mut p, &Command::new("colors.readable", Arg::Press), &data()));
+    assert!(hard_to_read(&p.theme).is_empty());
+}
+
+#[test]
+fn choosing_a_picture_makes_it_the_background() {
+    let mut p = classic();
+    assert!(run(&mut p, &Command::new("background.image", Arg::Text("/x/wall.png".into())), &data()));
+    assert_eq!(p.theme.background.source, heronite_data::console_theme::BackgroundSource::Image);
 }

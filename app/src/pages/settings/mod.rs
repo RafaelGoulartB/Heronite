@@ -493,17 +493,39 @@ impl Render for SettingsPage {
             return self.render_console(window, cx);
         }
         let section = self.section;
+        // The console theme editor fills the height and scrolls its parts itself.
+        let studio = section == Section::ConsoleMode && console_mode::is_studio(self);
         let body = self.render_body(window, cx);
-        let title = div().flex().flex_col().gap(px(4.)).pr(px(48.)).child(page_heading(section.label())).child(help_text(section.blurb()));
-        // The log viewer wants the width; the forms read better narrow.
+        let title = div()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .pr(px(48.))
+            .child(page_heading(section.label()))
+            .when(!studio, |d| d.child(help_text(section.blurb())));
+        // The log viewer and the theme editor want the width; the forms read better narrow.
         let max_w = match section {
             Section::Logs => px(1400.),
             Section::Storage => px(storage::MAX_W),
+            Section::ConsoleMode if studio => px(console_mode::STUDIO_MAX_W),
             _ => px(880.),
         };
         let column = div().flex().flex_col().w_full().max_w(max_w).mx_auto().gap(px(14.)).child(title).child(body);
-        let content =
-            div().id("page-settings").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(36.)).pt(px(26.)).pb(px(32.)).child(column);
+        let content = if studio {
+            div()
+                .id("page-settings")
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .flex()
+                .flex_col()
+                .px(px(36.))
+                .pt(px(26.))
+                .pb(px(18.))
+                .child(column.flex_1().min_h_0())
+        } else {
+            div().id("page-settings").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(36.)).pt(px(26.)).pb(px(32.)).child(column)
+        };
         let close = close_button("settings-close")
             .absolute()
             .top(px(20.))

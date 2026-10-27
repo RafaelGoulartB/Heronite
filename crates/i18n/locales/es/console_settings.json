@@ -4,7 +4,6 @@
   "A built-in theme. Change it here, or make a copy of your own.": "Un tema integrado. Cámbialo aquí o haz tu propia copia.",
   "A colour as #rrggbb.": "Un color con formato #rrggbb.",
   "A on a cover": "A en una portada",
-  "A theme is the whole look of console mode: its screens, covers, background and controls. Click one to use it.": "Un tema es todo el aspecto del Modo consola: sus pantallas, portadas, fondo y controles. Haz clic en uno para usarlo.",
   "Add a shelf": "Añadir una estantería",
   "Add a shelf…": "Añadir una estantería…",
   "Add a tab": "Añadir una pestaña",
@@ -16,7 +15,6 @@
   "Ask": "Preguntar",
   "Author": "Autor",
   "Automatic (the controller's)": "Automático (el del mando)",
-  "Back to Classic": "Volver a Clásico",
   "Background colour": "Color de fondo",
   "Badges": "Insignias",
   "Blurred cover": "Portada desenfocada",
@@ -39,7 +37,6 @@
   "Controller, downloads and battery.": "Mando, descargas y batería.",
   "Controls": "Controles",
   "Covers per shelf": "Portadas por estantería",
-  "Create a new theme": "Crear un tema nuevo",
   "Create theme": "Crear tema",
   "Custom focus colour": "Color de foco personalizado",
   "Customised": "Personalizado",
@@ -61,7 +58,6 @@
   "Emulated games": "Juegos emulados",
   "Emulators and Stores.": "Emuladores y Tiendas.",
   "Enter console mode": "Entrar en el Modo consola",
-  "Every change shows in console mode at once. Saving keeps a copy to come back to, export or share.": "Cada cambio se ve al instante en el Modo consola. Al guardar se conserva una copia a la que volver, exportar o compartir.",
   "Export to a file…": "Exportar a un archivo…",
   "Export to this folder (X)": "Exportar a esta carpeta (X)",
   "Exported to {path}": "Exportado a {path}",
@@ -213,5 +209,6 @@
   "{n} tab": "{n} pestaña",
   "{n} tabs": "{n} pestañas",
   "{tabs} · {layouts}": "{tabs} · {layouts}",
-  "“On” switches": "Interruptores “activados”"
+  "“On” switches": "Interruptores “activados”",
+  "Back to {name}": "Volver a {name}"
 }

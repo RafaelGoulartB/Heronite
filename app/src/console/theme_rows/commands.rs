@@ -7,10 +7,16 @@ use super::*;
 pub enum StoreOp {
     /// Overwrite the saved theme in use.
     Save,
+    /// A new saved theme from the one in use, with its own name, author and
+    /// description (never the ones of the theme it started from).
     SaveAs {
         name: String,
         author: String,
+        description: String,
+        /// Empty gives "1".
+        version: String,
     },
+    /// Renames the saved theme in use (its file only: unsaved changes stay unsaved).
     Rename(String),
     /// Overwrite the saved theme in use under this name and author.
     SaveDetails {
@@ -228,10 +234,19 @@ fn apply(prefs: &mut ConsolePrefs, cmd: &Command, data: &Data) {
             };
         }
         ("interface.accent_hex", Arg::Text(s)) => {
-            if let Some(c) = normalize_colour(s).filter(|c| !c.is_empty()) {
+            let s = s.trim();
+            if ACCENTS.iter().any(|(n, _)| *n == s) {
+                t.interface.accent = s.to_string();
+            } else if let Some(c) = normalize_colour(s).filter(|c| !c.is_empty()) {
                 t.interface.accent = c;
             }
         }
+        ("colors.set", Arg::Pick(set)) => {
+            if let Some(set) = COLOUR_SETS.iter().find(|c| c.id == set) {
+                set.apply(t);
+            }
+        }
+        ("colors.readable", Arg::Press) => make_readable(t),
         ("shelf.add", Arg::Pick(kind)) => {
             if !t.shelves.iter().any(|s| s.kind == *kind) {
                 t.shelves.push(ShelfSpec::new(kind, true));
