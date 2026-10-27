@@ -6,7 +6,6 @@
 //! to Settings → Other launchers under them.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -16,15 +15,13 @@ use heronite_data::clients::Client;
 use heronite_i18n::{n_, tr, trn};
 
 use super::settings::Section;
+use super::side_nav::{self, Dot};
 use super::{Page, PageEvent};
 use crate::console::Pad;
 use crate::icons::Icon;
 use crate::services::clients::{Activity, ClientState};
 use crate::services::downloads::Store;
 use crate::services::steam_library::{SteamState, Summary};
-use crate::theme;
-use crate::ui::controls::{close_button, help_text, page_heading};
-use crate::ui::{glass, icon};
 
 /// The store pages, in the order of the list (and of LB / RB).
 pub const PAGES: [Page; 8] = [Page::Epic, Page::Gog, Page::Amazon, Page::Steam, Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar];
@@ -36,9 +33,6 @@ const GROUPS: [(&str, &[Page]); 2] = [
     (n_!("Store apps"), &[Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar]),
 ];
 
-/// Width of the list on the left of a store page.
-const NAV_W: f32 = 250.;
-
 pub fn is_store_page(page: Page) -> bool {
     PAGES.contains(&page)
 }
@@ -46,19 +40,6 @@ pub fn is_store_page(page: Page) -> bool {
 /// Title of the store pages' list.
 pub fn title() -> &'static str {
     tr!("Stores")
-}
-
-/// The dot beside a store in the list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Dot {
-    /// Signed in, found, set up.
-    On,
-    /// Something to do: log in again, sign in, restart.
-    Attention,
-    /// Working on it: setting up, opening, reading.
-    Busy,
-    /// Not used yet.
-    Off,
 }
 
 /// What the list says of a store: its dot and a line under its name.
@@ -177,247 +158,61 @@ fn observe<V: 'static, T: 'static>(entity: Option<Entity<T>>, shown: &Rc<RefCell
     .detach();
 }
 
-/// Horizontal room for a store page's columns: [`super::content_width`]
-/// minus the list.
+/// Horizontal room for a store page's columns, beside the list.
 pub fn content_width(window: &Window) -> f32 {
-    super::content_width(window) - NAV_W - 8.
-}
-
-fn dot(d: Dot) -> Div {
-    let base = div().flex_none().size(px(8.)).rounded_full();
-    match d {
-        Dot::On => base.bg(theme::success()),
-        Dot::Attention => base.bg(theme::warning()),
-        Dot::Busy => base.bg(theme::accent()),
-        Dot::Off => base.border_1().border_color(theme::text_dim()),
-    }
-}
-
-/// A store in the list: its icon, name, a line on where it stands, and
-/// its dot.
-fn nav_item(page: Page, active: bool, g: Glance) -> Stateful<Div> {
-    let tint = if active { theme::accent() } else { theme::nav_text() };
-    div()
-        .id(SharedString::from(format!("stores-nav-{page:?}")))
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .px(px(10.))
-        .py(px(7.))
-        .mb(px(2.))
-        .rounded(px(12.))
-        .cursor_pointer()
-        .when(active, |d| d.bg(theme::accent_tint()))
-        .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.05))))
-        .child(div().flex().flex_none().items_center().justify_center().size(px(30.)).rounded(px(9.)).bg(theme::ink_a(0.08)).child(icon(
-            page.icon(),
-            px(16.),
-            tint,
-        )))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .text_size(px(14.))
-                        .truncate()
-                        .text_color(if active { theme::text_bright() } else { theme::nav_text().into() })
-                        .child(page.title()),
-                )
-                .when(!g.line.is_empty(), |d| d.child(div().text_size(px(11.5)).truncate().text_color(theme::text_muted()).child(g.line))),
-        )
-        .child(dot(g.dot))
+    side_nav::content_width(window)
 }
 
 /// Settings → Other launchers, under the stores: the games of Heroic,
 /// Lutris, Bottles and Faugus come in from there.
 fn other_launchers<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> Stateful<Div> {
-    div()
-        .id("stores-nav-launchers")
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .px(px(10.))
-        .py(px(9.))
-        .rounded(px(12.))
-        .border_1()
-        .border_dashed()
-        .border_color(theme::ink_a(0.16))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::ink_a(0.05)))
-        .child(icon(Icon::CallMerge, px(16.), theme::text_muted()))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .child(div().text_size(px(13.5)).text_color(theme::nav_text()).child(tr!("Other launchers")))
-                // Names: not translated.
-                .child(div().text_size(px(11.5)).truncate().text_color(theme::text_dim()).child("Heroic, Lutris, Bottles, Faugus")),
-        )
-        .child(icon(Icon::OpenInNew, px(14.), theme::text_dim()))
-        .on_click(cx.listener(|_, _, _, cx| {
+    // Names: not translated.
+    side_nav::link("stores-nav-launchers", Icon::CallMerge, tr!("Other launchers"), "Heroic, Lutris, Bottles, Faugus").on_click(
+        cx.listener(|_, _, _, cx| {
             super::settings::request_section(Section::Launchers, cx);
             cx.emit(PageEvent::Navigate(Page::Settings));
-        }))
-}
-
-/// Where the list and each store page are scrolled. The store pages are
-/// separate views drawn one at a time, so the list keeps its place from one
-/// store to the next; each page keeps its own.
-struct Scrolls {
-    nav: ScrollHandle,
-    pages: HashMap<Page, ScrollHandle>,
-}
-
-impl Global for Scrolls {}
-
-/// The list's scroll (`None`) or a page's.
-fn scroll_of(page: Option<Page>, cx: &mut App) -> ScrollHandle {
-    if !cx.has_global::<Scrolls>() {
-        cx.set_global(Scrolls { nav: ScrollHandle::new(), pages: HashMap::new() });
-    }
-    let s = cx.global_mut::<Scrolls>();
-    match page {
-        None => s.nav.clone(),
-        Some(p) => s.pages.entry(p).or_default().clone(),
-    }
-}
-
-/// `area` (which holds the element scrolled by `scroll`) with its
-/// scrollbar `right` px from its edge, when the content is taller than it.
-fn with_scrollbar<V: 'static>(area: Div, id: &'static str, scroll: &ScrollHandle, right: f32, cx: &mut Context<V>) -> Div {
-    let (offset, max, height) = (scroll.offset().y, scroll.max_offset().y, scroll.bounds().size.height);
-    // The sizes are known only once laid out, after this draw: when they
-    // differ from the ones drawn (the first time, the window resized, the
-    // page grew), draw once more so the bar follows.
-    let (laid_out, view) = (scroll.clone(), cx.entity_id());
-    let watch = canvas(
-        move |_, _, cx| {
-            if laid_out.max_offset().y != max || laid_out.bounds().size.height != height {
-                cx.notify(view);
-            }
-        },
-        |_, _, _, _| {},
+        }),
     )
-    .absolute()
-    .size_0();
-    let (to, weak) = (scroll.clone(), cx.entity().downgrade());
-    let bar = crate::ui::scrollbar_draggable(
-        id,
-        offset,
-        max,
-        height,
-        move |distance, _, cx| {
-            to.set_offset(point(px(0.), px(-distance)));
-            weak.update(cx, |_, cx| cx.notify()).ok();
-        },
-        None,
-    );
-    area.child(watch).children(bar.map(|b| b.right(px(right))))
 }
 
 /// The list on the left of a store page: "Stores", the stores in their
 /// groups, and Other launchers at the bottom.
 fn nav<V: EventEmitter<PageEvent> + 'static>(active: Page, cx: &mut Context<V>) -> Div {
-    let scroll = scroll_of(None, cx);
-    let mut list = div()
-        .id("stores-nav")
-        .size_full()
-        .overflow_y_scroll()
-        .track_scroll(&scroll)
-        .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(10.))
-                .px(px(12.))
-                .pb(px(10.))
-                .child(icon(Icon::Storefront, px(18.), theme::text_primary()))
-                .child(
-                    div()
-                        .font_family(theme::font_heading())
-                        .text_size(px(19.))
-                        .font_weight(theme::W_BOLD)
-                        .text_color(theme::text_primary())
-                        .child(title()),
-                ),
-        );
     let page = cx.entity().downgrade();
+    let mut items: Vec<AnyElement> = vec![];
     for (group, pages) in GROUPS {
-        list = list.child(
-            div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(heronite_i18n::tr(group)),
-        );
+        items.push(side_nav::group(heronite_i18n::tr(group), None).into_any_element());
         for p in pages.iter().copied() {
-            let page = page.clone();
-            list = list.child(nav_item(p, p == active, glance_of(p, cx)).on_click(move |_, _, cx| {
-                if p != active {
-                    page.update(cx, |_, cx| cx.emit(PageEvent::Navigate(p))).ok();
-                }
-            }));
+            let (page, g) = (page.clone(), glance_of(p, cx));
+            let id = SharedString::from(format!("stores-nav-{p:?}"));
+            items.push(
+                side_nav::item(id, p.icon(), p.title(), g.line, g.dot, p == active)
+                    .on_click(move |_, _, cx| {
+                        if p != active {
+                            page.update(cx, |_, cx| cx.emit(PageEvent::Navigate(p))).ok();
+                        }
+                    })
+                    .into_any_element(),
+            );
         }
     }
-    div()
-        .flex()
-        .flex_col()
-        .flex_none()
-        .w(px(NAV_W))
-        .h_full()
-        .px(px(12.))
-        .pt(px(26.))
-        .pb(px(14.))
-        .border_r_1()
-        .border_color(theme::row_separator())
-        .child(with_scrollbar(div().relative().flex_1().min_h_0().child(list), "stores-nav-scrollbar", &scroll, -11., cx))
-        .child(div().pt(px(12.)).child(other_launchers(cx)))
+    let heading = side_nav::heading(Icon::Storefront, title(), None);
+    let footer = other_launchers(cx).into_any_element();
+    side_nav::nav("stores-nav", heading, items, Some(footer), cx)
 }
 
 /// A store page: the list of stores on the left; the store's name, `lead`
-/// and `body` (at most 1320px wide) on the right, scrolling. Both have a
-/// scrollbar when the window is too short for them. The round
-/// close button goes back to the Collection.
+/// and `body` on the right (see [`side_nav::sheet`]).
 pub fn sheet<V: EventEmitter<PageEvent> + 'static>(
-    id: impl Into<ElementId>,
+    id: impl Into<SharedString>,
     active: Page,
     lead: impl Into<SharedString>,
     cx: &mut Context<V>,
     body: impl IntoElement,
 ) -> Div {
-    let header = div().flex().flex_col().gap(px(4.)).pr(px(48.)).pb(px(18.)).child(page_heading(active.title())).child(help_text(lead));
-    let scroll = scroll_of(Some(active), cx);
-    let content = div()
-        .id(id.into())
-        .size_full()
-        .overflow_y_scroll()
-        .track_scroll(&scroll)
-        .on_scroll_wheel(cx.listener(|_, _, _, cx| cx.notify()))
-        .px(px(32.))
-        .pt(px(26.))
-        .pb(px(28.))
-        .child(div().flex().flex_col().w_full().max_w(px(1320.)).mx_auto().child(header).child(body));
-    let close = close_button("page-close")
-        .absolute()
-        .top(px(20.))
-        .right(px(20.))
-        .on_click(cx.listener(|_, _, _, cx| cx.emit(PageEvent::Navigate(Page::Collection))));
-    div().size_full().p(px(12.)).pt(px(2.)).child(
-        glass::glass_panel(theme::R_SHEET)
-            .relative()
-            .size_full()
-            .flex()
-            .text_color(theme::text_primary())
-            .font_family(theme::font_body())
-            .child(nav(active, cx))
-            .child(with_scrollbar(div().relative().flex_1().min_w_0().h_full().child(content), "stores-page-scrollbar", &scroll, 4., cx))
-            .child(close),
-    )
+    let header = side_nav::header(active.title(), [], lead, None);
+    let nav = nav(active, cx);
+    side_nav::sheet(id, nav, header, cx, body)
 }
 
 /// The console top bar's tabs (switched with LB / RB, see [`switch`]).

@@ -13,6 +13,7 @@ pub mod downloads;
 pub mod emulators;
 pub mod epic;
 pub mod settings;
+pub mod side_nav;
 pub mod stats;
 pub mod steam;
 pub mod store;
