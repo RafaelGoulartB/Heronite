@@ -201,6 +201,7 @@ impl EmulatorsPage {
                             .flex_wrap()
                             .items_center()
                             .gap(px(10.))
+                            .child(icon(super::icon::of(e), px(20.), theme::accent()))
                             .child(
                                 div()
                                     .font_family(theme::font_heading())

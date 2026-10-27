@@ -13,6 +13,7 @@ mod actions;
 mod console;
 mod debug;
 mod dialogs;
+mod icon;
 mod palette;
 mod render;
 
