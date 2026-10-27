@@ -134,6 +134,8 @@ pub fn init(
     // use for them.
     if !hub(cx).0.borrow().exit_when_idle {
         crate::services::downloads(cx);
+        // The store clients under Wine: looks at them a few seconds from now.
+        crate::services::clients(cx);
         crate::services::compression::init(cx, data_paths.clone());
         crate::services::update::init(cx, heronite_data::AppPaths::for_data(&data_paths));
         crate::services::upkeep::init(cx, data_paths.clone());

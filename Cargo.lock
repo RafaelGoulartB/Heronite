@@ -3503,6 +3503,7 @@ dependencies = [
  "heronite-achievements",
  "heronite-amazon",
  "heronite-backup",
+ "heronite-clients",
  "heronite-data",
  "heronite-emulation",
  "heronite-epic",

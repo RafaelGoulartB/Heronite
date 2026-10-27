@@ -302,3 +302,58 @@ pub(super) fn tile(id: impl Into<ElementId>, ic: Icon, name: &'static str, actio
                 ),
         )
 }
+
+/// A store client run by Wine to set up: a small tile, its icon over its
+/// name and what a click does (`ready`: it is set up already).
+pub(super) fn client_tile(
+    id: impl Into<ElementId>,
+    ic: Icon,
+    name: &'static str,
+    action: &'static str,
+    ready: bool,
+    (r, g, b): (u8, u8, u8),
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .gap(px(8.))
+        .p(px(12.))
+        .rounded(px(14.))
+        .bg(theme::ink_a(0.045))
+        .border_1()
+        .border_color(theme::ink_a(0.09))
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()))
+        .child(
+            div()
+                .flex_none()
+                .size(px(30.))
+                .rounded(px(9.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(theme::rgba_hsla(r, g, b, 0.14))
+                .child(icon(ic, px(17.), theme::rgba_hsla(r, g, b, 1.))),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .min_w_0()
+                .child(
+                    div()
+                        .whitespace_nowrap()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .font_family(theme::font_heading())
+                        .font_weight(theme::W_BOLD)
+                        .text_size(px(13.5))
+                        .text_color(theme::text_primary())
+                        .child(name),
+                )
+                .child(div().text_size(px(12.)).text_color(if ready { theme::success() } else { theme::accent() }).child(action)),
+        )
+}

@@ -112,10 +112,13 @@ impl Session {
             LaunchEvent::Launching { app_name } => {
                 self.running.insert(app_name.clone());
                 self.begin_capture(app_name, cx);
+                self.tell_client(app_name, true, cx);
             }
             LaunchEvent::Exited { app_name, elapsed, .. } => {
                 self.running.remove(app_name);
                 self.end_capture(app_name);
+                // Before the session is taken out.
+                self.tell_client(app_name, false, cx);
                 self.game_ended(app_name, *elapsed, cx);
             }
             LaunchEvent::Error { app_name, .. } => {
@@ -126,9 +129,19 @@ impl Session {
             LaunchEvent::Running { app_name, .. } if !self.running.contains(app_name) => {
                 self.running.insert(app_name.clone());
                 self.begin_capture(app_name, cx);
+                self.tell_client(app_name, true, cx);
             }
             LaunchEvent::Running { .. } | LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => {}
         }
+    }
+
+    /// A game started through a store client (Battle.net...) began or ended:
+    /// the client is followed until it closes, and looked at when the game
+    /// ends (what is installed may have changed).
+    fn tell_client(&mut self, app_name: &str, started: bool, cx: &mut Context<Self>) {
+        let Some(client) = self.runtime.session_info(app_name).and_then(|i| i.client) else { return };
+        let Some(clients) = crate::services::clients_started(cx) else { return };
+        clients.update(cx, |c, cx| if started { c.game_started(client, cx) } else { c.game_ended(client, cx) });
     }
 
     /// The Collection applies changed settings while it is open.
@@ -348,6 +361,7 @@ mod tests {
             is_emulator: false,
             rom: None,
             selected_rom: None,
+            client: None,
         }
     }
 

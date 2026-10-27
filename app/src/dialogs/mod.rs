@@ -14,6 +14,7 @@ pub mod achievements;
 pub mod add_game;
 pub mod art_images;
 pub mod batch_edit;
+pub mod client_settings;
 pub mod emulator_confirm;
 pub mod emulator_detect;
 pub mod emulator_edit;

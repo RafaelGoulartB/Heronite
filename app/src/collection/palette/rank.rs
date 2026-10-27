@@ -475,14 +475,14 @@ mod tests {
         assert_eq!(captions(&r), ["Recently played", "Go to"]);
         assert_eq!(titles(&e, &r)[..4], ["Control", "Wine Quest", "Cyberpunk 2077", "Collection"]);
         // Settings sections are not listed unless asked for.
-        assert_eq!(r.groups[1].items.len(), 10);
+        assert_eq!(r.groups[1].items.len(), 14);
     }
 
     #[test]
     fn empty_query_filters() {
         let e = corpus();
         let pages = search(&e, "", Filter::Pages, &[]);
-        assert_eq!(pages.count(), 10 + crate::pages::settings::Section::ALL.len());
+        assert_eq!(pages.count(), 14 + crate::pages::settings::Section::ALL.len());
         let actions = search(&e, "", Filter::Actions, &[]);
         assert_eq!(actions.count(), 12);
         let games = search(&e, "", Filter::Games, &[]);

@@ -1,6 +1,8 @@
-//! Epic Games, GOG, Amazon Games and Steam share one entry ("Stores") in the
-//! ☰ menu, the console sidebar and the welcome card: each store keeps its own
-//! page, and they switch with these tabs (LB / RB in console mode).
+//! Epic Games, GOG, Amazon Games, Steam and the stores that run their own
+//! program under Wine (Battle.net, the EA app, Ubisoft Connect, Rockstar
+//! Games) share one entry ("Stores") in the ☰ menu, the console sidebar and
+//! the welcome card: each store keeps its own page, and they switch with
+//! these tabs (LB / RB in console mode).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -10,7 +12,7 @@ use super::{Page, PageEvent};
 use crate::console::Pad;
 
 /// The store pages, in tab order.
-pub const PAGES: [Page; 4] = [Page::Epic, Page::Gog, Page::Amazon, Page::Steam];
+pub const PAGES: [Page; 8] = [Page::Epic, Page::Gog, Page::Amazon, Page::Steam, Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar];
 
 pub fn is_store_page(page: Page) -> bool {
     PAGES.contains(&page)
@@ -57,10 +59,26 @@ mod tests {
     fn lb_and_rb_cycle_through_the_stores() {
         assert_eq!(switch(Page::Epic, Pad::RB), Some(Page::Gog));
         assert_eq!(switch(Page::Amazon, Pad::RB), Some(Page::Steam));
-        assert_eq!(switch(Page::Steam, Pad::RB), Some(Page::Epic));
-        assert_eq!(switch(Page::Epic, Pad::LB), Some(Page::Steam));
+        assert_eq!(switch(Page::Steam, Pad::RB), Some(Page::BattleNet));
+        assert_eq!(switch(Page::Rockstar, Pad::RB), Some(Page::Epic));
+        assert_eq!(switch(Page::Epic, Pad::LB), Some(Page::Rockstar));
+        assert_eq!(switch(Page::BattleNet, Pad::LB), Some(Page::Steam));
         assert_eq!(switch(Page::Gog, Pad::A), None);
         assert_eq!(switch(Page::Downloads, Pad::RB), None);
-        assert!(is_store_page(Page::Gog) && !is_store_page(Page::Emulators));
+        assert!(is_store_page(Page::Gog) && is_store_page(Page::Ubisoft) && !is_store_page(Page::Emulators));
+    }
+
+    #[test]
+    fn every_client_has_a_tab_and_a_page_to_debug() {
+        use heronite_data::clients::Client;
+        for (client, page) in [
+            (Client::BattleNet, Page::BattleNet),
+            (Client::Ea, Page::Ea),
+            (Client::Ubisoft, Page::Ubisoft),
+            (Client::Rockstar, Page::Rockstar),
+        ] {
+            assert!(is_store_page(page));
+            assert_eq!(Page::from_debug(client.id()), Some(page));
+        }
     }
 }

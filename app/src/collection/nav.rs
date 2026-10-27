@@ -13,6 +13,7 @@ use crate::services::downloads::Store;
 use crate::theme;
 use crate::ui::dropdown::{menu_separator, Align};
 use crate::ui::{glass, icon};
+use heronite_data::clients::Client;
 use heronite_i18n::{tr, trn};
 
 /// Lazily created page views.
@@ -24,6 +25,10 @@ pub struct Pages {
     gog: Option<AnyView>,
     amazon: Option<AnyView>,
     steam: Option<AnyView>,
+    battlenet: Option<AnyView>,
+    ea: Option<AnyView>,
+    ubisoft: Option<AnyView>,
+    rockstar: Option<AnyView>,
     emulators: Option<AnyView>,
     stats: Option<AnyView>,
     settings: Option<AnyView>,
@@ -50,6 +55,14 @@ impl Pages {
     /// The store page the "Stores" entry opens.
     pub(super) fn stores_page(&self) -> Page {
         self.last_store.unwrap_or(Page::Epic)
+    }
+}
+
+/// Tells a client page whether it is on screen (the client is only asked
+/// whether it runs meanwhile).
+fn set_client_shown<K: pages::clients::ClientKind>(view: &Option<AnyView>, shown: bool, cx: &mut App) {
+    if let Some(v) = view.clone().and_then(|v| v.downcast::<pages::clients::ClientPage<K>>().ok()) {
+        v.update(cx, |p, cx| p.set_shown(shown, cx));
     }
 }
 
@@ -244,18 +257,22 @@ impl CollectionView {
                     None => pending(),
                 };
                 let update = update_meta(cx);
-                let stores_on =
-                    usize::from(signed_in) + Store::ALL.iter().filter(|st| svc.is_some_and(|s| s.store(**st).account.logged_in)).count();
+                let clients_on = crate::services::clients_started(cx).map_or(0, |c| c.read(cx).signed_in());
+                let stores_on = usize::from(signed_in)
+                    + Store::ALL.iter().filter(|st| svc.is_some_and(|s| s.store(**st).account.logged_in)).count()
+                    + clients_on;
                 let stores_meta = match stores_on {
                     0 => tr!("Not signed in").to_string(),
                     // Steam has no login of its own here.
-                    n => tr!("{n} of {total} signed in", n, total = Store::ALL.len() + 1),
+                    n => tr!("{n} of {total} signed in", n, total = Store::ALL.len() + 1 + Client::ALL.len()),
                 };
                 let trailing = |page: Page| match page {
                     Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
                     Page::Downloads => Trailing::Meta(downloads.clone(), downloading.is_some()),
                     Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
-                    Page::Epic | Page::Gog | Page::Amazon | Page::Steam => Trailing::Meta(stores_meta.clone(), false),
+                    Page::Epic | Page::Gog | Page::Amazon | Page::Steam | Page::BattleNet | Page::Ea | Page::Ubisoft | Page::Rockstar => {
+                        Trailing::Meta(stores_meta.clone(), false)
+                    }
                     Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
                     Page::Emulators => Trailing::Meta(emulators.clone(), false),
                     Page::Settings => match &update {
@@ -387,6 +404,10 @@ impl CollectionView {
                     v.update(cx, |p, cx| p.set_shown(false, cx));
                 }
             }
+            Page::BattleNet => set_client_shown::<pages::clients::BattleNetKind>(&p.battlenet, false, cx),
+            Page::Ea => set_client_shown::<pages::clients::EaKind>(&p.ea, false, cx),
+            Page::Ubisoft => set_client_shown::<pages::clients::UbisoftKind>(&p.ubisoft, false, cx),
+            Page::Rockstar => set_client_shown::<pages::clients::RockstarKind>(&p.rockstar, false, cx),
             Page::Collection | Page::Epic | Page::Gog | Page::Amazon | Page::Steam => {}
         }
     }
@@ -404,6 +425,10 @@ impl CollectionView {
                     v.update(cx, |p, cx| p.set_shown(true, cx));
                 }
             }
+            Page::BattleNet => set_client_shown::<pages::clients::BattleNetKind>(&p.battlenet, true, cx),
+            Page::Ea => set_client_shown::<pages::clients::EaKind>(&p.ea, true, cx),
+            Page::Ubisoft => set_client_shown::<pages::clients::UbisoftKind>(&p.ubisoft, true, cx),
+            Page::Rockstar => set_client_shown::<pages::clients::RockstarKind>(&p.rockstar, true, cx),
             _ => {}
         }
     }
@@ -438,6 +463,10 @@ impl CollectionView {
             Page::Gog => self.pages.gog.is_none(),
             Page::Amazon => self.pages.amazon.is_none(),
             Page::Steam => self.pages.steam.is_none(),
+            Page::BattleNet => self.pages.battlenet.is_none(),
+            Page::Ea => self.pages.ea.is_none(),
+            Page::Ubisoft => self.pages.ubisoft.is_none(),
+            Page::Rockstar => self.pages.rockstar.is_none(),
             Page::Emulators => self.pages.emulators.is_none(),
             Page::Statistics => self.pages.stats.is_none(),
             Page::Settings => self.pages.settings.is_none(),
@@ -483,6 +512,30 @@ impl CollectionView {
                 self.pages.hooks.insert(Page::Steam, crate::console::PadHook::new(&v));
                 self.pages.steam = Some(v.into());
             }
+            Page::BattleNet => {
+                let v = cx.new(|cx| pages::clients::BattleNetPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::BattleNet, crate::console::PadHook::new(&v));
+                self.pages.battlenet = Some(v.into());
+            }
+            Page::Ea => {
+                let v = cx.new(|cx| pages::clients::EaPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Ea, crate::console::PadHook::new(&v));
+                self.pages.ea = Some(v.into());
+            }
+            Page::Ubisoft => {
+                let v = cx.new(|cx| pages::clients::UbisoftPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Ubisoft, crate::console::PadHook::new(&v));
+                self.pages.ubisoft = Some(v.into());
+            }
+            Page::Rockstar => {
+                let v = cx.new(|cx| pages::clients::RockstarPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Rockstar, crate::console::PadHook::new(&v));
+                self.pages.rockstar = Some(v.into());
+            }
             Page::Emulators => {
                 let v = cx.new(|cx| pages::emulators::EmulatorsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
@@ -520,6 +573,10 @@ impl CollectionView {
         list::<pages::store::GogPage>(Page::Gog, &p.gog, &ctx, cx, &mut out);
         list::<pages::store::AmazonPage>(Page::Amazon, &p.amazon, &ctx, cx, &mut out);
         list::<pages::steam::SteamPage>(Page::Steam, &p.steam, &ctx, cx, &mut out);
+        list::<pages::clients::BattleNetPage>(Page::BattleNet, &p.battlenet, &ctx, cx, &mut out);
+        list::<pages::clients::EaPage>(Page::Ea, &p.ea, &ctx, cx, &mut out);
+        list::<pages::clients::UbisoftPage>(Page::Ubisoft, &p.ubisoft, &ctx, cx, &mut out);
+        list::<pages::clients::RockstarPage>(Page::Rockstar, &p.rockstar, &ctx, cx, &mut out);
         list::<pages::emulators::EmulatorsPage>(Page::Emulators, &p.emulators, &ctx, cx, &mut out);
         list::<pages::stats::StatsPage>(Page::Statistics, &p.stats, &ctx, cx, &mut out);
         list::<pages::settings::SettingsPage>(Page::Settings, &p.settings, &ctx, cx, &mut out);
@@ -548,6 +605,10 @@ impl CollectionView {
             Page::Gog => run::<pages::store::GogPage>(&p.gog, id, window, cx),
             Page::Amazon => run::<pages::store::AmazonPage>(&p.amazon, id, window, cx),
             Page::Steam => run::<pages::steam::SteamPage>(&p.steam, id, window, cx),
+            Page::BattleNet => run::<pages::clients::BattleNetPage>(&p.battlenet, id, window, cx),
+            Page::Ea => run::<pages::clients::EaPage>(&p.ea, id, window, cx),
+            Page::Ubisoft => run::<pages::clients::UbisoftPage>(&p.ubisoft, id, window, cx),
+            Page::Rockstar => run::<pages::clients::RockstarPage>(&p.rockstar, id, window, cx),
             Page::Emulators => run::<pages::emulators::EmulatorsPage>(&p.emulators, id, window, cx),
             Page::Statistics => run::<pages::stats::StatsPage>(&p.stats, id, window, cx),
             Page::Settings => run::<pages::settings::SettingsPage>(&p.settings, id, window, cx),
@@ -570,6 +631,10 @@ impl CollectionView {
             Page::Gog => modal::<pages::store::GogPage>(&p.gog, cx),
             Page::Amazon => modal::<pages::store::AmazonPage>(&p.amazon, cx),
             Page::Steam => modal::<pages::steam::SteamPage>(&p.steam, cx),
+            Page::BattleNet => modal::<pages::clients::BattleNetPage>(&p.battlenet, cx),
+            Page::Ea => modal::<pages::clients::EaPage>(&p.ea, cx),
+            Page::Ubisoft => modal::<pages::clients::UbisoftPage>(&p.ubisoft, cx),
+            Page::Rockstar => modal::<pages::clients::RockstarPage>(&p.rockstar, cx),
             Page::Emulators => modal::<pages::emulators::EmulatorsPage>(&p.emulators, cx),
             Page::Statistics => modal::<pages::stats::StatsPage>(&p.stats, cx),
             Page::Settings => modal::<pages::settings::SettingsPage>(&p.settings, cx),
@@ -670,6 +735,10 @@ impl CollectionView {
             Page::Gog => self.pages.gog.clone(),
             Page::Amazon => self.pages.amazon.clone(),
             Page::Steam => self.pages.steam.clone(),
+            Page::BattleNet => self.pages.battlenet.clone(),
+            Page::Ea => self.pages.ea.clone(),
+            Page::Ubisoft => self.pages.ubisoft.clone(),
+            Page::Rockstar => self.pages.rockstar.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
@@ -687,6 +756,10 @@ impl CollectionView {
             Page::Gog => self.pages.gog.clone(),
             Page::Amazon => self.pages.amazon.clone(),
             Page::Steam => self.pages.steam.clone(),
+            Page::BattleNet => self.pages.battlenet.clone(),
+            Page::Ea => self.pages.ea.clone(),
+            Page::Ubisoft => self.pages.ubisoft.clone(),
+            Page::Rockstar => self.pages.rockstar.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),

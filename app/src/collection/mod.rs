@@ -5,6 +5,7 @@ mod actions;
 mod add_game;
 mod backdrop;
 mod card;
+mod clients;
 mod console;
 mod context_menu;
 mod data;
@@ -365,6 +366,7 @@ impl CollectionView {
         this.spawn_load(cx);
         this.start_idle_jobs(cx);
         this.watch_launcher_imports(cx);
+        this.watch_clients(cx);
         this.init_metadata(window, cx);
         this.spawn_disk_watch(cx);
         this.spawn_debug_browse(cx);
