@@ -125,7 +125,7 @@ fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> La
     LaunchPlan::Native(ProcessPlan {
         command: Command { program, args, env: Default::default(), cwd: folder.clone() },
         // Nothing to find the game by: the session ends with the command.
-        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder }),
+        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder, client: None }),
         ..Default::default()
     })
 }

@@ -34,7 +34,12 @@ fn fast_cfg() -> LauncherConfig {
             resolve_interval: Duration::from_millis(20),
         },
         record: true,
-        handoff: HandoffConfig { soon: Duration::from_millis(500), wait: Duration::from_millis(400), gone: Duration::from_millis(60) },
+        handoff: HandoffConfig {
+            soon: Duration::from_millis(500),
+            wait: Duration::from_millis(400),
+            gone: Duration::from_millis(60),
+            ..Default::default()
+        },
     }
 }
 
@@ -143,7 +148,7 @@ fn full_lifecycle_records_everything_like_heronite() {
 fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let r = rig();
     let mut plan = process_plan("lutris", &["lutris:rungameid/12"]);
-    plan.handoff = Some(Handoff { prefix: Some("/pfx".into()), folder: Some("/games/celeste".into()) });
+    plan.handoff = Some(Handoff { prefix: Some("/pfx".into()), folder: Some("/games/celeste".into()), client: None });
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));

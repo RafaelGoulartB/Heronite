@@ -338,6 +338,7 @@ fn another_launcher_starts_its_games_and_the_session_can_follow_them() {
     assert_eq!(p.command.cwd.as_deref(), Some("/games/celeste"));
     let handoff = p.handoff.unwrap();
     assert_eq!((handoff.prefix.as_deref(), handoff.folder.as_deref()), (Some("/pfx/celeste"), Some("/games/celeste")));
+    assert!(handoff.client.is_none(), "a launcher's game is followed by its processes, not by a client's");
     // Without Lutris on this PC.
     let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
     assert_eq!(plan, LaunchPlan::Unavailable("Lutris was not found on this PC".into()));

@@ -6,6 +6,7 @@
 //! launching an app that is already tracked is refused.
 
 mod adopt;
+mod client;
 mod companions;
 mod fake;
 mod process;
