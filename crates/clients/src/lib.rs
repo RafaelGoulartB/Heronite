@@ -5,7 +5,8 @@
 //! Each client lives in a Wine prefix of its own; the user signs in and
 //! installs games inside it. Heronite reads, without running anything, what
 //! the client installed ([`games`]) and whether it is signed in
-//! ([`account`]). Its games are started through it by `heronite_launch`
+//! ([`account`]) and brings those games into the Collection
+//! ([`collection`]). Its games are started through it by `heronite_launch`
 //! (`launchKind` `client`).
 //!
 //! * [`reg`]: Wine's registry files, read without Wine.
@@ -14,6 +15,7 @@
 //!   keeps its games and its sign-in.
 
 pub mod battlenet;
+pub mod collection;
 pub mod ea;
 pub mod reg;
 pub mod rockstar;
