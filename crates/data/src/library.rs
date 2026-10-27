@@ -136,7 +136,11 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
             "faugus" => return "Faugus",
             "manual" => return tr!("Local"),
             "other" => return tr!("Other"),
-            _ => {}
+            other => {
+                if let Some(client) = crate::clients::Client::from_id(other) {
+                    return client.store();
+                }
+            }
         }
     }
     match runner {
@@ -238,6 +242,13 @@ impl CollectionGame {
         matches!(self.runner.as_str(), "legendary" | "gog" | "nile")
             && self.store_installed()
             && self.game.install.install_path.as_deref().map(str::trim).is_some_and(|p| !p.is_empty() && !std::path::Path::new(p).exists())
+    }
+
+    /// The store client (Battle.net, the EA app...) that installs and starts
+    /// the game: it is one of the client's Collection entries.
+    pub fn client(&self) -> Option<crate::clients::Client> {
+        let meta = self.meta.as_deref().filter(|m| m.launch_kind == crate::clients::LAUNCH_KIND)?;
+        crate::clients::Client::from_id(&meta.source)
     }
 
     /// The Steam app id of the game's installed Steam copy, if any (a Steam
@@ -840,6 +851,45 @@ mod tests {
         assert!(lib.games.is_empty());
         assert_eq!(lib.statuses.len(), 9);
         assert!(!lib.changed_on_disk());
+    }
+
+    #[test]
+    fn a_client_game_knows_its_client() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        fs::create_dir_all(paths.sideload_library().parent().unwrap()).unwrap();
+        fs::create_dir_all(paths.local_meta().parent().unwrap()).unwrap();
+        fs::write(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"battlenet_wow","title":"WoW","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"lutris_7","title":"Heroes","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"by_hand","title":"By hand","is_installed":true,"install":{}}]}"#,
+        )
+        .unwrap();
+        fs::write(
+            paths.local_meta(),
+            r#"{"games":{
+              "battlenet_wow":{"appName":"battlenet_wow","runner":"sideload","source":"battlenet","launchKind":"client","launcherArgs":"--exec=\"launch WoW\""},
+              "lutris_7":{"appName":"lutris_7","runner":"sideload","source":"lutris","launchKind":"launcher"},
+              "by_hand":{"appName":"by_hand","runner":"sideload","source":"battlenet","launchKind":"executable"}}}"#,
+        )
+        .unwrap();
+        let lib = Library::load(&paths).unwrap();
+        let client = |key: &str| lib.get(key).unwrap().client();
+        assert_eq!(client("sideload_battlenet_wow"), Some(crate::clients::Client::BattleNet));
+        assert_eq!(client("sideload_lutris_7"), None);
+        assert_eq!(client("sideload_by_hand"), None, "a game added by hand is not the client's, whatever its source");
+        assert_eq!(lib.get("sideload_battlenet_wow").unwrap().source_label, "Battle.net");
+    }
+
+    #[test]
+    fn a_stores_client_names_its_games_library() {
+        let meta = |source: &str| LocalGameMeta { source: source.into(), ..Default::default() };
+        let labels: Vec<_> = crate::clients::Client::ALL.iter().map(|c| source_label(Some(&meta(c.id())), "sideload")).collect();
+        assert_eq!(labels, ["Battle.net", "EA", "Ubisoft", "Rockstar"]);
+        assert_eq!(source_label(Some(&meta("lutris")), "sideload"), "Lutris");
+        assert_eq!(source_label(Some(&meta("")), "legendary"), "Epic");
     }
 
     #[test]
