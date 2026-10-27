@@ -401,7 +401,6 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
     div().flex().flex_col().child(h3(tr!("Overview"))).child(match &vm.overview_html {
         Some(blocks) => render_html(blocks, &**html_images, column_w).into_any_element(),
         None => div()
-            .max_w(px(72. * 7.6))
             .text_size(px(15.2))
             .line_height(px(15.2 * 1.65))
             .text_color(theme::ink_a(0.92))
