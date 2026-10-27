@@ -74,6 +74,10 @@ impl DataPaths {
     pub fn launcher_imports(&self) -> PathBuf {
         self.j("local_library/launcher-imports.json")
     }
+    /// The store clients' games synced into the Collection (`clients::ClientPrefs`).
+    pub fn clients(&self) -> PathBuf {
+        self.j("local_library/clients.json")
+    }
     pub fn sessions(&self) -> PathBuf {
         self.j("local_library/sessions.json")
     }
