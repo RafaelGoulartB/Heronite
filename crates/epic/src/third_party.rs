@@ -136,13 +136,15 @@ pub fn ensure_installer(
     }
     fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     log::info!("Getting the {} installer", provider.label());
-    download(provider.installer_url(), &dest, cancel, on_progress)?;
+    download_to(provider.installer_url(), &dest, cancel, on_progress)?;
     Ok(dest)
 }
 
 const REPORT_EVERY: Duration = Duration::from_millis(500);
 
-fn download(url: &str, dest: &Path, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<()> {
+/// Downloads `url` into `dest` (through `<dest>.part`, renamed when complete);
+/// `on_progress` gets the progress about twice a second.
+pub fn download_to(url: &str, dest: &Path, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<()> {
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(15)))
         .max_redirects(8)
@@ -277,7 +279,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("UbisoftConnectInstaller.exe");
         let mut seen = Vec::new();
-        download(&serve(1_000_000), &dest, &Cancel::new(), &mut |p| seen.push(p)).unwrap();
+        download_to(&serve(1_000_000), &dest, &Cancel::new(), &mut |p| seen.push(p)).unwrap();
         assert_eq!(fs::metadata(&dest).unwrap().len(), 1_000_000);
         assert_eq!(seen.last().unwrap().percent, 100.);
         assert!(!dir.path().join("UbisoftConnectInstaller.exe.part").exists());
@@ -289,7 +291,7 @@ mod tests {
         let dest = dir.path().join("EAappInstaller.exe");
         let cancel = Cancel::new();
         cancel.request();
-        let err = download(&serve(10_000), &dest, &cancel, &mut |_| {}).unwrap_err();
+        let err = download_to(&serve(10_000), &dest, &cancel, &mut |_| {}).unwrap_err();
         assert!(format!("{err:#}").contains("cancelled"));
         assert!(!dest.exists());
         assert!(!dir.path().join("EAappInstaller.exe.part").exists());
