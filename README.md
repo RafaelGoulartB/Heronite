@@ -26,17 +26,16 @@ https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
 > [!NOTE]
 > **Windows support is coming soon.** Heronite runs on Linux today, and a Windows version is on the way.
 
-Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux, and Windows games into one Collection, launches them through Wine/Proton or an emulator, and records every session. It is a native Rust app (GPUI, GPU rendered) that [stays light on your PC](#light-on-your-pc).
+Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them through Wine/Proton or an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
 
 ## Your library, organized
 
-- **Collection:** every game in a list with a details panel (Focus) or a grid of covers, switching by the window's width. Group by status, store, genre, series, year and more; drag the panels wider. The details panel shows screenshots, How Long To Beat, ProtonDB and anti-cheat status, achievements, related games, and a play timeline.
-- **Journal:** notes on the days you played and on your screenshots, plus where you left off.
-- **View menu:** filter, sort, and save the view as a preset (Playing now, Backlog, Finished, and Favourites built in). Search forgives accents and typos.
-- **Bulk edits:** change status, categories, and other fields of many games at once, with undo. A fields manager renames and merges genres, companies, and series.
-- **Command palette:** <kbd>Ctrl</kbd> <kbd>K</kbd> jumps to any page, runs any action, or finds and plays a game.
-- **Add any game:** native Linux programs, Windows programs, browser games, install scripts, or ROMs from a folder. Art comes from Steam, SteamGridDB, IGDB, Lutris, the web, or your own screenshots.
-- **Getting started:** on first run, Heronite finds your Steam library, emulators, and ROM folders, and a checklist walks you through the rest.
+- **Collection:** a list with a details panel (Focus) or a grid of covers. Group by status, store, genre, series, year and more. The details show screenshots, How Long To Beat, ProtonDB and anti-cheat status, achievements, and a play timeline.
+- **Journal:** notes on the days you played and on your screenshots, and where you left off.
+- **Views:** filter, sort, and save presets (Playing now, Backlog, Finished, Favourites). Search forgives accents and typos.
+- **Bulk edits:** change many games at once, with undo; rename and merge genres, companies, and series.
+- **Command palette:** <kbd>Ctrl</kbd> <kbd>K</kbd> opens any page, runs any action, or plays a game.
+- **Add any game:** native Linux and Windows programs, browser games, install scripts, or ROM folders. Art from Steam, SteamGridDB, IGDB, Lutris, the web, or your screenshots. On first run, Heronite finds your Steam library, emulators, and ROM folders by itself.
 
 <table>
   <tr>
@@ -45,16 +44,22 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
   </tr>
 </table>
 
-## Install, configure, and play
+## Stores and launchers
 
-- **Stores:** Steam (no login needed), Epic Games, GOG, and Amazon Games, with EA app and Ubisoft Connect games started through their apps. One download queue to install, update, repair, move, import, and uninstall; it pauses while offline and retries failed downloads.
-- **Wine and Proton:** per-game Wine version, prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, protonfixes via umu, and Lossless Scaling frame generation (lsfg-vk).
-- **Launching:** see each step of a launch and cancel it, run scripts before and after the game or programs alongside it, and add your own actions next to Play.
-- **Sandbox:** run a game you do not trust, and its installer, through bubblewrap: no network, no access to your home folder, only its prefix and its folder. Winetricks, Run EXE and the programs alongside the game run inside it too. When a game needs more, let one thing through (the Internet, writing to its folder, your shared folders, every device), each one with what it risks.
-- **Wine Manager:** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage Wine prefixes.
+- **Epic Games, GOG, and Amazon Games:** log in from Heronite. One download queue installs, updates, repairs, moves, imports, and uninstalls; it pauses offline and retries failed downloads.
+- **Steam:** your library comes in by itself, no login needed.
+- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games:** Heronite sets up each store's own app in a Wine prefix of its own. The games you install there show up in your Collection and start from it.
+- **Other launchers:** bring in the games of Heroic, Lutris, Bottles, and Faugus, and keep them in sync.
+
+## Configure and play
+
+- **Wine and Proton:** per-game Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, umu protonfixes, and Lossless Scaling frame generation (lsfg-vk).
+- **Wine Manager:** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage prefixes.
+- **Launching:** follow and cancel each step, run scripts before and after, programs alongside, and your own actions next to Play.
+- **Sandbox:** run a game you do not trust through bubblewrap, with no network and no access to your home folder. Let one thing through when it needs more.
 - **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
-- **In-game overlay (beta):** press the controller's Guide button (or a shortcut) for a panel over the game with volume, microphone, FPS limit, screenshots, and journal notes. Guide + Y marks a moment to write about later.
-- **Replay (off by default):** keep the last seconds of the game (30 unless changed) and save them with Guide + X (or a keyboard shortcut of your own) as a moment in its journal, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/) on the graphics card's encoder. Settings shows the memory it takes and how to spare it (Vulkan video, the buffer on disk, a smaller video); each game can have it on or off on its own.
+- **In-game overlay (beta):** the controller's Guide button opens volume, microphone, FPS limit, screenshots, and journal notes over the game.
+- **Replay (off by default):** keep the last seconds of play and save them as a moment with Guide + X, recorded on the GPU by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/).
 
 <table>
   <tr>
@@ -65,9 +70,9 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
 
 ## Look back at what you played
 
-- **Statistics:** play time by week, month, year, or all time, in five tabs: **Overview** (charts, top games, records), **Journeys** (each game as a lane in time), **Backlog** (a yearly goal of games to beat and a plan for the rest), **Discoveries** (the period told in sentences, with milestones), and **Album** (your screenshots as moments). Any game opens a sheet with its own numbers.
-- **Year in review:** your year told as full-screen stories, with a summary card to share.
-- **Sessions:** every launch is recorded, in-game screenshots are matched to the game, and sessions can be edited by hand.
+- **Statistics:** play time by week, month, year, or all time in five tabs: Overview, Journeys, Backlog (a yearly goal of games to beat), Discoveries, and Album.
+- **Year in review:** your year as full-screen stories, with a card to share.
+- **Sessions:** every launch is recorded, screenshots are matched to the game, and sessions can be edited.
 
 <table>
   <tr>
@@ -81,11 +86,11 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
 
 ## Console mode
 
-A controller-first layout for the couch or a TV that covers the whole app, with an on-screen keyboard and a Power menu to suspend or shut down. Turn it on from the palette, the ☰ menu, or with `--console`.
+A controller-first layout for the couch or a TV, with an on-screen keyboard and a Power menu. Turn it on from the palette, the ☰ menu, or with `--console`.
 
-- **Console themes:** every part of it is yours to change, in Settings → Console mode or from the couch (☰ → Customize, live over the screen). Up to four tabs (LB / RB), each in its own layout: Shelves, Spotlight, Cinema, Dashboard, Grid, Wheel, Carousel or Series X; the shelves and their order; cover shape, size, corners, focus, badges, the store above and the name below; the game's facts as a line or as chips, a panel of numbers at the edge; tabs along the top, along the bottom or as a centred title; the background (the game's art, its cover blurred, its screenshots, its colour, a colour or your picture); colours, font, size for the sofa, clock; button glyphs (Xbox, PlayStation, Nintendo, Steam Deck, keyboard or the connected controller's), hints, navigation sounds; four game pages and four menus (sidebar, grid, dock or a rail of icons); light themes too.
-- **Share them:** four themes come built in (Minimal, the default, Classic, Cinema and Pulse). Save your own, export one to a `.heronite-theme.json` file and import it on another PC.
-- **Light when off:** nothing of it loads, runs or reads a file while console mode is off. It can also open the app in console mode, or offer it when a controller connects.
+- **Themes:** change every part of it, live from the couch or in Settings → Console mode: up to four tabs with their own layout (Shelves, Spotlight, Cinema, Dashboard, Grid, Wheel, Carousel, Series X), covers, background, colours, fonts, button glyphs, menus, and game pages.
+- **Share them:** seven built-in themes (Minimal, Classic, Cinema, Pulse, Arcade, Hub, Living room). Export your own to a `.heronite-theme.json` file and import it anywhere.
+- **Light when off:** nothing of it loads while console mode is off. It can open at startup or when a controller connects.
 
 <table>
   <tr>
@@ -96,11 +101,11 @@ A controller-first layout for the couch or a TV that covers the whole app, with 
 
 ## Make it yours
 
-- **Appearance:** a dark or light theme (or the desktop's, or one in colours you pick), profiles, an accent colour (or the game's), high contrast, fonts, density, cover style, a background picture or slideshow behind the Collection, and which sections the details panel shows.
-- **Language:** English, Portuguese (Brazil), Spanish, and German. Follows the system language by default (any `pt_*`, `es_*` or `de_*` locale), or pick one in Settings → General; switched live.
-- **Saves and backups:** back up saves with Ludusavi after each session and restore them into any prefix. Scheduled, incremental backups of your Collection, play history, settings, and art.
-- **Storage:** see what your games take on each disk and clean up leftovers in one click.
-- **Startup:** start with the system, launch games via `heronite://launch` links or `--launch`.
+- **Appearance:** dark or light theme (or the desktop's), accent colour (or the game's), fonts, density, cover style, and a background picture or slideshow.
+- **Language:** English, Portuguese (Brazil), Spanish, and German, following the system by default.
+- **Saves and backups:** Ludusavi save backups after each session, and scheduled backups of your Collection, history, settings, and art.
+- **Storage:** see what your games take on each disk and clean up leftovers.
+- **Startup:** start with the system, and launch games from `heronite://launch` links or `--launch`.
 
 <table>
   <tr>
@@ -126,7 +131,7 @@ A single native process that draws its UI on the GPU, with no bundled browser en
 
 ## Your data
 
-Everything stays on your machine, in Heroic-compatible files under `~/.local/share/heronite/` (override with `HERONITE_DATA_DIR`). On first start, Heronite copies an existing Heroic setup once, without ever writing to Heroic's folders. For IGDB metadata, add your Twitch client ID and secret in **Settings > Metadata**.
+Everything stays on your machine, in Heroic-compatible files under `~/.local/share/heronite/` (or `HERONITE_DATA_DIR`). An existing Heroic setup is copied once on first start; Heroic's folders are never written to. IGDB metadata needs your Twitch client ID and secret in **Settings → Metadata**.
 
 ## Download
 
@@ -139,11 +144,11 @@ Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has 
 | Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
 | Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
 
-Heronite updates itself: a card offers new versions, and every download is checked against its signing key. Keep the AppImage in a writable folder (like `~/Applications`) so it can update in place.
+Heronite updates itself, and every download is checked against its signing key. Keep the AppImage in a writable folder (like `~/Applications`) so it can update in place.
 
 ## Run from source
 
-You need a stable Rust toolchain, `clang` and `lld`, a Vulkan-capable GPU driver, and GTK/WebKitGTK. Heronite downloads legendary, gogdl, and nile on its own; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional for save backups.
+You need stable Rust, `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK. Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
 
 ```bash
 # quick build (the login window is its own binary, so build it too)
