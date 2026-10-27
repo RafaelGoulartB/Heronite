@@ -90,9 +90,10 @@ pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::proces
     heronite_data::proc::spawn(&mut cmd).map_err(|e| tr!("Could not start {client}: {error}", client = client.name(), error = e))
 }
 
-/// Whether the client's main program runs in `prefix`.
-pub fn is_running(client: Client, prefix: &Path) -> bool {
-    running_in(&SystemProcs, client, prefix).0
+/// `(the client's main program runs, a program that is not the client's
+/// runs)` in `prefix`, from one look at the processes.
+pub fn running(client: Client, prefix: &Path) -> (bool, bool) {
+    running_in(&SystemProcs, client, prefix)
 }
 
 /// Whether a program other than the client's runs in `prefix` (one of its
@@ -303,7 +304,7 @@ mod tests {
         procs.set_prefix_programs(&[(3, "wow.exe")]);
         assert_eq!(running_in(&procs, Client::BattleNet, prefix), (false, true));
         // Nothing runs under a prefix no process uses.
-        assert!(!is_running(Client::BattleNet, Path::new("/nowhere/at/all")));
+        assert_eq!(running(Client::BattleNet, Path::new("/nowhere/at/all")), (false, false));
         assert!(!game_running(Client::BattleNet, Path::new("/nowhere/at/all")));
     }
 }

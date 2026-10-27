@@ -409,7 +409,8 @@ impl Clients {
                         targets
                             .into_iter()
                             .map(|(c, prefix)| {
-                                (c, heronite_clients::run::is_running(c, &prefix), heronite_clients::run::game_running(c, &prefix))
+                                let (running, game) = heronite_clients::run::running(c, &prefix);
+                                (c, running, game)
                             })
                             .collect::<Vec<_>>()
                     })
