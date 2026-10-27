@@ -45,8 +45,9 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   `self.open_dialog(cx.new(|cx| V::new(ctx, window, cx)), cx)`.
   Emit `DialogEvent::Changed` after writing data, `Close` to close.
 - Settings: there is ONE place, the ☰ Settings page (`app/src/pages/settings/`, Ctrl ,). The left nav is grouped under captions
-  (`Section::GROUPS`): App (General, Appearance, Advanced), Games (Game defaults, Downloads, Library, Other launchers, Storage, Overlay),
-  Collection (Metadata, Screenshots, Backups), Help (Logs, About). A section = title + lead (`Section::blurb`) +
+  (`Section::GROUPS`): App (General, Appearance, Console mode), Games (Game defaults, Downloads, Other launchers),
+  Collection (Library, Metadata, Achievements), While playing (Overlay, Screenshots, Replay), Data (Storage, Saves,
+  Backups), System (Advanced, Logs, About). A section = title + lead (`Section::blurb`) +
   captioned cards of rows. The Collection sections live in `app/src/pages/settings/<section>.rs`
   (`appearance`, `metadata`, `screenshots`, `saves` + `backup/` for Backups: settings, what goes in, then the restore list
   with each backup's parts and an inline "Restore and restart" confirmation; `HERONITE_DEBUG_SETTINGS_ACTION=backup-now|backup-open:<n>|backup-confirm:<n>`) with `State::new(&PageCtx, &EffectiveSettings, …)`

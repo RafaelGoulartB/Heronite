@@ -39,22 +39,13 @@ pub enum Section {
 
 impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
-    pub const GROUPS: [(&'static str, &'static [Section]); 4] = [
-        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode, Section::Advanced]),
-        (
-            n_!("Games"),
-            &[
-                Section::GameDefaults,
-                Section::Downloads,
-                Section::Library,
-                Section::Launchers,
-                Section::Storage,
-                Section::Overlay,
-                Section::Replay,
-            ],
-        ),
-        (n_!("Collection"), &[Section::Metadata, Section::Achievements, Section::Screenshots, Section::Saves, Section::Backups]),
-        (n_!("Help"), &[Section::Logs, Section::About]),
+    pub const GROUPS: [(&'static str, &'static [Section]); 6] = [
+        (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode]),
+        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers]),
+        (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
+        (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
+        (n_!("Data"), &[Section::Storage, Section::Saves, Section::Backups]),
+        (n_!("System"), &[Section::Advanced, Section::Logs, Section::About]),
     ];
 
     /// Same order as [`Section::GROUPS`].
@@ -62,19 +53,19 @@ impl Section {
         Section::General,
         Section::Appearance,
         Section::ConsoleMode,
-        Section::Advanced,
         Section::GameDefaults,
         Section::Downloads,
-        Section::Library,
         Section::Launchers,
-        Section::Storage,
-        Section::Overlay,
-        Section::Replay,
+        Section::Library,
         Section::Metadata,
         Section::Achievements,
+        Section::Overlay,
         Section::Screenshots,
+        Section::Replay,
+        Section::Storage,
         Section::Saves,
         Section::Backups,
+        Section::Advanced,
         Section::Logs,
         Section::About,
     ];
