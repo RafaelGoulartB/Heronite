@@ -252,7 +252,7 @@ pub fn card(
                     .child(vm.title.clone()),
             )
         })
-        .when(look.caption, |d| d.child(playtime_label(vm).when(s.title, |d| d.mt(px(1.)))))
+        .when(look.caption, |d| d.child(caption_line(vm).mt(px(if s.title { 1. } else { 6. })).px(px(1.))))
         .into_any_element()
 }
 
@@ -296,11 +296,9 @@ fn top_badges(hidden: bool, favourite: bool) -> Div {
 }
 
 /// The playtime, or the value the list is sorted by (`CardVm::caption`).
-fn playtime_label(vm: &CardVm) -> Div {
+pub(super) fn caption_line(vm: &CardVm) -> Div {
     let c = &vm.caption;
     div()
-        .mt(px(6.))
-        .px(px(1.))
         .flex()
         .items_center()
         .gap(px(5.))
