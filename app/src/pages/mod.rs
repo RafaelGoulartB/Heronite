@@ -146,6 +146,8 @@ pub enum PageEvent {
     /// "Show hidden games" changed in Settings: the Collection saves the flag
     /// and reloads its library.
     ShowHidden(bool),
+    /// Open the store page shown last (the Emulators page's link).
+    OpenStores,
     /// Select this game (`CollectionGame::key`) on the Collection.
     ShowGame(String),
     /// Uninstall this game (`CollectionGame::key`) the way its context menu

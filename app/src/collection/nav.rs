@@ -710,6 +710,7 @@ impl CollectionView {
             PageEvent::LibraryChanged => self.reload(cx),
             PageEvent::Toast(text, error) => self.show_toast(text.clone(), *error, cx),
             PageEvent::Navigate(page) => self.navigate(*page, window, cx),
+            PageEvent::OpenStores => self.navigate(self.pages.stores_page(), window, cx),
             PageEvent::ScanRoms(initial) => self.open_scan_roms(initial.clone(), window, cx),
             PageEvent::ShowHidden(on) => self.set_show_hidden(*on, cx),
             PageEvent::ShowGame(key) => {

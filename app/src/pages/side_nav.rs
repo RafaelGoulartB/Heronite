@@ -35,6 +35,8 @@ pub enum Dot {
     Busy,
     /// Not used yet.
     Off,
+    /// It cannot work as it is (an emulator that does not start).
+    Broken,
 }
 
 fn dot(d: Dot) -> Div {
@@ -44,6 +46,7 @@ fn dot(d: Dot) -> Div {
         Dot::Attention => base.bg(theme::warning()),
         Dot::Busy => base.bg(theme::accent()),
         Dot::Off => base.border_1().border_color(theme::text_dim()),
+        Dot::Broken => base.bg(theme::danger_text()),
     }
 }
 
@@ -52,6 +55,7 @@ fn dot(d: Dot) -> Div {
 fn line_color(d: Dot) -> Rgba {
     match d {
         Dot::Attention => theme::warning(),
+        Dot::Broken => theme::danger_text(),
         _ => theme::text_muted(),
     }
 }
@@ -100,6 +104,34 @@ pub fn item(
                 .when(!line.is_empty(), |el| el.child(div().text_size(px(11.5)).truncate().text_color(line_color(d)).child(line))),
         )
         .child(dot(d))
+}
+
+/// The item that adds one more to the list: a dashed "+" in the accent.
+pub fn add_item(id: impl Into<ElementId>, title: impl Into<SharedString>, line: impl Into<SharedString>) -> Stateful<Div> {
+    item_base(id)
+        .hover(|s| s.bg(theme::ink_a(0.05)))
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(30.))
+                .rounded(px(9.))
+                .border_1()
+                .border_dashed()
+                .border_color(theme::accent_tint_border())
+                .child(icon(Icon::Add, px(16.), theme::accent())),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .child(div().text_size(px(14.)).truncate().text_color(theme::accent()).child(title.into()))
+                .child(div().text_size(px(11.5)).truncate().text_color(theme::text_muted()).child(line.into())),
+        )
 }
 
 /// The list's title: an icon, the name, and `trailing` on the right.
@@ -315,4 +347,49 @@ pub fn sheet<V: EventEmitter<PageEvent> + 'static>(
             .child(with_scrollbar(div().relative().flex_1().min_w_0().h_full().child(content), "side-page-scrollbar", &scroll, 4., cx))
             .child(close),
     )
+}
+
+/// A menu that opens from a button: placed in the button's (relative)
+/// container, `top` px below its top, lined up with its right edge when
+/// `right`, else its left one. A click anywhere else calls `close`.
+pub fn popover(
+    id: &'static str,
+    menu: impl IntoElement,
+    top: f32,
+    right: bool,
+    close: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> AnyElement {
+    let anchor = if right { Anchor::TopRight } else { Anchor::TopLeft };
+    let spot = div().absolute().top(px(top));
+    let spot = if right { spot.right_0() } else { spot.left_0() };
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .child(
+            deferred(
+                anchored().position(point(px(0.), px(0.))).child(
+                    div()
+                        .id(SharedString::from(format!("{id}-catcher")))
+                        .w(px(20000.))
+                        .h(px(20000.))
+                        .occlude()
+                        .on_mouse_down(MouseButton::Left, close),
+                ),
+            )
+            .with_priority(20),
+        )
+        .child(
+            spot.child(
+                deferred(
+                    anchored()
+                        .anchor(anchor)
+                        .snap_to_window_with_margin(px(8.))
+                        .child(div().id(id).occlude().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(menu)),
+                )
+                .with_priority(21),
+            ),
+        )
+        .into_any_element()
 }

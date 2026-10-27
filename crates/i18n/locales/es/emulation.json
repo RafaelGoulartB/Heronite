@@ -281,5 +281,13 @@
   "{n} games using it": "Usado por {n} juegos",
   "{n} new game": "{n} juego nuevo",
   "{n} new games": "{n} juegos nuevos",
-  "{prefix}  (saves and settings inside it will be lost)": "{prefix}  (las partidas guardadas y los ajustes dentro se perderán)"
+  "{prefix}  (saves and settings inside it will be lost)": "{prefix}  (las partidas guardadas y los ajustes dentro se perderán)",
+  "All emulators": "Todos los emuladores",
+  "AppImages and programs kept in one folder": "AppImages y programas guardados en una carpeta",
+  "Everything is ready.": "Todo listo.",
+  "From the catalog or this PC": "Del catálogo o de este PC",
+  "From the catalog, or any program": "Del catálogo, o cualquier programa",
+  "Needs attention": "Necesita atención",
+  "No ROM folders": "Sin carpetas de ROM",
+  "{problem}: its games cannot start until it is fixed.": "{problem}: sus juegos no pueden iniciarse hasta que se corrija."
 }
