@@ -2,12 +2,12 @@
 //! app, Ubisoft Connect and the Rockstar Games Launcher (the clients
 //! themselves are [`heronite_data::clients::Client`]).
 //!
-//! Each client lives in a Wine prefix of its own; the user signs in and
-//! installs games inside it. Heronite reads, without running anything, what
-//! the client installed ([`games`]) and whether it is signed in
-//! ([`account`]) and brings those games into the Collection
-//! ([`collection`]). Its games are started through it by `heronite_launch`
-//! (`launchKind` `client`).
+//! Each client is installed into a Wine prefix of its own ([`setup`]); the
+//! user signs in and installs games inside it. Heronite reads, without
+//! running anything, what the client installed ([`games`]) and whether it
+//! is signed in ([`account`]), brings those games into the Collection
+//! ([`collection`]) and opens or closes the client ([`run`]). Its games are
+//! started through it by `heronite_launch` (`launchKind` `client`).
 //!
 //! * [`reg`]: Wine's registry files, read without Wine.
 //! * [`winpath`]: the prefix's Windows paths as Linux paths.
@@ -19,11 +19,14 @@ pub mod collection;
 pub mod ea;
 pub mod reg;
 pub mod rockstar;
+pub mod run;
+pub mod setup;
 pub mod ubisoft;
 pub mod winpath;
 
 mod files;
 mod pbuf;
+mod spawn;
 mod xml;
 
 use std::path::{Path, PathBuf};
