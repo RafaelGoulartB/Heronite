@@ -6,33 +6,44 @@
 //! Data: `local_library/emulators.json` and `rom-scanners.json` through
 //! `heronite_emulation`. All reads and scans run off the UI thread.
 //!
-//! Debug: `HERONITE_DEBUG_EMU_PAGE=add|add:<definition>|edit|edit-profile|detect|folder|folder-edit|
+//! Debug: `HERONITE_DEBUG_EMU_PAGE=show[:<id>]|show-menu|add-menu|add|add:<definition>|edit|edit-profile|detect|folder|folder-edit|
 //! remove|remove-folder|notice|pick-rom|launch-state` opens that state (use a fixture dir); see `debug.rs`.
 
 mod actions;
 mod console;
 mod debug;
 mod dialogs;
+mod icon;
 mod palette;
 mod render;
 
 use std::time::SystemTime;
 
+use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_emulation::manager::{data_stamp, overview, EmulatorSummary};
 use heronite_emulation::{AutoScanReport, SystemEnv};
 use heronite_i18n::{tr, trn};
 
-use super::{content_width, page_close, sheet, PageCtx, PageEvent};
-use crate::ui::controls::{button, ButtonKind};
-use render::render_empty;
+use super::{PageCtx, PageEvent};
 
 /// A message under the toolbar (result of a scan, an add, a removal...).
 #[derive(Clone)]
 struct Notice {
     lines: Vec<String>,
     error: bool,
+}
+
+/// The menu open on the page.
+#[derive(Clone, PartialEq, Eq)]
+enum Menu {
+    /// The ways to add an emulator, under "Add emulator".
+    Add,
+    /// Duplicate / Remove of the emulator shown.
+    Emulator,
+    /// Edit / Remove of this ROM folder.
+    Folder(String),
 }
 
 pub struct EmulatorsPage {
@@ -55,6 +66,12 @@ pub struct EmulatorsPage {
     palette_pending: Option<String>,
     /// Looks for changes made by others while the page is on screen.
     watch: Option<Task<()>>,
+    /// The emulator shown (its id); `None` for "All emulators".
+    selected: Option<String>,
+    menu: Option<Menu>,
+    /// Filters the list once it is long.
+    search: Entity<InputState>,
+    query: String,
 }
 
 impl EventEmitter<PageEvent> for EmulatorsPage {}
@@ -71,7 +88,15 @@ fn scan_notice(report: &AutoScanReport) -> Notice {
 }
 
 impl EmulatorsPage {
-    pub fn new(ctx: PageCtx, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let search = crate::ui::fields::new_input(window, cx, "", tr!("Search\u{2026}"));
+        cx.subscribe_in(&search, window, |this, state, ev: &InputEvent, _, cx| {
+            if matches!(ev, InputEvent::Change) {
+                this.query = state.read(cx).value().trim().to_lowercase();
+                cx.notify();
+            }
+        })
+        .detach();
         let this = Self {
             ctx,
             summaries: vec![],
@@ -87,6 +112,10 @@ impl EmulatorsPage {
             layer: Default::default(),
             palette_pending: None,
             watch: None,
+            selected: None,
+            menu: None,
+            search,
+            query: String::new(),
         };
         this.reload(cx);
         this
@@ -152,6 +181,24 @@ impl EmulatorsPage {
     fn total_folders(&self) -> usize {
         self.summaries.iter().map(|s| s.scanners.len()).sum()
     }
+
+    /// Shows `id`'s emulator, or "All emulators" for `None`.
+    fn select(&mut self, id: Option<String>, cx: &mut Context<Self>) {
+        self.selected = id;
+        self.menu = None;
+        cx.notify();
+    }
+
+    fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
+        self.menu = if self.menu.as_ref() == Some(&menu) { None } else { Some(menu) };
+        cx.notify();
+    }
+
+    /// The emulator shown, while it is still there.
+    fn selected_summary(&self) -> Option<EmulatorSummary> {
+        let id = self.selected.as_deref()?;
+        self.summaries.iter().find(|s| s.emulator.id == id).cloned()
+    }
 }
 
 impl Render for EmulatorsPage {
@@ -167,50 +214,8 @@ impl Render for EmulatorsPage {
         if crate::console::active() {
             return self.render_console(window, cx);
         }
-        let folders = self.total_folders();
-
-        let mut column = div().flex().flex_col().w_full().gap(px(14.)).child(self.render_toolbar(folders, cx));
-        column = column.children(self.render_busy()).children(self.render_notice(cx));
-        if self.loaded && self.summaries.is_empty() {
-            column = column.child(render_empty());
-        }
-        // One card per emulator, in as many columns as fit (at most 3, and no
-        // more than there are cards); the column grows with them.
-        const CARD_MIN: f32 = 600.;
-        const GAP: f32 = 14.;
-        let fit = ((content_width(window) + GAP) / (CARD_MIN + GAP)).floor() as usize;
-        let cols = fit.clamp(1, 3).min(self.summaries.len().max(1));
-        let max_w = match cols {
-            1 => 1000.,
-            2 => 1640.,
-            _ => 2280.,
-        };
-        let mut grid = div().grid().grid_cols(cols as u16).gap(px(GAP)).w_full();
-        for s in self.summaries.clone() {
-            grid = grid.child(self.render_card(&s, cx));
-        }
-        column = column.child(grid);
-
-        let lead = if self.loaded {
-            format!(
-                "{} \u{b7} {}. {}",
-                trn!(self.summaries.len(), "{n} emulator", "{n} emulators"),
-                trn!(folders, "{n} ROM folder", "{n} ROM folders"),
-                tr!("Folders set to scan on refresh add new games whenever the Collection refreshes.")
-            )
-        } else {
-            tr!("Loading\u{2026}").to_string()
-        };
-        let add = button("emus-add", ButtonKind::Primary, tr!("Add emulator"))
-            .on_click(cx.listener(|this, _, window, cx| this.open_add_emulator(window, cx)))
-            .into_any_element();
-        let close = page_close(cx);
-        div()
-            .size_full()
-            .relative()
-            .child(sheet("page-emulators", tr!("Emulators"), Some(lead.into()), Some(add), max_w, window, close, column))
-            .children(self.dialog.clone())
-            .into_any_element()
+        let page = self.render_desktop(window, cx);
+        div().size_full().relative().child(page).children(self.dialog.clone()).into_any_element()
     }
 }
 

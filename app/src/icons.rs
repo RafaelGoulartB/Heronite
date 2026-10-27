@@ -124,6 +124,26 @@ pub enum Icon {
     BrandEa,
     BrandUbisoft,
     BrandRockstar,
+    /// Emulator logos (Simple Icons, CC0), for the Emulators page.
+    BrandDolphin,
+    BrandRetroArch,
+    /// The other emulators of the catalog, drawn for Heronite after their
+    /// console or their name.
+    EmuPcsx2,
+    EmuRpcs3,
+    EmuShadPs4,
+    EmuDuckStation,
+    EmuPpsspp,
+    EmuVita3k,
+    EmuCemu,
+    EmuRyujinx,
+    EmuXemu,
+    EmuMelonDs,
+    EmuMgba,
+    EmuFlycast,
+    EmuMame,
+    EmuScummVm,
+    EmuAzahar,
 }
 
 impl Icon {
@@ -241,6 +261,23 @@ impl Icon {
             BrandEa => "icons/brand-ea.svg",
             BrandUbisoft => "icons/brand-ubisoft.svg",
             BrandRockstar => "icons/brand-rockstar.svg",
+            BrandDolphin => "icons/brand-dolphin.svg",
+            BrandRetroArch => "icons/brand-retroarch.svg",
+            EmuPcsx2 => "icons/emu-pcsx2.svg",
+            EmuRpcs3 => "icons/emu-rpcs3.svg",
+            EmuShadPs4 => "icons/emu-shadps4.svg",
+            EmuDuckStation => "icons/emu-duckstation.svg",
+            EmuPpsspp => "icons/emu-ppsspp.svg",
+            EmuVita3k => "icons/emu-vita3k.svg",
+            EmuCemu => "icons/emu-cemu.svg",
+            EmuRyujinx => "icons/emu-ryujinx.svg",
+            EmuXemu => "icons/emu-xemu.svg",
+            EmuMelonDs => "icons/emu-melonds.svg",
+            EmuMgba => "icons/emu-mgba.svg",
+            EmuFlycast => "icons/emu-flycast.svg",
+            EmuMame => "icons/emu-mame.svg",
+            EmuScummVm => "icons/emu-scummvm.svg",
+            EmuAzahar => "icons/emu-azahar.svg",
         }
     }
 }

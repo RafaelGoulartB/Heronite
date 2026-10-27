@@ -1,4 +1,4 @@
-//! `HERONITE_DEBUG_EMU_PAGE`: opens a dialog or a notice for screenshots and
+//! `HERONITE_DEBUG_EMU_PAGE`: shows an emulator or a menu, opens a dialog or a notice for screenshots and
 //! tests (use a fixture dir). Dialogs need a `Window`, so the request waits
 //! for the next render.
 
@@ -6,7 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_emulation::AutoScanReport;
 
-use super::{scan_notice, EmulatorsPage};
+use super::{scan_notice, EmulatorsPage, Menu};
 use crate::dialogs::emulator_confirm::EmulatorConfirmDialog;
 use crate::dialogs::emulator_edit::EmulatorEditDialog;
 use crate::dialogs::rom_folder::RomFolderDialog;
@@ -109,6 +109,15 @@ impl EmulatorsPage {
                 let view = cx.new(|_| LaunchStateDialog::new("Gran Turismo 4".into(), "PCSX2".into(), states, std::rc::Rc::new(|_, _| {})));
                 self.open_dialog(view, window, cx);
             }
+            // `show[:<id>]`: that emulator (the first one) instead of "All
+            // emulators"; `show-menu[:<id>]` with its menu open.
+            "show" | "show-menu" => {
+                self.selected = arg.or(first);
+                if kind == "show-menu" {
+                    self.menu = Some(Menu::Emulator);
+                }
+            }
+            "add-menu" => self.menu = Some(Menu::Add),
             "detect" => self.open_detect(window, cx),
             "folder" => self.open_folder_dialog(first, None, window, cx),
             "folder-edit" => {

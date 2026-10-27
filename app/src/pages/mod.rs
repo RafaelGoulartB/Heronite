@@ -13,6 +13,7 @@ pub mod downloads;
 pub mod emulators;
 pub mod epic;
 pub mod settings;
+pub mod side_nav;
 pub mod stats;
 pub mod steam;
 pub mod store;
@@ -145,6 +146,8 @@ pub enum PageEvent {
     /// "Show hidden games" changed in Settings: the Collection saves the flag
     /// and reloads its library.
     ShowHidden(bool),
+    /// Open the store page shown last (the Emulators page's link).
+    OpenStores,
     /// Select this game (`CollectionGame::key`) on the Collection.
     ShowGame(String),
     /// Uninstall this game (`CollectionGame::key`) the way its context menu
