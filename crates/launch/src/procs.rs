@@ -95,6 +95,8 @@ pub(crate) const WINE_SERVICES: &[&str] = &[
     "wineboot.exe",
     "winemenubuilder.exe",
     "start.exe",
+    // Proton's accessibility helper (`PROTON_USE_XALIA`).
+    "xalia.exe",
 ];
 
 /// `path` is `folder` or inside it.
