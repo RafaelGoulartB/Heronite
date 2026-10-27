@@ -137,11 +137,14 @@ impl Client {
                 "agent.exe",
                 "blizzarderror.exe",
                 "blizzard update agent.exe",
+                "blizzard uninstaller.exe",
                 "battle.net-setup.exe",
             ],
             Client::Ea => &[
                 "ealauncher.exe",
                 "eadesktop.exe",
+                "ealaunchhelper.exe",
+                "eadestager.exe",
                 "eabackgroundservice.exe",
                 "ealocalhostsvc.exe",
                 "eacefsubprocess.exe",
@@ -161,6 +164,8 @@ impl Client {
                 "uplayservice.exe",
                 "ubisoftgamelauncher.exe",
                 "ubisoftgamelauncher64.exe",
+                "ubisoftextension.exe",
+                "upcelevationservice.exe",
                 "ubisoftconnectinstaller.exe",
             ],
             Client::Rockstar => &[
