@@ -71,6 +71,8 @@ pub(super) enum ViewCmd {
     Group(GroupBy),
     /// Focus (list + details) or the grid.
     GridView,
+    /// The Focus list as rows or as covers (in the grid, Focus with it).
+    FocusList,
     ShowHidden,
     ClearFilters,
     /// Selects (or, when it is the active one, clears) a facet value.
@@ -548,6 +550,16 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         grid_icon,
         "view grid layout covers focus list mode visualizacao grade capas lista modo foco",
     ));
+    let (list, list_icon) =
+        if ui.focus_list { (tr!("Show the list as covers"), Icon::ViewCovers) } else { (tr!("Show the list as rows"), Icon::ViewList) };
+    v.push(cmd(
+        ViewCmd::FocusList,
+        "view:focus-list".into(),
+        list,
+        tr!("The list next to the selected game's page"),
+        list_icon,
+        "view list rows lines covers compact focus lista linhas capas compacta foco",
+    ));
     let hidden = if ui.show_hidden { tr!("Stop showing hidden games") } else { tr!("Show hidden games") };
     v.push(cmd(
         ViewCmd::ShowHidden,
@@ -903,6 +915,7 @@ mod tests {
         assert_eq!(get("view:group:none").title.as_ref(), "Stop grouping");
         assert!(get("view:sort:release-date").disabled.is_none());
         assert_eq!(get("view:hidden").title.as_ref(), "Show hidden games");
+        assert_eq!(get("view:focus-list").title.as_ref(), "Show the list as rows");
         assert!(get("view:clear").disabled.is_some());
         assert_eq!(get("view:sort:direction").title.as_ref(), "Sort descending");
         assert_eq!(get("view:only:Favourites").act, Act::View(ViewCmd::Only(Only::Favourites, true)));
