@@ -3,8 +3,9 @@
 //! removed from the Collection. A folder is kept out when anything known
 //! lives in it: an installed game's files, a prefix, a ROM folder, an
 //! emulator, a download in the queue, a Steam library, a game of Lutris,
-//! Bottles or Faugus, or any path the settings name. Folders changed in the last hours
-//! are left out too (an install may be writing to them).
+//! Bottles, Faugus or a store client (or its prefix), or any path the settings
+//! name. Folders changed in the last hours are left out too (an install may be
+//! writing to them).
 
 use std::collections::HashMap;
 use std::fs;
@@ -40,8 +41,8 @@ pub(crate) fn items(ctx: &Ctx, lib: &Library, listed: &[Item], walked: &SizeCach
     let mut known = installed_paths.clone();
     known.extend(listed.iter().flat_map(|i| i.paths.iter().cloned().chain([i.folder.clone()])));
     known.push(ctx.data_paths.root.clone());
-    // What Lutris, Bottles and Faugus keep is theirs, installed there or not.
-    known.extend(heronite_data::launchers::managed_paths(&ctx.data_paths).into_iter().map(|m| m.path));
+    // What Lutris, Bottles, Faugus and the store clients keep is theirs, installed there or not.
+    known.extend(heronite_data::launchers::managed_paths(&ctx.data_paths, &home).into_iter().map(|m| m.path));
     known.extend(json_paths(&Value::Object(global)));
     for file in [ctx.data_paths.rom_scanners(), ctx.data_paths.emulators(), ctx.data_paths.download_manager()] {
         if let Ok(v) = json_store::read_value(&file) {
@@ -137,6 +138,44 @@ mod tests {
         let mut p = json_paths(&v);
         p.sort();
         assert_eq!(p, [PathBuf::from("/games/x"), PathBuf::from("/roms")]);
+    }
+
+    /// A store client's prefix and games sit in the games folder like a
+    /// leftover would, without any installed game of ours pointing there.
+    #[test]
+    fn what_a_store_client_keeps_is_not_a_leftover() {
+        use heronite_data::{AppPaths, DataPaths};
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let ctx = Ctx {
+            data_paths: DataPaths::at(dir.path().join("data")),
+            app: AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") },
+            home: home.clone(),
+        };
+        let root = home.join("Games/Heroic");
+        let old = SystemTime::now() - Duration::from_secs(3 * 3600);
+        let folders = ["Battle.net", "Anno 1800", "Old Game"].map(|n| root.join(n));
+        for f in &folders {
+            fs::create_dir_all(f.join("drive_c")).unwrap();
+            fs::File::open(f).unwrap().set_modified(old).unwrap();
+        }
+        let paths = &ctx.data_paths;
+        let client = heronite_data::clients::Client::BattleNet;
+        game_config::set_game_setting(paths, client.config_app(), &ctx.home_str(), "winePrefix", json!(folders[0])).unwrap();
+        json_store::write(
+            &paths.sideload_library(),
+            &json!({"games": [{"runner": "sideload", "app_name": "ubisoft_635", "title": "Anno 1800", "install": {"install_path": folders[1]}}]}),
+        )
+        .unwrap();
+        json_store::write(
+            &paths.local_meta(),
+            &json!({"games": {"ubisoft_635": {"appName": "ubisoft_635", "runner": "sideload", "source": "ubisoft", "launchKind": "client"}}}),
+        )
+        .unwrap();
+
+        let lib = Library::load(paths).unwrap();
+        let found = items(&ctx, &lib, &[], &SizeCache::default());
+        assert_eq!(found.iter().map(|i| i.folder.clone()).collect::<Vec<_>>(), [folders[2].clone()]);
     }
 
     #[test]

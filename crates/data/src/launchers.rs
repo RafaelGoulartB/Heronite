@@ -8,16 +8,19 @@
 //!
 //! The folders and Wine prefixes of those games belong to their launcher
 //! ([`managed_paths`]): uninstalling a game added here never deletes them.
+//! The same goes for the prefix and the games of a store client
+//! ([`crate::clients`]).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::clients::{self, Client};
 use crate::json_store;
-use crate::models::{Extra, LocalMetaFile};
+use crate::models::{Extra, LocalGameMeta, LocalMetaFile};
 use crate::paths::DataPaths;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -102,32 +105,56 @@ pub fn kept_apart_key(mine: &str, theirs: &str) -> String {
     format!("{mine}|{theirs}")
 }
 
-/// A folder or Wine prefix of a game another launcher starts.
+/// A folder or Wine prefix that another launcher or a store client keeps.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Managed {
     pub path: PathBuf,
-    pub launcher: Launcher,
-    /// The Collection entry's app name (a `sideload` game).
+    /// The brand that keeps it ([`Launcher::name`], [`Client::name`]).
+    pub owner: &'static str,
+    /// The Collection entry's app name (a `sideload` game); empty for a
+    /// client's Wine prefix, which belongs to no single game.
     pub app_name: String,
+    /// What is kept there: the game's title, or the client's name for its
+    /// prefix.
     pub title: String,
 }
 
-/// The folders and Wine prefixes of the games Lutris, Bottles and Faugus start (the
-/// Collection's entries of [`LAUNCH_KIND`]), installed or not: they are that
-/// launcher's to delete. Unreadable files give none.
-pub fn managed_paths(paths: &DataPaths) -> Vec<Managed> {
+/// The folders and Wine prefixes that are not this app's to delete: those
+/// of the games Lutris, Bottles and Faugus start (the Collection's entries of
+/// [`LAUNCH_KIND`]), and each store client's Wine prefix and the folders of
+/// its games ([`clients::LAUNCH_KIND`]), installed or not. Unreadable files
+/// give none. `home` expands the `~` of a client's prefix setting.
+pub fn managed_paths(paths: &DataPaths, home: &str) -> Vec<Managed> {
     let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap_or_default();
-    let theirs: BTreeMap<&str, (Launcher, &str, Option<&str>)> = metas
+    // App name -> (who keeps it, the entry).
+    let theirs: BTreeMap<&str, (&'static str, &LocalGameMeta)> = metas
         .games
         .values()
-        .filter(|m| m.launch_kind == LAUNCH_KIND)
         .filter_map(|m| {
-            let launcher = Launcher::from_source(&m.source)?;
-            Some((m.app_name.as_str(), (launcher, m.title.as_str(), m.extra.get(PREFIX_KEY).and_then(Value::as_str))))
+            let owner = match m.launch_kind.as_str() {
+                LAUNCH_KIND => Launcher::from_source(&m.source)?.name(),
+                clients::LAUNCH_KIND => Client::from_id(&m.source)?.name(),
+                _ => return None,
+            };
+            Some((m.app_name.as_str(), (owner, m)))
         })
         .collect();
+    let mut out = Vec::new();
+    let mut keep = |path: &str, owner: &'static str, app_name: &str, title: &str| {
+        let path = PathBuf::from(path.trim().trim_end_matches('/'));
+        if path.is_absolute() && path.components().count() > 1 {
+            out.push(Managed { path, owner, app_name: app_name.to_string(), title: title.to_string() });
+        }
+    };
+    // A client's prefix comes first: a path overlapping it is matched to it
+    // before the games inside it.
+    for client in Client::ALL {
+        if let Some(prefix) = clients::prefix_of(paths, client, home) {
+            keep(&prefix.to_string_lossy(), client.name(), "", client.name());
+        }
+    }
     if theirs.is_empty() {
-        return Vec::new();
+        return out;
     }
     let library = json_store::read_value(&paths.sideload_library()).unwrap_or(Value::Null);
     let folders: BTreeMap<&str, &str> = library
@@ -137,26 +164,31 @@ pub fn managed_paths(paths: &DataPaths) -> Vec<Managed> {
         .flatten()
         .filter_map(|g| Some((g.get("app_name")?.as_str()?, g.get("install")?.get("install_path")?.as_str()?)))
         .collect();
-    let mut out = Vec::new();
-    for (app, (launcher, title, prefix)) in theirs {
-        for path in [folders.get(app).copied(), prefix].into_iter().flatten().map(str::trim) {
-            let path = PathBuf::from(path.trim_end_matches('/'));
-            if path.is_absolute() && path.components().count() > 1 {
-                out.push(Managed { path, launcher, app_name: app.to_string(), title: title.to_string() });
-            }
+    for (app, (owner, meta)) in theirs {
+        let prefix = meta.extra.get(PREFIX_KEY).and_then(Value::as_str);
+        for path in [folders.get(app).copied(), prefix].into_iter().flatten() {
+            keep(path, owner, app, &meta.title);
         }
     }
     out
 }
 
-/// The game of another launcher whose folder or prefix `path` is, is inside
-/// or holds.
-pub fn managed_by<'a>(managed: &'a [Managed], path: &std::path::Path) -> Option<&'a Managed> {
-    let overlap = |a: &std::path::Path, b: &std::path::Path| a.starts_with(b) || b.starts_with(a);
+/// Whether `path` (`real`: its canonical form) is, is inside or holds `m`.
+fn touches(m: &Managed, path: &Path, real: Option<&Path>) -> bool {
+    let overlap = |a: &Path, b: &Path| a.starts_with(b) || b.starts_with(a);
+    overlap(path, &m.path) || real.is_some_and(|r| m.path.canonicalize().is_ok_and(|mp| overlap(r, &mp)))
+}
+
+/// The first of the [`managed_paths`] that `path` is, is inside or holds.
+pub fn managed_by<'a>(managed: &'a [Managed], path: &Path) -> Option<&'a Managed> {
     let real = path.canonicalize().ok();
-    managed
-        .iter()
-        .find(|m| overlap(path, &m.path) || real.as_deref().is_some_and(|r| m.path.canonicalize().is_ok_and(|mp| overlap(r, &mp))))
+    managed.iter().find(|m| touches(m, path, real.as_deref()))
+}
+
+/// All of them: a client's prefix holds many games.
+pub fn managed_in<'a>(managed: &'a [Managed], path: &Path) -> Vec<&'a Managed> {
+    let real = path.canonicalize().ok();
+    managed.iter().filter(|m| touches(m, path, real.as_deref())).collect()
 }
 
 impl ImportPrefs {
@@ -191,5 +223,86 @@ mod tests {
         assert_eq!(again.last[&Launcher::Faugus].games, 3);
         assert_eq!(again.extra.get("future"), Some(&serde_json::json!(1)));
         assert_eq!(Launcher::from_source("faugus"), Some(Launcher::Faugus));
+    }
+
+    fn write_collection(paths: &DataPaths, library: Value, meta: Value) {
+        json_store::write(&paths.sideload_library(), &library).unwrap();
+        json_store::write(&paths.local_meta(), &meta).unwrap();
+    }
+
+    #[test]
+    fn the_launchers_games_are_kept_by_the_launcher() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        write_collection(
+            &paths,
+            serde_json::json!({"games": [{"app_name": "lutris_7", "install": {"install_path": "/home/u/Games/heroes/"}}]}),
+            serde_json::json!({"games": {
+                "lutris_7": {"appName": "lutris_7", "runner": "sideload", "source": "lutris", "launchKind": "launcher", "title": "Heroes III",
+                             "heroniteLauncherPrefix": "/home/u/Prefixes/heroes"},
+                "by_hand": {"appName": "by_hand", "runner": "sideload", "source": "lutris", "launchKind": "executable", "title": "By hand"}}}),
+        );
+        let managed = managed_paths(&paths, "/home/u");
+        let kept: Vec<_> = managed.iter().map(|m| (m.path.to_str().unwrap(), m.owner, m.app_name.as_str(), m.title.as_str())).collect();
+        assert_eq!(
+            kept,
+            [("/home/u/Games/heroes", "Lutris", "lutris_7", "Heroes III"), ("/home/u/Prefixes/heroes", "Lutris", "lutris_7", "Heroes III")]
+        );
+        assert_eq!(managed_by(&managed, Path::new("/home/u/Games/heroes/drive_c")).map(|m| m.owner), Some("Lutris"));
+        assert_eq!(managed_by(&managed, Path::new("/home/u/Games/other")), None);
+    }
+
+    /// A client's prefix is kept without any game, its games' folders too.
+    #[test]
+    fn a_clients_prefix_and_games_are_kept_by_the_client() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        assert!(managed_paths(&paths, "/home/u").is_empty());
+
+        let setting = |client: Client, prefix: &str| {
+            crate::game_config::set_game_setting(&paths, client.config_app(), "/home/u", "winePrefix", prefix.into()).unwrap();
+        };
+        setting(Client::BattleNet, "~/Prefixes/Battle.net");
+        setting(Client::Ea, "");
+        assert_eq!(
+            managed_paths(&paths, "/home/u"),
+            [Managed {
+                path: "/home/u/Prefixes/Battle.net".into(),
+                owner: "Battle.net",
+                app_name: String::new(),
+                title: "Battle.net".into()
+            }]
+        );
+
+        write_collection(
+            &paths,
+            serde_json::json!({"games": [
+                {"app_name": "battlenet_wow", "install": {"install_path": "/home/u/Prefixes/Battle.net/drive_c/WoW"}},
+                {"app_name": "ubisoft_635", "install": {"install_path": "/games/ubi/Anno"}},
+                {"app_name": "lutris_7", "install": {"install_path": "/home/u/Games/heroes"}}]}),
+            serde_json::json!({"games": {
+                "battlenet_wow": {"appName": "battlenet_wow", "runner": "sideload", "source": "battlenet", "launchKind": "client", "title": "World of Warcraft"},
+                "ubisoft_635": {"appName": "ubisoft_635", "runner": "sideload", "source": "ubisoft", "launchKind": "client", "title": "Anno 1800"},
+                "lutris_7": {"appName": "lutris_7", "runner": "sideload", "source": "lutris", "launchKind": "launcher", "title": "Heroes III"},
+                "odd": {"appName": "odd", "runner": "sideload", "source": "lutris", "launchKind": "client", "title": "Not a client's"}}}),
+        );
+        let managed = managed_paths(&paths, "/home/u");
+        let kept: Vec<_> = managed.iter().map(|m| (m.path.to_str().unwrap(), m.owner, m.title.as_str())).collect();
+        assert_eq!(
+            kept,
+            [
+                ("/home/u/Prefixes/Battle.net", "Battle.net", "Battle.net"),
+                ("/home/u/Prefixes/Battle.net/drive_c/WoW", "Battle.net", "World of Warcraft"),
+                ("/home/u/Games/heroes", "Lutris", "Heroes III"),
+                ("/games/ubi/Anno", "Ubisoft Connect", "Anno 1800"),
+            ]
+        );
+        // The prefix is what a path in it is matched to, not the game inside.
+        let wow = Path::new("/home/u/Prefixes/Battle.net/drive_c/WoW/Data");
+        assert_eq!(managed_by(&managed, wow).map(|m| m.app_name.as_str()), Some(""));
+        assert_eq!(managed_in(&managed, wow).len(), 2);
+        assert_eq!(managed_in(&managed, Path::new("/home/u/Prefixes")).len(), 2, "a folder holding them");
+        assert_eq!(managed_by(&managed, Path::new("/games/ubi")).map(|m| m.owner), Some("Ubisoft Connect"));
+        assert_eq!(managed_by(&managed, Path::new("/games/other")), None);
     }
 }
