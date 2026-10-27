@@ -59,6 +59,9 @@ pub struct UiState {
     pub grid_cover_w: f32,
     /// The grid shows each game's title under its cover.
     pub grid_titles: bool,
+    /// The Focus list shows one game per row (thumbnail, title, playtime)
+    /// instead of its covers.
+    pub focus_list: bool,
     /// The focus panel shows the Journal instead of the Timeline.
     pub journal_view: bool,
     /// Width the Focus list column was dragged to, in logical px. `None`: the
@@ -102,6 +105,7 @@ impl Default for UiState {
             grid_view: true,
             grid_cover_w: GRID_COVER_W.2,
             grid_titles: false,
+            focus_list: false,
             journal_view: false,
             list_column_w: None,
             grid_drawer_w: None,
@@ -143,6 +147,7 @@ impl UiState {
             state.grid_cover_w = (w as f32).clamp(GRID_COVER_W.0, GRID_COVER_W.1);
         }
         state.grid_titles = flag("gridTitles");
+        state.focus_list = flag("focusList");
         state.journal_view = flag("journalView");
         let width = |key: &str| value.get(key).and_then(Value::as_f64).filter(|w| w.is_finite() && *w > 0.).map(|w| w as f32);
         state.list_column_w = width("listColumnWidth");
@@ -165,6 +170,7 @@ impl UiState {
             "gridView": self.grid_view,
             "gridCoverWidth": self.grid_cover_w,
             "gridTitles": self.grid_titles,
+            "focusList": self.focus_list,
             "journalView": self.journal_view,
             "listColumnWidth": self.list_column_w,
             "gridDrawerWidth": self.grid_drawer_w,
@@ -628,6 +634,7 @@ mod tests {
             grid_view: false,
             grid_cover_w: 180.,
             grid_titles: true,
+            focus_list: true,
             list_column_w: Some(560.),
             ..Default::default()
         };
@@ -652,6 +659,7 @@ mod tests {
         assert_eq!(on_disk["consoleMode"], true);
         assert_eq!(on_disk["onlyOffline"], true);
         assert_eq!(on_disk["gridView"], false);
+        assert_eq!(on_disk["focusList"], true);
         assert_eq!(on_disk["listColumnWidth"], 560.);
         assert_eq!(on_disk["gridDrawerWidth"], Value::Null);
         assert_eq!(on_disk["categories"], json!([crate::categories::UNCATEGORIZED, "RPG"]));

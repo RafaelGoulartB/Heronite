@@ -61,5 +61,14 @@ pub(super) fn stuck_scrim(grid: bool) -> Div {
         .child(div().flex_1().bg(shade(0.5, 0.)))
 }
 
+/// [`stuck_scrim`] over the Focus list's rows: their titles would read
+/// through the header's label, so the shade stays dense under it.
+pub(super) fn stuck_scrim_rows() -> Div {
+    let dense = theme::stage_ink_a(0.92);
+    div().absolute().top_0().left_0().right_0().bottom(px(-10.)).flex().flex_col().child(div().flex_1().bg(dense)).child(
+        div().h(px(10.)).flex_none().bg(linear_gradient(180., linear_color_stop(dense, 0.), linear_color_stop(theme::stage_ink_a(0.), 1.))),
+    )
+}
+
 /// Height of one group header row (padding + line).
 pub(super) const GROUP_HEADER_H: f32 = 6.4 * 2. + 15.6;

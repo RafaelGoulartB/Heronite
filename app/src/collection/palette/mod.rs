@@ -324,6 +324,10 @@ impl CollectionView {
             ViewCmd::Show(filter) => self.set_install_filter(filter, cx),
             ViewCmd::Group(by) => self.set_group_by(by, cx),
             ViewCmd::GridView => self.set_grid_view(!self.ui.grid_view, cx),
+            ViewCmd::FocusList => {
+                self.set_grid_view(false, cx);
+                self.set_focus_list(!self.ui.focus_list, cx);
+            }
             ViewCmd::ShowHidden => self.set_show_hidden(!self.ui.show_hidden, cx),
             ViewCmd::ClearFilters => {
                 self.ui.clear_facets();

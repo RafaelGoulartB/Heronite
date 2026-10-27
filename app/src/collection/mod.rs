@@ -30,6 +30,7 @@ mod launch_problem;
 mod launch_progress;
 mod launchers;
 mod list;
+mod list_row;
 mod list_view;
 mod load;
 mod look;
@@ -174,7 +175,8 @@ pub struct CollectionView {
     groups: Vec<GroupVm>,
     items: Vec<ListItem>,
     columns: usize,
-    /// Card width of the list or the grid, in logical px.
+    /// Card width of the list or the grid (a row's, when the Focus list shows
+    /// rows), in logical px.
     card_w: f32,
     /// Grid view state (`grid.rs`).
     grid: grid::GridUi,
