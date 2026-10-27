@@ -9,6 +9,7 @@ use std::sync::Arc;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::clients::Client;
 use heronite_data::proc::Cancel;
 use heronite_i18n::tr;
 use heronite_wine::prefixes::{self, Prefix, PrefixKind};
@@ -54,12 +55,21 @@ impl PrefixesState {
     }
 }
 
-/// Whether a game of the library runs through Wine (emulated games, Steam
-/// games and the ones another launcher starts do not, whatever their
-/// platform).
+/// Whether a game of the library runs through Wine in a prefix of its own
+/// (emulated games, Steam games and the ones another launcher or a store
+/// client starts do not, whatever their platform).
 fn runs_through_wine(g: &heronite_data::library::CollectionGame) -> bool {
     let windows = g.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows"));
-    windows && !matches!(g.launch_kind.as_deref(), Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND))
+    windows
+        && !matches!(
+            g.launch_kind.as_deref(),
+            Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+        )
+}
+
+/// The store client whose prefix `p` is (its settings file is what sets it).
+fn client_of(p: &Prefix) -> Option<Client> {
+    p.games.iter().find_map(|app| Client::from_config_app(app))
 }
 
 fn home() -> String {
@@ -209,8 +219,12 @@ impl WineManagerPage {
         }
     }
 
-    /// Title of a game (its app name when it is not in the library).
+    /// Title of a game (its app name when it is not in the library); a store
+    /// client's settings file is named after the client.
     pub(super) fn game_title(&self, app_name: &str) -> String {
+        if let Some(client) = Client::from_config_app(app_name) {
+            return client.name().to_string();
+        }
         self.prefixes.titles.get(app_name).map(|(t, _)| t.clone()).unwrap_or_else(|| app_name.to_string())
     }
 
@@ -223,10 +237,14 @@ impl WineManagerPage {
         }
     }
 
-    /// The games of the library set to `p` (settings of removed games and
-    /// Linux games do not count).
+    /// The games of the library set to `p`, and the store client it is the
+    /// prefix of (settings of removed games and Linux games do not count).
     fn users(&self, p: &Prefix) -> Vec<String> {
-        p.games.iter().filter(|g| self.prefixes.titles.contains_key(*g)).map(|g| self.game_title(g)).collect()
+        p.games
+            .iter()
+            .filter(|g| self.prefixes.titles.contains_key(*g) || Client::from_config_app(g).is_some())
+            .map(|g| self.game_title(g))
+            .collect()
     }
 
     /// "Used by Control, Hollow Knight and 3 more" or why none is listed.
@@ -327,7 +345,8 @@ impl WineManagerPage {
                     }
                 }),
             ));
-            if !p.default {
+            // A store client keeps its prefix: its games are uninstalled in it.
+            if !p.default && client_of(p).is_none() {
                 let target = path.clone();
                 actions = actions.child(icon_action(SharedString::from(format!("prefix-trash-{i}")), Icon::FaTrash, !copying).on_click(
                     cx.listener(move |this, _, _, cx| {
