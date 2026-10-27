@@ -122,12 +122,20 @@ impl Clients {
         self.state_mut(client).activity = Activity::SettingUp(Progress::Step(Step::Downloading(None)));
         let paths = self.paths.clone();
         let (tx, mut rx) = futures::channel::mpsc::unbounded::<Step>();
-        let job = cx.background_spawn(async move {
+        let (done_tx, done_rx) = futures::channel::oneshot::channel();
+        // A thread of its own, like a store's install: the setup blocks for
+        // minutes (download, prefix, installer), which would hold one of the
+        // few threads every background task of the app shares.
+        let spawned = std::thread::Builder::new().name("client-setup".into()).spawn(move || {
             let mut on_step = move |step| {
                 let _ = tx.unbounded_send(step);
             };
-            heronite_clients::setup::install(&paths, client, &home(), &cancel, &mut on_step).map_err(|e| format!("{e:#}"))
+            let res = heronite_clients::setup::install(&paths, client, &home(), &cancel, &mut on_step).map_err(|e| format!("{e:#}"));
+            let _ = done_tx.send(res);
         });
+        if let Err(e) = spawned {
+            return self.setup_failed(client, tr!("Could not start the setup of {client}: {error}", client = client.name(), error = e), cx);
+        }
         cx.spawn(async move |this, cx| {
             while let Some(step) = rx.next().await {
                 let shown = this.update(cx, |this, cx| {
@@ -140,7 +148,8 @@ impl Clients {
                     return;
                 }
             }
-            let res = job.await;
+            // Dropped without an answer only when the setup panicked.
+            let res = done_rx.await.unwrap_or_else(|_| Err(tr!("The setup of {client} stopped unexpectedly", client = client.name())));
             this.update(cx, |this, cx| this.setup_done(client, res, cx)).ok();
         })
         .detach();
