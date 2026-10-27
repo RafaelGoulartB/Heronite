@@ -10,6 +10,7 @@
 
 pub mod actions;
 pub mod anticheat_data;
+mod clients;
 pub mod companions;
 pub mod diagnose;
 pub mod dxvk;
