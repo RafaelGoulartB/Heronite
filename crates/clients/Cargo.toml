@@ -1,0 +1,22 @@
+[package]
+name = "heronite-clients"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Store clients under Wine (Battle.net, EA app, Ubisoft Connect, Rockstar Games Launcher): setup, their games, sign-in"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-i18n = { path = "../i18n" }
+heronite-launch = { path = "../launch" }
+heronite-epic = { path = "../epic" }
+serde_json.workspace = true
+anyhow = "1"
+log = "0.4"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

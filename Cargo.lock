@@ -3589,6 +3589,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-clients"
+version = "0.16.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-i18n",
+ "heronite-launch",
+ "log",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "heronite-data"
 version = "0.16.0"
 dependencies = [
