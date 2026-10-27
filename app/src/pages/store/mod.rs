@@ -105,6 +105,7 @@ impl<K: StoreKind> StorePage<K> {
             cx.notify();
         })
         .detach();
+        super::stores::watch(cx);
         let code = new_input(window, cx, "", tr!("Paste the address of the page or its code"));
         let mut this = Self {
             ctx,
@@ -134,7 +135,7 @@ impl<K: StoreKind> StorePage<K> {
         K::STORE
     }
 
-    /// The page (and tab) of this store.
+    /// The page of this store.
     fn page(&self) -> crate::pages::Page {
         match K::STORE {
             Store::Gog => crate::pages::Page::Gog,

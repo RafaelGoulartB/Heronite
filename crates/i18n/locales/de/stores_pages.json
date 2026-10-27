@@ -60,5 +60,6 @@
   "Steam restarted but did not turn on the access Heronite needs, so it is not asked again. Your installed Steam games still show in the Collection.": "Steam wurde neu gestartet, hat den von Heronite benötigten Zugriff aber nicht aktiviert, daher wird nicht erneut gefragt. Deine installierten Steam-Spiele erscheinen weiterhin in der Sammlung.",
   "Steam was open before Heronite could turn on the access it needs. Restart it once (games running from Steam close), or wait: your library comes in the next time Steam opens.": "Steam war bereits geöffnet, bevor Heronite den nötigen Zugriff aktivieren konnte. Starte es einmal neu (über Steam laufende Spiele werden beendet) oder warte: Deine Bibliothek wird beim nächsten Öffnen von Steam übernommen.",
   "Could not connect": "Verbindung fehlgeschlagen",
-  "Open Steam": "Steam öffnen"
+  "Open Steam": "Steam öffnen",
+  "Store apps": "Store-Apps"
 }

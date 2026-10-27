@@ -1,4 +1,4 @@
-//! The Steam tab of the Stores: the library read from the Steam client
+//! The Steam page of the Stores: the library read from the Steam client
 //! (`services::steam_library`). No login: the client is signed in already;
 //! the page says whether it can be read, opens or restarts Steam when that
 //! is what is missing, and reads it on request.
@@ -8,7 +8,7 @@ use gpui_kit::*;
 use heronite_i18n::{tr, trn};
 
 use super::commands::{CommandCtx, PageCommand, PaletteCommands};
-use super::{columns, content_width, page_close, sheet, status_pill, stores, Page, PageCtx, PageEvent};
+use super::{columns, status_pill, stores, Page, PageCtx, PageEvent};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
@@ -37,6 +37,7 @@ fn read_at(updated_at: &str) -> Option<String> {
 impl SteamPage {
     pub fn new(_ctx: PageCtx, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = crate::services::steam_library(cx);
+        stores::watch(cx);
         let subs = vec![
             cx.observe(&svc, |_, _, cx| cx.notify()),
             cx.subscribe(&svc, |_, _, ev: &SteamLibraryEvent, cx| {
@@ -259,17 +260,12 @@ impl Render for SteamPage {
         if crate::console::active() {
             return self.render_console(cx);
         }
-        let wide = content_width(window) >= 1000.;
-        let close = page_close(cx);
-        let body = div()
-            .flex()
-            .flex_col()
-            .child(stores::tabs(Page::Steam, cx))
-            .child(columns(wide, [self.render_library(cx), self.render_about()]));
+        let wide = stores::content_width(window) >= 1000.;
+        let body = columns(wide, [self.render_library(cx), self.render_about()]);
         div()
             .size_full()
             .relative()
-            .child(sheet("steam-page", stores::title(), Some(tr!("Your account and library.").into()), None, 1320., window, close, body))
+            .child(stores::sheet("steam-page", Page::Steam, tr!("Your account and library."), cx, body))
             .into_any_element()
     }
 }

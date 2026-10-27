@@ -37,9 +37,9 @@ pub enum Page {
     Epic,
     Gog,
     Amazon,
-    /// The Steam tab of the Stores (the library read from the Steam client).
+    /// The Steam page of the Stores (the library read from the Steam client).
     Steam,
-    /// The tabs of the Stores that run the store's own program under Wine
+    /// The pages of the Stores that run the store's own program under Wine
     /// (`heronite_clients`).
     BattleNet,
     Ea,

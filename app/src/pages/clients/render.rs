@@ -8,7 +8,7 @@ use heronite_i18n::{tr, trn};
 
 use super::{logic, ClientKind, ClientPage};
 use crate::icons::Icon;
-use crate::pages::{caption_with, columns, content_width, empty_row, list_item, page_close, sheet, status_pill, stores};
+use crate::pages::{caption_with, columns, empty_row, list_item, status_pill, stores};
 use crate::services::clients::{Activity, ClientState};
 use crate::services::widgets::{busy_bar, progress_bar};
 use crate::theme;
@@ -290,13 +290,12 @@ impl<K: ClientKind> Render for ClientPage<K> {
             right = right.child(self.render_games(&st, cx));
         }
         right = right.child(self.render_about());
-        let wide = content_width(window) >= 1000.;
-        let close = page_close(cx);
-        let body = div().flex().flex_col().child(stores::tabs(K::PAGE, cx)).child(columns(wide, [left, right]));
+        let wide = stores::content_width(window) >= 1000.;
+        let body = columns(wide, [left, right]);
         div()
             .size_full()
             .relative()
-            .child(sheet(self.id("page"), stores::title(), Some(tr!("Your account and library.").into()), None, 1320., window, close, body))
+            .child(stores::sheet(self.id("page"), K::PAGE, tr!("Your account and library."), cx, body))
             .children(self.dialog.clone())
             .into_any_element()
     }

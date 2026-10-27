@@ -1,4 +1,4 @@
-//! The Battle.net, EA app, Ubisoft Connect and Rockstar Games tabs of the
+//! The Battle.net, EA app, Ubisoft Connect and Rockstar Games pages of the
 //! Stores: the store's own program, run by Wine in a prefix of its own
 //! (`services::clients`). The page sets it up, opens and closes it, lists
 //! the games it installed (they come into the Collection by themselves) and
@@ -85,6 +85,7 @@ impl<K: ClientKind> ClientPage<K> {
             cx.notify();
         })
         .detach();
+        super::stores::watch(cx);
         // A window closed to the tray takes its pages without hiding them
         // first: the client is not asked whether it runs any more.
         cx.on_release(|this, cx| this.svc.update(cx, |s, cx| s.set_visible(K::CLIENT, false, cx))).detach();
