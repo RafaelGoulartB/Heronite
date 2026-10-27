@@ -115,6 +115,15 @@ pub enum Icon {
     PlayCircle,
     InstallCircle,
     StopCircle,
+    /// Store logos (Simple Icons, CC0), for the store pages.
+    BrandEpicGames,
+    BrandGog,
+    BrandAmazon,
+    BrandSteam,
+    BrandBattleNet,
+    BrandEa,
+    BrandUbisoft,
+    BrandRockstar,
 }
 
 impl Icon {
@@ -224,6 +233,14 @@ impl Icon {
             PlayCircle => "icons/play-circle.svg",
             InstallCircle => "icons/install-circle.svg",
             StopCircle => "icons/stop-circle.svg",
+            BrandEpicGames => "icons/brand-epic-games.svg",
+            BrandGog => "icons/brand-gog.svg",
+            BrandAmazon => "icons/brand-amazon.svg",
+            BrandSteam => "icons/brand-steam.svg",
+            BrandBattleNet => "icons/brand-battle-net.svg",
+            BrandEa => "icons/brand-ea.svg",
+            BrandUbisoft => "icons/brand-ubisoft.svg",
+            BrandRockstar => "icons/brand-rockstar.svg",
         }
     }
 }
