@@ -29,6 +29,8 @@ pub(super) enum GameAction {
     PlayWith(Option<heronite_epic::launch_options::LaunchOption>),
     /// Runs one of the actions the user added to the game (by id).
     User(String),
+    /// Opens the store client that starts the game (Battle.net, the EA app...).
+    OpenClient,
     /// The game settings on the Actions tab, where the actions are edited.
     EditActions,
     /// One of the other ways to install (the Install flyout).
@@ -145,6 +147,17 @@ impl CollectionView {
                 );
             }
         }
+        // Its client installs, updates and uninstalls it (and lets the user
+        // sign in): the way to it is one click away.
+        if let Some(client) = game.client() {
+            v.push(GameActionItem::new(
+                A::OpenClient,
+                "open-client",
+                tr!("Open {client}", client = client.name()),
+                Icon::Storefront,
+                "store client launcher sign in install update loja cliente entrar instalar atualizar abrir",
+            ));
+        }
         for a in self.actions_of(&game.key).to_vec() {
             // One that plays waits for the game to end.
             if a.plays() && playing {
@@ -207,9 +220,12 @@ impl CollectionView {
             ));
         }
         // Sideloaded programs and browser games; not Steam/emulated entries,
-        // nor the ones another launcher starts.
+        // nor the ones another launcher or a store client starts.
         if game.runner == "sideload"
-            && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND))
+            && !matches!(
+                game.launch_kind.as_deref(),
+                Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+            )
         {
             v.push(item(
                 A::EditGame,
@@ -308,6 +324,7 @@ impl CollectionView {
         match action {
             A::Primary => self.install_or_play(key, window, cx),
             A::PlayWith(choice) => self.play_with(key, choice.clone(), cx),
+            A::OpenClient => self.open_client_of(key, cx),
             A::User(id) => self.run_user_action(key, id, cx),
             A::EditActions => self.open_actions_editor(key, window, cx),
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
@@ -346,6 +363,13 @@ impl CollectionView {
             A::Epic(a) => self.run_epic_action(key, *a, cx),
         }
         cx.notify();
+    }
+
+    /// Opens the window of the store client that owns the game under `key`.
+    pub(super) fn open_client_of(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(client) = self.lib.as_ref().and_then(|l| l.get(key)).and_then(|g| g.client()) else { return };
+        let svc = crate::services::clients(cx);
+        svc.update(cx, |s, cx| s.open(client, cx));
     }
 
     /// Favourites, hidden and recent lists: one write, then a reload.

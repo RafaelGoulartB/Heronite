@@ -89,6 +89,10 @@ impl CollectionView {
                     .desc(crate::ui::game_actions::menu_note(a)),
             );
         }
+        // Its client installs, updates and uninstalls it.
+        if let Some(client) = g.client() {
+            rows.push(Row::action("x:open-client", tr!("Open {client}", client = client.name())).icon(Icon::Storefront));
+        }
         if !playing
             && super::super::install_options::can_install_manually(g)
             && super::super::install_options::store_install_label(g).is_some()
@@ -155,7 +159,10 @@ impl CollectionView {
         }
         if g.runner == "sideload"
             && !playing
-            && !matches!(g.launch_kind.as_deref(), Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND))
+            && !matches!(
+                g.launch_kind.as_deref(),
+                Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+            )
         {
             manage.push(Row::action("x:edit", tr!("Edit game")).icon(Icon::Edit));
         }
@@ -447,6 +454,7 @@ impl CollectionView {
                 "x:ludusavi" => self.open_ludusavi_backup(key, cx),
                 "x:steam-uninstall" => self.open_steam_uninstall(key, window, cx),
                 "x:steam-play" => self.play_with_steam(key, cx),
+                "x:open-client" => self.open_client_of(key, cx),
                 "x:steam-install" => self.install_with_steam(key, cx),
                 "x:local-uninstall" => self.open_sideload_uninstall(key, window, cx),
                 "x:remove" => self.open_remove_game(key, cx),
