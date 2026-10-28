@@ -3,7 +3,6 @@
 //! network.
 
 use std::fs;
-use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::sync::Mutex;
@@ -19,8 +18,8 @@ pub trait Net: Send + Sync {
     fn is_online(&self) -> bool;
     /// GET `url` and parse the body as JSON.
     fn get_json(&self, url: &str) -> Result<Value, String>;
-    /// Streams `url` into `dest` (created, replaced). `Err("cancelled")` when
-    /// `cancel` fires.
+    /// Streams `url` into `dest` (replaced only once the whole body arrived).
+    /// `Err("cancelled")` when `cancel` fires; a connection that stalls fails.
     fn download(&self, url: &str, dest: &Path, cancel: Cancel) -> Result<(), String>;
 }
 
@@ -83,31 +82,11 @@ impl Net for SystemNet {
     }
 
     fn download(&self, url: &str, dest: &Path, cancel: Cancel) -> Result<(), String> {
-        let mut resp = agent().get(url).call().map_err(http_error)?;
-        let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
-        let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
-        if let Some(dir) = dest.parent() {
-            fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
-        }
-        let mut file = fs::File::create(dest).map_err(|e| format!("creating {}: {e}", dest.display()))?;
-        let mut buf = vec![0u8; 256 * 1024];
-        let mut got = 0u64;
-        loop {
-            if cancel() {
-                return Err(CANCELLED.into());
-            }
-            let n = body.read(&mut buf).map_err(|e| e.to_string())?;
-            if n == 0 {
-                break;
-            }
-            file.write_all(&buf[..n]).map_err(|e| format!("writing {}: {e}", dest.display()))?;
-            got += n as u64;
-        }
-        file.flush().map_err(|e| e.to_string())?;
-        if total > 0 && got < total {
-            return Err(format!("connection closed after {got} of {total} bytes"));
-        }
-        Ok(())
+        heronite_net::download(url, dest, heronite_net::Options::default(), cancel).map(|_| ()).map_err(|e| match e {
+            heronite_net::Error::Cancelled => CANCELLED.to_string(),
+            heronite_net::Error::RateLimited { .. } => "rate limit reached (HTTP 403/429), try again later".to_string(),
+            e => e.to_string(),
+        })
     }
 }
 
@@ -194,7 +173,7 @@ impl Net for FakeNet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
 
     /// One-shot HTTP server on a random port answering every request with `body`.
