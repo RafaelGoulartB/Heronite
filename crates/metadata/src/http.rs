@@ -64,6 +64,26 @@ impl std::fmt::Display for Unreachable {
 
 impl std::error::Error for Unreachable {}
 
+/// `url` for messages and logs: scheme, host, port and path only. The query
+/// (API keys, client secrets), fragment and userinfo never reach error text.
+pub fn redact_url(url: &str) -> String {
+    if let Ok(u) = url::Url::parse(url) {
+        if let Some(host) = u.host_str() {
+            let port = u.port().map(|p| format!(":{p}")).unwrap_or_default();
+            return format!("{}://{host}{port}{}", u.scheme(), u.path());
+        }
+    }
+    // Not parseable: still cut the query, the fragment and any `user:pass@`.
+    let bare = url.split(['?', '#']).next().unwrap_or("");
+    match bare.split_once("://") {
+        Some((scheme, rest)) => {
+            let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+            format!("{scheme}://{}{path}", authority.rsplit('@').next().unwrap_or(""))
+        }
+        None => bare.to_owned(),
+    }
+}
+
 /// Whether `err` came from a request that got no answer at all.
 pub fn is_unreachable(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Unreachable>().is_some()
@@ -145,6 +165,17 @@ impl<'a> Request<'a> {
         self
     }
 
+    /// `error` prefixed with the URL, minus anything secret: the error text
+    /// may repeat the URL or its query too.
+    fn describe(&self, error: &ureq::Error) -> String {
+        let shown = redact_url(&self.url);
+        let mut text = error.to_string().replace(&self.url, &shown);
+        if let Some(query) = url::Url::parse(&self.url).ok().and_then(|u| u.query().map(str::to_owned)).filter(|q| !q.is_empty()) {
+            text = text.replace(&query, "***");
+        }
+        format!("{shown}: {text}")
+    }
+
     pub fn send(self) -> Result<Response> {
         let agent = &self.http.agent;
         let mut resp = if self.post {
@@ -163,17 +194,15 @@ impl<'a> Request<'a> {
             }
             req.call()
         }
-        .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
+        .map_err(|e| anyhow::Error::new(Unreachable(self.describe(&e))))?;
         let status = resp.status().as_u16();
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let content_type = header("content-type").unwrap_or_default();
         let content_length = header("content-length").and_then(|v| v.parse().ok());
-        let body = resp
-            .body_mut()
-            .with_config()
-            .limit(self.max_bytes)
-            .read_to_vec()
-            .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
+        let body = resp.body_mut().with_config().limit(self.max_bytes).read_to_vec().map_err(|e| match e {
+            ureq::Error::BodyExceedsLimit(max) => anyhow!("{}: response larger than {max} bytes", redact_url(&self.url)),
+            e => anyhow::Error::new(Unreachable(self.describe(&e))),
+        })?;
         Ok(Response { status, content_type, content_length, body })
     }
 
@@ -220,5 +249,52 @@ impl Http {
 impl Default for Http {
     fn default() -> Self {
         Self::new(Endpoints::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_url_keeps_only_scheme_host_port_and_path() {
+        assert_eq!(redact_url("https://id.twitch.tv/oauth2/token?client_id=ID&client_secret=SECRET"), "https://id.twitch.tv/oauth2/token");
+        assert_eq!(redact_url("http://user:pw@127.0.0.1:8080/a/b?k=v#frag"), "http://127.0.0.1:8080/a/b");
+        assert_eq!(redact_url("not a url?secret=1"), "not a url");
+        assert_eq!(redact_url("weird://u:p@host/x?s=1"), "weird://host/x");
+    }
+
+    #[test]
+    fn an_unreachable_host_never_shows_the_query() {
+        let http = Http::default();
+        let err = http
+            .post("http://127.0.0.1:1/oauth2/token")
+            .query(&[("client_id", "the-id"), ("client_secret", "hunter2-secret")])
+            .timeout_secs(2)
+            .send()
+            .unwrap_err();
+        assert!(is_unreachable(&err));
+        let text = format!("{err:#}");
+        assert!(text.contains("http://127.0.0.1:1/oauth2/token"), "{text}");
+        assert!(!text.contains("hunter2-secret") && !text.contains("the-id"), "{text}");
+    }
+
+    #[test]
+    fn a_body_over_the_limit_is_not_unreachable() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf);
+                let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5000\r\nConnection: close\r\n\r\n");
+                let _ = s.write_all(&[b'x'; 5000]);
+            }
+        });
+        let err = Http::default().get(format!("http://127.0.0.1:{port}/big?token=sekret")).max_bytes(100).send().unwrap_err();
+        assert!(!is_unreachable(&err), "{err:#}");
+        let text = err.to_string();
+        assert!(text.contains("larger than 100 bytes") && !text.contains("sekret"), "{text}");
     }
 }

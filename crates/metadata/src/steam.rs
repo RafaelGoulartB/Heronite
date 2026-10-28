@@ -307,13 +307,13 @@ fn download_hero(http: &Http, url: &str, dest: &Path) -> bool {
     let resp = match http.get(url).timeout_secs(25).max_bytes(30 * 1024 * 1024).send() {
         Ok(r) => r,
         Err(e) => {
-            log::warn!("Steam hero download failed for {url}: {e}");
+            log::warn!("Steam hero download failed for {}: {e}", crate::http::redact_url(url));
             return false;
         }
     };
     if resp.status != 200 {
         if resp.status != 404 {
-            log::warn!("Steam hero download failed for {url}: HTTP {}", resp.status);
+            log::warn!("Steam hero download failed for {}: HTTP {}", crate::http::redact_url(url), resp.status);
         }
         return false;
     }

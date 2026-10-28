@@ -10,7 +10,7 @@ use heronite_data::models::{ArtFile, CollectionGameArt};
 use heronite_data::paths::{percent_decode, DataPaths};
 use heronite_i18n::tr;
 
-use crate::http::Http;
+use crate::http::{redact_url, Http};
 use crate::types::ArtKind;
 use crate::util::{folder_name, local_art_url, normalize_ext, now_ms, sniff_image_ext, ALLOWED_EXT};
 
@@ -217,7 +217,7 @@ pub fn set_collection_game_art_from_url(
                 return apply_art_file(paths, runner, app_name, kind, &dest);
             }
             Err(e) => {
-                log::warn!("Collection art download failed for {url}: {e}");
+                log::warn!("Collection art download failed for {}: {e}", redact_url(url));
                 last = Some(e);
             }
         }
