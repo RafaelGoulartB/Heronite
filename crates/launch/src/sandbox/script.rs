@@ -312,7 +312,7 @@ mod tests {
             let out = std::process::Command::new(&p[0])
                 .args(&p[1..])
                 .arg("/usr/bin/game")
-                .env("https_proxy", "http://user:pass@proxy:3128")
+                .env("https_proxy", "http://user:s3cret-token@proxy:3128")
                 .env("NO_PROXY", "localhost")
                 .env("SSL_CERT_FILE", "/etc/ssl/cert.pem")
                 .output()
@@ -322,10 +322,10 @@ mod tests {
         };
         let has = |a: &[String], w: &[&str]| a.windows(w.len()).any(|x| x == w);
         let off = args(false);
-        assert!(!off.iter().any(|a| a.contains("pass") || a == "https_proxy" || a == "NO_PROXY"), "{off:?}");
+        assert!(!off.iter().any(|a| a.contains("s3cret-token") || a == "https_proxy" || a == "NO_PROXY"), "{off:?}");
         assert!(has(&off, &["--setenv", "SSL_CERT_FILE", "/etc/ssl/cert.pem"]), "{off:?}");
         let on = args(true);
-        assert!(has(&on, &["--setenv", "https_proxy", "http://user:pass@proxy:3128"]), "{on:?}");
+        assert!(has(&on, &["--setenv", "https_proxy", "http://user:s3cret-token@proxy:3128"]), "{on:?}");
         assert!(has(&on, &["--setenv", "NO_PROXY", "localhost"]), "{on:?}");
     }
 

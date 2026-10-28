@@ -435,6 +435,8 @@ mod tests {
         let mut child = Process::new(&p[0])
             .args(&p[1..])
             .args(["sleep", "30"])
+            // Only the display under test: the session's own XAUTHORITY would pass too.
+            .env_remove("XAUTHORITY")
             .env("DISPLAY", ":7")
             .env("WAYLAND_DISPLAY", "gamescope-0")
             .stdin(Stdio::null())
