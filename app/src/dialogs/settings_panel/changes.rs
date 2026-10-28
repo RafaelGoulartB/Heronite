@@ -18,6 +18,8 @@ use super::logic::Section;
 use super::SettingsPanel;
 use crate::icons::Icon;
 use crate::theme;
+use crate::ui::controls::{action_button, ButtonKind};
+use heronite_i18n::tr;
 
 /// One setting as the user sees it: what it is saved as, and its tab.
 pub(super) struct Group {
@@ -234,6 +236,7 @@ impl SettingsPanel {
             self.set_all(plain, cx);
         }
         self.notice = None;
+        self.confirm_reset = false;
         cx.notify();
     }
 
@@ -281,6 +284,59 @@ impl SettingsPanel {
     /// Whether the tab shown has settings that differ from the defaults.
     pub fn tab_changed(&self) -> bool {
         !self.changed_in(self.section).is_empty()
+    }
+
+    /// Whether "Reset this tab" is waiting for its answer.
+    pub fn asking_reset(&self) -> bool {
+        self.confirm_reset
+    }
+
+    /// Starts the question before "Reset this tab".
+    pub fn ask_reset(&mut self, cx: &mut Context<Self>) {
+        self.confirm_reset = true;
+        cx.notify();
+    }
+
+    /// Drops the question; true when there was one (Esc, Cancel, B).
+    pub fn cancel_reset(&mut self, cx: &mut Context<Self>) -> bool {
+        let asking = std::mem::take(&mut self.confirm_reset);
+        if asking {
+            cx.notify();
+        }
+        asking
+    }
+
+    /// The footer row that replaces "Reset this tab" while it is being
+    /// asked: what will happen, Cancel and the danger button.
+    pub fn reset_question(panel: &Entity<Self>, id: &'static str) -> Div {
+        let (no, yes) = (panel.clone(), panel.clone());
+        div()
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .items_center()
+            .justify_end()
+            .gap(px(8.))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(13.))
+                    .text_color(theme::text_muted())
+                    .child(tr!("This tab's changed settings go back to the defaults.")),
+            )
+            .child(action_button(SharedString::from(format!("{id}-no")), ButtonKind::Ghost, tr!("Cancel"), true, move |_, _, cx| {
+                no.update(cx, |p, cx| {
+                    p.cancel_reset(cx);
+                })
+            }))
+            .child(action_button(
+                SharedString::from(format!("{id}-yes")),
+                ButtonKind::Danger,
+                tr!("Reset this tab"),
+                true,
+                move |_, _, cx| yes.update(cx, |p, cx| p.reset_tab(cx)),
+            ))
     }
 
     /// Sets every changed setting of the tab shown back to the defaults.

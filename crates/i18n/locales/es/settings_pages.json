@@ -425,5 +425,19 @@
   "Sky": "Cielo",
   "Coral": "Coral",
   "From the desktop": "Del escritorio",
-  "Your desktop's window colour, light or dark with it.": "El color de las ventanas de tu escritorio, claro u oscuro según él."
+  "Your desktop's window colour, light or dark with it.": "El color de las ventanas de tu escritorio, claro u oscuro según él.",
+  "Unhide {n} game? It shows normally in the Collection again.": "¿Volver a mostrar {n} juego? Aparecerá con normalidad en la Colección.",
+  "Unhide all {n} games? They show normally in the Collection again.": "¿Volver a mostrar los {n} juegos? Aparecerán con normalidad en la Colección.",
+  "Remove {n} game from your favourites? It stays in the Collection.": "¿Quitar {n} juego de tus favoritos? Se queda en la Colección.",
+  "Remove all {n} games from your favourites? They stay in the Collection.": "¿Quitar los {n} juegos de tus favoritos? Se quedan en la Colección.",
+  "Clear {n} game from the recent list? It stays in the Collection.": "¿Borrar {n} juego de la lista de recientes? Se queda en la Colección.",
+  "Clear {n} games from the recent list? They stay in the Collection.": "¿Borrar {n} juegos de la lista de recientes? Se quedan en la Colección.",
+  "A again shows {n} hidden game in the Collection again.": "Pulsar A otra vez vuelve a mostrar {n} juego oculto en la Colección.",
+  "A again shows {n} hidden games in the Collection again.": "Pulsar A otra vez vuelve a mostrar {n} juegos ocultos en la Colección.",
+  "A again removes {n} game from your favourites.": "Pulsar A otra vez quita {n} juego de tus favoritos.",
+  "A again removes {n} games from your favourites.": "Pulsar A otra vez quita {n} juegos de tus favoritos.",
+  "A again clears {n} game from the recent list.": "Pulsar A otra vez borra {n} juego de la lista de recientes.",
+  "A again clears {n} games from the recent list.": "Pulsar A otra vez borra {n} juegos de la lista de recientes.",
+  "Search settings": "Buscar ajustes",
+  "No settings match": "Ningún ajuste coincide"
 }

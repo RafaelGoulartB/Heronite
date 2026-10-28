@@ -88,6 +88,12 @@ impl PaletteCommands for WineManagerPage {
     fn run_palette_command(&mut self, id: &str, _window: &mut Window, cx: &mut Context<Self>) {
         self.run_command(id, true, cx);
     }
+
+    fn close_modal(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let closed = self.confirm_remove.take().is_some() || self.prefixes.close_question();
+        cx.notify();
+        closed
+    }
 }
 
 /// The source of an `install:<type>` command.

@@ -46,7 +46,7 @@ impl SettingsPanel {
             tr!("Prefix")
         };
         prefix = prefix.field_help(
-            self.path_row("winePrefix", Some(folder_label), true, tr!("Select WinePrefix Folder"), false, cx),
+            self.path_row("winePrefix", Some(folder_label), true, tr!("Choose the Wine prefix folder"), false, cx),
             vec![help(tr!("The game's own Windows drive: its settings, saves and what winetricks installs."))],
         );
         if self.is_game() {
@@ -215,9 +215,9 @@ impl SettingsPanel {
             col = col.child(danger_text(tr!("No Wine version was found, download one from the Wine Manager")));
         }
         if !list.is_empty() && !Path::new(&current.bin).exists() {
-            col = col.child(danger_text(tr!("Wine Path is invalid, please select another one.")));
+            col = col.child(danger_text(tr!("This Wine path does not work. Choose another one.")));
         }
-        col = col.child(help(&current.bin));
+        col = col.child(self.path_note("wine-bin-path", &current.bin, cx));
         let rec = self.wine_recommendation(&options, &current);
         if let Some(row) = self.protondb_row(rec, cx, Self::pick_wine) {
             col = col.child(div().border_t_1().border_color(theme::ink_a(0.06)).mt(px(4.)).child(row));
@@ -278,7 +278,7 @@ impl SettingsPanel {
                     this.open_winetricks(window, cx)
                 }))
                 .child(self.outline_button("tool-runexe", &label("runexe", tr!("Run .exe in prefix")), idle, cx, |_, window, cx| {
-                    choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                    choose_path(window, cx, false, tr!("Choose the .exe to run"), |this: &mut Self, path, _, cx| {
                         this.run_tool("runexe", WineTool::RunExe(path), cx)
                     });
                 }))
@@ -362,11 +362,7 @@ impl SettingsPanel {
         let Some(action) = dxvk::toggle_action(tool, &settings.wine_version, on) else { return };
         self.tool_toggle = Some(key);
         let name = tool.label();
-        let wait = if action == Action::Install {
-            tr!("Please wait... Installing {name}", name)
-        } else {
-            tr!("Please wait... Removing {name}", name)
-        };
+        let wait = if action == Action::Install { tr!("Installing {name}…", name) } else { tr!("Removing {name}…", name) };
         self.notice = Some(Notice { text: wait.into(), error: false });
         let paths = self.paths.clone();
         let (tx, mut rx) = futures::channel::mpsc::unbounded();

@@ -75,7 +75,7 @@ impl CollectionView {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
                 let pick = self.group_pick(&gid, cx);
-                let header = list::group_header(g).children(pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
+                let header = list::group_header(g, pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
                     cx.listener(move |this, _, _, cx| {
                         this.ui.toggle_group(&gid);
                         this.save_ui();
@@ -145,7 +145,7 @@ impl CollectionView {
                 width: self.card_w,
                 cover_h,
                 title: self.ui.grid_view && self.ui.grid_titles || a.cover_label == CoverLabel::Title,
-                selected: !self.sel.active() && self.selected.as_ref() == Some(&key),
+                selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
                 grey_uninstalled: self.grey_uninstalled,
@@ -171,7 +171,7 @@ impl CollectionView {
                 cover,
                 width: self.card_w,
                 thumb_h: rh,
-                selected: !self.sel.active() && self.selected.as_ref() == Some(&key),
+                selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 grey_uninstalled: self.grey_uninstalled,
                 pick: self.sel.active().then(|| self.sel.contains(&key)),
@@ -303,7 +303,7 @@ impl CollectionView {
                 .pl(px(m.pad_l))
                 .pr(px(m.pad_r))
                 .child(if rows { list::stuck_scrim_rows() } else { list::stuck_scrim(grid) })
-                .child(list::group_header(&self.groups[g]).children(pick))
+                .child(list::group_header(&self.groups[g], pick))
         });
         div()
             .relative()

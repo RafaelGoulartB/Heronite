@@ -226,7 +226,7 @@ fn mono(text: &str, color: impl Into<Hsla>) -> Div {
 pub(super) fn source_label(s: &Source) -> String {
     match s {
         Source::Setting(section, label) => format!("{} \u{203a} {label}", section.label()),
-        Source::Yours => format!("{} \u{203a} {}", Section::Launch.label(), tr!("Environment Variables")),
+        Source::Yours => format!("{} \u{203a} {}", Section::Launch.label(), tr!("Environment variables")),
         Source::Always => tr!("Every launch").to_string(),
     }
 }

@@ -91,7 +91,7 @@ impl SettingsPanel {
                 match res {
                     Ok(out) => {
                         this.saves.output = Some(out.lines().map(str::to_string).collect());
-                        this.notice = Some(Notice { text: tr!("Sync Complete").into(), error: false });
+                        this.notice = Some(Notice { text: tr!("Sync complete").into(), error: false });
                     }
                     Err(err) => {
                         this.notice = Some(Notice { text: tr!("Sync failed: {error}", error = format!("{err:#}")).into(), error: true })
@@ -110,7 +110,7 @@ impl SettingsPanel {
             return self.gog_saves_tab(cx);
         }
         if !self.facts().is_some_and(|f| f.cloud_saves) {
-            return column().child(hint(tr!("This game does not support Cloud Saves.")));
+            return column().child(hint(tr!("This game has no cloud saves.")));
         }
         let has_path = !self.text("savesPath").is_empty();
         let mut col = column().child(hint(tr!("Cloud saves are in beta: back up your saves before syncing.")));
@@ -283,9 +283,7 @@ impl SettingsPanel {
             Some(Err(err)) => {
                 places = places.child(div().py(px(12.)).child(danger_text(&tr!("Could not load the save folders: {error}", error = err))))
             }
-            Some(Ok(list)) if list.is_empty() => {
-                places = places.child(div().py(px(12.)).child(help(tr!("This game does not support Cloud Saves."))))
-            }
+            Some(Ok(list)) if list.is_empty() => places = places.child(div().py(px(12.)).child(help(tr!("This game has no cloud saves.")))),
             Some(Ok(list)) => {
                 for location in list {
                     places = places.child(Self::gog_location_row(location));

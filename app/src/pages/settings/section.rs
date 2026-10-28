@@ -119,11 +119,11 @@ impl Section {
     /// Short description under the section title.
     pub(super) fn blurb(self) -> &'static str {
         match self {
-            Section::General => tr!("Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically."),
+            Section::General => tr!("Language, folders, the tray, shortcuts and where Wine and Proton are looked for."),
             Section::Appearance => tr!("Profiles, the theme and its colours, menus and panels, the picture behind the Collection, covers, text and layout."),
             Section::ConsoleMode => tr!("The controller-first TV mode: its themes, tabs and shelves, covers, background, interface and controls. Changes show at once; ☰ → Customize in console mode has the same options."),
             Section::Advanced => tr!("Logs, folders and cache."),
-            Section::GameDefaults => tr!("Values new games start with. Settings of an installed game are changed from its own Settings."),
+            Section::GameDefaults => tr!("What new games start with. To change a game you already have, open its own settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
             Section::Launchers => tr!("Bring in the games of Heroic, Lutris, Bottles and Faugus. While on, a game added there shows up here too."),
@@ -135,7 +135,7 @@ impl Section {
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
             Section::Saves => tr!("Game saves backed up with Ludusavi after you close a game, and the folders a game's Saves tab restores them from."),
             Section::Backups => tr!("Scheduled backups of your Collection, play history and settings, and putting one back."),
-            Section::Logs => tr!("The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs)."),
+            Section::Logs => tr!("The logs of this app, the runners and every game you launched. Logging is turned off in Advanced (Turn off logs) and made more detailed per game (Detailed logs)."),
             Section::About => tr!("Updates, this app's data folders and the system it runs on."),
         }
     }
@@ -147,7 +147,7 @@ impl Section {
             Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast font density corners badges hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste fonte densidade cantos selos estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
             Section::ConsoleMode => "console mode tv couch controller gamepad theme themes tabs shelves layout covers background font scale clock accent colours glyphs hints menu startup customize export import preset modo console televisao sofa controle tema temas abas prateleiras capas fundo fonte tamanho relogio destaque cores botoes dicas menu personalizar exportar importar perfil",
             Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
-            Section::GameDefaults => "game defaults wine prefix gamescope launch options new games padroes dos jogos prefixo opcoes de inicializacao novos jogos",
+            Section::GameDefaults => "game defaults wine proton version prefix dxvk nvapi esync fsync sync wayland wow64 gpu performance fps gamescope launch options new games padroes dos jogos versao prefixo desempenho opcoes de inicializacao novos jogos",
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
             Section::Launchers => "other launchers import heroic lutris bottles faugus sync bring in outros launchers importar sincronizar trazer",

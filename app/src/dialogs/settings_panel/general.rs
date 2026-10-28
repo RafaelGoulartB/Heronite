@@ -5,11 +5,14 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::Value;
 
+use std::sync::OnceLock;
+
 use super::parts::{column, heading, help, rows, Rows};
 use super::{Section, SettingsPanel, Target};
 use crate::icons::Icon;
 use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use crate::theme;
+use crate::ui::controls::{button_sm, row, with_sub_rows, ButtonKind};
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
 use heronite_data::{AppPaths, DataPaths};
@@ -60,22 +63,15 @@ impl SettingsPanel {
                 vec![help(tr!("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))],
             )
             .field_help(
-                self.path_row(
-                    "altLegendaryBin",
-                    Some(tr!("Choose an Alternative Legendary Binary")),
-                    false,
-                    tr!("Select Legendary Binary"),
-                    true,
-                    cx,
-                ),
+                self.path_row("altLegendaryBin", Some(tr!("Legendary binary")), false, tr!("Choose the Legendary binary"), true, cx),
                 vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/legendary)."))],
             )
             .field_help(
-                self.path_row("altGogdlBin", Some(tr!("Choose an Alternative gogdl Binary")), false, tr!("Select gogdl Binary"), true, cx),
+                self.path_row("altGogdlBin", Some(tr!("gogdl binary")), false, tr!("Choose the gogdl binary"), true, cx),
                 vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/gogdl)."))],
             )
             .field_help(
-                self.path_row("altNileBin", Some(tr!("Choose an Alternative nile Binary")), false, tr!("Select nile Binary"), true, cx),
+                self.path_row("altNileBin", Some(tr!("nile binary")), false, tr!("Choose the nile binary"), true, cx),
                 vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/nile)."))],
             );
         let toggles = rows()
@@ -83,8 +79,8 @@ impl SettingsPanel {
                 "download-no-https",
                 "downloadNoHttps",
                 false,
-                tr!("Download games without HTTPS (useful for CDNs e.g. LanCache)"),
-                None,
+                tr!("Download games without HTTPS"),
+                Some(tr!("Useful with a local download cache such as LanCache.")),
                 false,
                 cx,
             ))
@@ -111,16 +107,15 @@ impl SettingsPanel {
 
     /// Logging and advanced switches (folders and cache live in the page).
     fn advanced_view(&mut self, cx: &mut Context<Self>) -> Div {
-        let r = rows()
-            .child(self.toggle_row(
-                "disable-logs",
-                "disableLogs",
-                false,
-                tr!("Disable Logs"),
-                Some(tr!("Toggle this switch ON to disable most of the writes to log files (critical information is always logged). Make sure to turn OFF this setting before reporting any issue.")),
-                false,
-                cx,
-            ));
+        let r = rows().child(self.toggle_row(
+            "disable-logs",
+            "disableLogs",
+            false,
+            tr!("Turn off logs"),
+            Some(tr!("Stops most log writes; serious errors are still logged. Turn logs back on before reporting a problem.")),
+            false,
+            cx,
+        ));
         column().child(heading(tr!("Logging"))).child(r.card())
     }
 
@@ -128,7 +123,7 @@ impl SettingsPanel {
         let folders = rows()
             .field(self.path_row(
                 "defaultInstallPath",
-                Some(tr!("Default Installation Path")),
+                Some(tr!("Default install folder")),
                 true,
                 tr!("Choose the default installation folder"),
                 false,
@@ -136,25 +131,23 @@ impl SettingsPanel {
             ))
             .field(self.path_row(
                 "defaultWinePrefixDir",
-                Some(tr!("Set Folder for new Wine Prefixes")),
+                Some(tr!("Folder for new Wine prefixes")),
                 true,
-                tr!("Select a Folder for new Wine Prefixes"),
+                tr!("Choose the folder for new Wine prefixes"),
                 false,
                 cx,
             ))
             .field_help(
-                self.path_row("defaultSteamPath", Some(tr!("Default Steam path")), true, tr!("Steam path."), false, cx),
-                vec![help(tr!(
-                    "This path lets Heronite determine what version of Proton Steam uses, for adding non-Steam games to Steam."
-                ))],
+                self.path_row("defaultSteamPath", Some(tr!("Steam folder")), true, tr!("Choose Steam's folder"), false, cx),
+                vec![help(tr!("Where Heronite reads which Proton Steam uses, to add games to Steam."))],
             );
         let wine = rows()
             .child(self.toggle_row(
                 "valve-proton",
                 "showValveProton",
                 false,
-                tr!("Allow using Valve Proton builds to run games"),
-                Some(tr!("We recommend custom Proton forks (GE-Proton, Proton-CachyOS, etc.) to be used because Valve's Proton builds lack winetricks and protofixes. You can still use them if you want.")),
+                tr!("Offer Valve's Proton builds"),
+                Some(tr!("Builds like GE-Proton or Proton-CachyOS run more games: Valve's lack winetricks and protonfixes.")),
                 false,
                 cx,
             ))
@@ -162,8 +155,10 @@ impl SettingsPanel {
                 "proton-to-steam",
                 "downloadProtonToSteam",
                 false,
-                tr!("Download GE-Proton to Steam directory"),
-                Some(tr!("When enabled, GE-Proton will be downloaded directly to the Steam compatibility tools directory instead of the tools folder. It will use the Steam path set in the 'Default Steam path' setting above.")),
+                tr!("Download GE-Proton into Steam"),
+                Some(tr!(
+                    "Puts GE-Proton in Steam's compatibility tools folder (in the Steam folder above) instead of Heronite's tools folder."
+                )),
                 false,
                 cx,
             ));
@@ -174,15 +169,15 @@ impl SettingsPanel {
             .child(folders.card())
             .child(heading(tr!("Startup")))
             .child(self.startup_rows(cx).card())
-            .child(heading(tr!("System Tray")))
+            .child(heading(tr!("System tray")))
             .child(self.tray_rows(cx).card())
             .child(heading(tr!("When a game starts and ends")))
             .child(self.game_rows(cx).card())
-            .child(heading(tr!("Game Shortcuts")))
+            .child(heading(tr!("Game shortcuts")))
             .child(self.shortcut_rows(cx).card())
             .child(heading(tr!("Wine and Proton")))
             .child(wine.card())
-            .child(heading(tr!("Custom Wine/Proton Paths")))
+            .child(heading(tr!("Other Wine and Proton builds")))
             .child(self.custom_wine_paths(cx))
     }
 
@@ -190,42 +185,64 @@ impl SettingsPanel {
     fn startup_rows(&self, cx: &mut Context<Self>) -> Rows {
         let no_tray = self.flag("noTrayIcon", false);
         let with_system = self.flag("startWithSystem", false);
-        rows()
-            .child(self.toggle_row(
-                "start-with-system",
-                "startWithSystem",
-                false,
-                tr!("Start with the system"),
-                Some(tr!("Opens Heronite when you log in.")),
-                false,
-                cx,
-            ))
-            .child(self.toggle_row(
+        let parent = self.toggle_row(
+            "start-with-system",
+            "startWithSystem",
+            false,
+            tr!("Start with the system"),
+            Some(tr!("Opens Heronite when you log in.")),
+            false,
+            cx,
+        );
+        // Starting minimized belongs to starting with the system: under it while it is on.
+        let sub = with_system.then(|| {
+            self.toggle_row(
                 "start-in-tray",
                 "startInTray",
                 false,
-                tr!("Start Minimized"),
+                tr!("Start minimized"),
                 Some(tr!("When Heronite opens with the system, it stays in the tray without the window.")),
-                !with_system || no_tray,
+                no_tray,
                 cx,
-            ))
+            )
+        });
+        rows().child(with_sub_rows(parent, sub.into_iter().collect()))
     }
 
     fn tray_rows(&self, cx: &mut Context<Self>) -> Rows {
         let no_tray = self.flag("noTrayIcon", false);
-        rows()
-            .child(self.toggle_row("exit-to-tray", "exitToTray", false, tr!("Exit to System Tray"), None, no_tray, cx))
-            .child(self.toggle_row("dark-tray", "darkTrayIcon", false, tr!("Use Dark Tray Icon (needs restart)"), None, no_tray, cx))
-            .child(self.toggle_row("no-tray", "noTrayIcon", false, tr!("Hide System Tray Icon (requires restart)"), None, false, cx))
+        let list = rows()
+            .child(self.toggle_row("exit-to-tray", "exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray, cx))
+            .child(self.toggle_row(
+                "dark-tray",
+                "darkTrayIcon",
+                false,
+                tr!("Dark tray icon"),
+                Some(tr!("Takes effect after Heronite restarts.")),
+                no_tray,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "no-tray",
+                "noTrayIcon",
+                false,
+                tr!("Hide the tray icon"),
+                Some(tr!("Takes effect after Heronite restarts.")),
+                false,
+                cx,
+            ));
+        if self.restart_needed() {
+            return list.child(self.restart_row(cx));
+        }
+        list
     }
 
     /// The window and Steam around a game. Bringing the window back belongs
-    /// to minimizing it, so it shows under that switch while it is on.
+    /// to minimizing it, so it shows under that switch, indented, while it is on.
     fn game_rows(&self, cx: &mut Context<Self>) -> Rows {
-        let mut list =
-            rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false, cx));
-        if self.flag("minimizeOnLaunch", false) {
-            list = list.child(self.toggle_row(
+        let parent = self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false, cx);
+        let sub = self.flag("minimizeOnLaunch", false).then(|| {
+            self.toggle_row(
                 "restore-after-game",
                 KEY_RESTORE_AFTER_GAME,
                 false,
@@ -233,26 +250,28 @@ impl SettingsPanel {
                 None,
                 false,
                 cx,
-            ));
-        }
-        list.child(self.toggle_row(
-            "hide-on-protocol",
-            "hideWindowOnProtocolLaunch",
-            false,
-            tr!("Hide Heronite window when launching games from heronite:// links"),
-            Some(tr!("Keeps the window hidden when a game is launched from an external shortcut, like the 'Add to Steam' feature.")),
-            false,
-            cx,
-        ))
-        .child(self.toggle_row(
-            "close-steam-after-game",
-            KEY_CLOSE_AFTER_GAME,
-            false,
-            tr!("Close Steam when the game ends"),
-            Some(tr!("Only when Steam was not running before Heronite started the game.")),
-            false,
-            cx,
-        ))
+            )
+        });
+        rows()
+            .child(with_sub_rows(parent, sub.into_iter().collect()))
+            .child(self.toggle_row(
+                "hide-on-protocol",
+                "hideWindowOnProtocolLaunch",
+                false,
+                tr!("Stay hidden when a shortcut starts a game"),
+                Some(tr!("heronite:// links, like those of the games added to Steam.")),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "close-steam-after-game",
+                KEY_CLOSE_AFTER_GAME,
+                false,
+                tr!("Close Steam when the game ends"),
+                Some(tr!("Only when Steam was not running before Heronite started the game.")),
+                false,
+                cx,
+            ))
     }
 
     /// Shortcuts made when a game is added (`system/shortcuts.rs`).
@@ -299,15 +318,9 @@ impl SettingsPanel {
         let mut items: Vec<(SharedString, bool)> = vec![(tr!("Max").into(), current == 0)];
         items.extend((1..=cores).map(|n| (SharedString::from(n.to_string()), n == current)));
         let shown = if current == 0 { tr!("Max").to_string() } else { current.to_string() };
-        div().child(self.select_row(
-            "max-workers",
-            Some(tr!("Maximum Number of Workers when downloading")),
-            shown,
-            items,
-            false,
-            cx,
-            |this, i, _, cx| this.set("maxWorkers", serde_json::json!(i as i64), cx),
-        ))
+        div().child(self.select_row("max-workers", Some(tr!("Download workers")), shown, items, false, cx, |this, i, _, cx| {
+            this.set("maxWorkers", serde_json::json!(i as i64), cx)
+        }))
     }
 
     fn custom_wine_paths(&mut self, cx: &mut Context<Self>) -> Div {
@@ -343,7 +356,7 @@ impl SettingsPanel {
             );
         }
         let add = self.outline_button("wine-path-add", tr!("Add path"), true, cx, |_, window, cx| {
-            choose_path(window, cx, false, tr!("Select the Wine or Proton Binary"), |this: &mut Self, path, _, cx| {
+            choose_path(window, cx, false, tr!("Choose a Wine or Proton binary"), |this: &mut Self, path, _, cx| {
                 let mut now = this.custom_paths();
                 if !now.contains(&path) {
                     now.push(path);
@@ -378,4 +391,39 @@ pub(super) fn language_options(app_paths: &AppPaths) -> (Vec<Preference>, Vec<Sh
         .collect();
     let selected = choices.iter().position(|&p| p == pref).unwrap_or(0);
     (choices, names, selected)
+}
+
+/// The tray switches as the app started with them: it reads them only then.
+static TRAY_AT_START: OnceLock<(bool, bool)> = OnceLock::new();
+
+impl SettingsPanel {
+    /// Notes the tray switches the app started with (the first global panel
+    /// reads them before any change).
+    pub(super) fn note_tray_at_start(&self) {
+        if !self.is_game() {
+            TRAY_AT_START.get_or_init(|| (self.flag("darkTrayIcon", false), self.flag("noTrayIcon", false)));
+        }
+    }
+
+    /// A tray switch changed since the app started: it takes a restart
+    /// (`HERONITE_DEBUG_RESTART_ROW=1`: as if one had).
+    pub(super) fn restart_needed(&self) -> bool {
+        crate::env::flag("HERONITE_DEBUG_RESTART_ROW")
+            || TRAY_AT_START
+                .get()
+                .is_some_and(|&(dark, hidden)| dark != self.flag("darkTrayIcon", false) || hidden != self.flag("noTrayIcon", false))
+    }
+
+    /// "Restart now" under the tray switches once one changed; what keeps
+    /// the app from restarting (a running game) shows instead of acting.
+    fn restart_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let blocker = crate::system::restart_blocker(cx);
+        let button = button_sm("restart-now", ButtonKind::Primary, tr!("Restart now"));
+        let button = match blocker {
+            None => button.on_click(|_, _, cx| crate::system::restart_now(cx)),
+            Some(_) => button.opacity(0.5).cursor_not_allowed(),
+        };
+        let about = blocker.unwrap_or_else(|| tr!("The tray changes apply once Heronite starts again.").to_string());
+        row(tr!("Restart Heronite"), Some(&about), button).into_any_element()
+    }
 }

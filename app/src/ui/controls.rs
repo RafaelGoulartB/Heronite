@@ -88,7 +88,10 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<Shared
 /// Label (14px) with an optional description (12px) on the left, `control`
 /// on the right. Padding 11px 0; put rows inside a [`card`].
 pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: impl IntoElement) -> Div {
+    let label: SharedString = label.into();
     div()
+        .relative()
+        .children(super::find::flash(&label, 8.))
         .flex()
         .items_center()
         .justify_between()
@@ -101,7 +104,7 @@ pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: i
                 .flex_1()
                 .min_w_0()
                 .gap(px(1.))
-                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label.into()))
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label))
                 .children(description.map(|d| {
                     div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(SharedString::from(d.to_string()))
                 })),
@@ -158,7 +161,17 @@ pub const CAPTION_H: f32 = 16.;
 
 /// Section caption above a card: 12px muted, sentence case.
 pub fn caption(text: impl Into<SharedString>) -> Div {
-    div().mt(px(14.)).mx(px(6.)).mb(px(6.)).text_size(px(12.)).line_height(px(CAPTION_H)).text_color(theme::text_muted()).child(text.into())
+    let text: SharedString = text.into();
+    div()
+        .relative()
+        .children(super::find::flash(&text, 8.))
+        .mt(px(14.))
+        .mx(px(6.))
+        .mb(px(6.))
+        .text_size(px(12.))
+        .line_height(px(CAPTION_H))
+        .text_color(theme::text_muted())
+        .child(text)
 }
 
 /// Page / sheet title: Rubik 600, 26px.

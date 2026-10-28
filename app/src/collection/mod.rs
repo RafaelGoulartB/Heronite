@@ -25,6 +25,7 @@ mod header;
 mod html;
 mod install_options;
 mod journal;
+mod keys;
 mod launch_options;
 mod launch_problem;
 mod launch_progress;
@@ -476,7 +477,15 @@ impl CollectionView {
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.shots_key(ev, cx) || self.selection_key(ev, window, cx) || self.grid_key(ev, window, cx) {
+        if self.shortcuts_key(ev, window, cx) {
+            return;
+        }
+        if self.shots_key(ev, cx)
+            || self.search_key(ev, window, cx)
+            || self.selection_key(ev, window, cx)
+            || self.list_key(ev, window, cx)
+            || self.grid_key(ev, window, cx)
+        {
             cx.notify();
             return;
         }
@@ -490,6 +499,10 @@ impl CollectionView {
                 self.context_menu = None;
             } else if self.open_menu.is_some() {
                 self.open_menu = None;
+            } else if self.palette_open() {
+                // The palette answers Esc itself.
+            } else if self.page != crate::pages::Page::Collection {
+                self.page_escape(window, cx);
             } else {
                 // Heronite clears the selected game on Esc.
                 self.focus = None;
@@ -528,6 +541,7 @@ impl CollectionView {
         }
         self.images.drop_evicted(window);
         self.open_pending_debug_dialog(window, cx);
+        self.start_debug_keys(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
         self.sync_view_menu(window, cx);
@@ -601,11 +615,16 @@ impl CollectionView {
             .id("collection")
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| this.on_key_down(ev, window, cx)))
+            // Before the search field's own Esc, ↓ and Enter (`keys.rs`).
+            .capture_action(cx.listener(Self::search_escape))
+            .capture_action(cx.listener(Self::search_down))
+            .capture_action(cx.listener(Self::search_enter))
             // Capture phase: runs before children, so a clicked input (search,
             // dialog fields) takes focus right after; clicks elsewhere blur it.
             .capture_any_mouse_down(cx.listener(|this, _, window, cx| {
                 window.focus(&this.focus_handle, cx);
             }))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| this.drop_external_paths(paths, window, cx)))
             .relative()
             .size_full()
             .overflow_hidden()
@@ -620,6 +639,7 @@ impl CollectionView {
             .children(update_banner)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())
+            .children(self.render_drop_target())
             .children(self.render_gallery(window, cx))
             .children(self.render_viewer(window, cx))
             .children(self.render_palette())

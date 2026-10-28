@@ -62,7 +62,8 @@ pub fn card(
     // Hover effects stay off while picking games (the tick says it all).
     let lift = s.hovered && s.pick.is_none() && look.hover == CoverHover::Lift;
     let glow = s.hovered && s.pick.is_none() && look.hover == CoverHover::Glow;
-    let halo = s.selected && !vm.playing && s.pick.is_none();
+    // While picking games the halo marks where the keyboard is.
+    let halo = s.selected && !vm.playing;
     let ring: Option<Rgba> = if vm.playing || s.pick == Some(true) {
         Some(theme::accent())
     } else if s.selected {

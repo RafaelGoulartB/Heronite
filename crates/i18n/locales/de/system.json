@@ -40,7 +40,7 @@
   "Filter {kind}: {value}": "Filter {kind}: {value}",
   "Folder, capture shortcut, preview cache": "Ordner, Aufnahme-Shortcut, Vorschau-Cache",
   "Folders, cache, copy settings": "Ordner, Cache, Einstellungen kopieren",
-  "Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically.": "Ordner, Tray und Shortcuts, Wine- und Proton-Suche. Wird automatisch gespeichert.",
+  "Language, folders, the tray, shortcuts and where Wine and Proton are looked for.": "Sprache, Ordner, Tray, Verknüpfungen und wo Wine und Proton gesucht werden.",
   "Folders, tray, Wine and Proton lookup": "Ordner, Tray, Wine- und Proton-Suche",
   "Game defaults": "Standardwerte",
   "Game moved": "Spiel verschoben",
@@ -121,7 +121,7 @@
   "The game is running: close it first": "Das Spiel läuft: schließe es zuerst",
   "The install folder of {title} is missing": "Der Installationsordner von {title} fehlt",
   "The interrupted move was already finished": "Das unterbrochene Verschieben war bereits abgeschlossen",
-  "The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs).": "Die Logs dieser App, der Runner und jedes Spiels, das du gestartet hast. Schalte das Logging unter Allgemein (Logs deaktivieren) oder pro Spiel (Ausführliche Logs aktivieren) aus.",
+  "The logs of this app, the runners and every game you launched. Logging is turned off in Advanced (Turn off logs) and made more detailed per game (Detailed logs).": "Die Logs dieser App, der Runner und jedes Spiels, das du gestartet hast. Das Logging schaltest du unter Erweitert aus (Logs ausschalten) und machst es pro Spiel ausführlicher (Ausführliche Logs).",
   "The save folder could not be detected; set it in the game settings": "Der Speicherstand-Ordner konnte nicht erkannt werden; lege ihn in den Spieleinstellungen fest",
   "There is no logs folder yet: it appears when a game is launched": "Es gibt noch keinen Logs-Ordner: Er erscheint, sobald ein Spiel gestartet wird",
   "This game is in the download queue": "Dieses Spiel befindet sich in der Download-Warteschlange",
@@ -135,7 +135,7 @@
   "Updating EOS Overlay": "EOS Overlay wird aktualisiert",
   "Updating {titles} in the background": "{titles} wird im Hintergrund aktualisiert",
   "Values new games start with": "Startwerte für neue Spiele",
-  "Values new games start with. Settings of an installed game are changed from its own Settings.": "Startwerte für neue Spiele. Die Einstellungen eines installierten Spiels änderst du in dessen eigenen Einstellungen.",
+  "What new games start with. To change a game you already have, open its own settings.": "Die Werte, mit denen neue Spiele starten. Um ein Spiel zu ändern, das du schon hast, öffne seine eigenen Einstellungen.",
   "Verifying": "Überprüfe",
   "Version, data folders, system": "Version, Datenordner, System",
   "What the Collection shows: hidden games, favourites and recent games.": "Was die Sammlung zeigt: ausgeblendete Spiele, Favoriten und zuletzt gespielte Spiele.",
@@ -233,5 +233,7 @@
   "{n} game is in your Collection twice": "{n} Spiel ist doppelt in deiner Sammlung",
   "{n} games are in your Collection twice": "{n} Spiele sind doppelt in deiner Sammlung",
   "The programs you added to its bottles, with the covers of its Library. Bottles keeps starting them, in their bottle and with its settings.": "Die Programme, die du zu seinen Bottles hinzugefügt hast, mit den Covern seiner Bibliothek. Bottles startet sie weiterhin, in ihrer Bottle und mit deren Einstellungen.",
-  "The game to merge into is no longer in your Collection. Look again in Settings → Other launchers.": "Das Spiel, mit dem zusammengeführt werden soll, ist nicht mehr in deiner Sammlung. Sieh noch einmal unter Einstellungen → Andere Launcher nach."
+  "The game to merge into is no longer in your Collection. Look again in Settings → Other launchers.": "Das Spiel, mit dem zusammengeführt werden soll, ist nicht mehr in deiner Sammlung. Sieh noch einmal unter Einstellungen → Andere Launcher nach.",
+  "{n} game from {launcher} leaves your Collection, with its status and notes. Its play time and journal come back if you bring it in again. Nothing changes in {launcher}.": "{n} Spiel aus {launcher} verlässt deine Sammlung, mit Status und Notizen. Spielzeit und Tagebuch sind wieder da, wenn du es erneut importierst. In {launcher} ändert sich nichts.",
+  "{n} games from {launcher} leave your Collection, with their status and notes. Their play time and journal come back if you bring them in again. Nothing changes in {launcher}.": "{n} Spiele aus {launcher} verlassen deine Sammlung, mit Status und Notizen. Spielzeit und Tagebuch sind wieder da, wenn du sie erneut importierst. In {launcher} ändert sich nichts."
 }

@@ -7,7 +7,7 @@ use heronite_i18n::tr;
 
 use super::{ClientKind, ClientPage};
 use crate::icons::Icon;
-use crate::pages::commands::{CommandCtx, PageCommand, PaletteCommands};
+use crate::pages::commands::{close_dialog, CommandCtx, PageCommand, PaletteCommands};
 use crate::services::clients::{Activity, ClientState};
 
 /// Extra search words (English and Portuguese).
@@ -88,6 +88,12 @@ impl<K: ClientKind> PaletteCommands for ClientPage<K> {
 
     fn page_modal(&self) -> bool {
         self.dialog.is_some()
+    }
+
+    fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let closed = close_dialog(&mut self.dialog, &mut self.dialog_sub, window, cx);
+        cx.notify();
+        closed
     }
 }
 

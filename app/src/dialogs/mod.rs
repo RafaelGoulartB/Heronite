@@ -42,6 +42,7 @@ pub mod scan_roms;
 pub mod screenshot_art;
 pub mod script_install;
 pub mod settings_panel;
+pub mod shortcuts;
 pub mod store_import;
 pub mod store_install;
 pub mod web_image;
@@ -75,6 +76,12 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
         return d.update(cx, |d, cx| d.on_escape(window, cx));
     }
     if let Ok(d) = view.clone().downcast::<batch_edit::BatchEditDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<game_settings::GameSettingsDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<client_settings::ClientSettingsDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     false

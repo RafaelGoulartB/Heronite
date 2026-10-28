@@ -82,7 +82,7 @@ impl Tab {
 
     fn label(self) -> &'static str {
         match self {
-            Tab::Game => tr!("Game"),
+            Tab::Game => tr!("Details"),
             Tab::Actions => tr!("Actions"),
             Tab::Launch => tr!("Launch"),
             Tab::Compatibility => tr!("Compatibility"),
@@ -133,6 +133,14 @@ pub struct GameSettingsDialog {
     initial: Form,
     /// Saved time played, in minutes.
     initial_playtime: u64,
+    /// The Details tab as the drawer opened ("Undo" goes back to it).
+    opened: (Form, u64),
+    /// The wait before the Details tab saves by itself.
+    save_timer: Option<Task<()>>,
+    /// The Details tab saved something since the drawer opened.
+    saved: bool,
+    /// Close once the save being written is done.
+    close_after_save: bool,
     /// The play sessions (Game tab).
     sessions: SessionsState,
     launch: Option<LaunchState>,
@@ -150,6 +158,22 @@ pub struct GameSettingsDialog {
 impl EventEmitter<DialogEvent> for GameSettingsDialog {}
 
 impl GameSettingsDialog {
+    /// Drops the question about "Reset this tab"; true when there was one.
+    fn cancel_reset_question(&mut self, cx: &mut Context<Self>) -> bool {
+        self.panel.as_ref().is_some_and(|(p, _)| p.update(cx, |p, cx| p.cancel_reset(cx)))
+    }
+
+    /// Esc, offered by the host before it closes the drawer: answers the
+    /// question about resetting the tab, else closes once the Details tab
+    /// saved what it has pending.
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.cancel_reset_question(cx) {
+            return true;
+        }
+        self.close(cx);
+        true
+    }
+
     pub fn new(ctx: DialogCtx, game: Game, tab: Tab, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
@@ -198,6 +222,10 @@ impl GameSettingsDialog {
             error: String::new(),
             nested: None,
             details,
+            opened: (initial.clone(), game.playtime_minutes),
+            save_timer: None,
+            saved: false,
+            close_after_save: false,
             initial,
             initial_playtime: game.playtime_minutes,
             sessions: SessionsState::new(game.sessions.as_deref().map_or(&[], Vec::as_slice)),
@@ -222,6 +250,25 @@ impl GameSettingsDialog {
             this.edit_action((which != "new").then_some(which), window, cx);
         }
         this.debug_sessions(window, cx);
+        // `HERONITE_DEBUG_DETAILS_EDIT=<name>[@undo|@close]`: that name typed in the Details tab,
+        // which then saves by itself; `undo` presses Undo once saved, `close` closes at once
+        // (use a copy of the data folder).
+        if let Some(spec) = crate::env::value("HERONITE_DEBUG_DETAILS_EDIT") {
+            let (name, then) = spec.split_once('@').unwrap_or((spec.as_str(), ""));
+            this.details.name.update(cx, |s, cx| s.set_value(name.to_string(), window, cx));
+            this.schedule_save(cx);
+            match then {
+                "close" => this.close(cx),
+                "undo" => {
+                    cx.spawn_in(window, async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_millis(2500)).await;
+                        this.update_in(cx, |this, window, cx| this.undo_details(window, cx)).ok();
+                    })
+                    .detach();
+                }
+                _ => {}
+            }
+        }
         this
     }
 
@@ -292,6 +339,31 @@ impl GameSettingsDialog {
     }
 }
 
+impl GameSettingsDialog {
+    /// The Details tab's saving, next to Done: "Saving…", then "Saved" with
+    /// "Undo" while it differs from what the drawer opened with.
+    fn save_status(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let note = |text: &'static str| div().text_size(px(12.)).text_color(theme::text_muted()).child(text);
+        if self.busy == Some(Busy::Details) {
+            return Some(note(tr!("Saving…")).into_any_element());
+        }
+        if !self.saved {
+            return None;
+        }
+        let undo = self.changed_since_open(cx).then(|| {
+            div()
+                .id("gs-undo")
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::accent_overlay()))
+                .child(tr!("Undo"))
+                .on_click(cx.listener(|this, _, window, cx| this.undo_details(window, cx)))
+        });
+        Some(div().flex().items_center().gap(px(8.)).mr(px(6.)).child(note(tr!("Saved"))).children(undo).into_any_element())
+    }
+}
+
 /// A card row holding a form control (padding 12).
 fn block(el: impl IntoElement) -> AnyElement {
     div().py(px(12.)).child(el).into_any_element()
@@ -307,6 +379,11 @@ impl Render for GameSettingsDialog {
         let entity = cx.entity().downgrade();
         let panel = self.panel.clone();
         let tab_bar = tabs("gs", &items, self.tab, move |t, window, cx| {
+            if let Some((panel, _)) = panel.as_ref() {
+                panel.update(cx, |p, cx| {
+                    p.cancel_reset(cx);
+                });
+            }
             if let (Some(section), Some((panel, secs))) = (t.section(), panel.as_ref()) {
                 if secs.contains(&section) {
                     panel.update(cx, |p, cx| p.set_section(section, window, cx));
@@ -343,7 +420,6 @@ impl Render for GameSettingsDialog {
             );
         }
 
-        let dirty = self.game_tab_dirty(cx);
         // "Use defaults" only where a reset exists: the custom images.
         let can_reset = self.tab == Tab::Game && self.busy.is_none() && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
         let left = div().child(if self.tab == Tab::Game {
@@ -360,37 +436,35 @@ impl Render for GameSettingsDialog {
         });
         let mut right = div().flex().items_center().gap(px(8.));
         if self.tab == Tab::Game {
-            right = right.child(action_button(
-                "gs-save",
-                ButtonKind::Primary,
-                if self.busy == Some(Busy::Details) { tr!("Saving…") } else { tr!("Save") },
-                self.busy.is_none() && dirty,
-                cx.listener(|this, _, _, cx| this.save_details(cx)),
-            ));
+            right = right.children(self.save_status(cx));
         }
         // The panel's tab: its changed settings back to the game defaults.
         let changed_panel =
             self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.tab.section().is_some() && p.read(cx).tab_changed());
-        if let Some(panel) = changed_panel {
-            right = right.child(action_button(
-                "gs-reset-tab",
-                ButtonKind::Ghost,
-                tr!("Reset this tab"),
-                true,
-                cx.listener(move |_, _, _, cx| panel.update(cx, |p, cx| p.reset_tab(cx))),
-            ));
+        // While "Reset this tab" is asked, its question takes the buttons' place.
+        let asking = changed_panel.as_ref().is_some_and(|p| p.read(cx).asking_reset());
+        if let (Some(panel), true) = (changed_panel.clone(), asking) {
+            right = SettingsPanel::reset_question(&panel, "gs-reset");
+        } else {
+            if let Some(panel) = changed_panel {
+                right = right.child(action_button(
+                    "gs-reset-tab",
+                    ButtonKind::Ghost,
+                    tr!("Reset this tab"),
+                    true,
+                    cx.listener(move |_, _, _, cx| panel.update(cx, |p, cx| p.ask_reset(cx))),
+                ));
+            }
+            right =
+                right.child(button("gs-close", ButtonKind::Primary, tr!("Done")).on_click(cx.listener(|this, _, _, cx| this.close(cx))));
         }
-        right = right.child(
-            button("gs-close", if self.tab == Tab::Game && dirty { ButtonKind::Glass } else { ButtonKind::Primary }, tr!("Done"))
-                .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
-        );
         let footer = div().flex().w_full().items_center().justify_between().child(left).child(right);
 
         let entity = cx.entity().downgrade();
         let header_close = {
             let entity = entity.clone();
             move |_: &mut Window, cx: &mut App| {
-                entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
+                entity.update(cx, |this, cx| this.close(cx)).ok();
             }
         };
         let header = div()
@@ -407,7 +481,7 @@ impl Render for GameSettingsDialog {
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
-                entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
+                entity.update(cx, |this, cx| this.close(cx)).ok();
             },
         );
         let nested: Option<AnyView> = match &self.nested {

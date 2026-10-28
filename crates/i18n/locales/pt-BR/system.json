@@ -40,7 +40,7 @@
   "Filter {kind}: {value}": "Filtrar {kind}: {value}",
   "Folder, capture shortcut, preview cache": "Pasta, atalho de captura, cache de miniaturas",
   "Folders, cache, copy settings": "Pastas, cache, copiar configurações",
-  "Folders, tray and shortcuts, Wine and Proton lookup. Saved automatically.": "Pastas, bandeja do sistema e atalhos, busca de Wine e Proton. Salvo automaticamente.",
+  "Language, folders, the tray, shortcuts and where Wine and Proton are looked for.": "Idioma, pastas, a bandeja, atalhos e onde o Wine e o Proton são procurados.",
   "Folders, tray, Wine and Proton lookup": "Pastas, bandeja do sistema, busca de Wine e Proton",
   "Game defaults": "Padrões dos jogos",
   "Game moved": "Jogo movido",
@@ -121,7 +121,7 @@
   "The game is running: close it first": "O jogo está em execução: feche-o primeiro",
   "The install folder of {title} is missing": "A pasta de instalação de {title} não existe mais",
   "The interrupted move was already finished": "A movimentação interrompida já havia terminado",
-  "The logs of this app, the runners and every game you launched. Switch logging off in General (Disable logs) or per game (Enable verbose logs).": "Os logs deste app, dos executores e de cada jogo que você iniciou. Desative o registro em Geral (Desativar logs) ou por jogo (Ativar logs detalhados).",
+  "The logs of this app, the runners and every game you launched. Logging is turned off in Advanced (Turn off logs) and made more detailed per game (Detailed logs).": "Os logs deste app, dos executores e de cada jogo que você iniciou. Os logs são desligados em Avançado (Desligar logs) e ficam mais detalhados por jogo (Logs detalhados).",
   "The save folder could not be detected; set it in the game settings": "Não foi possível detectar a pasta de saves; defina-a nas configurações do jogo",
   "There is no logs folder yet: it appears when a game is launched": "Ainda não há pasta de logs: ela aparece quando um jogo é iniciado",
   "This game is in the download queue": "Este jogo está na fila de downloads",
@@ -135,7 +135,7 @@
   "Updating EOS Overlay": "Atualizando o EOS Overlay",
   "Updating {titles} in the background": "Atualizando {titles} em segundo plano",
   "Values new games start with": "Valores com que novos jogos começam",
-  "Values new games start with. Settings of an installed game are changed from its own Settings.": "Valores com que novos jogos começam. As configurações de um jogo instalado são alteradas nas Configurações dele.",
+  "What new games start with. To change a game you already have, open its own settings.": "Os valores com que os jogos novos começam. Para mudar um jogo que você já tem, abra as configurações dele.",
   "Verifying": "Verificando",
   "Version, data folders, system": "Versão, pastas de dados, sistema",
   "What the Collection shows: hidden games, favourites and recent games.": "O que a Coleção mostra: jogos ocultos, favoritos e jogos recentes.",
@@ -233,5 +233,7 @@
   "{n} game is in your Collection twice": "{n} jogo está duas vezes na sua Coleção",
   "{n} games are in your Collection twice": "{n} jogos estão duas vezes na sua Coleção",
   "The programs you added to its bottles, with the covers of its Library. Bottles keeps starting them, in their bottle and with its settings.": "Os programas que você adicionou às garrafas dele, com as capas da Biblioteca dele. O Bottles continua abrindo esses programas, na garrafa deles e com as configurações de lá.",
-  "The game to merge into is no longer in your Collection. Look again in Settings → Other launchers.": "O jogo de destino da mesclagem não está mais na sua Coleção. Confira de novo em Configurações → Outros launchers."
+  "The game to merge into is no longer in your Collection. Look again in Settings → Other launchers.": "O jogo de destino da mesclagem não está mais na sua Coleção. Confira de novo em Configurações → Outros launchers.",
+  "{n} game from {launcher} leaves your Collection, with its status and notes. Its play time and journal come back if you bring it in again. Nothing changes in {launcher}.": "{n} jogo do {launcher} sai da sua Coleção, com o status e as notas. O tempo de jogo e o diário voltam se você trouxer o jogo de novo. Nada muda no {launcher}.",
+  "{n} games from {launcher} leave your Collection, with their status and notes. Their play time and journal come back if you bring them in again. Nothing changes in {launcher}.": "{n} jogos do {launcher} saem da sua Coleção, com o status e as notas. O tempo de jogo e o diário voltam se você trouxer os jogos de novo. Nada muda no {launcher}."
 }

@@ -613,7 +613,7 @@ impl SettingsPanel {
         let busy = self.tool_busy;
         let label =
             |name: &'static str, text: &'static str| if busy == Some(name) { tr!("{text} (running)", text) } else { text.to_string() };
-        let mut notes = vec![help(&prefix.compatdata.join("pfx").display().to_string())];
+        let mut notes = vec![self.path_note("steam-prefix-path", &prefix.compatdata.join("pfx").display().to_string(), cx)];
         notes.push(help(&match &prefix.proton {
             Some(dir) => tr!(
                 "Tools run with {proton} ({path}), the build that last ran the game.",
@@ -633,7 +633,7 @@ impl SettingsPanel {
                 this.open_winetricks(window, cx)
             }))
             .child(self.outline_button("steam-runexe", &label("runexe", tr!("Run .exe in prefix")), can_run, cx, |_, window, cx| {
-                choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                choose_path(window, cx, false, tr!("Choose the .exe to run"), |this: &mut Self, path, _, cx| {
                     this.run_tool("runexe", WineTool::RunExe(path), cx)
                 });
             }))

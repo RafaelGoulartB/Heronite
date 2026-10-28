@@ -425,5 +425,19 @@
   "Sky": "Céu",
   "Coral": "Coral",
   "From the desktop": "Do desktop",
-  "Your desktop's window colour, light or dark with it.": "A cor das janelas do seu desktop, clara ou escura junto com ele."
+  "Your desktop's window colour, light or dark with it.": "A cor das janelas do seu desktop, clara ou escura junto com ele.",
+  "Unhide {n} game? It shows normally in the Collection again.": "Reexibir {n} jogo? Ele volta a aparecer normalmente na Coleção.",
+  "Unhide all {n} games? They show normally in the Collection again.": "Reexibir todos os {n} jogos? Eles voltam a aparecer normalmente na Coleção.",
+  "Remove {n} game from your favourites? It stays in the Collection.": "Remover {n} jogo dos favoritos? Ele continua na Coleção.",
+  "Remove all {n} games from your favourites? They stay in the Collection.": "Remover todos os {n} jogos dos favoritos? Eles continuam na Coleção.",
+  "Clear {n} game from the recent list? It stays in the Collection.": "Limpar {n} jogo da lista de recentes? Ele continua na Coleção.",
+  "Clear {n} games from the recent list? They stay in the Collection.": "Limpar {n} jogos da lista de recentes? Eles continuam na Coleção.",
+  "A again shows {n} hidden game in the Collection again.": "A de novo reexibe {n} jogo oculto na Coleção.",
+  "A again shows {n} hidden games in the Collection again.": "A de novo reexibe {n} jogos ocultos na Coleção.",
+  "A again removes {n} game from your favourites.": "A de novo remove {n} jogo dos favoritos.",
+  "A again removes {n} games from your favourites.": "A de novo remove {n} jogos dos favoritos.",
+  "A again clears {n} game from the recent list.": "A de novo limpa {n} jogo da lista de recentes.",
+  "A again clears {n} games from the recent list.": "A de novo limpa {n} jogos da lista de recentes.",
+  "Search settings": "Buscar opções",
+  "No settings match": "Nenhuma opção encontrada"
 }

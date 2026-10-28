@@ -87,4 +87,20 @@ impl PaletteCommands for StatsPage {
         }
         cx.notify();
     }
+
+    /// The topmost first: the planner and the photo open over a game's sheet.
+    fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.planner.is_some() {
+            self.close_planner(window, cx);
+        } else if self.lightbox.take().is_some() {
+            cx.notify();
+        } else if self.sheet.is_some() {
+            self.close_sheet(cx);
+        } else if self.review.is_some() {
+            self.close_review(cx);
+        } else {
+            return false;
+        }
+        true
+    }
 }

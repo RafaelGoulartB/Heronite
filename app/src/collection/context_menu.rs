@@ -12,7 +12,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
-use heronite_i18n::{tr, trn};
+use heronite_i18n::{n_, tr, trn};
 
 pub(super) struct ContextMenuState {
     pub key: SharedString,
@@ -34,6 +34,10 @@ pub(super) enum Flyout {
     Manage,
     /// "Saves": the backup now and the after-play backup switch.
     Saves,
+    /// "Shortcuts": desktop / menu shortcuts, Steam, "Remove from recent".
+    Shortcuts,
+    /// "Help": the game's log and Troubleshoot.
+    Help,
 }
 
 /// Groups of a game's context menu, in order: play, organize (status,
@@ -44,6 +48,26 @@ const GROUPS: usize = 8;
 /// The store's install actions (verify, modify, move...): one "Manage
 /// installation" row with a flyout.
 const INSTALL_GROUP: usize = 3;
+
+/// The submenus the context menu folds a few rows into: the store's install
+/// actions ("Manage installation"), the shortcuts and the help. With a
+/// single action the row stays plain.
+const SUBMENUS: [(Flyout, &str, Icon, &str); 3] = [
+    (Flyout::Manage, "cm-manage", Icon::Build, n_!("Manage installation")),
+    (Flyout::Shortcuts, "cm-shortcuts", Icon::OpenInNew, n_!("Shortcuts")),
+    (Flyout::Help, "cm-help", Icon::InfoOutlined, n_!("Help")),
+];
+
+/// The submenu an action of the menu sits in, if any.
+fn submenu_of(action: &GameAction) -> Option<Flyout> {
+    use GameAction as A;
+    match action {
+        A::Shortcuts { .. } | A::Steam { .. } | A::RemoveRecent => Some(Flyout::Shortcuts),
+        A::Log | A::Troubleshoot => Some(Flyout::Help),
+        a if menu_place(a).0 == INSTALL_GROUP => Some(Flyout::Manage),
+        _ => None,
+    }
+}
 
 /// Actions under the "Saves" row.
 fn in_saves(action: &GameAction) -> bool {
@@ -65,7 +89,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Status(_) | A::Category { .. } => (1, 0),
         A::Favourite => (1, 1),
         A::Hide => (1, 2),
-        A::RemoveRecent => (1, 3),
+
         A::Settings => (2, 0),
         A::EditGame => (2, 1),
         A::OpenFolder => (2, 2),
@@ -79,6 +103,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Epic(E::Forget) => (3, 5),
         A::Shortcuts { .. } => (4, 0),
         A::Steam { .. } => (4, 1),
+        A::RemoveRecent => (4, 2),
         A::Epic(E::Uninstall) => (5, 0),
         A::SteamUninstall => (5, 1),
         A::LocalUninstall => (5, 2),
@@ -190,7 +215,7 @@ impl CollectionView {
         // command palette, see `game_actions.rs`).
         let mut actions: Vec<GameActionItem> = self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu).collect();
         actions.sort_by_key(|a| menu_place(&a.action));
-        let (install, actions): (Vec<_>, Vec<_>) = actions.into_iter().partition(|a| menu_place(&a.action).0 == INSTALL_GROUP);
+        let (folded, actions): (Vec<_>, Vec<_>) = actions.into_iter().partition(|a| submenu_of(&a.action).is_some());
         let (saves, actions): (Vec<_>, Vec<_>) = actions.into_iter().partition(|a| in_saves(&a.action));
         let mut saves_row = self.saves_row(&key, saves, open == Some(Flyout::Saves), flyout_left, cx);
         let saves_at = menu_place(&GameAction::Ludusavi);
@@ -203,12 +228,15 @@ impl CollectionView {
             groups[place.0].push(Self::action_row(&key, a, true, cx).into_any_element());
         }
         groups[saves_at.0].extend(saves_row.map(IntoElement::into_any_element));
-        // The store's install actions share one row; a single one stays a plain row.
-        match install.len() {
-            0 => {}
-            1 => groups[INSTALL_GROUP].extend(install.into_iter().map(|a| Self::action_row(&key, a, true, cx).into_any_element())),
-            _ => {
-                groups[INSTALL_GROUP].push(self.manage_row(&key, install, open == Some(Flyout::Manage), flyout_left, cx).into_any_element())
+        // The submenus: one row each, in their actions' group; a single action stays a plain row.
+        for (flyout, id, ic, label) in SUBMENUS {
+            let inside: Vec<GameActionItem> = folded.iter().filter(|a| submenu_of(&a.action) == Some(flyout)).cloned().collect();
+            let Some(group) = inside.first().map(|a| menu_place(&a.action).0) else { continue };
+            if inside.len() == 1 {
+                groups[group].extend(inside.into_iter().map(|a| Self::action_row(&key, a, true, cx).into_any_element()));
+            } else {
+                let row = Self::submenu_row(&key, (flyout, id, ic, tr(label)), inside, open == Some(flyout), flyout_left, cx);
+                groups[group].push(row.into_any_element());
             }
         }
         groups[GROUPS - 1].push(self.select_row(&key, cx).into_any_element());
@@ -481,17 +509,25 @@ impl CollectionView {
         wrap
     }
 
-    /// "Manage installation" with the store's install actions in a flyout.
-    fn manage_row(&self, key: &SharedString, actions: Vec<GameActionItem>, open: bool, flyout_left: bool, cx: &mut Context<Self>) -> Div {
+    /// A row of [`SUBMENUS`] ("Manage installation", "Shortcuts", "Help")
+    /// with its actions in a flyout.
+    fn submenu_row(
+        key: &SharedString,
+        (flyout, id, ic, label): (Flyout, &'static str, Icon, &'static str),
+        actions: Vec<GameActionItem>,
+        open: bool,
+        flyout_left: bool,
+        cx: &mut Context<Self>,
+    ) -> Div {
         let mut row = div().relative().child(
-            item("cm-manage")
-                .child(icon(Icon::Build, px(18.), theme::text_muted()))
-                .child(tr!("Manage installation"))
+            item(id)
+                .child(icon(ic, px(18.), theme::text_muted()))
+                .child(label)
                 .child(div().flex_1())
                 .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
-                .on_hover(cx.listener(|this, h: &bool, _, cx| {
+                .on_hover(cx.listener(move |this, h: &bool, _, cx| {
                     if *h {
-                        this.show_flyout(Some(Flyout::Manage), cx);
+                        this.show_flyout(Some(flyout), cx);
                     }
                 })),
         );

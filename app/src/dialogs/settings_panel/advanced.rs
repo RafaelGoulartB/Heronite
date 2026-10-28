@@ -30,7 +30,7 @@ pub(super) struct PairTable {
 
 pub(super) const ENV: PairTable = PairTable {
     id: "env",
-    title: n_!("Environment Variables"),
+    title: n_!("Environment variables"),
     setting: "enviromentOptions",
     k1: "key",
     k2: "value",

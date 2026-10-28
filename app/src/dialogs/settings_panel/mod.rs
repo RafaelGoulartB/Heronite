@@ -152,8 +152,16 @@ pub struct SettingsPanel {
     pub(super) prefix_list: Option<Vec<heronite_wine::prefixes::Prefix>>,
     /// Id of the select whose menu is open.
     pub(super) open_select: Option<&'static str>,
+    /// The technical paths ("Show path") are spelled out.
+    pub(super) show_paths: bool,
+    /// The path whose "Copy path" was just clicked (it says "Copied"), and
+    /// the wait before it reads "Copy path" again.
+    pub(super) path_copied: Option<&'static str>,
+    pub(super) path_copied_task: Option<Task<()>>,
     pub(super) inputs: HashMap<&'static str, Entity<InputState>>,
     pub(super) notice: Option<Notice>,
+    /// "Reset this tab" asked for and waiting for its answer.
+    confirm_reset: bool,
     /// Name of the Wine tool running.
     pub(super) tool_busy: Option<&'static str>,
     /// The Winetricks page, while open (it takes the tab's place).
@@ -273,6 +281,10 @@ impl SettingsPanel {
             settings,
             wine_list: None,
             prefix_list: None,
+            // `HERONITE_DEBUG_SHOW_PATHS=1`: the paths start shown.
+            show_paths: crate::env::flag("HERONITE_DEBUG_SHOW_PATHS"),
+            path_copied: None,
+            path_copied_task: None,
             // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version|fps-method|gpu-device`: that menu starts open.
             open_select: match crate::env::value("HERONITE_DEBUG_OPEN_SELECT").as_deref() {
                 Some("steam-tool") => Some("steam-tool"),
@@ -283,6 +295,8 @@ impl SettingsPanel {
             },
             inputs,
             notice: None,
+            // `HERONITE_DEBUG_ASK_RESET=1`: "Reset this tab" starts asked (screenshots).
+            confirm_reset: crate::env::flag("HERONITE_DEBUG_ASK_RESET"),
             tool_busy: None,
             winetricks: None,
             launch_options: Vec::new(),
@@ -364,6 +378,7 @@ impl SettingsPanel {
         if crate::env::flag("HERONITE_DEBUG_WINETRICKS") && this.is_game() {
             this.open_winetricks(window, cx);
         }
+        this.note_tray_at_start();
         this
     }
 
@@ -389,6 +404,7 @@ impl SettingsPanel {
             self.section = section;
             self.open_select = None;
             self.notice = None;
+            self.confirm_reset = false;
             self.env_error.clear();
             self.maybe_detect_saves(window, cx);
             cx.notify();
@@ -685,6 +701,7 @@ impl Render for SettingsPanel {
             Section::Saves => self.saves_tab(window, cx),
             Section::Sandbox => self.sandbox_tab(cx),
         };
+        // The Settings page says nothing about saving: every setting there saves at once.
         let mut footer = div()
             .flex()
             .flex_wrap()
@@ -710,17 +727,7 @@ impl Render for SettingsPanel {
                 .text_color(if n.error { theme::danger_text() } else { theme::success() })
                 .child(n.text)
         });
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .when(!self.is_game() && self.section != Section::General, |d| {
-                d.child(parts::hint(tr!("Defaults for games installed from now on. To change a game you already have, open its settings.")))
-            })
-            .child(content)
-            .children(notice)
-            .child(footer)
-            .into_any_element()
+        div().flex().flex_col().gap(px(8.)).child(content).children(notice).when(self.is_game(), |d| d.child(footer)).into_any_element()
     }
 }
 

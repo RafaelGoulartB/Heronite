@@ -150,14 +150,21 @@ impl SettingsPanel {
             i.row.changed = self.console_changed(&i.row.id).is_some();
         }
         if !self.console_tab_changes().is_empty() {
-            v.insert(
-                0,
-                Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+            let asking = self.confirm_reset;
+            let mut reset = Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+                if this.confirm_reset {
                     let groups = this.console_tab_changes();
                     this.reset(&groups, cx);
-                })
-                .desc_item(tr!("The marked settings go back to the game defaults")),
-            );
+                } else {
+                    this.confirm_reset = true;
+                }
+            });
+            if asking {
+                reset.row = reset.row.danger().desc(tr!("A again puts this tab's settings back to the defaults."));
+            } else {
+                reset.row = reset.row.desc(tr!("The marked settings go back to the game defaults"));
+            }
+            v.insert(0, reset);
         }
         v
     }
@@ -387,7 +394,7 @@ impl SettingsPanel {
                     .map(|(k, v)| format!("{k}={}", shlex::try_quote(v).map(|q| q.into_owned()).unwrap_or_else(|_| v.clone())))
                     .collect::<Vec<_>>()
                     .join(" ");
-                this.console_osk(tr!("Environment Variables"), &current, window, cx, |this, text, _, cx| {
+                this.console_osk(tr!("Environment variables"), &current, window, cx, |this, text, _, cx| {
                     this.apply_env_text(&text, cx);
                 });
             });
@@ -694,14 +701,25 @@ impl SettingsPanel {
             self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
             Self::c_header(tr!("Startup")),
             self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false),
-            self.c_toggle("startInTray", false, tr!("Start minimized"), None, !with_system || no_tray),
-            Self::c_header(tr!("System Tray")),
-            self.c_toggle("exitToTray", false, tr!("Exit to tray"), None, no_tray),
-            self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon (needs restart)"), None, no_tray),
-            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
-            Self::c_header(tr!("When a game starts and ends")),
-            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
         ];
+        // Starting minimized belongs to starting with the system, as on the desktop.
+        if with_system {
+            v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray));
+        }
+        v.extend([
+            Self::c_header(tr!("System tray")),
+            self.c_toggle("exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray),
+            self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon"), Some(tr!("Takes effect after Heronite restarts.")), no_tray),
+            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
+        ]);
+        if self.restart_needed() {
+            let free = crate::system::restart_blocker(cx).is_none();
+            v.push(Self::c_do("restart-now", tr!("Restart now"), Icon::Replay, free, |_, _, cx| crate::system::restart_now(cx)));
+        }
+        v.extend([
+            Self::c_header(tr!("When a game starts and ends")),
+            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false),
+        ]);
         // Bringing the window back belongs to minimizing it.
         if self.flag("minimizeOnLaunch", false) {
             v.push(self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false));
@@ -715,7 +733,7 @@ impl SettingsPanel {
                 Some(tr!("Only when Steam was not running before Heronite started the game")),
                 false,
             ),
-            Self::c_header(tr!("Game Shortcuts")),
+            Self::c_header(tr!("Game shortcuts")),
             self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
             self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
             self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),
@@ -905,6 +923,12 @@ impl PadTarget for SettingsPanel {
             self.close_winetricks(cx);
             return true;
         }
+        if pad == Pad::B && self.cancel_reset(cx) {
+            return true;
+        }
+        if pad != Pad::A {
+            self.confirm_reset = false;
+        }
         let items = self.console_items(cx);
         let rows: Vec<Row> = items.iter().map(|i| i.row.clone()).collect();
         let act = |id: &SharedString| items.iter().find(|i| &i.row.id == id).map(|i| i.act.clone()).unwrap_or(Act::None);
@@ -928,6 +952,10 @@ impl PadTarget for SettingsPanel {
             return false;
         }
         let outcome = self.console_list.on_pad(pad, &rows);
+        // The question about "Reset this tab" lasts for one press of A on that row.
+        if !matches!(&outcome, Outcome::Activate(id) if id.as_ref() == "d:reset-tab") {
+            self.confirm_reset = false;
+        }
         match outcome {
             Outcome::Changed(id, value) => match (act(&id), value) {
                 (Act::Toggle(key, default), _) => self.toggle(key, default, cx),

@@ -44,6 +44,8 @@ pub(super) enum Act {
     YearReview,
     /// "Getting started".
     Onboarding,
+    /// The keyboard shortcuts (`?`).
+    Shortcuts,
     ManageStatuses,
     /// The library fields manager (genres, companies...).
     ManageFields,
@@ -338,6 +340,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         tr!("What Heronite does, step by step"),
         Icon::Lightbulb,
         "onboarding tour tips help checklist welcome first steps primeiros passos ajuda dicas boas-vindas",
+    ));
+    v.push(action(
+        Act::Shortcuts,
+        "shortcuts",
+        tr!("Keyboard shortcuts"),
+        tr!("Every shortcut, and where it works (?)"),
+        Icon::Terminal,
+        "keyboard shortcuts keys hotkeys help atalhos teclado teclas ajuda",
     ));
     v.push(action(
         Act::ManageStatuses,

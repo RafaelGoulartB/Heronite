@@ -56,6 +56,38 @@ impl AddGameDialog {
         }
     }
 
+    /// An executable named before the title names the game (its file, or its
+    /// folder when the file's name is generic). The title follows the
+    /// executable until the user types their own.
+    pub(super) fn fill_title_from(&mut self, executable: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_edit() || executable.trim().is_empty() {
+            return;
+        }
+        let current = text_of(&self.title, cx);
+        if !current.trim().is_empty() && current != self.last_auto_title {
+            return;
+        }
+        let title = super::dropped::title_from_executable(std::path::Path::new(executable.trim()));
+        if title.is_empty() || title == current {
+            return;
+        }
+        self.last_auto_title = title.clone();
+        // `set_value` sends no change event: the prefix follows by hand.
+        self.title.update(cx, |s, cx| s.set_value(title, window, cx));
+        self.title_changed(window, cx);
+    }
+
+    /// An executable chosen in the file dialog: the platform, the title, the
+    /// Linux game folder and the art follow from it.
+    pub(super) fn executable_picked(&mut self, path: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.exe.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+        self.executable_changed(&path);
+        self.fill_folder_from(&path, window, cx);
+        self.fill_title_from(&path, window, cx);
+        self.auto_find_art(window, cx);
+        cx.notify();
+    }
+
     /// A picked executable gives the game folder when none was chosen yet.
     pub(super) fn fill_folder_from(&mut self, executable: &str, window: &mut Window, cx: &mut Context<Self>) {
         if self.platform != SideloadPlatform::Linux || !text_of(&self.folder, cx).trim().is_empty() {

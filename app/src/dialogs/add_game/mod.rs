@@ -9,6 +9,7 @@ mod actions;
 mod art;
 mod console;
 mod debug;
+mod dropped;
 mod form;
 mod logic;
 pub mod picker;
@@ -123,6 +124,8 @@ pub struct AddGameDialog {
     show_wine: bool,
     /// Last prefix this dialog suggested (typing over it stops suggestions).
     last_suggested: String,
+    /// Last title the executable gave (typing over it stops it following).
+    last_auto_title: String,
     wine_list: Option<Vec<WineInstallation>>,
     wine: Option<WineInstallation>,
     images: Entity<DialogImages>,
@@ -278,10 +281,15 @@ impl AddGameDialog {
                 }
             }));
         }
-        subs.push(cx.subscribe_in(&exe_in, window, |this, input, ev: &InputEvent, _, cx| {
+        subs.push(cx.subscribe_in(&exe_in, window, |this, input, ev: &InputEvent, window, cx| {
             if matches!(ev, InputEvent::Change | InputEvent::Blur) {
                 let path = input.read(cx).value().to_string();
                 this.executable_changed(&path);
+                this.fill_title_from(&path, window, cx);
+                // A path typed or pasted: the art once the field is left.
+                if matches!(ev, InputEvent::Blur) {
+                    this.auto_find_art(window, cx);
+                }
                 cx.notify();
             }
         }));
@@ -323,6 +331,7 @@ impl AddGameDialog {
             sandbox: false,
             show_wine: true,
             last_suggested: suggested,
+            last_auto_title: String::new(),
             wine_list: None,
             wine: wine_global,
             images,
