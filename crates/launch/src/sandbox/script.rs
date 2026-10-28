@@ -79,7 +79,8 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
     // the sandbox's own `/dev/shm`, unless the devices exception shows `/dev`.)
     a.push("--unshare-ipc".into());
     a.push("--unshare-cgroup-try".into());
-    // Nothing of the launcher's environment gets in but what `pass` hands over.
+    // Nothing of the launcher's environment gets in but what `pass` hands over
+    // (bwrap's own is emptied where it is started, see below).
     a.push("--clearenv".into());
     if !sandbox.network {
         a.push("--unshare-net".into());
@@ -147,7 +148,10 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
     s += &format!("set -- \"$@\" -- /bin/sh -c {} sh; ", q(WAIT_ALL));
     s += pass::ROTATE;
     a.push("\"$@\"".into());
-    s += "exec ";
+    // bwrap itself starts with an empty environment: it becomes the first
+    // process of the pid namespace, and its environment stays readable to the
+    // game in `/proc/1/environ`. It needs none; the game's comes from `--setenv`.
+    s += r#"e=/usr/bin/env; [ -x "$e" ] || e=env; exec "$e" -i "#;
     s += &a.join(" ");
     s
 }
@@ -184,7 +188,8 @@ mod tests {
         assert!(s.starts_with(
             "for d in '/home/u/.local/share/heronite/sandbox/prefix-My Game-0000abcd' '/home/u/Games/My Game/pfx'; do mkdir -p"
         ));
-        assert!(s.contains("exec /usr/bin/bwrap --unshare-user --unshare-pid"));
+        assert!(s.contains(r#"exec "$e" -i /usr/bin/bwrap --unshare-user --unshare-pid"#));
+        assert!(s.contains("e=/usr/bin/env;"));
         assert!(s.contains("--unshare-net --new-session"));
         assert!(s.contains("--bind '/home/u/.local/share/heronite/sandbox/prefix-My Game-0000abcd' /home/u"));
         assert!(s.contains("--overlay-src /home/u/.cache/winetricks --tmp-overlay /home/u/.cache/winetricks"));
@@ -322,5 +327,39 @@ mod tests {
             assert!(vars.contains(&kept), "{kept} missing: {vars:?}");
         }
         assert!(!env.contains("GH_TOKEN") && !env.contains("ghp_secret") && !env.contains("DBUS_SESSION"), "{vars:?}");
+    }
+
+    /// With the real bubblewrap, when it works here: bwrap is the first
+    /// process of the sandbox and its environment stays readable to the game
+    /// (`/proc/1/environ`, same user), so it must start with none of the
+    /// launcher's.
+    #[test]
+    fn a_real_sandbox_cannot_read_the_launchers_environment_through_proc() {
+        let Some(b) = crate::sandbox::detect().filter(|b| b.supported() && b.error.is_none()) else {
+            eprintln!("no working bubblewrap here: skipped");
+            return;
+        };
+        let p = prelude(&b, &Sandbox { enabled: true, ..Default::default() }, &Mounts::default(), None);
+        // Every environment and command line the game can open, one per line.
+        let dump = r#"for f in /proc/[0-9]*/environ /proc/[0-9]*/cmdline; do if [ -r "$f" ]; then echo "== $f"; tr '\0' '\n' < "$f"; fi; done; echo "== env"; env"#;
+        let out = std::process::Command::new(&p[0])
+            .args(&p[1..])
+            .args(["/bin/sh", "-c", dump])
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap())
+            .env("XDG_RUNTIME_DIR", "/run/user/1000")
+            .env("LANG", "C")
+            .env("GH_TOKEN", "ghp_secret")
+            .env("AWS_SECRET_ACCESS_KEY", "aws_secret")
+            .env("HTTP_PROXY_PASSWORD_X", "proxy_secret")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains("== /proc/1/environ"), "the first process is readable, so the check means something: {text}");
+        assert!(text.contains("LANG=C"), "the game's own variables are there: {text}");
+        for secret in ["GH_TOKEN", "ghp_secret", "AWS_SECRET_ACCESS_KEY", "aws_secret", "proxy_secret"] {
+            assert!(!text.contains(secret), "{secret} readable inside the sandbox:\n{text}");
+        }
     }
 }

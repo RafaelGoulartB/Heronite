@@ -161,8 +161,9 @@ device when the last window closes (the app lives on in the tray); see its
   session (Wayland / X11 / PipeWire sockets, the controllers plugged in,
   NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS, IPC and
   network namespaces and a private home (`<data>/sandbox/<prefix or game>`,
-  `DataPaths::sandbox_home_of_*`) and an empty environment (`--clearenv`):
-  `pass` hands over the variables of the launch plan and an allowlist of
+  `DataPaths::sandbox_home_of_*`) and an empty environment (`--clearenv`, and
+  `bwrap` itself starts under `env -i`, because its environment stays
+  readable in `/proc/1/environ`): `pass` hands over the variables of the launch plan and an allowlist of
   the session's (display, sound, graphics drivers, Wine / Proton), never
   the launcher's other variables. The program goes after the wrappers that
   stay outside (gamescope, GameMode, MangoHud) and before umu / Proton / the
