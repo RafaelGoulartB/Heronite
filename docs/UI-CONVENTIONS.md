@@ -55,7 +55,12 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   (updates the page copy of `settings.json` and emits `PageEvent::LibraryChanged`). Work that spawns a process or
   reads folders (Ludusavi detection, screenshot cache size) starts in `SettingsPage::on_section_shown`, never at page
   creation. Open a section from code with `CollectionView::open_settings_section` (or `pages::settings::request_section`
-  + navigate); add new sections to `Section` (label, icon, blurb, palette `keywords`, `parse`). Emulators and ROM
+  + navigate); add new sections to `Section` (label, icon, blurb, palette `keywords`, `parse`). The search above the
+  sections (Ctrl F, `pages/settings/search.rs`) also finds the settings listed in its `INDEX` (the English labels of
+  rows, field labels and captions): list a new setting there; picking it opens its section (and Game defaults tab),
+  scrolls to it and flashes it (`ui::find`, drawn by `controls::row` / `caption` and `fields::field_label`). Its keys
+  (`nav_keys.rs`) are the Collection search's: ↓ to the list, ↑ ↓ Home End move, ↑ on the first item back to the
+  search, Enter / Space open, a letter types in the search; Esc empties the search, then leaves it, then the page. Emulators and ROM
   folders are NOT a Settings section: they live on the ☰ Emulators page.
   Other launchers (`launchers.rs`) is a card per launcher (Heroic, Lutris, Bottles, Faugus): whether it is on this PC
   and how many games it has, a switch that brings its games in and keeps them in sync, "Bring in now", and

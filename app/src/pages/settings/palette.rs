@@ -25,11 +25,16 @@ impl PaletteCommands for SettingsPage {
         cx.notify();
     }
 
-    fn close_modal(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let closed = self.dismiss_confirms();
-        if closed {
+    fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.dismiss_confirms() {
             cx.notify();
+            return true;
         }
-        closed
+        // A filtered section list goes back to all of them before the page closes.
+        if !self.nav_query.is_empty() {
+            self.clear_nav_search(window, cx);
+            return true;
+        }
+        false
     }
 }

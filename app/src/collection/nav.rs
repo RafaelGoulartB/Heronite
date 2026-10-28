@@ -642,6 +642,26 @@ impl CollectionView {
         }
     }
 
+    /// Ctrl F on the Settings page: its section search. False on another page.
+    pub(super) fn settings_search(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.page != Page::Settings {
+            return false;
+        }
+        let Some(v) = self.pages.settings.clone().and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok()) else { return false };
+        v.update(cx, |p, cx| p.focus_search(window, cx));
+        true
+    }
+
+    /// Esc in a field of the Settings page: empties its search when that has
+    /// the keyboard and text. True when it did.
+    pub(super) fn settings_search_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.page != Page::Settings {
+            return false;
+        }
+        let Some(v) = self.pages.settings.clone().and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok()) else { return false };
+        v.update(cx, |p, cx| p.search_escape(window, cx))
+    }
+
     /// Esc on a page: closes its dialog or question, if one is open, else
     /// goes back to the Collection.
     pub(super) fn page_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -6,6 +6,7 @@ pub mod controls;
 pub mod dialog;
 pub mod dropdown;
 pub mod fields;
+pub mod find;
 pub mod game_actions;
 pub mod glass;
 pub mod lsfg;

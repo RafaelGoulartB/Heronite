@@ -93,19 +93,20 @@ impl CollectionView {
     }
 
     /// Ctrl F anywhere in the Collection, `/` or a letter typed on the list:
-    /// the search field. True when the key was used.
+    /// the search field (Ctrl F on the Settings page: its section search).
+    /// True when the key was used.
     pub(super) fn search_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let ks = &ev.keystroke;
         let m = &ks.modifiers;
-        let collection = self.page == crate::pages::Page::Collection
-            && !crate::console::active()
-            && self.dialog.is_none()
-            && !self.palette_open()
-            && !self.shots.is_open();
-        if !collection {
+        let ctrl_f = ks.key == "f" && (m.control || m.platform) && !m.alt && !m.shift;
+        let free = !crate::console::active() && self.dialog.is_none() && !self.palette_open() && !self.shots.is_open();
+        if ctrl_f && free && !self.page_modal(cx) && self.settings_search(window, cx) {
+            return true;
+        }
+        if !(free && self.page == crate::pages::Page::Collection) {
             return false;
         }
-        if ks.key == "f" && (m.control || m.platform) && !m.alt && !m.shift {
+        if ctrl_f {
             self.context_menu = None;
             self.open_menu = None;
             self.focus_search(None, window, cx);
@@ -127,8 +128,9 @@ impl CollectionView {
 
     /// Esc in the search field: the first empties it, the next one gives the
     /// keyboard back to the list (where a third clears the selected game).
-    /// In a field of a page, the first Esc leaves the field and the next one
-    /// the page (`CollectionView::page_escape`).
+    /// In a field of a page, the first Esc leaves the field (the Settings
+    /// search is emptied first) and the next one the page
+    /// (`CollectionView::page_escape`).
     pub(super) fn search_escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
         let page_field = self.page != crate::pages::Page::Collection
             && self.dialog.is_none()
@@ -137,7 +139,10 @@ impl CollectionView {
             && !self.focus_handle.is_focused(window);
         if page_field {
             cx.stop_propagation();
-            window.focus(&self.focus_handle, cx);
+            // The Settings search empties first; any field is then left.
+            if !self.settings_search_escape(window, cx) {
+                window.focus(&self.focus_handle, cx);
+            }
             cx.notify();
             return;
         }

@@ -437,5 +437,7 @@
   "A again removes {n} game from your favourites.": "A de novo remove {n} jogo dos favoritos.",
   "A again removes {n} games from your favourites.": "A de novo remove {n} jogos dos favoritos.",
   "A again clears {n} game from the recent list.": "A de novo limpa {n} jogo da lista de recentes.",
-  "A again clears {n} games from the recent list.": "A de novo limpa {n} jogos da lista de recentes."
+  "A again clears {n} games from the recent list.": "A de novo limpa {n} jogos da lista de recentes.",
+  "Search settings": "Buscar nas configurações",
+  "No settings match": "Nenhuma configuração encontrada"
 }
