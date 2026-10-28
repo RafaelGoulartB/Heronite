@@ -6,7 +6,9 @@
 //! One line, without newlines: legendary gets it inside `--wrapper`.
 
 use super::mounts::{Access, Mounts, SHADER_CACHES, SYSTEM};
+use super::pass;
 use super::{Bwrap, Sandbox};
+use crate::env::Env;
 
 /// `$0` of the program: names it in `ps` and marks a wrapped command.
 pub(super) const NAME: &str = "heronite-sandbox";
@@ -31,31 +33,14 @@ const DEVICES: &str = r#"v=; for f in /dev/nvidia*; do [ -e "$f" ] && v="$v --de
 /// into `/run` (systemd-resolved, NetworkManager).
 const RESOLVER: &str = r#"n=; c=$(readlink -f /etc/resolv.conf); case $c in /run/*) n="--ro-bind-try ${c%/*} ${c%/*}";; esac; "#;
 
-/// Variables naming what the sandbox hides (the session bus, the SSH and
-/// keyring agents) or folders outside it.
-pub(super) const UNSET: [&str; 13] = [
-    "DBUS_SESSION_BUS_ADDRESS",
-    "DBUS_SYSTEM_BUS_ADDRESS",
-    "SSH_AUTH_SOCK",
-    "SSH_AGENT_PID",
-    "GPG_AGENT_INFO",
-    "GNOME_KEYRING_CONTROL",
-    "SESSION_MANAGER",
-    "KRB5CCNAME",
-    "XDG_CONFIG_HOME",
-    "XDG_DATA_HOME",
-    "XDG_CACHE_HOME",
-    "XDG_STATE_HOME",
-    "TMPDIR",
-];
-
 fn q(s: &str) -> String {
     shlex::try_quote(s).map(|c| c.into_owned()).unwrap_or_else(|_| "''".into())
 }
 
-/// `["/bin/sh", "-c", <program>, NAME]`: the command to run follows.
-pub(super) fn prelude(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> Vec<String> {
-    vec!["/bin/sh".into(), "-c".into(), program(bwrap, sandbox, m), NAME.into()]
+/// `["/bin/sh", "-c", <program>, NAME]`: the command to run follows. `plan`:
+/// the command's own variables, which always pass (see [`pass`]).
+pub(super) fn prelude(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> Vec<String> {
+    vec!["/bin/sh".into(), "-c".into(), program(bwrap, sandbox, m, plan), NAME.into()]
 }
 
 /// How many of a wrapped command's arguments are the prelude's (`-c`, the
@@ -67,7 +52,7 @@ pub(super) fn starts_with_prelude(program: &str, args: &[String]) -> bool {
     program == "/bin/sh" && args.len() >= ARGS && args[0] == "-c" && args[ARGS - 1] == NAME
 }
 
-fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
+fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> String {
     let mut s = String::new();
     if !m.make.is_empty() {
         let dirs: Vec<String> = m.make.iter().map(|d| q(d)).collect();
@@ -88,6 +73,8 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
     }
     let mut a: Vec<String> = vec![q(&bwrap.path), "--unshare-user".into(), "--unshare-pid".into(), "--unshare-uts".into()];
     a.push("--unshare-cgroup-try".into());
+    // Nothing of the launcher's environment gets in but what `pass` hands over.
+    a.push("--clearenv".into());
     if !sandbox.network {
         a.push("--unshare-net".into());
     }
@@ -117,8 +104,11 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
         a.extend(["--ro-bind-try".into(), sock.into(), sock.into()]);
     }
     a.extend(["--setenv".into(), "XDG_RUNTIME_DIR".into(), "\"$r\"".into()]);
+    let mut set_here = vec!["XDG_RUNTIME_DIR"];
     if !m.home.is_empty() {
         a.extend(["--bind".into(), q(&m.private_home), q(&m.home)]);
+        a.extend(["--setenv".into(), "HOME".into(), q(&m.home)]);
+        set_here.push("HOME");
         // `k<n>`: the user's own path, else the folder in the home (looked
         // at when the program runs, see below).
         for (i, (var, _)) in SHADER_CACHES.iter().enumerate() {
@@ -136,11 +126,13 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts) -> String {
             (Access::ReadOnly, _) => a.extend(["--ro-bind-try".into(), src, dest]),
         }
     }
-    for var in UNSET {
-        a.extend(["--unsetenv".into(), var.into()]);
-    }
     a.extend(["--setenv".into(), super::ENV_INSIDE.into(), "1".into()]);
-    a.extend(["--".into(), "/bin/sh".into(), "-c".into(), q(WAIT_ALL), "sh".into(), "\"$@\"".into()]);
+    // The command goes last: `pass` appends the variables after its own
+    // arguments, then the program turns them around.
+    s += &pass::collect(plan.iter().flat_map(|e| e.keys().map(String::as_str)), &set_here, r#"--setenv "$y" "$z""#);
+    s += &format!("set -- \"$@\" -- /bin/sh -c {} sh; ", q(WAIT_ALL));
+    s += pass::ROTATE;
+    a.push("\"$@\"".into());
     s += "exec ";
     s += &a.join(" ");
     s
@@ -170,7 +162,7 @@ mod tests {
 
     #[test]
     fn the_program_is_one_line_that_runs_bwrap_with_the_command() {
-        let p = prelude(&bwrap(), &Sandbox { enabled: true, ..Default::default() }, &mounts());
+        let p = prelude(&bwrap(), &Sandbox { enabled: true, ..Default::default() }, &mounts(), None);
         assert_eq!(p[..2], ["/bin/sh", "-c"]);
         assert_eq!(p[3], NAME);
         let s = &p[2];
@@ -184,9 +176,11 @@ mod tests {
         assert!(s.contains("--overlay-src /home/u/.cache/winetricks --tmp-overlay /home/u/.cache/winetricks"));
         assert!(s.contains("--ro-bind-try '/home/u/Games/My Game' '/home/u/Games/My Game'"));
         assert!(s.contains("--bind '/home/u/Games/My Game/pfx' '/home/u/Games/My Game/pfx'"));
-        assert!(s.contains("--unsetenv DBUS_SESSION_BUS_ADDRESS"));
+        assert!(s.contains("--unshare-cgroup-try --clearenv --unshare-net --new-session"));
+        assert!(s.contains("--setenv HOME /home/u"));
+        assert!(!s.contains("--unsetenv"));
         assert!(s.contains("--dev /dev --dev-bind-try /dev/dri /dev/dri $v"));
-        assert!(s.ends_with(r#"sh "$@""#));
+        assert!(s.ends_with(r#" "$@""#));
         // Nothing of the network part.
         assert!(!s.contains("resolv.conf"));
     }
@@ -194,7 +188,7 @@ mod tests {
     #[test]
     fn exceptions_change_the_program() {
         let open = Sandbox { enabled: true, network: true, devices: true, ..Default::default() };
-        let s = &prelude(&bwrap(), &open, &mounts())[2];
+        let s = &prelude(&bwrap(), &open, &mounts(), None)[2];
         assert!(!s.contains("--unshare-net"));
         assert!(s.contains("readlink -f /etc/resolv.conf"));
         assert!(s.contains("--dev-bind /dev /dev"));
@@ -206,7 +200,7 @@ mod tests {
     fn the_program_is_valid_shell() {
         let open = Sandbox { enabled: true, network: true, ..Default::default() };
         for sb in [Sandbox { enabled: true, ..Default::default() }, open] {
-            let p = prelude(&bwrap(), &sb, &mounts());
+            let p = prelude(&bwrap(), &sb, &mounts(), None);
             let out = std::process::Command::new("/bin/sh").arg("-n").arg("-c").arg(&p[2]).output().unwrap();
             assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         }
@@ -224,6 +218,7 @@ mod tests {
         std::fs::write(&fake, "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n").unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
         let b = Bwrap { path: fake.to_string_lossy().into_owned(), ..bwrap() };
+        let plan = Env::from([("MY_GAME_OPTION".to_string(), "a b".to_string())]);
         let home = format!("{root}/home dir");
         let private = format!("{root}/private home");
         let m = Mounts {
@@ -232,7 +227,7 @@ mod tests {
             make: vec![private.clone(), format!("{private}/.cache/dxvk")],
             ..Default::default()
         };
-        let p = prelude(&b, &Sandbox { enabled: true, ..Default::default() }, &m);
+        let p = prelude(&b, &Sandbox { enabled: true, ..Default::default() }, &m, Some(&plan));
         let run = |extra: &[(&str, &str)]| {
             let out = std::process::Command::new(&p[0])
                 .args(&p[1..])
@@ -240,6 +235,11 @@ mod tests {
                 .env("XDG_RUNTIME_DIR", "/run/user/1000")
                 .env("WAYLAND_DISPLAY", "wayland-1")
                 .env_remove("DXVK_STATE_CACHE_PATH")
+                .env("GH_TOKEN", "ghp_secret")
+                .env("AWS_ACCESS_KEY_ID", "aws_secret")
+                .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+                .env("PROTON_LOG", "1")
+                .env("MY_GAME_OPTION", "a b")
                 .envs(extra.iter().copied())
                 .output()
                 .unwrap();
@@ -256,8 +256,49 @@ mod tests {
         assert!(has(&["--setenv", "VKD3D_SHADER_CACHE_PATH", &format!("{home}/.cache/vkd3d-proton")]));
         assert!(has(&["--setenv", super::super::ENV_INSIDE, "1"]));
         assert_eq!(args[args.len() - 6..], ["/bin/sh", "-c", WAIT_ALL, "sh", "/usr/bin/game", "an arg"]);
+        // Only what the game needs, and what its plan sets, is handed over.
+        assert!(has(&["--unshare-cgroup-try", "--clearenv"]), "{args:?}");
+        assert!(has(&["--setenv", "HOME", &home]));
+        assert!(has(&["--setenv", "PROTON_LOG", "1"]));
+        assert!(has(&["--setenv", "MY_GAME_OPTION", "a b"]));
+        assert!(has(&["--setenv", "WAYLAND_DISPLAY", "wayland-1"]));
+        for secret in ["GH_TOKEN", "ghp_secret", "AWS_ACCESS_KEY_ID", "aws_secret", "DBUS_SESSION_BUS_ADDRESS"] {
+            assert!(!args.iter().any(|a| a == secret), "{secret} reached the sandbox: {args:?}");
+        }
         // A cache folder the user set is kept.
         let args = run(&[("DXVK_STATE_CACHE_PATH", "/mine")]);
         assert!(args.windows(3).any(|a| a == ["--setenv", "DXVK_STATE_CACHE_PATH", "/mine"]), "{args:?}");
+    }
+
+    /// With the real bubblewrap, when it works here: `env` in the sandbox
+    /// shows the plan's variables and the session's, not the launcher's secrets.
+    #[test]
+    fn a_real_sandbox_gets_only_the_variables_it_needs() {
+        let Some(b) = crate::sandbox::detect().filter(|b| b.supported() && b.error.is_none()) else {
+            eprintln!("no working bubblewrap here: skipped");
+            return;
+        };
+        let plan = Env::from([("MY_GAME_OPTION".to_string(), "a b".to_string())]);
+        let p = prelude(&b, &Sandbox { enabled: true, ..Default::default() }, &Mounts::default(), Some(&plan));
+        let out = std::process::Command::new(&p[0])
+            .args(&p[1..])
+            .arg("/usr/bin/env")
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap())
+            .env("XDG_RUNTIME_DIR", "/run/user/1000")
+            .env("LANG", "C")
+            .env("MY_GAME_OPTION", "a b")
+            .env("PROTON_LOG", "1")
+            .env("GH_TOKEN", "ghp_secret")
+            .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let env = String::from_utf8_lossy(&out.stdout);
+        let vars: Vec<&str> = env.lines().collect();
+        for kept in ["LANG=C", "MY_GAME_OPTION=a b", "PROTON_LOG=1", "XDG_RUNTIME_DIR=/run/user/1000", "HERONITE_SANDBOX=1"] {
+            assert!(vars.contains(&kept), "{kept} missing: {vars:?}");
+        }
+        assert!(!env.contains("GH_TOKEN") && !env.contains("ghp_secret") && !env.contains("DBUS_SESSION"), "{vars:?}");
     }
 }
