@@ -87,7 +87,8 @@ pub enum Method {
 
 impl Method {
     fn detect() -> Result<Self, Unsupported> {
-        match Target::detect(std::env::var_os("APPIMAGE")) {
+        // Not `$APPIMAGE` as is: it may be another AppImage's, inherited.
+        match Target::detect(crate::system::own_exe::own_appimage().map(Into::into)) {
             Ok(t) => Ok(Method::AppImage(t)),
             Err(Unsupported::NotAppImage) => {
                 let exe = std::env::current_exe().map_err(|_| Unsupported::NotAppImage)?;

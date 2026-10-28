@@ -152,11 +152,6 @@ fn toggle_part(d: &mut SettingsPage, part: Part) {
     }
 }
 
-/// The running app's own binary: the AppImage when started from one.
-fn own_executable() -> Option<PathBuf> {
-    std::env::var_os("APPIMAGE").filter(|p| !p.is_empty()).map(PathBuf::from).or_else(|| std::env::current_exe().ok())
-}
-
 /// Checks the backup, backs up what is there now, then restarts into the restore.
 pub(super) fn restore(d: &mut SettingsPage, path: PathBuf, parts: Vec<Part>, cx: &mut Context<SettingsPage>) {
     let r = &mut d.backup.restore;
@@ -166,7 +161,7 @@ pub(super) fn restore(d: &mut SettingsPage, path: PathBuf, parts: Vec<Part>, cx:
         cx.notify();
         return;
     }
-    let Some(exe) = own_executable() else { return };
+    let Some(exe) = crate::system::own_exe::own_executable() else { return };
     r.busy = true;
     r.notice = Some((tr!("Checking the backup and backing up what you have now…").into(), false));
     cx.notify();
