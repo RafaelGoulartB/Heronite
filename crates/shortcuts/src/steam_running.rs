@@ -208,13 +208,9 @@ fn hand_to_steam(bin: &Path, url: &str) -> Result<()> {
 }
 
 fn hand_to_steam_within(bin: &Path, url: &str, timeout: Duration) -> Result<()> {
-    let mut child = Command::new(bin)
-        .arg(url)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .with_context(|| format!("running {}", bin.display()))?;
+    let mut cmd = Command::new(bin);
+    cmd.arg(url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    let mut child = heronite_data::proc::spawn(&mut cmd).with_context(|| format!("running {}", bin.display()))?;
     let started = Instant::now();
     loop {
         match child.try_wait() {
