@@ -151,7 +151,15 @@ pub fn install_into(
         return Err(match e {
             heronite_net::Error::Cancelled => InstallError::Aborted,
             _ if mismatch.get() => InstallError::Failed(tr!("Checksum verification failed").into()),
-            e => InstallError::Failed(tr!("Download of {version} failed with:\n {error}", version = info.version, error = e)),
+            e => {
+                let error = match e {
+                    heronite_net::Error::Truncated { got, total } => {
+                        tr!("connection closed after {downloaded} of {total} bytes", downloaded = got, total)
+                    }
+                    e => e.to_string(),
+                };
+                InstallError::Failed(tr!("Download of {version} failed with:\n {error}", version = info.version, error))
+            }
         });
     }
 
