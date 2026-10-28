@@ -13,8 +13,8 @@
 //! `sha1:`, `sha256:` or `sha512:`, `referer`).
 
 use std::fs;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::io::Read;
+use std::path::Path;
 use std::time::Duration;
 
 use heronite_i18n::tr;
@@ -200,21 +200,9 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-fn agent() -> &'static ureq::Agent {
-    use std::sync::OnceLock;
-    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT.get_or_init(|| {
-        ureq::Agent::config_builder()
-            .timeout_connect(Some(Duration::from_secs(20)))
-            .max_redirects(10)
-            .user_agent("Mozilla/5.0 (X11; Linux x86_64) heronite")
-            .build()
-            .into()
-    })
-}
-
 /// Downloads `url` into `dest`, through `dest.part` (renamed when complete).
-/// `progress(bytes, total)` is called as data arrives.
+/// `progress(bytes, total)` is called as data arrives. A connection that sends
+/// nothing for 30 s fails, and `cancel` stops it within a fraction of a second.
 pub fn download(
     url: &str,
     dest: &Path,
@@ -222,61 +210,97 @@ pub fn download(
     progress: &mut dyn FnMut(u64, Option<u64>),
     cancel: &dyn Fn() -> bool,
 ) -> Result<(), String> {
-    let mut req = agent().get(url);
-    if let Some(r) = referer {
-        req = req.header("Referer", r);
-    }
-    let mut resp = req.call().map_err(|e| match e {
-        ureq::Error::StatusCode(c) => tr!("The download of {url} failed (HTTP {code})", url, code = c),
-        e => tr!("The download of {url} failed: {error}", url, error = e),
-    })?;
-    let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).filter(|t| *t > 0);
-    if let Some(dir) = dest.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    }
-    let part = part_path(dest);
-    let mut file = fs::File::create(&part).map_err(|e| format!("{}: {e}", part.display()))?;
-    let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
-    let mut buf = vec![0u8; 256 * 1024];
-    let mut got = 0u64;
-    let result = (|| {
-        loop {
-            if cancel() {
-                return Err(crate::engine::CANCELLED.to_string());
-            }
-            let n = body.read(&mut buf).map_err(|e| tr!("The download of {url} failed: {error}", url, error = e))?;
-            if n == 0 {
-                break;
-            }
-            file.write_all(&buf[..n]).map_err(|e| format!("{}: {e}", part.display()))?;
-            got += n as u64;
-            progress(got, total);
+    use heronite_net::Error;
+    let headers = referer.map(|r| [("Referer", r)]);
+    let opts = heronite_net::Options {
+        user_agent: "Mozilla/5.0 (X11; Linux x86_64) heronite",
+        headers: headers.as_ref().map_or(&[], |h| h.as_slice()),
+        connect_timeout: Duration::from_secs(20),
+        max_redirects: 10,
+        on_progress: Some(progress),
+        ..Default::default()
+    };
+    heronite_net::download(url, dest, opts, cancel).map(|_| ()).map_err(|e| {
+        let url = heronite_net::redact_url(url);
+        match e {
+            Error::Cancelled => crate::engine::CANCELLED.to_string(),
+            Error::Http(code) => tr!("The download of {url} failed (HTTP {code})", url, code),
+            Error::Truncated { .. } => tr!("The download of {url} stopped before the end", url),
+            Error::Unreachable { detail, .. } => tr!("The download of {url} failed: {error}", url, error = detail),
+            e => tr!("The download of {url} failed: {error}", url, error = e),
         }
-        file.flush().map_err(|e| e.to_string())?;
-        if total.is_some_and(|t| got < t) {
-            return Err(tr!("The download of {url} stopped before the end", url));
-        }
-        Ok(())
-    })();
-    match result {
-        Ok(()) => fs::rename(&part, dest).map_err(|e| format!("{}: {e}", dest.display())),
-        Err(e) => {
-            let _ = fs::remove_file(&part);
-            Err(e)
-        }
-    }
-}
-
-fn part_path(dest: &Path) -> PathBuf {
-    let mut name = dest.file_name().map(|n| n.to_os_string()).unwrap_or_default();
-    name.push(".part");
-    dest.with_file_name(name)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::{TcpListener, TcpStream};
+
+    /// Answers one request: `reply` gets the connection after the request headers (lowercased) were read.
+    fn serve_once(reply: impl FnOnce(TcpStream, String) + Send + 'static) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/game.zip", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let Some(Ok(stream)) = listener.incoming().next() else { return };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut headers = String::new();
+            loop {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                    break;
+                }
+                headers.push_str(&line.to_ascii_lowercase());
+            }
+            reply(stream, headers);
+        });
+        url
+    }
+
+    #[test]
+    fn a_download_sends_its_user_agent_and_referer_and_keeps_the_file() {
+        let url = serve_once(|mut s, headers| {
+            let ok = headers.contains("referer: https://shop.example/page")
+                && headers.contains("user-agent: mozilla/5.0 (x11; linux x86_64) heronite");
+            let body: &[u8] = if ok { b"the game" } else { b"wrong headers" };
+            let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let _ = s.write_all(body);
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("game.zip");
+        let mut seen = Vec::new();
+        download(&url, &dest, Some("https://shop.example/page"), &mut |got, total| seen.push((got, total)), &|| false).unwrap();
+        assert_eq!(fs::read(&dest).unwrap(), b"the game");
+        assert_eq!(seen.last(), Some(&(8, Some(8))));
+        assert!(!dir.path().join("game.zip.part").exists());
+    }
+
+    #[test]
+    fn a_refused_download_names_the_url_without_its_query_and_the_status() {
+        let url = serve_once(|mut s, _| {
+            let _ = write!(s, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let err = download(&format!("{url}?token=secret"), &dir.path().join("f"), None, &mut |_, _| {}, &|| false).unwrap_err();
+        assert!(err.contains("404") && err.contains("/game.zip") && !err.contains("secret"), "{err}");
+    }
+
+    #[test]
+    fn a_cancel_while_the_server_is_silent_stops_the_download() {
+        let url = serve_once(|mut s, _| {
+            let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n0123456789");
+            std::thread::sleep(Duration::from_secs(4));
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let started = std::time::Instant::now();
+        let err =
+            download(&url, &dir.path().join("f"), None, &mut |_, _| {}, &|| started.elapsed() > Duration::from_millis(300)).unwrap_err();
+        assert_eq!(err, crate::engine::CANCELLED);
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
 
     #[test]
     fn sources() {
