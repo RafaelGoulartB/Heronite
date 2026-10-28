@@ -153,7 +153,6 @@
   "No install path found": "No se encontró la ruta de instalación",
   "No package manager found": "No se encontró ningún gestor de paquetes",
   "No path provided.": "No se indicó ninguna ruta.",
-  "{tool} took longer than {minutes} min and was stopped": "{tool} tardó más de {minutes} min y se detuvo",
   "No {kind} release found: refresh the list": "No se encontró ninguna versión de {kind}: actualiza la lista",
   "Not authorized (is a polkit agent running?)": "Sin autorización (¿hay un agente de polkit en ejecución?)",
   "Not while installing": "No durante la instalación",

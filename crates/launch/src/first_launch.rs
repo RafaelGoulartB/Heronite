@@ -470,16 +470,7 @@ mod tests {
             let seen = Mutex::new(Vec::new());
             let sink = |n: Notice| seen.lock().unwrap().push(n);
             let net = FakeNet::offline();
-            let prep = Prep {
-                paths: &self.paths,
-                probe,
-                net: &net,
-                spawner: &self.spawner,
-                cloud: None,
-                cancel: &|| false,
-                notify: &sink,
-                download_failed: Default::default(),
-            };
+            let prep = Prep { paths: &self.paths, probe, net: &net, spawner: &self.spawner, cloud: None, cancel: &|| false, notify: &sink };
             let flow = prep.first_launch(spec, epic, store);
             let notices = seen.into_inner().unwrap();
             (flow, notices)
@@ -662,16 +653,7 @@ mod tests {
         let net = FakeNet::offline();
         let sink = |_: Notice| {};
         let p = probe(&fx);
-        let prep = Prep {
-            paths: &fx.paths,
-            probe: &p,
-            net: &net,
-            spawner: &fx.spawner,
-            cloud: None,
-            cancel: &|| true,
-            notify: &sink,
-            download_failed: Default::default(),
-        };
+        let prep = Prep { paths: &fx.paths, probe: &p, net: &net, spawner: &fx.spawner, cloud: None, cancel: &|| true, notify: &sink };
         assert_eq!(prep.first_launch(&spec, None, None), Flow::Cancelled);
         assert!(!fx.spawned().iter().any(|c| c.program.ends_with("/winetricks")));
         assert!(!is_recorded(&fx.prefix, "Calluna"), "an interrupted setup must be retried");
@@ -703,16 +685,7 @@ mod tests {
         let p = probe(&fx);
         let net = FakeNet::offline();
         let sink = |_: Notice| {};
-        let prep = Prep {
-            paths: &fx.paths,
-            probe: &p,
-            net: &net,
-            spawner: &peek,
-            cloud: None,
-            cancel: &|| false,
-            notify: &sink,
-            download_failed: Default::default(),
-        };
+        let prep = Prep { paths: &fx.paths, probe: &p, net: &net, spawner: &peek, cloud: None, cancel: &|| false, notify: &sink };
         assert_eq!(prep.first_launch(&spec, None, None), Flow::Go);
         let seen = peek.seen.into_inner().unwrap();
         assert!(seen.len() >= 3 && seen.iter().all(|recorded| !recorded), "{seen:?}");

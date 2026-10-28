@@ -153,7 +153,6 @@
   "No install path found": "Kein Installationspfad gefunden",
   "No package manager found": "Kein Paketmanager gefunden",
   "No path provided.": "Kein Pfad angegeben.",
-  "{tool} took longer than {minutes} min and was stopped": "{tool} brauchte länger als {minutes} Min. und wurde beendet",
   "No {kind} release found: refresh the list": "Keine {kind}-Version gefunden: Aktualisiere die Liste",
   "Not authorized (is a polkit agent running?)": "Nicht autorisiert (läuft ein Polkit-Agent?)",
   "Not while installing": "Nicht während der Installation",

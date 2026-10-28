@@ -251,7 +251,7 @@ pub fn add_shortcuts(data_paths: &DataPaths, runner: &str, app_name: &str) -> Ou
 pub fn remove_shortcuts(data_paths: &DataPaths, runner: &str, app_name: &str) -> Outcome {
     let mut out = Outcome::default();
     match find_game(data_paths, runner, app_name) {
-        Ok((_, game)) => match desktop::remove(&Roots::detect(), &game_id(&game)) {
+        Ok((_, game)) => match desktop::remove(&Roots::detect(), &game.title) {
             Ok(_) => out.ok(tr!("Shortcuts were removed from Desktop and Start Menu")),
             Err(e) => out.err(tr!("Could not remove the shortcuts of {title}: {error}", title = game.title, error = format!("{e:#}"))),
         },
@@ -262,7 +262,7 @@ pub fn remove_shortcuts(data_paths: &DataPaths, runner: &str, app_name: &str) ->
 
 /// `shortcutsExists`: for the menu label.
 pub fn shortcuts_exist(data_paths: &DataPaths, runner: &str, app_name: &str) -> bool {
-    find_game(data_paths, runner, app_name).map(|(_, g)| desktop::exists(&Roots::detect(), &game_id(&g))).unwrap_or(false)
+    find_game(data_paths, runner, app_name).map(|(_, g)| desktop::exists(&Roots::detect(), &g.title)).unwrap_or(false)
 }
 
 fn last_play_secs(game: &CollectionGame) -> Option<u32> {

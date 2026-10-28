@@ -94,10 +94,6 @@ pub(super) enum Tracked {
         cloud_saves: Option<CloudSaves>,
         #[serde(default)]
         keep_awake: bool,
-        /// The cloud saves were not downloaded before the game started, so
-        /// they are not uploaded when it ends (see [`Prep::download_failed`]).
-        #[serde(default)]
-        cloud_download_failed: bool,
     },
     /// A Steam game: the pids Steam's logs named, with their start ticks.
     #[serde(rename_all = "camelCase")]
@@ -176,7 +172,7 @@ pub(super) fn remember(shared: &Shared, control: &Control, req: &LaunchRequest, 
 }
 
 /// What a process plan's session writes down (see [`remember`]).
-pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::ProcessPlan, cloud_download_failed: bool) -> Option<Tracked> {
+pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::ProcessPlan) -> Option<Tracked> {
     Some(Tracked::Process {
         pid,
         start_ticks: shared.procs.start_ticks(pid)?,
@@ -185,7 +181,6 @@ pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::Proce
         after_script: plan.after_script.clone(),
         cloud_saves: plan.prep.cloud_saves.clone(),
         keep_awake: plan.keep_awake.is_some(),
-        cloud_download_failed,
     })
 }
 
@@ -328,7 +323,7 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
     let log = GameLog::continuing(path, disabled_globally || !verbose);
     log.info("The app was restarted; following the game again");
     match &entry.tracked {
-        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, cloud_download_failed, .. } => {
+        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, .. } => {
             let services = shared.services.lock().unwrap().clone();
             let status = |n: Notice| {
                 if n.warning {
@@ -367,7 +362,6 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
                     cloud: services.cloud.as_deref(),
                     cancel: &never,
                     notify: &status,
-                    download_failed: std::cell::Cell::new(*cloud_download_failed),
                 };
                 prep.after_exit(&entry.app_name, &PrepSpec { cloud_saves: cloud_saves.clone(), ..Default::default() });
             }

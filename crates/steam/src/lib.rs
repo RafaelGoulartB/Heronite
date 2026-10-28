@@ -23,10 +23,9 @@ pub mod wrap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use heronite_data::steam_process;
 use heronite_i18n::tr;
 use heronite_launch::steam::{desktop_protocol_env, flatpak_steam_root, SteamLocator};
-use heronite_shortcuts::steam::enable_client_api_on_next_start;
+use heronite_shortcuts::steam::{enable_client_api_on_next_start, is_steam_running};
 use heronite_shortcuts::steam_client::{webhelper, SteamClient};
 
 /// A compatibility tool as Steam names it: `name` is what it stores
@@ -176,8 +175,20 @@ impl Steam {
         &self.locator.steam_path
     }
 
+    /// Steam's pid file sits next to `~/.steam/steam`, wherever the
+    /// configured folder points.
     fn running(&self) -> bool {
-        steam_process::is_running_here(&self.locator.home, self.root())
+        self.pid_dirs().iter().any(|dir| is_steam_running(dir))
+    }
+
+    fn pid_dirs(&self) -> [PathBuf; 4] {
+        let home = &self.locator.home;
+        [
+            self.root().to_path_buf(),
+            home.join(".steam/steam"),
+            home.join(".var/app/com.valvesoftware.Steam/.steam/steam"),
+            home.join("snap/steam/common/.steam/steam"),
+        ]
     }
 
     /// Turns the debugging interface on for the next start of every Steam
@@ -262,8 +273,10 @@ impl Steam {
 
     /// When the running Steam started: the time of its pid file.
     fn started_at(&self) -> Option<SystemTime> {
-        let file = steam_process::live_pid_file(&steam_process::ProcFs::system(), &self.locator.home, self.root())?;
-        std::fs::metadata(file).and_then(|m| m.modified()).ok()
+        self.pid_dirs().iter().filter(|dir| is_steam_running(dir)).find_map(|dir| {
+            let files = [dir.parent().map(|p| p.join("steam.pid")), Some(dir.join("steam.pid"))];
+            files.into_iter().flatten().filter_map(|f| std::fs::metadata(f).and_then(|m| m.modified()).ok()).max()
+        })
     }
 
     /// Whether Steam runs, and whether its client answers (Heronite can
