@@ -35,7 +35,7 @@ const DEVICES: &str = r#"v=; for f in /dev/nvidia*; do [ -e "$f" ] && v="$v --de
 /// into `/run` (systemd-resolved, NetworkManager).
 const RESOLVER: &str = r#"n=; c=$(readlink -f /etc/resolv.conf); case $c in /run/*) n="--ro-bind-try ${c%/*} ${c%/*}";; esac; "#;
 
-fn q(s: &str) -> String {
+pub(super) fn q(s: &str) -> String {
     shlex::try_quote(s).map(|c| c.into_owned()).unwrap_or_else(|_| "''".into())
 }
 
