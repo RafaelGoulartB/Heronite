@@ -161,7 +161,7 @@ fn get_installer(paths: &DataPaths, client: Client, cancel: &Cancel, on_step: &m
     let (file, url) = match client {
         Client::Ea | Client::Ubisoft => {
             let provider = if client == Client::Ea { Provider::Ea } else { Provider::Ubisoft };
-            if !third_party::redist_dir(paths).join(provider.installer_file()).is_file() {
+            if !third_party::has_valid_installer(&third_party::redist_dir(paths).join(provider.installer_file())) {
                 progress(0.0);
             }
             return third_party::ensure_installer(paths, provider, cancel, &mut |p| progress(p.percent)).map_err(failed);
@@ -171,7 +171,7 @@ fn get_installer(paths: &DataPaths, client: Client, cancel: &Cancel, on_step: &m
     };
     let dir = paths.tools_dir().join("redist").join("clients");
     let dest = dir.join(file);
-    if dest.is_file() {
+    if third_party::has_valid_installer(&dest) {
         return Ok(dest);
     }
     std::fs::create_dir_all(&dir).with_context(|| dir.display().to_string())?;
@@ -283,6 +283,11 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     const HOME: &str = "/home/tester";
+
+    /// Enough of a Windows program for a cached installer to be reused.
+    fn fake_installer() -> Vec<u8> {
+        [b"MZ".as_slice(), &[0u8; 70_000]].concat()
+    }
 
     fn paths() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
@@ -447,7 +452,7 @@ esac
         // The installer is already downloaded.
         let installer = paths.tools_dir().join("redist/clients/Battle.net-Setup.exe");
         std::fs::create_dir_all(installer.parent().unwrap()).unwrap();
-        std::fs::write(&installer, "MZ").unwrap();
+        std::fs::write(&installer, fake_installer()).unwrap();
 
         let mut steps = Vec::new();
         install(&paths, Client::BattleNet, &home, &Cancel::new(), &mut |s| steps.push(s)).unwrap();
@@ -483,7 +488,7 @@ esac
         run_proton_directly(&paths, Client::Rockstar);
         let installer = paths.tools_dir().join("redist/clients/Rockstar-Games-Launcher.exe");
         std::fs::create_dir_all(installer.parent().unwrap()).unwrap();
-        std::fs::write(&installer, "MZ").unwrap();
+        std::fs::write(&installer, fake_installer()).unwrap();
 
         let err = install(&paths, Client::Rockstar, &home, &Cancel::new(), &mut |_| {}).unwrap_err();
         assert!(err.to_string().starts_with("Rockstar Games Launcher was not installed. The installer's log is in "), "{err}");
