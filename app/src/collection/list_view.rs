@@ -75,7 +75,7 @@ impl CollectionView {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
                 let pick = self.group_pick(&gid, cx);
-                let header = list::group_header(g).children(pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
+                let header = list::group_header(g, pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
                     cx.listener(move |this, _, _, cx| {
                         this.ui.toggle_group(&gid);
                         this.save_ui();
@@ -303,7 +303,7 @@ impl CollectionView {
                 .pl(px(m.pad_l))
                 .pr(px(m.pad_r))
                 .child(if rows { list::stuck_scrim_rows() } else { list::stuck_scrim(grid) })
-                .child(list::group_header(&self.groups[g]).children(pick))
+                .child(list::group_header(&self.groups[g], pick))
         });
         div()
             .relative()

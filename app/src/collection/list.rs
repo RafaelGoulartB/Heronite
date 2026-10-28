@@ -4,11 +4,14 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::vm::GroupVm;
+use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-/// `.collection__groupToggle`: 13px/600, .78 white, 7px dot, count pill.
-pub(super) fn group_header(g: &GroupVm) -> Div {
+/// `.collection__groupToggle`: 13px/600, .78 white, 7px dot, count pill;
+/// then `extra` (the "Select group" chip) and, while the group is folded, a
+/// chevron at the end of the line saying it opens.
+pub(super) fn group_header(g: &GroupVm, extra: Option<impl IntoElement>) -> Div {
     div()
         .relative()
         .flex()
@@ -37,6 +40,8 @@ pub(super) fn group_header(g: &GroupVm) -> Div {
                 .text_color(theme::ink_a(0.8))
                 .child(g.cards.len().to_string()),
         )
+        .children(extra)
+        .when(g.collapsed, |d| d.child(div().flex_1()).child(icon(Icon::ExpandMore, px(18.), theme::ink_a(0.55))))
 }
 
 /// `.is-stuck::before`: the shade behind the pinned header, across the whole
