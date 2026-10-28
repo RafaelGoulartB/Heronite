@@ -99,6 +99,7 @@
   "The parameters of {directive} must be a map": "Die Parameter von {directive} müssen eine Map sein",
   "The program that starts the game was not found: {path}. Pick the right one in Edit game.": "Das Programm, das das Spiel startet, wurde nicht gefunden: {path}. Wähle das richtige unter Spiel bearbeiten.",
   "The script asks questions while it installs.": "Das Skript stellt während der Installation Fragen.",
+  "The script cannot change {path}: it is outside the game's folder": "Das Skript darf {path} nicht ändern: es liegt außerhalb des Spielordners",
   "The script could not be read: {error}": "Das Skript konnte nicht gelesen werden: {error}",
   "The script does not give the game's address": "Das Skript gibt die Adresse des Spiels nicht an",
   "The script does not say which RetroArch core to use": "Das Skript gibt nicht an, welcher RetroArch-Core verwendet werden soll",

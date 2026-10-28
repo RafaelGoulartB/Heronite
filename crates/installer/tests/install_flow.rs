@@ -248,3 +248,44 @@ script:
     assert_eq!(fs::read_to_string(job.game_dir.join("side.txt")).unwrap(), "r", "earlier answers are kept");
     assert!(again.questions.lock().unwrap().is_empty());
 }
+
+fn file_step_script(step: &str) -> String {
+    format!("name: Files\nrunner: linux\nscript:\n  game: {{exe: a.sh}}\n  installer:\n{step}")
+}
+
+#[test]
+fn a_step_cannot_write_outside_the_game_folder() {
+    let s = setup();
+    let outside = s.root.join("escaped.txt");
+    let absolute = format!("  - write_file:\n      file: {}\n      content: x\n", outside.display());
+    let dotdot = "  - write_file:\n      file: $GAMEDIR/../../escaped.txt\n      content: x\n";
+    let relative = "  - write_json:\n      file: ../../escaped.txt\n      data: {a: 1}\n";
+    for step in [absolute.as_str(), dotdot, relative] {
+        let job = job(&s.root, &file_step_script(step));
+        let f = install(&job, &FakeHost::default()).unwrap_err();
+        assert!(f.message.contains("outside the game's folder"), "{}", f.message);
+        assert!(!outside.exists(), "{step}");
+    }
+}
+
+#[test]
+fn a_step_cannot_take_a_file_from_outside_the_game_folder() {
+    let s = setup();
+    let keep = s.root.join("home/keep.txt");
+    fs::write(&keep, "mine").unwrap();
+    let step = format!("  - move:\n      src: {}\n      dst: $GAMEDIR/keep.txt\n", keep.display());
+    let job = job(&s.root, &file_step_script(&step));
+    let f = install(&job, &FakeHost::default()).unwrap_err();
+    assert!(f.message.contains("outside the game's folder"), "{}", f.message);
+    assert_eq!(fs::read_to_string(&keep).unwrap(), "mine");
+}
+
+#[test]
+fn steps_write_inside_the_game_and_downloads_folders() {
+    let s = setup();
+    let step = "  - write_file:\n      file: $GAMEDIR/sub/../a.txt\n      content: one\n  - write_file:\n      file: docs/b.txt\n      content: two\n  - mkdir: $CACHE/work\n";
+    let job = job(&s.root, &file_step_script(step));
+    install(&job, &FakeHost::default()).unwrap_or_else(|f| panic!("{}", f.message));
+    assert_eq!(fs::read_to_string(job.game_dir.join("a.txt")).unwrap(), "one");
+    assert_eq!(fs::read_to_string(job.game_dir.join("docs/b.txt")).unwrap(), "two");
+}

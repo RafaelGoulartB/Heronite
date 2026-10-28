@@ -172,6 +172,9 @@ pub(crate) struct State<'a> {
     pub files: HashMap<String, PathBuf>,
     pub plan: PlanContext,
     pub notes: Vec<String>,
+    /// Files that stay where they are (picked by the user, or local to the
+    /// script): steps copy them instead of moving or changing them.
+    external: Vec<PathBuf>,
     accepted: Option<i32>,
     failed_step: Option<usize>,
     answers: Vec<(String, String)>,
@@ -191,6 +194,7 @@ impl<'a> State<'a> {
             files: HashMap::new(),
             plan: PlanContext::load(&job.paths),
             notes: Vec::new(),
+            external: Vec::new(),
             accepted: None,
             failed_step: None,
             answers,
@@ -227,6 +231,37 @@ impl<'a> State<'a> {
         } else {
             self.job.game_dir.join(p)
         }
+    }
+
+    /// [`State::path`] for a place a step writes to, creates or changes. The
+    /// script is untrusted, so it must end up inside the game's folder or the
+    /// install's downloads folder: `..` is resolved without touching the disk
+    /// and an absolute path elsewhere (`~/.bashrc`) is an error. The Wine
+    /// prefix is covered when it is inside the game's folder.
+    pub fn dest(&self, s: &str) -> Result<PathBuf, String> {
+        let p = fsops::normalize(&self.path(s));
+        let roots = [fsops::normalize(&self.job.game_dir), fsops::normalize(&self.job.cache_dir())];
+        if roots.iter().any(|r| p.starts_with(r)) {
+            Ok(p)
+        } else {
+            Err(tr!("The script cannot change {path}: it is outside the game's folder", path = p.display()))
+        }
+    }
+
+    /// [`State::dest`] with the case of existing folders fixed.
+    pub fn existing_dest(&self, s: &str) -> Result<PathBuf, String> {
+        self.dest(s).map(|p| fsops::fix_case(&p))
+    }
+
+    /// [`State::existing_dest`], except a file that stays where it is
+    /// (see [`State::external`]) may be anywhere: for steps that take it
+    /// from there by copying, or only read it.
+    fn existing_source(&self, s: &str) -> Result<PathBuf, String> {
+        let p = self.path(s);
+        if self.external.contains(&p) {
+            return Ok(fsops::fix_case(&p));
+        }
+        self.existing_dest(s)
     }
 
     /// [`State::path`] with the case of existing folders fixed.
@@ -306,7 +341,10 @@ impl<'a> State<'a> {
                 return Err(CANCELLED.into());
             }
             let path = match (&spec.source, job.provided.get(&spec.id)) {
-                (_, Some(p)) => p.clone(),
+                (_, Some(p)) => {
+                    self.external.push(p.clone());
+                    p.clone()
+                }
                 (Source::Ask(_), None) => return Err(tr!("No file was selected for \"{file}\"", file = spec.prompt())),
                 (Source::Unsupported(raw), None) => return Err(tr!("The file {raw} cannot be downloaded here", raw)),
                 (Source::Local(raw), None) => {
@@ -316,6 +354,7 @@ impl<'a> State<'a> {
                     if !p.exists() {
                         return Err(tr!("{path} does not exist", path = p.display()));
                     }
+                    self.external.push(p.clone());
                     p
                 }
                 (Source::Url(url), None) => self.download(spec, url, i, total)?,
@@ -365,14 +404,17 @@ impl<'a> State<'a> {
 
     fn run_step(&mut self, step: &Step) -> Result<(), String> {
         match &step.action {
-            Action::Chmodx(f) => fsops::make_executable(&self.existing_path(f)),
+            Action::Chmodx(f) => fsops::make_executable(&self.existing_source(f)?),
             Action::Mkdir(d) => {
-                let p = self.path(d);
+                let p = self.dest(d)?;
                 std::fs::create_dir_all(&p).map_err(|e| format!("{}: {e}", p.display()))
             }
             Action::Execute(e) => self.execute(e),
             Action::Extract(x) => {
-                let dst = x.dst.as_deref().map(|d| self.path(d)).unwrap_or_else(|| self.job.game_dir.clone());
+                let dst = match x.dst.as_deref() {
+                    Some(d) => self.dest(d)?,
+                    None => self.job.game_dir.clone(),
+                };
                 let format = x.format.as_deref().and_then(archive::named);
                 for file in self.matching(&x.file)? {
                     self.progress(None, tr!("Extracting {file}", file = crate::steps::short(&file.to_string_lossy())));
@@ -400,31 +442,31 @@ impl<'a> State<'a> {
             }
             Action::InsertDisc { requires, message } => self.insert_disc(requires, message.as_deref()),
             Action::Merge { src, dst, optional, remove_source } => {
-                let from = self.existing_path(src);
+                let to = self.dest(dst)?;
+                let from = if *remove_source { self.existing_source(src)? } else { self.existing_path(src) };
                 if !from.exists() {
                     return if *optional { Ok(()) } else { Err(tr!("{path} does not exist", path = from.display())) };
                 }
-                let to = self.path(dst);
                 let copied = fsops::merge(&from, &to)?;
                 self.relink(src, copied);
-                if *remove_source && from.is_dir() {
+                if *remove_source && from.is_dir() && !self.picked(&from) {
                     let _ = std::fs::remove_dir_all(&from);
                 }
                 Ok(())
             }
             Action::Move { src, dst, optional } => {
-                let from = self.existing_path(src);
+                let to = self.dest(dst)?;
+                let from = self.existing_source(src)?;
                 if !from.exists() {
                     return if *optional { Ok(()) } else { Err(tr!("{path} does not exist", path = from.display())) };
                 }
-                let target =
-                    if self.picked(&from) { fsops::copy_into(&from, &self.path(dst))? } else { fsops::move_into(&from, &self.path(dst))? };
+                let target = if self.picked(&from) { fsops::copy_into(&from, &to)? } else { fsops::move_into(&from, &to)? };
                 self.relink(src, Some(target));
                 Ok(())
             }
             Action::Rename { src, dst } => {
-                let from = self.existing_path(src);
-                let to = self.path(dst);
+                let from = self.existing_source(src)?;
+                let to = self.dest(dst)?;
                 if self.picked(&from) {
                     if to.exists() {
                         return Err(tr!("Cannot rename to {path}: it already exists", path = to.display()));
@@ -437,16 +479,16 @@ impl<'a> State<'a> {
                 Ok(())
             }
             Action::SubstituteVars(f) => {
-                let p = self.existing_path(f);
+                let p = self.existing_dest(f)?;
                 let text = std::fs::read_to_string(&p).map_err(|e| format!("{}: {e}", p.display()))?;
                 fsops::write_text(&p, &self.sub(&text), false)
             }
-            Action::WriteFile { file, content, append } => fsops::write_text(&self.path(file), &self.sub(content), *append),
-            Action::WriteJson { file, data, merge } => fsops::write_json(&self.path(file), data, *merge),
+            Action::WriteFile { file, content, append } => fsops::write_text(&self.dest(file)?, &self.sub(content), *append),
+            Action::WriteJson { file, data, merge } => fsops::write_json(&self.dest(file)?, data, *merge),
             Action::WriteConfig { file, data, merge } => {
                 let data: Vec<(String, Vec<(String, String)>)> =
                     data.iter().map(|(s, keys)| (s.clone(), keys.iter().map(|(k, v)| (k.clone(), self.sub(v))).collect())).collect();
-                fsops::write_ini(&self.path(file), &data, *merge)
+                fsops::write_ini(&self.dest(file)?, &data, *merge)
             }
             Action::Task(t) => self.run_task(t),
             Action::InstallOrExtract(f) => {
@@ -460,7 +502,7 @@ impl<'a> State<'a> {
             }
             Action::ExtractOrRun { file, dst, merge_dst } => {
                 let src = self.existing_path(file);
-                let out = self.path(dst.as_deref().unwrap_or("$CACHE"));
+                let out = self.dest(dst.as_deref().unwrap_or("$CACHE"))?;
                 {
                     let (cancel, log) = self.io_parts();
                     archive::extract(&src, &out, None, true, &Io { cancel: &cancel, log: &log })?;
@@ -473,7 +515,7 @@ impl<'a> State<'a> {
                 if let Some(exe) = setup {
                     return self.wine_exec(&exe, "", None, None, &[]);
                 }
-                let target = self.path(merge_dst.as_deref().or(dst.as_deref()).unwrap_or("$GAMEDIR"));
+                let target = self.dest(merge_dst.as_deref().or(dst.as_deref()).unwrap_or("$GAMEDIR"))?;
                 if target != out {
                     fsops::merge(&out, &target)?;
                 }
@@ -483,10 +525,10 @@ impl<'a> State<'a> {
         }
     }
 
-    /// A file the user picked (moving it would take it from where they keep
-    /// it; it is copied instead).
+    /// A file that stays where it is (moving it would take it from where the
+    /// user keeps it; it is copied instead).
     fn picked(&self, path: &Path) -> bool {
-        self.job.provided.values().any(|p| p == path)
+        self.external.iter().any(|p| p == path)
     }
 
     /// After a file id's file moved: steps after this one find it there.
