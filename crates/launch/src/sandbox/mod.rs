@@ -19,7 +19,9 @@
 //! before Proton / the game (umu does not run inside, see [`without_umu`]).
 //! Inside, the command runs in its own pid
 //! namespace (otherwise `/proc/<pid>/root` of any process of the user shows
-//! the real files), and the sandbox lasts until its last process exits.
+//! the real files) and its own IPC namespace (the host's SysV segments and
+//! message queues are not there), and the sandbox lasts until its last
+//! process exits.
 //!
 //! Programs started while the game runs (programs alongside the game, Wine
 //! tools) join its sandbox with `nsenter` ([`join`]) so they share its

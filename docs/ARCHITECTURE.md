@@ -146,7 +146,7 @@ device when the last window closes (the app lives on in the tray); see its
   downloads under a throwaway overlay), `script` builds the
   `sh -c` program that creates the folders, looks up what depends on the
   session (Wayland / X11 / PipeWire sockets, the controllers plugged in,
-  NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS and
+  NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS, IPC and
   network namespaces and a private home (`<data>/sandbox/<prefix or game>`,
   `DataPaths::sandbox_home_of_*`) and an empty environment (`--clearenv`):
   `pass` hands over the variables of the launch plan and an allowlist of

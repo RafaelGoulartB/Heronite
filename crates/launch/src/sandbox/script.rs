@@ -72,6 +72,10 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
         }
     }
     let mut a: Vec<String> = vec![q(&bwrap.path), "--unshare-user".into(), "--unshare-pid".into(), "--unshare-uts".into()];
+    // Its own SysV shared memory and message queues: the host's, and what
+    // other programs keep in them, are out of reach. (POSIX shared memory is
+    // the sandbox's own `/dev/shm`, unless the devices exception shows `/dev`.)
+    a.push("--unshare-ipc".into());
     a.push("--unshare-cgroup-try".into());
     // Nothing of the launcher's environment gets in but what `pass` hands over.
     a.push("--clearenv".into());
@@ -127,6 +131,12 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
         }
     }
     a.extend(["--setenv".into(), super::ENV_INSIDE.into(), "1".into()]);
+    // The X server cannot attach shared memory of another IPC namespace
+    // (MIT-SHM): clients send images through the socket instead, as Flatpak's
+    // do.
+    for var in ["_X11_NO_MITSHM", "QT_X11_NO_MITSHM"] {
+        a.extend(["--setenv".into(), var.into(), "1".into()]);
+    }
     // The command goes last: `pass` appends the variables after its own
     // arguments, then the program turns them around.
     s += &pass::collect(plan.iter().flat_map(|e| e.keys().map(String::as_str)), &set_here, r#"--setenv "$y" "$z""#);
@@ -176,7 +186,8 @@ mod tests {
         assert!(s.contains("--overlay-src /home/u/.cache/winetricks --tmp-overlay /home/u/.cache/winetricks"));
         assert!(s.contains("--ro-bind-try '/home/u/Games/My Game' '/home/u/Games/My Game'"));
         assert!(s.contains("--bind '/home/u/Games/My Game/pfx' '/home/u/Games/My Game/pfx'"));
-        assert!(s.contains("--unshare-cgroup-try --clearenv --unshare-net --new-session"));
+        assert!(s.contains("--unshare-uts --unshare-ipc --unshare-cgroup-try --clearenv --unshare-net --new-session"));
+        assert!(s.contains("--setenv QT_X11_NO_MITSHM 1"));
         assert!(s.contains("--setenv HOME /home/u"));
         assert!(!s.contains("--unsetenv"));
         assert!(s.contains("--dev /dev --dev-bind-try /dev/dri /dev/dri $v"));
@@ -258,6 +269,7 @@ mod tests {
         assert_eq!(args[args.len() - 6..], ["/bin/sh", "-c", WAIT_ALL, "sh", "/usr/bin/game", "an arg"]);
         // Only what the game needs, and what its plan sets, is handed over.
         assert!(has(&["--unshare-cgroup-try", "--clearenv"]), "{args:?}");
+        assert!(args.iter().any(|a| a == "--unshare-ipc"));
         assert!(has(&["--setenv", "HOME", &home]));
         assert!(has(&["--setenv", "PROTON_LOG", "1"]));
         assert!(has(&["--setenv", "MY_GAME_OPTION", "a b"]));
