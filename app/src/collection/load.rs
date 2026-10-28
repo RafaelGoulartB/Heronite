@@ -187,7 +187,16 @@ impl CollectionView {
             self.fill_metadata_now(cx);
         }
         self.refresh_groups();
-        self.prune_selection();
+        self.prune_selection(cx);
+        // A menu on a game that is gone draws nothing but would keep the keys.
+        let lib = self.lib.clone();
+        if self
+            .context_menu
+            .as_ref()
+            .is_some_and(|m| lib.as_ref().is_none_or(|l| l.get(&m.key).is_none()) || (m.batch && !self.sel.active()))
+        {
+            self.context_menu = None;
+        }
         let focused = if first {
             crate::env::value("HERONITE_DEBUG_SELECT").or_else(|| self.ui.focused_game.clone())
         } else {

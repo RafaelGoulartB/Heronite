@@ -25,6 +25,7 @@ mod header;
 mod html;
 mod install_options;
 mod journal;
+mod keys;
 mod launch_options;
 mod launch_problem;
 mod launch_progress;
@@ -476,7 +477,12 @@ impl CollectionView {
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.shots_key(ev, cx) || self.selection_key(ev, window, cx) || self.grid_key(ev, window, cx) {
+        if self.shots_key(ev, cx)
+            || self.search_key(ev, window, cx)
+            || self.selection_key(ev, window, cx)
+            || self.list_key(ev, window)
+            || self.grid_key(ev, window, cx)
+        {
             cx.notify();
             return;
         }
@@ -601,6 +607,10 @@ impl CollectionView {
             .id("collection")
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| this.on_key_down(ev, window, cx)))
+            // Before the search field's own Esc, ↓ and Enter (`keys.rs`).
+            .capture_action(cx.listener(Self::search_escape))
+            .capture_action(cx.listener(Self::search_down))
+            .capture_action(cx.listener(Self::search_enter))
             // Capture phase: runs before children, so a clicked input (search,
             // dialog fields) takes focus right after; clicks elsewhere blur it.
             .capture_any_mouse_down(cx.listener(|this, _, window, cx| {

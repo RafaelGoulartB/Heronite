@@ -478,5 +478,6 @@
   "Review": "Prüfen",
   "{n} game is in your Collection twice.": "{n} Spiel ist doppelt in deiner Sammlung.",
   "{n} games are in your Collection twice.": "{n} Spiele sind doppelt in deiner Sammlung.",
-  "{title} is in your Collection twice: added by you and from {launcher}.": "{title} ist doppelt in deiner Sammlung: von dir hinzugefügt und aus {launcher}."
+  "{title} is in your Collection twice: added by you and from {launcher}.": "{title} ist doppelt in deiner Sammlung: von dir hinzugefügt und aus {launcher}.",
+  "Undoing as soon as the library has reloaded…": "Wird rückgängig gemacht, sobald die Bibliothek neu geladen ist…"
 }

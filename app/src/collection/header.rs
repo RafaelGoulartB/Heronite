@@ -274,6 +274,8 @@ impl CollectionView {
                     .text_color(theme::ink_a(0.92))
                     .child(Input::new(&self.search_input).appearance(false)),
             )
+            // `/` or Ctrl F from the list (`keys.rs`).
+            .when(!focused && !has_text, |d| d.child(crate::ui::controls::kbd("/")))
             .when(has_text, |d| {
                 d.child(
                     div()

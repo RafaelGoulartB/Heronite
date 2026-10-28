@@ -220,33 +220,13 @@ impl CollectionView {
         state
     }
 
-    /// Keys of the grid and the Focus list when nothing floats over them:
-    /// arrows move the selection, Enter plays an installed game (in the grid
-    /// it otherwise shows the drawer), Esc closes the drawer. Returns whether
-    /// the key was used.
+    /// Keys of the grid and the Focus list when nothing floats over them
+    /// (the moves are `keys.rs`'s): Enter plays an installed game (in the
+    /// grid it otherwise shows the drawer), Esc closes the drawer. Returns
+    /// whether the key was used.
     pub(super) fn grid_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let free = self.page == crate::pages::Page::Collection
-            && self.dialog.is_none()
-            && self.context_menu.is_none()
-            && self.open_menu.is_none()
-            && !self.palette_open()
-            && self.focus_handle.is_focused(window);
-        if !free || ev.keystroke.modifiers.modified() {
+        if !self.list_free() || !self.focus_handle.is_focused(window) || ev.keystroke.modifiers.modified() {
             return false;
-        }
-        let step = match ev.keystroke.key.as_str() {
-            "left" => Some((-1, 0)),
-            "right" => Some((1, 0)),
-            "up" => Some((0, -1)),
-            "down" => Some((0, 1)),
-            _ => None,
-        };
-        if let Some((dx, dy)) = step {
-            if let Some(key) = self.grid_neighbour(dx, dy) {
-                self.select(key, true);
-                self.reveal_selected();
-            }
-            return true;
         }
         match ev.keystroke.key.as_str() {
             "enter" => {
@@ -268,8 +248,10 @@ impl CollectionView {
 
     /// The card next to the selected one: `dx` walks the cards in order
     /// (wrapping to the next row), `dy` moves to the same column of the row
-    /// above or below. Nothing selected: the first card.
-    fn grid_neighbour(&self, dx: i32, dy: i32) -> Option<SharedString> {
+    /// `dy` rows above or below (a jump of several rows stops at the first or
+    /// last one). Nothing selected: the first card. The selected game in a
+    /// folded group: the nearest card after or before the group.
+    pub(super) fn grid_neighbour(&self, dx: i32, dy: i32) -> Option<SharedString> {
         let rows: Vec<(usize, usize)> = self
             .items
             .iter()
@@ -293,7 +275,12 @@ impl CollectionView {
             })
         });
         let Some((ri, col)) = here else {
-            return (!rows.is_empty()).then(|| card(0, 0));
+            let folded = self.selected.as_ref().and_then(|sel| self.groups.iter().position(|g| g.cards.iter().any(|c| &c.key == sel)));
+            return match folded {
+                Some(g) if dx > 0 || dy > 0 => rows.iter().position(|r| r.0 > g).map(|ri| card(ri, 0)),
+                Some(g) => rows.iter().rposition(|r| r.0 < g).map(|ri| card(ri, len(ri) - 1)),
+                None => (!rows.is_empty()).then(|| card(0, 0)),
+            };
         };
         let (ri, col) = if dx > 0 {
             if col + 1 < len(ri) {
@@ -312,8 +299,11 @@ impl CollectionView {
                 return None;
             }
         } else {
-            let next = ri as i32 + dy;
-            if next < 0 || next as usize >= rows.len() {
+            let mut next = ri as i32 + dy;
+            if dy.abs() > 1 {
+                next = next.clamp(0, rows.len() as i32 - 1);
+            }
+            if next < 0 || next as usize >= rows.len() || next as usize == ri {
                 return None;
             }
             let next = next as usize;
