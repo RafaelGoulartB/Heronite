@@ -25,6 +25,9 @@ pub enum Menu {
 }
 
 const CLOSE_DELAY: Duration = Duration::from_millis(180);
+/// Typing waits this long for the next key before the list is filtered:
+/// each filter re-sorts and re-groups every game.
+const SEARCH_SETTLE: Duration = Duration::from_millis(130);
 /// Hover intent: passing over a button on the way elsewhere opens nothing.
 const OPEN_DELAY: Duration = Duration::from_millis(140);
 
@@ -50,15 +53,33 @@ impl CollectionView {
         });
         cx.subscribe_in(&state, window, |this, state, _ev: &gpui_kit::component::input::InputEvent, _window, cx| {
             let value = state.read(cx).value().to_string();
-            if value != this.search {
-                this.search = value;
-                this.refresh_groups();
-                this.scroll_list_to_top();
-                cx.notify();
+            // The text shows at once; the list follows when typing settles.
+            // Emptying the box does not wait.
+            this.search_task = None;
+            if value.is_empty() {
+                this.apply_search(value, cx);
+            } else if value != this.search {
+                this.search_task = Some(cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(SEARCH_SETTLE).await;
+                    this.update(cx, |this, cx| {
+                        let value = this.search_input.read(cx).value().to_string();
+                        this.apply_search(value, cx);
+                    })
+                    .ok();
+                }));
             }
         })
         .detach();
         state
+    }
+
+    fn apply_search(&mut self, value: String, cx: &mut Context<Self>) {
+        if value != self.search {
+            self.search = value;
+            self.refresh_groups();
+            self.scroll_list_to_top();
+            cx.notify();
+        }
     }
 
     fn open_header_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
@@ -249,7 +270,7 @@ impl CollectionView {
     /// a clear button once something is typed.
     fn search_box(&self, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
         let focused = self.search_input.read(cx).focus_handle(cx).is_focused(window);
-        let has_text = !self.search.is_empty();
+        let has_text = !self.search_input.read(cx).value().is_empty();
         div()
             .id("hdr-search")
             .flex()
