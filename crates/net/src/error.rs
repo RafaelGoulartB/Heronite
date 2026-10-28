@@ -24,8 +24,14 @@ pub enum Error {
         context: String,
         source: io::Error,
     },
+    /// The connection closed after `got` of the `total` bytes the server
+    /// announced.
+    Truncated {
+        got: u64,
+        total: u64,
+    },
     /// The body arrived but is not what was expected: validation, size or
-    /// checksum mismatch, a truncated body, a bad request.
+    /// checksum mismatch, a bad request.
     Invalid(String),
 }
 
@@ -39,6 +45,7 @@ impl fmt::Display for Error {
             Error::RateLimited { retry_after: None } => write!(f, "rate limit reached, try again later"),
             Error::Http(code) => write!(f, "HTTP {code}"),
             Error::Io { context, source } => write!(f, "{context}: {source}"),
+            Error::Truncated { got, total } => write!(f, "connection closed after {got} of {total} bytes"),
             Error::Invalid(m) => write!(f, "{m}"),
         }
     }

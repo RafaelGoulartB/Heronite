@@ -52,7 +52,7 @@ pub struct Options<'a> {
     /// Exact size of the body; any other length is `Invalid`.
     pub expected_size: Option<u64>,
     /// Size the caller believes in when the server sends no `Content-Length`:
-    /// the progress total, and a shorter body is `Invalid`.
+    /// the progress total, and a shorter body is `Truncated`.
     pub size_hint: Option<u64>,
     /// More bytes than this is `Invalid` (checked while streaming).
     pub max_bytes: Option<u64>,
@@ -237,7 +237,7 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
         f.flush().map_err(|e| io_error(format!("writing {}", part.path.display()), e))?;
     }
     if let Some(t) = total.filter(|t| got < *t) {
-        return Err(Error::Invalid(format!("connection closed after {got} of {t} bytes")));
+        return Err(Error::Truncated { got, total: t });
     }
     if let Some(n) = opts.expected_size.filter(|n| got != *n) {
         return Err(Error::Invalid(format!("the file has {got} bytes, expected {n}")));
@@ -526,6 +526,20 @@ mod tests {
         assert!(!matches!(err, Error::Cancelled), "{err}");
         assert_eq!(fs::read_to_string(&dest).unwrap(), "previous");
         assert_eq!(only_files(dir.path()), ["out.bin"]);
+    }
+
+    #[test]
+    fn a_body_shorter_than_the_size_hint_is_truncated() {
+        let url = serve(|mut s| {
+            let _ = write!(s, "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n");
+            let _ = s.write_all(b"only ten b");
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("out.bin");
+        let err = download(&url, &dest, Options { size_hint: Some(100), ..Options::default() }, &|| false).unwrap_err();
+        assert!(matches!(err, Error::Truncated { got: 10, total: 100 }), "{err}");
+        assert_eq!(err.to_string(), "connection closed after 10 of 100 bytes");
+        assert!(only_files(dir.path()).is_empty());
     }
 
     #[test]
