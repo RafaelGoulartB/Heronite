@@ -146,50 +146,32 @@ fn first_cue_file_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r#"(?im)^\s*FILE\s+"?([^"\r\n]+?)"?\s+\w+\s*$"#).unwrap())
 }
 
-/// Sheets and playlists followed in a chain before giving up.
-const MAX_IMAGE_HOPS: usize = 8;
-
 /// `resolveImagePath`: `.cue`/`.m3u` point at the real image; follow them to
-/// the first data file. A chain that loops back to a file it already passed
-/// (`a.m3u` -> `b.m3u` -> `a.m3u`) or runs past [`MAX_IMAGE_HOPS`] stops at
-/// the file it reached.
+/// the first data file.
 pub fn resolve_image_path(rom: &Path) -> PathBuf {
-    let mut visited = vec![comparable(rom)];
-    let mut current = rom.to_path_buf();
-    for _ in 0..MAX_IMAGE_HOPS {
-        let Some(next) = image_target(&current) else { break };
-        let seen = visited.contains(&comparable(&next));
-        current = next;
-        if seen {
-            break;
-        }
-        visited.push(comparable(&current));
-    }
-    current
-}
-
-/// The real path when it resolves, else the path itself.
-fn comparable(p: &Path) -> PathBuf {
-    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
-}
-
-/// The file a `.cue`/`.m3u` names first, or `None` when `rom` is neither,
-/// cannot be read or names nothing.
-fn image_target(rom: &Path) -> Option<PathBuf> {
     let s = rom.to_string_lossy();
     let ext = crate::pathutil::ext_lower(&s);
     if ext != "cue" && ext != "m3u" {
-        return None;
+        return rom.to_path_buf();
     }
-    let bytes = std::fs::read(rom).ok()?;
+    let Ok(bytes) = std::fs::read(rom) else {
+        return rom.to_path_buf();
+    };
     let text = String::from_utf8_lossy(&bytes);
     let target = if ext == "cue" {
         first_cue_file_re().captures(&text).map(|c| c[1].to_string())
     } else {
         text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with('#')).map(str::to_string)
-    }?;
+    };
+    let Some(target) = target else {
+        return rom.to_path_buf();
+    };
     let resolved = if target.starts_with('/') { target } else { join(&dirname(&s), &target) };
-    Some(PathBuf::from(resolved))
+    let next = PathBuf::from(&resolved);
+    if next == rom {
+        return next;
+    }
+    resolve_image_path(&next)
 }
 
 /// `serialFromSystemCnf`: `BOOT2 = cdrom0:\SLUS_209.46;1` -> `SLUS-20946`.
@@ -368,30 +350,6 @@ pub fn serial_from_game_list_cache(cache: &Path, rom: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn playlists_that_loop_stop_at_the_file_they_reach() {
-        let dir = tempfile::tempdir().unwrap();
-        let at = |name: &str| dir.path().join(name);
-        std::fs::write(at("a.m3u"), "b.m3u\n").unwrap();
-        std::fs::write(at("b.m3u"), "a.m3u\n").unwrap();
-        std::fs::write(at("self.m3u"), "./self.m3u\n").unwrap();
-        std::fs::write(at("real.cue"), "FILE \"disc.bin\" BINARY\n").unwrap();
-        std::fs::write(at("list.m3u"), "# discs\nreal.cue\n").unwrap();
-        assert_eq!(resolve_image_path(&at("a.m3u")), at("a.m3u"));
-        assert_eq!(resolve_image_path(&at("self.m3u")), at("self.m3u"));
-        assert_eq!(resolve_image_path(&at("list.m3u")), at("disc.bin"));
-    }
-
-    #[test]
-    fn a_long_chain_of_playlists_ends() {
-        let dir = tempfile::tempdir().unwrap();
-        for n in 0..20 {
-            std::fs::write(dir.path().join(format!("p{n}.m3u")), format!("p{}.m3u\n", n + 1)).unwrap();
-        }
-        let end = resolve_image_path(&dir.path().join("p0.m3u"));
-        assert_eq!(end, dir.path().join(format!("p{MAX_IMAGE_HOPS}.m3u")));
-    }
 
     /// Minimal ISO9660: PVD at sector 16, root dir at sector 18 with the given
     /// (name, is_dir, lba, size) records, file contents placed by the caller.

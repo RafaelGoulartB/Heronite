@@ -308,7 +308,6 @@
   "h": "h",
   "min": "min",
   "A session lasts at least one minute.": "Una sesión dura al menos un minuto.",
-  "A session lasts at most {days} days.": "Una sesión dura como máximo {days} días.",
   "Add session": "Añadir sesión",
   "Added by hand": "Añadida a mano",
   "Date": "Fecha",

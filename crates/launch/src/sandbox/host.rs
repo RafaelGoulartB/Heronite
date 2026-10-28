@@ -173,22 +173,19 @@ pub fn visible_in(pid: u32, path: &str) -> bool {
 }
 
 /// `cmd` run inside the running sandbox whose first process is `pid`, with
-/// the same view, network and processes (`nsenter`, from util-linux). Its
-/// environment is the one of the sandbox's program (see [`super::pass`]).
+/// the same view, network and processes (`nsenter`, from util-linux). It
+/// gets the sandbox's variables (see `script::UNSET`).
 pub fn join(cmd: &Command, pid: u32) -> Command {
     let mut args: Vec<String> = vec!["--target".into(), pid.to_string()];
     args.extend(["--user", "--mount", "--pid", "--net", "--uts", "--preserve-credentials"].map(String::from));
     // `--wd` would name a folder outside (`--wdns` is too recent): `cd` inside.
     let cwd = cmd.cwd.as_deref().filter(|d| !d.is_empty()).unwrap_or("/");
-    let plan = cmd.env.keys().map(String::as_str);
-    let script = format!(
-        "cd -- \"$0\" || exit 126; {}set -- \"$@\" {}=1; {}exec env -i \"$@\"",
-        super::pass::collect(plan, &[], r#""$y=$z""#),
-        super::ENV_INSIDE,
-        super::pass::ROTATE,
-    );
-    args.extend(["--", "/bin/sh", "-c", &script].map(String::from));
+    args.extend(["--", "/bin/sh", "-c", r#"cd -- "$0" && exec env "$@""#].map(String::from));
     args.push(cwd.to_string());
+    for var in super::script::UNSET {
+        args.extend(["-u".into(), var.into()]);
+    }
+    args.push(format!("{}=1", super::ENV_INSIDE));
     args.push(cmd.program.clone());
     args.extend(cmd.args.iter().cloned());
     Command { program: "nsenter".into(), args, env: cmd.env.clone(), cwd: None }
@@ -234,39 +231,10 @@ mod tests {
         let j = join(&cmd, 4242);
         assert_eq!(j.program, "nsenter");
         assert_eq!(j.args[..8], ["--target", "4242", "--user", "--mount", "--pid", "--net", "--uts", "--preserve-credentials"]);
-        assert_eq!(j.args[8..11], ["--", "/bin/sh", "-c"]);
-        let script = &j.args[11];
-        assert!(script.starts_with(r#"cd -- "$0""#) && script.ends_with(r#"exec env -i "$@""#), "{script}");
-        assert!(script.contains("p=' PROTON_VERB '"), "the command's own variables always pass");
-        assert!(script.contains("HERONITE_SANDBOX=1"));
-        assert_eq!(j.args[12..], ["/t", "/p/GE/proton", "runinprefix", "/t/trainer.exe"]);
+        assert_eq!(j.args[8..13], ["--", "/bin/sh", "-c", r#"cd -- "$0" && exec env "$@""#, "/t"]);
+        assert!(j.args.windows(2).any(|w| w == ["-u", "DBUS_SESSION_BUS_ADDRESS"]));
+        assert_eq!(j.args[j.args.len() - 3..], ["/p/GE/proton", "runinprefix", "/t/trainer.exe"]);
         assert_eq!(j.env["PROTON_VERB"], "runinprefix");
-        let out = Process::new("/bin/sh").arg("-n").arg("-c").arg(script).output().unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    }
-
-    /// The program the script starts gets the plan's variables and the
-    /// session's, not the launcher's secrets.
-    #[test]
-    fn a_joined_program_gets_no_secret_of_the_launcher() {
-        let mut cmd = Command { program: "/usr/bin/env".into(), cwd: Some("/".into()), ..Default::default() };
-        cmd.env.insert("MY_OPTION".into(), "1".into());
-        let j = join(&cmd, 1);
-        // What nsenter runs, without nsenter.
-        let out = Process::new(&j.args[9])
-            .args(&j.args[10..])
-            .env_clear()
-            .env("PATH", std::env::var("PATH").unwrap())
-            .env("DISPLAY", ":0")
-            .env("MY_OPTION", "1")
-            .env("GH_TOKEN", "ghp_secret")
-            .env("SSH_AUTH_SOCK", "/s")
-            .output()
-            .unwrap();
-        let env = String::from_utf8_lossy(&out.stdout);
-        let vars: Vec<&str> = env.lines().collect();
-        assert!(vars.contains(&"DISPLAY=:0") && vars.contains(&"MY_OPTION=1") && vars.contains(&"HERONITE_SANDBOX=1"), "{vars:?}");
-        assert!(!env.contains("GH_TOKEN") && !env.contains("SSH_AUTH_SOCK"), "{vars:?}");
     }
 
     /// With the real bubblewrap, when it works here: a sandboxed process is

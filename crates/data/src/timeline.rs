@@ -60,7 +60,7 @@ fn counted<Tz: TimeZone>(sessions: &[LocalGameSession], tz: &Tz) -> Vec<(Window,
         }
         let Some(start_ms) = parse_ms(&session.started_at) else { continue };
         let Some(start) = tz.timestamp_millis_opt(start_ms).single() else { continue };
-        let end_ms = parse_ms(&session.ended_at).unwrap_or(start_ms.saturating_add((elapsed * 1000.) as i64));
+        let end_ms = parse_ms(&session.ended_at).unwrap_or(start_ms + (elapsed * 1000.) as i64);
         out.push((Window { start_ms, end_ms, date: start.date_naive() }, elapsed, start.time()));
     }
     out
@@ -71,7 +71,7 @@ fn counted<Tz: TimeZone>(sessions: &[LocalGameSession], tz: &Tz) -> Vec<(Window,
 fn day_of<Tz: TimeZone>(windows: &[Window], ms: i64, tz: &Tz) -> Option<NaiveDate> {
     let grace_ms = SHOT_GRACE_SECS * 1000;
     // The latest-starting matching session wins when windows overlap.
-    let session = windows.iter().filter(|w| w.start_ms <= ms && ms <= w.end_ms.saturating_add(grace_ms)).max_by_key(|w| w.start_ms);
+    let session = windows.iter().filter(|w| w.start_ms <= ms && ms <= w.end_ms + grace_ms).max_by_key(|w| w.start_ms);
     session.map(|w| w.date).or_else(|| local_date(ms, tz))
 }
 

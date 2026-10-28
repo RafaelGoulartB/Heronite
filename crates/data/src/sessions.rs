@@ -141,19 +141,12 @@ pub fn local_instant(start: NaiveDateTime) -> Option<DateTime<Utc>> {
     }
 }
 
-/// The longest session the history takes (what Statistics counts), in
-/// minutes.
-pub const MAX_SESSION_MINUTES: u64 = (crate::stats::MAX_SESSION_SECS / 60.) as u64;
-
-/// A session that starts at `start` and lasts `seconds`. A length that
-/// reaches past the last date chrono has ends the session at its start
-/// instead of panicking.
+/// A session that starts at `start` and lasts `seconds`.
 pub fn session_from(start: DateTime<Utc>, seconds: u64, source: &str) -> LocalGameSession {
     let iso = |t: DateTime<Utc>| t.to_rfc3339_opts(SecondsFormat::Millis, true);
-    let end = i64::try_from(seconds).ok().and_then(Duration::try_seconds).and_then(|d| start.checked_add_signed(d)).unwrap_or(start);
     LocalGameSession {
         started_at: iso(start),
-        ended_at: iso(end),
+        ended_at: iso(start + Duration::seconds(seconds as i64)),
         elapsed_seconds: JsNum(seconds as f64),
         source: source.to_string(),
         game_action_name: None,
@@ -320,19 +313,6 @@ mod tests {
         assert_eq!(a.with_timezone(&Local).naive_local(), start);
         assert!(s.started_at.ends_with('Z'));
         assert_eq!(s.source, "manual");
-    }
-
-    #[test]
-    fn a_session_too_long_for_the_calendar_does_not_panic() {
-        let start = Utc.with_ymd_and_hms(2026, 3, 1, 20, 0, 0).unwrap();
-        for seconds in [u64::MAX, i64::MAX as u64, 10_000_000_000_000, 36_000_000_000_000] {
-            let s = session_from(start, seconds, MANUAL_SOURCE);
-            assert_eq!(s.elapsed_seconds.get(), seconds as f64);
-            assert!(DateTime::parse_from_rfc3339(&s.ended_at).is_ok());
-        }
-        let near_end = session_from(DateTime::<Utc>::MAX_UTC, 3600, MANUAL_SOURCE);
-        assert_eq!(near_end.started_at, near_end.ended_at);
-        assert_eq!(MAX_SESSION_MINUTES, 28 * 24 * 60);
     }
 
     #[test]

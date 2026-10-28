@@ -12,7 +12,7 @@ use heronite_data::models::LocalGameSession;
 use heronite_data::playtime::{clamp_number, split_minutes};
 use heronite_data::sessions::{
     date_text, edit_session, format_session_date, local_instant, parse_date, parse_time, session_from, session_source_label,
-    session_start_local, sessions_total_minutes, sorted_newest_first, time_text, MANUAL_SOURCE, MAX_SESSION_MINUTES,
+    session_start_local, sessions_total_minutes, sorted_newest_first, time_text, MANUAL_SOURCE,
 };
 use heronite_i18n::{tr, trn};
 
@@ -143,9 +143,7 @@ impl GameSettingsDialog {
         let locale = self.ctx.lib.date_locale;
         let text = |i: &Entity<InputState>| i.read(cx).value().trim().to_string();
         let (date, time) = (text(&e.date), text(&e.time));
-        // One hour over the limit still reads as too long, and the product stays far from overflowing.
-        let hours = clamp_number(&text(&e.hours), Some(MAX_SESSION_MINUTES / 60 + 1));
-        let minutes = hours * 60 + clamp_number(&text(&e.minutes), Some(59));
+        let minutes = clamp_number(&text(&e.hours), None) * 60 + clamp_number(&text(&e.minutes), Some(59));
         let Some(day) = parse_date(&date, locale) else {
             let example = date_text(&chrono::Local::now(), locale);
             return Some(Draft::Invalid(tr!("Type the date like {example}.", example)));
@@ -155,9 +153,6 @@ impl GameSettingsDialog {
         };
         if minutes == 0 {
             return Some(Draft::Invalid(tr!("A session lasts at least one minute.").into()));
-        }
-        if minutes > MAX_SESSION_MINUTES {
-            return Some(Draft::Invalid(tr!("A session lasts at most {days} days.", days = MAX_SESSION_MINUTES / 60 / 24)));
         }
         let (initial_date, initial_time, initial_minutes) = &e.initial;
         let old = e.original.as_ref();
