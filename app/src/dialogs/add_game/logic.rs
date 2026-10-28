@@ -126,18 +126,18 @@ pub enum Start<'a> {
     Command { folder: &'a str, command: &'a str },
 }
 
+/// What is missing first, in the form's order: how the game starts (it
+/// gives the title), then the title.
 pub fn missing(title: &str, platform: SideloadPlatform, start: Start, url: &str) -> Option<Missing> {
-    if title.trim().is_empty() {
-        return Some(Missing::Title);
-    }
-    match (platform, start) {
+    let start_missing = match (platform, start) {
         (SideloadPlatform::Browser, _) if url.trim().is_empty() => Some(Missing::Url),
         (SideloadPlatform::Browser, _) => None,
         (_, Start::Executable(exe)) if exe.trim().is_empty() => Some(Missing::Executable),
         (_, Start::Command { folder, .. }) if folder.trim().is_empty() => Some(Missing::Folder),
         (_, Start::Command { command, .. }) if command.trim().is_empty() => Some(Missing::Command),
         _ => None,
-    }
+    };
+    start_missing.or_else(|| title.trim().is_empty().then_some(Missing::Title))
 }
 
 /// Why the form cannot be saved yet (empty when it can).

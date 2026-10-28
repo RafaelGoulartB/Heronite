@@ -87,6 +87,40 @@ pub(super) fn title_from_name(path: &Path, is_dir: bool) -> String {
     clean_title(&spaced.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
+/// Program names that do not name the game ("start.exe", "Launcher.exe"):
+/// its folder does.
+const GENERIC_STEMS: [&str; 14] =
+    ["game", "launcher", "launch", "start", "play", "run", "main", "app", "client", "bin", "start game", "play game", "win64", "x64"];
+
+/// Folders between a game's own folder and its program.
+const GENERIC_DIRS: [&str; 16] = [
+    "bin", "bin32", "bin64", "binaries", "win32", "win64", "x86", "x64", "x86_64", "game", "data", "program", "windows", "linux",
+    "release", "shipping",
+];
+
+/// Endings build tools add to a program's name ("Hades-Win64-Shipping.exe").
+const BUILD_SUFFIXES: [&str; 7] = ["-win64-shipping", "-wingdk-shipping", "-linux-shipping", "-shipping", ".x86_64", "_x64", "-x64"];
+
+/// The title an executable gives: its name without what build tools add,
+/// or, when that name is generic ("start.exe"), the nearest folder that is
+/// not a `bin` / `Win64` one.
+pub(super) fn title_from_executable(path: &Path) -> String {
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let lower = stem.to_lowercase();
+    let trimmed = BUILD_SUFFIXES.iter().find(|s| lower.ends_with(*s)).map_or(stem.as_str(), |s| &stem[..stem.len() - s.len()]);
+    let own = title_from_name(Path::new(&format!("{trimmed}.x")), false);
+    if !own.is_empty() && !GENERIC_STEMS.contains(&own.to_lowercase().as_str()) {
+        return own;
+    }
+    path.ancestors()
+        .skip(1)
+        .filter_map(|dir| dir.file_name().map(|n| (dir, n.to_string_lossy().to_lowercase())))
+        .find(|(_, name)| !GENERIC_DIRS.contains(&name.as_str()))
+        .map(|(dir, _)| title_from_name(dir, true))
+        .filter(|t| !t.is_empty())
+        .unwrap_or(own)
+}
+
 /// The one program at the top level of `dir`, when there is exactly one (an
 /// uninstaller does not count).
 fn single_program(dir: &Path) -> Option<(PathBuf, Kind)> {
@@ -152,7 +186,9 @@ impl AddGameDialog {
             input.update(cx, |s: &mut gpui_kit::component::input::InputState, cx| s.set_value(v, window, cx));
         };
         let is_dir = kind == Kind::Folder;
-        set(&self.title, title_from_name(&path, is_dir), window, cx);
+        let title = if is_dir { title_from_name(&path, true) } else { title_from_executable(&path) };
+        self.last_auto_title = title.clone();
+        set(&self.title, title, window, cx);
         // The program to run: the file itself, or the folder's only program.
         let (exe, exe_kind) = match (is_dir, program) {
             (false, _) => (Some(path.clone()), kind),
@@ -179,6 +215,7 @@ impl AddGameDialog {
             }
         }
         self.title_changed(window, cx);
+        self.auto_find_art(window, cx);
         cx.notify();
     }
 }
@@ -186,7 +223,7 @@ impl AddGameDialog {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: it would bring in gpui's `test` macro.
-    use super::{classify, single_program, title_from_name, Kind};
+    use super::{classify, single_program, title_from_executable, title_from_name, Kind};
     use std::path::Path;
 
     fn kind(name: &str) -> Kind {
@@ -227,6 +264,19 @@ mod tests {
         assert_eq!(t("/g/  my__game .AppImage", false), "my game");
         assert_eq!(t("/g/Half-Life_2.v1.5", true), "Half Life 2 v1 5");
         assert_eq!(t("/", true), "");
+    }
+
+    #[test]
+    fn an_executable_names_the_game_or_its_folder_does() {
+        let t = |p: &str| title_from_executable(Path::new(p));
+        assert_eq!(t("/games/Hollow Knight/hollow_knight.exe"), "hollow knight");
+        // Build tools' endings go.
+        assert_eq!(t("/games/Hades/Hades-Win64-Shipping.exe"), "Hades");
+        assert_eq!(t("/games/Celeste/Celeste.x86_64"), "Celeste");
+        // A generic name: the game's folder, past bin / Win64 folders.
+        assert_eq!(t("/games/Outer Wilds/Launcher.exe"), "Outer Wilds");
+        assert_eq!(t("/games/Some_Game/bin/x64/start.exe"), "Some Game");
+        assert_eq!(t("/games/Some Game/Game.sh"), "Some Game");
     }
 
     #[test]

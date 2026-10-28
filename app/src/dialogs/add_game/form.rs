@@ -277,11 +277,15 @@ impl AddGameDialog {
             !finding && !title.trim().is_empty(),
             cx.listener(|this, _, window, cx| this.find_art(window, cx)),
         );
-        right = right.child(labeled(tr!("Title"), input_box_with(&self.title, find.into_any_element()))).child(self.platform_tabs(cx));
+        // How the game starts comes first: the executable names the game, its
+        // platform and its art (`reactions.rs`); the title follows.
+        let title_field = labeled(tr!("Title"), input_box_with(&self.title, find.into_any_element()));
+        right = right.child(self.platform_tabs(cx));
 
         if self.platform == SideloadPlatform::Browser {
             right = right
                 .child(labeled(tr!("BrowserURL"), input_box(&self.url, false)))
+                .child(title_field)
                 .child(labeled(tr!("Custom User Agent"), input_box(&self.user_agent, false)))
                 .child(card([checkbox("ag-fullscreen", self.fullscreen, tr!("Launch Fullscreen (F11 to exit)"))
                     .on_click(cx.listener(|this, _, _, cx| {
@@ -290,7 +294,8 @@ impl AddGameDialog {
                     }))
                     .into_any_element()]));
         } else if self.platform == SideloadPlatform::Linux {
-            right = right.child(self.linux_start(cx)).children(self.install_row(&title, false, cx).map(|r| r.mt(px(-6.))));
+            right =
+                right.child(self.linux_start(cx)).children(self.install_row(&title, false, cx).map(|r| r.mt(px(-6.)))).child(title_field);
         } else {
             let exe = text_of(&self.exe, cx);
             let has = !exe.is_empty();
@@ -306,12 +311,13 @@ impl AddGameDialog {
                             this.exe.update(cx, |s, cx| s.set_value("", window, cx));
                         } else {
                             choose_path(window, cx, false, tr!("Select Executable"), |this: &mut Self, path, window, cx| {
-                                this.exe.update(cx, |s, cx| s.set_value(path, window, cx));
+                                this.executable_picked(path, window, cx);
                             });
                         }
                     }),
                 ))
-                .children(self.install_row(&title, true, cx).map(|r| r.mt(px(-6.))));
+                .children(self.install_row(&title, true, cx).map(|r| r.mt(px(-6.))))
+                .child(title_field);
             if !self.is_edit() {
                 right = right.child(self.wine_section(cx));
             }
@@ -383,8 +389,7 @@ impl AddGameDialog {
                         this.exe.update(cx, |s, cx| s.set_value("", window, cx));
                     } else {
                         choose_path(window, cx, false, tr!("Select Executable"), |this: &mut Self, path, window, cx| {
-                            this.exe.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
-                            this.fill_folder_from(&path, window, cx);
+                            this.executable_picked(path, window, cx);
                         });
                     }
                 }),
