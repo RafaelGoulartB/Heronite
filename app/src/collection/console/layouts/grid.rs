@@ -9,10 +9,11 @@ use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::console_theme::{GridPanel, TabSpec};
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr};
+use std::sync::Arc;
 
 use super::super::super::CollectionView;
 use super::super::hero::{clip, HeroSize};
-use super::super::sources::keys;
+use super::super::sources::{keys, ListKey};
 use super::super::tile::label_room;
 use crate::collection::data::played_ago;
 use crate::collection::view_filters::category_label;
@@ -46,7 +47,7 @@ impl Default for Nav {
 }
 
 /// What a Grid shows (its chips and the Filters panel edit it).
-#[derive(Clone, Default, PartialEq, Debug)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct Filters {
     /// Index in [`SHOW`].
     pub show: usize,
@@ -85,26 +86,10 @@ pub(crate) fn status_options(lib: &Library) -> Vec<SharedString> {
         .collect()
 }
 
-impl Nav {
-    /// Filters that show the games of a shelf of `kind` (`installed`,
-    /// `favourites`, `status:<id>` with its index in the library's
-    /// `status`...), the most recently played first, from the top.
-    pub(super) fn show_like(&mut self, kind: &str, status: Option<usize>) {
-        self.filters = Filters {
-            show: usize::from(kind == "installed"),
-            favourites: kind == "favourites",
-            sort: 1,
-            status: status.map_or(0, |i| i + 1),
-            category: 0,
-        };
-        self.index = 0;
-        self.toolbar = None;
-        self.restart = true;
-    }
-
+impl Filters {
     /// The games the grid shows, in order (best search matches first).
-    fn keys(&self, games: &[std::sync::Arc<CollectionGame>], lib: &Library, cats: &Categories, search: &str) -> Vec<SharedString> {
-        let f = &self.filters;
+    fn order(&self, games: &[Arc<CollectionGame>], lib: &Library, cats: &Categories, search: &str) -> Vec<SharedString> {
+        let f = self;
         let folded = heronite_data::fuzzy::fold(search.trim());
         let tokens = heronite_data::fuzzy::tokens(&folded);
         let status = f.status.checked_sub(1).and_then(|i| lib.statuses.get(i)).map(|s| s.id.clone());
@@ -134,6 +119,24 @@ impl Nav {
             games = scored.into_iter().map(|(_, g)| g).collect();
         }
         keys(games)
+    }
+}
+
+impl Nav {
+    /// Filters that show the games of a shelf of `kind` (`installed`,
+    /// `favourites`, `status:<id>` with its index in the library's
+    /// `status`...), the most recently played first, from the top.
+    pub(super) fn show_like(&mut self, kind: &str, status: Option<usize>) {
+        self.filters = Filters {
+            show: usize::from(kind == "installed"),
+            favourites: kind == "favourites",
+            sort: 1,
+            status: status.map_or(0, |i| i + 1),
+            category: 0,
+        };
+        self.index = 0;
+        self.toolbar = None;
+        self.restart = true;
     }
 
     fn chips(&self, lib: &Library, cats: &Categories, search: &str) -> [(SharedString, SharedString); CHIPS] {
@@ -234,14 +237,13 @@ fn hours_text(hours: f64) -> String {
 
 impl CollectionView {
     /// The keys the Grid of a tab shows now (also for the layouts that reuse its filters).
-    pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
-        let Some(lib) = self.lib.clone() else { return Vec::new() };
-        let games = self.console_games(&spec.source);
-        let search = self.console.search.clone();
-        let cats = std::mem::take(&mut self.categories);
-        let keys = self.tab_nav(tab).grid.keys(&games, &lib, &cats, &search);
-        self.categories = cats;
-        keys
+    /// Computed once per change of the games, the filters or the search.
+    pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Arc<[SharedString]> {
+        let filters = self.tab_nav(tab).grid.filters.clone();
+        let search = self.console.search.trim().to_string();
+        let cats = &self.categories;
+        let key = ListKey::Grid { source: spec.source.clone(), filters: filters.clone(), search: search.clone() };
+        self.console_list(key, |games, lib| filters.order(games, lib, cats, &search))
     }
 
     /// LT / RT jump by letter: the theme asks for it and the games are
