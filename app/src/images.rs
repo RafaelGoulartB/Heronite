@@ -2,8 +2,9 @@
 //! rasters on worker threads, turns them into GPUI textures on the UI
 //! thread, and keeps a bounded LRU so GPU memory tracks what is on screen.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use gpui_kit::{RenderImage, SharedString, Window};
@@ -34,6 +35,10 @@ const BUDGET_BYTES: usize = 48 << 20;
 /// and the previous one (shown while the next loads), whatever the budget.
 const KEEP_LATEST: [(&str, usize); 2] = [("s:", 2), ("g:", 2)];
 
+/// How long a transient failure (offline, timeout, rate limit) keeps an id
+/// from being requested again.
+const RETRY_AFTER: Duration = Duration::from_secs(60);
+
 pub struct ImageStore {
     loader: Loader,
     tx: UnboundedSender<Loaded>,
@@ -45,7 +50,10 @@ pub struct ImageStore {
     /// longer here was [`invalidate`](Self::invalidate)d and is dropped.
     pending: HashMap<SharedString, u64>,
     next_gen: u64,
-    failed: HashSet<SharedString>,
+    /// Ids with no image. The value is when a transient failure may be tried
+    /// again; `None` is final (bad source, nothing to load) until
+    /// [`invalidate`](Self::invalidate) or [`clear_failed`](Self::clear_failed).
+    failed: HashMap<SharedString, Option<Instant>>,
     evicted: Vec<Arc<RenderImage>>,
 }
 
@@ -62,7 +70,7 @@ impl ImageStore {
             bytes: 0,
             pending: HashMap::new(),
             next_gen: 0,
-            failed: HashSet::new(),
+            failed: HashMap::new(),
             evicted: Vec::new(),
         };
         (store, rx)
@@ -88,12 +96,13 @@ impl ImageStore {
             }
             return Some(img.clone());
         }
-        if self.pending.contains_key(id) || self.failed.contains(id) {
+        if self.pending.contains_key(id) || self.is_failed(id) {
             return None;
         }
+        self.failed.remove(id); // a transient failure whose wait is over
         let chain = chain();
         if chain.is_empty() {
-            self.failed.insert(id.clone());
+            self.failed.insert(id.clone(), None);
             return None;
         }
         self.next_gen += 1;
@@ -131,7 +140,8 @@ impl ImageStore {
             }
             Err(err) => {
                 log::debug!("image {id}: {err}");
-                self.failed.insert(id);
+                let retry_at = err.is_transient().then(|| Instant::now() + RETRY_AFTER);
+                self.failed.insert(id, retry_at);
             }
         }
     }
@@ -194,13 +204,19 @@ impl ImageStore {
             self.remove(id);
         }
         self.order.retain(|k| !hit(k));
-        self.failed.retain(|k| !hit(k));
+        self.failed.retain(|k, _| !hit(k));
         self.pending.retain(|k, _| !hit(k));
     }
 
-    /// Every source of `id` failed: there is no image to wait for.
+    /// Every source of `id` failed: there is no image to wait for. A
+    /// transient failure stops counting after [`RETRY_AFTER`], and the next
+    /// request loads it again.
     pub fn is_failed(&self, id: &SharedString) -> bool {
-        self.failed.contains(id)
+        match self.failed.get(id) {
+            None => false,
+            Some(None) => true,
+            Some(Some(retry_at)) => Instant::now() < *retry_at,
+        }
     }
 
     /// Forgets the failed loads so they are tried again (e.g. after the library changed on disk).
@@ -236,22 +252,41 @@ mod tests {
         s.invalidate(&["c:a:".to_string()]);
         request(&mut s, dir.path(), "c:a:10x10");
         s.on_loaded(first);
-        assert!(!s.failed.contains("c:a:10x10"));
+        assert!(!s.failed.contains_key("c:a:10x10"));
         assert!(s.pending.contains_key("c:a:10x10"));
 
         let second = futures::executor::block_on(rx.next()).unwrap();
         s.on_loaded(second);
-        assert!(s.failed.contains("c:a:10x10"));
+        assert!(s.failed.contains_key("c:a:10x10"));
         assert!(s.pending.is_empty());
 
         // Invalidating also forgets the failure, so the next request loads again.
         s.invalidate(&["c:a:".to_string()]);
-        assert!(!s.failed.contains("c:a:10x10"));
+        assert!(!s.failed.contains_key("c:a:10x10"));
         request(&mut s, dir.path(), "c:a:10x10");
         assert!(s.pending.contains_key("c:a:10x10"));
         // Other games are left alone.
         request(&mut s, dir.path(), "c:ab:10x10");
         s.invalidate(&["c:a:".to_string()]);
         assert!(s.pending.contains_key("c:ab:10x10"));
+    }
+
+    #[test]
+    fn transient_failures_are_retried_after_a_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut s, mut rx) = store(dir.path());
+        // Not a downloadable scheme: an `Http` error, which a later try may fix.
+        let chain = || vec![heronite_images::ImageRef::Url("ftp://example.invalid/a.png".into())];
+        let id: SharedString = "c:a:10x10".into();
+        assert!(s.get_or_request(&id, chain, 10, 10, Variant::Cover, 1).is_none());
+        s.on_loaded(futures::executor::block_on(rx.next()).unwrap());
+        assert!(s.is_failed(&id));
+        assert!(s.get_or_request(&id, chain, 10, 10, Variant::Cover, 1).is_none());
+        assert!(s.pending.is_empty(), "not requested again while waiting");
+
+        s.failed.insert(id.clone(), Some(Instant::now() - Duration::from_secs(1)));
+        assert!(!s.is_failed(&id));
+        assert!(s.get_or_request(&id, chain, 10, 10, Variant::Cover, 1).is_none());
+        assert!(s.pending.contains_key(&id), "requested again after the wait");
     }
 }
