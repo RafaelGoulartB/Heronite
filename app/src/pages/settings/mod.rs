@@ -24,7 +24,7 @@
 //! Enter opens the best match, Esc empties it.
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
-//! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it;
+//! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
 //! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
 
 mod about;
@@ -150,6 +150,8 @@ pub struct SettingsPage {
     /// The search above the section list, and what is typed in it.
     nav_search: Entity<InputState>,
     nav_query: String,
+    /// The language of the search's placeholder (set again after a switch).
+    nav_lang: heronite_i18n::Lang,
     /// The section list's keyboard focus and its cursor (an index in
     /// `nav_items`), and where its items were drawn (`nav_keys`).
     nav_focus: FocusHandle,
@@ -237,6 +239,7 @@ impl SettingsPage {
             nav_scroll: ScrollHandle::new(),
             nav_search,
             nav_query,
+            nav_lang: heronite_i18n::current(),
             nav_focus: cx.focus_handle(),
             nav_cursor: None,
             nav_bounds: Default::default(),
@@ -261,7 +264,11 @@ impl SettingsPage {
                 this.update_in(cx, |this, window, cx| this.focus_search(window, cx)).ok();
                 for k in keys.split(',').filter(|k| !k.is_empty()) {
                     cx.background_executor().timer(pause()).await;
-                    if let Ok(ks) = Keystroke::parse(k) {
+                    // `lang:<code>` switches the interface language instead.
+                    if let Some(lang) = k.strip_prefix("lang:").and_then(|c| heronite_i18n::Lang::ALL.into_iter().find(|l| l.code() == c)) {
+                        heronite_i18n::set(lang);
+                        cx.update(|window, _| window.refresh()).ok();
+                    } else if let Ok(ks) = Keystroke::parse(k) {
                         cx.update(|window, cx| window.dispatch_keystroke(ks, cx)).ok();
                     }
                 }
@@ -727,6 +734,11 @@ impl Render for SettingsPage {
             return self.render_console(window, cx);
         }
         self.scroll_to_found(window);
+        let lang = heronite_i18n::current();
+        if self.nav_lang != lang {
+            self.nav_lang = lang;
+            self.nav_search.update(cx, |s, cx| s.set_placeholder(tr!("Search settings"), window, cx));
+        }
         let section = self.section;
         // The console theme editor fills the height and scrolls its parts itself.
         let studio = section == Section::ConsoleMode && console_mode::is_studio(self);
