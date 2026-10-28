@@ -3,10 +3,12 @@
 //! backup, the Linux facts (ProtonDB tier, anti-cheat) and the folders of
 //! the Details panel with their size (`folder_size`). Everything is read
 //! off the UI thread when the focused game changes; ProtonDB is fetched (and
-//! cached for a week) only when the cache is missing or stale.
+//! cached for a week) only when the cache is missing or stale, and only once
+//! the focus has stayed on the game for a moment.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -18,6 +20,7 @@ use heronite_data::{ratings, settings, CollectionGame};
 use heronite_emulation::ludusavi::last_backup;
 use heronite_metadata::{protondb, Endpoints, Http};
 
+use super::folder_size::SETTLE;
 use super::open_links::{game_folders, FolderKind};
 use super::CollectionView;
 use heronite_i18n::tr;
@@ -69,7 +72,8 @@ pub(super) struct Facts {
     /// Size measured here (`folder_size`) and the folder row it goes under,
     /// for a game whose store gives none.
     pub folder_size: Option<(FolderKind, String)>,
-    /// Bumped when the focus moves, which stops a running measure.
+    /// Bumped when the focus moves, which stops a running measure and the
+    /// ProtonDB lookups still waiting for the focus to settle.
     pub size_generation: super::folder_size::SizeGeneration,
     /// Stars by game key; `None` until `ratings.json` was read.
     ratings: Option<HashMap<String, u8>>,
@@ -141,7 +145,7 @@ impl CollectionView {
         self.facts.linux = None;
         self.facts.folders.clear();
         self.facts.folder_size = None;
-        self.facts.size_generation.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.facts.size_generation.fetch_add(1, Ordering::Relaxed);
         self.facts.rating_hover = None;
         // `HERONITE_DEBUG_FOCUS_STATUS=1` opens the status selector (screenshots).
         self.facts.status_open = crate::env::value("HERONITE_DEBUG_FOCUS_STATUS").is_some();
@@ -186,6 +190,8 @@ impl CollectionView {
         // Other stores: ProtonDB only knows Steam ids, so look it up by title.
         let by_title = known_steam.is_none() && !native && !emulated;
         let measured = game.clone();
+        let generation = self.facts.size_generation.clone();
+        let mine = generation.load(Ordering::Relaxed);
         cx.spawn(async move |this, cx| {
             let (local, net) = cx
                 .background_spawn(async move {
@@ -230,6 +236,12 @@ impl CollectionView {
                 .unwrap_or(false);
             let (cache, search, fetch) = net;
             if !current || (search.is_none() && fetch.is_none()) {
+                return;
+            }
+            // The cached facts are already shown; the network waits for the
+            // focus to stay, so holding an arrow key sends no request per game.
+            cx.background_executor().timer(SETTLE).await;
+            if generation.load(Ordering::Relaxed) != mine {
                 return;
             }
             let (id, tier) = cx

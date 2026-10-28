@@ -122,8 +122,12 @@ pub struct CollectionView {
     user_actions: std::collections::HashMap<String, Vec<heronite_data::game_actions::Action>>,
     /// Games with an update waiting (app names), for "Only with updates".
     update_apps: std::collections::HashSet<String>,
+    /// The text the list is filtered by: the box's text once typing settles
+    /// ([`SEARCH_SETTLE`]).
     search: String,
     search_input: Entity<InputState>,
+    /// Waiting to apply what was typed; typing again replaces it.
+    search_task: Option<Task<()>>,
     open_menu: Option<Menu>,
     /// Pending hover-intent open of a header menu.
     menu_open: Option<Task<()>>,
@@ -300,6 +304,7 @@ impl CollectionView {
             update_apps: Default::default(),
             search: String::new(),
             search_input,
+            search_task: None,
             open_menu: None,
             menu_open: None,
             menu_close: None,

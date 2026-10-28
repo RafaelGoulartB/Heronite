@@ -69,6 +69,29 @@ impl CollectionView {
         self.prune_selection_to_list();
     }
 
+    /// The cards of one game, rebuilt where they are: its launch moved to
+    /// another step. Neither the filters, the sort nor the groups read
+    /// whether a game is playing or preparing, so the list keeps its shape
+    /// and `refresh_groups` is not needed.
+    fn refresh_game_cards(&mut self, app_name: &str) {
+        let Some(lib) = self.lib.clone() else { return };
+        let organize = heronite_data::organize::Organize {
+            extras: Some(&self.game_extras),
+            ratings: self.facts.ratings(),
+            categories: Some(&self.categories),
+            statuses: &lib.statuses,
+        };
+        let playing = self.playing.contains_key(app_name);
+        let step = self.preparing.get(app_name).map(|s| s.label());
+        for card in self.groups.iter_mut().flat_map(|g| g.cards.iter_mut()) {
+            let Some(game) = lib.get(&card.key).filter(|g| g.app_name == app_name) else { continue };
+            *card = data::card_vm(game, &lib, &self.ui, &organize, playing, step.clone());
+        }
+        if self.selected.as_ref().and_then(|key| lib.get(key)).is_some_and(|g| g.app_name == app_name) {
+            self.refresh_focus();
+        }
+    }
+
     /// The list's conditions that live in the app: the selected categories
     /// and statuses, and "Only with an update".
     pub(super) fn keeps_game(&self, g: &heronite_data::CollectionGame, statuses: &[heronite_data::models::CompletionStatus]) -> bool {
@@ -128,14 +151,19 @@ impl CollectionView {
     }
 
     pub(super) fn on_launch_event(&mut self, ev: LaunchEvent, cx: &mut Context<Self>) {
+        // The events that start or end a launch (once each) rebuild the list;
+        // a step or a message changes at most one game's cards.
+        let mut rebuild = true;
         match ev {
             LaunchEvent::Launching { app_name } => {
                 self.preparing.insert(app_name.clone(), super::launch_progress::LaunchStep::starting());
                 self.playing.insert(app_name, false);
             }
             LaunchEvent::Preparing { app_name, message, cancellable } => {
+                rebuild = false;
                 if self.playing.contains_key(&app_name) {
-                    self.set_launch_step(app_name, message, cancellable);
+                    self.set_launch_step(app_name.clone(), message, cancellable);
+                    self.refresh_game_cards(&app_name);
                 }
             }
             LaunchEvent::Running { app_name, pid } => {
@@ -161,9 +189,14 @@ impl CollectionView {
                 self.show_toast(message, true, cx);
             }
             // Problems while preparing, and what happens after the game (cloud saves).
-            LaunchEvent::Status { message, warning, .. } => self.show_toast(message, warning, cx),
+            LaunchEvent::Status { message, warning, .. } => {
+                rebuild = false;
+                self.show_toast(message, warning, cx);
+            }
         }
-        self.refresh_groups();
+        if rebuild {
+            self.refresh_groups();
+        }
         cx.notify();
     }
 
