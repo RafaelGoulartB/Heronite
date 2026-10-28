@@ -22,7 +22,11 @@ pub enum PadMsg {
     /// A controller is present: its name, and whether it was just plugged in
     /// (`false` for the ones found at start).
     Connected(String, bool),
-    Disconnected,
+    /// A controller went away. `remaining` is the name of another one that is
+    /// still connected (`None` when it was the last).
+    Disconnected {
+        remaining: Option<String>,
+    },
 }
 
 /// Devices that only look like gamepads (the "joystick" interface of some
@@ -62,6 +66,12 @@ impl Repeater {
         if self.held.is_some_and(|(p, _)| p == pad) {
             self.held = None;
         }
+    }
+
+    /// Forgets the held direction and both sticks, so nothing keeps repeating
+    /// after a controller disappears without sending its release events.
+    pub fn reset(&mut self) {
+        *self = Self::default();
     }
 
     /// Stick moved: maps the deflection to a direction (with hysteresis)
@@ -249,7 +259,13 @@ fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>) {
                 None
             }
             E::Disconnected => {
-                tx.unbounded_send(PadMsg::Disconnected).ok();
+                // The release events never arrive; the state is not per pad, so
+                // it is all dropped.
+                rep.reset();
+                (lx, ly, rx, ry) = (0.0, 0.0, 0.0, 0.0);
+                let remaining = gilrs.gamepads().find(|(_, p)| p.is_connected() && is_gamepad(p)).map(|(_, p)| p.name().to_string());
+                log::info!("controller disconnected; left: {remaining:?}");
+                tx.unbounded_send(PadMsg::Disconnected { remaining }).ok();
                 None
             }
             _ => None,
@@ -347,6 +363,25 @@ mod tests {
         r.release(Pad::Down);
         assert_eq!(r.tick(t0 + Duration::from_secs(5)), None);
         assert_eq!(r.wait(t0), None);
+    }
+
+    #[test]
+    fn reset_stops_repeats_and_releases_the_sticks() {
+        let t0 = Instant::now();
+        let mut r = Repeater::default();
+        r.press(Pad::Left, t0);
+        r.reset();
+        assert_eq!(r.wait(t0), None);
+        assert_eq!(r.tick(t0 + Duration::from_secs(5)), None);
+
+        // A stick held past the threshold presses again after a reset.
+        assert_eq!(r.stick(false, 0.0, 0.9, t0), Some(Pad::Up));
+        r.reset();
+        assert_eq!(r.tick(t0 + Duration::from_secs(5)), None);
+        assert_eq!(r.stick(false, 0.0, 0.9, t0), Some(Pad::Up));
+        assert_eq!(r.stick(true, 0.0, 0.9, t0), Some(Pad::ScrollUp));
+        r.reset();
+        assert_eq!(r.stick(true, 0.0, 0.9, t0), Some(Pad::ScrollUp));
     }
 
     #[test]

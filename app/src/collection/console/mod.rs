@@ -262,10 +262,13 @@ impl CollectionView {
                                 look::set_controller(Some(&name));
                                 this.console.controller = Some(name);
                             }
-                            PadMsg::Disconnected => {
-                                look::set_controller(None);
-                                this.console.controller = None;
-                                this.show_toast(tr!("Controller disconnected"), true, cx);
+                            PadMsg::Disconnected { remaining } => {
+                                look::set_controller(remaining.as_deref());
+                                // The toast is for losing the last controller only.
+                                if remaining.is_none() {
+                                    this.show_toast(tr!("Controller disconnected"), true, cx);
+                                }
+                                this.console.controller = remaining;
                             }
                         }
                     })
