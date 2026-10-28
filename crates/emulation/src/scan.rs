@@ -46,8 +46,10 @@ const MAX_DEPTH: usize = 16;
 type Seen = HashSet<(u64, u64)>;
 
 /// Whether `directory` is new to the walk and within [`MAX_DEPTH`]; marks it as walked.
+/// A file system that reports no inode numbers (0, some FUSE and network
+/// mounts) cannot tell folders apart: there only the depth limit applies.
 fn enter(directory: &str, depth: usize, seen: &mut Seen) -> bool {
-    depth <= MAX_DEPTH && fs::metadata(directory).is_ok_and(|m| seen.insert((m.dev(), m.ino())))
+    depth <= MAX_DEPTH && fs::metadata(directory).is_ok_and(|m| m.ino() == 0 || seen.insert((m.dev(), m.ino())))
 }
 
 /// Whether an imported game was imported with this emulator/profile.
