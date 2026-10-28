@@ -130,10 +130,13 @@ pub fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Checks `path` against a `algo:hex` checksum (a bare hex is guessed from
-/// its length). An unknown algorithm is not an error: there is nothing to
-/// compare with.
+/// Checks `path` against a `algo:hex` checksum (`md5`, `sha1`, `sha256` or
+/// `sha512`; a bare hex is guessed from its length). A checksum of another
+/// kind is an error: accepting the file unchecked would pass off a check that
+/// never ran.
 pub fn verify(path: &Path, checksum: &str, cancel: &dyn Fn() -> bool) -> Result<(), String> {
+    let unsupported =
+        || tr!("{file}: unsupported checksum \"{checksum}\" (use md5, sha1, sha256 or sha512)", file = file_label(path), checksum);
     let (algo, expected) = match checksum.split_once(':') {
         Some((a, h)) => (a.trim().to_ascii_lowercase(), h.trim().to_ascii_lowercase()),
         None => {
@@ -143,7 +146,7 @@ pub fn verify(path: &Path, checksum: &str, cancel: &dyn Fn() -> bool) -> Result<
                 40 => "sha1",
                 64 => "sha256",
                 128 => "sha512",
-                _ => return Ok(()),
+                _ => return Err(unsupported()),
             };
             (algo.to_string(), h)
         }
@@ -153,10 +156,7 @@ pub fn verify(path: &Path, checksum: &str, cancel: &dyn Fn() -> bool) -> Result<
         "sha256" => digest_file::<sha2::Sha256>(path, cancel)?,
         "sha512" => digest_file::<sha2::Sha512>(path, cancel)?,
         "sha1" => sha1_file(path, cancel)?,
-        _ => {
-            log::warn!("unknown checksum type {algo} for {}", path.display());
-            return Ok(());
-        }
+        _ => return Err(unsupported()),
     };
     if actual == expected {
         Ok(())
@@ -336,6 +336,19 @@ mod tests {
         assert!(verify(&f, "sha1:aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d", &no).is_ok());
         assert!(verify(&f, "sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", &no).is_ok());
         assert!(verify(&f, "md5:00000000000000000000000000000000", &no).is_err());
-        assert!(verify(&f, "crc32:1234", &no).is_ok(), "unknown kinds are not checked");
+        let sha512 = format!("sha512:{:0>128}", "");
+        assert!(verify(&f, &sha512, &no).unwrap_err().contains("checksum differs"));
+    }
+
+    #[test]
+    fn a_checksum_of_an_unknown_kind_or_length_is_an_error_not_a_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("a.txt");
+        fs::write(&f, b"hello").unwrap();
+        let no = || false;
+        for checksum in ["crc32:1234", "sha384:abc", "5d41402abc4b2a76b9719d911017c59", "abc", "5d41402abc4b2a76b9719d911017c592a"] {
+            let err = verify(&f, checksum, &no).unwrap_err();
+            assert!(err.contains("a.txt") && err.contains(checksum), "{checksum}: {err}");
+        }
     }
 }
