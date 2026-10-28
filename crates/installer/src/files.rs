@@ -79,9 +79,11 @@ fn source_of(url: &str) -> Source {
 }
 
 impl FileSpec {
-    /// The file name it gets in the cache: `filename`, else the URL's.
+    /// The file name it gets in the cache: `filename`, else the URL's, else
+    /// the id. Always one plain path component, so joining it to the cache
+    /// folder cannot leave it (the script is untrusted).
     pub fn file_name(&self) -> String {
-        if let Some(f) = self.filename.as_deref().map(str::trim).filter(|f| !f.is_empty() && !f.contains('/')) {
+        if let Some(f) = self.filename.as_deref().map(str::trim).filter(|f| plain_component(f)) {
             return f.to_string();
         }
         let name = match &self.source {
@@ -91,10 +93,18 @@ impl FileSpec {
             }
             Source::Ask(_) | Source::Unsupported(_) => String::new(),
         };
-        if name.is_empty() || name == "." || name == ".." {
+        if plain_component(&name) {
+            name
+        } else if plain_component(&self.id) {
             self.id.clone()
         } else {
-            name
+            // The id is a script key too: keep only what is safe in a name.
+            let id: String = self.id.chars().map(|c| if matches!(c, '/' | '\\' | '\0') { '_' } else { c }).collect();
+            if plain_component(&id) {
+                id
+            } else {
+                "file".to_string()
+            }
         }
     }
 
@@ -108,6 +118,12 @@ impl FileSpec {
             },
         }
     }
+}
+
+/// A name that is one ordinary path component: not empty, not `.` or `..`,
+/// no separator or NUL (decoding `%2f` and `%00` can produce them).
+fn plain_component(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains(['/', '\0'])
 }
 
 /// `%20` and friends.
@@ -292,6 +308,21 @@ mod tests {
         let f = &parse_entry(&json!({"p": {"url": "https://x.org/dl", "filename": "patch.zip", "checksum": "md5:abc"}}))[0];
         assert_eq!((f.file_name().as_str(), f.checksum.as_deref()), ("patch.zip", Some("md5:abc")));
         assert_eq!(parse_entry(&json!({"p": "https://x.org/"}))[0].file_name(), "x.org");
+    }
+
+    #[test]
+    fn file_names_are_one_component() {
+        let name = |v: serde_json::Value| parse_entry(&v)[0].file_name();
+        assert_eq!(name(json!({"setup": "https://x/%2e%2e%2f%2e%2e%2fevil"})), "setup");
+        assert_eq!(name(json!({"setup": "https://x/a%2fb.zip"})), "setup");
+        assert_eq!(name(json!({"setup": "https://x/a%00b.zip"})), "setup");
+        assert_eq!(name(json!({"setup": "https://x/%2e%2e"})), "setup");
+        assert_eq!(name(json!({"setup": {"url": "https://x/dl", "filename": ".."}})), "dl");
+        assert_eq!(name(json!({"setup": {"url": "https://x/", "filename": "../x"}})), "x");
+        assert_eq!(name(json!({"setup": {"url": "N/A", "filename": ".."}})), "setup");
+        assert_eq!(name(json!({"../../evil": "N/A"})), ".._.._evil");
+        assert_eq!(name(json!({"..": "N/A"})), "file");
+        assert_eq!(name(json!({"p": {"url": "https://x/dl", "filename": "ok.zip"}})), "ok.zip");
     }
 
     #[test]

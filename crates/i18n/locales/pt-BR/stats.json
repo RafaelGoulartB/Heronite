@@ -154,6 +154,8 @@
   "Won't delete {path}: it contains your home folder": "Não vou apagar {path}: contém a sua pasta pessoal",
   "Won't delete {path}: it is a Steam library": "Não vou apagar {path}: é uma biblioteca do Steam",
   "Won't delete {path}: it is a top-level folder. Delete the game by hand": "Não vou apagar {path}: é uma pasta de nível superior. Apague o jogo manualmente",
+  "Won't delete {path}: it is a shared folder of the system or your account. Delete the game by hand": "Não vou apagar {path}: é uma pasta compartilhada do sistema ou da sua conta. Apague o jogo manualmente",
+  "Won't delete {path}: it is or holds the folders of this app": "Não vou apagar {path}: é ou contém as pastas deste aplicativo",
   "Won't delete {path}: it is a whole drive": "Não vou apagar {path}: é um disco inteiro",
   "Won't delete {path}: it is or holds a default folder or another game's prefix": "Não vou apagar {path}: é ou contém uma pasta padrão ou o prefixo de outro jogo",
   "Year": "Ano",

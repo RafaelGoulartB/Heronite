@@ -6,7 +6,9 @@
 //! Deleting folders picked from a path the user typed is risky, so both
 //! targets go through checks first. The install folder must not be the
 //! filesystem root, the home folder or a folder right under it, a mount
-//! point, a Steam library, a default Heroic folder, or hold another game. The
+//! point, a Steam library, a default Heroic folder, a shared folder (the XDG
+//! base and user folders, system folders), this app's data, config or cache
+//! folder (or one holding them), or hold another game. The
 //! prefix must belong to this game only: the shared prefix, the default
 //! prefixes and a prefix another game also uses are always kept. Neither may
 //! be, hold or sit inside the folder or prefix of a game Lutris, Bottles or Faugus
@@ -24,7 +26,7 @@ use crate::game_config;
 use crate::json_store;
 use crate::launchers::{self, Managed};
 use crate::library::Library;
-use crate::paths::DataPaths;
+use crate::paths::{AppPaths, DataPaths};
 use crate::sideload::check_prefix_removable;
 
 /// A folder the uninstall would delete, or the reason it will not.
@@ -94,10 +96,12 @@ pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
         Target { path, blocked }
     });
 
+    let app = AppPaths::for_data(paths);
+    let own = [paths.root.clone(), app.config, app.cache];
     let files = input.folder.map(|folder| {
         let mut taken: Vec<PathBuf> = defaults.clone();
         taken.extend(other_prefixes.iter().cloned());
-        let blocked = managed_blocked(folder, &managed).or_else(|| folder_blocked(folder, &taken, input.others, home));
+        let blocked = managed_blocked(folder, &managed).or_else(|| folder_blocked(folder, &taken, input.others, &own, home));
         Target { path: folder.to_path_buf(), blocked }
     });
     UninstallPlan { files, prefix }
@@ -267,7 +271,8 @@ fn prefix_blocked(prefix: &Path, defaults: &[PathBuf], other_prefixes: &[PathBuf
     check_prefix_removable(prefix, &[], home).err()
 }
 
-fn folder_blocked(folder: &Path, taken: &[PathBuf], others: &[PathBuf], home: &Path) -> Option<String> {
+/// `own` = this app's data, config and cache folders.
+fn folder_blocked(folder: &Path, taken: &[PathBuf], others: &[PathBuf], own: &[PathBuf], home: &Path) -> Option<String> {
     let shown = folder.display();
     if !is_clean_absolute(folder) {
         return Some(tr!("Can't delete {path}: not a full path", path = shown));
@@ -287,6 +292,15 @@ fn folder_blocked(folder: &Path, taken: &[PathBuf], others: &[PathBuf], home: &P
     if folder.parent() == Some(home) || folder.components().count() < 3 {
         return Some(tr!("Won't delete {path}: it is a top-level folder. Delete the game by hand", path = shown));
     }
+    if is_shared_folder(folder, home) {
+        return Some(tr!(
+            "Won't delete {path}: it is a shared folder of the system or your account. Delete the game by hand",
+            path = shown
+        ));
+    }
+    if own.iter().any(|p| inside(p, folder) || inside(folder, p)) {
+        return Some(tr!("Won't delete {path}: it is or holds the folders of this app", path = shown));
+    }
     if is_mount_point(folder) {
         return Some(tr!("Won't delete {path}: it is a whole drive", path = shown));
     }
@@ -300,6 +314,89 @@ fn folder_blocked(folder: &Path, taken: &[PathBuf], others: &[PathBuf], home: &P
         return Some(tr!("Won't delete {path}: another game is installed in it", path = shown));
     }
     None
+}
+
+/// A folder many programs share, never one game's: the XDG base and user
+/// folders (also where the system puts them, for a localized or moved
+/// `Documents`), the `~/.local`, `~/.var` ones, and the system folders. A
+/// game's executable that sits straight in one of them (`~/.local/share/game.sh`)
+/// would otherwise offer the whole folder for deletion.
+fn is_shared_folder(folder: &Path, home: &Path) -> bool {
+    const IN_HOME: &[&str] = &[
+        ".local",
+        ".local/share",
+        ".local/state",
+        ".local/bin",
+        ".local/lib",
+        ".config",
+        ".cache",
+        ".var",
+        ".var/app",
+        "Desktop",
+        "Documents",
+        "Downloads",
+        "Music",
+        "Pictures",
+        "Videos",
+        "Public",
+        "Templates",
+        "snap",
+    ];
+    const SYSTEM: &[&str] = &[
+        "/bin",
+        "/boot",
+        "/dev",
+        "/etc",
+        "/home",
+        "/lib",
+        "/lib32",
+        "/lib64",
+        "/media",
+        "/mnt",
+        "/opt",
+        "/proc",
+        "/root",
+        "/run",
+        "/run/media",
+        "/sbin",
+        "/srv",
+        "/sys",
+        "/tmp",
+        "/usr",
+        "/usr/bin",
+        "/usr/lib",
+        "/usr/lib64",
+        "/usr/local",
+        "/usr/local/bin",
+        "/usr/local/share",
+        "/usr/share",
+        "/var",
+        "/var/cache",
+        "/var/lib",
+        "/var/log",
+        "/var/tmp",
+    ];
+    let xdg = [
+        dirs::home_dir(),
+        dirs::data_dir(),
+        dirs::config_dir(),
+        dirs::cache_dir(),
+        dirs::state_dir(),
+        dirs::desktop_dir(),
+        dirs::document_dir(),
+        dirs::download_dir(),
+        dirs::audio_dir(),
+        dirs::picture_dir(),
+        dirs::video_dir(),
+        dirs::public_dir(),
+        dirs::template_dir(),
+    ];
+    // `/media/<user>` and `/run/media/<user>` hold the user's drives.
+    let drives_parent = folder.parent().is_some_and(|p| p == Path::new("/media") || p == Path::new("/run/media"));
+    drives_parent
+        || SYSTEM.iter().any(|d| folder == Path::new(d))
+        || IN_HOME.iter().any(|d| folder == home.join(d))
+        || xdg.iter().flatten().any(|d| folder == d)
 }
 
 /// `path` is `dir` or below it.
@@ -404,6 +501,56 @@ mod tests {
         let input = UninstallInput { app_name: "a", home: e.home(), folder: Some(&game), windows: true, others: &[] };
         uninstall(&e.paths, &input, true, true).unwrap();
         assert!(!of_prefix.exists() && !of_game.exists());
+    }
+
+    #[test]
+    fn a_shared_folder_is_never_offered_for_deletion() {
+        let e = env();
+        // `~/.local/share/game.sh` guesses `~/.local/share`.
+        let share = e.mkdir(".local/share");
+        let exe = share.join("game.sh");
+        fs::write(&exe, "x").unwrap();
+        let guessed = guess_game_folder(&exe).unwrap();
+        assert_eq!(guessed, share);
+        let why = e.plan(Some(&guessed), &[]).files.unwrap().blocked.unwrap();
+        assert!(why.contains("shared folder"), "{why}");
+        for rel in [".local", ".config", ".cache", ".var/app", "Documents", "Downloads"] {
+            let dir = e.mkdir(rel);
+            assert!(!e.plan(Some(&dir), &[]).files.unwrap().removable(), "{rel}");
+        }
+        let game = e.mkdir(".local/share/game");
+        assert!(e.plan(Some(&game), &[]).files.unwrap().removable());
+        assert!(is_shared_folder(Path::new("/usr"), &e.home));
+        assert!(is_shared_folder(Path::new("/media/rafa"), &e.home));
+        assert!(!is_shared_folder(Path::new("/opt/game"), &e.home));
+    }
+
+    #[test]
+    fn the_app_folders_and_their_parents_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let root = home.join(".local/share/heronite");
+        fs::create_dir_all(root.join("tools")).unwrap();
+        let paths = DataPaths::at(&root);
+        let app = AppPaths::for_data(&paths);
+        fs::create_dir_all(&app.config).unwrap();
+        fs::create_dir_all(&app.cache).unwrap();
+        let home_str = home.to_str().unwrap();
+        let blocked = |folder: &Path| {
+            plan(&paths, &UninstallInput { app_name: "a", home: home_str, folder: Some(folder), windows: false, others: &[] })
+                .files
+                .unwrap()
+                .blocked
+        };
+        assert!(blocked(&root).unwrap().contains("folders of this app"));
+        assert!(blocked(&root.join("tools")).unwrap().contains("folders of this app"));
+        assert!(blocked(&app.config).unwrap().contains("folders of this app"));
+        assert!(blocked(&app.cache).unwrap().contains("folders of this app"));
+        // The parent of the data folder holds it.
+        assert!(blocked(&home.join(".local/share")).is_some());
+        let parent_of_all = home.join("Games");
+        fs::create_dir_all(parent_of_all.join("A")).unwrap();
+        assert!(blocked(&parent_of_all.join("A")).is_none());
     }
 
     #[test]

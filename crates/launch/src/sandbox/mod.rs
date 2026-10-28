@@ -5,7 +5,10 @@
 //! the display, the sound and the controllers. It has no network and no home
 //! folder: `$HOME` is a private folder of the sandbox
 //! (`<data>/sandbox/<key>`, see [`private_home`]), so saves, settings and
-//! shader caches written there stay between runs.
+//! shader caches written there stay between runs. It does not get the
+//! launcher's environment either: only the variables of its launch plan and
+//! the ones of the session that games read (see [`pass`]), so a token or a
+//! key the app was started with is not there to read or send away.
 //!
 //! Each [`Exception`] lets one thing through for games that need it.
 //!
@@ -16,7 +19,9 @@
 //! before Proton / the game (umu does not run inside, see [`without_umu`]).
 //! Inside, the command runs in its own pid
 //! namespace (otherwise `/proc/<pid>/root` of any process of the user shows
-//! the real files), and the sandbox lasts until its last process exits.
+//! the real files) and its own IPC namespace (the host's SysV segments and
+//! message queues are not there), and the sandbox lasts until its last
+//! process exits.
 //!
 //! Programs started while the game runs (programs alongside the game, Wine
 //! tools) join its sandbox with `nsenter` ([`join`]) so they share its
@@ -24,6 +29,7 @@
 
 mod host;
 mod mounts;
+mod pass;
 mod script;
 
 use serde_json::{json, Map, Value};
@@ -192,7 +198,7 @@ pub fn prelude(
     }
     let bwrap = probe.bwrap().expect("checked by unavailable");
     let mounts = Mounts::build(ctx, probe, settings, owner, req, &bwrap)?;
-    Ok(Some(script::prelude(&bwrap, &settings.sandbox, &mounts)))
+    Ok(Some(script::prelude(&bwrap, &settings.sandbox, &mounts, req.env)))
 }
 
 /// `cmd` started by `prelude` (from [`prelude`]): the program and its

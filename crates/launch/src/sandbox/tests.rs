@@ -128,6 +128,23 @@ fn a_windows_game_runs_proton_directly_in_the_sandbox() {
 }
 
 #[test]
+fn the_game_gets_the_variables_of_its_plan_and_nothing_else_of_the_launchers() {
+    let s = windows_settings(json!({"enabled": true}));
+    let LaunchPlan::Wine { process, .. } = plan(&probe(), &s, &game("/home/u/Games/win/game.exe", "Windows")) else { panic!() };
+    let script = program(&process.command);
+    assert!(script.contains("--clearenv"));
+    assert!(!script.contains("--unsetenv"));
+    // The plan's variables are named for the sandbox to hand over; their
+    // values stay in the environment the command starts with.
+    assert!(!process.command.env.is_empty());
+    for name in process.command.env.keys() {
+        assert!(script.contains(&format!(" {name} ")), "{name} is not passed in {script}");
+    }
+    assert!(process.command.env.contains_key("PROTON_VERB"));
+    assert!(!script.contains("GH_TOKEN"));
+}
+
+#[test]
 fn exceptions_reach_the_sandbox() {
     let s = windows_settings(json!({"enabled": true, "network": true, "gameFolder": true, "sharedFolders": true}));
     let LaunchPlan::Wine { process, .. } = plan(&probe(), &s, &game("/home/u/Games/win/game.exe", "Windows")) else { panic!() };

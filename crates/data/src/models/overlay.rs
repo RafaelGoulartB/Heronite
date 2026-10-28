@@ -22,6 +22,7 @@ pub struct LocalMetaFile {
 pub struct LocalGameRom {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default)]
     pub path: String,
     #[serde(flatten)]
     pub extra: Extra,
@@ -30,8 +31,10 @@ pub struct LocalGameRom {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalGameMeta {
+    #[serde(default)]
     pub app_name: String,
     /// 'sideload' | 'legendary' | 'gog' | 'nile'
+    #[serde(default)]
     pub runner: String,
     #[serde(default)]
     pub playnite_id: String,
@@ -97,10 +100,16 @@ pub struct SessionsFile {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalGameSession {
+    // Every field defaults: one record with a missing key (hand edit, partial
+    // import) must not fail the whole file, and it is written back as it is.
+    #[serde(default)]
     pub started_at: String,
+    #[serde(default)]
     pub ended_at: String,
+    #[serde(default)]
     pub elapsed_seconds: JsNum,
     /// 'playnite' | 'heroic'
+    #[serde(default)]
     pub source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub game_action_name: Option<String>,
@@ -130,11 +139,15 @@ pub struct StatusesFile {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionStatus {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub name: String,
     /// 'playing' | 'plan-to-play' | 'on-hold' | 'played' | 'endless' | 'beaten'
     /// | 'completed' | 'abandoned' | 'not-played' | 'custom'
+    #[serde(default)]
     pub slug: String,
+    #[serde(default)]
     pub sort_order: JsNum,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playnite_id: Option<String>,
@@ -158,7 +171,9 @@ pub struct MetadataFile {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionGameMetadata {
+    #[serde(default)]
     pub app_name: String,
+    #[serde(default)]
     pub runner: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub igdb_id: Option<JsNum>,
@@ -230,4 +245,35 @@ pub struct CollectionGameArt {
     pub hero_url: Option<String>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_session_missing_keys_does_not_fail_the_file() {
+        let text = r#"{"sessions":{"g":[
+            {"startedAt":"2025-01-01T00:00:00.000Z","endedAt":"2025-01-01T01:00:00.000Z","elapsedSeconds":3600,"source":"heroic"},
+            {"startedAt":"2025-02-01T00:00:00.000Z","elapsedSeconds":60,"note":"hand edit"}
+        ]}}"#;
+        let file: SessionsFile = serde_json::from_str(text).unwrap();
+        let list = &file.sessions["g"];
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].elapsed_seconds.get(), 3600.0);
+        assert_eq!(list[1].ended_at, "");
+        assert_eq!(list[1].source, "");
+        let back = serde_json::to_value(&file).unwrap();
+        assert_eq!(back["sessions"]["g"][1]["note"], "hand edit");
+    }
+
+    #[test]
+    fn overlay_records_missing_keys_still_load() {
+        let meta: LocalMetaFile = serde_json::from_str(r#"{"games":{"a":{"title":"A"}}}"#).unwrap();
+        assert_eq!(meta.games["a"].title, "A");
+        let statuses: StatusesFile = serde_json::from_str(r#"{"statuses":[{"id":"x"}]}"#).unwrap();
+        assert_eq!(statuses.statuses[0].id, "x");
+        let md: MetadataFile = serde_json::from_str(r#"{"games":{"a":{"title":"A"}}}"#).unwrap();
+        assert_eq!(md.games["a"].title.as_deref(), Some("A"));
+    }
 }
