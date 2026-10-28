@@ -96,7 +96,10 @@ device when the last window closes (the app lives on in the tray); see its
   as rules in `local_library/names.json` that the metadata service and the
   library load apply too, plus the duplicate suggestions), `steam_owned` (the cached Steam library and its twins: a game
   owned on Steam that the Collection has from another source joins that
-  entry instead of getting a Steam entry of its own).
+  entry instead of getting a Steam entry of its own), `steam_process` (whether
+  the Steam client runs: its `steam.pid` files, native, Flatpak and Snap, each
+  checked against the process it names, then a scan for a `steam` process; used by
+  `launch` and `shortcuts`).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
   lives in `locales/pt-BR/*.json`, Spanish (neutral, `tú`) in
   `locales/es/*.json` and German (`du`) in `locales/de/*.json`, embedded at build time (one folder per language) and
