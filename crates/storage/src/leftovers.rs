@@ -38,14 +38,14 @@ struct Root {
 }
 
 /// The library as the Collection could show it, hidden games included: a
-/// hidden game is installed all the same, and its folder is not a leftover.
-/// `None` when it cannot be read: nothing is offered then.
+/// hidden game is installed all the same: it keeps its folder, prefix and
+/// build. `None` when it cannot be read.
 pub(crate) fn full_library(ctx: &Ctx) -> Option<Library> {
     Library::load_with(&ctx.data_paths, true).map_err(|e| log::warn!("storage: loading the library: {e:#}")).ok()
 }
 
-pub(crate) fn items(ctx: &Ctx, listed: &[Item], walked: &SizeCache) -> Vec<Item> {
-    let Some(lib) = full_library(ctx) else { return Vec::new() };
+/// `lib` is the library with the hidden games (see [`full_library`]).
+pub(crate) fn items(ctx: &Ctx, lib: &Library, listed: &[Item], walked: &SizeCache) -> Vec<Item> {
     let home = ctx.home_str();
     let global = game_config::load_global(&ctx.data_paths, &home);
     let heronite = PathBuf::from(game_config::default_install_dir(&home));
@@ -78,7 +78,7 @@ pub(crate) fn items(ctx: &Ctx, listed: &[Item], walked: &SizeCache) -> Vec<Item>
         }
     }
     let own = [ctx.data_paths.root.clone(), ctx.app.config.clone(), ctx.app.cache.clone()];
-    let former = former_folders(&lib);
+    let former = former_folders(lib);
 
     let mut out = Vec::new();
     for root in roots {
@@ -295,7 +295,8 @@ mod tests {
         }
 
         fn offered(&self) -> Vec<PathBuf> {
-            items(&self.ctx, &[], &SizeCache::default()).into_iter().map(|i| i.folder).collect()
+            let lib = full_library(&self.ctx).expect("the library loads");
+            items(&self.ctx, &lib, &[], &SizeCache::default()).into_iter().map(|i| i.folder).collect()
         }
 
         fn set_install_path(&self, path: &Path) {
@@ -395,7 +396,8 @@ mod tests {
         e.folder(&docs.join("Taxes"), &["2023.pdf"]);
         e.set_install_path(&docs);
         e.sideload(false, &game);
-        let found = items(&e.ctx, &[], &SizeCache::default());
+        let lib = full_library(&e.ctx).expect("the library loads");
+        let found = items(&e.ctx, &lib, &[], &SizeCache::default());
         assert_eq!(
             found.iter().map(|i| (i.folder.clone(), i.title.clone())).collect::<Vec<_>>(),
             [(game.clone(), "Gone Game".to_string())]
