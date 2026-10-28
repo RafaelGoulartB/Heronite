@@ -372,6 +372,7 @@ impl SettingsPanel {
         if crate::env::flag("HERONITE_DEBUG_WINETRICKS") && this.is_game() {
             this.open_winetricks(window, cx);
         }
+        this.note_tray_at_start();
         this
     }
 

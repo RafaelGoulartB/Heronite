@@ -520,5 +520,7 @@
   "Takes effect after Heronite restarts.": "Se aplica al reiniciar Heronite.",
   "Useful with a local download cache such as LanCache.": "Útil con una caché local de descargas, como LanCache.",
   "Show path": "Mostrar ruta",
-  "Hide path": "Ocultar ruta"
+  "Hide path": "Ocultar ruta",
+  "Restart Heronite": "Reiniciar Heronite",
+  "The tray changes apply once Heronite starts again.": "Los cambios de la bandeja se aplican cuando Heronite vuelva a abrirse."
 }

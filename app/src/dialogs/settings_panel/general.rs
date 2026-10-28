@@ -5,11 +5,14 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::Value;
 
+use std::sync::OnceLock;
+
 use super::parts::{column, heading, help, rows, Rows};
 use super::{Section, SettingsPanel, Target};
 use crate::icons::Icon;
 use crate::system::settings::KEY_RESTORE_AFTER_GAME;
 use crate::theme;
+use crate::ui::controls::{button_sm, row, with_sub_rows, ButtonKind};
 use crate::ui::fields::choose_path;
 use crate::ui::icon;
 use heronite_data::{AppPaths, DataPaths};
@@ -182,30 +185,33 @@ impl SettingsPanel {
     fn startup_rows(&self, cx: &mut Context<Self>) -> Rows {
         let no_tray = self.flag("noTrayIcon", false);
         let with_system = self.flag("startWithSystem", false);
-        rows()
-            .child(self.toggle_row(
-                "start-with-system",
-                "startWithSystem",
-                false,
-                tr!("Start with the system"),
-                Some(tr!("Opens Heronite when you log in.")),
-                false,
-                cx,
-            ))
-            .child(self.toggle_row(
+        let parent = self.toggle_row(
+            "start-with-system",
+            "startWithSystem",
+            false,
+            tr!("Start with the system"),
+            Some(tr!("Opens Heronite when you log in.")),
+            false,
+            cx,
+        );
+        // Starting minimized belongs to starting with the system: under it while it is on.
+        let sub = with_system.then(|| {
+            self.toggle_row(
                 "start-in-tray",
                 "startInTray",
                 false,
                 tr!("Start minimized"),
                 Some(tr!("When Heronite opens with the system, it stays in the tray without the window.")),
-                !with_system || no_tray,
+                no_tray,
                 cx,
-            ))
+            )
+        });
+        rows().child(with_sub_rows(parent, sub.into_iter().collect()))
     }
 
     fn tray_rows(&self, cx: &mut Context<Self>) -> Rows {
         let no_tray = self.flag("noTrayIcon", false);
-        rows()
+        let list = rows()
             .child(self.toggle_row("exit-to-tray", "exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray, cx))
             .child(self.toggle_row(
                 "dark-tray",
@@ -224,16 +230,19 @@ impl SettingsPanel {
                 Some(tr!("Takes effect after Heronite restarts.")),
                 false,
                 cx,
-            ))
+            ));
+        if self.restart_needed() {
+            return list.child(self.restart_row(cx));
+        }
+        list
     }
 
     /// The window and Steam around a game. Bringing the window back belongs
-    /// to minimizing it, so it shows under that switch while it is on.
+    /// to minimizing it, so it shows under that switch, indented, while it is on.
     fn game_rows(&self, cx: &mut Context<Self>) -> Rows {
-        let mut list =
-            rows().child(self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false, cx));
-        if self.flag("minimizeOnLaunch", false) {
-            list = list.child(self.toggle_row(
+        let parent = self.toggle_row("minimize", "minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false, cx);
+        let sub = self.flag("minimizeOnLaunch", false).then(|| {
+            self.toggle_row(
                 "restore-after-game",
                 KEY_RESTORE_AFTER_GAME,
                 false,
@@ -241,26 +250,28 @@ impl SettingsPanel {
                 None,
                 false,
                 cx,
-            ));
-        }
-        list.child(self.toggle_row(
-            "hide-on-protocol",
-            "hideWindowOnProtocolLaunch",
-            false,
-            tr!("Stay hidden when a shortcut starts a game"),
-            Some(tr!("heronite:// links, like those of the games added to Steam.")),
-            false,
-            cx,
-        ))
-        .child(self.toggle_row(
-            "close-steam-after-game",
-            KEY_CLOSE_AFTER_GAME,
-            false,
-            tr!("Close Steam when the game ends"),
-            Some(tr!("Only when Steam was not running before Heronite started the game.")),
-            false,
-            cx,
-        ))
+            )
+        });
+        rows()
+            .child(with_sub_rows(parent, sub.into_iter().collect()))
+            .child(self.toggle_row(
+                "hide-on-protocol",
+                "hideWindowOnProtocolLaunch",
+                false,
+                tr!("Stay hidden when a shortcut starts a game"),
+                Some(tr!("heronite:// links, like those of the games added to Steam.")),
+                false,
+                cx,
+            ))
+            .child(self.toggle_row(
+                "close-steam-after-game",
+                KEY_CLOSE_AFTER_GAME,
+                false,
+                tr!("Close Steam when the game ends"),
+                Some(tr!("Only when Steam was not running before Heronite started the game.")),
+                false,
+                cx,
+            ))
     }
 
     /// Shortcuts made when a game is added (`system/shortcuts.rs`).
@@ -380,4 +391,39 @@ pub(super) fn language_options(app_paths: &AppPaths) -> (Vec<Preference>, Vec<Sh
         .collect();
     let selected = choices.iter().position(|&p| p == pref).unwrap_or(0);
     (choices, names, selected)
+}
+
+/// The tray switches as the app started with them: it reads them only then.
+static TRAY_AT_START: OnceLock<(bool, bool)> = OnceLock::new();
+
+impl SettingsPanel {
+    /// Notes the tray switches the app started with (the first global panel
+    /// reads them before any change).
+    pub(super) fn note_tray_at_start(&self) {
+        if !self.is_game() {
+            TRAY_AT_START.get_or_init(|| (self.flag("darkTrayIcon", false), self.flag("noTrayIcon", false)));
+        }
+    }
+
+    /// A tray switch changed since the app started: it takes a restart
+    /// (`HERONITE_DEBUG_RESTART_ROW=1`: as if one had).
+    pub(super) fn restart_needed(&self) -> bool {
+        crate::env::flag("HERONITE_DEBUG_RESTART_ROW")
+            || TRAY_AT_START
+                .get()
+                .is_some_and(|&(dark, hidden)| dark != self.flag("darkTrayIcon", false) || hidden != self.flag("noTrayIcon", false))
+    }
+
+    /// "Restart now" under the tray switches once one changed; what keeps
+    /// the app from restarting (a running game) shows instead of acting.
+    fn restart_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        let blocker = crate::system::restart_blocker(cx);
+        let button = button_sm("restart-now", ButtonKind::Primary, tr!("Restart now"));
+        let button = match blocker {
+            None => button.on_click(|_, _, cx| crate::system::restart_now(cx)),
+            Some(_) => button.opacity(0.5).cursor_not_allowed(),
+        };
+        let about = blocker.unwrap_or_else(|| tr!("The tray changes apply once Heronite starts again.").to_string());
+        row(tr!("Restart Heronite"), Some(&about), button).into_any_element()
+    }
 }

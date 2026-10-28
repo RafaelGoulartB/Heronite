@@ -150,6 +150,16 @@ pub fn restart_into(appimage: PathBuf, cx: &mut App) {
     graceful_quit(cx);
 }
 
+/// Quits gracefully and starts this app again (a setting it reads only at
+/// start changed): the AppImage it runs from, else its executable. Refused
+/// like [`restart_into`].
+pub fn restart_now(cx: &mut App) {
+    match crate::system::own_exe::own_executable() {
+        Some(exe) => restart_into(exe, cx),
+        None => log::warn!("restart: this app's executable was not found"),
+    }
+}
+
 /// Starts the updated AppImage if a restart asked for it. Called last, once
 /// the single-instance socket is gone, so the new process becomes the
 /// instance (and by the quit watchdog).

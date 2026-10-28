@@ -701,14 +701,25 @@ impl SettingsPanel {
             self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
             Self::c_header(tr!("Startup")),
             self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false),
-            self.c_toggle("startInTray", false, tr!("Start minimized"), None, !with_system || no_tray),
+        ];
+        // Starting minimized belongs to starting with the system, as on the desktop.
+        if with_system {
+            v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray));
+        }
+        v.extend([
             Self::c_header(tr!("System tray")),
             self.c_toggle("exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray),
             self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon"), Some(tr!("Takes effect after Heronite restarts.")), no_tray),
             self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
+        ]);
+        if self.restart_needed() {
+            let free = crate::system::restart_blocker(cx).is_none();
+            v.push(Self::c_do("restart-now", tr!("Restart now"), Icon::Replay, free, |_, _, cx| crate::system::restart_now(cx)));
+        }
+        v.extend([
             Self::c_header(tr!("When a game starts and ends")),
             self.c_toggle("minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false),
-        ];
+        ]);
         // Bringing the window back belongs to minimizing it.
         if self.flag("minimizeOnLaunch", false) {
             v.push(self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false));
