@@ -479,5 +479,6 @@
   "{n} game is in your Collection twice.": "{n} juego está dos veces en tu Colección.",
   "{n} games are in your Collection twice.": "{n} juegos están dos veces en tu Colección.",
   "{title} is in your Collection twice: added by you and from {launcher}.": "{title} está dos veces en tu Colección: añadido por ti y desde {launcher}.",
-  "Undoing as soon as the library has reloaded…": "Se deshará en cuanto la biblioteca termine de recargarse…"
+  "Undoing as soon as the library has reloaded…": "Se deshará en cuanto la biblioteca termine de recargarse…",
+  "Drop to add a game": "Suelta para añadir el juego"
 }

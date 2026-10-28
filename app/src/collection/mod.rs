@@ -635,6 +635,7 @@ impl CollectionView {
             .children(update_banner)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())
+            .children(self.render_drop_target())
             .children(self.render_gallery(window, cx))
             .children(self.render_viewer(window, cx))
             .children(self.render_palette())

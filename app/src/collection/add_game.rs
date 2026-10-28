@@ -7,6 +7,8 @@ use gpui_kit::*;
 
 use super::CollectionView;
 use crate::dialogs::add_game::{AddGameDialog, Mode};
+use crate::icons::Icon;
+use crate::theme;
 
 impl CollectionView {
     pub(super) fn open_add_game(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<AddGameDialog>> {
@@ -15,8 +17,13 @@ impl CollectionView {
 
     /// Files dropped on the window: the first one opens "Add game" filled in.
     /// Only the Collection page takes it, with no dialog open.
+    /// Whether a file dropped now opens Add game.
+    fn takes_drop(&self) -> bool {
+        self.page == crate::pages::Page::Collection && !crate::console::active() && self.dialog.is_none()
+    }
+
     pub(super) fn drop_external_paths(&mut self, paths: &ExternalPaths, window: &mut Window, cx: &mut Context<Self>) {
-        if self.page != crate::pages::Page::Collection || crate::console::active() || self.dialog.is_some() {
+        if !self.takes_drop() {
             return;
         }
         let Some(first) = paths.paths().first() else { return };
@@ -61,4 +68,53 @@ impl CollectionView {
         }
         true
     }
+
+    /// The whole window lights up while a file is dragged over it, with what
+    /// a drop does. Invisible otherwise; it takes no clicks (no listeners,
+    /// not occluding), only the drag-over style.
+    pub(super) fn render_drop_target(&self) -> Option<Stateful<Div>> {
+        if !self.takes_drop() {
+            return None;
+        }
+        let label = div()
+            .flex()
+            .items_center()
+            .gap(px(10.))
+            .px(px(18.))
+            .py(px(12.))
+            .rounded(px(14.))
+            .bg(theme::toast_fill())
+            .border_1()
+            .border_color(theme::accent_alpha(0.6))
+            .text_size(px(15.))
+            .font_weight(theme::W_BOLD)
+            .text_color(theme::text_bright())
+            .child(crate::ui::icon(Icon::Add, px(18.), theme::accent()))
+            .child(heronite_i18n::tr!("Drop to add a game"));
+        Some(
+            div()
+                .id("drop-target")
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .opacity(0.)
+                .when(debug_drop(), lit)
+                .drag_over::<ExternalPaths>(|s, _, _, _| lit(s))
+                .child(label),
+        )
+    }
+}
+
+/// The drop target while a file is over it.
+fn lit<S: Styled>(s: S) -> S {
+    s.opacity(1.).bg(theme::accent_alpha(0.12)).border_2().border_color(theme::accent_alpha(0.7))
+}
+
+/// `HERONITE_DEBUG_DROP=1` shows the drop target as if a file were dragged
+/// over the window (screenshots). Read once: the target is built every frame.
+fn debug_drop() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| crate::env::flag("HERONITE_DEBUG_DROP"))
 }
