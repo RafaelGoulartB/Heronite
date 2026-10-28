@@ -385,6 +385,7 @@ impl PadTarget for GameSettingsDialog {
                 return true;
             }
             Pad::B if self.tab == Tab::Actions && self.close_action_editor(cx) => return true,
+            Pad::B if self.cancel_reset_question(cx) => return true,
             Pad::B => {
                 cx.emit(DialogEvent::Close);
                 return true;

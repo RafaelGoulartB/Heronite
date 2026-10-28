@@ -150,6 +150,17 @@ pub struct GameSettingsDialog {
 impl EventEmitter<DialogEvent> for GameSettingsDialog {}
 
 impl GameSettingsDialog {
+    /// Drops the question about "Reset this tab"; true when there was one.
+    fn cancel_reset_question(&mut self, cx: &mut Context<Self>) -> bool {
+        self.panel.as_ref().is_some_and(|(p, _)| p.update(cx, |p, cx| p.cancel_reset(cx)))
+    }
+
+    /// Esc, offered by the host before it closes the drawer: answers the
+    /// question about resetting the tab.
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        self.cancel_reset_question(cx)
+    }
+
     pub fn new(ctx: DialogCtx, game: Game, tab: Tab, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let service = hub(cx).read(cx).service.clone();
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
@@ -307,6 +318,11 @@ impl Render for GameSettingsDialog {
         let entity = cx.entity().downgrade();
         let panel = self.panel.clone();
         let tab_bar = tabs("gs", &items, self.tab, move |t, window, cx| {
+            if let Some((panel, _)) = panel.as_ref() {
+                panel.update(cx, |p, cx| {
+                    p.cancel_reset(cx);
+                });
+            }
             if let (Some(section), Some((panel, secs))) = (t.section(), panel.as_ref()) {
                 if secs.contains(&section) {
                     panel.update(cx, |p, cx| p.set_section(section, window, cx));
@@ -371,19 +387,25 @@ impl Render for GameSettingsDialog {
         // The panel's tab: its changed settings back to the game defaults.
         let changed_panel =
             self.panel.as_ref().map(|(p, _)| p.clone()).filter(|p| self.tab.section().is_some() && p.read(cx).tab_changed());
-        if let Some(panel) = changed_panel {
-            right = right.child(action_button(
-                "gs-reset-tab",
-                ButtonKind::Ghost,
-                tr!("Reset this tab"),
-                true,
-                cx.listener(move |_, _, _, cx| panel.update(cx, |p, cx| p.reset_tab(cx))),
-            ));
+        // While "Reset this tab" is asked, its question takes the buttons' place.
+        let asking = changed_panel.as_ref().is_some_and(|p| p.read(cx).asking_reset());
+        if let (Some(panel), true) = (changed_panel.clone(), asking) {
+            right = SettingsPanel::reset_question(&panel, "gs-reset");
+        } else {
+            if let Some(panel) = changed_panel {
+                right = right.child(action_button(
+                    "gs-reset-tab",
+                    ButtonKind::Ghost,
+                    tr!("Reset this tab"),
+                    true,
+                    cx.listener(move |_, _, _, cx| panel.update(cx, |p, cx| p.ask_reset(cx))),
+                ));
+            }
+            right = right.child(
+                button("gs-close", if self.tab == Tab::Game && dirty { ButtonKind::Glass } else { ButtonKind::Primary }, tr!("Done"))
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+            );
         }
-        right = right.child(
-            button("gs-close", if self.tab == Tab::Game && dirty { ButtonKind::Glass } else { ButtonKind::Primary }, tr!("Done"))
-                .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
-        );
         let footer = div().flex().w_full().items_center().justify_between().child(left).child(right);
 
         let entity = cx.entity().downgrade();

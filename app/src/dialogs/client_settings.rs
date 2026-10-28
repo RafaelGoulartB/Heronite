@@ -50,6 +50,12 @@ impl ClientSettingsDialog {
         Self { client, panel, section: SECTIONS[0] }
     }
 
+    /// Esc, offered by the host before it closes the drawer: answers the
+    /// question about resetting the tab.
+    pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        self.panel.update(cx, |p, cx| p.cancel_reset(cx))
+    }
+
     fn set_section(&mut self, section: Section, window: &mut Window, cx: &mut Context<Self>) {
         self.section = section;
         self.panel.update(cx, |p, cx| {
@@ -147,16 +153,22 @@ impl Render for ClientSettingsDialog {
             .child(div().px(px(20.)).child(tab_bar));
         let changed = self.panel.read(cx).tab_changed();
         let panel = self.panel.clone();
-        let footer = div()
-            .flex()
-            .w_full()
-            .items_center()
-            .justify_end()
-            .gap(px(8.))
-            .child(action_button("cs-reset-tab", ButtonKind::Ghost, tr!("Reset this tab"), changed, move |_, _, cx| {
-                panel.update(cx, |p, cx| p.reset_tab(cx))
-            }))
-            .child(button("cs-close", ButtonKind::Primary, tr!("Done")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
+        let footer = if changed && panel.read(cx).asking_reset() {
+            div().flex().w_full().items_center().child(SettingsPanel::reset_question(&panel, "cs-reset"))
+        } else {
+            div()
+                .flex()
+                .w_full()
+                .items_center()
+                .justify_end()
+                .gap(px(8.))
+                .child(action_button("cs-reset-tab", ButtonKind::Ghost, tr!("Reset this tab"), changed, move |_, _, cx| {
+                    panel.update(cx, |p, cx| p.ask_reset(cx))
+                }))
+                .child(
+                    button("cs-close", ButtonKind::Primary, tr!("Done")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
+                )
+        };
         let vw = f32::from(window.viewport_size().width);
         drawer(
             DrawerProps { id: "client-settings".into(), width: DRAWER_W.min(vw * 0.96) },

@@ -212,7 +212,8 @@ impl SettingsPage {
     /// `HERONITE_DEBUG_SETTINGS_ACTION=<action>` runs a write as if clicked (fixtures only):
     /// `unhide:<app>`, `unhide-all`, `fav-clear`, `recent-clear`, `max-recent:<n>`, `show-hidden:on|off`,
     /// `clear-cache`, and on Backups `backup-now`, `backup-open:<n>` (the n-th backup's details),
-    /// `backup-confirm:<n>` (its restore question).
+    /// `backup-confirm:<n>` (its restore question). `ask:<hidden|favourites|recent|launcher id>`
+    /// only opens that question.
     fn debug_action(&mut self, cx: &mut Context<Self>) {
         let Some(action) = crate::env::value("HERONITE_DEBUG_SETTINGS_ACTION") else { return };
         match action.split_once(':').unwrap_or((action.as_str(), "")) {
@@ -223,6 +224,12 @@ impl SettingsPage {
             ("max-recent", n) => self.set_max_recent(n.parse().unwrap_or(5), cx),
             ("show-hidden", v) => self.set_show_hidden(v == "on", cx),
             ("clear-cache", _) => self.clear_cache(cx),
+            ("ask", which) => {
+                if !library::debug_ask(self, which) {
+                    self.launchers.debug_ask(which);
+                }
+                cx.notify();
+            }
             (a @ ("backup-now" | "backup-open" | "backup-confirm"), n) => backup::debug_action(self, a, n.parse().unwrap_or(0), cx),
             _ => {}
         }
@@ -293,12 +300,21 @@ impl SettingsPage {
         cx.notify();
     }
 
+    /// Drops the questions before a destructive action (Other launchers,
+    /// Library); true when one was open.
+    fn dismiss_confirms(&mut self) -> bool {
+        let launchers = self.launchers.dismiss();
+        let library = self.library.dismiss();
+        launchers || library
+    }
+
     fn select(&mut self, section: Section, window: &mut Window, cx: &mut Context<Self>) {
         if self.section == section {
             return;
         }
         self.section = section;
         self.error = None;
+        self.dismiss_confirms();
         if let (Some(view), Some(panel)) = (section.global_view(), self.global.clone()) {
             panel.update(cx, |p, cx| p.set_global_view(view, cx));
         }

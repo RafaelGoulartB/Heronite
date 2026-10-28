@@ -524,5 +524,7 @@
   "The marked settings go back to the game defaults": "Die markierten Einstellungen kehren zu den Spiel-Standards zurück",
   "What a launch runs now, and the setting each variable comes from": "Was ein Start jetzt ausführt und aus welcher Einstellung jede Variable stammt",
   "Check for game updates at startup": "Beim Start nach Spiel-Updates suchen",
-  "Off, updates are only looked for when you refresh a store's library. Automatic updates still check on their own.": "Aus: Updates werden nur gesucht, wenn du die Bibliothek eines Stores aktualisierst. Automatische Updates prüfen weiterhin von selbst."
+  "Off, updates are only looked for when you refresh a store's library. Automatic updates still check on their own.": "Aus: Updates werden nur gesucht, wenn du die Bibliothek eines Stores aktualisierst. Automatische Updates prüfen weiterhin von selbst.",
+  "This tab's changed settings go back to the defaults.": "Die geänderten Einstellungen dieses Tabs werden auf die Standardwerte zurückgesetzt.",
+  "A again puts this tab's settings back to the defaults.": "Erneutes A setzt die Einstellungen dieses Tabs auf die Standardwerte zurück."
 }

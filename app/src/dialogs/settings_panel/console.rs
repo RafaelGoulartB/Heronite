@@ -150,14 +150,21 @@ impl SettingsPanel {
             i.row.changed = self.console_changed(&i.row.id).is_some();
         }
         if !self.console_tab_changes().is_empty() {
-            v.insert(
-                0,
-                Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+            let asking = self.confirm_reset;
+            let mut reset = Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+                if this.confirm_reset {
                     let groups = this.console_tab_changes();
                     this.reset(&groups, cx);
-                })
-                .desc_item(tr!("The marked settings go back to the game defaults")),
-            );
+                } else {
+                    this.confirm_reset = true;
+                }
+            });
+            if asking {
+                reset.row = reset.row.danger().desc(tr!("A again puts this tab's settings back to the defaults."));
+            } else {
+                reset.row = reset.row.desc(tr!("The marked settings go back to the game defaults"));
+            }
+            v.insert(0, reset);
         }
         v
     }
@@ -905,6 +912,12 @@ impl PadTarget for SettingsPanel {
             self.close_winetricks(cx);
             return true;
         }
+        if pad == Pad::B && self.cancel_reset(cx) {
+            return true;
+        }
+        if pad != Pad::A {
+            self.confirm_reset = false;
+        }
         let items = self.console_items(cx);
         let rows: Vec<Row> = items.iter().map(|i| i.row.clone()).collect();
         let act = |id: &SharedString| items.iter().find(|i| &i.row.id == id).map(|i| i.act.clone()).unwrap_or(Act::None);
@@ -928,6 +941,10 @@ impl PadTarget for SettingsPanel {
             return false;
         }
         let outcome = self.console_list.on_pad(pad, &rows);
+        // The question about "Reset this tab" lasts for one press of A on that row.
+        if !matches!(&outcome, Outcome::Activate(id) if id.as_ref() == "d:reset-tab") {
+            self.confirm_reset = false;
+        }
         match outcome {
             Outcome::Changed(id, value) => match (act(&id), value) {
                 (Act::Toggle(key, default), _) => self.toggle(key, default, cx),

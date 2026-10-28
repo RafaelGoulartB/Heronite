@@ -7,7 +7,7 @@ use heronite_data::config_games;
 use heronite_i18n::{tr, trn};
 
 use super::pager::{ListKind, Pager, COLLAPSED_ROWS};
-use super::{SettingsPage, Snapshot};
+use super::{Clear, SettingsPage, Snapshot};
 use crate::icons::Icon;
 use crate::pages::{caption_with, empty_row, icon_action};
 use crate::theme;
@@ -60,18 +60,29 @@ impl SettingsPage {
         if rows.is_empty() {
             rows.push(empty_row(tr!("No hidden games. Use \"Hide\" in a game's context menu.")).into_any_element());
         }
+        let asking = self.library.confirm == Some(Clear::Hidden) && !snap.hidden.is_empty();
         let head = list_caption(
             tr!("Hidden games ({count})", count = snap.hidden.len()),
-            action_button(
+            self.clear_button(
+                asking,
+                Clear::Hidden,
                 "lib-unhide-all",
-                ButtonKind::Glass,
                 tr!("Unhide all"),
                 !self.library.busy && !snap.hidden.is_empty(),
-                cx.listener(|this, _, _, cx| this.library_clear("hidden", cx)),
+                cx,
             ),
         );
+        let question = asking.then(|| {
+            let n = snap.hidden.len();
+            let text = trn!(
+                n,
+                "Unhide {n} game? It shows normally in the Collection again.",
+                "Unhide all {n} games? They show normally in the Collection again."
+            );
+            self.confirm_card("lib-unhide", text, tr!("Unhide all"), Clear::Hidden, cx)
+        });
         let pager = self.pager_row(ListKind::Hidden, snap.hidden.len(), cx);
-        [Some(head.into_any_element()), Some(card(rows).into_any_element()), pager].into_iter().flatten().collect()
+        [Some(head.into_any_element()), question, Some(card(rows).into_any_element()), pager].into_iter().flatten().collect()
     }
 
     /// Caption with "Clear favourites", the card of favourites and its pager.
@@ -94,18 +105,29 @@ impl SettingsPage {
         if rows.is_empty() {
             rows.push(empty_row(tr!("No favourites. Use \"Add to favourites\" in a game's context menu.")).into_any_element());
         }
+        let asking = self.library.confirm == Some(Clear::Favourites) && !snap.favourites.is_empty();
         let head = list_caption(
             tr!("Favourites ({count})", count = snap.favourites.len()),
-            action_button(
+            self.clear_button(
+                asking,
+                Clear::Favourites,
                 "lib-fav-clear",
-                ButtonKind::Glass,
                 tr!("Clear favourites"),
                 !self.library.busy && !snap.favourites.is_empty(),
-                cx.listener(|this, _, _, cx| this.library_clear("favourites", cx)),
+                cx,
             ),
         );
+        let question = asking.then(|| {
+            let n = snap.favourites.len();
+            let text = trn!(
+                n,
+                "Remove {n} game from your favourites? It stays in the Collection.",
+                "Remove all {n} games from your favourites? They stay in the Collection."
+            );
+            self.confirm_card("lib-fav", text, tr!("Clear favourites"), Clear::Favourites, cx)
+        });
         let pager = self.pager_row(ListKind::Favourites, snap.favourites.len(), cx);
-        [Some(head.into_any_element()), Some(card(rows).into_any_element()), pager].into_iter().flatten().collect()
+        [Some(head.into_any_element()), question, Some(card(rows).into_any_element()), pager].into_iter().flatten().collect()
     }
 
     /// Card with the "Recent games to show" select and "Clear recent".
@@ -135,19 +157,59 @@ impl SettingsPage {
                 div().w(px(120.)).child(select),
             )
             .into_any_element(),
-            row(
-                tr!("Clear recent games"),
-                Some(&trn!(snap.recent.len(), "{n} game in the recent list", "{n} games in the recent list")),
-                action_button(
-                    "lib-recent-clear",
-                    ButtonKind::Glass,
-                    tr!("Clear recent"),
-                    !self.library.busy && !snap.recent.is_empty(),
-                    cx.listener(|this, _, _, cx| this.library_clear("recent", cx)),
-                ),
-            )
-            .into_any_element(),
+            self.recent_clear_row(snap, cx),
         ])
+    }
+
+    /// "Clear recent games" with its count, or the question that replaces it.
+    fn recent_clear_row(&self, snap: &Snapshot, cx: &mut Context<Self>) -> AnyElement {
+        let n = snap.recent.len();
+        if self.library.confirm == Some(Clear::Recent) && n > 0 {
+            let text = trn!(
+                n,
+                "Clear {n} game from the recent list? It stays in the Collection.",
+                "Clear {n} games from the recent list? They stay in the Collection."
+            );
+            return confirm_row("lib-recent", text, tr!("Clear recent"), Clear::Recent, self.library.busy, cx);
+        }
+        row(
+            tr!("Clear recent games"),
+            Some(&trn!(n, "{n} game in the recent list", "{n} games in the recent list")),
+            self.clear_button(false, Clear::Recent, "lib-recent-clear", tr!("Clear recent"), !self.library.busy && n > 0, cx),
+        )
+        .into_any_element()
+    }
+
+    /// The button that opens the question for `which`. Nothing while that
+    /// question is open: it sits in the card under the caption.
+    fn clear_button(
+        &self,
+        asking: bool,
+        which: Clear,
+        id: &'static str,
+        label: &'static str,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if asking {
+            return div().into_any_element();
+        }
+        action_button(
+            id,
+            ButtonKind::Glass,
+            label,
+            enabled,
+            cx.listener(move |this, _, _, cx| {
+                this.library.confirm = Some(which);
+                cx.notify();
+            }),
+        )
+        .into_any_element()
+    }
+
+    /// A card with the question for `which` under a list's caption.
+    fn confirm_card(&self, id: &'static str, text: String, yes: &'static str, which: Clear, cx: &mut Context<Self>) -> AnyElement {
+        card([confirm_row(id, text, yes, which, self.library.busy, cx)]).mb(px(8.)).into_any_element()
     }
 
     /// One game of a list card: title, app name below, pill action on the right.
@@ -248,6 +310,33 @@ impl SettingsPage {
             .child(step("next", Icon::ChevronRight, page + 1 < pages, 1, cx));
         Some(row.child(toggle(tr!("Collapse"), false, cx)).child(nav).into_any_element())
     }
+}
+
+/// The inline question before emptying a list: what will happen, Cancel and
+/// the danger button that does it.
+fn confirm_row(id: &'static str, text: String, yes: &'static str, which: Clear, busy: bool, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let buttons = div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .child(action_button(
+            SharedString::from(format!("{id}-no")),
+            ButtonKind::Ghost,
+            tr!("Cancel"),
+            true,
+            cx.listener(|this, _, _, cx| {
+                this.library.confirm = None;
+                cx.notify();
+            }),
+        ))
+        .child(action_button(
+            SharedString::from(format!("{id}-yes")),
+            ButtonKind::Danger,
+            yes,
+            !busy,
+            cx.listener(move |this, _, _, cx| this.library_clear(which.key(), cx)),
+        ));
+    row(text, None, buttons).into_any_element()
 }
 
 /// [`caption_with`] that grows to its button: this page is one column, so

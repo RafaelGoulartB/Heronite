@@ -154,6 +154,8 @@ pub struct SettingsPanel {
     pub(super) open_select: Option<&'static str>,
     pub(super) inputs: HashMap<&'static str, Entity<InputState>>,
     pub(super) notice: Option<Notice>,
+    /// "Reset this tab" asked for and waiting for its answer.
+    confirm_reset: bool,
     /// Name of the Wine tool running.
     pub(super) tool_busy: Option<&'static str>,
     /// The Winetricks page, while open (it takes the tab's place).
@@ -283,6 +285,8 @@ impl SettingsPanel {
             },
             inputs,
             notice: None,
+            // `HERONITE_DEBUG_ASK_RESET=1`: "Reset this tab" starts asked (screenshots).
+            confirm_reset: crate::env::flag("HERONITE_DEBUG_ASK_RESET"),
             tool_busy: None,
             winetricks: None,
             launch_options: Vec::new(),
@@ -389,6 +393,7 @@ impl SettingsPanel {
             self.section = section;
             self.open_select = None;
             self.notice = None;
+            self.confirm_reset = false;
             self.env_error.clear();
             self.maybe_detect_saves(window, cx);
             cx.notify();

@@ -24,4 +24,12 @@ impl PaletteCommands for SettingsPage {
         appearance::run_palette(self, id, cx);
         cx.notify();
     }
+
+    fn close_modal(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let closed = self.dismiss_confirms();
+        if closed {
+            cx.notify();
+        }
+        closed
+    }
 }

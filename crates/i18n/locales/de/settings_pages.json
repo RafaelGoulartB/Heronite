@@ -425,5 +425,17 @@
   "Sky": "Himmel",
   "Coral": "Koralle",
   "From the desktop": "Vom Desktop",
-  "Your desktop's window colour, light or dark with it.": "Die Fensterfarbe deines Desktops, dazu hell oder dunkel."
+  "Your desktop's window colour, light or dark with it.": "Die Fensterfarbe deines Desktops, dazu hell oder dunkel.",
+  "Unhide {n} game? It shows normally in the Collection again.": "{n} Spiel wieder einblenden? Es erscheint wieder normal in der Sammlung.",
+  "Unhide all {n} games? They show normally in the Collection again.": "Alle {n} Spiele wieder einblenden? Sie erscheinen wieder normal in der Sammlung.",
+  "Remove {n} game from your favourites? It stays in the Collection.": "{n} Spiel aus den Favoriten entfernen? Es bleibt in der Sammlung.",
+  "Remove all {n} games from your favourites? They stay in the Collection.": "Alle {n} Spiele aus den Favoriten entfernen? Sie bleiben in der Sammlung.",
+  "Clear {n} game from the recent list? It stays in the Collection.": "{n} Spiel aus der Verlaufsliste entfernen? Es bleibt in der Sammlung.",
+  "Clear {n} games from the recent list? They stay in the Collection.": "{n} Spiele aus der Verlaufsliste entfernen? Sie bleiben in der Sammlung.",
+  "A again shows {n} hidden game in the Collection again.": "Erneutes A blendet {n} ausgeblendetes Spiel in der Sammlung wieder ein.",
+  "A again shows {n} hidden games in the Collection again.": "Erneutes A blendet {n} ausgeblendete Spiele in der Sammlung wieder ein.",
+  "A again removes {n} game from your favourites.": "Erneutes A entfernt {n} Spiel aus den Favoriten.",
+  "A again removes {n} games from your favourites.": "Erneutes A entfernt {n} Spiele aus den Favoriten.",
+  "A again clears {n} game from the recent list.": "Erneutes A entfernt {n} Spiel aus der Verlaufsliste.",
+  "A again clears {n} games from the recent list.": "Erneutes A entfernt {n} Spiele aus der Verlaufsliste."
 }

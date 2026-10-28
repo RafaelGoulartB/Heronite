@@ -23,13 +23,26 @@ use crate::ui::icon;
 
 pub struct State {
     svc: Entity<LauncherImports>,
+    /// The launcher whose "Remove them" is waiting for its answer.
+    confirm: Option<Launcher>,
 }
 
 impl State {
     pub fn new(cx: &mut Context<SettingsPage>) -> Self {
         let svc = crate::services::launcher_imports(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
-        Self { svc }
+        Self { svc, confirm: None }
+    }
+
+    /// Drops the question about removing games; true when there was one.
+    pub(super) fn dismiss(&mut self) -> bool {
+        self.confirm.take().is_some()
+    }
+
+    /// `ask:<launcher id>` of `HERONITE_DEBUG_SETTINGS_ACTION`: its "Remove
+    /// them" question opens, nothing is removed.
+    pub(super) fn debug_ask(&mut self, id: &str) {
+        self.confirm = Launcher::ALL.into_iter().find(|l| l.id() == id);
     }
 }
 
@@ -89,7 +102,10 @@ fn launcher_card(d: &SettingsPage, launcher: Launcher, cx: &mut Context<Settings
     let svc = d.launchers.svc.clone();
     let switch = toggle(SharedString::from(format!("launchers-{id}-sw")), on, !here && !on).when(here || on, |t| {
         let svc = svc.clone();
-        t.cursor_pointer().on_click(move |_, _, cx| svc.update(cx, |s, cx| s.set_enabled(launcher, !on, cx)))
+        t.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+            this.launchers.confirm = None;
+            svc.update(cx, |s, cx| s.set_enabled(launcher, !on, cx))
+        }))
     });
     let mut details = div().flex().flex_col().gap(px(6.)).flex_1().min_w_0().child(
         div()
@@ -119,24 +135,51 @@ fn launcher_card(d: &SettingsPage, launcher: Launcher, cx: &mut Context<Settings
                 ),
         );
     } else if in_collection > 0 {
-        let svc = svc.clone();
-        details = details.child(
-            div()
-                .mt(px(4.))
-                .flex()
-                .items_center()
-                .gap(px(12.))
+        let asking = d.launchers.confirm == Some(launcher) && !busy;
+        let mut line = div().mt(px(4.)).flex().items_center().gap(px(12.));
+        if asking {
+            line = line
+                .child(div().flex_1().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_muted()).child(trn!(
+                    in_collection,
+                    "{n} game from {launcher} leaves your Collection, with its status and notes. Its play time and journal come back if you bring it in again. Nothing changes in {launcher}.",
+                    "{n} games from {launcher} leave your Collection, with their status and notes. Their play time and journal come back if you bring them in again. Nothing changes in {launcher}.",
+                    launcher = launcher.name()
+                )))
+                .child(
+                    button_sm(SharedString::from(format!("launchers-{id}-remove-no")), ButtonKind::Ghost, tr!("Cancel")).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.launchers.confirm = None;
+                            cx.notify();
+                        }),
+                    ),
+                )
+                .child(
+                    button_sm(SharedString::from(format!("launchers-{id}-remove-yes")), ButtonKind::Danger, tr!("Remove them")).on_click(
+                        cx.listener(move |this, _, _, cx| {
+                            this.launchers.confirm = None;
+                            svc.update(cx, |s, cx| s.remove(launcher, cx));
+                        }),
+                    ),
+                );
+        } else {
+            line = line
                 .child(div().flex_1().text_size(px(12.5)).text_color(theme::text_muted()).child(trn!(
                     in_collection,
                     "{n} game from {launcher} is still in your Collection, no longer kept in sync.",
                     "{n} games from {launcher} are still in your Collection, no longer kept in sync.",
                     launcher = launcher.name()
                 )))
-                .child(
-                    button_sm(SharedString::from(format!("launchers-{id}-remove")), ButtonKind::Danger, tr!("Remove them"))
-                        .when(!busy, |b| b.on_click(move |_, _, cx| svc.update(cx, |s, cx| s.remove(launcher, cx)))),
-                ),
-        );
+                .child(button_sm(SharedString::from(format!("launchers-{id}-remove")), ButtonKind::Danger, tr!("Remove them")).when(
+                    !busy,
+                    |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| {
+                            this.launchers.confirm = Some(launcher);
+                            cx.notify();
+                        }))
+                    },
+                ));
+        }
+        details = details.child(line);
     }
     if let Some(e) = error {
         details = details.child(div().text_size(px(12.5)).text_color(theme::danger_text()).child(e));

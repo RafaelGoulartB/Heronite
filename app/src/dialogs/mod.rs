@@ -77,6 +77,12 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
     if let Ok(d) = view.clone().downcast::<batch_edit::BatchEditDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
+    if let Ok(d) = view.clone().downcast::<game_settings::GameSettingsDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<client_settings::ClientSettingsDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
     false
 }
 

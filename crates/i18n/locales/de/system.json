@@ -233,5 +233,7 @@
   "{n} game is in your Collection twice": "{n} Spiel ist doppelt in deiner Sammlung",
   "{n} games are in your Collection twice": "{n} Spiele sind doppelt in deiner Sammlung",
   "The programs you added to its bottles, with the covers of its Library. Bottles keeps starting them, in their bottle and with its settings.": "Die Programme, die du zu seinen Bottles hinzugefügt hast, mit den Covern seiner Bibliothek. Bottles startet sie weiterhin, in ihrer Bottle und mit deren Einstellungen.",
-  "The game to merge into is no longer in your Collection. Look again in Settings → Other launchers.": "Das Spiel, mit dem zusammengeführt werden soll, ist nicht mehr in deiner Sammlung. Sieh noch einmal unter Einstellungen → Andere Launcher nach."
+  "The game to merge into is no longer in your Collection. Look again in Settings → Other launchers.": "Das Spiel, mit dem zusammengeführt werden soll, ist nicht mehr in deiner Sammlung. Sieh noch einmal unter Einstellungen → Andere Launcher nach.",
+  "{n} game from {launcher} leaves your Collection, with its status and notes. Its play time and journal come back if you bring it in again. Nothing changes in {launcher}.": "{n} Spiel aus {launcher} verlässt deine Sammlung, mit Status und Notizen. Spielzeit und Tagebuch sind wieder da, wenn du es erneut importierst. In {launcher} ändert sich nichts.",
+  "{n} games from {launcher} leave your Collection, with their status and notes. Their play time and journal come back if you bring them in again. Nothing changes in {launcher}.": "{n} Spiele aus {launcher} verlassen deine Sammlung, mit Status und Notizen. Spielzeit und Tagebuch sind wieder da, wenn du sie erneut importierst. In {launcher} ändert sich nichts."
 }
