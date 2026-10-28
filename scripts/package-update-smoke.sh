@@ -10,7 +10,9 @@
 #   - a file changed after its hash was taken is refused and not installed;
 #   - a package manager failure is reported;
 #   - the private copy in /var/tmp is gone afterwards, every time;
-#   - a path with quotes, spaces and `$(...)` runs nothing.
+#   - a path with quotes, spaces and `$(...)` runs nothing;
+#   - fake pkexec and package managers first on the caller's PATH never run:
+#     both come from the system folders only.
 # Needs docker.
 #   usage: scripts/package-update-smoke.sh [deb|rpm|arch ...]   (default: all)
 set -euo pipefail
@@ -41,6 +43,13 @@ polkitd=$(ls /usr/lib/polkit-1/polkitd /usr/libexec/polkit-1/polkitd /usr/lib/po
 for _ in $(seq 50); do [ "$(pkexec /usr/bin/id -un 2>/dev/null)" = root ] && break; sleep 0.2; done
 [ "$(pkexec /usr/bin/id -un 2>/dev/null)" = root ] || { echo "  FAIL  pkexec does not work here"; exit 1; }
 
+# Stand-ins for pkexec and the managers that mark that they ran, first on the
+# PATH the example gets.
+mkdir -p /evil
+for tool in pkexec apt-get dnf zypper pacman; do printf '#!/bin/sh\ntouch /tmp/evil-ran\nexit 1\n' > "/evil/$tool"; done
+chmod +x /evil/*
+run_example() { PATH=/evil:$PATH /t/install_package "$@"; }
+
 dir="/tmp/My 'odd' dir; \$(touch /tmp/pwned)"
 mkdir -p "$dir"
 fail=0
@@ -49,7 +58,7 @@ copies() { ls -d /var/tmp/heronite-update.* 2>/dev/null | wc -l; }
 good="$dir/heronite-test.$EXT" tampered="$dir/heronite-test-tampered.$EXT" broken="$dir/heronite-test-broken.$EXT"
 build_pkg jq "$good" && cp "$good" "$tampered" && build_pkg no-such-package-xyz "$broken" || { echo "  FAIL  building the test packages"; exit 1; }
 
-out=$(/t/install_package "$KIND" "$good")
+out=$(run_example "$KIND" "$good")
 check "installs with the verified hash"                '[ "$out" = "RESULT: Ok" ] && is_installed'
 check "the package's file is on disk"                  '[ "$(cat /usr/share/heronite-test/hello 2>/dev/null)" = hi ]'
 check "its dependency came from the repositories"      'command -v jq >/dev/null'
@@ -57,13 +66,17 @@ check "the private copy is gone"                       '[ "$(copies)" = 0 ]'
 check "the file's path ran nothing"                    '[ ! -e /tmp/pwned ]'
 uninstall >/dev/null 2>&1
 
-out=$(/t/install_package "$KIND" "$tampered" --tamper)
+out=$(run_example "$KIND" "$tampered" --tamper)
 check "a file changed after its hash is refused"       'echo "$out" | grep -q "changed after it was verified" && ! is_installed'
 check "the private copy is gone"                       '[ "$(copies)" = 0 ]'
 
-out=$(/t/install_package "$KIND" "$broken")
+out=$(run_example "$KIND" "$broken")
 check "a package manager failure is reported"          'echo "$out" | grep -q "^RESULT: Err(The package manager failed"'
 check "the private copy is gone"                       '[ "$(copies)" = 0 ]'
+check "tools first on the caller's PATH never ran"     '[ ! -e /tmp/evil-ran ]'
+# Not the last command of its shell, so pkexec's parent stays a live process.
+seen=$(PATH=/evil:$PATH; /usr/bin/pkexec /bin/sh -c 'echo $PATH'; :)
+check "pkexec itself drops the caller's PATH"          '[ -n "$seen" ] && [ "${seen#*/evil}" = "$seen" ]'
 exit $fail
 EOF
 

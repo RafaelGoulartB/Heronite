@@ -2,6 +2,8 @@ use std::fmt;
 use std::io;
 use std::time::Duration;
 
+use heronite_i18n::tr;
+
 #[derive(Debug)]
 pub enum Error {
     /// The caller's cancel check fired.
@@ -35,18 +37,21 @@ pub enum Error {
     Invalid(String),
 }
 
+/// Texts for the interface (`tr!`): callers put them in their own messages.
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Cancelled => write!(f, "cancelled"),
-            Error::Stalled(d) => write!(f, "the download stalled: no data for {} s", d.as_secs().max(1)),
-            Error::Unreachable { url, detail } => write!(f, "could not reach {url}: {detail}"),
-            Error::RateLimited { retry_after: Some(d) } => write!(f, "rate limit reached, try again in {} s", d.as_secs()),
-            Error::RateLimited { retry_after: None } => write!(f, "rate limit reached, try again later"),
+            Error::Cancelled => f.write_str(tr!("cancelled")),
+            Error::Stalled(d) => f.write_str(&tr!("the download stalled: no data for {secs} s", secs = d.as_secs().max(1))),
+            Error::Unreachable { url, detail } => f.write_str(&tr!("could not reach {url}: {detail}", url, detail)),
+            Error::RateLimited { retry_after: Some(d) } => {
+                f.write_str(&tr!("rate limit reached, try again in {secs} s", secs = d.as_secs()))
+            }
+            Error::RateLimited { retry_after: None } => f.write_str(tr!("rate limit reached, try again later")),
             Error::Http(code) => write!(f, "HTTP {code}"),
             Error::Io { context, source } => write!(f, "{context}: {source}"),
-            Error::Truncated { got, total } => write!(f, "connection closed after {got} of {total} bytes"),
-            Error::Invalid(m) => write!(f, "{m}"),
+            Error::Truncated { got, total } => f.write_str(&tr!("connection closed after {got} of {total} bytes", got, total)),
+            Error::Invalid(m) => f.write_str(m),
         }
     }
 }
@@ -60,11 +65,18 @@ impl std::error::Error for Error {
     }
 }
 
-/// `url` as scheme, host and path only: the query and fragment can carry
-/// secrets (tokens, signatures) and never reach an error message or a log.
+/// `url` as scheme, host, port and path only: the userinfo (`user:pass@`),
+/// query and fragment can carry secrets (credentials, tokens, signatures) and
+/// never reach an error message or a log.
 pub fn redact_url(url: &str) -> String {
     let end = url.find(['?', '#']).unwrap_or(url.len());
-    url[..end].to_string()
+    let url = &url[..end];
+    let Some(scheme_end) = url.find("://").map(|i| i + 3) else { return url.to_string() };
+    let authority_end = url[scheme_end..].find('/').map_or(url.len(), |i| scheme_end + i);
+    match url[scheme_end..authority_end].rfind('@') {
+        Some(at) => format!("{}{}", &url[..scheme_end], &url[scheme_end + at + 1..]),
+        None => url.to_string(),
+    }
 }
 
 /// Redacts every URL inside free text (ureq quotes the address in some errors).
@@ -82,6 +94,28 @@ pub(crate) fn scrub(text: &str) -> String {
         .collect()
 }
 
+/// `context` is already in the interface language (`tr!`).
 pub(crate) fn io_error(context: impl Into<String>, source: io::Error) -> Error {
     Error::Io { context: context.into(), source }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_url_keeps_scheme_host_and_path_only() {
+        assert_eq!(redact_url("https://user:pass@host/p?q=1"), "https://host/p");
+        assert_eq!(redact_url("https://token@host:8443/a/b#frag"), "https://host:8443/a/b");
+        assert_eq!(redact_url("http://host/p"), "http://host/p");
+        assert_eq!(redact_url("https://host"), "https://host");
+        assert_eq!(redact_url("https://us@er:pa@ss@host/p"), "https://host/p");
+        assert_eq!(redact_url("https://host/a@b"), "https://host/a@b");
+        assert_eq!(redact_url("not a url"), "not a url");
+    }
+
+    #[test]
+    fn scrub_strips_userinfo_inside_text() {
+        assert_eq!(scrub("failed https://u:p@host/x?t=1 again"), "failed https://host/x again");
+    }
 }

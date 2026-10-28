@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use heronite_i18n::tr;
 use serde_json::Value;
 
 /// Cancellation check polled while downloading or extracting.
@@ -44,7 +45,7 @@ fn agent() -> &'static ureq::Agent {
 
 fn http_error(e: ureq::Error) -> String {
     match e {
-        ureq::Error::StatusCode(403) | ureq::Error::StatusCode(429) => "rate limit reached (HTTP 403/429), try again later".to_string(),
+        ureq::Error::StatusCode(403) | ureq::Error::StatusCode(429) => tr!("rate limit reached, try again later").to_string(),
         ureq::Error::StatusCode(c) => format!("HTTP {c}"),
         e => e.to_string(),
     }
@@ -84,7 +85,6 @@ impl Net for SystemNet {
     fn download(&self, url: &str, dest: &Path, cancel: Cancel) -> Result<(), String> {
         heronite_net::download(url, dest, heronite_net::Options::default(), cancel).map(|_| ()).map_err(|e| match e {
             heronite_net::Error::Cancelled => CANCELLED.to_string(),
-            heronite_net::Error::RateLimited { .. } => "rate limit reached (HTTP 403/429), try again later".to_string(),
             e => e.to_string(),
         })
     }

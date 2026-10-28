@@ -23,10 +23,10 @@ the UI.
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es and de strings (no GPUI)
- ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
+ ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes, panic policy
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
- ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
+ ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)  → data
  ├─ heronite-net        streaming downloads that stall-fail and cancel promptly (no GPUI)
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
@@ -161,8 +161,9 @@ device when the last window closes (the app lives on in the tray); see its
   session (Wayland / X11 / PipeWire sockets, the controllers plugged in,
   NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS, IPC and
   network namespaces and a private home (`<data>/sandbox/<prefix or game>`,
-  `DataPaths::sandbox_home_of_*`) and an empty environment (`--clearenv`):
-  `pass` hands over the variables of the launch plan and an allowlist of
+  `DataPaths::sandbox_home_of_*`) and an empty environment (`--clearenv`, and
+  `bwrap` itself starts under `env -i`, because its environment stays
+  readable in `/proc/1/environ`): `pass` hands over the variables of the launch plan and an allowlist of
   the session's (display, sound, graphics drivers, Wine / Proton), never
   the launcher's other variables. The program goes after the wrappers that
   stay outside (gamescope, GameMode, MangoHud) and before umu / Proton / the

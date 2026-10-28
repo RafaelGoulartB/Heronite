@@ -279,12 +279,10 @@ fn log_early() {
     };
     let logger = LOGGER.get_or_init(|| Logger { level, file: Default::default(), early: Default::default() });
     let _ = log::set_logger(logger).map(|_| log::set_max_level(level));
-    // Panics end up in the log file too.
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        log::error!(target: "heronite_app", "panic: {info}");
-        default_hook(info);
-    }));
+    // Panics end up in the log file too. The release build unwinds so the image
+    // decoders can contain a panic, so the hook closes the app on any other
+    // panic, as `panic = "abort"` did.
+    heronite_data::panics::install_hook(|info| log::error!(target: "heronite_app", "panic: {info}"));
 }
 
 /// Opens today's log file (creating the data folder, rotating and pruning the
