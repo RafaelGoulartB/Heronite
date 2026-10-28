@@ -3893,6 +3893,7 @@ dependencies = [
  "anyhow",
  "heronite-data",
  "heronite-i18n",
+ "heronite-net",
  "libc",
  "log",
  "minisign-verify",
