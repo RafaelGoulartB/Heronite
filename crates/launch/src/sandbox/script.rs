@@ -18,8 +18,10 @@ pub(super) const NAME: &str = "heronite-sandbox";
 /// launcher started (or a wineserver still saving the registry).
 const WAIT_ALL: &str = r#""$@"; rc=$?; while :; do n=; for p in /proc/[0-9]*; do case ${p#/proc/} in 1|$$) ;; *) n=1; break;; esac; done; [ -z "$n" ] && exit $rc; sleep 1; done"#;
 
-/// The session's runtime folder, its Wayland socket and the X11 cookie.
-const SESSION: &str = r#"r=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; w=/nonexistent; case ${WAYLAND_DISPLAY-} in '') ;; /*) w=$WAYLAND_DISPLAY;; *) w=$r/$WAYLAND_DISPLAY;; esac; x=${XAUTHORITY:-/nonexistent}; "#;
+/// The session's runtime folder, its Wayland socket, the X11 cookie and the
+/// socket of its X11 display (`:1.0` is `/tmp/.X11-unix/X1`; a display on
+/// the network needs no socket file).
+const SESSION: &str = r#"r=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}; w=/nonexistent; case ${WAYLAND_DISPLAY-} in '') ;; /*) w=$WAYLAND_DISPLAY;; *) w=$r/$WAYLAND_DISPLAY;; esac; x=${XAUTHORITY:-/nonexistent}; u=${DISPLAY-}; case $u in :[0-9]*) u=${u#:}; u=/tmp/.X11-unix/X${u%%.*};; *) u=/nonexistent;; esac; "#;
 
 /// `/bin`, `/lib`... as the host has them: links into `/usr` or folders.
 const ROOT_LINKS: &str = r#"o=; for l in bin sbin lib lib32 lib64 libx32; do if [ -L "/$l" ]; then o="$o --symlink $(readlink "/$l") /$l"; elif [ -d "/$l" ]; then o="$o --ro-bind /$l /$l"; fi; done; "#;
@@ -95,7 +97,9 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
     } else {
         a.extend(["--dev".into(), "/dev".into(), "--dev-bind-try".into(), "/dev/dri".into(), "/dev/dri".into(), "$v".into()]);
     }
-    a.extend(["--tmpfs".into(), "/tmp".into(), "--ro-bind-try".into(), "/tmp/.X11-unix".into(), "/tmp/.X11-unix".into()]);
+    // Only this session's X11 socket: the other sockets in the folder are the
+    // displays of other sessions, whose windows a program could read and type into.
+    a.extend(["--tmpfs".into(), "/tmp".into(), "--ro-bind-try".into(), "\"$u\"".into(), "\"$u\"".into()]);
     a.extend(["--tmpfs".into(), "/run".into()]);
     for d in ["/run/udev", "/run/opengl-driver"] {
         a.extend(["--ro-bind-try".into(), d.into(), d.into()]);
@@ -245,6 +249,7 @@ mod tests {
                 .args(["/usr/bin/game", "an arg"])
                 .env("XDG_RUNTIME_DIR", "/run/user/1000")
                 .env("WAYLAND_DISPLAY", "wayland-1")
+                .env("DISPLAY", ":7.0")
                 .env_remove("DXVK_STATE_CACHE_PATH")
                 .env("GH_TOKEN", "ghp_secret")
                 .env("AWS_ACCESS_KEY_ID", "aws_secret")
@@ -258,11 +263,16 @@ mod tests {
             String::from_utf8(out.stdout).unwrap().lines().map(str::to_string).collect::<Vec<_>>()
         };
         let args = run(&[]);
+        // A display on the network has no socket file.
+        let remote = run(&[("DISPLAY", "localhost:10.0")]);
+        assert!(!remote.iter().any(|a| a.starts_with("/tmp/.X11-unix")), "{remote:?}");
         let has = |w: &[&str]| args.windows(w.len()).any(|a| a == w);
         assert!(std::path::Path::new(&format!("{private}/.cache/dxvk")).is_dir(), "made before bwrap");
         assert!(has(&["--bind", &private, &home]), "{args:?}");
         assert!(has(&["--dir", "/run/user/1000"]));
         assert!(has(&["--ro-bind-try", "/run/user/1000/wayland-1", "/run/user/1000/wayland-1"]));
+        assert!(has(&["--ro-bind-try", "/tmp/.X11-unix/X7", "/tmp/.X11-unix/X7"]), "{args:?}");
+        assert!(!args.iter().any(|a| a == "/tmp/.X11-unix"), "not the folder of every display");
         assert!(has(&["--setenv", "DXVK_STATE_CACHE_PATH", &format!("{home}/.cache/dxvk")]));
         assert!(has(&["--setenv", "VKD3D_SHADER_CACHE_PATH", &format!("{home}/.cache/vkd3d-proton")]));
         assert!(has(&["--setenv", super::super::ENV_INSIDE, "1"]));
