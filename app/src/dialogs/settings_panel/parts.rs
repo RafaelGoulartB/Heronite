@@ -87,7 +87,7 @@ impl Rows {
 impl SettingsPanel {
     /// A technical path (a Wine binary, a prefix): a "Show path" link with
     /// the path in its tooltip; a click spells it out with "Hide path" next
-    /// to it. "Copy path" before it puts the path on the clipboard (and says
+    /// to it, and "Copy path" before that puts it on the clipboard (and says
     /// "Copied" for a moment).
     pub(super) fn path_note(&self, id: &'static str, path: &str, cx: &mut Context<Self>) -> Div {
         let shown = self.show_paths;
@@ -132,7 +132,7 @@ impl SettingsPanel {
             .items_start()
             .gap(px(14.))
             .child(div().flex_1().min_w_0().when(shown, |d| d.child(help(path))))
-            .child(copy)
+            .when(shown, |d| d.child(copy))
             .child(toggle)
     }
 
