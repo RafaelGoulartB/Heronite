@@ -10,19 +10,18 @@
 //! offset, opacity and shade, each cover on a spring of its own distance
 //! from the middle.
 
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{HeroTitle, TabSpec, TileShape, TileSize};
-use heronite_data::{CollectionGame, Library};
+use heronite_data::CollectionGame;
 use heronite_i18n::{n_, tr};
 use heronite_images::{Variant, REFLECTION_PART};
 
 use super::super::super::CollectionView;
 use super::super::hero::{fitted_title, HeroSize};
-use super::super::sources::{by_title, keys, ListKey};
+use super::super::sources::{by_title, keys};
 use super::grid::{jump_letter, letter_of};
 use crate::console::kit::{self, u};
 use crate::console::look;
@@ -32,8 +31,6 @@ use crate::icons::Icon;
 use crate::theme;
 
 const FILTERS: [&str; 4] = [n_!("All"), n_!("Installed"), n_!("Favourites"), n_!("Playing")];
-/// Index of "Playing" in [`FILTERS`].
-const PLAYING: usize = 3;
 /// Covers drawn on each side of the middle one.
 const REACH: usize = 5;
 /// How the covers move when the focus does: a touch under critical damping.
@@ -232,28 +229,20 @@ fn letter_flash(id: SharedString, letter: char) -> AnyElement {
 
 impl CollectionView {
     /// The games of the tab that pass pill `filter`, sorted A–Z.
-    fn carousel_keys(&self, spec: &TabSpec, filter: usize) -> Arc<[SharedString]> {
-        let order = |games: &[Arc<CollectionGame>], lib: &Library| self.carousel_order(games, lib, filter);
-        if filter == PLAYING {
-            // Also reads the games being played now, which the cache does not follow.
-            let Some(lib) = self.lib.as_ref() else { return Arc::default() };
-            return order(&self.console_games(&spec.source), lib).into();
-        }
-        self.console_list(ListKey::Carousel { source: spec.source.clone(), filter }, order)
-    }
-
-    fn carousel_order(&self, games: &[Arc<CollectionGame>], lib: &Library, filter: usize) -> Vec<SharedString> {
+    fn carousel_keys(&self, spec: &TabSpec, filter: usize) -> Vec<SharedString> {
+        let Some(lib) = self.lib.as_ref() else { return Vec::new() };
         let playing = |g: &CollectionGame| {
             self.playing.contains_key(&g.app_name)
                 || lib.statuses.iter().any(|s| s.id == g.status_id && matches!(s.slug.as_str(), "playing" | "endless"))
         };
+        let games = self.console_games(spec.source.as_str());
         let picked: Vec<&CollectionGame> = games
             .iter()
             .map(|g| g.as_ref())
             .filter(|g| match filter {
                 1 => g.installed,
                 2 => g.favourite,
-                PLAYING => playing(g),
+                3 => playing(g),
                 _ => true,
             })
             .collect();

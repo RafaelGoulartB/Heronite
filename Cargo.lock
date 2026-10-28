@@ -3654,7 +3654,6 @@ dependencies = [
  "heronite-data",
  "heronite-i18n",
  "heronite-launch",
- "heronite-net",
  "libc",
  "log",
  "parking_lot",
@@ -3703,7 +3702,6 @@ name = "heronite-images"
 version = "0.17.0"
 dependencies = [
  "fast_image_resize",
- "heronite-data",
  "image",
  "jpeg-decoder",
  "log",
@@ -3738,7 +3736,6 @@ dependencies = [
  "heronite-emulation",
  "heronite-i18n",
  "heronite-launch",
- "heronite-net",
  "log",
  "md-5",
  "serde",
@@ -3748,6 +3745,7 @@ dependencies = [
  "sha2 0.10.9",
  "shlex 1.3.0",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]
@@ -3758,7 +3756,6 @@ dependencies = [
  "chrono",
  "heronite-data",
  "heronite-i18n",
- "heronite-net",
  "libc",
  "log",
  "regex",
@@ -3815,16 +3812,6 @@ dependencies = [
  "tempfile",
  "ureq",
  "url",
-]
-
-[[package]]
-name = "heronite-net"
-version = "0.17.0"
-dependencies = [
- "heronite-i18n",
- "sha2 0.10.9",
- "tempfile",
- "ureq",
 ]
 
 [[package]]
@@ -3895,13 +3882,11 @@ dependencies = [
  "anyhow",
  "heronite-data",
  "heronite-i18n",
- "heronite-net",
  "libc",
  "log",
  "minisign-verify",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "tempfile",
  "ureq",
 ]
@@ -3914,7 +3899,6 @@ dependencies = [
  "dirs 6.0.0",
  "heronite-data",
  "heronite-i18n",
- "heronite-net",
  "log",
  "parking_lot",
  "serde",

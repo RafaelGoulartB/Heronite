@@ -116,9 +116,7 @@ pub struct UrlHandler {
     pub steam_bin: PathBuf,
     /// Where the `.desktop` wrappers live (must outlive the shortcut).
     pub wrapper_dir: PathBuf,
-    /// Steam's handler only accepts local paths while this file exists. The
-    /// name is Steam's; it sits in a folder every user can write to, so it is
-    /// made by [`create_sentinel`].
+    /// Steam's handler only accepts local paths while this file exists.
     pub sentinel: PathBuf,
     pub poll_attempts: u32,
     pub poll_interval: Duration,
@@ -176,60 +174,29 @@ fn remove_wrapper(wrapper_dir: &Path, game: &GameId) {
     }
 }
 
-/// Makes the file Steam looks for. Another user may have put something at
-/// that path first (a symlink to a file of ours would be written through), so
-/// a link or a file of someone else is refused, and the file is created new
-/// and never through a link.
-fn create_sentinel(path: &Path) -> Result<()> {
-    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-
-    // SAFETY: geteuid has no preconditions.
-    let me = unsafe { libc::geteuid() };
-    match path.symlink_metadata() {
-        Ok(meta) if meta.uid() != me => bail!("{} belongs to another user", path.display()),
-        Ok(meta) if meta.is_file() => return Ok(()),
-        Ok(meta) if meta.file_type().is_symlink() => {
-            fs::remove_file(path).with_context(|| format!("removing the link {}", path.display()))?;
-        }
-        Ok(_) => bail!("{} is not a plain file", path.display()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
-    }
-    fs::OpenOptions::new().write(true).create_new(true).mode(0o600).custom_flags(libc::O_NOFOLLOW).open(path)?;
-    Ok(())
-}
-
 /// Runs `steam <url>` and waits for it (bounded). It is not killed on
 /// timeout: should the command have started Steam itself, killing it would
-/// close the user's client. A thread waits for it instead, so it does not
-/// stay a zombie when it ends.
+/// close the user's client.
 fn hand_to_steam(bin: &Path, url: &str) -> Result<()> {
-    hand_to_steam_within(bin, url, HANDLER_TIMEOUT)
-}
-
-fn hand_to_steam_within(bin: &Path, url: &str, timeout: Duration) -> Result<()> {
-    let mut cmd = Command::new(bin);
-    cmd.arg(url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-    let mut child = heronite_data::proc::spawn(&mut cmd).with_context(|| format!("running {}", bin.display()))?;
+    let mut child = Command::new(bin)
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .with_context(|| format!("running {}", bin.display()))?;
     let started = Instant::now();
     loop {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(status)) => bail!("{} exited with {status}", bin.display()),
-            Ok(None) if started.elapsed() <= timeout => std::thread::sleep(Duration::from_millis(100).min(timeout / 4)),
-            Ok(None) => {
-                std::thread::spawn(move || {
-                    let _ = child.wait();
-                });
-                bail!("{} did not finish in {} s", bin.display(), timeout.as_secs());
+        if let Some(status) = child.try_wait()? {
+            if !status.success() {
+                bail!("{} exited with {status}", bin.display());
             }
-            Err(e) => {
-                std::thread::spawn(move || {
-                    let _ = child.wait();
-                });
-                return Err(e).with_context(|| format!("waiting for {}", bin.display()));
-            }
+            return Ok(());
         }
+        if started.elapsed() > HANDLER_TIMEOUT {
+            bail!("{} did not finish in {} s", bin.display(), HANDLER_TIMEOUT.as_secs());
+        }
+        std::thread::sleep(Duration::from_millis(100));
     }
 }
 
@@ -241,7 +208,7 @@ pub fn add_with_url_handler(h: &UrlHandler, steam: &Path, game: &GameId, spec: &
     fs::create_dir_all(&h.wrapper_dir).with_context(|| format!("creating {}", h.wrapper_dir.display()))?;
     let wrapper = h.wrapper_dir.join(wrapper_file_name(game));
     fs::write(&wrapper, wrapper_content(game, spec)).with_context(|| format!("writing {}", wrapper.display()))?;
-    create_sentinel(&h.sentinel).with_context(|| format!("writing {}", h.sentinel.display()))?;
+    fs::write(&h.sentinel, "").with_context(|| format!("writing {}", h.sentinel.display()))?;
     let url = format!("steam://addnonsteamgame/{}", encode_uri_component(&wrapper.to_string_lossy()));
     hand_to_steam(&h.steam_bin, &url)?;
     log::info!("Added {} to Steam via the addnonsteamgame url handler.", game.title);
@@ -417,58 +384,5 @@ mod tests {
         let mut h = UrlHandler::new("/bin/false", dir.path().join("w"));
         h.sentinel = dir.path().join("s");
         assert!(add_with_url_handler(&h, &steam, &game(), &spec(), &ArtFiles::default()).is_err());
-    }
-
-    #[test]
-    fn the_sentinel_is_created_once_and_never_through_a_link() {
-        use std::os::unix::fs::{symlink, MetadataExt};
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("addnonsteamgamefile");
-        create_sentinel(&path).unwrap();
-        assert!(path.is_file());
-        assert_eq!(path.metadata().unwrap().mode() & 0o777, 0o600);
-        // Already there: left as it is.
-        fs::write(&path, "kept").unwrap();
-        create_sentinel(&path).unwrap();
-        assert_eq!(fs::read_to_string(&path).unwrap(), "kept");
-
-        // A link of ours is replaced by a file; what it pointed at is untouched.
-        let victim = dir.path().join("victim");
-        fs::write(&victim, "precious").unwrap();
-        fs::remove_file(&path).unwrap();
-        symlink(&victim, &path).unwrap();
-        create_sentinel(&path).unwrap();
-        assert!(path.symlink_metadata().unwrap().file_type().is_file());
-        assert_eq!(fs::read_to_string(&victim).unwrap(), "precious");
-
-        // A dangling link as well.
-        fs::remove_file(&path).unwrap();
-        symlink(dir.path().join("missing"), &path).unwrap();
-        create_sentinel(&path).unwrap();
-        assert!(path.symlink_metadata().unwrap().file_type().is_file());
-        assert!(!dir.path().join("missing").exists());
-
-        // Not a plain file.
-        fs::remove_file(&path).unwrap();
-        fs::create_dir(&path).unwrap();
-        assert!(create_sentinel(&path).is_err());
-    }
-
-    /// The pid is gone from `/proc` only once somebody waited for it.
-    #[test]
-    fn a_steam_command_that_times_out_is_reaped_when_it_ends() {
-        let dir = tempfile::tempdir().unwrap();
-        let pid_file = dir.path().join("pid");
-        let bin = dir.path().join("steam");
-        fs::write(&bin, format!("#!/bin/sh\necho $$ > '{}'\nsleep 0.5\n", pid_file.display())).unwrap();
-        fs::set_permissions(&bin, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-        let err = hand_to_steam_within(&bin, "steam://x", Duration::from_millis(200)).unwrap_err();
-        assert!(err.to_string().contains("did not finish"), "{err:#}");
-        let pid = fs::read_to_string(&pid_file).unwrap().trim().to_string();
-        let gone = (0..100).any(|_| {
-            std::thread::sleep(Duration::from_millis(50));
-            !Path::new("/proc").join(&pid).exists()
-        });
-        assert!(gone, "process {pid} was left as a zombie");
     }
 }

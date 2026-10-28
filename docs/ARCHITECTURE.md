@@ -23,11 +23,10 @@ the UI.
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es and de strings (no GPUI)
- ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes, panic policy
+ ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
- ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)  → data
- ├─ heronite-net        streaming downloads that stall-fail and cancel promptly (no GPUI)
+ ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
  ├─ heronite-gog        gogdl CLI + GOG web APIs: GOG account,
@@ -97,10 +96,7 @@ device when the last window closes (the app lives on in the tray); see its
   as rules in `local_library/names.json` that the metadata service and the
   library load apply too, plus the duplicate suggestions), `steam_owned` (the cached Steam library and its twins: a game
   owned on Steam that the Collection has from another source joins that
-  entry instead of getting a Steam entry of its own), `steam_process` (whether
-  the Steam client runs: its `steam.pid` files, native, Flatpak and Snap, each
-  checked against the process it names, then a scan for a `steam` process; used by
-  `launch` and `shortcuts`).
+  entry instead of getting a Steam entry of its own).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
   lives in `locales/pt-BR/*.json`, Spanish (neutral, `tú`) in
   `locales/es/*.json` and German (`du`) in `locales/de/*.json`, embedded at build time (one folder per language) and
@@ -108,15 +104,6 @@ device when the last window closes (the app lives on in the tray); see its
   picked in Settings → General (`language` in `appearance.json`); switching
   redraws the windows. `tests/coverage.rs` scans the workspace: every key
   needs a translation in every language and every translation a key.
-- **heronite-net:** `download` is the one way to stream a big file over HTTP.
-  A helper thread does the request and the reads (ureq's timeouts are
-  deadlines, none restarts on a read), the caller waits on a channel with a
-  100 ms tick: a cancel returns at once and a body that sends nothing for
-  `stall_timeout` fails with `Error::Stalled`. The file goes to `<dest>.part`
-  and is renamed onto `dest` only after the size, SHA-256 and `validate`
-  checks; any failure removes the partial file. Errors are typed
-  (`Cancelled`, `Stalled`, `Unreachable`, `RateLimited`, `Http`, `Io`,
-  `Invalid`) and never print a URL's query string.
 - **heronite-launch:** `plan` turns a game plus settings into a `LaunchPlan`
   and does no I/O beyond reads. `runtime::Launcher` runs the plan through a
   `Spawner`, tracks the process group and emits `LaunchEvent`s. `record`
@@ -159,13 +146,9 @@ device when the last window closes (the app lives on in the tray); see its
   downloads under a throwaway overlay), `script` builds the
   `sh -c` program that creates the folders, looks up what depends on the
   session (Wayland / X11 / PipeWire sockets, the controllers plugged in,
-  NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS, IPC and
+  NVIDIA's devices) and starts `bwrap` with its own user, pid, UTS and
   network namespaces and a private home (`<data>/sandbox/<prefix or game>`,
-  `DataPaths::sandbox_home_of_*`) and an empty environment (`--clearenv`, and
-  `bwrap` itself starts under `env -i`, because its environment stays
-  readable in `/proc/1/environ`): `pass` hands over the variables of the launch plan and an allowlist of
-  the session's (display, sound, graphics drivers, Wine / Proton), never
-  the launcher's other variables. The program goes after the wrappers that
+  `DataPaths::sandbox_home_of_*`). The program goes after the wrappers that
   stay outside (gamescope, GameMode, MangoHud) and before umu / Proton / the
   game, so legendary gets it inside `--wrapper` too. Inside, the command runs
   under a small `sh` that waits for every process of the sandbox (its pid
@@ -349,13 +332,11 @@ device when the last window closes (the app lives on in the tray); see its
   because it is downloaded or rebuilt again (Wine builds, image caches, store caches, logs, temp files);
   unknown files are in. `snapshot` writes `heronite-YYYY-MM-DD_HHMMSS/{data,config,manifest.json}` under a
   `.partial` name, hard-linking the files unchanged since the previous backup (copies where links fail), with
-  the folder `0700`; `prune` keeps the newest N, and past that the newest backup of each set of parts no newer backup covers and the backups made
-  before a restore (30 days; the newest one at any age) (a folder without a manifest is not a backup: never
-  listed, restored or removed). `run` is the schedule and "Back up now" (status in
+  the folder `0700`; `prune` keeps the newest N (a folder without a manifest is not a backup: never listed,
+  restored or removed). `run` is the schedule and "Back up now" (status in
   `settings.json` `backup`). `restore::prepare` checks every file against the manifest's SHA-256, backs up
-  the current data and leaves `restore-pending.json` in the app state; `main` applies it at the
-  next start (`apply_pending`), only in the process that became the single instance, after the app that
-  asked has exited, replacing each chosen part whole and rewriting paths when the backup came
+  the current data and leaves `restore-pending.json` in the app state; `main` applies it first thing at the
+  next start (`apply_pending`), replacing each chosen part whole and rewriting paths when the backup came
   from other folders. The app's `services::upkeep` runs the schedule (90 s after start, then hourly, never
   during a game) and the image cache cap (`imageCacheLimitMb`, LRU over `images-cache` and the thumbs).
 - **heronite-achievements:** every game's achievements, whatever its store.
@@ -400,7 +381,7 @@ device when the last window closes (the app lives on in the tray); see its
 
 | Module | Role |
 |---|---|
-| `main.rs` | CLI, single instance, then restore, migration and logging (in that order), signals, the GPUI loop |
+| `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
 | `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `proton_setup` (the newest GE-Proton downloaded on its own when an install dialog finds no Wine or Proton, through the app's one `WineManager`, which the Wine Manager page shares; it becomes the default Wine; it also keeps the installed `-latest` builds up to date (`autoUpdateLatestProton`, on by default): three minutes after the start and then every six hours it checks only the sources that have one, through `heronite_wine::checks` (the release feed first, an API call only when something was published), and downloads a new release in the background, never while a game runs. `HERONITE_WINE_ONLY_TOOLS=1` makes the detection see only the data folder's builds, to try it with a copy), `launcher_imports` (the games of Heroic, Lutris, Bottles and Faugus: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button), `clients/` (the store clients under Wine, `heronite_clients`: their setup, opening, closing and sign-in; it starts with the app and costs nothing while none is set up: it looks at them ten seconds after the start and every quarter of an hour, syncing the installed ones' games into the Collection; whether a client runs is asked every 3 s while its page is on screen and every 15 s while a client opened from here runs, and one that closes, or whose game ended, is synced; `HERONITE_DEBUG_CLIENT=<id>:<state>` shows a state without Wine, see `debug.rs`), `achievements` (each game's local copy read when the Collection shows it and refreshed when older than six hours, 20 s after a session ends, from the focus panel, the dialog and Settings → "Update now", one game at a time; new unlocks become a desktop notification (off by default); it also signs the emulators in to RetroAchievements: at start, on sign-in, when the options change and after a game for one that was open, and on sign-out clears only the emulators holding this account), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |

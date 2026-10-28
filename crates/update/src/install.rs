@@ -10,16 +10,13 @@
 //! shortcuts that point at it keep working.
 
 use heronite_i18n::tr;
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::ffi::{CString, OsString};
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use anyhow::anyhow;
@@ -81,12 +78,8 @@ impl Target {
     /// Removes what an interrupted download left (a quit, a crash).
     pub fn sweep_staging(&self) {
         let staging = self.staging();
-        let name = staging.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let part = staging.with_file_name(format!("{name}.part"));
-        for file in [&staging, &part] {
-            if fs::remove_file(file).is_ok() {
-                log::info!("removed the unfinished update {}", file.display());
-            }
+        if fs::remove_file(&staging).is_ok() {
+            log::info!("removed the unfinished update {}", staging.display());
         }
     }
 }
@@ -156,7 +149,7 @@ pub fn install(
     let staging = target.staging();
     let _ = fs::remove_file(&staging);
     let result = download_verified(&asset.url, asset.size, &staging, &key, &signature, cancel, on_progress)
-        .and_then(|_| check_appimage(&staging))
+        .and_then(|()| check_appimage(&staging))
         .and_then(|()| swap_in(&staging, &target.appimage));
     if result.is_err() {
         let _ = fs::remove_file(&staging);
@@ -188,10 +181,6 @@ fn check_trusted_version(signature: &Signature, version: &str) -> Result<(), Ins
     }
 }
 
-/// Streams `url` into `dest` through the signature check: the file only gets
-/// its name once minisign accepted every byte of it. Returns the SHA-256
-/// (lowercase hex) of those bytes, hashed from the same stream the signature
-/// saw, not read back from `dest`.
 fn download_verified(
     url: &str,
     expected_size: u64,
@@ -200,65 +189,56 @@ fn download_verified(
     signature: &Signature,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
-) -> Result<String, InstallError> {
-    let verifier =
+) -> Result<(), InstallError> {
+    let mut verifier =
         key.verify_stream(signature).map_err(|e| failed(tr!("The signature does not match the update key: {error}", error = e)))?;
-    // Fed by `on_data` while the body streams, finished by `validate` before the rename.
-    let verifier = RefCell::new(verifier);
-    let mismatch = Cell::new(false);
-    let mut feed = |chunk: &[u8]| verifier.borrow_mut().update(chunk);
-    let signed = |_: &heronite_net::Outcome| {
-        verifier.borrow_mut().finalize().map_err(|_| {
-            mismatch.set(true);
-            "signature mismatch".to_string()
-        })
-    };
+    let mut resp = crate::agent()
+        .get(url)
+        .call()
+        .map_err(|e| failed(tr!("Download failed: {error}", error = format!("{:#}", crate::http_error(e)))))?;
+    let total = resp
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(expected_size);
+    let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
+    let mut file = File::create(dest).map_err(|e| failed(tr!("Could not create {path}: {error}", path = dest.display(), error = e)))?;
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut downloaded = 0u64;
     let start = Instant::now();
-    let mut report = |downloaded: u64, total: Option<u64>| {
-        let bytes_per_sec = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
-        on_progress(Progress { downloaded, total: total.unwrap_or(0), bytes_per_sec });
-    };
-    let opts = heronite_net::Options {
-        user_agent: concat!("heronite-rs/", env!("CARGO_PKG_VERSION")),
-        size_hint: Some(expected_size).filter(|n| *n > 0),
-        hash: Some(heronite_net::Hash::Sha256),
-        validate: Some(&signed),
-        on_data: Some(&mut feed),
-        on_progress: Some(&mut report),
-        ..Default::default()
-    };
-    let outcome =
-        heronite_net::download(url, dest, opts, &|| cancel.load(Ordering::Relaxed)).map_err(|e| download_error(e, mismatch.get()))?;
-    File::open(dest)
-        .and_then(|f| f.sync_all())
-        .map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))?;
-    // Always set, as the hash was asked for; an empty one is refused at install time.
-    Ok(outcome.hash.unwrap_or_default())
-}
-
-fn download_error(e: heronite_net::Error, signature_mismatch: bool) -> InstallError {
-    use heronite_net::Error;
-    match e {
-        Error::Cancelled => InstallError::Cancelled,
-        _ if signature_mismatch => failed(tr!("The downloaded file does not match its signature")),
-        Error::Truncated { got, total } => failed(tr!("The download stopped after {downloaded} of {total} bytes", downloaded = got, total)),
-        Error::RateLimited { .. } => failed(tr!(
-            "Download failed: {error}",
-            error = tr!("GitHub rate limit reached (HTTP {status}), try again later", status = "403/429")
-        )),
-        Error::Http(code) => {
-            failed(tr!("Download failed: {error}", error = format!("{:#}", crate::http_error(ureq::Error::StatusCode(code)))))
+    let mut last = Instant::now() - Duration::from_secs(1);
+    on_progress(Progress { downloaded: 0, total, bytes_per_sec: 0. });
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(InstallError::Cancelled);
         }
-        e => failed(tr!("Download failed: {error}", error = e)),
+        let n = body.read(&mut buf).map_err(|e| failed(tr!("Download failed: {error}", error = e)))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n]).map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))?;
+        verifier.update(&buf[..n]);
+        downloaded += n as u64;
+        if last.elapsed() >= Duration::from_millis(100) {
+            last = Instant::now();
+            let bytes_per_sec = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
+            on_progress(Progress { downloaded, total, bytes_per_sec });
+        }
     }
+    if total > 0 && downloaded != total {
+        return Err(failed(tr!("The download stopped after {downloaded} of {total} bytes", downloaded, total)));
+    }
+    verifier.finalize().map_err(|_| failed(tr!("The downloaded file does not match its signature")))?;
+    file.sync_all().map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))?;
+    on_progress(Progress { downloaded, total: downloaded, bytes_per_sec: 0. });
+    Ok(())
 }
 
 /// Downloads `asset` into `dir` (as `dir/<name>`, through a hidden partial
 /// file) and checks it against `signature` like [`install`] does. Returns the
 /// file. Used for the system packages, which their package manager installs.
-/// The SHA-256 of the verified bytes is kept for [`verified_sha256`]: the
-/// folder is writable by any process of the user, so the install checks the
-/// file against it again, as root, right before using it.
 pub fn download_signed(
     asset: &Asset,
     signature: &Asset,
@@ -276,27 +256,15 @@ pub fn download_signed(
     check_trusted_version(&signature, version)?;
     fs::create_dir_all(dir).map_err(|e| failed(tr!("Could not create {path}: {error}", path = dir.display(), error = e)))?;
     let dest = dir.join(&asset.name);
-    forget_verified(&dest);
-    let sha256 = download_verified(&asset.url, asset.size, &dest, &key, &signature, cancel, on_progress)?;
-    verified().lock().unwrap_or_else(|e| e.into_inner()).insert(dest.clone(), sha256);
-    Ok(dest)
-}
-
-/// SHA-256 of the packages [`download_signed`] verified, by file.
-fn verified() -> &'static Mutex<HashMap<PathBuf, String>> {
-    static VERIFIED: OnceLock<Mutex<HashMap<PathBuf, String>>> = OnceLock::new();
-    VERIFIED.get_or_init(Default::default)
-}
-
-fn forget_verified(file: &Path) {
-    verified().lock().unwrap_or_else(|e| e.into_inner()).remove(file);
-}
-
-/// The SHA-256 (lowercase hex) of the bytes the signature of `file` covered,
-/// when [`download_signed`] returned it during this run. The file on disk may
-/// have changed since; this is the hash it must still have.
-pub fn verified_sha256(file: &Path) -> Option<String> {
-    verified().lock().unwrap_or_else(|e| e.into_inner()).get(file).cloned()
+    let part = dir.join(format!(".{}.part", asset.name));
+    let _ = fs::remove_file(&part);
+    let result = download_verified(&asset.url, asset.size, &part, &key, &signature, cancel, on_progress).and_then(|()| {
+        fs::rename(&part, &dest).map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))
+    });
+    if result.is_err() {
+        let _ = fs::remove_file(&part);
+    }
+    result.map(|()| dest)
 }
 
 /// An ELF file with the type 2 AppImage magic (`AI\x02` at offset 8).
@@ -330,15 +298,9 @@ fn swap_in(staging: &Path, appimage: &Path) -> Result<(), InstallError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
     use std::sync::Arc;
-
-    use sha2::{Digest, Sha256};
-
-    fn hex(bytes: &[u8]) -> String {
-        bytes.iter().map(|b| format!("{b:02x}")).collect()
-    }
 
     /// Test key and signatures of [`blob`] made with `minisign -S -t
     /// "version:<v> file:test.AppImage"`. Not the release key.
@@ -478,16 +440,9 @@ mod tests {
         let file = download_signed(&asset("heronite.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap();
         assert_eq!(file, dir.join("heronite.deb"));
         assert_eq!(fs::read(&file).unwrap(), data);
-        // The hash is of the verified bytes: a swap on disk afterwards does not change it.
-        let sha256 = verified_sha256(&file).unwrap();
-        assert_eq!(sha256, hex(&Sha256::digest(&data)));
-        fs::write(&file, b"another package").unwrap();
-        assert_eq!(verified_sha256(&file).unwrap(), sha256);
-        assert_ne!(sha256, hex(&Sha256::digest(fs::read(&file).unwrap())));
         let err = download_signed(&asset("bad.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap_err();
         assert!(err.to_string().contains("does not match"), "{err}");
-        assert!(!dir.join("bad.deb").exists() && !dir.join("bad.deb.part").exists());
-        assert_eq!(verified_sha256(&dir.join("bad.deb")), None);
+        assert!(!dir.join("bad.deb").exists() && !dir.join(".bad.deb.part").exists());
         let err = download_signed(&asset("../x.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap_err();
         assert!(err.to_string().contains("Bad file name"));
     }
@@ -540,10 +495,8 @@ mod tests {
         let t = Target::detect(Some(link.into_os_string())).unwrap();
         assert_eq!(t.appimage, fs::canonicalize(&real).unwrap());
         assert_eq!(t.staging().file_name().unwrap(), ".Heronite.AppImage.update");
-        let part = tmp.path().join(".Heronite.AppImage.update.part");
         fs::write(t.staging(), b"partial").unwrap();
-        fs::write(&part, b"partial").unwrap();
         t.sweep_staging();
-        assert!(!t.staging().exists() && !part.exists());
+        assert!(!t.staging().exists());
     }
 }

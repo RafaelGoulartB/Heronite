@@ -71,12 +71,28 @@ pub fn clean_steam_path(raw: &str) -> PathBuf {
     PathBuf::from(raw.replace('\'', ""))
 }
 
-/// Whether the Steam client runs (`isSteamRunning`), for the Steam folder
-/// `steam`: see [`heronite_data::steam_process`]. Steam Deck game mode counts
-/// as running.
+/// Best-effort "is the Steam client running" (`isSteamRunning`): pid files
+/// next to / above the install folder, and Steam Deck game mode counts as
+/// running.
 pub fn is_steam_running(steam: &Path) -> bool {
-    let home = dirs::home_dir().unwrap_or_else(|| steam.to_path_buf());
-    heronite_data::steam_process::is_running_here(&home, steam)
+    if std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope") {
+        return true;
+    }
+    let mut files = Vec::new();
+    if let Some(parent) = steam.parent() {
+        files.push(parent.join("steam.pid"));
+    }
+    files.push(steam.join("steam.pid"));
+    files.into_iter().any(|file| fs::read_to_string(&file).ok().and_then(|s| s.trim().parse::<i32>().ok()).is_some_and(pid_alive))
+}
+
+fn pid_alive(pid: i32) -> bool {
+    if pid <= 0 {
+        return false;
+    }
+    // SAFETY: signal 0 only checks that the process exists.
+    let r = unsafe { libc::kill(pid, 0) };
+    r == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 /// User folders under `<steam>/userdata` (not `0` or `ac`); the error text is
@@ -342,8 +358,8 @@ pub struct Report {
     pub already: bool,
 }
 
-fn ensure_not_running(running: bool, adding: bool, title: &str) -> Result<()> {
-    if running {
+fn ensure_not_running(steam: &Path, adding: bool, title: &str) -> Result<()> {
+    if is_steam_running(steam) {
         bail!(if adding {
             tr!(
                 "Can't add \"{title}\" to Steam while Steam is running. Close Steam and try again (Steam overwrites shortcuts.vdf when it exits).",
@@ -361,12 +377,7 @@ fn ensure_not_running(running: bool, adding: bool, title: &str) -> Result<()> {
 
 /// Adds `game` to every Steam user (`addNonSteamGame`, Steam closed).
 pub fn add_game(steam: &Path, game: &GameId, spec: &ShortcutSpec, art: &ArtFiles) -> Result<Report> {
-    add_game_with(is_steam_running(steam), steam, game, spec, art)
-}
-
-/// [`add_game`] with the answer to "is Steam running" given.
-fn add_game_with(running: bool, steam: &Path, game: &GameId, spec: &ShortcutSpec, art: &ArtFiles) -> Result<Report> {
-    ensure_not_running(running, true, &game.title)?;
+    ensure_not_running(steam, true, &game.title)?;
     let userdata = steam.join("userdata");
     let folders = user_folders(&userdata).map_err(|e| anyhow!(e))?;
 
@@ -424,12 +435,7 @@ fn add_game_with(running: bool, steam: &Path, game: &GameId, spec: &ShortcutSpec
 /// Removes `game` from every Steam user (`removeNonSteamGame`, Steam closed).
 /// A missing Steam folder counts as "already removed", as in Heroic.
 pub fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
-    remove_game_with(is_steam_running(steam), steam, game)
-}
-
-/// [`remove_game`] with the answer to "is Steam running" given.
-fn remove_game_with(running: bool, steam: &Path, game: &GameId) -> Result<Report> {
-    ensure_not_running(running, false, &game.title)?;
+    ensure_not_running(steam, false, &game.title)?;
     let userdata = steam.join("userdata");
     let Ok(folders) = user_folders(&userdata) else { return Ok(Report::default()) };
 
@@ -518,33 +524,6 @@ pub fn is_added(steam: &Path, game: &GameId) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use heronite_data::steam_process::{self, ProcTable};
-
-    /// Only a pid file can tell: the one process there is, `pid`, is `steam`
-    /// and is found by no scan.
-    struct SteamAt(u32);
-
-    impl ProcTable for SteamAt {
-        fn live_comm(&self, pid: u32) -> Option<String> {
-            (pid == self.0).then(|| "steam".to_string())
-        }
-        fn live_pids(&self) -> Vec<u32> {
-            Vec::new()
-        }
-    }
-
-    /// Steam runs when a pid file under `steam` names the fake process 4242.
-    fn running(steam: &Path) -> bool {
-        steam_process::is_running(&SteamAt(4242), steam, steam)
-    }
-
-    fn add_game(steam: &Path, game: &GameId, spec: &ShortcutSpec, art: &ArtFiles) -> Result<Report> {
-        add_game_with(running(steam), steam, game, spec, art)
-    }
-
-    fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
-        remove_game_with(running(steam), steam, game)
-    }
 
     fn game() -> GameId {
         GameId { runner: "legendary".into(), app_name: "Quail".into(), title: "Cool Game".into() }
@@ -734,15 +713,16 @@ mod tests {
     #[test]
     fn steam_running_blocks_changes() {
         let (_d, steam, file) = steam_with(Some(crate::vdf::tests_support::REAL));
-        fs::write(steam.join("steam.pid"), "4242").unwrap();
-        assert!(running(&steam));
+        // A pid file with a live process (this test process).
+        fs::write(steam.join("steam.pid"), std::process::id().to_string()).unwrap();
+        assert!(is_steam_running(&steam));
         let err = add_game(&steam, &game(), &spec(), &ArtFiles::default()).unwrap_err();
         assert!(err.to_string().contains("Steam is running"));
         assert!(remove_game(&steam, &game()).is_err());
         assert_eq!(fs::read(&file).unwrap(), crate::vdf::tests_support::REAL);
         // A stale pid does not count.
         fs::write(steam.join("steam.pid"), "999999999").unwrap();
-        assert!(!running(&steam));
+        assert!(!is_steam_running(&steam));
     }
 
     #[test]

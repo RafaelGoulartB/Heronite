@@ -3,7 +3,6 @@
 pub mod json_store;
 pub mod models;
 pub mod num;
-pub mod panics;
 pub mod paths;
 pub mod proc;
 pub mod temps;
@@ -51,7 +50,6 @@ pub mod stats;
 pub mod status;
 pub mod status_history;
 pub mod steam_owned;
-pub mod steam_process;
 pub mod timeline;
 pub mod ui_state;
 

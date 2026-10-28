@@ -87,7 +87,7 @@ impl CollectionView {
         let games = self.console_games(&spec.source);
         let org = self.organize();
         let mut platforms: BTreeMap<String, usize> = BTreeMap::new();
-        for g in games.iter() {
+        for g in &games {
             *platforms.entry(org.platform(g)).or_default() += 1;
         }
         let mut platforms: Vec<(String, usize)> = platforms.into_iter().filter(|(_, n)| *n < games.len()).collect();

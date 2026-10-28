@@ -16,7 +16,6 @@ use heronite_data::organize::{GameExtras, Organize};
 use heronite_data::{CollectionGame, Library};
 
 use super::super::CollectionView;
-use super::layouts::Filters;
 use crate::console::theme_rows;
 
 /// One row of covers.
@@ -94,55 +93,12 @@ struct Inputs {
     day: i64,
 }
 
-/// A list of game keys a layout derives from a source's games (filtered and
-/// sorted), with what it depends on besides the games and [`Inputs`].
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub(super) enum ListKey {
-    Grid {
-        source: String,
-        filters: Filters,
-        /// The search text, trimmed.
-        search: String,
-    },
-    /// The Carousel's pill `filter` (its A\u{2013}Z order).
-    Carousel { source: String, filter: usize },
-}
-
-impl ListKey {
-    fn source(&self) -> &str {
-        match self {
-            Self::Grid { source, .. } | Self::Carousel { source, .. } => source,
-        }
-    }
-}
-
-/// The lists of the combinations seen lately. A few at most: a search typed
-/// letter by letter makes one each.
-#[derive(Default)]
-struct ListMemo(HashMap<ListKey, Arc<[SharedString]>>);
-
-impl ListMemo {
-    const MAX: usize = 8;
-
-    fn get(&self, key: &ListKey) -> Option<Arc<[SharedString]>> {
-        self.0.get(key).cloned()
-    }
-
-    fn insert(&mut self, key: ListKey, keys: Arc<[SharedString]>) {
-        if self.0.len() >= Self::MAX {
-            self.0.clear();
-        }
-        self.0.insert(key, keys);
-    }
-}
-
-/// The games, shelves and key lists of each source seen lately, for [`Inputs`].
+/// The games and shelves of each source seen lately, for [`Inputs`].
 #[derive(Default)]
 pub(super) struct SourceCache {
     built_from: Option<Inputs>,
     games: HashMap<String, Arc<Vec<Arc<CollectionGame>>>>,
     shelves: HashMap<String, Arc<Vec<Shelf>>>,
-    lists: ListMemo,
 }
 
 impl SourceCache {
@@ -162,7 +118,6 @@ impl SourceCache {
         if !same {
             self.games.clear();
             self.shelves.clear();
-            self.lists.0.clear();
             self.built_from = Some(Inputs {
                 lib: lib.clone(),
                 extras: view.game_extras.clone(),
@@ -197,26 +152,12 @@ impl CollectionView {
         }
     }
 
-    /// The list `key` stands for: `order` runs once per change of the
-    /// source's games or of what `key` holds, then the result is shared.
-    pub(super) fn console_list(
-        &self,
-        key: ListKey,
-        order: impl FnOnce(&[Arc<CollectionGame>], &Library) -> Vec<SharedString>,
-    ) -> Arc<[SharedString]> {
-        let Some(lib) = self.lib.as_ref() else { return Arc::default() };
-        // Also checks the cache against its inputs.
-        let games = self.console_games(key.source());
-        if let Some(keys) = self.console.sources.borrow().lists.get(&key) {
-            return keys;
-        }
-        let keys: Arc<[SharedString]> = order(&games, lib).into();
-        self.console.sources.borrow_mut().lists.insert(key, keys.clone());
-        keys
+    /// The games of `source`, in library order.
+    pub(super) fn console_games(&self, source: &str) -> Vec<Arc<CollectionGame>> {
+        self.cached_games(source).to_vec()
     }
 
-    /// The games of `source`, in library order.
-    pub(super) fn console_games(&self, source: &str) -> Arc<Vec<Arc<CollectionGame>>> {
+    fn cached_games(&self, source: &str) -> Arc<Vec<Arc<CollectionGame>>> {
         let Some(lib) = self.lib.as_ref() else { return Arc::default() };
         let mut cache = self.console.sources.borrow_mut();
         cache.check(self, lib);
@@ -251,7 +192,7 @@ impl CollectionView {
 
     fn build_shelves(&self, lib: &Library, source: &str) -> Vec<Shelf> {
         let theme = crate::console::look::theme();
-        let games = self.console_games(source);
+        let games = self.cached_games(source);
         let games: Vec<&CollectionGame> = games.iter().map(|g| g.as_ref()).collect();
         let limit = if theme.shelf_limit == 0 { usize::MAX } else { theme.shelf_limit as usize };
         // `statuses` stands for one shelf per status of the library, in its order.
@@ -340,44 +281,4 @@ impl CollectionView {
 
 fn fxhash(s: &str) -> u64 {
     s.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| (h ^ u64::from(b)).wrapping_mul(0x100_0000_01b3))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // `gpui_kit::*` above brings gpui's own `test` macro.
-    use core::prelude::v1::test;
-
-    fn key(source: &str, search: &str) -> ListKey {
-        ListKey::Grid { source: source.into(), filters: Filters::default(), search: search.into() }
-    }
-
-    fn keys_of(names: &[&str]) -> Arc<[SharedString]> {
-        names.iter().map(|n| SharedString::from(n.to_string())).collect()
-    }
-
-    #[test]
-    fn a_grid_is_found_only_by_the_same_source_filters_and_search() {
-        let mut memo = ListMemo::default();
-        let all = keys_of(&["a", "b"]);
-        memo.insert(key("all", ""), all.clone());
-        assert!(Arc::ptr_eq(&memo.get(&key("all", "")).unwrap(), &all));
-        assert!(memo.get(&key("installed", "")).is_none());
-        assert!(memo.get(&key("all", "zel")).is_none());
-        let filters = Filters { sort: 1, ..Filters::default() };
-        assert!(memo.get(&ListKey::Grid { source: "all".into(), filters, search: String::new() }).is_none());
-        // Another layout's list of the same source is another entry.
-        assert!(memo.get(&ListKey::Carousel { source: "all".into(), filter: 0 }).is_none());
-    }
-
-    #[test]
-    fn the_memo_stays_small() {
-        let mut memo = ListMemo::default();
-        for i in 0..ListMemo::MAX + 3 {
-            memo.insert(key("all", &i.to_string()), keys_of(&["a"]));
-        }
-        assert!(memo.0.len() <= ListMemo::MAX);
-        // The last one asked is still there.
-        assert!(memo.get(&key("all", &(ListMemo::MAX + 2).to_string())).is_some());
-    }
 }

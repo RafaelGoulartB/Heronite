@@ -41,26 +41,6 @@ pub fn fix_case(path: &Path) -> PathBuf {
     out
 }
 
-/// `path` with `.` and `..` resolved by the text alone (no symlinks, nothing
-/// read from the disk). A `..` at the root stays at the root.
-pub fn normalize(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for comp in path.components() {
-        match comp {
-            Component::CurDir => {}
-            Component::ParentDir => match out.components().next_back() {
-                Some(Component::Normal(_)) => {
-                    out.pop();
-                }
-                Some(Component::RootDir | Component::Prefix(_)) => {}
-                _ => out.push(".."),
-            },
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
 /// Copies `src` into the folder `dst`: a file goes inside it, a folder's
 /// contents are merged into it (existing files replaced). Returns where a
 /// copied file ended up.
@@ -317,15 +297,6 @@ mod tests {
         assert_eq!(fix_case(&wrong), dir.path().join("Program Files/My Game/Game.exe"));
         let missing = dir.path().join("program files/Other/x.exe");
         assert_eq!(fix_case(&missing), dir.path().join("Program Files/Other/x.exe"));
-    }
-
-    #[test]
-    fn normalize_resolves_dots_by_text() {
-        let n = |p: &str| normalize(Path::new(p));
-        assert_eq!(n("/a/b/../c/./d"), Path::new("/a/c/d"));
-        assert_eq!(n("/a/../../x"), Path::new("/x"), "the root has no parent");
-        assert_eq!(n("a/b/../../.."), Path::new(".."));
-        assert_eq!(n("../../a/.."), Path::new("../.."));
     }
 
     #[test]

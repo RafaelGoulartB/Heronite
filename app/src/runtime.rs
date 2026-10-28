@@ -369,7 +369,6 @@ pub fn toggle_tool_blocking(
         cloud: None,
         cancel: &never,
         notify: &notify,
-        download_failed: Default::default(),
     };
     prep.toggle_tool(&ctx, settings, tool, action)
 }

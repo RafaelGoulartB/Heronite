@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::http::Http;
-use crate::util::{encode_uri_component, is_steam_app_id, normalize_title, re};
+use crate::util::{encode_uri_component, normalize_title, re};
 
 const SGDB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Heronite/0.1";
 const ENCRYPTED_PREFIX: &str = "sgdb:v1:";
@@ -167,20 +167,17 @@ impl BestApp {
 
 /// `steamAppIdFromTitle`: Steam community `SearchApps`, then the store search.
 pub fn steam_app_id_from_title(http: &Http, title: &str) -> Option<String> {
-    search_steam_app_id(http, title, false).ok().flatten()
+    search_steam_app_id(http, title, false)
 }
 
 /// Like [`steam_app_id_from_title`] but only for the same game (see
 /// [`strict_steam_score`]): for places where a wrong game is worse than none.
-/// `Ok(None)` means Steam was searched and has no such game; `Err` means a
-/// search failed and nothing was found, so the answer is unknown (do not cache it).
-pub fn steam_app_id_exact(http: &Http, title: &str) -> Result<Option<String>> {
+pub fn steam_app_id_exact(http: &Http, title: &str) -> Option<String> {
     search_steam_app_id(http, title, true)
 }
 
-fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Result<Option<String>> {
+fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String> {
     let mut best = BestApp(None, strict);
-    let mut failure: Option<anyhow::Error> = None;
     for query in title_queries(title) {
         let community = http
             .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(&query)))
@@ -189,10 +186,7 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Result<Option<
         match community {
             Ok(Value::Array(hits)) => best_from_search_apps(&mut best, &hits, title),
             Ok(_) => {}
-            Err(e) => {
-                log::warn!("Steam community search failed for {query}: {e}");
-                failure = Some(e);
-            }
+            Err(e) => log::warn!("Steam community search failed for {query}: {e}"),
         }
         if best.done() {
             break;
@@ -205,20 +199,13 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Result<Option<
             .and_then(|r| r.json::<Value>());
         match store {
             Ok(v) => best_from_store_search(&mut best, &v, title),
-            Err(e) => {
-                log::warn!("Steam store search failed for {query}: {e}");
-                failure = Some(e);
-            }
+            Err(e) => log::warn!("Steam store search failed for {query}: {e}"),
         }
         if best.done() {
             break;
         }
     }
-    match (best.0, failure) {
-        (Some((id, _)), _) => Ok(Some(id)),
-        (None, Some(e)) => Err(e),
-        (None, None) => Ok(None),
-    }
+    best.0.map(|(id, _)| id)
 }
 
 fn best_from_search_apps(best: &mut BestApp, hits: &[Value], title: &str) {
@@ -297,9 +284,6 @@ pub fn covers_from_steamgrid(http: &Http, api_key: &str, sgdb_id: i64) -> Result
 
 /// `steamGridIdFromSteamApp`.
 pub fn steamgrid_id_from_steam_app(http: &Http, api_key: &str, steam_app_id: &str) -> Option<i64> {
-    if !is_steam_app_id(steam_app_id) {
-        return None;
-    }
     match sgdb_get(http, api_key, &format!("/games/steam/{steam_app_id}"), &[]) {
         Ok(body) => body.get("data").and_then(|d| d.get("id")).and_then(Value::as_i64).filter(|i| *i != 0),
         Err(e) => {
@@ -330,7 +314,7 @@ fn bottles_grid(http: &Http, title: &str) -> Option<String> {
 pub fn fetch_covers_for_game(http: &Http, api_key: Option<&str>, meta: &LocalGameMeta, game: &GameInfo) -> Covers {
     let api_key = api_key.filter(|k| !k.is_empty());
 
-    if let Some(steam_id) = meta.steam_app_id.as_deref().filter(|s| is_steam_app_id(s)) {
+    if let Some(steam_id) = meta.steam_app_id.as_deref().filter(|s| !s.is_empty()) {
         let from_steam = steam_covers(steam_id);
         if let Some(key) = api_key {
             if let Some(sgdb_id) = steamgrid_id_from_steam_app(http, key, steam_id) {
@@ -365,7 +349,7 @@ pub fn fetch_covers_for_game(http: &Http, api_key: Option<&str>, meta: &LocalGam
         }
     }
 
-    if let Some(id) = steam_app_id_from_title(http, &meta.title).filter(|id| is_steam_app_id(id)) {
+    if let Some(id) = steam_app_id_from_title(http, &meta.title) {
         return steam_covers(&id);
     }
     if let Some(grid) = bottles_grid(http, &meta.title) {

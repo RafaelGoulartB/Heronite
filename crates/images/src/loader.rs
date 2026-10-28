@@ -4,6 +4,7 @@
 use crate::{ImageError, ImageRef, Opts, Variant};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 
@@ -191,17 +192,6 @@ impl Drop for Loader {
     }
 }
 
-/// Runs a decode and turns a panic into [`ImageError::Panic`]. The decoders get
-/// broken or hostile pictures, so this is the one place where a panic is
-/// contained (see `heronite_data::panics`). The callbacks run outside it: a
-/// panic there is app code and closes the app.
-fn decode_contained(decode: impl FnOnce() -> Result<crate::Decoded, ImageError>) -> LoadResult {
-    match heronite_data::panics::contained(decode) {
-        Ok(r) => r.map(Arc::new),
-        Err(p) => Err(ImageError::Panic(heronite_data::panics::message(&*p))),
-    }
-}
-
 fn worker(s: Arc<Shared>) {
     loop {
         // Pick the highest-priority queued entry (FIFO among equals).
@@ -226,7 +216,13 @@ fn worker(s: Arc<Shared>) {
             }
         };
 
-        let result = decode_contained(|| crate::load(&req.chain, req.width, req.height, req.variant, &s.opts));
+        let result: LoadResult =
+            match catch_unwind(AssertUnwindSafe(|| crate::load(&req.chain, req.width, req.height, req.variant, &s.opts))) {
+                Ok(r) => r.map(Arc::new),
+                Err(p) => Err(ImageError::Panic(
+                    p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default(),
+                )),
+            };
 
         let waiters = s.state.lock().unwrap_or_else(|e| e.into_inner()).entries.remove(&key).map(|e| e.waiters).unwrap_or_default();
         let n = waiters.len();
@@ -235,30 +231,7 @@ fn worker(s: Arc<Shared>) {
             // The last waiter gets the only Arc, so `Arc::try_unwrap` succeeds
             // in the common single-waiter case (zero-copy hand-off).
             let r = if i + 1 == n { result.take().unwrap() } else { result.as_ref().unwrap().clone() };
-            cb(r);
+            let _ = catch_unwind(AssertUnwindSafe(|| cb(r)));
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_decoder_panic_becomes_an_error() {
-        let r = decode_contained(|| panic!("bad jpeg {}", 7));
-        match r {
-            Err(ImageError::Panic(m)) => assert_eq!(m, "bad jpeg 7"),
-            other => panic!("{other:?}"),
-        }
-    }
-
-    #[test]
-    fn the_decoder_runs_in_a_contained_scope() {
-        let _ = decode_contained(|| {
-            assert!(heronite_data::panics::is_contained());
-            Err(ImageError::Panic(String::new()))
-        });
-        assert!(!heronite_data::panics::is_contained());
     }
 }

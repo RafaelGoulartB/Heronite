@@ -99,26 +99,18 @@ fn agent(opts: &Opts) -> &'static ureq::Agent {
     })
 }
 
-/// Keeps the status code of an HTTP error answer so callers can tell a
-/// missing image (404) from a rate limit (429) without parsing the message.
-fn http_error(url: &str, e: ureq::Error) -> ImageError {
-    match e {
-        ureq::Error::StatusCode(code) => ImageError::HttpStatus(code, url.to_string()),
-        e => ImageError::Http(format!("{url}: {e}")),
-    }
-}
-
 fn download(url: &str, opts: &Opts) -> Result<Vec<u8>> {
-    let mut resp = agent(opts).get(url).call().map_err(|e| http_error(url, e))?; // 4xx/5xx are errors
+    let mut resp = agent(opts).get(url).call().map_err(|e| ImageError::Http(format!("{url}: {e}")))?; // 4xx/5xx are errors
     let status = resp.status();
     if !status.is_success() {
-        return Err(ImageError::HttpStatus(status.as_u16(), url.to_string()));
+        return Err(ImageError::Http(format!("{url}: status {status}")));
     }
     let ctype = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
     if ctype.starts_with("text/") {
         return Err(ImageError::NotAnImage(format!("{url}: content-type {ctype}")));
     }
-    let bytes = resp.body_mut().with_config().limit(opts.max_download_bytes).read_to_vec().map_err(|e| http_error(url, e))?;
+    let bytes =
+        resp.body_mut().with_config().limit(opts.max_download_bytes).read_to_vec().map_err(|e| ImageError::Http(format!("{url}: {e}")))?;
     if !sniff(&bytes) {
         return Err(ImageError::NotAnImage(format!("{url}: body is not a supported image ({} bytes)", bytes.len())));
     }
@@ -215,24 +207,6 @@ mod tests {
 
         // second read is a pure cache hit (server is gone)
         assert_eq!(url_bytes(&ok, &opts).unwrap(), png);
-    }
-
-    #[test]
-    fn error_statuses_keep_their_code() {
-        let (base, h) = serve(vec![
-            ("/gone", 404, "text/html", Vec::new()),
-            ("/slow-down", 429, "text/html", Vec::new()),
-            ("/boom", 503, "text/html", Vec::new()),
-        ]);
-        let dir = tempfile::tempdir().unwrap();
-        let opts = Opts::new(dir.path().join("images-cache"), None);
-        let expect = [("/gone", 404, false), ("/slow-down", 429, true), ("/boom", 503, true)];
-        for (path, code, transient) in expect {
-            let err = url_bytes(&format!("{base}{path}"), &opts).unwrap_err();
-            assert!(matches!(err, ImageError::HttpStatus(c, _) if c == code), "{path}: {err:?}");
-            assert_eq!(err.is_transient(), transient, "{path}");
-        }
-        h.join().unwrap();
     }
 
     #[test]

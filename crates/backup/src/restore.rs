@@ -15,8 +15,7 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Local, SecondsFormat, Utc};
@@ -35,9 +34,6 @@ pub const PENDING_FILE: &str = "restore-pending.json";
 /// A note older than this is dropped: the restart it was made for did not
 /// happen, and a restore days later would surprise.
 const PENDING_TTL: chrono::Duration = chrono::Duration::minutes(15);
-/// How long [`apply_pending`] waits for the app that asked for the restore to
-/// exit: the app's own quit watchdog ends it after 15 s.
-const ASKER_EXIT_WAIT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,9 +41,6 @@ struct Pending {
     snapshot: PathBuf,
     parts: Vec<Part>,
     requested_at: String,
-    /// The app that asked: [`apply_pending`] waits for it to be gone.
-    #[serde(default)]
-    pid: Option<u32>,
 }
 
 /// What a restore did.
@@ -78,11 +71,6 @@ fn sources(snapshot: &Path, parts: &[Part]) -> Result<(Vec<Source>, Manifest)> {
     if manifest.format > FORMAT {
         bail!(Error::TooNew);
     }
-    // The manifest is untrusted (a backup can come from anyone): a path that
-    // leaves the backup's folders would read, and later write, anywhere.
-    if let Some(bad) = manifest.files.iter().find(|f| !stays_inside(&f.path)) {
-        bail!(Error::Damaged(bad.path.clone()));
-    }
     let files = manifest
         .files
         .iter()
@@ -96,13 +84,6 @@ fn sources(snapshot: &Path, parts: &[Part]) -> Result<(Vec<Source>, Manifest)> {
         })
         .collect();
     Ok((files, manifest))
-}
-
-/// A manifest path that names a file below its folder: not empty, not
-/// absolute and without `..`, `.` or a drive in it (`join` would let any of
-/// them escape).
-fn stays_inside(rel: &str) -> bool {
-    !rel.is_empty() && Path::new(rel).components().all(|c| matches!(c, Component::Normal(_)))
 }
 
 /// Every file is there with the content the manifest names.
@@ -133,7 +114,6 @@ pub fn prepare(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
         snapshot: snapshot.to_path_buf(),
         parts: parts.to_vec(),
         requested_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-        pid: Some(std::process::id()),
     };
     fs::create_dir_all(&app.config)?;
     temps::write_atomic(&app.config.join(PENDING_FILE), serde_json::to_string_pretty(&pending)?.as_bytes(), None)?;
@@ -146,63 +126,23 @@ pub fn cancel(app: &AppPaths) {
     let _ = fs::remove_file(app.config.join(PENDING_FILE));
 }
 
-/// Runs the restore [`prepare`] asked for, if any. Called at start, by the
-/// process that is the only instance (see `main`), before anything reads the
-/// data. The app that asked may still be quitting (it saves on the way out):
-/// the restore waits for it, and if it does not exit in time the note stays
-/// for the next start. The note is removed before the copy, so a restore that
-/// crashes the app is not tried again at every start (the safety backup is
-/// there).
+/// Runs the restore [`prepare`] asked for, if any. Called first thing at
+/// start. The note is removed before the copy, so a restore that crashes the
+/// app is not tried again at every start (the safety backup is there).
 pub fn apply_pending(data: &DataPaths, app: &AppPaths) -> Option<Result<Restored>> {
-    apply_pending_waiting(data, app, ASKER_EXIT_WAIT)
-}
-
-fn apply_pending_waiting(data: &DataPaths, app: &AppPaths, wait: Duration) -> Option<Result<Restored>> {
     let note = app.config.join(PENDING_FILE);
     let text = fs::read_to_string(&note).ok()?;
+    let _ = fs::remove_file(&note);
     let pending: Pending = match serde_json::from_str(&text) {
         Ok(p) => p,
-        Err(e) => {
-            let _ = fs::remove_file(&note);
-            return Some(Err(anyhow::anyhow!("unreadable {PENDING_FILE}: {e}")));
-        }
+        Err(e) => return Some(Err(anyhow::anyhow!("unreadable {PENDING_FILE}: {e}"))),
     };
     let fresh = DateTime::parse_from_rfc3339(&pending.requested_at).is_ok_and(|t| Utc::now() - t.with_timezone(&Utc) < PENDING_TTL);
     if !fresh {
-        let _ = fs::remove_file(&note);
         log::warn!("ignoring a restore of {} asked at {}", pending.snapshot.display(), pending.requested_at);
         return None;
     }
-    if let Some(pid) = pending.pid.filter(|p| *p != std::process::id()) {
-        if !wait_for_exit(pid, wait) {
-            log::warn!("the restore of {} waits for the next start: process {pid} is still running", pending.snapshot.display());
-            return None;
-        }
-    }
-    let _ = fs::remove_file(&note);
     Some(restore(data, app, &pending.snapshot, &pending.parts))
-}
-
-/// Whether process `pid` is gone, checked until `wait` has passed.
-fn wait_for_exit(pid: u32, wait: Duration) -> bool {
-    let deadline = Instant::now() + wait;
-    loop {
-        if !is_running(pid) {
-            return true;
-        }
-        if Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-/// A process that has not exited (a zombie, waiting to be reaped, has).
-fn is_running(pid: u32) -> bool {
-    let Ok(stat) = fs::read_to_string(format!("/proc/{pid}/stat")) else { return false };
-    // `pid (name) S ...`: the name may hold spaces and parentheses.
-    let state = stat.rsplit_once(')').and_then(|(_, rest)| rest.trim_start().chars().next());
-    !matches!(state, Some('Z' | 'X') | None)
 }
 
 /// Copies the files of `parts` from `snapshot` into the data and app state
@@ -370,98 +310,10 @@ mod tests {
         assert!(apply_pending(&data, &app).is_none());
 
         // A stale note is dropped.
-        let old =
-            Pending { snapshot: made.path.clone(), parts: vec![Part::Collection], requested_at: "2020-01-01T00:00:00Z".into(), pid: None };
+        let old = Pending { snapshot: made.path.clone(), parts: vec![Part::Collection], requested_at: "2020-01-01T00:00:00Z".into() };
         fs::write(app.config.join(PENDING_FILE), serde_json::to_string(&old).unwrap()).unwrap();
         assert!(apply_pending(&data, &app).is_none());
         assert!(!app.config.join(PENDING_FILE).exists());
-    }
-
-    #[test]
-    fn the_restore_waits_for_the_app_that_asked_to_exit() {
-        let _s = crate::tests::serial();
-        let d = tempfile::tempdir().unwrap();
-        let (data, app) = fixture(d.path());
-        let folder = d.path().join("backups");
-        fs::create_dir(&folder).unwrap();
-        let made = snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now()).unwrap();
-        fs::write(data.root.join("local_library/library.json"), "now").unwrap();
-        let note = |pid: Option<u32>| {
-            let pending = Pending {
-                snapshot: made.path.clone(),
-                parts: vec![Part::Collection],
-                requested_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-                pid,
-            };
-            fs::write(app.config.join(PENDING_FILE), serde_json::to_string(&pending).unwrap()).unwrap();
-        };
-
-        // The app is still running: nothing is copied, the note stays.
-        let mut asker = std::process::Command::new("sleep").arg("30").spawn().unwrap();
-        note(Some(asker.id()));
-        assert!(apply_pending_waiting(&data, &app, Duration::from_millis(150)).is_none());
-        assert_eq!(fs::read_to_string(data.root.join("local_library/library.json")).unwrap(), "now");
-        assert!(app.config.join(PENDING_FILE).exists());
-
-        // It exits while the restore waits (a zombie counts as gone).
-        let exits = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(200));
-            asker.kill().unwrap();
-            asker
-        });
-        let done = apply_pending_waiting(&data, &app, Duration::from_secs(10)).unwrap().unwrap();
-        assert_eq!(done.parts, [Part::Collection]);
-        assert_eq!(fs::read_to_string(data.root.join("local_library/library.json")).unwrap(), r#"{"games":{"a":{},"b":{}}}"#);
-        assert!(!app.config.join(PENDING_FILE).exists());
-        exits.join().unwrap().wait().unwrap();
-
-        // A note from a version without the pid, or of a process long gone, is applied at once.
-        fs::write(data.root.join("local_library/library.json"), "now").unwrap();
-        let mut gone = std::process::Command::new("true").spawn().unwrap();
-        gone.wait().unwrap();
-        note(Some(gone.id()));
-        assert!(apply_pending_waiting(&data, &app, Duration::from_millis(100)).unwrap().is_ok());
-        fs::write(data.root.join("local_library/library.json"), "now").unwrap();
-        note(None);
-        assert!(apply_pending_waiting(&data, &app, Duration::from_millis(100)).unwrap().is_ok());
-    }
-
-    #[test]
-    fn manifest_paths_must_stay_inside_their_folder() {
-        for ok in ["config.json", "local_library/art/x/hero-1.png", "a/b/c.txt"] {
-            assert!(stays_inside(ok), "{ok}");
-        }
-        for bad in ["", "../x", "a/../../x", "a/..", "./x", "/etc/x", "//x", "."] {
-            assert!(!stays_inside(bad), "{bad:?}");
-        }
-    }
-
-    #[test]
-    fn a_manifest_path_that_escapes_is_refused_and_nothing_is_written() {
-        let _s = crate::tests::serial();
-        let d = tempfile::tempdir().unwrap();
-        let (data, app) = fixture(d.path());
-        let folder = d.path().join("backups");
-        fs::create_dir(&folder).unwrap();
-        let made = snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now()).unwrap();
-        let outside = d.path().join("outside.txt");
-        let original = Manifest::read(&made.path).unwrap();
-        for bad in ["../outside.txt", "../../outside.txt", outside.to_str().unwrap()] {
-            let mut m = original.clone();
-            let mut entry = m.files.iter().find(|f| f.part == Part::Collection).unwrap().clone();
-            entry.path = bad.into();
-            m.files.push(entry);
-            m.write(&made.path).unwrap();
-            fs::write(&outside, "original").unwrap();
-            fs::write(data.root.join("local_library/library.json"), "now").unwrap();
-
-            let err = restore(&data, &app, &made.path, &Part::ALL).unwrap_err();
-            assert_eq!(err.downcast_ref::<Error>(), Some(&Error::Damaged(bad.into())), "{bad}");
-            assert!(prepare(&data, &app, &made.path, &Part::ALL, &folder).is_err());
-            assert_eq!(fs::read_to_string(&outside).unwrap(), "original");
-            assert_eq!(fs::read_to_string(data.root.join("local_library/library.json")).unwrap(), "now");
-            assert!(!app.config.join(PENDING_FILE).exists());
-        }
     }
 
     #[test]

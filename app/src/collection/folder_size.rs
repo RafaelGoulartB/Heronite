@@ -19,9 +19,9 @@ use heronite_launch::SystemProbe;
 use super::open_links::FolderKind;
 use super::CollectionView;
 
-/// Wait before measuring (or asking ProtonDB, `game_facts`), so moving through
-/// the list does not start a walk or a request for every game passed.
-pub(super) const SETTLE: Duration = Duration::from_millis(300);
+/// Wait before measuring, so moving through the list does not start a walk
+/// for every game passed.
+const SETTLE: Duration = Duration::from_millis(300);
 
 impl CollectionView {
     /// Measures the focused game when its store gave no install size.

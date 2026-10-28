@@ -154,8 +154,6 @@
   "Won't delete {path}: it contains your home folder": "No se eliminará {path}: contiene tu carpeta personal",
   "Won't delete {path}: it is a Steam library": "No se eliminará {path}: es una biblioteca de Steam",
   "Won't delete {path}: it is a top-level folder. Delete the game by hand": "No se eliminará {path}: es una carpeta de nivel superior. Elimina el juego manualmente",
-  "Won't delete {path}: it is a shared folder of the system or your account. Delete the game by hand": "No se eliminará {path}: es una carpeta compartida del sistema o de tu cuenta. Elimina el juego manualmente",
-  "Won't delete {path}: it is or holds the folders of this app": "No se eliminará {path}: es o contiene las carpetas de esta aplicación",
   "Won't delete {path}: it is a whole drive": "No se eliminará {path}: es un disco completo",
   "Won't delete {path}: it is or holds a default folder or another game's prefix": "No se eliminará {path}: es o contiene una carpeta predeterminada o el prefijo de otro juego",
   "Year": "Año",

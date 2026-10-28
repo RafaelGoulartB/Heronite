@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::{game_config, json_store, DataPaths};
 use heronite_i18n::tr;
-use heronite_launch::prepare::SYNC_TIMEOUT;
 use heronite_launch::{PlanContext, Probe, SystemProbe};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -313,7 +312,7 @@ fn run_sync(
             continue;
         }
         let ts = timestamp(paths, app_name, &location.name);
-        let out = gogdl.run_for(&sync_args(location, app_name, &ts, flag), SYNC_TIMEOUT)?;
+        let out = gogdl.run(&sync_args(location, app_name, &ts, flag))?;
         if list.len() > 1 {
             log.push_str(&format!("{}\n", location.name));
         }

@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use common::{Resp, Server};
-use heronite_metadata::protondb::{cached_steam_id_for_title, cached_tier, steam_id_for_title, tier};
+use heronite_metadata::protondb::{cached_tier, tier};
 use heronite_metadata::Http;
 use serde_json::{json, Value};
 
@@ -88,57 +88,4 @@ fn non_numeric_ids_never_hit_the_network() {
     assert_eq!(tier(dir.path(), &http, "../etc"), None);
     assert_eq!(tier(dir.path(), &http, ""), None);
     assert_eq!(hits(&s), 0);
-}
-
-fn search_server(community: fn() -> Resp) -> Server {
-    Server::start(move |req| match req.path() {
-        p if p.starts_with("/community/actions/SearchApps/") => community(),
-        "/steam/api/storesearch/" => Resp::json(json!({"total":0,"items":[]})),
-        _ => Resp::status(404),
-    })
-}
-
-fn searches(s: &Server) -> usize {
-    s.count(|r| r.path().starts_with("/community/") || r.path().starts_with("/steam/"))
-}
-
-#[test]
-fn a_failed_title_search_is_not_cached_as_not_on_steam() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut dead = server().endpoints();
-    for url in [&mut dead.steam_community, &mut dead.steam_store] {
-        *url = "http://127.0.0.1:1".into();
-    }
-    assert_eq!(steam_id_for_title(dir.path(), &Http::new(dead), "Hades"), None);
-    assert_eq!(cached_steam_id_for_title(dir.path(), "Hades"), None);
-
-    // The next launch, online, finds it.
-    let s = search_server(|| Resp::json(json!([{"appid":"1145360","name":"Hades"}])));
-    let http = Http::new(s.endpoints());
-    assert_eq!(steam_id_for_title(dir.path(), &http, "Hades").as_deref(), Some("1145360"));
-    assert_eq!(cached_steam_id_for_title(dir.path(), "Hades"), Some(Some("1145360".into())));
-}
-
-#[test]
-fn a_server_error_during_the_title_search_is_not_cached_either() {
-    let dir = tempfile::tempdir().unwrap();
-    let s = search_server(|| Resp::status(503));
-    let http = Http::new(s.endpoints());
-    assert_eq!(steam_id_for_title(dir.path(), &http, "Hades"), None);
-    assert_eq!(cached_steam_id_for_title(dir.path(), "Hades"), None);
-    let first = searches(&s);
-    assert_eq!(steam_id_for_title(dir.path(), &http, "Hades"), None);
-    assert!(searches(&s) > first, "the search is asked again");
-}
-
-#[test]
-fn a_completed_title_search_without_a_match_is_cached() {
-    let dir = tempfile::tempdir().unwrap();
-    let s = search_server(|| Resp::json(json!([])));
-    let http = Http::new(s.endpoints());
-    assert_eq!(steam_id_for_title(dir.path(), &http, "Not A Steam Game"), None);
-    assert_eq!(cached_steam_id_for_title(dir.path(), "Not A Steam Game"), Some(None));
-    let after_first = searches(&s);
-    assert_eq!(steam_id_for_title(dir.path(), &http, "Not A Steam Game"), None);
-    assert_eq!(searches(&s), after_first);
 }

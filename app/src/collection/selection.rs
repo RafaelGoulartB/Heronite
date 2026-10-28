@@ -71,11 +71,7 @@ fn cycle(orig: Tri) -> &'static [Step] {
 #[derive(Default)]
 pub(super) struct Selection {
     /// Selected game keys, in the order they were picked.
-    keys: Vec<SharedString>,
-    /// The same keys, for `contains`: the cards and group headers ask about
-    /// thousands of keys every frame. Only [`Selection::replace`] writes
-    /// `keys`, so the two cannot drift.
-    set: HashSet<SharedString>,
+    pub keys: Vec<SharedString>,
     /// Last card clicked: where a Shift click range starts.
     pub anchor: Option<SharedString>,
     /// Games in each category when the selection was made (a category's
@@ -98,22 +94,8 @@ impl Selection {
         !self.keys.is_empty()
     }
 
-    /// Whether the game is selected. Constant time.
     pub fn contains(&self, key: &str) -> bool {
-        self.set.contains(key)
-    }
-
-    /// The selected keys, in the order they were picked.
-    pub fn keys(&self) -> &[SharedString] {
-        &self.keys
-    }
-
-    /// Takes `keys` as the selection (repeated keys dropped, the first
-    /// occurrence keeps its place).
-    fn replace(&mut self, keys: Vec<SharedString>) {
-        let mut set = HashSet::with_capacity(keys.len());
-        self.keys = keys.into_iter().filter(|k| set.insert(k.clone())).collect();
-        self.set = set;
+        self.keys.iter().any(|k| k.as_ref() == key)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -199,15 +181,15 @@ impl CollectionView {
     /// The selected games, in the order they were picked.
     pub(super) fn selected_games(&self) -> Vec<Arc<CollectionGame>> {
         let Some(lib) = self.lib.as_ref() else { return Vec::new() };
-        self.sel.keys().iter().filter_map(|k| lib.get(k).cloned()).collect()
+        self.sel.keys.iter().filter_map(|k| lib.get(k).cloned()).collect()
     }
 
     /// Replaces the selection (unknown and repeated keys dropped).
     pub(super) fn set_selection(&mut self, keys: Vec<SharedString>) {
         let Some(lib) = self.lib.clone() else { return };
-        self.sel.replace(keys.into_iter().filter(|k| lib.get(k).is_some()).collect());
+        let mut seen = HashSet::new();
+        let keys: Vec<SharedString> = keys.into_iter().filter(|k| lib.get(k).is_some() && seen.insert(k.clone())).collect();
         let cats = &self.categories;
-        let keys = self.sel.keys();
         let orig = cats
             .names()
             .map(|name| {
@@ -216,10 +198,11 @@ impl CollectionView {
             })
             .collect();
         let s = &mut self.sel;
+        s.keys = keys;
         s.orig = orig;
         s.steps.clear();
         s.reseed = false;
-        if !s.active() {
+        if s.keys.is_empty() {
             s.pop = None;
         }
     }
@@ -229,7 +212,7 @@ impl CollectionView {
     }
 
     fn toggle_selected(&mut self, key: SharedString) {
-        let mut keys = self.sel.keys().to_vec();
+        let mut keys = self.sel.keys.clone();
         match keys.iter().position(|k| *k == key) {
             Some(i) => {
                 keys.remove(i);
@@ -256,7 +239,7 @@ impl CollectionView {
             let order = self.shown_keys();
             let at = |k: &SharedString| order.iter().position(|o| o == k);
             if let Some((a, b)) = from.as_ref().and_then(at).zip(at(&key)) {
-                let mut keys = self.sel.keys().to_vec();
+                let mut keys = self.sel.keys.clone();
                 keys.extend(order[a.min(b)..=a.max(b)].iter().cloned());
                 self.set_selection(keys);
                 self.sel.anchor = Some(key);
@@ -281,7 +264,7 @@ impl CollectionView {
     /// The context menu's "Select multiple" / "Add to selection".
     pub(super) fn start_selection(&mut self, key: SharedString, cx: &mut Context<Self>) {
         self.context_menu = None;
-        let mut keys = self.sel.keys().to_vec();
+        let mut keys = self.sel.keys.clone();
         keys.push(key.clone());
         self.set_selection(keys);
         self.sel.anchor = Some(key);
@@ -298,9 +281,8 @@ impl CollectionView {
         let Some(g) = self.groups.iter().find(|g| g.id.as_ref() == group_id) else { return };
         let group: Vec<SharedString> = g.cards.iter().map(|c| c.key.clone()).collect();
         let all = group.iter().all(|k| self.sel.contains(k));
-        let mut keys = self.sel.keys().to_vec();
+        let mut keys = self.sel.keys.clone();
         if all {
-            let group: HashSet<&SharedString> = group.iter().collect();
             keys.retain(|k| !group.contains(k));
         } else {
             keys.extend(group);
@@ -325,14 +307,14 @@ impl CollectionView {
             return;
         }
         let Some(lib) = self.lib.clone() else { return };
-        let before = self.sel.keys().len();
-        if self.sel.reseed || self.sel.keys().iter().any(|k| lib.get(k).is_none()) {
-            let (keys, anchor, steps) = (self.sel.keys().to_vec(), self.sel.anchor.clone(), std::mem::take(&mut self.sel.steps));
+        let before = self.sel.keys.len();
+        if self.sel.reseed || self.sel.keys.iter().any(|k| lib.get(k).is_none()) {
+            let (keys, anchor, steps) = (self.sel.keys.clone(), self.sel.anchor.clone(), std::mem::take(&mut self.sel.steps));
             let reseed = self.sel.reseed;
             self.set_selection(keys);
             self.sel.anchor = anchor;
             // A hidden game leaving keeps the categories' clicks going.
-            if !reseed && self.sel.keys().len() < before {
+            if !reseed && self.sel.keys.len() < before {
                 self.sel.steps = steps;
             }
         }
@@ -348,10 +330,10 @@ impl CollectionView {
             return;
         }
         let listed: HashSet<&SharedString> = self.groups.iter().flat_map(|g| g.cards.iter().map(|c| &c.key)).collect();
-        if self.sel.keys().iter().all(|k| listed.contains(k)) {
+        if self.sel.keys.iter().all(|k| listed.contains(k)) {
             return;
         }
-        let keys: Vec<SharedString> = self.sel.keys().iter().filter(|k| listed.contains(k)).cloned().collect();
+        let keys: Vec<SharedString> = self.sel.keys.iter().filter(|k| listed.contains(k)).cloned().collect();
         let anchor = self.sel.anchor.clone();
         // A new set of games: the categories' clicks start over from it.
         self.set_selection(keys);
@@ -382,7 +364,7 @@ impl CollectionView {
                 categories: self.categories.of_game(&g.runner, &g.app_name).into_iter().map(str::to_owned).collect(),
             })
             .collect();
-        Undo { after, keys: self.sel.keys().to_vec(), games, details: None, message: String::new() }
+        Undo { after, keys: self.sel.keys.clone(), games, details: None, message: String::new() }
     }
 
     /// Runs a batch write off the UI thread, then keeps its undo, says what
@@ -611,7 +593,7 @@ impl CollectionView {
                 match res {
                     Ok(()) => {
                         // Hidden games come back with the reload: keep their keys until then.
-                        this.sel.replace(keys);
+                        this.sel.keys = keys;
                         this.sel.reseed = true;
                         this.sel.pop = None;
                         this.show_toast(done, false, cx);
@@ -661,80 +643,5 @@ impl CollectionView {
             _ => return false,
         }
         true
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use gpui_kit::SharedString;
-
-    use super::Selection;
-
-    fn keys(names: &[&str]) -> Vec<SharedString> {
-        names.iter().map(|n| SharedString::from(n.to_string())).collect()
-    }
-
-    /// The set holds exactly the keys of the list.
-    fn in_sync(s: &Selection) -> bool {
-        s.keys().len() == s.set.len() && s.keys().iter().all(|k| s.set.contains(k)) && s.active() == !s.set.is_empty()
-    }
-
-    #[test]
-    fn contains_follows_the_keys() {
-        let mut s = Selection::default();
-        assert!(!s.active() && !s.contains("a"));
-        s.replace(keys(&["a", "b", "c"]));
-        assert!(s.active() && s.contains("a") && s.contains("c") && !s.contains("d"));
-        assert!(in_sync(&s));
-    }
-
-    #[test]
-    fn repeated_keys_keep_their_first_place() {
-        let mut s = Selection::default();
-        s.replace(keys(&["b", "a", "b", "c", "a"]));
-        assert_eq!(s.keys(), keys(&["b", "a", "c"]).as_slice());
-        assert!(in_sync(&s));
-    }
-
-    #[test]
-    fn replacing_drops_the_old_keys() {
-        let mut s = Selection::default();
-        s.replace(keys(&["a", "b"]));
-        s.replace(keys(&["b", "c"]));
-        assert!(!s.contains("a") && s.contains("b") && s.contains("c"));
-        assert_eq!(s.keys(), keys(&["b", "c"]).as_slice());
-        s.replace(Vec::new());
-        assert!(!s.active() && !s.contains("b"));
-        assert!(in_sync(&s));
-    }
-
-    /// Add, remove, toggle, select all and clear, the way the view builds
-    /// them from the current keys.
-    #[test]
-    fn stays_in_sync_through_every_kind_of_change() {
-        let all: Vec<String> = (0..40).map(|i| format!("game{i}")).collect();
-        let mut s = Selection::default();
-        let mut seed = 7u32;
-        for step in 0..300 {
-            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            let pick = SharedString::from(all[(seed >> 16) as usize % all.len()].clone());
-            let mut next = s.keys().to_vec();
-            match step % 5 {
-                0 => next.push(pick),
-                1 => next.retain(|k| *k != pick),
-                2 => match next.iter().position(|k| *k == pick) {
-                    Some(i) => {
-                        next.remove(i);
-                    }
-                    None => next.push(pick),
-                },
-                3 => next = all.iter().cloned().map(SharedString::from).collect(),
-                _ if step % 10 == 4 => next.clear(),
-                _ => next.extend(all.iter().take(5).cloned().map(SharedString::from)),
-            }
-            s.replace(next);
-            assert!(in_sync(&s), "out of sync at step {step}");
-            assert!(all.iter().all(|k| s.contains(k) == s.keys().iter().any(|x| x.as_ref() == k.as_str())));
-        }
     }
 }

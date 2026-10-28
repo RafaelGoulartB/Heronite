@@ -8,7 +8,6 @@ description = "Wine/Proton manager (download, install, remove) and compatibility
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
-heronite-net = { path = "../net" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"

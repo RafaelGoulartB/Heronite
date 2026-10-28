@@ -129,20 +129,6 @@ pub(super) fn view_query(ui: &UiState, search: &str) -> ViewQuery {
     }
 }
 
-/// A game's card. `step`: where its launch is while it prepares; it is said
-/// under the cover in place of the caption.
-pub(super) fn card_vm(
-    g: &CollectionGame,
-    lib: &Library,
-    ui: &UiState,
-    organize: &Organize,
-    playing: bool,
-    step: Option<SharedString>,
-) -> Arc<CardVm> {
-    let step = step.map(|text| Caption { icon: Icon::Refresh, text, muted: false, stars: None, tint: None });
-    card_vm_with(g, playing, step.or_else(|| chosen_caption(g, lib, ui, organize)))
-}
-
 /// `keep`: the app's own conditions (categories, statuses, games with an update).
 pub(super) fn build_groups(
     lib: &Library,
@@ -154,7 +140,11 @@ pub(super) fn build_groups(
     organize: &Organize,
 ) -> Vec<GroupVm> {
     let filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
-    let card = |g: &Game| card_vm(g, lib, ui, organize, is_playing(&g.key), launch_step(&g.key));
+    let card = |g: &Game| {
+        // A launch that is preparing says its step under the cover.
+        let step = launch_step(&g.key).map(|text| Caption { icon: Icon::Refresh, text, muted: false, stars: None, tint: None });
+        card_vm_with(g, is_playing(&g.key), step.or_else(|| chosen_caption(g, lib, ui, organize)))
+    };
     let icon = group_icon(ui.group_by);
     organize::group_games(&filtered, ui.group_by, organize)
         .into_iter()

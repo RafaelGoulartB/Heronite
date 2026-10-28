@@ -295,8 +295,6 @@ impl CaptureService {
         if self.inner.busy.swap(true, Ordering::SeqCst) {
             return CaptureOutcome::Skipped(SkipReason::Busy);
         }
-        // Released on every exit, a panic included: a stuck flag would skip every later capture.
-        let _busy = BusyFlag(&self.inner.busy);
         let outcome = match self.capture_into(&config, &game) {
             Ok(path) => {
                 log::info!("Collection screenshot saved to {}", path.display());
@@ -320,6 +318,7 @@ impl CaptureService {
                 CaptureOutcome::Failed(error)
             }
         };
+        self.inner.busy.store(false, Ordering::SeqCst);
         outcome
     }
 
@@ -352,15 +351,6 @@ impl Drop for Inner {
                 handle.close();
             }
         }
-    }
-}
-
-/// Clears the `busy` flag when dropped.
-struct BusyFlag<'a>(&'a AtomicBool);
-
-impl Drop for BusyFlag<'_> {
-    fn drop(&mut self) {
-        self.0.store(false, Ordering::SeqCst);
     }
 }
 

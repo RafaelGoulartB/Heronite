@@ -5,7 +5,6 @@ use heronite_data::json_store;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
 use heronite_launch::env::setup_wine_env_vars;
-use heronite_launch::prepare::SYNC_TIMEOUT;
 use heronite_launch::settings::load_game_settings;
 use heronite_launch::{PlanContext, SystemProbe};
 use serde_json::Value;
@@ -62,7 +61,7 @@ pub fn sync_flag(data_paths: &DataPaths, app_name: &str, saves_path: &str, flag:
 pub(crate) fn sync_with(legendary: &Legendary, app_name: &str, saves_path: &str, flag: Option<&str>) -> Result<String> {
     let args = sync_args(app_name, saves_path, flag);
     let mut output = String::new();
-    let out = legendary.run_streaming_for(&args, &[], &Cancel::new(), Some(SYNC_TIMEOUT), |line| {
+    let out = legendary.run_streaming(&args, &[], &Cancel::new(), |line| {
         output.push_str(line);
         output.push('\n');
     })?;
@@ -161,27 +160,6 @@ mod tests {
         assert!(err.contains("not writable"), "{err}");
         let lg = fake(dir.path(), "exit 2");
         assert!(sync_with(&lg, "A", "/saves", None).is_err());
-    }
-
-    #[test]
-    fn a_save_file_named_like_a_log_level_is_not_a_failure() {
-        let dir = tempfile::tempdir().unwrap();
-        let lg = fake(dir.path(), "echo '[cli] INFO: - ERROR_LOG.sav (2 KiB)'; echo 'CRITICAL_HIT.sav' >&2");
-        let out = sync_with(&lg, "A", "/saves", Some("--skip-upload")).unwrap();
-        assert!(out.contains("ERROR_LOG.sav"), "{out}");
-    }
-
-    #[test]
-    fn a_hung_legendary_is_stopped_by_the_timeout() {
-        let dir = tempfile::tempdir().unwrap();
-        let lg = fake(dir.path(), "exec sleep 60");
-        let started = std::time::Instant::now();
-        let err = lg
-            .run_streaming_for(&["sync-saves"], &[], &Cancel::new(), Some(std::time::Duration::from_millis(300)), |_| {})
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("legendary") && err.contains("stopped"), "{err}");
-        assert!(started.elapsed() < std::time::Duration::from_secs(30), "took {:?}", started.elapsed());
     }
 
     #[test]
