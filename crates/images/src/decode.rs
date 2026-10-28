@@ -53,8 +53,13 @@ fn decode_jpeg_scaled(bytes: &[u8], tw: u32, th: u32, scaled: bool) -> std::resu
     if sw as u64 * sh as u64 > MAX_SOURCE_PIXELS {
         return Err(jpeg_decoder::Error::Format("image too large".into()));
     }
+    // Same as `decode_generic`: the EXIF orientation decides what is upright.
+    let orientation =
+        dec.exif_data().and_then(image::metadata::Orientation::from_exif_chunk).unwrap_or(image::metadata::Orientation::NoTransforms);
     if scaled {
-        let cs = cover_scale(sw, sh, tw.max(1), th.max(1));
+        // The target is for the upright picture, so size the scale by its axes.
+        let (uw, uh) = if swaps_axes(orientation) { (sh, sw) } else { (sw, sh) };
+        let cs = cover_scale(uw, uh, tw.max(1), th.max(1));
         if cs < 1.0 {
             // Request exactly the cover-scaled size: the decoder then picks the
             // smallest DCT scale (1/8, 1/4, 1/2, 1) whose output is >= that.
@@ -67,17 +72,37 @@ fn decode_jpeg_scaled(bytes: &[u8], tw: u32, th: u32, scaled: bool) -> std::resu
     let info = dec.info().unwrap();
     let (w, h) = (info.width as u32, info.height as u32);
     use jpeg_decoder::PixelFormat::*;
-    match info.pixel_format {
-        RGB24 => Ok(Some(Raster { w, h, ch: Channels::Rgb, opaque: true, data: pixels })),
+    let data = match info.pixel_format {
+        RGB24 => pixels,
         L8 => {
             let mut data = Vec::with_capacity(pixels.len() * 3);
             for &v in &pixels {
                 data.extend_from_slice(&[v, v, v]);
             }
-            Ok(Some(Raster { w, h, ch: Channels::Rgb, opaque: true, data }))
+            data
         }
-        _ => Ok(None),
+        _ => return Ok(None),
+    };
+    Ok(Some(orient_rgb(w, h, data, orientation)))
+}
+
+/// True when applying `o` swaps width and height (the 90 degree rotations).
+fn swaps_axes(o: image::metadata::Orientation) -> bool {
+    use image::metadata::Orientation::*;
+    matches!(o, Rotate90 | Rotate270 | Rotate90FlipH | Rotate270FlipH)
+}
+
+/// An opaque RGB raster turned to be upright for the EXIF orientation `o`.
+fn orient_rgb(w: u32, h: u32, data: Vec<u8>, o: image::metadata::Orientation) -> Raster {
+    if o == image::metadata::Orientation::NoTransforms {
+        return Raster { w, h, ch: Channels::Rgb, opaque: true, data };
     }
+    let buf = image::RgbImage::from_raw(w, h, data).expect("RGB buffer matches its size");
+    let mut img = image::DynamicImage::ImageRgb8(buf);
+    img.apply_orientation(o);
+    let rgb = img.into_rgb8();
+    let (w, h) = rgb.dimensions();
+    Raster { w, h, ch: Channels::Rgb, opaque: true, data: rgb.into_raw() }
 }
 
 fn decode_generic(bytes: &[u8], fmt: image::ImageFormat) -> Result<Raster> {
@@ -104,5 +129,71 @@ fn decode_generic(bytes: &[u8], fmt: image::ImageFormat) -> Result<Raster> {
         let rgb = img.into_rgb8();
         let (w, h) = rgb.dimensions();
         Ok(Raster { w, h, ch: Channels::Rgb, opaque: true, data: rgb.into_raw() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::metadata::Orientation;
+
+    /// A JPEG of `w` x `h` whose left half is red and right half blue, with an
+    /// EXIF APP1 segment that says `orientation`.
+    fn jpeg_with_orientation(w: u32, h: u32, orientation: u16) -> Vec<u8> {
+        let img = image::RgbImage::from_fn(w, h, |x, _| if x < w / 2 { image::Rgb([255, 0, 0]) } else { image::Rgb([0, 0, 255]) });
+        let mut jpeg = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 95).encode_image(&img).unwrap();
+        // TIFF header (little endian) + one IFD entry: tag 0x0112, SHORT, count 1.
+        let mut exif = b"Exif\0\0II*\0\x08\0\0\0\x01\0\x12\x01\x03\0\x01\0\0\0".to_vec();
+        exif.extend_from_slice(&orientation.to_le_bytes());
+        exif.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+        let mut out = jpeg[..2].to_vec(); // SOI
+        out.extend_from_slice(&[0xFF, 0xE1]);
+        out.extend_from_slice(&(exif.len() as u16 + 2).to_be_bytes());
+        out.extend_from_slice(&exif);
+        out.extend_from_slice(&jpeg[2..]);
+        out
+    }
+
+    fn px(r: &Raster, x: u32, y: u32) -> [u8; 3] {
+        let i = ((y * r.w + x) * 3) as usize;
+        [r.data[i], r.data[i + 1], r.data[i + 2]]
+    }
+
+    fn near(a: [u8; 3], b: [u8; 3]) -> bool {
+        a.iter().zip(b).all(|(&a, b)| a.abs_diff(b) < 40)
+    }
+
+    #[test]
+    fn both_jpeg_paths_apply_the_exif_orientation() {
+        // Orientation 6: the picture must be turned 90 degrees clockwise, so
+        // the left (red) half ends up on top and the 40x20 picture is 20x40.
+        let bytes = jpeg_with_orientation(40, 20, 6);
+        let fast = decode(&bytes, 20, 40, true).unwrap();
+        let generic = decode_generic(&bytes, image::ImageFormat::Jpeg).unwrap();
+        for r in [&fast, &generic] {
+            assert_eq!((r.w, r.h), (20, 40));
+            assert!(near(px(r, 10, 5), [255, 0, 0]), "{:?}", px(r, 10, 5));
+            assert!(near(px(r, 10, 35), [0, 0, 255]), "{:?}", px(r, 10, 35));
+        }
+    }
+
+    #[test]
+    fn scaled_decode_sizes_the_scale_by_the_upright_picture() {
+        // 400x200 stored sideways is a 200x400 picture: a 100x200 target is a
+        // 1/2 scale of it, not a 1/4 one chosen against the stored axes.
+        let bytes = jpeg_with_orientation(400, 200, 6);
+        let r = decode(&bytes, 100, 200, true).unwrap();
+        assert!(r.w >= 100 && r.h >= 200, "{}x{}", r.w, r.h);
+    }
+
+    #[test]
+    fn unrotated_jpeg_is_left_alone() {
+        let bytes = jpeg_with_orientation(40, 20, 1);
+        let r = decode(&bytes, 40, 20, true).unwrap();
+        assert_eq!((r.w, r.h), (40, 20));
+        assert!(near(px(&r, 5, 10), [255, 0, 0]));
+        assert!(near(px(&r, 35, 10), [0, 0, 255]));
+        assert!(!swaps_axes(Orientation::Rotate180) && swaps_axes(Orientation::Rotate270));
     }
 }
