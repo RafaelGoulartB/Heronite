@@ -84,6 +84,22 @@ struct Inner {
     held: Option<String>,
 }
 
+impl Inner {
+    /// An empty queue has nothing to pause: the state goes back to `Idle` and
+    /// a stale pause of the user's is forgotten. Returns whether anything changed.
+    fn settle_empty(&mut self) -> bool {
+        if !self.queue.is_empty() {
+            return false;
+        }
+        let changed = self.user_paused || self.state == DmState::Paused;
+        self.user_paused = false;
+        if self.state == DmState::Paused {
+            self.state = DmState::Idle;
+        }
+        changed
+    }
+}
+
 /// A held element that fails again sooner than this after it restarted is
 /// not held again.
 const HELD_AGAIN_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
@@ -214,14 +230,15 @@ impl DownloadManager {
     pub fn start(&self) {
         {
             let mut g = self.shared.inner.lock();
-            if g.worker || g.queue.is_empty() {
-                if g.queue.is_empty() && g.user_paused {
-                    g.user_paused = false;
+            if g.queue.is_empty() {
+                if g.settle_empty() {
                     self.persist(&g);
+                    drop(g);
+                    self.emit(Event::Changed);
                 }
-                if g.state == DmState::Paused && !g.worker {
-                    g.state = DmState::Idle;
-                }
+                return;
+            }
+            if g.worker {
                 return;
             }
             if g.user_paused {
@@ -242,10 +259,21 @@ impl DownloadManager {
         loop {
             let (element, cancel) = {
                 let mut g = self.shared.inner.lock();
-                if g.state == DmState::Paused {
-                    break;
+                if g.state == DmState::Paused || g.queue.is_empty() {
+                    // Leaves under the lock that decided it: an `add` right after
+                    // sees no worker and starts a new one.
+                    g.worker = false;
+                    if g.state != DmState::Paused {
+                        g.state = DmState::Idle;
+                    }
+                    if g.settle_empty() {
+                        self.persist(&g);
+                    }
+                    drop(g);
+                    self.emit(Event::Changed);
+                    return;
                 }
-                let Some(first) = g.queue.first_mut() else { break };
+                let first = &mut g.queue[0];
                 first.start_time = now_ms();
                 let element = first.clone();
                 let cancel = Cancel::new();
@@ -333,24 +361,30 @@ impl DownloadManager {
             }
             self.emit(Event::Changed);
         }
-        let mut g = self.shared.inner.lock();
-        g.worker = false;
-        if g.state != DmState::Paused {
-            g.state = DmState::Idle;
-        }
-        if g.queue.is_empty() && g.user_paused {
-            g.user_paused = false;
-            self.persist(&g);
-        }
-        drop(g);
-        self.emit(Event::Changed);
     }
 
     /// `pauseCurrentDownload`: stops the process (legendary keeps its resume
-    /// data); the element stays first in the queue.
+    /// data); the element stays first in the queue. With nothing queued there
+    /// is nothing to pause, so a pause as the last download ends changes nothing.
     pub fn pause(&self) {
+        self.pause_inner(false);
+    }
+
+    /// The user's pause: like [`pause`](Self::pause), and it survives a restart.
+    pub fn pause_by_user(&self) {
+        self.pause_inner(true);
+    }
+
+    fn pause_inner(&self, by_user: bool) {
         {
             let mut g = self.shared.inner.lock();
+            if g.queue.is_empty() {
+                return;
+            }
+            if by_user && !g.user_paused {
+                g.user_paused = true;
+                self.persist(&g);
+            }
             g.state = DmState::Paused;
             if let Some(c) = g.current.as_mut() {
                 c.pause_requested = true;
@@ -358,18 +392,6 @@ impl DownloadManager {
             }
         }
         self.emit(Event::Changed);
-    }
-
-    /// The user's pause: like [`pause`](Self::pause), and it survives a restart.
-    pub fn pause_by_user(&self) {
-        {
-            let mut g = self.shared.inner.lock();
-            if !g.queue.is_empty() && !g.user_paused {
-                g.user_paused = true;
-                self.persist(&g);
-            }
-        }
-        self.pause();
     }
 
     /// The queue is paused because the user asked for it.
@@ -419,12 +441,7 @@ impl DownloadManager {
                     // Not running (paused or idle): drop it right away.
                     g.queue.retain(|e| e.params.app_name != first.params.app_name);
                     stale = remove.map(|r| (first.params.title(), r));
-                    if g.queue.is_empty() {
-                        g.user_paused = false;
-                        if g.state == DmState::Paused {
-                            g.state = DmState::Idle;
-                        }
-                    }
+                    g.settle_empty();
                 }
             }
             self.persist(&g);
@@ -454,9 +471,8 @@ impl DownloadManager {
             if g.queue.len() == before {
                 return;
             }
-            if g.queue.is_empty() {
-                g.user_paused = false;
-            }
+            // The held element can be the only one: nothing is left to wait for.
+            g.settle_empty();
             self.persist(&g);
         }
         self.emit(Event::Changed);
@@ -915,19 +931,23 @@ mod tests {
         let s = m.snapshot();
         assert!(s.queue.is_empty());
         assert_eq!(s.finished[0].status, Some(DmStatus::Abort));
+        assert_eq!(s.state, DmState::Idle, "nothing left to be paused");
     }
 
     #[test]
     fn a_failed_base_game_takes_its_dlcs_out_and_keeps_the_reason() {
         let job = FakeJob::new(&[], &["a"]);
-        let (m, rx, dir) = manager(job.clone());
-        m.pause();
+        let dir = tempfile::tempdir().unwrap();
         let mut base = el("a");
         base.params.install_dlcs = vec!["dlc1".into()];
-        m.add(base);
-        m.add(el("dlc1"));
-        m.add(el("z"));
-        m.resume();
+        // Loaded, not started: all three are queued before the first one runs.
+        queue::save(&DataPaths::at(dir.path()), &[base, el("dlc1"), el("z")], &[], false).unwrap();
+        let (tx, rx) = mpsc::channel();
+        let tx = Mutex::new(tx);
+        let m = DownloadManager::new(DataPaths::at(dir.path()), job.clone(), move |e| {
+            let _ = tx.lock().send(e);
+        });
+        m.start();
         wait_until(&m, "z done", |s| s.finished.iter().any(|e| e.params.app_name == "z") && s.state == DmState::Idle);
         assert_eq!(*job.runs.lock(), ["a", "z"]);
         let s = m.snapshot();
@@ -978,6 +998,88 @@ mod tests {
         wait_until(&m, "both ended", |s| s.finished.len() == 2 && s.state == DmState::Idle);
         assert_eq!(*job.runs.lock(), ["a", "a", "b"]);
         assert_eq!(m.snapshot().finished.iter().find(|e| e.params.app_name == "a").unwrap().status, Some(DmStatus::Error));
+    }
+
+    #[test]
+    fn a_pause_on_an_empty_queue_does_not_hold_the_next_download() {
+        let job = FakeJob::new(&[], &[]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.pause();
+        m.pause_by_user();
+        let s = m.snapshot();
+        assert_eq!(s.state, DmState::Idle);
+        assert!(!m.is_user_paused());
+        m.add(el("a"));
+        wait_until(&m, "a done", |s| s.finished.len() == 1 && s.state == DmState::Idle);
+    }
+
+    #[test]
+    fn a_pause_as_the_last_download_ends_leaves_the_queue_idle() {
+        let job = FakeJob::with_finishing(&[], &[], &["a"]);
+        let (m, _rx, dir) = manager(job.clone());
+        m.add(el("a"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause_by_user();
+        wait_idle(&m);
+        let s = m.snapshot();
+        assert_eq!(s.finished.len(), 1);
+        assert!(s.queue.is_empty());
+        assert_eq!(s.state, DmState::Idle);
+        assert!(!m.is_user_paused());
+        assert!(!queue::load(&DataPaths::at(dir.path())).user_paused);
+        m.add(el("b"));
+        wait_until(&m, "b done", |s| s.finished.len() == 2 && s.state == DmState::Idle);
+    }
+
+    #[test]
+    fn removing_the_only_held_element_lets_the_next_one_start() {
+        let job = FakeJob::new(&[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.set_offline_check(Arc::new(|| true));
+        m.add(el("a"));
+        wait_until(&m, "held", |s| s.state == DmState::Paused);
+        wait_idle(&m);
+        m.remove("a");
+        let s = m.snapshot();
+        assert!(s.queue.is_empty());
+        assert_eq!(s.state, DmState::Idle);
+        m.add(el("b"));
+        wait_until(&m, "b done", |s| s.finished.len() == 1 && s.state == DmState::Idle);
+        assert_eq!(*job.runs.lock(), ["a", "b"]);
+    }
+
+    #[test]
+    fn adding_to_a_queue_the_user_paused_waits_for_the_resume() {
+        let job = FakeJob::with_finishing(&[], &[], &["a"]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.add(el("a"));
+        m.add(el("b"));
+        wait_until(&m, "a running", |_| job.started.load(Ordering::SeqCst) == 1);
+        m.pause_by_user();
+        wait_idle(&m);
+        assert_eq!(m.snapshot().state, DmState::Paused);
+        m.add(el("c"));
+        std::thread::sleep(Duration::from_millis(100));
+        let s = m.snapshot();
+        assert_eq!(s.state, DmState::Paused);
+        assert_eq!(s.queue.iter().map(|e| e.params.app_name.as_str()).collect::<Vec<_>>(), ["b", "c"]);
+        assert_eq!(job.started.load(Ordering::SeqCst), 1);
+        assert!(m.is_user_paused());
+        m.resume();
+        wait_until(&m, "all done", |s| s.finished.len() == 3 && s.state == DmState::Idle);
+        assert_eq!(*job.runs.lock(), ["a", "b", "c"]);
+        assert!(!m.is_user_paused());
+    }
+
+    #[test]
+    fn resuming_an_empty_queue_runs_nothing() {
+        let job = FakeJob::new(&[], &[]);
+        let (m, _rx, _dir) = manager(job.clone());
+        m.resume();
+        assert_eq!(m.snapshot().state, DmState::Idle);
+        assert!(m.is_idle());
+        m.add(el("a"));
+        wait_until(&m, "a done", |s| s.finished.len() == 1);
     }
 
     #[test]
