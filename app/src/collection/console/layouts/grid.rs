@@ -9,11 +9,10 @@ use heronite_data::categories::{Categories, UNCATEGORIZED};
 use heronite_data::console_theme::{GridPanel, TabSpec};
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::{n_, tr};
-use std::sync::Arc;
 
 use super::super::super::CollectionView;
 use super::super::hero::{clip, HeroSize};
-use super::super::sources::{keys, ListKey};
+use super::super::sources::keys;
 use super::super::tile::label_room;
 use crate::collection::data::played_ago;
 use crate::collection::view_filters::category_label;
@@ -47,7 +46,7 @@ impl Default for Nav {
 }
 
 /// What a Grid shows (its chips and the Filters panel edit it).
-#[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Default, PartialEq, Debug)]
 pub(crate) struct Filters {
     /// Index in [`SHOW`].
     pub show: usize,
@@ -86,10 +85,26 @@ pub(crate) fn status_options(lib: &Library) -> Vec<SharedString> {
         .collect()
 }
 
-impl Filters {
+impl Nav {
+    /// Filters that show the games of a shelf of `kind` (`installed`,
+    /// `favourites`, `status:<id>` with its index in the library's
+    /// `status`...), the most recently played first, from the top.
+    pub(super) fn show_like(&mut self, kind: &str, status: Option<usize>) {
+        self.filters = Filters {
+            show: usize::from(kind == "installed"),
+            favourites: kind == "favourites",
+            sort: 1,
+            status: status.map_or(0, |i| i + 1),
+            category: 0,
+        };
+        self.index = 0;
+        self.toolbar = None;
+        self.restart = true;
+    }
+
     /// The games the grid shows, in order (best search matches first).
-    fn order(&self, games: &[Arc<CollectionGame>], lib: &Library, cats: &Categories, search: &str) -> Vec<SharedString> {
-        let f = self;
+    fn keys(&self, games: &[std::sync::Arc<CollectionGame>], lib: &Library, cats: &Categories, search: &str) -> Vec<SharedString> {
+        let f = &self.filters;
         let folded = heronite_data::fuzzy::fold(search.trim());
         let tokens = heronite_data::fuzzy::tokens(&folded);
         let status = f.status.checked_sub(1).and_then(|i| lib.statuses.get(i)).map(|s| s.id.clone());
@@ -120,24 +135,6 @@ impl Filters {
         }
         keys(games)
     }
-}
-
-impl Nav {
-    /// Filters that show the games of a shelf of `kind` (`installed`,
-    /// `favourites`, `status:<id>` with its index in the library's
-    /// `status`...), the most recently played first, from the top.
-    pub(super) fn show_like(&mut self, kind: &str, status: Option<usize>) {
-        self.filters = Filters {
-            show: usize::from(kind == "installed"),
-            favourites: kind == "favourites",
-            sort: 1,
-            status: status.map_or(0, |i| i + 1),
-            category: 0,
-        };
-        self.index = 0;
-        self.toolbar = None;
-        self.restart = true;
-    }
 
     fn chips(&self, lib: &Library, cats: &Categories, search: &str) -> [(SharedString, SharedString); CHIPS] {
         let f = &self.filters;
@@ -159,18 +156,6 @@ impl Nav {
             (tr!("Search").into(), if search.is_empty() { "\u{2014}".into() } else { search.to_string().into() }),
         ]
     }
-}
-
-/// The rows (of `rows`) that hold tiles, in order: those in sight (`seen`,
-/// plus the one before) and those around the focused row.
-fn live_rows(seen: &std::ops::RangeInclusive<usize>, focus: usize, rows: usize) -> Vec<usize> {
-    let last = rows.saturating_sub(1);
-    let near = seen.start().saturating_sub(1).min(rows)..=(*seen.end()).min(last);
-    let around = focus.saturating_sub(1).min(rows)..=(focus + 1).min(last);
-    let mut live: Vec<usize> = near.chain(around).filter(|r| *r < rows).collect();
-    live.sort_unstable();
-    live.dedup();
-    live
 }
 
 /// Width of the rail of letters on the right edge, design px.
@@ -249,13 +234,14 @@ fn hours_text(hours: f64) -> String {
 
 impl CollectionView {
     /// The keys the Grid of a tab shows now (also for the layouts that reuse its filters).
-    /// Computed once per change of the games, the filters or the search.
-    pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Arc<[SharedString]> {
-        let filters = self.tab_nav(tab).grid.filters.clone();
-        let search = self.console.search.trim().to_string();
-        let cats = &self.categories;
-        let key = ListKey::Grid { source: spec.source.clone(), filters: filters.clone(), search: search.clone() };
-        self.console_list(key, |games, lib| filters.order(games, lib, cats, &search))
+    pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
+        let Some(lib) = self.lib.clone() else { return Vec::new() };
+        let games = self.console_games(&spec.source);
+        let search = self.console.search.clone();
+        let cats = std::mem::take(&mut self.categories);
+        let keys = self.tab_nav(tab).grid.keys(&games, &lib, &cats, &search);
+        self.categories = cats;
+        keys
     }
 
     /// LT / RT jump by letter: the theme asks for it and the games are
@@ -380,8 +366,7 @@ impl CollectionView {
     }
 
     /// The scrolling rows of covers; only those on screen (and around the
-    /// focus) hold tiles, the others are one empty box per stretch of rows,
-    /// of their height.
+    /// focus) hold tiles, the others are empty boxes of the same height.
     fn grid_scroller(&mut self, tab: usize, keys: &[SharedString], cols: usize, grid_focus: bool, window: &Window) -> Stateful<Div> {
         let (tw, th) = self.console_tile_size();
         let line_h = th + GAP + label_room();
@@ -392,22 +377,16 @@ impl CollectionView {
         let mut grid =
             div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
         let seen = super::in_sight(scroll.offset().y, line_h, window.viewport_size().height);
-        let rows = keys.len().div_ceil(cols);
-        let mut next = 0;
-        for r in live_rows(&seen, index / cols, rows) {
-            if r > next {
-                grid = grid.child(div().flex_none().h(u(line_h * (r - next) as f32)));
-            }
+        for (r, chunk) in keys.chunks(cols).enumerate() {
+            let near = seen.start().saturating_sub(1) <= r && r <= *seen.end();
             let visible = seen.contains(&r) || r.abs_diff(index / cols) <= 1;
             let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
-            for (c, key) in keys[r * cols..].iter().take(cols).enumerate() {
-                line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
+            if near || r.abs_diff(index / cols) <= 1 {
+                for (c, key) in chunk.iter().enumerate() {
+                    line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
+                }
             }
             grid = grid.child(line);
-            next = r + 1;
-        }
-        if rows > next {
-            grid = grid.child(div().flex_none().h(u(line_h * (rows - next) as f32)));
         }
         grid.child(glide.driver())
     }
@@ -590,21 +569,6 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
-
-    #[test]
-    fn rows_with_tiles_are_those_in_sight_and_around_the_focus() {
-        // In sight 4..=6 (and the row before), focus on 5.
-        assert_eq!(live_rows(&(4..=6), 5, 100), vec![3, 4, 5, 6]);
-        // The focus away from the view: two stretches.
-        assert_eq!(live_rows(&(4..=6), 20, 100), vec![3, 4, 5, 6, 19, 20, 21]);
-        // Overlapping stretches are not repeated.
-        assert_eq!(live_rows(&(4..=6), 8, 100), vec![3, 4, 5, 6, 7, 8, 9]);
-        // Clamped to the rows there are.
-        assert_eq!(live_rows(&(0..=30), 1, 4), vec![0, 1, 2, 3]);
-        assert_eq!(live_rows(&(50..=60), 0, 4), vec![0, 1]);
-        assert_eq!(live_rows(&(50..=60), 3, 4), vec![2, 3]);
-        assert!(live_rows(&(0..=3), 0, 0).is_empty());
-    }
 
     #[test]
     fn letters_ignore_accents_and_group_symbols() {
