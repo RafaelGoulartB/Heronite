@@ -1,8 +1,8 @@
 //! What the games take on disk, for Settings → Storage: the installed games,
 //! the Wine prefixes, the Proton / Wine builds and runtimes, what Steam keeps
 //! for games that are no longer installed (Proton prefixes, shader caches),
-//! the caches that rebuild themselves, and game folders nothing points to any
-//! more. And removing what is not needed.
+//! the caches that rebuild themselves, and game folders left behind that
+//! nothing points to any more. And removing what is not needed.
 //!
 //! [`inventory`] lists everything quickly (the sizes stores and manifests give
 //! are filled in, nothing is walked); [`measure`] walks one item whose size is
@@ -63,7 +63,7 @@ pub enum Group {
     /// Proton prefixes and shader caches Steam keeps for games no longer installed.
     Steam,
     Caches,
-    /// Game folders nothing points to any more.
+    /// Folders that look like the install of a game that is gone.
     Leftovers,
 }
 
@@ -128,7 +128,7 @@ pub enum Kind {
         app_id: String,
     },
     Cache(CacheKind),
-    /// A folder in a games folder that no game uses.
+    /// A folder in a games folder that looks like a game's install and that no game uses.
     Leftover,
 }
 
@@ -148,9 +148,10 @@ pub enum Sweep {
 impl Sweep {
     pub const ALL: [Sweep; 6] = [Sweep::Prefixes, Sweep::Steam, Sweep::Builds, Sweep::Leftovers, Sweep::Caches, Sweep::Shaders];
 
-    /// Ticked when the page opens.
+    /// Ticked when the page opens. Shaders make games stutter; leftover
+    /// folders are the user's files, so each cleaning opts in to them.
     pub fn default_on(self) -> bool {
-        self != Sweep::Shaders
+        !matches!(self, Sweep::Shaders | Sweep::Leftovers)
     }
 }
 
@@ -259,7 +260,7 @@ pub fn inventory(ctx: &Ctx, lib: &Library) -> Inventory {
     let steam_found = steam::items(lib, &ctx.data_paths, &steam);
     items.extend(steam_found.leftovers);
     items.extend(caches::items(ctx, steam_found.shader_caches));
-    items.extend(leftovers::items(ctx, lib, &items, &walked));
+    items.extend(leftovers::items(ctx, &items, &walked));
 
     let mounts = disks::mounts();
     let mut found: Vec<Disk> = Vec::new();
