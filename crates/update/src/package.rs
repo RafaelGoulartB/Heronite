@@ -6,7 +6,7 @@
 //! through `pkexec`.
 
 use heronite_i18n::tr;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -70,14 +70,19 @@ impl Package {
     }
 }
 
-/// Finds `name` in the folders of `path` (a `PATH` value).
-fn which_in(name: &str, path: &OsStr) -> Option<PathBuf> {
-    std::env::split_paths(path).map(|d| d.join(name)).find(|p| p.is_file())
+/// The only folders root's tools (`pkexec`, the package manager) come from.
+/// The user's `PATH` is never used: it can start with a folder the user
+/// writes to (`~/.local/bin`), and what `pkexec` runs is run as root.
+const TRUSTED_DIRS: [&str; 4] = ["/usr/bin", "/usr/sbin", "/bin", "/sbin"];
+
+/// Finds the file `name` in `dirs`, in order.
+fn find_in(name: &str, dirs: &[&Path]) -> Option<PathBuf> {
+    dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
-/// Finds `name` on `PATH`.
-fn which(name: &str) -> Option<PathBuf> {
-    which_in(name, &std::env::var_os("PATH")?)
+/// Finds `name` in [`TRUSTED_DIRS`].
+fn trusted(name: &str) -> Option<PathBuf> {
+    find_in(name, &TRUSTED_DIRS.map(Path::new))
 }
 
 /// Exit status of [`ROOT_SCRIPT`] when the copy does not have the verified
@@ -98,8 +103,12 @@ const ROOT_TMP: &str = "/var/tmp";
 /// stays unreadable to others until it is checked (the path may have been
 /// swapped for a link to a file only root reads), and readable after it, so
 /// apt's sandbox user can open it. The package manager runs with the usual
-/// root umask, so the files it writes itself stay readable.
+/// root umask, so the files it writes itself stay readable. `PATH` is set to
+/// the system folders first (`pkexec` does the same), so `install`,
+/// `sha256sum` and the rest never come from the caller's `PATH`.
 const ROOT_SCRIPT: &str = r#"set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
 umask 077
 file=$1 hash=$2 base=$3
 shift 3
@@ -125,14 +134,15 @@ fn is_sha256(text: &str) -> bool {
 
 impl Package {
     /// The package manager and its options (run as root); `None` when the
-    /// manager is not on `PATH`. Dependencies come from the configured
-    /// repositories. The package file is appended by [`ROOT_SCRIPT`].
+    /// manager is not in [`TRUSTED_DIRS`]. Dependencies come from the
+    /// configured repositories. The package file is appended by
+    /// [`ROOT_SCRIPT`].
     fn manager(self) -> Option<Vec<OsString>> {
-        self.manager_in(&std::env::var_os("PATH")?)
+        self.manager_in_dirs(&TRUSTED_DIRS.map(Path::new))
     }
 
-    fn manager_in(self, path: &OsStr) -> Option<Vec<OsString>> {
-        let which = |name: &str| which_in(name, path);
+    fn manager_in_dirs(self, dirs: &[&Path]) -> Option<Vec<OsString>> {
+        let which = |name: &str| find_in(name, dirs);
         let command = |tool: PathBuf, rest: &[&str]| {
             let mut v = vec![tool.into_os_string()];
             v.extend(rest.iter().map(OsString::from));
@@ -150,7 +160,7 @@ impl Package {
     /// The program and arguments `pkexec` runs to install `file`, whose bytes
     /// must have the SHA-256 `sha256` (lowercase hex): [`ROOT_SCRIPT`] with
     /// `file`, `sha256`, the temp folder and the package manager call as
-    /// arguments. `None` when the manager is not on `PATH`.
+    /// arguments. `None` when the manager is not in [`TRUSTED_DIRS`].
     pub fn install_args(self, file: &Path, sha256: &str) -> Option<Vec<OsString>> {
         self.manager().map(|manager| root_args(file, sha256, Path::new(ROOT_TMP), manager))
     }
@@ -170,7 +180,7 @@ impl Package {
         if !is_sha256(sha256) || file.file_name().is_none() {
             return Err(InstallError::Failed(tr!("The update file was not verified").into()));
         }
-        let pkexec = which("pkexec").ok_or_else(|| InstallError::Failed(tr!("pkexec is not installed").into()))?;
+        let pkexec = trusted("pkexec").ok_or_else(|| InstallError::Failed(tr!("pkexec is not installed").into()))?;
         let args = self.install_args(file, sha256).ok_or_else(|| InstallError::Failed(tr!("No package manager found").into()))?;
         let out = Command::new(pkexec)
             .args(args)
@@ -281,6 +291,92 @@ mod tests {
         assert!(is_sha256(&hash) && !is_sha256("AB") && !is_sha256(&"AB".repeat(32)));
     }
 
+    /// Sets `PATH` for one test and restores it. No other test here reads
+    /// `PATH` through a lookup that could pick the fake tools.
+    struct PathGuard(Option<std::ffi::OsString>);
+
+    impl PathGuard {
+        fn prepend(dir: &Path) -> Self {
+            let old = std::env::var_os("PATH");
+            let mut paths = vec![dir.to_path_buf()];
+            paths.extend(std::env::split_paths(old.as_deref().unwrap_or_default()));
+            std::env::set_var("PATH", std::env::join_paths(paths).unwrap());
+            PathGuard(old)
+        }
+    }
+
+    impl Drop for PathGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(p) => std::env::set_var("PATH", p),
+                None => std::env::remove_var("PATH"),
+            }
+        }
+    }
+
+    fn executable(path: &Path, text: &str) {
+        std::fs::write(path, text).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[test]
+    fn a_tool_the_user_put_first_on_path_is_never_the_package_manager() {
+        let tmp = tempfile::tempdir().unwrap();
+        for tool in ["apt-get", "dnf", "zypper", "pacman"] {
+            executable(&tmp.path().join(tool), "#!/bin/sh\n");
+        }
+        let _path = PathGuard::prepend(tmp.path());
+        for package in [super::Package::Deb, super::Package::Rpm, super::Package::Arch] {
+            // The system's manager, or none when this system has none.
+            if let Some(manager) = package.manager() {
+                let tool = Path::new(&manager[0]);
+                assert!(!tool.starts_with(tmp.path()), "{package:?} runs {tool:?} from the user's PATH");
+                assert!(["/usr/bin", "/usr/sbin", "/bin", "/sbin"].iter().any(|d| tool.parent() == Some(Path::new(d))), "{tool:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_root_script_takes_its_tools_from_system_folders_not_the_callers_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (base, bin, evil) = (tmp.path().join("tmp"), tmp.path().join("bin"), tmp.path().join("evil"));
+        for d in [&base, &bin, &evil] {
+            std::fs::create_dir(d).unwrap();
+        }
+        let file = tmp.path().join("p.deb");
+        std::fs::write(&file, BYTES).unwrap();
+        let marker = evil.join("ran");
+        for tool in ["install", "sha256sum", "mktemp", "rm", "chmod"] {
+            executable(&evil.join(tool), &format!("#!/bin/sh\necho {tool} >> '{}'\nexit 0\n", marker.display()));
+        }
+        let manager = fake_manager(&bin);
+        let mut args = root_args(&file, &sha256_of(BYTES), &base, vec![manager]).into_iter();
+        let path = format!("{}:/usr/bin:/bin", evil.display());
+        let out = Command::new(args.next().unwrap()).args(args).env("PATH", path).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(!marker.exists(), "ran from the caller's PATH: {:?}", std::fs::read_to_string(&marker));
+        assert_eq!(std::fs::read(bin.join("log.bytes")).unwrap(), BYTES);
+    }
+
+    #[test]
+    fn tools_are_found_only_in_the_given_folders_in_order() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (user, system) = (tmp.path().join("user"), tmp.path().join("system"));
+        for d in [&user, &system] {
+            std::fs::create_dir(d).unwrap();
+        }
+        executable(&user.join("apt-get"), "");
+        executable(&user.join("pacman"), "");
+        executable(&system.join("pacman"), "");
+        std::fs::create_dir(system.join("dnf")).unwrap();
+        let system_only = [system.as_path()];
+        assert_eq!(super::Package::Deb.manager_in_dirs(&system_only), None, "a tool only in the user's folder");
+        assert_eq!(super::Package::Rpm.manager_in_dirs(&system_only), None, "a directory is not a tool");
+        let both = [system.as_path(), user.as_path()];
+        assert_eq!(super::Package::Arch.manager_in_dirs(&both).unwrap()[0], system.join("pacman"));
+        assert_eq!(super::find_in("pkexec", &system_only), None);
+    }
+
     #[test]
     fn each_format_keeps_its_manager_options() {
         let tmp = tempfile::tempdir().unwrap();
@@ -291,7 +387,7 @@ mod tests {
             std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let tail = |p: super::Package| {
-            let args = p.manager_in(bin.as_os_str()).unwrap();
+            let args = p.manager_in_dirs(&[bin]).unwrap();
             args.iter().map(|a| a.to_str().unwrap().replace(bin.to_str().unwrap(), "")).collect::<Vec<_>>()
         };
         let got = (tail(super::Package::Deb), tail(super::Package::Rpm), tail(super::Package::Arch));
