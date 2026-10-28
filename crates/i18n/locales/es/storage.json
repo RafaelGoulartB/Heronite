@@ -1,6 +1,7 @@
 {
   "Caches": "Cachés",
   "Compiled shaders": "Shaders compilados",
+  "Could not check {name} again, so it was kept": "No se pudo comprobar {name} de nuevo, así que se conservó",
   "DXVK, VKD3D and other tools": "DXVK, VKD3D y otras herramientas",
   "Deleted": "Eliminado",
   "Deleted. Games compile them again as they run, and stutter for a while until they do.": "Eliminados. Los juegos los compilan de nuevo al ejecutarse y van a tirones un rato hasta que terminan.",
@@ -66,6 +67,7 @@
   "{freed} freed, {trashed} moved to the trash": "{freed} liberados, {trashed} movidos a la papelera",
   "{free} free of {total}": "{free} libres de {total}",
   "{name} cannot be removed from here": "{name} no se puede eliminar desde aquí",
+  "{name} is in use or changed since it was listed, so it was kept. Scan again": "{name} está en uso o cambió desde que se listó, así que se conservó. Vuelve a analizar",
   "{name} is not installed": "{name} no está instalado",
   "{n} game · {size}": "{n} juego · {size}",
   "{n} games · {size}": "{n} juegos · {size}",

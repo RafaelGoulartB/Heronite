@@ -1,7 +1,9 @@
 //! Removing one item. What may hold saves or settings (prefixes, Steam's
 //! Proton prefixes, leftover folders) goes to the trash, where it can be
 //! restored from; caches and Wine Manager builds are deleted. Every path is
-//! checked again first: it must still be what the inventory said it was.
+//! checked again first: it must still be what the inventory said it was, and
+//! what goes to the trash must still be unused, as a fresh scan finds it (a
+//! game installed there, or a prefix taken into use, since the list was made).
 
 use std::fs;
 use std::path::{Component, Path};
@@ -9,7 +11,7 @@ use std::path::{Component, Path};
 use anyhow::{anyhow, bail, Result};
 use heronite_i18n::tr;
 
-use crate::{Ctx, Item, Kind};
+use crate::{leftovers, Ctx, Item, Kind, State};
 
 /// What a removal did.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -27,6 +29,9 @@ pub fn remove(ctx: &Ctx, item: &Item) -> Result<Removed> {
         bail!(tr!("{name} cannot be removed from here", name = item.title));
     }
     let size = item.size.unwrap_or(0);
+    if item.goes_to_trash() {
+        still_unused(ctx, item)?;
+    }
     match &item.kind {
         Kind::Prefix { .. } => {
             heronite_wine::prefixes::trash(&ctx.data_paths, &ctx.home_str(), item.path())?;
@@ -61,6 +66,24 @@ pub fn remove(ctx: &Ctx, item: &Item) -> Result<Removed> {
         }
         Kind::Game { .. } | Kind::Runtime => bail!(tr!("{name} cannot be removed from here", name = item.title)),
     }
+}
+
+/// Lists everything again, from the library as it is now, and refuses `item`
+/// unless that finds it too and still unused: the state it was listed with is
+/// from the scan, which may be old.
+fn still_unused(ctx: &Ctx, item: &Item) -> Result<()> {
+    // Hidden games are installed too.
+    let lib =
+        leftovers::full_library(ctx).ok_or_else(|| anyhow!(tr!("Could not check {name} again, so it was kept", name = item.title)))?;
+    let same_kind = |a: &Kind, b: &Kind| std::mem::discriminant(a) == std::mem::discriminant(b);
+    let found = crate::inventory(ctx, &lib)
+        .items
+        .iter()
+        .any(|i| i.id == item.id && same_kind(&i.kind, &item.kind) && i.state == State::Unused && i.removable());
+    if !found {
+        bail!(tr!("{name} is in use or changed since it was listed, so it was kept. Scan again", name = item.title));
+    }
+    Ok(())
 }
 
 /// Refuses the home folder and anything above it, shallow paths (`/data`),
@@ -129,5 +152,34 @@ mod tests {
         assert!(check_folder(&c, &PathBuf::from("/a/b/../c"), None).is_err());
         assert!(check_folder(&c, Path::new("/s/steamapps/compatdata/10"), Some("compatdata")).is_ok());
         assert!(check_folder(&c, Path::new("/s/steamapps/common/10"), Some("compatdata")).is_err());
+    }
+
+    /// A leftover listed by a scan that is installed into before "Remove" is
+    /// refused: the item says unused, the library now says otherwise.
+    #[test]
+    fn refuses_a_leftover_that_became_referenced_after_the_scan() {
+        use heronite_data::json_store;
+        use serde_json::json;
+        use std::time::{Duration, SystemTime};
+
+        let dir = tempfile::tempdir().unwrap();
+        let c = ctx(dir.path());
+        let folder = c.home.join("Games/Heronite/Old Game");
+        fs::create_dir_all(folder.join(".egstore")).unwrap();
+        fs::File::open(&folder).unwrap().set_modified(SystemTime::now() - Duration::from_secs(3 * 3600)).unwrap();
+
+        let lib = heronite_data::Library::load(&c.data_paths).unwrap();
+        let listed = crate::inventory(&c, &lib).items.into_iter().find(|i| i.folder == folder).expect("listed by the scan");
+        assert!(listed.removable());
+        assert!(still_unused(&c, &listed).is_ok());
+
+        json_store::write(
+            &c.data_paths.sideload_library(),
+            &json!({"games": [{"runner": "sideload", "app_name": "g", "title": "G", "is_installed": true, "install": {"install_path": folder}}]}),
+        )
+        .unwrap();
+        let err = remove(&c, &listed).unwrap_err().to_string();
+        assert!(err.contains("Old Game") && err.contains("kept"), "{err}");
+        assert!(folder.join(".egstore").exists());
     }
 }
