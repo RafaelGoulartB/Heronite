@@ -127,7 +127,20 @@ impl CollectionView {
 
     /// Esc in the search field: the first empties it, the next one gives the
     /// keyboard back to the list (where a third clears the selected game).
+    /// In a field of a page, the first Esc leaves the field and the next one
+    /// the page (`CollectionView::page_escape`).
     pub(super) fn search_escape(&mut self, _: &Escape, window: &mut Window, cx: &mut Context<Self>) {
+        let page_field = self.page != crate::pages::Page::Collection
+            && self.dialog.is_none()
+            && !self.palette_open()
+            && !self.page_modal(cx)
+            && !self.focus_handle.is_focused(window);
+        if page_field {
+            cx.stop_propagation();
+            window.focus(&self.focus_handle, cx);
+            cx.notify();
+            return;
+        }
         if !self.search_focused(window, cx) {
             cx.propagate();
             return;
@@ -180,10 +193,10 @@ impl CollectionView {
     }
 
     /// The list's moves: arrows, Home / End and Page Up / Down move the
-    /// selected game; with Shift they pick every game from where the
-    /// selection started. Space picks or drops the selected game. True when
-    /// the key was used.
-    pub(super) fn list_key(&mut self, ev: &KeyDownEvent, window: &mut Window) -> bool {
+    /// selected game (↑ on the first row goes to the search); with Shift they
+    /// pick every game from where the selection started. Space picks or drops
+    /// the selected game. True when the key was used.
+    pub(super) fn list_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if !self.list_free() || !self.focus_handle.is_focused(window) {
             return false;
         }
@@ -199,7 +212,14 @@ impl CollectionView {
         }
         let Some(nav) = nav_of(key) else { return false };
         let from = self.selected.clone();
-        let Some(to) = self.nav_target(nav) else { return true };
+        let Some(to) = self.nav_target(nav) else {
+            // ↑ on the first row: back to the search, as ↓ came from it.
+            let on_list = from.as_ref().is_some_and(|k| self.shown_keys().contains(k));
+            if nav == Nav::Step(0, -1) && !m.shift && on_list {
+                self.focus_search(None, window, cx);
+            }
+            return true;
+        };
         if m.shift {
             self.extend_selection(from, to.clone());
         }

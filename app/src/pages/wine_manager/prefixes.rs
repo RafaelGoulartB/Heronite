@@ -53,6 +53,11 @@ impl PrefixesState {
             loading: false,
         }
     }
+
+    /// Esc: drops the open question or Duplicate form. True when one was open.
+    pub(super) fn close_question(&mut self) -> bool {
+        self.confirm_trash.take().is_some() || self.duplicate.take().is_some()
+    }
 }
 
 /// Whether a game of the library runs through Wine in a prefix of its own

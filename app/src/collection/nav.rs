@@ -642,6 +642,35 @@ impl CollectionView {
         }
     }
 
+    /// Esc on a page: closes its dialog or question, if one is open, else
+    /// goes back to the Collection.
+    pub(super) fn page_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        fn close<P: PaletteCommands + Render>(view: &Option<AnyView>, window: &mut Window, cx: &mut App) -> bool {
+            view.clone().and_then(|v| v.downcast::<P>().ok()).is_some_and(|e| e.update(cx, |p, cx| p.close_modal(window, cx)))
+        }
+        let p = &self.pages;
+        let closed = match self.page {
+            Page::Collection => return,
+            Page::Downloads => close::<pages::downloads::DownloadsPage>(&p.downloads, window, cx),
+            Page::WineManager => close::<pages::wine_manager::WineManagerPage>(&p.wine, window, cx),
+            Page::Epic => close::<pages::epic::EpicPage>(&p.epic, window, cx),
+            Page::Gog => close::<pages::store::GogPage>(&p.gog, window, cx),
+            Page::Amazon => close::<pages::store::AmazonPage>(&p.amazon, window, cx),
+            Page::Steam => close::<pages::steam::SteamPage>(&p.steam, window, cx),
+            Page::BattleNet => close::<pages::clients::BattleNetPage>(&p.battlenet, window, cx),
+            Page::Ea => close::<pages::clients::EaPage>(&p.ea, window, cx),
+            Page::Ubisoft => close::<pages::clients::UbisoftPage>(&p.ubisoft, window, cx),
+            Page::Rockstar => close::<pages::clients::RockstarPage>(&p.rockstar, window, cx),
+            Page::Emulators => close::<pages::emulators::EmulatorsPage>(&p.emulators, window, cx),
+            Page::Statistics => close::<pages::stats::StatsPage>(&p.stats, window, cx),
+            Page::Settings => close::<pages::settings::SettingsPage>(&p.settings, window, cx),
+        };
+        if !closed {
+            self.navigate(Page::Collection, window, cx);
+            window.focus(&self.focus_handle, cx);
+        }
+    }
+
     /// A (re)loaded library: refresh the ☰ tiles that read it and the
     /// Statistics page.
     pub(super) fn nav_library_loaded(&mut self, cx: &mut Context<Self>) {

@@ -480,7 +480,7 @@ impl CollectionView {
         if self.shots_key(ev, cx)
             || self.search_key(ev, window, cx)
             || self.selection_key(ev, window, cx)
-            || self.list_key(ev, window)
+            || self.list_key(ev, window, cx)
             || self.grid_key(ev, window, cx)
         {
             cx.notify();
@@ -496,6 +496,10 @@ impl CollectionView {
                 self.context_menu = None;
             } else if self.open_menu.is_some() {
                 self.open_menu = None;
+            } else if self.palette_open() {
+                // The palette answers Esc itself.
+            } else if self.page != crate::pages::Page::Collection {
+                self.page_escape(window, cx);
             } else {
                 // Heronite clears the selected game on Esc.
                 self.focus = None;
