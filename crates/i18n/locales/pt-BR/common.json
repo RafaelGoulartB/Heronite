@@ -190,7 +190,7 @@
   "Updates": "Atualizações",
   "Edit": "Editar",
   "Remove": "Remover",
-  "Choose the Wine prefix folder": "Escolha a pasta do prefixo Wine",
+  "Choose the Wine prefix folder": "Escolha a pasta do prefixo do Wine",
   "Choose the .exe to run": "Escolha o .exe para executar",
   "Could not start {program}: {error}": "Não foi possível iniciar {program}: {error}",
   "The program finished.": "O programa terminou.",
