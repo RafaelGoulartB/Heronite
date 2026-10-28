@@ -140,7 +140,7 @@ pub fn install_into(
     let matches_checksum = |o: &heronite_net::Outcome| {
         let digest = o.hash.as_deref().unwrap_or_default();
         match &source_checksum {
-            Some(sum) if !sum.to_ascii_lowercase().contains(digest) => {
+            Some(sum) if !checksum_matches(sum, digest, file_name) => {
                 mismatch.set(true);
                 Err("checksum mismatch".to_string())
             }
@@ -215,6 +215,29 @@ pub fn install_into(
 /// Versions become folder names: no separators or traversal.
 fn is_safe_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\0')
+}
+
+/// Whether `checksums` (the text of a `.sha256sum` / `.sha512sum` file)
+/// lists `digest` for `file_name`. A digest must be a whole token: a longer
+/// hex string that merely contains it, or the digest of another file in a
+/// multi-line list, does not count. A file with one line needs no name.
+fn checksum_matches(checksums: &str, digest: &str, file_name: &str) -> bool {
+    if digest.is_empty() {
+        return false;
+    }
+    let lines: Vec<&str> = checksums.lines().filter(|l| !l.trim().is_empty()).collect();
+    // `<hex>  <name>`, `<hex> *<name>` and BSD's `SHA256 (<name>) = <hex>`.
+    let tokens = |line: &str| -> Vec<String> {
+        line.split_whitespace().map(|t| t.trim_matches(|c| c == '*' || c == '(' || c == ')').to_ascii_lowercase()).collect()
+    };
+    let names_file = |tokens: &[String]| {
+        let name = file_name.to_ascii_lowercase();
+        tokens.iter().any(|t| *t == name || t.rsplit('/').next() == Some(name.as_str()))
+    };
+    match lines.as_slice() {
+        [only] => tokens(only).iter().any(|t| t == digest),
+        _ => lines.iter().map(|l| tokens(l)).any(|t| t.iter().any(|x| x == digest) && names_file(&t)),
+    }
 }
 
 /// Hash a published checksum file is made with.
@@ -472,6 +495,23 @@ mod tests {
         assert_eq!(HashKind::of_checksum(&format!("{}  a.tar.xz", "a".repeat(64))), HashKind::Sha256);
         assert_eq!(HashKind::of_checksum(&format!("{}  a.tar.gz\n", "b".repeat(128))), HashKind::Sha512);
         assert_eq!(HashKind::of_checksum("deadbeef  a.tar.gz"), HashKind::Sha512);
+    }
+
+    #[test]
+    fn a_digest_matches_as_a_whole_token_on_the_line_of_the_file() {
+        let d = "ab".repeat(32);
+        let other = "cd".repeat(32);
+        assert!(checksum_matches(&d, &d, "a.tar.gz"));
+        assert!(checksum_matches(&format!("{}  anything.tar\n", d.to_uppercase()), &d, "a.tar.gz"));
+        assert!(checksum_matches(&format!("{other}  b.tar.gz\n{d}  a.tar.gz\n"), &d, "a.tar.gz"));
+        assert!(checksum_matches(&format!("{d} *dist/a.tar.gz\n{other}  b.tar.gz"), &d, "a.tar.gz"));
+        assert!(checksum_matches(&format!("SHA256 (a.tar.gz) = {d}"), &d, "a.tar.gz"));
+        // part of a longer token, or the digest of another file
+        assert!(!checksum_matches(&format!("00{d}"), &d, "a.tar.gz"));
+        assert!(!checksum_matches(&format!("{d}00  a.tar.gz"), &d, "a.tar.gz"));
+        assert!(!checksum_matches(&format!("{other}  a.tar.gz\n{d}  b.tar.gz\n"), &d, "a.tar.gz"));
+        assert!(!checksum_matches("", &d, "a.tar.gz"));
+        assert!(!checksum_matches(&d, "", "a.tar.gz"));
     }
 
     #[test]
