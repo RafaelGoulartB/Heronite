@@ -168,7 +168,7 @@ fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Lookup<Stea
             Err(e) => {
                 log::warn!("Steam appdetails failed for {steam_app_id} ({lang}): {e}");
                 // English would not answer either.
-                if crate::http::is_unreachable(&e) {
+                if crate::http::is_transient(&e) {
                     return Lookup::Unreachable;
                 }
             }
@@ -179,7 +179,8 @@ fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Lookup<Stea
 
 /// `getSteamAppDetails`: cached for 30 days in
 /// `local_library/steam-details/{appId}.{language}.json`; failures are
-/// remembered for 30 minutes. `language` is a Heroic code (`pt-BR`, `en`...).
+/// remembered for 30 minutes, except a rate limit or server error (asked again
+/// at once). `language` is a Heroic code (`pt-BR`, `en`...).
 pub fn get_steam_app_details(
     paths: &DataPaths,
     http: &Http,
@@ -307,13 +308,13 @@ fn download_hero(http: &Http, url: &str, dest: &Path) -> bool {
     let resp = match http.get(url).timeout_secs(25).max_bytes(30 * 1024 * 1024).send() {
         Ok(r) => r,
         Err(e) => {
-            log::warn!("Steam hero download failed for {url}: {e}");
+            log::warn!("Steam hero download failed for {}: {e}", crate::http::redact_url(url));
             return false;
         }
     };
     if resp.status != 200 {
         if resp.status != 404 {
-            log::warn!("Steam hero download failed for {url}: HTTP {}", resp.status);
+            log::warn!("Steam hero download failed for {}: HTTP {}", crate::http::redact_url(url), resp.status);
         }
         return false;
     }

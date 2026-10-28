@@ -245,6 +245,7 @@ pub fn load(chain: &[ImageRef], target_w: u32, target_h: u32, variant: Variant, 
         return Err(ImageError::Decode("zero-sized target".into()));
     }
     let mut errors = Vec::new();
+    let mut transient = false;
     for cand in chain {
         // A `Find` is looked up once; the rest of the loop sees the file.
         let found;
@@ -287,23 +288,25 @@ pub fn load(chain: &[ImageRef], target_w: u32, target_h: u32, variant: Variant, 
             Err(e) => {
                 log::debug!("candidate {cand:?} failed: {e}");
                 // Only remember definitive failures of remote sources
-                // (404, HTML, undecodable) - not offline/timeouts.
+                // (404, HTML, undecodable) - not offline, timeouts or rate limits.
                 if let (ImageRef::Url(_), Some(dir)) = (cand, &opts.thumbs_dir) {
                     if is_definitive(&e) {
                         thumbs::mark_negative(dir, &identity);
                     }
                 }
+                transient |= e.is_transient();
                 errors.push(format!("{cand:?}: {e}"));
             }
         }
     }
-    Err(ImageError::AllFailed(errors))
+    Err(ImageError::AllFailed { errors, transient })
 }
 
+/// Failures worth a negative-cache marker: the source is bad, not unreachable.
 fn is_definitive(e: &ImageError) -> bool {
     match e {
         ImageError::NotAnImage(_) | ImageError::Decode(_) => true,
-        ImageError::Http(m) => m.contains("status 4") || m.contains("http status: 4"),
+        ImageError::HttpStatus(code, _) => error::status_is_definitive(*code),
         _ => false,
     }
 }
