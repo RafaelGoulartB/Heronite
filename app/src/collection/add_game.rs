@@ -13,6 +13,18 @@ impl CollectionView {
         self.open_add_game_mode(Mode::Add, window, cx)
     }
 
+    /// Files dropped on the window: the first one opens "Add game" filled in.
+    /// Only the Collection page takes it, with no dialog open.
+    pub(super) fn drop_external_paths(&mut self, paths: &ExternalPaths, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page != crate::pages::Page::Collection || crate::console::active() || self.dialog.is_some() {
+            return;
+        }
+        let Some(first) = paths.paths().first() else { return };
+        if let Some(view) = self.open_add_game(window, cx) {
+            view.update(cx, |d, cx| d.prefill_from_path(first, window, cx));
+        }
+    }
+
     /// Edit dialog of a sideloaded game (`key` is the card key).
     pub(super) fn open_edit_game(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<AddGameDialog>> {
         let game = self.lib.as_ref()?.get(key)?.clone();

@@ -9,6 +9,7 @@ mod actions;
 mod art;
 mod console;
 mod debug;
+mod dropped;
 mod form;
 mod logic;
 pub mod picker;

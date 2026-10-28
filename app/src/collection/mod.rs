@@ -606,6 +606,7 @@ impl CollectionView {
             .capture_any_mouse_down(cx.listener(|this, _, window, cx| {
                 window.focus(&this.focus_handle, cx);
             }))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| this.drop_external_paths(paths, window, cx)))
             .relative()
             .size_full()
             .overflow_hidden()
