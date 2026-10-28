@@ -123,13 +123,29 @@ pub fn run_wait(spawner: &dyn Spawner, cmd: &crate::plan::Command, timeout: Dura
     }
 }
 
+/// Whether `line` is an error record of legendary's, gogdl's or nile's log.
+/// legendary and gogdl write `[<logger>] <LEVEL>: <message>` (`[cli] ERROR:
+/// ...`, `[Core] CRITICAL: ...`), nile `<LEVEL> [<logger>]: <message>`
+/// (`ERROR [AUTH]: ...`), so the level counts only next to the logger name:
+/// a save file called `ERROR_LOG.sav` in a listing is no error. A traceback
+/// header counts too.
+pub fn is_error_line(line: &str) -> bool {
+    let line = line.trim_start();
+    if line.starts_with("Traceback (most recent call last)") {
+        return true;
+    }
+    let message = match line.strip_prefix('[').and_then(|rest| rest.split_once("] ")) {
+        Some((_logger, message)) => message,
+        None => line,
+    };
+    let level_first =
+        |level: &str| message.strip_prefix(level).and_then(|rest| rest.strip_prefix(" [")).is_some_and(|rest| rest.contains("]:"));
+    message.starts_with("ERROR:") || message.starts_with("CRITICAL:") || level_first("ERROR") || level_first("CRITICAL")
+}
+
 /// The first line of a legendary output that reports a failure.
 pub fn sync_problem(output: &str) -> Option<String> {
-    output
-        .lines()
-        .map(str::trim)
-        .find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.starts_with("Traceback"))
-        .map(|l| l.to_string())
+    output.lines().map(str::trim).find(|l| is_error_line(l)).map(|l| l.to_string())
 }
 
 /// Windows wine commands (`reg add`, `wineboot -u`) in the game's prefix.
@@ -460,6 +476,34 @@ pub(crate) mod tests {
         }
         assert_eq!(sync_problem("all good\n[cli] INFO: done"), None);
         assert!(sync_problem("a\n  [Core] CRITICAL: boom").unwrap().contains("boom"));
+    }
+
+    #[test]
+    fn only_log_records_count_as_errors_not_file_names() {
+        for line in [
+            "[cli] ERROR: boom",
+            "[Core] CRITICAL: boom",
+            "  [GENERIC DOWNLOAD_MANAGER] ERROR: x",
+            "ERROR: bare",
+            "ERROR [AUTH]:\t You are already logged in",
+            "CRITICAL [DOWNLOAD]: x",
+            "Traceback (most recent call last):",
+        ] {
+            assert!(is_error_line(line), "{line}");
+        }
+        for line in [
+            "[cli] INFO: - ERROR_LOG.sav (1 KiB)",
+            "[cli] INFO: Uploading CRITICAL: hit.sav",
+            "ERROR_LOG.sav",
+            "ERROR [1].sav",
+            "INFO [CLI]:\t Found: ERROR [X]: Game",
+            "saves/CRITICAL.sav",
+            "[cli] WARNING: Traceback.sav is old",
+            "",
+        ] {
+            assert!(!is_error_line(line), "{line}");
+        }
+        assert_eq!(sync_problem("[cli] INFO: - ERROR_LOG.sav\n[cli] INFO: done"), None);
     }
 
     fn lutris_list() -> serde_json::Value {

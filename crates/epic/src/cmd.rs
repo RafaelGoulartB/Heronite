@@ -10,6 +10,7 @@ use anyhow::{anyhow, Context, Result};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
+use heronite_launch::prepare::is_error_line;
 use heronite_launch::{legendary::find_legendary, PlanContext, SystemProbe};
 
 /// The legendary binary and the config folder it works on.
@@ -36,10 +37,11 @@ impl Output {
         self.code == Some(0) && !self.aborted
     }
 
-    /// `ERROR:` / `CRITICAL:` lines of legendary's log, for messages.
+    /// The error records (`[cli] ERROR: ...`, `[Core] CRITICAL: ...`) and
+    /// traceback headers of legendary's log, for messages.
     pub fn error_lines(&self) -> String {
         let all = format!("{}\n{}", self.stderr, self.stdout);
-        let lines: Vec<&str> = all.lines().filter(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.contains("Traceback")).collect();
+        let lines: Vec<&str> = all.lines().filter(|l| is_error_line(l)).collect();
         lines.join("\n")
     }
 }

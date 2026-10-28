@@ -163,6 +163,14 @@ mod tests {
     }
 
     #[test]
+    fn a_save_file_named_like_a_log_level_is_not_a_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let lg = fake(dir.path(), "echo '[cli] INFO: - ERROR_LOG.sav (2 KiB)'; echo 'CRITICAL_HIT.sav' >&2");
+        let out = sync_with(&lg, "A", "/saves", Some("--skip-upload")).unwrap();
+        assert!(out.contains("ERROR_LOG.sav"), "{out}");
+    }
+
+    #[test]
     fn stored_save_paths_are_returned_without_running_legendary() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path());
