@@ -3654,6 +3654,7 @@ dependencies = [
  "heronite-data",
  "heronite-i18n",
  "heronite-launch",
+ "heronite-net",
  "libc",
  "log",
  "parking_lot",
