@@ -174,14 +174,16 @@ pub fn visible_in(pid: u32, path: &str) -> bool {
 
 /// The variables of the session that name a socket the sandbox binds: the
 /// ones the sandbox's program got, which can differ from the launcher's (a
-/// game under gamescope has gamescope's display).
+/// game under gamescope has gamescope's display). The proxies (see
+/// [`super::pass::PROXY`]) are taken from the sandbox too, as it got them
+/// only with the network exception.
 const SESSION_VARS: [&str; 3] = ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY"];
 
-/// [`SESSION_VARS`] as the program of the sandbox of `pid` has them: the
+/// [`SESSION_VARS`] and the proxies as the program of the sandbox of `pid` has them: the
 /// first process below `pid` (itself included) whose `environ` (read by
 /// `environ`) carries the sandbox's mark, which is the `sh` that waits for
 /// the game. bubblewrap's own processes start with none (see `script`).
-/// `Some(empty)`: the sandbox has no display. `None`: not known.
+/// `Some(empty)`: the sandbox has none of them. `None`: not known.
 fn session_of(procs: &dyn Procs, pid: u32, environ: &dyn Fn(u32) -> Option<Vec<u8>>) -> Option<Vec<(String, String)>> {
     let mark = format!("{}=1", super::ENV_INSIDE);
     let mut seen = std::collections::HashSet::from([pid]);
@@ -197,6 +199,7 @@ fn session_of(procs: &dyn Procs, pid: u32, environ: &dyn Fn(u32) -> Option<Vec<u
             return Some(
                 SESSION_VARS
                     .iter()
+                    .chain(&super::pass::PROXY)
                     .filter_map(|name| {
                         let prefix = format!("{name}=");
                         let value = vars.iter().find_map(|v| v.strip_prefix(prefix.as_bytes()))?;
@@ -224,7 +227,7 @@ pub fn join(cmd: &Command, pid: u32) -> Command {
 }
 
 /// [`join`] with the sandbox's [`session_of`]. `None`: the launcher's own
-/// display variables pass, as the rest of the allowlist does.
+/// display variables pass, as the rest of the allowlist does, and no proxy.
 fn join_with(cmd: &Command, pid: u32, session: Option<&[(String, String)]>) -> Command {
     let mut args: Vec<String> = vec!["--target".into(), pid.to_string()];
     args.extend(["--user", "--mount", "--pid", "--net", "--uts", "--ipc", "--preserve-credentials"].map(String::from));
@@ -234,7 +237,7 @@ fn join_with(cmd: &Command, pid: u32, session: Option<&[(String, String)]>) -> C
     // The command's own variables win over the session's.
     let own = |name: &str| cmd.env.contains_key(name);
     let skip: Vec<&str> = if session.is_some() { SESSION_VARS.into_iter().filter(|n| !own(n)).collect() } else { Vec::new() };
-    let display: String = session
+    let words: String = session
         .into_iter()
         .flatten()
         .filter(|(k, _)| !own(k))
@@ -243,8 +246,8 @@ fn join_with(cmd: &Command, pid: u32, session: Option<&[(String, String)]>) -> C
     // The sandbox's IPC namespace has no shared memory with the X server
     // (MIT-SHM), as in `script`.
     let script = format!(
-        "cd -- \"$0\" || exit 126; {}set -- \"$@\" {}=1 _X11_NO_MITSHM=1 QT_X11_NO_MITSHM=1{display}; {}exec env -i \"$@\"",
-        super::pass::collect(plan, &skip, r#""$y=$z""#),
+        "cd -- \"$0\" || exit 126; {}set -- \"$@\" {}=1 _X11_NO_MITSHM=1 QT_X11_NO_MITSHM=1{words}; {}exec env -i \"$@\"",
+        super::pass::collect(plan, &skip, false, r#""$y=$z""#),
         super::ENV_INSIDE,
         super::pass::ROTATE,
     );
@@ -395,6 +398,27 @@ mod tests {
         // Nothing readable or marked: unknown.
         assert_eq!(session_of(&procs, 10, &|_| None), None);
         assert_eq!(session_of(&procs, 10, &|_| Some(b"DISPLAY=:5\0".to_vec())), None);
+    }
+
+    /// The sandbox's game got the proxy of the launcher only with the network
+    /// exception; a program joined to it gets what its game got, no more.
+    #[test]
+    fn a_joined_program_gets_the_proxy_its_game_got_and_no_other() {
+        let procs = FakeProcs::new();
+        procs.start(10, "bwrap", None);
+        procs.start(11, "sh", Some(10));
+        let with = |pid: u32| (pid == 11).then(|| b"HERONITE_SANDBOX=1\0DISPLAY=:1\0https_proxy=http://u:p@h\0".to_vec());
+        let session = session_of(&procs, 10, &with).unwrap();
+        assert_eq!(session, pairs(&[("DISPLAY", ":1"), ("https_proxy", "http://u:p@h")]));
+        let launcher = [("https_proxy", "http://u:p@h"), ("http_proxy", "http://other")];
+        let vars = joined_env(Some(&session), &launcher);
+        assert!(vars.contains(&"https_proxy=http://u:p@h".to_string()), "{vars:?}");
+        // The sandbox has no network (its game got no proxy): neither does the program.
+        let none = session_of(&procs, 10, &|pid| (pid == 11).then(|| b"HERONITE_SANDBOX=1\0".to_vec())).unwrap();
+        let vars = joined_env(Some(&none), &launcher);
+        assert!(!vars.iter().any(|v| v.contains("proxy")), "{vars:?}");
+        let vars = joined_env(None, &launcher);
+        assert!(!vars.iter().any(|v| v.contains("proxy")), "unknown sandbox: {vars:?}");
     }
 
     /// With the real bubblewrap and `nsenter`, when they work here: a program

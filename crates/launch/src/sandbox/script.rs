@@ -144,7 +144,7 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
     }
     // The command goes last: `pass` appends the variables after its own
     // arguments, then the program turns them around.
-    s += &pass::collect(plan.iter().flat_map(|e| e.keys().map(String::as_str)), &set_here, r#"--setenv "$y" "$z""#);
+    s += &pass::collect(plan.iter().flat_map(|e| e.keys().map(String::as_str)), &set_here, sandbox.network, r#"--setenv "$y" "$z""#);
     s += &format!("set -- \"$@\" -- /bin/sh -c {} sh; ", q(WAIT_ALL));
     s += pass::ROTATE;
     a.push("\"$@\"".into());
@@ -295,6 +295,38 @@ mod tests {
         // A cache folder the user set is kept.
         let args = run(&[("DXVK_STATE_CACHE_PATH", "/mine")]);
         assert!(args.windows(3).any(|a| a == ["--setenv", "DXVK_STATE_CACHE_PATH", "/mine"]), "{args:?}");
+    }
+
+    /// A proxy setting can hold a password: it reaches only a sandbox that
+    /// has the network exception.
+    #[test]
+    fn proxies_reach_only_a_sandbox_with_the_network() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let fake = dir.path().join("bwrap");
+        std::fs::write(&fake, "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n").unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let b = Bwrap { path: fake.to_string_lossy().into_owned(), ..bwrap() };
+        let args = |network: bool| {
+            let p = prelude(&b, &Sandbox { enabled: true, network, ..Default::default() }, &Mounts::default(), None);
+            let out = std::process::Command::new(&p[0])
+                .args(&p[1..])
+                .arg("/usr/bin/game")
+                .env("https_proxy", "http://user:pass@proxy:3128")
+                .env("NO_PROXY", "localhost")
+                .env("SSL_CERT_FILE", "/etc/ssl/cert.pem")
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8(out.stdout).unwrap().lines().map(str::to_string).collect::<Vec<_>>()
+        };
+        let has = |a: &[String], w: &[&str]| a.windows(w.len()).any(|x| x == w);
+        let off = args(false);
+        assert!(!off.iter().any(|a| a.contains("pass") || a == "https_proxy" || a == "NO_PROXY"), "{off:?}");
+        assert!(has(&off, &["--setenv", "SSL_CERT_FILE", "/etc/ssl/cert.pem"]), "{off:?}");
+        let on = args(true);
+        assert!(has(&on, &["--setenv", "https_proxy", "http://user:pass@proxy:3128"]), "{on:?}");
+        assert!(has(&on, &["--setenv", "NO_PROXY", "localhost"]), "{on:?}");
     }
 
     /// With the real bubblewrap, when it works here: `env` in the sandbox
