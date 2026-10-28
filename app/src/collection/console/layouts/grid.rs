@@ -173,6 +173,41 @@ fn live_rows(seen: &std::ops::RangeInclusive<usize>, focus: usize, rows: usize) 
     live
 }
 
+/// A box of the scrolling column of the grid.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Slot {
+    /// An empty box as tall as this many rows.
+    Gap(usize),
+    /// A row that holds tiles.
+    Row(usize),
+}
+
+/// The boxes of the column, in order: the live rows and one gap per stretch
+/// of rows between them. Together they are as tall as all `rows`.
+fn slots(seen: &std::ops::RangeInclusive<usize>, focus: usize, rows: usize) -> Vec<Slot> {
+    let mut out = Vec::new();
+    let mut next = 0;
+    for r in live_rows(seen, focus, rows) {
+        if r > next {
+            out.push(Slot::Gap(r - next));
+        }
+        out.push(Slot::Row(r));
+        next = r + 1;
+    }
+    if rows > next {
+        out.push(Slot::Gap(rows - next));
+    }
+    out
+}
+
+/// Where row `row` is in the column, design px from its top: the goal that
+/// scrolls to it. Rows are `line_h` tall and nothing is above the first, so
+/// this does not depend on which rows hold tiles (the children are not one
+/// per row).
+fn row_span(row: usize, line_h: f32) -> (f32, f32) {
+    (row as f32 * line_h, (row + 1) as f32 * line_h)
+}
+
 /// Width of the rail of letters on the right edge, design px.
 const RAIL: f32 = 30.;
 
@@ -297,7 +332,8 @@ impl CollectionView {
         if nav.reveal && !keys.is_empty() {
             nav.reveal = false;
             // The focused row in sight with a part of the next one.
-            nav.scroll.go(Goal::Reveal { ix: nav.index / cols, margin: th * 0.35 });
+            let (start, end) = row_span(nav.index / cols, th + GAP + label_room());
+            nav.scroll.go(Goal::Span { start, end, margin: th * 0.35 });
         }
         let (index, toolbar) = (nav.index, nav.toolbar);
         let focused = keys.get(index).cloned();
@@ -393,21 +429,18 @@ impl CollectionView {
             div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
         let seen = super::in_sight(scroll.offset().y, line_h, window.viewport_size().height);
         let rows = keys.len().div_ceil(cols);
-        let mut next = 0;
-        for r in live_rows(&seen, index / cols, rows) {
-            if r > next {
-                grid = grid.child(div().flex_none().h(u(line_h * (r - next) as f32)));
-            }
-            let visible = seen.contains(&r) || r.abs_diff(index / cols) <= 1;
-            let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
-            for (c, key) in keys[r * cols..].iter().take(cols).enumerate() {
-                line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
-            }
-            grid = grid.child(line);
-            next = r + 1;
-        }
-        if rows > next {
-            grid = grid.child(div().flex_none().h(u(line_h * (rows - next) as f32)));
+        for slot in slots(&seen, index / cols, rows) {
+            grid = match slot {
+                Slot::Gap(n) => grid.child(div().flex_none().h(u(line_h * n as f32))),
+                Slot::Row(r) => {
+                    let visible = seen.contains(&r) || r.abs_diff(index / cols) <= 1;
+                    let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
+                    for (c, key) in keys[r * cols..].iter().take(cols).enumerate() {
+                        line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
+                    }
+                    grid.child(line)
+                }
+            };
         }
         grid.child(glide.driver())
     }
@@ -604,6 +637,41 @@ mod tests {
         assert_eq!(live_rows(&(50..=60), 0, 4), vec![0, 1]);
         assert_eq!(live_rows(&(50..=60), 3, 4), vec![2, 3]);
         assert!(live_rows(&(0..=3), 0, 0).is_empty());
+    }
+
+    /// Top (in rows) of each box of the column, and the rows they hold.
+    fn tops(slots: &[Slot]) -> Vec<(usize, Slot)> {
+        let mut top = 0;
+        slots
+            .iter()
+            .map(|s| {
+                let at = top;
+                top += match s {
+                    Slot::Gap(n) => *n,
+                    Slot::Row(_) => 1,
+                };
+                (at, *s)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_goal_of_any_row_is_where_the_column_puts_it() {
+        let (rows, line_h) = (40, 250.);
+        for (seen, focus) in [(0..=4, 0), (9..=14, 14), (9..=14, 30), (0..=4, 39), (35..=45, 3)] {
+            let slots = slots(&seen, focus, rows);
+            // The focus always holds tiles.
+            assert!(slots.contains(&Slot::Row(focus)), "{seen:?} {focus}: {slots:?}");
+            let tops = tops(&slots);
+            // The boxes add up to all the rows, so every row sits at its own place.
+            assert_eq!(tops.last().map(|(t, s)| t + if let Slot::Gap(n) = s { *n } else { 1 }), Some(rows));
+            for (top, slot) in tops {
+                if let Slot::Row(r) = slot {
+                    assert_eq!(row_span(r, line_h).0, top as f32 * line_h, "{seen:?} {focus}: row {r}");
+                }
+            }
+        }
+        assert_eq!(row_span(14, 250.), (3500., 3750.));
     }
 
     #[test]

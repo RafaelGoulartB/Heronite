@@ -53,6 +53,10 @@ pub enum Goal {
     Reveal { ix: usize, margin: f32 },
     /// A scroll position (px from the start).
     Offset(f32),
+    /// Like `Reveal`, for a stretch of the content known by its place
+    /// (`start..end`, design px from the start of the content) instead of a
+    /// child index: for areas whose children are not one per item.
+    Span { start: f32, end: f32, margin: f32 },
 }
 
 #[derive(Default)]
@@ -145,29 +149,29 @@ impl Glide {
 
     /// Scroll position (positive) that satisfies `goal`, from the last layout.
     fn target(&self, goal: Goal, current: f32) -> Option<f32> {
-        let ix = match goal {
-            Goal::Start(ix) | Goal::Reveal { ix, .. } => ix,
-            Goal::Offset(v) => return Some(v.clamp(0., self.get(self.handle.max_offset()).max(0.))),
-        };
-        let first = self.handle.bounds_for_item(0)?;
-        let item = self.handle.bounds_for_item(ix)?;
-        let (start, end, view) = match self.axis {
-            Axis::X => (item.left() - first.left(), item.right() - first.left(), self.handle.bounds().size.width),
-            Axis::Y => (item.top() - first.top(), item.bottom() - first.top(), self.handle.bounds().size.height),
-        };
-        let (start, end, view) = (f32::from(start), f32::from(end), f32::from(view));
         let max = self.get(self.handle.max_offset()).max(0.);
+        let view = f32::from(match self.axis {
+            Axis::X => self.handle.bounds().size.width,
+            Axis::Y => self.handle.bounds().size.height,
+        });
+        let child = |ix: usize| {
+            let (first, item) = (self.handle.bounds_for_item(0)?, self.handle.bounds_for_item(ix)?);
+            Some(match self.axis {
+                Axis::X => (f32::from(item.left() - first.left()), f32::from(item.right() - first.left())),
+                Axis::Y => (f32::from(item.top() - first.top()), f32::from(item.bottom() - first.top())),
+            })
+        };
         let t = match goal {
-            Goal::Start(_) | Goal::Offset(_) => start,
-            Goal::Reveal { margin, .. } => {
-                let m = f32::from(u(margin));
-                if end - start + 2. * m >= view || start - m < current {
-                    start - m
-                } else if end + m > current + view {
-                    end + m - view
-                } else {
-                    current
-                }
+            Goal::Offset(v) => return Some(v.clamp(0., max)),
+            Goal::Start(ix) => child(ix)?.0,
+            Goal::Reveal { ix, margin } => {
+                let (start, end) = child(ix)?;
+                reveal(start, end, f32::from(u(margin)), view, current)
+            }
+            Goal::Span { start, end, margin } => {
+                // Waits for the first layout, as the child goals do.
+                self.handle.bounds_for_item(0)?;
+                reveal(f32::from(u(start)), f32::from(u(end)), f32::from(u(margin)), view, current)
             }
         };
         Some(t.clamp(0., max))
@@ -212,6 +216,18 @@ impl Glide {
     pub fn driver(&self) -> impl IntoElement {
         let me = self.clone();
         canvas(move |_, window, _| me.step(window), |_, _, _, _| {}).absolute().top_0().left_0().size_0()
+    }
+}
+
+/// The least scroll that shows `start..end` with `margin` around it, in a
+/// view of `view` from `current`; the start when it does not fit.
+fn reveal(start: f32, end: f32, margin: f32, view: f32, current: f32) -> f32 {
+    if end - start + 2. * margin >= view || start - margin < current {
+        start - margin
+    } else if end + margin > current + view {
+        end + margin - view
+    } else {
+        current
     }
 }
 
@@ -363,4 +379,21 @@ pub fn mix(a: impl Into<Rgba>, b: impl Into<Rgba>, t: f32) -> Rgba {
     let (a, b) = (a.into(), b.into());
     let t = t.clamp(0., 1.);
     Rgba { r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: a.a + (b.a - a.a) * t }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reveal;
+    // `gpui_kit::*` above brings gpui's own `test` macro.
+    use core::prelude::v1::test;
+
+    #[test]
+    fn reveal_scrolls_only_as_far_as_needed() {
+        // A 100 tall item with 20 around it, in a view of 500.
+        assert_eq!(reveal(300., 400., 20., 500., 0.), 0., "in sight: stays");
+        assert_eq!(reveal(600., 700., 20., 500., 0.), 220., "below: its end at the bottom edge");
+        assert_eq!(reveal(300., 400., 20., 500., 400.), 280., "above: its start at the top edge");
+        // Too big for the view: its start.
+        assert_eq!(reveal(300., 800., 20., 500., 0.), 280.);
+    }
 }
