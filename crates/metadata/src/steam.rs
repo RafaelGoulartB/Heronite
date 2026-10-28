@@ -168,7 +168,7 @@ fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Lookup<Stea
             Err(e) => {
                 log::warn!("Steam appdetails failed for {steam_app_id} ({lang}): {e}");
                 // English would not answer either.
-                if crate::http::is_unreachable(&e) {
+                if crate::http::is_transient(&e) {
                     return Lookup::Unreachable;
                 }
             }
@@ -179,7 +179,8 @@ fn fetch_details(http: &Http, steam_app_id: &str, language: &str) -> Lookup<Stea
 
 /// `getSteamAppDetails`: cached for 30 days in
 /// `local_library/steam-details/{appId}.{language}.json`; failures are
-/// remembered for 30 minutes. `language` is a Heroic code (`pt-BR`, `en`...).
+/// remembered for 30 minutes, except a rate limit or server error (asked again
+/// at once). `language` is a Heroic code (`pt-BR`, `en`...).
 pub fn get_steam_app_details(
     paths: &DataPaths,
     http: &Http,

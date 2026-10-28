@@ -89,6 +89,33 @@ pub fn is_unreachable(err: &anyhow::Error) -> bool {
     err.downcast_ref::<Unreachable>().is_some()
 }
 
+/// A reply with a non-2xx status ([`Response::error`]).
+#[derive(Debug)]
+pub struct HttpStatus {
+    pub status: u16,
+    body: String,
+}
+
+impl std::fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP {}: {}", self.status, self.body)
+    }
+}
+
+impl std::error::Error for HttpStatus {}
+
+/// The status of the reply behind `err`, when it was an error status.
+pub fn status_of(err: &anyhow::Error) -> Option<u16> {
+    err.downcast_ref::<HttpStatus>().map(|s| s.status)
+}
+
+/// Whether `err` says nothing about the thing asked for: no answer at all, or
+/// a rate limit (429) or server error (5xx) that a later try may get past.
+/// Such failures must not be remembered as "not found".
+pub fn is_transient(err: &anyhow::Error) -> bool {
+    is_unreachable(err) || status_of(err).is_some_and(|s| s == 429 || s >= 500)
+}
+
 /// A finished response (status errors are not turned into `Err`).
 #[derive(Debug, Clone)]
 pub struct Response {
@@ -115,7 +142,7 @@ impl Response {
     pub fn error(&self) -> anyhow::Error {
         let body = self.text();
         let body: String = body.chars().take(300).collect();
-        anyhow!("HTTP {}: {}", self.status, body)
+        anyhow::Error::new(HttpStatus { status: self.status, body })
     }
 }
 
@@ -255,6 +282,20 @@ impl Default for Http {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rate_limits_and_server_errors_are_transient() {
+        let err = |status| Response { status, content_type: String::new(), content_length: None, body: b"slow down".to_vec() }.error();
+        for status in [429, 500, 503] {
+            assert!(is_transient(&err(status)), "{status}");
+        }
+        for status in [400, 401, 404] {
+            assert!(!is_transient(&err(status)), "{status}");
+        }
+        assert_eq!(status_of(&err(404)), Some(404));
+        assert_eq!(err(429).to_string(), "HTTP 429: slow down");
+        assert!(!is_transient(&anyhow!("invalid JSON")));
+    }
 
     #[test]
     fn redact_url_keeps_only_scheme_host_port_and_path() {
