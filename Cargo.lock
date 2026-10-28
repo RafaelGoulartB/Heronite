@@ -3815,6 +3815,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-net"
+version = "0.17.0"
+dependencies = [
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
+]
+
+[[package]]
 name = "heronite-overlay"
 version = "0.17.0"
 dependencies = [
