@@ -221,9 +221,9 @@ impl CollectionView {
     }
 
     /// Keys of the grid and the Focus list when nothing floats over them
-    /// (the moves are `keys.rs`'s): Enter plays an installed game (in the
-    /// grid it otherwise shows the drawer), Esc closes the drawer. Returns
-    /// whether the key was used.
+    /// (the moves are `keys.rs`'s): Enter does what the game's big button
+    /// does, Play or Install (a running game: the grid shows its drawer),
+    /// Esc closes the drawer. Returns whether the key was used.
     pub(super) fn grid_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if !self.list_free() || !self.focus_handle.is_focused(window) || ev.keystroke.modifiers.modified() {
             return false;
@@ -231,11 +231,11 @@ impl CollectionView {
         match ev.keystroke.key.as_str() {
             "enter" => {
                 let Some(key) = self.selected.clone() else { return false };
-                if self.focus.as_ref().is_some_and(|f| f.installed && !f.playing) {
-                    self.install_or_play(&key, window, cx);
-                } else if self.ui.grid_view {
+                // In the grid the drawer shows the game the key acts on.
+                if self.ui.grid_view {
                     self.grid.drawer_closed = false;
                 }
+                self.enter_primary(&key, window, cx);
                 true
             }
             "escape" if self.drawer_open() => {
@@ -244,6 +244,17 @@ impl CollectionView {
             }
             _ => false,
         }
+    }
+
+    /// Enter on a game: what its big button does, Play or Install. Never
+    /// Stop, nor cancelling a launch being prepared. True when it acted.
+    pub(super) fn enter_primary(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(app) = self.lib.as_ref().and_then(|l| l.get(key)).map(|g| g.app_name.clone()) else { return false };
+        if self.playing.contains_key(&app) || self.preparing.contains_key(&app) {
+            return false;
+        }
+        self.install_or_play(key, window, cx);
+        true
     }
 
     /// The card next to the selected one: `dx` walks the cards in order

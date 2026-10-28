@@ -134,6 +134,26 @@ impl CollectionView {
         .detach();
     }
 
+    /// `HERONITE_DEBUG_KEYS=enter,down`: keystrokes on the Collection's list,
+    /// a moment apart, once the library is on screen.
+    pub(super) fn start_debug_keys(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        let Some(keys) = crate::env::value("HERONITE_DEBUG_KEYS") else { return };
+        if self.lib.is_none() || STARTED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        window.focus(&self.focus_handle, cx);
+        cx.spawn_in(window, async move |_, cx| {
+            for k in keys.split(',').filter(|k| !k.is_empty()) {
+                cx.background_executor().timer(std::time::Duration::from_millis(600)).await;
+                if let Ok(ks) = Keystroke::parse(k) {
+                    cx.update(|window, cx| window.dispatch_keystroke(ks, cx)).ok();
+                }
+            }
+        })
+        .detach();
+    }
+
     pub(super) fn open_pending_debug_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(which) = self.pending_debug_dialog.take() else { return };
         match which.as_str() {

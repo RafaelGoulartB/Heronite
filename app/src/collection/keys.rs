@@ -176,9 +176,9 @@ impl CollectionView {
         cx.notify();
     }
 
-    /// Enter in the search field: plays the selected game when it is among
-    /// the results (else the first result) if it is installed, and shows it
-    /// otherwise.
+    /// Enter in the search field: the selected game when it is among the
+    /// results (else the first result) gets what its big button does, Play
+    /// or Install (`enter_primary`).
     pub(super) fn search_enter(&mut self, _: &Enter, window: &mut Window, cx: &mut Context<Self>) {
         if !self.search_focused(window, cx) {
             cx.propagate();
@@ -191,9 +191,7 @@ impl CollectionView {
         self.select(key.clone(), true);
         self.reveal_selected();
         window.focus(&self.focus_handle, cx);
-        if self.focus.as_ref().is_some_and(|f| f.installed && !f.playing) {
-            self.install_or_play(&key, window, cx);
-        }
+        self.enter_primary(&key, window, cx);
         cx.notify();
     }
 

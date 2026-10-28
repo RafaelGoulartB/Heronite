@@ -538,6 +538,7 @@ impl CollectionView {
         }
         self.images.drop_evicted(window);
         self.open_pending_debug_dialog(window, cx);
+        self.start_debug_keys(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
         self.sync_view_menu(window, cx);
