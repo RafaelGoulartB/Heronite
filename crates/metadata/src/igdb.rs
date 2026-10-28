@@ -211,6 +211,16 @@ impl IgdbCredentials {
     }
 }
 
+/// Request failure that remembers the HTTP status (for the 401 retry).
+#[derive(Debug)]
+struct StatusError(u16, String);
+impl std::fmt::Display for StatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.1)
+    }
+}
+impl std::error::Error for StatusError {}
+
 impl Igdb {
     pub fn new() -> Self {
         Self::default()
@@ -267,7 +277,7 @@ impl Igdb {
             .timeout_secs(20)
             .send()?;
         if !resp.ok() {
-            return Err(resp.error());
+            return Err(StatusError(resp.status, resp.error().to_string()).into());
         }
         resp.json()
     }
@@ -275,7 +285,7 @@ impl Igdb {
     /// `igdbPost`: one retry with a fresh token on 401.
     fn post(&self, http: &Http, creds: &IgdbCredentials, path: &str, body: &str) -> Result<serde_json::Value> {
         match self.post_once(http, creds, path, body) {
-            Err(e) if crate::http::status_of(&e) == Some(401) => {
+            Err(e) if e.downcast_ref::<StatusError>().is_some_and(|s| s.0 == 401) => {
                 self.twitch_token(http, creds, true)?;
                 self.post_once(http, creds, path, body)
             }

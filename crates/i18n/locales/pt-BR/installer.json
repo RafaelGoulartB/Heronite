@@ -143,7 +143,6 @@
   "install_or_extract only works with Wine scripts": "install_or_extract só funciona em scripts do Wine",
   "{directive} needs a path": "{directive} precisa de um caminho",
   "{file} is not the expected file (its checksum differs)": "{file} não é o arquivo esperado (o checksum é diferente)",
-  "{file}: unsupported checksum \"{checksum}\" (use md5, sha1, sha256 or sha512)": "{file}: checksum não suportado \"{checksum}\" (use md5, sha1, sha256 ou sha512)",
   "{program} exited with code {code}": "{program} saiu com o código {code}",
   "{program} is needed to extract the game's files; install it with your package manager": "{program} é necessário para extrair os arquivos do jogo; instale-o com o seu gerenciador de pacotes",
   "{program} is needed to play this game; install it with your package manager": "{program} é necessário para jogar este jogo; instale-o com o seu gerenciador de pacotes",

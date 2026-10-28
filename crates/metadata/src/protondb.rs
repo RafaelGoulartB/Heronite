@@ -122,7 +122,7 @@ pub fn tier(cache_dir: &Path, http: &Http, steam_app_id: &str) -> Option<String>
 
 /// A Steam id found by title is searched again after this long.
 pub const TITLE_MAX_AGE_SECS: u64 = 30 * 24 * 3600;
-/// "Not on Steam" is kept a shorter time (a game can be added to Steam).
+/// "Not on Steam" is kept a shorter time (it may have been a network failure).
 pub const TITLE_MISS_MAX_AGE_SECS: u64 = 3 * 24 * 3600;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -163,8 +163,7 @@ pub fn cached_steam_id_for_title(cache_dir: &Path, title: &str) -> Option<Option
 }
 
 /// The Steam id of a game from another store, by its title (only the same
-/// game, see [`steam_app_id_exact`]); cached. Only a completed search is
-/// cached, so an offline launch does not hide the game's tier for days.
+/// game, see [`steam_app_id_exact`]); cached.
 pub fn steam_id_for_title(cache_dir: &Path, http: &Http, title: &str) -> Option<String> {
     if normalize_title(title).is_empty() {
         return None;
@@ -172,13 +171,7 @@ pub fn steam_id_for_title(cache_dir: &Path, http: &Http, title: &str) -> Option<
     if let Some(cached) = cached_steam_id_for_title(cache_dir, title) {
         return cached;
     }
-    let found = match steam_app_id_exact(http, title) {
-        Ok(found) => found.filter(|id| valid_app_id(id)),
-        Err(e) => {
-            log::warn!("Steam id search failed for {title}: {e:#}");
-            return None;
-        }
-    };
+    let found = steam_app_id_exact(http, title).filter(|id| valid_app_id(id));
     write_title(cache_dir, title, found.as_deref(), Utc::now());
     found
 }

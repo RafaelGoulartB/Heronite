@@ -10,11 +10,11 @@
 //! `legendary launch --origin|--ubisoft` opens the game through the store app.
 
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::{json_store, temps, DataPaths};
 use heronite_i18n::tr;
 use serde_json::{json, Value};
@@ -131,7 +131,7 @@ pub fn ensure_installer(
 ) -> Result<PathBuf> {
     let dir = redist_dir(data_paths);
     let dest = dir.join(provider.installer_file());
-    if has_valid_installer(&dest) {
+    if dest.is_file() {
         return Ok(dest);
     }
     fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
@@ -140,48 +140,54 @@ pub fn ensure_installer(
     Ok(dest)
 }
 
-/// Smaller than any store installer: a stub of a few KiB is an error page.
-const MIN_INSTALLER_BYTES: u64 = 64 * 1024;
+const REPORT_EVERY: Duration = Duration::from_millis(500);
 
-/// A Windows program starts with `MZ`. A captive portal or an error page
-/// saved under the installer's name does not, and must never be run or kept.
-fn check_installer(head: &[u8], bytes: u64) -> Result<(), String> {
-    if head.starts_with(b"MZ") && bytes >= MIN_INSTALLER_BYTES {
-        Ok(())
-    } else {
-        Err(tr!("the downloaded file is not a Windows installer").into())
-    }
-}
-
-/// Whether `path` is an installer that is safe to reuse. A file that is not
-/// one (a page saved by a captive portal, a cut file) is deleted, so the
-/// caller downloads it again instead of failing on it forever.
-pub fn has_valid_installer(path: &Path) -> bool {
-    let Ok(mut file) = fs::File::open(path) else { return false };
-    let mut head = [0u8; 2];
-    let bytes = file.metadata().map_or(0, |m| m.len());
-    let read = file.read(&mut head).unwrap_or(0);
-    if check_installer(&head[..read], bytes).is_ok() {
-        return true;
-    }
-    log::warn!("{} is not a Windows installer, downloading it again", path.display());
-    let _ = fs::remove_file(path);
-    false
-}
-
-/// Downloads the installer at `url` into `dest` (through `<dest>.part`,
-/// renamed when it is complete and starts with `MZ`); `on_progress` gets the
-/// progress about ten times a second. A connection that sends nothing for
-/// 30 s fails, and `cancel` stops it within a fraction of a second.
+/// Downloads `url` into `dest` (through `<dest>.part`, renamed when complete);
+/// `on_progress` gets the progress about twice a second.
 pub fn download_to(url: &str, dest: &Path, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<()> {
-    let started = Instant::now();
-    let mut report = |got: u64, total: Option<u64>| on_progress(progress(got, total.unwrap_or(0), started.elapsed()));
-    let valid = |o: &heronite_net::Outcome| check_installer(&o.head, o.bytes);
-    let opts = heronite_net::Options { validate: Some(&valid), on_progress: Some(&mut report), ..Default::default() };
-    heronite_net::download(url, dest, opts, &|| cancel.is_requested()).map(|_| ()).map_err(|e| match e {
-        heronite_net::Error::Truncated { got, total } => anyhow!(tr!("connection closed after {got} of {total} bytes", got, total)),
-        e => anyhow!(e),
-    })
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(Duration::from_secs(15)))
+        .max_redirects(8)
+        .user_agent("heronite-rs")
+        .build()
+        .into();
+    let mut resp = agent.get(url).call().map_err(|e| anyhow!("{url}: {e}"))?;
+    let total = resp.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
+    let part = PathBuf::from(format!("{}.part", dest.display()));
+    let result = (|| -> Result<()> {
+        let mut file = fs::File::create(&part).with_context(|| format!("creating {}", part.display()))?;
+        let mut buf = vec![0u8; 256 * 1024];
+        let (started, mut last_report, mut got) = (Instant::now(), Instant::now(), 0u64);
+        loop {
+            if cancel.is_requested() {
+                bail!("cancelled");
+            }
+            let n = body.read(&mut buf).with_context(|| format!("downloading {url}"))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buf[..n])?;
+            got += n as u64;
+            if last_report.elapsed() >= REPORT_EVERY {
+                last_report = Instant::now();
+                on_progress(progress(got, total, started.elapsed()));
+            }
+        }
+        file.flush()?;
+        if total > 0 && got < total {
+            bail!(tr!("connection closed after {got} of {total} bytes", got, total));
+        }
+        on_progress(progress(got, total.max(got), started.elapsed()));
+        Ok(())
+    })();
+    match result {
+        Ok(()) => fs::rename(&part, dest).with_context(|| format!("renaming {}", part.display())),
+        Err(e) => {
+            let _ = fs::remove_file(&part);
+            Err(e)
+        }
+    }
 }
 
 fn progress(got: u64, total: u64, elapsed: Duration) -> Progress {
@@ -206,7 +212,6 @@ fn progress(got: u64, total: u64, elapsed: Duration) -> Progress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use std::net::TcpListener;
 
     fn data_paths() -> (tempfile::TempDir, DataPaths) {
@@ -249,52 +254,21 @@ mod tests {
     fn a_present_installer_is_not_downloaded_again() {
         let (_d, data_paths) = data_paths();
         fs::create_dir_all(redist_dir(&data_paths)).unwrap();
-        let exe = [b"MZ".as_slice(), &[0u8; 100_000]].concat();
-        fs::write(redist_dir(&data_paths).join("EAappInstaller.exe"), &exe).unwrap();
+        fs::write(redist_dir(&data_paths).join("EAappInstaller.exe"), "MZ").unwrap();
         let path = ensure_installer(&data_paths, Provider::Ea, &Cancel::new(), &mut |_| panic!("no download")).unwrap();
-        assert_eq!(fs::read(path).unwrap(), exe);
+        assert_eq!(fs::read(path).unwrap(), b"MZ");
     }
 
-    #[test]
-    fn a_saved_error_page_or_stub_is_deleted_instead_of_reused() {
-        let dir = tempfile::tempdir().unwrap();
-        let page = dir.path().join("page.exe");
-        fs::write(&page, "<html>Sign in to the Wi-Fi</html>".repeat(10_000)).unwrap();
-        let stub = dir.path().join("stub.exe");
-        fs::write(&stub, "MZ").unwrap();
-        let good = dir.path().join("good.exe");
-        fs::write(&good, [b"MZ".as_slice(), &[0u8; 70_000]].concat()).unwrap();
-        assert!(!has_valid_installer(&page));
-        assert!(!has_valid_installer(&stub));
-        assert!(!has_valid_installer(&dir.path().join("missing.exe")));
-        assert!(has_valid_installer(&good));
-        assert!(!page.exists() && !stub.exists() && good.exists());
-    }
-
-    #[test]
-    fn a_download_that_is_not_a_windows_program_is_refused_and_leaves_nothing() {
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join("Battle.net-Setup.exe");
-        let err = download_to(&serve_body("<html>captive portal</html>".repeat(5_000).as_bytes()), &dest, &Cancel::new(), &mut |_| {});
-        assert!(format!("{:#}", err.unwrap_err()).contains("not a Windows installer"));
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
-    }
-
-    /// One HTTP response of `size` bytes, starting with `MZ`, from a local server.
+    /// One HTTP response of `size` bytes from a local server.
     fn serve(size: usize) -> String {
-        serve_body(&[b"MZ".as_slice(), &vec![b'x'; size - 2]].concat())
-    }
-
-    fn serve_body(body: &[u8]) -> String {
-        let body = body.to_vec();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         std::thread::spawn(move || {
             if let Some(Ok(mut s)) = listener.incoming().next() {
                 let mut req = [0u8; 1024];
                 let _ = s.read(&mut req);
-                let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
-                let _ = s.write_all(&body);
+                let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: {size}\r\nConnection: close\r\n\r\n");
+                let _ = s.write_all(&vec![b'x'; size]);
             }
         });
         format!("http://{addr}/installer.exe")
@@ -321,33 +295,6 @@ mod tests {
         assert!(format!("{err:#}").contains("cancelled"));
         assert!(!dest.exists());
         assert!(!dir.path().join("EAappInstaller.exe.part").exists());
-    }
-
-    #[test]
-    fn a_cancel_while_the_server_is_silent_stops_the_download() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}/installer.exe", listener.local_addr().unwrap());
-        std::thread::spawn(move || {
-            if let Some(Ok(mut s)) = listener.incoming().next() {
-                let mut req = [0u8; 1024];
-                let _ = s.read(&mut req);
-                let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n0123456789");
-                std::thread::sleep(Duration::from_secs(4));
-            }
-        });
-        let dir = tempfile::tempdir().unwrap();
-        let dest = dir.path().join("EAappInstaller.exe");
-        let cancel = Cancel::new();
-        let canceller = cancel.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(300));
-            canceller.request();
-        });
-        let started = Instant::now();
-        let err = download_to(&url, &dest, &cancel, &mut |_| {}).unwrap_err();
-        assert!(format!("{err:#}").contains("cancelled"));
-        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 
     #[test]

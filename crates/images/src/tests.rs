@@ -138,7 +138,7 @@ fn chain_falls_through_missing_and_garbage() {
     // all bad => AllFailed with one message per candidate
     let err = load_cover(&chain[..3], 5, 5, &o).unwrap_err();
     match err {
-        ImageError::AllFailed { errors, .. } => assert_eq!(errors.len(), 3),
+        ImageError::AllFailed(v) => assert_eq!(v.len(), 3),
         e => panic!("{e}"),
     }
     assert!(matches!(load_cover(&[], 5, 5, &o), Err(ImageError::NoCandidates)));
@@ -342,25 +342,4 @@ fn find_looks_in_subfolders_and_skips_missing() {
     let chain = [find(dir.path().join("nope")), find(game)];
     let d = load_fit(&chain, 15, 15, &o).unwrap();
     assert_eq!((d.width, d.height), (15, 5));
-}
-
-#[test]
-fn only_a_missing_source_is_remembered_as_failed() {
-    let status = |c: u16| ImageError::HttpStatus(c, "u".into());
-    for code in [400, 401, 403, 404, 410, 451] {
-        assert!(is_definitive(&status(code)), "{code}");
-        assert!(!status(code).is_transient(), "{code}");
-    }
-    for code in [408, 425, 429, 500, 502, 503, 504] {
-        assert!(!is_definitive(&status(code)), "{code}");
-        assert!(status(code).is_transient(), "{code}");
-    }
-    assert!(is_definitive(&ImageError::NotAnImage("html".into())));
-    assert!(is_definitive(&ImageError::Decode("bad".into())));
-    // A message that merely looks like a status is not one.
-    let offline = ImageError::Http("https://x/http status: 429".into());
-    assert!(!is_definitive(&offline) && offline.is_transient());
-    assert!(ImageError::Io("busy".into()).is_transient());
-    assert!(!ImageError::Decode("bad".into()).is_transient());
-    assert!(ImageError::AllFailed { errors: vec![], transient: true }.is_transient());
 }

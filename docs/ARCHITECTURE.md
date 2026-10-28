@@ -27,7 +27,6 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
  ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
- ├─ heronite-net        streaming downloads that stall-fail and cancel promptly (no GPUI)
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
  ├─ heronite-gog        gogdl CLI + GOG web APIs: GOG account,
@@ -105,15 +104,6 @@ device when the last window closes (the app lives on in the tray); see its
   picked in Settings → General (`language` in `appearance.json`); switching
   redraws the windows. `tests/coverage.rs` scans the workspace: every key
   needs a translation in every language and every translation a key.
-- **heronite-net:** `download` is the one way to stream a big file over HTTP.
-  A helper thread does the request and the reads (ureq's timeouts are
-  deadlines, none restarts on a read), the caller waits on a channel with a
-  100 ms tick: a cancel returns at once and a body that sends nothing for
-  `stall_timeout` fails with `Error::Stalled`. The file goes to `<dest>.part`
-  and is renamed onto `dest` only after the size, SHA-256 and `validate`
-  checks; any failure removes the partial file. Errors are typed
-  (`Cancelled`, `Stalled`, `Unreachable`, `RateLimited`, `Http`, `Io`,
-  `Invalid`) and never print a URL's query string.
 - **heronite-launch:** `plan` turns a game plus settings into a `LaunchPlan`
   and does no I/O beyond reads. `runtime::Launcher` runs the plan through a
   `Spawner`, tracks the process group and emits `LaunchEvent`s. `record`

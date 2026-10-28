@@ -25,6 +25,11 @@ fn agent() -> &'static ureq::Agent {
     })
 }
 
+/// Shared HTTP agent for downloads too.
+pub(crate) fn http_agent() -> &'static ureq::Agent {
+    agent()
+}
+
 /// What GitHub said about the API budget of this address.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {

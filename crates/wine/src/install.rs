@@ -3,8 +3,8 @@
 //! / `removeWineVersion` and `getInstallDir`).
 
 use heronite_i18n::tr;
-use std::cell::Cell;
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
+use sha2::{Digest, Sha256, Sha512};
 
 use crate::github;
 use crate::store;
@@ -105,6 +106,7 @@ pub fn install_into(
 
     let file_name = download.rsplit('/').next().unwrap_or("download.tar");
     let tar_file = install_dir.join(file_name);
+    let part_file = install_dir.join(format!("{file_name}.part"));
     let install_sub_dir = match info.install_dir.as_deref().filter(|d| !d.is_empty()) {
         Some(d) => PathBuf::from(d),
         None => install_dir.join(&info.version),
@@ -130,38 +132,31 @@ pub fn install_into(
     }
 
     let _ = fs::remove_file(&tar_file);
+    let _ = fs::remove_file(&part_file);
 
-    // Download; the archive only gets its name once the checksum matched.
+    // Download (+ the checksum's hash while streaming).
     let algorithm = source_checksum.as_deref().map(HashKind::of_checksum).unwrap_or(HashKind::Sha512);
-    if source_checksum.is_none() {
-        log::warn!("No checksum provided. Download of {} could be invalid!", info.version);
-    }
-    let mismatch = Cell::new(false);
-    let matches_checksum = |o: &heronite_net::Outcome| {
-        let digest = o.hash.as_deref().unwrap_or_default();
-        match &source_checksum {
-            Some(sum) if !checksum_matches(sum, digest, file_name) => {
-                mismatch.set(true);
-                Err("checksum mismatch".to_string())
-            }
-            _ => Ok(()),
+    let digest = match download_file(download, &part_file, info.downsize.unwrap_or(0), algorithm, cancel, on_progress) {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = fs::remove_file(&part_file);
+            return Err(match e {
+                InstallError::Aborted => InstallError::Aborted,
+                InstallError::Failed(m) => {
+                    InstallError::Failed(tr!("Download of {version} failed with:\n {error}", version = info.version, error = m))
+                }
+            });
         }
     };
-    if let Err(e) = download_file(download, &tar_file, info.downsize.unwrap_or(0), algorithm, &matches_checksum, cancel, on_progress) {
-        return Err(match e {
-            heronite_net::Error::Cancelled => InstallError::Aborted,
-            _ if mismatch.get() => InstallError::Failed(tr!("Checksum verification failed").into()),
-            e => {
-                let error = match e {
-                    heronite_net::Error::Truncated { got, total } => {
-                        tr!("connection closed after {downloaded} of {total} bytes", downloaded = got, total)
-                    }
-                    e => e.to_string(),
-                };
-                InstallError::Failed(tr!("Download of {version} failed with:\n {error}", version = info.version, error))
-            }
-        });
+    if let Some(sum) = &source_checksum {
+        if !sum.to_ascii_lowercase().contains(&digest) {
+            let _ = fs::remove_file(&part_file);
+            return Err(InstallError::Failed(tr!("Checksum verification failed").into()));
+        }
+    } else {
+        log::warn!("No checksum provided. Download of {} could be invalid!", info.version);
     }
+    fs::rename(&part_file, &tar_file).with_context(|| format!("renaming {}", part_file.display()))?;
 
     // Extract next to the final folder under a hidden name and rename when
     // done, so a crash or cancel never leaves a half-extracted install (and an
@@ -225,29 +220,6 @@ fn is_safe_name(name: &str) -> bool {
     !name.is_empty() && name != "." && name != ".." && !name.contains('/') && !name.contains('\0')
 }
 
-/// Whether `checksums` (the text of a `.sha256sum` / `.sha512sum` file)
-/// lists `digest` for `file_name`. A digest must be a whole token: a longer
-/// hex string that merely contains it, or the digest of another file in a
-/// multi-line list, does not count. A file with one line needs no name.
-fn checksum_matches(checksums: &str, digest: &str, file_name: &str) -> bool {
-    if digest.is_empty() {
-        return false;
-    }
-    let lines: Vec<&str> = checksums.lines().filter(|l| !l.trim().is_empty()).collect();
-    // `<hex>  <name>`, `<hex> *<name>` and BSD's `SHA256 (<name>) = <hex>`.
-    let tokens = |line: &str| -> Vec<String> {
-        line.split_whitespace().map(|t| t.trim_matches(|c| c == '*' || c == '(' || c == ')').to_ascii_lowercase()).collect()
-    };
-    let names_file = |tokens: &[String]| {
-        let name = file_name.to_ascii_lowercase();
-        tokens.iter().any(|t| *t == name || t.rsplit('/').next() == Some(name.as_str()))
-    };
-    match lines.as_slice() {
-        [only] => tokens(only).iter().any(|t| t == digest),
-        _ => lines.iter().map(|l| tokens(l)).any(|t| t.iter().any(|x| x == digest) && names_file(&t)),
-    }
-}
-
 /// Hash a published checksum file is made with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HashKind {
@@ -264,39 +236,85 @@ impl HashKind {
             _ => HashKind::Sha512,
         }
     }
+}
 
-    fn net(self) -> heronite_net::Hash {
-        match self {
-            HashKind::Sha256 => heronite_net::Hash::Sha256,
-            HashKind::Sha512 => heronite_net::Hash::Sha512,
+enum Hasher {
+    Sha256(Sha256),
+    Sha512(Sha512),
+}
+
+impl Hasher {
+    fn new(kind: HashKind) -> Self {
+        match kind {
+            HashKind::Sha256 => Hasher::Sha256(Sha256::new()),
+            HashKind::Sha512 => Hasher::Sha512(Sha512::new()),
         }
+    }
+    fn update(&mut self, data: &[u8]) {
+        match self {
+            Hasher::Sha256(h) => h.update(data),
+            Hasher::Sha512(h) => h.update(data),
+        }
+    }
+    fn hex(self) -> String {
+        let bytes: Vec<u8> = match self {
+            Hasher::Sha256(h) => h.finalize().to_vec(),
+            Hasher::Sha512(h) => h.finalize().to_vec(),
+        };
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
 }
 
-/// Streams `url` to `dest` (through `<dest>.part`) and hands the body's hash
-/// to `validate` before the file gets its name.
+/// Streams `url` to `dest`, returning the lowercase hex hash of the body.
 fn download_file(
     url: &str,
     dest: &Path,
     expected_size: u64,
     algorithm: HashKind,
-    validate: &dyn Fn(&heronite_net::Outcome) -> Result<(), String>,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
-) -> Result<(), heronite_net::Error> {
+) -> Result<String, InstallError> {
+    let fail = |m: String| InstallError::Failed(m);
+    let mut resp = github::http_agent().get(url).call().map_err(|e| fail(format!("{url}: {e}")))?;
+    let total = resp
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(expected_size);
+    let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
+    let mut file = File::create(dest).map_err(|e| fail(format!("creating {}: {e}", dest.display())))?;
+    let mut hasher = Hasher::new(algorithm);
+    let mut buf = vec![0u8; 256 * 1024];
+    let mut downloaded = 0u64;
     let start = Instant::now();
-    let mut report = |done: u64, total: Option<u64>| {
-        let speed = done as f64 / start.elapsed().as_secs_f64().max(0.001);
-        on_progress(progress(done, total.unwrap_or(0), speed));
-    };
-    let opts = heronite_net::Options {
-        size_hint: Some(expected_size).filter(|n| *n > 0),
-        hash: Some(algorithm.net()),
-        validate: Some(validate),
-        on_progress: Some(&mut report),
-        ..Default::default()
-    };
-    heronite_net::download(url, dest, opts, &|| cancel.load(Ordering::Relaxed)).map(|_| ())
+    let mut last = Instant::now() - Duration::from_secs(1);
+    on_progress(progress(0, total, 0.0));
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(InstallError::Aborted);
+        }
+        let n = body.read(&mut buf).map_err(|e| fail(format!("{url}: {e}")))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n]).map_err(|e| fail(format!("writing {}: {e}", dest.display())))?;
+        hasher.update(&buf[..n]);
+        downloaded += n as u64;
+        if last.elapsed() >= Duration::from_millis(100) {
+            last = Instant::now();
+            let speed = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
+            on_progress(progress(downloaded, total, speed));
+        }
+    }
+    file.flush().map_err(|e| fail(e.to_string()))?;
+    if total > 0 && downloaded < total {
+        return Err(fail(tr!("connection closed after {downloaded} of {total} bytes", downloaded, total)));
+    }
+    let speed = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
+    on_progress(progress(downloaded, downloaded.max(total), speed));
+    Ok(hasher.hex())
 }
 
 fn progress(downloaded: u64, total: u64, speed: f64) -> Progress {
@@ -376,8 +394,7 @@ pub fn remove_version(data_paths: &DataPaths, info: &WineVersionInfo) -> anyhow:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sha2::{Digest, Sha256, Sha512};
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
     use std::sync::Arc;
 
@@ -503,23 +520,6 @@ mod tests {
         assert_eq!(HashKind::of_checksum(&format!("{}  a.tar.xz", "a".repeat(64))), HashKind::Sha256);
         assert_eq!(HashKind::of_checksum(&format!("{}  a.tar.gz\n", "b".repeat(128))), HashKind::Sha512);
         assert_eq!(HashKind::of_checksum("deadbeef  a.tar.gz"), HashKind::Sha512);
-    }
-
-    #[test]
-    fn a_digest_matches_as_a_whole_token_on_the_line_of_the_file() {
-        let d = "ab".repeat(32);
-        let other = "cd".repeat(32);
-        assert!(checksum_matches(&d, &d, "a.tar.gz"));
-        assert!(checksum_matches(&format!("{}  anything.tar\n", d.to_uppercase()), &d, "a.tar.gz"));
-        assert!(checksum_matches(&format!("{other}  b.tar.gz\n{d}  a.tar.gz\n"), &d, "a.tar.gz"));
-        assert!(checksum_matches(&format!("{d} *dist/a.tar.gz\n{other}  b.tar.gz"), &d, "a.tar.gz"));
-        assert!(checksum_matches(&format!("SHA256 (a.tar.gz) = {d}"), &d, "a.tar.gz"));
-        // part of a longer token, or the digest of another file
-        assert!(!checksum_matches(&format!("00{d}"), &d, "a.tar.gz"));
-        assert!(!checksum_matches(&format!("{d}00  a.tar.gz"), &d, "a.tar.gz"));
-        assert!(!checksum_matches(&format!("{other}  a.tar.gz\n{d}  b.tar.gz\n"), &d, "a.tar.gz"));
-        assert!(!checksum_matches("", &d, "a.tar.gz"));
-        assert!(!checksum_matches(&d, "", "a.tar.gz"));
     }
 
     #[test]

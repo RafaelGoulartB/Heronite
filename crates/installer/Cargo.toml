@@ -9,7 +9,6 @@ description = "Installs games from YAML install scripts into the Collection as l
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
 heronite-launch = { path = "../launch" }
-heronite-net = { path = "../net" }
 heronite-emulation = { path = "../emulation" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
@@ -17,6 +16,7 @@ serde-saphyr = { version = "1.3", default-features = false, features = ["deseria
 anyhow = "1"
 log = "0.4"
 shlex = "1"
+ureq = "3"
 md-5 = "0.10"
 sha1_smol = "1"
 sha2 = "0.10"

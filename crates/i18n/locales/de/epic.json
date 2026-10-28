@@ -290,7 +290,6 @@
   "pkexec is not installed": "pkexec ist nicht installiert",
   "proton wine runner download compatibility": "proton wine runner herunterladen download kompatibilität compatibility",
   "proton wine runner update list": "proton wine runner aktualisieren liste versionen update",
-  "the downloaded file is not a Windows installer": "Die heruntergeladene Datei ist kein Windows-Installer",
   "upgrade patch queue": "upgrade patch warteschlange aktualisieren update queue",
   "{count} installed · {size}": "Installiert: {count} · {size}",
   "{count} more - type to narrow the list": "{count} weitere - tippe, um die Liste einzugrenzen",
