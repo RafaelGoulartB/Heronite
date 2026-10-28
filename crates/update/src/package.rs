@@ -97,7 +97,8 @@ const ROOT_TMP: &str = "/var/tmp";
 /// private directory, then the package manager and its options. The copy
 /// stays unreadable to others until it is checked (the path may have been
 /// swapped for a link to a file only root reads), and readable after it, so
-/// apt's sandbox user can open it.
+/// apt's sandbox user can open it. The package manager runs with the usual
+/// root umask, so the files it writes itself stay readable.
 const ROOT_SCRIPT: &str = r#"set -eu
 umask 077
 file=$1 hash=$2 base=$3
@@ -113,6 +114,7 @@ if [ "${sum%% *}" != "$hash" ]; then
     exit 71
 fi
 chmod 0644 "$dir/$name"
+umask 022
 "$@" "$dir/$name"
 "#;
 
