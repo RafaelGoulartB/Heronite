@@ -29,7 +29,10 @@ opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = true
-panic = "abort"
+# Unwind, not abort: the image loader catches a decoder's panic on a broken or
+# hostile picture (`heronite_images::loader`), which abort would turn into the
+# whole launcher closing.
+panic = "unwind"
 
 # Code that is cold for a launcher (D-Bus, codecs we never decode, TLS,
 # SVG icons rasterised once, markdown) is optimised for size. Rendering,
