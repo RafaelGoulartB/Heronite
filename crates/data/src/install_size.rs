@@ -5,7 +5,7 @@
 //! stopped, and their result is cached (`install-sizes.json` in the cache
 //! folder) so a game is not walked every time it gets the focus.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -71,20 +71,35 @@ pub fn rom_bytes(roms: &[PathBuf]) -> u64 {
     files.iter().filter_map(|f| fs::metadata(f).ok()).filter(|m| m.is_file()).map(|m| m.len()).sum()
 }
 
+/// Playlists inside playlists are followed this deep.
+const MAX_PLAYLIST_DEPTH: usize = 8;
+
 /// The files a disc sheet or playlist names, next to it.
 fn referenced_files(rom: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    collect_referenced(rom, 0, &mut HashSet::new(), &mut out);
+    out
+}
+
+/// [`referenced_files`] into `out`. A sheet is read once (`visited`, by its
+/// real path when it has one) and playlists nest at most
+/// [`MAX_PLAYLIST_DEPTH`] deep, so a playlist that names itself, directly or
+/// through another, ends instead of recursing forever.
+fn collect_referenced(rom: &Path, depth: usize, visited: &mut HashSet<PathBuf>, out: &mut Vec<PathBuf>) {
+    if depth > MAX_PLAYLIST_DEPTH || !visited.insert(fs::canonicalize(rom).unwrap_or_else(|_| rom.to_path_buf())) {
+        return;
+    }
     let ext = rom.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
     if !matches!(ext.as_str(), "cue" | "gdi" | "m3u") {
-        return Vec::new();
+        return;
     }
-    let Some(dir) = rom.parent() else { return Vec::new() };
+    let Some(dir) = rom.parent() else { return };
     // Sheets are small text; a big file with this extension is not one.
     if fs::metadata(rom).map(|m| m.len() > 1 << 20).unwrap_or(true) {
-        return Vec::new();
+        return;
     }
-    let Ok(bytes) = fs::read(rom) else { return Vec::new() };
+    let Ok(bytes) = fs::read(rom) else { return };
     let text = String::from_utf8_lossy(&bytes);
-    let mut out = Vec::new();
     for line in text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
         let name = match ext.as_str() {
             // FILE "Track 01.bin" BINARY
@@ -97,11 +112,10 @@ fn referenced_files(rom: &Path) -> Vec<PathBuf> {
         let path = dir.join(name);
         // A playlist names sheets: count their tracks too.
         if ext == "m3u" {
-            out.extend(referenced_files(&path));
+            collect_referenced(&path, depth + 1, visited, out);
         }
         out.push(path);
     }
-    out
 }
 
 fn quoted_or_first(text: &str) -> Option<&str> {
@@ -193,6 +207,20 @@ impl SizeCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playlists_that_name_each_other_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let at = |name: &str| dir.path().join(name);
+        fs::write(at("a.m3u"), "b.m3u\ndisc.bin\n").unwrap();
+        fs::write(at("b.m3u"), "a.m3u\n").unwrap();
+        fs::write(at("self.m3u"), "self.m3u\n./self.m3u\ndisc.bin\n").unwrap();
+        fs::write(at("disc.bin"), [0u8; 100]).unwrap();
+        let len = |name: &str| fs::metadata(at(name)).unwrap().len();
+        // Each file once: the disc and the playlists themselves.
+        assert_eq!(rom_bytes(&[at("a.m3u")]), len("a.m3u") + len("b.m3u") + 100);
+        assert_eq!(rom_bytes(&[at("self.m3u")]), len("self.m3u") + 100);
+    }
 
     #[test]
     fn sizes_in_store_shapes() {
