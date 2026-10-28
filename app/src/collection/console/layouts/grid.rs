@@ -161,6 +161,18 @@ impl Nav {
     }
 }
 
+/// The rows (of `rows`) that hold tiles, in order: those in sight (`seen`,
+/// plus the one before) and those around the focused row.
+fn live_rows(seen: &std::ops::RangeInclusive<usize>, focus: usize, rows: usize) -> Vec<usize> {
+    let last = rows.saturating_sub(1);
+    let near = seen.start().saturating_sub(1).min(rows)..=(*seen.end()).min(last);
+    let around = focus.saturating_sub(1).min(rows)..=(focus + 1).min(last);
+    let mut live: Vec<usize> = near.chain(around).filter(|r| *r < rows).collect();
+    live.sort_unstable();
+    live.dedup();
+    live
+}
+
 /// Width of the rail of letters on the right edge, design px.
 const RAIL: f32 = 30.;
 
@@ -368,7 +380,8 @@ impl CollectionView {
     }
 
     /// The scrolling rows of covers; only those on screen (and around the
-    /// focus) hold tiles, the others are empty boxes of the same height.
+    /// focus) hold tiles, the others are one empty box per stretch of rows,
+    /// of their height.
     fn grid_scroller(&mut self, tab: usize, keys: &[SharedString], cols: usize, grid_focus: bool, window: &Window) -> Stateful<Div> {
         let (tw, th) = self.console_tile_size();
         let line_h = th + GAP + label_room();
@@ -379,16 +392,22 @@ impl CollectionView {
         let mut grid =
             div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
         let seen = super::in_sight(scroll.offset().y, line_h, window.viewport_size().height);
-        for (r, chunk) in keys.chunks(cols).enumerate() {
-            let near = seen.start().saturating_sub(1) <= r && r <= *seen.end();
+        let rows = keys.len().div_ceil(cols);
+        let mut next = 0;
+        for r in live_rows(&seen, index / cols, rows) {
+            if r > next {
+                grid = grid.child(div().flex_none().h(u(line_h * (r - next) as f32)));
+            }
             let visible = seen.contains(&r) || r.abs_diff(index / cols) <= 1;
             let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
-            if near || r.abs_diff(index / cols) <= 1 {
-                for (c, key) in chunk.iter().enumerate() {
-                    line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
-                }
+            for (c, key) in keys[r * cols..].iter().take(cols).enumerate() {
+                line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
             }
             grid = grid.child(line);
+            next = r + 1;
+        }
+        if rows > next {
+            grid = grid.child(div().flex_none().h(u(line_h * (rows - next) as f32)));
         }
         grid.child(glide.driver())
     }
@@ -571,6 +590,21 @@ mod tests {
     use super::*;
     // `gpui_kit::*` above brings gpui's own `test` macro.
     use core::prelude::v1::test;
+
+    #[test]
+    fn rows_with_tiles_are_those_in_sight_and_around_the_focus() {
+        // In sight 4..=6 (and the row before), focus on 5.
+        assert_eq!(live_rows(&(4..=6), 5, 100), vec![3, 4, 5, 6]);
+        // The focus away from the view: two stretches.
+        assert_eq!(live_rows(&(4..=6), 20, 100), vec![3, 4, 5, 6, 19, 20, 21]);
+        // Overlapping stretches are not repeated.
+        assert_eq!(live_rows(&(4..=6), 8, 100), vec![3, 4, 5, 6, 7, 8, 9]);
+        // Clamped to the rows there are.
+        assert_eq!(live_rows(&(0..=30), 1, 4), vec![0, 1, 2, 3]);
+        assert_eq!(live_rows(&(50..=60), 0, 4), vec![0, 1]);
+        assert_eq!(live_rows(&(50..=60), 3, 4), vec![2, 3]);
+        assert!(live_rows(&(0..=3), 0, 0).is_empty());
+    }
 
     #[test]
     fn letters_ignore_accents_and_group_symbols() {
