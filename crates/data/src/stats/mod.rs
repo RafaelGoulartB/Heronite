@@ -7,7 +7,8 @@
 //! Sessions shorter than [`MIN_SESSION_SECS`] are launches that crashed or
 //! were closed at once; they are left out. A session counts on the hours it
 //! covered (`startedAt` + `elapsedSeconds`), so one that runs past midnight
-//! adds to both days.
+//! adds to both days. A session counts at most [`MAX_SESSION_SECS`]: a longer
+//! one is a typo or a damaged file, and cutting it into hours would never end.
 
 mod album;
 mod backlog;
@@ -32,6 +33,8 @@ pub use prefs::StatsPrefs;
 
 /// Shorter sessions are failed launches, not play.
 pub const MIN_SESSION_SECS: f64 = 120.;
+/// A session is counted for at most four weeks (a game left running).
+pub const MAX_SESSION_SECS: f64 = 28. * 24. * 3600.;
 /// Games with their own colour in the charts; the rest are "Other".
 pub const TOP_N: usize = 6;
 
@@ -278,6 +281,7 @@ pub fn history_in<'a, Tz: TimeZone>(games: impl IntoIterator<Item = GameInput<'a
             if !secs.is_finite() || secs < MIN_SESSION_SECS {
                 continue;
             }
+            let secs = secs.min(MAX_SESSION_SECS);
             let Some(start) = parse_local(&s.started_at, tz) else { continue };
             first = Some(first.map_or(start.date(), |f| f.min(start.date())));
             h.sessions.push(Played { game, start, secs });
@@ -288,7 +292,11 @@ pub fn history_in<'a, Tz: TimeZone>(games: impl IntoIterator<Item = GameInput<'a
                 let take = left.min(3600. - into_hour);
                 h.pieces.push(Piece { game: game as u32, at, secs: take as f32 });
                 left -= take;
-                at = at.date().and_hms_opt(at.hour(), 0, 0).expect("hour") + Duration::hours(1);
+                // `None` past the last date chrono has: the session ends there.
+                let Some(next) = at.date().and_hms_opt(at.hour(), 0, 0).and_then(|h| h.checked_add_signed(Duration::hours(1))) else {
+                    break;
+                };
+                at = next;
             }
         }
         h.lifetime_secs.push(input.lifetime_minutes as f64 * 60.);
@@ -659,6 +667,19 @@ mod tests {
 
     fn utc() -> FixedOffset {
         FixedOffset::east_opt(0).unwrap()
+    }
+
+    #[test]
+    fn an_absurd_session_is_cut_to_the_longest_one_counted() {
+        // 1e9 hours: cutting it into hours would never finish.
+        let a = [s("2026-03-10T20:00:00Z", 3.6e12), s("2026-03-01T20:00:00Z", 3600.), s("9999-12-31T22:00:00Z", 86400.)];
+        let h = history_in([GameInput { sessions: &a, lifetime_minutes: 0, first_played: None }], &utc());
+        assert_eq!(h.sessions.len(), 3);
+        let longest = h.sessions.iter().map(|x| x.secs).fold(0., f64::max);
+        assert_eq!(longest, MAX_SESSION_SECS);
+        assert_eq!(h.recorded[0], MAX_SESSION_SECS + 3600. + 86400.);
+        let pieces: f64 = h.pieces.iter().filter(|p| p.at.date().year() < 9999).map(|p| p.secs as f64).sum();
+        assert_eq!(pieces, MAX_SESSION_SECS + 3600.);
     }
 
     #[test]
