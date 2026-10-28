@@ -79,8 +79,12 @@ impl Target {
     /// Removes what an interrupted download left (a quit, a crash).
     pub fn sweep_staging(&self) {
         let staging = self.staging();
-        if fs::remove_file(&staging).is_ok() {
-            log::info!("removed the unfinished update {}", staging.display());
+        let name = staging.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let part = staging.with_file_name(format!("{name}.part"));
+        for file in [&staging, &part] {
+            if fs::remove_file(file).is_ok() {
+                log::info!("removed the unfinished update {}", file.display());
+            }
         }
     }
 }
