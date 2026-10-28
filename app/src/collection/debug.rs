@@ -19,6 +19,10 @@ fn debug_flyout() -> Flyout {
         Flyout::Categories
     } else if on("HERONITE_DEBUG_MENU_SAVES") {
         Flyout::Saves
+    } else if on("HERONITE_DEBUG_MENU_SHORTCUTS") {
+        Flyout::Shortcuts
+    } else if on("HERONITE_DEBUG_MENU_HELP") {
+        Flyout::Help
     } else {
         Flyout::Status
     }
