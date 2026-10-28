@@ -272,13 +272,46 @@ impl WineManagerPage {
                 .child(header_cell(tr!("Size")).w(px(260.)).flex_none())
                 .child(header_cell("").w(px(230.)).flex_none()),
         );
-        for r in &rows {
-            list = list.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(self.render_row(r, cx));
+        let recommended = Self::recommended(&rows);
+        let (top, other) = self.split_rows(rows);
+        let separator = || div().h(px(1.)).w_full().bg(theme::row_separator());
+        for r in &top {
+            let rec = recommended.as_deref() == Some(r.version.as_str()) && self.query.is_empty();
+            list = list.child(separator()).child(self.render_row(r, rec, cx));
+        }
+        if other.is_empty() {
+            return list;
+        }
+        // The rest folds under one row, so the choice starts from the few that matter.
+        let open = self.show_other;
+        list = list.child(separator()).child(
+            div()
+                .id("wine-other-toggle")
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .min_h(px(46.))
+                .text_size(px(13.))
+                .text_color(theme::text_muted())
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::text_primary()))
+                .child(icon(if open { Icon::FaChevronUp } else { Icon::FaChevronDown }, px(12.), theme::text_muted()))
+                .child(if open { tr!("Hide other versions").to_string() } else { tr!("Other versions ({n})", n = other.len()).to_string() })
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.show_other = !this.show_other;
+                    cx.notify();
+                })),
+        );
+        if open {
+            for r in &other {
+                list = list.child(separator()).child(self.render_row(r, false, cx));
+            }
         }
         list
     }
 
-    fn render_row(&self, r: &WineVersionInfo, cx: &mut Context<Self>) -> Stateful<Div> {
+    /// One build; `recommended` adds its pill and what the build is.
+    fn render_row(&self, r: &WineVersionInfo, recommended: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let job = self.job(&r.version);
         let fraction = job_fraction(job.as_ref());
         let size_color = if fraction.is_some() { theme::accent() } else { theme::text_muted() };
@@ -293,17 +326,18 @@ impl WineManagerPage {
                     .flex()
                     .items_center()
                     .min_h(px(52.))
-                    .child(version_cell(r))
+                    .child(version_cell(r, recommended.then(|| self.recommended_note(r))))
                     .child(div().w(px(110.)).flex_none().text_size(px(13.)).text_color(theme::text_dim()).child(r.date.clone()))
                     .child(div().w(px(260.)).flex_none().text_size(px(13.)).text_color(size_color).child(size_text(job.as_ref(), r)))
-                    .child(self.render_row_actions(r, job.as_ref(), cx)),
+                    .child(self.render_row_actions(r, job.as_ref(), recommended, cx)),
             )
             .children(fraction.map(|p| div().pb(px(10.)).child(progress_bar(Some(p), 4., theme::accent()))))
     }
 
     /// Buttons at the end of a row, by state: removal confirmation, running
-    /// job (cancel), installed (open folder, update, remove) or available (install).
-    fn render_row_actions(&self, r: &WineVersionInfo, job: Option<&Job>, cx: &mut Context<Self>) -> Div {
+    /// job (cancel), installed (open folder, update, remove) or available
+    /// (install: the main button for the recommended build).
+    fn render_row_actions(&self, r: &WineVersionInfo, job: Option<&Job>, recommended: bool, cx: &mut Context<Self>) -> Div {
         let confirming = self.confirm_remove.as_deref() == Some(r.version.as_str());
         let key = r.version.clone();
         let mut actions = div().flex().items_center().justify_end().gap(px(6.)).w(px(230.)).flex_none();
@@ -353,14 +387,24 @@ impl WineManagerPage {
             })));
         } else {
             let info = r.clone();
-            actions = actions.child(button_sm(row_id("install", r), ButtonKind::Glass, tr!("Install")).on_click(cx.listener(
-                move |this, _, _, cx| {
-                    this.manager.start_install(info.clone());
-                    cx.notify();
-                },
-            )));
+            let kind = if recommended { ButtonKind::Primary } else { ButtonKind::Glass };
+            actions = actions.child(button_sm(row_id("install", r), kind, tr!("Install")).on_click(cx.listener(move |this, _, _, cx| {
+                this.manager.start_install(info.clone());
+                cx.notify();
+            })));
         }
         actions
+    }
+}
+
+impl WineManagerPage {
+    /// Under the recommended build: why it is the one to pick.
+    fn recommended_note(&self, r: &WineVersionInfo) -> &'static str {
+        match (r.version.ends_with("-latest"), self.auto_update_latest) {
+            (true, true) => tr!("Always the newest release. Once installed, it updates by itself."),
+            (true, false) => tr!("Always the newest release."),
+            _ => tr!("The newest release."),
+        }
     }
 }
 
@@ -368,14 +412,14 @@ fn row_id(part: &str, r: &WineVersionInfo) -> SharedString {
     SharedString::from(format!("wine-{part}-{}", r.version))
 }
 
-/// Version name (opens the release notes) with its "Installed" / "Update available" pill.
-fn version_cell(r: &WineVersionInfo) -> Div {
+/// Version name (opens the release notes) with its "Recommended",
+/// "Installed" / "Update available" pills and, for the recommended build, a
+/// line saying why.
+fn version_cell(r: &WineVersionInfo, recommended: Option<&'static str>) -> Div {
     let installed = r.installed();
     let notes = r.release_notes_link.clone();
-    div()
+    let line = div()
         .flex()
-        .flex_1()
-        .min_w(px(180.))
         .items_center()
         .gap(px(10.))
         .child(
@@ -389,8 +433,18 @@ fn version_cell(r: &WineVersionInfo) -> Div {
                 .child(r.version.clone())
                 .when(!notes.is_empty(), |d| d.on_click(move |_, _, _| open_path(&notes))),
         )
+        .when(recommended.is_some(), |d| d.child(status_pill(tr!("Recommended"), theme::accent())))
         .when(installed && !r.has_update(), |d| d.child(status_pill(tr!("Installed"), theme::success())))
-        .when(r.has_update(), |d| d.child(status_pill(tr!("Update available"), rgb(0xf2c76e))))
+        .when(r.has_update(), |d| d.child(status_pill(tr!("Update available"), rgb(0xf2c76e))));
+    div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_w(px(180.))
+        .py(px(8.))
+        .gap(px(2.))
+        .child(line)
+        .children(recommended.map(|note| div().text_size(px(12.)).text_color(theme::text_dim()).child(note)))
 }
 
 /// Full-width card with a centred message (loading, empty, no match).

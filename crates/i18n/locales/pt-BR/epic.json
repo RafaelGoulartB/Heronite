@@ -381,5 +381,10 @@
   "Unpacking {version}…": "Descompactando {version}…",
   "{version} is installed: your Windows games will run with it.": "{version} está instalado: seus jogos de Windows vão rodar com ele.",
   "Keep the -latest builds up to date": "Manter os builds -latest atualizados",
-  "A -latest build you installed downloads its new release by itself, in the background and never while a game runs. Looked for every 6 hours, from the release feed, so GitHub is only asked when something came out.": "Um build -latest instalado baixa sozinho a nova versão, em segundo plano e nunca enquanto um jogo está aberto. A busca acontece a cada 6 horas pelo feed de releases, então o GitHub só é consultado quando sai algo novo."
+  "A -latest build you installed downloads its new release by itself, in the background and never while a game runs. Looked for every 6 hours, from the release feed, so GitHub is only asked when something came out.": "Um build -latest instalado baixa sozinho a nova versão, em segundo plano e nunca enquanto um jogo está aberto. A busca acontece a cada 6 horas pelo feed de releases, então o GitHub só é consultado quando sai algo novo.",
+  "Always the newest release.": "Sempre a versão mais nova.",
+  "Always the newest release. Once installed, it updates by itself.": "Sempre a versão mais nova. Depois de instalada, se atualiza sozinha.",
+  "Hide other versions": "Ocultar outras versões",
+  "Other versions ({n})": "Outras versões ({n})",
+  "The newest release.": "A versão mais nova."
 }
