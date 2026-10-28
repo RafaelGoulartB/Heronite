@@ -84,6 +84,13 @@ pub struct Prep<'a> {
     pub notify: &'a dyn Fn(Notice),
 }
 
+/// The longest a cloud save sync (`legendary sync-saves`, `gogdl save-sync`)
+/// may run before it is stopped. Saves are small, so a normal sync takes
+/// seconds; a tool stuck on a dead connection would otherwise hold the launch
+/// (the step is uncancellable) or the end of the session forever. Generous
+/// enough for a big save on a slow link.
+pub const SYNC_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
 /// How long an installer stopped by a cancel or a timeout gets to exit
 /// before it is killed.
 const STOP_GRACE: Duration = Duration::from_secs(2);

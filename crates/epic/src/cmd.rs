@@ -5,8 +5,9 @@
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
@@ -97,21 +98,41 @@ impl Legendary {
         cancel: &Cancel,
         on_line: impl FnMut(&str),
     ) -> Result<Output> {
+        self.run_streaming_for(args, env, cancel, None, on_line)
+    }
+
+    /// [`run_streaming`](Self::run_streaming) that gives up with an error once
+    /// `timeout` has passed (`None`: waits as long as it takes).
+    pub fn run_streaming_for<S: AsRef<str>>(
+        &self,
+        args: &[S],
+        env: &[(String, String)],
+        cancel: &Cancel,
+        timeout: Option<Duration>,
+        on_line: impl FnMut(&str),
+    ) -> Result<Output> {
         let args: Vec<String> = args.iter().map(|a| a.as_ref().to_string()).collect();
         log::info!("legendary {}", redact(&args).join(" "));
         let mut cmd = self.command(&args, env);
         // SIGTERM only legendary (it saves its resume data); the workers it
         // left behind are killed with the group afterwards.
         let mut on_line = on_line;
-        let out = Run::new()
-            .cancel(cancel)
-            .term_main_only()
-            .line_capture()
-            .on_line(&mut on_line)
-            .run(&mut cmd)
-            .with_context(|| format!("starting {}", self.bin.display()))?;
+        let mut run = Run::new().cancel(cancel).term_main_only().line_capture().on_line(&mut on_line);
+        if let Some(timeout) = timeout {
+            run = run.timeout(timeout);
+        }
+        let out = run.run(&mut cmd).with_context(|| format!("starting {}", self.bin.display()))?;
+        if out.timed_out {
+            bail!(timed_out_message("legendary", timeout));
+        }
         Ok(Output { stdout: out.stdout_text(), stderr: out.stderr_text(), code: out.code, aborted: out.aborted })
     }
+}
+
+/// Why a run stopped by its timeout failed (also for gogdl).
+pub fn timed_out_message(tool: &str, timeout: Option<Duration>) -> String {
+    let minutes = timeout.map_or(0, |t| t.as_secs().div_ceil(60));
+    tr!("{tool} took longer than {minutes} min and was stopped", tool = tool, minutes = minutes)
 }
 
 /// Arguments for the log with the authorization code hidden.
