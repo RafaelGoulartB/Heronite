@@ -9,7 +9,6 @@ use super::{LaunchEvent, LaunchRequest};
 use crate::log_writer::GameLog;
 use crate::playtime_watch::{wait_for_steam_session, SteamWaitOutcome};
 use crate::prepare::Notice;
-use crate::procs::processes_matching;
 use crate::record;
 use crate::settings::GlobalSettings;
 use crate::steam::KEY_CLOSE_AFTER_GAME;
@@ -81,7 +80,9 @@ pub(super) fn close_steam(shared: &Shared, title: &str) {
     if !GlobalSettings::load(&shared.paths).flag(KEY_CLOSE_AFTER_GAME) || !shared.steam.client_running(&*shared.procs) {
         return;
     }
-    if shared.sessions.lock().unwrap().values().any(|c| c.steam) || !processes_matching("reaper", 0).is_empty() {
+    // Through `shared.procs`, the process table the rest of the launcher reads.
+    let reaper = || shared.procs.parents().into_keys().any(|pid| shared.procs.comm(pid).as_deref() == Some("reaper"));
+    if shared.sessions.lock().unwrap().values().any(|c| c.steam) || reaper() {
         log::info!("Steam stays open after {title}: a game still uses it");
         return;
     }
