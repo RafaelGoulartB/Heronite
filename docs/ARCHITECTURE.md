@@ -348,7 +348,7 @@ device when the last window closes (the app lives on in the tray); see its
   because it is downloaded or rebuilt again (Wine builds, image caches, store caches, logs, temp files);
   unknown files are in. `snapshot` writes `heronite-YYYY-MM-DD_HHMMSS/{data,config,manifest.json}` under a
   `.partial` name, hard-linking the files unchanged since the previous backup (copies where links fail), with
-  the folder `0700`; `prune` keeps the newest N, and past that the newest backup of each set of parts and the backups made
+  the folder `0700`; `prune` keeps the newest N, and past that the newest backup of each set of parts no newer backup covers and the backups made
   before a restore (30 days; the newest one at any age) (a folder without a manifest is not a backup: never
   listed, restored or removed). `run` is the schedule and "Back up now" (status in
   `settings.json` `backup`). `restore::prepare` checks every file against the manifest's SHA-256, backs up

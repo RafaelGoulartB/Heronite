@@ -301,8 +301,9 @@ pub fn prune(folder: &Path, keep: u32) -> Vec<PathBuf> {
 /// - every backup made before a restore that is younger than
 ///   [`BEFORE_RESTORE_KEPT`], and the newest one of them at any age (the
 ///   restore's undo), so a run of scheduled backups never pushes it out;
-/// - the newest backup of each set of parts, so a partial backup (Collection
-///   only) never pushes out the last full one.
+/// - the newest backup of each set of parts that no newer backup covers, so a
+///   partial backup (Collection only) never pushes out the last full one,
+///   while an old partial one goes once a newer backup has all its parts.
 fn to_remove(infos: Vec<Info>, keep: u32, now: DateTime<Utc>) -> Vec<Info> {
     if keep == 0 {
         return Vec::new();
@@ -314,10 +315,8 @@ fn to_remove(infos: Vec<Info>, keep: u32, now: DateTime<Utc>) -> Vec<Info> {
         let mut parts = info.parts.clone();
         parts.sort();
         parts.dedup();
-        let newest_of_set = !seen_sets.contains(&parts);
-        if newest_of_set {
-            seen_sets.push(parts);
-        }
+        let newest_of_set = !seen_sets.iter().any(|newer| parts.iter().all(|p| newer.contains(p)));
+        seen_sets.push(parts);
         let before_restore = info.reason == Reason::BeforeRestore;
         let undo = before_restore && (!seen_before_restore || info.created().is_some_and(|t| now - t < BEFORE_RESTORE_KEPT));
         seen_before_restore |= before_restore;
@@ -564,7 +563,27 @@ pub(crate) mod tests {
             info("art", 7, Reason::Manual, &[Part::Art, Part::Collection], now),
             info("art-old", 8, Reason::Manual, &[Part::Collection, Part::Art], now),
         ];
-        assert_eq!(removed(infos, 2, now), ["c3", "full-old", "art-old"]);
+        // `art` goes too: the newer full backup has its parts.
+        assert_eq!(removed(infos, 2, now), ["c3", "full-old", "art", "art-old"]);
+    }
+
+    #[test]
+    fn an_old_partial_backup_goes_once_a_newer_one_has_all_its_parts() {
+        let now = Utc::now();
+        let infos = vec![
+            info("full-1", 0, Reason::Scheduled, &Part::ALL, now),
+            info("full-2", 1, Reason::Scheduled, &Part::ALL, now),
+            info("art", 400, Reason::Manual, &[Part::Art, Part::Collection], now),
+            info("collection", 500, Reason::Manual, &[Part::Collection], now),
+        ];
+        assert_eq!(removed(infos, 2, now), ["art", "collection"]);
+        // A newer partial backup of other parts covers nothing.
+        let infos = vec![
+            info("logins", 0, Reason::Manual, &[Part::Logins], now),
+            info("settings", 1, Reason::Manual, &[Part::Settings], now),
+            info("collection", 500, Reason::Manual, &[Part::Collection], now),
+        ];
+        assert!(removed(infos, 1, now).is_empty());
     }
 
     #[test]
