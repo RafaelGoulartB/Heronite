@@ -2,7 +2,7 @@
 //! `src/local-library/art.ts`.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{anyhow, bail, Result};
 use heronite_data::json_store;
@@ -48,13 +48,28 @@ fn display_url(paths: &DataPaths, file: &Path) -> String {
     }
 }
 
-fn is_managed(paths: &DataPaths, file: &Path) -> bool {
-    file.starts_with(paths.art_dir())
+/// The file to delete for `file` when it lies in the art folder, else `None`.
+/// `art.json` is a file the user can edit, so its paths are not trusted:
+/// - a `..` anywhere means no (`starts_with` does not resolve it);
+/// - the folder holding the file is resolved through symlinks and must still
+///   be inside the (resolved) art folder, so a linked folder inside it cannot
+///   lead the delete elsewhere. The file itself is not followed: a symlink
+///   there is deleted, never its target.
+fn managed_file(paths: &DataPaths, file: &Path) -> Option<PathBuf> {
+    if file.components().any(|c| matches!(c, Component::ParentDir)) {
+        return None;
+    }
+    let name = file.file_name()?;
+    let root = fs::canonicalize(paths.art_dir()).ok()?;
+    let parent = fs::canonicalize(file.parent()?).ok()?;
+    parent.starts_with(&root).then(|| parent.join(name))
 }
 
 fn remove_managed(paths: &DataPaths, url: Option<&str>) {
     let Some(file) = file_from_url(paths, url) else { return };
-    if !is_managed(paths, &file) || !file.exists() {
+    let Some(file) = managed_file(paths, &file) else { return };
+    // `symlink_metadata`: a dangling link in the art folder goes too.
+    if !fs::symlink_metadata(&file).is_ok_and(|m| !m.is_dir()) {
         return;
     }
     if let Err(e) = fs::remove_file(&file) {
@@ -318,6 +333,57 @@ mod tests {
         assert!(e.to_string().starts_with("Image not found"));
         let e = set_collection_game_art(&paths, "sideload", "a", ArtKind::Cover, "localart://art/zz/none.png").unwrap_err();
         assert!(e.to_string().starts_with("Image not found"));
+    }
+
+    #[test]
+    fn a_file_url_with_dots_is_not_managed() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        let folder = paths.art_dir().join("sideload_a");
+        fs::create_dir_all(&folder).unwrap();
+        let victim = dir.path().join("data").join("victim.txt");
+        fs::write(&victim, "keep").unwrap();
+        let sneaky = format!("file://{}/../../victim.txt", folder.display());
+        remove_managed(&paths, Some(&sneaky));
+        assert!(victim.exists());
+        // The same file by its plain path is outside the art folder too.
+        remove_managed(&paths, Some(&format!("file://{}", victim.display())));
+        assert!(victim.exists());
+
+        let own = folder.join("cover-1.png");
+        fs::write(&own, png()).unwrap();
+        remove_managed(&paths, Some(&format!("file://{}/./cover-1.png", folder.display())));
+        assert!(!own.exists());
+    }
+
+    #[test]
+    fn a_link_out_of_the_art_folder_is_never_followed() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("data"));
+        fs::create_dir_all(paths.art_dir()).unwrap();
+        let outside = dir.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("precious.png"), png()).unwrap();
+
+        // A linked folder inside the art folder: its files are not ours.
+        symlink(&outside, paths.art_dir().join("linked")).unwrap();
+        remove_managed(&paths, Some("localart://art/linked/precious.png"));
+        remove_managed(&paths, Some(&format!("file://{}/linked/precious.png", paths.art_dir().display())));
+        assert!(outside.join("precious.png").exists());
+
+        // A linked file: the link goes, its target stays.
+        let folder = paths.art_dir().join("sideload_a");
+        fs::create_dir_all(&folder).unwrap();
+        symlink(outside.join("precious.png"), folder.join("cover-1.png")).unwrap();
+        remove_managed(&paths, Some("localart://art/sideload_a/cover-1.png"));
+        assert!(fs::symlink_metadata(folder.join("cover-1.png")).is_err());
+        assert!(outside.join("precious.png").exists());
+
+        // Clearing art that points through the linked folder keeps the target.
+        fs::write(paths.art(), r#"{"games":{"sideload:a":{"coverUrl":"localart://art/linked/precious.png"}}}"#).unwrap();
+        clear_collection_game_art(&paths, "sideload", "a", ArtKind::Cover).unwrap();
+        assert!(outside.join("precious.png").exists());
     }
 
     #[test]

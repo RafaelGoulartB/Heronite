@@ -279,20 +279,52 @@ pub fn read_info(path: &Path) -> Option<Info> {
     })
 }
 
-/// Keeps the newest `keep` backups of `folder` (0 = all) and removes the
-/// others; returns what was removed.
+/// A backup made before a restore stays this long (the newest one stays
+/// whatever its age), so the user can still undo the restore.
+const BEFORE_RESTORE_KEPT: chrono::Duration = chrono::Duration::days(30);
+
+/// Keeps the newest `keep` backups of `folder` (0 = all), plus the ones
+/// [`to_remove`] protects, and removes the others; returns what was removed.
 pub fn prune(folder: &Path, keep: u32) -> Vec<PathBuf> {
-    if keep == 0 {
-        return Vec::new();
-    }
     let mut removed = Vec::new();
-    for info in list(folder).into_iter().skip(keep as usize) {
+    for info in to_remove(list(folder), keep, Utc::now()) {
         match fs::remove_dir_all(&info.path) {
             Ok(()) => removed.push(info.path),
             Err(e) => log::warn!("could not remove the old backup {}: {e}", info.path.display()),
         }
     }
     removed
+}
+
+/// The backups [`prune`] removes. `infos` is newest first. Kept: the newest
+/// `keep` (0 = all), and, beyond that limit,
+/// - every backup made before a restore that is younger than
+///   [`BEFORE_RESTORE_KEPT`], and the newest one of them at any age (the
+///   restore's undo), so a run of scheduled backups never pushes it out;
+/// - the newest backup of each set of parts that no newer backup covers, so a
+///   partial backup (Collection only) never pushes out the last full one,
+///   while an old partial one goes once a newer backup has all its parts.
+fn to_remove(infos: Vec<Info>, keep: u32, now: DateTime<Utc>) -> Vec<Info> {
+    if keep == 0 {
+        return Vec::new();
+    }
+    let mut seen_sets: Vec<Vec<Part>> = Vec::new();
+    let mut seen_before_restore = false;
+    let mut out = Vec::new();
+    for (i, info) in infos.into_iter().enumerate() {
+        let mut parts = info.parts.clone();
+        parts.sort();
+        parts.dedup();
+        let newest_of_set = !seen_sets.iter().any(|newer| parts.iter().all(|p| newer.contains(p)));
+        seen_sets.push(parts);
+        let before_restore = info.reason == Reason::BeforeRestore;
+        let undo = before_restore && (!seen_before_restore || info.created().is_some_and(|t| now - t < BEFORE_RESTORE_KEPT));
+        seen_before_restore |= before_restore;
+        if i >= keep as usize && !newest_of_set && !undo {
+            out.push(info);
+        }
+    }
+    out
 }
 
 /// Removes one backup. Refuses a folder that is not a backup.
@@ -401,12 +433,19 @@ pub(crate) mod tests {
         assert_eq!(listed[0].parts, [Part::Collection]);
         assert_eq!(listed[1].reason, Reason::Manual);
 
-        create(&data, &app, &folder, &[Part::Collection], Reason::Scheduled, at(12, 0)).unwrap();
+        let third = create(&data, &app, &folder, &[Part::Collection], Reason::Scheduled, at(12, 0)).unwrap();
+        // The first backup is the last full one: the limit does not remove it.
+        assert!(prune(&folder, 2).is_empty());
+        assert_eq!(list(&folder).len(), 3);
+
+        let full = create(&data, &app, &folder, &Part::ALL, Reason::Scheduled, at(13, 0)).unwrap();
         let removed = prune(&folder, 2);
-        assert_eq!(removed, std::slice::from_ref(&first.path));
+        assert_eq!(removed, [second.path.clone(), first.path.clone()]);
         assert_eq!(list(&folder).len(), 2);
-        // The remaining backups still hold the files the removed one shared.
-        assert_eq!(fs::read_to_string(second.path.join("data/local_library/library.json")).unwrap(), r#"{"games":{"a":{},"b":{}}}"#);
+        // The remaining backups still hold the files the removed ones shared.
+        for kept in [&third.path, &full.path] {
+            assert_eq!(fs::read_to_string(kept.join("data/local_library/library.json")).unwrap(), r#"{"games":{"a":{},"b":{}}}"#);
+        }
         assert!(prune(&folder, 0).is_empty());
     }
 
@@ -453,5 +492,106 @@ pub(crate) mod tests {
         // Linked files count once.
         let naive: u64 = [&made.path, &again.path].iter().flat_map(|p| catalog::walk(p, Side::Data, true)).map(|f| f.size).sum();
         assert_eq!(folder_usage(&folder), naive - made.summary.bytes);
+    }
+
+    fn info(name: &str, days_old: i64, reason: Reason, parts: &[Part], now: DateTime<Utc>) -> Info {
+        Info {
+            path: PathBuf::from(name),
+            created_at: (now - chrono::Duration::days(days_old)).to_rfc3339(),
+            reason,
+            app_version: String::new(),
+            parts: parts.to_vec(),
+            summary: Summary::default(),
+        }
+    }
+
+    fn removed(infos: Vec<Info>, keep: u32, now: DateTime<Utc>) -> Vec<String> {
+        to_remove(infos, keep, now).iter().map(|i| i.path.display().to_string()).collect()
+    }
+
+    #[test]
+    fn the_limit_alone_removes_the_oldest() {
+        let now = Utc::now();
+        let all = Part::ALL;
+        let infos = (0..5).map(|d| info(&format!("b{d}"), d, Reason::Scheduled, &all, now)).collect::<Vec<_>>();
+        assert_eq!(removed(infos.clone(), 3, now), ["b3", "b4"]);
+        assert!(removed(infos.clone(), 5, now).is_empty());
+        assert!(removed(infos, 0, now).is_empty());
+    }
+
+    #[test]
+    fn the_backup_before_a_restore_outlives_the_scheduled_ones() {
+        let now = Utc::now();
+        let all = Part::ALL;
+        // The safety backup is 3 days old; three scheduled ones came after.
+        let infos = vec![
+            info("s1", 0, Reason::Scheduled, &all, now),
+            info("s2", 1, Reason::Scheduled, &all, now),
+            info("s3", 2, Reason::Scheduled, &all, now),
+            info("undo", 3, Reason::BeforeRestore, &all, now),
+            info("s0", 4, Reason::Scheduled, &all, now),
+        ];
+        assert_eq!(removed(infos, 2, now), ["s3", "s0"]);
+    }
+
+    #[test]
+    fn only_the_newest_old_safety_backup_stays_past_thirty_days() {
+        let now = Utc::now();
+        let all = Part::ALL;
+        let infos = vec![
+            info("new", 0, Reason::Scheduled, &all, now),
+            info("young", 29, Reason::BeforeRestore, &all, now),
+            info("old-a", 40, Reason::BeforeRestore, &all, now),
+            info("old-b", 90, Reason::BeforeRestore, &all, now),
+        ];
+        assert_eq!(removed(infos.clone(), 1, now), ["old-a", "old-b"]);
+        // With no young one, the newest old one stays.
+        let infos = infos.into_iter().filter(|i| i.path != Path::new("young")).collect();
+        assert_eq!(removed(infos, 1, now), ["old-b"]);
+    }
+
+    #[test]
+    fn a_partial_backup_never_pushes_out_the_last_full_one() {
+        let now = Utc::now();
+        let infos = vec![
+            info("c1", 0, Reason::Scheduled, &[Part::Collection], now),
+            info("c2", 1, Reason::Scheduled, &[Part::Collection], now),
+            info("c3", 2, Reason::Scheduled, &[Part::Collection], now),
+            info("full-new", 5, Reason::Manual, &Part::ALL, now),
+            info("full-old", 6, Reason::Manual, &Part::ALL, now),
+            // The same set in another order, and a set of its own.
+            info("art", 7, Reason::Manual, &[Part::Art, Part::Collection], now),
+            info("art-old", 8, Reason::Manual, &[Part::Collection, Part::Art], now),
+        ];
+        // `art` goes too: the newer full backup has its parts.
+        assert_eq!(removed(infos, 2, now), ["c3", "full-old", "art", "art-old"]);
+    }
+
+    #[test]
+    fn an_old_partial_backup_goes_once_a_newer_one_has_all_its_parts() {
+        let now = Utc::now();
+        let infos = vec![
+            info("full-1", 0, Reason::Scheduled, &Part::ALL, now),
+            info("full-2", 1, Reason::Scheduled, &Part::ALL, now),
+            info("art", 400, Reason::Manual, &[Part::Art, Part::Collection], now),
+            info("collection", 500, Reason::Manual, &[Part::Collection], now),
+        ];
+        assert_eq!(removed(infos, 2, now), ["art", "collection"]);
+        // A newer partial backup of other parts covers nothing.
+        let infos = vec![
+            info("logins", 0, Reason::Manual, &[Part::Logins], now),
+            info("settings", 1, Reason::Manual, &[Part::Settings], now),
+            info("collection", 500, Reason::Manual, &[Part::Collection], now),
+        ];
+        assert!(removed(infos, 1, now).is_empty());
+    }
+
+    #[test]
+    fn a_date_that_does_not_parse_counts_as_old() {
+        let now = Utc::now();
+        let mut odd = info("odd", 0, Reason::BeforeRestore, &Part::ALL, now);
+        odd.created_at = "yesterday".into();
+        let infos = vec![info("new", 0, Reason::Scheduled, &Part::ALL, now), odd.clone(), Info { path: "odd2".into(), ..odd }];
+        assert_eq!(removed(infos, 1, now), ["odd2"]);
     }
 }

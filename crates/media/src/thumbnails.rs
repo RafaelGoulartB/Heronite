@@ -90,6 +90,25 @@ struct Inner {
     cv: Condvar,
 }
 
+/// Holds one job slot. Dropping it frees the slot and wakes the waiters, also
+/// when the decoder panics: otherwise the path would stay pending and, after
+/// [`MAX_CONCURRENT_JOBS`] panics, no preview would ever be made again.
+struct JobSlot<'a> {
+    inner: &'a Inner,
+    cache: &'a Path,
+}
+
+impl Drop for JobSlot<'_> {
+    fn drop(&mut self) {
+        // A poisoned lock must not turn an unwind into an abort.
+        let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        st.active_jobs -= 1;
+        st.pending.remove(self.cache);
+        st.writing.remove(self.cache);
+        self.inner.cv.notify_all();
+    }
+}
+
 /// Disk cache of 320x180 previews. Cheap to clone (shared state).
 #[derive(Clone)]
 pub struct ThumbnailCache {
@@ -245,6 +264,15 @@ impl ThumbnailCache {
     }
 
     fn ensure(&self, source: &Path) -> Result<(PathBuf, Option<Decoded>), ThumbError> {
+        self.ensure_with(source, render_preview)
+    }
+
+    /// [`ensure`](Self::ensure) with the decoder as a parameter (tests make it panic).
+    fn ensure_with(
+        &self,
+        source: &Path,
+        render: impl FnOnce(&Path) -> Result<Decoded, ThumbError>,
+    ) -> Result<(PathBuf, Option<Decoded>), ThumbError> {
         let inner = &*self.inner;
         let cache = self.cache_path_for(source);
         if self.current(source, &cache) {
@@ -268,6 +296,7 @@ impl ThumbnailCache {
             st.active_jobs += 1;
             st.writing.insert(cache.clone());
         }
+        let slot = JobSlot { inner, cache: &cache };
 
         let result = (|| {
             if generation != inner.generation.load(Ordering::SeqCst) {
@@ -277,7 +306,7 @@ impl ThumbnailCache {
                 return Ok((cache.clone(), None));
             }
             fs::create_dir_all(&inner.root)?;
-            let raster = render_preview(source)?;
+            let raster = render(source)?;
             let jpeg = encode_jpeg(&raster)?;
             let tmp = inner.root.join(format!(".{}.tmp", cache_key(source)));
             fs::write(&tmp, &jpeg)?;
@@ -291,13 +320,7 @@ impl ThumbnailCache {
             Ok((cache.clone(), Some(raster)))
         })();
 
-        {
-            let mut st = inner.state.lock().unwrap();
-            st.active_jobs -= 1;
-            st.pending.remove(&cache);
-            st.writing.remove(&cache);
-            inner.cv.notify_all();
-        }
+        drop(slot);
         if result.is_ok() {
             self.schedule_maintenance();
         }
@@ -460,6 +483,34 @@ mod tests {
     fn write_png(path: &Path, w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 3]) {
         let img = RgbImage::from_fn(w, h, |x, y| Rgb(f(x, y)));
         img.save(path).unwrap();
+    }
+
+    #[test]
+    fn a_decoder_panic_frees_the_job_for_the_next_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("shot.png");
+        write_png(&src, 320, 180, |_, _| [1, 2, 3]);
+        let cache = ThumbnailCache::new(dir.path().join("cache"), 50.0);
+
+        // More panics than job slots: a leaked slot would block the last ones.
+        for _ in 0..=MAX_CONCURRENT_JOBS {
+            let c = cache.clone();
+            let s = src.clone();
+            let crashed = std::thread::spawn(move || c.ensure_with(&s, |_| panic!("decoder crashed"))).join();
+            assert!(crashed.is_err());
+        }
+        {
+            let st = cache.inner.state.lock().unwrap();
+            assert_eq!(st.active_jobs, 0);
+            assert!(st.pending.is_empty() && st.writing.is_empty());
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (c, s) = (cache.clone(), src.clone());
+        std::thread::spawn(move || {
+            let _ = tx.send(c.thumbnail_path(&s).is_ok());
+        });
+        assert_eq!(rx.recv_timeout(Duration::from_secs(20)), Ok(true), "the request after a panic must finish");
     }
 
     #[test]

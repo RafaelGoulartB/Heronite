@@ -335,8 +335,8 @@ fn remove(d: &mut SettingsPage, ids: Vec<String>, cx: &mut Context<SettingsPage>
             .background_spawn(async move {
                 let mut done = Removed::default();
                 let mut errors: Vec<String> = Vec::new();
-                for item in &items {
-                    match heronite_storage::remove(&ctx, item) {
+                for (item, result) in items.iter().zip(heronite_storage::remove_all(&ctx, &items)) {
+                    match result {
                         Ok(r) => {
                             done.deleted += r.deleted;
                             done.trashed += r.trashed;
@@ -442,7 +442,7 @@ fn sweep_effect(s: Sweep) -> &'static str {
         Sweep::Prefixes => tr!("No installed game uses these prefixes. They go to the trash with the saves and settings inside them, and can be restored from there."),
         Sweep::Steam => tr!("Steam keeps these for games no longer installed. Proton prefixes go to the trash, where they can be restored; shader caches are deleted."),
         Sweep::Builds => tr!("No installed game uses these builds. They are uninstalled and can be downloaded again from the Wine Manager."),
-        Sweep::Leftovers => tr!("No game points to these folders any more. They go to the trash, where they can be restored."),
+        Sweep::Leftovers => tr!("These folders look like the install of a game that is gone, and no game points to them. Check the list: they go to the trash, where they can be restored."),
         Sweep::Caches => tr!("Deleted. They are rebuilt by themselves when needed."),
         Sweep::Shaders => tr!("Deleted. Games compile them again as they run, and stutter for a while until they do."),
     }

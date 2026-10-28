@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -34,6 +35,21 @@ fn read_dir_sorted(dir: &str) -> Option<Vec<String>> {
         fs::read_dir(dir).ok()?.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
     names.sort();
     Some(names)
+}
+
+/// Deepest folder level the walk enters (the root is level 0).
+const MAX_DEPTH: usize = 16;
+
+/// Folders already walked, by (device, inode). Symlinked folders are followed
+/// (ROMs often live on another drive), so a link back to a parent, or two
+/// links to one folder, would otherwise list the same files again and again.
+type Seen = HashSet<(u64, u64)>;
+
+/// Whether `directory` is new to the walk and within [`MAX_DEPTH`]; marks it as walked.
+/// A file system that reports no inode numbers (0, some FUSE and network
+/// mounts) cannot tell folders apart: there only the depth limit applies.
+fn enter(directory: &str, depth: usize, seen: &mut Seen) -> bool {
+    depth <= MAX_DEPTH && fs::metadata(directory).is_ok_and(|m| m.ino() == 0 || seen.insert((m.dev(), m.ino())))
 }
 
 /// Whether an imported game was imported with this emulator/profile.
@@ -98,7 +114,10 @@ pub fn read_playlist_files(file_path: &str) -> std::io::Result<Vec<String>> {
     })
 }
 
-fn walk_files(directory: &str, scan_subfolders: bool, acc: &mut Vec<String>, depth: usize) {
+fn walk_files(directory: &str, scan_subfolders: bool, acc: &mut Vec<String>, depth: usize, seen: &mut Seen) {
+    if !enter(directory, depth, seen) {
+        return;
+    }
     let Some(entries) = read_dir_sorted(directory) else {
         return;
     };
@@ -117,7 +136,7 @@ fn walk_files(directory: &str, scan_subfolders: bool, acc: &mut Vec<String>, dep
             if skip_dir(&name) {
                 continue;
             }
-            walk_files(&full, scan_subfolders, acc, depth + 1);
+            walk_files(&full, scan_subfolders, acc, depth + 1, seen);
             continue;
         }
         if meta.is_file() {
@@ -126,7 +145,17 @@ fn walk_files(directory: &str, scan_subfolders: bool, acc: &mut Vec<String>, dep
     }
 }
 
-fn walk_folders_with_indicator(directory: &str, indicator: &str, scan_subfolders: bool, acc: &mut Vec<String>, depth: usize) {
+fn walk_folders_with_indicator(
+    directory: &str,
+    indicator: &str,
+    scan_subfolders: bool,
+    acc: &mut Vec<String>,
+    depth: usize,
+    seen: &mut Seen,
+) {
+    if !enter(directory, depth, seen) {
+        return;
+    }
     let Some(entries) = read_dir_sorted(directory) else {
         return;
     };
@@ -144,7 +173,7 @@ fn walk_folders_with_indicator(directory: &str, indicator: &str, scan_subfolders
         }
         let full = join(directory, name);
         if fs::metadata(&full).map(|m| m.is_dir()).unwrap_or(false) {
-            walk_folders_with_indicator(&full, indicator, scan_subfolders, acc, depth + 1);
+            walk_folders_with_indicator(&full, indicator, scan_subfolders, acc, depth + 1, seen);
         }
     }
 }
@@ -203,9 +232,10 @@ pub fn scan_rom_directory(
         .collect();
 
     let mut files = Vec::new();
+    let mut seen = Seen::new();
     match template.folder_indicator.as_deref() {
-        Some(ind) => walk_folders_with_indicator(&directory, ind, options.scan_subfolders, &mut files, 0),
-        None => walk_files(&directory, options.scan_subfolders, &mut files, 0),
+        Some(ind) => walk_folders_with_indicator(&directory, ind, options.scan_subfolders, &mut files, 0, &mut seen),
+        None => walk_files(&directory, options.scan_subfolders, &mut files, 0, &mut seen),
     }
 
     let mut skip_children: HashSet<String> = HashSet::new();
@@ -357,6 +387,83 @@ mod tests {
             &HashSet::new(),
         );
         assert_eq!(titles(&flat), ["Mario", "Zelda"]);
+    }
+
+    fn scan_iso(root: &Path) -> RomScanPreview {
+        let (e, p) = emu("custom", "custom", "{ImagePath}", &["iso"]);
+        scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new())
+    }
+
+    #[test]
+    fn a_link_to_a_parent_folder_is_not_walked_again() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("Sub")).unwrap();
+        write(root.join("A.iso"), "x").unwrap();
+        write(root.join("Sub/B.iso"), "x").unwrap();
+        std::os::unix::fs::symlink("..", root.join("loop")).unwrap();
+        std::os::unix::fs::symlink("..", root.join("Sub/up")).unwrap();
+        let r = scan_iso(root);
+        assert_eq!(titles(&r), ["A", "B"]);
+        assert_eq!(r.games.iter().map(|g| g.roms.len()).sum::<usize>(), 2);
+    }
+
+    #[test]
+    fn links_pointing_at_each_other_are_walked_once() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("a")).unwrap();
+        create_dir_all(root.join("b")).unwrap();
+        write(root.join("a/One.iso"), "x").unwrap();
+        write(root.join("b/Two.iso"), "x").unwrap();
+        std::os::unix::fs::symlink("../b", root.join("a/to_b")).unwrap();
+        std::os::unix::fs::symlink("../a", root.join("b/to_a")).unwrap();
+        let r = scan_iso(root);
+        assert_eq!(titles(&r), ["One", "Two"]);
+        assert_eq!(r.games.iter().map(|g| g.roms.len()).sum::<usize>(), 2);
+    }
+
+    #[test]
+    fn a_linked_rom_folder_outside_the_root_is_still_scanned() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("roms");
+        let other = d.path().join("other-drive/Games");
+        create_dir_all(&root).unwrap();
+        create_dir_all(&other).unwrap();
+        write(root.join("Local.iso"), "x").unwrap();
+        write(other.join("Far.iso"), "x").unwrap();
+        std::os::unix::fs::symlink(&other, root.join("linked")).unwrap();
+        // A second link to the same folder adds nothing.
+        std::os::unix::fs::symlink(&other, root.join("linked-again")).unwrap();
+        assert_eq!(titles(&scan_iso(&root)), ["Far", "Local"]);
+    }
+
+    #[test]
+    fn folder_indicator_walk_survives_links_back_to_the_root() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("Game")).unwrap();
+        write(root.join("Game/eboot.bin"), "x").unwrap();
+        std::os::unix::fs::symlink("..", root.join("Game/back")).unwrap();
+        std::os::unix::fs::symlink(".", root.join("self")).unwrap();
+        let mut found = Vec::new();
+        walk_folders_with_indicator(root.to_str().unwrap(), "eboot.bin", true, &mut found, 0, &mut Seen::new());
+        assert_eq!(found, [join(&join(root.to_str().unwrap(), "Game"), "eboot.bin")]);
+    }
+
+    #[test]
+    fn the_walk_stops_at_the_depth_cap() {
+        let d = tempfile::tempdir().unwrap();
+        let mut dir = d.path().to_path_buf();
+        for level in 0..=MAX_DEPTH + 2 {
+            write(dir.join(format!("L{level}.iso")), "x").unwrap();
+            dir = dir.join("d");
+            create_dir_all(&dir).unwrap();
+        }
+        let r = scan_iso(d.path());
+        assert_eq!(r.games.len(), MAX_DEPTH + 1);
+        assert!(titles(&r).contains(&format!("L{MAX_DEPTH}")));
+        assert!(!titles(&r).contains(&format!("L{}", MAX_DEPTH + 1)));
     }
 
     #[test]

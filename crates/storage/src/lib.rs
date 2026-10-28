@@ -1,13 +1,13 @@
 //! What the games take on disk, for Settings → Storage: the installed games,
 //! the Wine prefixes, the Proton / Wine builds and runtimes, what Steam keeps
 //! for games that are no longer installed (Proton prefixes, shader caches),
-//! the caches that rebuild themselves, and game folders nothing points to any
-//! more. And removing what is not needed.
+//! the caches that rebuild themselves, and game folders left behind that
+//! nothing points to any more. And removing what is not needed.
 //!
 //! [`inventory`] lists everything quickly (the sizes stores and manifests give
 //! are filled in, nothing is walked); [`measure`] walks one item whose size is
-//! unknown; [`remove`] cleans one item. All blocking: the app calls them off
-//! the UI thread, only while the Storage section is on screen.
+//! unknown; [`remove`] and [`remove_all`] clean items. All blocking: the app
+//! calls them off the UI thread, only while the Storage section is on screen.
 
 mod builds;
 mod caches;
@@ -27,7 +27,7 @@ use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::SystemProbe;
 
-pub use clean::{remove, Removed};
+pub use clean::{remove, remove_all, Removed};
 pub use disks::Disk;
 
 /// Where to look.
@@ -63,7 +63,7 @@ pub enum Group {
     /// Proton prefixes and shader caches Steam keeps for games no longer installed.
     Steam,
     Caches,
-    /// Game folders nothing points to any more.
+    /// Folders that look like the install of a game that is gone.
     Leftovers,
 }
 
@@ -128,7 +128,7 @@ pub enum Kind {
         app_id: String,
     },
     Cache(CacheKind),
-    /// A folder in a games folder that no game uses.
+    /// A folder in a games folder that looks like a game's install and that no game uses.
     Leftover,
 }
 
@@ -148,9 +148,10 @@ pub enum Sweep {
 impl Sweep {
     pub const ALL: [Sweep; 6] = [Sweep::Prefixes, Sweep::Steam, Sweep::Builds, Sweep::Leftovers, Sweep::Caches, Sweep::Shaders];
 
-    /// Ticked when the page opens.
+    /// Ticked when the page opens. Shaders make games stutter; leftover
+    /// folders are the user's files, so each cleaning opts in to them.
     pub fn default_on(self) -> bool {
-        self != Sweep::Shaders
+        !matches!(self, Sweep::Shaders | Sweep::Leftovers)
     }
 }
 
@@ -248,18 +249,37 @@ pub struct Inventory {
 
 /// Lists everything. Blocking but quick: reads settings, manifests and folder
 /// listings, never walks a folder (see [`measure`]). `lib` is the library the
-/// Collection loaded.
+/// Collection loaded: its games are the ones listed. What is in use is decided
+/// from the library with the hidden games too, since a hidden game is
+/// installed all the same and keeps its prefix, its build and its files.
+///
+/// When that library cannot be read, nothing is offered as unused: what the
+/// shown games alone leave unused might be a hidden game's.
 pub fn inventory(ctx: &Ctx, lib: &Library) -> Inventory {
+    let full = leftovers::full_library(ctx);
+    scan(ctx, lib, full.as_ref())
+}
+
+/// [`inventory`] with the library of hidden games too already read: `shown`
+/// gives the games listed, `usage` (`None` when it could not be read) says
+/// what is in use.
+pub(crate) fn scan(ctx: &Ctx, shown: &Library, usage: Option<&Library>) -> Inventory {
     let steam = ctx.steam();
     let walked = SizeCache::load(&ctx.app.cache);
-    let mut items = games::items(lib, &steam, &walked);
-    items.extend(prefixes::items(ctx, lib, &walked));
-    nest_prefixes(&mut items);
-    items.extend(builds::items(ctx, lib, &steam));
-    let steam_found = steam::items(lib, &ctx.data_paths, &steam);
+    let usage_lib = usage.unwrap_or(shown);
+    let installed = games::items(usage_lib, &steam, &walked);
+    let mut items: Vec<Item> =
+        installed.iter().filter(|i| matches!(&i.kind, Kind::Game { key } if shown.get(key).is_some())).cloned().collect();
+    items.extend(prefixes::items(ctx, usage_lib, &walked));
+    nest_prefixes(&mut items, &installed);
+    items.extend(builds::items(ctx, usage_lib, &steam));
+    let steam_found = steam::items(usage_lib, &ctx.data_paths, &steam);
     items.extend(steam_found.leftovers);
     items.extend(caches::items(ctx, steam_found.shader_caches));
-    items.extend(leftovers::items(ctx, lib, &items, &walked));
+    items.extend(leftovers::items(ctx, usage_lib, &items, &walked));
+    if usage.is_none() {
+        items.retain(|i| i.state != State::Unused);
+    }
 
     let mounts = disks::mounts();
     let mut found: Vec<Disk> = Vec::new();
@@ -273,13 +293,10 @@ pub fn inventory(ctx: &Ctx, lib: &Library) -> Inventory {
 
 /// A prefix in a game's folder goes with the game: it is left out. A game
 /// installed inside a prefix is noted in the prefix's [`Item::holds`] (and
-/// keeps the prefix in use).
-fn nest_prefixes(items: &mut Vec<Item>) {
-    let games: Vec<(String, PathBuf)> = items
-        .iter()
-        .filter(|i| matches!(i.kind, Kind::Game { .. }) && i.path().is_dir())
-        .map(|i| (i.id.clone(), i.folder.clone()))
-        .collect();
+/// keeps the prefix in use). `installed` are all the installed games, the
+/// hidden ones too, which may not be in `items`.
+fn nest_prefixes(items: &mut Vec<Item>, installed: &[Item]) {
+    let games: Vec<(String, PathBuf)> = installed.iter().filter(|i| i.path().is_dir()).map(|i| (i.id.clone(), i.folder.clone())).collect();
     items.retain(|i| !matches!(i.kind, Kind::Prefix { .. }) || !games.iter().any(|(_, g)| i.path().starts_with(g)));
     for item in items.iter_mut().filter(|i| matches!(i.kind, Kind::Prefix { .. })) {
         item.holds = games.iter().filter(|(_, g)| g.starts_with(&item.folder)).map(|(id, _)| id.clone()).collect();
@@ -314,5 +331,75 @@ impl Inventory {
         let size = item.size?;
         let inner: u64 = item.holds.iter().filter_map(|id| self.items.iter().find(|i| &i.id == id)?.size).sum();
         Some(size.saturating_sub(inner))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use heronite_data::{game_config, json_store};
+    use heronite_wine::WineVersionInfo;
+    use serde_json::json;
+
+    /// The Collection leaves hidden games out, but a hidden installed game
+    /// still uses its prefix and its Proton build: they are in use even when
+    /// the library handed to [`inventory`] does not have it, and the game
+    /// itself is not listed.
+    #[test]
+    fn a_hidden_games_prefix_and_build_are_in_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let ctx = Ctx {
+            data_paths: DataPaths::at(dir.path().join("data")),
+            app: AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") },
+            home: home.clone(),
+        };
+        let paths = &ctx.data_paths;
+        let (folder, prefix, spare_prefix) = (home.join("Games/Hidden"), home.join("Prefixes/hidden"), home.join("Prefixes/spare"));
+        for p in [&folder, &prefix, &spare_prefix] {
+            std::fs::create_dir_all(p).unwrap();
+        }
+        for p in [&prefix, &spare_prefix] {
+            std::fs::create_dir_all(p.join("drive_c")).unwrap();
+        }
+        let build = |version: &str| {
+            let install = paths.tools_dir().join("proton").join(version);
+            std::fs::create_dir_all(&install).unwrap();
+            std::fs::write(install.join("proton"), "x").unwrap();
+            let info = WineVersionInfo {
+                version: version.into(),
+                kind: "GE-Proton".into(),
+                install_dir: Some(install.to_string_lossy().into_owned()),
+                is_installed: Some(true),
+                ..Default::default()
+            };
+            heronite_wine::store::mark_installed(paths, &info).unwrap();
+            install
+        };
+        let (hidden_build, _spare_build) = (build("GE-Proton9-1"), build("GE-Proton9-2"));
+        json_store::write(&paths.store_config(), &json!({"games": {"hidden": [{"appName": "h", "title": "Hidden"}]}})).unwrap();
+        json_store::write(
+            &paths.sideload_library(),
+            &json!({"games": [{"runner": "sideload", "app_name": "h", "title": "Hidden", "is_installed": true,
+                               "install": {"install_path": folder, "platform": "windows"}}]}),
+        )
+        .unwrap();
+        game_config::set_game_setting(paths, "h", &ctx.home_str(), "winePrefix", json!(prefix)).unwrap();
+        let wine_version = json!({"bin": hidden_build.join("proton"), "name": "GE-Proton9-1", "type": "proton"});
+        game_config::set_game_setting(paths, "h", &ctx.home_str(), "wineVersion", wine_version).unwrap();
+
+        let shown = Library::load(paths).unwrap();
+        assert!(shown.games.is_empty(), "the Collection leaves it out");
+        let inv = inventory(&ctx, &shown);
+        let of = |folder: &Path| inv.items.iter().find(|i| i.folder == folder).unwrap_or_else(|| panic!("{} listed", folder.display()));
+        assert_eq!((of(&prefix).state, &of(&prefix).games[..]), (State::InUse, &["sideload_h".to_string()][..]));
+        assert_eq!(of(&hidden_build).state, State::InUse);
+        assert_eq!(of(&spare_prefix).state, State::Unused);
+        assert_eq!(of(&paths.tools_dir().join("proton/GE-Proton9-2")).state, State::Unused);
+        assert!(!inv.items.iter().any(|i| matches!(i.kind, Kind::Game { .. })), "hidden games are not listed");
+
+        // Without the library of hidden games, nothing is offered as unused.
+        let blind = scan(&ctx, &shown, None);
+        assert!(blind.items.iter().all(|i| i.state != State::Unused));
     }
 }
