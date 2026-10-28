@@ -3,8 +3,8 @@
 //! / `removeWineVersion` and `getInstallDir`).
 
 use heronite_i18n::tr;
-use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::cell::Cell;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, Context};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
-use sha2::{Digest, Sha256, Sha512};
 
 use crate::github;
 use crate::store;
@@ -106,7 +105,6 @@ pub fn install_into(
 
     let file_name = download.rsplit('/').next().unwrap_or("download.tar");
     let tar_file = install_dir.join(file_name);
-    let part_file = install_dir.join(format!("{file_name}.part"));
     let install_sub_dir = match info.install_dir.as_deref().filter(|d| !d.is_empty()) {
         Some(d) => PathBuf::from(d),
         None => install_dir.join(&info.version),
@@ -132,31 +130,30 @@ pub fn install_into(
     }
 
     let _ = fs::remove_file(&tar_file);
-    let _ = fs::remove_file(&part_file);
 
-    // Download (+ the checksum's hash while streaming).
+    // Download; the archive only gets its name once the checksum matched.
     let algorithm = source_checksum.as_deref().map(HashKind::of_checksum).unwrap_or(HashKind::Sha512);
-    let digest = match download_file(download, &part_file, info.downsize.unwrap_or(0), algorithm, cancel, on_progress) {
-        Ok(d) => d,
-        Err(e) => {
-            let _ = fs::remove_file(&part_file);
-            return Err(match e {
-                InstallError::Aborted => InstallError::Aborted,
-                InstallError::Failed(m) => {
-                    InstallError::Failed(tr!("Download of {version} failed with:\n {error}", version = info.version, error = m))
-                }
-            });
-        }
-    };
-    if let Some(sum) = &source_checksum {
-        if !sum.to_ascii_lowercase().contains(&digest) {
-            let _ = fs::remove_file(&part_file);
-            return Err(InstallError::Failed(tr!("Checksum verification failed").into()));
-        }
-    } else {
+    if source_checksum.is_none() {
         log::warn!("No checksum provided. Download of {} could be invalid!", info.version);
     }
-    fs::rename(&part_file, &tar_file).with_context(|| format!("renaming {}", part_file.display()))?;
+    let mismatch = Cell::new(false);
+    let matches_checksum = |o: &heronite_net::Outcome| {
+        let digest = o.hash.as_deref().unwrap_or_default();
+        match &source_checksum {
+            Some(sum) if !sum.to_ascii_lowercase().contains(digest) => {
+                mismatch.set(true);
+                Err("checksum mismatch".to_string())
+            }
+            _ => Ok(()),
+        }
+    };
+    if let Err(e) = download_file(download, &tar_file, info.downsize.unwrap_or(0), algorithm, &matches_checksum, cancel, on_progress) {
+        return Err(match e {
+            heronite_net::Error::Cancelled => InstallError::Aborted,
+            _ if mismatch.get() => InstallError::Failed(tr!("Checksum verification failed").into()),
+            e => InstallError::Failed(tr!("Download of {version} failed with:\n {error}", version = info.version, error = e)),
+        });
+    }
 
     // Extract next to the final folder under a hidden name and rename when
     // done, so a crash or cancel never leaves a half-extracted install (and an
@@ -236,85 +233,39 @@ impl HashKind {
             _ => HashKind::Sha512,
         }
     }
-}
 
-enum Hasher {
-    Sha256(Sha256),
-    Sha512(Sha512),
-}
-
-impl Hasher {
-    fn new(kind: HashKind) -> Self {
-        match kind {
-            HashKind::Sha256 => Hasher::Sha256(Sha256::new()),
-            HashKind::Sha512 => Hasher::Sha512(Sha512::new()),
-        }
-    }
-    fn update(&mut self, data: &[u8]) {
+    fn net(self) -> heronite_net::Hash {
         match self {
-            Hasher::Sha256(h) => h.update(data),
-            Hasher::Sha512(h) => h.update(data),
+            HashKind::Sha256 => heronite_net::Hash::Sha256,
+            HashKind::Sha512 => heronite_net::Hash::Sha512,
         }
-    }
-    fn hex(self) -> String {
-        let bytes: Vec<u8> = match self {
-            Hasher::Sha256(h) => h.finalize().to_vec(),
-            Hasher::Sha512(h) => h.finalize().to_vec(),
-        };
-        bytes.iter().map(|b| format!("{b:02x}")).collect()
     }
 }
 
-/// Streams `url` to `dest`, returning the lowercase hex hash of the body.
+/// Streams `url` to `dest` (through `<dest>.part`) and hands the body's hash
+/// to `validate` before the file gets its name.
 fn download_file(
     url: &str,
     dest: &Path,
     expected_size: u64,
     algorithm: HashKind,
+    validate: &dyn Fn(&heronite_net::Outcome) -> Result<(), String>,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
-) -> Result<String, InstallError> {
-    let fail = |m: String| InstallError::Failed(m);
-    let mut resp = github::http_agent().get(url).call().map_err(|e| fail(format!("{url}: {e}")))?;
-    let total = resp
-        .headers()
-        .get("content-length")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<u64>().ok())
-        .filter(|n| *n > 0)
-        .unwrap_or(expected_size);
-    let mut body = resp.body_mut().with_config().limit(u64::MAX).reader();
-    let mut file = File::create(dest).map_err(|e| fail(format!("creating {}: {e}", dest.display())))?;
-    let mut hasher = Hasher::new(algorithm);
-    let mut buf = vec![0u8; 256 * 1024];
-    let mut downloaded = 0u64;
+) -> Result<(), heronite_net::Error> {
     let start = Instant::now();
-    let mut last = Instant::now() - Duration::from_secs(1);
-    on_progress(progress(0, total, 0.0));
-    loop {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(InstallError::Aborted);
-        }
-        let n = body.read(&mut buf).map_err(|e| fail(format!("{url}: {e}")))?;
-        if n == 0 {
-            break;
-        }
-        file.write_all(&buf[..n]).map_err(|e| fail(format!("writing {}: {e}", dest.display())))?;
-        hasher.update(&buf[..n]);
-        downloaded += n as u64;
-        if last.elapsed() >= Duration::from_millis(100) {
-            last = Instant::now();
-            let speed = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
-            on_progress(progress(downloaded, total, speed));
-        }
-    }
-    file.flush().map_err(|e| fail(e.to_string()))?;
-    if total > 0 && downloaded < total {
-        return Err(fail(tr!("connection closed after {downloaded} of {total} bytes", downloaded, total)));
-    }
-    let speed = downloaded as f64 / start.elapsed().as_secs_f64().max(0.001);
-    on_progress(progress(downloaded, downloaded.max(total), speed));
-    Ok(hasher.hex())
+    let mut report = |done: u64, total: Option<u64>| {
+        let speed = done as f64 / start.elapsed().as_secs_f64().max(0.001);
+        on_progress(progress(done, total.unwrap_or(0), speed));
+    };
+    let opts = heronite_net::Options {
+        size_hint: Some(expected_size).filter(|n| *n > 0),
+        hash: Some(algorithm.net()),
+        validate: Some(validate),
+        on_progress: Some(&mut report),
+        ..Default::default()
+    };
+    heronite_net::download(url, dest, opts, &|| cancel.load(Ordering::Relaxed)).map(|_| ())
 }
 
 fn progress(downloaded: u64, total: u64, speed: f64) -> Progress {
@@ -394,7 +345,8 @@ pub fn remove_version(data_paths: &DataPaths, info: &WineVersionInfo) -> anyhow:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufRead, BufReader};
+    use sha2::{Digest, Sha256, Sha512};
+    use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
     use std::sync::Arc;
 

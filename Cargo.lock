@@ -3909,6 +3909,7 @@ dependencies = [
  "dirs 6.0.0",
  "heronite-data",
  "heronite-i18n",
+ "heronite-net",
  "log",
  "parking_lot",
  "serde",
