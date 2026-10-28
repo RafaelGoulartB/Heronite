@@ -652,6 +652,17 @@ impl CollectionView {
         true
     }
 
+    /// The Settings page's section list has the keyboard (not a field).
+    pub(super) fn settings_nav_focused(&self, window: &Window, cx: &App) -> bool {
+        self.page == Page::Settings
+            && self
+                .pages
+                .settings
+                .clone()
+                .and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok())
+                .is_some_and(|v| v.read(cx).nav_has_keyboard(window))
+    }
+
     /// Esc in a field of the Settings page: empties its search when that has
     /// the keyboard and text. True when it did.
     pub(super) fn settings_search_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {

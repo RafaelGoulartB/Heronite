@@ -34,6 +34,11 @@ impl SettingsPage {
             .collect()
     }
 
+    /// The section list has the keyboard (not the search field).
+    pub fn nav_has_keyboard(&self, window: &Window) -> bool {
+        self.nav_focus.is_focused(window)
+    }
+
     /// The item the cursor is on while the list has the keyboard.
     pub(super) fn nav_cursor_shown(&self, window: &Window) -> Option<usize> {
         self.nav_cursor.filter(|_| self.nav_focus.is_focused(window))

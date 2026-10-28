@@ -92,6 +92,35 @@ impl CollectionView {
         }
     }
 
+    /// `?` where nothing is being typed (the list, a page, the Settings
+    /// sections): the keyboard shortcuts. True when the key was used.
+    pub(super) fn shortcuts_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let ks = &ev.keystroke;
+        let m = &ks.modifiers;
+        if ks.key_char.as_deref() != Some("?") || m.control || m.alt || m.platform {
+            return false;
+        }
+        let floating = crate::console::active()
+            || self.dialog.is_some()
+            || self.context_menu.is_some()
+            || self.open_menu.is_some()
+            || self.palette_open()
+            || self.shots.is_open();
+        let typing = !self.focus_handle.is_focused(window) && window.focused(cx).is_some() && !self.settings_nav_focused(window, cx);
+        if floating || typing {
+            return false;
+        }
+        cx.stop_propagation();
+        self.open_shortcuts(cx);
+        true
+    }
+
+    /// The keyboard shortcuts dialog (`?`, the palette).
+    pub(super) fn open_shortcuts(&mut self, cx: &mut Context<Self>) {
+        self.open_dialog(cx.new(|_| crate::dialogs::shortcuts::ShortcutsDialog::new()), cx);
+        cx.notify();
+    }
+
     /// Ctrl F anywhere in the Collection, `/` or a letter typed on the list:
     /// the search field (Ctrl F on the Settings page: its section search).
     /// True when the key was used.

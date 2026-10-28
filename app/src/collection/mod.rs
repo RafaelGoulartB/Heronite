@@ -477,6 +477,9 @@ impl CollectionView {
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.shortcuts_key(ev, window, cx) {
+            return;
+        }
         if self.shots_key(ev, cx)
             || self.search_key(ev, window, cx)
             || self.selection_key(ev, window, cx)

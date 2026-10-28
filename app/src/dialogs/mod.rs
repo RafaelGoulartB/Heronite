@@ -42,6 +42,7 @@ pub mod scan_roms;
 pub mod screenshot_art;
 pub mod script_install;
 pub mod settings_panel;
+pub mod shortcuts;
 pub mod store_import;
 pub mod store_install;
 pub mod web_image;

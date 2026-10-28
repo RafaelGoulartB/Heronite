@@ -298,6 +298,7 @@ impl CollectionView {
             Act::Console => self.set_console(true, window, cx),
             Act::YearReview => self.open_year_review(window, cx),
             Act::Onboarding => self.open_onboarding(cx),
+            Act::Shortcuts => self.open_shortcuts(cx),
             Act::ManageStatuses => self.open_manage_statuses(window, cx),
             Act::ManageFields => self.open_manage_fields(None, window, cx),
             // The quit question needs the window: ask once this update ended.
