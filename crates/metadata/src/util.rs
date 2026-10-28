@@ -14,6 +14,13 @@ macro_rules! re {
 }
 pub(crate) use re;
 
+/// Steam app ids are digits only. Anything else must never reach a URL or a
+/// file name (`steam_app_id` comes from `local_meta.json`, which the user can
+/// edit, and from the providers).
+pub fn is_steam_app_id(id: &str) -> bool {
+    !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())
+}
+
 /// `blankMetadata`.
 pub fn blank_metadata(app_name: &str, runner: &str) -> CollectionGameMetadata {
     CollectionGameMetadata { app_name: app_name.to_owned(), runner: runner.to_owned(), ..Default::default() }
@@ -245,6 +252,14 @@ pub fn now_iso() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn steam_app_ids_are_digits_only() {
+        assert!(is_steam_app_id("400") && is_steam_app_id("0"));
+        for bad in ["", " 400", "40 0", "../x", "400/../../x", "4a", "-1", "4.0", "\u{0664}", "400\n"] {
+            assert!(!is_steam_app_id(bad), "{bad:?}");
+        }
+    }
 
     #[test]
     fn title_queries_match_the_ts() {

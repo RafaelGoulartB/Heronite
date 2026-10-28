@@ -64,7 +64,7 @@ use crate::providers::{
 use crate::steam::{self, SteamAppDetails, SteamState};
 use crate::store::{as_runner, current_or_blank, get_game_metadata, list_game_metadata, upsert_game_metadata};
 use crate::types::*;
-use crate::util::now_iso;
+use crate::util::{is_steam_app_id, now_iso};
 use crate::{covers, web_images};
 
 pub struct MetadataService {
@@ -150,11 +150,11 @@ impl MetadataService {
     }
 
     fn steam_id_for(&self, args: &MetadataApplyArgs) -> Option<String> {
-        if let Some(id) = args.steam_app_id.clone().filter(|s| !s.is_empty()) {
+        if let Some(id) = args.steam_app_id.clone().filter(|s| is_steam_app_id(s)) {
             return Some(id);
         }
         let meta: LocalMetaFile = json_store::read(&self.paths.local_meta()).ok()?;
-        meta.games.get(&args.app_name)?.steam_app_id.clone().filter(|s| !s.is_empty())
+        meta.games.get(&args.app_name)?.steam_app_id.clone().filter(|s| is_steam_app_id(s))
     }
 
     fn candidate_for(&self, source: &str, game: &MetadataApplyArgs) -> Lookup<MetadataCandidate> {
