@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::covers::steam_app_id_exact;
 use crate::http::Http;
-use crate::util::{is_steam_app_id, normalize_title};
+use crate::util::normalize_title;
 
 /// A cached tier older than this is fetched again.
 pub const MAX_AGE_SECS: u64 = 7 * 24 * 3600;
@@ -39,13 +39,18 @@ struct Summary {
     tier: String,
 }
 
+/// Steam app ids are digits only; this also keeps them safe as file names.
+fn valid_app_id(id: &str) -> bool {
+    !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())
+}
+
 fn cache_file(cache_dir: &Path, steam_app_id: &str) -> PathBuf {
     cache_dir.join(format!("{steam_app_id}.json"))
 }
 
 /// The cache entry as `(tier, fresh)`, `"unknown"` included.
 fn read_entry(cache_dir: &Path, steam_app_id: &str, now: DateTime<Utc>) -> Option<(String, bool)> {
-    if !is_steam_app_id(steam_app_id) {
+    if !valid_app_id(steam_app_id) {
         return None;
     }
     let entry: CacheEntry = json_store::read(&cache_file(cache_dir, steam_app_id)).ok()?;
@@ -96,7 +101,7 @@ fn fetch(http: &Http, steam_app_id: &str) -> anyhow::Result<Option<String>> {
 /// network error falls back to a stale cache. `None` for unknown games and
 /// for ids that are not numeric.
 pub fn tier(cache_dir: &Path, http: &Http, steam_app_id: &str) -> Option<String> {
-    if !is_steam_app_id(steam_app_id) {
+    if !valid_app_id(steam_app_id) {
         return None;
     }
     let cached = read_entry(cache_dir, steam_app_id, Utc::now());
@@ -137,7 +142,7 @@ fn read_title(cache_dir: &Path, title: &str, now: DateTime<Utc>) -> Option<Optio
     let entry = titles.get(&key)?;
     let age = now.signed_duration_since(DateTime::parse_from_rfc3339(&entry.fetched_at).ok()?).num_seconds();
     let max = if entry.id.is_some() { TITLE_MAX_AGE_SECS } else { TITLE_MISS_MAX_AGE_SECS };
-    (0..max as i64).contains(&age).then(|| entry.id.clone().filter(|id| is_steam_app_id(id)))
+    (0..max as i64).contains(&age).then(|| entry.id.clone().filter(|id| valid_app_id(id)))
 }
 
 fn write_title(cache_dir: &Path, title: &str, id: Option<&str>, now: DateTime<Utc>) {
@@ -168,7 +173,7 @@ pub fn steam_id_for_title(cache_dir: &Path, http: &Http, title: &str) -> Option<
         return cached;
     }
     let found = match steam_app_id_exact(http, title) {
-        Ok(found) => found.filter(|id| is_steam_app_id(id)),
+        Ok(found) => found.filter(|id| valid_app_id(id)),
         Err(e) => {
             log::warn!("Steam id search failed for {title}: {e:#}");
             return None;

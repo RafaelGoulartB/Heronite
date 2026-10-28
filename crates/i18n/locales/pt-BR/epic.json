@@ -243,8 +243,6 @@
   "The package manager failed: {tail}": "O gerenciador de pacotes falhou: {tail}",
   "The signature does not match the update key: {error}": "A assinatura não corresponde à chave de atualização: {error}",
   "The signature is for another version ({version})": "A assinatura é de outra versão ({version})",
-  "The update file changed after it was verified": "O arquivo da atualização mudou depois de ser verificado",
-  "The update file was not verified": "O arquivo da atualização não foi verificado",
   "This game is managed by \"{name}\", which is not supported.": "Este jogo é gerenciado por \"{name}\", que não é compatível.",
   "This game is managed by a third-party application": "Este jogo é gerenciado por um aplicativo de terceiros",
   "This game is managed by a third-party application: \"{store}\"": "Este jogo é gerenciado por um aplicativo de terceiros: \"{store}\"",

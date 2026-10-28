@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::http::Http;
-use crate::util::{encode_uri_component, is_steam_app_id, normalize_title, re};
+use crate::util::{encode_uri_component, normalize_title, re};
 
 const SGDB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Heronite/0.1";
 const ENCRYPTED_PREFIX: &str = "sgdb:v1:";
@@ -297,9 +297,6 @@ pub fn covers_from_steamgrid(http: &Http, api_key: &str, sgdb_id: i64) -> Result
 
 /// `steamGridIdFromSteamApp`.
 pub fn steamgrid_id_from_steam_app(http: &Http, api_key: &str, steam_app_id: &str) -> Option<i64> {
-    if !is_steam_app_id(steam_app_id) {
-        return None;
-    }
     match sgdb_get(http, api_key, &format!("/games/steam/{steam_app_id}"), &[]) {
         Ok(body) => body.get("data").and_then(|d| d.get("id")).and_then(Value::as_i64).filter(|i| *i != 0),
         Err(e) => {
@@ -330,7 +327,7 @@ fn bottles_grid(http: &Http, title: &str) -> Option<String> {
 pub fn fetch_covers_for_game(http: &Http, api_key: Option<&str>, meta: &LocalGameMeta, game: &GameInfo) -> Covers {
     let api_key = api_key.filter(|k| !k.is_empty());
 
-    if let Some(steam_id) = meta.steam_app_id.as_deref().filter(|s| is_steam_app_id(s)) {
+    if let Some(steam_id) = meta.steam_app_id.as_deref().filter(|s| !s.is_empty()) {
         let from_steam = steam_covers(steam_id);
         if let Some(key) = api_key {
             if let Some(sgdb_id) = steamgrid_id_from_steam_app(http, key, steam_id) {
@@ -365,7 +362,7 @@ pub fn fetch_covers_for_game(http: &Http, api_key: Option<&str>, meta: &LocalGam
         }
     }
 
-    if let Some(id) = steam_app_id_from_title(http, &meta.title).filter(|id| is_steam_app_id(id)) {
+    if let Some(id) = steam_app_id_from_title(http, &meta.title) {
         return steam_covers(&id);
     }
     if let Some(grid) = bottles_grid(http, &meta.title) {

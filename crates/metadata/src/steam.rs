@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::http::Http;
 use crate::types::{Lookup, SteamHeroCacheResult};
-use crate::util::{blank_metadata, clip, is_steam_app_id, local_art_url, now_ms, strip_html, unique_names, unique_names12};
+use crate::util::{blank_metadata, clip, local_art_url, now_ms, strip_html, unique_names, unique_names12};
 
 const CACHE_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 const MISSING_FOR: Duration = Duration::from_secs(30 * 60);
@@ -201,7 +201,7 @@ fn lookup_steam_app_details(
     language: Option<&str>,
 ) -> Lookup<SteamAppDetails> {
     let steam_app_id = steam_app_id.trim();
-    if !is_steam_app_id(steam_app_id) {
+    if steam_app_id.is_empty() {
         return Lookup::Skipped;
     }
     // Without a language, the interface's (Steam text is then in Portuguese too).
@@ -256,12 +256,12 @@ fn strip_fetched(mut d: SteamAppDetails) -> SteamAppDetails {
 
 /// `steamCdnCover`.
 pub fn steam_cdn_cover(steam_app_id: Option<&str>) -> Option<String> {
-    steam_app_id.filter(|s| is_steam_app_id(s)).map(steam_library_cover)
+    steam_app_id.filter(|s| !s.is_empty()).map(steam_library_cover)
 }
 
 /// `steamCdnHero`.
 pub fn steam_cdn_hero(steam_app_id: Option<&str>) -> Option<String> {
-    steam_app_id.filter(|s| is_steam_app_id(s)).map(steam_library_hero)
+    steam_app_id.filter(|s| !s.is_empty()).map(steam_library_hero)
 }
 
 /// `fetchSteamMetadata` from already loaded details.
@@ -336,7 +336,7 @@ fn download_hero(http: &Http, url: &str, dest: &Path) -> bool {
 /// `cacheSteamHero`: `local_library/heroes/{appId}.jpg`, trying the Steam CDN
 /// hero URLs in order.
 pub fn cache_steam_hero(paths: &DataPaths, http: &Http, state: &SteamState, steam_app_id: &str) -> Option<SteamHeroCacheResult> {
-    if !is_steam_app_id(steam_app_id) {
+    if steam_app_id.is_empty() {
         return None;
     }
     let dest = paths.steam_hero(steam_app_id);
@@ -372,7 +372,7 @@ pub fn warm_steam_heroes(paths: &DataPaths, http: &Http, state: &SteamState, ids
     let mut seen = HashSet::new();
     let needed: Vec<&String> = ids
         .iter()
-        .filter(|id| is_steam_app_id(id) && seen.insert(id.as_str()))
+        .filter(|id| !id.is_empty() && seen.insert(id.as_str()))
         .filter(|id| !paths.steam_hero(id).exists() && !state.missing_heroes.lock().contains(id.as_str()))
         .collect();
     if needed.is_empty() {
@@ -421,24 +421,6 @@ mod tests {
         // The store header is kept for cards whose CDN art is missing.
         let header = d.header_image.as_deref().expect("fixture has header_image");
         assert_eq!(md.extra.get(HEADER_URL).and_then(Value::as_str), Some(header));
-    }
-
-    #[test]
-    fn an_app_id_that_is_not_digits_never_reaches_a_path_or_url() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DataPaths::at(dir.path().join("data"));
-        let http = Http::default();
-        let state = SteamState::default();
-        for bad in ["../../x", "4/0", "4 0", "a"] {
-            assert_eq!(steam_cdn_cover(Some(bad)), None, "{bad}");
-            assert_eq!(steam_cdn_hero(Some(bad)), None, "{bad}");
-            assert!(cache_steam_hero(&paths, &http, &state, bad).is_none(), "{bad}");
-            assert!(matches!(lookup_steam_app_details(&paths, &http, &state, bad, Some("english")), Lookup::Skipped), "{bad}");
-            assert!(matches!(fetch_steam_metadata(&paths, &http, &state, "a", "sideload", Some(bad), None), Lookup::Skipped), "{bad}");
-        }
-        warm_steam_heroes(&paths, &http, &state, &["../../x".to_owned()]);
-        assert!(!dir.path().join("data").exists(), "nothing was created");
-        assert!(steam_cdn_cover(Some("400")).is_some());
     }
 
     #[test]

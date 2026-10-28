@@ -22,55 +22,18 @@ use gpui_kit::*;
 fn main() {
     let started = Instant::now();
     tune_allocator();
-    let cli = system::cli::parse(std::env::args().skip(1));
-    if cli.help {
-        print!("{}", system::cli::HELP);
-        return;
-    }
-    for err in &cli.errors {
-        eprintln!("heronite-rs: {err}");
-    }
-    if !cli.errors.is_empty() && cli.launch.is_none() {
-        std::process::exit(2);
-    }
-
-    // Nothing below touches the data until this process is the only instance:
-    // a restore or the migration under a running app would be overwritten by
-    // what it still holds in memory. The log goes to stderr (and is kept) until
-    // `start_log_file`, which creates the data folder and rotates the file.
-    log_early();
-    // Only reads a file; the restore below may change it, so it is read again.
-    language::init(&heronite_data::AppPaths::for_data(&heronite_data::DataPaths::detect()));
-    // One instance per data folder: a second start hands its request to the
-    // first and exits (Heroic's `requestSingleInstanceLock`).
-    let (server, messages) = match single_instance(&cli) {
-        SingleInstance::Forwarded => return,
-        SingleInstance::Unresponsive(reason) => {
-            // The running instance made the data folder, so the log can open.
-            start_log_file();
-            log::error!("the running instance did not take the request: {reason}");
-            // Starting a second, unlocked instance on the same data would
-            // double-run the Epic queue, the tray and every game record.
-            let text = heronite_i18n::tr!("Heronite is already running but is not responding ({reason})", reason);
-            eprintln!("heronite-rs: {text}");
-            system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(3));
-            std::process::exit(1);
-        }
-        SingleInstance::Primary { server, messages } => (server, messages),
-    };
-
     // A restore asked for before a restart: copied before anything reads the
-    // data or the app state (the language included). The app that asked may
-    // still be quitting: it is waited for (see `apply_pending`).
+    // data or the app state (the language included).
     let restored = {
         let data_paths = heronite_data::DataPaths::detect();
         heronite_backup::restore::apply_pending(&data_paths, &heronite_data::AppPaths::for_data(&data_paths))
     };
-    // So even the migration's error is in the user's language.
+    // First, so even the migration's error is in the user's language (only
+    // reads a file).
     language::init(&heronite_data::AppPaths::for_data(&heronite_data::DataPaths::detect()));
-    // Before anything (the log file included) creates the data folder.
+    // Before anything (the logger included) creates the data folder.
     let migration = migrate_from_heroic();
-    start_log_file();
+    env_logger_init();
     log::info!("interface language: {}", heronite_i18n::current().code());
     if let Some(result) = &restored {
         match result {
@@ -91,6 +54,32 @@ fn main() {
         heronite_data::migrate::Outcome::NotNeeded => {}
     }
 
+    let cli = system::cli::parse(std::env::args().skip(1));
+    if cli.help {
+        print!("{}", system::cli::HELP);
+        return;
+    }
+    for err in &cli.errors {
+        eprintln!("heronite-rs: {err}");
+    }
+    if !cli.errors.is_empty() && cli.launch.is_none() {
+        std::process::exit(2);
+    }
+
+    // One instance per data folder: a second start hands its request to the
+    // first and exits (Heroic's `requestSingleInstanceLock`).
+    let (server, messages) = match single_instance(&cli) {
+        SingleInstance::Forwarded => return,
+        SingleInstance::Unresponsive(reason) => {
+            // Starting a second, unlocked instance on the same data would
+            // double-run the Epic queue, the tray and every game record.
+            let text = heronite_i18n::tr!("Heronite is already running but is not responding ({reason})", reason);
+            eprintln!("heronite-rs: {text}");
+            system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(3));
+            std::process::exit(1);
+        }
+        SingleInstance::Primary { server, messages } => (server, messages),
+    };
     // SIGTERM / SIGINT / SIGHUP are a quit (see `system::signals`).
     let signals = system::signals::spawn();
     // Temp files of writes cut short by a crash or kill (only ours, by name).
@@ -136,9 +125,6 @@ fn migrate_from_heroic() -> heronite_data::migrate::Outcome {
                 err = format!("{err:#}")
             );
             eprintln!("heronite-rs: {text}");
-            // The socket goes before the process: requests queued for an
-            // instance that never starts would be lost.
-            system::single_instance::close_active();
             system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(5));
             std::process::exit(1);
         }
@@ -173,7 +159,10 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
                 return SingleInstance::Forwarded;
             }
             Ok(Forward::NoInstance) => {}
-            Ok(Forward::Unresponsive(reason)) => return SingleInstance::Unresponsive(reason),
+            Ok(Forward::Unresponsive(reason)) => {
+                log::error!("the running instance did not take the request: {reason}");
+                return SingleInstance::Unresponsive(reason);
+            }
             Err(err) => {
                 log::warn!("could not reach the running instance: {err}");
                 return primary(None, None);
@@ -223,75 +212,43 @@ pub fn trim_heap_later() {
     });
 }
 
-/// The app's logger: records go to stderr and, once [`start_log_file`] ran
-/// and unless `disableLogs` is on, to `heronite-rs-<date>.log` (see
-/// `heronite_launch::log_writer`).
-struct Logger {
-    level: log::LevelFilter,
-    file: std::sync::OnceLock<heronite_launch::log_writer::LauncherLogger>,
-    /// Records made before the file was opened, written to it first.
-    early: std::sync::Mutex<Vec<(log::Level, String, String)>>,
-}
-
-static LOGGER: std::sync::OnceLock<Logger> = std::sync::OnceLock::new();
-
-fn file_level(level: log::Level) -> heronite_launch::log_writer::Level {
-    use heronite_launch::log_writer::Level;
-    match level {
-        log::Level::Error => Level::Error,
-        log::Level::Warn => Level::Warning,
-        log::Level::Info => Level::Info,
-        log::Level::Debug | log::Level::Trace => Level::Debug,
+fn env_logger_init() {
+    // Records go to stderr and, unless `disableLogs` is on, to
+    // `heronite-rs-<date>.log` (see `heronite_launch::log_writer`).
+    struct L {
+        level: log::LevelFilter,
+        file: Option<heronite_launch::log_writer::LauncherLogger>,
     }
-}
-
-impl log::Log for Logger {
-    fn enabled(&self, m: &log::Metadata) -> bool {
-        // Our crates at the chosen level, third-party crates at warn
-        // (zbus/wgpu/naga are very chatty at info/debug).
-        let ours = m.target().starts_with("heronite");
-        m.level() <= if ours { self.level } else { self.level.min(log::LevelFilter::Warn) }
-    }
-    fn log(&self, r: &log::Record) {
-        if !self.enabled(r.metadata()) {
-            return;
+    impl log::Log for L {
+        fn enabled(&self, m: &log::Metadata) -> bool {
+            // Our crates at the chosen level, third-party crates at warn
+            // (zbus/wgpu/naga are very chatty at info/debug).
+            let ours = m.target().starts_with("heronite");
+            m.level() <= if ours { self.level } else { self.level.min(log::LevelFilter::Warn) }
         }
-        eprintln!("[{} {}] {}", r.level(), r.target(), r.args());
-        // Held across the check so a record cannot slip between the replay
-        // and the file being set.
-        let mut early = self.early.lock().unwrap_or_else(|e| e.into_inner());
-        match self.file.get() {
-            Some(file) => file.record(file_level(r.level()), r.target(), &r.args().to_string()),
-            None => early.push((r.level(), r.target().to_owned(), r.args().to_string())),
+        fn log(&self, r: &log::Record) {
+            if !self.enabled(r.metadata()) {
+                return;
+            }
+            eprintln!("[{} {}] {}", r.level(), r.target(), r.args());
+            if let Some(file) = &self.file {
+                use heronite_launch::log_writer::Level;
+                let level = match r.level() {
+                    log::Level::Error => Level::Error,
+                    log::Level::Warn => Level::Warning,
+                    log::Level::Info => Level::Info,
+                    log::Level::Debug | log::Level::Trace => Level::Debug,
+                };
+                file.record(level, r.target(), &r.args().to_string());
+            }
         }
+        fn flush(&self) {}
     }
-    fn flush(&self) {}
-}
-
-/// Starts the logger on stderr and keeps the records for the log file. Creates
-/// nothing on disk, so a process that only hands its request to the running
-/// instance leaves the log alone.
-fn log_early() {
     let level = match std::env::var("RUST_LOG").as_deref() {
         Ok("debug") => log::LevelFilter::Debug,
         Ok("trace") => log::LevelFilter::Trace,
         _ => log::LevelFilter::Info,
     };
-    let logger = LOGGER.get_or_init(|| Logger { level, file: Default::default(), early: Default::default() });
-    let _ = log::set_logger(logger).map(|_| log::set_max_level(level));
-    // Panics end up in the log file too.
-    let default_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        log::error!(target: "heronite_app", "panic: {info}");
-        default_hook(info);
-    }));
-}
-
-/// Opens today's log file (creating the data folder, rotating and pruning the
-/// old files) and writes what was logged so far. Only the instance that runs,
-/// after the restore and the migration, calls this.
-fn start_log_file() {
-    let Some(logger) = LOGGER.get() else { return };
     let data_paths = heronite_data::DataPaths::detect();
     let disabled = heronite_launch::settings::GlobalSettings::load(&data_paths)
         .defaults
@@ -301,17 +258,17 @@ fn start_log_file() {
     if !disabled {
         file.note(&format!("============= Heronite {} started (pid {}) =============", env!("CARGO_PKG_VERSION"), std::process::id()));
     }
-    {
-        let mut early = logger.early.lock().unwrap_or_else(|e| e.into_inner());
-        for (level, target, message) in early.drain(..) {
-            file.record(file_level(level), &target, &message);
-        }
-        let _ = logger.file.set(file);
-    }
+    let _ = log::set_boxed_logger(Box::new(L { level, file: Some(file) })).map(|_| log::set_max_level(level));
     if !disabled {
         // The system information of Heroic's log, gathered off the startup path.
         let _ = std::thread::Builder::new().name("log-sysinfo".into()).spawn(|| {
             log::info!(target: "heronite_app", "System Information:\n{}", pages::settings::logs::system_info_text());
         });
     }
+    // Panics end up in the log file too.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        log::error!(target: "heronite_app", "panic: {info}");
+        default_hook(info);
+    }));
 }

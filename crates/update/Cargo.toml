@@ -18,7 +18,6 @@ minisign-verify = "0.2"
 ureq = "3"
 
 [dev-dependencies]
-sha2 = "0.10"
 tempfile = "3"
 
 [lints]

@@ -97,8 +97,7 @@ pub fn ready_folder(folder: &str, create_last: bool) -> Result<PathBuf, Error> {
 }
 
 /// Backs up into the configured folder when `force` or due, then removes
-/// the backups beyond the configured number (see `snapshot::prune` for what
-/// stays). Records the outcome.
+/// the backups beyond the configured number. Records the outcome.
 pub fn run(data: &DataPaths, app: &AppPaths, force: bool, now: DateTime<Local>) -> Outcome {
     let backup = match settings::load(data) {
         Ok(s) => s.backup,

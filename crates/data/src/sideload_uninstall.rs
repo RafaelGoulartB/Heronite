@@ -101,7 +101,7 @@ pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
     let files = input.folder.map(|folder| {
         let mut taken: Vec<PathBuf> = defaults.clone();
         taken.extend(other_prefixes.iter().cloned());
-        let blocked = protected_folder(folder, &managed, &taken, input.others, &own, home);
+        let blocked = managed_blocked(folder, &managed).or_else(|| folder_blocked(folder, &taken, input.others, &own, home));
         Target { path: folder.to_path_buf(), blocked }
     });
     UninstallPlan { files, prefix }
@@ -271,22 +271,7 @@ fn prefix_blocked(prefix: &Path, defaults: &[PathBuf], other_prefixes: &[PathBuf
     check_prefix_removable(prefix, &[], home).err()
 }
 
-/// Why `folder` must never be deleted or offered for deletion as a game's:
-/// another launcher or a store client keeps something there ([`launchers::managed_paths`]),
-/// or [`folder_blocked`]'s reasons. `taken` = default folders and the
-/// prefixes of other games, `others` = paths of the other games, `own` = this
-/// app's data, config and cache folders. `None`: no reason against it.
-pub fn protected_folder(
-    folder: &Path,
-    managed: &[Managed],
-    taken: &[PathBuf],
-    others: &[PathBuf],
-    own: &[PathBuf],
-    home: &Path,
-) -> Option<String> {
-    managed_blocked(folder, managed).or_else(|| folder_blocked(folder, taken, others, own, home))
-}
-
+/// `own` = this app's data, config and cache folders.
 fn folder_blocked(folder: &Path, taken: &[PathBuf], others: &[PathBuf], own: &[PathBuf], home: &Path) -> Option<String> {
     let shown = folder.display();
     if !is_clean_absolute(folder) {
