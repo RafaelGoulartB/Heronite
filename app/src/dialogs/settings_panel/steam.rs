@@ -633,7 +633,7 @@ impl SettingsPanel {
                 this.open_winetricks(window, cx)
             }))
             .child(self.outline_button("steam-runexe", &label("runexe", tr!("Run .exe in prefix")), can_run, cx, |_, window, cx| {
-                choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                choose_path(window, cx, false, tr!("Choose the .exe to run"), |this: &mut Self, path, _, cx| {
                     this.run_tool("runexe", WineTool::RunExe(path), cx)
                 });
             }))

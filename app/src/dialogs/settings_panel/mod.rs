@@ -690,6 +690,7 @@ impl Render for SettingsPanel {
             Section::Saves => self.saves_tab(window, cx),
             Section::Sandbox => self.sandbox_tab(cx),
         };
+        // The Settings page says nothing about saving: every setting there saves at once.
         let mut footer = div()
             .flex()
             .flex_wrap()
@@ -715,17 +716,7 @@ impl Render for SettingsPanel {
                 .text_color(if n.error { theme::danger_text() } else { theme::success() })
                 .child(n.text)
         });
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .when(!self.is_game() && self.section != Section::General, |d| {
-                d.child(parts::hint(tr!("Defaults for games installed from now on. To change a game you already have, open its settings.")))
-            })
-            .child(content)
-            .children(notice)
-            .child(footer)
-            .into_any_element()
+        div().flex().flex_col().gap(px(8.)).child(content).children(notice).when(self.is_game(), |d| d.child(footer)).into_any_element()
     }
 }
 

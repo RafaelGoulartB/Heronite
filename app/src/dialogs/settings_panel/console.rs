@@ -394,7 +394,7 @@ impl SettingsPanel {
                     .map(|(k, v)| format!("{k}={}", shlex::try_quote(v).map(|q| q.into_owned()).unwrap_or_else(|_| v.clone())))
                     .collect::<Vec<_>>()
                     .join(" ");
-                this.console_osk(tr!("Environment Variables"), &current, window, cx, |this, text, _, cx| {
+                this.console_osk(tr!("Environment variables"), &current, window, cx, |this, text, _, cx| {
                     this.apply_env_text(&text, cx);
                 });
             });
@@ -702,12 +702,12 @@ impl SettingsPanel {
             Self::c_header(tr!("Startup")),
             self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false),
             self.c_toggle("startInTray", false, tr!("Start minimized"), None, !with_system || no_tray),
-            Self::c_header(tr!("System Tray")),
-            self.c_toggle("exitToTray", false, tr!("Exit to tray"), None, no_tray),
-            self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon (needs restart)"), None, no_tray),
-            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
+            Self::c_header(tr!("System tray")),
+            self.c_toggle("exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray),
+            self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon"), Some(tr!("Takes effect after Heronite restarts.")), no_tray),
+            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
             Self::c_header(tr!("When a game starts and ends")),
-            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
+            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false),
         ];
         // Bringing the window back belongs to minimizing it.
         if self.flag("minimizeOnLaunch", false) {
@@ -722,7 +722,7 @@ impl SettingsPanel {
                 Some(tr!("Only when Steam was not running before Heronite started the game")),
                 false,
             ),
-            Self::c_header(tr!("Game Shortcuts")),
+            Self::c_header(tr!("Game shortcuts")),
             self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
             self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
             self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),

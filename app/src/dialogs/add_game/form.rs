@@ -155,7 +155,7 @@ impl AddGameDialog {
                     if has {
                         this.prefix.update(cx, |s, cx| s.set_value("", window, cx));
                     } else {
-                        choose_path(window, cx, true, tr!("Select WinePrefix Folder"), |this: &mut Self, path, window, cx| {
+                        choose_path(window, cx, true, tr!("Choose the Wine prefix folder"), |this: &mut Self, path, window, cx| {
                             this.prefix.update(cx, |s, cx| s.set_value(path, window, cx));
                         });
                     }
@@ -209,7 +209,7 @@ impl AddGameDialog {
                 link_action("ag-run-installer", Icon::PlayArrow, label, can_run)
                     .when(can_run, |d| {
                         d.on_click(cx.listener(|_, _, window, cx| {
-                            choose_path(window, cx, false, tr!("Select EXE to Run"), |this: &mut Self, path, _, cx| {
+                            choose_path(window, cx, false, tr!("Choose the .exe to run"), |this: &mut Self, path, _, cx| {
                                 this.run_installer(path, cx)
                             });
                         }))
