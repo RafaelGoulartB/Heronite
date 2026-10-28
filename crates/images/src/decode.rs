@@ -6,7 +6,12 @@ use crate::geometry::cover_scale;
 use std::io::Cursor;
 
 /// Hard cap on decoded source pixels (guards decompression bombs).
-pub const MAX_SOURCE_PIXELS: u64 = 120_000_000;
+///
+/// 50 MP is 200 MB as RGBA, and the loader decodes on three threads at once
+/// (a progressive JPEG buffers more than that), so one huge or hostile cover
+/// must not take gigabytes. It still fits an 8K screenshot (7680x4320 is
+/// 33 MP) and any cover or art the app shows.
+pub const MAX_SOURCE_PIXELS: u64 = 50_000_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Channels {
@@ -136,6 +141,7 @@ fn decode_generic(bytes: &[u8], fmt: image::ImageFormat) -> Result<Raster> {
 mod tests {
     use super::*;
     use image::metadata::Orientation;
+    use image::ImageEncoder;
 
     /// A JPEG of `w` x `h` whose left half is red and right half blue, with an
     /// EXIF APP1 segment that says `orientation`.
@@ -195,5 +201,23 @@ mod tests {
         assert!(near(px(&r, 5, 10), [255, 0, 0]));
         assert!(near(px(&r, 35, 10), [0, 0, 255]));
         assert!(!swaps_axes(Orientation::Rotate180) && swaps_axes(Orientation::Rotate270));
+    }
+
+    #[test]
+    fn pixel_cap_keeps_8k_screenshots_and_rejects_bombs() {
+        const { assert!(MAX_SOURCE_PIXELS >= 7680 * 4320) };
+        // 8000 x 7000 is 56 MP of one flat colour: a tiny file that would
+        // unpack to 224 MB as RGBA.
+        let mut png = Vec::new();
+        let flat = image::GrayImage::new(8000, 7000);
+        image::codecs::png::PngEncoder::new_with_quality(
+            &mut png,
+            image::codecs::png::CompressionType::Fast,
+            image::codecs::png::FilterType::NoFilter,
+        )
+        .write_image(flat.as_raw(), 8000, 7000, image::ExtendedColorType::L8)
+        .unwrap();
+        let err = decode(&png, 100, 100, true).err().expect("56 MP is over the cap");
+        assert!(err.to_string().contains("too large"), "{err}");
     }
 }
