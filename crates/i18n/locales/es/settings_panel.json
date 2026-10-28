@@ -522,5 +522,7 @@
   "Show path": "Mostrar ruta",
   "Hide path": "Ocultar ruta",
   "Restart Heronite": "Reiniciar Heronite",
-  "The tray changes apply once Heronite starts again.": "Los cambios de la bandeja se aplican cuando Heronite vuelva a abrirse."
+  "The tray changes apply once Heronite starts again.": "Los cambios de la bandeja se aplican cuando Heronite vuelva a abrirse.",
+  "Copy path": "Copiar ruta",
+  "Copied": "Copiado"
 }

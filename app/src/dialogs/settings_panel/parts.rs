@@ -86,24 +86,54 @@ impl Rows {
 
 impl SettingsPanel {
     /// A technical path (a Wine binary, a prefix): a "Show path" link with
-    /// the path in its tooltip; a click spells it out (to select and copy)
-    /// with "Hide path" next to it.
+    /// the path in its tooltip; a click spells it out with "Hide path" next
+    /// to it. "Copy path" before it puts the path on the clipboard (and says
+    /// "Copied" for a moment).
     pub(super) fn path_note(&self, id: &'static str, path: &str, cx: &mut Context<Self>) -> Div {
         let shown = self.show_paths;
-        let link = div()
-            .id(id)
-            .flex_none()
-            .text_size(px(12.))
-            .text_color(theme::accent())
-            .cursor_pointer()
-            .hover(|s| s.text_color(theme::accent_overlay()))
+        let link = |id: SharedString| {
+            div()
+                .id(id)
+                .flex_none()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::accent_overlay()))
+        };
+        let toggle = link(id.into())
             .child(if shown { tr!("Hide path") } else { tr!("Show path") })
             .when(!shown, |d| d.tooltip(crate::ui::tooltip(path.to_string())))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.show_paths = !this.show_paths;
                 cx.notify();
             }));
-        div().flex().items_start().gap(px(10.)).when(shown, |d| d.child(help(path).flex_1().min_w_0())).child(link)
+        let copied = self.path_copied == Some(id);
+        let copy = {
+            let path = path.to_string();
+            link(SharedString::from(format!("{id}-copy"))).child(if copied { tr!("Copied") } else { tr!("Copy path") }).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
+                    this.path_copied = Some(id);
+                    // "Copied" goes back to "Copy path" after a moment.
+                    this.path_copied_task = Some(cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+                        this.update(cx, |this, cx| {
+                            this.path_copied = None;
+                            cx.notify();
+                        })
+                        .ok();
+                    }));
+                    cx.notify();
+                }),
+            )
+        };
+        div()
+            .flex()
+            .items_start()
+            .gap(px(14.))
+            .child(div().flex_1().min_w_0().when(shown, |d| d.child(help(path))))
+            .child(copy)
+            .child(toggle)
     }
 
     /// A settings row: label, explanation and a switch. `disabled` shows it

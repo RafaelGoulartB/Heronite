@@ -522,5 +522,7 @@
   "Show path": "Pfad zeigen",
   "Hide path": "Pfad ausblenden",
   "Restart Heronite": "Heronite neu starten",
-  "The tray changes apply once Heronite starts again.": "Die Tray-Änderungen gelten, sobald Heronite neu startet."
+  "The tray changes apply once Heronite starts again.": "Die Tray-Änderungen gelten, sobald Heronite neu startet.",
+  "Copy path": "Pfad kopieren",
+  "Copied": "Kopiert"
 }

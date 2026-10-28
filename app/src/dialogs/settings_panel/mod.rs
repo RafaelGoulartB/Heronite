@@ -154,6 +154,10 @@ pub struct SettingsPanel {
     pub(super) open_select: Option<&'static str>,
     /// The technical paths ("Show path") are spelled out.
     pub(super) show_paths: bool,
+    /// The path whose "Copy path" was just clicked (it says "Copied"), and
+    /// the wait before it reads "Copy path" again.
+    pub(super) path_copied: Option<&'static str>,
+    pub(super) path_copied_task: Option<Task<()>>,
     pub(super) inputs: HashMap<&'static str, Entity<InputState>>,
     pub(super) notice: Option<Notice>,
     /// "Reset this tab" asked for and waiting for its answer.
@@ -279,6 +283,8 @@ impl SettingsPanel {
             prefix_list: None,
             // `HERONITE_DEBUG_SHOW_PATHS=1`: the paths start shown.
             show_paths: crate::env::flag("HERONITE_DEBUG_SHOW_PATHS"),
+            path_copied: None,
+            path_copied_task: None,
             // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version|fps-method|gpu-device`: that menu starts open.
             open_select: match crate::env::value("HERONITE_DEBUG_OPEN_SELECT").as_deref() {
                 Some("steam-tool") => Some("steam-tool"),
