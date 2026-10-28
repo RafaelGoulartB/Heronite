@@ -6,8 +6,8 @@
 //!
 //! [`inventory`] lists everything quickly (the sizes stores and manifests give
 //! are filled in, nothing is walked); [`measure`] walks one item whose size is
-//! unknown; [`remove`] cleans one item. All blocking: the app calls them off
-//! the UI thread, only while the Storage section is on screen.
+//! unknown; [`remove`] and [`remove_all`] clean items. All blocking: the app
+//! calls them off the UI thread, only while the Storage section is on screen.
 
 mod builds;
 mod caches;
@@ -27,7 +27,7 @@ use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::SystemProbe;
 
-pub use clean::{remove, Removed};
+pub use clean::{remove, remove_all, Removed};
 pub use disks::Disk;
 
 /// Where to look.

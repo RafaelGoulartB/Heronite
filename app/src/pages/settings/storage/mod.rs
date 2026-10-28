@@ -335,8 +335,8 @@ fn remove(d: &mut SettingsPage, ids: Vec<String>, cx: &mut Context<SettingsPage>
             .background_spawn(async move {
                 let mut done = Removed::default();
                 let mut errors: Vec<String> = Vec::new();
-                for item in &items {
-                    match heronite_storage::remove(&ctx, item) {
+                for (item, result) in items.iter().zip(heronite_storage::remove_all(&ctx, &items)) {
+                    match result {
                         Ok(r) => {
                             done.deleted += r.deleted;
                             done.trashed += r.trashed;
