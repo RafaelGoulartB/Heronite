@@ -1,7 +1,10 @@
 //! The Details tab: the metadata form and the time played, their dirty
-//! check and saving.
+//! check and saving. A change saves by itself a moment after the last
+//! keystroke ([`SAVE_DELAY`]); closing the drawer saves what is pending
+//! first, and "Undo" puts back what the drawer opened with.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::prelude::*;
@@ -64,6 +67,18 @@ pub(super) fn form_from(title: &str, md: Option<&CollectionGameMetadata>, meta: 
     }
 }
 
+/// The patch sets at least one field.
+fn changes_anything(p: &DetailsPatch) -> bool {
+    [&p.title, &p.notes, &p.description, &p.release_date, &p.series].iter().any(|f| f.is_some())
+        || [&p.developers, &p.publishers, &p.genres, &p.themes, &p.game_modes, &p.platforms, &p.features, &p.websites]
+            .iter()
+            .any(|f| f.is_some())
+        || p.critic_score.is_some()
+}
+
+/// How long after the last change the Details tab saves.
+const SAVE_DELAY: Duration = Duration::from_millis(700);
+
 fn split_list(value: &str) -> Vec<String> {
     value.split([',', ';', '\n']).map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
 }
@@ -112,7 +127,11 @@ impl GameSettingsDialog {
                 };
                 let opts = options.get(i).map(|(_, v)| v.clone()).unwrap_or_default();
                 let field = cx.new(|cx| TagField::new(&format!("gs-{id}"), tr(label), *multiple, opts, values, window, cx));
-                cx.subscribe(&field, |_, _, _: &TagEvent, cx| cx.notify()).detach();
+                cx.subscribe(&field, |this, _, _: &TagEvent, cx| {
+                    this.schedule_save(cx);
+                    cx.notify();
+                })
+                .detach();
                 field
             })
             .collect();
@@ -128,16 +147,18 @@ impl GameSettingsDialog {
             minutes: new_input(window, cx, &split_minutes(playtime).1.to_string(), "0"),
         };
         for input in [&details.name, &details.release, &details.score, &details.websites, &details.hours, &details.minutes] {
-            cx.subscribe_in(input, window, |_, _, ev: &InputEvent, _, cx| {
+            cx.subscribe_in(input, window, |this, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
+                    this.schedule_save(cx);
                     cx.notify();
                 }
             })
             .detach();
         }
         for area in [&details.description, &details.notes] {
-            cx.subscribe_in(area, window, |_, _, ev: &InputEvent, _, cx| {
+            cx.subscribe_in(area, window, |this, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
+                    this.schedule_save(cx);
                     cx.notify();
                 }
             })
@@ -178,14 +199,54 @@ impl GameSettingsDialog {
         self.read_form(cx) != self.initial || self.playtime(cx) != self.initial_playtime
     }
 
+    /// Saves the Details tab a moment after the last change (a new change
+    /// starts the wait again).
+    pub(super) fn schedule_save(&mut self, cx: &mut Context<Self>) {
+        self.save_timer = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SAVE_DELAY).await;
+            this.update(cx, |this, cx| this.save_details(cx)).ok();
+        }));
+    }
+
+    /// Closes the drawer once what the Details tab has pending is saved
+    /// (Done, the X, Esc, a click outside).
+    pub(super) fn close(&mut self, cx: &mut Context<Self>) {
+        self.close_after_save = true;
+        if self.busy == Some(Busy::Details) {
+            // The save being written closes it.
+            return;
+        }
+        // Saves now instead of after the wait (closes when there is nothing to save).
+        self.save_timer = None;
+        self.save_details(cx);
+    }
+
+    /// "Undo": the form and the time played back to what the drawer opened
+    /// with, saved.
+    pub(super) fn undo_details(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (form, minutes) = self.opened.clone();
+        self.details = Self::build_details(&self.ctx, &form, minutes, window, cx);
+        self.save_details(cx);
+    }
+
+    /// The Details tab differs from what the drawer opened with.
+    pub(super) fn changed_since_open(&self, cx: &App) -> bool {
+        self.read_form(cx) != self.opened.0 || self.playtime(cx) != self.opened.1
+    }
+
     pub(super) fn save_details(&mut self, cx: &mut Context<Self>) {
         if self.busy.is_some() {
+            // An image is being written: again in a moment. A save being
+            // written looks again when it is done.
+            if self.busy != Some(Busy::Details) {
+                self.schedule_save(cx);
+            }
             return;
         }
         let playtime = self.playtime(cx);
         let playtime_changed = playtime != self.initial_playtime;
-        let details_changed = self.read_form(cx) != self.initial;
         let (form, old) = (self.read_form(cx), self.initial.clone());
+        let sent = (form.clone(), playtime);
         let mut patch = DetailsPatch { app_name: self.game.app_name.clone(), runner: self.runner(), ..Default::default() };
         if form.title != old.title {
             patch.title = Some(form.title.clone());
@@ -219,6 +280,7 @@ impl GameSettingsDialog {
         if form.websites != old.websites {
             patch.websites = Some(split_list(&form.websites));
         }
+        self.error.clear();
         if form.score != old.score {
             let t = form.score.trim();
             if t.is_empty() {
@@ -226,16 +288,20 @@ impl GameSettingsDialog {
             } else {
                 match t.parse::<f64>() {
                     Ok(n) if n.is_finite() => patch.critic_score = Some(Some(n.round())),
-                    _ => {
-                        self.error = tr!("Score must be a number, or empty.").into();
-                        cx.notify();
-                        return;
-                    }
+                    // The other fields still save; the score waits for a number.
+                    _ => self.error = tr!("Score must be a number, or empty.").into(),
                 }
             }
         }
+        let details_changed = changes_anything(&patch);
+        if !details_changed && !playtime_changed {
+            if self.close_after_save {
+                cx.emit(DialogEvent::Close);
+            }
+            cx.notify();
+            return;
+        }
         self.busy = Some(Busy::Details);
-        self.error.clear();
         let service = self.service.clone();
         let title = self.title.clone();
         let (paths, app_name) = (self.ctx.data_paths.clone(), self.game.app_name.clone());
@@ -256,13 +322,29 @@ impl GameSettingsDialog {
                         if let Some(r) = details {
                             let meta = r.meta.clone().or_else(|| this.game.meta.as_deref().cloned());
                             this.initial = form_from(&title, Some(&r.metadata), meta.as_ref());
+                            // The header shows the saved name.
+                            if !this.initial.title.trim().is_empty() {
+                                this.title = this.initial.title.clone();
+                            }
                         }
                         if playtime_saved {
                             this.initial_playtime = playtime;
                         }
+                        this.saved = true;
+                        if this.close_after_save {
+                            cx.emit(DialogEvent::ChangedAndClose);
+                            return;
+                        }
                         cx.emit(DialogEvent::Changed);
+                        // Typed while it was written: that is saved too.
+                        if (this.read_form(cx), this.playtime(cx)) != sent {
+                            this.schedule_save(cx);
+                        }
                     }
-                    Err(err) => this.error = format!("{err:#}"),
+                    Err(err) => {
+                        this.error = format!("{err:#}");
+                        this.close_after_save = false;
+                    }
                 }
                 cx.notify();
             })
@@ -292,6 +374,8 @@ impl GameSettingsDialog {
                 if untouched {
                     self.initial = form_from(&self.game.title, self.metadata.as_deref(), self.game.meta.as_deref());
                     self.details = Self::build_details(&self.ctx, &self.initial, self.initial_playtime, window, cx);
+                    // Undo goes back to the fetched details, not before them.
+                    self.opened.0 = self.initial.clone();
                 }
             }
             cx.emit(DialogEvent::Changed);

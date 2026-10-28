@@ -9,7 +9,6 @@ use heronite_i18n::{n_, tr};
 use heronite_launch::native::{ExecutableKind, Platform};
 use heronite_metadata::ArtKind;
 
-use super::super::DialogEvent;
 use super::details::TAG_FIELDS;
 use super::{GameSettingsDialog, Tab};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
@@ -387,7 +386,8 @@ impl PadTarget for GameSettingsDialog {
             Pad::B if self.tab == Tab::Actions && self.close_action_editor(cx) => return true,
             Pad::B if self.cancel_reset_question(cx) => return true,
             Pad::B => {
-                cx.emit(DialogEvent::Close);
+                // What the Details tab has pending is saved first.
+                self.close(cx);
                 return true;
             }
             _ => {}
