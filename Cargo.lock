@@ -3703,6 +3703,7 @@ name = "heronite-images"
 version = "0.17.0"
 dependencies = [
  "fast_image_resize",
+ "heronite-data",
  "image",
  "jpeg-decoder",
  "log",
