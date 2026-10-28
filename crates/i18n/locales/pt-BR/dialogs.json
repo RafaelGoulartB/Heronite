@@ -13,6 +13,7 @@
   "Can't remove \"{title}\" from Steam while Steam is running. Close Steam and try again (Steam overwrites shortcuts.vdf when it exits).": "Não é possível remover “{title}” da Steam enquanto ela está aberta. Feche a Steam e tente novamente (a Steam sobrescreve o shortcuts.vdf ao sair).",
   "Choosing new images from the web needs desktop mode": "Escolher novas imagens da web exige o modo desktop",
   "Cloud saves failed: {error}": "Falha nos saves na nuvem: {error}",
+  "Cloud saves were not uploaded: they could not be downloaded before the game started": "Os saves da nuvem não foram enviados: não puderam ser baixados antes de o jogo iniciar",
   "Cloud saves: {problem}": "Saves na nuvem: {problem}",
   "Connection to the Steam client failed": "Falha na conexão com o cliente da Steam",
   "Continue": "Continuar",

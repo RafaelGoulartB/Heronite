@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use heronite_data::steam_process;
 use heronite_i18n::tr;
 use regex::Regex;
 
@@ -264,17 +265,24 @@ impl SteamLocator {
         out
     }
 
-    /// Whether the Steam client runs: a `steam.pid` it writes (native or
-    /// Flatpak) names a live process. In Steam Deck game mode Steam is the
-    /// session, so it always counts as running there.
+    /// Whether the Steam client runs: see [`heronite_data::steam_process`]
+    /// (the pid files of the native and Flatpak installs, each naming a live
+    /// `steam` process, else a `steam` process; Steam Deck game mode counts).
     pub fn client_running(&self, procs: &dyn Procs) -> bool {
-        if std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope") {
-            return true;
-        }
-        let mut files = vec![self.steam_path.join("steam.pid"), self.home.join(".steam/steam.pid")];
-        files.extend(self.steam_path.parent().map(|p| p.join("steam.pid")));
-        files.push(self.home.join(".var/app").join(FLATPAK_STEAM_ID).join(".steam/steam.pid"));
-        files.iter().any(|f| fs::read_to_string(f).ok().and_then(|s| s.trim().parse::<u32>().ok()).is_some_and(|pid| procs.is_alive(pid)))
+        steam_process::is_running(&ProcView(procs), &self.home, &self.steam_path)
+    }
+}
+
+/// [`Procs`] as the process table [`steam_process`] reads.
+struct ProcView<'a>(&'a dyn Procs);
+
+impl steam_process::ProcTable for ProcView<'_> {
+    fn live_comm(&self, pid: u32) -> Option<String> {
+        self.0.is_alive(pid).then(|| self.0.comm(pid)).flatten()
+    }
+
+    fn live_pids(&self) -> Vec<u32> {
+        self.0.parents().into_keys().collect()
     }
 }
 

@@ -4,11 +4,12 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
-use heronite_epic::cmd::Output;
+use heronite_epic::cmd::{timed_out_message, Output};
 use heronite_i18n::tr;
 use heronite_launch::net::SystemNet;
 use heronite_launch::store_tools::GOGDL;
@@ -79,6 +80,23 @@ impl Gogdl {
     /// Like [`run`](Self::run) but calls `on_line` for every output line (both
     /// streams) while the command runs, and stops it when `cancel` is requested.
     pub fn run_streaming<S: AsRef<str>>(&self, args: &[S], cancel: &Cancel, on_line: impl FnMut(&str)) -> Result<Output> {
+        self.run_streaming_for(args, cancel, None, on_line)
+    }
+
+    /// [`run`](Self::run) that gives up with an error once `timeout` has passed.
+    pub fn run_for<S: AsRef<str>>(&self, args: &[S], timeout: Duration) -> Result<Output> {
+        self.run_streaming_for(args, &Cancel::new(), Some(timeout), |_| {})
+    }
+
+    /// [`run_streaming`](Self::run_streaming) with an optional timeout (`None`:
+    /// waits as long as it takes).
+    pub fn run_streaming_for<S: AsRef<str>>(
+        &self,
+        args: &[S],
+        cancel: &Cancel,
+        timeout: Option<Duration>,
+        on_line: impl FnMut(&str),
+    ) -> Result<Output> {
         let args: Vec<String> = args.iter().map(|a| a.as_ref().to_string()).collect();
         log::info!("gogdl {}", redact(&args).join(" "));
         // gogdl writes the auth file without creating its folder.
@@ -89,13 +107,14 @@ impl Gogdl {
         // SIGTERM only gogdl (it leaves `.gogdl-resume` behind); its workers
         // are killed with the group afterwards.
         let mut on_line = on_line;
-        let out = Run::new()
-            .cancel(cancel)
-            .term_main_only()
-            .line_capture()
-            .on_line(&mut on_line)
-            .run(&mut cmd)
-            .with_context(|| format!("starting {}", self.bin.display()))?;
+        let mut run = Run::new().cancel(cancel).term_main_only().line_capture().on_line(&mut on_line);
+        if let Some(timeout) = timeout {
+            run = run.timeout(timeout);
+        }
+        let out = run.run(&mut cmd).with_context(|| format!("starting {}", self.bin.display()))?;
+        if out.timed_out {
+            bail!(timed_out_message("gogdl", timeout));
+        }
         Ok(Output { stdout: out.stdout_text(), stderr: out.stderr_text(), code: out.code, aborted: out.aborted })
     }
 }
@@ -172,7 +191,7 @@ pub(crate) mod testing {
 mod tests {
     use super::testing::*;
     use super::*;
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     #[test]
     fn passes_the_auth_file_and_config_path() {
@@ -207,6 +226,16 @@ mod tests {
         assert!(out.aborted);
         assert!(started.elapsed() < Duration::from_secs(10));
         assert!(lines.contains(&"a".to_string()) && lines.contains(&"b".to_string()), "{lines:?}");
+    }
+
+    #[test]
+    fn a_hung_gogdl_is_stopped_by_the_timeout() {
+        let (dir, paths) = setup();
+        let g = fake(dir.path(), &paths, "exec sleep 60");
+        let started = Instant::now();
+        let err = g.run_for(&["save-sync"], Duration::from_millis(300)).unwrap_err().to_string();
+        assert!(err.contains("gogdl") && err.contains("stopped"), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(30), "took {:?}", started.elapsed());
     }
 
     #[test]

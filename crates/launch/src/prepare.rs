@@ -14,6 +14,7 @@
 //! on the launch thread; the network, the machine and the processes are
 //! injected so tests need none of them.
 
+use std::cell::Cell;
 use std::time::{Duration, Instant};
 
 use heronite_data::DataPaths;
@@ -82,7 +83,19 @@ pub struct Prep<'a> {
     pub cloud: Option<&'a dyn CloudSync>,
     pub cancel: &'a dyn Fn() -> bool,
     pub notify: &'a dyn Fn(Notice),
+    /// The cloud saves could not be downloaded before the game started
+    /// (failed, timed out or offline). Uploading after the game would then
+    /// push the local saves over newer ones from another device, so
+    /// [`Prep::after_exit`] leaves them alone.
+    pub download_failed: Cell<bool>,
 }
+
+/// The longest a cloud save sync (`legendary sync-saves`, `gogdl save-sync`)
+/// may run before it is stopped. Saves are small, so a normal sync takes
+/// seconds; a tool stuck on a dead connection would otherwise hold the launch
+/// (the step is uncancellable) or the end of the session forever. Generous
+/// enough for a big save on a slow link.
+pub const SYNC_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 /// How long an installer stopped by a cancel or a timeout gets to exit
 /// before it is killed.
@@ -123,13 +136,29 @@ pub fn run_wait(spawner: &dyn Spawner, cmd: &crate::plan::Command, timeout: Dura
     }
 }
 
+/// Whether `line` is an error record of legendary's, gogdl's or nile's log.
+/// legendary and gogdl write `[<logger>] <LEVEL>: <message>` (`[cli] ERROR:
+/// ...`, `[Core] CRITICAL: ...`), nile `<LEVEL> [<logger>]: <message>`
+/// (`ERROR [AUTH]: ...`), so the level counts only next to the logger name:
+/// a save file called `ERROR_LOG.sav` in a listing is no error. A traceback
+/// header counts too.
+pub fn is_error_line(line: &str) -> bool {
+    let line = line.trim_start();
+    if line.starts_with("Traceback (most recent call last)") {
+        return true;
+    }
+    let message = match line.strip_prefix('[').and_then(|rest| rest.split_once("] ")) {
+        Some((_logger, message)) => message,
+        None => line,
+    };
+    let level_first =
+        |level: &str| message.strip_prefix(level).and_then(|rest| rest.strip_prefix(" [")).is_some_and(|rest| rest.contains("]:"));
+    message.starts_with("ERROR:") || message.starts_with("CRITICAL:") || level_first("ERROR") || level_first("CRITICAL")
+}
+
 /// The first line of a legendary output that reports a failure.
 pub fn sync_problem(output: &str) -> Option<String> {
-    output
-        .lines()
-        .map(str::trim)
-        .find(|l| l.contains("ERROR") || l.contains("CRITICAL") || l.starts_with("Traceback"))
-        .map(|l| l.to_string())
+    output.lines().map(str::trim).find(|l| is_error_line(l)).map(|l| l.to_string())
 }
 
 /// Windows wine commands (`reg add`, `wineboot -u`) in the game's prefix.
@@ -162,12 +191,14 @@ impl Prep<'_> {
     }
 
     /// `game.syncSaves(flag, path)` when online. Problems are warnings: the
-    /// game starts anyway, like in Heroic.
-    fn sync_saves(&self, app_name: &str, saves: &CloudSaves, flag: &str, what: &str) {
-        let Some(cloud) = self.cloud else { return };
+    /// game starts anyway, like in Heroic. False when the sync did not happen
+    /// or did not work (offline, a problem, an error); true when it worked or
+    /// there is no cloud to sync with.
+    fn sync_saves(&self, app_name: &str, saves: &CloudSaves, flag: &str, what: &str) -> bool {
+        let Some(cloud) = self.cloud else { return true };
         if !self.net.is_online() {
             log::info!("offline, not {what} saves of {app_name}");
-            return;
+            return false;
         }
         let download = flag == "--skip-upload";
         // Cut short, a sync could leave the saves half replaced.
@@ -182,18 +213,24 @@ impl Prep<'_> {
             Ok(out) => {
                 if let Some(problem) = sync_problem(&out) {
                     self.notice(Notice::warn(format!("Cloud saves: {problem}"), tr!("Cloud saves: {problem}", problem)));
-                } else {
-                    log::info!("saves of {app_name} {what}");
+                    return false;
                 }
+                log::info!("saves of {app_name} {what}");
+                true
             }
-            Err(e) => self.notice(Notice::warn(format!("Cloud saves failed: {e}"), tr!("Cloud saves failed: {error}", error = e))),
+            Err(e) => {
+                self.notice(Notice::warn(format!("Cloud saves failed: {e}"), tr!("Cloud saves failed: {error}", error = e)));
+                false
+            }
         }
     }
 
     /// Before the prefix is created: cloud saves down, umu present.
     pub fn before_prefix(&self, app_name: &str, spec: &PrepSpec) -> Flow {
         if let Some(saves) = &spec.cloud_saves {
-            self.sync_saves(app_name, saves, "--skip-upload", "downloaded");
+            if !self.sync_saves(app_name, saves, "--skip-upload", "downloaded") {
+                self.download_failed.set(true);
+            }
             if (self.cancel)() {
                 return Flow::Cancelled;
             }
@@ -298,11 +335,21 @@ impl Prep<'_> {
         dxvk::install_remove(&env, settings, tool, action)
     }
 
-    /// After the game exited: upload the saves.
+    /// After the game exited: upload the saves, unless they could not be
+    /// downloaded before it started (the cloud may hold newer ones).
     pub fn after_exit(&self, app_name: &str, spec: &PrepSpec) {
-        if let Some(saves) = &spec.cloud_saves {
-            self.sync_saves(app_name, saves, "--skip-download", "uploaded");
+        let Some(saves) = &spec.cloud_saves else { return };
+        if self.download_failed.get() {
+            // Still offline: nothing would have been uploaded anyway.
+            if self.cloud.is_some() && self.net.is_online() {
+                self.notice(Notice::warn(
+                    format!("Cloud saves of {app_name} were not uploaded: they could not be downloaded before the game started"),
+                    tr!("Cloud saves were not uploaded: they could not be downloaded before the game started"),
+                ));
+            }
+            return;
         }
+        self.sync_saves(app_name, saves, "--skip-download", "uploaded");
     }
 }
 
@@ -389,7 +436,16 @@ pub(crate) mod tests {
         cloud: Option<&'a dyn CloudSync>,
         sink: &'a dyn Fn(Notice),
     ) -> Prep<'a> {
-        Prep { paths: &fx.paths, probe, net, spawner: &fx.spawner, cloud, cancel: &|| false, notify: sink }
+        Prep {
+            paths: &fx.paths,
+            probe,
+            net,
+            spawner: &fx.spawner,
+            cloud,
+            cancel: &|| false,
+            notify: sink,
+            download_failed: Default::default(),
+        }
     }
 
     fn wine_settings(prefix: &Path) -> GameSettings {
@@ -460,6 +516,79 @@ pub(crate) mod tests {
         }
         assert_eq!(sync_problem("all good\n[cli] INFO: done"), None);
         assert!(sync_problem("a\n  [Core] CRITICAL: boom").unwrap().contains("boom"));
+    }
+
+    #[test]
+    fn only_log_records_count_as_errors_not_file_names() {
+        for line in [
+            "[cli] ERROR: boom",
+            "[Core] CRITICAL: boom",
+            "  [GENERIC DOWNLOAD_MANAGER] ERROR: x",
+            "ERROR: bare",
+            "ERROR [AUTH]:\t You are already logged in",
+            "CRITICAL [DOWNLOAD]: x",
+            "Traceback (most recent call last):",
+        ] {
+            assert!(is_error_line(line), "{line}");
+        }
+        for line in [
+            "[cli] INFO: - ERROR_LOG.sav (1 KiB)",
+            "[cli] INFO: Uploading CRITICAL: hit.sav",
+            "ERROR_LOG.sav",
+            "ERROR [1].sav",
+            "INFO [CLI]:\t Found: ERROR [X]: Game",
+            "saves/CRITICAL.sav",
+            "[cli] WARNING: Traceback.sav is old",
+            "",
+        ] {
+            assert!(!is_error_line(line), "{line}");
+        }
+        assert_eq!(sync_problem("[cli] INFO: - ERROR_LOG.sav\n[cli] INFO: done"), None);
+    }
+
+    #[test]
+    fn saves_that_could_not_be_downloaded_are_not_uploaded_over_the_clouds() {
+        let fx = Fx::new();
+        let (p, net) = (probe(), FakeNet::online());
+        let spec = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
+        for cloud in [
+            FakeCloud { fail: true, ..Default::default() },
+            FakeCloud { output: "[cli] ERROR: Could not get remote saves\n".into(), ..Default::default() },
+        ] {
+            let seen = Mutex::new(Vec::new());
+            let sink = |n: Notice| seen.lock().unwrap().push(n);
+            let prep = collect(&fx, &p, &net, Some(&cloud), &sink);
+            assert_eq!(prep.before_prefix("A", &spec), Flow::Go);
+            seen.lock().unwrap().clear();
+            prep.after_exit("A", &spec);
+            // Only the download was tried; the user is told why nothing went up.
+            assert_eq!(cloud.calls.lock().unwrap().len(), 1);
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen.len(), 1, "{seen:?}");
+            assert!(seen[0].warning && seen[0].message.contains("not uploaded"), "{:?}", seen[0]);
+        }
+    }
+
+    #[test]
+    fn an_offline_start_blocks_the_upload_silently_until_it_could_matter() {
+        let fx = Fx::new();
+        let (p, cloud) = (probe(), FakeCloud::default());
+        let spec = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/s")), ..Default::default() };
+        let seen = Mutex::new(Vec::new());
+        let sink = |n: Notice| seen.lock().unwrap().push(n);
+        let offline = FakeNet::offline();
+        let prep = collect(&fx, &p, &offline, Some(&cloud), &sink);
+        prep.before_prefix("A", &spec);
+        prep.after_exit("A", &spec);
+        assert!(seen.lock().unwrap().is_empty() && cloud.calls.lock().unwrap().is_empty());
+        assert!(prep.download_failed.get());
+
+        // Back online at the end: still no upload, and the user is told.
+        let online = FakeNet::online();
+        let later = Prep { download_failed: Cell::new(true), ..collect(&fx, &p, &online, Some(&cloud), &sink) };
+        later.after_exit("A", &spec);
+        assert!(cloud.calls.lock().unwrap().is_empty());
+        assert_eq!(seen.lock().unwrap().len(), 1);
     }
 
     fn lutris_list() -> serde_json::Value {

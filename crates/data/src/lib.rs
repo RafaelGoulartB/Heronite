@@ -50,6 +50,7 @@ pub mod stats;
 pub mod status;
 pub mod status_history;
 pub mod steam_owned;
+pub mod steam_process;
 pub mod timeline;
 pub mod ui_state;
 
