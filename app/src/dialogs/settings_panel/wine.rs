@@ -217,7 +217,7 @@ impl SettingsPanel {
         if !list.is_empty() && !Path::new(&current.bin).exists() {
             col = col.child(danger_text(tr!("This Wine path does not work. Choose another one.")));
         }
-        col = col.child(help(&current.bin));
+        col = col.child(self.path_note("wine-bin-path", &current.bin, cx));
         let rec = self.wine_recommendation(&options, &current);
         if let Some(row) = self.protondb_row(rec, cx, Self::pick_wine) {
             col = col.child(div().border_t_1().border_color(theme::ink_a(0.06)).mt(px(4.)).child(row));

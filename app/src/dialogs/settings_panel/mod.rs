@@ -152,6 +152,8 @@ pub struct SettingsPanel {
     pub(super) prefix_list: Option<Vec<heronite_wine::prefixes::Prefix>>,
     /// Id of the select whose menu is open.
     pub(super) open_select: Option<&'static str>,
+    /// The technical paths ("Show path") are spelled out.
+    pub(super) show_paths: bool,
     pub(super) inputs: HashMap<&'static str, Entity<InputState>>,
     pub(super) notice: Option<Notice>,
     /// "Reset this tab" asked for and waiting for its answer.
@@ -275,6 +277,8 @@ impl SettingsPanel {
             settings,
             wine_list: None,
             prefix_list: None,
+            // `HERONITE_DEBUG_SHOW_PATHS=1`: the paths start shown.
+            show_paths: crate::env::flag("HERONITE_DEBUG_SHOW_PATHS"),
             // `HERONITE_DEBUG_OPEN_SELECT=steam-tool|wine-version|fps-method|gpu-device`: that menu starts open.
             open_select: match crate::env::value("HERONITE_DEBUG_OPEN_SELECT").as_deref() {
                 Some("steam-tool") => Some("steam-tool"),

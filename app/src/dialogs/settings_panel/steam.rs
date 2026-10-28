@@ -613,7 +613,7 @@ impl SettingsPanel {
         let busy = self.tool_busy;
         let label =
             |name: &'static str, text: &'static str| if busy == Some(name) { tr!("{text} (running)", text) } else { text.to_string() };
-        let mut notes = vec![help(&prefix.compatdata.join("pfx").display().to_string())];
+        let mut notes = vec![self.path_note("steam-prefix-path", &prefix.compatdata.join("pfx").display().to_string(), cx)];
         notes.push(help(&match &prefix.proton {
             Some(dir) => tr!(
                 "Tools run with {proton} ({path}), the build that last ran the game.",

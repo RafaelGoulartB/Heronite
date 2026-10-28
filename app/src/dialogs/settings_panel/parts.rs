@@ -3,6 +3,8 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use heronite_i18n::tr;
+
 use super::SettingsPanel;
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, row, toggle, ButtonKind};
@@ -83,6 +85,27 @@ impl Rows {
 }
 
 impl SettingsPanel {
+    /// A technical path (a Wine binary, a prefix): a "Show path" link with
+    /// the path in its tooltip; a click spells it out (to select and copy)
+    /// with "Hide path" next to it.
+    pub(super) fn path_note(&self, id: &'static str, path: &str, cx: &mut Context<Self>) -> Div {
+        let shown = self.show_paths;
+        let link = div()
+            .id(id)
+            .flex_none()
+            .text_size(px(12.))
+            .text_color(theme::accent())
+            .cursor_pointer()
+            .hover(|s| s.text_color(theme::accent_overlay()))
+            .child(if shown { tr!("Hide path") } else { tr!("Show path") })
+            .when(!shown, |d| d.tooltip(crate::ui::tooltip(path.to_string())))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.show_paths = !this.show_paths;
+                cx.notify();
+            }));
+        div().flex().items_start().gap(px(10.)).when(shown, |d| d.child(help(path).flex_1().min_w_0())).child(link)
+    }
+
     /// A settings row: label, explanation and a switch. `disabled` shows it
     /// dimmed and inert.
     pub(super) fn toggle_row(

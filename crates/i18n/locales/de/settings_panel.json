@@ -518,5 +518,7 @@
   "This tab's changed settings go back to the defaults.": "Die geänderten Einstellungen dieses Tabs werden auf die Standardwerte zurückgesetzt.",
   "A again puts this tab's settings back to the defaults.": "Erneutes A setzt die Einstellungen dieses Tabs auf die Standardwerte zurück.",
   "Takes effect after Heronite restarts.": "Wirkt nach einem Neustart von Heronite.",
-  "Useful with a local download cache such as LanCache.": "Nützlich mit einem lokalen Download-Cache wie LanCache."
+  "Useful with a local download cache such as LanCache.": "Nützlich mit einem lokalen Download-Cache wie LanCache.",
+  "Show path": "Pfad zeigen",
+  "Hide path": "Pfad ausblenden"
 }
