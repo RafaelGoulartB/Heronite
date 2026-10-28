@@ -306,11 +306,7 @@ impl ThumbnailCache {
                 return Ok((cache.clone(), None));
             }
             fs::create_dir_all(&inner.root)?;
-            // A broken or hostile picture can panic the decoder: contained, it is an error.
-            let raster = match heronite_data::panics::contained(|| render(source)) {
-                Ok(r) => r?,
-                Err(p) => return Err(ThumbError::Image(format!("decoder panic: {}", heronite_data::panics::message(&*p)))),
-            };
+            let raster = render(source)?;
             let jpeg = encode_jpeg(&raster)?;
             let tmp = inner.root.join(format!(".{}.tmp", cache_key(source)));
             fs::write(&tmp, &jpeg)?;
@@ -490,20 +486,7 @@ mod tests {
     }
 
     #[test]
-    fn the_decoder_runs_in_a_contained_scope() {
-        let dir = tempfile::tempdir().unwrap();
-        let src = dir.path().join("shot.png");
-        write_png(&src, 320, 180, |_, _| [1, 2, 3]);
-        let cache = ThumbnailCache::new(dir.path().join("cache"), 50.0);
-        let _ = cache.ensure_with(&src, |_| {
-            assert!(heronite_data::panics::is_contained());
-            Err(ThumbError::Cancelled)
-        });
-        assert!(!heronite_data::panics::is_contained());
-    }
-
-    #[test]
-    fn a_decoder_panic_is_an_error_and_frees_the_job_for_the_next_request() {
+    fn a_decoder_panic_frees_the_job_for_the_next_request() {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("shot.png");
         write_png(&src, 320, 180, |_, _| [1, 2, 3]);
@@ -511,8 +494,10 @@ mod tests {
 
         // More panics than job slots: a leaked slot would block the last ones.
         for _ in 0..=MAX_CONCURRENT_JOBS {
-            let crashed = cache.ensure_with(&src, |_| panic!("decoder crashed"));
-            assert!(matches!(crashed, Err(ThumbError::Image(m)) if m.contains("decoder crashed")));
+            let c = cache.clone();
+            let s = src.clone();
+            let crashed = std::thread::spawn(move || c.ensure_with(&s, |_| panic!("decoder crashed"))).join();
+            assert!(crashed.is_err());
         }
         {
             let st = cache.inner.state.lock().unwrap();

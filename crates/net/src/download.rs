@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{sync_channel, RecvTimeoutError, SyncSender};
 use std::time::{Duration, Instant};
 
-use heronite_i18n::tr;
 use sha2::{Digest, Sha256, Sha512};
 
 use crate::error::{io_error, redact_url, scrub, Error};
@@ -154,7 +153,7 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
         return Err(Error::Cancelled);
     }
     if let Some(dir) = dest.parent().filter(|d| !d.as_os_str().is_empty()) {
-        fs::create_dir_all(dir).map_err(|e| io_error(tr!("creating {path}", path = dir.display()), e))?;
+        fs::create_dir_all(dir).map_err(|e| io_error(format!("creating {}", dir.display()), e))?;
     }
     let mut part = Part { path: part_path(dest), keep: false };
 
@@ -163,7 +162,7 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
     std::thread::Builder::new()
         .name("heronite-net".into())
         .spawn(move || request.run(tx))
-        .map_err(|e| io_error(tr!("starting the download"), e))?;
+        .map_err(|e| io_error("starting the download", e))?;
 
     let hash = opts.hash.or(opts.expected_sha256.map(|_| Hash::Sha256));
     let mut hasher = hash.map(Hasher::new);
@@ -187,7 +186,7 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
                 continue;
             }
             Err(RecvTimeoutError::Disconnected) => {
-                return Err(Error::Io { context: tr!("downloading").into(), source: ErrorKind::BrokenPipe.into() });
+                return Err(Error::Io { context: "downloading".into(), source: ErrorKind::BrokenPipe.into() });
             }
         };
         last_data = Instant::now();
@@ -197,10 +196,10 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
                 total = header_total.or(total);
                 if let (Some(max), Some(t)) = (opts.max_bytes, header_total) {
                     if t > max {
-                        return Err(Error::Invalid(tr!("the file is larger than the {max} bytes allowed", max)));
+                        return Err(Error::Invalid(format!("the file is larger than the {max} bytes allowed")));
                     }
                 }
-                file = Some(File::create(&part.path).map_err(|e| io_error(tr!("creating {path}", path = part.path.display()), e))?);
+                file = Some(File::create(&part.path).map_err(|e| io_error(format!("creating {}", part.path.display()), e))?);
                 if let Some(f) = opts.on_progress.as_mut() {
                     f(0, total);
                 }
@@ -208,10 +207,10 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
             Msg::Data(chunk) => {
                 got += chunk.len() as u64;
                 if opts.max_bytes.is_some_and(|max| got > max) {
-                    return Err(Error::Invalid(tr!("the file is larger than the {max} bytes allowed", max = opts.max_bytes.unwrap_or(0))));
+                    return Err(Error::Invalid(format!("the file is larger than the {} bytes allowed", opts.max_bytes.unwrap_or(0))));
                 }
                 if let Some(f) = file.as_mut() {
-                    f.write_all(&chunk).map_err(|e| io_error(tr!("writing {path}", path = part.path.display()), e))?;
+                    f.write_all(&chunk).map_err(|e| io_error(format!("writing {}", part.path.display()), e))?;
                 }
                 if head.len() < HEAD_LEN {
                     head.extend_from_slice(&chunk[..chunk.len().min(HEAD_LEN - head.len())]);
@@ -235,18 +234,18 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
     }
 
     if let Some(mut f) = file {
-        f.flush().map_err(|e| io_error(tr!("writing {path}", path = part.path.display()), e))?;
+        f.flush().map_err(|e| io_error(format!("writing {}", part.path.display()), e))?;
     }
     if let Some(t) = total.filter(|t| got < *t) {
         return Err(Error::Truncated { got, total: t });
     }
     if let Some(n) = opts.expected_size.filter(|n| got != *n) {
-        return Err(Error::Invalid(tr!("the file has {got} bytes, expected {expected}", got, expected = n)));
+        return Err(Error::Invalid(format!("the file has {got} bytes, expected {n}")));
     }
     let outcome = Outcome { bytes: got, head, hash: hasher.map(Hasher::hex) };
     if let Some(want) = opts.expected_sha256 {
         if outcome.hash.as_deref() != Some(&want.to_ascii_lowercase()) {
-            return Err(Error::Invalid(tr!("the checksum of the file does not match").into()));
+            return Err(Error::Invalid("the checksum of the file does not match".into()));
         }
     }
     if let Some(validate) = opts.validate {
@@ -255,7 +254,7 @@ pub fn download(url: &str, dest: &Path, mut opts: Options, cancel: &dyn Fn() -> 
     if let Some(f) = opts.on_progress.as_mut() {
         f(got, total.or(Some(got)));
     }
-    fs::rename(&part.path, dest).map_err(|e| io_error(tr!("renaming {path}", path = part.path.display()), e))?;
+    fs::rename(&part.path, dest).map_err(|e| io_error(format!("renaming {}", part.path.display()), e))?;
     part.keep = true;
     Ok(outcome)
 }
@@ -355,7 +354,7 @@ impl Request {
     fn body_error(&self, e: std::io::Error) -> Error {
         match ureq::Error::from(e) {
             ureq::Error::Timeout(_) => Error::Stalled(self.stall_timeout),
-            ureq::Error::Io(e) => io_error(tr!("reading the response"), e),
+            ureq::Error::Io(e) => io_error("reading the response", e),
             e => Error::Invalid(scrub(&e.to_string())),
         }
     }

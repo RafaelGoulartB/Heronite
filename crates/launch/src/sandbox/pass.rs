@@ -10,8 +10,7 @@
 //! change it.
 
 /// Variables of the launcher's environment that pass. `NAME*`: every
-/// variable that starts so. None of them holds a secret: they are paths,
-/// switches and names of drivers, locales and sockets.
+/// variable that starts so. None of them holds a secret.
 const ALLOWED: &[&str] = &[
     // The user and the system.
     "PATH",
@@ -20,25 +19,13 @@ const ALLOWED: &[&str] = &[
     "LOGNAME",
     "SHELL",
     "TERM",
-    "COLORTERM",
     "TZ",
     "TZDIR",
     "LANG",
     "LANGUAGE",
     "LC_*",
-    // Where glibc finds the locales (NixOS and others keep them outside `/usr`).
-    "LOCALE_ARCHIVE",
-    "LOCPATH",
     "LD_PRELOAD",
     "LD_LIBRARY_PATH",
-    "LD_BIND_NOW",
-    // Paths of the certificate bundle: HTTPS in games and launchers (a path, not a key).
-    "SSL_CERT_FILE",
-    "SSL_CERT_DIR",
-    // Runtimes of native games.
-    "JAVA_HOME",
-    "MONO_*",
-    "FNA*",
     // The session.
     "XDG_RUNTIME_DIR",
     "XDG_SESSION_TYPE",
@@ -46,29 +33,15 @@ const ALLOWED: &[&str] = &[
     "XDG_CURRENT_DESKTOP",
     "XDG_DATA_DIRS",
     "XDG_CONFIG_DIRS",
-    "XDG_SEAT",
-    "XDG_VTNR",
-    "DESKTOP_SESSION",
     "XCURSOR_*",
-    "XKB_*",
     "DISPLAY",
     "WAYLAND_DISPLAY",
     "XAUTHORITY",
     "QT_*",
     "GDK_*",
-    "GTK_*",
-    "LIBDECOR_*",
-    // Fonts: Wine and the toolkits read the fontconfig files by these.
-    "FONTCONFIG_*",
-    "FC_*",
-    // Sound, video decoding and controllers.
+    // Sound and controllers.
     "PULSE_*",
     "PIPEWIRE_*",
-    "ALSA_*",
-    "ALSOFT_*",
-    "GST_*",
-    "LIBVA_*",
-    "VDPAU_*",
     "SDL_*",
     // Graphics drivers, Vulkan layers and translation layers.
     "__GL_*",
@@ -83,12 +56,6 @@ const ALLOWED: &[&str] = &[
     "MESA_*",
     "mesa_glthread",
     "vblank_mode",
-    "force_s3tc_enable",
-    "GALLIUM_*",
-    "INTEL_*",
-    "ANV_*",
-    "ZINK_*",
-    "NOUVEAU_*",
     "AMD_*",
     "RADV_*",
     "VK_*",
@@ -97,19 +64,16 @@ const ALLOWED: &[&str] = &[
     "DXVK_*",
     "VKD3D_*",
     "VKBASALT*",
-    "OBS_VKCAPTURE*",
     "GAMESCOPE_*",
     "MANGOHUD*",
     "LSFG*",
     // Wine, Proton, umu and the stores.
     "WINE*",
-    "STAGING_*",
     "PROTON*",
     "STEAM_COMPAT_*",
     "STEAM_RUNTIME*",
     "SteamAppId",
     "SteamGameId",
-    "SteamOverlayGameId",
     "SteamDeck",
     "UMU_*",
     "GAMEID",
@@ -117,12 +81,6 @@ const ALLOWED: &[&str] = &[
     "HEROIC_*",
     "DOTNET_*",
 ];
-
-/// Proxy settings: `http://user:password@host` is common, so they pass only
-/// to a sandbox that has the network (the `Network` exception), where the
-/// game could use them anyway.
-pub(super) const PROXY: [&str; 10] =
-    ["http_proxy", "https_proxy", "ftp_proxy", "all_proxy", "no_proxy", "HTTP_PROXY", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY"];
 
 /// Variables that never pass, not even when the plan sets them: they name
 /// what the sandbox hides (the session bus, the SSH and keyring agents) or
@@ -154,16 +112,15 @@ fn is_name(s: &str) -> bool {
 /// `sh` that appends to the positional parameters `emit` (a word list that
 /// can use `$y`, the name, and `$z`, the value) for each variable in the
 /// environment that [`ALLOWED`] lets through, or that the launch plan sets
-/// (`plan`), except [`HIDDEN`] and `skip`; the [`PROXY`] ones when `network`.
-/// Starts counting the program's own arguments in `cnt`: [`ROTATE`] ends it.
+/// (`plan`), except [`HIDDEN`] and `skip`. Starts counting the program's own
+/// arguments in `cnt`: [`ROTATE`] ends it.
 ///
 /// The names come from `env` and `sed` and are only identifiers; the values
 /// come from `printenv`, so a value with a line that looks like `NAME=...`
 /// cannot make a variable up.
-pub(super) fn collect<'a>(plan: impl IntoIterator<Item = &'a str>, skip: &[&str], network: bool, emit: &str) -> String {
+pub(super) fn collect<'a>(plan: impl IntoIterator<Item = &'a str>, skip: &[&str], emit: &str) -> String {
     let names: Vec<&str> = plan.into_iter().filter(|n| is_name(n)).collect();
-    let proxies: &[&str] = if network { &PROXY } else { &[] };
-    let allowed: Vec<&str> = ALLOWED.iter().chain(proxies).copied().filter(|n| !skip.contains(n)).collect();
+    let allowed: Vec<&str> = ALLOWED.iter().copied().filter(|n| !skip.contains(n)).collect();
     format!(
         "cnt=$#; p=' {} '; for y in $(env | sed -n 's/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p'); do \
          case $y in {}) continue;; esac; \
@@ -182,12 +139,7 @@ mod tests {
     /// Runs `collect` in `sh` with `env` as the whole environment, for
     /// the arguments `args`; what it left in `"$@"`.
     fn run(plan: &[&str], skip: &[&str], env: &[(&str, &str)], args: &[&str]) -> Vec<String> {
-        run_with(plan, skip, false, env, args)
-    }
-
-    fn run_with(plan: &[&str], skip: &[&str], network: bool, env: &[(&str, &str)], args: &[&str]) -> Vec<String> {
-        let script =
-            format!("{}{}exec printf '%s\\n' \"$@\"", collect(plan.iter().copied(), skip, network, r#"--setenv "$y" "$z""#), ROTATE);
+        let script = format!("{}{}exec printf '%s\\n' \"$@\"", collect(plan.iter().copied(), skip, r#"--setenv "$y" "$z""#), ROTATE);
         let out = std::process::Command::new("/bin/sh")
             .arg("-c")
             .arg(script)
@@ -229,77 +181,6 @@ mod tests {
         assert_eq!(out[out.len() - 2..], ["game", "an arg"], "the program's arguments stay last");
     }
 
-    /// Names that Wine, Proton and the native games read, and that carry no
-    /// secret, pass.
-    #[test]
-    fn what_the_drivers_fonts_sound_and_locale_read_passes() {
-        let names = [
-            "STAGING_SHARED_MEMORY",
-            "GALLIUM_HUD",
-            "INTEL_DEBUG",
-            "ANV_DEBUG",
-            "ZINK_DESCRIPTORS",
-            "NOUVEAU_USE_ZINK",
-            "LIBVA_DRIVER_NAME",
-            "VDPAU_DRIVER",
-            "ALSA_CONFIG_PATH",
-            "GST_PLUGIN_PATH",
-            "FONTCONFIG_FILE",
-            "FC_DEBUG",
-            "LOCALE_ARCHIVE",
-            "LOCPATH",
-            "SSL_CERT_FILE",
-            "SSL_CERT_DIR",
-            "GTK_THEME",
-            "LD_BIND_NOW",
-            "OBS_VKCAPTURE",
-            "OBS_VKCAPTURE_QUIET",
-            "XDG_SEAT",
-            "XDG_VTNR",
-            "XKB_DEFAULT_LAYOUT",
-            "LIBGL_DRIVERS_PATH",
-            "__EGL_VENDOR_LIBRARY_FILENAMES",
-            "ALSOFT_DRIVERS",
-            "MONO_PATH",
-            "FNA_PLATFORM_BACKEND",
-            "JAVA_HOME",
-            "DESKTOP_SESSION",
-            "LIBDECOR_PLUGIN_DIR",
-            "force_s3tc_enable",
-        ];
-        let env: Vec<(&str, &str)> = names.iter().map(|n| (*n, "v")).collect();
-        let out = run(&[], &[], &env, &[]);
-        for n in names {
-            assert!(has(&out, &["--setenv", n, "v"]), "{n} does not pass: {out:?}");
-        }
-    }
-
-    /// Proxy settings can hold a user name and a password (`http://u:p@host`):
-    /// only a sandbox that has the network gets them.
-    #[test]
-    fn proxies_pass_only_with_the_network() {
-        let proxies = [
-            ("http_proxy", "http://u:p@h:3128"),
-            ("https_proxy", "http://u:p@h:3128"),
-            ("ftp_proxy", "http://h"),
-            ("all_proxy", "socks5://u:p@h"),
-            ("no_proxy", "localhost"),
-            ("HTTP_PROXY", "http://u:p@h:3128"),
-            ("HTTPS_PROXY", "http://u:p@h:3128"),
-            ("FTP_PROXY", "http://h"),
-            ("ALL_PROXY", "socks5://u:p@h"),
-            ("NO_PROXY", "localhost"),
-        ];
-        let off = run_with(&[], &[], false, &proxies, &[]);
-        assert!(!off.iter().any(|a| a.to_lowercase().contains("proxy") || a.contains("u:p@")), "{off:?}");
-        let on = run_with(&[], &[], true, &proxies, &[]);
-        for (k, v) in proxies {
-            assert!(has(&on, &["--setenv", k, v]), "{k} does not pass with the network: {on:?}");
-        }
-        // What the plan sets still passes.
-        assert!(has(&run_with(&["http_proxy"], &[], false, &proxies, &[]), &["--setenv", "http_proxy", "http://u:p@h:3128"]));
-    }
-
     #[test]
     fn what_the_plan_sets_passes_whatever_its_name() {
         let env = [("MY_GAME_OPTION", "a b"), ("GH_TOKEN", "x"), ("EMPTY_ONE", ""), ("DBUS_SESSION_BUS_ADDRESS", "unix:path=/x")];
@@ -320,7 +201,7 @@ mod tests {
 
     #[test]
     fn the_program_is_valid_shell() {
-        let s = collect(["A"], &[], true, "x");
+        let s = collect(["A"], &[], "x");
         let out = std::process::Command::new("/bin/sh").arg("-n").arg("-c").arg(&s).output().unwrap();
         assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     }

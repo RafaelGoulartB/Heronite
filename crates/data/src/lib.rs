@@ -3,7 +3,6 @@
 pub mod json_store;
 pub mod models;
 pub mod num;
-pub mod panics;
 pub mod paths;
 pub mod proc;
 pub mod temps;

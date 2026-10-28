@@ -35,7 +35,7 @@ const DEVICES: &str = r#"v=; for f in /dev/nvidia*; do [ -e "$f" ] && v="$v --de
 /// into `/run` (systemd-resolved, NetworkManager).
 const RESOLVER: &str = r#"n=; c=$(readlink -f /etc/resolv.conf); case $c in /run/*) n="--ro-bind-try ${c%/*} ${c%/*}";; esac; "#;
 
-pub(super) fn q(s: &str) -> String {
+fn q(s: &str) -> String {
     shlex::try_quote(s).map(|c| c.into_owned()).unwrap_or_else(|_| "''".into())
 }
 
@@ -79,8 +79,7 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
     // the sandbox's own `/dev/shm`, unless the devices exception shows `/dev`.)
     a.push("--unshare-ipc".into());
     a.push("--unshare-cgroup-try".into());
-    // Nothing of the launcher's environment gets in but what `pass` hands over
-    // (bwrap's own is emptied where it is started, see below).
+    // Nothing of the launcher's environment gets in but what `pass` hands over.
     a.push("--clearenv".into());
     if !sandbox.network {
         a.push("--unshare-net".into());
@@ -144,14 +143,11 @@ fn program(bwrap: &Bwrap, sandbox: &Sandbox, m: &Mounts, plan: Option<&Env>) -> 
     }
     // The command goes last: `pass` appends the variables after its own
     // arguments, then the program turns them around.
-    s += &pass::collect(plan.iter().flat_map(|e| e.keys().map(String::as_str)), &set_here, sandbox.network, r#"--setenv "$y" "$z""#);
+    s += &pass::collect(plan.iter().flat_map(|e| e.keys().map(String::as_str)), &set_here, r#"--setenv "$y" "$z""#);
     s += &format!("set -- \"$@\" -- /bin/sh -c {} sh; ", q(WAIT_ALL));
     s += pass::ROTATE;
     a.push("\"$@\"".into());
-    // bwrap itself starts with an empty environment: it becomes the first
-    // process of the pid namespace, and its environment stays readable to the
-    // game in `/proc/1/environ`. It needs none; the game's comes from `--setenv`.
-    s += r#"e=/usr/bin/env; [ -x "$e" ] || e=env; exec "$e" -i "#;
+    s += "exec ";
     s += &a.join(" ");
     s
 }
@@ -188,8 +184,7 @@ mod tests {
         assert!(s.starts_with(
             "for d in '/home/u/.local/share/heronite/sandbox/prefix-My Game-0000abcd' '/home/u/Games/My Game/pfx'; do mkdir -p"
         ));
-        assert!(s.contains(r#"exec "$e" -i /usr/bin/bwrap --unshare-user --unshare-pid"#));
-        assert!(s.contains("e=/usr/bin/env;"));
+        assert!(s.contains("exec /usr/bin/bwrap --unshare-user --unshare-pid"));
         assert!(s.contains("--unshare-net --new-session"));
         assert!(s.contains("--bind '/home/u/.local/share/heronite/sandbox/prefix-My Game-0000abcd' /home/u"));
         assert!(s.contains("--overlay-src /home/u/.cache/winetricks --tmp-overlay /home/u/.cache/winetricks"));
@@ -297,38 +292,6 @@ mod tests {
         assert!(args.windows(3).any(|a| a == ["--setenv", "DXVK_STATE_CACHE_PATH", "/mine"]), "{args:?}");
     }
 
-    /// A proxy setting can hold a password: it reaches only a sandbox that
-    /// has the network exception.
-    #[test]
-    fn proxies_reach_only_a_sandbox_with_the_network() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let fake = dir.path().join("bwrap");
-        std::fs::write(&fake, "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done\n").unwrap();
-        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let b = Bwrap { path: fake.to_string_lossy().into_owned(), ..bwrap() };
-        let args = |network: bool| {
-            let p = prelude(&b, &Sandbox { enabled: true, network, ..Default::default() }, &Mounts::default(), None);
-            let out = std::process::Command::new(&p[0])
-                .args(&p[1..])
-                .arg("/usr/bin/game")
-                .env("https_proxy", "http://user:s3cret-token@proxy:3128")
-                .env("NO_PROXY", "localhost")
-                .env("SSL_CERT_FILE", "/etc/ssl/cert.pem")
-                .output()
-                .unwrap();
-            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-            String::from_utf8(out.stdout).unwrap().lines().map(str::to_string).collect::<Vec<_>>()
-        };
-        let has = |a: &[String], w: &[&str]| a.windows(w.len()).any(|x| x == w);
-        let off = args(false);
-        assert!(!off.iter().any(|a| a.contains("s3cret-token") || a == "https_proxy" || a == "NO_PROXY"), "{off:?}");
-        assert!(has(&off, &["--setenv", "SSL_CERT_FILE", "/etc/ssl/cert.pem"]), "{off:?}");
-        let on = args(true);
-        assert!(has(&on, &["--setenv", "https_proxy", "http://user:s3cret-token@proxy:3128"]), "{on:?}");
-        assert!(has(&on, &["--setenv", "NO_PROXY", "localhost"]), "{on:?}");
-    }
-
     /// With the real bubblewrap, when it works here: `env` in the sandbox
     /// shows the plan's variables and the session's, not the launcher's secrets.
     #[test]
@@ -359,39 +322,5 @@ mod tests {
             assert!(vars.contains(&kept), "{kept} missing: {vars:?}");
         }
         assert!(!env.contains("GH_TOKEN") && !env.contains("ghp_secret") && !env.contains("DBUS_SESSION"), "{vars:?}");
-    }
-
-    /// With the real bubblewrap, when it works here: bwrap is the first
-    /// process of the sandbox and its environment stays readable to the game
-    /// (`/proc/1/environ`, same user), so it must start with none of the
-    /// launcher's.
-    #[test]
-    fn a_real_sandbox_cannot_read_the_launchers_environment_through_proc() {
-        let Some(b) = crate::sandbox::detect().filter(|b| b.supported() && b.error.is_none()) else {
-            eprintln!("no working bubblewrap here: skipped");
-            return;
-        };
-        let p = prelude(&b, &Sandbox { enabled: true, ..Default::default() }, &Mounts::default(), None);
-        // Every environment and command line the game can open, one per line.
-        let dump = r#"for f in /proc/[0-9]*/environ /proc/[0-9]*/cmdline; do if [ -r "$f" ]; then echo "== $f"; tr '\0' '\n' < "$f"; fi; done; echo "== env"; env"#;
-        let out = std::process::Command::new(&p[0])
-            .args(&p[1..])
-            .args(["/bin/sh", "-c", dump])
-            .env_clear()
-            .env("PATH", std::env::var("PATH").unwrap())
-            .env("XDG_RUNTIME_DIR", "/run/user/1000")
-            .env("LANG", "C")
-            .env("GH_TOKEN", "ghp_secret")
-            .env("AWS_SECRET_ACCESS_KEY", "aws_secret")
-            .env("HTTP_PROXY_PASSWORD_X", "proxy_secret")
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        let text = String::from_utf8_lossy(&out.stdout);
-        assert!(text.contains("== /proc/1/environ"), "the first process is readable, so the check means something: {text}");
-        assert!(text.contains("LANG=C"), "the game's own variables are there: {text}");
-        for secret in ["GH_TOKEN", "ghp_secret", "AWS_SECRET_ACCESS_KEY", "aws_secret", "proxy_secret"] {
-            assert!(!text.contains(secret), "{secret} readable inside the sandbox:\n{text}");
-        }
     }
 }
