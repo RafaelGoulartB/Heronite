@@ -31,7 +31,8 @@ codegen-units = 1
 strip = true
 # Unwind, not abort: the image loader catches a decoder's panic on a broken or
 # hostile picture (`heronite_images::loader`), which abort would turn into the
-# whole launcher closing.
+# whole launcher closing. Any panic outside `heronite_data::panics::contained`
+# still aborts: the app's panic hook (app/src/main.rs) does it.
 panic = "unwind"
 
 # Code that is cold for a launcher (D-Bus, codecs we never decode, TLS,

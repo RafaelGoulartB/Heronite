@@ -23,10 +23,10 @@ the UI.
 ```
 app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-i18n       interface language: tr!/trn! and the pt-BR, es and de strings (no GPUI)
- ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes
+ ├─ heronite-data       data folder files, paths, Heroic migration, safe writes, processes, panic policy
  ├─ heronite-backup     backups of the data folder and app state:
  │                      incremental snapshots, retention, restore    → data
- ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)
+ ├─ heronite-images     decode/resize/blur pipeline and thumbnail cache (no GPUI)  → data
  ├─ heronite-net        streaming downloads that stall-fail and cancel promptly (no GPUI)
  ├─ heronite-launch     launch plans, game runtime, playtime, logs   → data
  ├─ heronite-epic       legendary CLI, Epic library, download queue  → data, launch
