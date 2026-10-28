@@ -167,17 +167,20 @@ impl BestApp {
 
 /// `steamAppIdFromTitle`: Steam community `SearchApps`, then the store search.
 pub fn steam_app_id_from_title(http: &Http, title: &str) -> Option<String> {
-    search_steam_app_id(http, title, false)
+    search_steam_app_id(http, title, false).ok().flatten()
 }
 
 /// Like [`steam_app_id_from_title`] but only for the same game (see
 /// [`strict_steam_score`]): for places where a wrong game is worse than none.
-pub fn steam_app_id_exact(http: &Http, title: &str) -> Option<String> {
+/// `Ok(None)` means Steam was searched and has no such game; `Err` means a
+/// search failed and nothing was found, so the answer is unknown (do not cache it).
+pub fn steam_app_id_exact(http: &Http, title: &str) -> Result<Option<String>> {
     search_steam_app_id(http, title, true)
 }
 
-fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String> {
+fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Result<Option<String>> {
     let mut best = BestApp(None, strict);
+    let mut failure: Option<anyhow::Error> = None;
     for query in title_queries(title) {
         let community = http
             .get(format!("{}/actions/SearchApps/{}", http.endpoints.steam_community, encode_uri_component(&query)))
@@ -186,7 +189,10 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
         match community {
             Ok(Value::Array(hits)) => best_from_search_apps(&mut best, &hits, title),
             Ok(_) => {}
-            Err(e) => log::warn!("Steam community search failed for {query}: {e}"),
+            Err(e) => {
+                log::warn!("Steam community search failed for {query}: {e}");
+                failure = Some(e);
+            }
         }
         if best.done() {
             break;
@@ -199,13 +205,20 @@ fn search_steam_app_id(http: &Http, title: &str, strict: bool) -> Option<String>
             .and_then(|r| r.json::<Value>());
         match store {
             Ok(v) => best_from_store_search(&mut best, &v, title),
-            Err(e) => log::warn!("Steam store search failed for {query}: {e}"),
+            Err(e) => {
+                log::warn!("Steam store search failed for {query}: {e}");
+                failure = Some(e);
+            }
         }
         if best.done() {
             break;
         }
     }
-    best.0.map(|(id, _)| id)
+    match (best.0, failure) {
+        (Some((id, _)), _) => Ok(Some(id)),
+        (None, Some(e)) => Err(e),
+        (None, None) => Ok(None),
+    }
 }
 
 fn best_from_search_apps(best: &mut BestApp, hits: &[Value], title: &str) {
