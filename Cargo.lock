@@ -3820,6 +3820,7 @@ dependencies = [
 name = "heronite-net"
 version = "0.17.0"
 dependencies = [
+ "heronite-i18n",
  "sha2 0.10.9",
  "tempfile",
  "ureq",

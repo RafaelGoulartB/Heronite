@@ -1,0 +1,17 @@
+{
+  "cancelled": "abgebrochen",
+  "could not reach {url}: {detail}": "{url} ist nicht erreichbar: {detail}",
+  "creating {path}": "{path} wird erstellt",
+  "downloading": "wird heruntergeladen",
+  "rate limit reached, try again in {secs} s": "Ratenlimit erreicht, versuche es in {secs} s erneut",
+  "rate limit reached, try again later": "Ratenlimit erreicht, versuche es später erneut",
+  "reading the response": "Antwort wird gelesen",
+  "renaming {path}": "{path} wird umbenannt",
+  "starting the download": "Download wird gestartet",
+  "the checksum of the file does not match": "die Prüfsumme der Datei stimmt nicht überein",
+  "the download stalled: no data for {secs} s": "der Download hängt: seit {secs} s keine Daten",
+  "the file has {got} bytes, expected {expected}": "die Datei hat {got} Bytes, erwartet waren {expected}",
+  "the file is larger than the {max} bytes allowed": "die Datei ist größer als die erlaubten {max} Bytes",
+  "writing {path}": "{path} wird geschrieben",
+  "connection closed after {got} of {total} bytes": "Verbindung nach {got} von {total} Bytes getrennt"
+}

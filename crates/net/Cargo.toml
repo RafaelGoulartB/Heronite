@@ -6,6 +6,7 @@ license.workspace = true
 description = "Streaming HTTP downloads that cannot hang: stall timeout, prompt cancel, atomic file replace"
 
 [dependencies]
+heronite-i18n = { path = "../i18n" }
 ureq = "3"
 sha2 = "0.10"
 

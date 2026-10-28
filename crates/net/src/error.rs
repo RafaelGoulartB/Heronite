@@ -2,6 +2,8 @@ use std::fmt;
 use std::io;
 use std::time::Duration;
 
+use heronite_i18n::tr;
+
 #[derive(Debug)]
 pub enum Error {
     /// The caller's cancel check fired.
@@ -35,18 +37,21 @@ pub enum Error {
     Invalid(String),
 }
 
+/// Texts for the interface (`tr!`): callers put them in their own messages.
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Cancelled => write!(f, "cancelled"),
-            Error::Stalled(d) => write!(f, "the download stalled: no data for {} s", d.as_secs().max(1)),
-            Error::Unreachable { url, detail } => write!(f, "could not reach {url}: {detail}"),
-            Error::RateLimited { retry_after: Some(d) } => write!(f, "rate limit reached, try again in {} s", d.as_secs()),
-            Error::RateLimited { retry_after: None } => write!(f, "rate limit reached, try again later"),
+            Error::Cancelled => f.write_str(tr!("cancelled")),
+            Error::Stalled(d) => f.write_str(&tr!("the download stalled: no data for {secs} s", secs = d.as_secs().max(1))),
+            Error::Unreachable { url, detail } => f.write_str(&tr!("could not reach {url}: {detail}", url, detail)),
+            Error::RateLimited { retry_after: Some(d) } => {
+                f.write_str(&tr!("rate limit reached, try again in {secs} s", secs = d.as_secs()))
+            }
+            Error::RateLimited { retry_after: None } => f.write_str(tr!("rate limit reached, try again later")),
             Error::Http(code) => write!(f, "HTTP {code}"),
             Error::Io { context, source } => write!(f, "{context}: {source}"),
-            Error::Truncated { got, total } => write!(f, "connection closed after {got} of {total} bytes"),
-            Error::Invalid(m) => write!(f, "{m}"),
+            Error::Truncated { got, total } => f.write_str(&tr!("connection closed after {got} of {total} bytes", got, total)),
+            Error::Invalid(m) => f.write_str(m),
         }
     }
 }
@@ -89,6 +94,7 @@ pub(crate) fn scrub(text: &str) -> String {
         .collect()
 }
 
+/// `context` is already in the interface language (`tr!`).
 pub(crate) fn io_error(context: impl Into<String>, source: io::Error) -> Error {
     Error::Io { context: context.into(), source }
 }
