@@ -15,7 +15,7 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Local, SecondsFormat, Utc};
@@ -71,6 +71,11 @@ fn sources(snapshot: &Path, parts: &[Part]) -> Result<(Vec<Source>, Manifest)> {
     if manifest.format > FORMAT {
         bail!(Error::TooNew);
     }
+    // The manifest is untrusted (a backup can come from anyone): a path that
+    // leaves the backup's folders would read, and later write, anywhere.
+    if let Some(bad) = manifest.files.iter().find(|f| !stays_inside(&f.path)) {
+        bail!(Error::Damaged(bad.path.clone()));
+    }
     let files = manifest
         .files
         .iter()
@@ -84,6 +89,13 @@ fn sources(snapshot: &Path, parts: &[Part]) -> Result<(Vec<Source>, Manifest)> {
         })
         .collect();
     Ok((files, manifest))
+}
+
+/// A manifest path that names a file below its folder: not empty, not
+/// absolute and without `..`, `.` or a drive in it (`join` would let any of
+/// them escape).
+fn stays_inside(rel: &str) -> bool {
+    !rel.is_empty() && Path::new(rel).components().all(|c| matches!(c, Component::Normal(_)))
 }
 
 /// Every file is there with the content the manifest names.
@@ -314,6 +326,44 @@ mod tests {
         fs::write(app.config.join(PENDING_FILE), serde_json::to_string(&old).unwrap()).unwrap();
         assert!(apply_pending(&data, &app).is_none());
         assert!(!app.config.join(PENDING_FILE).exists());
+    }
+
+    #[test]
+    fn manifest_paths_must_stay_inside_their_folder() {
+        for ok in ["config.json", "local_library/art/x/hero-1.png", "a/b/c.txt"] {
+            assert!(stays_inside(ok), "{ok}");
+        }
+        for bad in ["", "../x", "a/../../x", "a/..", "./x", "/etc/x", "//x", "."] {
+            assert!(!stays_inside(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_manifest_path_that_escapes_is_refused_and_nothing_is_written() {
+        let _s = crate::tests::serial();
+        let d = tempfile::tempdir().unwrap();
+        let (data, app) = fixture(d.path());
+        let folder = d.path().join("backups");
+        fs::create_dir(&folder).unwrap();
+        let made = snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now()).unwrap();
+        let outside = d.path().join("outside.txt");
+        let original = Manifest::read(&made.path).unwrap();
+        for bad in ["../outside.txt", "../../outside.txt", outside.to_str().unwrap()] {
+            let mut m = original.clone();
+            let mut entry = m.files.iter().find(|f| f.part == Part::Collection).unwrap().clone();
+            entry.path = bad.into();
+            m.files.push(entry);
+            m.write(&made.path).unwrap();
+            fs::write(&outside, "original").unwrap();
+            fs::write(data.root.join("local_library/library.json"), "now").unwrap();
+
+            let err = restore(&data, &app, &made.path, &Part::ALL).unwrap_err();
+            assert_eq!(err.downcast_ref::<Error>(), Some(&Error::Damaged(bad.into())), "{bad}");
+            assert!(prepare(&data, &app, &made.path, &Part::ALL, &folder).is_err());
+            assert_eq!(fs::read_to_string(&outside).unwrap(), "original");
+            assert_eq!(fs::read_to_string(data.root.join("local_library/library.json")).unwrap(), "now");
+            assert!(!app.config.join(PENDING_FILE).exists());
+        }
     }
 
     #[test]
