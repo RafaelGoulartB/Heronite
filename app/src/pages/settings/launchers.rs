@@ -112,7 +112,16 @@ fn launcher_card(d: &SettingsPage, launcher: Launcher, cx: &mut Context<Settings
             .flex()
             .items_center()
             .gap(px(10.))
-            .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(16.)).child(launcher.name()))
+            // Flashes when the Settings search jumps to it.
+            .child(
+                div()
+                    .relative()
+                    .children(crate::ui::find::flash(launcher.name(), 6.))
+                    .font_family(theme::font_heading())
+                    .font_weight(theme::W_BOLD)
+                    .text_size(px(16.))
+                    .child(launcher.name()),
+            )
             .child(div().text_size(px(12.5)).text_color(if here { theme::text_muted() } else { theme::text_dim() }).child(found)),
     );
     details = details.child(div().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_dim()).child(what(launcher)));

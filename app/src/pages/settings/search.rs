@@ -93,6 +93,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Automatically update games",
         ],
     ),
+    (Section::Launchers, &["Heroic", "Lutris", "Bottles", "Faugus"]),
     (Section::Library, &["Show hidden games", "Recent games", "Recent games to show", "Clear recent games"]),
     (
         Section::Metadata,
@@ -259,6 +260,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Copy system information",
         ],
     ),
+    (Section::Logs, &["This app", "Runners", "Games"]),
 ];
 
 /// The settings of each Game defaults tab.
@@ -482,8 +484,15 @@ mod tests {
                 }
             }
         }
+        // The app and the workspace crates (the launchers' names are `heronite_data`'s).
+        let app = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut all = String::new();
-        sources(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut all);
+        sources(&app.join("src"), &mut all);
+        for c in std::fs::read_dir(app.join("../crates")).unwrap().flatten() {
+            if c.path().join("src").is_dir() {
+                sources(&c.path().join("src"), &mut all);
+            }
+        }
         let labels = INDEX.iter().flat_map(|(_, l)| l.iter()).chain(DEFAULTS_INDEX.iter().flat_map(|(_, l)| l.iter()));
         let missing: Vec<&str> = labels.filter(|l| !all.contains(&format!("{l:?}"))).copied().collect();
         assert!(missing.is_empty(), "labels no longer drawn: {missing:?}");
