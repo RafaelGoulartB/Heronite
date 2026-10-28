@@ -87,8 +87,20 @@ fn trusted(name: &str) -> Option<PathBuf> {
 
 /// Exit status of [`ROOT_SCRIPT`] when the copy does not have the verified
 /// hash. Package managers exit with 0..=8 and 100..=107, `pkexec` with
-/// 126/127.
+/// 126/127; the script's own codes (71..=73) are in none of those ranges, and
+/// it never lets 126 or 127 through, so those two can only come from `pkexec`.
 const EXIT_CHANGED: i32 = 71;
+
+/// [`ROOT_SCRIPT`] could not find a tool it needs; the last line of stderr
+/// names it after [`MISSING_TOOL`].
+const EXIT_MISSING_TOOL: i32 = 72;
+
+/// The package manager itself exited with 126 or 127 (could not be run or
+/// found), which the script reports as this so it is not taken for `pkexec`.
+const EXIT_MANAGER_UNRUNNABLE: i32 = 73;
+
+/// What [`ROOT_SCRIPT`] prints before the name of a missing tool.
+const MISSING_TOOL: &str = "a tool the update needs is missing: ";
 
 /// Where [`ROOT_SCRIPT`] makes its private directory.
 const ROOT_TMP: &str = "/var/tmp";
@@ -105,10 +117,19 @@ const ROOT_TMP: &str = "/var/tmp";
 /// apt's sandbox user can open it. The package manager runs with the usual
 /// root umask, so the files it writes itself stay readable. `PATH` is set to
 /// the system folders first (`pkexec` does the same), so `install`,
-/// `sha256sum` and the rest never come from the caller's `PATH`.
+/// `sha256sum` and the rest never come from the caller's `PATH`, and the
+/// script checks they are there before it starts. It exits with the manager's
+/// status, except 126 and 127, which are `pkexec`'s own: see
+/// [`EXIT_MANAGER_UNRUNNABLE`].
 const ROOT_SCRIPT: &str = r#"set -eu
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
+for tool in install sha256sum mktemp rm chmod; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "a tool the update needs is missing: $tool" >&2
+        exit 72
+    fi
+done
 umask 077
 file=$1 hash=$2 base=$3
 shift 3
@@ -124,7 +145,13 @@ if [ "${sum%% *}" != "$hash" ]; then
 fi
 chmod 0644 "$dir/$name"
 umask 022
-"$@" "$dir/$name"
+status=0
+"$@" "$dir/$name" || status=$?
+if [ "$status" = 126 ] || [ "$status" = 127 ]; then
+    echo "the package manager could not be started" >&2
+    exit 73
+fi
+exit "$status"
 "#;
 
 /// Whether `text` is a lowercase hex SHA-256.
@@ -207,6 +234,12 @@ fn install_result(code: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Result<(),
         Some(126) => Err(InstallError::Cancelled),
         Some(127) => Err(InstallError::Failed(tr!("Not authorized (is a polkit agent running?)").into())),
         Some(EXIT_CHANGED) => Err(InstallError::Failed(tr!("The update file changed after it was verified").into())),
+        Some(EXIT_MISSING_TOOL) => {
+            let text = String::from_utf8_lossy(stderr);
+            let tool = text.lines().rev().find_map(|l| l.trim().strip_prefix(MISSING_TOOL)).unwrap_or("?");
+            Err(InstallError::Failed(tr!("A tool the update needs is missing: {tool}", tool)))
+        }
+        Some(EXIT_MANAGER_UNRUNNABLE) => Err(InstallError::Failed(tr!("The package manager could not be started").into())),
         _ => {
             let text = String::from_utf8_lossy(stderr);
             let text = if text.trim().is_empty() { String::from_utf8_lossy(stdout) } else { text };
@@ -460,6 +493,49 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_tool_stops_the_script_before_it_does_anything() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (base, bin, empty) = (tmp.path().join("tmp"), tmp.path().join("bin"), tmp.path().join("empty"));
+        for d in [&base, &bin, &empty] {
+            std::fs::create_dir(d).unwrap();
+        }
+        let file = tmp.path().join("p.deb");
+        std::fs::write(&file, BYTES).unwrap();
+        // The script's own `PATH` points at a folder without tools.
+        let script = ROOT_SCRIPT.replace("PATH=/usr/sbin:/usr/bin:/sbin:/bin", &format!("PATH={}", empty.display()));
+        assert_ne!(script, ROOT_SCRIPT);
+        let manager = fake_manager(&bin);
+        let out =
+            Command::new("/bin/sh").args(["-c", &script, "sh"]).arg(&file).arg(sha256_of(BYTES)).arg(&base).arg(manager).output().unwrap();
+        assert_eq!(out.status.code(), Some(72), "{}", String::from_utf8_lossy(&out.stderr));
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("a tool the update needs is missing: "), "{stderr}");
+        assert!(!bin.join("log").exists(), "the package manager ran");
+        assert_eq!(std::fs::read_dir(&base).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_manager_that_cannot_run_exits_73_not_pkexecs_126_or_127() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (base, bin) = (tmp.path().join("tmp"), tmp.path().join("bin"));
+        std::fs::create_dir(&base).unwrap();
+        std::fs::create_dir(&bin).unwrap();
+        let file = tmp.path().join("p.deb");
+        std::fs::write(&file, BYTES).unwrap();
+        for (status, expected) in [(126, 73), (127, 73), (100, 100), (1, 1), (0, 0)] {
+            let tool = bin.join("manager");
+            executable(&tool, &format!("#!/bin/sh\nexit {status}\n"));
+            let out = run_script(&file, &sha256_of(BYTES), &base, vec![tool.into_os_string()]);
+            assert_eq!(out.status.code(), Some(expected), "manager exit {status}");
+            assert_eq!(std::fs::read_dir(&base).unwrap().count(), 0);
+        }
+        // A manager that is not there at all: the shell's own 127.
+        let out = run_script(&file, &sha256_of(BYTES), &base, vec![bin.join("nothing").into_os_string()]);
+        assert_eq!(out.status.code(), Some(73));
+        assert_eq!(std::fs::read_dir(&base).unwrap().count(), 0);
+    }
+
+    #[test]
     fn a_file_without_a_verified_hash_is_refused() {
         let file = Path::new("/nonexistent/never-downloaded.deb");
         let refused = |r: Result<(), InstallError>| matches!(r, Err(InstallError::Failed(m)) if m == "The update file was not verified");
@@ -479,5 +555,10 @@ mod tests {
         assert_eq!(text(install_result(Some(EXIT_CHANGED), b"", b"ignored")), "The update file changed after it was verified");
         assert_eq!(text(install_result(Some(100), b"", b"a\n\nb\nc\nd\n")), "The package manager failed: b c d");
         assert_eq!(text(install_result(None, b"out", b"  \n")), "The package manager failed: out");
+        let missing = install_result(Some(72), b"", b"warning\na tool the update needs is missing: sha256sum\n");
+        assert_eq!(text(missing), "A tool the update needs is missing: sha256sum");
+        assert_eq!(text(install_result(Some(73), b"", b"ignored")), "The package manager could not be started");
+        // Only pkexec itself exits 126 and 127 now.
+        assert_eq!(install_result(Some(126), b"", b"a tool the update needs is missing: x"), Err(InstallError::Cancelled));
     }
 }
