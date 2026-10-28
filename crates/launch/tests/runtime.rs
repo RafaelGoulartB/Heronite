@@ -525,6 +525,7 @@ fn real_spawn_failure_is_reported() {
 struct RecordingCloud {
     calls: std::sync::Mutex<Vec<(String, String)>>,
     upload_delay: Duration,
+    fail_download: bool,
 }
 
 impl CloudSync for RecordingCloud {
@@ -532,6 +533,9 @@ impl CloudSync for RecordingCloud {
         self.calls.lock().unwrap().push((flag.to_string(), format!("{app}:{path}")));
         if flag == "--skip-download" {
             std::thread::sleep(self.upload_delay);
+        }
+        if self.fail_download && flag == "--skip-upload" {
+            return Err("timed out".into());
         }
         Ok(String::new())
     }
@@ -576,6 +580,26 @@ fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
     assert_eq!(cloud.calls.lock().unwrap()[1], ("--skip-download".to_string(), "Calluna:/saves".to_string()));
     assert!(!r.launcher.is_running("Calluna"));
+}
+
+#[test]
+fn saves_that_failed_to_download_are_not_uploaded_after_the_game() {
+    let r = rig();
+    let cloud = Arc::new(RecordingCloud { fail_download: true, ..Default::default() });
+    r.launcher.set_prep_services(services(true, Some(cloud.clone())));
+    let mut process = process_plan("/games/run.sh", &[]);
+    process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/saves")), ..Default::default() };
+    r.launcher.launch(request("g", LaunchPlan::Native(process))).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    assert_eq!(status_of(next_any(&r.rx)).0, "Downloading cloud saves...");
+    let (message, warning) = status_of(next_any(&r.rx));
+    assert!(warning && message.contains("timed out"), "{message}");
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 0);
+    let (message, warning) = status_of(next_any(&r.rx));
+    assert!(warning && message.contains("not uploaded"), "{message}");
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert_eq!(*cloud.calls.lock().unwrap(), [("--skip-upload".to_string(), "g:/saves".to_string())]);
 }
 
 #[test]

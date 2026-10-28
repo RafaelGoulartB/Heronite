@@ -238,7 +238,7 @@ impl Session<'_> {
         let _ = record::mark_started(&shared.paths, &self.req.app_name, started_at);
         // The next run of the app can pick the game up if this one quits
         // first. It follows one process, the game's oldest.
-        if let Some(tracked) = super::adopt::process_entry(shared, pid, plan) {
+        if let Some(tracked) = super::adopt::process_entry(shared, pid, plan, self.prep.download_failed.get()) {
             super::adopt::remember(shared, control, self.req, tracked);
         }
         shared.send(LaunchEvent::Running { app_name: self.req.app_name.clone(), pid });

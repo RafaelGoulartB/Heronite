@@ -88,6 +88,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         cloud: services.cloud.as_deref(),
         cancel: &cancelled,
         notify: &status,
+        download_failed: Default::default(),
     };
     // How long each step took, for the log: a slow launch shows where.
     let mut steps = Steps::new();
@@ -193,7 +194,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
     // Written down so the next run of the app can pick the game up if this
     // one quits or crashes first.
-    if let Some(tracked) = super::adopt::process_entry(shared, handle.pid(), plan) {
+    if let Some(tracked) = super::adopt::process_entry(shared, handle.pid(), plan, prep.download_failed.get()) {
         super::adopt::remember(shared, control, req, tracked);
     }
     shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
