@@ -13,7 +13,7 @@ use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{action_button, caption, card, icon_action_button, row, ButtonKind};
 
-const REPO: &str = "https://github.com/RafaelGoulartB/Heronite";
+const REPO: &str = heronite_update::REPO_PAGE;
 
 #[derive(Default)]
 pub struct State {
