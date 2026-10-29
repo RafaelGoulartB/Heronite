@@ -14,13 +14,20 @@
 //! updates automatically" is on. A failed background check stays quiet; a
 //! failed manual check or install is shown.
 //!
-//! The Collection draws the banner ([`Updater::banner`]) and Settings → About
-//! the full card; both observe this entity.
+//! The Collection's header draws the pill ([`Updater::banner`]) and Settings
+//! → About the full card; both observe this entity. The first start of a
+//! version this app installed opens its "What's new" once
+//! ([`Updater::take_whats_new`]).
 //!
 //! Switches: `HERONITE_NO_UPDATE_CHECK=1` turns the automatic checks off;
 //! `HERONITE_UPDATE_API=<url>` asks another endpoint (local tests);
 //! `HERONITE_DEBUG_UPDATE=checking|uptodate|available|downloading|installing|ready|failed`
 //! shows that state with a made-up release, without any request;
+//! `HERONITE_DEBUG_UPDATE=simulate` offers a made-up release whose Update
+//! fakes the download and whose Restart opens "What's new" instead
+//! (nothing is downloaded, written or restarted; `simulate-auto` presses
+//! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
+//! new" at once;
 //! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch` pretends this copy came from
 //! that package (with `HERONITE_DEBUG_UPDATE`);
 //! `HERONITE_DEBUG_UPDATE_RESTART=1` restarts as soon as an update is
@@ -64,7 +71,7 @@ pub enum Phase {
     InstallFailed(String),
 }
 
-/// What the Collection's banner shows.
+/// What the Collection's update pill shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Banner {
     Available,
@@ -132,8 +139,12 @@ pub struct Updater {
     job: Option<Task<()>>,
     timer: Option<Task<()>>,
     api_url: String,
+    /// The release this start is the first run of, for its "What's new".
+    whats_new: Option<Release>,
     /// `HERONITE_DEBUG_UPDATE`: made-up states, no requests or writes.
     debug: bool,
+    /// `HERONITE_DEBUG_UPDATE=simulate`: Update and Restart are faked.
+    simulate: bool,
 }
 
 struct UpdaterGlobal(Entity<Updater>);
@@ -236,14 +247,30 @@ impl Updater {
             job: None,
             timer: None,
             api_url: crate::env::value("HERONITE_UPDATE_API").unwrap_or_else(|| heronite_update::LATEST_API.to_string()),
+            whats_new: None,
             debug: false,
+            simulate: false,
         };
         if let Some(state) = crate::env::value("HERONITE_DEBUG_UPDATE") {
-            this.debug_state(&state);
+            this.debug_state(&state, cx);
             return this;
+        }
+        if let Some(arrived) = arrival(&mut this.prefs, &this.current) {
+            this.whats_new = arrived;
+            this.save_prefs(cx);
         }
         this.schedule(cx);
         this
+    }
+
+    /// A "What's new" waits for the Collection.
+    pub fn has_whats_new(&self) -> bool {
+        self.whats_new.is_some()
+    }
+
+    /// The release whose "What's new" opens now (once).
+    pub fn take_whats_new(&mut self) -> Option<Release> {
+        self.whats_new.take()
     }
 
     pub fn phase(&self) -> &Phase {
@@ -448,7 +475,13 @@ impl Updater {
 
     /// Downloads the release and installs it ([`Method`]).
     pub fn install(&mut self, cx: &mut Context<Self>) {
-        if self.busy() || self.debug || !self.can_install() {
+        if self.busy() || !self.can_install() {
+            return;
+        }
+        if self.debug {
+            if self.simulate {
+                self.debug_install(cx);
+            }
             return;
         }
         let (Ok(method), Some(release)) = (self.method.clone(), self.release.clone()) else { return };
@@ -526,6 +559,8 @@ impl Updater {
         self.phase = match result {
             Ok(()) => {
                 log::info!("Heronite {version} is installed; it runs from the next start");
+                self.prefs.updated_to = Some(version.clone());
+                self.save_prefs(cx);
                 if !crate::system::has_window(cx) {
                     crate::system::notify::send(
                         tr!("Heronite {version} is installed", version),
@@ -555,6 +590,7 @@ impl Updater {
             c.store(true, Ordering::Relaxed);
         }
         if self.debug {
+            self.job = None;
             self.phase = Phase::Available;
         }
         cx.notify();
@@ -595,7 +631,13 @@ impl Updater {
     /// Restarts into the new version (when no game or post-game work keeps
     /// the app; see [`crate::system::restart_blocker`]).
     pub fn restart(&mut self, cx: &mut Context<Self>) {
-        if self.phase != Phase::Ready || self.debug {
+        if self.phase != Phase::Ready {
+            return;
+        }
+        if self.debug {
+            if self.simulate {
+                self.debug_restart(cx);
+            }
             return;
         }
         let Ok(method) = &self.method else { return };
@@ -614,5 +656,62 @@ impl Updater {
             }
         })
         .detach();
+    }
+}
+
+/// What a start finds of the update this app installed: `None` when nothing
+/// changed, `Some(release)` when this start is the first of the version it
+/// installed (with its notes when the last check described it). The
+/// version is forgotten once it runs or once an older one is running.
+fn arrival(prefs: &mut Prefs, current: &Version) -> Option<Option<Release>> {
+    let to = Version::parse(prefs.updated_to.as_deref()?);
+    if to.as_ref().is_some_and(|v| v > current) {
+        // Not running yet (a restart is still due).
+        return None;
+    }
+    prefs.updated_to = None;
+    let notes = prefs.latest.clone().filter(|r| to.as_ref() == Some(current) && Version::parse(&r.version).as_ref() == Some(current));
+    Some(notes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::arrival;
+    use heronite_update::{Prefs, Release, Version};
+
+    fn release(version: &str) -> Release {
+        Release {
+            version: version.into(),
+            name: String::new(),
+            notes: "### Fixes\n- A fix".into(),
+            page_url: String::new(),
+            published_at: String::new(),
+            appimage: None,
+            signature: None,
+            packages: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn the_first_start_of_an_installed_version_shows_its_notes_once() {
+        let current = Version::parse("0.17.1").unwrap();
+        let mut prefs = Prefs { updated_to: Some("0.17.1".into()), latest: Some(release("0.17.1")), ..Default::default() };
+        assert_eq!(arrival(&mut prefs, &current), Some(Some(release("0.17.1"))));
+        assert_eq!(prefs.updated_to, None);
+        assert_eq!(arrival(&mut prefs, &current), None, "only once");
+
+        // Installed but not restarted yet: kept for the next start.
+        let mut waiting = Prefs { updated_to: Some("0.17.2".into()), ..Default::default() };
+        assert_eq!(arrival(&mut waiting, &current), None);
+        assert_eq!(waiting.updated_to.as_deref(), Some("0.17.2"));
+
+        // An older one (updated again by other means): forgotten, no notes.
+        let mut old = Prefs { updated_to: Some("0.16.0".into()), latest: Some(release("0.17.1")), ..Default::default() };
+        assert_eq!(arrival(&mut old, &current), Some(None));
+        assert_eq!(old.updated_to, None);
+
+        // The notes of another version are not shown.
+        let mut other = Prefs { updated_to: Some("0.17.1".into()), latest: Some(release("0.18.0")), ..Default::default() };
+        assert_eq!(arrival(&mut other, &current), Some(None));
     }
 }

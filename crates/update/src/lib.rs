@@ -34,6 +34,9 @@ pub use version::Version;
 /// GitHub API endpoint of the latest (non-draft, non-prerelease) release.
 pub const LATEST_API: &str = "https://api.github.com/repos/RafaelGoulartB/Heronite/releases/latest";
 
+/// The project on GitHub (a star, issues, Discussions).
+pub const REPO_PAGE: &str = "https://github.com/RafaelGoulartB/Heronite";
+
 /// The releases page, for people who update by hand.
 pub const RELEASES_PAGE: &str = "https://github.com/RafaelGoulartB/Heronite/releases/latest";
 

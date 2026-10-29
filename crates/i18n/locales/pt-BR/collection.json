@@ -10,7 +10,6 @@
   "This step finishes before the launch can stop": "Esta etapa termina antes que o lançamento possa parar",
   "Updating": "Atualizando",
   "Enter your password if you are asked.": "Digite sua senha se for solicitada.",
-  "Update ready": "Atualização pronta",
   "{title} is running. Close the game to change its install location.": "{title} está em execução. Feche o jogo para alterar o local de instalação.",
   "{title} is running. Close the game to move it.": "{title} está em execução. Feche o jogo para movê-lo.",
   "{title} is running. Close the game to verify it.": "{title} está em execução. Feche o jogo para verificá-lo.",
@@ -507,5 +506,14 @@
   "This list": "Esta lista",
   "To the results": "Para os resultados",
   "Undo the last change to selected games": "Desfazer a última mudança nos jogos selecionados",
-  "Shortcuts": "Atalhos"
+  "Shortcuts": "Atalhos",
+  "Update to {version}": "Atualizar para {version}",
+  "All notes": "Todas as notas",
+  "and {count} more": "e mais {count}",
+  "Updated": "Atualizado",
+  "released {date}": "lançada em {date}",
+  "What's new in Heronite {version}": "Novidades do Heronite {version}",
+  "Enjoying Heronite?": "Gostando do Heronite?",
+  "A star on GitHub helps more people find it. Ideas and feedback go in Discussions.": "Uma estrela no GitHub ajuda mais pessoas a encontrá-lo. Ideias e sugestões vão nas Discussões.",
+  "Discussions": "Discussões"
 }

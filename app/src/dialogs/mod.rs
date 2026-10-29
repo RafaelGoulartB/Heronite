@@ -46,6 +46,7 @@ pub mod shortcuts;
 pub mod store_import;
 pub mod store_install;
 pub mod web_image;
+pub mod whats_new;
 
 use std::sync::Arc;
 

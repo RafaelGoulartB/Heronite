@@ -26,8 +26,9 @@ use crate::ui::icon;
 pub(super) struct PrefixesState {
     /// `None` until the first list is read.
     pub(super) list: Option<Vec<Prefix>>,
-    /// App name -> (title, Collection key) of the library's games that run
-    /// through Wine: only they use a prefix.
+    /// App name -> (title, Collection key) of the installed games that run
+    /// through Wine: only they use a prefix (a game not installed keeps its
+    /// settings file, and the default prefix as its fallback).
     titles: HashMap<String, (String, String)>,
     /// Bytes on disk, filled in one by one after the list.
     sizes: HashMap<PathBuf, u64>,
@@ -95,24 +96,20 @@ impl WineManagerPage {
         }
         self.prefixes.loading = true;
         let data_paths = self.ctx.data_paths.clone();
-        let need_titles = self.prefixes.titles.is_empty();
         cx.spawn(async move |this, cx| {
             let (list, titles) = cx
                 .background_spawn(async move {
                     let list = prefixes::list(&data_paths, &home());
-                    let titles: HashMap<String, (String, String)> = if need_titles {
-                        heronite_data::library::Library::load(&data_paths)
-                            .map(|lib| {
-                                lib.games
-                                    .iter()
-                                    .filter(|g| runs_through_wine(g))
-                                    .map(|g| (g.app_name.clone(), (g.title.clone(), g.key.clone())))
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    } else {
-                        HashMap::new()
-                    };
+                    // Read every time: games are installed and removed between visits.
+                    let titles: HashMap<String, (String, String)> = heronite_data::library::Library::load(&data_paths)
+                        .map(|lib| {
+                            lib.games
+                                .iter()
+                                .filter(|g| g.installed && runs_through_wine(g))
+                                .map(|g| (g.app_name.clone(), (g.title.clone(), g.key.clone())))
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     (list, titles)
                 })
                 .await;
@@ -122,9 +119,7 @@ impl WineManagerPage {
                 st.loading = false;
                 st.sizes.retain(|p, _| paths.contains(p));
                 st.list = Some(list);
-                if !titles.is_empty() {
-                    st.titles = titles;
-                }
+                st.titles = titles;
                 cx.notify();
             });
             if ok.is_err() {
@@ -242,8 +237,8 @@ impl WineManagerPage {
         }
     }
 
-    /// The games of the library set to `p`, and the store client it is the
-    /// prefix of (settings of removed games and Linux games do not count).
+    /// The installed games set to `p`, and the store client it is the prefix
+    /// of (settings of removed, uninstalled and Linux games do not count).
     fn users(&self, p: &Prefix) -> Vec<String> {
         p.games
             .iter()
@@ -263,11 +258,12 @@ impl WineManagerPage {
         }
     }
 
-    /// The prefixes matching the search.
+    /// The prefixes matching the search, the default one first.
     pub(super) fn visible_prefixes(&self) -> Vec<Prefix> {
         let q = &self.query;
         let list = self.prefixes.list.as_deref().unwrap_or_default();
-        list.iter()
+        let mut rows: Vec<Prefix> = list
+            .iter()
             // A prefix not created yet only matters when a game will create it.
             .filter(|p| p.kind != PrefixKind::NotCreated || p.default || !self.users(p).is_empty())
             .filter(|p| {
@@ -277,7 +273,9 @@ impl WineManagerPage {
                     || p.games.iter().any(|g| self.game_title(g).to_lowercase().contains(q))
             })
             .cloned()
-            .collect()
+            .collect();
+        rows.sort_by_key(|p| !p.default);
+        rows
     }
 
     pub(super) fn render_prefixes(&self, cx: &mut Context<Self>) -> Div {

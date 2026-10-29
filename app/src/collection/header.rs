@@ -24,6 +24,8 @@ pub enum Menu {
     Nav,
     /// The downloads pill's queue.
     Downloads,
+    /// The update pill's release and actions.
+    Update,
 }
 
 const CLOSE_DELAY: Duration = Duration::from_millis(180);
@@ -200,6 +202,7 @@ impl CollectionView {
                     .children(self.onboarding_button(cx)),
             )
             .child(div().flex().flex_1().min_w_0().items_center().gap(px(6.)).overflow_hidden().children(self.filter_chips(cx)))
+            .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
             .child(self.view_mode_controls(cx))
             .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)).child(refresh).children(close))

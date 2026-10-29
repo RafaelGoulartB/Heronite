@@ -32,7 +32,7 @@ impl CollectionView {
     /// `HERONITE_DEBUG_MENU=<card key>` opens its context menu (with the
     /// status flyout; `HERONITE_DEBUG_MENU_CATEGORIES=1` for the categories
     /// one, `HERONITE_DEBUG_MENU_MANAGE=1` for Manage installation's,
-    /// `HERONITE_DEBUG_MENU_SAVES=1` for the saves'), `HERONITE_DEBUG_DROPDOWN=view|nav` opens a header menu
+    /// `HERONITE_DEBUG_MENU_SAVES=1` for the saves'), `HERONITE_DEBUG_DROPDOWN=view|nav|downloads|update` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
     /// their select open; `more-group` / `more-sort`: the "More" list of
@@ -102,6 +102,7 @@ impl CollectionView {
                 }
                 "nav" => Some(Menu::Nav),
                 "downloads" => Some(Menu::Downloads),
+                "update" => Some(Menu::Update),
                 _ if query.is_some() => Some(Menu::View),
                 _ => None,
             };
