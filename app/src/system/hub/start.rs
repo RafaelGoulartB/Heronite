@@ -34,11 +34,10 @@ pub fn init(
 ) {
     let data_paths = DataPaths::detect();
     let settings = SysSettings::load(&data_paths);
-    // Points the entry at this executable (a new AppImage may live elsewhere).
-    // Only when on: a run against another data folder must not remove it.
-    if settings.start_with_system {
-        std::thread::spawn(|| crate::system::autostart::sync(true));
-    }
+    // Points the entry at this executable (a new AppImage may live elsewhere),
+    // or removes one left behind while the setting is off.
+    let (autostart_paths, autostart_on) = (data_paths.clone(), settings.start_with_system);
+    std::thread::spawn(move || crate::system::autostart::sync(&autostart_paths, autostart_on));
     let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);
     let adopting = runtime.clone();

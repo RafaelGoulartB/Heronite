@@ -499,7 +499,8 @@ impl SettingsPanel {
         }
         if key == "startWithSystem" {
             let on = self.flag(key, false);
-            cx.background_spawn(async move { crate::system::autostart::sync(on) }).detach();
+            let paths = self.paths.clone();
+            cx.background_spawn(async move { crate::system::autostart::sync(&paths, on) }).detach();
             // "Start minimized" only means something with it.
             if !on {
                 self.set("startInTray", Value::Bool(false), cx);
