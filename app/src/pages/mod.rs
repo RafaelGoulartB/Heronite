@@ -150,6 +150,9 @@ pub enum PageEvent {
     OpenStores,
     /// Select this game (`CollectionGame::key`) on the Collection.
     ShowGame(String),
+    /// Play this game (`CollectionGame::key`) the way its card does; a game
+    /// that is not installed is only selected.
+    Play(String),
     /// Uninstall this game (`CollectionGame::key`) the way its context menu
     /// does; the page stays on screen under the dialog.
     Uninstall(String),
@@ -175,8 +178,8 @@ pub fn content_width(window: &Window) -> f32 {
     f32::from(window.viewport_size().width) - 24. - 64.
 }
 
-/// Glass sheet floating over the (dimmed) Collection: title (Rubik 26) + lead
-/// on the left, `actions` on the right, then a scrolling body. Title and body
+/// Glass sheet floating over the (dimmed) Collection: title (Rubik 26, none
+/// when empty) + lead on the left, `actions` on the right, then a scrolling body. Title and body
 /// share one column of at most `max_w`, centred in the sheet, so a wide
 /// window gets even margins instead of an empty right side. The round close
 /// button sits in the sheet's top-right corner, as in Settings. Pages render
@@ -192,6 +195,7 @@ pub fn sheet(
     column: impl IntoElement,
 ) -> Div {
     let id: ElementId = id.into();
+    let title: SharedString = title.into();
     // Keep the actions clear of the close button once the column reaches it.
     let room = content_width(window);
     let clear_close = (room - max_w) / 2. < 40.;
@@ -205,7 +209,15 @@ pub fn sheet(
             .max_w(px(max_w))
             .mx_auto()
             .when(clear_close, |d| d.pr(px(44.)))
-            .child(div().flex().flex_col().gap(px(4.)).min_w_0().child(page_heading(title)).children(lead.map(help_text)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .min_w_0()
+                    .when(!title.is_empty(), |d| d.child(page_heading(title)))
+                    .children(lead.map(help_text)),
+            )
             .child(div().flex().flex_none().items_center().gap(px(10.)).children(actions)),
     );
     let body = div()

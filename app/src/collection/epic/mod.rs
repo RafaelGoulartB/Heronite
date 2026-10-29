@@ -209,7 +209,7 @@ impl CollectionView {
     }
 
     /// The service, created and observed on first use.
-    fn epic_service(&mut self, cx: &mut Context<Self>) -> Entity<Downloads> {
+    pub(super) fn epic_service(&mut self, cx: &mut Context<Self>) -> Entity<Downloads> {
         if let Some(s) = &self.epic.service {
             return s.clone();
         }
@@ -327,7 +327,11 @@ impl CollectionView {
                 (QueueState::Downloading, None) => format!("{verb}..."),
                 (QueueState::Paused, Some(p)) => format!("{} {}", queue_verb(kind, true), fmt_percent(p as f64)),
                 (QueueState::Paused, None) => queue_verb(kind, true).into(),
-                (QueueState::Waiting, _) => tr!("Queued").into(),
+                // Its place among the waiting ones (0 runs).
+                (QueueState::Waiting, _) => match svc.queued(app) {
+                    Some((i, _)) => tr!("Queued \u{b7} #{n}", n = i),
+                    None => tr!("Queued").into(),
+                },
             };
             return Some(CardEpic { label: label.into(), percent: p, update: false });
         }

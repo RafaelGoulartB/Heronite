@@ -113,6 +113,10 @@ impl Downloads {
         for (g, size) in chosen.iter().skip(1).take(2).zip(["4.2 GiB", "812.5 MiB"]) {
             manager.add(mk(g, ElementKind::Update, size));
         }
+        // `HERONITE_DEBUG_FAKE_PAUSED=1`: the fake queue paused, as by the user.
+        if crate::env::flag("HERONITE_DEBUG_FAKE_PAUSED") {
+            manager.pause_by_user();
+        }
     }
 }
 

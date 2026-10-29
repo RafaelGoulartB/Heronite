@@ -26,7 +26,6 @@
   "Leave it empty to use the one in the data folder (tools/bin/nile).": "Déjalo vacío para usar el de la carpeta de datos (tools/bin/nile).",
   "Alternative gogdl binary": "Binario alternativo de gogdl",
   "Alternative nile binary": "Binario alternativo de nile",
-  "Installs and updates from Epic Games, GOG and Amazon Games run one at a time, in this order.": "Las instalaciones y actualizaciones de Epic Games, GOG y Amazon Games se ejecutan una a una, en este orden.",
   "Downloads and updates of Epic Games, GOG and Amazon Games games.": "Descargas y actualizaciones de juegos de Epic Games, GOG y Amazon Games.",
   "Store downloads and updates": "Descargas y actualizaciones de tiendas",
   "Installs and updates of every store": "Instalaciones y actualizaciones de todas las tiendas",

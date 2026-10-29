@@ -40,6 +40,9 @@ pub struct Pages {
     shown: Option<Page>,
     /// Controller hooks of the pages (console mode).
     hooks: std::collections::HashMap<Page, crate::console::PadHook>,
+    /// When the Downloads page was last opened or left (ms since the epoch):
+    /// the header's downloads pill announces only what finished after it.
+    pub(super) downloads_seen: u64,
 }
 
 impl Pages {
@@ -124,6 +127,25 @@ pub(super) fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>
     })
 }
 
+/// The ☰ menu's Downloads row: "42%", "Paused · 42%", "Waiting for the
+/// connection" and how many elements the queue has; `None` while it is empty.
+fn downloads_menu_meta(svc: Option<&crate::services::downloads::Downloads>) -> Option<(String, usize)> {
+    use heronite_epic::manager::DmState;
+    let svc = svc?;
+    let snap = svc.snapshot();
+    if snap.queue.is_empty() {
+        return None;
+    }
+    let percent = snap.current.as_ref().and_then(|(_, p)| p.as_ref()).map(|p| p.percent.round() as u32);
+    let text = match snap.state {
+        DmState::Running => percent.map_or_else(|| tr!("Starting...").to_string(), |p| format!("{p}%")),
+        DmState::Paused if svc.paused_offline() => tr!("Waiting for the connection").to_string(),
+        DmState::Paused => tr!("Paused{percent}", percent = percent.map(|p| format!(" \u{b7} {p}%")).unwrap_or_default()),
+        DmState::Idle => tr!("Waiting").to_string(),
+    };
+    Some((text, snap.queue.len()))
+}
+
 /// "Update 0.1.4" / "Updating 42%" / "Restart to update" while an app
 /// update wants attention (the Settings row shows it instead of its key).
 fn update_meta(cx: &App) -> Option<String> {
@@ -157,6 +179,31 @@ fn nav_row(id: SharedString, ic: Icon, title: &str, trailing: Trailing, active: 
                 .into_any_element(),
         ),
         Trailing::Key(k) => Some(crate::ui::controls::kbd(k).into_any_element()),
+        Trailing::Count(text, n) => Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .min_w_0()
+                .child(div().min_w_0().truncate().text_size(px(12.)).text_color(theme::accent()).child(text))
+                .child(
+                    div()
+                        .flex_none()
+                        .min_w(px(20.))
+                        .h(px(20.))
+                        .px(px(6.))
+                        .rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(theme::accent())
+                        .text_size(px(11.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(theme::on_accent())
+                        .child(n.to_string()),
+                )
+                .into_any_element(),
+        ),
     };
     div()
         .id(id)
@@ -195,6 +242,8 @@ enum Trailing {
     /// Text, and whether it reports something running.
     Meta(String, bool),
     Key(&'static str),
+    /// Something running, and how many elements wait with it.
+    Count(String, usize),
 }
 
 impl CollectionView {
@@ -247,8 +296,7 @@ impl CollectionView {
                 let svc = crate::services::try_downloads(cx);
                 let svc = svc.as_ref().map(|s| s.read(cx));
                 let signed_in = svc.is_some_and(|s| s.account().logged_in);
-                let downloading = downloads_meta(svc);
-                let downloads = downloading.clone().unwrap_or_else(|| tr!("Idle").to_string());
+                let downloading = downloads_menu_meta(svc);
                 let meta = &this.pages.meta;
                 let pending = || "\u{2026}".to_string();
                 let emulators = match meta.emulators {
@@ -268,7 +316,10 @@ impl CollectionView {
                 };
                 let trailing = |page: Page| match page {
                     Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
-                    Page::Downloads => Trailing::Meta(downloads.clone(), downloading.is_some()),
+                    Page::Downloads => match &downloading {
+                        Some((text, n)) => Trailing::Count(text.clone(), *n),
+                        None => Trailing::Meta(tr!("Idle").to_string(), false),
+                    },
                     Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
                     Page::Epic | Page::Gog | Page::Amazon | Page::Steam | Page::BattleNet | Page::Ea | Page::Ubisoft | Page::Rockstar => {
                         Trailing::Meta(stores_meta.clone(), false)
@@ -351,6 +402,9 @@ impl CollectionView {
     pub(super) fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         self.open_menu = None;
         self.context_menu = None;
+        if page == Page::Downloads || self.page == Page::Downloads {
+            self.pages.downloads_seen = heronite_epic::queue::now_ms();
+        }
         self.page = page;
         if page == Page::Statistics {
             self.mark_onboarding(crate::dialogs::onboarding::Step::Stats);
@@ -765,6 +819,15 @@ impl CollectionView {
         view.update(cx, |p, cx| p.open_review(year, cx));
     }
 
+    /// Back on the Collection with `key` selected (when it is in the library).
+    fn show_game(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigate(Page::Collection, window, cx);
+        if self.lib.as_ref().is_some_and(|l| l.get(key).is_some()) {
+            self.select(key.to_string().into(), true);
+            self.reveal_selected();
+        }
+    }
+
     fn on_page_event<E>(&mut self, _: &Entity<E>, ev: &PageEvent, window: &mut Window, cx: &mut Context<Self>) {
         match ev {
             PageEvent::LibraryChanged => self.reload(cx),
@@ -773,11 +836,12 @@ impl CollectionView {
             PageEvent::OpenStores => self.navigate(self.pages.stores_page(), window, cx),
             PageEvent::ScanRoms(initial) => self.open_scan_roms(initial.clone(), window, cx),
             PageEvent::ShowHidden(on) => self.set_show_hidden(*on, cx),
-            PageEvent::ShowGame(key) => {
-                self.navigate(Page::Collection, window, cx);
-                if self.lib.as_ref().is_some_and(|l| l.get(key).is_some()) {
-                    self.select(key.clone().into(), true);
-                    self.reveal_selected();
+            PageEvent::ShowGame(key) => self.show_game(key, window, cx),
+            PageEvent::Play(key) => {
+                if self.lib.as_ref().and_then(|l| l.get(key)).is_some_and(|g| g.installed) {
+                    self.primary_action(key, cx);
+                } else {
+                    self.show_game(key, window, cx);
                 }
             }
             PageEvent::Uninstall(key) => self.uninstall_game(key, window, cx),

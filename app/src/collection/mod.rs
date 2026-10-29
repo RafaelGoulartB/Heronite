@@ -11,6 +11,7 @@ mod context_menu;
 mod data;
 mod debug;
 mod dock;
+mod downloads_pill;
 mod emulation;
 mod epic;
 mod extras;
