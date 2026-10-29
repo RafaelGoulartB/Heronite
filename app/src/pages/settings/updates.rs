@@ -8,7 +8,7 @@ use heronite_update::Unsupported;
 
 use super::SettingsPage;
 use crate::console::list::{Outcome, Row, Value};
-use crate::services::update::{self, notes, Phase, Updater};
+use crate::services::update::{self, Phase, Updater};
 use crate::theme;
 use crate::ui::controls::{action_button, button_sm, caption, card, card_box, row, toggle, toggle_row, ButtonKind};
 
@@ -129,39 +129,6 @@ fn run(updater: &Entity<Updater>, action: Action, cx: &mut App) {
     });
 }
 
-/// The release notes, one element per line.
-fn notes_list(markdown: &str) -> Div {
-    let mut col = div().flex().flex_col().gap(px(4.)).py(px(12.));
-    let mut after_list = false;
-    for note in notes::parse(markdown) {
-        let bullet = matches!(note, notes::Note::Bullet(_));
-        col = col.child(match note {
-            notes::Note::Heading(t) => {
-                div().pt(px(6.)).text_size(px(13.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(t).into_any_element()
-            }
-            notes::Note::Bullet(t) => div()
-                .flex()
-                .gap(px(8.))
-                .text_size(px(13.))
-                .line_height(px(18.))
-                .text_color(theme::text_muted())
-                .child(div().flex_none().text_color(theme::text_dim()).child("\u{2022}"))
-                .child(div().flex_1().min_w_0().child(t))
-                .into_any_element(),
-            // A paragraph after a list (the closing line) stands apart from it.
-            notes::Note::Text(t) => div()
-                .when(after_list, |d| d.pt(px(6.)))
-                .text_size(px(13.))
-                .line_height(px(18.))
-                .text_color(theme::text_muted())
-                .child(t)
-                .into_any_element(),
-        });
-        after_list = bullet;
-    }
-    col
-}
-
 impl SettingsPage {
     pub(super) fn updates_section(&self, cx: &App) -> Option<Div> {
         let updater = update::get(cx)?;
@@ -250,7 +217,7 @@ impl SettingsPage {
             let notes = if r.notes.trim().is_empty() {
                 div().py(px(12.)).text_size(px(13.)).text_color(theme::text_dim()).child(tr!("This release has no notes."))
             } else {
-                notes_list(&r.notes)
+                crate::ui::release_notes::list(&r.notes, true)
             };
             col = col.child(caption(tr!("What's new in {version}", version = r.version))).child(card_box().child(notes).child(buttons));
         }
