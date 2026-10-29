@@ -23,6 +23,11 @@
 //! `HERONITE_UPDATE_API=<url>` asks another endpoint (local tests);
 //! `HERONITE_DEBUG_UPDATE=checking|uptodate|available|downloading|installing|ready|failed`
 //! shows that state with a made-up release, without any request;
+//! `HERONITE_DEBUG_UPDATE=simulate` offers a made-up release whose Update
+//! fakes the download and whose Restart opens "What's new" instead
+//! (nothing is downloaded, written or restarted; `simulate-auto` presses
+//! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
+//! new" at once;
 //! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch` pretends this copy came from
 //! that package (with `HERONITE_DEBUG_UPDATE`);
 //! `HERONITE_DEBUG_UPDATE_RESTART=1` restarts as soon as an update is
@@ -138,6 +143,8 @@ pub struct Updater {
     whats_new: Option<Release>,
     /// `HERONITE_DEBUG_UPDATE`: made-up states, no requests or writes.
     debug: bool,
+    /// `HERONITE_DEBUG_UPDATE=simulate`: Update and Restart are faked.
+    simulate: bool,
 }
 
 struct UpdaterGlobal(Entity<Updater>);
@@ -242,9 +249,10 @@ impl Updater {
             api_url: crate::env::value("HERONITE_UPDATE_API").unwrap_or_else(|| heronite_update::LATEST_API.to_string()),
             whats_new: None,
             debug: false,
+            simulate: false,
         };
         if let Some(state) = crate::env::value("HERONITE_DEBUG_UPDATE") {
-            this.debug_state(&state);
+            this.debug_state(&state, cx);
             return this;
         }
         if let Some(arrived) = arrival(&mut this.prefs, &this.current) {
@@ -467,7 +475,13 @@ impl Updater {
 
     /// Downloads the release and installs it ([`Method`]).
     pub fn install(&mut self, cx: &mut Context<Self>) {
-        if self.busy() || self.debug || !self.can_install() {
+        if self.busy() || !self.can_install() {
+            return;
+        }
+        if self.debug {
+            if self.simulate {
+                self.debug_install(cx);
+            }
             return;
         }
         let (Ok(method), Some(release)) = (self.method.clone(), self.release.clone()) else { return };
@@ -576,6 +590,7 @@ impl Updater {
             c.store(true, Ordering::Relaxed);
         }
         if self.debug {
+            self.job = None;
             self.phase = Phase::Available;
         }
         cx.notify();
@@ -616,7 +631,13 @@ impl Updater {
     /// Restarts into the new version (when no game or post-game work keeps
     /// the app; see [`crate::system::restart_blocker`]).
     pub fn restart(&mut self, cx: &mut Context<Self>) {
-        if self.phase != Phase::Ready || self.debug {
+        if self.phase != Phase::Ready {
+            return;
+        }
+        if self.debug {
+            if self.simulate {
+                self.debug_restart(cx);
+            }
             return;
         }
         let Ok(method) = &self.method else { return };
