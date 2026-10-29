@@ -1,5 +1,6 @@
-//! Settings → About: updates (`updates.rs`), version, data folders and
-//! system information.
+//! Settings → About: updates (`updates.rs`); links to report a problem,
+//! suggest an idea, ask and star the project on GitHub; version, data folders
+//! and system information.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -7,9 +8,12 @@ use heronite_i18n::tr;
 
 use super::sysinfo::{self, SystemInfo};
 use super::SettingsPage;
+use crate::icons::Icon;
 use crate::pages::PageCtx;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, row, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, icon_action_button, row, ButtonKind};
+
+const REPO: &str = "https://github.com/RafaelGoulartB/Heronite";
 
 #[derive(Default)]
 pub struct State {
@@ -92,6 +96,74 @@ impl State {
     }
 }
 
+/// Where each feedback link goes on GitHub.
+#[derive(Clone, Copy)]
+enum Link {
+    Problem,
+    Idea,
+    Question,
+    Star,
+}
+
+impl Link {
+    const ALL: [Link; 4] = [Link::Problem, Link::Idea, Link::Question, Link::Star];
+
+    fn id(self) -> &'static str {
+        match self {
+            Link::Problem => "problem",
+            Link::Idea => "idea",
+            Link::Question => "question",
+            Link::Star => "star",
+        }
+    }
+
+    fn from_id(id: &str) -> Option<Link> {
+        Link::ALL.into_iter().find(|l| l.id() == id)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Link::Problem => tr!("Report a problem"),
+            Link::Idea => tr!("Suggest an idea"),
+            Link::Question => tr!("Ask a question"),
+            Link::Star => tr!("Like Heronite?"),
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            Link::Problem => tr!("Opens a bug report on GitHub with this computer's information already filled in."),
+            Link::Idea => tr!("A feature you miss, or something that could work better."),
+            Link::Question => tr!("Get help with a setup, or talk with other players."),
+            Link::Star => tr!("It is free and open source. A star on GitHub helps more people find it."),
+        }
+    }
+
+    fn button(self) -> (Icon, &'static str) {
+        match self {
+            Link::Problem => (Icon::Flag, tr!("Report")),
+            Link::Idea => (Icon::Lightbulb, tr!("Suggest")),
+            Link::Question => (Icon::Notes, tr!("Ask")),
+            Link::Star => (Icon::Star, tr!("Star on GitHub")),
+        }
+    }
+
+    /// The bug report form gets the system information (the `system` field)
+    /// once it is read.
+    fn url(self, about: &State, ctx: &PageCtx) -> String {
+        match self {
+            Link::Problem if !about.system.os.is_empty() => format!(
+                "{REPO}/issues/new?template=bug_report.yml&system={}",
+                heronite_metadata::util::encode_uri_component(&about.report(ctx))
+            ),
+            Link::Problem => format!("{REPO}/issues/new?template=bug_report.yml"),
+            Link::Idea => format!("{REPO}/issues/new?template=feature_request.yml"),
+            Link::Question => format!("{REPO}/discussions/categories/q-a"),
+            Link::Star => REPO.to_string(),
+        }
+    }
+}
+
 /// Key / value row: label left, the value (selectable-looking, wraps) right.
 fn info_row(label: &str, value: impl Into<SharedString>) -> AnyElement {
     row(label.to_string(), None, div().max_w(px(520.)).text_size(px(14.)).text_color(theme::text_muted()).text_right().child(value.into()))
@@ -122,8 +194,33 @@ impl SettingsPage {
             info_row(tr!("Cache folder"), self.ctx.app.cache.display().to_string()),
         ]);
 
+        let feedback = card(Link::ALL.map(|link| {
+            let (ic, label) = link.button();
+            let kind = if matches!(link, Link::Star) { ButtonKind::Primary } else { ButtonKind::Glass };
+            row(
+                link.label(),
+                Some(link.description()),
+                icon_action_button(
+                    SharedString::from(format!("about-{}", link.id())),
+                    kind,
+                    ic,
+                    label,
+                    cx.listener(move |this, _, _, cx| cx.open_url(&link.url(&this.about, &this.ctx))),
+                ),
+            )
+            .into_any_element()
+        }));
+
         let updates = self.updates_section(cx);
-        let mut col = div().flex().flex_col().children(updates).child(caption("Heronite")).child(app).child(caption(tr!("System")));
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .children(updates)
+            .child(caption(tr!("Help and feedback")))
+            .child(feedback)
+            .child(caption("Heronite"))
+            .child(app)
+            .child(caption(tr!("System")));
         if s.os.is_empty() {
             col = col.child(card([empty_line(tr!("Reading system information..."))]));
         } else {
@@ -185,6 +282,8 @@ pub(super) fn console_rows(p: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let a = &p.about;
     let s = &a.system;
     let mut rows = super::updates::console_rows(cx);
+    rows.push(Row::header(tr!("Help and feedback")));
+    rows.extend(Link::ALL.map(|link| Row::action(link.id(), link.label()).desc(link.description())));
     rows.extend([
         Row::header("Heronite"),
         Row::info("i:version", tr!("Version"), format!("Heronite {}", env!("CARGO_PKG_VERSION"))),
@@ -226,7 +325,9 @@ pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list:
         return;
     }
     if let crate::console::list::Outcome::Activate(id) = outcome {
-        if id.as_ref() == "copy" {
+        if let Some(link) = Link::from_id(&id) {
+            cx.open_url(&link.url(&p.about, &p.ctx));
+        } else if id.as_ref() == "copy" {
             let text = p.about.report(&p.ctx);
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             p.about.copied = true;

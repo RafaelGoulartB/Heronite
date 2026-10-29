@@ -347,6 +347,17 @@ pub fn icon_button_sm(
     }
 }
 
+/// An [`action_button`] with an icon before the label.
+pub fn icon_action_button(
+    id: impl Into<ElementId>,
+    kind: ButtonKind,
+    ic: Icon,
+    label: impl Into<SharedString>,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    button_base(id, kind, Some(ic), label.into(), false, true).on_click(on_click)
+}
+
 /// A [`button`] that only reacts when `enabled`; disabled ones are drawn at
 /// 45% opacity.
 pub fn action_button(

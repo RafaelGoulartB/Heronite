@@ -136,7 +136,7 @@ impl Section {
             Section::Saves => tr!("Game saves backed up with Ludusavi after you close a game, and the folders a game's Saves tab restores them from."),
             Section::Backups => tr!("Scheduled backups of your Collection, play history and settings, and putting one back."),
             Section::Logs => tr!("The logs of this app, the runners and every game you launched. Logging is turned off in Advanced (Turn off logs) and made more detailed per game (Detailed logs)."),
-            Section::About => tr!("Updates, this app's data folders and the system it runs on."),
+            Section::About => tr!("Updates, help and feedback, this app's data folders and the system it runs on."),
         }
     }
 

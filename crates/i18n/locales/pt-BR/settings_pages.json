@@ -439,5 +439,16 @@
   "A again clears {n} game from the recent list.": "A de novo limpa {n} jogo da lista de recentes.",
   "A again clears {n} games from the recent list.": "A de novo limpa {n} jogos da lista de recentes.",
   "Search settings": "Buscar opções",
-  "No settings match": "Nenhuma opção encontrada"
+  "No settings match": "Nenhuma opção encontrada",
+  "Help and feedback": "Ajuda e sugestões",
+  "Report a problem": "Relatar um problema",
+  "Opens a bug report on GitHub with this computer's information already filled in.": "Abre um relato de problema no GitHub com as informações deste computador já preenchidas.",
+  "Report": "Relatar",
+  "Suggest an idea": "Sugerir uma ideia",
+  "A feature you miss, or something that could work better.": "Uma função que faz falta ou algo que poderia funcionar melhor.",
+  "Suggest": "Sugerir",
+  "Get help with a setup, or talk with other players.": "Peça ajuda com uma configuração ou converse com outros jogadores.",
+  "Like Heronite?": "Gosta do Heronite?",
+  "It is free and open source. A star on GitHub helps more people find it.": "Ele é gratuito e de código aberto. Uma estrela no GitHub ajuda mais pessoas a encontrá-lo.",
+  "Star on GitHub": "Dar estrela no GitHub"
 }
