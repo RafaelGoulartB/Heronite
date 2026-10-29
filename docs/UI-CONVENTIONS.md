@@ -234,6 +234,23 @@ Remove…) in the header, a red banner when it does not start, its ROM folders (
 Remove…) on the left, its games, platforms and profiles on the right. With no emulator, the page offers the three ways
 to add one.
 
+**Downloads page** (`pages/downloads/`): no title (the slim header names it), a lead that sums the queue up
+("Downloading X · 2 more in the queue · 20 GiB left · all done around 21:39"). The running element sits on a
+stage (`stage.rs`) over its wide art (`InstallParams::art`, faded from the panel colour): tall cover, status pill,
+percent, bar, download / disk speed, time left and the clock time it ends, a chart of the last reports' speeds
+(`Downloads::speed_samples`, `widgets::sparkline`), open folder, stop (the keep / delete question opens under the
+stage) and a round pause / resume. Paused and offline say why nothing moves. With nothing running the stage is a slim
+"Nothing is downloading" card, or for 30 minutes the game that just installed with Play. Then the updates banner
+("Update all"), and side by side (`lists.rs`) the waiting elements, which a drag moves (`move_in_queue_to`), each
+with the time it starts, and the history with All / Done / Did not finish, Play for installs, Retry or Download
+again, and the disk space hint for a full drive. Under them the free space of the queue's folder and what the queue
+needs. An empty queue and history show what the page is for. The Collection header has a downloads pill
+(`collection/downloads_pill.rs`): ring, title, percent and speed, its popover the queue with pause / resume; once
+the queue empties it announces what finished (ready to play with Play, or failed) until Downloads is opened. The ☰
+row shows the percent and the queue's length; a waiting game's card says its place ("Queued · #2").
+`HERONITE_DEBUG_FAKE_DOWNLOAD=<appName>` (a fake queue), `HERONITE_DEBUG_FAKE_PAUSED=1` (paused),
+`HERONITE_DEBUG_DOWNLOADS_STOP=<appName>` (the stop question), `HERONITE_DEBUG_DROPDOWN=downloads` (the popover).
+
 **Focus panel** (`collection/focus/`, the second place that departs from Heronite, by user decision): a fixed left column
 (`focus_left.rs`: big cover, Play, status selector + favourite / metadata / settings, the journal's "Where I left off"
 card only once the player wrote one (click: the Journal; also in the grid drawer), star rating, facts card with score
@@ -671,7 +688,7 @@ the panel's size follows it.
   off-screen), prints PSS and closes it. Never open windows anywhere else,
   never switch workspaces, never move/click the real mouse.
 - Debug hooks (env, via `SHOT_ENV="..."`): `HERONITE_DEBUG_SELECT=<runner_appName>`,
-  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|view:<text>|nav`,
+  `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|view:<text>|nav|downloads`,
   `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]` (extend the match in
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
   `onboarding:<step>` "Getting started" where that step lives: `steam`, `stores` or `emulators` open its games view, `appearance` its look view, any other step the three cards).

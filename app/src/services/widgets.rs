@@ -4,6 +4,7 @@ use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::{AppPaths, DataPaths};
+use heronite_i18n::tr;
 use heronite_images::{ImageRef, Variant};
 
 use crate::images::ImageStore;
@@ -35,6 +36,104 @@ pub fn busy_bar(id: impl Into<ElementId>, height: f32) -> AnyElement {
             s.left(relative(t * 1.3 - 0.3))
         }))
         .into_any_element()
+}
+
+/// Line chart of `samples` (oldest first) filling its box: a stroke of
+/// `color` over a faint fill of it, scaled to the highest sample.
+pub fn sparkline(samples: Vec<f32>, color: Hsla) -> Canvas<()> {
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, _| {
+            if samples.len() < 2 {
+                return;
+            }
+            let max = samples.iter().copied().fold(1., f32::max) * 1.15;
+            let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let at = |i: usize, v: f32| {
+                let x = i as f32 / (samples.len() - 1) as f32 * w;
+                point(bounds.origin.x + px(x), bounds.origin.y + px(h - v.max(0.) / max * h))
+            };
+            let mut fill = PathBuilder::fill();
+            fill.move_to(point(bounds.origin.x, bounds.origin.y + px(h)));
+            let mut line = PathBuilder::stroke(px(1.5));
+            for (i, v) in samples.iter().enumerate() {
+                fill.line_to(at(i, *v));
+                if i == 0 {
+                    line.move_to(at(i, *v));
+                } else {
+                    line.line_to(at(i, *v));
+                }
+            }
+            fill.line_to(point(bounds.origin.x + px(w), bounds.origin.y + px(h)));
+            fill.close();
+            if let Ok(path) = fill.build() {
+                window.paint_path(path, Hsla { a: color.a * 0.18, ..color });
+            }
+            if let Ok(path) = line.build() {
+                window.paint_path(path, color);
+            }
+        },
+    )
+}
+
+/// Circular progress: a faint track and an arc of `color` from 12 o'clock,
+/// `percent` 0..=100, `stroke` px wide, filling its (square) box.
+pub fn progress_ring(percent: f32, stroke: f32, color: Hsla) -> Canvas<()> {
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, _| {
+            let c = bounds.center();
+            let r = f32::from(bounds.size.width.min(bounds.size.height)) / 2. - stroke / 2.;
+            let arc = |from: f32, to: f32| {
+                let steps = ((to - from) * 64.).ceil().max(1.) as usize;
+                let mut b = PathBuilder::stroke(px(stroke));
+                for i in 0..=steps {
+                    let a = (from + (to - from) * i as f32 / steps as f32) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+                    let p = point(c.x + px(r * a.cos()), c.y + px(r * a.sin()));
+                    if i == 0 {
+                        b.move_to(p);
+                    } else {
+                        b.line_to(p);
+                    }
+                }
+                b.build().ok()
+            };
+            if let Some(track) = arc(0., 1.) {
+                window.paint_path(track, theme::ink_a(0.14));
+            }
+            let fill = percent.clamp(0., 100.) / 100.;
+            if fill > 0. {
+                if let Some(done) = arc(0., fill) {
+                    window.paint_path(done, color);
+                }
+            }
+        },
+    )
+}
+
+/// Seconds of legendary's / gogdl's `HH:MM:SS` ETA (`MM:SS` too); `None`
+/// when empty or unreadable.
+pub fn eta_secs(eta: &str) -> Option<u64> {
+    let parts: Vec<u64> = eta.trim().split(':').map(|p| p.trim().parse().ok()).collect::<Option<_>>()?;
+    match parts[..] {
+        [h, m, s] => Some(h * 3600 + m * 60 + s),
+        [m, s] => Some(m * 60 + s),
+        _ => None,
+    }
+}
+
+/// "45 s", "8 min 05 s", "1 h 07 min".
+pub fn duration_text(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, secs / 60 % 60, secs % 60);
+    if h > 0 {
+        tr!("{h} h {m} min", h, m = format!("{m:02}"))
+    } else if m >= 10 {
+        tr!("{m} min", m)
+    } else if m > 0 {
+        tr!("{m} min {s} s", m, s = format!("{s:02}"))
+    } else {
+        tr!("{s} s", s)
+    }
 }
 
 /// `1234.5` MiB -> `1.21 GiB`.
@@ -164,4 +263,26 @@ pub fn cover_box(src: Option<ImageSource>, w: f32, h: f32) -> Div {
         .overflow_hidden()
         .bg(theme::ink_a(0.05))
         .children(src.map(|s| img(s).size_full().object_fit(ObjectFit::Cover).rounded(px(5.))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{duration_text, eta_secs};
+
+    #[test]
+    fn etas_are_read_from_the_tools_clock() {
+        assert_eq!(eta_secs("00:08:20"), Some(500));
+        assert_eq!(eta_secs("1:02:03"), Some(3723));
+        assert_eq!(eta_secs("08:20"), Some(500));
+        assert_eq!(eta_secs(""), None);
+        assert_eq!(eta_secs("soon"), None);
+    }
+
+    #[test]
+    fn durations_drop_the_seconds_past_ten_minutes() {
+        assert_eq!(duration_text(45), "45 s");
+        assert_eq!(duration_text(485), "8 min 05 s");
+        assert_eq!(duration_text(1500), "25 min");
+        assert_eq!(duration_text(4020), "1 h 07 min");
+    }
 }

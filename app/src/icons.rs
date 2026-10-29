@@ -60,6 +60,8 @@ pub enum Icon {
     /// Bulleted lines (the Focus list as rows).
     ViewList,
     Downloading,
+    /// Six dots: a row that can be dragged.
+    DragIndicator,
     Pause,
     Build,
     Logout,
@@ -244,6 +246,7 @@ impl Icon {
             ViewCovers => "icons/view-covers.svg",
             ViewList => "icons/view-list.svg",
             Downloading => "icons/downloading.svg",
+            DragIndicator => "icons/drag-indicator.svg",
             Pause => "icons/pause.svg",
             Build => "icons/build.svg",
             Logout => "icons/logout.svg",

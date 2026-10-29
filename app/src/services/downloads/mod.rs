@@ -24,7 +24,7 @@ mod stores;
 mod types;
 mod updates;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use futures::channel::mpsc::unbounded;
@@ -51,6 +51,9 @@ pub struct Downloads {
     manager: DownloadManager,
     snapshot: Snapshot,
     progress: HashMap<String, Progress>,
+    /// Download speeds (MiB/s) of the running element's last reports, oldest
+    /// first, for the Downloads page's chart: `(app name, samples)`.
+    speed: (String, VecDeque<f32>),
     /// Pauses the queue while the connection is down.
     offline: connectivity::OfflineWatch,
     updates: HashSet<String>,
@@ -120,6 +123,7 @@ impl Downloads {
             manager,
             snapshot,
             progress: HashMap::new(),
+            speed: Default::default(),
             offline: Default::default(),
             updates: HashSet::new(),
             fake_update: crate::env::value("HERONITE_DEBUG_FAKE_UPDATE"),
@@ -213,6 +217,17 @@ impl Downloads {
 
     pub fn progress_of(&self, app_name: &str) -> Option<&Progress> {
         self.progress.get(app_name)
+    }
+
+    /// The download speeds (MiB/s) of `app_name`'s last reports, oldest
+    /// first; empty unless it is the running element.
+    pub fn speed_samples(&self, app_name: &str) -> &VecDeque<f32> {
+        static NONE: VecDeque<f32> = VecDeque::new();
+        if self.speed.0 == app_name {
+            &self.speed.1
+        } else {
+            &NONE
+        }
     }
 
     /// Queue element for the game (running first, then waiting).

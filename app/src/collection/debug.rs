@@ -101,6 +101,7 @@ impl CollectionView {
                     Some(Menu::View)
                 }
                 "nav" => Some(Menu::Nav),
+                "downloads" => Some(Menu::Downloads),
                 _ if query.is_some() => Some(Menu::View),
                 _ => None,
             };
