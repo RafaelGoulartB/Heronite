@@ -18,7 +18,7 @@ impl Updater {
         let release = Release {
             version: next.to_string(),
             name: format!("Heronite v{next}"),
-            notes: "### Features\n- **collection:** Update Heronite from the app ([1a2b3c4](https://x))\n- Release notes in Settings\n\n### Bug fixes\n- The welcome screen keeps its layout on narrow windows ([5d6e7f8](https://x))".into(),
+            notes: "### Features\n- **collection:** Update Heronite from the app ([1a2b3c4](https://x))\n- Release notes in Settings\n\n### Bug fixes\n- The welcome screen keeps its layout on narrow windows ([5d6e7f8](https://x))\n\n**Enjoying Heronite?** [Star it on GitHub](https://x) and share your feedback and ideas in [Discussions](https://x).".into(),
             page_url: heronite_update::RELEASES_PAGE.into(),
             published_at: "2026-10-11T12:00:00Z".into(),
             appimage: Some(Asset { name: name.clone(), url: String::new(), size: 15_400_000 }),

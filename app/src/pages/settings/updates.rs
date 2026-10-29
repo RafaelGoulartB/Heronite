@@ -132,7 +132,9 @@ fn run(updater: &Entity<Updater>, action: Action, cx: &mut App) {
 /// The release notes, one element per line.
 fn notes_list(markdown: &str) -> Div {
     let mut col = div().flex().flex_col().gap(px(4.)).py(px(12.));
+    let mut after_list = false;
     for note in notes::parse(markdown) {
+        let bullet = matches!(note, notes::Note::Bullet(_));
         col = col.child(match note {
             notes::Note::Heading(t) => {
                 div().pt(px(6.)).text_size(px(13.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(t).into_any_element()
@@ -146,10 +148,16 @@ fn notes_list(markdown: &str) -> Div {
                 .child(div().flex_none().text_color(theme::text_dim()).child("\u{2022}"))
                 .child(div().flex_1().min_w_0().child(t))
                 .into_any_element(),
-            notes::Note::Text(t) => {
-                div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(t).into_any_element()
-            }
+            // A paragraph after a list (the closing line) stands apart from it.
+            notes::Note::Text(t) => div()
+                .when(after_list, |d| d.pt(px(6.)))
+                .text_size(px(13.))
+                .line_height(px(18.))
+                .text_color(theme::text_muted())
+                .child(t)
+                .into_any_element(),
         });
+        after_list = bullet;
     }
     col
 }
