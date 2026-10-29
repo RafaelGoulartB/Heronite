@@ -55,7 +55,7 @@ mod steam_copy;
 mod system_glue;
 mod timeline;
 mod timeline_achievements;
-mod update_banner;
+mod update_pill;
 mod user_actions;
 mod view_filters;
 mod view_menu;
@@ -278,7 +278,7 @@ impl CollectionView {
         // The focused game's achievements and the Timeline's days.
         let achievements = crate::services::achievements::get(cx);
         cx.observe(&achievements, |_, _, cx| cx.notify()).detach();
-        // The update banner and the ☰ Settings row.
+        // The update pill and the ☰ Settings row.
         if let Some(updater) = crate::services::update::get(cx) {
             cx.observe(&updater, |_, _, cx| cx.notify()).detach();
         }
@@ -610,7 +610,6 @@ impl CollectionView {
         });
         let toast = self.render_toast(cx);
         let dock = if on_page { None } else { self.render_dock(window, cx) };
-        let update_banner = self.render_update_banner(cx);
 
         div()
             .id("collection")
@@ -637,7 +636,6 @@ impl CollectionView {
             .children(library)
             .children(dock)
             .children(toast)
-            .children(update_banner)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())
             .children(self.render_drop_target())

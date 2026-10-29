@@ -10,7 +10,6 @@
   "This step finishes before the launch can stop": "Este paso termina antes de que se pueda detener el inicio",
   "Updating": "Actualizando",
   "Enter your password if you are asked.": "Introduce tu contraseña si te la piden.",
-  "Update ready": "Actualización lista",
   "{title} is running. Close the game to change its install location.": "{title} está en ejecución. Cierra el juego para cambiar su ubicación de instalación.",
   "{title} is running. Close the game to move it.": "{title} está en ejecución. Cierra el juego para moverlo.",
   "{title} is running. Close the game to verify it.": "{title} está en ejecución. Cierra el juego para verificarlo.",
@@ -507,5 +506,8 @@
   "This list": "Esta lista",
   "To the results": "A los resultados",
   "Undo the last change to selected games": "Deshacer el último cambio en los juegos seleccionados",
-  "Shortcuts": "Accesos directos"
+  "Shortcuts": "Accesos directos",
+  "Update to {version}": "Actualizar a {version}",
+  "All notes": "Todas las notas",
+  "and {count} more": "y {count} más"
 }

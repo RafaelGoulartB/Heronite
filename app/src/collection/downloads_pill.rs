@@ -166,7 +166,7 @@ impl CollectionView {
     }
 }
 
-fn pill_base(id: &'static str, open: bool) -> Stateful<Div> {
+pub(super) fn pill_base(id: &'static str, open: bool) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -185,7 +185,7 @@ fn pill_base(id: &'static str, open: bool) -> Stateful<Div> {
 }
 
 /// 24px progress ring, with `glyph` in its middle.
-fn ring(percent: f32, color: Hsla, glyph: Option<Icon>) -> Div {
+pub(super) fn ring(percent: f32, color: Hsla, glyph: Option<Icon>) -> Div {
     div()
         .relative()
         .flex()
