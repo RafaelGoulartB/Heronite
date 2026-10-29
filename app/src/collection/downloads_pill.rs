@@ -24,6 +24,10 @@ use crate::ui::{glass, icon};
 
 /// Waiting elements the popover lists.
 const POPOVER_NEXT: usize = 3;
+/// The pill shows this many characters of a title at most (the popover has
+/// the whole one), and never wider than [`TITLE_W`].
+const TITLE_CHARS: usize = 16;
+const TITLE_W: f32 = 130.;
 
 /// When the app started (ms): what finished before is old news.
 fn started_at() -> u64 {
@@ -103,12 +107,12 @@ impl CollectionView {
             .child(ring(q.percent.unwrap_or(0.) as f32, color, glyph))
             .child(
                 div()
-                    .max_w(px(170.))
+                    .max_w(px(TITLE_W))
                     .truncate()
                     .text_size(px(13.))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::text_primary())
-                    .child(q.cur.params.title()),
+                    .child(clip_title(&q.cur.params.title())),
             )
             .child(div().flex_none().text_size(px(12.)).text_color(theme::text_dim()).child(detail))
             .when(!waiting.is_empty(), |d| {
@@ -147,12 +151,12 @@ impl CollectionView {
                 .child(ring(100., color.into(), Some(glyph)))
                 .child(
                     div()
-                        .max_w(px(170.))
+                        .max_w(px(TITLE_W))
                         .truncate()
                         .text_size(px(13.))
                         .font_weight(theme::W_BOLD)
                         .text_color(theme::text_primary())
-                        .child(title),
+                        .child(clip_title(&title)),
                 )
                 .child(div().flex_none().pr(px(4.)).text_size(px(12.)).text_color(theme::readable(color)).child(detail))
                 .children(play)
@@ -191,6 +195,15 @@ fn ring(percent: f32, color: Hsla, glyph: Option<Icon>) -> Div {
         .size(px(24.))
         .child(progress_ring(percent, 2.5, color).absolute().inset_0())
         .children(glyph.map(|g| icon(g, px(12.), color)))
+}
+
+/// `title` cut to [`TITLE_CHARS`] characters with an ellipsis.
+fn clip_title(title: &str) -> String {
+    if title.chars().count() <= TITLE_CHARS {
+        return title.to_string();
+    }
+    let cut: String = title.chars().take(TITLE_CHARS - 1).collect();
+    format!("{}\u{2026}", cut.trim_end())
 }
 
 fn speed_text(mib_s: f64) -> String {
@@ -291,4 +304,18 @@ fn queue_popover(q: QueueView, cx: &mut Context<CollectionView>) -> AnyElement {
             },
         )))
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::clip_title;
+
+    #[test]
+    fn long_titles_are_cut_with_an_ellipsis() {
+        assert_eq!(clip_title("Control"), "Control");
+        assert_eq!(clip_title("Sixteen chars ok"), "Sixteen chars ok");
+        assert_eq!(clip_title("Sid Meier's Civilization VI"), "Sid Meier's Civ\u{2026}");
+        assert_eq!(clip_title("Tiny Tina's Wonderlands"), "Tiny Tina's Won\u{2026}");
+        assert_eq!(clip_title("A Plague Tale: Requiem"), "A Plague Tale:\u{2026}");
+    }
 }
