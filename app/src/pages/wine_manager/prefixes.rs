@@ -258,11 +258,12 @@ impl WineManagerPage {
         }
     }
 
-    /// The prefixes matching the search.
+    /// The prefixes matching the search, the default one first.
     pub(super) fn visible_prefixes(&self) -> Vec<Prefix> {
         let q = &self.query;
         let list = self.prefixes.list.as_deref().unwrap_or_default();
-        list.iter()
+        let mut rows: Vec<Prefix> = list
+            .iter()
             // A prefix not created yet only matters when a game will create it.
             .filter(|p| p.kind != PrefixKind::NotCreated || p.default || !self.users(p).is_empty())
             .filter(|p| {
@@ -272,7 +273,9 @@ impl WineManagerPage {
                     || p.games.iter().any(|g| self.game_title(g).to_lowercase().contains(q))
             })
             .cloned()
-            .collect()
+            .collect();
+        rows.sort_by_key(|p| !p.default);
+        rows
     }
 
     pub(super) fn render_prefixes(&self, cx: &mut Context<Self>) -> Div {
