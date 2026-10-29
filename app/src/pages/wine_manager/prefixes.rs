@@ -26,8 +26,9 @@ use crate::ui::icon;
 pub(super) struct PrefixesState {
     /// `None` until the first list is read.
     pub(super) list: Option<Vec<Prefix>>,
-    /// App name -> (title, Collection key) of the library's games that run
-    /// through Wine: only they use a prefix.
+    /// App name -> (title, Collection key) of the installed games that run
+    /// through Wine: only they use a prefix (a game not installed keeps its
+    /// settings file, and the default prefix as its fallback).
     titles: HashMap<String, (String, String)>,
     /// Bytes on disk, filled in one by one after the list.
     sizes: HashMap<PathBuf, u64>,
@@ -95,24 +96,20 @@ impl WineManagerPage {
         }
         self.prefixes.loading = true;
         let data_paths = self.ctx.data_paths.clone();
-        let need_titles = self.prefixes.titles.is_empty();
         cx.spawn(async move |this, cx| {
             let (list, titles) = cx
                 .background_spawn(async move {
                     let list = prefixes::list(&data_paths, &home());
-                    let titles: HashMap<String, (String, String)> = if need_titles {
-                        heronite_data::library::Library::load(&data_paths)
-                            .map(|lib| {
-                                lib.games
-                                    .iter()
-                                    .filter(|g| runs_through_wine(g))
-                                    .map(|g| (g.app_name.clone(), (g.title.clone(), g.key.clone())))
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    } else {
-                        HashMap::new()
-                    };
+                    // Read every time: games are installed and removed between visits.
+                    let titles: HashMap<String, (String, String)> = heronite_data::library::Library::load(&data_paths)
+                        .map(|lib| {
+                            lib.games
+                                .iter()
+                                .filter(|g| g.installed && runs_through_wine(g))
+                                .map(|g| (g.app_name.clone(), (g.title.clone(), g.key.clone())))
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     (list, titles)
                 })
                 .await;
@@ -122,9 +119,7 @@ impl WineManagerPage {
                 st.loading = false;
                 st.sizes.retain(|p, _| paths.contains(p));
                 st.list = Some(list);
-                if !titles.is_empty() {
-                    st.titles = titles;
-                }
+                st.titles = titles;
                 cx.notify();
             });
             if ok.is_err() {
@@ -242,8 +237,8 @@ impl WineManagerPage {
         }
     }
 
-    /// The games of the library set to `p`, and the store client it is the
-    /// prefix of (settings of removed games and Linux games do not count).
+    /// The installed games set to `p`, and the store client it is the prefix
+    /// of (settings of removed, uninstalled and Linux games do not count).
     fn users(&self, p: &Prefix) -> Vec<String> {
         p.games
             .iter()
