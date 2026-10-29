@@ -170,6 +170,8 @@ jobs:
           else
             git cliff --latest --strip all >> notes.md
           fi
+          # Last line: a star and the Discussions, where feedback goes.
+          printf '\n**Enjoying Heronite?** [Star it on GitHub](https://github.com/RafaelGoulartB/Heronite) and share your feedback and ideas in [Discussions](https://github.com/RafaelGoulartB/Heronite/discussions).\n' >> notes.md
           cat notes.md
       - name: Publish release
         env:
