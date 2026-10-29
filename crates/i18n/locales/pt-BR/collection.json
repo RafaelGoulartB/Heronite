@@ -509,5 +509,11 @@
   "Shortcuts": "Atalhos",
   "Update to {version}": "Atualizar para {version}",
   "All notes": "Todas as notas",
-  "and {count} more": "e mais {count}"
+  "and {count} more": "e mais {count}",
+  "Updated": "Atualizado",
+  "released {date}": "lançada em {date}",
+  "What's new in Heronite {version}": "Novidades do Heronite {version}",
+  "Enjoying Heronite?": "Gostando do Heronite?",
+  "A star on GitHub helps more people find it. Ideas and feedback go in Discussions.": "Uma estrela no GitHub ajuda mais pessoas a encontrá-lo. Ideias e sugestões vão nas Discussões.",
+  "Discussions": "Discussões"
 }

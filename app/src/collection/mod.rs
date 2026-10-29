@@ -278,7 +278,7 @@ impl CollectionView {
         // The focused game's achievements and the Timeline's days.
         let achievements = crate::services::achievements::get(cx);
         cx.observe(&achievements, |_, _, cx| cx.notify()).detach();
-        // The update pill and the ☰ Settings row.
+        // The update pill, its "What's new" and the ☰ Settings row.
         if let Some(updater) = crate::services::update::get(cx) {
             cx.observe(&updater, |_, _, cx| cx.notify()).detach();
         }
@@ -542,6 +542,7 @@ impl CollectionView {
         }
         self.images.drop_evicted(window);
         self.open_pending_debug_dialog(window, cx);
+        self.open_whats_new(cx);
         self.start_debug_keys(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);

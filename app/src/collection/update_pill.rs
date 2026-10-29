@@ -3,7 +3,8 @@
 //! then a progress ring while it downloads, green once it is installed (a
 //! restart is due), red when the install failed. Hovering it shows the
 //! highlights of the release and its actions. Settings → About has the full
-//! card with every note.
+//! card with every note. The first start of the installed version opens
+//! "What's new" (`dialogs::whats_new`).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -54,6 +55,18 @@ fn highlights(markdown: &str) -> (Vec<String>, usize) {
 }
 
 impl CollectionView {
+    /// The first start of a version this app installed: its "What's new",
+    /// once no other dialog is open (and outside console mode).
+    pub(super) fn open_whats_new(&mut self, cx: &mut Context<Self>) {
+        if self.dialog.is_some() || crate::console::active() {
+            return;
+        }
+        let Some(updater) = update::get(cx).filter(|u| u.read(cx).has_whats_new()) else { return };
+        let Some(release) = updater.update(cx, |u, _| u.take_whats_new()) else { return };
+        let view = cx.new(|_| crate::dialogs::whats_new::WhatsNewDialog::new(release));
+        self.open_dialog(view, cx);
+    }
+
     pub(super) fn update_pill(&mut self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         let updater = update::get(cx)?;
         let u = updater.read(cx);
