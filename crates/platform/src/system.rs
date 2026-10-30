@@ -313,8 +313,11 @@ mod tests {
         assert!(version.name.starts_with("Windows "), "{version:?}");
         assert!(version.build >= 10240, "{version:?}");
         assert!(version.revision.is_some(), "{version:?}");
-        // The name and the build agree on which Windows this is.
-        assert_eq!(version.name.starts_with("Windows 11"), version.build >= WINDOWS_11_BUILD, "{version:?}");
+        // The name and the build agree on which Windows this is (a server,
+        // such as CI's "Windows Server 2025", has a name of its own).
+        if version.name.starts_with("Windows 10") || version.name.starts_with("Windows 11") {
+            assert_eq!(version.name.starts_with("Windows 11"), version.build >= WINDOWS_11_BUILD, "{version:?}");
+        }
         assert!(version.release.as_deref().is_none_or(|r| !r.is_empty()), "{version:?}");
     }
 
