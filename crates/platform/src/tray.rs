@@ -5,8 +5,9 @@
 //! (or Enter on the focused icon) calls [`Options::on_click`]; a right click
 //! (or the menu key) asks [`Options::menu`] for the rows and shows them, so
 //! the menu is always current. When Explorer restarts, the icon is added
-//! again. [`Tray::remove`], or dropping the [`Tray`], takes it away and ends
-//! the thread. The callbacks run on that thread.
+//! again. A `WM_CLOSE` to the window (`taskkill` without `/F`) calls
+//! [`Options::on_close`]. [`Tray::remove`], or dropping the [`Tray`], takes the
+//! icon away and ends the thread. The callbacks run on that thread.
 
 use std::cell::RefCell;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -104,6 +105,10 @@ pub struct Options {
     /// the menu key on the focused icon). The picked row's action runs once
     /// the menu has closed.
     pub menu: Box<dyn FnMut() -> Vec<MenuItem> + Send>,
+    /// The window got `WM_CLOSE`: `taskkill` without `/F`, or any program
+    /// asking the process to close. Without it the message is ignored and the
+    /// icon stays.
+    pub on_close: Option<Box<dyn FnMut() + Send>>,
 }
 
 /// The icon, while it lives. Dropping it removes the icon.
@@ -197,6 +202,7 @@ struct State {
     last_click: Option<Instant>,
     on_click: Box<dyn FnMut() + Send>,
     menu: Box<dyn FnMut() -> Vec<MenuItem> + Send>,
+    on_close: Option<Box<dyn FnMut() + Send>>,
     cmds: Receiver<Cmd>,
 }
 
@@ -226,6 +232,7 @@ fn run(options: Options, cmds: Receiver<Cmd>, ready: SyncSender<io::Result<isize
         last_click: None,
         on_click: options.on_click,
         menu: options.menu,
+        on_close: options.on_close,
         cmds,
     };
     // SAFETY: the class name is NUL-terminated.
@@ -364,6 +371,12 @@ impl State {
         }
     }
 
+    fn close(&mut self) {
+        if let Some(on_close) = self.on_close.as_mut() {
+            guard("close", on_close);
+        }
+    }
+
     fn run_cmds(&mut self) {
         while let Ok(cmd) = self.cmds.try_recv() {
             match cmd {
@@ -429,9 +442,12 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         WM_TIMER if wparam == RETRY_TIMER => {
             with_state(m, State::show);
         }
-        // `taskkill` without `/F` sends this to every window of the process:
-        // only `Tray::remove` takes the icon away.
-        WM_CLOSE => {}
+        // `taskkill` without `/F` sends this to every window of the process,
+        // this one included while the main window is closed to the tray. It
+        // never takes the icon away itself: only `Tray::remove` does.
+        WM_CLOSE => {
+            with_state(m, State::close);
+        }
         // SAFETY: a plain call; ends this thread's message loop.
         WM_DESTROY => unsafe { PostQuitMessage(0) },
         _ if msg != 0 && msg == TASKBAR_CREATED.load(Ordering::Relaxed) => {
@@ -599,7 +615,7 @@ fn destroy_icon(hicon: HICON) {
 mod tests {
     use super::*;
     use windows_sys::Win32::Graphics::Gdi::{DeleteObject, GetObjectW, BITMAP};
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetIconInfo, IsWindow, ICONINFO};
 
     fn square(size: u32) -> Icon {
         Icon::from_rgba(size, size, vec![255; (size * size * 4) as usize]).unwrap()
@@ -674,6 +690,49 @@ mod tests {
         assert_eq!(tip[125], u16::from(b'a'));
         assert_eq!(tip[126], 0);
         assert_eq!(tip[127], 0);
+    }
+
+    /// A tray with a see-through icon, `None` where there is no notification
+    /// area (a session without Explorer).
+    fn spawn_quietly(on_close: Option<Box<dyn FnMut() + Send>>) -> Option<Tray> {
+        let options = Options {
+            tooltip: "test".into(),
+            icons: vec![Icon::from_rgba(16, 16, vec![0; 16 * 16 * 4]).unwrap()],
+            on_click: Box::new(|| {}),
+            menu: Box::new(Vec::new),
+            on_close,
+        };
+        Tray::spawn(options).inspect_err(|e| eprintln!("no tray to test with: {e}")).ok()
+    }
+
+    #[test]
+    fn a_close_request_calls_on_close_and_keeps_the_icon() {
+        let (tx, rx) = mpsc::channel();
+        let Some(tray) = spawn_quietly(Some(Box::new(move || {
+            let _ = tx.send(());
+        }))) else {
+            return;
+        };
+        // SAFETY: posts to the tray's own window.
+        unsafe { PostMessageW(tray.hwnd as HWND, WM_CLOSE, 0, 0) };
+        rx.recv_timeout(Duration::from_secs(5)).expect("on_close was called");
+        // The callback decides what happens; the window stays until `remove`.
+        // SAFETY: a plain query.
+        assert!(unsafe { IsWindow(tray.hwnd as HWND) } != 0);
+        tray.remove();
+    }
+
+    #[test]
+    fn a_close_request_is_ignored_without_on_close() {
+        let Some(tray) = spawn_quietly(None) else { return };
+        // SAFETY: posts to the tray's own window.
+        unsafe { PostMessageW(tray.hwnd as HWND, WM_CLOSE, 0, 0) };
+        // Posted after the close request, so the window has been through it.
+        tray.set_icon(Vec::new());
+        std::thread::sleep(Duration::from_millis(100));
+        // SAFETY: a plain query.
+        assert!(unsafe { IsWindow(tray.hwnd as HWND) } != 0);
+        tray.remove();
     }
 
     #[test]

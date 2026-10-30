@@ -79,6 +79,7 @@ pub fn spawn(
     let window_open = Arc::new(AtomicBool::new(window_open));
     let open = window_open.clone();
     let click = tx.clone();
+    let close = tx.clone();
     let options = Options {
         tooltip: "Heronite".into(),
         icons: icons(dark),
@@ -86,6 +87,11 @@ pub fn spawn(
             let _ = click.unbounded_send(click_cmd(exit_to_tray));
         }),
         menu: Box::new(move || menu(&data_paths, max_recent, exit_to_tray, open.load(Ordering::Relaxed), &tx)),
+        // `taskkill` without `/F` reaches the tray's window while the main one
+        // is closed to the tray: the normal quit, as the menu's.
+        on_close: Some(Box::new(move || {
+            let _ = close.unbounded_send(TrayCmd::Quit);
+        })),
     };
     match Tray::spawn(options) {
         Ok(tray) => Some(TrayHandle { tray, window_open }),
