@@ -304,6 +304,7 @@ impl OverlayService {
         let spec = HotkeySpec {
             id: "overlay",
             description: "Heronite overlay",
+            #[cfg(target_os = "linux")]
             signal: signal_hook::consts::SIGUSR1,
             accelerator: accelerator.clone(),
             consume: true,

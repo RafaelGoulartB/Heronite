@@ -297,6 +297,7 @@ impl ReplayService {
             id: "replay",
             description: "Heronite: save the replay",
             // SIGUSR1 is the overlay's and SIGUSR2 the screenshot's.
+            #[cfg(target_os = "linux")]
             signal: libc::SIGRTMIN() + 1,
             accelerator: accelerator.clone(),
             consume: true,

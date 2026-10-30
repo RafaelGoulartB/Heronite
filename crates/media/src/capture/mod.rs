@@ -4,7 +4,8 @@
 //! The portable pieces live here and are unit-tested: accelerator parsing and
 //! translation (Hyprland `hl.bind` syntax, XDG GlobalShortcuts triggers), file
 //! naming, destination folder selection, monitor picking. The side-effecting
-//! service ([`CaptureService`], Linux only) lives in `service.rs`.
+//! service ([`CaptureService`], Linux only) lives in `service.rs`; elsewhere
+//! `unsupported.rs` stands in for it and never captures.
 //!
 //! # How a capture happens
 //! 1. `begin_session` for a launched game registers the shortcut (only while a
@@ -42,11 +43,15 @@ mod hyprland;
 mod portal;
 #[cfg(target_os = "linux")]
 mod service;
+#[cfg(not(target_os = "linux"))]
+mod unsupported;
 
 #[cfg(target_os = "linux")]
-pub use hotkey::{GlobalHotkey, HotkeySpec};
+pub use hotkey::GlobalHotkey;
 #[cfg(target_os = "linux")]
-pub use service::{CaptureService, ServiceOptions};
+pub use service::CaptureService;
+#[cfg(not(target_os = "linux"))]
+pub use unsupported::{CaptureService, GlobalHotkey};
 
 /// Description used for the Hyprland bind and the portal shortcut.
 pub const BIND_DESCRIPTION: &str = "Heronite game screenshot";
@@ -236,6 +241,36 @@ pub struct CaptureStatus {
     /// `(app_name, runner, title)` of the game receiving captures.
     pub active_game: Option<(String, String, String)>,
     pub error: Option<String>,
+}
+
+/// [`CaptureService`] construction options.
+#[derive(Debug, Clone, Default)]
+pub struct ServiceOptions {
+    /// Reverse-DNS desktop id registered with the portal for a non-sandboxed
+    /// app (Heronite uses `com.heronite.launcher`, matching its `.desktop`
+    /// file). Without it the portal may not be able to identify the app.
+    pub portal_app_id: Option<String>,
+    pub messages: CaptureMessages,
+}
+
+/// A [`GlobalHotkey`] to register.
+#[derive(Debug, Clone)]
+pub struct HotkeySpec {
+    /// The shortcut's id in its portal session.
+    pub id: &'static str,
+    /// Shown by the desktop; on Hyprland it also recognises a bind left
+    /// behind by a crash.
+    pub description: &'static str,
+    /// Signal the Hyprland bind sends this process. Not `SIGUSR2`: that is the
+    /// screenshot's.
+    #[cfg(target_os = "linux")]
+    pub signal: i32,
+    /// Electron-style (`Super+G`).
+    pub accelerator: String,
+    /// The focused window (the game) does not get the keys (Hyprland).
+    pub consume: bool,
+    /// See [`ServiceOptions::portal_app_id`].
+    pub portal_app_id: Option<String>,
 }
 
 /// Texts of the desktop notifications (`notify.screenshot.*`), in English:
