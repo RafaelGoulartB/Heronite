@@ -66,7 +66,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ `cargo test --workspace` on Windows: tests of Linux-only parts (Wine, shell scripts, symlinks, Linux paths) run only on Unix
   - ⬜ Steam library and session tests (`TODO(windows)` in `heronite-launch`): `SteamLocator` reads this machine's Steam from the registry, so they need a way to leave it out first
 - ✅ `cargo clippy --workspace --all-targets` clean on Windows
-- ⬜ CI job on `windows-latest`
+- ✅ CI job on `windows-latest`: clippy and tests (`.github/workflows/ci.yml`)
 
 ### First milestone: the Collection
 
@@ -100,15 +100,15 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
   - Launching: the emulator runs as it is, from its folder, with the profile's arguments and the ROM; emulators set up for Wine on Linux (a restored backup) run directly; Flatpak emulators show as not installed
   - ROM folders and scanning: Windows paths (both separators, drive roots, case ignored, CRLF playlists); the automatic setup looks in `ROMs`, `Emulation\roms`, `Games\ROMs`, `Documents\ROMs`... of the home folder and the system drive
   - Save states: PCSX2, DuckStation, PPSSPP, Dolphin, RetroArch, mGBA and RPCS3 folders on Windows (portable installs too)
-  - ⬜ ROM folders on drives other than the system drive (`D:\Emulation\roms`): needs a list of fixed drives that never stalls on network ones
-  - ⬜ Dolphin's user folder from the registry (`HKCU\Software\Dolphin Emulator\UserConfigPath`)
+  - ✅ ROM folders and emulators on every fixed or removable drive, never network ones (`fs::fixed_drives`)
+  - ✅ Dolphin's user folder from the registry (`HKCU\Software\Dolphin Emulator\UserConfigPath`), after a portable copy's own folder as Dolphin does
   - ⬜ RetroAchievements sign-in of the emulators (`heronite_achievements::emulators` knows their Linux config files only)
   - ⬜ RetroArch from Steam and Microsoft Store builds of emulators
 - ⬜ Save backups with Ludusavi (`Feature::SaveBackups`, split from emulation): `ludusavi.exe`, the `PATH` separator of `SystemRunner` (`;`), its config in `%APPDATA%\ludusavi`, restore plans without Wine prefixes
 - ⬜ Screenshots
 - ✅ Tray icon (see the first milestone)
   - ⬜ Dark tray menus (needs an undocumented uxtheme call); new icons start in Windows 11's hidden-icons flyout until the user pins them
-  - ⬜ A `WM_CLOSE` to the tray window does not quit the app (plain `taskkill` while it sits in the tray): the Windows counterpart of SIGTERM
+  - ✅ A `WM_CLOSE` to the tray window (plain `taskkill` while the app sits in the tray) quits gracefully, the Windows counterpart of SIGTERM
 - ✅ Start with Windows: a `Heronite` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`system/autostart.rs`, `registry::set_string` / `delete_value`); only the real data folder drives it, `HERONITE_AUTOSTART_KEY` redirects it for tests
 - ⬜ Desktop and Start menu shortcuts (`.lnk`)
 - ⬜ Self-update (installer or portable zip, signed)
@@ -118,10 +118,10 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ➖ Lutris, Bottles, Faugus and Heroic (Linux) imports
 - ⬜ Overlay and replay buffer (needs a different capture and input stack); today `heronite_overlay::input` and `heronite_media::capture` have do-nothing stand-ins off Linux
 - ➖ Copy an existing Heroic for Windows setup at the first start (`Feature::HeroicMigration` stays off: a fresh Windows setup starts empty)
-- ⬜ System information (Logs, About): CPU, memory and GPUs are read from `/proc` and `sysfs`
-- ⬜ `heronite://` links: register the protocol on Windows
-- ⬜ Keep the computer awake while a game runs (`SetThreadExecutionState`)
-- ⬜ Line endings: a `.gitattributes` (`eol=lf`) so Windows checkouts match Linux
+- ✅ System information (Logs, About): processor, memory, graphics cards and Windows version from the registry and `GlobalMemoryStatusEx` (`heronite_platform::system`)
+- ✅ `heronite://` links: registered for the user at every start (`HKCU\Software\Classes\heronite`, `system/protocol.rs`); only the real data folder does it
+- ✅ Keep the computer awake while a game runs (`heroniteKeepAwake`): `power::KeepAwake` holds `SetThreadExecutionState` for the session (`ProcessPlan::hold_awake`)
+- ✅ Line endings: `.gitattributes` (`eol=lf`), Windows checkouts match Linux
 
 ## Checking Linux from Windows
 
