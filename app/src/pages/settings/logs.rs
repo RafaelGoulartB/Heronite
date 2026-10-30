@@ -122,7 +122,9 @@ mod tests {
             session: "wayland / Hyprland".into(),
         };
         let text = format_system_info(&s);
-        assert!(text.contains("CPU: 12x AMD Ryzen 5\nMemory: 32.0 GB\nGPUs:\n  GPU 0:\n    Name: NVIDIA RTX\n    Driver: nvidia 580.1\nOS: Arch Linux 6.9.1 (linux)"), "{text}");
+        let os = std::env::consts::OS;
+        let want = format!("CPU: 12x AMD Ryzen 5\nMemory: 32.0 GB\nGPUs:\n  GPU 0:\n    Name: NVIDIA RTX\n    Driver: nvidia 580.1\nOS: Arch Linux 6.9.1 ({os})");
+        assert!(text.contains(&want), "{text}");
         assert!(text.ends_with("Session: wayland / Hyprland"));
     }
 }

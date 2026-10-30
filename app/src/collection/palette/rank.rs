@@ -468,6 +468,8 @@ mod tests {
         r.groups.iter().map(|g| g.caption.as_str()).collect()
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn empty_query_shows_recently_played_games_then_go_to() {
         let e = corpus();
@@ -478,6 +480,8 @@ mod tests {
         assert_eq!(r.groups[1].items.len(), 14);
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn empty_query_filters() {
         let e = corpus();
@@ -490,6 +494,8 @@ mod tests {
         assert_eq!(games.count(), 5);
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn recent_items_come_first_when_nothing_is_typed() {
         let e = corpus();
@@ -545,6 +551,8 @@ mod tests {
         assert_eq!(r.groups[0].caption, "Games");
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn settings_sections_are_found_by_their_keywords() {
         let e = corpus();
@@ -561,6 +569,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn wi_finds_the_wine_manager_and_a_game() {
         let e = corpus();
@@ -570,6 +580,8 @@ mod tests {
         assert!(t.contains(&"Wine Quest".to_string()), "{t:?}");
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn page_shortcuts_and_sections_are_found() {
         let e = corpus();

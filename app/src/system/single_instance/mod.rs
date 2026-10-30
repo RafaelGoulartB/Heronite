@@ -291,7 +291,7 @@ mod tests {
         let b = socket_path_in(rt, Path::new("/tmp/heronite-fixture-system"));
         assert_ne!(a, b);
         assert_eq!(a, socket_path_in(rt, Path::new("/home/u/.local/share/heronite-rs")));
-        assert!(a.to_string_lossy().starts_with("/run/user/1000/heronite-rs-"));
+        assert!(a.starts_with(rt) && a.file_name().unwrap().to_string_lossy().starts_with("heronite-rs-"), "{}", a.display());
     }
 
     #[test]

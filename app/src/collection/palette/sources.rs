@@ -794,6 +794,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn static_entries_list_every_page_section_and_action() {
         let v = static_entries();
@@ -837,6 +839,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn ids_are_unique_and_stable() {
         let v = static_entries();
@@ -849,6 +853,8 @@ mod tests {
         assert_eq!(ids.len(), v.len());
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn shortcuts_shown_are_the_ones_that_exist() {
         let v = static_entries();
