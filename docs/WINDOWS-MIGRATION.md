@@ -73,7 +73,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ App starts on Windows (window, quit, logs to its file; no console window in release builds)
   - ✅ Single instance: loopback port + key in the user's temp folder (`system/single_instance/transport.rs`)
   - ✅ Signals: none on Windows (`system/signals.rs`)
-  - ✅ Tray: none on Windows yet (`system/tray/unsupported.rs`), closing the window quits
+  - ✅ Tray: an icon in the notification area with the Linux menu (recent games, Show / Hide, Quit), a left click shows or hides the window, "Keep in the tray when closed" and "Start minimized" apply (`heronite_platform::tray`, `system/tray/windows.rs`; the menu is rebuilt when it opens, the icon comes back after Explorer restarts)
   - ✅ Window controls: minimize, maximize / restore and close in the app's style at the right of the top bars, and the empty part of a bar moves the window (`ui/window_controls.rs`; window control areas, so Windows does the work)
 - ✅ Data, settings and cache folders in `%APPDATA%` / `%LOCALAPPDATA%`
 - ✅ Steam: find the client (registry `SteamPath`, `steam.exe`), its libraries (Windows paths in `libraryfolders.vdf`) and the installed games
@@ -97,7 +97,9 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ⬜ Store clients (Battle.net, EA app, Ubisoft Connect, Rockstar) run natively
 - ⬜ Emulators and ROM folders
 - ⬜ Screenshots
-- ⬜ Tray icon
+- ✅ Tray icon (see the first milestone)
+  - ⬜ Dark tray menus (needs an undocumented uxtheme call); new icons start in Windows 11's hidden-icons flyout until the user pins them
+  - ⬜ A `WM_CLOSE` to the tray window does not quit the app (plain `taskkill` while it sits in the tray): the Windows counterpart of SIGTERM
 - ✅ Start with Windows: a `Heronite` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`system/autostart.rs`, `registry::set_string` / `delete_value`); only the real data folder drives it, `HERONITE_AUTOSTART_KEY` redirects it for tests
 - ⬜ Desktop and Start menu shortcuts (`.lnk`)
 - ⬜ Self-update (installer or portable zip, signed)
