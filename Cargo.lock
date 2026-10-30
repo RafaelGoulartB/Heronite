@@ -3642,6 +3642,7 @@ dependencies = [
  "heronite-data",
  "heronite-i18n",
  "heronite-launch",
+ "heronite-platform",
  "indexmap",
  "log",
  "regex",

@@ -19,6 +19,9 @@ pub struct HostEnv {
     pub xdg_data_home_var: Option<PathBuf>,
     /// `$DOLPHIN_EMU_USERPATH`.
     pub dolphin_userpath: Option<PathBuf>,
+    /// Windows: the user folder Dolphin keeps in the registry
+    /// (`UserConfigPath`), whether or not it still exists.
+    pub dolphin_registry_path: Option<PathBuf>,
     /// Where one-shot config files for RetroArch are written.
     pub tmp_dir: PathBuf,
     /// Windows: the user's Documents (may be OneDrive's), `%APPDATA%` and
@@ -41,6 +44,10 @@ impl HostEnv {
             env.appdata = dirs::config_dir().unwrap_or(env.appdata);
             env.local_appdata = dirs::data_local_dir().unwrap_or(env.local_appdata);
         }
+        #[cfg(windows)]
+        {
+            env.dolphin_registry_path = registry_user_folder(DOLPHIN_KEY);
+        }
         env
     }
 
@@ -55,6 +62,7 @@ impl HostEnv {
             xdg_config_home_var: None,
             xdg_data_home_var: None,
             dolphin_userpath: None,
+            dolphin_registry_path: None,
             tmp_dir: tmp.into(),
         }
     }
@@ -77,6 +85,18 @@ impl HostEnv {
         }
         p
     }
+}
+
+/// Where Dolphin keeps its settings in the registry.
+#[cfg(windows)]
+const DOLPHIN_KEY: &str = r"Software\Dolphin Emulator";
+
+/// The `UserConfigPath` of the registry key `key`: the user folder Dolphin
+/// was told to use (Config > Paths, or its installer).
+#[cfg(windows)]
+fn registry_user_folder(key: &str) -> Option<PathBuf> {
+    use heronite_platform::registry::{string, Hive};
+    string(Hive::CurrentUser, key, "UserConfigPath").filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 
 fn dirs_home() -> PathBuf {
@@ -282,6 +302,32 @@ mod tests {
         assert_eq!(env.documents, Path::new(r"C:\Users\u\Documents"));
         assert_eq!(env.appdata, Path::new(r"C:\Users\u\AppData\Roaming"));
         assert_eq!(env.local_appdata, Path::new(r"C:\Users\u\AppData\Local"));
+    }
+
+    /// Removes a registry key made by a test, whatever the outcome.
+    #[cfg(windows)]
+    struct Key(String);
+    #[cfg(windows)]
+    impl Drop for Key {
+        fn drop(&mut self) {
+            let _ = std::process::Command::new("reg").args(["delete", &format!(r"HKCU\{}", self.0), "/f"]).output();
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dolphins_user_folder_is_read_from_the_registry() {
+        use heronite_platform::registry::{set_string, string, Hive};
+        let key = Key(format!(r"Software\HeroniteTests-{}", std::process::id()));
+        assert_eq!(registry_user_folder(&key.0), None);
+        set_string(Hive::CurrentUser, &key.0, "UserConfigPath", "").unwrap();
+        assert_eq!(registry_user_folder(&key.0), None, "an empty value names no folder");
+        set_string(Hive::CurrentUser, &key.0, "UserConfigPath", r"D:\Games\Dolphin User").unwrap();
+        assert_eq!(registry_user_folder(&key.0), Some(PathBuf::from(r"D:\Games\Dolphin User")));
+        // The real key is only read: this PC's answer is whatever it holds.
+        let real = string(Hive::CurrentUser, DOLPHIN_KEY, "UserConfigPath").filter(|v| !v.is_empty()).map(PathBuf::from);
+        assert_eq!(HostEnv::system().dolphin_registry_path, real);
+        assert_eq!(HostEnv::sandbox(r"C:\Users\u", r"C:\t").dolphin_registry_path, None);
     }
 
     fn crc32(data: &[u8]) -> u32 {
