@@ -17,7 +17,7 @@ use heronite_data::DataPaths;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use crate::catalog::{emulator_definition, emulator_definitions};
-use crate::detect::{detect_emulators, existing_profiles, scoop_apps, system_drive, windows_install_bases, DetectEnv};
+use crate::detect::{detect_emulators, drives, existing_profiles, scoop_apps, windows_install_bases, DetectEnv};
 use crate::pathutil::{basename, dirname, has_dir, join, join_all};
 use crate::store::{self, insert_user_emulator};
 use crate::types::{DetectedEmulator, DetectedEmulatorProfile};
@@ -387,7 +387,7 @@ fn linux_roots(home: &str, add: &mut dyn FnMut(String, usize, &str)) {
 
 /// Windows: the catalog's install folders (`Program Files\PCSX2`...), the
 /// apps of Scoop (`<app>\current`, the version it keeps up to date) and
-/// EmuDeck, and folders of the home and the system drive.
+/// EmuDeck, and folders of the home and of each drive.
 fn windows_roots(env: &dyn DetectEnv, home: &str, add: &mut dyn FnMut(String, usize, &str)) {
     let folders: Vec<&str> = emulator_definitions().iter().flat_map(|d| d.install_folders.iter().map(String::as_str)).collect();
     for (base, label) in windows_install_bases(env) {
@@ -411,10 +411,11 @@ fn windows_roots(env: &dyn DetectEnv, home: &str, add: &mut dyn FnMut(String, us
     for (rel, depth) in [("Emulation", 4), ("Emulators", 4), ("Games", 3), ("Apps", 3), ("Downloads", 1)] {
         add(join(home, rel), depth, &format!(r"~\{rel}"));
     }
-    let drive = system_drive(env);
-    for (rel, depth) in [("Emulation", 4), ("Emulators", 4), ("Games", 3)] {
-        let dir = join(&drive, rel);
-        add(dir.clone(), depth, &dir);
+    for drive in drives(env) {
+        for (rel, depth) in [("Emulation", 4), ("Emulators", 4), ("Games", 3)] {
+            let dir = join(&drive, rel);
+            add(dir.clone(), depth, &dir);
+        }
     }
 }
 

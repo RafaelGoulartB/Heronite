@@ -1,11 +1,11 @@
-//! Files: permission bits and identity.
+//! Files: permission bits, identity and the drives of a Windows PC.
 //!
 //! Windows has no Unix permission bits: changing them is a no-op there, and
 //! a program is executable by its extension.
 
 use std::fs::Metadata;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Sets the Unix permission bits of `path` to `mode`.
 pub fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
@@ -156,6 +156,40 @@ pub fn disk_space(path: &Path) -> Option<(u64, u64)> {
     }
 }
 
+/// The drives programs and games are kept on, as roots (`D:\`) in letter
+/// order: the fixed disks and the removable ones (a USB stick, an SD card).
+/// Network and optical drives are left out, asking them can take seconds.
+/// A removable drive may be empty (a card reader), so check a root before
+/// relying on it. Always empty on Unix, where a disk is a folder
+/// somewhere in the tree.
+pub fn fixed_drives() -> Vec<PathBuf> {
+    #[cfg(unix)]
+    {
+        Vec::new()
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
+        // The values `GetDriveTypeW` returns (windows-sys keeps the names in a feature this crate does not use).
+        const DRIVE_REMOVABLE: u32 = 2;
+        const DRIVE_FIXED: u32 = 3;
+        // SAFETY: takes no arguments; 0 means it failed.
+        let mask = unsafe { GetLogicalDrives() };
+        drive_letters(mask)
+            .map(|letter| [letter as u16, ':' as u16, '\\' as u16, 0])
+            // SAFETY: `root` is a NUL-terminated drive root.
+            .filter(|root| matches!(unsafe { GetDriveTypeW(root.as_ptr()) }, DRIVE_FIXED | DRIVE_REMOVABLE))
+            .map(|root| PathBuf::from(String::from_utf16_lossy(&root[..3])))
+            .collect()
+    }
+}
+
+/// The letters of the drives `GetLogicalDrives` reports: bit 0 is `A`.
+#[cfg(windows)]
+fn drive_letters(mask: u32) -> impl Iterator<Item = char> {
+    ('A'..='Z').zip(0..).filter(move |(_, bit)| mask & (1 << bit) != 0).map(|(letter, _)| letter)
+}
+
 /// `path` for a C library's `fopen`: its bytes on Unix, UTF-8 on Windows.
 /// `None` when it holds a NUL (or, on Windows, is not Unicode).
 pub fn c_path(path: &Path) -> Option<std::ffi::CString> {
@@ -263,6 +297,31 @@ mod tests {
         let meta = std::fs::metadata(d.path().join("a")).unwrap();
         assert!(changed_time(&meta).is_some());
         assert_eq!(hard_link_id(&meta), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_has_no_drives() {
+        assert!(fixed_drives().is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn drives_are_letters_in_order() {
+        assert_eq!(drive_letters(0).count(), 0);
+        assert_eq!(drive_letters(0b1_0101).collect::<String>(), "ACE");
+        assert_eq!(drive_letters(1 << 25).collect::<String>(), "Z");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_system_drive_is_a_fixed_drive() {
+        let drives = fixed_drives();
+        let system = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into());
+        assert!(drives.iter().any(|d| d.to_string_lossy().eq_ignore_ascii_case(&format!("{system}\\"))), "{drives:?}");
+        // Roots like `D:\`, in letter order, each once.
+        assert!(drives.iter().all(|d| d.to_string_lossy().len() == 3 && d.is_absolute()), "{drives:?}");
+        assert!(drives.windows(2).all(|w| w[0] < w[1]), "{drives:?}");
     }
 
     #[test]

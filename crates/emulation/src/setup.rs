@@ -1,8 +1,9 @@
 //! Emulation set up by itself for a new setup: registers the emulators
 //! found on this machine and, in the usual ROM folders (EmuDeck's,
 //! RetroDECK's, `~/ROMs` with one folder per system; on Windows `ROMs` and
-//! `Documents\ROMs` of the home and EmuDeck's `C:\Emulation\roms`), adds a
-//! ROM folder for each system an emulator can play and imports its games.
+//! `Documents\ROMs` of the home and EmuDeck's `Emulation\roms` at the top of
+//! each drive), adds a ROM folder for each system an emulator can play and
+//! imports its games.
 //! Only the empty Collection runs it; elsewhere adding folders stays the
 //! user's call.
 //!
@@ -16,7 +17,7 @@ use heronite_data::DataPaths;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use crate::catalog::emulator_definitions;
-use crate::detect::DetectEnv;
+use crate::detect::{drives, DetectEnv, SystemEnv};
 use crate::discover::{add_discovered, discover_emulators};
 use crate::import::run_rom_scanners;
 use crate::store::{list_rom_scanners, list_user_emulators, upsert_rom_scanner};
@@ -44,7 +45,8 @@ const DISK_ROOTS: &[&str] = &["Emulation/roms", "roms", "retrodeck/roms"];
 #[cfg(windows)]
 const ROOTS: &[&str] =
     &["ROMs", "Emulation/roms", "Games/ROMs", "Games/Emulation/roms", "Documents/ROMs", "OneDrive/Documents/ROMs", "Emulators/ROMs"];
-/// Windows: at the top of a drive (EmuDeck's `Emulation\roms`).
+/// Windows: at the top of every drive, the system drive's and the others'
+/// alike (EmuDeck's `Emulation\roms`).
 #[cfg(windows)]
 const DISK_ROOTS: &[&str] = &["Emulation/roms", "ROMs", "Games/ROMs", "RetroArch-Win64/roms"];
 /// Entries looked at per system folder before giving up on finding a game.
@@ -112,11 +114,11 @@ fn under(base: &Path, rel: &str) -> PathBuf {
 }
 
 /// The tops of the other disks ROM folders may be on: the disks mounted in
-/// `/run/media/<user>` (a Steam Deck's SD card); on Windows the system drive.
+/// `/run/media/<user>` (a Steam Deck's SD card); on Windows the drives, the
+/// system drive first ([`drives`]).
 pub fn disks() -> Vec<PathBuf> {
     if cfg!(windows) {
-        let drive = std::env::var("SystemDrive").ok().filter(|d| !d.is_empty()).unwrap_or_else(|| "C:".into());
-        return vec![PathBuf::from(format!("{drive}\\"))];
+        return drives(&SystemEnv).into_iter().map(PathBuf::from).collect();
     }
     let media = PathBuf::from("/run/media").join(std::env::var("USER").unwrap_or_default());
     std::fs::read_dir(media).into_iter().flatten().flatten().map(|e| e.path()).collect()
@@ -356,6 +358,34 @@ mod tests {
         let folders = find_rom_folders(&roots);
         let found: Vec<_> = folders.iter().map(|f| f.platform_id).collect();
         assert_eq!(found, ["sony_playstation2", "nintendo_gameboyadvance"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rom_folders_are_looked_for_by_name_on_every_drive() {
+        let h = tempfile::tempdir().unwrap();
+        let (c, d, e) = (h.path().join("c"), h.path().join("d"), h.path().join("e"));
+        touch(&c.join("Emulation/roms/ps2/Okami.iso"));
+        touch(&d.join("Emulation/roms/gba/Advance Wars.gba"));
+        touch(&d.join("Games/ROMs/snes/Zelda.sfc"));
+        // Names ignore case: `roms` is the `ROMs` the setup looks for.
+        touch(&e.join("roms/psx/Crash.bin"));
+        std::fs::create_dir_all(e.join("Music")).unwrap();
+        let missing = h.path().join("f");
+        let roots = rom_roots(&h.path().join("home"), &[c.clone(), d.clone(), e.clone(), missing]);
+        assert_eq!(roots, [under(&c, "Emulation/roms"), under(&d, "Emulation/roms"), under(&d, "Games/ROMs"), under(&e, "ROMs")]);
+        let found: Vec<_> = find_rom_folders(&roots).iter().map(|f| f.platform_id).collect();
+        assert_eq!(found, ["sony_playstation2", "nintendo_gameboyadvance", "nintendo_super_nes", "sony_playstation"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_system_drive_comes_first_among_the_disks() {
+        let disks = disks();
+        let system = format!("{}\\", std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into()));
+        assert_eq!(disks[0], PathBuf::from(system));
+        let mut seen = BTreeSet::new();
+        assert!(disks.iter().all(|d| seen.insert(d.to_string_lossy().to_ascii_uppercase())), "{disks:?}");
     }
 
     #[test]

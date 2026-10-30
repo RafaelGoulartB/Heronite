@@ -32,6 +32,11 @@ pub trait DetectEnv {
     fn var(&self, _key: &str) -> Option<String> {
         None
     }
+    /// Windows: the roots of the fixed and removable drives (`D:\`), none
+    /// on other systems or when unknown.
+    fn fixed_drives(&self) -> Vec<String> {
+        vec![]
+    }
 }
 
 /// The real machine (read-only; `flatpak info` is the only process it spawns).
@@ -84,6 +89,10 @@ impl DetectEnv for SystemEnv {
     fn var(&self, key: &str) -> Option<String> {
         std::env::var(key).ok().filter(|v| !v.is_empty())
     }
+
+    fn fixed_drives(&self) -> Vec<String> {
+        heronite_platform::fs::fixed_drives().iter().map(|d| d.to_string_lossy().into_owned()).collect()
+    }
 }
 
 /// The program a Scoop shim (`scoop\shims\<name>.exe`) starts: the `path`
@@ -110,6 +119,20 @@ pub(crate) fn system_drive(env: &dyn DetectEnv) -> String {
     format!("{}\\", env.var("SystemDrive").unwrap_or_else(|| "C:".into()))
 }
 
+/// Windows: the drives to look for emulators and ROMs on: the system drive
+/// first, then the other fixed and removable drives, each once. A root that
+/// cannot be read (an empty card reader) is left out, so every drive costs
+/// one check here and a few folder names where the caller looks.
+pub(crate) fn drives(env: &dyn DetectEnv) -> Vec<String> {
+    let mut all = vec![system_drive(env)];
+    for drive in env.fixed_drives() {
+        if !all.iter().any(|d| d.eq_ignore_ascii_case(&drive)) && env.exists(&drive) {
+            all.push(drive);
+        }
+    }
+    all
+}
+
 /// RetroArch's cores: `.so` files on Linux, `.dll` on Windows. A core named
 /// with the other system's extension (a backup from Linux) gets this one's.
 fn core_file_name(core: &str) -> String {
@@ -126,7 +149,8 @@ pub fn retroarch_core_dirs(env: &dyn DetectEnv, install_dir: Option<&str>) -> Ve
     if cfg!(windows) {
         // RetroArch keeps its cores next to it; the installer's folder and
         // Scoop's when the executable is elsewhere (a shortcut, `$PATH`).
-        let mut dirs = vec![install_dir.map(|d| join(d, "cores")), Some(join_all(&system_drive(env), &["RetroArch-Win64", "cores"]))];
+        let mut dirs = vec![install_dir.map(|d| join(d, "cores"))];
+        dirs.extend(drives(env).iter().map(|drive| Some(join_all(drive, &["RetroArch-Win64", "cores"]))));
         dirs.extend(scoop_apps(env).iter().map(|apps| Some(join_all(apps, &["retroarch", "current", "cores"]))));
         dirs.push(env.var("APPDATA").map(|d| join_all(&d, &["RetroArch", "cores"])));
         return unique(dirs);
@@ -228,21 +252,18 @@ fn windows_install(env: &dyn DetectEnv, def: &EmulatorDefinition) -> Option<(Str
 
 /// Windows: where programs are installed, with the name shown for it:
 /// Program Files, Program Files (x86), `%LOCALAPPDATA%\Programs`,
-/// `%LOCALAPPDATA%`, `%APPDATA%` and the system drive's root.
+/// `%LOCALAPPDATA%`, `%APPDATA%` and the root of each drive ([`drives`]).
 pub(crate) fn windows_install_bases(env: &dyn DetectEnv) -> Vec<(String, String)> {
-    let drive = system_drive(env);
     let local = env.var("LOCALAPPDATA");
-    [
+    let mut bases = vec![
         (env.var("ProgramFiles"), "Program Files".to_string()),
         (env.var("ProgramFiles(x86)"), "Program Files (x86)".to_string()),
         (local.as_deref().map(|d| join(d, "Programs")), r"AppData\Local\Programs".to_string()),
         (local, r"AppData\Local".to_string()),
         (env.var("APPDATA"), r"AppData\Roaming".to_string()),
-        (Some(drive.clone()), drive),
-    ]
-    .into_iter()
-    .filter_map(|(base, label)| base.map(|b| (b, label)))
-    .collect()
+    ];
+    bases.extend(drives(env).into_iter().map(|drive| (Some(drive.clone()), drive)));
+    bases.into_iter().filter_map(|(base, label)| base.map(|b| (b, label))).collect()
 }
 
 /// `detectEmulators`: `$PATH`, then Flatpak on Linux, the usual install
@@ -411,6 +432,7 @@ mod tests {
         files: HashSet<String>,
         dirs: HashMap<String, Vec<String>>,
         vars: HashMap<String, String>,
+        fixed: Vec<String>,
     }
 
     impl DetectEnv for Fake {
@@ -431,6 +453,9 @@ mod tests {
         }
         fn var(&self, key: &str) -> Option<String> {
             self.vars.get(key).cloned()
+        }
+        fn fixed_drives(&self) -> Vec<String> {
+            self.fixed.clone()
         }
     }
 
@@ -614,6 +639,46 @@ mod tests {
                 pair(r"C:\Users\u\AppData\Local\Programs\Ryujinx\Ryujinx.exe", r"AppData\Local\Programs"),
             ]
         );
+    }
+
+    #[test]
+    fn the_system_drive_leads_and_the_other_readable_drives_follow() {
+        let mut env = Fake::default();
+        assert_eq!(drives(&env), [r"C:\"]);
+        env.vars.insert("SystemDrive".into(), "D:".into());
+        env.fixed = [r"C:\", r"d:\", r"E:\", r"F:\"].map(String::from).to_vec();
+        // E: reads, F: is a card reader with nothing in it.
+        env.dirs.insert(r"C:\".into(), vec![]);
+        env.dirs.insert(r"E:\".into(), vec![]);
+        assert_eq!(drives(&env), [r"D:\", r"C:\", r"E:\"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_installs_and_cores_are_found_on_every_drive() {
+        let mut env = Fake { fixed: [r"C:\", r"D:\", r"E:\"].map(String::from).to_vec(), ..Default::default() };
+        for root in [r"C:\", r"D:\"] {
+            env.dirs.insert(root.into(), vec![]);
+        }
+        env.files.insert(r"D:\PCSX2\pcsx2-qt.exe".into());
+        env.files.insert(r"C:\DuckStation\duckstation-qt.exe".into());
+        env.files.insert(r"D:\DuckStation\duckstation-qt.exe".into());
+        // Nothing is looked for on a drive that cannot be read.
+        env.files.insert(r"E:\Cemu\Cemu.exe".into());
+        env.files.insert(r"D:\RetroArch-Win64\retroarch.exe".into());
+        env.files.insert(r"D:\RetroArch-Win64\cores\snes9x_libretro.dll".into());
+        let found: Vec<(String, String)> = detect_emulators(&env, &[]).into_iter().map(|d| (d.executable, d.source)).collect();
+        let pair = |a: &str, b: &str| (a.to_string(), b.to_string());
+        assert_eq!(
+            found,
+            [
+                pair(r"D:\PCSX2\pcsx2-qt.exe", r"D:\"),
+                pair(r"C:\DuckStation\duckstation-qt.exe", r"C:\"),
+                pair(r"D:\RetroArch-Win64\retroarch.exe", r"D:\"),
+            ]
+        );
+        assert_eq!(retroarch_core_dirs(&env, None)[..2], [r"C:\RetroArch-Win64\cores", r"D:\RetroArch-Win64\cores"]);
+        assert_eq!(find_core_path(&env, "snes9x_libretro", None).as_deref(), Some(r"D:\RetroArch-Win64\cores\snes9x_libretro.dll"));
     }
 
     #[cfg(windows)]
