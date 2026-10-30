@@ -742,7 +742,9 @@ mod tests {
         assert_eq!(m.snapshot().queue[2].params.path, "/other");
         m.pause();
         m.cancel_current(false);
-        wait_until(&m, "stopped", |s| s.state != DmState::Running);
+        // `pause` changes the state at once: wait for the cancelled run to be
+        // recorded too, or it lands after the clearing below.
+        wait_until(&m, "a cancelled", |s| s.state != DmState::Running && s.finished.iter().any(|e| e.params.app_name == "a"));
         m.clear_finished_item("a");
         m.clear_finished();
         assert!(m.snapshot().finished.is_empty());
