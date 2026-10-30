@@ -179,10 +179,12 @@ fn is_user_dir(first: &str) -> bool {
 
 /// The path inside the copy of the zip entry `name`: `None` for the top
 /// folder itself; an error for anything outside `Heronite/`, absolute or
-/// climbing, with a bad name, or inside the user's folders.
+/// climbing, with a bad name, or inside the user's folders. `\` separates
+/// folders too (Windows PowerShell's `Compress-Archive` writes it).
 fn entry_path(name: &str) -> Result<Option<PathBuf>, String> {
     let bad = || tr!("The update has a file outside its folder: {name}", name = format!("{name:?}"));
-    let trimmed = name.strip_suffix('/').unwrap_or(name);
+    let name = name.replace('\\', "/");
+    let trimmed = name.strip_suffix('/').unwrap_or(&name);
     let mut parts = trimmed.split('/');
     if parts.next() != Some(TOP) {
         return Err(bad());
@@ -394,6 +396,7 @@ mod tests {
         assert_eq!(entry_path("Heronite/"), Ok(None));
         assert_eq!(entry_path("Heronite/heronite-rs.exe"), Ok(Some(PathBuf::from("heronite-rs.exe"))));
         assert_eq!(entry_path("Heronite/res/a b.pak"), Ok(Some(PathBuf::from(r"res\a b.pak"))));
+        assert_eq!(entry_path(r"Heronite\res\a.pak"), Ok(Some(PathBuf::from(r"res\a.pak"))));
         for bad in [
             "heronite-rs.exe",
             "Other/heronite-rs.exe",
@@ -404,6 +407,9 @@ mod tests {
             "Heronite/./x",
             "Heronite//x",
             r"Heronite/a\..\..\x",
+            r"Heronite\..\x",
+            r"\Heronite\x",
+            r"Heronite\Data\x",
             "Heronite/C:x",
             "Heronite/x.exe:stream",
             "Heronite/data/collection.json",
