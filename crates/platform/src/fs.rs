@@ -204,6 +204,31 @@ pub fn c_path(path: &Path) -> Option<std::ffi::CString> {
     }
 }
 
+/// Renames `from` over `to`, replacing it. Windows refuses for a moment
+/// while something else holds `to` (another rename of it, an antivirus
+/// scan, the search indexer): it is tried again for up to a second there.
+pub fn rename_replacing(from: &Path, to: &Path) -> io::Result<()> {
+    #[cfg(windows)]
+    {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        let mut wait = std::time::Duration::from_millis(2);
+        loop {
+            match std::fs::rename(from, to) {
+                // ERROR_ACCESS_DENIED and ERROR_SHARING_VIOLATION.
+                Err(e) if matches!(e.raw_os_error(), Some(5 | 32)) && std::time::Instant::now() < deadline => {
+                    std::thread::sleep(wait);
+                    wait = (wait * 2).min(std::time::Duration::from_millis(50));
+                }
+                other => return other,
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        std::fs::rename(from, to)
+    }
+}
+
 /// Makes `link` a symbolic link to `original`. Windows needs Developer Mode
 /// or an administrator for it, and tells a link to a folder from one to a
 /// file.
@@ -322,6 +347,28 @@ mod tests {
         // Roots like `D:\`, in letter order, each once.
         assert!(drives.iter().all(|d| d.to_string_lossy().len() == 3 && d.is_absolute()), "{drives:?}");
         assert!(drives.windows(2).all(|w| w[0] < w[1]), "{drives:?}");
+    }
+
+    #[test]
+    fn renames_replace_even_while_others_rename_the_same_file() {
+        let d = tempfile::tempdir().unwrap();
+        let target = d.path().join("x");
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let (dir, target) = (d.path().to_path_buf(), target.clone());
+                std::thread::spawn(move || {
+                    for n in 0..25 {
+                        let tmp = dir.join(format!("tmp-{i}-{n}"));
+                        std::fs::write(&tmp, format!("{i} {n}")).unwrap();
+                        rename_replacing(&tmp, &target).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(std::fs::read_dir(d.path()).unwrap().count(), 1);
     }
 
     #[test]

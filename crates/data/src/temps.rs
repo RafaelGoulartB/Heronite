@@ -48,7 +48,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<
         let _ = mode;
         f.sync_all()?;
         drop(f);
-        fs::rename(&tmp, path)
+        heronite_platform::fs::rename_replacing(&tmp, path)
     })();
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
