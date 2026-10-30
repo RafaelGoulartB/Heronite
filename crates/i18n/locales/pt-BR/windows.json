@@ -1,6 +1,8 @@
 {
   "A Windows program or a browser game.": "Um programa do Windows ou um jogo de navegador.",
   "Linux programs do not run on Windows": "Programas de Linux não rodam no Windows",
+  "Maximize": "Maximizar",
+  "Minimize": "Minimizar",
   "Windows or browser": "Windows ou navegador",
   "Windows, web": "Windows, web"
 }

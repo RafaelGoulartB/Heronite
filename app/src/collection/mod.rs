@@ -571,7 +571,7 @@ impl CollectionView {
             self.reveal_selected();
         }
 
-        let page_el = self.render_page(cx);
+        let page_el = self.render_page(window, cx);
         let on_page = page_el.is_some();
         let stage_el = match self.stage_image(window) {
             Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),

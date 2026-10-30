@@ -13,6 +13,7 @@ pub mod lsfg;
 pub mod ludusavi;
 pub mod release_notes;
 mod scrollbar;
+pub mod window_controls;
 
 pub use scrollbar::{scrollbar_draggable, NoDragView};
 

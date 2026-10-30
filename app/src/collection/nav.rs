@@ -12,6 +12,7 @@ use crate::pages::{self, Page, PageCtx, PageEvent};
 use crate::services::downloads::Store;
 use crate::theme;
 use crate::ui::dropdown::{menu_separator, Align};
+use crate::ui::window_controls;
 use crate::ui::{glass, icon};
 use heronite_data::clients::Client;
 use heronite_i18n::{tr, trn};
@@ -876,7 +877,7 @@ impl CollectionView {
     }
 
     /// Header + body of the current non-Collection page.
-    pub(super) fn render_page(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn render_page(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let view = match self.page {
             Page::Collection => return None,
             Page::Downloads => self.pages.downloads.clone(),
@@ -893,15 +894,24 @@ impl CollectionView {
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
         }?;
-        let header =
-            div().flex().flex_none().items_center().h(theme::HEADER_H).px(px(12.)).gap(px(10.)).child(self.nav_dropdown(cx)).child(
+        let header = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .h(theme::HEADER_H)
+            .px(px(12.))
+            .gap(px(10.))
+            .child(self.nav_dropdown(cx))
+            .child(
                 div()
                     .font_family(theme::font_heading())
                     .text_size(px(17.6))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::page_title())
                     .child(if pages::stores::is_store_page(self.page) { pages::stores::title() } else { self.page.title() }),
-            );
+            )
+            .child(window_controls::drag_area(div().id("page-drag").flex_1().h_full(), window))
+            .children(window_controls::controls(window));
         Some(
             div()
                 .absolute()
