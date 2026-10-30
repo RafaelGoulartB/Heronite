@@ -63,7 +63,8 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ Every library crate builds on Windows
 - ✅ The app (`heronite`) builds on Windows, no warnings
 - ✅ Linux still type-checks (`cargo check --target x86_64-unknown-linux-gnu` from Windows, see "Checking Linux from Windows")
-- 🚧 `cargo test --workspace` on Windows: `heronite-platform` and `heronite-backup` pass; other crates' tests still use Unix APIs (to put behind `cfg(unix)` or port)
+- ✅ `cargo test --workspace` on Windows: tests of Linux-only parts (Wine, shell scripts, symlinks, Linux paths) run only on Unix
+  - ⬜ Steam library and session tests (`TODO(windows)` in `heronite-launch`): `SteamLocator` reads this machine's Steam from the registry, so they need a way to leave it out first
 - 🚧 `cargo clippy --workspace` clean on Windows (lib and bin); `--all-targets` waits for the tests
 - ⬜ CI job on `windows-latest`
 
