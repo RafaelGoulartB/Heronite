@@ -48,7 +48,9 @@ pub enum Feature {
     SelfUpdate,
     /// Starting with the session.
     Autostart,
-    /// Menu and desktop shortcuts of games.
+    /// Shortcuts of games: on the Desktop and in the menu of programs
+    /// (`.desktop` files, `.lnk` files in the Start menu on Windows), and in
+    /// Steam as non-Steam games.
     DesktopShortcuts,
     /// Taking screenshots of a running game.
     Capture,
@@ -61,7 +63,7 @@ pub const fn supported(feature: Feature) -> bool {
     }
     match feature {
         // Ported to Windows.
-        Feature::Autostart | Feature::Tray | Feature::Emulation | Feature::SelfUpdate => true,
+        Feature::Autostart | Feature::Tray | Feature::Emulation | Feature::SelfUpdate | Feature::DesktopShortcuts => true,
         Feature::Wine
         | Feature::StoreAccounts
         | Feature::StoreClients
@@ -73,7 +75,6 @@ pub const fn supported(feature: Feature) -> bool {
         | Feature::Sandbox
         | Feature::LaunchExtras
         | Feature::Storage
-        | Feature::DesktopShortcuts
         | Feature::Capture => false,
     }
 }
