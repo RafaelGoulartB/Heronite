@@ -31,6 +31,11 @@ pub enum Feature {
     SteamClient,
     /// Running games in a sandbox (bubblewrap).
     Sandbox,
+    /// What Linux's launch adds around a game: wrappers (GameMode,
+    /// MangoHud, gamescope), scripts before and after it, programs alongside
+    /// it, launch presets, the Steam runtime, and the Performance and GPU
+    /// settings built on them.
+    LaunchExtras,
     /// Settings → Storage: what games, Wine prefixes, Proton builds and
     /// caches take on disk, and cleaning them up.
     Storage,
@@ -61,6 +66,7 @@ pub const fn supported(feature: Feature) -> bool {
         | Feature::Overlay
         | Feature::SteamClient
         | Feature::Sandbox
+        | Feature::LaunchExtras
         | Feature::Storage
         | Feature::Tray
         | Feature::SelfUpdate

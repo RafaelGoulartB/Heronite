@@ -62,9 +62,12 @@ pub fn build_plan_with_settings(
         user_id: &settings.umu_id,
     };
     crate::umu_ids::attach(&mut plan, ctx, keys);
-    crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
-    crate::scripts::attach(&mut plan, probe, game, settings);
-    crate::companions::attach(&mut plan, ctx, probe, game, settings);
+    // logind's lock, `sh` scripts and programs started alongside are Linux's.
+    if heronite_platform::supported(Feature::LaunchExtras) {
+        crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+        crate::scripts::attach(&mut plan, probe, game, settings);
+        crate::companions::attach(&mut plan, ctx, probe, game, settings);
+    }
     plan
 }
 
@@ -182,7 +185,7 @@ fn executable_plan(
     let platform = effective_platform(game, meta, &executable, probe);
     if cfg!(windows) {
         return match platform {
-            Platform::Windows => windows_plan(probe, game, &executable, extra, "sideload"),
+            Platform::Windows => windows_plan(probe, game, settings, &executable, extra, "sideload"),
             Platform::Linux => LaunchPlan::Unavailable(tr!("Linux programs do not run on Windows").into()),
         };
     }
@@ -196,17 +199,26 @@ fn executable_plan(
 /// A Windows program on Windows: started as it is, from its folder. Linux's
 /// wrappers, runtimes and sandbox have no counterpart there, so settings
 /// brought from Linux (a restored backup) are left aside; the game's
-/// arguments still apply. The session follows every process it starts
-/// (a job object, see `heronite_platform::process`).
-pub(crate) fn windows_plan(probe: &dyn Probe, game: &GameInfo, executable: &str, extra: Vec<String>, runner: &str) -> LaunchPlan {
+/// arguments and environment variables still apply. The session follows
+/// every process it starts (a job object, see `heronite_platform::process`).
+pub(crate) fn windows_plan(
+    probe: &dyn Probe,
+    game: &GameInfo,
+    settings: &GameSettings,
+    executable: &str,
+    extra: Vec<String>,
+    runner: &str,
+) -> LaunchPlan {
     if !probe.exists(executable) {
         return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
     }
     let path = std::path::Path::new(executable);
     let folder = path.parent().map(|d| d.to_string_lossy().into_owned()).filter(|d| !d.is_empty());
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut env = setup_wrapper_env_vars(&game.app_name, runner);
+    env.extend(settings.env_options.iter().cloned());
     LaunchPlan::Native(ProcessPlan {
-        command: Command { program: executable.to_string(), args: extra, env: setup_wrapper_env_vars(&game.app_name, runner), cwd: folder },
+        command: Command { program: executable.to_string(), args: extra, env, cwd: folder },
         stop: StopSpec { kill_patterns: vec![name].into_iter().filter(|n| !n.is_empty()).collect(), commands: vec![] },
         ..Default::default()
     })
