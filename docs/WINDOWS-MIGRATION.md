@@ -69,21 +69,23 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 
 ### First milestone: the Collection
 
-- 🚧 App starts on Windows (window, single instance, quit)
+- ✅ App starts on Windows (window, quit, logs to its file; no console window in release builds)
   - ✅ Single instance: loopback port + key in the user's temp folder (`system/single_instance/transport.rs`)
   - ✅ Signals: none on Windows (`system/signals.rs`)
   - ✅ Tray: none on Windows yet (`system/tray/unsupported.rs`), closing the window quits
 - ✅ Data, settings and cache folders in `%APPDATA%` / `%LOCALAPPDATA%`
 - ✅ Steam: find the client (registry `SteamPath`, `steam.exe`), its libraries (Windows paths in `libraryfolders.vdf`) and the installed games
-- ✅ Steam: installed games come into the Collection by themselves (`heronite_launch::install_state`, at start and on refresh)
+- ✅ Steam: installed games come into the Collection by themselves (`heronite_launch::install_state`, at start, on refresh, and every few seconds while the Collection is empty)
 - 🚧 Steam: play through `steam://rungameid` (`shell::open`); the session follows Steam's `console_log.txt` like on Linux (to verify with a real game)
 - ✅ Steam client library reads (CEF) are off on Windows (`Feature::SteamClient`)
-- ✅ Games added by hand: a Windows program runs as it is, from its folder (`plan::build::windows_plan`)
-- ✅ Add game dialog: no Linux tab, no Wine section, no "Run installer first" on Windows
-- 🚧 Play time and sessions of native Windows games (job object follows the game; to verify with a real game)
-- ✅ Restore a backup made on Linux: paths into the backup's data, settings and home folders become this machine's, with `/` separators (valid JSON, Windows takes them)
+- ✅ Games added by hand: a Windows program runs as it is, from its folder, with its arguments and environment variables (`plan::build::windows_plan`)
+- ✅ Play time and sessions of native Windows games: the job object follows the game, the session is recorded when its last process ends (checked with `charmap.exe` through `--no-gui --launch`)
+- ✅ Add game dialog: no Linux tab, no Wine section, no "Run installer first", no store note on Windows
+- ✅ Game settings: a Windows game on Windows has only the Launch tab (`Feature::LaunchExtras`)
+- ✅ A game's menu: no Ludusavi, Troubleshoot or shortcuts on Windows
+- ✅ Restore a backup made on Linux: paths into the backup's data, settings and home folders become this machine's, with `/` separators (valid JSON, Windows takes them). Checked end to end: a backup claiming `/home/rafael/...` folders restored at the app's start into a Windows data folder
 - ✅ Open folders, files and links (`shell::open` instead of `xdg-open`)
-- ✅ Hide on Windows what is not ported yet (`Feature`): ☰ pages, command palette, console mode menu, Settings sections; store, client and launcher background jobs do not start
+- ✅ Hide on Windows what is not ported yet (`Feature`): ☰ pages, command palette, console mode menu, Settings sections and General's rows, Getting started, the empty Collection; store, client and launcher background jobs and the Wine/store tools updates do not start
 - ✅ No copy of Heroic's folder at the first start on Windows (`Feature::HeroicMigration`)
 
 ### Later
@@ -103,7 +105,11 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ➖ Lutris, Bottles, Faugus and Heroic (Linux) imports
 - ⬜ Overlay and replay buffer (needs a different capture and input stack); today `heronite_overlay::input` and `heronite_media::capture` have do-nothing stand-ins off Linux
 - ⬜ Copy an existing Heroic for Windows setup at the first start (`Feature::HeroicMigration`)
-- ⬜ Game settings panel: hide the Wine, Proton and Linux-only tabs on Windows
+- ⬜ Console mode's settings: hide the Linux-only rows on Windows (as the desktop Settings do)
+- ⬜ System information (Logs, About): CPU, memory and GPUs are read from `/proc` and `sysfs`
+- ⬜ `heronite://` links: register the protocol on Windows
+- ⬜ Keep the computer awake while a game runs (`SetThreadExecutionState`)
+- ⬜ Line endings: a `.gitattributes` (`eol=lf`) so Windows checkouts match Linux
 
 ## Checking Linux from Windows
 
