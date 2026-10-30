@@ -4,6 +4,8 @@
 //! systems have no icon, and the app behaves as if the tray were missing.
 
 #[cfg(target_os = "linux")]
+mod common;
+#[cfg(target_os = "linux")]
 mod sni;
 #[cfg(target_os = "linux")]
 pub use sni::{spawn, TrayHandle};
