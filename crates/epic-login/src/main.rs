@@ -16,6 +16,10 @@
 //! `SMOKE-READY` once it is loaded and stays open for a few seconds, for
 //! checking that the window opens where expected.
 
+// The window is WebKitGTK's (Linux); elsewhere only the tests use the
+// parsing below.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
 use url::Url;
 
 /// Exit status when the user closes the window before a code arrived (GTK

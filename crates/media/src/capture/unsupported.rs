@@ -57,3 +57,9 @@ impl GlobalHotkey {
         Self { _private: () }
     }
 }
+
+/// Linux's unregisters the shortcut when dropped, so callers drop it off the
+/// UI thread; this one has the same shape for them.
+impl Drop for GlobalHotkey {
+    fn drop(&mut self) {}
+}
