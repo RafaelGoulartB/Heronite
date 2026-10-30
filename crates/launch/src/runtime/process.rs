@@ -285,7 +285,9 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     if let Some(h) = awake.as_mut() {
         h.terminate();
     }
-    drop(held);
+    if let Some(held) = held {
+        held.release();
+    }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {
             run_to_completion(shared, control, cmd, Some(log));

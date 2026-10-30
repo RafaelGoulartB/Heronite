@@ -347,7 +347,9 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             if let Some(h) = awake.as_mut() {
                 h.terminate();
             }
-            drop(held);
+            if let Some(held) = held {
+                held.release();
+            }
             let stopped = control.kill.load(Ordering::SeqCst);
             if !aborted && !stopped {
                 if let Some(cmd) = wait_after_exit {

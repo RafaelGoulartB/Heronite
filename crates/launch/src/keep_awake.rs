@@ -56,6 +56,9 @@ impl Hold {
             Err(io::ErrorKind::Unsupported.into())
         }
     }
+
+    /// Lets the computer sleep again (dropping the hold does the same).
+    pub fn release(self) {}
 }
 
 /// Adds the lock (Linux) or the request to hold (Windows) to a plan that runs
