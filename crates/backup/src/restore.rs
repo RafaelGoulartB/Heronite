@@ -11,7 +11,8 @@
 //! the backup are removed (a game added after the backup goes too). What a
 //! backup leaves out (Wine builds, caches, logs) is never touched. Paths into
 //! the data folder, the app state folder and home are rewritten when the
-//! backup came from other folders (another user, another machine).
+//! backup came from other folders (another user, another machine, another
+//! system: a backup made on Linux restores on Windows).
 
 use std::collections::HashSet;
 use std::fs;
@@ -199,6 +200,12 @@ pub fn restore(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
 
 /// Old → new folder pairs, most specific first; empty when the backup came
 /// from these very folders.
+///
+/// The new folders go into the files with `/` separators, which Windows
+/// takes too: a backslash would have to be escaped in JSON, and the rest of a
+/// path from a Linux backup has `/` anyway. A backup from Windows holds its
+/// folders escaped (`C:\\Users\\...`) in its JSON files: that form is
+/// replaced too.
 fn rewrites(m: &Manifest, data: &DataPaths, app: &AppPaths) -> Vec<(String, String)> {
     let home = snapshot::dirs_home();
     let pairs = [
@@ -206,7 +213,15 @@ fn rewrites(m: &Manifest, data: &DataPaths, app: &AppPaths) -> Vec<(String, Stri
         (m.config_root.clone(), app.config.to_string_lossy().into_owned()),
         (m.home.clone(), home),
     ];
-    pairs.into_iter().filter(|(old, new)| !old.is_empty() && !new.is_empty() && old != new).collect()
+    let mut out = Vec::new();
+    for (old, new) in pairs.into_iter().filter(|(old, new)| !old.is_empty() && !new.is_empty() && old != new) {
+        let new = new.replace('\\', "/");
+        if old.contains('\\') {
+            out.push((old.replace('\\', "\\\\"), new.clone()));
+        }
+        out.push((old, new));
+    }
+    out
 }
 
 /// The file with the backup's folders replaced, when it is text and any
@@ -266,9 +281,62 @@ mod tests {
         let other_app = AppPaths { config: d.path().join("moved-config"), cache: d.path().join("moved-cache") };
         let done = restore(&other, &other_app, &made.path, &Part::ALL).unwrap();
         assert!(done.rewritten >= 1);
-        let moved = other.root.to_string_lossy().into_owned();
+        let moved = other.root.to_string_lossy().replace('\\', "/");
         assert_eq!(fs::read_to_string(other.root.join("GamesConfig/g.json")).unwrap(), format!(r#"{{"winePrefix":"{moved}/prefixes/g"}}"#));
         assert_eq!(fs::read_to_string(other.root.join("legendaryConfig/legendary/user.json")).unwrap(), "token");
+    }
+
+    #[test]
+    fn a_backup_from_linux_points_at_this_machine_s_folders() {
+        let _s = crate::tests::serial();
+        let d = tempfile::tempdir().unwrap();
+        let (data, app) = fixture(d.path());
+        let folder = d.path().join("backups");
+        fs::create_dir(&folder).unwrap();
+        fs::create_dir_all(data.root.join("GamesConfig")).unwrap();
+        let config = r#"{"winePrefix":"/home/u/.local/share/heronite/prefixes/g","savesPath":"/home/u/Games/g","other":"/home/u2/x"}"#;
+        fs::write(data.root.join("GamesConfig/g.json"), config).unwrap();
+        let made = snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now()).unwrap();
+        let mut manifest = Manifest::read(&made.path).unwrap();
+        (manifest.data_root, manifest.config_root, manifest.home) =
+            ("/home/u/.local/share/heronite".into(), "/home/u/.config/heronite".into(), "/home/u".into());
+        manifest.write(&made.path).unwrap();
+
+        let here = DataPaths::at(d.path().join("here"));
+        let here_app = AppPaths { config: d.path().join("here-config"), cache: d.path().join("here-cache") };
+        let done = restore(&here, &here_app, &made.path, &Part::ALL).unwrap();
+        assert!(done.rewritten >= 1);
+        let text = fs::read_to_string(here.root.join("GamesConfig/g.json")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).expect("still JSON");
+        let slashed = |p: &Path| p.to_string_lossy().replace('\\', "/");
+        assert_eq!(value["winePrefix"], format!("{}/prefixes/g", slashed(&here.root)));
+        assert_eq!(value["savesPath"], format!("{}/Games/g", snapshot::dirs_home().replace('\\', "/")));
+        assert_eq!(value["other"], "/home/u2/x", "only whole folders are rewritten");
+    }
+
+    #[test]
+    fn a_backup_from_windows_has_its_escaped_folders_rewritten() {
+        let m = Manifest {
+            format: FORMAT,
+            app_version: String::new(),
+            created_at: String::new(),
+            reason: Reason::Manual,
+            host: String::new(),
+            home: r"C:\Users\a".into(),
+            data_root: r"C:\Users\a\AppData\Roaming\heronite\data".into(),
+            config_root: r"C:\Users\a\AppData\Roaming\heronite\config".into(),
+            parts: Vec::new(),
+            summary: Default::default(),
+            files: Vec::new(),
+        };
+        let data = DataPaths::at("/new/data");
+        let app = AppPaths { config: "/new/config".into(), cache: "/new/cache".into() };
+        let text = r#"{"winePrefix":"C:\\Users\\a\\AppData\\Roaming\\heronite\\data\\prefixes\\g","x":"C:\\Users\\a\\Games"}"#;
+        let out = String::from_utf8(rewrite_paths("GamesConfig/g.json", text.as_bytes(), &rewrites(&m, &data, &app)).unwrap()).unwrap();
+        let home = snapshot::dirs_home().replace('\\', "/");
+        let value: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(value["winePrefix"], r"/new/data\prefixes\g");
+        assert_eq!(value["x"], format!(r"{home}\Games"));
     }
 
     #[test]
