@@ -52,7 +52,8 @@ impl SysSettings {
 }
 
 /// `games.recent` of `store/config.json` (most recent first), limited to
-/// `limit`: `(appName, title)`.
+/// `limit`: `(appName, title)`. Only the tray lists them (Linux).
+#[cfg(any(test, target_os = "linux"))]
 pub fn recent_games(data_paths: &DataPaths, limit: usize) -> Vec<(String, String)> {
     let doc = heronite_data::json_store::read_value(&data_paths.store_config()).unwrap_or(Value::Null);
     doc.get("games")

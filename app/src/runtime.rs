@@ -414,20 +414,18 @@ pub fn winetricks_install_blocking(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    heronite_platform::process::new_group(&mut cmd);
     // Cancelled while the prefix was made: nothing to stop yet.
     if cancelled() {
         return Err(tr!("{verb}: installation canceled.", verb));
     }
     let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
+    heronite_platform::process::track_group(&child);
     pid.store(child.id(), Ordering::SeqCst);
     // A cancel between the check above and the store found no group to signal.
     if cancelled() {
-        // SAFETY: the group winetricks leads (`process_group(0)`), alive
-        // until the `wait` below reaps it.
-        unsafe {
-            libc::kill(-(child.id() as i32), libc::SIGTERM);
-        }
+        // The group winetricks leads, alive until the `wait` below reaps it.
+        heronite_platform::process::signal_group(child.id(), heronite_platform::process::Signal::Term);
     }
     let err = child.stderr.take();
     let out = child.stdout.take();

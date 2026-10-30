@@ -1,7 +1,4 @@
-//! System tray icon (StatusNotifierItem over D-Bus, via `ksni`), the
-//! counterpart of Heroic's `tray_icon.ts`: recent games, Show / Hide the
-//! window, Quit. Runs on its own thread; every action is sent to the UI as a
-//! [`TrayCmd`].
+//! The tray icon on Linux: a StatusNotifierItem over D-Bus, via `ksni`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -13,22 +10,11 @@ use ksni::menu::{MenuItem, StandardItem};
 
 use heronite_i18n::tr;
 
-use super::settings::recent_games;
+use super::TrayCmd;
+use crate::system::settings::recent_games;
 
-const ICON_DARK: &[u8] = include_bytes!("../../assets/tray/icon-dark.png");
-const ICON_LIGHT: &[u8] = include_bytes!("../../assets/tray/icon-light.png");
-
-/// What the user asked for in the tray.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TrayCmd {
-    /// Bring the window up (create it when it was closed to the tray).
-    Show,
-    /// Left click: hide when `exitToTray` and visible, else show.
-    Toggle,
-    Quit,
-    /// Launch a recent game (`appName`; the runner is searched).
-    Launch(String),
-}
+const ICON_DARK: &[u8] = include_bytes!("../../../assets/tray/icon-dark.png");
+const ICON_LIGHT: &[u8] = include_bytes!("../../../assets/tray/icon-light.png");
 
 /// One row of the menu, before it becomes a `ksni` item.
 #[derive(Debug, Clone, PartialEq, Eq)]

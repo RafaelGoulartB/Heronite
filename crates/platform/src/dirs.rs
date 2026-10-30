@@ -36,6 +36,21 @@ pub fn cache(app: &str) -> Option<PathBuf> {
     }
 }
 
+/// A folder of the temp folder that only this user uses, for `name`:
+/// `/tmp/<name>-<uid>` on Unix (the temp folder is shared there), the user's
+/// own `%TEMP%\<name>` on Windows.
+pub fn user_temp(name: &str) -> PathBuf {
+    #[cfg(unix)]
+    {
+        // SAFETY: getuid has no preconditions.
+        std::env::temp_dir().join(format!("{name}-{}", unsafe { libc::getuid() }))
+    }
+    #[cfg(not(unix))]
+    {
+        std::env::temp_dir().join(name)
+    }
+}
+
 /// The user's home folder (`C:\Users\<name>` on Windows).
 pub fn home() -> Option<PathBuf> {
     ::dirs::home_dir()
