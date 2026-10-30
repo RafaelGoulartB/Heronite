@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_platform::{supported, Feature};
 use serde_json::Value;
 
 use std::sync::OnceLock;
@@ -120,28 +121,37 @@ impl SettingsPanel {
     }
 
     fn general_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let folders = rows()
-            .field(self.path_row(
+        // What this system has (`heronite_platform::features`): the folders,
+        // switches and builds of the parts it does not have are left out.
+        let wine = supported(Feature::Wine);
+        let stores = supported(Feature::StoreAccounts);
+        let mut folders = rows();
+        if stores || wine {
+            folders = folders.field(self.path_row(
                 "defaultInstallPath",
                 Some(tr!("Default install folder")),
                 true,
                 tr!("Choose the default installation folder"),
                 false,
                 cx,
-            ))
-            .field(self.path_row(
-                "defaultWinePrefixDir",
-                Some(tr!("Folder for new Wine prefixes")),
-                true,
-                tr!("Choose the folder for new Wine prefixes"),
-                false,
-                cx,
-            ))
-            .field_help(
-                self.path_row("defaultSteamPath", Some(tr!("Steam folder")), true, tr!("Choose Steam's folder"), false, cx),
-                vec![help(tr!("Where Heronite reads which Proton Steam uses, to add games to Steam."))],
-            );
-        let wine = rows()
+            ));
+        }
+        if wine {
+            folders = folders
+                .field(self.path_row(
+                    "defaultWinePrefixDir",
+                    Some(tr!("Folder for new Wine prefixes")),
+                    true,
+                    tr!("Choose the folder for new Wine prefixes"),
+                    false,
+                    cx,
+                ))
+                .field_help(
+                    self.path_row("defaultSteamPath", Some(tr!("Steam folder")), true, tr!("Choose Steam's folder"), false, cx),
+                    vec![help(tr!("Where Heronite reads which Proton Steam uses, to add games to Steam."))],
+                );
+        }
+        let wine_rows = rows()
             .child(self.toggle_row(
                 "valve-proton",
                 "showValveProton",
@@ -165,20 +175,18 @@ impl SettingsPanel {
         column()
             .child(heading(tr!("Language")))
             .child(rows().field(self.language_field(cx)).card())
-            .child(heading(tr!("Folders")))
-            .child(folders.card())
-            .child(heading(tr!("Startup")))
-            .child(self.startup_rows(cx).card())
-            .child(heading(tr!("System tray")))
-            .child(self.tray_rows(cx).card())
+            .when(stores || wine, |c| c.child(heading(tr!("Folders"))).child(folders.card()))
+            .when(supported(Feature::Autostart), |c| c.child(heading(tr!("Startup"))).child(self.startup_rows(cx).card()))
+            .when(supported(Feature::Tray), |c| c.child(heading(tr!("System tray"))).child(self.tray_rows(cx).card()))
             .child(heading(tr!("When a game starts and ends")))
             .child(self.game_rows(cx).card())
-            .child(heading(tr!("Game shortcuts")))
-            .child(self.shortcut_rows(cx).card())
-            .child(heading(tr!("Wine and Proton")))
-            .child(wine.card())
-            .child(heading(tr!("Other Wine and Proton builds")))
-            .child(self.custom_wine_paths(cx))
+            .when(supported(Feature::DesktopShortcuts), |c| c.child(heading(tr!("Game shortcuts"))).child(self.shortcut_rows(cx).card()))
+            .when(wine, |c| {
+                c.child(heading(tr!("Wine and Proton")))
+                    .child(wine_rows.card())
+                    .child(heading(tr!("Other Wine and Proton builds")))
+                    .child(self.custom_wine_paths(cx))
+            })
     }
 
     /// Starting with the session and without the window (`system/`).

@@ -502,6 +502,9 @@ impl SettingsPage {
         };
         if self.nav_query.is_empty() {
             for (group, sections) in Section::GROUPS {
+                if !sections.iter().any(|s| s.available()) {
+                    continue;
+                }
                 col =
                     col.child(div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(tr(group)));
                 for s in sections.iter().copied().filter(|s| s.available()) {
