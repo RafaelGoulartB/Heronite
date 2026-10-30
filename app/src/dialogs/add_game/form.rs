@@ -31,7 +31,8 @@ impl AddGameDialog {
     /// "Got it"), or how installing works.
     fn note(&self, cx: &mut Context<Self>) -> Option<Div> {
         let (text, dismiss) = match self.mode {
-            Mode::Add if self.store_note => {
+            // Where the stores run (`Feature::StoreAccounts`).
+            Mode::Add if self.store_note && heronite_platform::supported(heronite_platform::Feature::StoreAccounts) => {
                 (tr!("A game from Epic, GOG or Amazon? Do not add it here: install or import it from its store, in the menu."), true)
             }
             Mode::Add => return None,
