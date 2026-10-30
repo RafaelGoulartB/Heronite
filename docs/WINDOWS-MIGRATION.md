@@ -60,23 +60,31 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 ### Building
 
 - ✅ `heronite-platform` crate (processes, files, folders, shell, registry, features)
-- ⬜ `cargo check --workspace` passes on Windows
-- ⬜ `cargo test --workspace` passes on Windows (Unix-only tests behind `cfg(unix)`)
+- ✅ Every library crate builds on Windows
+- ✅ The app (`heronite`) builds on Windows, no warnings
+- ✅ Linux still type-checks (`cargo check --target x86_64-unknown-linux-gnu` from Windows, see "Checking Linux from Windows")
+- 🚧 `cargo test --workspace` on Windows: `heronite-platform` and `heronite-backup` pass; other crates' tests still use Unix APIs (to put behind `cfg(unix)` or port)
 - ⬜ `cargo clippy --workspace --all-targets` clean on Windows
 - ⬜ CI job on `windows-latest`
 
 ### First milestone: the Collection
 
-- ⬜ App starts on Windows (window, single instance, quit)
-- ⬜ Data, settings and cache folders in `%APPDATA%` / `%LOCALAPPDATA%`
-- ⬜ Steam: find the client (registry), its libraries and the installed games
-- ⬜ Steam: installed games come into the Collection by themselves
-- ⬜ Steam: play, install and uninstall through `steam://` URLs
-- ⬜ Games added by hand: pick a `.exe`, launch it natively (no Wine)
-- ⬜ Play time and sessions of native Windows games (job object follows the game)
-- ⬜ Restore a backup made on Linux (paths rewritten into Windows folders)
-- ⬜ Open folders, files and links (`shell::open` instead of `xdg-open`)
-- ⬜ Hide on Windows what is not ported yet (`Feature`)
+- 🚧 App starts on Windows (window, single instance, quit)
+  - ✅ Single instance: loopback port + key in the user's temp folder (`system/single_instance/transport.rs`)
+  - ✅ Signals: none on Windows (`system/signals.rs`)
+  - ✅ Tray: none on Windows yet (`system/tray/unsupported.rs`), closing the window quits
+- ✅ Data, settings and cache folders in `%APPDATA%` / `%LOCALAPPDATA%`
+- ✅ Steam: find the client (registry `SteamPath`, `steam.exe`), its libraries (Windows paths in `libraryfolders.vdf`) and the installed games
+- ✅ Steam: installed games come into the Collection by themselves (`heronite_launch::install_state`, at start and on refresh)
+- 🚧 Steam: play through `steam://rungameid` (`shell::open`); the session follows Steam's `console_log.txt` like on Linux (to verify with a real game)
+- ✅ Steam client library reads (CEF) are off on Windows (`Feature::SteamClient`)
+- ✅ Games added by hand: a Windows program runs as it is, from its folder (`plan::build::windows_plan`)
+- ✅ Add game dialog: no Linux tab, no Wine section, no "Run installer first" on Windows
+- 🚧 Play time and sessions of native Windows games (job object follows the game; to verify with a real game)
+- ✅ Restore a backup made on Linux: paths into the backup's data, settings and home folders become this machine's, with `/` separators (valid JSON, Windows takes them)
+- ✅ Open folders, files and links (`shell::open` instead of `xdg-open`)
+- ✅ Hide on Windows what is not ported yet (`Feature`): ☰ pages, command palette, console mode menu, Settings sections; store, client and launcher background jobs do not start
+- ✅ No copy of Heroic's folder at the first start on Windows (`Feature::HeroicMigration`)
 
 ### Later
 
@@ -93,4 +101,14 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ➖ Wine / Proton, Wine Manager, winetricks
 - ➖ Sandbox (bubblewrap)
 - ➖ Lutris, Bottles, Faugus and Heroic (Linux) imports
-- ⬜ Overlay and replay buffer (needs a different capture and input stack)
+- ⬜ Overlay and replay buffer (needs a different capture and input stack); today `heronite_overlay::input` and `heronite_media::capture` have do-nothing stand-ins off Linux
+- ⬜ Copy an existing Heroic for Windows setup at the first start (`Feature::HeroicMigration`)
+- ⬜ Game settings panel: hide the Wine, Proton and Linux-only tabs on Windows
+
+## Checking Linux from Windows
+
+`rustup target add x86_64-unknown-linux-gnu`, then `cargo check --target
+x86_64-unknown-linux-gnu -p <crate>` with `CC_x86_64_unknown_linux_gnu` set to
+the `clang.exe` of Visual Studio's LLVM. Crates that compile C code with
+libc headers (`libsqlite3-sys`, `libwebp-sys`, rcheevos) cannot be checked
+this way; CI on Linux covers them.
