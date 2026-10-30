@@ -40,9 +40,8 @@ const WIDE: f32 = 1180.;
 
 #[derive(Default)]
 pub(super) struct Welcome {
-    /// The Steam check of an empty Collection (stops once games come in),
-    /// and its watch of the Steam service where the client is read.
-    watch: Option<(Task<()>, Option<Subscription>)>,
+    /// The Steam check of an empty Collection (stops once games come in).
+    watch: Option<(Task<()>, Subscription)>,
     /// Emulation set up by itself: `None` while it runs (or before).
     emulation: Option<Result<SetupReport, String>>,
     emulation_started: bool,
@@ -97,10 +96,6 @@ impl CollectionView {
         if self.welcome.watch.is_some() {
             return;
         }
-        if !heronite_platform::supported(Feature::SteamClient) {
-            self.start_manifest_watch(cx);
-            return;
-        }
         let steam = crate::services::steam_library(cx);
         let sub = cx.observe(&steam, |_, _, cx| cx.notify());
         let task = cx.spawn(async move |this, cx| {
@@ -121,25 +116,7 @@ impl CollectionView {
             }
             this.update(cx, |this, _| this.welcome.watch = None).ok();
         });
-        self.welcome.watch = Some((task, Some(sub)));
-    }
-
-    /// Where Steam's client cannot be read: looks at Steam's manifests while
-    /// the Collection is empty, so a game installed meanwhile comes in.
-    fn start_manifest_watch(&mut self, cx: &mut Context<Self>) {
-        let paths = self.data_paths.clone();
-        let task = cx.spawn(async move |this, cx| {
-            loop {
-                cx.background_executor().timer(STEAM_POLL).await;
-                let Ok(true) = this.update(cx, |this, _| this.lib.as_ref().is_some_and(|lib| lib.games.is_empty())) else { break };
-                let p = paths.clone();
-                if cx.background_spawn(async move { super::emulation::refresh_install_states(&p) }).await {
-                    this.update(cx, |this, cx| this.reload(cx)).ok();
-                }
-            }
-            this.update(cx, |this, _| this.welcome.watch = None).ok();
-        });
-        self.welcome.watch = Some((task, None));
+        self.welcome.watch = Some((task, sub));
     }
 
     /// Registers the emulators of this PC and imports the usual ROM folders
@@ -201,13 +178,6 @@ impl CollectionView {
 
     fn steam_status(&self, cx: &App) -> Status {
         let busy = theme::accent();
-        if !heronite_platform::supported(Feature::SteamClient) && debug_welcome().is_none() {
-            return status(
-                tr!("Installed games"),
-                theme::text_muted(),
-                tr!("Your installed Steam games come in by themselves. Install one in Steam and it shows up here."),
-            );
-        }
         match Self::steam_state(cx) {
             SteamState::Checking => status(tr!("Checking"), busy, tr!("Looking for Steam on this PC\u{2026}")),
             SteamState::NotInstalled => status(

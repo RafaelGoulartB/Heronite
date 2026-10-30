@@ -57,7 +57,7 @@ impl Pages {
 
     /// The store page the "Stores" entry opens.
     pub(super) fn stores_page(&self) -> Page {
-        self.last_store.unwrap_or(Page::Epic)
+        self.last_store.or_else(|| pages::stores::shown().first().copied()).unwrap_or(Page::Epic)
     }
 }
 

@@ -96,9 +96,8 @@ impl Page {
     pub fn available(self) -> bool {
         use heronite_platform::{supported, Feature};
         match self {
-            Page::Collection | Page::Statistics | Page::Settings => true,
+            Page::Collection | Page::Statistics | Page::Settings | Page::Steam => true,
             Page::Downloads | Page::Epic | Page::Gog | Page::Amazon => supported(Feature::StoreAccounts),
-            Page::Steam => supported(Feature::SteamClient),
             Page::BattleNet | Page::Ea | Page::Ubisoft | Page::Rockstar => supported(Feature::StoreClients),
             Page::WineManager => supported(Feature::Wine),
             Page::Emulators => supported(Feature::Emulation),

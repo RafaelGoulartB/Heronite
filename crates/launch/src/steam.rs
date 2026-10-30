@@ -125,13 +125,15 @@ fn windows_roots() -> Vec<PathBuf> {
     roots
 }
 
-/// Whether the Steam client runs on Windows, from what it wrote into the
-/// registry (its `ActiveProcess` pid, 0 once it closed).
+/// Whether the Steam client runs on Windows: the pid it wrote into the
+/// registry (`ActiveProcess`, 0 once it closed) lives, or a `steam.exe`
+/// runs (the registry is not always kept up to date).
 fn windows_client_running(procs: &dyn Procs) -> bool {
     #[cfg(windows)]
     {
         use heronite_platform::registry::{dword, Hive};
         dword(Hive::CurrentUser, r"Software\Valve\Steam\ActiveProcess", "pid").is_some_and(|pid| pid != 0 && procs.is_alive(pid))
+            || heronite_platform::process::snapshot().iter().any(|p| p.name.eq_ignore_ascii_case("steam.exe"))
     }
     #[cfg(not(windows))]
     {

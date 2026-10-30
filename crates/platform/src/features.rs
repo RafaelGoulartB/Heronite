@@ -26,9 +26,9 @@ pub enum Feature {
     Emulation,
     /// The in-game overlay and the replay buffer.
     Overlay,
-    /// Steam's per-game settings (launch options, compatibility tool) and its
-    /// library read from the running client.
-    SteamClient,
+    /// Steam's per-game settings: the launch options line and the
+    /// compatibility tool (Proton) forced for a game.
+    SteamGameSettings,
     /// Running games in a sandbox (bubblewrap).
     Sandbox,
     /// What Linux's launch adds around a game: wrappers (GameMode,
@@ -64,7 +64,7 @@ pub const fn supported(feature: Feature) -> bool {
         | Feature::HeroicMigration
         | Feature::Emulation
         | Feature::Overlay
-        | Feature::SteamClient
+        | Feature::SteamGameSettings
         | Feature::Sandbox
         | Feature::LaunchExtras
         | Feature::Storage

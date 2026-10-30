@@ -76,9 +76,10 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
   - ✅ Tray: none on Windows yet (`system/tray/unsupported.rs`), closing the window quits
 - ✅ Data, settings and cache folders in `%APPDATA%` / `%LOCALAPPDATA%`
 - ✅ Steam: find the client (registry `SteamPath`, `steam.exe`), its libraries (Windows paths in `libraryfolders.vdf`) and the installed games
-- ✅ Steam: installed games come into the Collection by themselves (`heronite_launch::install_state`, at start, on refresh, and every few seconds while the Collection is empty)
+- ✅ Steam: installed games come into the Collection by themselves (`heronite_launch::install_state`, at start and on refresh)
+- ✅ Steam: the whole library (owned games, installed or not, with Steam's play time) is read from the running client, as on Linux: the `steamwebhelper` command line (`process::command_line`) gives the debugging port and the Steam folder; Steam runs when its registry pid lives or a `steam.exe` runs. Checked on this PC: 34 games added besides the installed one
 - 🚧 Steam: play through `steam://rungameid` (`shell::open`); the session follows Steam's `console_log.txt` like on Linux (to verify with a real game)
-- ✅ Steam client library reads (CEF) are off on Windows (`Feature::SteamClient`)
+- ⬜ Steam's per-game settings (launch options, Proton) are off on Windows (`Feature::SteamGameSettings`)
 - ✅ Games added by hand: a Windows program runs as it is, from its folder, with its arguments and environment variables (`plan::build::windows_plan`)
 - ✅ Play time and sessions of native Windows games: the job object follows the game, the session is recorded when its last process ends (checked with `charmap.exe` through `--no-gui --launch`)
 - ✅ Add game dialog: no Linux tab, no Wine section, no "Run installer first", no store note on Windows
@@ -98,7 +99,6 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ⬜ Tray icon
 - ⬜ Start with Windows (`Run` registry key)
 - ⬜ Desktop and Start menu shortcuts (`.lnk`)
-- ⬜ Steam per-game settings and library from the client
 - ⬜ Self-update (installer or portable zip, signed)
 - ⬜ Packaging (installer, signing)
 - ➖ Wine / Proton, Wine Manager, winetricks

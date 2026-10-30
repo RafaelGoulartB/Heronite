@@ -37,6 +37,11 @@ pub fn is_store_page(page: Page) -> bool {
     PAGES.contains(&page)
 }
 
+/// The store pages this system has, in [`PAGES`] order.
+pub fn shown() -> Vec<Page> {
+    PAGES.into_iter().filter(|p| p.available()).collect()
+}
+
 /// Title of the store pages' list.
 pub fn title() -> &'static str {
     tr!("Stores")
@@ -181,8 +186,11 @@ fn nav<V: EventEmitter<PageEvent> + 'static>(active: Page, cx: &mut Context<V>) 
     let page = cx.entity().downgrade();
     let mut items: Vec<AnyElement> = vec![];
     for (group, pages) in GROUPS {
+        if !pages.iter().any(|p| p.available()) {
+            continue;
+        }
         items.push(side_nav::group(heronite_i18n::tr(group), None).into_any_element());
-        for p in pages.iter().copied() {
+        for p in pages.iter().copied().filter(|p| p.available()) {
             let (page, g) = (page.clone(), glance_of(p, cx));
             let id = SharedString::from(format!("stores-nav-{p:?}"));
             items.push(
@@ -197,8 +205,8 @@ fn nav<V: EventEmitter<PageEvent> + 'static>(active: Page, cx: &mut Context<V>) 
         }
     }
     let heading = side_nav::heading(Icon::Storefront, title(), None);
-    let footer = other_launchers(cx).into_any_element();
-    side_nav::nav("stores-nav", heading, items, Some(footer), cx)
+    let footer = heronite_platform::supported(heronite_platform::Feature::LauncherImports).then(|| other_launchers(cx).into_any_element());
+    side_nav::nav("stores-nav", heading, items, footer, cx)
 }
 
 /// A store page: the list of stores on the left; the store's name, `lead`
@@ -217,27 +225,33 @@ pub fn sheet<V: EventEmitter<PageEvent> + 'static>(
 
 /// The console top bar's tabs (switched with LB / RB, see [`switch`]).
 pub fn console_tabs(active: Page) -> Div {
-    let names: Vec<SharedString> = PAGES.iter().map(|p| SharedString::from(p.title())).collect();
-    crate::console::kit::tabs(&names, PAGES.iter().position(|p| *p == active).unwrap_or(0))
+    let pages = shown();
+    let names: Vec<SharedString> = pages.iter().map(|p| SharedString::from(p.title())).collect();
+    crate::console::kit::tabs(&names, pages.iter().position(|p| *p == active).unwrap_or(0))
 }
 
 /// The store LB / RB moves to from `active`, if `pad` is one of them.
 pub fn switch(active: Page, pad: Pad) -> Option<Page> {
-    let i = PAGES.iter().position(|p| *p == active)?;
-    let n = PAGES.len();
+    switch_in(&shown(), active, pad)
+}
+
+fn switch_in(pages: &[Page], active: Page, pad: Pad) -> Option<Page> {
+    let i = pages.iter().position(|p| *p == active)?;
+    let n = pages.len();
     match pad {
-        Pad::LB => Some(PAGES[(i + n - 1) % n]),
-        Pad::RB => Some(PAGES[(i + 1) % n]),
+        Pad::LB => Some(pages[(i + n - 1) % n]),
+        Pad::RB => Some(pages[(i + 1) % n]),
         _ => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{is_store_page, switch, Pad, Page};
+    use super::{is_store_page, Pad, Page, PAGES};
 
     #[test]
     fn lb_and_rb_cycle_through_the_stores() {
+        let switch = |active, pad| super::switch_in(&PAGES, active, pad);
         assert_eq!(switch(Page::Epic, Pad::RB), Some(Page::Gog));
         assert_eq!(switch(Page::Amazon, Pad::RB), Some(Page::Steam));
         assert_eq!(switch(Page::Steam, Pad::RB), Some(Page::BattleNet));
@@ -247,6 +261,8 @@ mod tests {
         assert_eq!(switch(Page::Gog, Pad::A), None);
         assert_eq!(switch(Page::Downloads, Pad::RB), None);
         assert!(is_store_page(Page::Gog) && is_store_page(Page::Ubisoft) && !is_store_page(Page::Emulators));
+        // Only the stores this system has.
+        assert_eq!(super::switch_in(&[Page::Steam], Page::Steam, Pad::RB), Some(Page::Steam));
     }
 
     #[test]

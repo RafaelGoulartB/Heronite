@@ -83,7 +83,7 @@ impl GameFacts {
         let steam_app_id = game.steam_launch_id.clone().filter(|_| game.installed && launch_kind == "steam-uri");
         let run_kind = if steam_app_id.is_some() {
             // Steam's settings are edited through its client.
-            if heronite_platform::supported(heronite_platform::Feature::SteamClient) {
+            if heronite_platform::supported(heronite_platform::Feature::SteamGameSettings) {
                 RunKind::Steam
             } else {
                 RunKind::None

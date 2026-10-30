@@ -155,10 +155,6 @@ impl Step {
     /// One line on what it is for (the tips and the source tiles).
     pub fn description(self) -> &'static str {
         match self {
-            // The library is read from the running client only where it can be.
-            Step::Steam if !heronite_platform::supported(heronite_platform::Feature::SteamClient) => {
-                tr!("Your installed Steam games come in by themselves, with nothing to set up.")
-            }
             Step::Steam => tr!("Open Steam and your games come in by themselves, installed or not, with Steam's play time."),
             Step::Stores => tr!("Log in and your whole library shows in the Collection. You install games from there."),
             Step::Emulators => tr!("Heronite finds the emulators on this PC and scans your ROM folders."),
