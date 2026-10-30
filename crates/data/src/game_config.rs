@@ -108,11 +108,13 @@ const FACTORY_JSON: &str = r#"{
   "disableGOGPresence": false
 }"#;
 
+/// `s` with a leading `~` (alone, or before `/` or `\`) replaced by `home`.
+/// Only at the start: elsewhere `~` is part of a name, as in the short
+/// names Windows gives long folders (`C:\Users\RUNNER~1`).
 pub fn expand_tilde(s: &str, home: &str) -> String {
-    if s.contains('~') {
-        s.replacen('~', home, 1)
-    } else {
-        s.to_string()
+    match s.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with(['/', '\\']) => format!("{home}{rest}"),
+        _ => s.to_string(),
     }
 }
 
@@ -382,6 +384,19 @@ pub fn set_global_setting(paths: &DataPaths, home: &str, key: &str, value: Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_leading_tilde_is_home() {
+        assert_eq!(expand_tilde("~/Games/Heroic", "/home/u"), "/home/u/Games/Heroic");
+        assert_eq!(expand_tilde("~", "/home/u"), "/home/u");
+        assert_eq!(expand_tilde(r"~\Games", r"C:\Users\u"), r"C:\Users\u\Games");
+        // A short Windows name, another user's home (`~other`) and a `~`
+        // inside a name stay as they are.
+        assert_eq!(expand_tilde(r"C:\Users\RUNNER~1\Temp\pfx", "/home/u"), r"C:\Users\RUNNER~1\Temp\pfx");
+        assert_eq!(expand_tilde("~other/Games", "/home/u"), "~other/Games");
+        assert_eq!(expand_tilde("/games/my~game", "/home/u"), "/games/my~game");
+        assert_eq!(expand_tilde("", "/home/u"), "");
+    }
     use serde_json::json;
     use std::fs;
 
