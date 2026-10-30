@@ -95,7 +95,16 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 
 - ⬜ Epic, GOG and Amazon Games (legendary, gogdl and nile have Windows builds)
 - ⬜ Store clients (Battle.net, EA app, Ubisoft Connect, Rockstar) run natively
-- ⬜ Emulators and ROM folders
+- ✅ Emulators and ROM folders (`Feature::Emulation`)
+  - Finding emulators: one catalog with each emulator's Linux and Windows names; `PATH` (Scoop shims lead to the real program), Program Files, `%LOCALAPPDATA%\Programs`, `%LOCALAPPDATA%`, `%APPDATA%`, the system drive (`C:\RetroArch-Win64`), Scoop's `apps\<app>\current`, EmuDeck's `%APPDATA%\EmuDeck\Emulators` and the usual `Emulation` / `Emulators` / `Games` folders; only `.exe`, helpers (`retroarch_debug.exe`...) skipped; RetroArch cores are `.dll`
+  - Launching: the emulator runs as it is, from its folder, with the profile's arguments and the ROM; emulators set up for Wine on Linux (a restored backup) run directly; Flatpak emulators show as not installed
+  - ROM folders and scanning: Windows paths (both separators, drive roots, case ignored, CRLF playlists); the automatic setup looks in `ROMs`, `Emulation\roms`, `Games\ROMs`, `Documents\ROMs`... of the home folder and the system drive
+  - Save states: PCSX2, DuckStation, PPSSPP, Dolphin, RetroArch, mGBA and RPCS3 folders on Windows (portable installs too)
+  - ⬜ ROM folders on drives other than the system drive (`D:\Emulation\roms`): needs a list of fixed drives that never stalls on network ones
+  - ⬜ Dolphin's user folder from the registry (`HKCU\Software\Dolphin Emulator\UserConfigPath`)
+  - ⬜ RetroAchievements sign-in of the emulators (`heronite_achievements::emulators` knows their Linux config files only)
+  - ⬜ RetroArch from Steam and Microsoft Store builds of emulators
+- ⬜ Save backups with Ludusavi (`Feature::SaveBackups`, split from emulation): `ludusavi.exe`, the `PATH` separator of `SystemRunner` (`;`), its config in `%APPDATA%\ludusavi`, restore plans without Wine prefixes
 - ⬜ Screenshots
 - ✅ Tray icon (see the first milestone)
   - ⬜ Dark tray menus (needs an undocumented uxtheme call); new icons start in Windows 11's hidden-icons flyout until the user pins them
