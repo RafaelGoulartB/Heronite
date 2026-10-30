@@ -264,19 +264,22 @@ impl OnboardingDialog {
             .map(|(_, row)| row)
             .collect(),
         )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .px(px(18.))
-                .pb(px(14.))
-                .text_size(px(12.))
-                .line_height(px(16.))
-                .text_color(theme::text_dim())
-                .when(f.overlay_ok, |d| d.child(beta()).child(tr!("The overlay: Guide opens it, Guide + Y marks a moment")))
-                .when(!f.overlay_ok, |d| d.child(f.overlay_why.clone())),
-        )
+        // The overlay's note, where the system has one.
+        .when(Step::Overlay.available(), |card| {
+            card.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .px(px(18.))
+                    .pb(px(14.))
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(theme::text_dim())
+                    .when(f.overlay_ok, |d| d.child(beta()).child(tr!("The overlay: Guide opens it, Guide + Y marks a moment")))
+                    .when(!f.overlay_ok, |d| d.child(f.overlay_why.clone())),
+            )
+        })
     }
 
     fn render_tips(&self, cx: &mut Context<Self>) -> Div {
