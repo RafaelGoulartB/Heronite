@@ -11,6 +11,7 @@
 //! `closed`, `opening`, `restarting`, `restart`, `failed`, `reading` or
 //! `connected`; `looking`, `none`, `ready` or `unplayable`.
 
+use heronite_platform::Feature;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -39,8 +40,9 @@ const WIDE: f32 = 1180.;
 
 #[derive(Default)]
 pub(super) struct Welcome {
-    /// The Steam check of an empty Collection (stops once games come in).
-    watch: Option<(Task<()>, Subscription)>,
+    /// The Steam check of an empty Collection (stops once games come in),
+    /// and its watch of the Steam service where the client is read.
+    watch: Option<(Task<()>, Option<Subscription>)>,
     /// Emulation set up by itself: `None` while it runs (or before).
     emulation: Option<Result<SetupReport, String>>,
     emulation_started: bool,
@@ -89,8 +91,14 @@ impl CollectionView {
         if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             return;
         }
-        self.start_emulation_setup(cx);
+        if heronite_platform::supported(Feature::Emulation) {
+            self.start_emulation_setup(cx);
+        }
         if self.welcome.watch.is_some() {
+            return;
+        }
+        if !heronite_platform::supported(Feature::SteamClient) {
+            self.start_manifest_watch(cx);
             return;
         }
         let steam = crate::services::steam_library(cx);
@@ -113,7 +121,25 @@ impl CollectionView {
             }
             this.update(cx, |this, _| this.welcome.watch = None).ok();
         });
-        self.welcome.watch = Some((task, sub));
+        self.welcome.watch = Some((task, Some(sub)));
+    }
+
+    /// Where Steam's client cannot be read: looks at Steam's manifests while
+    /// the Collection is empty, so a game installed meanwhile comes in.
+    fn start_manifest_watch(&mut self, cx: &mut Context<Self>) {
+        let paths = self.data_paths.clone();
+        let task = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(STEAM_POLL).await;
+                let Ok(true) = this.update(cx, |this, _| this.lib.as_ref().is_some_and(|lib| lib.games.is_empty())) else { break };
+                let p = paths.clone();
+                if cx.background_spawn(async move { super::emulation::refresh_install_states(&p) }).await {
+                    this.update(cx, |this, cx| this.reload(cx)).ok();
+                }
+            }
+            this.update(cx, |this, _| this.welcome.watch = None).ok();
+        });
+        self.welcome.watch = Some((task, None));
     }
 
     /// Registers the emulators of this PC and imports the usual ROM folders
@@ -175,6 +201,13 @@ impl CollectionView {
 
     fn steam_status(&self, cx: &App) -> Status {
         let busy = theme::accent();
+        if !heronite_platform::supported(Feature::SteamClient) && debug_welcome().is_none() {
+            return status(
+                tr!("Installed games"),
+                theme::text_muted(),
+                tr!("Your installed Steam games come in by themselves. Install one in Steam and it shows up here."),
+            );
+        }
         match Self::steam_state(cx) {
             SteamState::Checking => status(tr!("Checking"), busy, tr!("Looking for Steam on this PC\u{2026}")),
             SteamState::NotInstalled => status(
@@ -289,13 +322,21 @@ impl CollectionView {
                     .child(tr!("Heronite looks on this PC and brings in what it finds by itself.")),
             )
             .child(label(Icon::TravelExplore, tr!("Found on this PC")))
-            .child(div().flex().flex_col().gap(px(10.)).child(steam).child(self.emulation_row(cx)))
-            .when_some(self.launcher_tiles(cx), |d, tiles| {
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .child(steam)
+                    .when(heronite_platform::supported(Feature::Emulation), |d| d.child(self.emulation_row(cx))),
+            )
+            .when_some(heronite_platform::supported(Feature::LauncherImports).then(|| self.launcher_tiles(cx)).flatten(), |d, tiles| {
                 d.child(label(Icon::CallMerge, tr!("Bring in from another launcher"))).child(tiles)
             })
-            .child(label(Icon::Storefront, tr!("Log in to a store")))
-            .child(stores)
-            .child(clients)
+            .when(heronite_platform::supported(Feature::StoreAccounts), |d| {
+                d.child(label(Icon::Storefront, tr!("Log in to a store"))).child(stores)
+            })
+            .when(heronite_platform::supported(Feature::StoreClients), |d| d.child(clients))
             .child(add)
             .child(
                 div()

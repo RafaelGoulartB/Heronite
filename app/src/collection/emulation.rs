@@ -24,7 +24,7 @@ const STARTUP_SCAN_DELAY: Duration = Duration::from_secs(4);
 
 /// Brings `is_installed` of the local games (Steam, executables, ROMs) in
 /// line with the disk. Blocking. Returns whether something changed.
-fn refresh_install_states(paths: &heronite_data::DataPaths) -> bool {
+pub(super) fn refresh_install_states(paths: &heronite_data::DataPaths) -> bool {
     match heronite_launch::install_state::refresh_local_install_states(paths, &heronite_launch::SystemProbe) {
         Ok(report) => report.changed(),
         Err(e) => {
