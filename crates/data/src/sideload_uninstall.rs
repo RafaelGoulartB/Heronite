@@ -574,6 +574,8 @@ mod tests {
         assert_eq!(g("/bin/a"), PathBuf::from("/bin"));
     }
 
+    // Windows makes symlinks only in Developer Mode or as an administrator.
+    #[cfg(unix)]
     #[test]
     fn a_link_is_not_followed() {
         let e = env();

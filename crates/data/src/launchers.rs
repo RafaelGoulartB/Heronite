@@ -225,11 +225,14 @@ mod tests {
         assert_eq!(Launcher::from_source("faugus"), Some(Launcher::Faugus));
     }
 
+    #[cfg(unix)]
     fn write_collection(paths: &DataPaths, library: Value, meta: Value) {
         json_store::write(&paths.sideload_library(), &library).unwrap();
         json_store::write(&paths.local_meta(), &meta).unwrap();
     }
 
+    // Lutris and the Wine store clients keep Linux paths.
+    #[cfg(unix)]
     #[test]
     fn the_launchers_games_are_kept_by_the_launcher() {
         let dir = tempfile::tempdir().unwrap();
@@ -252,7 +255,9 @@ mod tests {
         assert_eq!(managed_by(&managed, Path::new("/home/u/Games/other")), None);
     }
 
+    // Lutris and the Wine store clients keep Linux paths.
     /// A client's prefix is kept without any game, its games' folders too.
+    #[cfg(unix)]
     #[test]
     fn a_clients_prefix_and_games_are_kept_by_the_client() {
         let dir = tempfile::tempdir().unwrap();

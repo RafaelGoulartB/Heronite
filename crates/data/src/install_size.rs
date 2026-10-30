@@ -206,13 +206,16 @@ mod tests {
 
     #[test]
     fn walks_only_game_folders() {
-        let home = Path::new("/home/me");
-        assert!(walkable(Path::new("/home/me/Games/Celeste"), Some(home)));
-        assert!(walkable(Path::new("/data/Games"), Some(home)));
-        assert!(!walkable(Path::new("/home/me"), Some(home)), "home");
-        assert!(!walkable(Path::new("/home"), Some(home)), "above home");
+        // A full path on Windows starts with a drive.
+        let p = |s: &str| if cfg!(windows) { PathBuf::from(format!("C:{s}")) } else { PathBuf::from(s) };
+        let home = &p("/home/me");
+        assert!(walkable(&p("/home/me/Games/Celeste"), Some(home)));
+        assert!(walkable(&p("/data/Games"), Some(home)));
+        assert!(!walkable(&p("/home/me"), Some(home)), "home");
+        assert!(!walkable(&p("/home"), Some(home)), "above home");
+        #[cfg(unix)]
         assert!(!walkable(Path::new("/usr/bin"), Some(home)));
-        assert!(!walkable(Path::new("/data"), Some(home)), "a drive's root");
+        assert!(!walkable(&p("/data"), Some(home)), "a drive's root");
         assert!(!walkable(Path::new("games/x"), Some(home)), "relative");
     }
 
