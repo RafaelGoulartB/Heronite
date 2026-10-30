@@ -406,7 +406,9 @@ mod tests {
         use Section::*;
         assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Gpu, Sandbox, Saves]);
         assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance, Gpu, Sandbox]);
-        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Launch, Performance, Gpu, Sandbox]);
+        // Without Linux's launch extras (Windows), a native game only has Launch.
+        let native: &[Section] = if extras() { &[Launch, Performance, Gpu, Sandbox] } else { &[Launch] };
+        assert_eq!(sections_for(RunKind::Native, "sideload", false), native);
         assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
