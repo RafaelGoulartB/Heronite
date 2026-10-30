@@ -85,12 +85,13 @@ fn build_sideload(
 ) -> LaunchPlan {
     // 1. Emulators (tryLaunchEmulatedGame).
     if let Some(m) = meta.filter(|m| m.launch_kind == "emulator") {
-        if settings.sandbox.enabled {
+        if settings.sandbox.enabled && heronite_platform::supported(Feature::Sandbox) {
             return LaunchPlan::Unavailable(tr!("The sandbox does not run emulators. Turn it off for this game.").into());
         }
         return match emulator_plan(ctx, probe, game, m, settings, opts) {
             EmulatorOutcome::Plan(p) => p,
-            // `.exe` emulators run through Wine like any Windows program.
+            // On Linux, `.exe` emulators run through Wine like any Windows
+            // program; Windows runs them as they are (a plan of their own).
             EmulatorOutcome::Wine { executable, args } => crate::wine::build_wine_plan(ctx, probe, game, settings, &executable, &args),
         };
     }

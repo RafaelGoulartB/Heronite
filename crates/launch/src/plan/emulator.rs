@@ -48,21 +48,31 @@ pub fn emulator_executable(ctx: &PlanContext, meta: &LocalGameMeta) -> Option<St
 }
 
 /// The emulator on its own, without a game (the Emulators page's "Open"):
-/// `flatpak run <id>`, the Windows executable in the default Wine prefix, or
-/// the executable from its folder. `settings` are the global defaults.
+/// `flatpak run <id>`, on Linux the Windows executable in the default Wine
+/// prefix, or the executable from its folder. `settings` are the global
+/// defaults.
 pub fn open_emulator_command(ctx: &PlanContext, probe: &dyn Probe, settings: &GameSettings, e: &UserEmulator) -> Result<Command, String> {
     if e.launch_kind == "flatpak" {
+        if cfg!(windows) {
+            return Err(tr!("Flatpak emulators do not run on Windows").into());
+        }
         let id = e.flatpak_id.clone().filter(|f| !f.is_empty()).ok_or_else(|| tr!("This emulator has no Flatpak id").to_string())?;
         return Ok(Command { program: "flatpak".into(), args: vec!["run".into(), id], env: Env::new(), cwd: None });
     }
     if e.executable.is_empty() || !probe.exists(&e.executable) {
         return Err(tr!("Emulator executable was not found").into());
     }
-    if e.launch_kind == "wine" || e.executable.to_lowercase().ends_with(".exe") {
+    if runs_under_wine(e.launch_kind == "wine", &e.executable) {
         return crate::wine_tools::run_exe_command(ctx, probe, settings, &e.executable, &[]).map(|t| t.command);
     }
     let cwd = e.install_dir.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| node_dirname(&e.executable));
     Ok(Command { program: e.executable.clone(), args: vec![], env: Env::new(), cwd: Some(cwd) })
+}
+
+/// Whether a Windows emulator runs through Wine: on Linux, one set up as a
+/// Windows program or an `.exe`. Windows runs every emulator as it is.
+fn runs_under_wine(wine_kind: bool, executable: &str) -> bool {
+    !cfg!(windows) && (wine_kind || executable.to_lowercase().ends_with(".exe"))
 }
 
 pub(super) fn emulator_plan(
@@ -80,6 +90,9 @@ pub(super) fn emulator_plan(
 
     let rom_path = pick_rom_path(meta, &opts.extra_args, probe);
     let is_flatpak = emulator.map(|e| e.launch_kind == "flatpak").unwrap_or(false);
+    if is_flatpak && cfg!(windows) {
+        return unavailable(tr!("Flatpak emulators do not run on Windows"));
+    }
     let Some(executable) = emulator_executable(ctx, meta) else {
         return unavailable(tr!("Emulator executable was not found"));
     };
@@ -121,8 +134,7 @@ pub(super) fn emulator_plan(
         argv.splice(0..0, opts.state_args.iter().cloned());
     }
 
-    let use_wine = emulator.map(|e| e.launch_kind == "wine").unwrap_or(false) || executable.to_lowercase().ends_with(".exe");
-    if use_wine {
+    if runs_under_wine(emulator.is_some_and(|e| e.launch_kind == "wine"), &executable) {
         return EmulatorOutcome::Wine { executable, args: argv };
     }
 

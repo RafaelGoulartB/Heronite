@@ -4,7 +4,9 @@ use crate::plan::WineRuntime;
 use crate::plan::{build_plan_with_settings, LaunchOptions, LaunchPlan};
 use crate::probe::FakeProbe;
 use crate::wine_tools::{build_tool_command, kill_prefix_command, wait_prefix_command, WineTool};
-use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta};
+#[cfg(unix)]
+use heronite_data::models::LocalGameMeta;
+use heronite_data::models::{GameInfo, InstallInfo};
 use serde_json::json;
 
 const UMU: &str = "/hr/tools/runtimes/umu/umu_run.py";
@@ -28,6 +30,7 @@ fn windows_settings(sandbox: Value) -> GameSettings {
     }))
 }
 
+#[cfg(unix)]
 fn game(exe: &str, platform: &str) -> GameInfo {
     GameInfo {
         runner: "sideload".into(),
@@ -38,6 +41,7 @@ fn game(exe: &str, platform: &str) -> GameInfo {
     }
 }
 
+#[cfg(unix)]
 fn meta() -> LocalGameMeta {
     LocalGameMeta {
         app_name: "g1".into(),
@@ -277,6 +281,8 @@ fn a_linux_game_gets_a_private_home_of_its_own() {
     assert!(process.sandboxed);
 }
 
+// The sandbox is Linux's (`Feature::Sandbox`): Windows ignores the setting.
+#[cfg(unix)]
 #[test]
 fn emulators_are_not_run_in_the_sandbox() {
     let s = settings(json!({KEY: {"enabled": true}}));

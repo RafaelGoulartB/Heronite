@@ -446,9 +446,14 @@ fn open_emulator_runs_it_without_a_game() {
     assert_eq!(c.cwd.as_deref(), Some("/emu"));
 
     let flatpak = UserEmulator { launch_kind: "flatpak".into(), flatpak_id: Some("net.rpcs3.RPCS3".into()), ..Default::default() };
-    let c = open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &flatpak).unwrap();
-    assert_eq!(c.program, "flatpak");
-    assert_eq!(c.args, ["run", "net.rpcs3.RPCS3"]);
+    let c = open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &flatpak);
+    if cfg!(windows) {
+        assert_eq!(c.unwrap_err(), "Flatpak emulators do not run on Windows");
+    } else {
+        let c = c.unwrap();
+        assert_eq!(c.program, "flatpak");
+        assert_eq!(c.args, ["run", "net.rpcs3.RPCS3"]);
+    }
 
     let gone = UserEmulator { executable: "/emu/gone".into(), launch_kind: "native".into(), ..Default::default() };
     assert!(open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &gone).is_err());
@@ -515,8 +520,10 @@ fn requested_rom_wins_and_missing_roms_are_unavailable() {
     assert_eq!(plan, LaunchPlan::Unavailable("Emulator executable was not found".into()));
 }
 
+// Flatpak is Linux's.
+#[cfg(unix)]
 #[test]
-fn retroarch_core_flatpak_and_rom_working_dir() {
+fn retroarch_core_in_flatpak() {
     let mut p = profile("snes", "");
     p.core_path = Some("/cores/snes9x_libretro.so".into());
     let emu = UserEmulator {
@@ -540,7 +547,11 @@ fn retroarch_core_flatpak_and_rom_working_dir() {
     assert_eq!(process.command.args, ["run", "org.libretro.RetroArch", "-L", "/cores/snes9x_libretro.so", "/roms/zelda.sfc"]);
     assert_eq!(process.command.cwd, None);
     assert_eq!(process.stop.kill_patterns, ["retroarch", "RetroArch"]);
+}
 
+#[test]
+fn mame_runs_from_the_rom_folder() {
+    let game = sideload("g", "/usr/bin/mame", "linux");
     let mut mame_profile = profile("arcade", "");
     mame_profile.definition_profile_id = Some("arcade".into());
     let mame = UserEmulator {
@@ -562,6 +573,8 @@ fn retroarch_core_flatpak_and_rom_working_dir() {
     assert_eq!(process.command.cwd.as_deref(), Some("/roms/arcade"));
 }
 
+// Wine runs Windows emulators on Linux only.
+#[cfg(unix)]
 #[test]
 fn exe_emulators_run_through_wine() {
     let emu = UserEmulator {
@@ -716,4 +729,59 @@ fn a_windows_program_runs_as_it_is_on_windows() {
         &Default::default(),
     );
     assert!(matches!(missing, LaunchPlan::Unavailable(_)), "{missing:?}");
+}
+
+#[cfg(windows)]
+#[test]
+fn a_windows_emulator_runs_as_it_is_on_windows() {
+    let exe = r"C:\Emulators\PCSX2\pcsx2-qt.exe";
+    let mut p = profile("ps2", "-fullscreen -- {ImagePath}");
+    p.definition_profile_id = Some("ps2".into());
+    // A Windows program set up on Linux (`wine`) runs the same way.
+    for kind in ["native", "wine"] {
+        let emu = UserEmulator {
+            id: "e1".into(),
+            definition_id: "pcsx2".into(),
+            name: "PCSX2".into(),
+            executable: exe.into(),
+            launch_kind: kind.into(),
+            profiles: vec![p.clone()],
+            ..Default::default()
+        };
+        let rom = r"D:\ROMs\ps2\Okami (USA).iso";
+        let probe = FakeProbe::new(r"C:\Users\u").with_path(exe).with_path(rom);
+        let m = LocalGameMeta { emulator_profile_id: Some("ps2".into()), ..emu_meta(&[rom]) };
+        let opts = LaunchOptions { state_args: vec!["-statefile".into(), r"C:\s\1.p2s".into()], ..Default::default() };
+        let game = sideload("g", exe, "Windows");
+        let plan = build_plan_with_settings(&emu_ctx(emu.clone()), &probe, &game, Some(&m), &proton_settings(), &opts);
+        let LaunchPlan::Emulator { process, emulator, rom: picked } = plan else { panic!("{plan:?}") };
+        assert_eq!(emulator, "PCSX2");
+        assert_eq!(picked.as_deref(), Some(rom));
+        assert_eq!(process.command.program, exe);
+        assert_eq!(process.command.args, ["-statefile", r"C:\s\1.p2s", "-fullscreen", "--", rom]);
+        assert_eq!(process.command.cwd.as_deref(), Some(r"C:\Emulators\PCSX2"));
+        assert!(process.command.env.is_empty() && !process.sandboxed);
+        assert_eq!(process.stop.kill_patterns, ["pcsx2"]);
+
+        let c = open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &emu).unwrap();
+        assert_eq!((c.program.as_str(), c.cwd.as_deref()), (exe, Some(r"C:\Emulators\PCSX2")));
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn flatpak_emulators_do_not_run_on_windows() {
+    let emu = UserEmulator {
+        id: "e1".into(),
+        definition_id: "retroarch".into(),
+        launch_kind: "flatpak".into(),
+        flatpak_id: Some("org.libretro.RetroArch".into()),
+        profiles: vec![profile("custom", "{ImagePath}")],
+        ..Default::default()
+    };
+    let rom = r"D:\ROMs\a.sfc";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(rom);
+    let game = sideload("g", "flatpak", "linux");
+    let plan = build_plan_with_settings(&emu_ctx(emu), &probe, &game, Some(&emu_meta(&[rom])), &settings(json!({})), &Default::default());
+    assert_eq!(plan, LaunchPlan::Unavailable("Flatpak emulators do not run on Windows".into()));
 }

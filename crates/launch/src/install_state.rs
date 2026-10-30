@@ -60,7 +60,8 @@ pub fn next_install_state(
         let executable = emulator_executable(ctx, meta).unwrap_or_else(local_exe);
         let roms_ok = emulator_rom_installed(meta, probe);
         let exe_ok = if meta.emulator_id.as_deref().map(|s| !s.is_empty()).unwrap_or(false) && executable == "flatpak" {
-            true
+            // Flatpak is Linux's.
+            !cfg!(windows)
         } else {
             !executable.is_empty() && probe.exists(&executable)
         };
@@ -333,6 +334,21 @@ mod tests {
         let s = next_install_state(&ctx(), &probe, &game(""), &meta, &HashSet::new(), None);
         assert!(!s.is_installed);
         assert_eq!(s.executable, "/emu/pcsx2", "emulator itself is still present");
+    }
+
+    #[test]
+    fn flatpak_emulator_games_are_installed_on_linux_only() {
+        let mut c = ctx();
+        c.emulators.emulators[0].launch_kind = "flatpak".into();
+        let probe = FakeProbe::new("/h").with_path("/roms/a.iso");
+        let meta = LocalGameMeta {
+            launch_kind: "emulator".into(),
+            emulator_id: Some("e1".into()),
+            roms: Some(vec![LocalGameRom { name: None, path: "/roms/a.iso".into(), extra: Default::default() }]),
+            ..Default::default()
+        };
+        let s = next_install_state(&c, &probe, &game(""), &meta, &HashSet::new(), None);
+        assert_eq!(s.is_installed, !cfg!(windows));
     }
 
     #[test]
