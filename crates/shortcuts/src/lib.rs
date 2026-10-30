@@ -1,7 +1,10 @@
 //! Shortcuts for games, mirroring Heroic's `backend/shortcuts/**`:
 //!
-//! * [`desktop`]: `.desktop` files on the Desktop folder and in the
-//!   application menu (`~/.local/share/applications`).
+//! * [`menu`]: a game's shortcuts on the Desktop and in the menu of
+//!   programs, what the app calls on every system. It writes
+//!   [`desktop`]'s `.desktop` files on Linux (Desktop and application menu,
+//!   `~/.local/share/applications`) and `lnk`'s `.lnk` files on Windows
+//!   (Desktop and Start menu; [`ico`] makes their icons).
 //! * [`vdf`] + [`steam`]: the binary `shortcuts.vdf` of every Steam user
 //!   ("Add to Steam" as a non-Steam game) and its `grid/` artwork.
 //! * [`steam_client`] + [`steam_running`]: the same while Steam runs, through
@@ -12,6 +15,10 @@
 //! `HERONITE_*_DIR` overrides of the app) never touch the real ones.
 
 pub mod desktop;
+pub mod ico;
+#[cfg(windows)]
+pub mod lnk;
+pub mod menu;
 pub mod steam;
 pub mod steam_client;
 pub mod steam_running;
@@ -30,7 +37,7 @@ pub struct GameId {
 
 /// Command line pieces of a launch request for this app.
 ///
-/// `--launch <runner> <appName>` is what `.desktop` files use; Steam gets the
+/// `--launch <runner> <appName>` is what `.desktop` and `.lnk` files use; Steam gets the
 /// Heroic-compatible protocol URL (`heronite://launch?appName=..&runner=..`).
 pub fn launch_url(scheme: &str, runner: &str, app_name: &str) -> String {
     format!("{scheme}://launch?appName={app_name}&runner={runner}")
