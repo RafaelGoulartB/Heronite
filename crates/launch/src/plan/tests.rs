@@ -733,6 +733,30 @@ fn a_windows_program_runs_as_it_is_on_windows() {
 
 #[cfg(windows)]
 #[test]
+fn a_windows_game_holds_the_computer_awake_unless_turned_off() {
+    let exe = r"C:\Games\Hades\Hades.exe";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(exe);
+    let plan = |s: Value| {
+        let plan = build_plan_with_settings(
+            &ctx(json!({})),
+            &probe,
+            &sideload("g", exe, "Windows"),
+            Some(&meta("executable")),
+            &settings(s),
+            &Default::default(),
+        );
+        let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+        p
+    };
+    // On unless turned off, with no tool to find: the runtime holds it itself.
+    let unset = plan(json!({}));
+    assert!(unset.hold_awake && unset.keep_awake.is_none() && unset.notes.is_empty());
+    assert!(plan(json!({"heroniteKeepAwake": true})).hold_awake);
+    assert!(!plan(json!({"heroniteKeepAwake": false})).hold_awake);
+}
+
+#[cfg(windows)]
+#[test]
 fn a_windows_emulator_runs_as_it_is_on_windows() {
     let exe = r"C:\Emulators\PCSX2\pcsx2-qt.exe";
     let mut p = profile("ps2", "-fullscreen -- {ImagePath}");
@@ -762,6 +786,7 @@ fn a_windows_emulator_runs_as_it_is_on_windows() {
         assert_eq!(process.command.cwd.as_deref(), Some(r"C:\Emulators\PCSX2"));
         assert!(process.command.env.is_empty() && !process.sandboxed);
         assert_eq!(process.stop.kill_patterns, ["pcsx2"]);
+        assert!(process.hold_awake, "an emulator keeps the computer awake too");
 
         let c = open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &emu).unwrap();
         assert_eq!((c.program.as_str(), c.cwd.as_deref()), (exe, Some(r"C:\Emulators\PCSX2")));

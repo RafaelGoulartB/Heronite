@@ -73,6 +73,9 @@ pub struct ProcessPlan {
     /// Holds the "do not suspend" lock while the game runs (see
     /// [`crate::keep_awake`]).
     pub keep_awake: Option<Command>,
+    /// Windows' way of the same: the app itself asks the system to stay awake
+    /// while the game runs (see [`crate::keep_awake::Hold`]).
+    pub hold_awake: bool,
     /// legendary starts the game through umu (a Wine plan says it with
     /// [`WineRuntime::Umu`]): its `GAMEID` picks the protonfixes.
     pub through_umu: bool,

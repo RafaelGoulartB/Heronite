@@ -12,6 +12,7 @@ use super::session::{fail, finish};
 use super::spawner::ProcessHandle;
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
+use crate::keep_awake::Hold;
 use crate::log_writer::{self, GameLog};
 use crate::plan::{Command, ProcessPlan};
 use crate::prepare::{Flow, Notice, Prep};
@@ -204,6 +205,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             None
         }
     });
+    let held = plan.hold_awake.then(|| hold_awake(log, &req.title)).flatten();
     let mut companions = Companions::new(&plan.companions, Instant::now(), plan.sandboxed.then(|| handle.pid()));
     let prefix = plan.prep.wine.as_ref().map(|s| s.wine_prefix.clone());
 
@@ -283,6 +285,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     if let Some(h) = awake.as_mut() {
         h.terminate();
     }
+    drop(held);
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {
             run_to_completion(shared, control, cmd, Some(log));
@@ -297,6 +300,12 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         prep.after_exit(&req.app_name, &plan.prep);
     }
     finish(shared, log, req, control, elapsed, exit);
+}
+
+/// Holds the computer awake for `title`'s game until the guard is dropped
+/// (Windows); a refusal goes to the game's log.
+pub(super) fn hold_awake(log: &GameLog, title: &str) -> Option<Hold> {
+    Hold::new(title).inspect_err(|e| log.warning(&format!("Could not keep the computer awake: {e}"))).ok()
 }
 
 /// `handle` followed until its sandbox ends, when `cmd` starts one.

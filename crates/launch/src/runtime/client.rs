@@ -17,11 +17,12 @@ use std::time::{Duration, Instant};
 use heronite_i18n::tr;
 
 use super::companions::Companions;
-use super::process::{finish_aborted, run_script};
+use super::process::{finish_aborted, hold_awake, run_script};
 use super::session::{fail, finish};
 use super::spawner::ProcessHandle;
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
+use crate::keep_awake::Hold;
 use crate::log_writer::{self, GameLog};
 use crate::plan::{ClientHandoff, Handoff, ProcessPlan};
 use crate::prepare::{Notice, Prep};
@@ -99,6 +100,7 @@ impl Watch<'_> {
 struct Play<'a> {
     companions: Companions<'a>,
     awake: Option<Box<dyn ProcessHandle>>,
+    held: Option<Hold>,
 }
 
 impl Session<'_> {
@@ -216,6 +218,7 @@ impl Session<'_> {
         if let Some(h) = play.awake.as_mut() {
             h.terminate();
         }
+        play.held = None;
         // The session ends when the game did, not when its grace ran out;
         // saving to the cloud is not playtime either.
         let gone = gone_since.filter(|_| !aborted).map_or(Duration::ZERO, |t| t.elapsed());
@@ -249,7 +252,8 @@ impl Session<'_> {
                 None
             }
         });
-        Play { companions: Companions::new(&plan.companions, Instant::now(), None), awake }
+        let held = plan.hold_awake.then(|| hold_awake(log, &self.req.title)).flatten();
+        Play { companions: Companions::new(&plan.companions, Instant::now(), None), awake, held }
     }
 
     /// Why the game cannot be expected any more, if so. Before the game

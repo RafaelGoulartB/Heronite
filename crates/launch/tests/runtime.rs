@@ -878,6 +878,27 @@ fn the_keep_awake_lock_lives_as_long_as_the_game() {
     assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "released with the game");
 }
 
+#[cfg(windows)]
+#[test]
+fn the_computer_is_held_awake_as_long_as_the_game_runs() {
+    let held = || heronite_platform::power::requested().is_some_and(|r| r.system && r.display);
+    // Another program may hold it too: then the end of the hold cannot be seen.
+    let others = held();
+    let r = rig();
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.hold_awake = true;
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    wait_until("the hold", held);
+    assert_eq!(r.spawner.spawned().len(), 1, "no lock command: the app holds it itself");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    if !others {
+        wait_until("the hold to end", || !held());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Programs alongside the game
 // ---------------------------------------------------------------------------

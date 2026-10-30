@@ -62,9 +62,13 @@ pub fn build_plan_with_settings(
         user_id: &settings.umu_id,
     };
     crate::umu_ids::attach(&mut plan, ctx, keys);
-    // logind's lock, `sh` scripts and programs started alongside are Linux's.
-    if heronite_platform::supported(Feature::LaunchExtras) {
+    // logind's lock, `sh` scripts and programs started alongside are Linux's;
+    // Windows only keeps the computer awake (its own call, no tool needed).
+    let extras = heronite_platform::supported(Feature::LaunchExtras);
+    if extras || cfg!(windows) {
         crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+    }
+    if extras {
         crate::scripts::attach(&mut plan, probe, game, settings);
         crate::companions::attach(&mut plan, ctx, probe, game, settings);
     }

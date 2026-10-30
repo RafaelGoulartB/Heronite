@@ -241,7 +241,8 @@ mod tests {
         let probe = r.probe().with_bin("systemd-inhibit", "/usr/bin/systemd-inhibit").with_path("/t/trainer.exe");
         let LaunchPlan::Wine { process, .. } = plan_of(&r, &probe, &own) else { panic!() };
         assert_eq!(process.before_script.as_ref().unwrap().program, "/s/before.sh");
-        assert!(process.keep_awake.is_some());
+        // Linux holds logind's lock with a command, Windows asks the system itself.
+        assert!(if cfg!(windows) { process.hold_awake } else { process.keep_awake.is_some() });
         assert_eq!(process.companions.len(), 1);
         let trainer = &process.companions[0].command;
         assert_eq!(trainer.env["WINEPREFIX"], "/pfx/bnet", "beside the game, in the client's prefix");
