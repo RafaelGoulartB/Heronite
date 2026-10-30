@@ -74,6 +74,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
   - ✅ Single instance: loopback port + key in the user's temp folder (`system/single_instance/transport.rs`)
   - ✅ Signals: none on Windows (`system/signals.rs`)
   - ✅ Tray: none on Windows yet (`system/tray/unsupported.rs`), closing the window quits
+  - ✅ Window controls: minimize, maximize / restore and close in the app's style at the right of the top bars, and the empty part of a bar moves the window (`ui/window_controls.rs`; window control areas, so Windows does the work)
 - ✅ Data, settings and cache folders in `%APPDATA%` / `%LOCALAPPDATA%`
 - ✅ Steam: find the client (registry `SteamPath`, `steam.exe`), its libraries (Windows paths in `libraryfolders.vdf`) and the installed games
 - ✅ Steam: installed games come into the Collection by themselves (`heronite_launch::install_state`, at start and on refresh)
