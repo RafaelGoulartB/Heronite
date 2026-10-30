@@ -12,6 +12,8 @@
 //! - [`features`]: which parts of the app this system has, for the UI to
 //!   show or hide.
 //! - `registry` (Windows): values of the registry.
+//! - `tray` (Windows): an icon in the taskbar's notification area, with a
+//!   menu.
 //!
 //! A module of code that only makes sense on one system (`/proc`, evdev,
 //! Wine) stays in its crate behind `cfg(target_os = "linux")`; what the rest
@@ -25,5 +27,7 @@ pub mod shell;
 
 #[cfg(windows)]
 pub mod registry;
+#[cfg(windows)]
+pub mod tray;
 
 pub use features::{supported, Feature};
