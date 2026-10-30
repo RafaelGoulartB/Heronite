@@ -37,7 +37,10 @@ pub fn init(
     // Points the entry at this executable (a new AppImage may live elsewhere),
     // or removes one left behind while the setting is off.
     let (autostart_paths, autostart_on) = (data_paths.clone(), settings.start_with_system);
-    std::thread::spawn(move || crate::system::autostart::sync(&autostart_paths, autostart_on));
+    std::thread::spawn(move || {
+        crate::system::autostart::sync(&autostart_paths, autostart_on);
+        crate::system::protocol::sync(&autostart_paths);
+    });
     let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);
     let adopting = runtime.clone();

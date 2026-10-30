@@ -8,6 +8,7 @@ mod hub;
 pub mod notify;
 pub mod own_exe;
 pub mod power;
+pub mod protocol;
 pub mod settings;
 pub mod shortcuts;
 pub mod signals;
