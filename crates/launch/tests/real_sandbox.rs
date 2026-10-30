@@ -8,6 +8,9 @@
 //!   HERONITE_REAL_PROTON=~/.local/share/Steam/compatibilitytools.d/UMU-Proton-10.0-4 \
 //!   cargo test -p heronite-launch --test real_sandbox -- --ignored --nocapture --test-threads=1
 
+// bubblewrap and real Proton: Linux only.
+#![cfg(unix)]
+
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

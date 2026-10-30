@@ -1,11 +1,14 @@
 use super::*;
-use crate::plan::{build_plan_with_settings, LaunchOptions, LaunchPlan, WineRuntime};
+#[cfg(unix)]
+use crate::plan::WineRuntime;
+use crate::plan::{build_plan_with_settings, LaunchOptions, LaunchPlan};
 use crate::probe::FakeProbe;
 use crate::wine_tools::{build_tool_command, kill_prefix_command, wait_prefix_command, WineTool};
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta};
 use serde_json::json;
 
 const UMU: &str = "/hr/tools/runtimes/umu/umu_run.py";
+#[cfg(unix)]
 const PRIVATE: &str = "/hr/sandbox/prefix-pfx-";
 
 fn ctx() -> PlanContext {
@@ -59,6 +62,7 @@ fn probe() -> FakeProbe {
         .with_bwrap((0, 11, 0))
 }
 
+#[cfg(unix)]
 fn plan(probe: &FakeProbe, s: &GameSettings, g: &GameInfo) -> LaunchPlan {
     build_plan_with_settings(&ctx(), probe, g, Some(&meta()), s, &LaunchOptions::default())
 }
@@ -79,6 +83,8 @@ fn the_setting_is_read_and_written() {
     assert!(Exception::ALL.iter().all(|e| all.allows(*e)));
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn private_homes_are_per_prefix_or_per_game() {
     let paths = DataPaths::at("/hr");
@@ -99,6 +105,8 @@ fn shared_folders_are_hidden_unless_allowed() {
     assert_eq!(windows_settings(json!({})).shared_folders, ["/data"]);
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn a_windows_game_runs_proton_directly_in_the_sandbox() {
     let s = windows_settings(json!({"enabled": true}));
@@ -127,6 +135,8 @@ fn a_windows_game_runs_proton_directly_in_the_sandbox() {
     assert!(!process.pre_commands.is_empty() && process.pre_commands.iter().all(is_wrapped));
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn exceptions_reach_the_sandbox() {
     let s = windows_settings(json!({"enabled": true, "network": true, "gameFolder": true, "sharedFolders": true}));
@@ -137,6 +147,8 @@ fn exceptions_reach_the_sandbox() {
     assert!(script.contains("--bind-try /data /data"));
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn without_bubblewrap_nothing_runs() {
     let mut no_bwrap = probe();
@@ -155,6 +167,8 @@ fn without_bubblewrap_nothing_runs() {
     assert!(plan(&no_bwrap, &off, &game("/home/u/Games/win/game.exe", "Windows")).unavailable_reason().is_none());
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn umu_never_runs_in_the_sandbox() {
     // Its container would hold a copy of its Steam runtime in memory.
@@ -175,6 +189,7 @@ fn umu_never_runs_in_the_sandbox() {
 /// Every command of `plan` (and its companions') runs in the sandbox: its
 /// command has the prelude (after the wrappers that stay outside), and what
 /// runs before it is wrapped.
+#[cfg(unix)]
 fn all_inside(plan: &LaunchPlan) {
     let process = plan.process().unwrap_or_else(|| panic!("{plan:?}"));
     assert!(process.sandboxed, "{plan:?}");
@@ -190,6 +205,8 @@ fn all_inside(plan: &LaunchPlan) {
     assert!(process.stop.commands.is_empty() && process.wait_after_exit.is_none());
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn every_way_to_start_a_game_or_a_tool_runs_inside() {
     let s = windows_settings(json!({"enabled": true}));
@@ -221,6 +238,8 @@ fn a_file_in_the_home_folder_is_shown_alone() {
     assert!(cmd.args[1].contains("--ro-bind-try /home/u/setup.msi /home/u/setup.msi"), "{cmd:?}");
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn a_game_that_cannot_be_put_in_the_sandbox_does_not_start() {
     let linux = settings(json!({KEY: {"enabled": true}}));
@@ -234,6 +253,8 @@ fn a_game_that_cannot_be_put_in_the_sandbox_does_not_start() {
     assert!(matches!(plan, LaunchPlan::SteamUri { .. }), "{plan:?}");
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn a_game_that_would_show_the_whole_home_is_refused() {
     let s = windows_settings(json!({"enabled": true}));
@@ -242,6 +263,8 @@ fn a_game_that_would_show_the_whole_home_is_refused() {
     assert!(plan.unavailable_reason().is_some_and(|r| r.contains("whole home folder")), "{plan:?}");
 }
 
+// bubblewrap: Linux only.
+#[cfg(unix)]
 #[test]
 fn a_linux_game_gets_a_private_home_of_its_own() {
     let s = settings(json!({KEY: {"enabled": true}}));

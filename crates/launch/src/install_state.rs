@@ -374,6 +374,9 @@ mod tests {
         assert_eq!(meta.extra[heronite_data::steam_owned::AUTO_KEY], true);
     }
 
+    // TODO(windows): not isolated there: `library_roots` adds the Steam folder of
+    // the registry (this machine's real Steam) and not the test's `home`.
+    #[cfg(unix)]
     #[test]
     fn refresh_follows_steam_uninstalls_and_installs() {
         let dir = tempfile::tempdir().unwrap();

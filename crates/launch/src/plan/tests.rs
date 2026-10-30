@@ -45,6 +45,8 @@ fn proton_settings() -> GameSettings {
     }))
 }
 
+// Linux games run only on Linux.
+#[cfg(unix)]
 #[test]
 fn linux_script_runs_native_with_wrappers_and_env() {
     let probe = FakeProbe::new("/home/u").with_file("/g/run.sh", b"#!/bin/sh\n").with_bin("gamemoderun", "/usr/bin/gamemoderun");
@@ -76,6 +78,8 @@ fn linux_script_runs_native_with_wrappers_and_env() {
     assert_eq!(p.make_executable.as_deref(), Some("/g/run.sh"));
 }
 
+// Linux games run only on Linux.
+#[cfg(unix)]
 #[test]
 fn native_missing_executable_and_missing_tool_are_unavailable() {
     let game = sideload("g", "/g/run.sh", "linux");
@@ -100,6 +104,8 @@ fn native_missing_executable_and_missing_tool_are_unavailable() {
     assert_eq!(plan, LaunchPlan::Unavailable("No executable is configured for this game".into()));
 }
 
+// Linux games run only on Linux.
+#[cfg(unix)]
 #[test]
 fn a_linux_game_started_by_a_command_runs_it_in_its_folder() {
     let mut game = sideload("g", "", "linux");
@@ -140,6 +146,8 @@ fn a_linux_game_started_by_a_command_runs_it_in_its_folder() {
     assert!(p.command.program.ends_with("other"));
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn windows_exe_uses_umu_with_proton_path() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -165,6 +173,8 @@ fn windows_exe_uses_umu_with_proton_path() {
     assert_eq!(c.env["PROTON_PREFER_SDL"], "1");
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn heronite_switches_reach_a_umu_launch() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -199,6 +209,8 @@ fn heronite_switches_reach_a_umu_launch() {
     assert!(process.keep_awake.is_some());
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn missing_prefix_files_trigger_prefix_creation() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -212,6 +224,8 @@ fn missing_prefix_files_trigger_prefix_creation() {
     assert_eq!(process.pre_commands[0].env["PROTON_VERB"], "run");
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn disabled_umu_runs_proton_directly() {
     let probe = FakeProbe::new("/home/u").with_path("/p/GE/proton").with_path("/games/win/game.exe");
@@ -260,6 +274,8 @@ fn disabled_umu_runs_proton_directly() {
     assert!(!process.prep.umu);
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn plain_wine_waits_for_wineserver() {
     let probe = FakeProbe::new("/home/u").with_path("/w/bin/wine").with_path("/w/bin/wineserver").with_path("/games/win/game.exe");
@@ -279,6 +295,8 @@ fn plain_wine_waits_for_wineserver() {
     assert_eq!(process.pre_commands[0].args, ["wineboot", "--init"]);
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn invalid_game_wine_falls_back_to_global_default() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -295,6 +313,8 @@ fn invalid_game_wine_falls_back_to_global_default() {
     assert!(none.unavailable_reason().unwrap().contains("not valid"));
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn run_as_windows_sends_an_elf_through_wine() {
     let probe = proton_probe().with_file("/games/win/game.exe", b"\x7fELF");
@@ -312,7 +332,13 @@ fn run_as_windows_sends_an_elf_through_wine() {
 fn steam_games_become_uris_when_steam_exists() {
     let m = LocalGameMeta { steam_app_id: Some("400".into()), ..meta("steam-uri") };
     let game = sideload("steam_400", "/usr/bin/steam", "linux");
-    let with_steam = FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam");
+    // Linux finds `steam` on the PATH, Windows `steam.exe` in Steam's folder.
+    let with_steam = if cfg!(windows) {
+        let exe = crate::steam::platform_roots(std::path::Path::new("/h"))[0].join("steam.exe");
+        FakeProbe::new("/h").with_path(&exe.to_string_lossy())
+    } else {
+        FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")
+    };
     assert_eq!(
         build_plan_with_settings(&ctx(json!({})), &with_steam, &game, Some(&m), &settings(json!({})), &Default::default()),
         LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into() }

@@ -124,6 +124,8 @@ mod tests {
         format!("#!/bin/sh\nexit {}\n", if ok { 0 } else { 1 }).into_bytes()
     }
 
+    // The downloaded tool is a Linux program.
+    #[cfg(unix)]
     #[test]
     fn downloads_into_the_data_folder_when_none_is_found() {
         for tool in [GOGDL, NILE] {

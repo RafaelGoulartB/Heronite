@@ -385,6 +385,8 @@ name = "Control"
         assert!(!found_by_layer("/data/steamapps/common/Lossless Scaling/lsfg-vk.dll", "/h"));
     }
 
+    // The Vulkan layer of Lossless Scaling: Linux only.
+    #[cfg(unix)]
     #[test]
     fn detect_finds_the_dll_of_the_layer() {
         let dir = tempfile::tempdir().unwrap();

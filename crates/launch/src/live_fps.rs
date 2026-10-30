@@ -153,6 +153,8 @@ mod tests {
         FakeProbe::new(&dir.join("home").to_string_lossy()).with_env("XDG_RUNTIME_DIR", &dir.join("run").to_string_lossy())
     }
 
+    // MangoHud: Linux only.
+    #[cfg(unix)]
     #[test]
     fn mangohud_limit_moves_into_a_file_with_the_users_config() {
         let tmp = tempfile::tempdir().unwrap();

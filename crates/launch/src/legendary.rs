@@ -325,6 +325,8 @@ mod tests {
         assert!(fl.winetricks.is_empty() && fl.run_in_prefix.is_empty());
     }
 
+    // Linux paths; Epic is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn proton_through_umu_goes_in_the_wrapper() {
         let s = settings(json!({"useGameMode": true, "targetExe": "Binaries/Alt.exe"}));
@@ -517,6 +519,8 @@ mod tests {
             .contains("legendary binary"));
     }
 
+    // Linux paths; Epic is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn legendary_binary_lookup_order() {
         let c = ctx();

@@ -458,13 +458,15 @@ mod tests {
 
     #[test]
     fn winetricks_is_refreshed_weekly() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heroic"));
         let net = FakeNet::online().with_file(WINETRICKS_URL, b"#!/bin/sh\n".to_vec());
         assert!(download_winetricks(&paths, &net, &|| false).unwrap());
-        let file = paths.tools_dir().join("winetricks");
-        assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o755);
+        #[cfg(unix)]
+        {
+            let file = paths.tools_dir().join("winetricks");
+            assert_eq!(heronite_platform::fs::mode(&fs::metadata(&file).unwrap()).unwrap() & 0o777, 0o755);
+        }
         assert!(!download_winetricks(&paths, &net, &|| false).unwrap());
         assert!(download_winetricks(&paths, &FakeNet::offline(), &|| false).is_ok());
     }

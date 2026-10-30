@@ -5,6 +5,9 @@
 //!   HERONITE_REAL_PROTON=~/.local/share/heronite/tools/proton/GE-Proton-latest \
 //!   cargo test -p heronite-launch --test real_launch_speed -- --ignored --nocapture
 
+// Real Proton: Linux only.
+#![cfg(unix)]
+
 use std::process::Stdio;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;

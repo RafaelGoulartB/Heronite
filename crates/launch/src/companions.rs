@@ -104,8 +104,11 @@ pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game:
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::plan::{build_plan_with_settings, LaunchOptions};
+    #[cfg(unix)]
     use crate::probe::FakeProbe;
+    #[cfg(unix)]
     use heronite_data::DataPaths;
 
     #[test]
@@ -124,6 +127,7 @@ mod tests {
         assert!(parse(None).is_empty() && parse(Some(&json!("nope"))).is_empty());
     }
 
+    #[cfg(unix)]
     fn game(platform: &str, exe: &str) -> GameInfo {
         serde_json::from_value(json!({
             "runner": "sideload", "app_name": "g1", "title": "Game One", "is_installed": true,
@@ -132,6 +136,7 @@ mod tests {
         .unwrap()
     }
 
+    #[cfg(unix)]
     fn plan_for(settings: serde_json::Value, game: &GameInfo, probe: &FakeProbe) -> LaunchPlan {
         let dir = tempfile::tempdir().unwrap();
         let ctx = PlanContext::load(&DataPaths::at(dir.path()));
@@ -139,6 +144,8 @@ mod tests {
         build_plan_with_settings(&ctx, probe, game, None, &s, &LaunchOptions::default())
     }
 
+    // Programs alongside a game go through Wine and Proton: Linux only.
+    #[cfg(unix)]
     #[test]
     fn a_trainer_joins_the_container_of_a_game_run_through_umu() {
         let probe = FakeProbe::new("/home/u")
@@ -170,6 +177,8 @@ mod tests {
         assert!(!tool.command.env.contains_key("SCRIPT_TYPE"));
     }
 
+    // Programs alongside a game go through Wine and Proton: Linux only.
+    #[cfg(unix)]
     #[test]
     fn plain_proton_uses_runinprefix_and_a_native_game_runs_windows_tools_on_their_own() {
         let probe = FakeProbe::new("/home/u")
@@ -191,6 +200,8 @@ mod tests {
         assert_eq!(process.companions[0].command.args, ["run", "/t/trainer.exe"], "no game prefix to join");
     }
 
+    // Programs alongside a game go through Wine and Proton: Linux only.
+    #[cfg(unix)]
     #[test]
     fn without_programs_nothing_changes() {
         let probe = FakeProbe::new("/home/u").with_file("/games/one/game", b"\x7fELF");

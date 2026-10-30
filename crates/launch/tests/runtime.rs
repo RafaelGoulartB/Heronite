@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+#[cfg(unix)]
 use std::io::Write;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -18,9 +19,11 @@ use heronite_launch::probe::SystemProbe;
 use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
 use heronite_launch::runtime::{FakeSpawner, PrepServices, ProcessHandle, Spawner};
 use heronite_launch::steam::SteamLocator;
+#[cfg(unix)]
+use heronite_launch::StopOptions;
 use heronite_launch::{
-    Command, HandoffConfig, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopOptions,
-    StopSpec, SystemSpawner,
+    Command, HandoffConfig, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopSpec,
+    SystemSpawner,
 };
 
 fn fast_cfg() -> LauncherConfig {
@@ -251,6 +254,10 @@ fn write_steam_log(r: &Rig, text: &str) -> std::path::PathBuf {
     log
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     let r = rig();
@@ -274,6 +281,10 @@ fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     assert!(ts["steam_400"]["firstPlayed"].is_string());
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
     let r = rig();
@@ -303,6 +314,7 @@ fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
 /// Plays `steam_400` to its end. `steam_open_before`: Steam's pid file names
 /// a live process before the launch (else Steam "starts" with the game).
 /// Returns the URIs opened.
+#[cfg(unix)]
 fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     let r = rig();
     let log = write_steam_log(&r, "");
@@ -329,6 +341,10 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     r.spawner.uris()
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
     assert_eq!(play_steam_game(true, false), ["u", "steam://exit"]);
@@ -401,6 +417,7 @@ fn real_process_is_not_done_while_a_child_holds_its_output() {
 
 /// A script (not executable yet, as a picked file often is) that appends its
 /// name and `HEROIC_GAME_SCRIPT_TYPE` to `out`.
+#[cfg(unix)]
 fn write_script(dir: &std::path::Path, name: &str, out: &std::path::Path) -> String {
     let path = dir.join(name);
     fs::write(&path, format!("#!/bin/sh\necho \"{name} $HEROIC_GAME_SCRIPT_TYPE\" >> '{}'\n", out.display())).unwrap();
@@ -412,6 +429,8 @@ fn script(program: &str, kind: &str) -> Command {
     Command { program: program.into(), env, ..Default::default() }
 }
 
+// Real `sh` processes: Linux only.
+#[cfg(unix)]
 #[test]
 fn real_scripts_run_before_and_after_the_game() {
     let (d, paths, launcher, rx) = real_rig();
@@ -444,6 +463,8 @@ fn real_a_missing_script_is_reported_and_the_game_still_runs() {
     assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
 }
 
+// Real `sh` processes: Linux only.
+#[cfg(unix)]
 #[test]
 fn real_the_after_script_runs_for_a_stopped_game() {
     let (d, _paths, launcher, rx) = real_rig();
@@ -458,6 +479,8 @@ fn real_the_after_script_runs_for_a_stopped_game() {
     assert_eq!(fs::read_to_string(&out).unwrap(), "after.sh after\n");
 }
 
+// Real `sh` processes: Linux only.
+#[cfg(unix)]
 #[test]
 fn real_stop_kills_the_whole_tree() {
     let (_d, _paths, launcher, rx) = real_rig();
@@ -478,6 +501,8 @@ fn real_stop_kills_the_whole_tree() {
     wait_until("both dead", || !procs.is_alive(pid) && !procs.is_alive(grandchild));
 }
 
+// SIGTERM: a Windows process is ended at once.
+#[cfg(unix)]
 #[test]
 fn real_sigterm_ignoring_process_gets_sigkill_after_the_grace_period() {
     let (_d, _paths, launcher, rx) = real_rig();
@@ -889,6 +914,8 @@ fn a_program_alongside_starts_after_its_delay_and_closes_with_the_game() {
     assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "closed with the game");
 }
 
+// Wine and Proton: Linux only.
+#[cfg(unix)]
 #[test]
 fn with_plain_proton_the_session_follows_the_game_in_its_prefix() {
     let r = rig();
@@ -930,6 +957,8 @@ fn clearing_a_game_leaves_its_programs_running_and_missing_ones_are_reported() {
     assert!(!r.spawner.handle(1).unwrap().lock().unwrap().terminated);
 }
 
+// Wine and Proton: Linux only.
+#[cfg(unix)]
 #[test]
 fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for_them() {
     let r = rig();
@@ -1056,6 +1085,10 @@ fn an_adopted_game_whose_leader_left_is_followed_through_its_group() {
     assert!(stopped);
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     let r = rig();
@@ -1078,6 +1111,10 @@ fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
     let r = rig();

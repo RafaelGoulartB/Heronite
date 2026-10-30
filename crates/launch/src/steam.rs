@@ -438,6 +438,7 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    #[cfg(unix)]
     fn write(p: &Path, text: &str) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, text).unwrap();
@@ -476,6 +477,8 @@ mod tests {
         assert!(!is_non_game_steam_app("Frostpunk", "323190"));
     }
 
+    // Linux Steam folders (native, Flatpak, Snap).
+    #[cfg(unix)]
     #[test]
     fn flatpak_steam_is_found_when_the_native_one_is_missing() {
         use crate::probe::FakeProbe;
@@ -493,6 +496,8 @@ mod tests {
         assert_eq!(SteamLocator::detect(&global, &FakeProbe::new("/h").with_path(snap)).steam_path, PathBuf::from(snap));
     }
 
+    // Linux Steam folders (native, Flatpak, Snap).
+    #[cfg(unix)]
     #[test]
     fn the_flatpak_steam_launcher_counts_as_a_steam_binary() {
         use crate::probe::FakeProbe;
@@ -504,6 +509,8 @@ mod tests {
         assert_eq!(find_steam_binary(&FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")).as_deref(), Some("/usr/bin/steam"));
     }
 
+    // Linux Steam folders (native, Flatpak, Snap).
+    #[cfg(unix)]
     #[test]
     fn flatpak_libraries_are_scanned() {
         let dir = tempfile::tempdir().unwrap();
@@ -514,6 +521,9 @@ mod tests {
         assert!(installed_app_ids(&loc).contains("400"));
     }
 
+    // TODO(windows): not isolated there: `library_roots` adds the Steam folder of
+    // the registry (this machine's real Steam) and not the test's `home`.
+    #[cfg(unix)]
     #[test]
     fn install_dir_follows_the_manifest_of_any_library() {
         let dir = tempfile::tempdir().unwrap();
@@ -538,6 +548,9 @@ mod tests {
         assert_eq!(loc.install_dir("../x"), None);
     }
 
+    // TODO(windows): not isolated there: `library_roots` adds the Steam folder of
+    // the registry (this machine's real Steam) and not the test's `home`.
+    #[cfg(unix)]
     #[test]
     fn size_on_disk_comes_from_the_manifest() {
         let dir = tempfile::tempdir().unwrap();
@@ -550,6 +563,9 @@ mod tests {
         assert_eq!(loc.size_on_disk("9"), None);
     }
 
+    // TODO(windows): not isolated there: `library_roots` adds the Steam folder of
+    // the registry (this machine's real Steam) and not the test's `home`.
+    #[cfg(unix)]
     #[test]
     fn scans_libraries_from_libraryfolders() {
         let dir = tempfile::tempdir().unwrap();
@@ -613,7 +629,12 @@ mod tests {
         use crate::probe::FakeProbe;
         use crate::runtime::FakeSpawner;
         let spawner = FakeSpawner::new();
-        let with_steam = FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam");
+        // Linux finds `steam` on the PATH, Windows `steam.exe` in Steam's folder.
+        let with_steam = if cfg!(windows) {
+            FakeProbe::new("/h").with_path(&platform_roots(Path::new("/h"))[0].join("steam.exe").to_string_lossy())
+        } else {
+            FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")
+        };
         open_steam_client_uri(&spawner, &with_steam, SteamAction::Install, "400").unwrap();
         open_steam_client_uri(&spawner, &with_steam, SteamAction::Uninstall, "400").unwrap();
         assert_eq!(spawner.uris(), ["steam://install/400", "steam://uninstall/400"]);
@@ -630,6 +651,8 @@ mod tests {
         assert_eq!(steam_uri(SteamAction::Uninstall.as_str(), "7"), "steam://uninstall/7");
     }
 
+    // Windows makes symlinks only in Developer Mode or as an administrator.
+    #[cfg(unix)]
     #[test]
     fn log_files_found_and_deduplicated() {
         let dir = tempfile::tempdir().unwrap();

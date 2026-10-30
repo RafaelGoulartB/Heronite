@@ -132,6 +132,7 @@ pub fn create_prefix_first(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[cfg(unix)]
     use std::fs;
 
     #[test]
@@ -150,6 +151,8 @@ mod tests {
         assert_eq!(container_env(&[], &[Some("/srv".into())]), None);
     }
 
+    // Wine's dosdevices are symlinks: a Unix prefix.
+    #[cfg(unix)]
     #[test]
     fn drive_letters_skip_used_ones_and_existing_maps() {
         let dir = tempfile::tempdir().unwrap();

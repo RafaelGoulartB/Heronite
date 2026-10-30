@@ -168,6 +168,8 @@ mod tests {
         assert!(primary_task("not json").is_none());
     }
 
+    // Linux paths; GOG is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn paths_resolve_case_insensitively_on_disk() {
         let dir = tempfile::tempdir().unwrap();
