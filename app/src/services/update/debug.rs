@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use gpui_kit::*;
-use heronite_update::{Asset, Package, Progress, Release, Target, WindowsAsset};
+use heronite_update::{Asset, Package, Progress, Release, WindowsAsset};
 
 use super::{Method, Phase, Updater};
 
@@ -33,6 +33,35 @@ const NOTES: &str = "**Download:** `Heronite-x86_64.AppImage` runs on any distri
 /// Steps of the faked download (about 4 s).
 const STEPS: u64 = 40;
 
+/// The key updates are checked against: the release key, or in debug builds
+/// `HERONITE_DEBUG_UPDATE_KEY` (end-to-end tests with a local release signed
+/// by a test key). Release builds never read it.
+pub(super) fn public_key() -> String {
+    #[cfg(debug_assertions)]
+    if let Some(key) = crate::env::value("HERONITE_DEBUG_UPDATE_KEY") {
+        log::warn!("updates are checked against the test key {key} (HERONITE_DEBUG_UPDATE_KEY)");
+        return key;
+    }
+    heronite_update::PUBLIC_KEY.to_string()
+}
+
+/// The made-up copy without `HERONITE_DEBUG_UPDATE_PACKAGE`: an AppImage, on
+/// Windows the setup's (`portable` for a portable copy).
+#[cfg(not(windows))]
+fn default_method() -> Method {
+    Method::AppImage(heronite_update::Target { appimage: "/tmp/Heronite-x86_64.AppImage".into() })
+}
+
+#[cfg(windows)]
+fn default_method() -> Method {
+    if crate::env::value("HERONITE_DEBUG_UPDATE_PACKAGE").as_deref() == Some("portable") {
+        let root = std::path::PathBuf::from(r"C:\Heronite");
+        Method::Portable(heronite_update::Portable { exe: root.join("heronite-rs.exe"), root })
+    } else {
+        Method::Installer(heronite_update::Installer { exe: r"C:\Users\you\AppData\Local\Programs\Heronite\heronite-rs.exe".into() })
+    }
+}
+
 impl Updater {
     pub(super) fn debug_state(&mut self, state: &str, cx: &mut Context<Self>) {
         self.debug = true;
@@ -48,7 +77,7 @@ impl Updater {
         let package = crate::env::value("HERONITE_DEBUG_UPDATE_PACKAGE").and_then(|p| Package::parse(&p));
         self.method = Ok(match package {
             Some(kind) => Method::Package { kind, exe: "/usr/bin/heronite-rs".into() },
-            None => Method::AppImage(Target { appimage: "/tmp/Heronite-x86_64.AppImage".into() }),
+            None => default_method(),
         });
         let next = super::Version { patch: self.current.patch + 1, ..self.current.clone() };
         let name = "Heronite-x86_64.AppImage".to_string();

@@ -38,6 +38,8 @@ struct UpdateView {
     manual: Option<String>,
     page: String,
     blocker: Option<String>,
+    /// The Windows setup runs as the app quits.
+    on_quit: bool,
 }
 
 /// The first bullets of the notes (the highlights come first) and how many
@@ -85,6 +87,7 @@ impl CollectionView {
             manual: u.manual_command(),
             page: release.page_url.clone(),
             blocker: crate::system::restart_blocker(cx),
+            on_quit: u.installs_on_quit(),
         };
         let open = self.open_menu == Some(Menu::Update);
         let label =
@@ -214,11 +217,18 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
             .child(title(tr!("Installing Heronite {version}", version = v.version)))
             .child(detail(tr!("Enter your password if you are asked.").into())),
         (Banner::Ready, _) => {
-            let why = match &v.blocker {
-                Some(why) => tr!("{why}: restart later, or it starts next time.", why),
-                None => tr!("Restart to use it now, or it starts next time.").into(),
+            let why = match (&v.blocker, v.on_quit) {
+                (Some(why), false) => tr!("{why}: restart later, or it starts next time.", why),
+                (None, false) => tr!("Restart to use it now, or it starts next time.").into(),
+                (Some(why), true) => tr!("{why}: restart later, or it installs when you quit.", why),
+                (None, true) => tr!("Restart to install it now, or it installs when you quit.").into(),
             };
-            panel.child(title(tr!("Heronite {version} is installed", version = v.version))).child(detail(why)).child(
+            let heading = if v.on_quit {
+                tr!("Heronite {version} is ready to install", version = v.version)
+            } else {
+                tr!("Heronite {version} is installed", version = v.version)
+            };
+            panel.child(title(heading)).child(detail(why)).child(
                 footer.child(button_sm("upd-later", ButtonKind::Ghost, tr!("Later")).on_click(act(Updater::dismiss))).child(
                     action_button("upd-restart", ButtonKind::Primary, tr!("Restart now"), v.blocker.is_none(), act(Updater::restart))
                         .h(px(theme::BUTTON_H_SM)),

@@ -1,8 +1,20 @@
 {
+  "An update is ready: restart to install it": "Ein Update ist bereit: Starte neu, um es zu installieren",
+  "Download new versions in the background. They are checked against Heronite's signing key and install when you quit Heronite.": "Lädt neue Versionen im Hintergrund herunter. Sie werden mit dem Signaturschlüssel von Heronite geprüft und beim Beenden von Heronite installiert.",
+  "Heronite {version} is ready to install": "Heronite {version} ist bereit zur Installation",
+  "It installs when you quit Heronite.": "Es wird beim Beenden von Heronite installiert.",
+  "Only a copy installed with Heronite's setup or unpacked from its portable zip updates itself.": "Nur eine mit dem Setup von Heronite installierte oder aus seinem portablen ZIP entpackte Kopie aktualisiert sich selbst.",
+  "Restart to install it now, or it installs when you quit Heronite.": "Starte neu, um es jetzt zu installieren, oder es wird beim Beenden von Heronite installiert.",
+  "Restart to install it now, or it installs when you quit.": "Starte neu, um es jetzt zu installieren, oder es wird beim Beenden installiert.",
   "The update could not be unpacked: {error}": "Das Update konnte nicht entpackt werden: {error}",
   "The update has a file outside its folder: {name}": "Das Update enthält eine Datei außerhalb seines Ordners: {name}",
   "The update has a link or an encrypted file: {name}": "Das Update enthält eine Verknüpfung oder eine verschlüsselte Datei: {name}",
   "The update has no {program}": "Dem Update fehlt {program}",
+  "The update installs as Heronite restarts": "Das Update wird beim Neustart von Heronite installiert",
+  "They install when you quit Heronite": "Sie werden beim Beenden von Heronite installiert",
+  "This copy's folder ({dir}) is not writable: download new versions by hand.": "Der Ordner dieser Kopie ({dir}) ist nicht beschreibbar: Lade neue Versionen manuell herunter.",
   "This release has no Windows setup": "Diese Version hat kein Windows-Setup",
-  "This release has no portable zip": "Diese Version hat kein portables ZIP"
+  "This release has no portable zip": "Diese Version hat kein portables ZIP",
+  "{why}: restart later, or it installs when you quit Heronite.": "{why}: später neu starten, oder es wird beim Beenden von Heronite installiert.",
+  "{why}: restart later, or it installs when you quit.": "{why}: später neu starten, oder es wird beim Beenden installiert."
 }

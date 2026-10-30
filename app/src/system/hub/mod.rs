@@ -46,7 +46,7 @@ use crate::runtime::GameRuntime;
 
 pub use launch::candidate_keys;
 pub use quit::{
-    keep_in_tray, post_game_idle, quit_anyway, relaunch_if_requested, request_quit, restart_blocker, restart_into, restart_now,
+    keep_in_tray, post_game_idle, quit_anyway, relaunch_if_requested, request_quit, restart_blocker, restart_into, restart_now, run_on_quit,
 };
 pub use start::init;
 pub use window::{has_window, show_window};

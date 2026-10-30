@@ -119,8 +119,22 @@ pub fn keep_in_tray(cx: &mut App) {
     });
 }
 
-/// The updated AppImage to start once the app has quit.
+/// What to start once the app has quit: the updated AppImage, or this app
+/// again.
 static RELAUNCH: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Work for the moment the app has quit, before a restart ([`run_on_quit`]).
+pub type OnQuit = Box<dyn FnOnce(bool) -> bool + Send>;
+
+static ON_QUIT: Mutex<Option<OnQuit>> = Mutex::new(None);
+
+/// Sets (or clears) what runs once the app has quit: the Windows setup of a
+/// downloaded update, which waits for this process to end. It gets whether
+/// a restart was asked and returns whether it starts the app again itself
+/// (else the restart starts [`restart_into`]'s program as usual).
+pub fn run_on_quit(work: Option<OnQuit>) {
+    *ON_QUIT.lock().unwrap_or_else(|e| e.into_inner()) = work;
+}
 
 /// What a restart would leave behind now: a running game or post-game work
 /// (`None` = the app can restart).
@@ -135,8 +149,9 @@ pub fn restart_blocker(cx: &App) -> Option<String> {
     }
 }
 
-/// Quits gracefully and starts `appimage` (the installed update) at the end.
-/// Refused while a game runs or post-game work is in flight.
+/// Quits gracefully and starts `appimage` (the installed update, or this
+/// app) at the end. Refused while a game runs or post-game work is in
+/// flight.
 pub fn restart_into(appimage: PathBuf, cx: &mut App) {
     if hub(cx).0.borrow().quitting {
         return;
@@ -160,11 +175,17 @@ pub fn restart_now(cx: &mut App) {
     }
 }
 
-/// Starts the updated AppImage if a restart asked for it. Called last, once
+/// Runs the [`run_on_quit`] work, then starts the updated AppImage (or this
+/// app) if a restart asked for it and that work did not. Called last, once
 /// the single-instance socket is gone, so the new process becomes the
 /// instance (and by the quit watchdog).
 pub fn relaunch_if_requested() {
-    let Some(path) = RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    let path = RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let work = ON_QUIT.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if work.is_some_and(|run| run(path.is_some())) {
+        return;
+    }
+    let Some(path) = path else { return };
     match heronite_update::relaunch::relaunch(&path) {
         Ok(pid) => log::info!("started {} (pid {pid})", path.display()),
         Err(e) => log::error!("could not start {}: {e}", path.display()),
@@ -254,5 +275,40 @@ pub(super) fn maybe_exit_idle(cx: &mut App) {
     if idle {
         log::info!("game ended and no window was shown: exiting");
         graceful_quit(cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{relaunch_if_requested, run_on_quit, ON_QUIT, RELAUNCH};
+    use std::sync::{Arc, Mutex};
+
+    /// The quit's work runs once, is told whether a restart was asked, and
+    /// a restart it takes over starts nothing else.
+    #[test]
+    fn the_quit_work_runs_once_and_can_take_over_the_restart() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let record = |takes_over: bool| {
+            let seen = seen.clone();
+            Some(Box::new(move |restart: bool| {
+                seen.lock().unwrap().push(restart);
+                takes_over
+            }) as super::OnQuit)
+        };
+        run_on_quit(record(false));
+        relaunch_if_requested();
+        relaunch_if_requested();
+        assert_eq!(*seen.lock().unwrap(), [false]);
+
+        run_on_quit(record(true));
+        *RELAUNCH.lock().unwrap() = Some("C:/nonexistent/heronite-rs.exe".into());
+        relaunch_if_requested();
+        assert_eq!(*seen.lock().unwrap(), [false, true]);
+        assert!(RELAUNCH.lock().unwrap().is_none() && ON_QUIT.lock().unwrap().is_none());
+
+        run_on_quit(record(true));
+        run_on_quit(None);
+        relaunch_if_requested();
+        assert_eq!(seen.lock().unwrap().len(), 2, "cleared");
     }
 }

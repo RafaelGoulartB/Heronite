@@ -17,5 +17,5 @@ pub mod tray;
 
 pub use hub::{
     attach_runtime, candidate_keys, exit_code, has_window, init, keep_in_tray, post_game_idle, quit_anyway, refresh_tray,
-    relaunch_if_requested, request_quit, restart_blocker, restart_into, restart_now, show_window as show_main_window,
+    relaunch_if_requested, request_quit, restart_blocker, restart_into, restart_now, run_on_quit, show_window as show_main_window,
 };
