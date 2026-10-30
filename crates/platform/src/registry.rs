@@ -4,7 +4,8 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::System::Registry::{
-    RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+    RegCloseKey, RegDeleteKeyValueW, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER,
+    HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +70,43 @@ pub fn string(hive: Hive, key: &str, name: &str) -> Option<String> {
     }
 }
 
+/// The names of the keys directly under `key`, in the registry's order; empty
+/// when `key` is missing or cannot be read.
+pub fn subkeys(hive: Hive, key: &str) -> Vec<String> {
+    let key = wide(key);
+    let mut open: HKEY = std::ptr::null_mut();
+    // SAFETY: `key` is NUL-terminated; `open` receives the handle on success.
+    if unsafe { RegOpenKeyExW(root(hive), key.as_ptr(), 0, KEY_ENUMERATE_SUB_KEYS, &mut open) } != 0 {
+        return Vec::new();
+    }
+    let mut names = Vec::new();
+    // A key name has at most 255 characters, plus the NUL.
+    let mut buf = [0u16; 256];
+    for index in 0.. {
+        let mut len = buf.len() as u32;
+        // SAFETY: `open` is an open key; `buf` holds `len` characters.
+        let r = unsafe {
+            RegEnumKeyExW(
+                open,
+                index,
+                buf.as_mut_ptr(),
+                &mut len,
+                std::ptr::null(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if r != 0 {
+            break;
+        }
+        names.push(String::from_utf16_lossy(&buf[..(len as usize).min(buf.len())]));
+    }
+    // SAFETY: `open` was opened above and is not used afterwards.
+    unsafe { RegCloseKey(open) };
+    names
+}
+
 /// Sets the text value `name` of the key `key`, creating the key if needed.
 pub fn set_string(hive: Hive, key: &str, name: &str, value: &str) -> std::io::Result<()> {
     let (key, name, data) = (wide(key), wide(name), wide(value));
@@ -109,6 +147,27 @@ mod tests {
         assert_eq!(string(Hive::CurrentUser, r"Software\Heronite\Missing", "Nothing"), None);
         let build = dword(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentMajorVersionNumber");
         assert!(build.is_some_and(|v| v >= 10), "{build:?}");
+    }
+
+    #[test]
+    fn lists_the_keys_under_a_key() {
+        let versions = subkeys(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT");
+        assert!(versions.iter().any(|k| k == "CurrentVersion"), "{versions:?}");
+        assert!(subkeys(Hive::CurrentUser, r"Software\Heronite\Missing").is_empty());
+
+        // Its own root: `writes_and_removes_a_value` clears `Software\Heronite` meanwhile.
+        let key = format!(r"Software\HeroniteSubkeysTest\{}", std::process::id());
+        for child in ["b", "a"] {
+            set_string(Hive::CurrentUser, &format!(r"{key}\{child}"), "Value", "x").unwrap();
+        }
+        let mut found = subkeys(Hive::CurrentUser, &key);
+        found.sort();
+        assert_eq!(found, ["a", "b"]);
+        // A key with values and no keys under it.
+        assert!(subkeys(Hive::CurrentUser, &format!(r"{key}\a")).is_empty());
+        // SAFETY: a test key of this process, under HKCU\Software\HeroniteSubkeysTest.
+        let tree = wide(r"Software\HeroniteSubkeysTest");
+        unsafe { windows_sys::Win32::System::Registry::RegDeleteTreeW(HKEY_CURRENT_USER, tree.as_ptr()) };
     }
 
     #[test]
