@@ -140,8 +140,10 @@ mod tests {
         assert_eq!(p, [PathBuf::from("/games/x"), PathBuf::from("/roms")]);
     }
 
+    // Linux disks and folders; Storage is off on Windows (`Feature::Storage`).
     /// A store client's prefix and games sit in the games folder like a
     /// leftover would, without any installed game of ours pointing there.
+    #[cfg(unix)]
     #[test]
     fn what_a_store_client_keeps_is_not_a_leftover() {
         use heronite_data::{AppPaths, DataPaths};
@@ -178,6 +180,8 @@ mod tests {
         assert_eq!(found.iter().map(|i| i.folder.clone()).collect::<Vec<_>>(), [folders[2].clone()]);
     }
 
+    // Linux disks and folders; Storage is off on Windows (`Feature::Storage`).
+    #[cfg(unix)]
     #[test]
     fn candidates_are_old_non_empty_folders() {
         let dir = tempfile::tempdir().unwrap();

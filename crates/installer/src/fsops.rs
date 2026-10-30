@@ -285,6 +285,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // Windows file names ignore case: there is nothing to fix.
+    #[cfg(unix)]
     #[test]
     fn fixes_the_case_of_existing_components() {
         let dir = tempfile::tempdir().unwrap();

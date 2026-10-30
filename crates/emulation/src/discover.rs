@@ -501,12 +501,15 @@ pub fn add_discovered(paths: &DataPaths, items: &[DetectedEmulator]) -> Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::collections::{HashMap, HashSet};
     use std::fs;
 
+    #[cfg(unix)]
     struct Env {
         home: String,
     }
+    #[cfg(unix)]
     impl DetectEnv for Env {
         fn which(&self, _: &str) -> Option<String> {
             None
@@ -533,6 +536,8 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(path, fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 })).unwrap();
         }
+        #[cfg(not(unix))]
+        let _ = exec;
     }
 
     #[test]
@@ -559,6 +564,8 @@ mod tests {
         assert_eq!(id("firefox"), None);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn walk_finds_executables_and_skips_game_dirs() {
         let d = tempfile::tempdir().unwrap();
@@ -594,6 +601,8 @@ mod tests {
         assert_eq!(found.len(), 1);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn discovery_marks_configured_and_builds_profiles() {
         let d = tempfile::tempdir().unwrap();
@@ -636,6 +645,8 @@ mod tests {
         assert!(found.iter().any(|d| d.name == "RetroArch" && d.profiles[0].id == "snes"));
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn configured_folders_are_searched() {
         let d = tempfile::tempdir().unwrap();
@@ -663,6 +674,8 @@ mod tests {
         assert!(in_folder.iter().all(|d| d.source == "chosen folder"));
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn add_discovered_registers_several_and_skips_configured() {
         let h = tempfile::tempdir().unwrap();

@@ -175,9 +175,11 @@ pub fn find(lib: &Library, paths: &DataPaths, home: &str, kept_apart: &BTreeSet<
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::{collection, Game};
     use serde_json::json;
 
+    #[cfg(unix)]
     fn lutris(id: &str, title: &str, folder: &str, prefix: Option<&str>) -> Game {
         Game {
             id: id.into(),
@@ -200,6 +202,8 @@ mod tests {
         json_store::write(&paths.sideload_library(), &doc).unwrap();
     }
 
+    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
+    #[cfg(unix)]
     #[test]
     fn pairs_by_prefix_folder_and_title() {
         let dir = tempfile::tempdir().unwrap();
@@ -251,8 +255,10 @@ mod tests {
         assert_eq!(find(&lib, &paths, home, &kept).len(), 3);
     }
 
+    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
     /// A prefix several launcher games share (a Bottles bottle, one Lutris
     /// prefix for many games) never pairs a game with the wrong one.
+    #[cfg(unix)]
     #[test]
     fn a_shared_prefix_only_pairs_by_name_or_own_folder() {
         let dir = tempfile::tempdir().unwrap();

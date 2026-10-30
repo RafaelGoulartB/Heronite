@@ -201,6 +201,7 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn settings(backup_path: &str, extra: &[&str]) -> LudusaviSettings {
         LudusaviSettings {
             use_installed_config: false,
@@ -210,6 +211,8 @@ mod tests {
         }
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn sources_in_order_without_repeats() {
         let detected = LudusaviDetected { restore_path: Some("/win".into()), backup_path: Some("/lud".into()), ..Default::default() };

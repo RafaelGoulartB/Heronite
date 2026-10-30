@@ -84,7 +84,8 @@ fn sweep_legacy_vdf(config_dir: &Path) -> usize {
     removed.len()
 }
 
-#[cfg(test)]
+// Linux menu and Steam folders; shortcuts are off on Windows (`Feature::DesktopShortcuts`).
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::time::{Duration, SystemTime};

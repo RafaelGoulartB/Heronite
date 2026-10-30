@@ -474,6 +474,8 @@ mod tests {
         assert!(check_appimage(&plain).is_ok());
     }
 
+    // Windows makes symlinks only in Developer Mode or as an administrator.
+    #[cfg(unix)]
     #[test]
     fn detect_needs_an_existing_file_in_a_writable_folder() {
         assert_eq!(Target::detect(None), Err(Unsupported::NotAppImage));

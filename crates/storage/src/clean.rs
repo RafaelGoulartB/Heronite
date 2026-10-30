@@ -90,7 +90,8 @@ fn delete(path: &Path) -> Result<()> {
     res.map_err(|e| anyhow!(tr!("Could not delete {path}: {error}", path = path.display(), error = e)))
 }
 
-#[cfg(test)]
+// Linux disks and folders; Storage is off on Windows (`Feature::Storage`).
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::{CacheKind, Group, State};

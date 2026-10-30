@@ -147,6 +147,8 @@ mod tests {
         assert_eq!(unescape("a\\134b"), "a\\b");
     }
 
+    // Linux disks and folders; Storage is off on Windows (`Feature::Storage`).
+    #[cfg(unix)]
     #[test]
     fn a_device_mounted_twice_is_one_disk() {
         let dir = tempfile::tempdir().unwrap();

@@ -43,7 +43,9 @@ fn allocated(meta: &fs::Metadata) -> u64 {
     allocated_bytes(meta)
 }
 
-#[cfg(test)]
+// Hard links are told apart only on Unix (`hard_link_id`), and Windows makes
+// symlinks only in Developer Mode or as an administrator.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

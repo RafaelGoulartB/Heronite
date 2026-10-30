@@ -280,6 +280,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::fs;
 
     fn ctx() -> EngineContext {
@@ -330,6 +331,8 @@ mod tests {
         assert!(engine_for("melonds").is_none());
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn state_dirs_follow_each_emulator_layout() {
         let d = tempfile::tempdir().unwrap();
@@ -369,6 +372,8 @@ mod tests {
         assert_eq!(Engine::DuckStation.state_dirs(&env, &ctx(), "", &[]), [s(&home.join(".local/share/duckstation/savestates"))]);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn retroarch_dirs_and_launch_args() {
         let d = tempfile::tempdir().unwrap();

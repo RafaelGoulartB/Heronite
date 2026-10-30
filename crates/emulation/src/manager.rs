@@ -132,7 +132,8 @@ pub fn data_stamp(paths: &DataPaths) -> Vec<Option<std::time::SystemTime>> {
         .collect()
 }
 
-#[cfg(test)]
+// Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use crate::types::{UpsertRomScannerArgs, UpsertUserEmulatorArgs};

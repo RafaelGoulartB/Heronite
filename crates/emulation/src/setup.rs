@@ -253,7 +253,9 @@ mod tests {
     }
 
     /// A machine with nothing to detect, at `home`.
+    #[cfg(unix)]
     struct Bare(PathBuf);
+    #[cfg(unix)]
     impl DetectEnv for Bare {
         fn which(&self, _: &str) -> Option<String> {
             None
@@ -272,6 +274,8 @@ mod tests {
         }
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn imports_the_systems_an_emulator_plays_and_names_the_others() {
         let h = tempfile::tempdir().unwrap();

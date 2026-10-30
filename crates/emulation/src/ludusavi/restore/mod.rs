@@ -346,6 +346,8 @@ mod tests {
         assert!(err.contains("Elden Ring"), "{err}");
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn applies_only_the_selected_files_and_keeps_an_undo_copy() {
         let d = tempfile::tempdir().unwrap();

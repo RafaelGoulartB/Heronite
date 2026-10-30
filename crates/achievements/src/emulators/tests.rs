@@ -1,6 +1,5 @@
 use super::*;
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 
 const TOKEN: &str = "AbCdEfGhIj";
 const MACHINE: &str = "0123456789abcdef0123456789abcdef\n";
@@ -38,6 +37,12 @@ fn put(home: &Path, rel: &str, text: &str) -> PathBuf {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(&path, text).unwrap();
     path
+}
+
+/// The permission bits of `path`; Windows has none.
+#[cfg(unix)]
+fn mode(path: &Path) -> u32 {
+    heronite_platform::fs::mode(&fs::metadata(path).unwrap()).unwrap() & 0o777
 }
 
 /// The lines of `before` that are not one of `ours` keys, in order, still
@@ -238,7 +243,8 @@ fn ppsspp_keeps_the_token_in_its_own_file() {
     let token_file = path.with_file_name("ppsspp_retroachievements.dat");
     sign_in(home.path(), &[Emulator::Ppsspp], true);
     assert_eq!(fs::read_to_string(&token_file).unwrap(), TOKEN);
-    assert_eq!(fs::metadata(&token_file).unwrap().permissions().mode() & 0o777, 0o600);
+    #[cfg(unix)]
+    assert_eq!(mode(&token_file), 0o600);
     assert!(!fs::read_to_string(&path).unwrap().contains(TOKEN));
     assert_eq!(state_of(&held(home.path(), "rafa"), Emulator::Ppsspp), State::SignedIn);
     sign_out(home.path(), &[Emulator::Ppsspp]);
@@ -302,13 +308,16 @@ fn a_login_with_achievements_off_or_no_token_is_not_signed_in() {
 fn permissions_and_line_endings_are_kept() {
     let home = tempfile::tempdir().unwrap();
     let path = put(home.path(), ".config/PCSX2/inis/PCSX2.ini", "[Achievements]\r\nEnabled = false\r\n");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+    heronite_platform::fs::set_mode(&path, 0o640).unwrap();
     sign_in(home.path(), &[Emulator::Pcsx2], false);
-    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o640);
+    #[cfg(unix)]
+    assert_eq!(mode(&path), 0o640);
     let text = fs::read_to_string(&path).unwrap();
     assert!(text.ends_with("\r\n") && !text.replace("\r\n", "").contains('\n'), "{text:?}");
 }
 
+// Windows makes symlinks only in Developer Mode or as an administrator.
+#[cfg(unix)]
 #[test]
 fn a_symlinked_config_stays_a_symlink() {
     let home = tempfile::tempdir().unwrap();

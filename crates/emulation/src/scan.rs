@@ -304,8 +304,10 @@ pub fn preview_rom_scan(paths: &DataPaths, args: &RomScanArgs) -> Result<RomScan
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::fs::{create_dir_all, write};
 
+    #[cfg(unix)]
     fn emu(def: &str, profile_def: &str, args: &str, ext: &[&str]) -> (UserEmulator, UserEmulatorProfile) {
         let profile = UserEmulatorProfile {
             id: "p1".into(),
@@ -327,10 +329,13 @@ mod tests {
         (e, profile)
     }
 
+    #[cfg(unix)]
     fn titles(p: &RomScanPreview) -> Vec<String> {
         p.games.iter().map(|g| g.title.clone()).collect()
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn scans_extensions_subfolders_and_skips_dirs() {
         let d = tempfile::tempdir().unwrap();
@@ -359,6 +364,8 @@ mod tests {
         assert_eq!(titles(&flat), ["Mario", "Zelda"]);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn merges_discs_and_respects_merge_flag() {
         let d = tempfile::tempdir().unwrap();
@@ -383,6 +390,8 @@ mod tests {
         assert_eq!(split.games.len(), 3);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn regions_and_folders_are_not_discs() {
         let d = tempfile::tempdir().unwrap();
@@ -412,6 +421,8 @@ mod tests {
         assert!(orphaned(&meta(Some("removed")), &live) && orphaned(&meta(None), &live));
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn playlists_hide_their_tracks() {
         let d = tempfile::tempdir().unwrap();
@@ -435,6 +446,8 @@ mod tests {
         assert_eq!(r.platform_name.as_deref(), Some("PlayStation"));
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn folder_indicator_finds_game_folders() {
         let d = tempfile::tempdir().unwrap();
@@ -452,6 +465,8 @@ mod tests {
         assert!(r.games[0].roms[0].path.ends_with("USRDIR/EBOOT.BIN"));
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn marks_already_imported_and_reports_missing_folder() {
         let d = tempfile::tempdir().unwrap();

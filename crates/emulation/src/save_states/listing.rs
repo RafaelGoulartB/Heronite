@@ -338,6 +338,8 @@ mod tests {
         assert!(!list_emulator_save_states(&paths, &env, "nope", None, false).unwrap().supported);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn learns_key_when_the_rom_is_unreadable() {
         use crate::types::UpsertUserEmulatorArgs;

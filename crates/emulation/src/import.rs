@@ -326,9 +326,12 @@ pub fn set_emulator_launch_rom(paths: &DataPaths, app_name: &str, rom_path: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::types::UpsertUserEmulatorArgs;
+    #[cfg(unix)]
     use std::fs::{create_dir_all, write};
 
+    #[cfg(unix)]
     fn setup() -> (tempfile::TempDir, DataPaths, tempfile::TempDir, String, String) {
         let data_dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(data_dir.path());
@@ -350,6 +353,7 @@ mod tests {
         (data_dir, paths, roms, e.id, e.profiles[0].id.clone())
     }
 
+    #[cfg(unix)]
     fn scan(paths: &DataPaths, e: &str, p: &str, dir: &str) -> Vec<RomScanItem> {
         preview_rom_scan(paths, &RomScanArgs { emulator_id: e.into(), profile_id: p.into(), directory: dir.into(), ..Default::default() })
             .unwrap()
@@ -366,6 +370,8 @@ mod tests {
         assert_ne!(n, emu_app_name("e", "p", "/a"));
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn import_writes_all_files_and_reimport_updates() {
         let (_h, paths, roms, e, p) = setup();
@@ -451,6 +457,8 @@ mod tests {
         assert_eq!(side["games"][0]["art_cover"], "https://art/1.png");
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn an_emulator_removed_and_added_again_finds_its_games() {
         let (_h, paths, roms, e, p) = setup();
@@ -488,6 +496,8 @@ mod tests {
         assert_eq!(json_store::read_value(&paths.sideload_library()).unwrap()["games"].as_array().unwrap().len(), 2);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn skipped_and_missing_emulator() {
         let (_h, paths, roms, e, p) = setup();
@@ -514,6 +524,8 @@ mod tests {
         assert_eq!(r.errors, ["Emulator not found."]);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn auto_scan_imports_only_newcomers() {
         let (_h, paths, roms, e, p) = setup();
@@ -543,6 +555,8 @@ mod tests {
         assert_eq!(run_auto_rom_scanners(&paths).unwrap(), 0);
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn rom_scanners_report_errors_and_continue() {
         let (_h, paths, roms, e, p) = setup();
@@ -586,6 +600,8 @@ mod tests {
         assert_eq!((r.scanned, r.imported, r.errors.len()), (1, 0, 1));
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn launch_rom_selection() {
         let (_h, paths, roms, e, p) = setup();

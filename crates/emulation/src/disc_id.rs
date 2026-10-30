@@ -483,6 +483,8 @@ mod tests {
         }
     }
 
+    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    #[cfg(unix)]
     #[test]
     fn follows_cue_and_m3u_to_the_image() {
         let dir = tempfile::tempdir().unwrap();
