@@ -44,6 +44,19 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
   test "is absolute" with `Path::is_absolute`, not `starts_with('/')`.
 - Opening a file or URL: `heronite_platform::shell::open`, never `xdg-open`.
 - A new Linux-only part of the app gets a `Feature` and is hidden on Windows.
+- `~` is the home folder only at the start of a path
+  (`game_config::expand_tilde`): Windows' short names contain it
+  (`C:\Users\RUNNER~1`).
+- Replacing a file: `temps::write_atomic` (or `fs::rename_replacing`), which
+  waits for Windows to let go of the target.
+- Tests that run programs use what each system has (`sh -c` on Unix,
+  `cmd /C` and `ping` on Windows) when the code they test runs on both, and
+  are `#[cfg(unix)]` when they test a Linux-only part (Wine, bubblewrap,
+  shell scripts as programs). Run them from PowerShell or `cmd`, not Git
+  Bash, which adds Unix tools and `HOME`.
+- `drop()` on a value that is a guard on one system only (empty on the
+  other) fails clippy there: give the guard a method that says what it does
+  (`release`).
 
 ## Folders on Windows
 

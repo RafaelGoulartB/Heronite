@@ -8,17 +8,22 @@ Thanks for helping! Bug reports, ideas, and pull requests are all welcome.
 
 ## Build
 
-Heronite is Linux only. You need a stable Rust toolchain, `clang` and `lld` (the linker set in `.cargo/config.toml`), and the development packages for xkbcommon, xcb, Wayland, udev, fontconfig, freetype, GTK 3, and WebKitGTK 4.1. On Ubuntu, [`scripts/ci-deps.sh`](scripts/ci-deps.sh) installs everything CI uses.
+Heronite runs on Linux, and on Windows in part (the port is tracked in [WINDOWS-MIGRATION.md](docs/WINDOWS-MIGRATION.md)). The same commands build and test it on both:
 
 ```bash
 # fast optimised build for trying the app
 cargo run --profile quick -p heronite
 
-# what CI runs; all three must pass
+# what CI runs, on Linux and on Windows; all must pass
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+- **Linux:** a stable Rust toolchain, `clang` and `lld` (the linker set in `.cargo/config.toml`), and the development packages for xkbcommon, xcb, Wayland, udev, fontconfig, freetype, GTK 3, and WebKitGTK 4.1. On Ubuntu, [`scripts/ci-deps.sh`](scripts/ci-deps.sh) installs everything CI uses.
+- **Windows:** a stable Rust toolchain for `x86_64-pc-windows-msvc` and the Visual Studio Build Tools with "Desktop development with C++" (MSVC and a Windows SDK). Run the tests from PowerShell or `cmd`, as CI does: Git Bash puts Unix tools (`sh`, `cp`, `sleep`) on the `PATH` that Windows itself does not have, and sets `HOME`.
+
+A change to code both systems build is checked by both CI jobs; [WINDOWS-MIGRATION.md](docs/WINDOWS-MIGRATION.md) has the rules that keep the code building on both.
 
 Point `HERONITE_DATA_DIR` at a copy of a data folder to try changes without touching your real library. To see what a new user sees, run [`scripts/fresh-start.sh`](scripts/fresh-start.sh): it starts the app with an empty home in `/tmp` (add `--steam` to let it find your Steam games, or pass an AppImage to test a release). `HERONITE_DEBUG_*` variables open a page, dialog, or menu at startup, which helps with screenshots.
 
