@@ -95,6 +95,21 @@ impl Step {
         }
     }
 
+    /// Whether this system has what the step sets up
+    /// (`heronite_platform::features`).
+    pub fn available(self) -> bool {
+        use heronite_platform::{supported, Feature};
+        match self {
+            Step::Stores => supported(Feature::StoreAccounts),
+            Step::Emulators | Step::Saves => supported(Feature::Emulation),
+            Step::Overlay => supported(Feature::Overlay),
+            Step::Screenshots => supported(Feature::Capture),
+            Step::Proton => supported(Feature::Wine),
+            Step::Tray => supported(Feature::Tray),
+            _ => true,
+        }
+    }
+
     pub fn parse(id: &str) -> Option<Self> {
         ALL.into_iter().find(|s| s.id() == id)
     }
@@ -140,6 +155,10 @@ impl Step {
     /// One line on what it is for (the tips and the source tiles).
     pub fn description(self) -> &'static str {
         match self {
+            // The library is read from the running client only where it can be.
+            Step::Steam if !heronite_platform::supported(heronite_platform::Feature::SteamClient) => {
+                tr!("Your installed Steam games come in by themselves, with nothing to set up.")
+            }
             Step::Steam => tr!("Open Steam and your games come in by themselves, installed or not, with Steam's play time."),
             Step::Stores => tr!("Log in and your whole library shows in the Collection. You install games from there."),
             Step::Emulators => tr!("Heronite finds the emulators on this PC and scans your ROM folders."),
@@ -271,7 +290,12 @@ impl Facts {
     /// The steps the progress counts: the three cards (the overlay only
     /// where the desktop can draw it).
     pub fn counted(&self) -> Vec<Step> {
-        GAMES.into_iter().chain([Step::Appearance]).chain(PLAY.into_iter().filter(|s| *s != Step::Overlay || self.overlay_ok)).collect()
+        GAMES
+            .into_iter()
+            .chain([Step::Appearance])
+            .chain(PLAY.into_iter().filter(|s| *s != Step::Overlay || self.overlay_ok))
+            .filter(|s| s.available())
+            .collect()
     }
 
     pub fn done_count(&self) -> usize {

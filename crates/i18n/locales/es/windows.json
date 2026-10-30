@@ -1,3 +1,9 @@
 {
-  "Linux programs do not run on Windows": "Los programas de Linux no se ejecutan en Windows"
+  "A Windows program or a browser game.": "Un programa de Windows o un juego de navegador.",
+  "Installed games": "Juegos instalados",
+  "Linux programs do not run on Windows": "Los programas de Linux no se ejecutan en Windows",
+  "Windows or browser": "Windows o navegador",
+  "Windows, web": "Windows, web",
+  "Your installed Steam games come in by themselves, with nothing to set up.": "Tus juegos instalados de Steam llegan solos, sin nada que configurar.",
+  "Your installed Steam games come in by themselves. Install one in Steam and it shows up here.": "Tus juegos instalados de Steam llegan solos. Instala uno en Steam y aparece aquí."
 }

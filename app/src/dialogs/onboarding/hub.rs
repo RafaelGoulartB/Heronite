@@ -8,7 +8,7 @@ use heronite_i18n::{tr, trn};
 
 use super::art::{self, Art};
 use super::look::{accent_dot, accent_name, is_preset, preset_name};
-use super::steps::{Action, Step, TIPS};
+use super::steps::{Action, Step, PLAY, TIPS};
 use super::{done_label, step_icon, OnboardingDialog, View};
 use crate::icons::Icon;
 use crate::pages::settings::Section;
@@ -96,7 +96,14 @@ impl OnboardingDialog {
             .flex()
             .flex_col()
             .gap(px(22.))
-            .child(div().flex().gap(px(16.)).child(self.games_card(art, cx)).child(self.look_card(art, cx)).child(self.play_card(art, cx)))
+            .child(
+                div()
+                    .flex()
+                    .gap(px(16.))
+                    .child(self.games_card(art, cx))
+                    .child(self.look_card(art, cx))
+                    .when(PLAY.iter().any(|s| s.available()), |d| d.child(self.play_card(art, cx))),
+            )
             .child(self.render_tips(cx))
     }
 
@@ -110,7 +117,8 @@ impl OnboardingDialog {
             line(step.icon(), step.title(), right).into_any_element()
         };
         let total = f.games();
-        let launchers = self.launchers_line(cx);
+        let launchers = heronite_platform::supported(heronite_platform::Feature::LauncherImports).then(|| self.launchers_line(cx));
+        let add_hint = if cfg!(windows) { tr!("Windows, web") } else { tr!("Linux, Windows, web") };
         let visual = div()
             .absolute()
             .inset_0()
@@ -128,13 +136,16 @@ impl OnboardingDialog {
                     .when(total > 0, |d| d.child(done_label(trn!(total, "{n} game", "{n} games"))))
                     .child(icon(Icon::ChevronRight, px(16.), theme::text_dim())),
             ),
-            vec![
-                source(Step::Steam, tr!("open Steam")),
-                source(Step::Stores, tr!("log in")),
-                source(Step::Emulators, tr!("set up")),
+            [
+                Step::Steam.available().then(|| source(Step::Steam, tr!("open Steam"))),
+                Step::Stores.available().then(|| source(Step::Stores, tr!("log in"))),
+                Step::Emulators.available().then(|| source(Step::Emulators, tr!("set up"))),
                 launchers,
-                line(Icon::Add, tr!("Add a game"), dim(tr!("Linux, Windows, web"))).into_any_element(),
-            ],
+                Some(line(Icon::Add, tr!("Add a game"), dim(add_hint)).into_any_element()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect(),
         )
         .cursor_pointer()
         .hover(|s| s.bg(theme::ink_a(0.06)).border_color(theme::ink_a(0.16)))
@@ -241,13 +252,17 @@ impl OnboardingDialog {
             framed(art::overlay_preview(art, VISUAL_W, left)),
             tr!("While you play").into(),
             None,
-            vec![
-                overlay,
-                self.switch_line(Step::Screenshots, tr!("Screenshots with {key}", key = f.shot_key), None, cx),
-                saves,
-                proton,
-                self.switch_line(Step::Tray, tr!("Keep in the tray when closed"), None, cx),
-            ],
+            [
+                (Step::Overlay, overlay),
+                (Step::Screenshots, self.switch_line(Step::Screenshots, tr!("Screenshots with {key}", key = f.shot_key), None, cx)),
+                (Step::Saves, saves),
+                (Step::Proton, proton),
+                (Step::Tray, self.switch_line(Step::Tray, tr!("Keep in the tray when closed"), None, cx)),
+            ]
+            .into_iter()
+            .filter(|(step, _)| step.available())
+            .map(|(_, row)| row)
+            .collect(),
         )
         .child(
             div()
