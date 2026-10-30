@@ -106,7 +106,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ➖ Sandbox (bubblewrap)
 - ➖ Lutris, Bottles, Faugus and Heroic (Linux) imports
 - ⬜ Overlay and replay buffer (needs a different capture and input stack); today `heronite_overlay::input` and `heronite_media::capture` have do-nothing stand-ins off Linux
-- ⬜ Copy an existing Heroic for Windows setup at the first start (`Feature::HeroicMigration`)
+- ➖ Copy an existing Heroic for Windows setup at the first start (`Feature::HeroicMigration` stays off: a fresh Windows setup starts empty)
 - ⬜ System information (Logs, About): CPU, memory and GPUs are read from `/proc` and `sysfs`
 - ⬜ `heronite://` links: register the protocol on Windows
 - ⬜ Keep the computer awake while a game runs (`SetThreadExecutionState`)
