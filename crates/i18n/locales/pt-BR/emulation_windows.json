@@ -1,3 +1,8 @@
 {
-  "Flatpak emulators do not run on Windows": "Emuladores Flatpak não rodam no Windows"
+  "Flatpak emulators do not run on Windows": "Emuladores Flatpak não rodam no Windows",
+  "Looking in PATH and the usual folders…": "Procurando no PATH e nas pastas habituais…",
+  "Looks in PATH and the usual folders": "Procura no PATH e nas pastas habituais",
+  "No emulators were found on PATH or in the usual folders. Add one manually.": "Nenhum emulador foi encontrado no PATH nem nas pastas habituais. Adicione um manualmente.",
+  "Programs kept in one folder": "Programas guardados numa pasta",
+  "RetroArch core (.dll)": "Core do RetroArch (.dll)"
 }

@@ -42,7 +42,12 @@ impl EmulatorEditDialog {
             platform: new_input(window, cx, p.platform_name.as_deref().unwrap_or(""), tr!("Platform (e.g. PlayStation 2)")),
             arguments: new_input(window, cx, &p.arguments, "{ImagePath}"),
             extensions: new_input(window, cx, &p.extensions.join(", "), "iso, cue, chd"),
-            core: new_input(window, cx, p.core_path.as_deref().unwrap_or(""), "/path/to/core_libretro.so"),
+            core: new_input(
+                window,
+                cx,
+                p.core_path.as_deref().unwrap_or(""),
+                if cfg!(windows) { r"C:\RetroArch-Win64\cores\core_libretro.dll" } else { "/path/to/core_libretro.so" },
+            ),
             working_dir: p.working_dir.clone(),
         });
         cx.notify();

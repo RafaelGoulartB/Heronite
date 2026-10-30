@@ -28,8 +28,18 @@ const SEARCH_FROM: usize = 8;
 pub(super) fn launch_label(kind: &str) -> &'static str {
     match kind {
         "flatpak" => "Flatpak",
-        "wine" => "Wine",
+        // Windows runs it as it is.
+        "wine" if !cfg!(windows) => "Wine",
         _ => tr!("Native"),
+    }
+}
+
+/// What "Scan a folder for emulators" finds.
+fn folder_hint() -> &'static str {
+    if cfg!(windows) {
+        tr!("Programs kept in one folder")
+    } else {
+        tr!("AppImages and programs kept in one folder")
     }
 }
 
@@ -217,18 +227,12 @@ impl EmulatorsPage {
                     this.open_detect(window, cx);
                 })),
             )
-            .child(
-                way(
-                    "emus-add-folder",
-                    Icon::FolderOpen,
-                    tr!("Scan a folder for emulators\u{2026}"),
-                    tr!("AppImages and programs kept in one folder"),
-                )
-                .on_click(cx.listener(|this, _, window, cx| {
+            .child(way("emus-add-folder", Icon::FolderOpen, tr!("Scan a folder for emulators\u{2026}"), folder_hint()).on_click(
+                cx.listener(|this, _, window, cx| {
                     this.menu = None;
                     this.open_scan_folder_for_emulators(window, cx);
-                })),
-            );
+                }),
+            ));
         Some(side_nav::popover("emus-add-menu", menu, 48., false, self.close_menu(cx)))
     }
 
@@ -326,14 +330,8 @@ impl EmulatorsPage {
                             .on_click(cx.listener(|this, _, window, cx| this.open_add_emulator(window, cx))),
                     )
                     .child(
-                        way(
-                            "emus-empty-folder",
-                            Icon::FolderOpen,
-                            tr!("Scan a folder for emulators\u{2026}"),
-                            tr!("AppImages and programs kept in one folder"),
-                            false,
-                        )
-                        .on_click(cx.listener(|this, _, window, cx| this.open_scan_folder_for_emulators(window, cx))),
+                        way("emus-empty-folder", Icon::FolderOpen, tr!("Scan a folder for emulators\u{2026}"), folder_hint(), false)
+                            .on_click(cx.listener(|this, _, window, cx| this.open_scan_folder_for_emulators(window, cx))),
                     ),
             )
     }

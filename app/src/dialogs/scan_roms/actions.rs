@@ -24,7 +24,12 @@ impl ScanRomsDialog {
                     Ok(list) => {
                         this.reload(true, false, cx);
                         if list.is_empty() {
-                            this.error = tr!("No emulators were found on PATH or Flatpak. Add one manually.").into();
+                            this.error = if cfg!(windows) {
+                                tr!("No emulators were found on PATH or in the usual folders. Add one manually.")
+                            } else {
+                                tr!("No emulators were found on PATH or Flatpak. Add one manually.")
+                            }
+                            .into();
                         }
                     }
                     Err(err) => this.error = format!("{err:#}"),
@@ -61,7 +66,8 @@ impl ScanRomsDialog {
                         UpsertUserEmulatorArgs {
                             definition_id: "custom".into(),
                             name: display,
-                            launch_kind: if exe.to_lowercase().ends_with(".exe") { "wine" } else { "native" }.into(),
+                            // On Linux a Windows program runs through Wine.
+                            launch_kind: if !cfg!(windows) && exe.to_lowercase().ends_with(".exe") { "wine" } else { "native" }.into(),
                             executable: exe,
                             profiles: Some(vec![UserEmulatorProfile {
                                 id: "custom".into(),

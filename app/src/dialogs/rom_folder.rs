@@ -79,7 +79,12 @@ impl RomFolderDialog {
             paths,
             emulator_id: emulator.map(|e| e.id.clone()).unwrap_or_default(),
             profile_id,
-            directory: new_input(window, cx, scanner.as_ref().map(|s| s.directory.as_str()).unwrap_or(""), "/path/to/roms"),
+            directory: new_input(
+                window,
+                cx,
+                scanner.as_ref().map(|s| s.directory.as_str()).unwrap_or(""),
+                if cfg!(windows) { r"D:\ROMs\ps2" } else { "/path/to/roms" },
+            ),
             scan_subfolders: scanner.as_ref().map(|s| s.scan_subfolders).unwrap_or(true),
             merge_related: scanner.as_ref().map(|s| s.merge_related_files).unwrap_or(true),
             auto_scan: scanner.as_ref().map(|s| s.auto_scan_on_refresh).unwrap_or(true),

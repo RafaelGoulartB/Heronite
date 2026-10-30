@@ -23,7 +23,28 @@ use crate::theme;
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::new_input;
 
+/// How an emulator runs on Linux (Windows has no choice: as it is).
 const KINDS: [(&str, &str); 3] = [("native", n_!("Native (Linux)")), ("flatpak", "Flatpak"), ("wine", n_!("Windows program (Wine)"))];
+
+/// A picked Windows program runs through Wine on Linux.
+fn kind_of_pick(path: &str, current: &str) -> String {
+    if !cfg!(windows) && path.to_lowercase().ends_with(".exe") {
+        "wine".into()
+    } else {
+        current.into()
+    }
+}
+
+/// RetroArch's core files on this system.
+const CORE_EXT: &str = if cfg!(windows) { "dll" } else { "so" };
+
+fn core_label() -> &'static str {
+    if cfg!(windows) {
+        tr!("RetroArch core (.dll)")
+    } else {
+        tr!("RetroArch core (.so)")
+    }
+}
 const WORKING_DIRS: [(&str, &str); 3] = [("", n_!("Default")), ("emulator", n_!("Emulator folder")), ("rom", n_!("ROM folder"))];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -83,7 +104,9 @@ impl EmulatorEditDialog {
             paths: paths.clone(),
             create,
             definition_id: base.definition_id.clone(),
-            launch_kind: if base.launch_kind.is_empty() { "native".into() } else { base.launch_kind.clone() },
+            // Windows runs every emulator as it is (a Flatpak or Wine one
+            // there comes from a Linux backup).
+            launch_kind: if base.launch_kind.is_empty() || cfg!(windows) { "native".into() } else { base.launch_kind.clone() },
             profiles,
             scanners: vec![],
             detected: vec![],

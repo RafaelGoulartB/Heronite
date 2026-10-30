@@ -61,13 +61,12 @@ pub const fn supported(feature: Feature) -> bool {
     }
     match feature {
         // Ported to Windows.
-        Feature::Autostart | Feature::Tray => true,
+        Feature::Autostart | Feature::Tray | Feature::Emulation => true,
         Feature::Wine
         | Feature::StoreAccounts
         | Feature::StoreClients
         | Feature::LauncherImports
         | Feature::HeroicMigration
-        | Feature::Emulation
         | Feature::SaveBackups
         | Feature::Overlay
         | Feature::SteamGameSettings

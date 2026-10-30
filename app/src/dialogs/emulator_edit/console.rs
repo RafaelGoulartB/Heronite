@@ -55,8 +55,11 @@ impl EmulatorEditDialog {
             );
         }
         rows.push(Row::text("name", tr!("Name"), text_of(&self.name, cx)).icon(Icon::Edit));
-        let kind = KINDS.iter().position(|k| k.0 == self.launch_kind).unwrap_or(0);
-        rows.push(Row::choice("kind", tr!("Run as"), KINDS.iter().map(|k| SharedString::from(tr(k.1))).collect(), kind));
+        // Windows runs every emulator as it is.
+        if !cfg!(windows) {
+            let kind = KINDS.iter().position(|k| k.0 == self.launch_kind).unwrap_or(0);
+            rows.push(Row::choice("kind", tr!("Run as"), KINDS.iter().map(|k| SharedString::from(tr(k.1))).collect(), kind));
+        }
         if self.launch_kind == "flatpak" {
             rows.push(Row::text("flatpak", tr!("Flatpak application id"), text_of(&self.flatpak_id, cx)).icon(Icon::Edit));
         } else {
@@ -109,7 +112,7 @@ impl EmulatorEditDialog {
         ];
         if self.core_relevant(p) {
             rows.push(
-                Row::text("pf-core", tr!("RetroArch core (.so)"), text_of(&f.core, cx))
+                Row::text("pf-core", super::core_label(), text_of(&f.core, cx))
                     .icon(Icon::FolderOpen)
                     .desc(tr!("A picks the file. X clears it.")),
             );
@@ -143,7 +146,7 @@ impl EmulatorEditDialog {
         let mut body = div().flex().flex_col().flex_1().min_h_0().gap(u(8.));
         if !profile && self.launch_kind != "flatpak" {
             let exe = text_of(&self.executable, cx);
-            if !exe.is_empty() && exe.contains('/') && !std::path::Path::new(&exe).exists() {
+            if !exe.is_empty() && heronite_emulation::pathutil::has_dir(&exe) && !std::path::Path::new(&exe).exists() {
                 body = body.child(kit::body_text(tr!("This file does not exist.")).text_color(theme::danger_text()));
             }
         }
@@ -200,9 +203,7 @@ impl EmulatorEditDialog {
             "flatpak" => self.console_type(tr!("Flatpak application id"), self.flatpak_id.clone(), window, cx),
             "exe" => {
                 self.console_pick(tr!("Emulator executable"), PickKind::File(vec![]), self.executable.clone(), window, cx, |this, p, _| {
-                    if p.to_lowercase().ends_with(".exe") {
-                        this.launch_kind = "wine".into();
-                    }
+                    this.launch_kind = super::kind_of_pick(p, &this.launch_kind);
                     if this.create {
                         let (def, kind) = (this.definition_id.clone(), this.launch_kind.clone());
                         if emulator_definition(&def).is_some_and(|d| d.profiles.iter().any(|p| p.core.is_some())) {
@@ -230,7 +231,7 @@ impl EmulatorEditDialog {
             }
             "pf-core" => {
                 if let Some(core) = self.form.as_ref().map(|f| f.core.clone()) {
-                    self.console_pick(tr!("Libretro core"), PickKind::File(vec!["so".into()]), core, window, cx, |_, _, _| {});
+                    self.console_pick(tr!("Libretro core"), PickKind::File(vec![super::CORE_EXT.into()]), core, window, cx, |_, _, _| {});
                 }
             }
             "pf-rm" => {
