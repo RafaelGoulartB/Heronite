@@ -61,7 +61,7 @@ pub const fn supported(feature: Feature) -> bool {
     }
     match feature {
         // Ported to Windows.
-        Feature::Autostart | Feature::Tray | Feature::Emulation => true,
+        Feature::Autostart | Feature::Tray | Feature::Emulation | Feature::SelfUpdate => true,
         Feature::Wine
         | Feature::StoreAccounts
         | Feature::StoreClients
@@ -73,7 +73,6 @@ pub const fn supported(feature: Feature) -> bool {
         | Feature::Sandbox
         | Feature::LaunchExtras
         | Feature::Storage
-        | Feature::SelfUpdate
         | Feature::DesktopShortcuts
         | Feature::Capture => false,
     }
