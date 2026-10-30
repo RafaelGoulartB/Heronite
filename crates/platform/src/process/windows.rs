@@ -194,6 +194,71 @@ pub fn exe_path(pid: u32) -> Option<PathBuf> {
     Some(PathBuf::from(std::ffi::OsString::from_wide(&buf[..len as usize])))
 }
 
+/// The arguments `pid` was started with, its program first, split the way
+/// Windows programs split them. `None` when the process cannot be read
+/// (another user's, or gone).
+pub fn command_line(pid: u32) -> Option<Vec<String>> {
+    use windows_sys::Wdk::System::Threading::{NtQueryInformationProcess, ProcessCommandLineInformation};
+    use windows_sys::Win32::Foundation::UNICODE_STRING;
+    let h = open(pid, PROCESS_QUERY_LIMITED_INFORMATION)?;
+    // u64s: the buffer starts with a UNICODE_STRING, which needs its alignment.
+    let mut buf = vec![0u64; 512];
+    loop {
+        let mut needed = 0u32;
+        let size = (buf.len() * 8) as u32;
+        // SAFETY: `buf` holds `size` bytes; the call writes at most that many.
+        let status = unsafe { NtQueryInformationProcess(h.0, ProcessCommandLineInformation, buf.as_mut_ptr().cast(), size, &mut needed) };
+        if status >= 0 {
+            break;
+        }
+        if needed as usize > buf.len() * 8 {
+            buf.resize(needed as usize / 8 + 1, 0);
+            continue;
+        }
+        return None;
+    }
+    // SAFETY: on success the buffer starts with a UNICODE_STRING whose text
+    // lies in the same buffer, which outlives this borrow.
+    let text = unsafe {
+        let s = &*(buf.as_ptr() as *const UNICODE_STRING);
+        if s.Buffer.is_null() {
+            return Some(Vec::new());
+        }
+        std::slice::from_raw_parts(s.Buffer, s.Length as usize / 2)
+    };
+    Some(split_command_line(text))
+}
+
+/// Splits a command line like the C runtime does (`CommandLineToArgvW`).
+fn split_command_line(line: &[u16]) -> Vec<String> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::UI::Shell::CommandLineToArgvW;
+    // An empty line would give this program's own path.
+    if line.iter().all(|&c| c == u16::from(b' ') || c == u16::from(b'\t')) {
+        return Vec::new();
+    }
+    let text: Vec<u16> = line.iter().copied().chain([0]).collect();
+    let mut count = 0i32;
+    // SAFETY: `text` is NUL-terminated; the returned array is freed below.
+    let argv = unsafe { CommandLineToArgvW(text.as_ptr(), &mut count) };
+    if argv.is_null() {
+        return Vec::new();
+    }
+    let args = (0..count.max(0) as usize)
+        .map(|i| {
+            // SAFETY: `argv` holds `count` NUL-terminated strings.
+            unsafe {
+                let arg = *argv.add(i);
+                let len = (0..).take_while(|&j| *arg.add(j) != 0).count();
+                String::from_utf16_lossy(std::slice::from_raw_parts(arg, len))
+            }
+        })
+        .collect();
+    // SAFETY: `argv` came from CommandLineToArgvW and is freed once.
+    unsafe { LocalFree(argv.cast()) };
+    args
+}
+
 /// When `pid` started, in milliseconds since 1601 (Windows' file time).
 pub fn start_time(pid: u32) -> Option<u64> {
     let h = open(pid, PROCESS_QUERY_LIMITED_INFORMATION)?;
@@ -227,6 +292,20 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         assert!(!group_alive(leader));
+    }
+
+    #[test]
+    fn a_child_s_command_line_comes_back_split() {
+        let mut child =
+            Command::new("ping").args(["-n", "3", "-w", "100", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        let args = command_line(child.id()).unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(args[0].to_lowercase().contains("ping"), "{args:?}");
+        assert_eq!(args[1..], ["-n", "3", "-w", "100", "127.0.0.1"]);
+        let wide: Vec<u16> = r#""C:\Program Files\x.exe" -a "b c""#.encode_utf16().collect();
+        assert_eq!(split_command_line(&wide), [r"C:\Program Files\x.exe", "-a", "b c"]);
+        assert!(split_command_line(&[]).is_empty());
     }
 
     #[test]

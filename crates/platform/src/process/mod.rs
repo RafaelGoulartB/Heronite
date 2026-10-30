@@ -22,7 +22,7 @@ mod windows;
 use windows as sys;
 
 #[cfg(windows)]
-pub use windows::{exe_path, snapshot, start_time, ProcessEntry};
+pub use windows::{command_line, exe_path, snapshot, start_time, ProcessEntry};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Signal {
