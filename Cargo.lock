@@ -3637,6 +3637,7 @@ version = "0.18.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "dirs 6.0.0",
  "flate2",
  "heronite-data",
  "heronite-i18n",

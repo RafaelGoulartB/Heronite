@@ -310,7 +310,7 @@ mod tests {
         let r = backup_for_game(&env, &game, BackupReason::Auto);
         assert!(r.ran, "{r:?}");
         assert_eq!(r.game_name.as_deref(), Some("Tony Hawk's Underground"));
-        assert_eq!(r.backup_path.as_deref(), Some("/backups/Tony Hawk's Underground"));
+        assert_eq!(r.backup_path, Some(join("/backups", "Tony Hawk's Underground")));
         assert_eq!(r.total_games, Some(1));
         let calls = runner.calls.lock().unwrap();
         let backup_call = calls.iter().find(|c| c[0] == "backup").unwrap();
@@ -321,7 +321,7 @@ mod tests {
         assert_eq!(backup_call.last().unwrap(), "Tony Hawks Underground");
         let l = settings::load(&paths).unwrap().ludusavi;
         assert_eq!(l.last_backup_game.as_deref(), Some("Tony Hawk's Underground"));
-        assert_eq!(l.last_backup_path.as_deref(), Some("/backups/Tony Hawk's Underground"));
+        assert_eq!(l.last_backup_path, Some(join("/backups", "Tony Hawk's Underground")));
         assert!(l.last_backup_at.is_some());
         assert_eq!(l.last_error, None);
     }
@@ -431,7 +431,7 @@ mod tests {
         assert_eq!(r.total_games, Some(0));
         let (title, body) = notification(&r, "G").unwrap();
         assert_eq!(title, "Ludusavi");
-        assert_eq!(body, "Saved G to /backups/G");
+        assert_eq!(body, format!("Saved G to {}", join("/backups", "G")));
         assert!(notification(&LudusaviBackupResult::default(), "G").is_none());
     }
 }

@@ -17,7 +17,7 @@ use regex::Regex;
 
 use crate::names::{name_without_disc, rom_disc_label, strip_ext, title_from_rom_path};
 use crate::pathutil::dirname;
-use crate::pathutil::{basename, ext_lower, join, normalize_key, resolve};
+use crate::pathutil::{basename, ext_lower, is_absolute, join, normalize_key, resolve};
 use crate::store::{self, resolve_template};
 use crate::types::{RomScanArgs, RomScanItem, RomScanPreview};
 
@@ -93,7 +93,7 @@ pub fn read_playlist_files(file_path: &str) -> std::io::Result<Vec<String>> {
             .lines()
             .map(str::trim)
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(|l| if l.starts_with('/') { l.to_string() } else { join(&dir, l) })
+            .map(|l| if is_absolute(l) { l.to_string() } else { join(&dir, l) })
             .collect(),
     })
 }
@@ -304,10 +304,8 @@ pub fn preview_rom_scan(paths: &DataPaths, args: &RomScanArgs) -> Result<RomScan
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
     use std::fs::{create_dir_all, write};
 
-    #[cfg(unix)]
     fn emu(def: &str, profile_def: &str, args: &str, ext: &[&str]) -> (UserEmulator, UserEmulatorProfile) {
         let profile = UserEmulatorProfile {
             id: "p1".into(),
@@ -329,13 +327,10 @@ mod tests {
         (e, profile)
     }
 
-    #[cfg(unix)]
     fn titles(p: &RomScanPreview) -> Vec<String> {
         p.games.iter().map(|g| g.title.clone()).collect()
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
-    #[cfg(unix)]
     #[test]
     fn scans_extensions_subfolders_and_skips_dirs() {
         let d = tempfile::tempdir().unwrap();
@@ -364,8 +359,6 @@ mod tests {
         assert_eq!(titles(&flat), ["Mario", "Zelda"]);
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
-    #[cfg(unix)]
     #[test]
     fn merges_discs_and_respects_merge_flag() {
         let d = tempfile::tempdir().unwrap();
@@ -390,8 +383,6 @@ mod tests {
         assert_eq!(split.games.len(), 3);
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
-    #[cfg(unix)]
     #[test]
     fn regions_and_folders_are_not_discs() {
         let d = tempfile::tempdir().unwrap();
@@ -421,8 +412,6 @@ mod tests {
         assert!(orphaned(&meta(Some("removed")), &live) && orphaned(&meta(None), &live));
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
-    #[cfg(unix)]
     #[test]
     fn playlists_hide_their_tracks() {
         let d = tempfile::tempdir().unwrap();
@@ -446,8 +435,6 @@ mod tests {
         assert_eq!(r.platform_name.as_deref(), Some("PlayStation"));
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
-    #[cfg(unix)]
     #[test]
     fn folder_indicator_finds_game_folders() {
         let d = tempfile::tempdir().unwrap();
@@ -462,11 +449,9 @@ mod tests {
         let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
         assert_eq!(r.games.len(), 1);
         assert_eq!(r.games[0].title, "EBOOT");
-        assert!(r.games[0].roms[0].path.ends_with("USRDIR/EBOOT.BIN"));
+        assert!(Path::new(&r.games[0].roms[0].path).ends_with("USRDIR/EBOOT.BIN"));
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
-    #[cfg(unix)]
     #[test]
     fn marks_already_imported_and_reports_missing_folder() {
         let d = tempfile::tempdir().unwrap();
@@ -479,8 +464,9 @@ mod tests {
         let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &imported);
         assert!(r.games[0].already_imported && !r.games[0].import);
         assert!(!r.games[1].already_imported && r.games[1].import);
-        let missing = scan_rom_directory(&e, &p, "/nonexistent/zzz", ScanOptions::default(), &imported);
-        assert_eq!(missing.errors, ["Folder does not exist: /nonexistent/zzz"]);
+        let gone = root.join("nonexistent").join("zzz");
+        let missing = scan_rom_directory(&e, &p, gone.to_str().unwrap(), ScanOptions::default(), &imported);
+        assert_eq!(missing.errors, [format!("Folder does not exist: {}", gone.display())]);
     }
 
     #[test]
@@ -494,5 +480,29 @@ mod tests {
         .unwrap();
         assert_eq!(r.errors, [tr!("Emulator not found. Add it in Collection settings first.")]);
         assert_eq!(r.directory, "/r");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_folders_playlists_and_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("PS1")).unwrap();
+        write(root.join(r"PS1\Multi (Disc 1).chd"), "x").unwrap();
+        write(root.join(r"PS1\Multi (Disc 2).chd"), "x").unwrap();
+        // A playlist written on Windows: CRLF, one track by its full path.
+        let disc2 = root.join(r"PS1\Multi (Disc 2).chd");
+        write(root.join(r"PS1\Multi.m3u"), format!("Multi (Disc 1).chd\r\n{}\r\n", disc2.display())).unwrap();
+        write(root.join(r"PS1\Solo (USA).chd"), "x").unwrap();
+        let (e, p) = emu("duckstation", "ps1", "", &["chd", "m3u"]);
+        // The folder as typed: forward slashes, another case.
+        let typed = format!("{}/ps1/", root.display());
+        let mut imported = HashSet::new();
+        imported.insert(normalize_key(&root.join(r"PS1\SOLO (USA).CHD").to_string_lossy()));
+        let r = scan_rom_directory(&e, &p, &typed, ScanOptions::default(), &imported);
+        assert_eq!(titles(&r), ["Multi", "Solo"]);
+        assert_eq!(r.directory, root.join("ps1").to_string_lossy());
+        assert_eq!(r.games[0].roms[0].path, root.join(r"ps1\Multi.m3u").to_string_lossy());
+        assert!(r.games[1].already_imported, "paths compare without case on Windows");
     }
 }

@@ -1,12 +1,13 @@
 //! File helpers for save states (port of `emulation/save-state-files.ts`):
-//! XDG/Flatpak folders, INI files, ZIP entries and embedded PNGs.
+//! XDG/Flatpak folders (Documents and AppData on Windows), INI files, ZIP
+//! entries and embedded PNGs.
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-use crate::pathutil::{join, resolve_from};
+use crate::pathutil::{is_absolute, join, resolve_from};
 
 /// Where an emulator's per-user folders live. [`HostEnv::system`] reads the
 /// process environment; tests build one around a temp directory.
@@ -20,23 +21,42 @@ pub struct HostEnv {
     pub dolphin_userpath: Option<PathBuf>,
     /// Where one-shot config files for RetroArch are written.
     pub tmp_dir: PathBuf,
+    /// Windows: the user's Documents (may be OneDrive's), `%APPDATA%` and
+    /// `%LOCALAPPDATA%`, where emulators keep their folders. Under `home`
+    /// elsewhere, unused.
+    pub documents: PathBuf,
+    pub appdata: PathBuf,
+    pub local_appdata: PathBuf,
 }
 
 impl HostEnv {
     pub fn system() -> Self {
         let var = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
-        Self {
-            home: dirs_home(),
-            xdg_config_home_var: var("XDG_CONFIG_HOME"),
-            xdg_data_home_var: var("XDG_DATA_HOME"),
-            dolphin_userpath: var("DOLPHIN_EMU_USERPATH"),
-            tmp_dir: std::env::temp_dir(),
+        let mut env = Self::sandbox(dirs_home(), std::env::temp_dir());
+        env.xdg_config_home_var = var("XDG_CONFIG_HOME");
+        env.xdg_data_home_var = var("XDG_DATA_HOME");
+        env.dolphin_userpath = var("DOLPHIN_EMU_USERPATH");
+        if cfg!(windows) {
+            env.documents = dirs::document_dir().unwrap_or(env.documents);
+            env.appdata = dirs::config_dir().unwrap_or(env.appdata);
+            env.local_appdata = dirs::data_local_dir().unwrap_or(env.local_appdata);
         }
+        env
     }
 
     /// A sandbox: everything under `home`, no environment overrides.
     pub fn sandbox(home: impl Into<PathBuf>, tmp: impl Into<PathBuf>) -> Self {
-        Self { home: home.into(), xdg_config_home_var: None, xdg_data_home_var: None, dolphin_userpath: None, tmp_dir: tmp.into() }
+        let home: PathBuf = home.into();
+        Self {
+            documents: home.join("Documents"),
+            appdata: home.join("AppData").join("Roaming"),
+            local_appdata: home.join("AppData").join("Local"),
+            home,
+            xdg_config_home_var: None,
+            xdg_data_home_var: None,
+            dolphin_userpath: None,
+            tmp_dir: tmp.into(),
+        }
     }
 
     /// `xdgConfigHome()`.
@@ -60,6 +80,9 @@ impl HostEnv {
 }
 
 fn dirs_home() -> PathBuf {
+    if cfg!(windows) {
+        return PathBuf::from(heronite_launch::probe::dirs_home());
+    }
     std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"))
 }
 
@@ -119,12 +142,12 @@ pub fn resolve_configured_dir(value: Option<&str>, base: &str, home: &Path) -> O
     let value = value.filter(|v| !v.is_empty() && *v != "default")?;
     let expanded = if value == "~" {
         home.to_string_lossy().into_owned()
-    } else if let Some(rest) = value.strip_prefix("~/") {
+    } else if let Some(rest) = value.strip_prefix("~/").or_else(|| value.strip_prefix("~\\").filter(|_| cfg!(windows))) {
         join(&home.to_string_lossy(), rest)
     } else {
         value.to_string()
     };
-    Some(if expanded.starts_with('/') { expanded } else { resolve_from(base, &expanded) })
+    Some(if is_absolute(&expanded) { expanded } else { resolve_from(base, &expanded) })
 }
 
 fn read_at(file: &mut File, position: u64, length: usize) -> Vec<u8> {
@@ -235,6 +258,7 @@ mod tests {
         assert_eq!(ini.get("nope", "x"), None);
     }
 
+    #[cfg(not(windows))]
     #[test]
     fn configured_dirs() {
         let home = Path::new("/home/u");
@@ -243,6 +267,21 @@ mod tests {
         assert_eq!(resolve_configured_dir(Some("~/st"), "/b", home).as_deref(), Some("/home/u/st"));
         assert_eq!(resolve_configured_dir(Some("/abs"), "/b", home).as_deref(), Some("/abs"));
         assert_eq!(resolve_configured_dir(Some("rel/x"), "/b", home).as_deref(), Some("/b/rel/x"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn configured_dirs_on_windows() {
+        let home = Path::new(r"C:\Users\u");
+        assert_eq!(resolve_configured_dir(Some("default"), r"C:\b", home), None);
+        assert_eq!(resolve_configured_dir(Some("~/st"), r"C:\b", home).as_deref(), Some(r"C:\Users\u\st"));
+        assert_eq!(resolve_configured_dir(Some(r"~\st"), r"C:\b", home).as_deref(), Some(r"C:\Users\u\st"));
+        assert_eq!(resolve_configured_dir(Some(r"D:\States"), r"C:\b", home).as_deref(), Some(r"D:\States"));
+        assert_eq!(resolve_configured_dir(Some("rel/x"), r"C:\b", home).as_deref(), Some(r"C:\b\rel\x"));
+        let env = HostEnv::sandbox(home, r"C:\t");
+        assert_eq!(env.documents, Path::new(r"C:\Users\u\Documents"));
+        assert_eq!(env.appdata, Path::new(r"C:\Users\u\AppData\Roaming"));
+        assert_eq!(env.local_appdata, Path::new(r"C:\Users\u\AppData\Local"));
     }
 
     fn crc32(data: &[u8]) -> u32 {

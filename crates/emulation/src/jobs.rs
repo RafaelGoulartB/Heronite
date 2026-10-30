@@ -40,8 +40,7 @@ pub fn spawn_idle_jobs(paths: DataPaths, delay: Duration, on_done: impl FnOnce(I
     })
 }
 
-// Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::{UpsertRomScannerArgs, UpsertUserEmulatorArgs};

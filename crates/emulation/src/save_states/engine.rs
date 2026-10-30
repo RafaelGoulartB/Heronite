@@ -280,7 +280,6 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
     use std::fs;
 
     fn ctx() -> EngineContext {
@@ -331,7 +330,7 @@ mod tests {
         assert!(engine_for("melonds").is_none());
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    // The XDG and Flatpak folders are Linux's.
     #[cfg(unix)]
     #[test]
     fn state_dirs_follow_each_emulator_layout() {
@@ -372,7 +371,7 @@ mod tests {
         assert_eq!(Engine::DuckStation.state_dirs(&env, &ctx(), "", &[]), [s(&home.join(".local/share/duckstation/savestates"))]);
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    // The XDG and Flatpak folders are Linux's.
     #[cfg(unix)]
     #[test]
     fn retroarch_dirs_and_launch_args() {
@@ -421,5 +420,75 @@ mod tests {
         assert!(rp.replaces_image);
         assert_eq!(Engine::Mgba.fresh_args(&env, &ctx()).unwrap(), ["-C", "autoload=0"]);
         assert!(Engine::Pcsx2.fresh_args(&env, &ctx()).unwrap().is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn state_dirs_follow_each_emulator_layout_on_windows() {
+        let d = tempfile::tempdir().unwrap();
+        let env = HostEnv::sandbox(d.path().join("home"), d.path().join("tmp"));
+        let exe = |dir: &std::path::Path, name: &str| EngineContext { executable: Some(s(&dir.join(name))), ..ctx() };
+        // PCSX2: Documents, configured, portable.
+        assert_eq!(Engine::Pcsx2.state_dirs(&env, &ctx(), r"D:\r\a.iso", &[]), [s(&env.documents.join(r"PCSX2\sstates"))]);
+        fs::create_dir_all(env.documents.join(r"PCSX2\inis")).unwrap();
+        fs::write(env.documents.join(r"PCSX2\inis\PCSX2.ini"), "[Folders]\r\nSavestates = D:\\States\r\n").unwrap();
+        assert_eq!(Engine::Pcsx2.state_dirs(&env, &ctx(), r"D:\r\a.iso", &[]), [r"D:\States"]);
+        let portable = d.path().join("PCSX2");
+        fs::create_dir_all(&portable).unwrap();
+        fs::write(portable.join("portable.ini"), "").unwrap();
+        assert_eq!(Engine::Pcsx2.state_dirs(&env, &exe(&portable, "pcsx2-qt.exe"), "", &[]), [s(&portable.join("sstates"))]);
+        // DuckStation: only the folders that exist, today's first.
+        assert!(Engine::DuckStation.state_dirs(&env, &ctx(), "", &[]).is_empty());
+        fs::create_dir_all(env.documents.join("DuckStation")).unwrap();
+        fs::create_dir_all(env.local_appdata.join("DuckStation")).unwrap();
+        assert_eq!(
+            Engine::DuckStation.state_dirs(&env, &ctx(), "", &[]),
+            [s(&env.local_appdata.join(r"DuckStation\savestates")), s(&env.documents.join(r"DuckStation\savestates"))]
+        );
+        // PPSSPP: the installer's Documents, or the zip build's memstick.
+        assert_eq!(Engine::Ppsspp.state_dirs(&env, &ctx(), "", &[]), [s(&env.documents.join(r"PPSSPP\PSP\PPSSPP_STATE"))]);
+        let zip = d.path().join("ppsspp");
+        fs::create_dir_all(zip.join("memstick")).unwrap();
+        assert_eq!(
+            Engine::Ppsspp.state_dirs(&env, &exe(&zip, "PPSSPPWindows64.exe"), "", &[]),
+            [s(&zip.join(r"memstick\PSP\PPSSPP_STATE"))]
+        );
+        // Dolphin: AppData, Documents of older versions, a portable `User`.
+        assert_eq!(Engine::Dolphin.state_dirs(&env, &ctx(), "", &[]), [s(&env.appdata.join(r"Dolphin Emulator\StateSaves"))]);
+        fs::create_dir_all(env.documents.join("Dolphin Emulator")).unwrap();
+        assert_eq!(Engine::Dolphin.state_dirs(&env, &ctx(), "", &[]), [s(&env.documents.join(r"Dolphin Emulator\StateSaves"))]);
+        let dolphin = d.path().join("Dolphin-x64");
+        fs::create_dir_all(&dolphin).unwrap();
+        fs::write(dolphin.join("portable.txt"), "").unwrap();
+        assert_eq!(Engine::Dolphin.state_dirs(&env, &exe(&dolphin, "Dolphin.exe"), "", &[]), [s(&dolphin.join(r"User\StateSaves"))]);
+        // RPCS3: its own folder.
+        let rpcs3 = EngineContext { executable: Some(r"C:\Emu\RPCS3\rpcs3.exe".into()), ..ctx() };
+        assert_eq!(Engine::Rpcs3.state_dirs(&env, &rpcs3, "", &["BCUS98114".into()]), [r"C:\Emu\RPCS3\savestates\BCUS98114"]);
+        // mGBA: next to the ROM, or where AppData's config says.
+        assert_eq!(Engine::Mgba.state_dirs(&env, &ctx(), r"D:\roms\gba\p.gba", &[]), [r"D:\roms\gba"]);
+        fs::create_dir_all(env.appdata.join("mGBA")).unwrap();
+        fs::write(env.appdata.join(r"mGBA\config.ini"), "[ports.qt]\nsavestatePath=states\n").unwrap();
+        assert_eq!(Engine::Mgba.state_dirs(&env, &ctx(), r"D:\roms\gba\p.gba", &[]), [r"D:\roms\gba\states", r"D:\roms\gba"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn retroarch_keeps_its_config_and_states_next_to_it_on_windows() {
+        let d = tempfile::tempdir().unwrap();
+        let ra = d.path().join("RetroArch-Win64");
+        fs::create_dir_all(ra.join(r"states\Snes9x")).unwrap();
+        fs::create_dir_all(ra.join("cores")).unwrap();
+        fs::write(ra.join(r"cores\snes9x_libretro.info"), "corename = \"Snes9x\"\n").unwrap();
+        // `:` is RetroArch's own folder.
+        fs::write(ra.join("retroarch.cfg"), "savestate_directory = \":\\states\"\nsavestate_auto_load = \"true\"\n").unwrap();
+        let env = HostEnv::sandbox(d.path().join("home"), d.path().join("tmp"));
+        let rc = EngineContext {
+            executable: Some(s(&ra.join("retroarch.exe"))),
+            core_path: Some(s(&ra.join(r"cores\snes9x_libretro.dll"))),
+            ..ctx()
+        };
+        assert_eq!(Engine::RetroArch.state_dirs(&env, &rc, r"D:\r\z.sfc", &[]), [s(&ra.join("states")), s(&ra.join(r"states\Snes9x"))]);
+        let fresh = Engine::RetroArch.fresh_args(&env, &rc).unwrap();
+        assert!(fresh[0].ends_with("heronite-retroarch-autoload-false.cfg"));
     }
 }

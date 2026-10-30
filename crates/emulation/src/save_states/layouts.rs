@@ -1,4 +1,6 @@
-//! Where each emulator keeps its data, config and state files.
+//! Where each emulator keeps its data, config and state files: the XDG and
+//! Flatpak folders on Linux; on Windows Documents, AppData or the
+//! emulator's own folder (portable installs, RetroArch, RPCS3).
 
 use std::path::{Path, PathBuf};
 
@@ -8,6 +10,11 @@ use super::engine::EngineContext;
 use super::s;
 use crate::pathutil::{base_no_ext, dirname, join, unique};
 use crate::sysfiles::{resolve_configured_dir, HostEnv, Ini};
+
+/// The executable's folder.
+fn exe_dir(ctx: &EngineContext) -> Option<PathBuf> {
+    ctx.executable.as_deref().map(|exe| PathBuf::from(dirname(exe)))
+}
 
 /// The executable's folder when it holds one of the portable-mode marker files.
 fn portable_dir(ctx: &EngineContext, markers: &[&str]) -> Option<PathBuf> {
@@ -33,20 +40,25 @@ pub(super) fn pcsx2_data_dirs(env: &HostEnv, ctx: &EngineContext) -> Vec<PathBuf
     }
     match portable_dir(ctx, &["portable.ini", "portable.txt"]) {
         Some(p) => vec![p],
+        None if cfg!(windows) => vec![env.documents.join("PCSX2")],
         None => vec![env.xdg_config_home().join("PCSX2")],
     }
 }
 
 /// DuckStation: `{Serial}_{N}.sav`, `{Serial}_resume.sav` in settings.ini
 /// [Folders] SaveStates. Data root: $XDG_CONFIG_HOME/duckstation when that
-/// variable is set, otherwise ~/.local/share/duckstation. `-statefile <file>`
-/// loads.
+/// variable is set, otherwise ~/.local/share/duckstation; on Windows
+/// `%LOCALAPPDATA%\DuckStation` (older versions: `Documents\DuckStation`).
+/// `-statefile <file>` loads.
 pub(super) fn duckstation_data_dirs(env: &HostEnv, ctx: &EngineContext) -> Vec<PathBuf> {
     if let Some(id) = &ctx.flatpak_id {
         return vec![env.flatpak_dir(id, "data", &["duckstation"])];
     }
     if let Some(p) = portable_dir(ctx, &["portable.txt"]) {
         return vec![p];
+    }
+    if cfg!(windows) {
+        return [env.local_appdata.join("DuckStation"), env.documents.join("DuckStation")].into_iter().filter(|d| d.exists()).collect();
     }
     unique([
         env.xdg_config_home_var.as_ref().map(|d| s(&d.join("duckstation"))),
@@ -64,19 +76,43 @@ pub(super) fn duckstation_data_dirs(env: &HostEnv, ctx: &EngineContext) -> Vec<P
 pub(super) fn ppsspp_state_dir(env: &HostEnv, ctx: &EngineContext) -> PathBuf {
     let memstick = match &ctx.flatpak_id {
         Some(id) => env.flatpak_dir(id, "config", &["ppsspp"]),
+        None if cfg!(windows) => ppsspp_windows_memstick(env, ctx),
         None => env.xdg_config_home().join("ppsspp"),
     };
     memstick.join("PSP").join("PPSSPP_STATE")
 }
 
+/// PPSSPP on Windows: the `memstick` folder next to it (the zip build), the
+/// folder its installer wrote in `installed.txt`, else `Documents\PPSSPP`.
+fn ppsspp_windows_memstick(env: &HostEnv, ctx: &EngineContext) -> PathBuf {
+    let dir = exe_dir(ctx);
+    if let Some(memstick) = dir.as_ref().map(|d| d.join("memstick")).filter(|m| m.is_dir()) {
+        return memstick;
+    }
+    let installed = dir.and_then(|d| std::fs::read_to_string(d.join("installed.txt")).ok());
+    match installed.as_deref().and_then(|t| t.lines().next()).map(str::trim).filter(|l| !l.is_empty()) {
+        Some(path) => PathBuf::from(path),
+        None => env.documents.join("PPSSPP"),
+    }
+}
+
 /// Dolphin: `{GameID}.s{NN}` in <user>/StateSaves. `--save_state <file>` loads
-/// at boot.
+/// at boot. On Windows the user folder is `User` next to a portable one,
+/// `Documents\Dolphin Emulator` when there (older versions), else
+/// `%APPDATA%\Dolphin Emulator`.
 pub(super) fn dolphin_user_dir(env: &HostEnv, ctx: &EngineContext) -> PathBuf {
     if let Some(id) = &ctx.flatpak_id {
         return env.flatpak_dir(id, "data", &["dolphin-emu"]);
     }
     if let Some(p) = &env.dolphin_userpath {
         return p.clone();
+    }
+    if cfg!(windows) {
+        if let Some(p) = portable_dir(ctx, &["portable.txt"]) {
+            return p.join("User");
+        }
+        let documents = env.documents.join("Dolphin Emulator");
+        return if documents.exists() { documents } else { env.appdata.join("Dolphin Emulator") };
     }
     let legacy = env.home.join(".dolphin-emu");
     if legacy.exists() {
@@ -91,9 +127,12 @@ pub(super) fn dolphin_user_dir(env: &HostEnv, ctx: &EngineContext) -> PathBuf {
 // `-e N` loads slot N at boot (normal slot files need RetroArch 1.21+); the
 // auto state needs `savestate_auto_load`, passed via --appendconfig.
 
+/// Where `retroarch.cfg` is: on Windows next to `retroarch.exe` (else
+/// `%APPDATA%\RetroArch`).
 pub(super) fn retroarch_config_dir(env: &HostEnv, ctx: &EngineContext) -> PathBuf {
     match &ctx.flatpak_id {
         Some(id) => env.flatpak_dir(id, "config", &["retroarch"]),
+        None if cfg!(windows) => exe_dir(ctx).unwrap_or_else(|| env.appdata.join("RetroArch")),
         None => env.xdg_config_home().join("retroarch"),
     }
 }
@@ -110,8 +149,8 @@ pub(super) fn retroarch_core_name(env: &HostEnv, ctx: &EngineContext) -> Option<
         Some(join(&cfg_dir, "cores")),
         Some(join(&cfg_dir, "info")),
         Some(dirname(core)),
-        Some("/usr/share/libretro/info".into()),
-        Some("/usr/lib/libretro".into()),
+        (!cfg!(windows)).then_some("/usr/share/libretro/info".to_string()),
+        (!cfg!(windows)).then_some("/usr/lib/libretro".to_string()),
     ]);
     for dir in dirs {
         if let Some(info) = Ini::read(&Path::new(&dir).join(&info_name)) {
@@ -137,19 +176,23 @@ pub(super) fn retroarch_append_config(env: &HostEnv, ctx: &EngineContext, auto_l
 
 /// mGBA: `{rom}.ss{N}` next to the ROM or in [ports.qt] savestatePath. ss0 is
 /// the auto slot that mGBA-Qt loads on boot by default (`autoload`). States are
-/// PNG files with the emulator data embedded. `-t <file>` loads at boot.
+/// PNG files with the emulator data embedded. `-t <file>` loads at boot. Its
+/// config is in `%APPDATA%\mGBA` on Windows, next to it when portable.
 pub(super) fn mgba_config_path(env: &HostEnv, ctx: &EngineContext) -> PathBuf {
     match &ctx.flatpak_id {
         Some(id) => env.flatpak_dir(id, "config", &["mgba", "config.ini"]),
+        None if cfg!(windows) => portable_dir(ctx, &["portable.ini"]).unwrap_or_else(|| env.appdata.join("mGBA")).join("config.ini"),
         None => env.xdg_config_home().join("mgba").join("config.ini"),
     }
 }
 
 /// RPCS3: `<config>/savestates/{TITLE_ID}/{TITLE_ID}_*.SAVESTAT[.zst|.gz]`.
-/// `--savestate <file>` boots the state instead of the game.
+/// `--savestate <file>` boots the state instead of the game. On Windows its
+/// config is its own folder.
 pub(super) fn rpcs3_states_root(env: &HostEnv, ctx: &EngineContext) -> PathBuf {
     match &ctx.flatpak_id {
         Some(id) => env.flatpak_dir(id, "config", &["rpcs3", "savestates"]),
+        None if cfg!(windows) => exe_dir(ctx).unwrap_or_else(|| env.appdata.join("rpcs3")).join("savestates"),
         None => env.xdg_config_home().join("rpcs3").join("savestates"),
     }
 }

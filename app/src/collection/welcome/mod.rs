@@ -12,7 +12,6 @@
 //! `connected`; `looking`, `none`, `ready` or `unplayable`.
 
 use heronite_platform::Feature;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
@@ -130,8 +129,8 @@ impl CollectionView {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let media = PathBuf::from("/run/media").join(std::env::var("USER").unwrap_or_default());
-                    heronite_emulation::setup::auto_setup(&paths, &heronite_emulation::SystemEnv, &media).map_err(|e| format!("{e:#}"))
+                    let disks = heronite_emulation::setup::disks();
+                    heronite_emulation::setup::auto_setup(&paths, &heronite_emulation::SystemEnv, &disks).map_err(|e| format!("{e:#}"))
                 })
                 .await;
             this.update(cx, |this, cx| {

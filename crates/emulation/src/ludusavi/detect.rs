@@ -161,7 +161,7 @@ mod tests {
         assert_eq!(yaml_get("a:\n  b: \"quoted\"\n", &["a", "b"]).as_deref(), Some("quoted"));
         assert_eq!(yaml_get("a:\n  b: |\n    text\n", &["a", "b"]), None);
         let (p, f, c) = parse_config(YAML, "/home/u");
-        assert_eq!((p.as_deref(), f.as_deref(), c.as_deref()), (Some("/home/u/Saves"), Some("zip"), Some("zstd")));
+        assert_eq!((p, f.as_deref(), c.as_deref()), (Some(join("/home/u", "Saves")), Some("zip"), Some("zstd")));
     }
 
     #[test]
@@ -181,7 +181,7 @@ mod tests {
         assert_eq!(det.binary, "/opt/bin/ludusavi");
         assert_eq!(det.version.as_deref(), Some("v0.30.0"));
         assert_eq!(det.config_path.as_deref(), cfg.to_str());
-        assert_eq!(det.backup_path.as_deref(), Some("/home/u/Saves"));
+        assert_eq!(det.backup_path, Some(join("/home/u", "Saves")));
         assert_eq!(det.restore_path.as_deref(), Some("/elsewhere"));
         assert_eq!(det.format.as_deref(), Some("zip"));
         assert_eq!(det.compression.as_deref(), Some("zstd"));

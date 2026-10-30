@@ -38,7 +38,12 @@ pub struct EmulatorDefinition {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub website: Option<String>,
+    /// Executable names of this system (`pcsx2-qt`; `pcsx2-qt.exe` on
+    /// Windows).
     pub binaries: Vec<String>,
+    /// Folders a Windows install is usually in (empty elsewhere).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub install_folders: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flatpak_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -101,7 +106,14 @@ struct D {
     id: &'static str,
     name: &'static str,
     website: Option<&'static str>,
+    /// Executable names on Linux.
     binaries: &'static [&'static str],
+    /// Executable names on Windows.
+    win_binaries: &'static [&'static str],
+    /// Folders a Windows install is usually in (under Program Files,
+    /// `%LOCALAPPDATA%\Programs`, the system drive...), also Scoop's app
+    /// names (case does not matter there).
+    win_folders: &'static [&'static str],
     core_dir_hints: Option<&'static [&'static str]>,
     profiles: &'static [P],
 }
@@ -112,6 +124,8 @@ static TABLE: &[D] = &[
         name: "Dolphin",
         website: Some("https://dolphin-emu.org/"),
         binaries: &["dolphin-emu", "dolphin"],
+        win_binaries: &["Dolphin.exe"],
+        win_folders: &["Dolphin", "Dolphin-x64", "Dolphin Emulator"],
         core_dir_hints: None,
         profiles: &[
             p(
@@ -137,6 +151,8 @@ static TABLE: &[D] = &[
         name: "PCSX2",
         website: Some("https://pcsx2.net/"),
         binaries: &["pcsx2-qt", "pcsx2"],
+        win_binaries: &["pcsx2-qt.exe", "pcsx2-qtx64-avx2.exe", "pcsx2-qtx64.exe"],
+        win_folders: &["PCSX2"],
         core_dir_hints: None,
         profiles: &[p(
             "ps2",
@@ -152,6 +168,8 @@ static TABLE: &[D] = &[
         name: "DuckStation",
         website: Some("https://www.duckstation.org/"),
         binaries: &["duckstation-qt", "duckstation"],
+        win_binaries: &["duckstation-qt-x64-ReleaseLTCG.exe", "duckstation-qt.exe"],
+        win_folders: &["DuckStation"],
         core_dir_hints: None,
         profiles: &[p("ps1", "PlayStation", "sony_playstation", "PlayStation", &["iso", "bin", "img", "chd", "pbp", "ecm", "m3u", "cue"])
             .playlists(&["cue", "m3u"])],
@@ -161,6 +179,8 @@ static TABLE: &[D] = &[
         name: "PPSSPP",
         website: Some("https://www.ppsspp.org/"),
         binaries: &["PPSSPPSDL", "ppsspp", "ppsspp-sdl"],
+        win_binaries: &["PPSSPPWindows64.exe", "PPSSPPWindows.exe"],
+        win_folders: &["PPSSPP"],
         core_dir_hints: None,
         profiles: &[p("psp", "PlayStation Portable", "sony_psp", "PlayStation Portable", &["iso", "cso", "pbp", "prx", "elf", "chd"])],
     },
@@ -169,6 +189,8 @@ static TABLE: &[D] = &[
         name: "RPCS3",
         website: Some("https://rpcs3.net/"),
         binaries: &["rpcs3"],
+        win_binaries: &["rpcs3.exe"],
+        win_folders: &["RPCS3"],
         core_dir_hints: None,
         profiles: &[p("ps3", "PlayStation 3", "sony_playstation3", "PlayStation 3", &["iso", "pkg"]).indicator("EBOOT.BIN")],
     },
@@ -177,6 +199,8 @@ static TABLE: &[D] = &[
         name: "Cemu",
         website: Some("https://cemu.info/"),
         binaries: &["cemu", "Cemu"],
+        win_binaries: &["Cemu.exe"],
+        win_folders: &["Cemu"],
         core_dir_hints: None,
         profiles: &[p("wiiu", "Nintendo Wii U", "nintendo_wiiu", "Nintendo Wii U", &["wud", "wux", "iso", "wad", "rpx", "elf"])],
     },
@@ -185,6 +209,8 @@ static TABLE: &[D] = &[
         name: "Ryujinx",
         website: Some("https://ryujinx.org/"),
         binaries: &["ryujinx", "Ryujinx"],
+        win_binaries: &["Ryujinx.exe"],
+        win_folders: &["Ryujinx"],
         core_dir_hints: None,
         profiles: &[p("switch", "Nintendo Switch", "nintendo_switch", "Nintendo Switch", &["nsp", "xci", "nca", "nro", "nso"])],
     },
@@ -193,6 +219,8 @@ static TABLE: &[D] = &[
         name: "Xemu",
         website: Some("https://xemu.app/"),
         binaries: &["xemu"],
+        win_binaries: &["xemu.exe"],
+        win_folders: &["xemu"],
         core_dir_hints: None,
         profiles: &[p("xbox", "Xbox", "microsoft_xbox", "Xbox", &["iso", "xiso"])],
     },
@@ -201,6 +229,8 @@ static TABLE: &[D] = &[
         name: "melonDS",
         website: Some("https://melonds.kuribo64.net/"),
         binaries: &["melonDS", "melonds"],
+        win_binaries: &["melonDS.exe"],
+        win_folders: &["melonDS"],
         core_dir_hints: None,
         profiles: &[p("nds", "Nintendo DS", "nintendo_ds", "Nintendo DS", &["nds", "dsi", "ids"]).cart()],
     },
@@ -209,6 +239,8 @@ static TABLE: &[D] = &[
         name: "mGBA",
         website: Some("https://mgba.io/"),
         binaries: &["mgba-qt", "mgba"],
+        win_binaries: &["mGBA.exe"],
+        win_folders: &["mGBA"],
         core_dir_hints: None,
         profiles: &[
             p("gba", "Game Boy Advance", "nintendo_gameboyadvance", "Game Boy Advance", &["gba", "agb", "mb", "bin"]).cart(),
@@ -220,6 +252,8 @@ static TABLE: &[D] = &[
         name: "Flycast",
         website: Some("https://github.com/flyinghead/flycast"),
         binaries: &["flycast"],
+        win_binaries: &["flycast.exe"],
+        win_folders: &["Flycast"],
         core_dir_hints: None,
         profiles: &[p("dreamcast", "Dreamcast", "sega_dreamcast", "Dreamcast", &["gdi", "cdi", "chd", "cue", "iso", "m3u"])
             .playlists(&["gdi", "cue", "m3u"])],
@@ -229,6 +263,8 @@ static TABLE: &[D] = &[
         name: "MAME",
         website: Some("https://www.mamedev.org/"),
         binaries: &["mame", "mame-mame"],
+        win_binaries: &["mame.exe", "mame64.exe"],
+        win_folders: &["MAME"],
         core_dir_hints: None,
         profiles: &[p("arcade", "Arcade", "arcade", "Arcade", &["zip", "7z"])],
     },
@@ -237,6 +273,8 @@ static TABLE: &[D] = &[
         name: "ScummVM",
         website: Some("https://www.scummvm.org/"),
         binaries: &["scummvm"],
+        win_binaries: &["scummvm.exe"],
+        win_folders: &["ScummVM"],
         core_dir_hints: None,
         profiles: &[p("scumm", "ScummVM", "pc", "PC", &["scummvm"])],
     },
@@ -245,6 +283,8 @@ static TABLE: &[D] = &[
         name: "Vita3K",
         website: Some("https://vita3k.org/"),
         binaries: &["Vita3K", "vita3k"],
+        win_binaries: &["Vita3K.exe"],
+        win_folders: &["Vita3K"],
         core_dir_hints: None,
         profiles: &[p("vita", "PlayStation Vita", "sony_psvita", "PlayStation Vita", &["vpk"]).indicator("eboot.bin")],
     },
@@ -253,6 +293,8 @@ static TABLE: &[D] = &[
         name: "shadPS4",
         website: Some("https://shadps4.net/"),
         binaries: &["shadps4", "ShadPS4"],
+        win_binaries: &["shadPS4.exe", "shadPS4QtLauncher.exe"],
+        win_folders: &["shadPS4"],
         core_dir_hints: None,
         profiles: &[p("ps4", "PlayStation 4", "sony_playstation4", "PlayStation 4", &["pkg"]).indicator("eboot.bin")],
     },
@@ -261,6 +303,8 @@ static TABLE: &[D] = &[
         name: "Azahar",
         website: Some("https://azahar-emu.org/"),
         binaries: &["azahar", "citra", "citra-qt"],
+        win_binaries: &["azahar.exe", "citra-qt.exe"],
+        win_folders: &["Azahar", "Citra"],
         core_dir_hints: None,
         profiles: &[p("3ds", "Nintendo 3DS", "nintendo_3ds", "Nintendo 3DS", &["3ds", "3dsx", "cci", "cxi", "app", "cia"]).cart()],
     },
@@ -269,6 +313,8 @@ static TABLE: &[D] = &[
         name: "RetroArch",
         website: Some("https://www.retroarch.com/"),
         binaries: &["retroarch"],
+        win_binaries: &["retroarch.exe"],
+        win_folders: &["RetroArch", "RetroArch-Win64"],
         core_dir_hints: Some(&[
             "/usr/lib/libretro",
             "/usr/lib64/libretro",
@@ -310,6 +356,8 @@ static TABLE: &[D] = &[
         name: "Custom",
         website: None,
         binaries: &[],
+        win_binaries: &[],
+        win_folders: &[],
         core_dir_hints: None,
         profiles: &[p("custom", "Custom", "other", "Other", &[])],
     },
@@ -324,10 +372,12 @@ fn build() -> Vec<EmulatorDefinition> {
                 id: d.id.into(),
                 name: d.name.into(),
                 website: d.website.map(Into::into),
-                binaries: d.binaries.iter().map(|s| s.to_string()).collect(),
+                binaries: if cfg!(windows) { d.win_binaries } else { d.binaries }.iter().map(|s| s.to_string()).collect(),
+                install_folders: if cfg!(windows) { d.win_folders } else { &[] }.iter().map(|s| s.to_string()).collect(),
                 flatpak_id: launch.and_then(|l| l.flatpak_id).map(Into::into),
                 stop_pattern: launch.and_then(|l| l.stop_pattern).map(Into::into),
-                core_dir_hints: d.core_dir_hints.map(|h| h.iter().map(|s| s.to_string()).collect()),
+                // The system's libretro folders are Linux's.
+                core_dir_hints: d.core_dir_hints.filter(|_| !cfg!(windows)).map(|h| h.iter().map(|s| s.to_string()).collect()),
                 profiles: d
                     .profiles
                     .iter()
