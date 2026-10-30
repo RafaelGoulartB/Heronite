@@ -235,8 +235,7 @@ impl CollectionView {
                     .palette_only(),
             );
         }
-        // Ludusavi goes with emulation (`Feature::Emulation`).
-        if heronite_platform::supported(heronite_platform::Feature::Emulation) {
+        if heronite_platform::supported(heronite_platform::Feature::SaveBackups) {
             v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
             let auto = self.auto_backup(game);
             v.push(item(

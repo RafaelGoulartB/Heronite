@@ -22,8 +22,11 @@ pub enum Feature {
     /// (`heronite_data::migrate`): Heroic's Windows folder holds stores
     /// this system has no runner for yet.
     HeroicMigration,
-    /// Emulators, ROM folders and Ludusavi.
+    /// Emulators, ROM folders and save states.
     Emulation,
+    /// Save backups through Ludusavi: after play, by hand and restoring
+    /// them (into Wine prefixes on Linux).
+    SaveBackups,
     /// The in-game overlay and the replay buffer.
     Overlay,
     /// Steam's per-game settings: the launch options line and the
@@ -65,6 +68,7 @@ pub const fn supported(feature: Feature) -> bool {
         | Feature::LauncherImports
         | Feature::HeroicMigration
         | Feature::Emulation
+        | Feature::SaveBackups
         | Feature::Overlay
         | Feature::SteamGameSettings
         | Feature::Sandbox

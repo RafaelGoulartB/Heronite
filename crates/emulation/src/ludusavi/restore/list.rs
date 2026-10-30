@@ -211,7 +211,7 @@ mod tests {
         }
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    // Linux paths; save backups (Ludusavi) are off on Windows (`Feature::SaveBackups`).
     #[cfg(unix)]
     #[test]
     fn sources_in_order_without_repeats() {

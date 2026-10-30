@@ -189,7 +189,8 @@ impl CollectionView {
         cx.spawn(async move |this, cx| {
             let (local, net) = cx
                 .background_spawn(async move {
-                    let enabled = settings::load(&paths).map(|s| s.ludusavi.enabled).unwrap_or(false);
+                    let enabled = heronite_platform::supported(heronite_platform::Feature::SaveBackups)
+                        && settings::load(&paths).map(|s| s.ludusavi.enabled).unwrap_or(false);
                     let backup = if !enabled {
                         Backup::Off
                     } else {

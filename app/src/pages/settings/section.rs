@@ -80,7 +80,7 @@ impl Section {
             Section::Storage => supported(Feature::Storage),
             Section::Overlay | Section::Replay => supported(Feature::Overlay),
             Section::Screenshots => supported(Feature::Capture),
-            Section::Saves => supported(Feature::Emulation),
+            Section::Saves => supported(Feature::SaveBackups),
             // Its options are mostly Wine's.
             Section::GameDefaults => supported(Feature::Wine),
             _ => true,

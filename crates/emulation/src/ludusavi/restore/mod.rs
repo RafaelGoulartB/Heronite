@@ -346,7 +346,7 @@ mod tests {
         assert!(err.contains("Elden Ring"), "{err}");
     }
 
-    // Linux emulator layouts and paths; emulation is off on Windows (`Feature::Emulation`).
+    // Wine prefixes and Linux paths; save backups (Ludusavi) are off on Windows (`Feature::SaveBackups`).
     #[cfg(unix)]
     #[test]
     fn applies_only_the_selected_files_and_keeps_an_undo_copy() {

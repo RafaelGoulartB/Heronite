@@ -101,7 +101,8 @@ impl Step {
         use heronite_platform::{supported, Feature};
         match self {
             Step::Stores => supported(Feature::StoreAccounts),
-            Step::Emulators | Step::Saves => supported(Feature::Emulation),
+            Step::Emulators => supported(Feature::Emulation),
+            Step::Saves => supported(Feature::SaveBackups),
             Step::Overlay => supported(Feature::Overlay),
             Step::Screenshots => supported(Feature::Capture),
             Step::Proton => supported(Feature::Wine),
