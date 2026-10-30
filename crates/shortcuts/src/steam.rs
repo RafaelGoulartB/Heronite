@@ -479,7 +479,9 @@ pub fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
 /// next Steam start open its debugging interface.
 pub fn enable_client_api_on_next_start(steam: &Path) {
     let flag = steam.join(crate::steam_client::FLAG_FILE);
-    if !flag.exists() {
+    // Anything already there is left alone, a dangling link too: tools that
+    // keep the interface closed on purpose (Millennium) put one there.
+    if fs::symlink_metadata(&flag).is_err() {
         if let Err(e) = fs::write(&flag, "") {
             log::warn!("Failed to create {} with: {e}", flag.display());
         }
@@ -745,5 +747,26 @@ mod tests {
         let errors = install_art(&config, &ids, &ArtFiles { cover: Some(src), ..Default::default() });
         assert!(errors.is_empty());
         assert!(!config.join("grid").join(format!("{}p.jpg", ids.other)).exists());
+    }
+
+    #[test]
+    fn the_flag_file_is_made_once_and_never_through_another_tool_s_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let flag = dir.path().join(crate::steam_client::FLAG_FILE);
+        enable_client_api_on_next_start(dir.path());
+        assert!(flag.is_file());
+        fs::write(&flag, "kept").unwrap();
+        enable_client_api_on_next_start(dir.path());
+        assert_eq!(fs::read_to_string(&flag).unwrap(), "kept");
+        #[cfg(unix)]
+        {
+            // A link to nowhere keeps the interface closed (Millennium).
+            fs::remove_file(&flag).unwrap();
+            let target = dir.path().join("missing/folder");
+            std::os::unix::fs::symlink(&target, &flag).unwrap();
+            enable_client_api_on_next_start(dir.path());
+            assert!(fs::symlink_metadata(&flag).unwrap().file_type().is_symlink());
+            assert!(!target.exists());
+        }
     }
 }
