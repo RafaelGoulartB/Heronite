@@ -57,10 +57,16 @@ mod tests {
     #[test]
     fn system_runner_runs_and_times_out() {
         let r = SystemRunner::default();
-        let ok = r.run("sh", &["-c".into(), "echo hi; echo err >&2; exit 3".into()]).unwrap();
+        let ok = if cfg!(windows) {
+            r.run("cmd", &["/C".into(), "echo hi& echo err 1>&2& exit 3".into()]).unwrap()
+        } else {
+            r.run("sh", &["-c".into(), "echo hi; echo err >&2; exit 3".into()]).unwrap()
+        };
         assert_eq!((ok.stdout.trim(), ok.stderr.trim(), ok.code), ("hi", "err", 3));
         assert!(r.run("/nonexistent/binary", &[]).is_err());
         let fast = SystemRunner { timeout: Duration::from_millis(100) };
-        assert!(fast.run("sleep", &["5".into()]).unwrap_err().contains("timed out"));
+        let slow =
+            if cfg!(windows) { fast.run("ping", &["-n".into(), "6".into(), "127.0.0.1".into()]) } else { fast.run("sleep", &["5".into()]) };
+        assert!(slow.unwrap_err().contains("timed out"));
     }
 }

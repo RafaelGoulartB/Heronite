@@ -1,5 +1,5 @@
 //! Launcher runtime tests. Nothing here starts a game: plans point at a fake
-//! spawner, or at harmless `sleep` / `sh` processes.
+//! spawner, or at harmless shell commands (`sh` on Unix, `cmd` on Windows).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -71,6 +71,25 @@ fn process_plan(program: &str, args: &[&str]) -> ProcessPlan {
     ProcessPlan {
         command: Command { program: program.into(), args: args.iter().map(|s| s.to_string()).collect(), env: BTreeMap::new(), cwd: None },
         ..Default::default()
+    }
+}
+
+/// A plan running `unix` through `sh -c` on Unix, `windows` through
+/// `cmd /C` on Windows: the same program on both, with tools each has.
+fn shell_plan(unix: &str, windows: &str) -> ProcessPlan {
+    if cfg!(windows) {
+        process_plan("cmd", &["/C", windows])
+    } else {
+        process_plan("sh", &["-c", unix])
+    }
+}
+
+/// A plan that waits about `secs` seconds (`ping` waits a second per echo).
+fn sleep_plan(secs: u32) -> ProcessPlan {
+    if cfg!(windows) {
+        process_plan("ping", &["-n", &(secs + 1).to_string(), "127.0.0.1"])
+    } else {
+        process_plan("sleep", &[&secs.to_string()])
     }
 }
 
@@ -387,7 +406,10 @@ fn real_rig() -> (tempfile::TempDir, DataPaths, Launcher, Receiver<LaunchEvent>)
 #[test]
 fn real_process_exit_code_log_and_playtime() {
     let (_d, paths, launcher, rx) = real_rig();
-    let plan = LaunchPlan::Native(process_plan("sh", &["-c", "echo hello from the game; echo oops >&2; exit 3"]));
+    let plan = LaunchPlan::Native(shell_plan(
+        "echo hello from the game; echo oops >&2; exit 3",
+        "echo hello from the game& echo oops 1>&2& exit 3",
+    ));
     launcher.launch(request("g", plan)).unwrap();
     next(&rx);
     next(&rx);
@@ -404,9 +426,10 @@ fn real_process_exit_code_log_and_playtime() {
 #[test]
 fn real_process_is_not_done_while_a_child_holds_its_output() {
     // Heroic waits for the output pipe to close, so a launcher script that
-    // backgrounds the real game keeps the session open.
+    // backgrounds the real game keeps the session open (on Windows the job
+    // object holds it open while the child lives).
     let (_d, _paths, launcher, rx) = real_rig();
-    let plan = LaunchPlan::Native(process_plan("sh", &["-c", "sleep 1 & echo started"]));
+    let plan = LaunchPlan::Native(shell_plan("sleep 1 & echo started", "start /B ping -n 2 127.0.0.1 >nul& echo started"));
     let t = Instant::now();
     launcher.launch(request("g", plan)).unwrap();
     next(&rx);
@@ -452,7 +475,7 @@ fn real_scripts_run_before_and_after_the_game() {
 #[test]
 fn real_a_missing_script_is_reported_and_the_game_still_runs() {
     let (d, _paths, launcher, rx) = real_rig();
-    let mut plan = process_plan("true", &[]);
+    let mut plan = shell_plan("true", "exit 0");
     plan.before_script = Some(script(&d.path().join("nope.sh").to_string_lossy(), "before"));
     launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     next(&rx);
@@ -522,7 +545,7 @@ fn real_sigterm_ignoring_process_gets_sigkill_after_the_grace_period() {
 #[test]
 fn real_force_clear_leaves_the_process_running() {
     let (_d, _paths, launcher, rx) = real_rig();
-    launcher.launch(request("g", LaunchPlan::Native(process_plan("sleep", &["30"])))).unwrap();
+    launcher.launch(request("g", LaunchPlan::Native(sleep_plan(30)))).unwrap();
     next(&rx);
     let LaunchEvent::Running { pid, .. } = next(&rx) else { panic!() };
     launcher.force_clear("g");
