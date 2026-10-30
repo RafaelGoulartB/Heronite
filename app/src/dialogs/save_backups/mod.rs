@@ -171,7 +171,8 @@ fn save_kind(game: &Game) -> Option<RunKind> {
 
 /// Whether a game gets the tab (installed or not).
 pub fn has_tab(game: &Game) -> bool {
-    save_kind(game).is_some()
+    // Ludusavi goes with emulation (`Feature::Emulation`).
+    heronite_platform::supported(heronite_platform::Feature::Emulation) && save_kind(game).is_some()
 }
 
 impl SaveBackupsView {

@@ -235,15 +235,18 @@ impl CollectionView {
                     .palette_only(),
             );
         }
-        v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
-        let auto = self.auto_backup(game);
-        v.push(item(
-            A::AutoBackup { on: !auto },
-            "auto-backup",
-            if auto { tr!("Turn off automatic save backup") } else { tr!("Turn on automatic save backup") },
-            Icon::CloudSync,
-            "saves backup ludusavi after play automatic salvamentos jogos salvos automatico depois de jogar",
-        ));
+        // Ludusavi goes with emulation (`Feature::Emulation`).
+        if heronite_platform::supported(heronite_platform::Feature::Emulation) {
+            v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
+            let auto = self.auto_backup(game);
+            v.push(item(
+                A::AutoBackup { on: !auto },
+                "auto-backup",
+                if auto { tr!("Turn off automatic save backup") } else { tr!("Turn on automatic save backup") },
+                Icon::CloudSync,
+                "saves backup ludusavi after play automatic salvamentos jogos salvos automatico depois de jogar",
+            ));
+        }
         if game.steam_launch_id.is_some() && game.installed && !tracking {
             v.push(item(
                 A::SteamUninstall,
