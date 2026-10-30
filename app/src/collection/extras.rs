@@ -366,14 +366,7 @@ impl CollectionView {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         match details_url(&game) {
             Some(url) => {
-                if let Err(err) = std::process::Command::new("xdg-open")
-                    .arg(&url)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                    .and_then(|mut child| std::thread::Builder::new().spawn(move || child.wait()).map(|_| ()))
-                {
+                if let Err(err) = heronite_platform::shell::open(&url) {
                     self.show_toast(tr!("Could not open {url}: {err}", url, err = err.to_string()), true, cx);
                 }
             }

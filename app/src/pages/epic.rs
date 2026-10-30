@@ -256,7 +256,7 @@ impl EpicPage {
     }
 
     fn open_browser(&mut self, cx: &mut Context<Self>) {
-        if let Err(err) = Command::new("xdg-open").arg(BROWSER_LOGIN_URL).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        if let Err(err) = heronite_platform::shell::open(BROWSER_LOGIN_URL) {
             self.notice = Some((tr!("Could not open the browser: {err}", err).into(), true));
             cx.notify();
         }

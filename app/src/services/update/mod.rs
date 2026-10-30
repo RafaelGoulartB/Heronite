@@ -171,12 +171,8 @@ fn now_secs() -> u64 {
 
 /// Opens `url` in the browser.
 pub fn open_page(url: &str) {
-    use std::process::{Command, Stdio};
-    match Command::new("xdg-open").arg(url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || child.wait());
-        }
-        Err(e) => log::warn!("xdg-open {url}: {e}"),
+    if let Err(e) = heronite_platform::shell::open(url) {
+        log::warn!("opening {url}: {e}");
     }
 }
 

@@ -302,7 +302,7 @@ impl<K: StoreKind> StorePage<K> {
     }
 
     fn open_browser(&mut self, url: &str, cx: &mut Context<Self>) {
-        if let Err(err) = Command::new("xdg-open").arg(url).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        if let Err(err) = heronite_platform::shell::open(url) {
             self.notice = Some((tr!("Could not open the browser: {err}", err).into(), true));
             cx.notify();
         }

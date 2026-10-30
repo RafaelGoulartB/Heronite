@@ -25,14 +25,8 @@ use crate::theme;
 /// Opens `target` (a web page, a `steam://` link) with the desktop's handler,
 /// without waiting.
 pub fn open_external(target: &str) {
-    if let Err(e) = std::process::Command::new("xdg-open")
-        .arg(target)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        log::warn!("xdg-open {target}: {e}");
+    if let Err(e) = heronite_platform::shell::open(target) {
+        log::warn!("opening {target}: {e}");
     }
 }
 

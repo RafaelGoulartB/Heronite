@@ -1,6 +1,6 @@
 //! What the focus panel opens outside the app: the install folder in the file
 //! manager and the game's ProtonDB page in the browser (both via `xdg-open`,
-//! off the UI thread).
+//! the shell on Windows, off the UI thread).
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -142,6 +142,10 @@ impl CollectionView {
 
 fn xdg_open(target: impl AsRef<OsStr>) -> Result<(), String> {
     let target = target.as_ref();
+    if cfg!(windows) {
+        return heronite_platform::shell::open(target)
+            .map_err(|err| tr!("Could not open {target}: {err}", target = target.to_string_lossy(), err));
+    }
     match Command::new("xdg-open").arg(target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
         Ok(s) if s.success() => Ok(()),
         Ok(s) => Err(tr!("Could not open {target}: xdg-open exited with {s}", target = target.to_string_lossy(), s)),

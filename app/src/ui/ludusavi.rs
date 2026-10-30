@@ -23,14 +23,8 @@ pub const DOWNLOAD_URL: &str = "https://github.com/mtkennerly/ludusavi/releases/
 
 /// Opens the download page in the browser.
 pub fn open_download() {
-    if let Err(e) = std::process::Command::new("xdg-open")
-        .arg(DOWNLOAD_URL)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        log::warn!("xdg-open {DOWNLOAD_URL}: {e}");
+    if let Err(e) = heronite_platform::shell::open(DOWNLOAD_URL) {
+        log::warn!("opening {DOWNLOAD_URL}: {e}");
     }
 }
 

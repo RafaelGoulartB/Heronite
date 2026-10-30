@@ -40,8 +40,8 @@ fn fmt_eta(secs: u64) -> String {
 }
 
 fn open_path(target: &str) {
-    if let Err(err) = std::process::Command::new("xdg-open").arg(target).spawn() {
-        log::warn!("xdg-open {target}: {err}");
+    if let Err(err) = heronite_platform::shell::open(target) {
+        log::warn!("opening {target}: {err}");
     }
 }
 

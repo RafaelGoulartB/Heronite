@@ -382,7 +382,7 @@ fn open(item: &Item) {
     let path = item.path();
     let dir = if path.is_file() { path.parent().unwrap_or(path) } else { path };
     if let Err(e) = super::open_folder(dir) {
-        log::warn!("xdg-open {}: {e}", dir.display());
+        log::warn!("opening {}: {e}", dir.display());
     }
 }
 
