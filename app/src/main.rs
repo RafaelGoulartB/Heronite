@@ -1,3 +1,7 @@
+// A windowed app on Windows: no console window opens with it. Debug builds
+// keep theirs for the log; release builds log to the file only.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod assets;
 mod collection;
 mod console;
