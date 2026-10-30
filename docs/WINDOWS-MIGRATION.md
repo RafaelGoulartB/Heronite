@@ -98,7 +98,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ⬜ Emulators and ROM folders
 - ⬜ Screenshots
 - ⬜ Tray icon
-- ⬜ Start with Windows (`Run` registry key)
+- ✅ Start with Windows: a `Heronite` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`system/autostart.rs`, `registry::set_string` / `delete_value`); only the real data folder drives it, `HERONITE_AUTOSTART_KEY` redirects it for tests
 - ⬜ Desktop and Start menu shortcuts (`.lnk`)
 - ⬜ Self-update (installer or portable zip, signed)
 - ⬜ Packaging (installer, signing)
