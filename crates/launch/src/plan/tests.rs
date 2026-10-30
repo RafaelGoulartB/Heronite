@@ -648,3 +648,46 @@ fn amazon_games_run_their_fuel_command_with_the_sdk_variables() {
     assert_eq!(first.runner, "nile");
     assert_eq!(first.post_install[0].parts, ["/games/amz/vc.exe", "/q"]);
 }
+
+#[cfg(windows)]
+#[test]
+fn a_windows_program_runs_as_it_is_on_windows() {
+    let exe = r"C:\Games\Hades\Hades.exe";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(exe);
+    // Settings brought from Linux (Proton, MangoHud, the sandbox) are left aside.
+    let s = settings(
+        json!({"wineVersion": {"bin": "/p/GE/proton", "type": "proton"}, "showMangohud": true, "heroniteSandbox": {"enabled": true}, "launcherArgs": "-skipintro"}),
+    );
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &sideload("g", exe, "Windows"),
+        Some(&meta("executable")),
+        &s,
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!((p.command.program.as_str(), p.command.args.as_slice()), (exe, &["-skipintro".to_string()][..]));
+    assert_eq!(p.command.cwd.as_deref(), Some(r"C:\Games\Hades"));
+    assert_eq!(p.stop.kill_patterns, ["Hades.exe"]);
+    assert_eq!(p.command.env.get("HEROIC_APP_NAME").map(String::as_str), Some("g"));
+
+    let linux = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe.with_file(r"C:\Games\x\run.sh", b"#!/bin/sh"),
+        &sideload("g", r"C:\Games\x\run.sh", "linux"),
+        Some(&meta("executable")),
+        &settings(json!({})),
+        &Default::default(),
+    );
+    assert!(matches!(linux, LaunchPlan::Unavailable(_)), "{linux:?}");
+    let missing = build_plan_with_settings(
+        &ctx(json!({})),
+        &FakeProbe::new(r"C:\Users\u"),
+        &sideload("g", exe, "Windows"),
+        Some(&meta("executable")),
+        &settings(json!({})),
+        &Default::default(),
+    );
+    assert!(matches!(missing, LaunchPlan::Unavailable(_)), "{missing:?}");
+}
