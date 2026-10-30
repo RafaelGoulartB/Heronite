@@ -685,6 +685,7 @@ mod tests {
             appimage: None,
             signature: None,
             packages: Vec::new(),
+            windows: Vec::new(),
         }
     }
 

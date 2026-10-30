@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use gpui_kit::*;
-use heronite_update::{Asset, Package, Progress, Release, Target};
+use heronite_update::{Asset, Package, Progress, Release, Target, WindowsAsset};
 
 use super::{Method, Phase, Updater};
 
@@ -69,6 +69,12 @@ impl Updater {
             .flat_map(|n| [(format!("{n}.minisig"), 0), (n, 9_800_000)])
             .map(|(name, size)| Asset { name, url: String::new(), size })
             .collect(),
+            windows: [WindowsAsset::Setup, WindowsAsset::Portable]
+                .into_iter()
+                .map(|kind| kind.file_name())
+                .flat_map(|n| [(format!("{n}.minisig"), 0), (n, 14_600_000)])
+                .map(|(name, size)| Asset { name, url: String::new(), size })
+                .collect(),
         };
         self.prefs.last_check = Some(super::now_secs().saturating_sub(7200));
         if state == "whatsnew" {

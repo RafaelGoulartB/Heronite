@@ -1,0 +1,8 @@
+{
+  "The update could not be unpacked: {error}": "Não foi possível descompactar a atualização: {error}",
+  "The update has a file outside its folder: {name}": "A atualização tem um arquivo fora da sua pasta: {name}",
+  "The update has a link or an encrypted file: {name}": "A atualização tem um link ou um arquivo criptografado: {name}",
+  "The update has no {program}": "Falta {program} na atualização",
+  "This release has no Windows setup": "Esta versão não tem instalador do Windows",
+  "This release has no portable zip": "Esta versão não tem ZIP portátil"
+}

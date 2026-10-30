@@ -1,7 +1,8 @@
-//! Self-update of the AppImage.
+//! Self-update of the AppImage and of the Windows copies.
 //!
 //! The release workflow publishes, for every tag, `Heronite-<arch>.AppImage`
-//! and `<file>.minisig`, a minisign signature made with the key whose public
+//! (and on Windows `Heronite-Setup-<arch>.exe` and
+//! `Heronite-Portable-<arch>.zip`) and `<file>.minisig`, a minisign signature made with the key whose public
 //! half is [`PUBLIC_KEY`]. Its trusted comment carries `version:<X.Y.Z>`, so
 //! an older signed build cannot be served as a newer release.
 //!
@@ -14,21 +15,34 @@
 //! - [`relaunch`]: starts the new AppImage, detached, as the app quits.
 //! - [`package`]: .deb / .rpm / Arch installs, which are only told about new
 //!   versions (their package manager owns the files).
+//! - [`setup`] (Windows): a copy installed by the setup downloads the new
+//!   setup and runs it, silently, as the app quits.
+//! - [`portable`] (Windows): a portable copy downloads the new zip and swaps
+//!   its program files in, keeping the replaced ones as `.old` until the
+//!   next start.
 //! - [`prefs`]: the user's choices and the last check (`update.json`).
 //!
 //! Every function blocks; the app calls them off the UI thread.
 
 pub mod install;
 pub mod package;
+#[cfg(windows)]
+pub mod portable;
 pub mod prefs;
 pub mod relaunch;
 pub mod release;
+#[cfg(windows)]
+pub mod setup;
 pub mod version;
 
 pub use install::{InstallError, Progress, Target, Unsupported};
 pub use package::Package;
+#[cfg(windows)]
+pub use portable::Portable;
 pub use prefs::Prefs;
-pub use release::{Asset, Fetched, Release};
+pub use release::{Asset, Fetched, Release, WindowsAsset};
+#[cfg(windows)]
+pub use setup::Installer;
 pub use version::Version;
 
 /// GitHub API endpoint of the latest (non-draft, non-prerelease) release.

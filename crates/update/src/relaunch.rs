@@ -1,5 +1,7 @@
-//! Starting the updated AppImage as the app quits.
+//! Starting the updated app (or the Windows setup that installs it) as the
+//! app quits.
 
+use std::ffi::OsString;
 use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -12,12 +14,36 @@ use std::process::{Command, Stdio};
 /// inherited copy would keep the old version mounted for as long as the new
 /// one runs. So every descriptor above stderr is marked close-on-exec first.
 pub fn relaunch(appimage: &Path) -> io::Result<u32> {
+    launch(appimage, &[])
+}
+
+/// Starts `program` with `args` like [`relaunch`]: detached, in the home
+/// folder, without this process's input and output. On Windows it also
+/// leaves the job object this process may run in (a launcher, a terminal),
+/// when that job allows it, so closing the job does not end it.
+pub fn launch(program: &Path, args: &[OsString]) -> io::Result<u32> {
     #[cfg(target_os = "linux")]
     mark_fds_cloexec();
     let home = heronite_platform::dirs::home().filter(|h| h.is_dir()).unwrap_or_else(|| "/".into());
-    let mut cmd = Command::new(appimage);
-    cmd.current_dir(home).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    let mut cmd = Command::new(program);
+    cmd.args(args).current_dir(home).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     heronite_platform::process::detach(&mut cmd);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // `detach`'s flags (DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP) and
+        // CREATE_BREAKAWAY_FROM_JOB. A job that forbids breaking away makes
+        // CreateProcess fail with ERROR_ACCESS_DENIED: then it starts inside.
+        const DETACHED: u32 = 0x0000_0008 | 0x0000_0200;
+        const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+        cmd.creation_flags(DETACHED | CREATE_BREAKAWAY_FROM_JOB);
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(5) => {
+                cmd.creation_flags(DETACHED);
+            }
+            other => return other.map(|child| child.id()),
+        }
+    }
     cmd.spawn().map(|child| child.id())
 }
 
