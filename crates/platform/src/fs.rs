@@ -78,6 +78,24 @@ pub fn is_executable(path: &Path, meta: &Metadata) -> bool {
     }
 }
 
+/// Makes `link` a symbolic link to `original`. Windows needs Developer Mode
+/// or an administrator for it, and tells a link to a folder from one to a
+/// file.
+pub fn symlink(original: &Path, link: &Path) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(original, link)
+    }
+    #[cfg(windows)]
+    {
+        if original.is_dir() {
+            std::os::windows::fs::symlink_dir(original, link)
+        } else {
+            std::os::windows::fs::symlink_file(original, link)
+        }
+    }
+}
+
 /// Whether the user may create files in the folder `dir`.
 pub fn writable_dir(dir: &Path) -> bool {
     #[cfg(unix)]

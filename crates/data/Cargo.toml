@@ -11,6 +11,7 @@ anyhow.workspace = true
 log.workspace = true
 dirs = "6"
 heronite-i18n = { path = "../i18n" }
+heronite-platform = { path = "../platform" }
 libc = "0.2"
 parking_lot = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }

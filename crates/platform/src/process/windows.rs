@@ -132,8 +132,8 @@ pub(super) fn detach(cmd: &mut Command) -> &mut Command {
     cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
 }
 
-pub(super) fn no_window(cmd: &mut Command) -> &mut Command {
-    cmd.creation_flags(CREATE_NO_WINDOW)
+pub(super) fn new_helper_group(cmd: &mut Command) -> &mut Command {
+    cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
 }
 
 pub(super) fn exit_signal(_status: &ExitStatus) -> Option<i32> {
@@ -215,7 +215,7 @@ mod tests {
         // `ping` waits about a second per extra echo; the shell ends first.
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", "start", "/B", "ping", "-n", "30", "127.0.0.1"]);
-        new_group(no_window(&mut cmd));
+        new_helper_group(&mut cmd);
         let mut child = cmd.stdout(std::process::Stdio::null()).spawn().unwrap();
         track_group(&child);
         let leader = child.id();

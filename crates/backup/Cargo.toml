@@ -8,13 +8,13 @@ description = "Backups of the data folder and the app settings: incremental snap
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
+heronite-platform = { path = "../platform" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 log.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
 sha2 = "0.10"
-libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

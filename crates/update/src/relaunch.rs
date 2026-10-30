@@ -1,7 +1,6 @@
 //! Starting the updated AppImage as the app quits.
 
 use std::io;
-use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -13,20 +12,16 @@ use std::process::{Command, Stdio};
 /// inherited copy would keep the old version mounted for as long as the new
 /// one runs. So every descriptor above stderr is marked close-on-exec first.
 pub fn relaunch(appimage: &Path) -> io::Result<u32> {
+    #[cfg(target_os = "linux")]
     mark_fds_cloexec();
-    let home = std::env::var_os("HOME").filter(|h| Path::new(h).is_dir()).unwrap_or_else(|| "/".into());
+    let home = heronite_platform::dirs::home().filter(|h| h.is_dir()).unwrap_or_else(|| "/".into());
     let mut cmd = Command::new(appimage);
     cmd.current_dir(home).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-    // SAFETY: `setsid` is async-signal-safe and touches no memory of the parent.
-    unsafe {
-        cmd.pre_exec(|| {
-            libc::setsid();
-            Ok(())
-        });
-    }
+    heronite_platform::process::detach(&mut cmd);
     cmd.spawn().map(|child| child.id())
 }
 
+#[cfg(target_os = "linux")]
 fn mark_fds_cloexec() {
     let Ok(entries) = std::fs::read_dir("/proc/self/fd") else { return };
     for fd in entries.flatten().filter_map(|e| e.file_name().to_str()?.parse::<libc::c_int>().ok()) {
@@ -44,7 +39,7 @@ fn mark_fds_cloexec() {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use std::os::unix::fs::PermissionsExt;
 

@@ -76,8 +76,7 @@ pub fn map_drive_letters(prefix: &str, folders: &[String]) -> Vec<(char, String)
             continue;
         }
         let Some(letter) = ('d'..='y').find(|l| !taken(*l)) else { break };
-        #[cfg(unix)]
-        match std::os::unix::fs::symlink(folder, dir.join(format!("{letter}:"))) {
+        match heronite_platform::fs::symlink(Path::new(folder), &dir.join(format!("{letter}:"))) {
             Ok(()) => added.push((letter.to_ascii_uppercase(), folder.clone())),
             Err(e) => log::warn!("could not map {folder} to {letter}: in {}: {e}", dir.display()),
         }

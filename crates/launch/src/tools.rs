@@ -236,7 +236,6 @@ const WINETRICKS_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 /// `Winetricks.download`: refreshes `tools/winetricks` when it is missing or
 /// older than a week. Returns whether a download happened.
 pub fn download_winetricks(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> Result<bool, String> {
-    use std::os::unix::fs::PermissionsExt;
     let target = paths.tools_dir().join("winetricks");
     let fresh = fs::metadata(&target)
         .and_then(|m| m.modified())
@@ -256,7 +255,7 @@ pub fn download_winetricks(paths: &DataPaths, net: &dyn Net, cancel: Cancel) -> 
         let _ = fs::remove_file(&part);
         tr!("downloading winetricks failed: {error}", error = e)
     })?;
-    fs::set_permissions(&part, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    heronite_platform::fs::make_executable(&part).map_err(|e| e.to_string())?;
     fs::rename(&part, &target).map_err(|e| format!("installing winetricks: {e}"))?;
     Ok(true)
 }

@@ -56,7 +56,6 @@ pub fn ensure(paths: &DataPaths, probe: &dyn Probe, net: &dyn Net, cancel: Cance
 /// renames it into place, so an interrupted or broken download never becomes
 /// the binary.
 pub(crate) fn install_binary(name: &str, url: &str, target: &Path, net: &dyn Net, cancel: Cancel) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
     let dir = target.parent().ok_or_else(|| format!("{name} has no folder"))?;
     fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     let part = target.with_extension("part");
@@ -66,7 +65,7 @@ pub(crate) fn install_binary(name: &str, url: &str, target: &Path, net: &dyn Net
         msg
     };
     net.download(url, &part, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
-    fs::set_permissions(&part, fs::Permissions::from_mode(0o755)).map_err(|e| fail(format!("making {name} executable: {e}")))?;
+    heronite_platform::fs::make_executable(&part).map_err(|e| fail(format!("making {name} executable: {e}")))?;
     if !runs_version(&part) {
         return Err(fail(format!("the downloaded {name} does not run")));
     }

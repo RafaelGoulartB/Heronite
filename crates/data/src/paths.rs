@@ -27,7 +27,7 @@ fn fnv32(s: &str) -> u32 {
 
 #[derive(Debug, Clone)]
 pub struct DataPaths {
-    /// `~/.local/share/heronite` on Linux.
+    /// `~/.local/share/heronite` on Linux, `%APPDATA%\heronite\data` on Windows.
     pub root: PathBuf,
 }
 
@@ -41,9 +41,9 @@ impl DataPaths {
         Self { root: Self::default_root().unwrap_or_else(|| PathBuf::from(APP_DIR)) }
     }
 
-    /// `$XDG_DATA_HOME/heronite`.
+    /// `$XDG_DATA_HOME/heronite` (`%APPDATA%\heronite\data` on Windows).
     pub fn default_root() -> Option<PathBuf> {
-        dirs::data_dir().map(|d| d.join(APP_DIR))
+        heronite_platform::dirs::data(APP_DIR)
     }
 
     /// Whether this is the real data folder (not a fixture or a copy).
@@ -311,8 +311,8 @@ pub struct AppPaths {
 
 impl AppPaths {
     pub fn detect() -> Self {
-        let config = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
-        let cache = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
+        let config = heronite_platform::dirs::config(APP_DIR).unwrap_or_else(|| PathBuf::from(".").join(APP_DIR));
+        let cache = heronite_platform::dirs::cache(APP_DIR).unwrap_or_else(|| PathBuf::from(".").join(APP_DIR));
         Self { config, cache }
     }
     /// The app state that belongs to a data folder: the real one for the

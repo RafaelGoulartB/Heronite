@@ -117,7 +117,7 @@ fn fill(
 ) -> Result<Summary> {
     fs::create_dir(partial).with_context(|| format!("creating {}", partial.display()))?;
     // Sign-ins and the play history are nobody else's business.
-    set_private(partial);
+    let _ = heronite_platform::fs::make_private(partial);
     let mut files = Vec::new();
     let (mut bytes, mut new_bytes) = (0u64, 0u64);
     for (side, root) in [(Side::Data, &data.root), (Side::Config, &app.config)] {
@@ -176,7 +176,7 @@ fn fill(
 }
 
 pub(crate) fn dirs_home() -> String {
-    std::env::var("HOME").unwrap_or_default()
+    heronite_platform::dirs::home().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 /// Copies `src` to `dst`, returning the hex SHA-256 and the bytes copied.
@@ -215,12 +215,6 @@ pub(crate) fn hash_file(path: &Path) -> io::Result<String> {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-#[cfg(unix)]
-fn set_private(dir: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o700));
 }
 
 /// `heronite-YYYY-MM-DD_HHMMSS`, with `-2`, `-3`... when taken.
@@ -307,7 +301,6 @@ pub fn delete(path: &Path) -> Result<()> {
 /// many backups link to it.
 pub fn folder_usage(folder: &Path) -> u64 {
     use std::collections::HashSet;
-    use std::os::unix::fs::MetadataExt;
     let mut seen = HashSet::new();
     let mut total = 0;
     let mut stack: Vec<PathBuf> = list(folder).into_iter().map(|i| i.path).collect();
@@ -316,7 +309,7 @@ pub fn folder_usage(folder: &Path) -> u64 {
             let Ok(meta) = entry.metadata() else { continue };
             if meta.is_dir() {
                 stack.push(entry.path());
-            } else if meta.is_file() && seen.insert((meta.dev(), meta.ino())) {
+            } else if meta.is_file() && seen.insert(heronite_platform::fs::file_id(&entry.path(), &meta)) {
                 total += meta.len();
             }
         }
@@ -381,15 +374,14 @@ pub(crate) mod tests {
         }
         assert_eq!((first.summary.games, first.summary.sessions, first.summary.journal), (2, 3, 2));
         assert_eq!(first.summary.new_bytes, first.summary.bytes);
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(fs::metadata(b).unwrap().permissions().mode() & 0o777, 0o700);
+        #[cfg(unix)]
+        assert_eq!(heronite_platform::fs::mode(&fs::metadata(b).unwrap()).unwrap() & 0o777, 0o700);
 
         // Unchanged files are links to the first backup; changed ones are copies.
         fs::write(data.root.join("config.json"), r#"{"x":1}"#).unwrap();
         let second = create(&data, &app, &folder, &[Part::Collection], Reason::Scheduled, at(11, 0)).unwrap();
         assert_eq!(second.summary.new_bytes, 7);
-        use std::os::unix::fs::MetadataExt;
-        let ino = |p: &Path| fs::metadata(p).unwrap().ino();
+        let ino = |p: &Path| heronite_platform::fs::file_id(p, &fs::metadata(p).unwrap()).unwrap();
         assert_eq!(ino(&b.join("data/local_library/library.json")), ino(&second.path.join("data/local_library/library.json")));
         assert_ne!(ino(&b.join("data/config.json")), ino(&second.path.join("data/config.json")));
         assert!(!second.path.join("config").exists());

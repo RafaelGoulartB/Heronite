@@ -57,8 +57,8 @@ pub(super) fn detach(cmd: &mut Command) -> &mut Command {
     }
 }
 
-pub(super) fn no_window(cmd: &mut Command) -> &mut Command {
-    cmd
+pub(super) fn new_helper_group(cmd: &mut Command) -> &mut Command {
+    cmd.process_group(0)
 }
 
 pub(super) fn exit_signal(status: &ExitStatus) -> Option<i32> {

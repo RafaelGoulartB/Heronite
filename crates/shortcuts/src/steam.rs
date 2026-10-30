@@ -83,16 +83,9 @@ pub fn is_steam_running(steam: &Path) -> bool {
         files.push(parent.join("steam.pid"));
     }
     files.push(steam.join("steam.pid"));
-    files.into_iter().any(|file| fs::read_to_string(&file).ok().and_then(|s| s.trim().parse::<i32>().ok()).is_some_and(pid_alive))
-}
-
-fn pid_alive(pid: i32) -> bool {
-    if pid <= 0 {
-        return false;
-    }
-    // SAFETY: signal 0 only checks that the process exists.
-    let r = unsafe { libc::kill(pid, 0) };
-    r == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    files.into_iter().any(|file| {
+        fs::read_to_string(&file).ok().and_then(|s| s.trim().parse::<u32>().ok()).is_some_and(heronite_platform::process::is_alive)
+    })
 }
 
 /// User folders under `<steam>/userdata` (not `0` or `ac`); the error text is

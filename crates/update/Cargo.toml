@@ -8,13 +8,16 @@ description = "Self-update of the Heronite AppImage: GitHub release check, signe
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
+heronite-platform = { path = "../platform" }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 log.workspace = true
-libc = "0.2"
 minisign-verify = "0.2"
 ureq = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

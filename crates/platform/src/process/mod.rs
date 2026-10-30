@@ -46,8 +46,18 @@ pub fn signal(pid: u32, sig: Signal) {
 
 /// The child `cmd` starts leads a group of its own (see the module docs).
 /// On Windows the group starts with [`track_group`], called on the child.
+///
+/// [`new_group`], [`new_helper_group`] and [`detach`] each set all of a
+/// command's creation flags on Windows: give a command only one of them.
 pub fn new_group(cmd: &mut Command) -> &mut Command {
     sys::new_group(cmd)
+}
+
+/// [`new_group`] for a helper program (a command-line tool the app runs and
+/// reads): on Windows it also gets no console window, which Windows would
+/// open for every such tool a windowed app starts.
+pub fn new_helper_group(cmd: &mut Command) -> &mut Command {
+    sys::new_helper_group(cmd)
 }
 
 /// Starts following the group of `child` (a job object on Windows). Call it
@@ -74,12 +84,6 @@ pub fn signal_group(leader: u32, sig: Signal) {
 /// the app (the updated app, a store client).
 pub fn detach(cmd: &mut Command) -> &mut Command {
     sys::detach(cmd)
-}
-
-/// A helper program runs without a window of its own: Windows would open a
-/// console for every command-line tool a windowed app starts.
-pub fn no_window(cmd: &mut Command) -> &mut Command {
-    sys::no_window(cmd)
 }
 
 /// The signal that ended a process (`None` when it exited, and always on

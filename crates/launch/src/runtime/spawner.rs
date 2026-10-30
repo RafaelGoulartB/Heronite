@@ -1,9 +1,10 @@
 //! Process spawning behind the [`Spawner`] and [`ProcessHandle`] traits.
 
 use std::io::{self, Write};
-use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+use heronite_platform::process::{self as os, Signal};
 
 use crate::log_writer::GameLog;
 use crate::plan::Command;
@@ -36,17 +37,15 @@ pub trait Spawner: Send + Sync {
     fn spawn_logged(&self, cmd: &Command, _log: Option<Arc<GameLog>>) -> io::Result<Box<dyn ProcessHandle>> {
         self.spawn(cmd, None)
     }
-    /// Opens a URI with the desktop handler (`xdg-open`), without waiting.
+    /// Opens a URI with the desktop handler (`xdg-open`, the shell on
+    /// Windows), without waiting.
     fn open_uri(&self, uri: &str) -> io::Result<()>;
     /// Terminates the processes started at or after `since` (ticks since
     /// boot, [`crate::procs::boot_ticks_now`]) whose program is `pattern`
     /// ([`crate::procs::program_matches`]).
     fn kill_pattern(&self, pattern: &str, since: u64);
     fn make_executable(&self, path: &str) -> io::Result<()> {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(path)?.permissions();
-        perms.set_mode(perms.mode() | 0o775);
-        std::fs::set_permissions(path, perms)
+        heronite_platform::fs::add_mode(Path::new(path), 0o775)
     }
     fn create_dir_all(&self, path: &str) -> io::Result<()> {
         std::fs::create_dir_all(path)
@@ -87,13 +86,8 @@ fn group_alive(pgid: u32) -> bool {
 }
 
 impl SystemHandle {
-    fn signal_group(&self, sig: libc::c_int) {
-        if self.pid > 1 {
-            // SAFETY: signalling the process group we created for this child.
-            unsafe {
-                libc::kill(-(self.pid as libc::pid_t), sig);
-            }
-        }
+    fn signal_group(&self, sig: Signal) {
+        os::signal_group(self.pid, sig);
     }
 }
 
@@ -120,7 +114,7 @@ impl ProcessHandle for SystemHandle {
                 return Ok(None);
             };
             if let Some(status) = child.try_wait()? {
-                self.exit = Some(ExitInfo { code: status.code(), signal: status.signal() });
+                self.exit = Some(ExitInfo { code: status.code(), signal: os::exit_signal(&status) });
             }
         }
         // Like Node's `close` event (which waits for the output pipe to
@@ -134,12 +128,12 @@ impl ProcessHandle for SystemHandle {
 
     fn terminate(&mut self) {
         signal_tree(&*self.procs, self.pid, Sig::Term);
-        self.signal_group(libc::SIGTERM);
+        self.signal_group(Signal::Term);
     }
 
     fn kill(&mut self) {
         signal_tree(&*self.procs, self.pid, Sig::Kill);
-        self.signal_group(libc::SIGKILL);
+        self.signal_group(Signal::Kill);
     }
 }
 
@@ -164,7 +158,7 @@ impl SystemSpawner {
         if let Some(dir) = cmd.cwd.as_deref().filter(|d| !d.is_empty()) {
             c.current_dir(dir);
         }
-        c.process_group(0);
+        os::new_group(&mut c);
         let (out, err) = match &sink {
             Sink::None => (Stdio::null(), Stdio::null()),
             Sink::File(p) => {
@@ -202,14 +196,17 @@ impl Spawner for SystemSpawner {
     }
 
     fn open_uri(&self, uri: &str) -> io::Result<()> {
+        if cfg!(windows) {
+            return heronite_platform::shell::open(uri);
+        }
         let mut c = std::process::Command::new("xdg-open");
         c.arg(uri)
             .env_clear()
             .envs(desktop_protocol_env(std::env::vars()))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .process_group(0);
+            .stderr(std::process::Stdio::null());
+        os::new_group(&mut c);
         let mut child = c.spawn()?;
         std::thread::spawn(move || {
             let _ = child.wait();

@@ -10,11 +10,9 @@
 //! shortcuts that point at it keep working.
 
 use heronite_i18n::tr;
-use std::ffi::{CString, OsString};
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -63,7 +61,7 @@ impl Target {
             return Err(Unsupported::Missing(raw));
         }
         let dir = path.parent().ok_or_else(|| Unsupported::Missing(raw.clone()))?;
-        if !writable(dir) {
+        if !heronite_platform::fs::writable_dir(dir) {
             return Err(Unsupported::ReadOnly(dir.to_path_buf()));
         }
         Ok(Self { appimage: path })
@@ -82,12 +80,6 @@ impl Target {
             log::info!("removed the unfinished update {}", staging.display());
         }
     }
-}
-
-fn writable(dir: &Path) -> bool {
-    let Ok(c) = CString::new(dir.as_os_str().as_bytes()) else { return false };
-    // SAFETY: `c` is a valid NUL-terminated path for the duration of the call.
-    unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -283,9 +275,8 @@ fn check_appimage(path: &Path) -> Result<(), InstallError> {
 /// Gives `staging` the old file's permissions (and the owner's execute bit),
 /// then renames it over `appimage` and syncs the folder.
 fn swap_in(staging: &Path, appimage: &Path) -> Result<(), InstallError> {
-    let mode = fs::metadata(appimage).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o755) | 0o700;
-    fs::set_permissions(staging, fs::Permissions::from_mode(mode))
-        .map_err(|e| failed(tr!("Could not make the update executable: {error}", error = e)))?;
+    let mode = fs::metadata(appimage).ok().and_then(|m| heronite_platform::fs::mode(&m)).unwrap_or(0o755) | 0o700;
+    heronite_platform::fs::set_mode(staging, mode).map_err(|e| failed(tr!("Could not make the update executable: {error}", error = e)))?;
     fs::rename(staging, appimage).map_err(|e| failed(tr!("Could not replace {path}: {error}", path = appimage.display(), error = e)))?;
     if let Some(dir) = appimage.parent() {
         if let Ok(d) = File::open(dir) {
@@ -375,7 +366,7 @@ mod tests {
     fn installed(dir: &Path) -> Target {
         let path = dir.join("Heronite-0.1.3-x86_64.AppImage");
         fs::write(&path, b"old").unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o750)).unwrap();
+        heronite_platform::fs::set_mode(&path, 0o750).unwrap();
         Target::detect(Some(path.into_os_string())).unwrap()
     }
 
@@ -388,7 +379,8 @@ mod tests {
         let mut last = Progress::default();
         install(&release(&base, "0.1.4", data.len() as u64), &target, TEST_KEY, &AtomicBool::new(false), &mut |p| last = p).unwrap();
         assert_eq!(fs::read(&target.appimage).unwrap(), data);
-        assert_eq!(fs::metadata(&target.appimage).unwrap().permissions().mode() & 0o777, 0o750);
+        #[cfg(unix)]
+        assert_eq!(heronite_platform::fs::mode(&fs::metadata(&target.appimage).unwrap()).unwrap() & 0o777, 0o750);
         assert_eq!(last.downloaded, data.len() as u64);
         assert_eq!(last.percent(), Some(100.));
         assert!(!target.staging().exists());
