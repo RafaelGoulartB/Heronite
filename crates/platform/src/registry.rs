@@ -1,9 +1,11 @@
-//! Reading the Windows registry.
+//! Reading and writing values of the Windows registry.
 
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 
-use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ};
+use windows_sys::Win32::System::Registry::{
+    RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hive {
@@ -67,6 +69,35 @@ pub fn string(hive: Hive, key: &str, name: &str) -> Option<String> {
     }
 }
 
+/// Sets the text value `name` of the key `key`, creating the key if needed.
+pub fn set_string(hive: Hive, key: &str, name: &str, value: &str) -> std::io::Result<()> {
+    let (key, name, data) = (wide(key), wide(name), wide(value));
+    let bytes = (data.len() * 2) as u32;
+    // SAFETY: the strings are NUL-terminated; `data` holds `bytes` bytes, its NUL included.
+    let r = unsafe { RegSetKeyValueW(root(hive), key.as_ptr(), name.as_ptr(), REG_SZ, data.as_ptr().cast(), bytes) };
+    result(r)
+}
+
+/// Removes the value `name` of the key `key`; fine when it is not there.
+pub fn delete_value(hive: Hive, key: &str, name: &str) -> std::io::Result<()> {
+    let (key, name) = (wide(key), wide(name));
+    // SAFETY: both strings are NUL-terminated.
+    let r = unsafe { RegDeleteKeyValueW(root(hive), key.as_ptr(), name.as_ptr()) };
+    match r {
+        // ERROR_FILE_NOT_FOUND: no such key or value.
+        2 => Ok(()),
+        r => result(r),
+    }
+}
+
+fn result(code: u32) -> std::io::Result<()> {
+    if code == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::from_raw_os_error(code as i32))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,5 +109,19 @@ mod tests {
         assert_eq!(string(Hive::CurrentUser, r"Software\Heronite\Missing", "Nothing"), None);
         let build = dword(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentMajorVersionNumber");
         assert!(build.is_some_and(|v| v >= 10), "{build:?}");
+    }
+
+    #[test]
+    fn writes_and_removes_a_value() {
+        let key = format!(r"Software\Heronite\Tests\{}", std::process::id());
+        set_string(Hive::CurrentUser, &key, "Value", r#""C:\Program Files\x.exe" --flag"#).unwrap();
+        assert_eq!(string(Hive::CurrentUser, &key, "Value").as_deref(), Some(r#""C:\Program Files\x.exe" --flag"#));
+        delete_value(Hive::CurrentUser, &key, "Value").unwrap();
+        assert_eq!(string(Hive::CurrentUser, &key, "Value"), None);
+        // Already gone: still fine.
+        delete_value(Hive::CurrentUser, &key, "Value").unwrap();
+        // SAFETY: a test key of this process, under HKCU\Software\Heronite.
+        let tree = wide(r"Software\Heronite");
+        unsafe { windows_sys::Win32::System::Registry::RegDeleteTreeW(HKEY_CURRENT_USER, tree.as_ptr()) };
     }
 }

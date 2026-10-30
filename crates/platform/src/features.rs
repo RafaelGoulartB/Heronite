@@ -57,6 +57,8 @@ pub const fn supported(feature: Feature) -> bool {
         return true;
     }
     match feature {
+        // Ported to Windows.
+        Feature::Autostart => true,
         Feature::Wine
         | Feature::StoreAccounts
         | Feature::StoreClients
@@ -70,7 +72,6 @@ pub const fn supported(feature: Feature) -> bool {
         | Feature::Storage
         | Feature::Tray
         | Feature::SelfUpdate
-        | Feature::Autostart
         | Feature::DesktopShortcuts
         | Feature::Capture => false,
     }
