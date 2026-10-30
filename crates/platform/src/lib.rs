@@ -14,6 +14,9 @@
 //! - `registry` (Windows): values of the registry.
 //! - `tray` (Windows): an icon in the taskbar's notification area, with a
 //!   menu.
+//! - `power` (Windows): keeping the computer awake.
+//! - `system` (Windows): what the computer is (processor, memory, graphics
+//!   cards, Windows version), for the logs.
 //!
 //! A module of code that only makes sense on one system (`/proc`, evdev,
 //! Wine) stays in its crate behind `cfg(target_os = "linux")`; what the rest
@@ -26,7 +29,11 @@ pub mod process;
 pub mod shell;
 
 #[cfg(windows)]
+pub mod power;
+#[cfg(windows)]
 pub mod registry;
+#[cfg(windows)]
+pub mod system;
 #[cfg(windows)]
 pub mod tray;
 
