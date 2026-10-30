@@ -418,7 +418,9 @@ pub fn ensure_logged_in(data_paths: &DataPaths) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::{calls, fake};
+    #[cfg(unix)]
     use crate::queue::InstallParams;
 
     fn dl() -> DownloadSettings {
@@ -456,6 +458,7 @@ mod tests {
         assert_eq!(update_args("repair", "A", &dl()), ["repair", "A", "-y", "--skip-sdl"]);
     }
 
+    #[cfg(unix)]
     fn job(dir: &Path, body: &str) -> (LegendaryJob, DataPaths) {
         let data_paths = DataPaths::at(dir.join("h"));
         std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
@@ -466,6 +469,7 @@ mod tests {
         )
     }
 
+    #[cfg(unix)]
     fn element(kind: ElementKind) -> DmElement {
         DmElement::new(
             kind,
@@ -480,11 +484,13 @@ mod tests {
         )
     }
 
+    #[cfg(unix)]
     const REPORT: &str = "echo '[DLManager] INFO: = Progress: 50.00% (1/2), Running for 00:00:10, ETA: 00:00:10' >&2; \
         echo '[DLManager] INFO:  - Downloaded: 100.00 MiB, Written: 99.00 MiB' >&2; \
         printf '[DLManager] INFO:  + Download\\t- 5.00 MiB/s (raw) / 5.00 MiB/s (decompressed)\\n' >&2; \
         printf '[DLManager] INFO:  + Disk\\t- 4.00 MiB/s (write) / 0.00 MiB/s (read)\\n' >&2";
 
+    #[cfg(unix)]
     #[test]
     fn install_job_reports_progress_and_finishes() {
         let dir = tempfile::tempdir().unwrap();
@@ -503,6 +509,7 @@ mod tests {
         assert!(data_paths.legendary_library().exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn update_job_uses_the_update_command() {
         let dir = tempfile::tempdir().unwrap();
@@ -512,6 +519,7 @@ mod tests {
         assert_eq!(calls(dir.path()), ["update Calluna -y --skip-sdl"]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn failures_and_unsupported_stores_are_errors() {
         let dir = tempfile::tempdir().unwrap();
@@ -527,6 +535,7 @@ mod tests {
         assert!(r.error.unwrap().contains("Battle.net, which is not supported"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn ea_and_ubisoft_games_install_and_uninstall_without_legendary() {
         let dir = tempfile::tempdir().unwrap();
@@ -551,6 +560,7 @@ mod tests {
         assert!(calls(dir.path()).is_empty(), "legendary must not run");
     }
 
+    #[cfg(unix)]
     #[test]
     fn memory_errors_retry_with_more_shared_memory() {
         let dir = tempfile::tempdir().unwrap();
@@ -562,6 +572,7 @@ mod tests {
         assert!(calls(dir.path()).last().unwrap().ends_with("--max-shared-memory 5000"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn cancelled_jobs_abort() {
         let dir = tempfile::tempdir().unwrap();
@@ -577,6 +588,7 @@ mod tests {
         assert_eq!(r.status, DmStatus::Abort);
     }
 
+    #[cfg(unix)]
     #[test]
     fn uninstall_import_and_force_uninstall_commands() {
         let dir = tempfile::tempdir().unwrap();
@@ -593,6 +605,7 @@ mod tests {
         assert_eq!(c[2], format!("import Calluna {} --with-dlcs --platform Windows", game_dir.display()));
     }
 
+    #[cfg(unix)]
     #[test]
     fn relocate_checks_the_folder_then_tells_legendary() {
         let dir = tempfile::tempdir().unwrap();
@@ -619,6 +632,7 @@ mod tests {
         assert_eq!(calls(dir.path()), [format!("move Calluna {} --skip-move", moved.parent().unwrap().display())]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn import_errors_come_from_stderr() {
         let dir = tempfile::tempdir().unwrap();
@@ -628,6 +642,7 @@ mod tests {
         assert!(r.message.contains("not in the library"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn repair_reports_verification_and_download() {
         let dir = tempfile::tempdir().unwrap();
@@ -643,6 +658,7 @@ mod tests {
         assert!(matches!(updates[1], RepairUpdate::Downloading(_)));
     }
 
+    #[cfg(unix)]
     #[test]
     fn move_install_moves_the_folder_and_updates_legendary() {
         let dir = tempfile::tempdir().unwrap();

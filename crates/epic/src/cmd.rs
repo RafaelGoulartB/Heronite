@@ -125,12 +125,14 @@ pub fn redact(args: &[String]) -> Vec<String> {
 
 #[cfg(test)]
 pub(crate) mod testing {
+    #[cfg(unix)]
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     use std::path::Path;
 
     /// A fake `legendary`: a shell script that records its arguments and the
-    /// config path, then runs `body`.
+    /// config path, then runs `body`. Unix only: it needs `sh`.
+    #[cfg(unix)]
     pub fn fake(dir: &Path, body: &str) -> Legendary {
         let bin = dir.join("legendary");
         let script = format!(
@@ -138,10 +140,11 @@ pub(crate) mod testing {
             log = dir.join("calls.log").display()
         );
         std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        heronite_platform::fs::make_executable(&bin).unwrap();
         Legendary::with_bin(bin, dir.join("cfg"))
     }
 
+    #[cfg(unix)]
     pub fn calls(dir: &Path) -> Vec<String> {
         std::fs::read_to_string(dir.join("calls.log"))
             .unwrap_or_default()
@@ -154,10 +157,13 @@ pub(crate) mod testing {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::testing::*;
     use super::*;
+    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
+    #[cfg(unix)]
     #[test]
     fn captures_both_streams_and_passes_the_config_path() {
         let dir = tempfile::tempdir().unwrap();
@@ -172,6 +178,7 @@ mod tests {
         assert!(log.contains(&format!("CFG={}", dir.path().join("cfg").display())), "{log}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn streams_lines_split_on_carriage_returns() {
         let dir = tempfile::tempdir().unwrap();
@@ -182,6 +189,7 @@ mod tests {
         assert_eq!(lines, ["a", "b", "c"]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn cancel_stops_the_process_group() {
         let dir = tempfile::tempdir().unwrap();

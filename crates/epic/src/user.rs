@@ -171,6 +171,7 @@ pub fn clear_caches(data_paths: &DataPaths, legendary: &Legendary) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::*;
     use serde_json::json;
 
@@ -219,6 +220,7 @@ mod tests {
         assert!(json_store::read_value(&data_paths.store_config()).unwrap().get("userInfo").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn login_runs_auth_with_the_code() {
         let dir = tempfile::tempdir().unwrap();
@@ -238,6 +240,7 @@ mod tests {
         assert!(login(&data_paths, &lg, "short").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn logout_keeps_installed_games_listed() {
         let dir = tempfile::tempdir().unwrap();
@@ -253,6 +256,7 @@ mod tests {
         assert!(CacheStore::install_info(&data_paths).get("Owned").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn failed_logins_are_reported() {
         let dir = tempfile::tempdir().unwrap();

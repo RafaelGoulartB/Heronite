@@ -343,9 +343,12 @@ fn split_args(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::*;
+    #[cfg(unix)]
     use serde_json::json;
 
+    #[cfg(unix)]
     const REDIST: &str = r#"{"depots":[
         {"dependencyId":"ISI","executable":{"path":"__redist/ISI/scriptinterpreter.exe","arguments":""}},
         {"dependencyId":"MSVC2010","executable":{"path":"__redist\\MSVC2010\\vcredist_x86.exe","arguments":"/q /norestart"}},
@@ -358,11 +361,13 @@ mod tests {
         std::fs::write(path, "x").unwrap();
     }
 
+    #[cfg(unix)]
     fn write_manifest(g: &Gogdl, app: &str, manifest: Value) {
         std::fs::create_dir_all(g.manifest_file(app).parent().unwrap()).unwrap();
         std::fs::write(g.manifest_file(app), manifest.to_string()).unwrap();
     }
 
+    #[cfg(unix)]
     struct World {
         _dir: tempfile::TempDir,
         paths: DataPaths,
@@ -371,6 +376,7 @@ mod tests {
     }
 
     /// Redist files, a redist manifest and a game folder.
+    #[cfg(unix)]
     fn world() -> World {
         let (dir, paths) = setup();
         let redist = paths.gog_redist_dir();
@@ -384,6 +390,7 @@ mod tests {
         World { _dir: dir, paths, gogdl, game: game.display().to_string() }
     }
 
+    #[cfg(unix)]
     fn flags(w: &World, pid: &str, build: &str, lang: &str, code: Option<&str>, support: bool) -> Vec<String> {
         let mut v = vec![
             "/VERYSILENT".to_string(),
@@ -405,6 +412,7 @@ mod tests {
         v
     }
 
+    #[cfg(unix)]
     fn save_game(w: &World) {
         let mut entry = installed::Installed::new("42");
         entry.version = "2.0".into();
@@ -412,6 +420,7 @@ mod tests {
         installed::upsert(&w.paths, &entry).unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn v2_with_the_script_interpreter() {
         let w = world();
@@ -447,6 +456,7 @@ mod tests {
         assert!(calls(w.gogdl.bin.parent().unwrap()).is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn v2_with_temp_executables_runs_the_game_scripts_lowercase() {
         let w = world();
@@ -466,6 +476,7 @@ mod tests {
         assert_eq!(steps[0].parts, expected);
     }
 
+    #[cfg(unix)]
     #[test]
     fn v1_runs_the_scripts_for_the_install_language() {
         let w = world();
@@ -497,6 +508,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn dependencies_in_the_game_folder_are_resolved_there() {
         let w = world();
@@ -506,12 +518,14 @@ mod tests {
         assert_eq!(steps[0].parts, [format!("{}/Redist/Helper.exe", w.game), "/s".to_string()]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn games_without_a_manifest_need_nothing() {
         let w = world();
         assert!(first_launch_steps(&w.paths, &w.gogdl, "42", &w.game).unwrap().is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn missing_redistributables_are_downloaded_first() {
         let (dir, paths) = setup();
@@ -532,6 +546,7 @@ mod tests {
         assert!(steps[1].parts[0].ends_with("scriptinterpreter.exe"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_missing_redistributable_that_cannot_be_fetched_is_an_error() {
         let (dir, paths) = setup();
@@ -541,6 +556,7 @@ mod tests {
         assert!(err.contains("no network"), "{err}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn already_installed_ids_are_kept_when_more_are_added() {
         let w = world();

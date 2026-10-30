@@ -231,16 +231,21 @@ pub fn logout(paths: &DataPaths, nile: &Nile) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::Env;
 
+    #[cfg(unix)]
     const LOGIN_JSON: &str =
         r#"{"client_id": "cid", "code_verifier": "ver", "serial": "SER", "url": "https://www.amazon.com/ap/signin?x=1&y=2"}"#;
+    #[cfg(unix)]
     const USER: &str = r#"{"name": "Ana", "user_id": "amzn1.account.AAA"}"#;
 
+    #[cfg(unix)]
     fn request() -> LoginRequest {
         LoginRequest { url: "u".into(), client_id: "cid".into(), code_verifier: "ver".into(), serial: "SER".into() }
     }
 
+    #[cfg(unix)]
     #[test]
     fn login_request_is_parsed_from_stdout() {
         let env = Env::new();
@@ -253,6 +258,7 @@ mod tests {
         assert_eq!(env.calls(), ["auth --login --non-interactive"]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn already_signed_in_gives_none() {
         let env = Env::new();
@@ -264,6 +270,7 @@ mod tests {
         assert_eq!(start_login(&nile).unwrap(), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_failed_start_is_an_error() {
         let env = Env::new();
@@ -289,6 +296,7 @@ mod tests {
         assert_eq!(extract_code(""), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn register_runs_nile_and_mirrors_the_account() {
         let env = Env::new();
@@ -308,6 +316,7 @@ mod tests {
         assert!(env.paths.nile_library().exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn register_accepts_the_correct_spelling_too() {
         let env = Env::new();
@@ -317,6 +326,7 @@ mod tests {
         assert!(register(&env.paths, &env.nile(&body), &request(), "CODE1").is_ok());
     }
 
+    #[cfg(unix)]
     #[test]
     fn register_failures_are_reported() {
         let env = Env::new();
@@ -331,6 +341,7 @@ mod tests {
         assert_eq!(env.calls().len(), calls);
     }
 
+    #[cfg(unix)]
     #[test]
     fn logout_forgets_the_account_and_the_cached_lists() {
         let env = Env::new();
@@ -362,6 +373,7 @@ mod tests {
         assert_eq!(crate::installed::load(&env.paths).len(), 1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn logout_that_nile_could_not_do_is_an_error() {
         let env = Env::new();

@@ -130,6 +130,7 @@ pub fn supported(data_paths: &DataPaths, app_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::{calls, fake};
     use serde_json::json;
 
@@ -141,6 +142,7 @@ mod tests {
         assert_eq!(SyncMode::Both.flag(), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn sync_returns_the_output_and_needs_a_path() {
         let dir = tempfile::tempdir().unwrap();
@@ -152,6 +154,7 @@ mod tests {
         assert!(sync(&data_paths, "A", "  ", SyncMode::Both).is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_sync_legendary_failed_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
@@ -175,6 +178,7 @@ mod tests {
         assert_eq!(detect_path(&data_paths, "A").unwrap().as_deref(), Some("/pfx/drive_c/saves"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn detection_runs_legendary_in_the_games_prefix_and_reads_the_result() {
         let dir = tempfile::tempdir().unwrap();
@@ -207,6 +211,7 @@ mod tests {
         assert!(log.contains(&format!("WINEPREFIX={}", prefix.display())), "{log}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_missing_prefix_is_explained() {
         let dir = tempfile::tempdir().unwrap();

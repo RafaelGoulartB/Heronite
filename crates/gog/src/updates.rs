@@ -190,6 +190,7 @@ mod tests {
         assert!(cached_updates(&paths).is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn pinned_games_and_missing_tags_are_not_checked() {
         let (dir, paths) = setup();

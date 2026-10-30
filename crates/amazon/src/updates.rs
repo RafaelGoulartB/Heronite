@@ -98,6 +98,7 @@ mod tests {
         assert!(parse_ids("[not json").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn check_saves_the_answer() {
         let env = Env::new();
@@ -114,6 +115,7 @@ mod tests {
         assert!(cached_updates(&env.paths).is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn empty_stdout_means_no_updates() {
         let env = Env::new();
@@ -122,6 +124,7 @@ mod tests {
         assert_eq!(json_store::read_value(&env.paths.nile_store("updates")).unwrap()["updates"], serde_json::json!([]));
     }
 
+    #[cfg(unix)]
     #[test]
     fn failures_are_reported_and_keep_the_saved_list() {
         let env = Env::new();

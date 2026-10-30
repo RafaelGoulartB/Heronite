@@ -280,6 +280,7 @@ mod tests {
         assert!(game_info(&env.paths, "missing").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn refresh_syncs_then_writes_the_library() {
         let env = Env::new();
@@ -290,6 +291,7 @@ mod tests {
         assert!(!heronite_data::Library::load(&env.paths).unwrap().games.is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn refresh_reports_a_missing_login() {
         let env = Env::new();
@@ -301,6 +303,7 @@ mod tests {
         assert!(!env.paths.nile_library().exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn refresh_reports_other_failures() {
         let env = Env::new();

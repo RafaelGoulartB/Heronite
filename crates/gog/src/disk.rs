@@ -68,7 +68,8 @@ pub fn copy_tree(src: &Path, dst: &Path, cancel: &Cancel, on_bytes: &mut dyn FnM
     Ok(true)
 }
 
-#[cfg(test)]
+// Symlinks and Linux paths; GOG is off on Windows (`Feature::StoreAccounts`).
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

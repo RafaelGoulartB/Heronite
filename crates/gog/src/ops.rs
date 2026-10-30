@@ -303,14 +303,19 @@ pub fn import(paths: &DataPaths, gogdl: &Gogdl, folder: &str) -> Result<String> 
 mod tests {
     use super::*;
     use crate::cmd::testing::*;
+    #[cfg(unix)]
     use heronite_data::json_store;
     use heronite_epic::cache_store::CacheStore;
+    #[cfg(unix)]
     use heronite_epic::queue::{DmStatus, InstallParams};
     use serde_json::json;
+    #[cfg(unix)]
     use std::time::Duration;
 
+    #[cfg(unix)]
     const INFO: &str = r#"{"size":{"*":{"download_size":1000,"disk_size":2000},"en-US":{"download_size":1,"disk_size":2}},"dlcs":[{"title":"DLC","id":"77","size":{"*":{"download_size":5,"disk_size":5}}}],"buildId":"900","languages":["en-US","de-DE"],"folder_name":"The Game","dependencies":[],"versionEtag":"\"tag1\"","versionName":"1.5","available_branches":[null]}"#;
 
+    #[cfg(unix)]
     const PROGRESS: &str = r#"
 echo '[PROGRESS] INFO: = Progress: 42.50 4250/10000, Running for: 00:00:05, ETA: 00:01:23' >&2
 echo '[PROGRESS] INFO: = Downloaded: 123.45 MiB, Written: 150.00 MiB' >&2
@@ -318,6 +323,7 @@ echo '[PROGRESS] INFO:  + Download	- 5.12 MiB/s (raw) / 8.00 MiB/s (decompressed
 echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
 "#;
 
+    #[cfg(unix)]
     fn element(kind: ElementKind, base: &Path, dlcs: &[&str]) -> DmElement {
         DmElement::new(
             kind,
@@ -334,6 +340,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
     }
 
     /// A gogdl that answers `info`, and for `download` fills the game folder.
+    #[cfg(unix)]
     fn fake_gog(dir: &Path, paths: &DataPaths, download: &str) -> Gogdl {
         std::fs::write(dir.join("info.json"), INFO).unwrap();
         let body = format!("case \"$3\" in\ninfo) cat \"{info}\";;\n*) {download};;\nesac", info = dir.join("info.json").display());
@@ -346,6 +353,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
             .unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn install_runs_gogdl_and_records_the_game() {
         let (dir, paths) = setup();
@@ -393,6 +401,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert_eq!(saved["games"][0]["install"]["install_path"], entry.install_path.as_str());
     }
 
+    #[cfg(unix)]
     #[test]
     fn install_without_dlcs_skips_them_and_passes_the_worker_limit() {
         let (dir, paths) = setup();
@@ -407,6 +416,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert!(download.ends_with("--lang en-US --skip-dlcs --max-workers 6"), "{download}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_failed_install_reports_gogdl_errors() {
         let (dir, paths) = setup();
@@ -421,6 +431,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert!(result.error.unwrap().contains("gogdl exited with Some(4)"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn cancelling_an_install_aborts_it() {
         let (dir, paths) = setup();
@@ -437,6 +448,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert!(installed::get(&paths, "42").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn update_runs_in_place_and_refreshes_the_entry() {
         let (dir, paths) = setup();
@@ -479,6 +491,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert!(job.run(&other, &Cancel::new(), &mut |_| {}).error.unwrap().contains("not installed"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn repair_needs_a_manifest_and_passes_the_build() {
         let (dir, paths) = setup();
@@ -580,6 +593,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn import_records_a_game_found_on_disk() {
         let (dir, paths) = setup();
@@ -600,6 +614,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert_eq!(library::game_info(&paths, "42").unwrap()["is_installed"], true);
     }
 
+    #[cfg(unix)]
     #[test]
     fn import_rejects_unknown_and_unowned_games() {
         let (dir, paths) = setup();

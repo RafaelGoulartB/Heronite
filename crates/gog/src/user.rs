@@ -226,6 +226,7 @@ mod tests {
         assert_eq!(config["userData"]["avatarUrl"], "https://a/m.jpg");
     }
 
+    #[cfg(unix)]
     #[test]
     fn code_login_failures_are_errors() {
         let (dir, paths) = setup();
@@ -237,6 +238,7 @@ mod tests {
         assert_eq!(calls(dir.path()).len(), 1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn credentials_come_from_the_auth_command() {
         let (dir, paths) = setup();
@@ -248,6 +250,7 @@ mod tests {
         assert!(credentials(&paths, &none).is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn tokens_gogdl_cannot_refresh_are_an_expired_session() {
         let (dir, paths) = setup();

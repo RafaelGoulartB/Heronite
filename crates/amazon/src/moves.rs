@@ -188,6 +188,8 @@ mod tests {
         fs::create_dir_all(game.join("data/sub")).unwrap();
         fs::write(game.join("data/sub/big.bin"), vec![7u8; 3 * (1 << 20) + 5]).unwrap();
         fs::write(game.join("run.exe"), "exe").unwrap();
+        // Windows makes symlinks only in Developer Mode or as an administrator.
+        #[cfg(unix)]
         std::os::unix::fs::symlink("run.exe", game.join("link")).unwrap();
         env.write_nile_file(
             "installed.json",
@@ -207,6 +209,7 @@ mod tests {
         assert!(!old.exists());
         assert_eq!(fs::metadata(new.join("data/sub/big.bin")).unwrap().len(), 3 * (1 << 20) + 5);
         assert_eq!(fs::read_to_string(new.join("run.exe")).unwrap(), "exe");
+        #[cfg(unix)]
         assert_eq!(fs::read_link(new.join("link")).unwrap(), Path::new("run.exe"));
         let doc = json_store::read_value(&installed::file(&env.paths)).unwrap();
         assert_eq!(doc[0]["path"], "/o");

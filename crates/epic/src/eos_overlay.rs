@@ -214,7 +214,9 @@ pub fn prefix_folder(data_paths: &DataPaths, app_name: &str) -> PrefixFolder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::{calls, fake};
+    #[cfg(unix)]
     use std::sync::Arc;
 
     fn fixture() -> (tempfile::TempDir, DataPaths) {
@@ -235,6 +237,7 @@ mod tests {
         assert_eq!(s.install_path.as_deref(), Some("/x/eos_overlay"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn latest_version_comes_from_the_version_file() {
         let (d, data_paths) = fixture();
@@ -251,6 +254,7 @@ mod tests {
         assert_eq!(latest_version(&data_paths, &lg), "1.2.0");
     }
 
+    #[cfg(unix)]
     #[test]
     fn install_asks_the_size_first_then_installs_with_progress() {
         let (d, data_paths) = fixture();
@@ -273,6 +277,7 @@ fi"#;
         assert_eq!(*seen.lock().unwrap(), [50.0f32]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn install_can_be_cancelled_and_reports_errors() {
         let (d, data_paths) = fixture();
@@ -286,6 +291,7 @@ fi"#;
         assert!(r.aborted);
     }
 
+    #[cfg(unix)]
     #[test]
     fn enable_disable_remove_and_info_arguments() {
         let (d, _heroic) = fixture();

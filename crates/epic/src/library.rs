@@ -284,6 +284,7 @@ pub fn updates_available(data_paths: &DataPaths) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::fake;
     use serde_json::json;
 
@@ -410,6 +411,7 @@ mod tests {
         assert!(updates_available(&data_paths).is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
     fn refresh_runs_list_then_rebuilds_even_when_list_fails() {
         let dir = tempfile::tempdir().unwrap();

@@ -251,6 +251,7 @@ mod tests {
         assert_eq!(pt.default_language("pt-BR"), "pt-PT");
     }
 
+    #[cfg(unix)]
     #[test]
     fn info_runs_gogdl_and_is_cached() {
         let (dir, paths) = setup();
@@ -266,6 +267,7 @@ mod tests {
         assert_eq!(calls(dir.path()).len(), 2);
     }
 
+    #[cfg(unix)]
     #[test]
     fn unsupported_platforms_give_a_clear_error() {
         let (dir, paths) = setup();

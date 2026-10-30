@@ -130,11 +130,12 @@ pub fn last_json_object(text: &str) -> Option<serde_json::Value> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     use std::path::Path;
 
     /// A fake `gogdl`: a shell script that records its arguments and the config
-    /// path, then runs `body`.
+    /// path, then runs `body`. Unix only: it needs `sh`.
+    #[cfg(unix)]
     pub fn fake(dir: &Path, paths: &DataPaths, body: &str) -> Gogdl {
         let bin = dir.join("gogdl");
         let script = format!(
@@ -142,11 +143,12 @@ pub(crate) mod testing {
             log = dir.join("calls.log").display()
         );
         std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        heronite_platform::fs::make_executable(&bin).unwrap();
         Gogdl::with_bin(bin, paths)
     }
 
     /// The recorded command lines, without the `--auth-config-path <file>` prefix.
+    #[cfg(unix)]
     pub fn calls(dir: &Path) -> Vec<String> {
         std::fs::read_to_string(dir.join("calls.log"))
             .unwrap_or_default()
@@ -172,8 +174,10 @@ pub(crate) mod testing {
 mod tests {
     use super::testing::*;
     use super::*;
+    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
+    #[cfg(unix)]
     #[test]
     fn passes_the_auth_file_and_config_path() {
         let (dir, paths) = setup();
@@ -190,6 +194,7 @@ mod tests {
         assert!(paths.gog_auth().parent().unwrap().is_dir());
     }
 
+    #[cfg(unix)]
     #[test]
     fn streams_lines_and_cancels() {
         let (dir, paths) = setup();

@@ -343,12 +343,16 @@ fn run_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::{calls, fake, setup};
 
+    #[cfg(unix)]
     fn folders(prefix: &str, proton: bool) -> Folders<'static> {
         Folders { install: "/games/g", home: user_home(prefix, proton, "rafa") }
     }
 
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn variables_resolve_inside_a_wine_prefix() {
         let f = folders("/pfx", false);
@@ -364,6 +368,8 @@ mod tests {
         assert!(resolve_template("<?INSTALL", &f).is_none());
     }
 
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn proton_uses_the_pfx_folder_and_steamuser() {
         let f = folders("/pfx", true);
@@ -386,6 +392,7 @@ mod tests {
     }
 
     /// An installed game with an info file; returns the install folder.
+    #[cfg(unix)]
     fn install(dir: &Path, paths: &DataPaths, platform: &str, client: Option<&str>) -> String {
         let game = dir.join("game");
         std::fs::create_dir_all(&game).unwrap();
@@ -399,6 +406,7 @@ mod tests {
         game.display().to_string()
     }
 
+    #[cfg(unix)]
     fn set_prefix(paths: &DataPaths, prefix: &Path, proton: bool) {
         let kind = if proton { "proton" } else { "wine" };
         game_config::set_game_setting(paths, "42", "/home/x", "winePrefix", json!(prefix.display().to_string())).unwrap();
@@ -406,8 +414,11 @@ mod tests {
             .unwrap();
     }
 
+    #[cfg(unix)]
     const REMOTE: &str = r#"{"content":{"Windows":{"cloudStorage":{"enabled":true,"locations":[{"name":"saves","location":"<?APPLICATION_DATA_LOCAL?>\\Game\\Saves"}]}}}}"#;
 
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn supported_needs_a_windows_install_and_a_client_id() {
         let (dir, paths) = setup();
@@ -420,6 +431,8 @@ mod tests {
         assert!(!supported(&paths, "42"));
     }
 
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn the_manifest_gives_the_client_id_first() {
         let (dir, paths) = setup();
@@ -431,6 +444,8 @@ mod tests {
         assert_eq!(client_id(&paths, "42", &game).as_deref(), Some("from-manifest"));
     }
 
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    #[cfg(unix)]
     #[test]
     fn locations_are_fetched_once_and_kept_in_the_game_settings() {
         let (dir, paths) = setup();
@@ -456,6 +471,7 @@ mod tests {
         assert_eq!(asked.borrow().len(), 2);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_game_without_cloud_saves_has_an_empty_list() {
         let (dir, paths) = setup();
@@ -471,6 +487,7 @@ mod tests {
         assert!(locations_with(&paths, "99", true, &offline).is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn syncing_runs_gogdl_per_location_and_remembers_the_time() {
         let (dir, paths) = setup();
@@ -494,6 +511,7 @@ mod tests {
         assert!(calls(dir.path())[1].ends_with("--ts 1700000000.5 --name saves --force-upload"), "{:?}", calls(dir.path()));
     }
 
+    #[cfg(unix)]
     #[test]
     fn flags_per_mode_and_unknown_flags() {
         assert_eq!(SyncMode::Both.flag(), None);
@@ -508,6 +526,7 @@ mod tests {
         assert_eq!(parse_timestamp("1.5\nnot a time\n"), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_failing_gogdl_is_an_error_and_keeps_the_old_time() {
         let (dir, paths) = setup();

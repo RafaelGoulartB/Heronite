@@ -205,6 +205,7 @@ pub fn game_sdl(data_paths: &DataPaths, app_name: &str) -> Vec<Sdl> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::{calls, fake};
     use serde_json::json;
 
@@ -243,6 +244,7 @@ mod tests {
         assert!(parse_info_output("no json").is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn info_is_fetched_once_and_cached() {
         let dir = tempfile::tempdir().unwrap();
@@ -256,6 +258,7 @@ mod tests {
         assert_eq!(calls(dir.path()), ["info Calluna --json --platform Windows"]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn missing_manifest_is_an_error_after_retries() {
         let dir = tempfile::tempdir().unwrap();

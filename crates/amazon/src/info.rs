@@ -61,6 +61,7 @@ fn parse_size(stdout: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::cmd::testing::Env;
 
     #[test]
@@ -71,6 +72,7 @@ mod tests {
         assert_eq!(parse_size("{\"other\": 1}"), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn info_is_fetched_once_and_cached() {
         let env = Env::new();
@@ -82,6 +84,7 @@ mod tests {
         assert_eq!(env.calls(), ["install --info --json amzn1.adg.product.AAA"]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn failure_carries_nile_errors() {
         let env = Env::new();

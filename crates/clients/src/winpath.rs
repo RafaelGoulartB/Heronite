@@ -67,6 +67,8 @@ fn normal(p: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    // Wine's dosdevices are symlinks: a Unix prefix.
+    #[cfg(unix)]
     #[test]
     fn follows_the_drive_and_the_case_of_the_folders() {
         let dir = tempfile::tempdir().unwrap();
