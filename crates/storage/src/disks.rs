@@ -2,9 +2,7 @@
 //! `statvfs`. Mounts of one device (btrfs subvolumes such as `/` and
 //! `/home`, bind mounts) are one disk: they share its space.
 
-use std::ffi::CString;
 use std::fs;
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 
 /// A mounted filesystem.
@@ -125,14 +123,7 @@ pub fn locate(mounts: &[Mount], path: &Path, disks: &mut Vec<Disk>) -> Option<us
 
 /// Total and free bytes of the filesystem at `path`.
 fn space(path: &Path) -> Option<(u64, u64)> {
-    let c = CString::new(path.as_os_str().as_bytes()).ok()?;
-    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
-    // SAFETY: `c` is a valid NUL-terminated path and `st` a writable statvfs.
-    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
-        return None;
-    }
-    let block = st.f_frsize as u64;
-    Some((st.f_blocks as u64 * block, st.f_bavail as u64 * block))
+    heronite_platform::fs::disk_space(path)
 }
 
 #[cfg(test)]

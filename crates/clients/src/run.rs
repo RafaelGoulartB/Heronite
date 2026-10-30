@@ -3,7 +3,6 @@
 //! app quits, like a game.
 
 use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -74,7 +73,7 @@ pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::proces
     let command = open_command(paths, client, home)?;
     let mut cmd = spawn::std_command(&command);
     // Not `proc::guard`: the client outlives the app.
-    cmd.stdin(Stdio::null()).process_group(0);
+    heronite_platform::process::new_group(cmd.stdin(Stdio::null()));
     let log = spawn::create_log(&spawn::log_path(paths, &format!("{}.log", client.id()))).ok();
     let (out, err) = match log {
         Some(mut file) => {

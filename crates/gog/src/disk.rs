@@ -48,7 +48,7 @@ pub fn remove_tree(path: &Path) -> io::Result<()> {
 pub fn copy_tree(src: &Path, dst: &Path, cancel: &Cancel, on_bytes: &mut dyn FnMut(u64)) -> io::Result<bool> {
     let meta = fs::symlink_metadata(src)?;
     if meta.file_type().is_symlink() {
-        std::os::unix::fs::symlink(fs::read_link(src)?, dst)?;
+        heronite_platform::fs::symlink(&fs::read_link(src)?, dst)?;
     } else if meta.is_dir() {
         fs::create_dir_all(dst)?;
         for entry in fs::read_dir(src)? {

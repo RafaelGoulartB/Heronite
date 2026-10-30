@@ -20,9 +20,8 @@ fn read_ini(path: &Path) -> Result<Ini, String> {
 /// Replaces `path` atomically, keeping its permissions (`mode` for a new file).
 /// A symlink (a dotfiles manager) is followed, so the link stays.
 fn write_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
     let real = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    let mode = fs::metadata(&real).map(|m| m.permissions().mode() & 0o7777).unwrap_or(mode);
+    let mode = fs::metadata(&real).ok().and_then(|m| heronite_platform::fs::mode(&m)).unwrap_or(mode);
     heronite_data::temps::write_atomic(&real, bytes, Some(mode)).map_err(|e| format!("{}: {e}", path.display()))
 }
 

@@ -78,6 +78,98 @@ pub fn is_executable(path: &Path, meta: &Metadata) -> bool {
     }
 }
 
+/// The id of a file that has other names too (hard links), to count it
+/// once. `None` for a file with one name, and on Windows, where telling needs
+/// the file opened (see [`file_id`]).
+pub fn hard_link_id(meta: &Metadata) -> Option<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        (meta.nlink() > 1).then(|| (meta.dev(), meta.ino()))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        None
+    }
+}
+
+/// Bytes the file takes on the disk, as `du` counts them: its allocated
+/// blocks on Unix (a sparse file takes less than its length), its length on
+/// Windows.
+pub fn allocated_bytes(meta: &Metadata) -> u64 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        meta.blocks() * 512
+    }
+    #[cfg(not(unix))]
+    {
+        meta.len()
+    }
+}
+
+/// When the file last changed in any way, its metadata included (Unix's
+/// change time, which unpacking an archive sets even when it keeps the
+/// files' old dates). Windows has none: the later of its creation and
+/// modification times.
+pub fn changed_time(meta: &Metadata) -> Option<std::time::SystemTime> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let secs = u64::try_from(meta.ctime()).ok()?;
+        Some(std::time::UNIX_EPOCH + std::time::Duration::new(secs, meta.ctime_nsec().clamp(0, 999_999_999) as u32))
+    }
+    #[cfg(not(unix))]
+    {
+        [meta.created().ok(), meta.modified().ok()].into_iter().flatten().max()
+    }
+}
+
+/// Total and free bytes of the disk `path` is on (free: what this user may
+/// still write).
+pub fn disk_space(path: &Path) -> Option<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let c = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;
+        // SAFETY: zeroed is a valid statvfs.
+        let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+        // SAFETY: `c` is a valid NUL-terminated path and `st` a writable statvfs.
+        if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+            return None;
+        }
+        let block = st.f_frsize as u64;
+        Some((st.f_blocks as u64 * block, st.f_bavail as u64 * block))
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+        let wide: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
+        let (mut free, mut total, mut all_free) = (0u64, 0u64, 0u64);
+        // SAFETY: `wide` is NUL-terminated; the three outputs are ours.
+        if unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, &mut total, &mut all_free) } == 0 {
+            return None;
+        }
+        Some((total, free))
+    }
+}
+
+/// `path` for a C library's `fopen`: its bytes on Unix, UTF-8 on Windows.
+/// `None` when it holds a NUL (or, on Windows, is not Unicode).
+pub fn c_path(path: &Path) -> Option<std::ffi::CString> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        std::ffi::CString::new(path.as_os_str().as_bytes()).ok()
+    }
+    #[cfg(not(unix))]
+    {
+        std::ffi::CString::new(path.to_str()?).ok()
+    }
+}
+
 /// Makes `link` a symbolic link to `original`. Windows needs Developer Mode
 /// or an administrator for it, and tells a link to a folder from one to a
 /// file.
@@ -160,6 +252,17 @@ mod tests {
         let id = |p: &Path| file_id(p, &std::fs::metadata(p).unwrap()).unwrap();
         assert_eq!(id(&a), id(&b));
         assert_ne!(id(&a), id(&c));
+    }
+
+    #[test]
+    fn the_disk_of_a_folder_has_space() {
+        let d = tempfile::tempdir().unwrap();
+        let (total, free) = disk_space(d.path()).unwrap();
+        assert!(total > 0 && free <= total);
+        std::fs::write(d.path().join("a"), "x").unwrap();
+        let meta = std::fs::metadata(d.path().join("a")).unwrap();
+        assert!(changed_time(&meta).is_some());
+        assert_eq!(hard_link_id(&meta), None);
     }
 
     #[test]

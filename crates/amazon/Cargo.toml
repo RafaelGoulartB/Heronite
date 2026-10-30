@@ -7,6 +7,7 @@ description = "Amazon Games through the nile CLI (login, library, install, updat
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
 heronite-i18n = { path = "../i18n" }
 heronite-launch = { path = "../launch" }
 heronite-epic = { path = "../epic" }

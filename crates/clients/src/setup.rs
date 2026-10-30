@@ -4,7 +4,6 @@
 //! use a client already installed in a prefix of the user's.
 
 use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -125,7 +124,7 @@ pub fn install(paths: &DataPaths, client: Client, home: &str, cancel: &Cancel, o
     command.env.insert(UMU_NSENTER.into(), "1".into());
     let _ = writeln!(log, "$ {}", command.display());
     let mut process = spawn::std_command(&command);
-    process.stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log.try_clone()?).process_group(0);
+    heronite_platform::process::new_group(process.stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log.try_clone()?));
     // Not tied to the app: the installer may become the client.
     let child = heronite_data::proc::spawn(&mut process)
         .map_err(|e| anyhow!(tr!("Could not start {program}: {error}", program = command.program, error = e)))?;

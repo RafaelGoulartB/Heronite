@@ -120,7 +120,7 @@ fn copy_tree(src: &Path, dst: &Path, cancel: &Cancel, progress: &mut dyn FnMut(u
         if kind.is_dir() {
             copy_tree(&from, &to, cancel, progress)?;
         } else if kind.is_symlink() {
-            std::os::unix::fs::symlink(fs::read_link(&from)?, &to).with_context(|| format!("linking {}", to.display()))?;
+            heronite_platform::fs::symlink(&fs::read_link(&from)?, &to).with_context(|| format!("linking {}", to.display()))?;
         } else {
             copy_file(&from, &to, cancel, progress)?;
         }

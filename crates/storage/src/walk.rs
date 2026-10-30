@@ -4,8 +4,9 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
+
+use heronite_platform::fs::{allocated_bytes, hard_link_id};
 
 /// Bytes `path` (a file or a folder) takes. `None` when `stop` asks (checked
 /// every few hundred entries) or `path` is missing.
@@ -29,7 +30,7 @@ pub fn disk_usage(path: &Path, stop: &dyn Fn() -> bool) -> Option<u64> {
             let Ok(meta) = entry.metadata() else { continue };
             if meta.is_dir() {
                 stack.push(entry.path());
-            } else if meta.nlink() > 1 && !linked.insert((meta.dev(), meta.ino())) {
+            } else if hard_link_id(&meta).is_some_and(|id| !linked.insert(id)) {
                 continue;
             }
             total += allocated(&meta);
@@ -39,7 +40,7 @@ pub fn disk_usage(path: &Path, stop: &dyn Fn() -> bool) -> Option<u64> {
 }
 
 fn allocated(meta: &fs::Metadata) -> u64 {
-    meta.blocks() * 512
+    allocated_bytes(meta)
 }
 
 #[cfg(test)]
