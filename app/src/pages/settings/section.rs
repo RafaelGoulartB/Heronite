@@ -70,6 +70,23 @@ impl Section {
         Section::About,
     ];
 
+    /// Whether this system has what the section is about
+    /// (`heronite_platform::features`).
+    pub fn available(self) -> bool {
+        use heronite_platform::{supported, Feature};
+        match self {
+            Section::Downloads => supported(Feature::StoreAccounts),
+            Section::Launchers => supported(Feature::LauncherImports),
+            Section::Storage => supported(Feature::Storage),
+            Section::Overlay | Section::Replay => supported(Feature::Overlay),
+            Section::Screenshots => supported(Feature::Capture),
+            Section::Saves => supported(Feature::Emulation),
+            // Its options are mostly Wine's.
+            Section::GameDefaults => supported(Feature::Wine),
+            _ => true,
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Section::General => tr!("General"),

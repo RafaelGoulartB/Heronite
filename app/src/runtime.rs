@@ -469,19 +469,32 @@ fn forward_lines(pipe: impl std::io::Read, line: &dyn Fn(String)) {
 /// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data) or
 /// `HERONITE_DISABLE_TOOLS_UPDATE` (only this).
 fn spawn_tools_update(paths: DataPaths) {
+    use heronite_platform::{supported, Feature};
     if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") || crate::env::flag("HERONITE_DISABLE_TOOLS_UPDATE") {
+        return;
+    }
+    // Everything below is for Wine and the stores' tools.
+    let (wine, stores) = (supported(Feature::Wine), supported(Feature::StoreAccounts));
+    if !wine && !stores {
         return;
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
-        // A new setup with a Proton already on this PC (Steam's
-        // compatibilitytools.d, Lutris) gets it as the default Wine.
-        heronite_wine::default::ensure_default(&paths);
-        // Wine Manager builds where Steam's games can pick them too.
-        heronite_wine::steam_link::sync(&paths);
+        if wine {
+            // A new setup with a Proton already on this PC (Steam's
+            // compatibilitytools.d, Lutris) gets it as the default Wine.
+            heronite_wine::default::ensure_default(&paths);
+            // Wine Manager builds where Steam's games can pick them too.
+            heronite_wine::steam_link::sync(&paths);
+        }
         // A new setup has no legendary yet: get it before the user logs in to Epic.
-        if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
-            log::warn!("{e}");
+        if stores {
+            if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
+                log::warn!("{e}");
+            }
+        }
+        if !wine {
+            return;
         }
         heronite_launch::tools::update_all_if_due(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
         // known_fixes.json (winetricks verbs, env variables) as Heroic keeps it.

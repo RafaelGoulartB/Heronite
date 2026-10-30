@@ -18,6 +18,10 @@ pub enum Feature {
     StoreClients,
     /// Games of Heroic, Lutris, Bottles and Faugus.
     LauncherImports,
+    /// Copying an existing Heroic setup in at the first start
+    /// (`heronite_data::migrate`): Heroic's Windows folder holds stores
+    /// this system has no runner for yet.
+    HeroicMigration,
     /// Emulators, ROM folders and Ludusavi.
     Emulation,
     /// The in-game overlay and the replay buffer.
@@ -27,6 +31,9 @@ pub enum Feature {
     SteamClient,
     /// Running games in a sandbox (bubblewrap).
     Sandbox,
+    /// Settings → Storage: what games, Wine prefixes, Proton builds and
+    /// caches take on disk, and cleaning them up.
+    Storage,
     /// The icon in the system tray.
     Tray,
     /// Updating the app from inside it.
@@ -49,10 +56,12 @@ pub const fn supported(feature: Feature) -> bool {
         | Feature::StoreAccounts
         | Feature::StoreClients
         | Feature::LauncherImports
+        | Feature::HeroicMigration
         | Feature::Emulation
         | Feature::Overlay
         | Feature::SteamClient
         | Feature::Sandbox
+        | Feature::Storage
         | Feature::Tray
         | Feature::SelfUpdate
         | Feature::Autostart

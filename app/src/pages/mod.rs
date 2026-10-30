@@ -92,6 +92,19 @@ impl Page {
         }
     }
 
+    /// Whether this system has what the page needs (`heronite_platform::features`).
+    pub fn available(self) -> bool {
+        use heronite_platform::{supported, Feature};
+        match self {
+            Page::Collection | Page::Statistics | Page::Settings => true,
+            Page::Downloads | Page::Epic | Page::Gog | Page::Amazon => supported(Feature::StoreAccounts),
+            Page::Steam => supported(Feature::SteamClient),
+            Page::BattleNet | Page::Ea | Page::Ubisoft | Page::Rockstar => supported(Feature::StoreClients),
+            Page::WineManager => supported(Feature::Wine),
+            Page::Emulators => supported(Feature::Emulation),
+        }
+    }
+
     /// The page of a store client run by Wine.
     pub fn of_client(client: heronite_data::clients::Client) -> Page {
         use heronite_data::clients::Client;

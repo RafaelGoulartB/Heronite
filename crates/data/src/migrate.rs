@@ -128,6 +128,9 @@ pub fn run_if_needed(data: &DataPaths, app: &AppPaths) -> Result<Outcome> {
     if data.root.exists() {
         return Ok(Outcome::NotNeeded);
     }
+    if !heronite_platform::supported(heronite_platform::Feature::HeroicMigration) {
+        return Ok(Outcome::Fresh);
+    }
     match Source::detect(app).filter(|s| s.heroic.join("config.json").exists() || s.heroic.join("store").is_dir()) {
         Some(source) => migrate(&source, data, app).map(Outcome::Migrated),
         None => Ok(Outcome::Fresh),

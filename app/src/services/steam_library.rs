@@ -110,8 +110,10 @@ impl SteamLibrary {
             error: None,
         };
         this.load_summary(cx);
-        // Off for tests against real data, like the other idle jobs.
-        if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
+        // Off for tests against real data, like the other idle jobs, and
+        // where the client cannot be read yet (the installed games still
+        // come in from Steam's manifests, `heronite_launch::install_state`).
+        if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::supported(heronite_platform::Feature::SteamClient) {
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(FIRST_DELAY).await;
                 loop {
@@ -234,7 +236,7 @@ impl SteamLibrary {
 
     /// A quiet read (the timer, the refresh button): only when the client answers.
     pub fn sync_if_ready(&mut self, cx: &mut Context<Self>) {
-        if self.syncing {
+        if self.syncing || !heronite_platform::supported(heronite_platform::Feature::SteamClient) {
             return;
         }
         let paths = self.paths.clone();

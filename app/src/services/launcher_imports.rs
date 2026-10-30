@@ -105,8 +105,10 @@ impl LauncherImports {
             saving,
         };
         let idle = !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS");
+        // The launchers it looks for are Linux's.
+        let supported = heronite_platform::supported(heronite_platform::Feature::LauncherImports);
         cx.spawn(async move |this, cx| {
-            if this.update(cx, |this, cx| this.look(cx)).is_err() || !idle {
+            if !supported || this.update(cx, |this, cx| this.look(cx)).is_err() || !idle {
                 return;
             }
             cx.background_executor().timer(FIRST_DELAY).await;

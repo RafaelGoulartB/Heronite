@@ -504,7 +504,7 @@ impl SettingsPage {
             for (group, sections) in Section::GROUPS {
                 col =
                     col.child(div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(tr(group)));
-                for s in sections.iter().copied() {
+                for s in sections.iter().copied().filter(|s| s.available()) {
                     col = col.child(pill(s, next(), cx));
                 }
             }

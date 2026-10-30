@@ -255,7 +255,8 @@ pub(super) fn static_entries() -> Vec<Entry> {
         "stats playtime hours activity chart most played estatisticas tempo de jogo horas atividade grafico mais jogados",
     ));
     v.push(page(Page::Settings, tr!("Global settings"), "Ctrl ,", "preferences options config preferencias opcoes configuracoes ajustes"));
-    for s in Section::ALL {
+    v.retain(|e| !matches!(e.act, Act::Go(p) if !p.available()));
+    for s in Section::ALL.into_iter().filter(|s| s.available()) {
         let mut e = Entry::new(
             Kind::Page,
             Act::Section(s),

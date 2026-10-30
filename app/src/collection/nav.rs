@@ -344,7 +344,7 @@ impl CollectionView {
                     if i > 0 {
                         p = p.child(menu_separator());
                     }
-                    for &page in group {
+                    for &page in group.iter().filter(|p| p.available()) {
                         let is_stores = pages::stores::is_store_page(page);
                         let (id, ic, title) = if is_stores {
                             (SharedString::from("nav-stores"), Icon::Storefront, pages::stores::title())
@@ -402,6 +402,9 @@ impl CollectionView {
     pub(super) fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         self.open_menu = None;
         self.context_menu = None;
+        if !page.available() {
+            return;
+        }
         if page == Page::Downloads || self.page == Page::Downloads {
             self.pages.downloads_seen = heronite_epic::queue::now_ms();
         }

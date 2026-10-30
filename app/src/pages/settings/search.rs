@@ -408,7 +408,7 @@ pub fn search(query: &str) -> Vec<Hit> {
         return Vec::new();
     }
     let mut hits: Vec<(i32, usize, Hit)> = Vec::new();
-    for (ix, &section) in Section::ALL.iter().enumerate() {
+    for (ix, &section) in Section::ALL.iter().enumerate().filter(|(_, s)| s.available()) {
         let own = section_score(&tokens, section);
         let name = fuzzy::fold(section.label());
         let mut found: Vec<(i32, usize, Setting)> = settings_of(section)

@@ -156,7 +156,8 @@ impl Downloads {
         } else if let Some(app) = crate::env::value("HERONITE_DEBUG_QUEUE_INSTALL") {
             // Integration check with a fake legendary (HERONITE_LEGENDARY_BIN): queues a real install.
             this.debug_queue_install(&app, cx);
-        } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
+        } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::supported(heronite_platform::Feature::StoreAccounts)
+        {
             this.spawn_idle_jobs(cx);
             this.spawn_offline_watch(cx);
         }

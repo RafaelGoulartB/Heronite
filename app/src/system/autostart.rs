@@ -23,7 +23,8 @@ fn autostart_dir(data_paths: &DataPaths) -> Option<PathBuf> {
     if let Some(dir) = crate::env::value("HERONITE_AUTOSTART_DIR") {
         return Some(PathBuf::from(dir));
     }
-    if !data_paths.is_default() {
+    // XDG autostart is Linux's (`Feature::Autostart`).
+    if !data_paths.is_default() || !heronite_platform::supported(heronite_platform::Feature::Autostart) {
         return None;
     }
     dirs::config_dir().map(|d| d.join("autostart"))
