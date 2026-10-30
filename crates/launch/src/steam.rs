@@ -58,8 +58,15 @@ impl SteamAction {
     }
 }
 
-/// `steam` (or `steam-runtime`) on `$PATH`.
+/// `steam` (or `steam-runtime`) on `$PATH`; `steam.exe` of the Steam
+/// folder on Windows.
 pub fn find_steam_binary(probe: &dyn Probe) -> Option<String> {
+    if cfg!(windows) {
+        return platform_roots(Path::new(probe.home().as_str()))
+            .into_iter()
+            .map(|root| root.join("steam.exe").to_string_lossy().into_owned())
+            .find(|exe| probe.exists(exe));
+    }
     ["steam", "steam-runtime", FLATPAK_STEAM_ID].iter().find_map(|n| probe.which(n)).or_else(|| {
         // Flatpak's launchers, which are not always on `$PATH`.
         let user = format!("{}/.local/share/flatpak/exports/bin/{FLATPAK_STEAM_ID}", probe.home().trim_end_matches('/'));
@@ -79,6 +86,58 @@ pub fn flatpak_steam_root(home: &Path) -> PathBuf {
 /// the Snap's home is `~/snap/steam/common`.
 pub fn snap_steam_root(home: &Path) -> PathBuf {
     home.join("snap/steam/common/.local/share/Steam")
+}
+
+/// Where Steam installs itself on this system, the usual place first: on
+/// Linux the native folders, the Flatpak's and the Snap's; on Windows the
+/// folder the Steam client wrote into the registry, then the default one.
+pub fn platform_roots(home: &Path) -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        let _ = home;
+        windows_roots()
+    }
+    #[cfg(not(windows))]
+    {
+        vec![home.join(".steam/steam"), home.join(".local/share/Steam"), flatpak_steam_root(home), snap_steam_root(home)]
+    }
+}
+
+#[cfg(windows)]
+fn windows_roots() -> Vec<PathBuf> {
+    use heronite_platform::registry::{string, Hive};
+    let mut roots: Vec<PathBuf> = [
+        (Hive::CurrentUser, r"Software\Valve\Steam", "SteamPath"),
+        (Hive::LocalMachine, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+        (Hive::LocalMachine, r"SOFTWARE\Valve\Steam", "InstallPath"),
+    ]
+    .into_iter()
+    .filter_map(|(hive, key, name)| string(hive, key, name))
+    .filter(|p| !p.trim().is_empty())
+    // `SteamPath` is written with forward slashes (`c:/program files (x86)/steam`).
+    .map(|p| PathBuf::from(p.trim().replace('/', "\\")))
+    .collect();
+    let program_files =
+        std::env::var_os("ProgramFiles(x86)").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Program Files (x86)"));
+    roots.push(program_files.join("Steam"));
+    let mut seen = HashSet::new();
+    roots.retain(|r| seen.insert(r.to_string_lossy().to_lowercase()));
+    roots
+}
+
+/// Whether the Steam client runs on Windows, from what it wrote into the
+/// registry (its `ActiveProcess` pid, 0 once it closed).
+fn windows_client_running(procs: &dyn Procs) -> bool {
+    #[cfg(windows)]
+    {
+        use heronite_platform::registry::{dword, Hive};
+        dword(Hive::CurrentUser, r"Software\Valve\Steam\ActiveProcess", "pid").is_some_and(|pid| pid != 0 && procs.is_alive(pid))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = procs;
+        false
+    }
 }
 
 /// Opens `steam://install/<id>` or `steam://uninstall/<id>` in the Steam client.
@@ -148,16 +207,13 @@ impl SteamLocator {
     pub fn detect(global: &GlobalSettings, probe: &dyn Probe) -> Self {
         let home = PathBuf::from(probe.home());
         let configured = global.default_steam_path().filter(|p| !p.is_empty()).map(PathBuf::from);
-        let native = home.join(".steam").join("steam");
-        let candidates = configured.iter().cloned().chain([
-            native.clone(),
-            home.join(".local/share/Steam"),
-            flatpak_steam_root(&home),
-            snap_steam_root(&home),
-        ]);
+        let roots = platform_roots(&home);
+        let native = roots[0].clone();
+        let candidates = configured.iter().cloned().chain(roots);
         let found = candidates.into_iter().find(|p| probe.exists(&p.to_string_lossy()));
         let steam_path = found.or(configured).unwrap_or(native);
-        Self { home, steam_path, system_roots: vec![PathBuf::from("/usr/share/steam")] }
+        let system_roots = if cfg!(windows) { Vec::new() } else { vec![PathBuf::from("/usr/share/steam")] };
+        Self { home, steam_path, system_roots }
     }
 
     /// `steamLibraryRoots`: system root, libraries from `libraryfolders.vdf`,
@@ -175,7 +231,7 @@ impl SteamLocator {
                                 Vdf::Obj(_) => folder.str_of("path"),
                                 Vdf::Str(s) => Some(s.as_str()),
                             };
-                            if let Some(p) = path.filter(|p| p.starts_with('/')) {
+                            if let Some(p) = path.filter(|p| Path::new(p).is_absolute()) {
                                 roots.push(PathBuf::from(p));
                             }
                         }
@@ -184,10 +240,7 @@ impl SteamLocator {
                 Err(e) => log::warn!("{}: {e}", vdf_file.display()),
             }
         }
-        roots.push(self.home.join(".steam").join("steam"));
-        roots.push(self.home.join(".local").join("share").join("Steam"));
-        roots.push(flatpak_steam_root(&self.home));
-        roots.push(snap_steam_root(&self.home));
+        roots.extend(platform_roots(&self.home));
         dedup_existing(roots)
     }
 
@@ -195,17 +248,9 @@ impl SteamLocator {
     /// native, Flatpak and Snap ones that exist (each once, symlinks
     /// resolved).
     pub fn installs(&self) -> Vec<PathBuf> {
-        let home = &self.home;
-        let all = [
-            self.steam_path.clone(),
-            home.join(".steam/steam"),
-            home.join(".local/share/Steam"),
-            flatpak_steam_root(home),
-            snap_steam_root(home),
-        ];
+        let all = std::iter::once(self.steam_path.clone()).chain(platform_roots(&self.home));
         let mut seen = Vec::new();
-        all.into_iter()
-            .filter(|p| p.join("config").is_dir() || p.join("steam.sh").is_file())
+        all.filter(|p| p.join("config").is_dir() || p.join("steam.sh").is_file())
             .filter(|p| {
                 let real = fs::canonicalize(p).unwrap_or_else(|_| p.clone());
                 let new = !seen.contains(&real);
@@ -246,8 +291,7 @@ impl SteamLocator {
     pub fn log_files(&self) -> Vec<PathBuf> {
         const NAMES: [&str; 3] = ["console_log.txt", "console-linux.txt", "console-windows.txt"];
         let mut dirs: Vec<PathBuf> = self.library_roots().into_iter().map(|r| r.join("logs")).collect();
-        dirs.push(self.home.join(".steam").join("steam").join("logs"));
-        dirs.push(self.home.join(".local").join("share").join("Steam").join("logs"));
+        dirs.extend(platform_roots(&self.home).into_iter().map(|r| r.join("logs")));
         let mut seen = HashSet::new();
         let mut out = Vec::new();
         for dir in dirs {
@@ -268,6 +312,9 @@ impl SteamLocator {
     /// Flatpak) names a live process. In Steam Deck game mode Steam is the
     /// session, so it always counts as running there.
     pub fn client_running(&self, procs: &dyn Procs) -> bool {
+        if cfg!(windows) {
+            return windows_client_running(procs);
+        }
         if std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope") {
             return true;
         }

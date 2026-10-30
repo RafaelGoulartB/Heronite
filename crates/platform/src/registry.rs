@@ -3,7 +3,7 @@
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 
-use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_DWORD, RRF_RT_REG_SZ};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Hive {
@@ -11,13 +11,40 @@ pub enum Hive {
     LocalMachine,
 }
 
-/// The text value `name` of the key `key` (`Software\Valve\Steam`).
-pub fn string(hive: Hive, key: &str, name: &str) -> Option<String> {
-    let root: HKEY = match hive {
+fn root(hive: Hive) -> HKEY {
+    match hive {
         Hive::CurrentUser => HKEY_CURRENT_USER,
         Hive::LocalMachine => HKEY_LOCAL_MACHINE,
+    }
+}
+
+fn wide(s: &str) -> Vec<u16> {
+    OsStr::new(s).encode_wide().chain([0]).collect()
+}
+
+/// The number value `name` (a `REG_DWORD`) of the key `key`.
+pub fn dword(hive: Hive, key: &str, name: &str) -> Option<u32> {
+    let (key, name) = (wide(key), wide(name));
+    let mut value = 0u32;
+    let mut bytes = std::mem::size_of::<u32>() as u32;
+    // SAFETY: the strings are NUL-terminated; `value` holds `bytes` bytes.
+    let r = unsafe {
+        RegGetValueW(
+            root(hive),
+            key.as_ptr(),
+            name.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            (&mut value as *mut u32).cast(),
+            &mut bytes,
+        )
     };
-    let wide = |s: &str| OsStr::new(s).encode_wide().chain([0]).collect::<Vec<u16>>();
+    (r == 0).then_some(value)
+}
+
+/// The text value `name` of the key `key` (`Software\Valve\Steam`).
+pub fn string(hive: Hive, key: &str, name: &str) -> Option<String> {
+    let root = root(hive);
     let (key, name) = (wide(key), wide(name));
     let mut buf = vec![0u16; 1024];
     loop {
@@ -49,5 +76,7 @@ mod tests {
         let root = string(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "SystemRoot").unwrap();
         assert!(root.to_lowercase().ends_with("windows"), "{root}");
         assert_eq!(string(Hive::CurrentUser, r"Software\Heronite\Missing", "Nothing"), None);
+        let build = dword(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentMajorVersionNumber");
+        assert!(build.is_some_and(|v| v >= 10), "{build:?}");
     }
 }
