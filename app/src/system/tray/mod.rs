@@ -1,18 +1,25 @@
 //! System tray icon, the counterpart of Heroic's `tray_icon.ts`: recent
 //! games, Show / Hide the window, Quit. Runs on its own thread; every action
-//! is sent to the UI as a [`TrayCmd`]. Linux only for now (`sni.rs`); other
+//! is sent to the UI as a [`TrayCmd`]. Linux has a StatusNotifierItem
+//! (`sni.rs`), Windows an icon in the notification area (`windows.rs`); other
 //! systems have no icon, and the app behaves as if the tray were missing.
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 mod common;
+
 #[cfg(target_os = "linux")]
 mod sni;
 #[cfg(target_os = "linux")]
 pub use sni::{spawn, TrayHandle};
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use self::windows::{spawn, TrayHandle};
+
+#[cfg(not(any(target_os = "linux", windows)))]
 mod unsupported;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub use unsupported::{spawn, TrayHandle};
 
 /// What the user asked for in the tray.
