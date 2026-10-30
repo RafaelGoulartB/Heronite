@@ -162,5 +162,6 @@ mod tests {
         assert_eq!(string(Hive::CurrentUser, &key, RUN_VALUE), None);
         // Already gone: still fine.
         apply_in_key(&key, exe, false).unwrap();
+        let _ = std::process::Command::new("reg").args(["delete", &format!(r"HKCU\{key}"), "/f"]).output();
     }
 }
