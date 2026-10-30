@@ -51,7 +51,7 @@ impl AddGameDialog {
         if self.platform_manual || self.platform == SideloadPlatform::Browser {
             return;
         }
-        if let Some(p) = detect_platform(path, &SystemProbe) {
+        if let Some(p) = detect_platform(path, &SystemProbe).filter(|p| platforms().contains(p)) {
             self.platform = p;
         }
     }
@@ -129,6 +129,9 @@ impl AddGameDialog {
     }
 
     pub(super) fn load_wine_list(&mut self, cx: &mut Context<Self>) {
+        if !uses_wine() {
+            return;
+        }
         let paths = self.ctx.data_paths.clone();
         // Debug captures only keep the first frames: load in place there.
         if crate::env::flag("HERONITE_DEBUG_DIALOG") {
