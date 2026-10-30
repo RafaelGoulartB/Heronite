@@ -65,7 +65,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ Linux still type-checks (`cargo check --target x86_64-unknown-linux-gnu` from Windows, see "Checking Linux from Windows")
 - ✅ `cargo test --workspace` on Windows: tests of Linux-only parts (Wine, shell scripts, symlinks, Linux paths) run only on Unix
   - ⬜ Steam library and session tests (`TODO(windows)` in `heronite-launch`): `SteamLocator` reads this machine's Steam from the registry, so they need a way to leave it out first
-- 🚧 `cargo clippy --workspace` clean on Windows (lib and bin); `--all-targets` waits for the tests
+- ✅ `cargo clippy --workspace --all-targets` clean on Windows
 - ⬜ CI job on `windows-latest`
 
 ### First milestone: the Collection
