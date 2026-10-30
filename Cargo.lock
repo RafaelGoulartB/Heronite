@@ -3828,6 +3828,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-platform"
+version = "0.18.0"
+dependencies = [
+ "dirs 6.0.0",
+ "libc",
+ "log",
+ "tempfile",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "heronite-shortcuts"
 version = "0.18.0"
 dependencies = [
