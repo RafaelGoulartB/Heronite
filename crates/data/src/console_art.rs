@@ -48,7 +48,7 @@ fn source_of(paths: &DataPaths, screenshots: Option<&Path>, value: &str) -> Opti
         paths.resolve_localart(value, screenshots).map(LogoSource::File)
     } else if let Some(rest) = value.strip_prefix("file://").or_else(|| value.strip_prefix("file:")) {
         Some(LogoSource::File(PathBuf::from(percent_decode(rest))))
-    } else if value.starts_with('/') {
+    } else if value.starts_with('/') || Path::new(value).is_absolute() {
         Some(LogoSource::File(PathBuf::from(value)))
     } else {
         Some(LogoSource::Url(value.to_owned()))
