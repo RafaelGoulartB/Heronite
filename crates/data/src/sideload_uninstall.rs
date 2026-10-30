@@ -312,8 +312,9 @@ fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 /// Absolute and without `.` / `..` parts, so `starts_with` checks hold.
+/// A Windows path starts with its drive (`C:`).
 fn is_clean_absolute(p: &Path) -> bool {
-    p.is_absolute() && p.components().all(|c| matches!(c, Component::RootDir | Component::Normal(_)))
+    p.is_absolute() && p.components().all(|c| matches!(c, Component::Prefix(_) | Component::RootDir | Component::Normal(_)))
 }
 
 #[cfg(unix)]

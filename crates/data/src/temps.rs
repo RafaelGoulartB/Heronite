@@ -86,8 +86,8 @@ fn pid_alive(pid: i32) -> bool {
 }
 
 #[cfg(not(unix))]
-fn pid_alive(_pid: i32) -> bool {
-    true
+fn pid_alive(pid: i32) -> bool {
+    pid > 0 && heronite_platform::process::is_alive(pid as u32)
 }
 
 fn age(path: &Path, now: SystemTime) -> Option<Duration> {
