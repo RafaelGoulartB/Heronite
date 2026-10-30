@@ -64,7 +64,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ The app (`heronite`) builds on Windows, no warnings
 - ✅ Linux still type-checks (`cargo check --target x86_64-unknown-linux-gnu` from Windows, see "Checking Linux from Windows")
 - 🚧 `cargo test --workspace` on Windows: `heronite-platform` and `heronite-backup` pass; other crates' tests still use Unix APIs (to put behind `cfg(unix)` or port)
-- ⬜ `cargo clippy --workspace --all-targets` clean on Windows
+- 🚧 `cargo clippy --workspace` clean on Windows (lib and bin); `--all-targets` waits for the tests
 - ⬜ CI job on `windows-latest`
 
 ### First milestone: the Collection
@@ -85,7 +85,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ A game's menu: no Ludusavi, Troubleshoot or shortcuts on Windows
 - ✅ Restore a backup made on Linux: paths into the backup's data, settings and home folders become this machine's, with `/` separators (valid JSON, Windows takes them). Checked end to end: a backup claiming `/home/rafael/...` folders restored at the app's start into a Windows data folder
 - ✅ Open folders, files and links (`shell::open` instead of `xdg-open`)
-- ✅ Hide on Windows what is not ported yet (`Feature`): ☰ pages, command palette, console mode menu, Settings sections and General's rows, Getting started, the empty Collection; store, client and launcher background jobs and the Wine/store tools updates do not start
+- ✅ Hide on Windows what is not ported yet (`Feature`): ☰ pages, command palette, console mode menu, Settings sections and General's rows (desktop and console mode), Getting started, the empty Collection; store, client and launcher background jobs and the Wine/store tools updates do not start
 - ✅ No copy of Heroic's folder at the first start on Windows (`Feature::HeroicMigration`)
 
 ### Later
@@ -105,7 +105,6 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ➖ Lutris, Bottles, Faugus and Heroic (Linux) imports
 - ⬜ Overlay and replay buffer (needs a different capture and input stack); today `heronite_overlay::input` and `heronite_media::capture` have do-nothing stand-ins off Linux
 - ⬜ Copy an existing Heroic for Windows setup at the first start (`Feature::HeroicMigration`)
-- ⬜ Console mode's settings: hide the Linux-only rows on Windows (as the desktop Settings do)
 - ⬜ System information (Logs, About): CPU, memory and GPUs are read from `/proc` and `sysfs`
 - ⬜ `heronite://` links: register the protocol on Windows
 - ⬜ Keep the computer awake while a game runs (`SetThreadExecutionState`)
