@@ -53,7 +53,7 @@ Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net
 
 - **Wine and Proton (Linux):** per-game Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, umu protonfixes, and Lossless Scaling frame generation (lsfg-vk).
 - **Wine Manager (Linux):** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage prefixes.
-- **Launching:** follow and cancel each step, and add your own actions next to Play. On Linux, also run scripts before and after and programs alongside.
+- **Launching:** follow and cancel each step, and add your own actions next to Play. Run scripts before and after (on Windows: programs, batch files and PowerShell scripts), programs alongside such as trainers, and save launch presets to reuse in other games.
 - **Sandbox (Linux):** run a game you do not trust through bubblewrap, with no network and no access to your home folder. Let one thing through when it needs more.
 - **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
 - **In-game overlay (beta, Linux):** the controller's Guide button opens volume, microphone, FPS limit, screenshots, and journal notes over the game.

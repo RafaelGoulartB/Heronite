@@ -20,11 +20,11 @@ What works on Windows, what is left, and what Windows does not need.
 - Playing Steam games
 - Epic Games, GOG and Amazon Games: login, downloads, first launch, cloud saves, the official launchers' games
 - Settings → Storage: the drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
+- Launch extras: scripts before and after a game (`.bat`, `.cmd`, `.ps1`, programs), programs alongside it (started as they are, closed with the game), presets (variables and arguments; Windows has no wrappers)
 
 ## ⬜ To do
 
 - In-game overlay and replay buffer
-- Launch extras: scripts before and after a game, programs alongside it, presets
 - Importing games of Battle.net, EA app, Ubisoft Connect, Rockstar and Xbox app
 - GOG Galaxy services (`comet`)
 - Smaller: RetroAchievements sign-in of emulators, Ludusavi registry entries, exclusive-fullscreen screenshots, dark tray menus, Authenticode signing, installer languages, Steam tests
@@ -36,7 +36,7 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 - Wine, Proton, winetricks and store clients under Wine
 - Sandbox (bubblewrap)
 - Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup
-- GameMode, MangoHud, gamescope
+- GameMode, MangoHud, gamescope, wrapper commands and the Steam runtime (`Feature::Wrappers`)
 - The "On Linux" row (ProtonDB)
 - Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
 - Troubleshoot (its checks are about Wine, Proton and Linux drivers)
