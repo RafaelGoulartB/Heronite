@@ -967,7 +967,7 @@ impl CollectionView {
                     .child(if pages::stores::is_store_page(self.page) { pages::stores::title() } else { self.page.title() }),
             )
             .child(window_controls::drag_area(div().id("page-drag").flex_1().h_full(), window))
-            .children(window_controls::controls(window));
+            .children(window_controls::controls(window, cx));
         Some(
             div()
                 .absolute()
