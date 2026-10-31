@@ -145,10 +145,10 @@ fn the_session_starts_with_the_game_and_ends_after_it_while_the_client_stays() {
     assert_eq!(r.spawner.spawned().len(), 1, "no keep-awake lock before the game");
 
     // The game shows up beside the client.
+    let before_game = Instant::now();
     r.procs.start(900, "wow.exe", None);
     r.procs.set_prefix_programs(&[(800, "battle.net.exe"), (801, "agent.exe"), (900, "wow.exe")]);
     assert_eq!(next(&r.rx), LaunchEvent::Running { app_name: "wow".into(), pid: 900 });
-    let started = Instant::now();
     assert_eq!(r.launcher.pid_of("wow"), Some(900));
     wait_until("the lock", || r.spawner.spawned().len() == 2);
     assert!(r.paths.timestamps().exists(), "first played is written when the game shows up");
@@ -164,9 +164,12 @@ fn the_session_starts_with_the_game_and_ends_after_it_while_the_client_stays() {
     let closed = Instant::now();
     r.procs.exit(900);
     let LaunchEvent::Exited { elapsed, exit, stopped, record, .. } = next(&r.rx) else { panic!() };
+    let exited = Instant::now();
     assert!(closed.elapsed() >= Duration::from_millis(100), "a game restarting itself has a moment");
-    // Played up to when the game closed, not up to when that was sure.
-    assert!(elapsed >= Duration::from_millis(140) && elapsed + Duration::from_millis(60) <= started.elapsed(), "{elapsed:?}");
+    // Played up to when the game closed, not up to when that was sure: the
+    // clock starts after `before_game` and the 100 ms of grace end before `exited`.
+    let longest = exited.duration_since(before_game).saturating_sub(Duration::from_millis(90));
+    assert!(elapsed >= Duration::from_millis(140) && elapsed <= longest, "{elapsed:?} > {longest:?}");
     assert!(!stopped && exit.is_none() && record.is_some());
     assert!(!r.launcher.is_running("wow"));
     assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "the lock goes with the game");
