@@ -1,0 +1,9 @@
+{
+  "A program, or a .bat, .cmd or .ps1 script": "Ein Programm oder ein .bat-, .cmd- oder .ps1-Skript",
+  "Adds its variables and arguments to this game": "Fügt diesem Spiel seine Variablen und Argumente hinzu",
+  "Adds its variables and arguments to this game, without duplicates.": "Fügt diesem Spiel seine Variablen und Argumente hinzu, ohne Duplikate.",
+  "Nothing to save: add environment variables or game arguments first.": "Nichts zu speichern: Füge zuerst Umgebungsvariablen oder Spielargumente hinzu.",
+  "Saves this game's variables and arguments under a name, to reuse in other games.": "Speichert die Variablen und Argumente dieses Spiels unter einem Namen, um sie in anderen Spielen wiederzuverwenden.",
+  "This game's variables and arguments, for other games": "Variablen und Argumente dieses Spiels, für andere Spiele",
+  "Trainers and tools started with the game and closed with it.": "Trainer und Tools, die mit dem Spiel starten und mit ihm schließen."
+}

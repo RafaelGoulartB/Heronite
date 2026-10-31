@@ -512,20 +512,27 @@ impl SettingsPanel {
             it.row = it.row.desc(if err.is_empty() { tr!("Appended to the launch command, like -nolauncher") } else { err });
             v.push(it);
         }
-        v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
-        v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
-        if game {
+        let (extras, wrappers) = (logic::extras(), logic::wrappers());
+        if extras {
+            v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
+            v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+        }
+        if game && extras {
             v.extend(self.c_companions());
         }
-        v.extend(self.c_presets(false));
-        v.extend(self.c_pairs(WRAPPERS));
+        if extras {
+            v.extend(self.c_presets(false));
+        }
+        if wrappers {
+            v.extend(self.c_pairs(WRAPPERS));
+        }
         v.extend(self.c_pairs(ENV));
         v.extend(self.c_preview());
         if game && !self.native() && self.wine_version().kind == "proton" {
             v.push(Self::c_header(tr!("Legacy (mostly deprecated)")));
             v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
         }
-        if self.native() {
+        if self.native() && wrappers {
             let current = match self.settings.get("steamRuntime") {
                 Some(Value::String(s)) if !s.is_empty() => s.clone(),
                 _ => "none".to_string(),

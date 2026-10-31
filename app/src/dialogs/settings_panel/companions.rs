@@ -32,7 +32,8 @@ pub(super) fn delay_index(secs: u32) -> usize {
 }
 
 pub(super) fn file_name(path: &str) -> String {
-    path.rsplit('/').next().unwrap_or(path).to_string()
+    let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+    path.rsplit(separators).next().unwrap_or(path).to_string()
 }
 
 impl SettingsPanel {
@@ -95,7 +96,8 @@ impl SettingsPanel {
         };
         let mut list = rows();
         for (i, c) in self.companions().iter().enumerate() {
-            let windows = c.path.to_lowercase().ends_with(".exe");
+            // In the game's prefix on Linux; Windows runs every program as it is.
+            let windows = !cfg!(windows) && c.path.to_lowercase().ends_with(".exe");
             let at = delay_index(c.delay_secs);
             list = list.child(
                 div()
@@ -141,9 +143,15 @@ impl SettingsPanel {
                 this.add_companion(path, cx)
             });
         })));
-        column().child(self.marked_heading(tr!("Programs alongside the game"), "companions", cx)).child(list.card()).child(
-            help(tr!("Trainers and tools started with the game and closed with it. Windows programs run in the game's prefix.")).px(px(6.)),
-        )
+        let note = if cfg!(windows) {
+            tr!("Trainers and tools started with the game and closed with it.")
+        } else {
+            tr!("Trainers and tools started with the game and closed with it. Windows programs run in the game's prefix.")
+        };
+        column()
+            .child(self.marked_heading(tr!("Programs alongside the game"), "companions", cx))
+            .child(list.card())
+            .child(help(note).px(px(6.)))
     }
 }
 
@@ -159,5 +167,8 @@ mod tests {
         assert_eq!(DELAYS[delay_index(100)], 90);
         assert_eq!(DELAYS[delay_index(9999)], 600);
         assert_eq!(file_name("/a/b/Trainer.exe"), "Trainer.exe");
+        if cfg!(windows) {
+            assert_eq!(file_name(r"C:\Games\Trainer.exe"), "Trainer.exe");
+        }
     }
 }

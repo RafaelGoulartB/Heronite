@@ -1,12 +1,14 @@
 //! "Presets" in the Advanced tab: save the game's environment variables,
 //! wrappers and arguments under a name, apply them to another game in one
-//! pick (`heronite_data::launch_presets`). Shared by every game.
+//! pick (`heronite_data::launch_presets`). Shared by every game. Windows has
+//! no wrappers: its presets keep variables and arguments.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::launch_presets::{self, Preset};
 use heronite_i18n::{tr, trn};
 
+use super::logic;
 use super::parts::{heading, help, rows};
 use super::{Notice, SettingsPanel};
 use crate::icons::Icon;
@@ -15,13 +17,40 @@ use crate::ui::controls::{action_button, ButtonKind};
 use crate::ui::fields::input_box;
 use crate::ui::icon;
 
+/// `p` as this system applies it: without wrappers where there are none
+/// (a preset made on Linux, from a restored backup).
+fn usable(mut p: Preset) -> Preset {
+    if !logic::wrappers() {
+        p.wrappers.clear();
+    }
+    p
+}
+
+/// What applying a preset does, for its help.
+pub(super) fn apply_help() -> String {
+    if logic::wrappers() {
+        tr!("Adds its variables, wrappers and arguments to this game, without duplicates.").into()
+    } else {
+        tr!("Adds its variables and arguments to this game, without duplicates.").into()
+    }
+}
+
+/// What saving a preset keeps, for its help.
+pub(super) fn save_help() -> String {
+    if logic::wrappers() {
+        tr!("Saves this game's variables, wrappers and arguments under a name, to reuse in other games.").into()
+    } else {
+        tr!("Saves this game's variables and arguments under a name, to reuse in other games.").into()
+    }
+}
+
 /// "2 variables · 1 wrapper · arguments".
 pub(super) fn summary(p: &Preset) -> String {
     let mut parts = Vec::new();
     if !p.env.is_empty() {
         parts.push(trn!(p.env.len(), "{n} variable", "{n} variables"));
     }
-    if !p.wrappers.is_empty() {
+    if !p.wrappers.is_empty() && logic::wrappers() {
         parts.push(trn!(p.wrappers.len(), "{n} wrapper", "{n} wrappers"));
     }
     if !p.args.trim().is_empty() {
@@ -46,7 +75,7 @@ impl SettingsPanel {
 
     /// Adds preset `i` to the game's settings.
     pub(super) fn apply_preset(&mut self, i: usize, cx: &mut Context<Self>) {
-        let Some(p) = self.presets.get(i).cloned() else { return };
+        let Some(p) = self.presets.get(i).cloned().map(usable) else { return };
         let changes = launch_presets::apply(&p, &self.settings);
         let none = changes.is_empty();
         for (key, value) in changes {
@@ -65,12 +94,14 @@ impl SettingsPanel {
             self.notice = Some(Notice { text: tr!("Type a name for the preset.").into(), error: true });
             return cx.notify();
         }
-        let preset = launch_presets::capture(name, &self.settings);
+        let preset = usable(launch_presets::capture(name, &self.settings));
         if preset.is_empty() {
-            self.notice = Some(Notice {
-                text: tr!("Nothing to save: add environment variables, wrappers or game arguments first.").into(),
-                error: true,
-            });
+            let text = if logic::wrappers() {
+                tr!("Nothing to save: add environment variables, wrappers or game arguments first.")
+            } else {
+                tr!("Nothing to save: add environment variables or game arguments first.")
+            };
+            self.notice = Some(Notice { text: text.into(), error: true });
             return cx.notify();
         }
         let paths = self.paths.clone();
@@ -120,7 +151,7 @@ impl SettingsPanel {
                     cx,
                     |this, i, _, cx| this.apply_preset(i, cx),
                 ),
-                vec![help(tr!("Adds its variables, wrappers and arguments to this game, without duplicates."))],
+                vec![help(&apply_help())],
             );
         }
         let save = div().flex().items_center().gap(px(8.)).child(div().flex_1().child(input_box(&self.input("preset.name"), false))).child(
@@ -136,10 +167,7 @@ impl SettingsPanel {
                 }),
             ),
         );
-        card = card.field_help(
-            save,
-            vec![help(tr!("Saves this game's variables, wrappers and arguments under a name, to reuse in other games."))],
-        );
+        card = card.field_help(save, vec![help(&save_help())]);
         for (i, p) in self.presets.iter().enumerate() {
             let name = p.name.clone();
             card = card.child(

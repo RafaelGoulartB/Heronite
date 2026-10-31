@@ -7,7 +7,8 @@
 //! which joins the running prefix instead of preparing it again. With umu the
 //! game also gets `UMU_CONTAINER_NSENTER`, so the program runs inside the
 //! game's container and its wineserver; the container ends with the game, and
-//! so does the program. Linux programs run directly.
+//! so does the program. Linux programs run directly, and so does every
+//! program on Windows.
 //!
 //! Only builds the commands; the runtime starts and stops them.
 
@@ -69,16 +70,18 @@ pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game:
     let mut joins_container = false;
     for c in &settings.companions {
         let command = match detect_executable_kind(&c.path, probe) {
-            ExecutableKind::Windows => match alongside_command(ctx, probe, &game.app_name, &game.runner, settings, &c.path, in_prefix) {
-                Ok(cmd) => {
-                    joins_container |= cmd.env.contains_key(UMU_NSENTER);
-                    cmd
+            ExecutableKind::Windows if !cfg!(windows) => {
+                match alongside_command(ctx, probe, &game.app_name, &game.runner, settings, &c.path, in_prefix) {
+                    Ok(cmd) => {
+                        joins_container |= cmd.env.contains_key(UMU_NSENTER);
+                        cmd
+                    }
+                    Err(e) => {
+                        process.notes.push(format!("{} will not start alongside the game: {e}", c.path));
+                        continue;
+                    }
                 }
-                Err(e) => {
-                    process.notes.push(format!("{} will not start alongside the game: {e}", c.path));
-                    continue;
-                }
-            },
+            }
             _ => Command { program: c.path.clone(), args: vec![], env: game_env(game, settings, &[]), cwd: Some(node_dirname(&c.path)) },
         };
         process.companions.push(CompanionPlan { path: c.path.clone(), command, delay: Duration::from_secs(c.delay_secs.into()) });

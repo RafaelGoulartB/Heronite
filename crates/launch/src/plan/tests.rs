@@ -784,6 +784,39 @@ fn a_windows_game_holds_the_computer_awake_unless_turned_off() {
 
 #[cfg(windows)]
 #[test]
+fn a_windows_game_gets_its_scripts_and_programs_alongside() {
+    let exe = r"C:\Games\Hades\Hades.exe";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(exe);
+    let s = settings(json!({
+        "beforeLaunchScriptPath": r"C:\Scripts\before.ps1",
+        "afterLaunchScriptPath": r"C:\Scripts\after.bat",
+        "heroniteCompanions": [{"path": r"C:\Tools\Trainer.exe", "delay": 10}, {"path": r"C:\Tools\overlay.cmd"}],
+    }));
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &sideload("g", exe, "Windows"),
+        Some(&meta("executable")),
+        &s,
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    let before = p.before_script.as_ref().unwrap();
+    assert_eq!(before.program, r"C:\Scripts\before.ps1", "the runtime picks the script's host");
+    assert_eq!(before.env["HEROIC_GAME_SCRIPT_TYPE"], "before");
+    assert_eq!(p.after_script.as_ref().unwrap().program, r"C:\Scripts\after.bat");
+    // No Wine on Windows: every program starts as it is, from its folder.
+    let [trainer, tool] = &p.companions[..] else { panic!("{:?}", p.companions) };
+    assert_eq!((trainer.command.program.as_str(), trainer.command.args.len()), (r"C:\Tools\Trainer.exe", 0));
+    assert_eq!(trainer.command.cwd.as_deref(), Some(r"C:\Tools"));
+    assert_eq!(trainer.delay, std::time::Duration::from_secs(10));
+    assert_eq!(trainer.command.env["HEROIC_GAME_TITLE"], "Title of g");
+    assert_eq!(tool.command.program, r"C:\Tools\overlay.cmd");
+    assert!(p.notes.is_empty(), "{:?}", p.notes);
+}
+
+#[cfg(windows)]
+#[test]
 fn a_windows_emulator_runs_as_it_is_on_windows() {
     let exe = r"C:\Emulators\PCSX2\pcsx2-qt.exe";
     let mut p = profile("ps2", "-fullscreen -- {ImagePath}");

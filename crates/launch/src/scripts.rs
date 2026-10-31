@@ -1,7 +1,8 @@
 //! The scripts of the game settings run before the game starts and after it
 //! exits (port of `runBeforeLaunchScript`, `runAfterLaunchScript` and
 //! `runScriptForGame` in Heroic's `backend/launcher.ts`). Only builds the
-//! commands; the runtime runs them.
+//! commands; the runtime runs them (on Windows, a script through its host:
+//! see `runtime::spawner::script_host`).
 
 use heronite_data::models::GameInfo;
 
