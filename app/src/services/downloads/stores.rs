@@ -236,6 +236,10 @@ impl Downloads {
                         this.apply_local(store, local);
                         this.toast(cx, tr!("Logged in as {name}", name), false);
                         this.emit(cx, DownloadsEvent::LibraryChanged);
+                        // The games the Amazon Games app already installed on this PC.
+                        if store == Store::Amazon {
+                            this.amazon_import_app_games(true, cx);
+                        }
                     }
                     Err(err) => {
                         let msg = format!("{err:#}");

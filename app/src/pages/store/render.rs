@@ -117,6 +117,23 @@ impl<K: StoreKind> StorePage<K> {
             )
             .into_any_element(),
         );
+        if self.amazon_app {
+            let busy = self.svc.read(cx).amazon_app_importing();
+            rows.push(
+                row(
+                    tr!("Games of the Amazon Games app"),
+                    Some(tr!("Add the games the Amazon Games app installed on this PC, without downloading them again.")),
+                    action_button(
+                        self.id("amazon-app"),
+                        ButtonKind::Glass,
+                        if busy { tr!("Adding...") } else { tr!("Add games") },
+                        !busy,
+                        cx.listener(|this, _, _, cx| this.import_app_games(cx)),
+                    ),
+                )
+                .into_any_element(),
+            );
+        }
         div().child(caption(tr!("Account"))).child(card(rows))
     }
 

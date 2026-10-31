@@ -11,6 +11,7 @@
 //! (`HERONITE_DEBUG_*` hooks).
 
 mod account;
+mod amazon_app;
 mod connectivity;
 mod debug;
 mod eos;
@@ -85,6 +86,8 @@ pub struct Downloads {
     amazon: StoreState,
     /// The Amazon sign-in in progress (nile's verifier, needed to register).
     amazon_login: Option<heronite_amazon::user::LoginRequest>,
+    /// Games of the Amazon Games app are being brought in (`amazon_app`).
+    amazon_app_importing: bool,
 }
 
 impl EventEmitter<DownloadsEvent> for Downloads {}
@@ -144,6 +147,7 @@ impl Downloads {
             gog: StoreState::default(),
             amazon: StoreState::default(),
             amazon_login: None,
+            amazon_app_importing: false,
         };
         this.reload_local(cx);
         this.eos_reload(false, cx);

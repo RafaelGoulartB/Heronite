@@ -62,6 +62,8 @@ pub struct StorePage<K: StoreKind> {
     /// Amazon: the sign-in page made by nile. Its verifier lives in the
     /// service, so the same address is reused until a code is submitted.
     login_url: Option<String>,
+    /// Amazon: the Amazon Games app has games on this PC (Windows).
+    amazon_app: bool,
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
@@ -125,6 +127,7 @@ impl<K: StoreKind> StorePage<K> {
             window_open: false,
             fetching_url: false,
             login_url: None,
+            amazon_app: K::STORE == Store::Amazon && heronite_amazon::amazon_app::database().is_some(),
             notice: None,
             dialog: None,
             dialog_sub: None,
@@ -174,6 +177,11 @@ impl<K: StoreKind> StorePage<K> {
         }));
         self.dialog = Some(view.into());
         cx.notify();
+    }
+
+    /// Amazon: brings in the games the Amazon Games app installed.
+    fn import_app_games(&mut self, cx: &mut Context<Self>) {
+        self.svc.update(cx, |s, cx| s.amazon_import_app_games(false, cx));
     }
 
     fn open_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {
