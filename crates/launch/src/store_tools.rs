@@ -244,4 +244,21 @@ pub(crate) mod tests {
         let err = NILE.ensure(&paths, &FakeProbe::default(), &FakeNet::offline(), &|| false).unwrap_err();
         assert!(err.contains("no internet"), "{err}");
     }
+
+    /// The real releases, downloaded and run (`--version`) on this system:
+    /// `cargo test -p heronite-launch --lib real_releases -- --ignored`.
+    #[test]
+    #[ignore = "downloads about 45 MB"]
+    fn real_releases_install_and_run_here() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        for tool in [LEGENDARY, GOGDL, NILE] {
+            let got = tool.ensure(&paths, &FakeProbe::default(), &crate::net::SystemNet, &|| false).unwrap();
+            assert_eq!(got, tool.data_bin(&paths));
+            let out = heronite_data::proc::output(std::process::Command::new(&got).arg("--version")).unwrap();
+            assert!(out.success(), "{}: {}", tool.name, out.stderr_text());
+            let version = tool.version().trim_start_matches('v');
+            assert!(out.stdout_text().contains(version), "{}: {}", tool.name, out.stdout_text());
+        }
+    }
 }
