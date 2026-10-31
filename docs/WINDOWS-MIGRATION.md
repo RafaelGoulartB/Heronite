@@ -98,7 +98,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ Play time and sessions of native Windows games: the job object follows the game, the session is recorded when its last process ends (checked with `charmap.exe` through `--no-gui --launch`)
 - ✅ Add game dialog: no Linux tab, no Wine section, no "Run installer first", no store note on Windows
 - ✅ Game settings: a Windows game on Windows has only the Launch tab (`Feature::LaunchExtras`)
-- ✅ A game's menu: no Ludusavi or Troubleshoot on Windows (shortcuts: see below)
+- ✅ A game's menu: no Troubleshoot on Windows (shortcuts and save backups: see below)
 - ✅ Restore a backup made on Linux: paths into the backup's data, settings and home folders become this machine's, with `/` separators (valid JSON, Windows takes them). Checked end to end: a backup claiming `/home/rafael/...` folders restored at the app's start into a Windows data folder
 - ✅ Open folders, files and links (`shell::open` instead of `xdg-open`)
 - ✅ Hide on Windows what is not ported yet (`Feature`): ☰ pages, command palette, console mode menu, Settings sections and General's rows (desktop and console mode), Getting started, the empty Collection; store, client and launcher background jobs and the Wine/store tools updates do not start
@@ -117,8 +117,17 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
   - ✅ Dolphin's user folder from the registry (`HKCU\Software\Dolphin Emulator\UserConfigPath`), after a portable copy's own folder as Dolphin does
   - ⬜ RetroAchievements sign-in of the emulators (`heronite_achievements::emulators` knows their Linux config files only)
   - ⬜ RetroArch from Steam and Microsoft Store builds of emulators
-- ⬜ Save backups with Ludusavi (`Feature::SaveBackups`, split from emulation): `ludusavi.exe`, the `PATH` separator of `SystemRunner` (`;`), its config in `%APPDATA%\ludusavi`, restore plans without Wine prefixes
-- ⬜ Screenshots
+- ✅ Save backups with Ludusavi (`Feature::SaveBackups`): after play, by hand, the list of backups, restore and undo, checked end to end with the real `ludusavi.exe` 0.31
+  - Finding it: the program set in Settings, `ludusavi.exe` on `PATH` (a Scoop shim leads to the real program), `%LOCALAPPDATA%\Programs\Ludusavi`, winget's `Links` and `Packages`, Scoop's `apps\ludusavi\current`, `%ProgramFiles%\Ludusavi`; nothing is added to `PATH` on Windows
+  - Its config: `ludusavi config path`, else a portable Ludusavi's own folder, else `%APPDATA%\ludusavi\config.yaml`
+  - Backups: no `--wine-prefix`; Windows paths in its output, backup folders compared ignoring case and slash direction
+  - Restores: files go back where they were backed up from; only what moved is redirected (the game's folder in another Steam library, Steam's `userdata`, another Windows user's folder, the Proton prefix of a backup made on Linux); Linux paths, Wine registry files and drives this PC lacks are left out ("No place on this PC"); Steam's `RunningAppID` blocks a restore while the game runs
+  - The Saves tab: Steam games and Windows programs added by hand
+  - ⬜ Windows registry entries in Windows-made backups: Ludusavi restores them itself; they are not in the preview nor in the undo copy
+- ✅ Screenshots (`Feature::Capture`): a `RegisterHotKey` shortcut only while a game runs (on its own thread; a key another program holds is reported), the game window's monitor captured with DXGI Desktop Duplication (GDI `BitBlt` when it is not available), saved, named and compressed like on Linux; an on-screen notice that never takes the focus and is left out of captures (`crates/media/src/capture/win/`)
+  - HDR desktops: the capture is scaled to Windows' SDR white level and highlights are compressed into 8-bit sRGB (only unit-tested; no HDR monitor here)
+  - ⬜ Legacy exclusive-fullscreen games (Desktop Duplication loses the display while they hold it)
+  - ⬜ The controller's capture (through the overlay, `Feature::Overlay`)
 - ✅ Tray icon (see the first milestone)
   - ⬜ Dark tray menus (needs an undocumented uxtheme call); new icons start in Windows 11's hidden-icons flyout until the user pins them
   - ✅ A `WM_CLOSE` to the tray window (plain `taskkill` while the app sits in the tray) quits gracefully, the Windows counterpart of SIGTERM
