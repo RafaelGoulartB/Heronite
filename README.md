@@ -23,9 +23,6 @@
 
 https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
 
-> [!NOTE]
-> **Now on Windows too.** Windows 10 and 11 run games directly, so the parts that exist for Wine are Linux only: Wine/Proton, the Wine Manager, the sandbox, the store apps under Wine, the in-game overlay and replay. See [what works on Windows](docs/WINDOWS-MIGRATION.md).
-
 Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
 
 ## Your library, organized
