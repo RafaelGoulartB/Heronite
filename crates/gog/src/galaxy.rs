@@ -30,6 +30,7 @@ use crate::{lang, library};
 pub const GAMES_KEY: &str = r"SOFTWARE\WOW6432Node\GOG.com\Games";
 
 /// The values of one game's key that matter here.
+#[cfg(windows)]
 const VALUES: [&str; 7] = ["path", "gameName", "buildId", "ver", "langCode", "language", "dependsOn"];
 
 /// One key below [`GAMES_KEY`]: its name (the game's id) and its text values.
