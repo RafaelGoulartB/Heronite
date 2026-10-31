@@ -10,6 +10,7 @@ on:
       - "packaging/windows/**"
       - "scripts/windows/**"
       - "app/build.rs"
+      - "crates/epic-login/**"
       - ".github/workflows/windows-packages.yml"
   workflow_dispatch:
 

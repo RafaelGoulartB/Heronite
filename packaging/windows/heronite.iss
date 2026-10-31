@@ -75,7 +75,7 @@ SetupMutex=HeroniteSetup
 #ifdef Sign
 ; package.ps1 defines the "heronite" sign tool (ISCC /Sheronite=...) when a
 ; code signing certificate is configured; Setup and the uninstaller are then
-; signed like heronite-rs.exe.
+; signed like heronite-rs.exe and heronite-epic-login.exe.
 SignTool=heronite
 SignedUninstaller=yes
 #endif
@@ -93,6 +93,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#BinDir}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+; The stores' login window: the app looks for it next to itself.
+Source: "{#BinDir}\heronite-epic-login.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "package-format"; DestDir: "{app}"; Flags: ignoreversion
 

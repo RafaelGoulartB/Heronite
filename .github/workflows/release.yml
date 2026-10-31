@@ -171,10 +171,11 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Inno Setup installer failed ($($p.ExitCode))" }
       # Authenticode, once there is a certificate: the secrets
       # WINDOWS_SIGN_PFX_BASE64 (a base64 .pfx) and WINDOWS_SIGN_PASSWORD
-      # sign heronite-rs.exe, the setup and its uninstaller (see
-      # scripts/windows/sign.ps1, which also takes a WINDOWS_SIGN_COMMAND,
-      # for Azure Trusted Signing for example). Without them nothing is
-      # signed and the release notes warn about SmartScreen.
+      # sign heronite-rs.exe, heronite-epic-login.exe, the setup and its
+      # uninstaller (see scripts/windows/sign.ps1, which also takes a
+      # WINDOWS_SIGN_COMMAND, for Azure Trusted Signing for example).
+      # Without them nothing is signed and the release notes warn about
+      # SmartScreen.
       - name: Code signing certificate
         id: cert
         env:
@@ -194,8 +195,8 @@ jobs:
           TAG: ${{ needs.version.outputs.tag }}
           WINDOWS_SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
         run: ./scripts/windows/package.ps1 -Version $env:TAG.Substring(1)
-      # The zip's layout; a silent install, an update over it with /WAITPID
-      # and a silent uninstall on the runner.
+      # The zip's layout and its login window (--smoke); a silent install,
+      # an update over it with /WAITPID and a silent uninstall on the runner.
       - name: Check the packages
         run: ./scripts/windows/smoke.ps1
       # Not minisign-signed yet: the publish job signs them with the Linux
