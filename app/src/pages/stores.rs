@@ -1,4 +1,4 @@
-//! Epic Games, GOG, Amazon Games, Steam and the stores that run their own
+//! Steam, Epic Games, GOG, Amazon Games and the stores that run their own
 //! program under Wine (Battle.net, the EA app, Ubisoft Connect, Rockstar
 //! Games) share one entry ("Stores") in the ☰ menu, the console sidebar and
 //! the welcome card: each store keeps its own page, laid out by [`sheet`]
@@ -24,12 +24,12 @@ use crate::services::downloads::Store;
 use crate::services::steam_library::{SteamState, Summary};
 
 /// The store pages, in the order of the list (and of LB / RB).
-pub const PAGES: [Page; 8] = [Page::Epic, Page::Gog, Page::Amazon, Page::Steam, Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar];
+pub const PAGES: [Page; 8] = [Page::Steam, Page::Epic, Page::Gog, Page::Amazon, Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar];
 
 /// The list's groups: the stores Heronite signs in to or reads, then the
 /// ones whose own program runs under Wine.
 const GROUPS: [(&str, &[Page]); 2] = [
-    (n_!("Stores"), &[Page::Epic, Page::Gog, Page::Amazon, Page::Steam]),
+    (n_!("Stores"), &[Page::Steam, Page::Epic, Page::Gog, Page::Amazon]),
     (n_!("Store apps"), &[Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar]),
 ];
 
@@ -252,12 +252,12 @@ mod tests {
     #[test]
     fn lb_and_rb_cycle_through_the_stores() {
         let switch = |active, pad| super::switch_in(&PAGES, active, pad);
+        assert_eq!(switch(Page::Steam, Pad::RB), Some(Page::Epic));
         assert_eq!(switch(Page::Epic, Pad::RB), Some(Page::Gog));
-        assert_eq!(switch(Page::Amazon, Pad::RB), Some(Page::Steam));
-        assert_eq!(switch(Page::Steam, Pad::RB), Some(Page::BattleNet));
-        assert_eq!(switch(Page::Rockstar, Pad::RB), Some(Page::Epic));
-        assert_eq!(switch(Page::Epic, Pad::LB), Some(Page::Rockstar));
-        assert_eq!(switch(Page::BattleNet, Pad::LB), Some(Page::Steam));
+        assert_eq!(switch(Page::Amazon, Pad::RB), Some(Page::BattleNet));
+        assert_eq!(switch(Page::Rockstar, Pad::RB), Some(Page::Steam));
+        assert_eq!(switch(Page::Steam, Pad::LB), Some(Page::Rockstar));
+        assert_eq!(switch(Page::BattleNet, Pad::LB), Some(Page::Amazon));
         assert_eq!(switch(Page::Gog, Pad::A), None);
         assert_eq!(switch(Page::Downloads, Pad::RB), None);
         assert!(is_store_page(Page::Gog) && is_store_page(Page::Ubisoft) && !is_store_page(Page::Emulators));
