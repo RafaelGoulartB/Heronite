@@ -168,11 +168,12 @@ fn overrides() -> &'static [(Feature, bool)] {
     OVERRIDES.get_or_init(|| {
         let Some(value) = std::env::var("HERONITE_FEATURES").ok().filter(|v| !v.trim().is_empty()) else { return Vec::new() };
         let (list, unknown) = parse_overrides(&value);
+        // Read before the logger may start: on the console of the debug build.
         for name in unknown {
-            log::warn!("HERONITE_FEATURES: no feature is called {name:?}");
+            eprintln!("HERONITE_FEATURES: no feature is called {name:?}");
         }
         for (feature, on) in &list {
-            log::warn!("HERONITE_FEATURES: {} is {}", feature.name(), if *on { "on" } else { "off" });
+            eprintln!("HERONITE_FEATURES: {} is {}", feature.name(), if *on { "on" } else { "off" });
         }
         list
     })

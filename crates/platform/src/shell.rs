@@ -184,7 +184,7 @@ mod imp {
         }
         let process = info.hProcess;
         // SAFETY: a process handle we own, waited on and closed once.
-        let result = unsafe {
+        unsafe {
             let waited = WaitForSingleObject(process, INFINITE);
             let mut code = 0u32;
             let read = waited != WAIT_FAILED && GetExitCodeProcess(process, &mut code) != 0;
@@ -195,8 +195,7 @@ mod imp {
             } else {
                 Err(ElevatedError::Failed(error))
             }
-        };
-        result
+        }
     }
 }
 

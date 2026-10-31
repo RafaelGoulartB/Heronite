@@ -213,6 +213,18 @@ mod tests {
         assert_eq!(lines, ["a", "b", "c"]);
     }
 
+    #[test]
+    fn cancel_stops_a_running_tool() {
+        let env = Env::new();
+        let tool = env.fake_tool().on(&["install"], Reply::new().out("started").sleep(Duration::from_secs(60)));
+        let cancel = Cancel::new();
+        let c2 = cancel.clone();
+        let started = Instant::now();
+        let out = env.nile_of(&tool).run_streaming(&["install"], &cancel, |_| c2.request()).unwrap();
+        assert!(out.aborted);
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+    }
+
     #[cfg(unix)]
     #[test]
     fn cancel_stops_the_process_group() {

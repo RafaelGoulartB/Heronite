@@ -220,7 +220,7 @@ mod tests {
     fn run(tool: &FakeTool, args: &[&str]) -> std::process::Output {
         let mut cmd = Command::new(tool.bin());
         cmd.args(args).env("FAKE_CFG", "/cfg dir");
-        crate::proc::spawn(&mut cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()))
+        crate::proc::spawn(cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()))
             .unwrap()
             .wait_with_output()
             .unwrap()
