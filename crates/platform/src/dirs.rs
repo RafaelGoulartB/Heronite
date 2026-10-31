@@ -73,6 +73,18 @@ pub fn cache(app: &str) -> Option<PathBuf> {
     }
 }
 
+/// Where captures go until the user picks a folder: `Screenshots` in a
+/// portable copy (it travels with it), else `<title>` in the user's
+/// Pictures folder (`$XDG_PICTURES_DIR` on Linux, the Pictures library on
+/// Windows, wherever OneDrive moved it).
+pub fn screenshots(title: &str) -> Option<PathBuf> {
+    if let Some(root) = portable_root() {
+        return Some(root.join("Screenshots"));
+    }
+    let pictures = ::dirs::picture_dir().or_else(|| home().map(|h| h.join("Pictures")))?;
+    Some(pictures.join(title))
+}
+
 /// A folder of the temp folder that only this user uses, for `name`:
 /// `/tmp/<name>-<uid>` on Unix (the temp folder is shared there), the user's
 /// own `%TEMP%\<name>` on Windows.
@@ -103,6 +115,13 @@ mod tests {
         assert!(!data.starts_with(&config) && !config.starts_with(&data), "{data:?} {config:?}");
         let cache = cache("heronite").unwrap();
         assert!(!cache.starts_with(&data) && !cache.starts_with(&config));
+    }
+
+    #[test]
+    fn screenshots_go_to_the_pictures_folder() {
+        let shots = screenshots("Heronite").unwrap();
+        assert!(shots.ends_with("Heronite"), "{shots:?}");
+        assert!(!shots.starts_with(data("heronite").unwrap()) && !shots.starts_with(config("heronite").unwrap()));
     }
 
     #[test]

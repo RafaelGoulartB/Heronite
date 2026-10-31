@@ -186,6 +186,20 @@ impl EffectiveSettings {
         }
     }
 
+    /// [`Self::from_files`] for the data folder `paths`: an empty screenshots
+    /// folder means [`DataPaths::default_screenshots`], so captures work
+    /// before the user picks one (and a portable copy keeps finding its own
+    /// after it moves).
+    pub fn for_paths(paths: &DataPaths, file: &CollectionSettingsFile, config: &StoreConfigFile) -> Self {
+        let mut s = Self::from_files(file, config);
+        if s.screenshots.folder.is_empty() {
+            if let Some(folder) = paths.default_screenshots() {
+                s.screenshots.folder = folder.to_string_lossy().into_owned();
+            }
+        }
+        s
+    }
+
     /// Folder where screenshots live (`localart://screenshots/...`), if set.
     pub fn screenshots_folder(&self) -> Option<&std::path::Path> {
         let f = self.screenshots.folder.as_str();
@@ -226,7 +240,7 @@ fn fallback_ludusavi() -> LudusaviSettings {
 pub fn load(paths: &DataPaths) -> Result<EffectiveSettings> {
     let file: CollectionSettingsFile = json_store::read(&paths.collection_settings())?;
     let config: StoreConfigFile = json_store::read(&paths.store_config()).unwrap_or_default();
-    Ok(EffectiveSettings::from_files(&file, &config))
+    Ok(EffectiveSettings::for_paths(paths, &file, &config))
 }
 
 // Normalisation (same clamps and defaults as the TS)
@@ -336,7 +350,8 @@ pub fn save_ui(
     load(paths)
 }
 
-/// `setCollectionScreenshotsSettings`.
+/// `setCollectionScreenshotsSettings`. The default folder is stored as
+/// empty, so it keeps following [`DataPaths::default_screenshots`].
 pub fn save_screenshots(
     paths: &DataPaths,
     folder: &str,
@@ -344,9 +359,11 @@ pub fn save_screenshots(
     capture_enabled: bool,
     capture_accelerator: &str,
 ) -> Result<EffectiveSettings> {
+    let folder = folder.trim();
+    let is_default = paths.default_screenshots().is_some_and(|d| d.as_os_str() == folder);
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
         file.screenshots = Some(ScreenshotsSettings {
-            folder: folder.trim().to_owned(),
+            folder: if is_default { String::new() } else { folder.to_owned() },
             cache_limit_mb: JsNum(as_screenshot_cache_limit(Some(cache_limit_mb))),
             capture_enabled,
             capture_accelerator: non_empty_trimmed(capture_accelerator).unwrap_or(DEFAULT_CAPTURE_ACCELERATOR).to_owned(),
@@ -535,6 +552,13 @@ mod tests {
         assert_eq!(s.cover_aspect, CoverAspect::Dvd);
         assert_eq!(s.metadata.field_priority["cover"], ["steam"]);
         assert_eq!(s.metadata.field_priority["hero"], ["igdb", "steam", "lutris", "playnite"]);
+    }
+
+    #[test]
+    fn a_copy_of_the_data_has_no_default_screenshots_folder() {
+        let (_d, paths) = temp();
+        assert_eq!(paths.default_screenshots(), None);
+        assert_eq!(load(&paths).unwrap().screenshots_folder(), None);
     }
 
     #[test]
