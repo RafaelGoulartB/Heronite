@@ -1,15 +1,33 @@
 //! Processes on Windows: handles from `OpenProcess`, groups as job objects,
-//! and the process list from a Toolhelp snapshot.
+//! the process list from a Toolhelp snapshot, and Ctrl+C for helpers asked
+//! to stop.
+//!
+//! Ctrl+C: a helper runs on a console of its own without a window
+//! ([`new_helper_group`]). Sending it Ctrl+C means being on that console,
+//! and a process is on one console at most: the app's own (a debug build in
+//! a terminal) must stay as it is. So the app starts itself again
+//! (`--heronite-send-ctrl-c`, see [`init_stop_helper`]) with no console;
+//! that process joins the helper's and sends it. Python's tools take it as
+//! a `KeyboardInterrupt`: legendary stops its download (its resume file
+//! keeps what was done), gogdl's handler stops its workers (it keeps
+//! `.gogdl-resume`); nile has no handler, its download threads go on until
+//! the kill after the grace period (it checks the files it has on the next
+//! run). Ctrl+Break would not do: Python takes it as an exit on the spot.
 
 use std::collections::HashMap;
 use std::os::windows::io::AsRawHandle;
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Child, Command, ExitStatus};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, ERROR_ACCESS_DENIED, FILETIME, HANDLE, INVALID_HANDLE_VALUE, WAIT_TIMEOUT,
+};
+use windows_sys::Win32::System::Console::{
+    AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, GetConsoleProcessList, SetConsoleCtrlHandler, CTRL_C_EVENT,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -144,8 +162,113 @@ pub(super) fn detach(cmd: &mut Command) -> &mut Command {
     cmd.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
 }
 
+/// A console of its own without a window, Ctrl+C on (no
+/// `CREATE_NEW_PROCESS_GROUP`, which turns it off): what [`ask_to_stop`]
+/// sends to.
 pub(super) fn new_helper_group(cmd: &mut Command) -> &mut Command {
-    cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+/// The argument that starts this program as the sender of a Ctrl+C:
+/// `<program> --heronite-send-ctrl-c <target pid> <requester pid>`.
+const SEND_CTRL_C: &str = "--heronite-send-ctrl-c";
+/// The sender's exit code once the Ctrl+C went out (no other program ends
+/// with it by chance).
+const SENT: i32 = 0x4843_5443;
+/// Whether this program called [`init_stop_helper`], so it can be started as
+/// the sender.
+static SENDS_CTRL_C: AtomicBool = AtomicBool::new(false);
+
+pub(super) fn init_stop_helper() {
+    let mut args = std::env::args_os().skip(1);
+    if args.next().is_some_and(|a| a == SEND_CTRL_C) {
+        let mut pid = || args.next().and_then(|a| a.to_str()?.parse::<u32>().ok());
+        let code = match (pid(), pid()) {
+            (Some(target), Some(requester)) => send_ctrl_c(target, requester),
+            _ => 2,
+        };
+        std::process::exit(code);
+    }
+    // Started with Ctrl+C off (a new process group): the helpers would get it
+    // off too.
+    // SAFETY: changes only this process's handling of Ctrl+C.
+    unsafe { SetConsoleCtrlHandler(None, 0) };
+    SENDS_CTRL_C.store(true, Ordering::SeqCst);
+}
+
+/// The sender's work, in a process of its own with no console: joins the
+/// target's console and sends Ctrl+C to everything on it. Never to a console
+/// the requester shares (a debug build's terminal: Ctrl+C would reach the
+/// app and the shell). Gives the exit code.
+fn send_ctrl_c(target: u32, requester: u32) -> i32 {
+    // SAFETY: console calls on this process's own console state.
+    unsafe {
+        FreeConsole();
+        if AttachConsole(target) == 0 {
+            // No console (a windowed program) or gone.
+            return 3;
+        }
+        let mut list = [0u32; 64];
+        let n = GetConsoleProcessList(list.as_mut_ptr(), list.len() as u32) as usize;
+        if n == 0 || n > list.len() || list[..n].contains(&requester) {
+            FreeConsole();
+            return 4;
+        }
+        // The sender is on the console too: it lets the Ctrl+C pass.
+        SetConsoleCtrlHandler(None, 1);
+        let sent = GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) != 0;
+        FreeConsole();
+        if sent {
+            SENT
+        } else {
+            5
+        }
+    }
+}
+
+/// Starts this program as the sender for `pid` and waits for it; whether
+/// the Ctrl+C went out.
+fn ctrl_c_sent(pid: u32) -> bool {
+    let Ok(exe) = std::env::current_exe() else { return false };
+    let mut cmd = Command::new(exe);
+    cmd.arg(SEND_CTRL_C).arg(pid.to_string()).arg(std::process::id().to_string());
+    cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(DETACHED_PROCESS);
+    let Ok(mut sender) = cmd.spawn() else { return false };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        match sender.try_wait() {
+            Ok(Some(status)) => return status.code() == Some(SENT),
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(10)),
+            _ => {
+                let _ = sender.kill();
+                let _ = sender.wait();
+                return false;
+            }
+        }
+    }
+}
+
+pub(super) fn ask_to_stop(pid: u32, whole_group: bool) {
+    let end = move || {
+        if whole_group {
+            signal_group(pid, Signal::Kill);
+        } else {
+            signal(pid, Signal::Kill);
+        }
+    };
+    if !SENDS_CTRL_C.load(Ordering::SeqCst) {
+        end();
+        return;
+    }
+    // Starting the sender takes a moment: not on the caller's thread (the UI's).
+    let asked = std::thread::Builder::new().name("ctrl-c".into()).spawn(move || {
+        if !ctrl_c_sent(pid) {
+            end();
+        }
+    });
+    if asked.is_err() {
+        end();
+    }
 }
 
 pub(super) fn exit_signal(_status: &ExitStatus) -> Option<i32> {
