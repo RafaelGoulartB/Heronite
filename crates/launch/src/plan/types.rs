@@ -85,6 +85,10 @@ pub struct ProcessPlan {
     /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
     /// alongside it join that sandbox.
     pub sandboxed: bool,
+    /// Windows: `command` is `legendary launch ... --json`. legendary signs
+    /// in and names the game's program, which starts instead of it (see
+    /// [`crate::legendary_windows`]).
+    pub ask_legendary: bool,
 }
 
 /// How to find a game another launcher started when the command that asked

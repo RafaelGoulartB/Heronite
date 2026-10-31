@@ -111,7 +111,12 @@ impl Prep<'_> {
     pub fn first_launch(&self, spec: &PrepSpec, epic: Option<&dyn EpicSetup>, store: Option<&dyn StoreSetup>) -> Flow {
         let Some(fl) = &spec.first_launch else { return Flow::Go };
         // A game that runs without Wine (Windows builds on Windows).
-        let Some(settings) = &spec.wine else { return self.native_first_launch(fl, store) };
+        let Some(settings) = &spec.wine else {
+            return match fl.runner.as_str() {
+                "legendary" => self.epic_native_first_launch(fl, epic),
+                _ => self.native_first_launch(fl, store),
+            };
+        };
         let prefix = settings.wine_prefix.trim();
         if prefix.is_empty() {
             return Flow::Go;

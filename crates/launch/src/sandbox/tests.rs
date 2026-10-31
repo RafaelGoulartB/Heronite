@@ -1,11 +1,13 @@
 use super::*;
 #[cfg(unix)]
 use crate::plan::WineRuntime;
+#[cfg(unix)]
 use crate::plan::{build_plan_with_settings, LaunchOptions, LaunchPlan};
 use crate::probe::FakeProbe;
 use crate::wine_tools::{build_tool_command, kill_prefix_command, wait_prefix_command, WineTool};
 #[cfg(unix)]
 use heronite_data::models::LocalGameMeta;
+#[cfg(unix)]
 use heronite_data::models::{GameInfo, InstallInfo};
 use serde_json::json;
 
@@ -311,6 +313,8 @@ fn prefix_tools_run_in_the_sandbox() {
     assert!(!is_wrapped(&build_tool_command(&ctx(), &p, &off, &WineTool::Winecfg).unwrap().command));
 }
 
+// Epic games run through Wine on Linux only (natively on Windows).
+#[cfg(unix)]
 #[test]
 fn epic_games_get_the_sandbox_inside_legendarys_wrapper() {
     let s = windows_settings(json!({"enabled": true}));
