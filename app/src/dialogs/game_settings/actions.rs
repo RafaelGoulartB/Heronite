@@ -1,7 +1,9 @@
-//! The Launch tab's "Actions": what the user adds to the game besides Play
-//! (`heronite_data::game_actions`), listed under Play in the focus panel,
-//! the context menu, the palette and the console. One action is edited at a
-//! time, in a card in place of its row (or under the list, for a new one).
+//! The Actions tab: Play and, under it, what the user adds to the game
+//! besides Play (`heronite_data::game_actions`), listed in the menu next to
+//! Play, the context menu, the palette and the console. All of it is one
+//! card of one-line rows; a row opens its editor in place (one at a time)
+//! and the others step back until it is saved or cancelled. Rows are
+//! reordered by dragging them.
 
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
@@ -10,14 +12,15 @@ use heronite_data::collection::Game;
 use heronite_data::game_actions::{self, Action, ActionKind};
 use heronite_i18n::tr;
 
-use super::{block, GameSettingsDialog};
+use super::GameSettingsDialog;
 use crate::dialogs::DialogEvent;
-use crate::pages::{caption_with, empty_row, icon_action, list_item};
+use crate::icons::Icon;
+use crate::pages::status_pill;
 use crate::theme;
-use crate::ui::controls::{action_button, button_sm, caption, card, card_box, help_text, row, tabs, toggle_row, ButtonKind};
+use crate::ui::controls::{action_button, card_box, help_text, icon_button_sm, tabs, toggle_row, ButtonKind};
 use crate::ui::fields::{choose_path, input_box, labeled, new_input};
 use crate::ui::game_actions::{default_name, icon_of, kind_label, target_summary};
-use crate::ui::icon;
+use crate::ui::{icon, tooltip};
 
 pub(super) struct ActionsState {
     pub(super) list: Vec<Action>,
@@ -88,7 +91,18 @@ impl GameSettingsDialog {
         }
         self.actions.editor = Some(Editor { id, name, kind: current.kind, target, args, plays: current.counts_as_playing });
         self.actions.deleting = None;
+        self.close_play(window, cx);
         cx.notify();
+    }
+
+    /// Opens the editor on a new action of one of the empty menu's shortcuts.
+    fn edit_new_action(&mut self, kind: ActionKind, name: &str, plays: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.edit_action(None, window, cx);
+        if let Some(e) = self.actions.editor.as_mut() {
+            e.kind = kind;
+            e.plays = plays;
+            e.name.update(cx, |s, cx| s.set_value(name.to_string(), window, cx));
+        }
     }
 
     pub(super) fn save_action(&mut self, cx: &mut Context<Self>) {
@@ -122,14 +136,16 @@ impl GameSettingsDialog {
         self.write_actions(list, cx);
     }
 
-    fn move_action(&mut self, id: &str, up: bool, cx: &mut Context<Self>) {
+    /// Puts `id` where the action at `to` is (a drop on that row).
+    fn move_action_to(&mut self, id: &str, to: usize, cx: &mut Context<Self>) {
         let mut list = self.actions.list.clone();
-        let Some(i) = list.iter().position(|a| a.id == id) else { return };
-        let j = if up { i.checked_sub(1) } else { Some(i + 1).filter(|j| *j < list.len()) };
-        if let Some(j) = j {
-            list.swap(i, j);
-            self.write_actions(list, cx);
+        let Some(from) = list.iter().position(|a| a.id == id) else { return };
+        if from == to {
+            return;
         }
+        let moved = list.remove(from);
+        list.insert(to.min(list.len()), moved);
+        self.write_actions(list, cx);
     }
 
     /// Saves the list off the UI thread; the Collection reloads it.
@@ -162,121 +178,167 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
-    /// "Play" (what it does here) for games whose start is not edited here.
-    pub(super) fn play_card(&self) -> Div {
-        div().flex().flex_col().child(caption(tr!("Play"))).child(card([row(
-            tr!("Play"),
-            Some(&play_summary(&self.game)),
-            div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("Default")),
-        )
-        .into_any_element()]))
-    }
+    /// The tab: Play, then the menu next to it, in one card.
+    pub(super) fn actions_tab(&mut self, cx: &mut Context<Self>) -> Div {
+        let play_open = self.launch.as_ref().is_some_and(|l| l.open);
+        let editing = self.actions.editor.as_ref().map(|e| e.id.clone());
+        // Something is open: the other rows step back and do nothing.
+        let quiet = play_open || editing.is_some();
+        let free = !quiet && !self.actions.saving;
+        let list = self.actions.list.clone();
+        let count = list.len();
 
-    pub(super) fn actions_section(&mut self, cx: &mut Context<Self>) -> Div {
-        let busy = self.actions.saving;
-        let editing_new = self.actions.editor.as_ref().is_some_and(|e| e.id.is_none());
-        let add = button_sm("gs-action-add", ButtonKind::Glass, tr!("Add action"))
-            .when(!busy && !editing_new, |b| b.on_click(cx.listener(|this, _, window, cx| this.edit_action(None, window, cx))))
-            .when(busy || editing_new, |b| b.opacity(0.45));
-        let mut col = div().flex().flex_col().child(caption_with(tr!("Other actions"), add)).child(
-            help_text(tr!("Extra ways to start the game, in the menu next to Play: a mod manager, a settings tool, a script, a web page."))
-                .px(px(6.))
-                .pb(px(6.)),
-        );
-        let count = self.actions.list.len();
-        let mut rows: Vec<AnyElement> = Vec::new();
-        for (i, a) in self.actions.list.clone().into_iter().enumerate() {
-            if self.actions.editor.as_ref().is_some_and(|e| e.id.as_deref() == Some(a.id.as_str())) {
-                continue;
+        let mut c = card_box().child(self.play_row(play_open, editing.is_some(), cx));
+        if play_open {
+            c = c.child(self.play_editor(cx));
+        }
+        c = c.child(separator()).child(menu_heading(count > 1 && free));
+        for (i, a) in list.iter().enumerate() {
+            if i > 0 {
+                c = c.child(separator());
             }
-            rows.push(self.action_row(&a, i, count, cx));
+            if editing.as_ref().is_some_and(|id| id.as_deref() == Some(a.id.as_str())) {
+                c = c.child(self.open_action_row(a.name.clone().into(), icon_of(a), cx)).child(self.action_editor(cx));
+            } else {
+                c = c.child(self.action_row(a, i, count, free, cx));
+            }
         }
-        if rows.is_empty() && self.actions.editor.is_none() {
-            rows.push(empty_row(tr!("No actions yet.")).into_any_element());
+        if editing.as_ref().is_some_and(|id| id.is_none()) {
+            if count > 0 {
+                c = c.child(separator());
+            }
+            c = c.child(self.open_action_row(tr!("New action").into(), Icon::Add, cx)).child(self.action_editor(cx));
+        } else if count == 0 {
+            c = c.child(self.empty_menu(free, cx));
+        } else {
+            c = c.child(separator()).child(self.add_row(free, cx));
         }
-        if !rows.is_empty() {
-            col = col.child(card(rows));
-        }
-        if self.actions.editor.is_some() {
-            col = col.child(div().pt(px(8.)).child(self.action_editor(cx)));
-        }
-        col
+        div().flex().flex_col().child(c)
     }
 
-    fn action_row(&self, a: &Action, i: usize, count: usize, cx: &mut Context<Self>) -> AnyElement {
-        let id = a.id.clone();
-        if self.actions.deleting.as_deref() == Some(id.as_str()) {
-            let (keep, del) = (id.clone(), id.clone());
-            return list_item(
-                None,
-                div().text_size(px(14.)).child(tr!("Delete \u{201c}{name}\u{201d}?", name = a.name)),
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(button_sm(SharedString::from(format!("gs-action-keep-{keep}")), ButtonKind::Ghost, tr!("Cancel")).on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.actions.deleting = None;
-                            cx.notify();
-                        }),
-                    ))
-                    .child(
-                        button_sm(SharedString::from(format!("gs-action-del-{del}")), ButtonKind::Danger, tr!("Delete"))
-                            .on_click(cx.listener(move |this, _, _, cx| this.delete_action(&del, cx))),
-                    ),
-            )
-            .into_any_element();
+    /// Play: what it starts, in one line. Local games open its editor here;
+    /// the others start the way they were added (a store, an emulator...).
+    fn play_row(&self, open: bool, other_open: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+        let editable = self.launch.is_some();
+        let summary = match self.launch.as_ref() {
+            Some(_) if open => tr!("How the game starts").to_string(),
+            Some(l) => l.summary(cx),
+            None => play_summary(&self.game),
+        };
+        let title = div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .child(div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(tr!("Play")))
+            .child(status_pill(tr!("Main"), theme::accent()));
+        let trailing = match (editable, open) {
+            (false, _) => icon(Icon::Lock, px(16.), theme::text_dim()),
+            (true, false) => icon(Icon::ChevronRight, px(18.), theme::text_muted()),
+            (true, true) => icon(Icon::ExpandMore, px(18.), theme::text_muted()),
+        };
+        let row = line("gs-play", tile(Icon::PlayArrow, true), title, Some(summary), trailing);
+        if !editable {
+            return row;
         }
+        if other_open {
+            return row.opacity(0.4);
+        }
+        clickable(row).on_click(cx.listener(move |this, _, window, cx| {
+            if open {
+                this.close_play(window, cx);
+            } else {
+                this.open_play(cx);
+            }
+        }))
+    }
+
+    fn action_row(&self, a: &Action, i: usize, count: usize, free: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let leading = div()
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .when(count > 1, |d| d.child(icon(Icon::DragIndicator, px(18.), theme::ink_a(0.3))))
+            .child(tile(icon_of(a), false));
+        let title = div().text_size(px(14.)).text_color(theme::text_primary()).truncate().child(a.name.clone());
+        let summary = format!("{} \u{b7} {}", kind_label(a.kind), target_summary(a));
+        let trailing = div().flex().items_center().gap(px(8.)).when(a.plays(), |d| d.child(playtime_pill(&a.id))).child(icon(
+            Icon::ChevronRight,
+            px(18.),
+            theme::text_muted(),
+        ));
+        let row = line(SharedString::from(format!("gs-action-{}", a.id)), leading, title, Some(summary), trailing);
+        if !free {
+            return row.opacity(0.4);
+        }
+        let (edit, drop) = (a.id.clone(), a.id.clone());
+        clickable(row).on_click(cx.listener(move |this, _, window, cx| this.edit_action(Some(edit.clone()), window, cx))).when(
+            count > 1,
+            |r| {
+                r.on_drag(ActionDrag { id: a.id.clone(), name: a.name.clone().into() }, |d, _, _, cx| {
+                    cx.new(|_| ActionGhost(d.name.clone()))
+                })
+                .drag_over::<ActionDrag>(|s, _, _, _| s.bg(theme::accent_alpha(0.1)))
+                .on_drop(cx.listener(move |this, d: &ActionDrag, _, cx| {
+                    if d.id != drop {
+                        this.move_action_to(&d.id, i, cx);
+                    }
+                }))
+            },
+        )
+    }
+
+    /// The row of the action being edited, above its editor: a click closes it.
+    fn open_action_row(&self, name: SharedString, ic: Icon, cx: &mut Context<Self>) -> Stateful<Div> {
+        let title = div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).truncate().child(name);
+        clickable(line("gs-action-open", tile(ic, false), title, None, icon(Icon::ExpandMore, px(18.), theme::text_muted()))).on_click(
+            cx.listener(|this, _, _, cx| {
+                this.actions.editor = None;
+                this.actions.deleting = None;
+                cx.notify();
+            }),
+        )
+    }
+
+    fn add_row(&self, free: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+        let lead = div()
             .flex()
             .flex_none()
             .items_center()
             .justify_center()
             .size(px(34.))
             .rounded(px(10.))
-            .bg(theme::ink_a(0.06))
-            .child(icon(icon_of(a), px(18.), theme::text_muted()))
-            .into_any_element();
-        let mut meta = vec![kind_label(a.kind).to_string()];
-        if a.plays() {
-            meta.push(tr!("Counts as playing").to_string());
+            .bg(theme::accent_alpha(0.12))
+            .child(icon(Icon::Add, px(18.), theme::accent()));
+        let title = div().text_size(px(14.)).font_weight(theme::W_BOLD).text_color(theme::accent()).child(tr!("Add to menu"));
+        let row = line("gs-action-add", lead, title, None, div());
+        if !free {
+            return row.opacity(0.4);
         }
-        meta.push(target_summary(a));
-        let content = div()
+        clickable(row).on_click(cx.listener(|this, _, window, cx| this.edit_action(None, window, cx)))
+    }
+
+    /// No actions yet: what they are for and a shortcut per common kind.
+    fn empty_menu(&self, free: bool, cx: &mut Context<Self>) -> Div {
+        let shortcuts = TEMPLATES.iter().enumerate().map(|(i, t)| {
+            let (kind, name, plays) = (t.kind, t.name, t.plays);
+            icon_button_sm(
+                SharedString::from(format!("gs-action-tpl-{i}")),
+                ButtonKind::Glass,
+                t.icon,
+                template_text(t.label),
+                free,
+                cx.listener(move |this, _, window, cx| this.edit_new_action(kind, template_text(name), plays, window, cx)),
+            )
+        });
+        div()
             .flex()
             .flex_col()
-            .min_w_0()
-            .child(div().text_size(px(14.)).text_color(theme::text_primary()).truncate().child(a.name.clone()))
-            .child(div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(meta.join(" \u{b7} ")));
-        let free = !self.actions.saving;
-        let (up, down, edit, del) = (id.clone(), id.clone(), id.clone(), id);
-        let trailing = div()
-            .flex()
-            .gap(px(6.))
-            .when(count > 1, |d| {
-                d.child(
-                    icon_action(SharedString::from(format!("gs-action-up-{up}")), crate::icons::Icon::ArrowUpward, free && i > 0)
-                        .when(free && i > 0, |b| b.on_click(cx.listener(move |this, _, _, cx| this.move_action(&up, true, cx)))),
-                )
-                .child(
-                    icon_action(
-                        SharedString::from(format!("gs-action-down-{down}")),
-                        crate::icons::Icon::ArrowDownward,
-                        free && i + 1 < count,
-                    )
-                    .when(free && i + 1 < count, |b| b.on_click(cx.listener(move |this, _, _, cx| this.move_action(&down, false, cx)))),
-                )
-            })
-            .child(
-                icon_action(SharedString::from(format!("gs-action-edit-{edit}")), crate::icons::Icon::Edit, free)
-                    .on_click(cx.listener(move |this, _, window, cx| this.edit_action(Some(edit.clone()), window, cx))),
-            )
-            .child(icon_action(SharedString::from(format!("gs-action-rm-{del}")), crate::icons::Icon::DeleteOutline, free).on_click(
-                cx.listener(move |this, _, _, cx| {
-                    this.actions.deleting = Some(del.clone());
-                    cx.notify();
-                }),
-            ));
-        list_item(Some(leading), content, trailing).into_any_element()
+            .gap(px(10.))
+            .pt(px(4.))
+            .pb(px(14.))
+            .when(!free, |d| d.opacity(0.4))
+            .child(help_text(tr!("Nothing here yet. Add a mod manager, a settings tool, a script or a web page.")))
+            .child(div().flex().flex_wrap().gap(px(6.)).children(shortcuts))
     }
 
     fn action_editor(&self, cx: &mut Context<Self>) -> Div {
@@ -318,63 +380,236 @@ impl GameSettingsDialog {
                     }),
                 ))
             });
-        let mut rows: Vec<AnyElement> = vec![
-            block(labeled(tr!("Name"), input_box(&e.name, false))),
-            block(div().flex().flex_col().gap(px(6.)).child(caption_label(tr!("Type"))).child(kind_tabs)),
-            block(div().flex().flex_col().gap(px(6.)).child(labeled(target_label, target_field)).child(help_text(target_help))),
-        ];
+        let saving = self.actions.saving;
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .gap(px(14.))
+            .pt(px(2.))
+            .pb(px(14.))
+            .child(labeled(tr!("Name"), input_box(&e.name, false)))
+            .child(labeled(tr!("What it opens"), kind_tabs))
+            .child(div().flex().flex_col().gap(px(6.)).child(labeled(target_label, target_field)).child(help_text(target_help)));
         if e.kind == ActionKind::Program {
-            rows.push(block(labeled(tr!("Arguments"), input_box(&e.args, false))));
+            col = col.child(labeled(tr!("Arguments"), input_box(&e.args, false)));
         }
         if e.kind != ActionKind::Open {
-            rows.push(
+            col = col.child(
                 toggle_row(
                     "gs-action-plays",
                     tr!("Counts as playing"),
                     Some(tr!("Starts like Play, with this game's settings; counts as playtime and Stop closes it.")),
                     e.plays,
                 )
+                .py(px(0.))
                 .on_click(cx.listener(|this, _, _, cx| {
                     if let Some(e) = this.actions.editor.as_mut() {
                         e.plays = !e.plays;
                     }
                     cx.notify();
-                }))
-                .into_any_element(),
+                })),
             );
         }
-        let can_save = e.can_save(cx) && !self.actions.saving;
-        let buttons = div()
-            .flex()
-            .justify_end()
-            .gap(px(8.))
-            .py(px(12.))
-            .child(action_button(
-                "gs-action-cancel",
-                ButtonKind::Ghost,
-                tr!("Cancel"),
-                !self.actions.saving,
-                cx.listener(|this, _, _, cx| {
-                    this.actions.editor = None;
-                    cx.notify();
-                }),
-            ))
-            .child(action_button(
-                "gs-action-save",
-                ButtonKind::Primary,
-                if self.actions.saving { tr!("Saving…") } else { tr!("Save") },
-                can_save,
-                cx.listener(|this, _, _, cx| this.save_action(cx)),
-            ));
-        let title = if e.id.is_some() { tr!("Edit action") } else { tr!("New action") };
-        let mut c = card_box().child(div().pt(px(12.)).text_size(px(15.)).font_weight(theme::W_BOLD).child(title));
-        for r in rows {
-            c = c.child(r);
-        }
-        c.child(buttons)
+        let confirming = e.id.as_ref().filter(|id| self.actions.deleting.as_ref() == Some(*id)).cloned();
+        let footer = div().flex().items_center().gap(px(8.)).pt(px(2.));
+        let footer = if let Some(id) = confirming {
+            let name = self.actions.list.iter().find(|a| a.id == id).map(|a| a.name.clone()).unwrap_or_default();
+            footer
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(px(14.))
+                        .text_color(theme::text_primary())
+                        .child(tr!("Delete \u{201c}{name}\u{201d}?", name = name)),
+                )
+                .child(action_button(
+                    "gs-action-keep",
+                    ButtonKind::Ghost,
+                    tr!("Cancel"),
+                    !saving,
+                    cx.listener(|this, _, _, cx| {
+                        this.actions.deleting = None;
+                        cx.notify();
+                    }),
+                ))
+                .child(action_button(
+                    "gs-action-del",
+                    ButtonKind::Danger,
+                    tr!("Delete"),
+                    !saving,
+                    cx.listener(move |this, _, _, cx| this.delete_action(&id, cx)),
+                ))
+        } else {
+            let existing = e.id.clone();
+            footer
+                .children(existing.map(|id| {
+                    action_button(
+                        "gs-action-rm",
+                        ButtonKind::Danger,
+                        tr!("Delete"),
+                        !saving,
+                        cx.listener(move |this, _, _, cx| {
+                            this.actions.deleting = Some(id.clone());
+                            cx.notify();
+                        }),
+                    )
+                }))
+                .child(div().flex_1())
+                .child(action_button(
+                    "gs-action-cancel",
+                    ButtonKind::Ghost,
+                    tr!("Cancel"),
+                    !saving,
+                    cx.listener(|this, _, _, cx| {
+                        this.actions.editor = None;
+                        cx.notify();
+                    }),
+                ))
+                .child(action_button(
+                    "gs-action-save",
+                    ButtonKind::Primary,
+                    if saving { tr!("Saving…") } else { tr!("Save") },
+                    e.can_save(cx) && !saving,
+                    cx.listener(|this, _, _, cx| this.save_action(cx)),
+                ))
+        };
+        col.child(footer)
     }
 }
 
-fn caption_label(text: &str) -> Div {
-    crate::ui::fields::field_label(text.to_string())
+/// A shortcut of the empty menu: how the new action starts.
+struct Template {
+    label: &'static str,
+    icon: Icon,
+    kind: ActionKind,
+    /// Its name ("" lets the file or address name it).
+    name: &'static str,
+    plays: bool,
+}
+
+const TEMPLATES: [Template; 5] = [
+    Template { label: "Mod manager", icon: Icon::Build, kind: ActionKind::Program, name: "Mod manager", plays: true },
+    Template { label: "Settings tool", icon: Icon::Tune, kind: ActionKind::Program, name: "", plays: false },
+    Template { label: "Script", icon: Icon::Terminal, kind: ActionKind::Command, name: "", plays: false },
+    Template { label: "Web page", icon: Icon::Language, kind: ActionKind::Open, name: "", plays: false },
+    Template { label: "Other", icon: Icon::Add, kind: ActionKind::Program, name: "", plays: false },
+];
+
+/// The translation of a template's text ("" stays empty).
+fn template_text(english: &'static str) -> &'static str {
+    match english {
+        "Mod manager" => tr!("Mod manager"),
+        "Settings tool" => tr!("Settings tool"),
+        "Script" => tr!("Script"),
+        "Web page" => tr!("Web page"),
+        "Other" => tr!("Other"),
+        other => other,
+    }
+}
+
+/// A row being dragged to another place in the menu.
+struct ActionDrag {
+    id: String,
+    name: SharedString,
+}
+
+/// What follows the pointer while a row is dragged.
+struct ActionGhost(SharedString);
+
+impl Render for ActionGhost {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        crate::ui::glass::glass_menu_surface(theme::R_ITEM)
+            .flex()
+            .items_center()
+            .gap(px(8.))
+            .px(px(12.))
+            .py(px(8.))
+            .text_size(px(13.))
+            .text_color(theme::text_primary())
+            .child(icon(Icon::DragIndicator, px(16.), theme::text_dim()))
+            .child(self.0.clone())
+    }
+}
+
+/// One row of the card: leading icon, a title over an optional dim line,
+/// trailing bits. Bleeds 8px into the card's padding so its hover fill has room.
+fn line(
+    id: impl Into<ElementId>,
+    leading: impl IntoElement,
+    title: impl IntoElement,
+    summary: Option<String>,
+    trailing: impl IntoElement,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .mx(px(-8.))
+        .px(px(8.))
+        .py(px(11.))
+        .rounded(px(theme::R_ITEM))
+        .child(leading)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .gap(px(2.))
+                .child(title)
+                .children(summary.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(s))),
+        )
+        .child(div().flex().flex_none().items_center().child(trailing))
+}
+
+fn clickable(row: Stateful<Div>) -> Stateful<Div> {
+    row.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.04)))
+}
+
+/// The square icon of a row (accent for Play).
+fn tile(ic: Icon, accent: bool) -> Div {
+    let (bg, fg): (Hsla, Hsla) =
+        if accent { (theme::accent().into(), theme::on_accent().into()) } else { (theme::ink_a(0.06), theme::text_muted().into()) };
+    div().flex().flex_none().items_center().justify_center().size(px(34.)).rounded(px(10.)).bg(bg).child(icon(ic, px(18.), fg))
+}
+
+fn separator() -> Div {
+    div().h(px(1.)).w_full().bg(theme::row_separator())
+}
+
+/// "In the menu next to Play", with the drag hint while rows can move.
+fn menu_heading(can_drag: bool) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(12.))
+        .pt(px(12.))
+        .pb(px(2.))
+        .text_size(px(12.))
+        .child(div().text_color(theme::text_muted()).child(tr!("In the menu next to Play")))
+        .when(can_drag, |d| d.child(div().text_color(theme::text_dim()).child(tr!("Drag to reorder"))))
+}
+
+/// "Playtime" on an action that starts as the game's session.
+fn playtime_pill(id: &str) -> Stateful<Div> {
+    let c: Hsla = theme::success().into();
+    div()
+        .id(SharedString::from(format!("gs-action-pt-{id}")))
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(4.))
+        .px(px(8.))
+        .py(px(2.))
+        .rounded_full()
+        .bg(Hsla { a: 0.14, ..c })
+        .text_size(px(11.))
+        .text_color(c)
+        .child(icon(Icon::AccessTime, px(12.), c))
+        .child(tr!("Playtime"))
+        .tooltip(tooltip(tr!("Starts like Play, with this game's settings; counts as playtime and Stop closes it.")))
 }
