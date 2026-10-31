@@ -203,15 +203,18 @@ impl CollectionView {
                     let looked_up = by_title.then(|| protondb::cached_steam_id_for_title(&cache, &game.title)).flatten();
                     let steam = known_steam.or_else(|| looked_up.clone().flatten());
                     let cached = steam.as_deref().and_then(|id| protondb::cached_tier(&cache, id));
-                    let linux = (!emulated).then(|| Linux {
+                    // How the game runs on Linux (ProtonDB, anti-cheat): only
+                    // said on Linux.
+                    let linux = (!emulated && cfg!(target_os = "linux")).then(|| Linux {
                         native,
                         steam_app_id: steam.clone(),
                         tier: cached.as_ref().map(|(t, _)| t.clone()),
                         anticheat: anticheat::lookup(&paths, steam.as_deref(), &game.title),
                     });
                     // Next, on the network: the title search, then a missing or stale tier.
-                    let search = (by_title && looked_up.is_none()).then(|| game.title.clone());
-                    let fetch = steam.filter(|_| !cached.as_ref().is_some_and(|(_, fresh)| *fresh));
+                    let wanted = linux.is_some();
+                    let search = (wanted && by_title && looked_up.is_none()).then(|| game.title.clone());
+                    let fetch = steam.filter(|_| wanted && !cached.as_ref().is_some_and(|(_, fresh)| *fresh));
                     ((backup, folders, linux), (cache, search, fetch))
                 })
                 .await;
