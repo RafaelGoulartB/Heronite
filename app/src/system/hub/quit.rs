@@ -132,6 +132,7 @@ static ON_QUIT: Mutex<Option<OnQuit>> = Mutex::new(None);
 /// downloaded update, which waits for this process to end. It gets whether
 /// a restart was asked and returns whether it starts the app again itself
 /// (else the restart starts [`restart_into`]'s program as usual).
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn run_on_quit(work: Option<OnQuit>) {
     *ON_QUIT.lock().unwrap_or_else(|e| e.into_inner()) = work;
 }
