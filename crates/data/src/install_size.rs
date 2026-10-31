@@ -24,9 +24,14 @@ const CACHE_SECS: u64 = 3 * 24 * 3600;
 /// Folders never walked: the system ones and the home folder or above it.
 const SYSTEM_DIRS: [&str; 10] = ["/usr", "/usr/bin", "/usr/local", "/usr/local/bin", "/usr/games", "/bin", "/opt", "/tmp", "/var", "/etc"];
 
-/// Whether `dir` may be walked as one game's folder.
+/// Whether `dir` may be walked as one game's folder. On Windows, nothing in
+/// the Windows folder is.
 pub fn walkable(dir: &Path, home: Option<&Path>) -> bool {
     if !dir.is_absolute() || dir.components().any(|c| matches!(c, Component::ParentDir)) {
+        return false;
+    }
+    #[cfg(windows)]
+    if std::env::var_os("SystemRoot").is_some_and(|w| !w.is_empty() && dir.starts_with(&w)) {
         return false;
     }
     let depth = dir.components().filter(|c| matches!(c, Component::Normal(_))).count();
@@ -215,6 +220,8 @@ mod tests {
         assert!(!walkable(&p("/home"), Some(home)), "above home");
         #[cfg(unix)]
         assert!(!walkable(Path::new("/usr/bin"), Some(home)));
+        #[cfg(windows)]
+        assert!(!walkable(&Path::new(&std::env::var_os("SystemRoot").unwrap()).join("System32"), Some(home)));
         assert!(!walkable(&p("/data"), Some(home)), "a drive's root");
         assert!(!walkable(Path::new("games/x"), Some(home)), "relative");
     }

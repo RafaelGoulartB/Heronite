@@ -4,6 +4,11 @@
 //! the caches that rebuild themselves, and game folders nothing points to any
 //! more. And removing what is not needed.
 //!
+//! Without Wine (Windows, `Feature::Wine`) there are no prefixes, builds or
+//! Proton leftovers: the tools folder holds the store tools instead
+//! ([`Group::Tools`]), and what downloads left behind is listed
+//! ([`Group::Downloads`]).
+//!
 //! [`inventory`] lists everything quickly (the sizes stores and manifests give
 //! are filled in, nothing is walked); [`measure`] walks one item whose size is
 //! unknown; [`remove`] cleans one item. All blocking: the app calls them off
@@ -13,10 +18,12 @@ mod builds;
 mod caches;
 mod clean;
 pub mod disks;
+mod downloads;
 mod games;
 mod leftovers;
 mod prefixes;
 mod steam;
+mod tools;
 pub mod walk;
 
 use std::path::{Path, PathBuf};
@@ -26,6 +33,7 @@ use heronite_data::{AppPaths, DataPaths, Library};
 use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::SystemProbe;
+use heronite_platform::{supported, Feature};
 
 pub use clean::{remove, Removed};
 pub use disks::Disk;
@@ -36,12 +44,15 @@ pub struct Ctx {
     pub data_paths: DataPaths,
     pub app: AppPaths,
     pub home: PathBuf,
+    /// An update of the app is being downloaded or waits to be installed:
+    /// its files are in use (see [`Group::Downloads`]).
+    pub updating: bool,
 }
 
 impl Ctx {
     pub fn new(data_paths: DataPaths, app: AppPaths) -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-        Self { data_paths, app, home }
+        Self { data_paths, app, home, updating: false }
     }
 
     fn home_str(&self) -> String {
@@ -60,15 +71,22 @@ pub enum Group {
     Prefixes,
     /// Proton / Wine builds, runtimes and tools.
     Builds,
+    /// The stores' command-line tools (legendary, gogdl, nile) and what they
+    /// keep, where there is no Wine (with Wine they are among the runtimes).
+    Tools,
     /// Proton prefixes and shader caches Steam keeps for games no longer installed.
     Steam,
     Caches,
     /// Game folders nothing points to any more.
     Leftovers,
+    /// What downloads left behind: unfinished or unused store tools, store
+    /// installers, the app's own updates (where there is no Wine).
+    Downloads,
 }
 
 impl Group {
-    pub const ALL: [Group; 6] = [Group::Games, Group::Prefixes, Group::Builds, Group::Steam, Group::Caches, Group::Leftovers];
+    pub const ALL: [Group; 8] =
+        [Group::Games, Group::Prefixes, Group::Builds, Group::Tools, Group::Steam, Group::Caches, Group::Leftovers, Group::Downloads];
 }
 
 /// Whether something is needed.
@@ -130,6 +148,8 @@ pub enum Kind {
     Cache(CacheKind),
     /// A folder in a games folder that no game uses.
     Leftover,
+    /// A file or folder a download left: downloaded again when needed.
+    Download,
 }
 
 /// What "Free up space" can take, chosen together.
@@ -143,10 +163,13 @@ pub enum Sweep {
     Caches,
     /// Compiled shaders: games stutter for a while after they go.
     Shaders,
+    /// What downloads left behind.
+    Downloads,
 }
 
 impl Sweep {
-    pub const ALL: [Sweep; 6] = [Sweep::Prefixes, Sweep::Steam, Sweep::Builds, Sweep::Leftovers, Sweep::Caches, Sweep::Shaders];
+    pub const ALL: [Sweep; 7] =
+        [Sweep::Prefixes, Sweep::Steam, Sweep::Builds, Sweep::Leftovers, Sweep::Downloads, Sweep::Caches, Sweep::Shaders];
 
     /// Ticked when the page opens.
     pub fn default_on(self) -> bool {
@@ -223,6 +246,7 @@ impl Item {
             (Kind::Build { .. }, State::Unused) => Some(Sweep::Builds),
             (Kind::SteamPrefix { .. } | Kind::SteamShaders { .. }, State::Unused) => Some(Sweep::Steam),
             (Kind::Leftover, State::Unused) => Some(Sweep::Leftovers),
+            (Kind::Download, State::Unused) => Some(Sweep::Downloads),
             _ => None,
         }
     }
@@ -253,12 +277,21 @@ pub fn inventory(ctx: &Ctx, lib: &Library) -> Inventory {
     let steam = ctx.steam();
     let walked = SizeCache::load(&ctx.app.cache);
     let mut items = games::items(lib, &steam, &walked);
-    items.extend(prefixes::items(ctx, lib, &walked));
-    nest_prefixes(&mut items);
-    items.extend(builds::items(ctx, lib, &steam));
-    let steam_found = steam::items(lib, &ctx.data_paths, &steam);
-    items.extend(steam_found.leftovers);
-    items.extend(caches::items(ctx, steam_found.shader_caches));
+    let mut steam_shaders = Vec::new();
+    if supported(Feature::Wine) {
+        items.extend(prefixes::items(ctx, lib, &walked));
+        nest_prefixes(&mut items);
+        items.extend(builds::items(ctx, lib, &steam));
+        // What Steam keeps is Proton's prefixes and the shaders Proton's
+        // games compiled.
+        let steam_found = steam::items(lib, &ctx.data_paths, &steam);
+        items.extend(steam_found.leftovers);
+        steam_shaders = steam_found.shader_caches;
+    } else {
+        items.extend(tools::items(ctx));
+        items.extend(downloads::items(ctx));
+    }
+    items.extend(caches::items(ctx, steam_shaders));
     items.extend(leftovers::items(ctx, lib, &items, &walked));
 
     let mounts = disks::mounts();

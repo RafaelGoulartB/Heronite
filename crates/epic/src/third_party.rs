@@ -83,7 +83,7 @@ pub fn installed_file(data_paths: &DataPaths) -> PathBuf {
 }
 
 pub fn redist_dir(data_paths: &DataPaths) -> PathBuf {
-    data_paths.tools_dir().join("redist").join("legendary")
+    data_paths.legendary_redist_dir()
 }
 
 /// `[appName, platform]` pairs; a missing or broken file is empty (Heroic
