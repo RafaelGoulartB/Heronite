@@ -106,16 +106,23 @@ impl GameFacts {
             }
         } else if platform.contains("linux") || (platform.is_empty() && g.is_linux_native == Some(true)) {
             // The installed build decides: a GOG game with a Linux build may
-            // be installed as its Windows build.
-            RunKind::Native
+            // be installed as its Windows build. Linux builds do not run on Windows.
+            if cfg!(windows) {
+                RunKind::None
+            } else {
+                RunKind::Native
+            }
         } else if platform.contains("mac") || platform == "osx" {
             RunKind::None
+        } else if cfg!(windows) {
+            // A store's Windows build runs as it is on Windows.
+            RunKind::Native
         } else {
             RunKind::Wine
         };
         let cloud_saves = if game.runner == "gog" {
             // Two small files, no network: the tab list is built on the UI thread.
-            run_kind == RunKind::Wine && heronite_gog::saves::supported(&heronite_data::DataPaths::detect(), &game.app_name)
+            run_kind != RunKind::None && heronite_gog::saves::supported(&heronite_data::DataPaths::detect(), &game.app_name)
         } else {
             g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false)
         };
