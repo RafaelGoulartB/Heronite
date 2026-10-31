@@ -63,18 +63,22 @@ pub const fn supported(feature: Feature) -> bool {
     }
     match feature {
         // Ported to Windows.
-        Feature::Autostart | Feature::Tray | Feature::Emulation | Feature::SelfUpdate | Feature::DesktopShortcuts => true,
+        Feature::Autostart
+        | Feature::Tray
+        | Feature::Emulation
+        | Feature::SelfUpdate
+        | Feature::DesktopShortcuts
+        | Feature::SaveBackups
+        | Feature::Capture => true,
         Feature::Wine
         | Feature::StoreAccounts
         | Feature::StoreClients
         | Feature::LauncherImports
         | Feature::HeroicMigration
-        | Feature::SaveBackups
         | Feature::Overlay
         | Feature::SteamGameSettings
         | Feature::Sandbox
         | Feature::LaunchExtras
-        | Feature::Storage
-        | Feature::Capture => false,
+        | Feature::Storage => false,
     }
 }
