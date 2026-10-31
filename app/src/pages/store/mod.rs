@@ -79,7 +79,7 @@ impl<K: StoreKind> EventEmitter<PageEvent> for StorePage<K> {}
 
 /// `heronite-epic-login` (the login window of every store) next to this
 /// executable, else on `PATH`.
-fn login_helper() -> Option<std::path::PathBuf> {
+pub(crate) fn login_helper() -> Option<std::path::PathBuf> {
     let name = if cfg!(windows) { "heronite-epic-login.exe" } else { "heronite-epic-login" };
     if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
         let candidate = dir.join(name);
