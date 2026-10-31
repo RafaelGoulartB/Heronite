@@ -12,10 +12,13 @@
 //!   from one login to the next.
 //! * GOG and Amazon get WebView2's own user agent, the one of Microsoft Edge
 //!   on Windows (they refuse unknown web views); Epic gets its launcher's.
+//! * A popup a page opens ("Sign in with Google") gets a window of the
+//!   helper's own, over the login window, closed with it or when the page
+//!   closes itself; left to WebView2, it would outlive the helper.
 //! * The window closes with the program that started it (the app quitting),
 //!   as `PR_SET_PDEATHSIG` makes it on Linux.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::io::Write;
 use std::num::NonZeroIsize;
 use std::path::PathBuf;
@@ -23,7 +26,9 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 use windows_sys::core::{w, PCWSTR};
-use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, HANDLE, HWND, LPARAM, LRESULT, RECT, WAIT_OBJECT_0, WPARAM};
+use windows_sys::Win32::Foundation::{
+    CloseHandle, GetLastError, ERROR_CLASS_ALREADY_EXISTS, FILETIME, HANDLE, HWND, LPARAM, LRESULT, RECT, WAIT_OBJECT_0, WPARAM,
+};
 use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE};
 use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, COLOR_WINDOW, HBRUSH, MONITORINFO, MONITOR_DEFAULTTOPRIMARY};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -38,14 +43,17 @@ use windows_sys::Win32::UI::HiDpi::{
     AdjustWindowRectExForDpi, GetDpiForMonitor, GetDpiForWindow, GetSystemMetricsForDpi, MDT_EFFECTIVE_DPI,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow, LoadCursorW, LoadImageW,
-    MsgWaitForMultipleObjectsEx, PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassExW, SetForegroundWindow, SetTimer,
-    SetWindowPos, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MINMAXINFO, MSG,
-    MWMO_INPUTAVAILABLE, PM_REMOVE, QS_ALLINPUT, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOZORDER,
-    SW_SHOWNORMAL, WM_APP, WM_CLOSE, WM_DPICHANGED, WM_GETMINMAXINFO, WM_QUIT, WM_TIMER, WNDCLASSEXW, WS_OVERLAPPEDWINDOW,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow, GetParent, GetWindowRect, LoadCursorW,
+    LoadImageW, MsgWaitForMultipleObjectsEx, PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassExW, SetForegroundWindow, SetTimer,
+    SetWindowPos, SetWindowTextW, ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, IMAGE_ICON, LR_DEFAULTCOLOR, MINMAXINFO,
+    MSG, MWMO_INPUTAVAILABLE, PM_REMOVE, QS_ALLINPUT, SM_CXICON, SM_CXSMICON, SM_CYICON, SM_CYSMICON, SWP_NOACTIVATE, SWP_NOZORDER,
+    SW_SHOWNORMAL, WM_APP, WM_CLOSE, WM_DESTROY, WM_DPICHANGED, WM_GETMINMAXINFO, WM_PARENTNOTIFY, WM_QUIT, WM_TIMER, WNDCLASSEXW,
+    WS_OVERLAPPEDWINDOW,
 };
 use wry::raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle};
-use wry::{PageLoadEvent, WebContext, WebView, WebViewBuilder};
+use wry::{
+    NewWindowFeatures, NewWindowResponse, PageLoadEvent, WebContext, WebView, WebViewBuilder, WebViewBuilderExtWindows, WebViewExtWindows,
+};
 
 use super::{code_from_page_text, parse_args, Store, CLOSED, EPIC_USER_AGENT};
 
@@ -64,6 +72,15 @@ const SMOKE_MS: u32 = 15_000;
 /// The window's client area at 100 % scale; the smallest it can be resized to.
 const SIZE: (i32, i32) = (520, 720);
 const MIN_SIZE: (i32, i32) = (360, 420);
+/// A popup's client area when the page does not ask for a size.
+const POPUP_SIZE: (i32, i32) = (500, 640);
+
+thread_local! {
+    /// The login window.
+    static MAIN: Cell<HWND> = const { Cell::new(std::ptr::null_mut()) };
+    /// The popups the pages opened: their window and view.
+    static POPUPS: RefCell<Vec<(HWND, WebView)>> = const { RefCell::new(Vec::new()) };
+}
 
 const SMOKE_PAGE: &str = "<html><body style='font-family:\"Segoe UI\",sans-serif;background:#222;color:#eee'><h2>Login helper</h2><p>Smoke test page.</p></body></html>";
 
@@ -95,13 +112,14 @@ pub(crate) fn main() -> ! {
     }
     let parent = Parent::watch();
 
-    let hwnd = match create_window(store.title()) {
+    let hwnd = match create_window(store.title(), SIZE, None) {
         Ok(hwnd) => hwnd,
         Err(e) => {
             eprintln!("could not create the window: {e}");
             std::process::exit(FAILED);
         }
     };
+    MAIN.set(hwnd);
     let data_dir = data_folder();
     let mut context = WebContext::new(Some(data_dir));
 
@@ -117,6 +135,7 @@ pub(crate) fn main() -> ! {
     let view: Rc<RefCell<Option<WebView>>> = Rc::default();
 
     let done_nav = done.clone();
+    let done_popup = done.clone();
     let mut builder = WebViewBuilder::new_with_web_context(&mut context)
         .with_incognito(true)
         // The page that carries the code is not loaded: take the code and stop there.
@@ -126,7 +145,9 @@ pub(crate) fn main() -> ! {
                 false
             }
             None => true,
-        });
+        })
+        // "Sign in with Google" and the like may open a popup.
+        .with_new_window_req_handler(move |_, features| open_popup(store, features, done_popup.clone()));
     if let Some(agent) = user_agent(store) {
         builder = builder.with_user_agent(agent);
     }
@@ -185,18 +206,82 @@ pub(crate) fn main() -> ! {
 
     let status = run_loop(parent.as_ref().map(|p| p.0));
     let code = rx.try_recv().ok();
-    // The view first (it closes its WebView2 processes), then the window.
+    // The views first (they close their WebView2 processes), then the windows.
+    for (popup, view) in POPUPS.take() {
+        drop(view);
+        // SAFETY: a popup window of ours, destroyed once.
+        unsafe { DestroyWindow(popup) };
+    }
     drop(view.borrow_mut().take());
     // SAFETY: our window, destroyed once.
     unsafe { DestroyWindow(hwnd) };
     drop(parent);
-    if status == 0 {
-        if let Some(code) = code {
-            println!("{code}");
-            let _ = std::io::stdout().flush();
-        }
+    // A code wins over a close that came right after it.
+    if let Some(code) = code {
+        println!("{code}");
+        let _ = std::io::stdout().flush();
+        std::process::exit(0);
     }
     std::process::exit(status);
+}
+
+/// Opens the popup a page asked for in a window of ours, over the login
+/// window, with a view of the same WebView2 environment and InPrivate
+/// profile (WebView2 needs both). A code it navigates to counts too.
+fn open_popup(store: Store, features: NewWindowFeatures, done: impl Fn(String) + Clone + 'static) -> NewWindowResponse {
+    let size = features.size.map(|s| (s.width as i32, s.height as i32)).filter(|&(w, h)| w >= 200 && h >= 200).unwrap_or(POPUP_SIZE);
+    let hwnd = match create_window("", size, Some(MAIN.get())) {
+        Ok(hwnd) => hwnd,
+        Err(e) => {
+            eprintln!("could not open a popup window: {e}");
+            return NewWindowResponse::Deny;
+        }
+    };
+    let hwnd_value = hwnd as isize;
+    let mut builder = WebViewBuilder::new()
+        .with_environment(features.opener.environment)
+        .with_incognito(true)
+        .with_navigation_handler(move |url| match store.code_from_url(&url) {
+            Some(code) => {
+                done(code);
+                false
+            }
+            None => true,
+        })
+        .with_document_title_changed_handler(move |title| {
+            let title: Vec<u16> = title.encode_utf16().chain([0]).collect();
+            // SAFETY: our popup window (a stale handle only fails).
+            unsafe { SetWindowTextW(hwnd_value as HWND, title.as_ptr()) };
+        })
+        .with_new_window_req_handler(|_, _| NewWindowResponse::Deny);
+    if let Some(agent) = user_agent(store) {
+        builder = builder.with_user_agent(agent);
+    }
+    match builder.build(&Window(hwnd)) {
+        Ok(view) => {
+            let webview = view.webview();
+            POPUPS.with_borrow_mut(|popups| popups.push((hwnd, view)));
+            // SAFETY: our popup window.
+            unsafe { ShowWindow(hwnd, SW_SHOWNORMAL) };
+            NewWindowResponse::Create { webview }
+        }
+        Err(e) => {
+            eprintln!("could not open a popup: {e}");
+            // SAFETY: our popup window, destroyed once.
+            unsafe { DestroyWindow(hwnd) };
+            NewWindowResponse::Deny
+        }
+    }
+}
+
+/// Closes popup `hwnd` and its view.
+fn close_popup(hwnd: HWND) {
+    let view = POPUPS.with_borrow_mut(|popups| popups.iter().position(|(h, _)| *h == hwnd).map(|i| popups.remove(i).1));
+    if let Some(view) = view {
+        drop(view);
+        // SAFETY: a popup window of ours, destroyed once (it left the list).
+        unsafe { DestroyWindow(hwnd) };
+    }
 }
 
 /// The JSON object in `text` (Edge's JSON viewer may add text around it),
@@ -238,9 +323,19 @@ fn run_loop(parent: Option<HANDLE>) -> i32 {
 
 unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
-        // The window is destroyed after the loop, once the view is gone.
-        WM_CLOSE => {
+        // The login window is destroyed after the loop, once its view is gone.
+        WM_CLOSE if hwnd == MAIN.get() => {
             PostQuitMessage(CLOSED);
+            0
+        }
+        WM_CLOSE => {
+            close_popup(hwnd);
+            0
+        }
+        // The page of a popup closed itself (`window.close()`): wry destroyed
+        // the view's own child window.
+        WM_PARENTNOTIFY if hwnd != MAIN.get() && (wparam & 0xffff) as u32 == WM_DESTROY && GetParent(lparam as HWND) == hwnd => {
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
             0
         }
         WM_LOGIN_DONE => {
@@ -280,13 +375,14 @@ fn outer_size(size: (i32, i32), dpi: u32) -> (i32, i32) {
     (rect.right - rect.left, rect.bottom - rect.top)
 }
 
-/// The top-level window, hidden, centred on the monitor of the window in the
-/// foreground (the app's) and sized for that monitor's scale.
-fn create_window(title: &str) -> Result<HWND, std::io::Error> {
+/// A top-level window, hidden, for a client area of `size` (at 100 %) at the
+/// scale of its monitor: the login window centred on the monitor of the
+/// window in the foreground (the app's), a popup centred over its `owner`.
+fn create_window(title: &str, size: (i32, i32), owner: Option<HWND>) -> Result<HWND, std::io::Error> {
     // SAFETY: plain Win32 calls on values we own; failures are checked.
     unsafe {
         let instance = GetModuleHandleW(std::ptr::null());
-        let monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY);
+        let monitor = MonitorFromWindow(owner.unwrap_or_else(|| GetForegroundWindow()), MONITOR_DEFAULTTOPRIMARY);
         let mut info: MONITORINFO = std::mem::zeroed();
         info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
         GetMonitorInfoW(monitor, &mut info);
@@ -296,9 +392,14 @@ fn create_window(title: &str) -> Result<HWND, std::io::Error> {
         }
         let work = info.rcWork;
         let (work_w, work_h) = (work.right - work.left, work.bottom - work.top);
-        let (w, h) = outer_size(SIZE, dpi);
+        let (w, h) = outer_size(size, dpi);
         let (w, h) = if work_w > 0 && work_h > 0 { (w.min(work_w), h.min(work_h)) } else { (w, h) };
-        let (x, y) = (work.left + (work_w - w).max(0) / 2, work.top + (work_h - h).max(0) / 2);
+        let mut around = work;
+        if let Some(owner) = owner {
+            GetWindowRect(owner, &mut around);
+        }
+        let x = (around.left + (around.right - around.left - w) / 2).clamp(work.left, (work.right - w).max(work.left));
+        let y = (around.top + (around.bottom - around.top - h) / 2).clamp(work.top, (work.bottom - h).max(work.top));
 
         // Heronite's icon (resource 1, see build.rs), at the sizes of this scale.
         let icon = |cx, cy| {
@@ -318,7 +419,7 @@ fn create_window(title: &str) -> Result<HWND, std::io::Error> {
             lpszClassName: w!("HeroniteLoginWindow"),
             hIconSm: icon(SM_CXSMICON, SM_CYSMICON),
         };
-        if RegisterClassExW(&class) == 0 {
+        if RegisterClassExW(&class) == 0 && GetLastError() != ERROR_CLASS_ALREADY_EXISTS {
             return Err(std::io::Error::last_os_error());
         }
         let title: Vec<u16> = title.encode_utf16().chain([0]).collect();
@@ -331,7 +432,8 @@ fn create_window(title: &str) -> Result<HWND, std::io::Error> {
             y,
             w,
             h,
-            std::ptr::null_mut(),
+            // A popup is owned by the login window: always over it.
+            owner.unwrap_or(std::ptr::null_mut()),
             std::ptr::null_mut(),
             instance,
             std::ptr::null(),
