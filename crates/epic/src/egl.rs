@@ -4,11 +4,15 @@
 //! The launcher keeps one `<guid>.item` file per installed game in
 //! `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests`, and the game's
 //! manifest in `<game>\.egstore`. [`importable`] only reads them. [`import`]
-//! runs `legendary egl-sync --import-only --one-shot -y`: legendary records
-//! those games in its own `installed.json`, with the version the launcher
-//! installed (from the game's manifest), and turns on no automatic sync.
-//! Nothing of the launcher's is moved or deleted; its games stay its own
-//! too (it can still update, verify or uninstall them).
+//! runs `legendary import <app> <folder> --platform Windows --with-dlcs` for
+//! each of them: legendary records the game in its own `installed.json`,
+//! with the version the launcher installed (read from the game's
+//! `.egstore`), and the game is legendary's from then on. Nothing of the
+//! launcher's is written, moved or deleted.
+//!
+//! Not `legendary egl-sync`: it links the games to the launcher, so a later
+//! sync takes the launcher's (older) version back over one Heronite updated,
+//! and it may write manifests into the launcher's folder.
 //!
 //! It runs after each library refresh when the launcher has games
 //! legendary does not know yet (so after the login too), and from the Epic
@@ -87,29 +91,57 @@ pub fn importable_from(data_paths: &DataPaths, dir: &Path) -> Vec<LauncherGame> 
         .collect()
 }
 
-pub const IMPORT_ARGS: [&str; 4] = ["egl-sync", "--import-only", "--one-shot", "-y"];
+/// legendary's command line that takes `game` in.
+pub fn import_args(game: &LauncherGame) -> Vec<String> {
+    let args = ["import", &game.app_name, &game.install_location, "--platform", "Windows", "--with-dlcs"];
+    args.into_iter().map(String::from).collect()
+}
 
 /// legendary takes in the launcher's games (see the module docs). Blocking.
 pub fn import(data_paths: &DataPaths, legendary: &Legendary) -> OpResult {
-    let before = library::installed_games(data_paths).len();
-    let out = match legendary.run(&IMPORT_ARGS, &[]) {
-        Ok(out) => out,
-        Err(err) => return OpResult::err(format!("{err:#}")),
-    };
-    if let Err(err) = library::write_library(data_paths) {
-        log::warn!("rebuilding the library: {err:#}");
+    import_games(data_paths, legendary, &importable(data_paths)).1
+}
+
+/// Takes `games` in one by one: how many legendary took, and what to say.
+fn import_games(data_paths: &DataPaths, legendary: &Legendary, games: &[LauncherGame]) -> (usize, OpResult) {
+    let mut added = 0;
+    let mut failed: Option<(String, String)> = None;
+    for game in games {
+        let why = match legendary.run(&import_args(game), &[]) {
+            // legendary may exit with 0 after an error: its record tells.
+            Ok(_) if library::installed_games(data_paths).contains_key(&game.app_name) => {
+                added += 1;
+                continue;
+            }
+            Ok(out) => {
+                let why = out.error_lines();
+                if why.is_empty() {
+                    tr!("legendary exited with {code}", code = format!("{:?}", out.code))
+                } else {
+                    why
+                }
+            }
+            Err(err) => format!("{err:#}"),
+        };
+        log::warn!("taking {} in from the Epic Games Launcher: {why}", game.app_name);
+        failed.get_or_insert((game.title.clone(), why));
     }
-    let added = library::installed_games(data_paths).len().saturating_sub(before);
-    if !out.success() {
-        let why = out.error_lines();
-        return OpResult::err(if why.is_empty() { tr!("legendary exited with {code}", code = format!("{:?}", out.code)) } else { why });
+    if added > 0 {
+        if let Err(err) = library::write_library(data_paths) {
+            log::warn!("rebuilding the library: {err:#}");
+        }
     }
     log::info!("{added} game(s) taken in from the Epic Games Launcher");
-    if added == 0 {
-        OpResult::ok(tr!("No new games from the Epic Games Launcher"))
-    } else {
-        OpResult::ok(trn!(added, "{n} game taken in from the Epic Games Launcher", "{n} games taken in from the Epic Games Launcher"))
-    }
+    let r = match (added, failed) {
+        (0, None) => OpResult::ok(tr!("No new games from the Epic Games Launcher")),
+        (0, Some((title, error))) => {
+            OpResult::err(tr!("{title} could not be taken in from the Epic Games Launcher: {error}", title, error))
+        }
+        (n, _) => {
+            OpResult::ok(trn!(n, "{n} game taken in from the Epic Games Launcher", "{n} games taken in from the Epic Games Launcher"))
+        }
+    };
+    (added, r)
 }
 
 /// After a refresh: takes the launcher's new games in, when it has any.
@@ -119,10 +151,9 @@ pub fn import_new(data_paths: &DataPaths, legendary: &Legendary) -> Option<OpRes
         return None;
     }
     log::info!("the Epic Games Launcher has {} game(s) to take in: {:?}", new.len(), new.iter().map(|g| &g.app_name).collect::<Vec<_>>());
-    let before = library::installed_games(data_paths).len();
-    let r = import(data_paths, legendary);
-    // legendary took none of them (not in its database): said once, in the log.
-    if r.ok && library::installed_games(data_paths).len() <= before {
+    let (added, r) = import_games(data_paths, legendary, &new);
+    // legendary took none of them: said once, in the log.
+    if added == 0 {
         log::info!("{}", r.message);
         return None;
     }
@@ -190,30 +221,43 @@ mod tests {
         assert_eq!(names, ["Calluna"]);
     }
 
+    fn game(app: &str, folder: &str) -> LauncherGame {
+        LauncherGame { app_name: app.into(), title: format!("{app} title"), install_location: folder.into() }
+    }
+
     #[test]
-    fn import_runs_a_one_shot_import_and_counts_the_new_games() {
+    fn each_game_is_imported_with_its_folder_and_the_new_ones_counted() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
         std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
         let tool = fake_tool(dir.path())
-            .otherwise(Reply::new().write_file("${LEGENDARY_CONFIG_PATH}/installed.json", r#"{"Calluna": {"app_name": "Calluna"}}"#));
+            .on(
+                &["import", "Calluna", "*"],
+                Reply::new().write_file("${LEGENDARY_CONFIG_PATH}/installed.json", r#"{"Calluna": {"app_name": "Calluna"}}"#),
+            )
+            // legendary logs the error and exits with 0.
+            .otherwise(Reply::new().err("[cli] ERROR: Game executable could not be found"));
         let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
-        let r = import(&data_paths, &lg);
+        let games = [game("Calluna", r"D:\Epic Games\Control"), game("Fish", r"D:\Epic Games\Hades")];
+        let (added, r) = import_games(&data_paths, &lg, &games);
         assert!(r.ok, "{}", r.message);
-        assert_eq!(r.message, "1 game taken in from the Epic Games Launcher");
-        assert_eq!(tool.calls(), ["egl-sync --import-only --one-shot -y"]);
+        assert_eq!((added, r.message.as_str()), (1, "1 game taken in from the Epic Games Launcher"));
+        assert_eq!(import_args(&games[0]), ["import", "Calluna", r"D:\Epic Games\Control", "--platform", "Windows", "--with-dlcs"]);
+        assert_eq!(tool.calls().len(), 2, "{:?}", tool.calls());
         assert!(data_paths.legendary_library().exists(), "the library is rebuilt");
-        // Nothing new the second time.
-        assert_eq!(import(&data_paths, &lg).message, "No new games from the Epic Games Launcher");
+        // Nothing to take in: nothing runs.
+        assert_eq!(import_games(&data_paths, &lg, &[]).1.message, "No new games from the Epic Games Launcher");
     }
 
     #[test]
-    fn a_failed_import_is_an_error() {
+    fn an_import_that_takes_nothing_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
         let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[cli] ERROR: Legendary is missing game metadata").exit(1));
-        let r = import(&data_paths, &Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir()));
-        assert!(!r.ok && r.message.contains("missing game metadata"), "{}", r.message);
+        let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
+        let (added, r) = import_games(&data_paths, &lg, &[game("Calluna", r"D:\Control")]);
+        assert_eq!(added, 0);
+        assert!(!r.ok && r.message.contains("Calluna title") && r.message.contains("missing game metadata"), "{}", r.message);
     }
 
     /// Read-only look at this PC's launcher, if it has one:

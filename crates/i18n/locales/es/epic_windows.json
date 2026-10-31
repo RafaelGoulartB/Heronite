@@ -19,5 +19,6 @@
   "{client} opens this game, and it is not installed. Install {client}, then play again.": "Este juego se abre con {client}, que no está instalado. Instala {client} y vuelve a jugar.",
   "{client} starts the game": "{client} está iniciando el juego",
   "{n} game taken in from the Epic Games Launcher": "{n} juego importado de Epic Games Launcher",
-  "{n} games taken in from the Epic Games Launcher": "{n} juegos importados de Epic Games Launcher"
+  "{n} games taken in from the Epic Games Launcher": "{n} juegos importados de Epic Games Launcher",
+  "{title} could not be taken in from the Epic Games Launcher: {error}": "No se pudo importar {title} de Epic Games Launcher: {error}"
 }
