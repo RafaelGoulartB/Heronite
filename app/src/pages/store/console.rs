@@ -44,6 +44,24 @@ impl<K: StoreKind> StorePage<K> {
                     .desc(tr!("Add a game already on this PC without downloading it again"))
                     .icon(Icon::FolderOpen),
             );
+            if self.amazon_app {
+                let busy = self.svc.read(cx).amazon_app_importing();
+                rows.push(
+                    Row::action("amazon-app", tr!("Add the games of the Amazon Games app"))
+                        .desc(tr!("Add the games the Amazon Games app installed on this PC, without downloading them again."))
+                        .icon(Icon::FolderOpen)
+                        .enabled(!busy),
+                );
+            }
+            if self.galaxy {
+                let busy = self.svc.read(cx).gog_galaxy_importing();
+                rows.push(
+                    Row::action("galaxy", tr!("Add the games of GOG Galaxy"))
+                        .desc(tr!("Show the games GOG Galaxy installed on this PC as installed, without downloading them again. GOG Galaxy keeps updating them."))
+                        .icon(Icon::FolderOpen)
+                        .enabled(!busy),
+                );
+            }
             rows.push(Row::action("logout", tr!("Log out\u{2026}")).icon(Icon::Logout).danger());
         } else {
             let busy = self.window_open || self.fetching_url || state.logging_in;
@@ -98,6 +116,8 @@ impl<K: StoreKind> StorePage<K> {
             "refresh" => self.svc.update(cx, |s, cx| s.store_refresh(store, false, false, cx)),
             "update-all" => self.svc.update(cx, |s, cx| s.store_update_all(store, cx)),
             "import" => self.open_import(window, cx),
+            "amazon-app" => self.import_app_games(cx),
+            "galaxy" => self.import_galaxy_games(cx),
             "logout" => self.confirm_logout_sheet(cx),
             "login-window" => self.start_window_login(cx),
             "browser" => self.with_login_url(Then::Browser, cx),

@@ -231,25 +231,21 @@ pub fn logout(paths: &DataPaths, nile: &Nile) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
-    use crate::cmd::testing::Env;
+    use crate::cmd::testing::{Env, Reply};
 
-    #[cfg(unix)]
     const LOGIN_JSON: &str =
         r#"{"client_id": "cid", "code_verifier": "ver", "serial": "SER", "url": "https://www.amazon.com/ap/signin?x=1&y=2"}"#;
-    #[cfg(unix)]
     const USER: &str = r#"{"name": "Ana", "user_id": "amzn1.account.AAA"}"#;
+    const USER_FILE: &str = "${NILE_CONFIG_PATH}/nile/current_user.json";
 
-    #[cfg(unix)]
     fn request() -> LoginRequest {
         LoginRequest { url: "u".into(), client_id: "cid".into(), code_verifier: "ver".into(), serial: "SER".into() }
     }
 
-    #[cfg(unix)]
     #[test]
     fn login_request_is_parsed_from_stdout() {
         let env = Env::new();
-        let nile = env.nile(&format!("echo '{LOGIN_JSON}'"));
+        let nile = env.nile(Reply::new().out(LOGIN_JSON));
         let req = start_login(&nile).unwrap().unwrap();
         assert_eq!(req.client_id, "cid");
         assert_eq!(req.code_verifier, "ver");
@@ -258,26 +254,24 @@ mod tests {
         assert_eq!(env.calls(), ["auth --login --non-interactive"]);
     }
 
-    #[cfg(unix)]
     #[test]
     fn already_signed_in_gives_none() {
         let env = Env::new();
         env.write_nile_file("current_user.json", USER);
-        let nile = env.nile("echo 'ERROR [AUTH]:\t You are already logged in' >&2");
+        let nile = env.nile(Reply::new().err("ERROR [AUTH]:\t You are already logged in"));
         assert_eq!(start_login(&nile).unwrap(), None);
         // Nothing printed at all, but a user is stored.
-        let nile = env.nile("true");
+        let nile = env.nile(Reply::new());
         assert_eq!(start_login(&nile).unwrap(), None);
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_failed_start_is_an_error() {
         let env = Env::new();
-        let nile = env.nile("echo 'ERROR [AUTH]:\t boom' >&2; exit 1");
+        let nile = env.nile(Reply::new().err("ERROR [AUTH]:\t boom").exit(1));
         let err = start_login(&nile).unwrap_err().to_string();
         assert!(err.contains("boom"), "{err}");
-        let nile = env.nile("true");
+        let nile = env.nile(Reply::new());
         assert!(start_login(&nile).is_err());
     }
 
@@ -296,15 +290,10 @@ mod tests {
         assert_eq!(extract_code(""), None);
     }
 
-    #[cfg(unix)]
     #[test]
     fn register_runs_nile_and_mirrors_the_account() {
         let env = Env::new();
-        let body = format!(
-            "mkdir -p \"$NILE_CONFIG_PATH/nile\"; echo '{USER}' > \"$NILE_CONFIG_PATH/nile/current_user.json\"; \
-             echo 'INFO [AUTH]:\t Succesfully registered a device' >&2"
-        );
-        let nile = env.nile(&body);
+        let nile = env.nile(Reply::new().write_file(USER_FILE, USER).err("INFO [AUTH]:\t Succesfully registered a device"));
         assert!(!is_logged_in(&env.paths));
         let account = register(&env.paths, &nile, &request(), &format!("https://amazon/redirect?{CODE_PARAM}=CODE1&b=c")).unwrap();
         assert_eq!(account, Account { user_id: "amzn1.account.AAA".into(), name: "Ana".into() });
@@ -316,21 +305,17 @@ mod tests {
         assert!(env.paths.nile_library().exists());
     }
 
-    #[cfg(unix)]
     #[test]
     fn register_accepts_the_correct_spelling_too() {
         let env = Env::new();
-        let body = format!(
-            "mkdir -p \"$NILE_CONFIG_PATH/nile\"; echo '{USER}' > \"$NILE_CONFIG_PATH/nile/current_user.json\"; echo 'Successfully registered a device' >&2"
-        );
-        assert!(register(&env.paths, &env.nile(&body), &request(), "CODE1").is_ok());
+        let nile = env.nile(Reply::new().write_file(USER_FILE, USER).err("Successfully registered a device"));
+        assert!(register(&env.paths, &nile, &request(), "CODE1").is_ok());
     }
 
-    #[cfg(unix)]
     #[test]
     fn register_failures_are_reported() {
         let env = Env::new();
-        let nile = env.nile("echo 'ERROR [AUTH]:\t Failed to register device' >&2; exit 1");
+        let nile = env.nile(Reply::new().err("ERROR [AUTH]:\t Failed to register device").exit(1));
         let err = register(&env.paths, &nile, &request(), "CODE1").unwrap_err().to_string();
         assert!(err.contains("Failed to register device"), "{err}");
         assert!(!is_logged_in(&env.paths));
@@ -341,7 +326,6 @@ mod tests {
         assert_eq!(env.calls().len(), calls);
     }
 
-    #[cfg(unix)]
     #[test]
     fn logout_forgets_the_account_and_the_cached_lists() {
         let env = Env::new();
@@ -357,8 +341,8 @@ mod tests {
         CacheStore::new(&env.paths, "nile_install_info", None).set("g", json!({"download_size": 1})).unwrap();
         json_store::write(&env.paths.nile_store("updates"), &json!({"updates": ["g"]})).unwrap();
 
-        let nile =
-            env.nile("rm -f \"$NILE_CONFIG_PATH/nile/current_user.json\"; echo 'INFO [AUTH]:\t Successfully deregistered a device' >&2");
+        // nile forgets the user (an empty user is no user).
+        let nile = env.nile(Reply::new().write_file(USER_FILE, "{}").err("INFO [AUTH]:\t Successfully deregistered a device"));
         logout(&env.paths, &nile).unwrap();
         assert_eq!(env.calls(), ["auth --logout"]);
         assert!(!is_logged_in(&env.paths));
@@ -373,13 +357,31 @@ mod tests {
         assert_eq!(crate::installed::load(&env.paths).len(), 1);
     }
 
-    #[cfg(unix)]
     #[test]
     fn logout_that_nile_could_not_do_is_an_error() {
         let env = Env::new();
         env.write_nile_file("current_user.json", USER);
-        let nile = env.nile("echo 'ERROR [AUTH]:\t offline' >&2; exit 1");
+        let nile = env.nile(Reply::new().err("ERROR [AUTH]:\t offline").exit(1));
         let err = logout(&env.paths, &nile).unwrap_err().to_string();
         assert!(err.contains("offline"), "{err}");
+    }
+
+    /// The real nile (downloaded into a temp data folder), without an
+    /// account: it makes a sign-in page and knows nobody is signed in.
+    /// `cargo test -p heronite-amazon real_nile -- --ignored`.
+    #[test]
+    #[ignore = "downloads nile (about 12 MB)"]
+    fn real_nile_makes_a_sign_in_page_and_knows_nobody_is_signed_in() {
+        let env = Env::new();
+        let nile = Nile::locate_or_install(&env.paths).unwrap();
+        let request = start_login(&nile).unwrap().expect("a sign-in page");
+        assert!(request.url.starts_with("https://amazon.com/ap/signin?"), "{}", request.url);
+        assert!(!request.client_id.is_empty() && !request.code_verifier.is_empty() && !request.serial.is_empty());
+        assert!(!is_logged_in(&env.paths));
+        let err = library::refresh(&env.paths, &nile).unwrap_err();
+        assert!(heronite_epic::session::is_expired(&err), "{err:#}");
+        // nile fetches the Amazon Games SDK the games read into its folder.
+        let sdk = env.nile_dir().join("SDK").join("Amazon Games Services");
+        assert!(sdk.join("Legacy").is_dir(), "{}", sdk.display());
     }
 }

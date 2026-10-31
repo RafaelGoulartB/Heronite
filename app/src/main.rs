@@ -24,6 +24,9 @@ use std::time::Instant;
 use gpui_kit::*;
 
 fn main() {
+    // First: on Windows this program may be started again only to send a
+    // helper (legendary, gogdl, nile) the Ctrl+C that asks it to stop.
+    heronite_platform::process::init_stop_helper();
     let started = Instant::now();
     tune_allocator();
     // A restore asked for before a restart: copied before anything reads the

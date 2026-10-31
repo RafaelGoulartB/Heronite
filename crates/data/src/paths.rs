@@ -215,6 +215,11 @@ impl DataPaths {
     pub fn gog_redist_dir(&self) -> PathBuf {
         self.j("tools/redist/gog")
     }
+    /// The installers of the stores some Epic games need (the EA app,
+    /// Ubisoft Connect), downloaded once.
+    pub fn legendary_redist_dir(&self) -> PathBuf {
+        self.tools_dir().join("redist").join("legendary")
+    }
     /// `NILE_CONFIG_PATH`: nile keeps its files in `nile/` under it.
     pub fn nile_config_dir(&self) -> PathBuf {
         self.j("nile_config")
@@ -261,9 +266,10 @@ impl DataPaths {
     pub fn sandbox_home_of_game(&self, app_name: &str) -> PathBuf {
         self.j("sandbox").join(format!("game-{}-{:08x}", file_name_safe(app_name), fnv32(app_name)))
     }
-    /// The legendary binary this app runs (copied in by `migrate`).
+    /// The legendary binary this app runs (copied in by `migrate`, or
+    /// downloaded): `tools/bin/legendary`, `legendary.exe` on Windows.
     pub fn legendary_bin(&self) -> PathBuf {
-        self.j("tools/bin/legendary")
+        self.tools_dir().join("bin").join(format!("legendary{}", std::env::consts::EXE_SUFFIX))
     }
     pub fn known_fixes(&self) -> PathBuf {
         self.j("known_fixes.json")

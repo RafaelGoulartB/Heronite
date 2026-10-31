@@ -16,6 +16,9 @@ use heronite_launch::{PlanContext, SystemProbe};
 
 pub use heronite_epic::cmd::Cancel;
 
+/// Time nile gets on Windows between the Ctrl+C and the kill.
+const WINDOWS_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// The nile binary and the config folder it works on.
 #[derive(Debug, Clone)]
 pub struct Nile {
@@ -76,13 +79,12 @@ impl Nile {
         let mut on_line = on_line;
         // SIGTERM only nile; the download workers it left behind are killed
         // with the process group afterwards.
-        let out = Run::new()
-            .cancel(cancel)
-            .term_main_only()
-            .line_capture()
-            .on_line(&mut on_line)
-            .run(&mut cmd)
-            .with_context(|| format!("starting {}", self.bin.display()))?;
+        let run = Run::new().cancel(cancel).term_main_only();
+        // On Windows nile's main thread stops at the Ctrl+C but its download
+        // threads go on until the kill, and the next run checks the files
+        // anyway: a pause need not wait for them.
+        let run = if cfg!(windows) { run.grace(WINDOWS_GRACE) } else { run };
+        let out = run.line_capture().on_line(&mut on_line).run(&mut cmd).with_context(|| format!("starting {}", self.bin.display()))?;
         Ok(Output { stdout: out.stdout_text(), stderr: out.stderr_text(), code: out.code, aborted: out.aborted })
     }
 }
@@ -103,6 +105,8 @@ pub(crate) mod testing {
     use super::*;
     use std::path::Path;
 
+    pub use heronite_data::testing::{FakeTool, Reply};
+
     /// A temp data folder with a fake nile that can be pointed at it.
     pub struct Env {
         pub dir: tempfile::TempDir,
@@ -120,35 +124,43 @@ pub(crate) mod testing {
             self.dir.path()
         }
 
-        /// A fake `nile`: a shell script that records its arguments and the
-        /// config path, then runs `body`. Unix only: it needs `sh`.
-        #[cfg(unix)]
-        pub fn nile(&self, body: &str) -> Nile {
-            let bin = self.root().join("bin").join("nile");
-            std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
-            let script = format!(
-                "#!/bin/sh\necho \"$@\" >> \"{log}\"\necho \"CFG=$NILE_CONFIG_PATH\" >> \"{log}\"\n{body}\n",
-                log = self.root().join("calls.log").display()
-            );
-            std::fs::write(&bin, script).unwrap();
-            heronite_platform::fs::make_executable(&bin).unwrap();
-            Nile::with_bin(bin, &self.paths)
+        /// A fake `nile` in `<root>/bin` that records the config path it
+        /// gets (`heronite_data::testing::FakeTool`, the same on every
+        /// system): tell it what to answer with `.on(...)` /
+        /// `.otherwise(...)`, then run it through [`Env::nile_of`].
+        /// `${NILE_CONFIG_PATH}` in what it writes is the folder it got.
+        pub fn fake_tool(&self) -> FakeTool {
+            FakeTool::new(&self.root().join("bin"), "nile").record_env("NILE_CONFIG_PATH")
+        }
+
+        /// A [`Nile`] running `tool` on this data folder.
+        pub fn nile_of(&self, tool: &FakeTool) -> Nile {
+            Nile::with_bin(tool.bin(), &self.paths)
+        }
+
+        /// A fake `nile` (the [`Env::fake_tool`]) answering every call with
+        /// `reply`. A new one replaces the last; the calls of all of them are
+        /// in [`Env::calls`].
+        pub fn nile(&self, reply: Reply) -> Nile {
+            let tool = self.fake_tool().otherwise(reply);
+            self.nile_of(&tool)
         }
 
         /// Arguments of every call to the fake nile.
-        #[cfg(unix)]
         pub fn calls(&self) -> Vec<String> {
-            std::fs::read_to_string(self.root().join("calls.log"))
-                .unwrap_or_default()
-                .lines()
-                .filter(|l| !l.starts_with("CFG="))
-                .map(str::to_string)
-                .collect()
+            let log = self.root().join("bin").join("nile.calls");
+            std::fs::read_to_string(log).unwrap_or_default().lines().filter(|l| !l.starts_with("env ")).map(str::to_string).collect()
         }
 
+        /// A fake `nile`: a shell script that runs `body`. Unix only: it
+        /// needs `sh` (for a tool that leaves processes behind).
         #[cfg(unix)]
-        pub fn call_log(&self) -> String {
-            std::fs::read_to_string(self.root().join("calls.log")).unwrap_or_default()
+        pub fn nile_sh(&self, body: &str) -> Nile {
+            let bin = self.root().join("sh").join("nile");
+            std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+            std::fs::write(&bin, format!("#!/bin/sh\n{body}\n")).unwrap();
+            heronite_platform::fs::make_executable(&bin).unwrap();
+            Nile::with_bin(bin, &self.paths)
         }
 
         /// `<config>/nile`.
@@ -169,40 +181,51 @@ pub(crate) mod testing {
 mod tests {
     use super::testing::*;
     use super::*;
-    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
-    #[cfg(unix)]
     #[test]
     fn captures_both_streams_and_passes_the_config_path() {
         let env = Env::new();
-        let nile = env.nile("echo out; echo err >&2; exit 3");
+        let tool = env.fake_tool().otherwise(Reply::new().out("out").err("err").exit(3));
+        let nile = env.nile_of(&tool);
         let out = nile.run(&["library", "sync"]).unwrap();
         assert_eq!(out.code, Some(3));
         assert!(!out.success());
         assert_eq!(out.stdout.trim(), "out");
         assert_eq!(out.stderr.trim(), "err");
-        assert_eq!(env.calls(), ["library sync"]);
-        assert!(env.call_log().contains(&format!("CFG={}", env.paths.nile_config_dir().display())));
+        assert_eq!(tool.calls(), ["library sync"]);
+        assert_eq!(tool.env_seen("NILE_CONFIG_PATH"), [env.paths.nile_config_dir().display().to_string()]);
         assert_eq!(nile.data_dir(), env.paths.nile_config_dir().join("nile"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn streams_lines_split_on_carriage_returns() {
         let env = Env::new();
-        let nile = env.nile("printf 'a\\rb\\nc' >&2");
+        let tool = env.fake_tool().otherwise(Reply::new().err_raw("a\rb\nc"));
+        let nile = env.nile_of(&tool);
         let mut lines = Vec::new();
         let out = nile.run_streaming(&["x"], &Cancel::new(), |l| lines.push(l.to_string())).unwrap();
         assert!(out.success());
         assert_eq!(lines, ["a", "b", "c"]);
     }
 
+    #[test]
+    fn cancel_stops_a_running_tool() {
+        let env = Env::new();
+        let tool = env.fake_tool().on(&["install"], Reply::new().out("started").sleep(Duration::from_secs(60)));
+        let cancel = Cancel::new();
+        let c2 = cancel.clone();
+        let started = Instant::now();
+        let out = env.nile_of(&tool).run_streaming(&["install"], &cancel, |_| c2.request()).unwrap();
+        assert!(out.aborted);
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+    }
+
     #[cfg(unix)]
     #[test]
     fn cancel_stops_the_process_group() {
         let env = Env::new();
-        let nile = env.nile("echo started; sleep 60 & wait");
+        let nile = env.nile_sh("echo started; sleep 60 & wait");
         let cancel = Cancel::new();
         let c2 = cancel.clone();
         let t = std::thread::spawn(move || {

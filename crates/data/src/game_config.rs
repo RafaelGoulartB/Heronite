@@ -20,14 +20,31 @@ use crate::paths::DataPaths;
 
 pub type Settings = Map<String, Value>;
 
-/// Default install folder of a new setup (`~/Games/Heronite`).
+/// Default install folder of a new setup (`~/Games/Heronite`). On Windows
+/// `<home>\Games\Heronite`, and the user's folder when `home` is empty
+/// (Windows sets no `HOME` of its own).
 pub fn default_install_dir(home: &str) -> String {
+    #[cfg(windows)]
+    {
+        let home = Some(home.trim_end_matches(['/', '\\']))
+            .filter(|h| !h.is_empty())
+            .map(std::path::PathBuf::from)
+            .or_else(heronite_platform::dirs::home)
+            .unwrap_or_default();
+        home.join("Games").join("Heronite").to_string_lossy().into_owned()
+    }
+    #[cfg(not(windows))]
+    unix_install_dir(home)
+}
+
+fn unix_install_dir(home: &str) -> String {
     format!("{}/Games/Heronite", home.trim_end_matches('/'))
 }
 
 /// `defaultWinePrefixDir` of a new setup (`~/Games/Heronite/Prefixes`).
+/// Wine prefixes are Linux's: the folder keeps Linux's form everywhere.
 pub fn default_wine_prefix_dir(home: &str) -> String {
-    format!("{}/Prefixes", default_install_dir(home))
+    format!("{}/Prefixes", unix_install_dir(home))
 }
 
 /// `sharedWinePrefix`.
@@ -409,6 +426,14 @@ mod tests {
 
     const GLOBAL: &str = "{\n  \"defaultSettings\": {\n    \"useGameMode\": true,\n    \"winePrefix\": \"~/pfx\",\n    \"wineVersion\": {\n      \"bin\": \"/w/wine\",\n      \"name\": \"W\",\n      \"type\": \"wine\"\n    },\n    \"zzCustom\": [\n      1,\n      2\n    ]\n  },\n  \"version\": \"v0\"\n}";
 
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_install_folder_is_in_the_users_folder() {
+        assert_eq!(default_install_dir(r"C:\Users\ana\"), r"C:\Users\ana\Games\Heronite");
+        let home = heronite_platform::dirs::home().unwrap();
+        assert_eq!(default_install_dir(""), home.join("Games").join("Heronite").to_string_lossy());
+    }
+
     #[test]
     fn global_load_merges_factory_defaults_and_expands_tilde() {
         let (_d, paths) = setup();
@@ -417,6 +442,8 @@ mod tests {
         assert_eq!(g["useGameMode"], true);
         assert_eq!(g["winePrefix"], "/home/u/pfx");
         assert_eq!(g["enableFsync"], true); // factory default
+        assert_eq!(g["defaultInstallPath"], default_install_dir("/home/u"));
+        #[cfg(not(windows))]
         assert_eq!(g["defaultInstallPath"], "/home/u/Games/Heronite");
         assert_eq!(g["wineVersion"]["name"], "W");
         // Missing file: factory defaults only.

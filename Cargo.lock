@@ -3572,6 +3572,7 @@ dependencies = [
  "heronite-platform",
  "log",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
@@ -3676,9 +3677,12 @@ dependencies = [
 name = "heronite-epic-login"
 version = "0.18.0"
 dependencies = [
+ "embed-resource",
  "gtk",
+ "heronite-platform",
  "serde_json",
  "url",
+ "windows-sys 0.61.2",
  "wry",
 ]
 
@@ -3697,6 +3701,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "ureq",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

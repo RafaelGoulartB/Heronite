@@ -2,6 +2,8 @@
 .SYNOPSIS
   Builds Heronite's Windows release files in dist\:
     Heronite-Portable-x86_64.zip  one Heronite\ folder: heronite.exe (the cargo build's heronite-rs.exe),
+                                  heronite-epic-login.exe (the stores' login
+                                  window, found next to the program),
                                   portable.txt (keeps the data in that folder)
                                   and LICENSE
     Heronite-Setup-x86_64.exe     the per-user installer (Inno Setup 6,
@@ -10,8 +12,9 @@
   scripts/sign-release.sh, with the Linux files.
 
   Authenticode: when a certificate is configured (WINDOWS_SIGN_COMMAND or
-  WINDOWS_SIGN_PFX, see sign.ps1), heronite-rs.exe, the setup and its
-  uninstaller are signed; otherwise they are not, and SmartScreen warns.
+  WINDOWS_SIGN_PFX, see sign.ps1), heronite-rs.exe, heronite-epic-login.exe,
+  the setup and its uninstaller are signed; otherwise they are not, and
+  SmartScreen warns.
 
   Needs: Rust (MSVC), Inno Setup 6 (ISCC.exe: -Iscc, the ISCC variable,
   PATH, or its usual install folders). Windows PowerShell 5.1 or pwsh.
@@ -19,7 +22,8 @@
 .PARAMETER Version
   The release version (X.Y.Z). Default: the workspace version in Cargo.toml.
 .PARAMETER NoBuild
-  Package the heronite-rs.exe already built in target\release.
+  Package the heronite-rs.exe and heronite-epic-login.exe already built in
+  target\release.
 .PARAMETER Iscc
   Path to ISCC.exe.
 
@@ -89,7 +93,7 @@ Write-Host "ISCC: $IsccExe"
 Push-Location $Root
 try {
     if (-not $NoBuild) {
-        & cargo build --release -p heronite --locked
+        & cargo build --release -p heronite -p heronite-epic-login --locked
         if ($LASTEXITCODE -ne 0) { Fail "cargo build failed ($LASTEXITCODE)" }
     }
     $meta = & cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json
@@ -99,13 +103,18 @@ try {
 }
 $BinDir = Join-Path $meta.target_directory 'release'
 $Exe = Join-Path $BinDir 'heronite-rs.exe'
-if (-not (Test-Path -LiteralPath $Exe)) { Fail "$Exe not found (build it, or drop -NoBuild)" }
+$LoginExe = Join-Path $BinDir 'heronite-epic-login.exe'
+foreach ($f in @($Exe, $LoginExe)) {
+    if (-not (Test-Path -LiteralPath $f)) { Fail "$f not found (build it, or drop -NoBuild)" }
+}
 
 $Signing = Test-Signing
 $SignScript = Join-Path $PSScriptRoot 'sign.ps1'
 if ($Signing) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SignScript $Exe
-    if ($LASTEXITCODE -ne 0) { Fail 'signing heronite-rs.exe failed' }
+    foreach ($f in @($Exe, $LoginExe)) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SignScript $f
+        if ($LASTEXITCODE -ne 0) { Fail "signing $(Split-Path -Leaf $f) failed" }
+    }
 } else {
     Write-Host 'No code signing certificate configured: the files are not Authenticode-signed.'
 }
@@ -125,9 +134,10 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $ZipPath = Join-Path $Dist $ZipName
 $entries = [ordered]@{
-    'Heronite/heronite.exe'     = $Exe
-    'Heronite/portable.txt'    = (Join-Path $Packaging 'portable.txt')
-    'Heronite/LICENSE'         = (Join-Path $Root 'LICENSE')
+    'Heronite/heronite.exe'            = $Exe
+    'Heronite/heronite-epic-login.exe' = $LoginExe
+    'Heronite/portable.txt'            = (Join-Path $Packaging 'portable.txt')
+    'Heronite/LICENSE'                 = (Join-Path $Root 'LICENSE')
 }
 $zip = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
 try {

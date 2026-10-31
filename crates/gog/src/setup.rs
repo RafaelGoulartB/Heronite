@@ -147,7 +147,7 @@ impl Ctx<'_> {
     }
 
     fn step(&self, parts: Vec<String>) -> SetupStep {
-        SetupStep { parts, cwd: Some(self.install_path.to_string()) }
+        SetupStep { parts, cwd: Some(self.install_path.to_string()), ..Default::default() }
     }
 
     fn dependency_step(&self, id: &str) -> Option<SetupStep> {
@@ -343,12 +343,9 @@ fn split_args(text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
     use crate::cmd::testing::*;
-    #[cfg(unix)]
     use serde_json::json;
 
-    #[cfg(unix)]
     const REDIST: &str = r#"{"depots":[
         {"dependencyId":"ISI","executable":{"path":"__redist/ISI/scriptinterpreter.exe","arguments":""}},
         {"dependencyId":"MSVC2010","executable":{"path":"__redist\\MSVC2010\\vcredist_x86.exe","arguments":"/q /norestart"}},
@@ -361,36 +358,41 @@ mod tests {
         std::fs::write(path, "x").unwrap();
     }
 
-    #[cfg(unix)]
+    /// `rel` (`/`-separated) below `base`, with this system's separators.
+    fn under(base: &Path, rel: &str) -> PathBuf {
+        let mut p = base.to_path_buf();
+        p.extend(rel.split('/'));
+        p
+    }
+
     fn write_manifest(g: &Gogdl, app: &str, manifest: Value) {
         std::fs::create_dir_all(g.manifest_file(app).parent().unwrap()).unwrap();
         std::fs::write(g.manifest_file(app), manifest.to_string()).unwrap();
     }
 
-    #[cfg(unix)]
     struct World {
         _dir: tempfile::TempDir,
         paths: DataPaths,
+        tool: FakeTool,
         gogdl: Gogdl,
         game: String,
     }
 
     /// Redist files, a redist manifest and a game folder.
-    #[cfg(unix)]
     fn world() -> World {
         let (dir, paths) = setup();
         let redist = paths.gog_redist_dir();
         for f in ["__redist/ISI/scriptinterpreter.exe", "__redist/MSVC2010/vcredist_x86.exe", "__redist/PhysXLegacy/PhysX.msi"] {
-            touch(&redist.join(f));
+            touch(&under(&redist, f));
         }
         std::fs::write(redist.join(REDIST_MANIFEST), REDIST).unwrap();
-        let game = dir.path().join("Games/The Game");
+        let game = dir.path().join("Games").join("The Game");
         std::fs::create_dir_all(&game).unwrap();
-        let gogdl = fake(dir.path(), &paths, "exit 9");
-        World { _dir: dir, paths, gogdl, game: game.display().to_string() }
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().exit(9));
+        let gogdl = gogdl(&tool, &paths);
+        World { _dir: dir, paths, tool, gogdl, game: game.display().to_string() }
     }
 
-    #[cfg(unix)]
     fn flags(w: &World, pid: &str, build: &str, lang: &str, code: Option<&str>, support: bool) -> Vec<String> {
         let mut v = vec![
             "/VERYSILENT".to_string(),
@@ -412,7 +414,6 @@ mod tests {
         v
     }
 
-    #[cfg(unix)]
     fn save_game(w: &World) {
         let mut entry = installed::Installed::new("42");
         entry.version = "2.0".into();
@@ -420,7 +421,6 @@ mod tests {
         installed::upsert(&w.paths, &entry).unwrap();
     }
 
-    #[cfg(unix)]
     #[test]
     fn v2_with_the_script_interpreter() {
         let w = world();
@@ -433,13 +433,13 @@ mod tests {
         );
         let steps = first_launch_steps(&w.paths, &w.gogdl, "42", &w.game).unwrap();
         let redist = w.paths.gog_redist_dir();
-        let isi = redist.join("__redist/ISI/scriptinterpreter.exe").display().to_string();
+        let isi = under(&redist, "__redist/ISI/scriptinterpreter.exe").display().to_string();
         let mut expected = vec![
-            vec![redist.join("__redist/MSVC2010/vcredist_x86.exe").display().to_string(), "/q".into(), "/norestart".into()],
+            vec![under(&redist, "__redist/MSVC2010/vcredist_x86.exe").display().to_string(), "/q".into(), "/norestart".into()],
             vec![
                 "msiexec".into(),
                 "/i".into(),
-                redist.join("__redist/PhysXLegacy/PhysX.msi").display().to_string(),
+                under(&redist, "__redist/PhysXLegacy/PhysX.msi").display().to_string(),
                 "REBOOT=ReallySuppress".into(),
                 "A B".into(),
                 "/qb".into(),
@@ -452,16 +452,17 @@ mod tests {
         }
         assert_eq!(steps.iter().map(|s| s.parts.clone()).collect::<Vec<_>>(), expected);
         assert!(steps.iter().all(|s| s.cwd.as_deref() == Some(w.game.as_str())));
+        // Windows asks for administrator rights when an installer needs them.
+        assert!(steps.iter().all(|s| !s.elevate));
         // Everything was in place, so gogdl was not asked for anything.
-        assert!(calls(w.gogdl.bin.parent().unwrap()).is_empty());
+        assert!(calls_of(&w.tool).is_empty());
     }
 
-    #[cfg(unix)]
     #[test]
     fn v2_with_temp_executables_runs_the_game_scripts_lowercase() {
         let w = world();
         save_game(&w);
-        touch(&w.gogdl.support_dir("42").join("42/Setup.EXE"));
+        touch(&under(&w.gogdl.support_dir("42"), "42/Setup.EXE"));
         write_manifest(
             &w.gogdl,
             "42",
@@ -471,19 +472,20 @@ mod tests {
         );
         let steps = first_launch_steps(&w.paths, &w.gogdl, "42", &w.game).unwrap();
         assert_eq!(steps.len(), 1, "{steps:?}");
-        let mut expected = vec![w.gogdl.support_dir("42").join("42/Setup.EXE").display().to_string()];
+        // Windows' folders do not mind the case: the file is found as GOG names it.
+        let file = if cfg!(windows) { "42/setup.exe" } else { "42/Setup.EXE" };
+        let mut expected = vec![under(&w.gogdl.support_dir("42"), file).display().to_string()];
         expected.extend(flags(&w, "42", "900", "english", Some("en-US"), false));
         assert_eq!(steps[0].parts, expected);
     }
 
-    #[cfg(unix)]
     #[test]
     fn v1_runs_the_scripts_for_the_install_language() {
         let w = world();
         save_game(&w);
-        touch(&w.gogdl.support_dir("42").join("42/neutral.exe"));
-        touch(&w.gogdl.support_dir("42").join("42/english.exe"));
-        touch(&w.gogdl.support_dir("42").join("42/german.exe"));
+        for f in ["neutral.exe", "english.exe", "german.exe"] {
+            touch(&w.gogdl.support_dir("42").join("42").join(f));
+        }
         write_manifest(
             &w.gogdl,
             "42",
@@ -499,7 +501,7 @@ mod tests {
         let steps = first_launch_steps(&w.paths, &w.gogdl, "42", &w.game).unwrap();
         let redist = w.paths.gog_redist_dir();
         assert_eq!(steps.len(), 3, "{steps:?}");
-        assert_eq!(steps[0].parts[0], redist.join("__redist/MSVC2010/vcredist_x86.exe").display().to_string());
+        assert_eq!(steps[0].parts[0], under(&redist, "__redist/MSVC2010/vcredist_x86.exe").display().to_string());
         let support = w.gogdl.support_dir("42");
         for (step, file) in steps[1..].iter().zip(["neutral.exe", "english.exe"]) {
             let mut expected = vec![support.join("42").join(file).display().to_string()];
@@ -508,63 +510,60 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn dependencies_in_the_game_folder_are_resolved_there() {
         let w = world();
-        touch(&Path::new(&w.game).join("Redist/Helper.exe"));
+        touch(&under(Path::new(&w.game), "Redist/Helper.exe"));
         write_manifest(&w.gogdl, "42", json!({"version": 2, "dependencies": ["INGAME"], "scriptInterpreter": true, "buildId": "1"}));
         let steps = first_launch_steps(&w.paths, &w.gogdl, "42", &w.game).unwrap();
-        assert_eq!(steps[0].parts, [format!("{}/Redist/Helper.exe", w.game), "/s".to_string()]);
+        let file = if cfg!(windows) { "redist/helper.exe" } else { "Redist/Helper.exe" };
+        assert_eq!(steps[0].parts, [under(Path::new(&w.game), file).display().to_string(), "/s".to_string()]);
     }
 
-    #[cfg(unix)]
     #[test]
     fn games_without_a_manifest_need_nothing() {
         let w = world();
         assert!(first_launch_steps(&w.paths, &w.gogdl, "42", &w.game).unwrap().is_empty());
     }
 
-    #[cfg(unix)]
     #[test]
     fn missing_redistributables_are_downloaded_first() {
         let (dir, paths) = setup();
         let redist = paths.gog_redist_dir();
-        let body = format!(
-            "mkdir -p \"{r}/__redist/ISI\" \"{r}/__redist/MSVC2010\"; touch \"{r}/__redist/ISI/scriptinterpreter.exe\" \"{r}/__redist/MSVC2010/vcredist_x86.exe\"; cp \"{src}\" \"{r}/{m}\"",
-            r = redist.display(),
-            src = dir.path().join("redist.json").display(),
-            m = REDIST_MANIFEST
-        );
-        std::fs::write(dir.path().join("redist.json"), REDIST).unwrap();
-        let g = fake(dir.path(), &paths, &body);
+        let reply = Reply::new()
+            .write_file(under(&redist, "__redist/ISI/scriptinterpreter.exe"), "x")
+            .write_file(under(&redist, "__redist/MSVC2010/vcredist_x86.exe"), "x")
+            .write_file(redist.join(REDIST_MANIFEST), REDIST);
+        let tool = fake_tool(dir.path()).on(&["redist"], reply);
+        let g = gogdl(&tool, &paths);
         write_manifest(&g, "42", json!({"version": 2, "dependencies": ["MSVC2010"], "scriptInterpreter": true, "buildId": "1"}));
         let steps = first_launch_steps(&paths, &g, "42", "/games/x").unwrap();
-        assert_eq!(calls(dir.path()), [format!("redist --ids ISI,MSVC2010 --path {}", redist.display())]);
+        assert_eq!(calls_of(&tool), [format!("redist --ids ISI,MSVC2010 --path {}", redist.display())]);
         assert_eq!(steps.len(), 2);
         assert!(steps[0].parts[0].ends_with("vcredist_x86.exe"));
         assert!(steps[1].parts[0].ends_with("scriptinterpreter.exe"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_missing_redistributable_that_cannot_be_fetched_is_an_error() {
         let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "echo '[REDIST] ERROR: no network' >&2; exit 1");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[REDIST] ERROR: no network").exit(1));
+        let g = gogdl(&tool, &paths);
         write_manifest(&g, "42", json!({"version": 2, "dependencies": [], "scriptInterpreter": true}));
         let err = first_launch_steps(&paths, &g, "42", "/games/x").unwrap_err().to_string();
         assert!(err.contains("no network"), "{err}");
     }
 
-    #[cfg(unix)]
     #[test]
     fn already_installed_ids_are_kept_when_more_are_added() {
         let w = world();
         write_manifest(&w.gogdl, "42", json!({"version": 2, "dependencies": ["VC2013"], "scriptInterpreter": true, "buildId": "1"}));
         // VC2013 is not installed yet: gogdl is asked for it plus what is there.
         let _ = first_launch_steps(&w.paths, &w.gogdl, "42", &w.game);
-        let dir = w.gogdl.bin.parent().unwrap();
-        assert_eq!(calls(dir), [format!("redist --ids ISI,VC2013,MSVC2010,PHYSXLEGACY --path {}", w.paths.gog_redist_dir().display())]);
+        assert_eq!(
+            calls_of(&w.tool),
+            [format!("redist --ids ISI,VC2013,MSVC2010,PHYSXLEGACY --path {}", w.paths.gog_redist_dir().display())]
+        );
     }
 
     #[test]

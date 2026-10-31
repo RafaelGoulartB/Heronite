@@ -6,6 +6,7 @@ use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalGameRom};
 use heronite_data::DataPaths;
 use serde_json::{json, Value};
 
+#[cfg(unix)]
 const UMU: &str = "/hr/tools/runtimes/umu/umu_run.py";
 
 fn ctx(global: Value) -> PlanContext {
@@ -32,6 +33,7 @@ fn meta(kind: &str) -> LocalGameMeta {
     LocalGameMeta { app_name: "g".into(), runner: "sideload".into(), launch_kind: kind.into(), title: "Game".into(), ..Default::default() }
 }
 
+#[cfg(unix)]
 fn proton_probe() -> FakeProbe {
     FakeProbe::new("/home/u").with_path("/p/GE/proton").with_path(UMU).with_path("/games/win/game.exe").with_path("/pfx")
 }
@@ -624,6 +626,8 @@ fn store_game(runner: &str, app: &str, path: &str, platform: &str) -> GameInfo {
     }
 }
 
+// Wine and Linux builds: Linux (GOG on Windows is in `crate::gog`).
+#[cfg(unix)]
 #[test]
 fn gog_windows_games_run_their_primary_task_in_wine() {
     let info = br#"{"playTasks": [{"category": "game", "isPrimary": true, "type": "FileTask", "path": "bin\\game.exe", "arguments": "-x", "workingDir": "bin"}]}"#;
@@ -653,6 +657,8 @@ fn gog_windows_games_run_their_primary_task_in_wine() {
     assert!(plan.unavailable_reason().unwrap().contains("goggame-42.info"), "{plan:?}");
 }
 
+// Wine and Linux builds: Linux (GOG on Windows is in `crate::gog`).
+#[cfg(unix)]
 #[test]
 fn gog_linux_builds_start_their_script() {
     let probe = FakeProbe::new("/home/u").with_path("/games/l").with_file("/games/l/start.sh", b"#!/bin/sh\n");
@@ -663,6 +669,27 @@ fn gog_linux_builds_start_their_script() {
     assert_eq!(p.command.env["HEROIC_APP_RUNNER"], "gog");
 }
 
+#[cfg(windows)]
+#[test]
+fn amazon_games_run_as_they_are_on_windows() {
+    let fuel = br#"{"Main": {"Command": "Game.exe", "Args": ["-a"]}, "PostInstall": [{"Command": "vc.exe", "Args": ["/q"]}]}"#;
+    let probe = FakeProbe::new(r"C:\Users\u")
+        .with_path(r"D:\amz")
+        .with_path(r"D:\amz\Game.exe")
+        .with_path(r"D:\amz\vc.exe")
+        .with_file(r"D:\amz\fuel.json", fuel);
+    let game = store_game("nile", "amzn1.p", r"D:\amz", "Windows");
+    // Settings brought from Linux (Proton) are left aside.
+    let s = settings(json!({"wineVersion": {"bin": "/p/GE/proton", "type": "proton"}, "winePrefix": "/pfx"}));
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, None, &s, &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!((p.command.program.as_str(), p.command.args.as_slice()), (r"D:\amz\Game.exe", &["-a".to_string()][..]));
+    assert_eq!(p.command.cwd.as_deref(), Some(r"D:\amz"));
+    assert_eq!(p.prep.first_launch.expect("first launch setup").post_install[0].parts, [r"D:\amz\vc.exe", "/q"]);
+}
+
+// Through Wine: Linux (Amazon on Windows is in `crate::nile`).
+#[cfg(unix)]
 #[test]
 fn amazon_games_run_their_fuel_command_with_the_sdk_variables() {
     let fuel = br#"{"Main": {"Command": "Game.exe", "Args": ["-a"], "WorkingSubdirOverride": ""}, "PostInstall": [{"Command": "vc.exe", "Args": ["/q"]}]}"#;

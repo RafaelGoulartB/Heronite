@@ -85,7 +85,7 @@ pub(crate) fn clear(paths: &DataPaths) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::Env;
+    use crate::cmd::testing::{Env, Reply};
 
     #[test]
     fn output_is_parsed() {
@@ -98,11 +98,10 @@ mod tests {
         assert!(parse_ids("[not json").is_none());
     }
 
-    #[cfg(unix)]
     #[test]
     fn check_saves_the_answer() {
         let env = Env::new();
-        let nile = env.nile("echo '[\"amzn1.adg.product.AAA\",\"amzn1.adg.product.BBB\"]'; echo 'DEBUG [CLI]:\t x' >&2");
+        let nile = env.nile(Reply::new().out(r#"["amzn1.adg.product.AAA","amzn1.adg.product.BBB"]"#).err("DEBUG [CLI]:\t x"));
         assert!(cached_updates(&env.paths).is_empty());
         let ids = check(&env.paths, &nile).unwrap();
         assert_eq!(ids, ["amzn1.adg.product.AAA", "amzn1.adg.product.BBB"]);
@@ -115,21 +114,19 @@ mod tests {
         assert!(cached_updates(&env.paths).is_empty());
     }
 
-    #[cfg(unix)]
     #[test]
     fn empty_stdout_means_no_updates() {
         let env = Env::new();
-        let nile = env.nile("echo 'ERROR [CLI]:\t No games installed' >&2");
+        let nile = env.nile(Reply::new().err("ERROR [CLI]:\t No games installed"));
         assert_eq!(check(&env.paths, &nile).unwrap(), Vec::<String>::new());
         assert_eq!(json_store::read_value(&env.paths.nile_store("updates")).unwrap()["updates"], serde_json::json!([]));
     }
 
-    #[cfg(unix)]
     #[test]
     fn failures_are_reported_and_keep_the_saved_list() {
         let env = Env::new();
         save(&env.paths, &["x".to_string()]).unwrap();
-        let nile = env.nile("echo 'Traceback (most recent call last):' >&2; exit 1");
+        let nile = env.nile(Reply::new().err("Traceback (most recent call last):").exit(1));
         let err = check(&env.paths, &nile).unwrap_err().to_string();
         assert!(err.contains("Traceback"), "{err}");
         assert_eq!(cached_updates(&env.paths), ["x"]);

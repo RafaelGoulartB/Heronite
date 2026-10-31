@@ -1,12 +1,14 @@
 //! Caches that rebuild themselves: this app's resized and downloaded images, store info and
 //! install script downloads, winetricks' downloads, the GPU drivers' compiled
 //! shaders and Steam's shader caches of the installed games. Only what
-//! exists is listed.
+//! exists is listed. Without Wine (Windows) only this app's own caches are:
+//! the shaders of Windows' drivers are theirs to manage.
 
 use std::path::PathBuf;
 
 use heronite_data::maintenance;
 use heronite_i18n::tr;
+use heronite_platform::{supported, Feature};
 
 use crate::{CacheKind, Ctx, Group, Item, Kind, State};
 
@@ -15,17 +17,20 @@ pub(crate) fn items(ctx: &Ctx, steam_shaders: Vec<PathBuf>) -> Vec<Item> {
     let thumbs = ctx.app.thumbs_dir();
     let store_info: Vec<PathBuf> =
         maintenance::cache_targets(&ctx.data_paths, &ctx.app).into_iter().filter(|p| *p != thumbs && p.exists()).collect();
+    // Linux's: under the home's `.cache`, there with Wine.
+    let linux = supported(Feature::Wine);
     let gpu: Vec<PathBuf> = ["mesa_shader_cache", "mesa_shader_cache_db", "radv_builtin_shaders", "nvidia/GLCache", "nvidia/ComputeCache"]
         .iter()
         .map(|d| cache.join(d))
-        .filter(|p| p.is_dir())
+        .filter(|p| linux && p.is_dir())
         .collect();
+    let winetricks: Vec<PathBuf> = if linux { vec![cache.join("winetricks")] } else { Vec::new() };
     let all: [(CacheKind, String, Vec<PathBuf>); 7] = [
         (CacheKind::Images, tr!("Image previews").into(), vec![thumbs.clone()]),
         (CacheKind::Downloads, tr!("Downloaded artwork").into(), vec![ctx.data_paths.images_cache_dir()]),
         (CacheKind::StoreInfo, tr!("Store game info").into(), store_info),
         (CacheKind::InstallScripts, tr!("Install script downloads").into(), vec![ctx.app.cache.join("install-scripts")]),
-        (CacheKind::Winetricks, tr!("Winetricks downloads").into(), vec![cache.join("winetricks")]),
+        (CacheKind::Winetricks, tr!("Winetricks downloads").into(), winetricks),
         (CacheKind::GpuShaders, tr!("Graphics driver shaders").into(), gpu),
         (CacheKind::SteamShaders, tr!("Steam shader caches").into(), steam_shaders),
     ];

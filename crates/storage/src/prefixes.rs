@@ -65,6 +65,7 @@ mod tests {
             data_paths: DataPaths::at(dir.path().join("data")),
             app: AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") },
             home: home.clone(),
+            updating: false,
         };
         let (lutris, stray) = (home.join("Games/heroes-iii"), home.join("Games/old-prefix"));
         for p in [&lutris, &stray] {
@@ -102,6 +103,7 @@ mod tests {
             data_paths: DataPaths::at(dir.path().join("data")),
             app: AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") },
             home: home.clone(),
+            updating: false,
         };
         let (battlenet, stray) = (home.join("Games/Prefixes/Battle.net"), home.join("Games/Prefixes/old"));
         for p in [&battlenet, &stray] {

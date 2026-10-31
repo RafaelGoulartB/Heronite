@@ -75,7 +75,7 @@ impl EpicInstallDialog {
     pub fn new(data_paths: DataPaths, _app: AppPaths, game: Value, mode: Mode, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let app_name = game.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
         let title = game.get("title").and_then(Value::as_str).unwrap_or(&app_name).to_string();
-        let home = std::env::var("HOME").unwrap_or_default();
+        let home = heronite_epic::ops::home();
         let global = game_config::load_global(&data_paths, &home);
         let default_install = global
             .get("defaultInstallPath")
@@ -334,6 +334,13 @@ impl EpicInstallDialog {
     /// runs at the first launch, not at install).
     fn third_party_notice(&self) -> Option<(String, String)> {
         Some(match self.third_party.as_ref()? {
+            Ok(p) if !self.linux_windows_game() => (
+                tr!("This game is managed by a third-party application: \"{store}\"", store = p.label()),
+                tr!(
+                    "Play opens the game in {store}, which installs and runs it: sign in to {store} there. When {store} is not on this PC, its installer is downloaded and runs the first time you play.",
+                    store = p.label()
+                ),
+            ),
             Ok(p) => (
                 tr!("This game is managed by a third-party application: \"{store}\"", store = p.label()),
                 tr!(

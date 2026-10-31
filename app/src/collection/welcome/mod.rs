@@ -248,12 +248,13 @@ impl CollectionView {
             tile(id, Icon::Storefront, name, tr!("Log in").into(), tint)
                 .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
         };
+        // The stores this system has (`heronite_platform::features`).
         let stores = div()
             .flex()
             .gap(px(10.))
-            .child(store("welcome-epic", Page::Epic, "Epic Games", (226, 232, 240)))
-            .child(store("welcome-gog", Page::Gog, "GOG", (185, 166, 255)))
-            .child(store("welcome-amazon", Page::Amazon, "Amazon Games", (255, 196, 107)));
+            .when(Page::Epic.available(), |d| d.child(store("welcome-epic", Page::Epic, "Epic Games", (226, 232, 240))))
+            .when(Page::Gog.available(), |d| d.child(store("welcome-gog", Page::Gog, "GOG", (185, 166, 255))))
+            .when(Page::Amazon.available(), |d| d.child(store("welcome-amazon", Page::Amazon, "Amazon Games", (255, 196, 107))));
         let clients = self.client_tiles(cx);
         let add = div().mt(px(10.)).flex().child(icon_button_sm(
             "welcome-add",
@@ -302,9 +303,7 @@ impl CollectionView {
             .when_some(heronite_platform::supported(Feature::LauncherImports).then(|| self.launcher_tiles(cx)).flatten(), |d, tiles| {
                 d.child(label(Icon::CallMerge, tr!("Bring in from another launcher"))).child(tiles)
             })
-            .when(heronite_platform::supported(Feature::StoreAccounts), |d| {
-                d.child(label(Icon::Storefront, tr!("Log in to a store"))).child(stores)
-            })
+            .when(heronite_platform::features::any_store(), |d| d.child(label(Icon::Storefront, tr!("Log in to a store"))).child(stores))
             .when(heronite_platform::supported(Feature::StoreClients), |d| d.child(clients))
             .child(add)
             .child(

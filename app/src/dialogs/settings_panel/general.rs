@@ -20,6 +20,16 @@ use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::{tr, Lang, Preference};
 use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
 
+/// The help under a store tool's row: where its own copy lives
+/// (`<data>/tools/bin/<name>`, with `.exe` on Windows).
+fn tool_help(name: &str, linux: &'static str) -> String {
+    if cfg!(windows) {
+        tr!("Leave it empty to use the one in the data folder ({path}).", path = format!(r"tools\bin\{name}.exe"))
+    } else {
+        linux.to_string()
+    }
+}
+
 /// What the global ("General") panel shows. The Settings page hosts one
 /// panel and switches between these; the Game defaults use the other tabs.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -58,23 +68,29 @@ impl SettingsPanel {
 
     /// Store downloads (Epic, GOG, Amazon Games) and game updates.
     fn downloads_view(&mut self, cx: &mut Context<Self>) -> Div {
-        let fields = rows()
-            .field_help(
-                self.max_workers_field(cx),
-                vec![help(tr!("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))],
-            )
-            .field_help(
+        let mut fields = rows().field_help(
+            self.max_workers_field(cx),
+            vec![help(tr!("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))],
+        );
+        // The tool of each store this system has.
+        if supported(Feature::EpicStore) {
+            fields = fields.field_help(
                 self.path_row("altLegendaryBin", Some(tr!("Legendary binary")), false, tr!("Choose the Legendary binary"), true, cx),
-                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/legendary)."))],
-            )
-            .field_help(
-                self.path_row("altGogdlBin", Some(tr!("gogdl binary")), false, tr!("Choose the gogdl binary"), true, cx),
-                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/gogdl)."))],
-            )
-            .field_help(
-                self.path_row("altNileBin", Some(tr!("nile binary")), false, tr!("Choose the nile binary"), true, cx),
-                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/nile)."))],
+                vec![help(&tool_help("legendary", tr!("Leave it empty to use the one in the data folder (tools/bin/legendary).")))],
             );
+        }
+        if supported(Feature::GogStore) {
+            fields = fields.field_help(
+                self.path_row("altGogdlBin", Some(tr!("gogdl binary")), false, tr!("Choose the gogdl binary"), true, cx),
+                vec![help(&tool_help("gogdl", tr!("Leave it empty to use the one in the data folder (tools/bin/gogdl).")))],
+            );
+        }
+        if supported(Feature::AmazonStore) {
+            fields = fields.field_help(
+                self.path_row("altNileBin", Some(tr!("nile binary")), false, tr!("Choose the nile binary"), true, cx),
+                vec![help(&tool_help("nile", tr!("Leave it empty to use the one in the data folder (tools/bin/nile).")))],
+            );
+        }
         let toggles = rows()
             .child(self.toggle_row(
                 "download-no-https",
@@ -124,7 +140,7 @@ impl SettingsPanel {
         // What this system has (`heronite_platform::features`): the folders,
         // switches and builds of the parts it does not have are left out.
         let wine = supported(Feature::Wine);
-        let stores = supported(Feature::StoreAccounts);
+        let stores = heronite_platform::features::any_store();
         let mut folders = rows();
         if stores || wine {
             folders = folders.field(self.path_row(

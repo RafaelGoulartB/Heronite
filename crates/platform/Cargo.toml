@@ -19,6 +19,9 @@ windows-sys = { version = "0.61", features = [
     "Win32_Graphics_Gdi",
     "Win32_Security",
     "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_JobObjects",
     "Win32_System_Power",
@@ -41,6 +44,11 @@ windows = { version = "0.62", features = [
 
 [dev-dependencies]
 tempfile = "3"
+
+# Its own main: it starts itself again as the programs it stops.
+[[test]]
+name = "stop_helper"
+harness = false
 
 [lints]
 workspace = true

@@ -11,9 +11,11 @@
 //! (`HERONITE_DEBUG_*` hooks).
 
 mod account;
+mod amazon_app;
 mod connectivity;
 mod debug;
 mod eos;
+mod gog_galaxy;
 mod gog_saves;
 mod launch_setup;
 mod library_file;
@@ -41,8 +43,10 @@ use heronite_i18n::tr;
 use eos::EosEntry;
 use queue::LazyJob;
 
+pub use eos::global as eos_global;
 pub use launch_setup::EpicLaunchSetup;
 pub use library_file::library_entry;
+pub use ops::LAUNCHER_IMPORT;
 pub use stores::{gog_sync_saves_flag, StoreLaunchSetup};
 pub use types::*;
 
@@ -85,6 +89,10 @@ pub struct Downloads {
     amazon: StoreState,
     /// The Amazon sign-in in progress (nile's verifier, needed to register).
     amazon_login: Option<heronite_amazon::user::LoginRequest>,
+    /// Games of the Amazon Games app are being brought in (`amazon_app`).
+    amazon_app_importing: bool,
+    /// GOG Galaxy's games are being looked for (`gog_galaxy`).
+    gog_galaxy_importing: bool,
 }
 
 impl EventEmitter<DownloadsEvent> for Downloads {}
@@ -144,6 +152,8 @@ impl Downloads {
             gog: StoreState::default(),
             amazon: StoreState::default(),
             amazon_login: None,
+            amazon_app_importing: false,
+            gog_galaxy_importing: false,
         };
         this.reload_local(cx);
         this.eos_reload(false, cx);
@@ -156,8 +166,7 @@ impl Downloads {
         } else if let Some(app) = crate::env::value("HERONITE_DEBUG_QUEUE_INSTALL") {
             // Integration check with a fake legendary (HERONITE_LEGENDARY_BIN): queues a real install.
             this.debug_queue_install(&app, cx);
-        } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::supported(heronite_platform::Feature::StoreAccounts)
-        {
+        } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::features::any_store() {
             this.spawn_idle_jobs(cx);
             this.spawn_offline_watch(cx);
         }

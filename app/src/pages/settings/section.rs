@@ -75,7 +75,7 @@ impl Section {
     pub fn available(self) -> bool {
         use heronite_platform::{supported, Feature};
         match self {
-            Section::Downloads => supported(Feature::StoreAccounts),
+            Section::Downloads => heronite_platform::features::any_store(),
             Section::Launchers => supported(Feature::LauncherImports),
             Section::Storage => supported(Feature::Storage),
             Section::Overlay | Section::Replay => supported(Feature::Overlay),

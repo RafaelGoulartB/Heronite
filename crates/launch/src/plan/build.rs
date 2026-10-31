@@ -7,6 +7,7 @@ use super::emulator::{emulator_plan, EmulatorOutcome};
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec};
 use crate::emulators::{node_basename, node_dirname};
 use crate::env::{build_wrappers_in, setup_env_vars, setup_wrapper_env_vars};
+use crate::host::{run_mode, unavailable_reason, RunMode};
 use crate::native::{effective_platform, is_executable_game, Platform};
 use crate::probe::Probe;
 use crate::settings::{load_game_settings, GameSettings};
@@ -188,17 +189,12 @@ fn executable_plan(
     extra.extend(opts.extra_args.iter().cloned());
 
     let platform = effective_platform(game, meta, &executable, probe);
-    if cfg!(windows) {
-        return match platform {
-            Platform::Windows => windows_plan(probe, game, settings, &executable, extra, "sideload"),
-            Platform::Linux => LaunchPlan::Unavailable(tr!("Linux programs do not run on Windows").into()),
-        };
+    match (run_mode(platform.into()), platform) {
+        (RunMode::Native, Platform::Windows) => windows_plan(probe, game, settings, &executable, extra, "sideload"),
+        (RunMode::Native, Platform::Linux) => native_plan(ctx, probe, game, settings, &executable, extra, "sideload"),
+        (RunMode::Wine, _) => crate::wine::build_wine_plan(ctx, probe, game, settings, &executable, &extra),
+        (RunMode::Unavailable, _) => LaunchPlan::Unavailable(unavailable_reason(platform.into())),
     }
-    if platform == Platform::Windows {
-        return crate::wine::build_wine_plan(ctx, probe, game, settings, &executable, &extra);
-    }
-
-    native_plan(ctx, probe, game, settings, &executable, extra, "sideload")
 }
 
 /// A Windows program on Windows: started as it is, from its folder. Linux's

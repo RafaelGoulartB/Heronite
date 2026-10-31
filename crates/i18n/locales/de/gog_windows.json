@@ -1,0 +1,18 @@
+{
+  "Add the games of GOG Galaxy": "Die Spiele von GOG Galaxy hinzufügen",
+  "Added {n} game from GOG Galaxy": "{n} Spiel von GOG Galaxy hinzugefügt",
+  "Added {n} games from GOG Galaxy": "{n} Spiele von GOG Galaxy hinzugefügt",
+  "Could not add the games of GOG Galaxy: {error}": "Die Spiele von GOG Galaxy konnten nicht hinzugefügt werden: {error}",
+  "Could not move the game: {error}": "Das Spiel konnte nicht verschoben werden: {error}",
+  "Could not run {program}: {error}": "{program} konnte nicht ausgeführt werden: {error}",
+  "GOG Galaxy has no other games of your library": "GOG Galaxy hat keine weiteren Spiele deiner Bibliothek",
+  "GOG Galaxy installed this game: move it in GOG Galaxy": "GOG Galaxy hat dieses Spiel installiert: Verschiebe es in GOG Galaxy",
+  "GOG Galaxy installed this game: repair it in GOG Galaxy": "GOG Galaxy hat dieses Spiel installiert: Repariere es in GOG Galaxy",
+  "GOG Galaxy installed this game: update it in GOG Galaxy": "GOG Galaxy hat dieses Spiel installiert: Aktualisiere es in GOG Galaxy",
+  "Games of GOG Galaxy": "Spiele von GOG Galaxy",
+  "Installing the game's requirements...": "Was das Spiel braucht, wird installiert...",
+  "Its files stay where GOG Galaxy put them: uninstall it in GOG Galaxy to delete them.": "Seine Dateien bleiben, wo GOG Galaxy sie abgelegt hat: Deinstalliere es in GOG Galaxy, um sie zu löschen.",
+  "Show the games GOG Galaxy installed on this PC as installed, without downloading them again. GOG Galaxy keeps updating them.": "Zeigt die Spiele, die GOG Galaxy auf diesem PC installiert hat, als installiert an, ohne sie erneut herunterzuladen. GOG Galaxy hält sie weiter aktuell.",
+  "{program} needs administrator rights: answer the Windows prompt": "{program} braucht Administratorrechte: Bestätige die Abfrage von Windows",
+  "{program} was not installed: the administrator prompt was declined. It is asked again at the next launch.": "{program} wurde nicht installiert: Die Administratorabfrage wurde abgelehnt. Sie erscheint beim nächsten Start wieder."
+}

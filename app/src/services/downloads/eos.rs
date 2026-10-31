@@ -42,6 +42,12 @@ impl EosStamp {
     }
 }
 
+/// The overlay is on or off for every game at once (Windows), not per Wine
+/// prefix (Linux).
+pub fn global() -> bool {
+    !cfg!(target_os = "linux")
+}
+
 impl Downloads {
     pub fn eos(&self) -> &EosStatus {
         &self.eos
@@ -52,18 +58,24 @@ impl Downloads {
     pub fn eos_reload(&mut self, check: bool, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let (status, latest) = cx
+            let (status, latest, enabled) = cx
                 .background_spawn(async move {
                     let status = eos_overlay::status(&data_paths);
-                    let latest = if check && status.installed {
-                        Legendary::locate(&data_paths).map(|lg| eos_overlay::latest_version(&data_paths, &lg)).unwrap_or_default()
-                    } else {
-                        String::new()
+                    let lg = Legendary::locate(&data_paths).ok();
+                    let latest = match &lg {
+                        Some(lg) if check && status.installed => eos_overlay::latest_version(&data_paths, lg),
+                        _ => String::new(),
                     };
-                    (status, latest)
+                    // Windows: one switch for every game (the Epic Games
+                    // Launcher's own overlay counts too).
+                    let enabled = lg.filter(|_| check && global()).map(|lg| eos_overlay::is_enabled(&lg, None));
+                    (status, latest, enabled)
                 })
                 .await;
             this.update(cx, |this, cx| {
+                if enabled.is_some() {
+                    this.eos.enabled = enabled;
+                }
                 this.eos.installed = status.installed;
                 this.eos.version = status.version.unwrap_or_default();
                 if !status.installed {
@@ -141,6 +153,24 @@ impl Downloads {
             |this, r, cx| {
                 if r.ok {
                     this.eos_games.clear();
+                }
+                this.eos_reload(true, cx);
+            },
+        );
+    }
+
+    /// Windows: turns the overlay on or off for every game.
+    pub fn eos_set_global(&mut self, enable: bool, cx: &mut Context<Self>) {
+        let label = if enable { tr!("Enabling EOS Overlay") } else { tr!("Disabling EOS Overlay") };
+        self.run_op_then(
+            eos_overlay::APP_NAME,
+            label,
+            false,
+            cx,
+            move |_, lg, _, _| if enable { eos_overlay::enable(lg, None) } else { eos_overlay::disable(lg, None) },
+            move |this, r, cx| {
+                if r.ok {
+                    this.eos.enabled = Some(enable);
                 }
                 this.eos_reload(true, cx);
             },

@@ -2,7 +2,10 @@
 .SYNOPSIS
   Checks the Windows packages that package.ps1 wrote to dist\:
   - the portable zip holds exactly Heronite/heronite.exe,
-    Heronite/portable.txt and Heronite/LICENSE;
+    Heronite/heronite-epic-login.exe, Heronite/portable.txt and
+    Heronite/LICENSE;
+  - the login window of the unpacked zip starts (--smoke: a local page)
+    and keeps WebView2's files in that copy's cache folder;
   - the setup installs silently into a temporary folder (files, the
     package-format marker, no portable.txt, the Start menu shortcut, the
     uninstall entry), installs again over it the way the app updates itself
@@ -69,12 +72,34 @@ try {
 } finally {
     $archive.Dispose()
 }
-$expected = @('Heronite/heronite.exe', 'Heronite/portable.txt', 'Heronite/LICENSE' | Sort-Object)
+$expected = @('Heronite/heronite.exe', 'Heronite/heronite-epic-login.exe', 'Heronite/portable.txt', 'Heronite/LICENSE' | Sort-Object)
 Check (($names -join '|') -eq ($expected -join '|')) "zip holds exactly $($expected -join ', ') (has: $($names -join ', '))"
 
-# Saves what the app registered before the test, to put it back afterwards.
 $work = Join-Path ([IO.Path]::GetTempPath()) ('heronite-smoke-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Force $work | Out-Null
+
+# The login window of the unpacked portable copy starts: --smoke loads a
+# local page (no network), prints SMOKE-READY and closes after about 15 s.
+# WebView2 keeps its files in the copy's cache folder, not next to the
+# program. Without the WebView2 runtime it must say so with its status 5.
+$portable = Join-Path $work 'portable'
+[System.IO.Compression.ZipFile]::ExtractToDirectory($Zip, $portable)
+$copy = Join-Path $portable 'Heronite'
+$login = Start-Process -FilePath (Join-Path $copy 'heronite-epic-login.exe') -ArgumentList '--smoke' -PassThru `
+    -RedirectStandardOutput "$work\login.out" -RedirectStandardError "$work\login.err"
+$null = $login.Handle
+if (-not $login.WaitForExit(60000)) { Stop-Process -Id $login.Id -Force; $login.WaitForExit() }
+$loginOut = (Get-Content -Raw "$work\login.out" -ErrorAction SilentlyContinue)
+$loginErr = (Get-Content -Raw "$work\login.err" -ErrorAction SilentlyContinue)
+if ($login.ExitCode -eq 5) {
+    Write-Host "skip  no WebView2 runtime here: $loginErr"
+} else {
+    Check ($login.ExitCode -eq 0 -and "$loginOut" -match 'SMOKE-READY') "login window --smoke exits with 0 after SMOKE-READY (got $($login.ExitCode): $loginOut $loginErr)"
+    Check (Test-Path (Join-Path $copy 'cache\login-webview\EBWebView')) 'its WebView2 files are in the copy''s cache folder'
+    Check (-not (Test-Path (Join-Path $copy 'heronite-epic-login.exe.WebView2'))) 'none next to the program'
+}
+
+# Saves what the app registered before the test, to put it back afterwards.
 $dir = Join-Path $work 'Heronite Test'
 $runBefore = (Get-ItemProperty -Path $RunKey -Name Heronite -ErrorAction SilentlyContinue)
 $classesBackup = Join-Path $work 'classes.reg'
@@ -89,6 +114,7 @@ try {
     $code = Invoke-Setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', "/DIR=`"$dir`"", "/LOG=`"$work\install.log`"")
     Check ($code -eq 0) "silent install exits with 0 (got $code)"
     Check (Test-Path (Join-Path $dir 'heronite-rs.exe')) 'heronite-rs.exe installed'
+    Check (Test-Path (Join-Path $dir 'heronite-epic-login.exe')) 'heronite-epic-login.exe (the login window) installed next to it'
     Check (Test-Path (Join-Path $dir 'LICENSE')) 'LICENSE installed'
     Check (Test-Path (Join-Path $dir 'unins000.exe')) 'uninstaller installed'
     Check (-not (Test-Path (Join-Path $dir 'portable.txt'))) 'no portable.txt in the installed copy'

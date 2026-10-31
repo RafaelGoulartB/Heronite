@@ -85,6 +85,10 @@ pub struct ProcessPlan {
     /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
     /// alongside it join that sandbox.
     pub sandboxed: bool,
+    /// Windows: `command` is `legendary launch ... --json`. legendary signs
+    /// in and names the game's program, which starts instead of it (see
+    /// [`crate::legendary_windows`]).
+    pub ask_legendary: bool,
 }
 
 /// How to find a game another launcher started when the command that asked
@@ -185,13 +189,18 @@ impl CloudSaves {
     }
 }
 
-/// A Windows program run in the prefix during the first-launch setup.
+/// A Windows program run during the first-launch setup: in the prefix
+/// through Wine, or as it is on Windows ([`crate::native_setup`]).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SetupStep {
-    /// Program (a Linux path or a Wine built-in such as `msiexec`) and its arguments.
+    /// Program (a full path, or a built-in such as `msiexec`) and its arguments.
     pub parts: Vec<String>,
     /// Folder it starts in.
     pub cwd: Option<String>,
+    /// Windows: started through the administrator prompt right away (others
+    /// go through it only when Windows refuses to start them without).
+    /// Ignored under Wine.
+    pub elevate: bool,
 }
 
 impl PrepSpec {

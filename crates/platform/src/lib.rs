@@ -8,6 +8,8 @@
 //!   job object on Windows), detached starts, a clock that survives restarts.
 //! - [`fs`]: permission bits, executables, file identity (hard links).
 //! - [`dirs`]: where the app keeps its data, settings and caches.
+//! - [`disks`]: the disks things live on (Windows' volumes) and the space
+//!   files take on them, links not followed.
 //! - [`shell`]: opening a file, folder or URL with the desktop's handler.
 //! - [`features`]: which parts of the app this system has, for the UI to
 //!   show or hide.
@@ -24,6 +26,7 @@
 //! of the app needs from it on another system is a stub next to it.
 
 pub mod dirs;
+pub mod disks;
 pub mod features;
 pub mod fs;
 pub mod process;

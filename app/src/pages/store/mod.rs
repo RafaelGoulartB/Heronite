@@ -62,6 +62,10 @@ pub struct StorePage<K: StoreKind> {
     /// Amazon: the sign-in page made by nile. Its verifier lives in the
     /// service, so the same address is reused until a code is submitted.
     login_url: Option<String>,
+    /// Amazon: the Amazon Games app has games on this PC (Windows).
+    amazon_app: bool,
+    /// GOG: GOG Galaxy has games on this PC (Windows).
+    galaxy: bool,
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
@@ -84,6 +88,16 @@ fn login_helper() -> Option<std::path::PathBuf> {
         }
     }
     std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))
+}
+
+/// Exit status of the login window on Windows when the Microsoft Edge
+/// WebView2 runtime it shows the page with is not installed.
+pub(crate) const LOGIN_NO_WEBVIEW: i32 = 5;
+
+/// What to tell the user then: install the runtime, or log in with the
+/// browser.
+pub(crate) fn no_webview_notice() -> SharedString {
+    tr!("The login window needs the Microsoft Edge WebView2 Runtime, which is not installed. Install it from Microsoft's website, or use the browser method below.").into()
 }
 
 /// "1 installed" / "3 installed" (Portuguese inflects it).
@@ -115,6 +129,8 @@ impl<K: StoreKind> StorePage<K> {
             window_open: false,
             fetching_url: false,
             login_url: None,
+            amazon_app: K::STORE == Store::Amazon && heronite_amazon::amazon_app::database().is_some(),
+            galaxy: K::STORE == Store::Gog && heronite_gog::galaxy::has_games(),
             notice: None,
             dialog: None,
             dialog_sub: None,
@@ -164,6 +180,15 @@ impl<K: StoreKind> StorePage<K> {
         }));
         self.dialog = Some(view.into());
         cx.notify();
+    }
+
+    /// Amazon: brings in the games the Amazon Games app installed.
+    fn import_app_games(&mut self, cx: &mut Context<Self>) {
+        self.svc.update(cx, |s, cx| s.amazon_import_app_games(false, cx));
+    }
+
+    fn import_galaxy_games(&mut self, cx: &mut Context<Self>) {
+        self.svc.update(cx, |s, cx| s.gog_import_galaxy(cx));
     }
 
     fn open_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -280,11 +305,14 @@ impl<K: StoreKind> StorePage<K> {
                         }
                     }
                     // 127: the loader could not start it (WebKitGTK 4.1 is missing).
-                    Ok(o) if o.status.code() == Some(127) => {
+                    Ok(o) if !cfg!(windows) && o.status.code() == Some(127) => {
                         this.notice = Some((
                             tr!("The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.").into(),
                             true,
                         ))
+                    }
+                    Ok(o) if cfg!(windows) && o.status.code() == Some(LOGIN_NO_WEBVIEW) => {
+                        this.notice = Some((no_webview_notice(), true));
                     }
                     // `CLOSED` of the helper: the user closed the window.
                     Ok(o) if o.status.code() == Some(4) => {}

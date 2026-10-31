@@ -24,6 +24,7 @@ fn item_icon(item: &Item) -> Icon {
         Kind::SteamPrefix { .. } | Kind::SteamShaders { .. } => Icon::SportsEsports,
         Kind::Cache(_) => Icon::Refresh,
         Kind::Leftover => Icon::Folder,
+        Kind::Download => Icon::Download,
     }
 }
 
@@ -47,7 +48,7 @@ pub fn console_rows(d: &SettingsPage) -> Vec<Row> {
         rows.push(
             Row::info(
                 SharedString::from(format!("disk:{i}")),
-                disk.mount.display().to_string(),
+                disk.name(),
                 tr!("{free} free of {total}", free = human_size(disk.free), total = human_size(disk.total)),
             )
             .icon(Icon::FaHardDrive)
@@ -98,7 +99,9 @@ pub fn console_rows(d: &SettingsPage) -> Vec<Row> {
             let id = SharedString::from(format!("item:{}", item.id));
             let armed = st.armed.as_ref() == Some(&id);
             let desc = if armed {
-                if item.goes_to_trash() {
+                if item.goes_to_trash() && cfg!(windows) {
+                    tr!("Press A again to move it to the Recycle Bin").into()
+                } else if item.goes_to_trash() {
                     tr!("Press A again to move it to the trash").into()
                 } else {
                     tr!("Press A again to delete it").into()

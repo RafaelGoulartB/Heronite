@@ -7,7 +7,8 @@
 //! first process's pid, so callers keep passing pids around.
 //!
 //! Windows has no SIGTERM: [`Signal::Term`] ends the process there as
-//! [`Signal::Kill`] does.
+//! [`Signal::Kill`] does. A helper is asked to stop with [`ask_to_stop`]
+//! (Ctrl+C on Windows).
 
 use std::process::{Child, Command, ExitStatus};
 
@@ -21,6 +22,8 @@ mod windows;
 #[cfg(windows)]
 use windows as sys;
 
+#[cfg(all(windows, test))]
+pub(crate) use windows::split_command_line_for_tests;
 #[cfg(windows)]
 pub use windows::{command_line, exe_path, in_tracked_group, snapshot, start_time, ProcessEntry};
 
@@ -54,8 +57,9 @@ pub fn new_group(cmd: &mut Command) -> &mut Command {
 }
 
 /// [`new_group`] for a helper program (a command-line tool the app runs and
-/// reads): on Windows it also gets no console window, which Windows would
-/// open for every such tool a windowed app starts.
+/// reads): on Windows it gets a console of its own without a window (Windows
+/// would open one for every such tool a windowed app starts), where
+/// [`ask_to_stop`] sends Ctrl+C.
 pub fn new_helper_group(cmd: &mut Command) -> &mut Command {
     sys::new_helper_group(cmd)
 }
@@ -77,6 +81,37 @@ pub fn signal_group(leader: u32, sig: Signal) {
     if leader > 1 {
         sys::signal_group(leader, sig);
     }
+}
+
+/// Asks a helper (a command-line program started from a
+/// [`new_helper_group`] command) to stop, the way each system asks one:
+/// SIGTERM to `pid`, or to its whole group, on Unix; on Windows Ctrl+C on
+/// the console the helper has to itself (without a window), which reaches
+/// every process on it. Console programs take Ctrl+C as Unix ones take
+/// SIGTERM: Python's tools (legendary, gogdl, nile) get a
+/// `KeyboardInterrupt` and stop, saving what they can.
+///
+/// Windows needs a second process to send it: this program, started again
+/// for a moment, which is why it must call [`init_stop_helper`] first thing.
+/// Where it cannot (a program that did not call it, such as another crate's
+/// tests; a process with no console of its own), the process (its group
+/// with `whole_group`) is ended at once instead.
+///
+/// Returns at once: end the group ([`Signal::Kill`]) after a grace period
+/// if it is still there.
+pub fn ask_to_stop(pid: u32, whole_group: bool) {
+    if pid > 1 {
+        sys::ask_to_stop(pid, whole_group);
+    }
+}
+
+/// Call it first thing in `main` of a program that runs helpers. On Windows,
+/// when this program was started to send a Ctrl+C for [`ask_to_stop`], it
+/// does that and exits; otherwise [`ask_to_stop`] may start it so from now
+/// on, and helpers get Ctrl+C on even when this program was started with it
+/// off. Nothing on Unix.
+pub fn init_stop_helper() {
+    sys::init_stop_helper();
 }
 
 /// The child `cmd` starts is on its own: a new session on Unix (`setsid`),

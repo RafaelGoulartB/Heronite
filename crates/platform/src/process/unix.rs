@@ -47,6 +47,16 @@ pub(super) fn signal_group(leader: u32, sig: Signal) {
     }
 }
 
+pub(super) fn ask_to_stop(pid: u32, whole_group: bool) {
+    if whole_group {
+        signal_group(pid, Signal::Term);
+    } else {
+        signal(pid, Signal::Term);
+    }
+}
+
+pub(super) fn init_stop_helper() {}
+
 pub(super) fn detach(cmd: &mut Command) -> &mut Command {
     // SAFETY: `setsid` is async-signal-safe and touches no memory of the parent.
     unsafe {

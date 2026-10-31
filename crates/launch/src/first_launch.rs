@@ -109,7 +109,14 @@ pub fn eos_prefix_folder(settings: &GameSettings, exists: &dyn Fn(&str) -> bool)
 impl Prep<'_> {
     /// Runs the first-launch work if the prefix has not seen this game.
     pub fn first_launch(&self, spec: &PrepSpec, epic: Option<&dyn EpicSetup>, store: Option<&dyn StoreSetup>) -> Flow {
-        let (Some(fl), Some(settings)) = (&spec.first_launch, &spec.wine) else { return Flow::Go };
+        let Some(fl) = &spec.first_launch else { return Flow::Go };
+        // A game that runs without Wine (Windows builds on Windows).
+        let Some(settings) = &spec.wine else {
+            return match fl.runner.as_str() {
+                "legendary" => self.epic_native_first_launch(fl, epic),
+                _ => self.native_first_launch(fl, store),
+            };
+        };
         let prefix = settings.wine_prefix.trim();
         if prefix.is_empty() {
             return Flow::Go;
@@ -724,7 +731,7 @@ mod tests {
     }
 
     fn step(parts: &[&str]) -> SetupStep {
-        SetupStep { parts: parts.iter().map(|p| p.to_string()).collect(), cwd: None }
+        SetupStep { parts: parts.iter().map(|p| p.to_string()).collect(), ..Default::default() }
     }
 
     #[test]

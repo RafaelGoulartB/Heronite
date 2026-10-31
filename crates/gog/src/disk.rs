@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::io;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use heronite_data::proc::Cancel;
 
@@ -19,8 +19,18 @@ pub fn dir_size(path: &Path) -> u64 {
     fs::read_dir(path).map(|rd| rd.flatten().map(|e| dir_size(&e.path())).sum()).unwrap_or(0)
 }
 
-/// Whether `path` may be deleted as a game folder: absolute, no `..`, at
-/// least two levels deep, and neither the home folder nor one of its parents.
+/// The user's home folder (`$HOME`; `C:\Users\<name>` on Windows).
+pub fn home() -> Option<PathBuf> {
+    if cfg!(windows) {
+        heronite_platform::dirs::home()
+    } else {
+        std::env::var_os("HOME").map(PathBuf::from)
+    }
+}
+
+/// Whether `path` may be deleted as a game folder: absolute (with its drive
+/// on Windows), no `..`, at least two levels deep, and neither the home
+/// folder nor one of its parents. Windows' folders do not mind the case.
 pub fn safe_to_remove(path: &Path, home: Option<&Path>) -> bool {
     if !path.is_absolute() || path.components().any(|c| matches!(c, Component::ParentDir | Component::CurDir)) {
         return false;
@@ -28,6 +38,10 @@ pub fn safe_to_remove(path: &Path, home: Option<&Path>) -> bool {
     let depth = path.components().filter(|c| matches!(c, Component::Normal(_))).count();
     if depth < 2 {
         return false;
+    }
+    if cfg!(windows) {
+        let lower = |p: &Path| PathBuf::from(p.to_string_lossy().to_lowercase());
+        return !home.is_some_and(|h| lower(h).starts_with(lower(path)));
     }
     !home.is_some_and(|h| h.starts_with(path))
 }
@@ -68,8 +82,7 @@ pub fn copy_tree(src: &Path, dst: &Path, cancel: &Cancel, on_bytes: &mut dyn FnM
     Ok(true)
 }
 
-// Symlinks and Linux paths; GOG is off on Windows (`Feature::StoreAccounts`).
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -79,11 +92,14 @@ mod tests {
         fs::create_dir_all(dir.path().join("a/b")).unwrap();
         fs::write(dir.path().join("a/one"), [0u8; 10]).unwrap();
         fs::write(dir.path().join("a/b/two"), [0u8; 5]).unwrap();
+        // Links need a privilege on Windows: Linux only.
+        #[cfg(unix)]
         std::os::unix::fs::symlink(dir.path().join("a"), dir.path().join("a/loop")).unwrap();
         assert_eq!(dir_size(&dir.path().join("a")), 15);
         assert_eq!(dir_size(&dir.path().join("missing")), 0);
     }
 
+    #[cfg(unix)]
     #[test]
     fn dangerous_paths_are_refused() {
         let home = Path::new("/home/me");
@@ -94,6 +110,18 @@ mod tests {
         assert!(safe_to_remove(Path::new("/home/me/Games/g"), Some(home)));
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn dangerous_windows_paths_are_refused() {
+        let home = Path::new(r"C:\Users\Me");
+        for bad in ["", r"C:\", "C:", r"C:\Users", r"c:\users\me", r"\Games\G", r"C:Games\G", r"C:\Games\..\Windows", r"D:\Games"] {
+            assert!(!safe_to_remove(Path::new(bad), Some(home)), "{bad}");
+        }
+        assert!(safe_to_remove(Path::new(r"D:\Games\The Game"), Some(home)));
+        assert!(safe_to_remove(Path::new(r"C:\Users\Me\Games\g"), Some(home)));
+        assert!(super::home().is_some());
+    }
+
     #[test]
     fn copies_a_tree_and_stops_on_cancel() {
         let dir = tempfile::tempdir().unwrap();
@@ -101,12 +129,14 @@ mod tests {
         fs::create_dir_all(src.join("sub")).unwrap();
         fs::write(src.join("f"), [1u8; 7]).unwrap();
         fs::write(src.join("sub/g"), [2u8; 3]).unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink("f", src.join("link")).unwrap();
         let mut copied = 0;
         let cancel = Cancel::new();
         assert!(copy_tree(&src, &dir.path().join("dst"), &cancel, &mut |n| copied += n).unwrap());
         assert_eq!(copied, 10);
         assert_eq!(fs::read(dir.path().join("dst/sub/g")).unwrap(), [2u8; 3]);
+        #[cfg(unix)]
         assert_eq!(fs::read_link(dir.path().join("dst/link")).unwrap(), Path::new("f"));
         cancel.request();
         assert!(!copy_tree(&src, &dir.path().join("dst2"), &cancel, &mut |_| {}).unwrap());

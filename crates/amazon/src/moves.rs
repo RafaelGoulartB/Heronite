@@ -3,7 +3,7 @@
 
 use std::fs;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::DataPaths;
@@ -29,6 +29,9 @@ fn move_with(
     force_copy: bool,
 ) -> Result<String> {
     let Some(game) = installed::get(paths, app_name) else { bail!(tr!("The game is not installed")) };
+    if crate::amazon_app::is_from_app(paths, app_name) {
+        bail!(tr!("The game's files belong to the Amazon Games app: move the game there"));
+    }
     let old = PathBuf::from(&game.path);
     if new_base.trim().is_empty() {
         bail!(tr!("Pick a folder to move the game to"));
@@ -36,8 +39,8 @@ fn move_with(
     if !old.is_dir() {
         bail!(tr!("The install folder {path} does not exist", path = game.path));
     }
-    // Never act on a root or top-level folder by mistake.
-    if old.components().count() < 3 {
+    // Never act on a root or top-level folder by mistake (`/games`, `C:\Games`).
+    if old.components().filter(|c| matches!(c, Component::Normal(_))).count() < 2 {
         bail!(tr!("Refusing to move {path}", path = game.path));
     }
     let name = old.file_name().ok_or_else(|| anyhow!(tr!("Refusing to move {path}", path = game.path)))?;
@@ -52,6 +55,10 @@ fn move_with(
         bail!(tr!("{path} already exists and is not empty", path = target.display()));
     }
     fs::create_dir_all(new_base).with_context(|| format!("creating {new_base}"))?;
+    // An empty folder there: Windows renames nothing onto it.
+    if target.is_dir() {
+        let _ = fs::remove_dir(&target);
+    }
 
     on_percent(0.);
     if force_copy || fs::rename(&old, &target).is_err() {
@@ -120,13 +127,40 @@ fn copy_tree(src: &Path, dst: &Path, cancel: &Cancel, progress: &mut dyn FnMut(u
         if kind.is_dir() {
             copy_tree(&from, &to, cancel, progress)?;
         } else if kind.is_symlink() {
-            heronite_platform::fs::symlink(&fs::read_link(&from)?, &to).with_context(|| format!("linking {}", to.display()))?;
+            copy_link(&from, &to, cancel, progress)?;
         } else {
             copy_file(&from, &to, cancel, progress)?;
         }
     }
     fs::set_permissions(dst, fs::metadata(src)?.permissions())?;
     Ok(())
+}
+
+/// The same link at `to`. Windows makes links only in Developer Mode or for
+/// an administrator: there a copy of what it points to does instead.
+fn copy_link(from: &Path, to: &Path, cancel: &Cancel, progress: &mut dyn FnMut(u64)) -> Result<()> {
+    let target = fs::read_link(from)?;
+    #[cfg(windows)]
+    {
+        let dir = from.is_dir();
+        let linked = if dir { std::os::windows::fs::symlink_dir(&target, to) } else { std::os::windows::fs::symlink_file(&target, to) };
+        match linked {
+            Ok(()) => Ok(()),
+            Err(err) => {
+                log::debug!("linking {}: {err}; copying it instead", to.display());
+                if dir {
+                    copy_tree(from, to, cancel, progress)
+                } else {
+                    copy_file(from, to, cancel, progress)
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (cancel, progress);
+        heronite_platform::fs::symlink(&target, to).with_context(|| format!("linking {}", to.display()))
+    }
 }
 
 /// Copies in chunks so a big file can be cancelled and shows progress.
@@ -158,7 +192,7 @@ pub fn relocate(paths: &DataPaths, app_name: &str, folder: &str) -> Result<Strin
     if installed::get(paths, app_name).is_none() {
         bail!(tr!("The game is not installed"));
     }
-    let folder = folder.trim().trim_end_matches('/');
+    let folder = folder.trim().trim_end_matches(['/', '\\']);
     let dir = Path::new(folder);
     if !dir.is_dir() {
         bail!(tr!("The install folder {path} does not exist", path = folder));
@@ -281,6 +315,29 @@ mod tests {
     }
 
     #[test]
+    fn a_top_level_folder_is_never_moved() {
+        let env = Env::new();
+        setup(&env);
+        // A folder that exists right under the root (refused before anything is done).
+        let top = if cfg!(windows) { r"C:\Windows" } else { "/tmp" };
+        env.write_nile_file("installed.json", &json!([{"id": ID, "version": "v1", "path": top}]).to_string());
+        let base = env.root().join("new");
+        let err = move_install(&env.paths, ID, &base.to_string_lossy(), &Cancel::new(), &mut |_| {}).unwrap_err().to_string();
+        assert!(err.contains("Refusing to move"), "{err}");
+        assert!(!base.exists());
+    }
+
+    #[test]
+    fn an_empty_folder_at_the_target_does_not_stop_a_rename() {
+        let env = Env::new();
+        let old = setup(&env);
+        let new_base = env.root().join("new");
+        fs::create_dir_all(new_base.join("Cool Game")).unwrap();
+        let path = move_install(&env.paths, ID, &new_base.to_string_lossy(), &Cancel::new(), &mut |_| {}).unwrap();
+        check_moved(&env, &path, &old);
+    }
+
+    #[test]
     fn relocate_points_nile_at_a_folder_moved_by_hand() {
         let env = Env::new();
         let game = setup(&env);
@@ -293,6 +350,8 @@ mod tests {
         assert!(relocate(&env.paths, "missing", &moved.to_string_lossy()).is_err());
         assert!(relocate(&env.paths, ID, "/nonexistent-dir").is_err());
         let now = relocate(&env.paths, ID, &format!("{}/", moved.display())).unwrap();
+        #[cfg(windows)]
+        assert_eq!(relocate(&env.paths, ID, &format!("{}\\", moved.display())).unwrap(), now);
         assert_eq!(now, moved.to_string_lossy());
         let doc = json_store::read_value(&installed::file(&env.paths)).unwrap();
         assert_eq!(doc[1]["path"], now.as_str());

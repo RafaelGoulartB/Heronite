@@ -145,7 +145,12 @@ impl StoreInstallDialog {
     ) -> Self {
         let app_name = game.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
         let title = game.get("title").and_then(Value::as_str).unwrap_or(&app_name).to_string();
-        let home = std::env::var("HOME").unwrap_or_default();
+        // Windows has no `HOME` of its own: the user's folder.
+        let home = if cfg!(windows) {
+            heronite_platform::dirs::home().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default()
+        } else {
+            std::env::var("HOME").unwrap_or_default()
+        };
         let global = game_config::load_global(&data_paths, &home);
         let default_install = global
             .get("defaultInstallPath")

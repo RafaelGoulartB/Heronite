@@ -171,6 +171,13 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     // MangoHud's limit moves into a file of ours so the overlay can change it.
     let mut command = plan.command.clone();
+    // An Epic game on Windows: legendary names the program to start.
+    if plan.ask_legendary {
+        match super::epic::ask_legendary(shared, log, req, control, &command, &status) {
+            Some(game) => command = game,
+            None => return,
+        }
+    }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));

@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-  Authenticode-signs one file (heronite-rs.exe, the setup, its uninstaller)
-  with the certificate configured in the environment. package.ps1 calls it,
-  and hands it to Inno Setup as its sign tool, only when one is configured
-  (see Test-Signing in package.ps1); without a certificate nothing is signed
-  and Windows SmartScreen warns about the downloads.
+  Authenticode-signs one file (heronite-rs.exe, heronite-epic-login.exe,
+  the setup, its uninstaller) with the certificate configured in the
+  environment. package.ps1 calls it, and hands it to Inno Setup as its sign
+  tool, only when one is configured (see Test-Signing in package.ps1);
+  without a certificate nothing is signed and Windows SmartScreen warns
+  about the downloads.
 
   Configure one of:
     WINDOWS_SIGN_COMMAND   a full command line; $f is replaced by the quoted
