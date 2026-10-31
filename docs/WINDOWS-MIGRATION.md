@@ -25,7 +25,6 @@ What works on Windows, what is left, and what Windows does not need.
 
 - In-game overlay and replay buffer
 - Launch extras: scripts before and after a game, programs alongside it, presets
-- Troubleshoot for Windows
 - Importing games of Battle.net, EA app, Ubisoft Connect, Rockstar and Xbox app
 - GOG Galaxy services (`comet`)
 - Smaller: RetroAchievements sign-in of emulators, Ludusavi registry entries, exclusive-fullscreen screenshots, dark tray menus, Authenticode signing, installer languages, Steam tests
@@ -40,6 +39,7 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 - GameMode, MangoHud, gamescope
 - The "On Linux" row (ProtonDB)
 - Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
+- Troubleshoot (its checks are about Wine, Proton and Linux drivers)
 - AppImage and Linux packages
 
 ## Rules for code on both systems
