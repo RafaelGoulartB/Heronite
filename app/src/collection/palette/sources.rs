@@ -182,6 +182,9 @@ fn section_help(s: Section) -> &'static str {
         Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
+        Section::Storage if !heronite_platform::supported(heronite_platform::Feature::Wine) => {
+            tr!("Disk space of games, store tools, caches")
+        }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
         Section::Overlay => tr!("Guide button panel over games (beta)"),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
