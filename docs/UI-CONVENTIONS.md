@@ -208,10 +208,11 @@ Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…
 `dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: in the grid the cover size slider and the "Aa" titles switch, in the Focus view the covers / list
-switch, the Focus / Grid switch (`grid.rs`), bulk metadata, refresh, close focus (Focus view only). Header menus open on click or
+switch, the Focus / Grid switch (`grid.rs`) and bulk metadata. Header menus open on click or
 after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves. The ☰ menu (`nav.rs`) is a list:
 pages grouped (Collection, Downloads, Statistics | Stores, Emulators, Wine Manager), then Add game, Console mode,
-then Settings and Command palette with their keys; each row = icon square + title + meta on the right. "Stores" is one
+then Settings and Command palette with their keys; each row = icon square + title + meta on the right. The Collection
+row shows a refresh button after its count while hovered (spinning, and always shown, while the library reloads). "Stores" is one
 row for Epic Games, GOG, Amazon Games, Steam and the store clients under Wine (Battle.net, EA app, Ubisoft Connect,
 Rockstar Games): each store keeps its own page, laid out by `pages::stores::sheet` (on `pages::side_nav`): on the left, as in Settings, the
 list of the stores in two groups (Stores: Epic Games, GOG, Amazon Games, Steam; Store apps: the clients under Wine), each

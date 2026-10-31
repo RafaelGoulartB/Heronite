@@ -44,6 +44,8 @@ pub struct Pages {
     /// When the Downloads page was last opened or left (ms since the epoch):
     /// the header's downloads pill announces only what finished after it.
     pub(super) downloads_seen: u64,
+    /// The ☰ menu's Collection row is under the pointer: it shows its refresh button.
+    pub(super) collection_hovered: bool,
 }
 
 impl Pages {
@@ -180,6 +182,16 @@ fn nav_row(id: SharedString, ic: Icon, title: &str, trailing: Trailing, active: 
                 .into_any_element(),
         ),
         Trailing::Key(k) => Some(crate::ui::controls::kbd(k).into_any_element()),
+        Trailing::MetaWith(text, el) => Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .min_w_0()
+                .child(div().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_dim()).child(text))
+                .child(el)
+                .into_any_element(),
+        ),
         Trailing::Count(text, n) => Some(
             div()
                 .flex()
@@ -243,6 +255,8 @@ enum Trailing {
     /// Text, and whether it reports something running.
     Meta(String, bool),
     Key(&'static str),
+    /// Text, then an element of the row's own (the Collection's refresh).
+    MetaWith(String, AnyElement),
     /// Something running, and how many elements wait with it.
     Count(String, usize),
 }
@@ -315,8 +329,12 @@ impl CollectionView {
                     // Steam has no login of its own here.
                     n => tr!("{n} of {total} signed in", n, total = Store::ALL.len() + 1 + Client::ALL.len()),
                 };
-                let trailing = |page: Page| match page {
-                    Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
+                let mut refresh = this.nav_refresh_button(cx);
+                let mut trailing = |page: Page| match page {
+                    Page::Collection => match refresh.take() {
+                        Some(btn) => Trailing::MetaWith(trn!(games, "{n} game", "{n} games"), btn.into_any_element()),
+                        None => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
+                    },
                     Page::Downloads => match &downloading {
                         Some((text, n)) => Trailing::Count(text.clone(), *n),
                         None => Trailing::Meta(tr!("Idle").to_string(), false),
@@ -355,6 +373,14 @@ impl CollectionView {
                         let active = this.page == page || (is_stores && pages::stores::is_store_page(this.page));
                         p = p.child(
                             nav_row(id, ic, title, trailing(page), active)
+                                .when(page == Page::Collection, |row| {
+                                    row.on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                                        if this.pages.collection_hovered != *hovered {
+                                            this.pages.collection_hovered = *hovered;
+                                            cx.notify();
+                                        }
+                                    }))
+                                })
                                 .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx))),
                         );
                     }
@@ -397,6 +423,36 @@ impl CollectionView {
                     .into_any_element()
             },
             cx,
+        )
+    }
+
+    /// The Collection row's refresh: shown while the pointer is on the row,
+    /// and spinning while the library reloads.
+    fn nav_refresh_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        if !self.pages.collection_hovered && !self.refreshing {
+            return None;
+        }
+        let refresh_icon = icon(Icon::Refresh, px(16.), theme::tool_icon());
+        Some(
+            crate::ui::tool_button_base("nav-refresh", false)
+                .size(px(28.))
+                .tooltip(crate::ui::tooltip(tr!("Refresh library")))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    // The row under it opens the Collection.
+                    cx.stop_propagation();
+                    this.refresh_all(cx);
+                }))
+                .child(if self.refreshing {
+                    refresh_icon
+                        .with_animation(
+                            "nav-refresh-spin",
+                            Animation::new(std::time::Duration::from_secs(1)).repeat().with_max_fps(30.),
+                            |svg, t| svg.with_transformation(Transformation::rotate(percentage(t))),
+                        )
+                        .into_any_element()
+                } else {
+                    refresh_icon.into_any_element()
+                }),
         )
     }
 
