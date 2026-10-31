@@ -54,6 +54,15 @@ impl Provider {
         }
     }
 
+    /// The links the store app opens (`link2ea://`, `uplay://`), which tell
+    /// whether it is installed on Windows.
+    pub fn link_scheme(self) -> &'static str {
+        match self {
+            Self::Ea => "link2ea:",
+            Self::Ubisoft => "uplay:",
+        }
+    }
+
     pub fn installer_url(self) -> &'static str {
         match self {
             Self::Ea => "https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe",

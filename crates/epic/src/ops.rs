@@ -45,7 +45,14 @@ impl DownloadSettings {
     }
 }
 
+/// The user's folder, for `~` in the settings (`HOME`; Windows sets none
+/// of its own: the profile folder there).
 pub fn home() -> String {
+    if cfg!(windows) {
+        if let Some(home) = heronite_platform::dirs::home() {
+            return home.to_string_lossy().into_owned();
+        }
+    }
     std::env::var("HOME").unwrap_or_default()
 }
 
@@ -137,7 +144,11 @@ impl LegendaryJob {
     /// `installEA` / `installUbisoft` on Linux: fetch the store's installer
     /// (run in the prefix at the first launch) and mark the game installed.
     fn run_third_party(&self, el: &DmElement, provider: Provider, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
-        if let Err(err) = third_party::ensure_installer(&self.data_paths, provider, cancel, on_progress) {
+        // Windows: a store app already installed opens the game; nothing to fetch.
+        let have_app = cfg!(windows) && heronite_launch::legendary_windows::link_handler_installed(provider.link_scheme());
+        if have_app {
+            log::info!("{} is installed: no installer to fetch", provider.label());
+        } else if let Err(err) = third_party::ensure_installer(&self.data_paths, provider, cancel, on_progress) {
             if cancel.is_requested() {
                 return JobResult::abort();
             }
@@ -236,6 +247,15 @@ pub fn repair(
 /// An EA app / Ubisoft Connect game only leaves `third-party-installed.json`
 /// (the game itself lives inside the prefix, with its store app).
 pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
+    let r = uninstall_game(data_paths, legendary, app_name);
+    if r.ok {
+        // Installed again, it runs its prerequisites again (Windows).
+        heronite_launch::native_setup::forget(data_paths, "legendary", app_name);
+    }
+    r
+}
+
+fn uninstall_game(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
     if third_party::is_installed(data_paths, app_name) {
         return match third_party::remove_installed(data_paths, app_name) {
             Ok(_) => {
@@ -283,7 +303,7 @@ pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: 
 /// without moving anything. legendary keeps the folder's own name (only the
 /// parent changes), so a renamed folder is refused with a hint.
 pub fn relocate(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, folder: &str) -> OpResult {
-    let folder = folder.trim().trim_end_matches('/');
+    let folder = folder.trim().trim_end_matches(SEPARATORS);
     let dir = Path::new(folder);
     if !dir.is_dir() {
         return OpResult::err(tr!("The folder does not exist"));
@@ -291,8 +311,8 @@ pub fn relocate(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, f
     let installed = heronite_data::json_store::read_value(&data_paths.legendary_config_dir().join("installed.json")).unwrap_or(Value::Null);
     let Some(entry) = installed.get(app_name) else { return OpResult::err(tr!("The game is not installed")) };
     let old = entry.get("install_path").and_then(Value::as_str).unwrap_or_default();
-    let old_name = Path::new(old.trim_end_matches('/')).file_name();
-    if old_name.is_some() && dir.file_name() != old_name {
+    let old_name = Path::new(old.trim_end_matches(SEPARATORS)).file_name();
+    if old_name.is_some() && !same_name(dir.file_name(), old_name) {
         let name = old_name.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         return OpResult::err(tr!("Epic games keep the name of their folder: pick a folder named {name}, or rename it back.", name));
     }
@@ -310,6 +330,19 @@ pub fn relocate(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, f
             OpResult::ok(tr!("Install location changed"))
         }
         Ok(out) => OpResult::err(out.error_lines()),
+    }
+}
+
+/// What may end a folder path: `/`, and `\` on Windows (legendary writes
+/// `C:\Games\Control` there).
+const SEPARATORS: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+
+/// Folder names compare the way the file system does: without case on
+/// Windows.
+fn same_name(a: Option<&std::ffi::OsStr>, b: Option<&std::ffi::OsStr>) -> bool {
+    match (a.and_then(|a| a.to_str()), b.and_then(|b| b.to_str())) {
+        (Some(x), Some(y)) if cfg!(windows) => x.eq_ignore_ascii_case(y),
+        _ => a == b,
     }
 }
 
@@ -388,7 +421,7 @@ pub fn write_wine_config(data_paths: &DataPaths, app_name: &str, wine_prefix: &s
 /// Removes `<path>/<folder_name>` (the partial download of a cancelled
 /// install). Refuses anything that is not a plain folder name.
 pub fn remove_partial_download(path: &str, folder_name: &str) -> bool {
-    if path.is_empty() || folder_name.is_empty() || folder_name.contains('/') || folder_name == ".." || folder_name == "." {
+    if path.is_empty() || folder_name.is_empty() || folder_name.contains(SEPARATORS) || folder_name == ".." || folder_name == "." {
         return false;
     }
     let target = Path::new(path.trim_matches('\'')).join(folder_name);
@@ -418,9 +451,7 @@ pub fn ensure_logged_in(data_paths: &DataPaths) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
-    use crate::cmd::testing::{calls, fake};
-    #[cfg(unix)]
+    use crate::cmd::testing::{fake_tool, FakeTool, Reply};
     use crate::queue::InstallParams;
 
     fn dl() -> DownloadSettings {
@@ -458,18 +489,13 @@ mod tests {
         assert_eq!(update_args("repair", "A", &dl()), ["repair", "A", "-y", "--skip-sdl"]);
     }
 
-    #[cfg(unix)]
-    fn job(dir: &Path, body: &str) -> (LegendaryJob, DataPaths) {
+    fn job(dir: &Path, tool: FakeTool) -> (LegendaryJob, DataPaths, FakeTool) {
         let data_paths = DataPaths::at(dir.join("h"));
         std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
-        let lg = fake(dir, body);
-        (
-            LegendaryJob { data_paths: data_paths.clone(), legendary: Legendary::with_bin(lg.bin, data_paths.legendary_config_dir()) },
-            data_paths,
-        )
+        let legendary = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
+        (LegendaryJob { data_paths: data_paths.clone(), legendary }, data_paths, tool)
     }
 
-    #[cfg(unix)]
     fn element(kind: ElementKind) -> DmElement {
         DmElement::new(
             kind,
@@ -484,47 +510,66 @@ mod tests {
         )
     }
 
-    #[cfg(unix)]
-    const REPORT: &str = "echo '[DLManager] INFO: = Progress: 50.00% (1/2), Running for 00:00:10, ETA: 00:00:10' >&2; \
-        echo '[DLManager] INFO:  - Downloaded: 100.00 MiB, Written: 99.00 MiB' >&2; \
-        printf '[DLManager] INFO:  + Download\\t- 5.00 MiB/s (raw) / 5.00 MiB/s (decompressed)\\n' >&2; \
-        printf '[DLManager] INFO:  + Disk\\t- 4.00 MiB/s (write) / 0.00 MiB/s (read)\\n' >&2";
+    /// legendary's progress report (stderr).
+    fn report(reply: Reply) -> Reply {
+        reply
+            .err("[DLManager] INFO: = Progress: 50.00% (1/2), Running for 00:00:10, ETA: 00:00:10")
+            .err("[DLManager] INFO:  - Downloaded: 100.00 MiB, Written: 99.00 MiB")
+            .err("[DLManager] INFO:  + Download\t- 5.00 MiB/s (raw) / 5.00 MiB/s (decompressed)")
+            .err("[DLManager] INFO:  + Disk\t- 4.00 MiB/s (write) / 0.00 MiB/s (read)")
+    }
 
-    #[cfg(unix)]
+    fn info(json: &str) -> Reply {
+        Reply::new().out(json)
+    }
+
     #[test]
     fn install_job_reports_progress_and_finishes() {
         let dir = tempfile::tempdir().unwrap();
-        let info = r#"{"manifest": {"download_size": 209715200, "disk_size": 1}}"#;
-        let body = format!("if [ \"$1\" = info ]; then echo '{info}'; else {REPORT}; fi");
-        let (job, data_paths) = job(dir.path(), &body);
+        let tool = fake_tool(dir.path())
+            .on(&["info"], info(r#"{"manifest": {"download_size": 209715200, "disk_size": 1}}"#))
+            .otherwise(report(Reply::new()));
+        let (job, data_paths, tool) = job(dir.path(), tool);
         let mut seen = Vec::new();
         let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |p| seen.push(p));
         assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].percent, 50.);
-        let c = calls(dir.path());
+        let c = tool.calls();
         assert_eq!(c[0], "info Calluna --json --platform Windows");
         assert_eq!(c[1], "install Calluna --platform Windows --base-path /games --skip-dlcs -y --skip-sdl");
         // The library file was rebuilt (empty metadata folder -> no games).
         assert!(data_paths.legendary_library().exists());
     }
 
-    #[cfg(unix)]
+    /// Windows: legendary gets the folder as Windows writes it.
+    #[test]
+    fn a_windows_base_path_reaches_legendary_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = fake_tool(dir.path()).on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#));
+        let (job, _, tool) = job(dir.path(), tool);
+        let mut el = element(ElementKind::Install);
+        el.params.path = r"D:\Games\Epic".into();
+        assert_eq!(job.run(&el, &Cancel::new(), &mut |_| {}).status, DmStatus::Done);
+        assert_eq!(tool.calls()[1], r"install Calluna --platform Windows --base-path D:\Games\Epic --skip-dlcs -y --skip-sdl");
+    }
+
     #[test]
     fn update_job_uses_the_update_command() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, _) = job(dir.path(), "if [ \"$1\" = info ]; then echo '{\"manifest\": {\"download_size\": 1}}'; fi");
+        let tool = fake_tool(dir.path()).on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#));
+        let (job, _, tool) = job(dir.path(), tool);
         let r = job.run(&element(ElementKind::Update), &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Done);
-        assert_eq!(calls(dir.path()), ["update Calluna -y --skip-sdl"]);
+        assert_eq!(tool.calls(), ["update Calluna -y --skip-sdl"]);
     }
 
-    #[cfg(unix)]
     #[test]
     fn failures_and_unsupported_stores_are_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, _) =
-            job(dir.path(), "if [ \"$1\" = info ]; then echo '{\"manifest\": {}}'; else echo '[cli] ERROR: disk full' >&2; exit 1; fi");
+        let tool =
+            fake_tool(dir.path()).on(&["info"], info(r#"{"manifest": {}}"#)).otherwise(Reply::new().err("[cli] ERROR: disk full").exit(1));
+        let (job, _, _tool) = job(dir.path(), tool);
         let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Error);
         assert!(r.error.unwrap().contains("disk full"));
@@ -535,11 +580,11 @@ mod tests {
         assert!(r.error.unwrap().contains("Battle.net, which is not supported"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn ea_and_ubisoft_games_install_and_uninstall_without_legendary() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths) = job(dir.path(), "echo called >&2; exit 1");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("called").exit(1));
+        let (job, data_paths, tool) = job(dir.path(), tool);
         // The installer is already there: nothing to download.
         let redist = third_party::redist_dir(&data_paths);
         std::fs::create_dir_all(&redist).unwrap();
@@ -551,106 +596,137 @@ mod tests {
         let r = job.run(&el, &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
         assert!(third_party::is_installed(&data_paths, "Anchovy"));
-        assert!(calls(dir.path()).is_empty(), "legendary must not run");
+        assert!(tool.calls().is_empty(), "legendary must not run");
         assert!(data_paths.legendary_library().exists());
 
         let r = uninstall(&data_paths, &job.legendary, "Anchovy");
         assert!(r.ok, "{}", r.message);
         assert!(!third_party::is_installed(&data_paths, "Anchovy"));
-        assert!(calls(dir.path()).is_empty(), "legendary must not run");
+        assert!(tool.calls().is_empty(), "legendary must not run");
     }
 
-    #[cfg(unix)]
     #[test]
     fn memory_errors_retry_with_more_shared_memory() {
         let dir = tempfile::tempdir().unwrap();
-        let body = "if [ \"$1\" = info ]; then echo '{\"manifest\": {\"download_size\": 1}}'; \
-            elif echo \"$@\" | grep -q max-shared-memory; then exit 0; else echo 'MemoryError: x' >&2; exit 1; fi";
-        let (job, _) = job(dir.path(), body);
+        let tool = fake_tool(dir.path())
+            .on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#))
+            .on(&["--max-shared-memory"], Reply::new())
+            .otherwise(Reply::new().err("MemoryError: x").exit(1));
+        let (job, _, tool) = job(dir.path(), tool);
         let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Done);
-        assert!(calls(dir.path()).last().unwrap().ends_with("--max-shared-memory 5000"));
+        assert!(tool.calls().last().unwrap().ends_with("--max-shared-memory 5000"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn cancelled_jobs_abort() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, _) = job(dir.path(), "if [ \"$1\" = info ]; then echo '{\"manifest\": {\"download_size\": 1}}'; else sleep 30; fi");
+        let tool = fake_tool(dir.path())
+            .on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#))
+            .otherwise(Reply::new().sleep(std::time::Duration::from_secs(30)));
+        let (job, _, _tool) = job(dir.path(), tool);
         let cancel = Cancel::new();
         let c = cancel.clone();
         let t = std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(600));
             c.request();
         });
+        let started = std::time::Instant::now();
         let r = job.run(&element(ElementKind::Install), &cancel, &mut |_| {});
         t.join().unwrap();
         assert_eq!(r.status, DmStatus::Abort);
+        assert!(started.elapsed() < std::time::Duration::from_secs(20));
     }
 
-    #[cfg(unix)]
     #[test]
     fn uninstall_import_and_force_uninstall_commands() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths) = job(dir.path(), "true");
+        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
         assert!(uninstall(&data_paths, &job.legendary, "Calluna").ok);
         assert!(force_uninstall(&data_paths, &job.legendary, "Calluna").ok);
         let game_dir = dir.path().join("game");
         std::fs::create_dir_all(&game_dir).unwrap();
         assert!(import_game(&data_paths, &job.legendary, "Calluna", game_dir.to_str().unwrap(), "Windows").ok);
         assert!(!import_game(&data_paths, &job.legendary, "Calluna", "/nonexistent-dir", "Windows").ok);
-        let c = calls(dir.path());
+        let c = tool.calls();
         assert_eq!(c[0], "uninstall Calluna -y");
         assert_eq!(c[1], "uninstall Calluna -y --keep-files");
         assert_eq!(c[2], format!("import Calluna {} --with-dlcs --platform Windows", game_dir.display()));
     }
 
-    #[cfg(unix)]
+    #[test]
+    fn an_uninstalled_game_runs_its_first_launch_setup_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let (job, data_paths, _tool) = job(dir.path(), fake_tool(dir.path()));
+        heronite_launch::native_setup::record(&data_paths, "legendary", "Calluna", "/games/Control").unwrap();
+        assert!(uninstall(&data_paths, &job.legendary, "Calluna").ok);
+        assert!(!heronite_launch::native_setup::is_recorded(&data_paths, "legendary", "Calluna", "/games/Control"));
+    }
+
     #[test]
     fn relocate_checks_the_folder_then_tells_legendary() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths) = job(dir.path(), "true");
+        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
+        let old = if cfg!(windows) { r"D:\old\Control" } else { "/old/Control" };
         std::fs::write(
             data_paths.legendary_config_dir().join("installed.json"),
-            r#"{"Calluna": {"install_path": "/old/Control", "executable": "Bin\\Control.exe"}}"#,
+            json!({"Calluna": {"install_path": old, "executable": "Bin\\Control.exe"}}).to_string(),
         )
         .unwrap();
-        let moved = dir.path().join("disk2/Control");
+        let moved = dir.path().join("disk2").join("Control");
         std::fs::create_dir_all(moved.join("Bin")).unwrap();
         // Not the game yet: its executable is missing.
         assert!(!relocate(&data_paths, &job.legendary, "Calluna", moved.to_str().unwrap()).ok);
-        std::fs::write(moved.join("Bin/Control.exe"), "").unwrap();
-        let renamed = dir.path().join("disk2/Ctrl");
+        std::fs::write(moved.join("Bin").join("Control.exe"), "").unwrap();
+        let renamed = dir.path().join("disk2").join("Ctrl");
         std::fs::create_dir_all(&renamed).unwrap();
         let r = relocate(&data_paths, &job.legendary, "Calluna", renamed.to_str().unwrap());
         assert!(!r.ok && r.message.contains("Control"), "a renamed folder is refused: {}", r.message);
         assert!(!relocate(&data_paths, &job.legendary, "Other", moved.to_str().unwrap()).ok, "not installed");
         assert!(!relocate(&data_paths, &job.legendary, "Calluna", "/nonexistent-dir/Control").ok);
-        assert!(calls(dir.path()).is_empty(), "nothing ran yet");
-        let r = relocate(&data_paths, &job.legendary, "Calluna", &format!("{}/", moved.display()));
+        assert!(tool.calls().is_empty(), "nothing ran yet");
+        let sep = std::path::MAIN_SEPARATOR;
+        let r = relocate(&data_paths, &job.legendary, "Calluna", &format!("{}{sep}", moved.display()));
         assert!(r.ok, "{}", r.message);
-        assert_eq!(calls(dir.path()), [format!("move Calluna {} --skip-move", moved.parent().unwrap().display())]);
+        assert_eq!(tool.calls(), [format!("move Calluna {} --skip-move", moved.parent().unwrap().display())]);
     }
 
-    #[cfg(unix)]
+    /// Windows' folder names ignore case: `control` is the game's `Control`.
+    #[cfg(windows)]
+    #[test]
+    fn relocate_ignores_the_case_of_the_folder_name_on_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
+        std::fs::write(
+            data_paths.legendary_config_dir().join("installed.json"),
+            json!({"Calluna": {"install_path": r"C:\Games\Control", "executable": "Control.exe"}}).to_string(),
+        )
+        .unwrap();
+        let moved = dir.path().join("control");
+        std::fs::create_dir_all(&moved).unwrap();
+        std::fs::write(moved.join("Control.exe"), "").unwrap();
+        let r = relocate(&data_paths, &job.legendary, "Calluna", moved.to_str().unwrap());
+        assert!(r.ok, "{}", r.message);
+        assert_eq!(tool.calls().len(), 1);
+    }
+
     #[test]
     fn import_errors_come_from_stderr() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths) = job(dir.path(), "echo '[cli] ERROR: Game is not in the library' >&2");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[cli] ERROR: Game is not in the library"));
+        let (job, data_paths, _tool) = job(dir.path(), tool);
         let r = import_game(&data_paths, &job.legendary, "x", dir.path().to_str().unwrap(), "Windows");
         assert!(!r.ok);
         assert!(r.message.contains("not in the library"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn repair_reports_verification_and_download() {
         let dir = tempfile::tempdir().unwrap();
-        let body = format!(
-            "if [ \"$1\" = info ]; then echo '{{\"manifest\": {{\"download_size\": 1}}}}'; else \
-             echo '[cli] INFO: Verification progress: 1/2 (50.0%) [10 MiB/s]' >&2; {REPORT}; fi"
-        );
-        let (job, data_paths) = job(dir.path(), &body);
+        let tool = fake_tool(dir.path())
+            .on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#))
+            .otherwise(report(Reply::new().err("[cli] INFO: Verification progress: 1/2 (50.0%) [10 MiB/s]")));
+        let (job, data_paths, _tool) = job(dir.path(), tool);
         let mut updates = Vec::new();
         let r = repair(&data_paths, &job.legendary, "Calluna", &Cancel::new(), |u| updates.push(u));
         assert!(r.ok, "{}", r.message);
@@ -658,30 +734,29 @@ mod tests {
         assert!(matches!(updates[1], RepairUpdate::Downloading(_)));
     }
 
-    #[cfg(unix)]
     #[test]
     fn move_install_moves_the_folder_and_updates_legendary() {
         let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths) = job(dir.path(), "true");
-        let src = dir.path().join("old/Control");
+        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
+        let src = dir.path().join("old").join("Control");
         std::fs::create_dir_all(src.join("sub")).unwrap();
-        std::fs::write(src.join("sub/a.txt"), "x").unwrap();
+        std::fs::write(src.join("sub").join("a.txt"), "x").unwrap();
         let new_parent = dir.path().join("new");
         let r = move_install(&data_paths, &job.legendary, "Calluna", src.to_str().unwrap(), new_parent.to_str().unwrap());
         assert!(r.ok, "{}", r.message);
-        assert!(new_parent.join("Control/sub/a.txt").exists());
+        assert!(new_parent.join("Control").join("sub").join("a.txt").exists());
         assert!(!src.exists());
-        assert_eq!(calls(dir.path())[0], format!("move Calluna {} --skip-move", new_parent.display()));
+        assert_eq!(tool.calls()[0], format!("move Calluna {} --skip-move", new_parent.display()));
         // Into itself, and onto a non-empty destination: refused.
         let again = move_install(
             &data_paths,
             &job.legendary,
             "Calluna",
             new_parent.join("Control").to_str().unwrap(),
-            new_parent.join("Control/x").to_str().unwrap(),
+            new_parent.join("Control").join("x").to_str().unwrap(),
         );
         assert!(!again.ok);
-        let clash = dir.path().join("clash/Control");
+        let clash = dir.path().join("clash").join("Control");
         std::fs::create_dir_all(&clash).unwrap();
         std::fs::write(clash.join("f"), "x").unwrap();
         let r = move_install(

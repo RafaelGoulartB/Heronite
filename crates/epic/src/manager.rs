@@ -1010,13 +1010,12 @@ mod tests {
         assert_eq!(m.snapshot().finished.iter().find(|e| e.params.app_name == "a").unwrap().status, Some(DmStatus::Error));
     }
 
-    // Linux paths; Epic is off on Windows (`Feature::EpicStore`).
-    #[cfg(unix)]
     #[test]
     fn only_a_base_game_install_has_a_folder_to_delete() {
+        let games = if cfg!(windows) { r"D:\Games" } else { "/games" };
         let mut base = el("a");
-        base.params.path = "/games".into();
-        assert_eq!(base.partial_folder(), Some(("/games".into(), "a".into())));
+        base.params.path = games.into();
+        assert_eq!(base.partial_folder(), Some((games.into(), "a".into())));
         let mut update = base.clone();
         update.kind = ElementKind::Update;
         assert_eq!(update.partial_folder(), None);

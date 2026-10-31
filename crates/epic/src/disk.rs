@@ -53,7 +53,7 @@ pub fn reserved_on(path: &str, queued: &[(String, f64)]) -> u64 {
     queued.iter().filter(|(p, _)| device(p) == Some(target)).map(|(_, bytes)| bytes.max(0.) as u64).sum()
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -63,7 +63,7 @@ mod tests {
         let here = check(dir.path().to_str().unwrap()).unwrap();
         assert!(here.total > 0 && here.free <= here.total);
         assert!(here.writable);
-        let future = dir.path().join("a/b/c");
+        let future = dir.path().join("a").join("b").join("c");
         let there = check(future.to_str().unwrap()).unwrap();
         assert_eq!(there.total, here.total);
         assert!(there.message.contains('/'));
@@ -73,12 +73,14 @@ mod tests {
     fn queued_downloads_count_only_on_the_same_filesystem() {
         let dir = tempfile::tempdir().unwrap();
         let here = dir.path().to_str().unwrap().to_string();
-        let future = dir.path().join("new/folder").to_str().unwrap().to_string();
-        let queued = vec![(here.clone(), 100.), (future, 50.), ("thirdParty".into(), 7.), ("/proc".into(), 1000.)];
+        let future = dir.path().join("new").join("folder").to_str().unwrap().to_string();
+        let elsewhere = if cfg!(windows) { r"\\?\Volume{00000000-0000-0000-0000-000000000000}\x" } else { "/proc" };
+        let queued = vec![(here.clone(), 100.), (future, 50.), ("thirdParty".into(), 7.), (elsewhere.into(), 1000.)];
         assert_eq!(reserved_on(&here, &queued), 150);
         assert_eq!(reserved_on("relative", &queued), 0);
     }
 
+    #[cfg(unix)]
     #[test]
     fn read_only_locations_are_not_writable() {
         let root = check("/proc/self").unwrap();

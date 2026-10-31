@@ -214,10 +214,9 @@ pub fn prefix_folder(data_paths: &DataPaths, app_name: &str) -> PrefixFolder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
-    use crate::cmd::testing::{calls, fake};
-    #[cfg(unix)]
+    use crate::cmd::testing::{fake_tool, legendary_of, Reply};
     use std::sync::Arc;
+    use std::time::Duration;
 
     fn fixture() -> (tempfile::TempDir, DataPaths) {
         let dir = tempfile::tempdir().unwrap();
@@ -237,51 +236,46 @@ mod tests {
         assert_eq!(s.install_path.as_deref(), Some("/x/eos_overlay"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn latest_version_comes_from_the_version_file() {
         let (d, data_paths) = fixture();
-        let lg = fake(d.path(), "true");
+        let tool = fake_tool(d.path());
+        let lg = legendary_of(&tool, d.path());
         // Not installed: nothing to ask.
         assert_eq!(latest_version(&data_paths, &lg), "");
-        assert!(calls(d.path()).is_empty());
+        assert!(tool.calls().is_empty());
         std::fs::write(installed_file(&data_paths), r#"{"version": "1"}"#).unwrap();
         // Installed but no version file: `legendary status` is asked (and a
         // missing file afterwards means unknown).
         assert_eq!(latest_version(&data_paths, &lg), "");
-        assert_eq!(calls(d.path()), ["status"]);
+        assert_eq!(tool.calls(), ["status"]);
         std::fs::write(version_file(&data_paths), r#"{"data": {"buildVersion": "1.2.0"}}"#).unwrap();
         assert_eq!(latest_version(&data_paths, &lg), "1.2.0");
     }
 
-    #[cfg(unix)]
     #[test]
     fn install_asks_the_size_first_then_installs_with_progress() {
         let (d, data_paths) = fixture();
-        let body = r#"
-if [ "$3" = "-y" ]; then
-  printf '[DLManager] INFO: = Progress: 50.00%% (1/2), Running for 00:00:01, ETA: 00:00:01\n'
-  printf '[DLManager] INFO:  - Downloaded: 5.00 MiB, Written: 5.00 MiB\n'
-  printf '[DLManager] INFO:  + Download\t- 5.00 MiB/s (raw) / 5.00 MiB/s (decompressed)\n'
-  printf '[DLManager] INFO:  + Disk\t- 5.00 MiB/s (write) / 0.00 MiB/s (read)\n'
-else
-  echo '[DLManager] INFO: Download size: 10.00 MiB (Compression savings: 1.0%)'
-  sleep 5
-fi"#;
-        let lg = fake(d.path(), body);
+        let progress = Reply::new()
+            .out("[DLManager] INFO: = Progress: 50.00% (1/2), Running for 00:00:01, ETA: 00:00:01")
+            .out("[DLManager] INFO:  - Downloaded: 5.00 MiB, Written: 5.00 MiB")
+            .out("[DLManager] INFO:  + Download\t- 5.00 MiB/s (raw) / 5.00 MiB/s (decompressed)")
+            .out("[DLManager] INFO:  + Disk\t- 5.00 MiB/s (write) / 0.00 MiB/s (read)");
+        let asks = Reply::new().out("[DLManager] INFO: Download size: 10.00 MiB (Compression savings: 1.0%)").sleep(Duration::from_secs(5));
+        let tool = fake_tool(d.path()).on(&["-y"], progress).otherwise(asks);
         let seen = std::sync::Mutex::new(Vec::new());
-        let r = install(&data_paths, &lg, &Cancel::new(), &|p| seen.lock().unwrap().push(p));
+        let r = install(&data_paths, &legendary_of(&tool, d.path()), &Cancel::new(), &|p| seen.lock().unwrap().push(p));
         assert!(r.ok, "{}", r.message);
         let path = default_install_path(&data_paths).to_string_lossy().into_owned();
-        assert_eq!(calls(d.path()), [format!("eos-overlay install --path {path}"), format!("eos-overlay install -y --path {path}")]);
+        assert_eq!(tool.calls(), [format!("eos-overlay install --path {path}"), format!("eos-overlay install -y --path {path}")]);
         assert_eq!(*seen.lock().unwrap(), [50.0f32]);
     }
 
-    #[cfg(unix)]
     #[test]
     fn install_can_be_cancelled_and_reports_errors() {
         let (d, data_paths) = fixture();
-        let lg = fake(d.path(), "echo 'Download size: 1.00 MiB'; echo '[cli] ERROR: boom' >&2; exit 1");
+        let tool = fake_tool(d.path()).otherwise(Reply::new().out("Download size: 1.00 MiB").err("[cli] ERROR: boom").exit(1));
+        let lg = legendary_of(&tool, d.path());
         let r = install(&data_paths, &lg, &Cancel::new(), &|_| {});
         assert!(!r.ok && r.message.contains("boom"), "{}", r.message);
 
@@ -291,23 +285,39 @@ fi"#;
         assert!(r.aborted);
     }
 
-    #[cfg(unix)]
     #[test]
     fn enable_disable_remove_and_info_arguments() {
         let (d, _heroic) = fixture();
-        let lg = fake(d.path(), "echo '[cli] INFO: Overlay enabled: Yes'");
+        let tool = fake_tool(d.path()).otherwise(Reply::new().out("[cli] INFO: Overlay enabled: Yes"));
+        let lg = legendary_of(&tool, d.path());
         assert!(enable(&lg, Some("/pfx")).ok);
         assert!(disable(&lg, None).ok);
         assert!(remove(&lg).ok);
         assert!(is_enabled(&lg, Some("/pfx")));
+        // Windows: the overlay is on for every game at once (no prefix).
+        assert!(is_enabled(&lg, None));
         assert_eq!(
-            calls(d.path()),
-            ["eos-overlay enable --prefix /pfx", "eos-overlay disable", "eos-overlay remove -y", "eos-overlay info --prefix /pfx"]
+            tool.calls(),
+            [
+                "eos-overlay enable --prefix /pfx",
+                "eos-overlay disable",
+                "eos-overlay remove -y",
+                "eos-overlay info --prefix /pfx",
+                "eos-overlay info"
+            ]
         );
-        let no = fake(d.path(), "echo '[cli] INFO: Overlay enabled: No'");
-        assert!(!is_enabled(&no, None));
-        let none = fake(d.path(), "echo '[cli] INFO: No Legendary-managed installation found.'");
-        assert!(!is_enabled(&none, None));
+        let no = fake_tool(&d.path().join("no")).otherwise(Reply::new().out("[cli] INFO: Overlay enabled: No"));
+        assert!(!is_enabled(&legendary_of(&no, d.path()), None));
+        let none = fake_tool(&d.path().join("none")).otherwise(Reply::new().out("[cli] INFO: No Legendary-managed installation found."));
+        assert!(!is_enabled(&legendary_of(&none, d.path()), None));
+    }
+
+    #[test]
+    fn the_overlay_has_no_prefix_outside_linux() {
+        let (_d, data_paths) = fixture();
+        if !cfg!(target_os = "linux") {
+            assert_eq!(prefix_folder(&data_paths, "g"), PrefixFolder::NotApplicable);
+        }
     }
 
     #[test]

@@ -5,6 +5,7 @@ use heronite_data::json_store;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
 use heronite_launch::env::setup_wine_env_vars;
+use heronite_launch::host::{run_mode, Os, RunMode};
 use heronite_launch::settings::load_game_settings;
 use heronite_launch::{PlanContext, SystemProbe};
 use serde_json::Value;
@@ -98,6 +99,16 @@ pub fn detect_path(data_paths: &DataPaths, app_name: &str) -> Result<Option<Stri
 }
 
 pub(crate) fn detect_path_with(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> Result<Option<String>> {
+    // Windows builds run as they are here (Windows): legendary resolves the
+    // save folder of this PC itself (`%APPDATA%`, the Documents folder...),
+    // with no Wine prefix to map it into.
+    if run_mode(Os::Windows) == RunMode::Native {
+        let out = legendary.run(&["sync-saves", app_name, "--skip-upload", "--skip-download", "--accept-path"], &[])?;
+        if !out.success() {
+            log::warn!("Unable to compute the default save path for {app_name}: {}", out.error_lines());
+        }
+        return Ok(installed_save_path(data_paths, app_name));
+    }
     let ctx = PlanContext::load(data_paths);
     let probe = SystemProbe;
     let settings = load_game_settings(data_paths, app_name, &ctx.global, &probe);
@@ -132,6 +143,7 @@ mod tests {
     use super::*;
     #[cfg(unix)]
     use crate::cmd::testing::{calls, fake};
+    use crate::cmd::testing::{fake_tool, legendary_of, Reply};
     use serde_json::json;
 
     #[test]
@@ -142,27 +154,41 @@ mod tests {
         assert_eq!(SyncMode::Both.flag(), None);
     }
 
-    #[cfg(unix)]
     #[test]
     fn sync_returns_the_output_and_needs_a_path() {
         let dir = tempfile::tempdir().unwrap();
-        let lg = fake(dir.path(), "echo 'Cloud saves are up to date'; echo '[cli] INFO: done' >&2");
-        let out = sync_with(&lg, "A", "/saves", Some("--skip-upload")).unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out("Cloud saves are up to date").err("[cli] INFO: done"));
+        let out = sync_with(&legendary_of(&tool, dir.path()), "A", "/saves", Some("--skip-upload")).unwrap();
         assert!(out.contains("up to date") && out.contains("done"), "{out}");
-        assert_eq!(calls(dir.path()), ["sync-saves A --skip-upload --save-path /saves -y"]);
+        assert_eq!(tool.calls(), ["sync-saves A --skip-upload --save-path /saves -y"]);
         let data_paths = DataPaths::at(dir.path());
         assert!(sync(&data_paths, "A", "  ", SyncMode::Both).is_err());
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_sync_legendary_failed_is_an_error() {
         let dir = tempfile::tempdir().unwrap();
-        let lg = fake(dir.path(), "echo '[cli] ERROR: Save path is not writable' >&2");
+        let tool =
+            fake_tool(dir.path()).on(&["B"], Reply::new().exit(2)).otherwise(Reply::new().err("[cli] ERROR: Save path is not writable"));
+        let lg = legendary_of(&tool, dir.path());
         let err = sync_with(&lg, "A", "/saves", None).unwrap_err().to_string();
         assert!(err.contains("not writable"), "{err}");
-        let lg = fake(dir.path(), "exit 2");
-        assert!(sync_with(&lg, "A", "/saves", None).is_err());
+        assert!(sync_with(&lg, "B", "/saves", None).is_err());
+    }
+
+    /// Windows: legendary finds the folder of this PC itself, no prefix needed.
+    #[cfg(windows)]
+    #[test]
+    fn detection_on_windows_needs_no_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
+        let found = r#"{"A": {"save_path": "C:\\Users\\x\\AppData\\Local\\Game\\Saved"}}"#;
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().write_file("${LEGENDARY_CONFIG_PATH}/installed.json", found));
+        let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
+        let path = detect_path_with(&data_paths, &lg, "A").unwrap();
+        assert_eq!(path.as_deref(), Some(r"C:\Users\x\AppData\Local\Game\Saved"));
+        assert_eq!(tool.calls(), ["sync-saves A --skip-upload --skip-download --accept-path"]);
     }
 
     #[test]

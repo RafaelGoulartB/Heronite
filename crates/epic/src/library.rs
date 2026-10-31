@@ -238,6 +238,13 @@ pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshR
     if let Some(e) = &list_error {
         log::error!("Failed to refresh library: {e}");
     }
+    // Windows: the games the Epic Games Launcher installed since (with the
+    // metadata the list just fetched).
+    if list_error.is_none() {
+        if let Some(r) = crate::egl::import_new(data_paths, legendary).filter(|r| !r.ok) {
+            log::warn!("taking in the Epic Games Launcher's games: {}", r.message);
+        }
+    }
     let games = write_library(data_paths)?;
     log::info!("Game list updated, got {games} games & DLCs");
     // With a fresh list legendary's token is fresh too. A failure here only
@@ -284,8 +291,7 @@ pub fn updates_available(data_paths: &DataPaths) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
-    use crate::cmd::testing::fake;
+    use crate::cmd::testing::{fake_tool, legendary_of, Reply};
     use serde_json::json;
 
     fn meta(extra: Value) -> Value {
@@ -411,21 +417,21 @@ mod tests {
         assert!(updates_available(&data_paths).is_empty());
     }
 
-    #[cfg(unix)]
     #[test]
     fn refresh_runs_list_then_rebuilds_even_when_list_fails() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
         setup(&data_paths);
-        let lg = fake(dir.path(), "echo 'ERROR: offline' >&2; exit 1");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("ERROR: offline").exit(1));
+        let lg = legendary_of(&tool, dir.path());
         let r = refresh(&data_paths, &lg).unwrap();
         assert_eq!(r.games, 1);
         assert!(r.list_error.unwrap().contains("offline"));
-        assert_eq!(crate::cmd::testing::calls(dir.path()), ["list --third-party"]);
+        assert_eq!(tool.calls(), ["list --third-party"]);
         // Logged out: nothing runs.
         std::fs::remove_file(data_paths.legendary_config_dir().join("user.json")).unwrap();
         assert_eq!(refresh(&data_paths, &lg).unwrap().games, 0);
-        assert_eq!(crate::cmd::testing::calls(dir.path()).len(), 1);
+        assert_eq!(tool.calls().len(), 1);
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:
