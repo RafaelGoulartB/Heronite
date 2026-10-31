@@ -305,8 +305,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_runs_batch_files_and_powershell_scripts() {
-        assert_eq!(run_script("before.bat", "@echo %HERONITE_GAME_SCRIPT_TYPE%> out.txt
-"), "before");
+        assert_eq!(run_script("before.bat", "@echo %HERONITE_GAME_SCRIPT_TYPE%> out.txt\r\n"), "before");
         assert_eq!(run_script("Before Game.ps1", "Set-Content -Path out.txt -Value $env:HERONITE_GAME_SCRIPT_TYPE"), "before");
     }
 }
