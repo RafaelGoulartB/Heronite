@@ -146,11 +146,11 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::SelfUpdate
         | Feature::DesktopShortcuts
         | Feature::SaveBackups
-        | Feature::Capture => true,
-        Feature::Wine
+        | Feature::Capture
         | Feature::EpicStore
         | Feature::GogStore
-        | Feature::AmazonStore
+        | Feature::AmazonStore => true,
+        Feature::Wine
         | Feature::StoreClients
         | Feature::LauncherImports
         | Feature::HeroicMigration
