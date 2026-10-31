@@ -147,10 +147,10 @@ fn is_linux(game: &GameInfo) -> bool {
 }
 
 /// The play task of a Windows build: program, arguments and working folder.
-fn play_task(probe: &dyn Probe, install_path: &str, app: &str, windows: bool) -> Result<(String, Vec<String>, String), LaunchPlan> {
+fn play_task(probe: &dyn Probe, install_path: &str, app: &str, windows: bool) -> Result<(String, Vec<String>, String), String> {
     let info = info_file(install_path, app);
     let Some(task) = probe.read_head(&info, 4 << 20).and_then(|b| primary_task(&String::from_utf8_lossy(&b))) else {
-        return Err(LaunchPlan::Unavailable(tr!("The game's launch information was not found: {path}", path = info)));
+        return Err(tr!("The game's launch information was not found: {path}", path = info));
     };
     let exe = resolve(probe, install_path, &task.path);
     let cwd = task.working_dir.as_deref().map(|d| resolve(probe, install_path, d)).unwrap_or_else(|| install_path.to_string());
@@ -175,7 +175,7 @@ fn native_windows(
         Some(exe) => (exe, Vec::new(), None),
         None => match play_task(probe, install_path, app, true) {
             Ok((exe, args, cwd)) => (exe, args, Some(cwd)),
-            Err(plan) => return plan,
+            Err(why) => return LaunchPlan::Unavailable(why),
         },
     };
     args.extend(extra);
@@ -230,7 +230,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
         }
         None => match play_task(probe, install_path, app, false) {
             Ok(task) => task,
-            Err(plan) => return plan,
+            Err(why) => return LaunchPlan::Unavailable(why),
         },
     };
     args.extend(extra);
