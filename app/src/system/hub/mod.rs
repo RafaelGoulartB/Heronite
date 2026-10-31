@@ -52,7 +52,7 @@ pub use quit::{
 #[cfg(windows)]
 pub use quit::run_on_quit;
 pub use start::init;
-pub use window::{has_window, show_window};
+pub use window::{close_window, has_window, show_window};
 
 /// Process exit code (non-zero when a launch from outside failed).
 static EXIT_CODE: AtomicI32 = AtomicI32::new(0);

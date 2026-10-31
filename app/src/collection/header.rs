@@ -213,8 +213,8 @@ impl CollectionView {
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
             .child(self.view_mode_controls(cx))
-            .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)))
-            .children(window_controls::controls(window))
+            .children(self.bulk_chip(cx).map(|chip| div().flex().flex_none().items_center().gap(px(2.)).child(chip)))
+            .children(window_controls::controls(window, cx))
     }
 
     /// One removable chip per filter the View menu has set.

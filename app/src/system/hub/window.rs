@@ -14,7 +14,11 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<
     let options = WindowOptions {
         // Fullscreen keeps `bounds` for when F11 switches back.
         window_bounds: Some(if fullscreen { WindowBounds::Fullscreen(bounds) } else { WindowBounds::Windowed(bounds) }),
+        // No system title bar: the app draws its own controls
+        // (`ui::window_controls`). `titlebar: None` hides it on Windows; on
+        // Linux the compositor is asked to leave the frame to the app.
         titlebar: None,
+        window_decorations: Some(WindowDecorations::Client),
         app_id: Some("com.heronite.rs".into()),
         window_background: WindowBackgroundAppearance::Opaque,
         window_min_size: Some(size(px(640.), px(480.))),
@@ -92,6 +96,14 @@ pub(super) fn apply_window_flags(cx: &mut App, console: bool, fullscreen: bool) 
             }
         })
         .ok();
+}
+
+/// The app's own close button (Linux): asks first like the compositor's close,
+/// then closes.
+pub fn close_window(window: &mut Window, cx: &mut App) {
+    if allow_user_close(cx) {
+        window.remove_window();
+    }
 }
 
 /// Closes the window but keeps the app alive (needs the tray). Returns whether
