@@ -1,21 +1,16 @@
 //! Grid view of the Collection: the covers across the whole window, the
 //! selected game in a glass drawer on the right (`grid_drawer.rs`). The
-//! header's Focus / Grid switch picks it; the choice, the cover size and the
-//! titles under the covers are remembered in `ui-state.json`, as is whether
-//! the Focus list shows covers or rows (its switch takes the grid controls'
-//! place in the Focus view).
+//! header's Focus / Grid switch (`view_mode.rs`) picks it; the choice, the
+//! cover size and the titles under the covers are remembered in
+//! `ui-state.json`, as is whether the Focus list shows covers or rows.
 
-use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
+use gpui_kit::component::slider::SliderState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::ui_state::GRID_COVER_W;
 
 use super::vm::ListItem;
 use super::CollectionView;
-use crate::icons::Icon;
 use crate::theme;
-use crate::ui::{icon, tool_button_base};
-use heronite_i18n::tr;
 
 const GRID_PAD: f32 = 22.;
 const GRID_GAP_X: f32 = 16.;
@@ -31,8 +26,11 @@ pub(super) struct GridUi {
     /// The drawer was closed (Esc, its close button) while a game stays
     /// selected; selecting a game opens it again.
     pub drawer_closed: bool,
-    /// The header's cover size slider, created the first time it shows.
-    size: Option<Entity<SliderState>>,
+    /// The cover size slider of the view options, created the first time it shows.
+    pub size: Option<Entity<SliderState>>,
+    /// The pointer went down on the active view mode while its menu was
+    /// open (`view_mode.rs`).
+    pub menu_press: bool,
     /// Scroll the selected card into view once the new columns are laid out.
     pub reveal: bool,
 }
@@ -137,89 +135,6 @@ impl CollectionView {
         cx.notify();
     }
 
-    /// Header controls: in the grid the cover size and the titles switch, in
-    /// the Focus view the covers / rows switch; then the Focus / Grid switch.
-    pub(super) fn view_mode_controls(&mut self, cx: &mut Context<Self>) -> Div {
-        let grid = self.ui.grid_view;
-        let mut row = div().flex().flex_none().items_center().gap(px(6.)).mr(px(6.));
-        if grid {
-            let slider = self.grid_size_slider(cx);
-            let titles = self.ui.grid_titles;
-            row = row
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(icon(Icon::GridView, px(14.), theme::tool_icon()))
-                        .child(div().w(px(96.)).child(Slider::new(&slider).bg(theme::accent()).text_color(theme::accent()))),
-                )
-                .child(
-                    tool_button_base("grid-titles", titles)
-                        .tooltip(crate::ui::tooltip(tr!("Show titles")))
-                        .w_auto()
-                        .px(px(9.))
-                        .text_size(px(13.))
-                        .font_weight(theme::W_BOLD)
-                        .text_color(if titles { theme::text_bright() } else { theme::tool_icon() })
-                        .child("Aa")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.ui.grid_titles = !this.ui.grid_titles;
-                            this.save_ui();
-                            cx.notify();
-                        })),
-                );
-        } else {
-            let rows = self.ui.focus_list;
-            row = row.child(
-                segmented()
-                    .child(
-                        mode_icon("focus-covers", Icon::ViewCovers, tr!("Covers"), !rows)
-                            .on_click(cx.listener(|this, _, _, cx| this.set_focus_list(false, cx))),
-                    )
-                    .child(
-                        mode_icon("focus-rows", Icon::ViewList, tr!("List"), rows)
-                            .on_click(cx.listener(|this, _, _, cx| this.set_focus_list(true, cx))),
-                    ),
-            );
-        }
-        row.child(
-            segmented()
-                .child(
-                    mode_button("view-focus", Icon::ViewSidebar, tr!("Focus"), !grid)
-                        .on_click(cx.listener(|this, _, _, cx| this.set_grid_view(false, cx))),
-                )
-                .child(
-                    mode_button("view-grid", Icon::GridView, tr!("Grid"), grid)
-                        .on_click(cx.listener(|this, _, _, cx| this.set_grid_view(true, cx))),
-                ),
-        )
-    }
-
-    fn grid_size_slider(&mut self, cx: &mut Context<Self>) -> Entity<SliderState> {
-        if let Some(s) = &self.grid.size {
-            return s.clone();
-        }
-        let (min, max, _) = GRID_COVER_W;
-        // `max` first: `min` is clamped against the default max of 100.
-        let state = cx.new(|_| SliderState::new().max(max).min(min).step(2.).default_value(self.ui.grid_cover_w));
-        cx.subscribe(&state, |this, _, ev: &SliderEvent, cx| {
-            let (value, release) = match ev {
-                SliderEvent::Change(v) => (v, false),
-                SliderEvent::Release(v) => (v, true),
-            };
-            let SliderValue::Single(v) = *value else { return };
-            this.ui.grid_cover_w = v;
-            if release {
-                this.save_ui();
-            }
-            cx.notify();
-        })
-        .detach();
-        self.grid.size = Some(state.clone());
-        state
-    }
-
     /// Keys of the grid and the Focus list when nothing floats over them
     /// (the moves are `keys.rs`'s): Enter does what the game's big button
     /// does, Play or Install (a running game: the grid shows its drawer),
@@ -322,36 +237,6 @@ impl CollectionView {
         };
         Some(card(ri, col))
     }
-}
-
-/// The track of the header's switches.
-fn segmented() -> Div {
-    div().flex().items_center().gap(px(2.)).p(px(3.)).rounded_full().bg(theme::ink_a(0.06))
-}
-
-/// One half of the Focus / Grid switch: a solid pill when active.
-fn mode_button(id: &'static str, ic: Icon, label: &'static str, active: bool) -> Stateful<Div> {
-    mode_pill(id, ic, active).gap(px(6.)).px(px(11.)).text_size(px(12.5)).child(label)
-}
-
-/// One half of the covers / rows switch: [`mode_button`] without its label.
-fn mode_icon(id: &'static str, ic: Icon, tip: &'static str, active: bool) -> Stateful<Div> {
-    mode_pill(id, ic, active).w(px(28.)).justify_center().tooltip(crate::ui::tooltip(tip))
-}
-
-fn mode_pill(id: &'static str, ic: Icon, active: bool) -> Stateful<Div> {
-    let fg: Hsla = if active { theme::on_solid_pill().into() } else { theme::ink_a(0.68) };
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .h(px(26.))
-        .rounded_full()
-        .cursor_pointer()
-        .text_color(fg)
-        .when(active, |d| d.bg(theme::solid_pill()))
-        .when(!active, |d| d.hover(|s| s.bg(theme::ink_a(0.08))))
-        .child(icon(ic, px(15.), fg))
 }
 
 #[cfg(test)]

@@ -59,6 +59,7 @@ mod update_pill;
 mod user_actions;
 mod view_filters;
 mod view_menu;
+mod view_mode;
 mod welcome;
 pub use load::{discard_preload, preload_library};
 pub use screenshots::screenshots_global;

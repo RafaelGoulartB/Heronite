@@ -27,6 +27,8 @@ pub enum Menu {
     Downloads,
     /// The update pill's release and actions.
     Update,
+    /// The active view mode's options (`view_mode.rs`); opens on click only.
+    Display,
 }
 
 const CLOSE_DELAY: Duration = Duration::from_millis(180);
@@ -212,7 +214,7 @@ impl CollectionView {
             )
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
-            .child(self.view_mode_controls(cx))
+            .child(self.view_mode_controls(window, cx))
             .children(self.bulk_chip(cx).map(|chip| div().flex().flex_none().items_center().gap(px(2.)).child(chip)))
             .children(window_controls::controls(window, cx))
     }
