@@ -29,6 +29,9 @@ fn move_with(
     force_copy: bool,
 ) -> Result<String> {
     let Some(game) = installed::get(paths, app_name) else { bail!(tr!("The game is not installed")) };
+    if crate::amazon_app::is_from_app(paths, app_name) {
+        bail!(tr!("The game's files belong to the Amazon Games app: move the game there"));
+    }
     let old = PathBuf::from(&game.path);
     if new_base.trim().is_empty() {
         bail!(tr!("Pick a folder to move the game to"));

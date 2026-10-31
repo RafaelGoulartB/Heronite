@@ -3572,6 +3572,7 @@ dependencies = [
  "heronite-platform",
  "log",
  "regex",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

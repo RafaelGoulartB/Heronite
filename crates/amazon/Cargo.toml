@@ -16,6 +16,8 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"
 log = "0.4"
 regex = "1"
+# The Amazon Games app keeps its installs in SQLite (compiled in, as for Lutris).
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 [dev-dependencies]
 heronite-data = { path = "../data", features = ["testing"] }

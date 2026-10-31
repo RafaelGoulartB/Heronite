@@ -18,7 +18,7 @@ use heronite_i18n::tr;
 use regex::Regex;
 
 use crate::cmd::{Cancel, Nile};
-use crate::{installed, library, updates};
+use crate::{amazon_app, installed, library, updates};
 
 pub use crate::moves::{move_install, relocate};
 
@@ -194,6 +194,11 @@ pub fn verify(paths: &DataPaths, nile: &Nile, app_name: &str, cancel: &Cancel, o
 /// files may still be.
 pub fn uninstall(paths: &DataPaths, nile: &Nile, app_name: &str) -> Result<Option<String>> {
     let folder = installed::get(paths, app_name).map(|g| g.path).unwrap_or_default();
+    // The Amazon Games app's files are its own to delete.
+    if amazon_app::is_from_app(paths, app_name) {
+        forget(paths, nile, app_name)?;
+        return Ok(Some(amazon_app::kept_files_note(&folder)));
+    }
     let out = nile.run(&["uninstall", app_name])?;
     let mut problem = None;
     if !out.success() || installed::get(paths, app_name).is_some() {
@@ -217,7 +222,15 @@ pub fn uninstall(paths: &DataPaths, nile: &Nile, app_name: &str) -> Result<Optio
         log::warn!("rebuilding the Amazon library: {err:#}");
     }
     updates::forget(paths, app_name);
+    forget_setup(paths, app_name);
     Ok(problem)
+}
+
+/// A game installed again runs its installers again; it no longer comes
+/// from the Amazon Games app.
+fn forget_setup(paths: &DataPaths, app_name: &str) {
+    heronite_launch::native_setup::forget(paths, "nile", app_name);
+    amazon_app::forget(paths, app_name);
 }
 
 /// Takes the game off the installed list (and drops nile's manifest of it)
@@ -229,6 +242,7 @@ pub fn forget(paths: &DataPaths, nile: &Nile, app_name: &str) -> Result<()> {
         log::warn!("rebuilding the Amazon library: {err:#}");
     }
     updates::forget(paths, app_name);
+    forget_setup(paths, app_name);
     Ok(())
 }
 
