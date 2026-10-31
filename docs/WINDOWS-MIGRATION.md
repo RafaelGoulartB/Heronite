@@ -98,7 +98,7 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 - ✅ Play time and sessions of native Windows games: the job object follows the game, the session is recorded when its last process ends (checked with `charmap.exe` through `--no-gui --launch`)
 - ✅ Add game dialog: no Linux tab, no Wine section, no "Run installer first", no store note on Windows
 - ✅ Game settings: a Windows game on Windows has only the Launch tab (`Feature::LaunchExtras`)
-- ✅ A game's menu: no Ludusavi, Troubleshoot or shortcuts on Windows
+- ✅ A game's menu: no Ludusavi or Troubleshoot on Windows (shortcuts: see below)
 - ✅ Restore a backup made on Linux: paths into the backup's data, settings and home folders become this machine's, with `/` separators (valid JSON, Windows takes them). Checked end to end: a backup claiming `/home/rafael/...` folders restored at the app's start into a Windows data folder
 - ✅ Open folders, files and links (`shell::open` instead of `xdg-open`)
 - ✅ Hide on Windows what is not ported yet (`Feature`): ☰ pages, command palette, console mode menu, Settings sections and General's rows (desktop and console mode), Getting started, the empty Collection; store, client and launcher background jobs and the Wine/store tools updates do not start
@@ -123,9 +123,17 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
   - ⬜ Dark tray menus (needs an undocumented uxtheme call); new icons start in Windows 11's hidden-icons flyout until the user pins them
   - ✅ A `WM_CLOSE` to the tray window (plain `taskkill` while the app sits in the tray) quits gracefully, the Windows counterpart of SIGTERM
 - ✅ Start with Windows: a `Heronite` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (`system/autostart.rs`, `registry::set_string` / `delete_value`); only the real data folder drives it, `HERONITE_AUTOSTART_KEY` redirects it for tests
-- ⬜ Desktop and Start menu shortcuts (`.lnk`)
-- ⬜ Self-update (installer or portable zip, signed)
-- ⬜ Packaging (installer, signing)
+- ✅ Desktop and Start menu shortcuts (`Feature::DesktopShortcuts`): `.lnk` files written by the shell's own ShellLink object (`heronite_platform::shortcut`), starting `heronite-rs.exe --launch <runner> <appName>`; one API for both systems (`heronite_shortcuts::menu`), `.desktop` files on Linux. Desktop and `%APPDATA%\Microsoft\Windows\Start Menu\Programs` (`HERONITE_DESKTOP_DIR` / `HERONITE_APPLICATIONS_DIR` override them); the icon is the game's picture as an `.ico` (PNG inside), or the program's own
+  - ✅ Add to Steam: Steam's folder from the registry, `steam.exe` counted as a running Steam; Steam must have its debugging interface on or be closed (Linux's `steam://addnonsteamgame` fallback has no Windows counterpart)
+- ✅ Packaging (`scripts/windows/package.ps1`): `Heronite-Setup-x86_64.exe` (Inno Setup, `packaging/windows/heronite.iss`, per user in `%LOCALAPPDATA%\Programs\Heronite`, no administrator rights; Start menu and optional desktop shortcut; the uninstaller removes the `Run` value and `heronite://`) and `Heronite-Portable-x86_64.zip`; the program has its icon and version information (`app/build.rs`)
+  - ✅ Releases: the release workflow builds them next to the Linux files, and one job signs everything with minisign and publishes one release; pull requests that touch the packaging build them as artifacts (`windows-packages.yml`)
+  - ⬜ Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` / `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`); until then SmartScreen warns on the first run and the release notes say so
+  - ⬜ The installer in other languages (English only)
+- ✅ Portable copy: a `portable.txt` next to `heronite-rs.exe` (`dirs::PORTABLE_MARKER`) keeps the data, settings and cache in `data`, `config` and `cache` of that folder (`dirs::portable_root`), and the copy writes nothing to the registry on its own (no `heronite://`; Start with Windows only if the user turns it on)
+- ✅ Self-update (`Feature::SelfUpdate`), files checked with minisign like the AppImage:
+  - Installed copy (a `package-format` file holding `windows-installer` next to the program): the setup is downloaded and runs as the app quits (`/VERYSILENT /WAITPID=<pid>`), and starts the new version when the update came from "Restart" (`/RELAUNCH=1`); log in the cache folder (`update-setup.log`)
+  - Portable copy: the zip is unpacked in the copy's cache (nothing outside `Heronite/`, no links), each replaced file is renamed `<name>.old` (a running program can be renamed) and the new one moved in, all undone on a failure; the `.old` files go at the next start
+  - A development build (neither file) and a release without the Windows files only say a new version exists
 - ➖ Wine / Proton, Wine Manager, winetricks
 - ➖ Sandbox (bubblewrap)
 - ➖ Lutris, Bottles, Faugus and Heroic (Linux) imports
