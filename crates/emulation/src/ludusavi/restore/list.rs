@@ -72,7 +72,14 @@ fn expand(path: &str, home: &str) -> Option<PathBuf> {
     })
 }
 
+/// The same folder: a trailing separator aside, and on Windows either
+/// separator and any case (`C:/Users/u/ludusavi-backup` from Ludusavi's
+/// config is `C:\Users\U\ludusavi-backup\` picked in Settings).
 fn same(a: &Path, b: &Path) -> bool {
+    if cfg!(windows) {
+        let norm = |p: &Path| p.to_string_lossy().replace('\\', "/").trim_end_matches('/').to_lowercase();
+        return norm(a) == norm(b);
+    }
     let norm = |p: &Path| p.to_string_lossy().trim_end_matches('/').to_string();
     norm(a) == norm(b)
 }
@@ -201,7 +208,6 @@ pub fn list_backups(env: &LudusaviEnv, tool: &Tool, game: &LudusaviGame, picked:
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     fn settings(backup_path: &str, extra: &[&str]) -> LudusaviSettings {
         LudusaviSettings {
             use_installed_config: false,
@@ -211,7 +217,34 @@ mod tests {
         }
     }
 
-    // Linux paths; save backups (Ludusavi) are off on Windows (`Feature::SaveBackups`).
+    #[cfg(windows)]
+    #[test]
+    fn windows_sources_in_order_without_repeats() {
+        // Ludusavi's config has `/` separators; folders picked in Settings `\`.
+        let detected = LudusaviDetected { backup_path: Some("C:/Users/u/ludusavi-backup".into()), ..Default::default() };
+        let s = restore_sources(
+            &settings(r"D:\Saves", &[r"c:\users\U\ludusavi-backup\", r"D:\Saves\", r"E:\Old"]),
+            Some(&detected),
+            r"C:\Users\u",
+            Some(Path::new("e:/old/")),
+        );
+        let got: Vec<(String, SourceKind)> = s.iter().map(|s| (s.root.to_string_lossy().into_owned(), s.kind)).collect();
+        assert_eq!(
+            got,
+            [
+                (r"D:\Saves".into(), SourceKind::Backups),
+                (r"c:\users\U\ludusavi-backup\".into(), SourceKind::Extra),
+                (r"E:\Old".into(), SourceKind::Extra)
+            ]
+        );
+        // No folder set: Ludusavi's own backup folder.
+        let s = restore_sources(&settings("", &[]), Some(&detected), r"C:\Users\u", None);
+        assert_eq!(s, [BackupSource { root: "C:/Users/u/ludusavi-backup".into(), kind: SourceKind::Backups }]);
+        assert!(same(Path::new(r"C:\Users\u\ludusavi-backup\"), Path::new("c:/users/u/ludusavi-backup")));
+        assert!(!same(Path::new(r"C:\Users\u\a"), Path::new(r"C:\Users\u\b")));
+    }
+
+    // Linux paths (`windows_sources_in_order_without_repeats` below).
     #[cfg(unix)]
     #[test]
     fn sources_in_order_without_repeats() {

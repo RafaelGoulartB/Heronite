@@ -200,12 +200,14 @@ impl Probe for FakeProbe {
         self.paths.contains(path) && !self.not_executable.contains(path)
     }
     fn list_dir(&self, path: &str) -> Vec<String> {
-        let prefix = format!("{}/", path.trim_end_matches('/'));
+        // `\` separates too on Windows.
+        let sep = |c: char| c == '/' || (cfg!(windows) && c == '\\');
+        let base = path.trim_end_matches(sep);
         let mut out: Vec<String> = self
             .paths
             .iter()
-            .filter_map(|p| p.strip_prefix(&prefix))
-            .map(|rest| rest.split('/').next().unwrap_or(rest).to_string())
+            .filter_map(|p| p.strip_prefix(base)?.strip_prefix(sep))
+            .map(|rest| rest.split(sep).next().unwrap_or(rest).to_string())
             .collect();
         out.sort();
         out.dedup();

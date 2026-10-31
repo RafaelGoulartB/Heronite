@@ -1,11 +1,13 @@
-//! Restoring a Ludusavi backup into the game's prefix as it is now.
+//! Restoring a Ludusavi backup into the game's prefix as it is now (Linux),
+//! or into the game's own folders (Windows, where games run natively).
 //!
 //! `ludusavi restore` writes each file back to the absolute path it was
 //! backed up from and has no `--wine-prefix`. A backup made in another
 //! prefix (another Steam library, a recreated prefix, Windows) is retargeted
 //! with restore redirects written to a throwaway config folder, so Ludusavi's
-//! own config is never touched. Files left out go to that config's
-//! `restore.toggledPaths`.
+//! own config is never touched. On Windows only what moved is redirected
+//! (another Steam library, another Windows user, a backup made on Linux).
+//! Files left out go to that config's `restore.toggledPaths`.
 //!
 //! Flow: [`list_backups`] → [`plan_restore`] (a preview without redirects to
 //! read the stored paths, then one with them) → [`apply_restore`] (undo copy,
@@ -302,6 +304,8 @@ mod tests {
         }
     }
 
+    // Linux's redirects into a Proton prefix.
+    #[cfg(not(windows))]
     #[test]
     fn plans_with_redirects_from_the_stored_paths() {
         let d = tempfile::tempdir().unwrap();
@@ -329,6 +333,74 @@ mod tests {
         assert_eq!(&first[first.len() - 3..], ["--backup", "backup-1.zip", "Elden Ring"]);
     }
 
+    /// Windows: a backup made by another user goes to this user's folder.
+    #[cfg(windows)]
+    #[test]
+    fn windows_plans_with_redirects_to_this_users_folder() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(d.path());
+        let stored = serde_json::json!({"games": {"Hollow Knight": {"files": {
+            "C:/Users/bob/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat": {"change": "New", "bytes": 10},
+            "/home/bob/.config/unity3d/Team Cherry/Hollow Knight/user1.dat": {"change": "New", "bytes": 10}
+        }}}});
+        let redirected = serde_json::json!({"games": {"Hollow Knight": {"files": {
+            "C:/Users/rafael/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat":
+                {"change": "Different", "bytes": 10, "originalPath": "C:/Users/bob/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat"},
+            "/home/bob/.config/unity3d/Team Cherry/Hollow Knight/user1.dat": {"change": "New", "bytes": 10}
+        }}}});
+        let runner = TwoStep { calls: Default::default(), replies: vec![stored.to_string(), redirected.to_string()] };
+        let probe = FakeProbe::new(r"C:\Users\rafael");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let target = RestoreTarget { user_home: Some(r"C:\Users\rafael".into()), ..Default::default() };
+        let mut req = request(target);
+        req.game_name = "Hollow Knight".into();
+        let plan = plan_restore(&env, &tool(), req).unwrap();
+        assert_eq!(plan.redirects, [Redirect { source: "C:/Users/bob".into(), target: "C:/Users/rafael".into() }]);
+        assert_eq!(
+            plan.files.iter().map(|f| (f.kind, f.selected)).collect::<Vec<_>>(),
+            [(FileKind::Save, true), (FileKind::Unmapped, false)]
+        );
+        assert_eq!(plan.overwrites(), 1);
+        assert_eq!(runner.calls.lock().unwrap().len(), 2);
+    }
+
+    /// Windows: the files go back where they were, an undo copy keeps
+    /// what they replace, and the undo puts it back.
+    #[cfg(windows)]
+    #[test]
+    fn windows_applies_in_place_and_undoes() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(d.path().join("data"));
+        let save = d.path().join(r"Saves\Game\slot1.sav");
+        std::fs::create_dir_all(save.parent().unwrap()).unwrap();
+        std::fs::write(&save, "before").unwrap();
+        // As Ludusavi writes it: `/` separators.
+        let save_s = save.to_string_lossy().replace('\\', "/");
+        let created = d.path().join(r"Saves\Game\slot2.sav").to_string_lossy().replace('\\', "/");
+        let reply = serde_json::json!({"games": {"Elden Ring": {"files": {
+            save_s.clone(): {"change": "Different", "bytes": 6},
+            created.clone(): {"change": "New", "bytes": 6}
+        }}}});
+        let runner = Fake { replies: vec![("--config".into(), out(&reply.to_string(), "", 0))], ..Default::default() };
+        let probe = FakeProbe::new(r"C:\Users\u");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let target = RestoreTarget::default();
+        let files = planned_files(parse_reply(&reply, "Elden Ring").unwrap(), &target);
+        assert!(files.iter().all(|f| f.kind == FileKind::Save && f.selected));
+        let plan = RestorePlan { request: request(target), redirects: Vec::new(), files };
+        let undo_root = paths.save_restore_undo();
+        let outcome = apply(&env, &plan, &undo_root).unwrap();
+        assert_eq!((outcome.written, outcome.failed.len()), (2, 0));
+        // What Ludusavi would have written.
+        std::fs::write(&save, "restored").unwrap();
+        std::fs::write(&created, "restored").unwrap();
+        let record = undo::latest(&undo_root, "app").expect("an undo copy");
+        assert_eq!(record, outcome.undo.unwrap());
+        assert_eq!(undo::undo(&record).unwrap(), 2);
+        assert_eq!(std::fs::read_to_string(&save).unwrap(), "before");
+        assert!(!std::path::Path::new(&created).exists());
+    }
+
     #[test]
     fn refuses_a_missing_prefix_and_reports_unknown_games() {
         let d = tempfile::tempdir().unwrap();
@@ -346,7 +418,7 @@ mod tests {
         assert!(err.contains("Elden Ring"), "{err}");
     }
 
-    // Wine prefixes and Linux paths; save backups (Ludusavi) are off on Windows (`Feature::SaveBackups`).
+    // Wine prefixes and Linux paths (`windows_applies_in_place_and_undoes` above).
     #[cfg(unix)]
     #[test]
     fn applies_only_the_selected_files_and_keeps_an_undo_copy() {
@@ -388,7 +460,9 @@ mod tests {
     fn nothing_written_drops_the_undo_copy() {
         let d = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(d.path());
-        let reply = serde_json::json!({"games": {"Elden Ring": {"files": {"/x/s": {"change": "Same", "bytes": 1}}}}});
+        // A native path of this system: a save on Linux and on Windows.
+        let same = d.path().join("s").to_string_lossy().into_owned();
+        let reply = serde_json::json!({"games": {"Elden Ring": {"files": {same: {"change": "Same", "bytes": 1}}}}});
         let runner = Fake { replies: vec![("--config".into(), out(&reply.to_string(), "", 0))], ..Default::default() };
         let probe = FakeProbe::new("/home/u");
         let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
