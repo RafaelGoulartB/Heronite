@@ -1,24 +1,22 @@
 //! The header's Focus / Grid switch. A solid pill slides under the active
 //! mode, which carries a chevron: clicking it opens the mode's options (the
 //! Focus list as covers or rows; the grid's cover size and titles), clicking
-//! the other mode switches to it. The choices are kept in `ui-state.json`.
+//! the other mode switches to it. The menu itself is `view_options.rs`.
 
 use std::f32::consts::PI;
 use std::rc::Rc;
 use std::time::Duration;
 
-use gpui_kit::component::slider::{Slider, SliderEvent, SliderState, SliderValue};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::ui_state::GRID_COVER_W;
 
 use super::header::Menu;
+use super::view_options::{MENU_PAD, MENU_W};
 use super::CollectionView;
 use crate::console::motion::mix;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::toggle;
-use crate::ui::dropdown::{menu_panel, menu_separator};
+use crate::ui::dropdown::menu_panel;
 use crate::ui::icon;
 use heronite_i18n::tr;
 
@@ -41,7 +39,6 @@ const CARET_SLOT: f32 = 16.;
 /// How much wider the active mode is: its chevron, with 8px after it
 /// instead of the 11px padding.
 const CARET_EXTRA: f32 = CARET_SLOT - SEG_PAD + 8.;
-const MENU_W: f32 = 248.;
 
 /// One half of the switch, measured once per render (the label depends on
 /// the language and the font).
@@ -88,7 +85,8 @@ impl CollectionView {
         let grid_mode = Mode::new("view-grid", Icon::GridView, tr!("Grid"), window);
         // The menu lines up with the right edge of the active mode.
         let menu_right = if grid { TRACK_PAD } else { TRACK_PAD + grid_mode.base + SEG_GAP };
-        let menu = open.then(|| self.view_options(cx));
+        let max_h = (f32::from(window.viewport_size().height) - SEG_H - 2. * TRACK_PAD - 24.).max(160.);
+        let menu = open.then(|| self.view_options(max_h, cx));
 
         let on_focus = cx.listener(|this, _: &ClickEvent, _, cx| this.pick_view_mode(false, cx));
         let on_grid = cx.listener(|this, _: &ClickEvent, _, cx| this.pick_view_mode(true, cx));
@@ -151,23 +149,16 @@ impl CollectionView {
     }
 
     /// The active mode's options, fading in as they drop 6px into place.
-    fn view_options(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let body = if self.ui.grid_view { self.grid_options(cx) } else { self.focus_options(cx) };
+    /// They scroll when the window is too short for them.
+    fn view_options(&mut self, max_h: f32, cx: &mut Context<Self>) -> AnyElement {
+        let body = self.view_options_body(cx);
         let panel = div().relative().child(
             menu_panel(MENU_W)
                 .w(px(MENU_W))
-                .p(px(12.))
-                .gap(px(10.))
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                    if std::mem::take(&mut this.grid.menu_press) {
-                        return;
-                    }
-                    if this.open_menu == Some(Menu::Display) {
-                        this.open_menu = None;
-                        cx.notify();
-                    }
-                }))
-                .child(body),
+                .p(px(0.))
+                .max_h(px(max_h))
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| this.view_options_press_out(cx)))
+                .child(div().id("view-options").min_h_0().overflow_y_scroll().p(px(MENU_PAD)).child(body)),
         );
         if !theme::animations() {
             return panel.into_any_element();
@@ -177,92 +168,6 @@ impl CollectionView {
                 el.opacity(t).top(px(-6. * (1. - t)))
             })
             .into_any_element()
-    }
-
-    fn focus_options(&mut self, cx: &mut Context<Self>) -> Div {
-        let rows = self.ui.focus_list;
-        div().flex().flex_col().gap(px(8.)).child(section_label(tr!("Game list"))).child(
-            div()
-                .flex()
-                .gap(px(8.))
-                .child(
-                    list_option("list-covers", tr!("Covers"), false, !rows)
-                        .on_click(cx.listener(|this, _, _, cx| this.set_focus_list(false, cx))),
-                )
-                .child(
-                    list_option("list-rows", tr!("List"), true, rows).on_click(cx.listener(|this, _, _, cx| this.set_focus_list(true, cx))),
-                ),
-        )
-    }
-
-    fn grid_options(&mut self, cx: &mut Context<Self>) -> Div {
-        let slider = self.grid_size_slider(cx);
-        let titles = self.ui.grid_titles;
-        div()
-            .flex()
-            .flex_col()
-            .gap(px(8.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(section_label(tr!("Cover size")))
-                    .child(div().text_size(px(11.5)).text_color(theme::text_muted()).child(format!("{} px", self.ui.grid_cover_w.round()))),
-            )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .px(px(2.))
-                    .child(icon(Icon::GridView, px(12.), theme::text_muted()))
-                    .child(div().flex_1().child(Slider::new(&slider).bg(theme::accent()).text_color(theme::accent())))
-                    .child(icon(Icon::GridView, px(17.), theme::text_muted())),
-            )
-            .child(menu_separator().mx(px(0.)))
-            .child(
-                div()
-                    .id("grid-titles")
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px(px(2.))
-                    .text_size(px(13.5))
-                    .text_color(theme::text_primary())
-                    .cursor_pointer()
-                    .child(tr!("Show titles"))
-                    .child(toggle("grid-titles-sw", titles, false))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.ui.grid_titles = !this.ui.grid_titles;
-                        this.save_ui();
-                        cx.notify();
-                    })),
-            )
-    }
-
-    fn grid_size_slider(&mut self, cx: &mut Context<Self>) -> Entity<SliderState> {
-        if let Some(s) = &self.grid.size {
-            return s.clone();
-        }
-        let (min, max, _) = GRID_COVER_W;
-        // `max` first: `min` is clamped against the default max of 100.
-        let state = cx.new(|_| SliderState::new().max(max).min(min).step(2.).default_value(self.ui.grid_cover_w));
-        cx.subscribe(&state, |this, _, ev: &SliderEvent, cx| {
-            let (value, release) = match ev {
-                SliderEvent::Change(v) => (v, false),
-                SliderEvent::Release(v) => (v, true),
-            };
-            let SliderValue::Single(v) = *value else { return };
-            this.ui.grid_cover_w = v;
-            if release {
-                this.save_ui();
-            }
-            cx.notify();
-        })
-        .detach();
-        self.grid.size = Some(state.clone());
-        state
     }
 }
 
@@ -302,51 +207,4 @@ fn mode_segment(mode: &Mode, a: f32, w: f32, active: bool, open: bool) -> Statef
         .child(icon(mode.ic, px(ICON), fg))
         .child(div().flex_none().ml(px(ICON_GAP)).child(mode.label))
         .child(div().flex().flex_none().justify_end().items_center().w(px(CARET_SLOT * a)).overflow_hidden().opacity(a).child(caret))
-}
-
-/// Uppercase label of a group of options.
-fn section_label(text: &'static str) -> Div {
-    div().text_size(px(11.5)).text_color(theme::text_dim()).child(text.to_uppercase())
-}
-
-/// A way to show the Focus list: a sketch of the list beside the page, and
-/// its name; the active one is ringed with the accent.
-fn list_option(id: &'static str, label: &'static str, rows: bool, active: bool) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .flex_1()
-        .flex_col()
-        .items_center()
-        .gap(px(6.))
-        .p(px(8.))
-        .rounded(px(theme::R_ITEM))
-        .border_1()
-        .border_color(if active { theme::accent().into() } else { theme::card_border() })
-        .bg(if active { theme::accent_tint() } else { theme::card_fill() })
-        .when(!active, |d| d.cursor_pointer().hover(|s| s.bg(theme::button_fill())))
-        .text_size(px(12.5))
-        .text_color(if active { theme::text_bright() } else { theme::text_primary().into() })
-        .child(list_sketch(rows, active))
-        .child(label)
-}
-
-fn list_sketch(rows: bool, active: bool) -> Div {
-    let mark: Hsla = if active { Hsla { a: 0.8, ..theme::accent().into() } } else { theme::ink_a(0.35) };
-    let cell = || div().flex_1().rounded(px(1.)).bg(mark);
-    let column = if rows {
-        div().flex().flex_col().gap(px(3.)).children((0..4).map(|_| div().h(px(3.)).rounded(px(1.)).bg(mark)))
-    } else {
-        div().flex().flex_col().gap(px(2.)).children((0..2).map(|_| div().flex().flex_1().gap(px(2.)).child(cell()).child(cell())))
-    };
-    div()
-        .flex()
-        .gap(px(3.))
-        .w(px(64.))
-        .h(px(38.))
-        .p(px(4.))
-        .rounded(px(5.))
-        .bg(theme::ink_a(0.06))
-        .child(column.w(px(20.)))
-        .child(div().flex_1().rounded(px(3.)).bg(theme::ink_a(0.12)))
 }

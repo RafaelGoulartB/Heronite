@@ -7,6 +7,7 @@
 use gpui_kit::component::slider::SliderState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::ui_state::FocusCoverSize;
 
 use super::vm::ListItem;
 use super::CollectionView;
@@ -87,8 +88,12 @@ impl CollectionView {
         if !self.ui.grid_view {
             let (w, cols) = self.focus_list_layout(viewport_w);
             let m = self.list_metrics();
-            let inset = 2. * super::list_view::ROW_INSET;
-            self.card_w = if self.ui.focus_list { w - m.pad_l - m.pad_r + inset } else { theme::CARD_W };
+            if self.ui.focus_list {
+                self.card_w = w - m.pad_l - m.pad_r + 2. * super::list_view::ROW_INSET;
+                return (w, cols);
+            }
+            let (cols, card) = self.focus_cards(w, cols);
+            self.card_w = card;
             return (w, cols);
         }
         let w = if self.drawer_open() {
@@ -96,9 +101,29 @@ impl CollectionView {
         } else {
             viewport_w
         };
-        let (cols, card) = grid_columns(w, self.ui.grid_cover_w, self.list_metrics().gap_x);
+        let (cols, card) = grid_columns(w, self.ui.grid_cover_w * self.card_widen(), self.list_metrics().gap_x);
         self.card_w = card;
         (w, cols)
+    }
+
+    /// Columns and card width of the Focus list's covers in a column `w`
+    /// wide that fits `cols` covers of the default width. The default size
+    /// and shape keep `theme::CARD_W`; otherwise the covers share the row.
+    fn focus_cards(&self, w: f32, cols: usize) -> (usize, f32) {
+        let m = self.list_metrics();
+        let room = w - m.pad_l - m.pad_r;
+        let widen = self.card_widen();
+        let base =
+            if (widen - 1.).abs() < 0.01 { cols } else { (((room + m.gap_x) / (theme::CARD_W * widen + m.gap_x)).floor() as usize).max(1) };
+        let cols = match self.ui.focus_cover_size {
+            FocusCoverSize::Small => base + 1,
+            FocusCoverSize::Medium => base,
+            FocusCoverSize::Large => base.saturating_sub(1).max(1),
+        };
+        if cols == base && (widen - 1.).abs() < 0.01 {
+            return (cols, theme::CARD_W);
+        }
+        (cols, ((room - m.gap_x * (cols - 1) as f32) / cols as f32).floor())
     }
 
     /// Focus (list + details) or Grid.
@@ -115,7 +140,7 @@ impl CollectionView {
             return false;
         }
         self.ui.grid_view = on;
-        self.grid.drawer_closed = false;
+        self.grid.drawer_closed = !self.ui.grid_open_on_select;
         self.grid.reveal = true;
         self.focus_scroll.set_offset(point(px(0.), px(0.)));
         cx.notify();

@@ -43,7 +43,6 @@
   "No status": "Sem status",
   "Your rating": "Sua avaliação",
   "Other ways to install": "Outras formas de instalar",
-  "Show titles": "Mostrar títulos",
   "On Linux": "No Linux",
   "Save backup": "Backup de saves",
   "Today": "Hoje",
@@ -518,5 +517,10 @@
   "Discussions": "Discussões",
   "View options": "Opções de exibição",
   "Game list": "Lista de jogos",
-  "Cover size": "Tamanho das capas"
+  "Cover size": "Tamanho das capas",
+  "Info": "Info",
+  "Title and info": "Título e info",
+  "Open details on select": "Abrir detalhes ao selecionar",
+  "More in Appearance": "Mais em Aparência",
+  "Reset to defaults": "Restaurar padrões"
 }

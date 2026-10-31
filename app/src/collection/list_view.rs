@@ -6,6 +6,7 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::CoverLabel;
+use heronite_data::settings::CoverAspect;
 use heronite_images::Variant;
 
 use super::vm::{CardVm, ListItem};
@@ -40,7 +41,25 @@ impl CollectionView {
     }
 
     pub(super) fn cover_h(&self) -> f32 {
-        self.card_w * self.cover_aspect
+        self.card_w * self.card_aspect
+    }
+
+    /// Wide cards (Banner) show the game's hero art, the cover when it has none.
+    fn wide_cards(&self) -> bool {
+        self.card_aspect < 1.
+    }
+
+    /// Settings → Appearance → "Cover aspect" of the cards.
+    pub(super) fn set_card_shape(&mut self, shape: CoverAspect) {
+        self.card_shape = shape;
+        self.card_aspect = card_aspect(shape);
+    }
+
+    /// How much wider than a 2:3 cover a card of the current shape is, for
+    /// about the same area: a square or a banner card of the same "size"
+    /// does not shrink to a strip.
+    pub(super) fn card_widen(&self) -> f32 {
+        (1.5 / self.card_aspect).sqrt()
     }
 
     /// Size the covers are requested at. The grid's cards change width with
@@ -54,7 +73,21 @@ impl CollectionView {
             return (self.card_w, self.cover_h());
         }
         let w = (self.card_w / 16.).ceil() * 16.;
-        (w, w * self.cover_aspect)
+        (w, w * self.card_aspect)
+    }
+
+    /// The art of a wide card for the game `key`: its hero art cropped to
+    /// the card, or its cover when it has none.
+    fn banner(&mut self, key: &SharedString, cover_key: &SharedString, w: f32, h: f32, scale: f32) -> (Option<ImageSource>, bool) {
+        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+        let id: SharedString = format!("b:{key}:{pw}x{ph}").into();
+        let chain = match self.stage_chains.get(key).filter(|c| !c.is_empty()) {
+            Some(stage) => stage.clone(),
+            None => self.cover_chains.get(cover_key).cloned().unwrap_or_default(),
+        };
+        let img = self.images.get_or_request(&id, || chain, pw, ph, Variant::Cover, 100).map(ImageSource::Render);
+        let failed = img.is_none() && self.images.is_failed(&id);
+        (img, failed)
     }
     /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
     pub(super) fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
@@ -132,10 +165,22 @@ impl CollectionView {
         let key = c.key.clone();
         let cover_h = self.cover_h();
         let (rw, rh) = self.cover_request();
-        let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
-        let no_art = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
+        let (cover, no_art) = if self.wide_cards() {
+            self.banner(&key, &c.cover_key, rw, rh, scale)
+        } else {
+            let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
+            let failed = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
+            (cover, failed)
+        };
         let a = theme::appearance();
-        let look = card_look();
+        let mut look = card_look();
+        // The grid's own choice of what goes under the covers.
+        let title = if self.ui.grid_view {
+            look.caption = self.ui.grid_label.info();
+            self.ui.grid_label.title()
+        } else {
+            a.cover_label == CoverLabel::Title
+        };
         let (on_select, on_hover, on_play) = self.card_listeners(&key, cx);
         let el = card::card(
             card::CardState {
@@ -144,7 +189,7 @@ impl CollectionView {
                 no_art,
                 width: self.card_w,
                 cover_h,
-                title: self.ui.grid_view && self.ui.grid_titles || a.cover_label == CoverLabel::Title,
+                title,
                 selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
@@ -413,6 +458,18 @@ fn card_look() -> card::CardLook {
         hover: a.cover_hover,
         badges: a.cover_badges,
         caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
+    }
+}
+
+/// Height / width of a card of `shape`.
+pub(super) fn card_aspect(shape: CoverAspect) -> f32 {
+    match shape {
+        CoverAspect::Steam => 3. / 2.,
+        CoverAspect::Igdb => 4. / 3.,
+        CoverAspect::Gog => 15. / 11.,
+        CoverAspect::Square => 1.,
+        CoverAspect::Dvd => 7. / 5.,
+        CoverAspect::Banner => 9. / 16.,
     }
 }
 

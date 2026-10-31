@@ -43,7 +43,6 @@
   "No status": "Sin estado",
   "Your rating": "Tu valoración",
   "Other ways to install": "Otras formas de instalar",
-  "Show titles": "Mostrar títulos",
   "On Linux": "En Linux",
   "Save backup": "Copia de guardados",
   "Today": "Hoy",
@@ -518,5 +517,10 @@
   "Discussions": "Discusiones",
   "View options": "Opciones de vista",
   "Game list": "Lista de juegos",
-  "Cover size": "Tamaño de las portadas"
+  "Cover size": "Tamaño de las portadas",
+  "Info": "Info",
+  "Title and info": "Título e info",
+  "Open details on select": "Abrir detalles al seleccionar",
+  "More in Appearance": "Más en Apariencia",
+  "Reset to defaults": "Restaurar valores predeterminados"
 }

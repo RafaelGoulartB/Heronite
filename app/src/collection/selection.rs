@@ -270,6 +270,9 @@ impl CollectionView {
         }
         self.select(key.clone(), true);
         self.sel.anchor = Some(key);
+        if ev.click_count() > 1 {
+            self.grid.drawer_closed = false;
+        }
     }
 
     /// The context menu's "Select multiple" / "Add to selection".
