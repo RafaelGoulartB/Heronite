@@ -8,6 +8,7 @@ use crate::emulators::{
     emulator_definition, expand_argv, node_basename, node_dirname, resolve_profile_template, vars_for_rom, UserEmulator,
 };
 use crate::env::Env;
+use crate::host::{run_mode, Os, RunMode};
 use crate::probe::Probe;
 use crate::settings::GameSettings;
 
@@ -69,10 +70,12 @@ pub fn open_emulator_command(ctx: &PlanContext, probe: &dyn Probe, settings: &Ga
     Ok(Command { program: e.executable.clone(), args: vec![], env: Env::new(), cwd: Some(cwd) })
 }
 
-/// Whether a Windows emulator runs through Wine: on Linux, one set up as a
-/// Windows program or an `.exe`. Windows runs every emulator as it is.
+/// Whether an emulator runs through Wine: one set up as a Windows program or
+/// an `.exe`, where Windows builds run through Wine (`crate::host`). Windows
+/// runs every emulator as it is (one set up for Wine comes from a Linux
+/// backup).
 fn runs_under_wine(wine_kind: bool, executable: &str) -> bool {
-    !cfg!(windows) && (wine_kind || executable.to_lowercase().ends_with(".exe"))
+    (wine_kind || executable.to_lowercase().ends_with(".exe")) && run_mode(Os::Windows) == RunMode::Wine
 }
 
 pub(super) fn emulator_plan(

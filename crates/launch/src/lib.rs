@@ -20,6 +20,7 @@ pub mod first_launch;
 pub mod fps_limit;
 pub mod gog;
 pub mod gpu;
+pub mod host;
 pub mod install_state;
 pub mod keep_awake;
 pub mod known_fixes;

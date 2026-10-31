@@ -1,3 +1,5 @@
 {
-  "Leave it empty to use the one in the data folder ({path}).": "Deixe vazio para usar o que está na pasta de dados ({path})."
+  "Leave it empty to use the one in the data folder ({path}).": "Deixe vazio para usar o que está na pasta de dados ({path}).",
+  "Windows programs do not run on {system} without Wine": "Programas de Windows não rodam no {system} sem o Wine",
+  "{platform} programs do not run on {system}": "Programas de {platform} não rodam no {system}"
 }
