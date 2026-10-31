@@ -146,6 +146,10 @@ pub fn import_from(paths: &DataPaths, entries: &[Entry]) -> Result<Report> {
         }
         installed::upsert(paths, &entry)?;
         library::sync_install_state(paths, &game.id, Path::new(&entry.install_path).file_name().and_then(|n| n.to_str()));
+        // Galaxy ran the game's installers when it installed it.
+        if let Err(e) = heronite_launch::native_setup::record(paths, "gog", &game.id, &entry.install_path) {
+            log::warn!("recording the setup of GOG game {}: {e:#}", game.id);
+        }
         match old {
             Some(_) => report.kept += 1,
             None => report.added.push(game.id.clone()),
@@ -155,6 +159,7 @@ pub fn import_from(paths: &DataPaths, entries: &[Entry]) -> Result<Report> {
     for gone in current.iter().filter(|i| i.from_galaxy() && !games.iter().any(|g| g.id == i.app_name)) {
         installed::remove(paths, &gone.app_name)?;
         crate::updates::forget(paths, &gone.app_name);
+        heronite_launch::native_setup::forget(paths, "gog", &gone.app_name);
         library::sync_install_state(paths, &gone.app_name, None);
         report.removed.push(gone.app_name.clone());
     }
@@ -216,6 +221,8 @@ mod tests {
         assert_eq!((got.language.as_str(), got.installed_dlcs.clone()), ("de-DE", vec!["11".to_string()]));
         assert_eq!(got.install_size, "2 KiB");
         assert_eq!(installed::get(&paths, "2").unwrap().language, "fr-FR");
+        // Galaxy already ran their installers.
+        assert!(heronite_launch::native_setup::is_recorded(&paths, "gog", "1", &one));
         assert!(installed::get(&paths, "9").is_none() && installed::get(&paths, "3").is_none());
         let game = library::game_info(&paths, "1").unwrap();
         assert_eq!((game["is_installed"].as_bool(), game["folder_name"].as_str()), (Some(true), Some("One")));

@@ -124,7 +124,9 @@ impl Prep<'_> {
         let mut steps = fl.post_install.clone();
         if let Some(store) = store {
             // gogdl may download the redistributables first: it can take a while.
-            self.notice(Notice::info("Getting the game's installers...", tr!("Getting the game's installers...")));
+            if fl.runner == "gog" {
+                self.notice(Notice::info("Getting the game's installers...", tr!("Getting the game's installers...")));
+            }
             match store.steps(&fl.runner, &fl.app_name, &fl.install_path) {
                 Ok(more) => steps.extend(more),
                 Err(e) => {
