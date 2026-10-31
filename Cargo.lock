@@ -3790,6 +3790,7 @@ dependencies = [
  "heronite-data",
  "heronite-i18n",
  "heronite-images",
+ "heronite-platform",
  "image",
  "libwebp-sys",
  "log",
@@ -3804,6 +3805,7 @@ dependencies = [
  "signal-hook",
  "tempfile",
  "trash",
+ "windows 0.62.2",
 ]
 
 [[package]]

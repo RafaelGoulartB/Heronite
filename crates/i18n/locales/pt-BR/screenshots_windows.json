@@ -1,0 +1,4 @@
+{
+  "The shortcut {accelerator} could not be registered: {error}": "Não foi possível registrar o atalho {accelerator}: {error}",
+  "The shortcut {accelerator} is already used by another program": "O atalho {accelerator} já é usado por outro programa"
+}
