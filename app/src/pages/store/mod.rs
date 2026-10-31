@@ -86,6 +86,16 @@ fn login_helper() -> Option<std::path::PathBuf> {
     std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))
 }
 
+/// Exit status of the login window on Windows when the Microsoft Edge
+/// WebView2 runtime it shows the page with is not installed.
+pub(crate) const LOGIN_NO_WEBVIEW: i32 = 5;
+
+/// What to tell the user then: install the runtime, or log in with the
+/// browser.
+pub(crate) fn no_webview_notice() -> SharedString {
+    tr!("The login window needs the Microsoft Edge WebView2 Runtime, which is not installed. Install it from Microsoft's website, or use the browser method below.").into()
+}
+
 /// "1 installed" / "3 installed" (Portuguese inflects it).
 pub(crate) fn installed_count(n: usize) -> String {
     if n == 1 {
@@ -280,11 +290,14 @@ impl<K: StoreKind> StorePage<K> {
                         }
                     }
                     // 127: the loader could not start it (WebKitGTK 4.1 is missing).
-                    Ok(o) if o.status.code() == Some(127) => {
+                    Ok(o) if !cfg!(windows) && o.status.code() == Some(127) => {
                         this.notice = Some((
                             tr!("The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.").into(),
                             true,
                         ))
+                    }
+                    Ok(o) if cfg!(windows) && o.status.code() == Some(LOGIN_NO_WEBVIEW) => {
+                        this.notice = Some((no_webview_notice(), true));
                     }
                     // `CLOSED` of the helper: the user closed the window.
                     Ok(o) if o.status.code() == Some(4) => {}

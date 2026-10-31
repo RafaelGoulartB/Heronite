@@ -234,11 +234,14 @@ impl EpicPage {
                         }
                     }
                     // 127: the loader could not start it (WebKitGTK 4.1 is missing).
-                    Ok(o) if o.status.code() == Some(127) => {
+                    Ok(o) if !cfg!(windows) && o.status.code() == Some(127) => {
                         this.notice = Some((
                             tr!("The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.").into(),
                             true,
                         ))
+                    }
+                    Ok(o) if cfg!(windows) && o.status.code() == Some(super::store::LOGIN_NO_WEBVIEW) => {
+                        this.notice = Some((super::store::no_webview_notice(), true));
                     }
                     // `CLOSED` of the helper: the user closed the window.
                     Ok(o) if o.status.code() == Some(4) => {}
