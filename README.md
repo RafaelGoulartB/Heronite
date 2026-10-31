@@ -126,10 +126,6 @@ A single native process that draws its UI on the GPU, with no bundled browser en
 | Install size | **64 MB** (app + store login helper) |
 | Start to library on screen | **~215 ms** median |
 
-## Your data
-
-Everything stays on your machine, in Heroic-compatible files under `~/.local/share/heronite/` on Linux and `%APPDATA%\heronite\` on Windows (or `HERONITE_DATA_DIR`); the portable Windows copy keeps them in its own folder. On Linux, an existing Heroic setup is copied once on first start; Heroic's folders are never written to. IGDB metadata needs your Twitch client ID and secret in **Settings → Metadata**.
-
 ## Download
 
 Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has an AppImage and packages for Debian/Ubuntu, Fedora/openSUSE, and Arch, and an installer and a portable zip for Windows:
