@@ -208,10 +208,16 @@ Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…
 `dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
-carries a chevron; a click on it opens that mode's options, the Focus list as covers or rows or the grid's cover size
-and titles, and a click on the other mode switches to it) and bulk metadata. Header menus open on click or
-after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open on click only and
-close on a click outside, Esc or a change of mode. The ☰ menu (`nav.rs`) is a list:
+carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
+metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or
+rows, the covers' size (Small fits one more per row, Large one less; `focusCoverSize`) and the game sections shown;
+in Grid the cover size, what goes under the covers (Nothing, Title, Info, Title and info; `gridLabel`, Info being
+Appearance's "Under the cover" line) and "Open details on select" (`gridOpenOnSelect`; off, a double click or Enter
+opens the drawer); then, in both, the covers' look, the same settings as Appearance (Cover aspect, where Banner
+shows each game's hero art, Corners, Density, Under the pointer, Favourite star); then "More in Appearance" and
+"Reset to defaults" (the mode's options and the covers' look; dimmed when all are at their default). Header menus
+open on click or after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open
+on click only and close on a click outside, Esc or a change of mode. The ☰ menu (`nav.rs`) is a list:
 pages grouped (Collection, Downloads, Statistics | Stores, Emulators, Wine Manager), then Add game, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. The Collection
 row shows a refresh button after its count while hovered (spinning, and always shown, while the library reloads). "Stores" is one
@@ -285,7 +291,7 @@ reaching into it next to the title and meta line, then the focus panel's own pie
 card), three tiles (Played, Last played, Sessions) and the details stacked in one column (`focus::stacked_details`),
 ending in "Open game page" (back to the Focus view). Keys while nothing floats over it: arrows move the selection
 (the drawer follows), Enter plays an installed game, Esc closes the drawer (the selection stays; selecting a game opens
-it again). The Focus list takes the same arrows and Enter (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth` and `gridTitles`. Console mode is not affected.
+it again). The Focus list takes the same arrows and Enter (play an installed game). `ui-state.json` keeps `gridView`, `gridCoverWidth`, `gridLabel` (read from the older `gridTitles` when missing) and `gridOpenOnSelect`. Console mode is not affected.
 
 **Focus list as rows** (`collection/list_row.rs`, by user decision): in the Focus view the Focus mode's options in the
 header (also in the palette) turn the list into one game per row, 44px tall: a 26px
