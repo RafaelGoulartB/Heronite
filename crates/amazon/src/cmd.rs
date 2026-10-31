@@ -158,15 +158,7 @@ pub(crate) mod testing {
         pub fn nile_sh(&self, body: &str) -> Nile {
             let bin = self.root().join("sh").join("nile");
             std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
-            std::fs::write(
-                &bin,
-                format!(
-                    "#!/bin/sh
-{body}
-"
-                ),
-            )
-            .unwrap();
+            std::fs::write(&bin, format!("#!/bin/sh\n{body}\n")).unwrap();
             heronite_platform::fs::make_executable(&bin).unwrap();
             Nile::with_bin(bin, &self.paths)
         }
