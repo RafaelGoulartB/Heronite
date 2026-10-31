@@ -1,38 +1,15 @@
 //! `.desktop` shortcuts (Heroic `shortcuts/shortcuts/shortcuts.ts`, Linux
 //! branch): `<Desktop>/<title>.desktop` and
-//! `~/.local/share/applications/<title>.desktop`.
+//! `~/.local/share/applications/<title>.desktop`. The app reaches them
+//! through [`crate::menu`], which picks `.lnk` files on Windows instead.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+pub use crate::menu::{Roots, Written};
 use crate::GameId;
-
-/// Where shortcuts go. Built from the environment by [`Roots::detect`].
-#[derive(Debug, Clone)]
-pub struct Roots {
-    /// XDG desktop dir (`None` when the system has none).
-    pub desktop: Option<PathBuf>,
-    /// `~/.local/share/applications`.
-    pub applications: PathBuf,
-}
-
-impl Roots {
-    /// `HERONITE_DESKTOP_DIR` / `HERONITE_APPLICATIONS_DIR` override the real
-    /// folders (tests and manual runs against fixtures).
-    pub fn detect() -> Self {
-        let desktop = std::env::var_os("HERONITE_DESKTOP_DIR")
-            .map(PathBuf::from)
-            .or_else(dirs::desktop_dir)
-            .or_else(|| dirs::home_dir().map(|h| h.join("Desktop")));
-        let applications = std::env::var_os("HERONITE_APPLICATIONS_DIR")
-            .map(PathBuf::from)
-            .or_else(|| dirs::data_dir().map(|d| d.join("applications")))
-            .unwrap_or_else(|| PathBuf::from("applications"));
-        Self { desktop, applications }
-    }
-}
 
 pub use heronite_data::text::sanitize_filename;
 
@@ -77,13 +54,6 @@ pub fn desktop_file_text(title: &str, exec: &str, icon: Option<&str>) -> String 
 /// `<exe> --launch <runner> <appName>`, quoted for `Exec=`.
 pub fn exec_line(exe: &Path, game: &GameId) -> String {
     format!("{} --launch {} {}", quote_exec_arg(&exe.to_string_lossy()), quote_exec_arg(&game.runner), quote_exec_arg(&game.app_name))
-}
-
-/// What [`add`] wrote.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Written {
-    pub desktop: Option<PathBuf>,
-    pub menu: Option<PathBuf>,
 }
 
 /// Adds the shortcuts: `desktop` and/or `menu` choose the targets

@@ -22,8 +22,8 @@ pub trait CommandRunner: Send + Sync {
     fn run(&self, binary: &str, args: &[String]) -> Result<CommandOutput, String>;
 }
 
-/// Real process execution with a timeout and `/usr/bin:/usr/local/bin`
-/// appended to `PATH`.
+/// Real process execution with a timeout and, on Linux,
+/// `/usr/bin:/usr/local/bin` appended to `PATH`.
 #[derive(Debug, Clone)]
 pub struct SystemRunner {
     pub timeout: Duration,
@@ -35,13 +35,22 @@ impl Default for SystemRunner {
     }
 }
 
+/// The `PATH` the program runs with: Linux adds the system folders (an
+/// AppImage or a desktop session may leave them out); Windows keeps its own
+/// (`;`-separated, nothing to add), so `None`.
+fn search_path(current: Option<String>) -> Option<String> {
+    (!cfg!(windows)).then(|| format!("{}:/usr/bin:/usr/local/bin", current.unwrap_or_default()))
+}
+
 impl CommandRunner for SystemRunner {
     fn run(&self, binary: &str, args: &[String]) -> Result<CommandOutput, String> {
-        let path = format!("{}:/usr/bin:/usr/local/bin", std::env::var("PATH").unwrap_or_default());
         // Guarded helper: own process group, told to stop if the app dies, and
         // the whole group is killed on timeout.
         let mut cmd = Command::new(binary);
-        cmd.args(args).env("PATH", path);
+        cmd.args(args);
+        if let Some(path) = search_path(std::env::var("PATH").ok()) {
+            cmd.env("PATH", path);
+        }
         let out = Run::new().timeout(self.timeout).grace(Duration::from_secs(2)).run(&mut cmd).map_err(|e| e.to_string())?;
         if out.timed_out {
             return Err(tr!("{binary} timed out after {seconds}s", seconds = self.timeout.as_secs()));
@@ -68,5 +77,15 @@ mod tests {
         let slow =
             if cfg!(windows) { fast.run("ping", &["-n".into(), "6".into(), "127.0.0.1".into()]) } else { fast.run("sleep", &["5".into()]) };
         assert!(slow.unwrap_err().contains("timed out"));
+    }
+
+    #[test]
+    fn path_gets_the_system_folders_on_linux_only() {
+        if cfg!(windows) {
+            assert_eq!(search_path(Some(r"C:\Windows\system32;C:\Tools".into())), None);
+        } else {
+            assert_eq!(search_path(Some("/opt/bin".into())).as_deref(), Some("/opt/bin:/usr/bin:/usr/local/bin"));
+            assert_eq!(search_path(None).as_deref(), Some(":/usr/bin:/usr/local/bin"));
+        }
     }
 }

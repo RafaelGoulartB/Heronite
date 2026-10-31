@@ -2,12 +2,13 @@
 //! `src/local-library/screenshots/capture.ts`.
 //!
 //! The portable pieces live here and are unit-tested: accelerator parsing and
-//! translation (Hyprland `hl.bind` syntax, XDG GlobalShortcuts triggers), file
-//! naming, destination folder selection, monitor picking. The side-effecting
-//! service ([`CaptureService`], Linux only) lives in `service.rs`; elsewhere
-//! `unsupported.rs` stands in for it and never captures.
+//! translation (Hyprland `hl.bind` syntax, XDG GlobalShortcuts triggers,
+//! Windows `RegisterHotKey` keys), file naming, destination folder selection,
+//! monitor picking. The side-effecting service ([`CaptureService`]) lives in
+//! `service.rs` on Linux and in `win/` on Windows (see there for how it
+//! works); elsewhere `unsupported.rs` stands in for it and never captures.
 //!
-//! # How a capture happens
+//! # How a capture happens (Linux)
 //! 1. `begin_session` for a launched game registers the shortcut (only while a
 //!    game is active and `screenshots.captureEnabled` is set).
 //! 2. On Hyprland a temporary, in-memory, non-consuming bind
@@ -28,7 +29,8 @@ use std::path::{Path, PathBuf};
 
 pub use accelerator::{
     hyprland_bind_expression, hyprland_bind_expression_as, hyprland_unbind_expression, parse_accelerator, to_hyprland_binding,
-    to_portal_trigger, Accelerator, HyprlandBind, HyprlandBinding, MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER,
+    to_portal_trigger, to_windows_hotkey, Accelerator, HyprlandBind, HyprlandBinding, WindowsHotkey, MOD_ALT, MOD_CTRL, MOD_SHIFT,
+    MOD_SUPER, WIN_MOD_ALT, WIN_MOD_CONTROL, WIN_MOD_NOREPEAT, WIN_MOD_SHIFT, WIN_MOD_WIN,
 };
 
 #[cfg(target_os = "linux")]
@@ -43,15 +45,19 @@ mod hyprland;
 mod portal;
 #[cfg(target_os = "linux")]
 mod service;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 mod unsupported;
+#[cfg(windows)]
+mod win;
 
 #[cfg(target_os = "linux")]
 pub use hotkey::GlobalHotkey;
 #[cfg(target_os = "linux")]
 pub use service::CaptureService;
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub use unsupported::{CaptureService, GlobalHotkey};
+#[cfg(windows)]
+pub use win::{CaptureService, GlobalHotkey};
 
 /// Description used for the Hyprland bind and the portal shortcut.
 pub const BIND_DESCRIPTION: &str = "Heronite game screenshot";
@@ -210,6 +216,9 @@ pub enum CaptureOutcome {
 pub enum ShortcutBackend {
     Hyprland,
     Portal,
+    /// `RegisterHotKey`.
+    #[cfg(windows)]
+    Windows,
 }
 
 /// Events emitted by the service.

@@ -5,9 +5,16 @@
 //!   same format and hands it to apt / dnf / pacman through `pkexec` (the
 //!   desktop's password prompt), then restarts. Never automatic: it asks for
 //!   a password.
+//! - Windows, installed by our setup: downloads the release's setup, which
+//!   runs silently as the app quits (a restart, or a normal quit) and
+//!   replaces the files once this process is gone ([`crate::system::run_on_quit`]);
+//! - Windows, portable copy: downloads the release's zip and swaps its
+//!   program files in place (the old ones kept as `.old` until the next
+//!   start), restarts.
 //!
-//! Anything else (built from source, a distribution's own package) is
-//! updated by whatever installed it, so it only checks when asked.
+//! Anything else (built from source, a distribution's own package, a
+//! Windows build folder) is updated by whatever installed it, so it only
+//! checks when asked.
 //!
 //! Checks run [`FIRST_CHECK`] after the start (skipped when the last one is
 //! younger than [`RECHECK_AFTER`]) and every [`CHECK_EVERY`] while "Check for
@@ -29,7 +36,11 @@
 //! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
 //! new" at once;
 //! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch` pretends this copy came from
-//! that package (with `HERONITE_DEBUG_UPDATE`);
+//! that package (with `HERONITE_DEBUG_UPDATE`; on Windows `setup|portable`,
+//! the setup by default);
+//! `HERONITE_DEBUG_UPDATE_KEY=<minisign public key>` (debug builds only)
+//! trusts that key instead of the release key, for end-to-end tests with a
+//! local `HERONITE_UPDATE_API`;
 //! `HERONITE_DEBUG_UPDATE_RESTART=1` restarts as soon as an update is
 //! installed (end-to-end tests without clicks).
 
@@ -47,6 +58,8 @@ use gpui_kit::*;
 use heronite_data::AppPaths;
 use heronite_i18n::tr;
 use heronite_update::{Asset, Fetched, InstallError, Package, Prefs, Progress, Release, Target, Unsupported, Version};
+#[cfg(windows)]
+use heronite_update::{Installer, Portable, WindowsAsset};
 
 const FIRST_CHECK: Duration = Duration::from_secs(3);
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
@@ -64,7 +77,9 @@ pub enum Phase {
     Downloading(Progress),
     /// The package manager is installing the downloaded package.
     Installing,
-    /// The new version is in place; it runs from the next start.
+    /// The new version is in place; it runs from the next start. For a
+    /// copy installed by the Windows setup: the setup is downloaded and runs
+    /// when the app quits ([`Updater::installs_on_quit`]).
     Ready,
     /// A check the user asked for failed.
     CheckFailed(String),
@@ -83,16 +98,33 @@ pub enum Banner {
 /// How this copy is updated.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Method {
+    #[cfg_attr(windows, allow(dead_code))]
     AppImage(Target),
     /// Our system package; `exe` is this binary, read at start (once the
     /// package manager replaced it, `/proc/self/exe` names a deleted file).
-    Package {
-        kind: Package,
-        exe: PathBuf,
-    },
+    Package { kind: Package, exe: PathBuf },
+    /// Installed by our Windows setup.
+    #[cfg(windows)]
+    Installer(Installer),
+    /// A portable copy on Windows.
+    #[cfg(windows)]
+    Portable(Portable),
 }
 
 impl Method {
+    /// A copy installed by our setup, else a portable one (the setup owns
+    /// the files it installed, even next to a portable marker).
+    #[cfg(windows)]
+    fn detect() -> Result<Self, Unsupported> {
+        let exe = std::env::current_exe().map_err(|_| Unsupported::NotAppImage)?;
+        if let Some(installer) = Installer::detect(&exe) {
+            return Ok(Method::Installer(installer));
+        }
+        let root = heronite_platform::dirs::portable_root().ok_or(Unsupported::NotAppImage)?;
+        Portable::detect(root, exe).map(Method::Portable)
+    }
+
+    #[cfg(not(windows))]
     fn detect() -> Result<Self, Unsupported> {
         // Not `$APPIMAGE` as is: it may be another AppImage's, inherited.
         match Target::detect(crate::system::own_exe::own_appimage().map(Into::into)) {
@@ -111,6 +143,10 @@ impl Method {
         match self {
             Method::AppImage(t) => t.appimage.clone(),
             Method::Package { exe, .. } => exe.clone(),
+            #[cfg(windows)]
+            Method::Installer(i) => i.exe.clone(),
+            #[cfg(windows)]
+            Method::Portable(p) => p.exe.clone(),
         }
     }
 }
@@ -133,7 +169,8 @@ pub struct Updater {
     dismissed: Option<String>,
     /// Version already announced by a desktop notification.
     notified: Option<String>,
-    /// The downloaded package, while it waits for or failed its install.
+    /// The downloaded package, while it waits for or failed its install (on
+    /// Windows the setup, until the app quits).
     downloaded: Option<PathBuf>,
     cancel: Option<Arc<AtomicBool>>,
     job: Option<Task<()>>,
@@ -217,6 +254,26 @@ impl Updater {
                 let t = t.clone();
                 cx.background_spawn(async move { t.sweep_staging() }).detach();
             }
+            #[cfg(windows)]
+            Ok(Method::Installer(i)) => {
+                log::info!("installed by the setup in {}: updates run the new setup as the app quits", i.exe.display());
+                // Setups of earlier updates. The one that started this
+                // process may still be finishing: its file stays until the
+                // next start (each version downloads into its own folder).
+                let dir = Self::downloads_dir(&app);
+                cx.background_spawn(async move {
+                    let _ = std::fs::remove_dir_all(dir);
+                })
+                .detach();
+            }
+            #[cfg(windows)]
+            Ok(Method::Portable(p)) => {
+                log::info!("portable copy in {}: updates are swapped in place", p.root.display());
+                // An unfinished update and the files the last one replaced
+                // (the previous process may still be exiting: it waits a bit).
+                let p = p.clone();
+                let _ = std::thread::Builder::new().name("update-sweep".into()).spawn(move || p.sweep());
+            }
             Ok(Method::Package { kind, .. }) => {
                 log::info!("installed from a {} package: updates go through its package manager", kind.label());
                 // Packages of earlier updates (installed or not).
@@ -298,9 +355,24 @@ impl Updater {
         }
     }
 
-    /// The file an update downloads (the AppImage or this format's package).
+    /// The Windows download this copy updates from.
+    #[cfg(windows)]
+    fn windows_asset(&self) -> Option<WindowsAsset> {
+        match &self.method {
+            Ok(Method::Installer(_)) => Some(WindowsAsset::Setup),
+            Ok(Method::Portable(_)) => Some(WindowsAsset::Portable),
+            _ => None,
+        }
+    }
+
+    /// The file an update downloads (the AppImage, this format's package,
+    /// the Windows setup or portable zip).
     pub fn download_asset(&self) -> Option<&Asset> {
         let release = self.release.as_ref()?;
+        #[cfg(windows)]
+        if let Some(kind) = self.windows_asset() {
+            return release.windows_asset(kind);
+        }
         match &self.method {
             Ok(Method::Package { kind, .. }) => release.package(*kind),
             _ => release.appimage.as_ref(),
@@ -313,14 +385,33 @@ impl Updater {
         match &self.method {
             Ok(Method::AppImage(_)) => release.installable(),
             Ok(Method::Package { kind, .. }) => release.package_signature(*kind).is_some(),
+            #[cfg(windows)]
+            Ok(Method::Installer(_) | Method::Portable(_)) => {
+                self.windows_asset().is_some_and(|k| release.windows_asset(k).is_some() && release.windows_signature(k).is_some())
+            }
             Err(_) => false,
         }
     }
 
-    /// Updates may install without a click (AppImages only: a package asks
-    /// for a password).
+    /// Updates may install without a click (not packages: they ask for a
+    /// password).
     pub fn can_auto_install(&self) -> bool {
-        matches!(self.method, Ok(Method::AppImage(_)))
+        match &self.method {
+            Ok(Method::AppImage(_)) => true,
+            #[cfg(windows)]
+            Ok(Method::Installer(_) | Method::Portable(_)) => true,
+            _ => false,
+        }
+    }
+
+    /// A ready update installs when the app quits (the Windows setup)
+    /// instead of being in place already.
+    pub fn installs_on_quit(&self) -> bool {
+        #[cfg(windows)]
+        if let Ok(Method::Installer(_)) = &self.method {
+            return true;
+        }
+        false
     }
 
     /// The terminal command for a downloaded package whose install failed.
@@ -488,9 +579,11 @@ impl Updater {
         cx.notify();
         let (tx, mut rx) = unbounded::<Step>();
         let dir = Self::downloads_dir(&self.app);
-        // The result, and the downloaded package when its install failed.
+        // The result, and the downloaded package when its install failed (or
+        // the Windows setup, which runs as the app quits).
+        let key = debug::public_key();
         let job = cx.background_spawn(async move {
-            let key = heronite_update::PUBLIC_KEY;
+            let key = key.as_str();
             let mut progress = |p| {
                 let _ = tx.unbounded_send(Step::Progress(p));
             };
@@ -498,6 +591,20 @@ impl Updater {
                 Method::AppImage(target) => {
                     log::info!("downloading Heronite {} into {}", release.version, target.appimage.display());
                     (heronite_update::install::install(&release, &target, key, &cancel, &mut progress), None)
+                }
+                #[cfg(windows)]
+                Method::Installer(_) => {
+                    log::info!("downloading the setup of Heronite {} into {}", release.version, dir.display());
+                    match Installer::download(&release, &dir.join(&release.version), key, &cancel, &mut progress) {
+                        // Kept: it runs as the app quits.
+                        Ok(setup) => (Ok(()), Some(setup)),
+                        Err(e) => (Err(e), None),
+                    }
+                }
+                #[cfg(windows)]
+                Method::Portable(copy) => {
+                    log::info!("downloading Heronite {} into {}", release.version, copy.root.display());
+                    (heronite_update::portable::install(&release, &copy, key, &cancel, &mut progress), None)
                 }
                 Method::Package { kind, .. } => {
                     let (Some(asset), Some(sig)) = (release.package(kind), release.package_signature(kind)) else {
@@ -553,6 +660,19 @@ impl Updater {
         self.cancel = None;
         let version = self.release.as_ref().map(|r| r.version.clone()).unwrap_or_default();
         self.phase = match result {
+            Ok(()) if self.installs_on_quit() => {
+                log::info!("the setup of Heronite {version} is downloaded; it runs when the app quits");
+                self.prefs.updated_to = Some(version.clone());
+                self.save_prefs(cx);
+                self.setup_on_quit();
+                if !crate::system::has_window(cx) {
+                    crate::system::notify::send(
+                        tr!("Heronite {version} is ready to install", version),
+                        tr!("It installs when you quit Heronite."),
+                    );
+                }
+                Phase::Ready
+            }
             Ok(()) => {
                 log::info!("Heronite {version} is installed; it runs from the next start");
                 self.prefs.updated_to = Some(version.clone());
@@ -579,6 +699,27 @@ impl Updater {
             self.restart(cx);
         }
         cx.notify();
+    }
+
+    /// The downloaded Windows setup runs once the app has quit: it waits for
+    /// this process to end, installs silently and, after a restart, starts
+    /// the new version itself. A failure to start it is only logged (a
+    /// restart then starts this version again).
+    fn setup_on_quit(&self) {
+        #[cfg(windows)]
+        if let Some(setup) = self.downloaded.clone() {
+            let log = self.app.cache.join("update-setup.log");
+            crate::system::run_on_quit(Some(Box::new(move |relaunch| match Installer::run_setup(&setup, relaunch, Some(&log)) {
+                Ok(pid) => {
+                    log::info!("started the setup {} (pid {pid}, log {})", setup.display(), log.display());
+                    relaunch
+                }
+                Err(e) => {
+                    log::error!("could not start the setup {}: {e}", setup.display());
+                    false
+                }
+            })));
+        }
     }
 
     pub fn cancel(&mut self, cx: &mut Context<Self>) {
@@ -685,6 +826,7 @@ mod tests {
             appimage: None,
             signature: None,
             packages: Vec::new(),
+            windows: Vec::new(),
         }
     }
 

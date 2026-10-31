@@ -97,8 +97,13 @@ fn record_error(paths: &DataPaths, error: &str) {
 }
 
 /// The game's own Wine prefix (the folder holding `drive_c`), from its game
-/// settings. `None` for Steam-launched games: their prefix is Steam's.
+/// settings. `None` for Steam-launched games: their prefix is Steam's. `None`
+/// on Windows, where games run as they are (a Wine prefix in settings
+/// restored from Linux means nothing there).
 pub fn game_wine_prefix(env: &LudusaviEnv, app_name: &str) -> Option<String> {
+    if cfg!(windows) {
+        return None;
+    }
     let metas: LocalMetaFile = json_store::read(&env.paths.local_meta()).ok()?;
     if metas.games.get(app_name).is_some_and(|m| m.launch_kind == "steam-uri") {
         return None;
@@ -324,6 +329,36 @@ mod tests {
         assert_eq!(l.last_backup_path, Some(join("/backups", "Tony Hawk's Underground")));
         assert!(l.last_backup_at.is_some());
         assert_eq!(l.last_error, None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_backup_with_windows_paths_and_no_prefix() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(
+            r#"{"ludusavi":{"enabled":true,"useInstalledConfig":false,"binaryPath":"","backupPath":"D:\\Game Saves","format":"simple"}}"#,
+        );
+        let reply = r#"{"overall":{"totalGames":1},"games":{"Hollow Knight":{"files":{"C:/Users/u/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat":{"change":"New","bytes":3}}}}}"#;
+        let runner = Fake { replies: vec![("backup".into(), out(reply, "", 0))], ..Default::default() };
+        let exe = r"C:\Users\u\AppData\Local\Programs\Ludusavi\ludusavi.exe";
+        let probe = FakeProbe::new(r"C:\Users\u").with_path(exe).with_env("LOCALAPPDATA", r"C:\Users\u\AppData\Local");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game = LudusaviGame {
+            app_name: "hk".into(),
+            title: "Hollow Knight".into(),
+            runner: "sideload".into(),
+            steam_app_id: Some("367520".into()),
+            ..Default::default()
+        };
+        let r = backup_for_game(&env, &game, BackupReason::Manual);
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.backup_path.as_deref(), Some(r"D:\Game Saves\Hollow Knight"));
+        let calls = runner.calls.lock().unwrap();
+        let backup_call = calls.iter().find(|c| c[0] == "backup").unwrap();
+        assert_eq!(backup_call[4..], ["--path", r"D:\Game Saves", "--format", "simple", "Hollow Knight"]);
+        assert!(!backup_call.iter().any(|a| a == "--wine-prefix"));
+        drop(calls);
+        assert_eq!(settings::load(&paths).unwrap().ludusavi.last_backup_path.as_deref(), Some(r"D:\Game Saves\Hollow Knight"));
     }
 
     #[test]

@@ -7,7 +7,8 @@
 //!
 //! Like the autostart entry, only the real data folder drives it: a run
 //! against a copy (`HERONITE_DATA_DIR`, a development build) must not take
-//! the links over.
+//! the links over. Nor does a portable copy, which leaves nothing in the
+//! registry on its own.
 //!
 //! Blocking (registry writes): call it off the UI thread.
 
@@ -17,7 +18,7 @@ use heronite_data::DataPaths;
 /// nor for a copy of the data folder).
 pub fn sync(data_paths: &DataPaths) {
     #[cfg(windows)]
-    if data_paths.is_default() {
+    if data_paths.is_default() && heronite_platform::dirs::portable_root().is_none() {
         let exe = super::shortcuts::own_exe();
         if let Err(e) = windows::register(windows::CLASSES_KEY, &exe) {
             log::warn!("registering heronite:// links: {e}");

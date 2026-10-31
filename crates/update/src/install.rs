@@ -32,17 +32,22 @@ pub struct Target {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unsupported {
     /// Not started from an AppImage nor from one of our packages (built from
-    /// source, a distribution's own package).
+    /// source, a distribution's own package). On Windows: neither installed
+    /// by our setup nor a portable copy (a build folder).
     NotAppImage,
     /// `$APPIMAGE` does not point at a file.
     Missing(PathBuf),
-    /// The folder of the AppImage is not writable by this user.
+    /// The folder of the AppImage (of the portable copy on Windows) is not
+    /// writable by this user.
     ReadOnly(PathBuf),
 }
 
 impl std::fmt::Display for Unsupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Unsupported::NotAppImage if cfg!(windows) => {
+                write!(f, "Heronite was neither installed by its setup nor unpacked as a portable copy")
+            }
             Unsupported::NotAppImage => write!(f, "Heronite was not started from an AppImage"),
             Unsupported::Missing(p) => write!(f, "the AppImage {} was not found", p.display()),
             Unsupported::ReadOnly(dir) => write!(f, "{} is not writable", dir.display()),
@@ -287,7 +292,7 @@ fn swap_in(staging: &Path, appimage: &Path) -> Result<(), InstallError> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
@@ -295,19 +300,19 @@ mod tests {
 
     /// Test key and signatures of [`blob`] made with `minisign -S -t
     /// "version:<v> file:test.AppImage"`. Not the release key.
-    const TEST_KEY: &str = "RWQrG3DRkOljn+WcHNIkIS0MboE2BJk4FRyrB6GkIvasTo+w/iXW1BLu";
-    const SIG_014: &str = include_str!("../tests/fixtures/blob-0.1.4.minisig");
+    pub(crate) const TEST_KEY: &str = "RWQrG3DRkOljn+WcHNIkIS0MboE2BJk4FRyrB6GkIvasTo+w/iXW1BLu";
+    pub(crate) const SIG_014: &str = include_str!("../tests/fixtures/blob-0.1.4.minisig");
     const SIG_012: &str = include_str!("../tests/fixtures/blob-0.1.2.minisig");
 
     /// The signed test file: an AppImage header and a fixed pattern.
-    fn blob() -> Vec<u8> {
+    pub(crate) fn blob() -> Vec<u8> {
         let mut b = b"\x7fELF\x02\x01\x01\x00AI\x02".to_vec();
         b.extend((0u32..300_000).map(|i| (i.wrapping_mul(7) % 251) as u8));
         b
     }
 
     /// Serves `files` (path -> bytes) over HTTP on a random local port.
-    fn serve(files: Vec<(String, Vec<u8>)>, chunk_delay_ms: u64) -> String {
+    pub(crate) fn serve(files: Vec<(String, Vec<u8>)>, chunk_delay_ms: u64) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let files = Arc::new(files);
@@ -359,6 +364,7 @@ mod tests {
             appimage: Some(Asset { name: "test.AppImage".into(), url: format!("{base}/test.AppImage"), size }),
             signature: Some(Asset { name: "test.AppImage.minisig".into(), url: format!("{base}/test.AppImage.minisig"), size: 0 }),
             packages: Vec::new(),
+            windows: Vec::new(),
         }
     }
 

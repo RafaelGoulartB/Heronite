@@ -1,0 +1,63 @@
+name: Windows packages
+
+# Builds the Windows installer and portable zip the way a release does
+# (scripts/windows/package.ps1), checks them (scripts/windows/smoke.ps1) and
+# keeps them as workflow artifacts for trying out. Never signed, never
+# published: releases are made by release.yml.
+on:
+  pull_request:
+    paths:
+      - "packaging/windows/**"
+      - "scripts/windows/**"
+      - "app/build.rs"
+      - ".github/workflows/windows-packages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    name: Installer and portable zip (x86_64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Inno Setup
+        run: |
+          # Preinstalled on windows-latest (6.7.1 on the Windows Server 2025
+          # image); the pinned official installer if an image drops it.
+          $known = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
+          if ((Get-Command ISCC.exe -ErrorAction SilentlyContinue) -or ($known | Where-Object { Test-Path $_ })) {
+            Write-Host 'Inno Setup is installed'
+            exit 0
+          }
+          $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.1.exe'
+          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe' -OutFile $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          if ($hash -ne '4d11e8050b6185e0d49bd9e8cc661a7a59f44959a621d31d11033124c4e8a7b0') { throw "Inno Setup installer checksum mismatch: $hash" }
+          $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Inno Setup installer failed ($($p.ExitCode))" }
+      - name: Package
+        run: ./scripts/windows/package.ps1
+      - name: Check the packages
+        run: ./scripts/windows/smoke.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Heronite-windows-unsigned
+          path: |
+            dist/Heronite-Setup-x86_64.exe
+            dist/Heronite-Portable-x86_64.zip
+          if-no-files-found: error
+          retention-days: 14

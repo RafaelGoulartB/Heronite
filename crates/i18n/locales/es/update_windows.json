@@ -1,0 +1,20 @@
+{
+  "An update is ready: restart to install it": "Hay una actualización lista: reinicia para instalarla",
+  "Download new versions in the background. They are checked against Heronite's signing key and install when you quit Heronite.": "Descarga nuevas versiones en segundo plano. Se verifican con la clave de firma de Heronite y se instalan al cerrar Heronite.",
+  "Heronite {version} is ready to install": "Heronite {version} está listo para instalarse",
+  "It installs when you quit Heronite.": "Se instalará al cerrar Heronite.",
+  "Only a copy installed with Heronite's setup or unpacked from its portable zip updates itself.": "Solo una copia instalada con el instalador de Heronite o descomprimida de su ZIP portátil se actualiza sola.",
+  "Restart to install it now, or it installs when you quit Heronite.": "Reinicia para instalarla ahora, o se instalará al cerrar Heronite.",
+  "Restart to install it now, or it installs when you quit.": "Reinicia para instalarla ahora o se instalará al cerrar.",
+  "The update could not be unpacked: {error}": "No se pudo descomprimir la actualización: {error}",
+  "The update has a file outside its folder: {name}": "La actualización tiene un archivo fuera de su carpeta: {name}",
+  "The update has a link or an encrypted file: {name}": "La actualización tiene un enlace o un archivo cifrado: {name}",
+  "The update has no {program}": "A la actualización le falta {program}",
+  "The update installs as Heronite restarts": "La actualización se instala al reiniciar Heronite",
+  "They install when you quit Heronite": "Se instalan al cerrar Heronite",
+  "This copy's folder ({dir}) is not writable: download new versions by hand.": "La carpeta de esta copia ({dir}) no admite escritura: descarga las nuevas versiones a mano.",
+  "This release has no Windows setup": "Esta versión no tiene instalador de Windows",
+  "This release has no portable zip": "Esta versión no tiene ZIP portátil",
+  "{why}: restart later, or it installs when you quit Heronite.": "{why}: reinicia más tarde, o se instalará al cerrar Heronite.",
+  "{why}: restart later, or it installs when you quit.": "{why}: reinicia más tarde o se instalará al cerrar."
+}

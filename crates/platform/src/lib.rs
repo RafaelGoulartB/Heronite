@@ -15,6 +15,7 @@
 //! - `tray` (Windows): an icon in the taskbar's notification area, with a
 //!   menu.
 //! - `power` (Windows): keeping the computer awake.
+//! - `shortcut` (Windows): `.lnk` shortcuts.
 //! - `system` (Windows): what the computer is (processor, memory, graphics
 //!   cards, Windows version), for the logs.
 //!
@@ -32,6 +33,8 @@ pub mod shell;
 pub mod power;
 #[cfg(windows)]
 pub mod registry;
+#[cfg(windows)]
+pub mod shortcut;
 #[cfg(windows)]
 pub mod system;
 #[cfg(windows)]

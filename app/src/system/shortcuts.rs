@@ -1,6 +1,7 @@
-//! Shortcuts for games: `.desktop` files (Desktop and application menu) and
-//! "Add to Steam". Glue between the library, Heroic's settings and the
-//! `heronite-shortcuts` crate.
+//! Shortcuts for games: on the Desktop and in the menu of programs (`.desktop`
+//! files in the application menu on Linux, `.lnk` files in the Start menu on
+//! Windows) and "Add to Steam". Glue between the library, Heroic's settings
+//! and the `heronite-shortcuts` crate.
 //!
 //! Every function here is **blocking** (reads the library, writes files,
 //! may download artwork): call it from a background thread (`cx.background_spawn`
@@ -27,7 +28,7 @@ use std::path::{Path, PathBuf};
 use heronite_data::game_config::load_global;
 use heronite_data::{art, AppPaths, ArtContext, CollectionGame, DataPaths, Library};
 use heronite_i18n::tr;
-use heronite_shortcuts::desktop::{self, Roots};
+use heronite_shortcuts::menu::{self, Roots};
 use heronite_shortcuts::steam::{self, ArtFiles, ShortcutSpec};
 use heronite_shortcuts::steam_client::{debugger_addr, SteamClient};
 use heronite_shortcuts::steam_running::{self, UrlHandler};
@@ -92,12 +93,14 @@ fn home() -> String {
     dirs::home_dir().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-/// Steam install folder: `HERONITE_STEAM_DIR`, else `defaultSteamPath`.
+/// Steam install folder: `HERONITE_STEAM_DIR`, else `defaultSteamPath` (on
+/// Windows, when that has no Steam users, the folder Steam installed itself
+/// in: `steam::steam_root`).
 pub fn steam_path(data_paths: &DataPaths) -> PathBuf {
     if let Some(dir) = crate::env::value("HERONITE_STEAM_DIR") {
         return PathBuf::from(dir);
     }
-    configured_steam_path(data_paths)
+    steam::steam_root(configured_steam_path(data_paths))
 }
 
 fn configured_steam_path(data_paths: &DataPaths) -> PathBuf {
@@ -183,8 +186,8 @@ fn render(chain: &[heronite_data::ImageRef], w: u32, h: u32, dest: &Path, png: b
     }
 }
 
-/// Icon for the `.desktop` files: Heroic's `icons/<appName>.(jpg|png)` when
-/// it exists, else a 256x256 PNG made from the cover and kept there.
+/// Icon for the `.desktop` files and Steam: Heroic's `icons/<appName>.(jpg|png)`
+/// when it exists, else a 256x256 PNG made from the cover and kept there.
 pub fn icon_file(data_paths: &DataPaths, lib: &Library, game: &CollectionGame) -> Option<PathBuf> {
     let dir = data_paths.icons_dir();
     for ext in ["jpg", "png"] {
@@ -216,12 +219,45 @@ fn steam_art(data_paths: &DataPaths, lib: &Library, game: &CollectionGame) -> Ar
     }
 }
 
-/// Desktop / application-menu shortcut files (`addShortcuts` without Steam).
-/// `desktop`/`menu` pick the targets.
+/// Icon for the `.lnk` files, which take only `.ico`: `icons/<appName>.ico`,
+/// made once from [`icon_file`]'s picture (fitted into 256x256, the rest
+/// transparent). `None` (the program's own icon) when there is no picture.
+#[cfg(windows)]
+fn lnk_icon(data_paths: &DataPaths, lib: &Library, game: &CollectionGame) -> Option<PathBuf> {
+    let ico = data_paths.icons_dir().join(format!("{}.ico", game.app_name));
+    if ico.is_file() {
+        return Some(ico);
+    }
+    let picture = icon_file(data_paths, lib, game)?;
+    let made = (|| -> Result<(), String> {
+        let img = image::open(&picture).map_err(|e| e.to_string())?;
+        let fitted = img.resize(256, 256, image::imageops::FilterType::Lanczos3).to_rgba8();
+        let mut square = image::RgbaImage::new(256, 256);
+        let (x, y) = ((256 - fitted.width()) / 2, (256 - fitted.height()) / 2);
+        image::imageops::overlay(&mut square, &fitted, x.into(), y.into());
+        let mut png = Vec::new();
+        square.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).map_err(|e| e.to_string())?;
+        let bytes = heronite_shortcuts::ico::from_png(&png).ok_or("not an icon")?;
+        heronite_data::temps::write_atomic(&ico, &bytes, None).map_err(|e| e.to_string())
+    })();
+    match made {
+        Ok(()) => Some(ico),
+        Err(e) => {
+            log::warn!("shortcut icon {} from {}: {e}", ico.display(), picture.display());
+            None
+        }
+    }
+}
+
+/// Desktop and menu shortcuts (`addShortcuts` without Steam). `desktop`/`menu`
+/// pick the targets.
 fn write_desktop(data_paths: &DataPaths, lib: &Library, game: &CollectionGame, desktop: bool, menu: bool, out: &mut Outcome) {
     let roots = Roots::detect();
+    #[cfg(windows)]
+    let icon = lnk_icon(data_paths, lib, game);
+    #[cfg(not(windows))]
     let icon = icon_file(data_paths, lib, game);
-    match desktop::add(&roots, &game_id(game), &own_exe(), icon.as_deref(), desktop, menu) {
+    match menu::add(&roots, &game_id(game), &own_exe(), icon.as_deref(), desktop, menu) {
         Ok(w) => match (w.desktop.is_some(), w.menu.is_some()) {
             (true, true) => out.ok(tr!("Shortcuts were created on Desktop and Start Menu")),
             (true, false) => out.ok(tr!("Shortcuts were created on Desktop")),
@@ -251,7 +287,7 @@ pub fn add_shortcuts(data_paths: &DataPaths, runner: &str, app_name: &str) -> Ou
 pub fn remove_shortcuts(data_paths: &DataPaths, runner: &str, app_name: &str) -> Outcome {
     let mut out = Outcome::default();
     match find_game(data_paths, runner, app_name) {
-        Ok((_, game)) => match desktop::remove(&Roots::detect(), &game.title) {
+        Ok((_, game)) => match menu::remove(&Roots::detect(), &game.title) {
             Ok(_) => out.ok(tr!("Shortcuts were removed from Desktop and Start Menu")),
             Err(e) => out.err(tr!("Could not remove the shortcuts of {title}: {error}", title = game.title, error = format!("{e:#}"))),
         },
@@ -262,7 +298,7 @@ pub fn remove_shortcuts(data_paths: &DataPaths, runner: &str, app_name: &str) ->
 
 /// `shortcutsExists`: for the menu label.
 pub fn shortcuts_exist(data_paths: &DataPaths, runner: &str, app_name: &str) -> bool {
-    find_game(data_paths, runner, app_name).map(|(_, g)| desktop::exists(&Roots::detect(), &g.title)).unwrap_or(false)
+    find_game(data_paths, runner, app_name).map(|(_, g)| menu::exists(&Roots::detect(), &g.title)).unwrap_or(false)
 }
 
 fn last_play_secs(game: &CollectionGame) -> Option<u32> {
@@ -291,7 +327,8 @@ pub fn steam_client() -> SteamClient {
     SteamClient::new(crate::env::value("HERONITE_STEAM_CEF").unwrap_or_else(debugger_addr))
 }
 
-/// Where `.desktop` wrappers for the `steam://addnonsteamgame` fallback live.
+/// Where `.desktop` wrappers for the `steam://addnonsteamgame` fallback live
+/// (Linux).
 fn wrapper_dir() -> PathBuf {
     Roots::detect().applications.join(steam::WRAPPER_DIR)
 }
@@ -340,6 +377,12 @@ pub fn add_to_steam(data_paths: &DataPaths, runner: &str, app_name: &str) -> Out
             Ok(_) => out.ok(tr!("{title} was successfully added to Steam.", title = game.title)),
             Err(e) => out.err(tr!("Adding {title} to Steam failed with:\n{error}", title = game.title, error = format!("{e:#}"))),
         }
+        return out;
+    }
+    // Windows' Steam has no `.desktop` wrapper to add: the next Steam start
+    // opens the debugging interface (asked for above).
+    if running && cfg!(windows) {
+        out.err(steam_running());
         return out;
     }
     if running {
@@ -577,9 +620,25 @@ mod tests {
         assert_eq!(out.messages.len(), 1, "{out:?}");
         assert!(!out.messages[0].error, "{out:?}");
         assert!(shortcuts_exist(&data_paths, &runner, &app));
-        let file = work.path().join("apps").join(format!("{}.desktop", desktop::sanitize_filename(&game.title)));
-        let text = fs::read_to_string(&file).unwrap();
-        assert!(text.contains(&format!("--launch {runner} ")), "{text}");
+        let (desktop_file, file) = menu::shortcut_files(&Roots::detect(), &game.title);
+        assert_eq!(file.parent(), Some(work.path().join("apps").as_path()));
+        #[cfg(not(windows))]
+        {
+            let text = fs::read_to_string(&file).unwrap();
+            assert!(text.contains(&format!("--launch {runner} ")), "{text}");
+        }
+        #[cfg(windows)]
+        {
+            use heronite_platform::shortcut;
+            let link = shortcut::read(&file).unwrap();
+            assert_eq!(link.target, own_exe());
+            assert_eq!(shortcut::split_args(&link.arguments), ["--launch", runner.as_str(), app.as_str()]);
+            assert_eq!(link.working_dir.as_deref(), own_exe().parent());
+            assert_eq!(link.description, game.title);
+            let (icon, _) = link.icon.unwrap();
+            assert!(icon == own_exe() || (icon.extension() == Some("ico".as_ref()) && icon.is_file()), "{}", icon.display());
+        }
+        assert_eq!(desktop_file.unwrap(), work.path().join("Desktop").join(file.file_name().unwrap()));
         assert!(work.path().join("Desktop").join(file.file_name().unwrap()).exists());
 
         let out = add_to_steam(&data_paths, &runner, &app);

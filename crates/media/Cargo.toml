@@ -33,6 +33,27 @@ pollster = "0.4"
 signal-hook = "0.3"
 notify-rust = "4"
 
+[target.'cfg(windows)'.dependencies]
+heronite-platform = { path = "../platform" }
+# Desktop Duplication (DXGI / Direct3D 11) captures, the `RegisterHotKey`
+# thread, the on-screen notice and the HDR white level (DisplayConfig).
+windows = { version = "0.62", features = [
+    "Win32_Devices_Display",
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+notify-rust = "4"
+
 [dev-dependencies]
 tempfile = "3"
 serde_json = "1"

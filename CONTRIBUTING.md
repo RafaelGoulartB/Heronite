@@ -53,4 +53,8 @@ Merging a pull request with one of these labels publishes a new version:
 
 The release workflow bumps the version in `Cargo.toml`, tags it, builds the AppImage, and publishes a GitHub release. A pull request without a release label is merged without a new version. Maintainers can also start a release from **Actions › Release › Run workflow**.
 
+### Windows packages
+
+The Windows installer (Inno Setup 6, [`packaging/windows/heronite.iss`](packaging/windows/heronite.iss)) and portable zip are built by [`scripts/windows/package.ps1`](scripts/windows/package.ps1) into `dist\`, and [`scripts/windows/smoke.ps1`](scripts/windows/smoke.ps1) checks them (it installs and uninstalls into a temporary folder). Locally you need Inno Setup 6 (`winget install JRSoftware.InnoSetup`). Pull requests that touch the Windows packaging get both files as workflow artifacts (unsigned). The program's icon, `packaging/windows/heronite.ico`, is made from the Linux PNG by [`scripts/windows/make-icon.py`](scripts/windows/make-icon.py).
+
 By contributing, you agree that your work is licensed under the [GPL-3.0](LICENSE).

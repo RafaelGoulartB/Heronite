@@ -98,7 +98,7 @@ impl DetectEnv for SystemEnv {
 /// The program a Scoop shim (`scoop\shims\<name>.exe`) starts: the `path`
 /// line of the `<name>.shim` next to it. Its folder is the emulator's, where
 /// its cores and portable files are.
-fn scoop_shim_target(exe: &str) -> Option<String> {
+pub(crate) fn scoop_shim_target(exe: &str) -> Option<String> {
     let shim = Path::new(exe).with_extension("shim");
     let text = std::fs::read_to_string(shim).ok()?;
     let line = text.lines().find_map(|l| l.trim().strip_prefix("path"))?;
