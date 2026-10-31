@@ -25,6 +25,23 @@ https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
 
 Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
 
+## 📥 Download
+
+<div align="center">
+
+| Platform | Package | Download |
+|:---|:---|:---|
+| 🪟 Windows | Installer | [Heronite-Setup-x86_64.exe](https://github.com/RafaelGoulartB/Heronite/releases/latest/download/Heronite-Setup-x86_64.exe) |
+| 🪟 Windows | Portable | [Heronite-Portable-x86_64.zip](https://github.com/RafaelGoulartB/Heronite/releases/latest/download/Heronite-Portable-x86_64.zip) |
+| 🐧 Linux | AppImage (any distro) | [Heronite-x86_64.AppImage](https://github.com/RafaelGoulartB/Heronite/releases/latest/download/Heronite-x86_64.AppImage) |
+| 🐧 Arch / CachyOS | .pkg.tar.zst | [Latest release](https://github.com/RafaelGoulartB/Heronite/releases/latest) |
+| 🐧 Debian / Ubuntu | .deb | [Latest release](https://github.com/RafaelGoulartB/Heronite/releases/latest) |
+| 🐧 Fedora / openSUSE | .rpm | [Latest release](https://github.com/RafaelGoulartB/Heronite/releases/latest) |
+
+</div>
+
+---
+
 ## Your library, organized
 
 - **Collection:** a list with a details panel (Focus) or a grid of covers. Group by status, store, genre, series, year and more. The details show screenshots, How Long To Beat, achievements, a play timeline, and on Linux the ProtonDB and anti-cheat status.
