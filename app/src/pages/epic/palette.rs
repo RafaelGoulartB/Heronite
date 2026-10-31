@@ -3,9 +3,10 @@
 use gpui_kit::*;
 use heronite_i18n::tr;
 
-use super::{login_helper, EpicPage};
+use super::EpicPage;
 use crate::icons::Icon;
 use crate::pages::commands::{close_dialog, CommandCtx, PageCommand, PaletteCommands};
+use crate::pages::store::login_helper;
 
 impl PaletteCommands for EpicPage {
     fn palette_commands(_page: Option<&Self>, _ctx: &CommandCtx, cx: &App) -> Vec<PageCommand> {

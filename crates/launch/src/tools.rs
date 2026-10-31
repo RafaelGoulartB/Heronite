@@ -100,11 +100,11 @@ pub fn parse_vulkan_summary(text: &str) -> Vulkan {
 
 /// Asks `vulkaninfo` (when installed). Unknown counts as modern.
 pub fn detect_vulkan() -> Vulkan {
-    std::process::Command::new("vulkaninfo")
-        .arg("--summary")
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
+    let mut cmd = std::process::Command::new("vulkaninfo");
+    cmd.arg("--summary").stdin(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    // A console tool: without this Windows flashes a console window.
+    heronite_platform::process::new_helper_group(&mut cmd);
+    cmd.output()
         .ok()
         .filter(|o| o.status.success())
         .map(|o| parse_vulkan_summary(&String::from_utf8_lossy(&o.stdout)))

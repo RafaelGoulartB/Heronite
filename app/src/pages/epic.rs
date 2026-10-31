@@ -46,18 +46,6 @@ pub struct EpicPage {
 
 impl EventEmitter<PageEvent> for EpicPage {}
 
-/// `heronite-epic-login` next to this executable, else on `PATH`.
-fn login_helper() -> Option<std::path::PathBuf> {
-    let name = if cfg!(windows) { "heronite-epic-login.exe" } else { "heronite-epic-login" };
-    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-        let candidate = dir.join(name);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))
-}
-
 impl EpicPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
@@ -215,7 +203,7 @@ impl EpicPage {
     }
 
     fn start_window_login(&mut self, cx: &mut Context<Self>) {
-        let Some(helper) = login_helper() else {
+        let Some(helper) = crate::pages::store::login_helper() else {
             self.notice = Some((
                 tr!("The login window (heronite-epic-login) was not found next to the app. Use the browser method below.").into(),
                 true,
