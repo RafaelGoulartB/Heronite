@@ -106,7 +106,19 @@ Legend: ✅ done · 🚧 in progress · ⬜ to do · ➖ not planned for Windows
 
 ### Later
 
-- ⬜ Epic, GOG and Amazon Games (legendary, gogdl and nile have Windows builds)
+- 🚧 Epic, GOG and Amazon Games, natively (on in Windows builds; to be checked with real accounts: login, a download with pause and resume, first launch with its installers, play time, cloud saves, move, uninstall)
+  - One feature per store (`Feature::EpicStore`, `GogStore`, `AmazonStore`); the Downloads page and its settings show when any is on (`features::any_store`). `HERONITE_FEATURES=+epic,-gog` turns features on or off in debug builds
+  - Tools: the Windows builds of legendary 0.21.1, gogdl v1.3.0 and nile v1.2.0 (standalone `.exe`, no Python), downloaded into `<data>\tools\bin` and run with no console window (`store_tools`); their config stays in the data folder
+  - Login: `heronite-epic-login.exe`, a Win32 window with WebView2 (InPrivate, its data in the cache folder), shipped in the installer and the portable zip; without the WebView2 runtime it says so and the browser method stays
+  - Stopping a download: Ctrl+C to the tool's own hidden console, then a kill after the grace time (`process::ask_to_stop`); legendary and gogdl keep their resume files, nile gets 2 s
+  - Which builds run here: one rule, `host::run_mode` (Windows builds natively, Linux and macOS builds not at all); the install dialogs only offer builds this PC runs
+  - Launch: the game itself, not the tool. Epic: `legendary launch --json` gives the command (sign-in arguments included) and Heronite starts it, so the session lasts as long as the game; GOG: the play task of `goggame-<id>.info`; Amazon: `fuel.json` with the variables nile sets. EA app and Ubisoft Connect games of Epic open through those apps (their play time is not tracked)
+  - First launch (`native_setup`): prerequisites, GOG's redistributables and scripts, Amazon's `PostInstall` run once per game folder; installers that need it go through the administrator prompt (`shell::run_elevated`); a declined prompt is a warning and it asks again next time
+  - Cloud saves: legendary and gogdl resolve the real Windows folders (Saved Games, AppData, Documents, OneDrive), no prefix
+  - EOS Overlay: one switch for all games (the registry, no prefix)
+  - Default install folder: `%USERPROFILE%\Games\Heronite`; moves across drives copy with progress and can be cancelled
+  - Games other launchers installed, without downloading them again: Epic Games Launcher (`legendary import` one game at a time; not `egl-sync`, which links the games to the launcher), GOG Galaxy (its registry keys; Galaxy keeps updating, moving and uninstalling them), Amazon Games app (a copy of its install database, then `nile import`; the app keeps its files). After login and from a button on each store's page
+  - ⬜ GOG's `comet` (Galaxy services: achievements and some multiplayer in games that use them)
 - ⬜ Store clients (Battle.net, EA app, Ubisoft Connect, Rockstar) run natively
 - ✅ Emulators and ROM folders (`Feature::Emulation`)
   - Finding emulators: one catalog with each emulator's Linux and Windows names; `PATH` (Scoop shims lead to the real program), Program Files, `%LOCALAPPDATA%\Programs`, `%LOCALAPPDATA%`, `%APPDATA%`, the system drive (`C:\RetroArch-Win64`), Scoop's `apps\<app>\current`, EmuDeck's `%APPDATA%\EmuDeck\Emulators` and the usual `Emulation` / `Emulators` / `Games` folders; only `.exe`, helpers (`retroarch_debug.exe`...) skipped; RetroArch cores are `.dll`
