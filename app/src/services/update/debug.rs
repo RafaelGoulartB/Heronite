@@ -56,7 +56,7 @@ fn default_method() -> Method {
 fn default_method() -> Method {
     if crate::env::value("HERONITE_DEBUG_UPDATE_PACKAGE").as_deref() == Some("portable") {
         let root = std::path::PathBuf::from(r"C:\Heronite");
-        Method::Portable(heronite_update::Portable { exe: root.join("heronite-rs.exe"), root })
+        Method::Portable(heronite_update::Portable { exe: root.join("heronite.exe"), root })
     } else {
         Method::Installer(heronite_update::Installer { exe: r"C:\Users\you\AppData\Local\Programs\Heronite\heronite-rs.exe".into() })
     }

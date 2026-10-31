@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
   Checks the Windows packages that package.ps1 wrote to dist\:
-  - the portable zip holds exactly Heronite/heronite-rs.exe,
+  - the portable zip holds exactly Heronite/heronite.exe,
     Heronite/portable.txt and Heronite/LICENSE;
   - the setup installs silently into a temporary folder (files, the
     package-format marker, no portable.txt, the Start menu shortcut, the
@@ -69,7 +69,7 @@ try {
 } finally {
     $archive.Dispose()
 }
-$expected = @('Heronite/heronite-rs.exe', 'Heronite/portable.txt', 'Heronite/LICENSE' | Sort-Object)
+$expected = @('Heronite/heronite.exe', 'Heronite/portable.txt', 'Heronite/LICENSE' | Sort-Object)
 Check (($names -join '|') -eq ($expected -join '|')) "zip holds exactly $($expected -join ', ') (has: $($names -join ', '))"
 
 # Saves what the app registered before the test, to put it back afterwards.

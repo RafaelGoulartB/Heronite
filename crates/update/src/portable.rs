@@ -1,4 +1,4 @@
-//! A portable copy on Windows: a folder holding `heronite-rs.exe` and the
+//! A portable copy on Windows: a folder holding `heronite.exe` and the
 //! marker `portable.txt` ([`heronite_platform::dirs::PORTABLE_MARKER`]),
 //! with the user's `data`, `config` and `cache` folders beside them.
 //!
@@ -27,8 +27,9 @@ use std::time::Duration;
 use crate::install::{download_signed, InstallError, Progress, Unsupported};
 use crate::release::{Release, WindowsAsset};
 
-/// The program, in the zip and in a copy.
-pub const PROGRAM: &str = "heronite-rs.exe";
+/// The program, in the zip and in a copy: `heronite.exe` (cargo builds it
+/// as `heronite-rs.exe`; `scripts/windows/package.ps1` names it).
+pub const PROGRAM: &str = "heronite.exe";
 /// The zip's one top folder.
 pub const TOP: &str = "Heronite";
 /// A copy's folders that belong to the user: never written by an update.
@@ -45,7 +46,7 @@ static SWAP: Mutex<()> = Mutex::new(());
 pub struct Portable {
     /// The copy's folder ([`heronite_platform::dirs::portable_root`]).
     pub root: PathBuf,
-    /// This program, read at start (normally `<root>\heronite-rs.exe`).
+    /// This program, read at start (normally `<root>\heronite.exe`).
     pub exe: PathBuf,
 }
 
@@ -394,12 +395,12 @@ mod tests {
     #[test]
     fn entry_names_stay_inside_the_program_folder() {
         assert_eq!(entry_path("Heronite/"), Ok(None));
-        assert_eq!(entry_path("Heronite/heronite-rs.exe"), Ok(Some(PathBuf::from("heronite-rs.exe"))));
+        assert_eq!(entry_path("Heronite/heronite.exe"), Ok(Some(PathBuf::from("heronite.exe"))));
         assert_eq!(entry_path("Heronite/res/a b.pak"), Ok(Some(PathBuf::from(r"res\a b.pak"))));
         assert_eq!(entry_path(r"Heronite\res\a.pak"), Ok(Some(PathBuf::from(r"res\a.pak"))));
         for bad in [
-            "heronite-rs.exe",
-            "Other/heronite-rs.exe",
+            "heronite.exe",
+            "Other/heronite.exe",
             "heronite/x",
             "/Heronite/x",
             "Heronite/../x",
@@ -424,7 +425,7 @@ mod tests {
             assert!(entry_path(bad).is_err(), "{bad:?} accepted");
         }
         assert!(valid_component("COM10") && valid_component("console.txt") && valid_component("datafile"));
-        assert_eq!(safe_relative(r"heronite-rs.exe.old"), Some(PathBuf::from("heronite-rs.exe.old")));
+        assert_eq!(safe_relative(r"heronite.exe.old"), Some(PathBuf::from("heronite.exe.old")));
         assert_eq!(safe_relative(r"res\x.pak.old"), Some(PathBuf::from(r"res\x.pak.old")));
         for bad in [r"..\x.old", r"C:\x.old", "x.exe", r"data\x.old", r"a\\x.old", ""] {
             assert_eq!(safe_relative(bad), None, "{bad:?}");
@@ -436,12 +437,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let no = AtomicBool::new(false);
         let zip = tmp.path().join("p.zip");
-        make_zip(
-            &zip,
-            &[("Heronite/", b""), ("Heronite/heronite-rs.exe", EXE), ("Heronite/LICENSE", b"MIT"), ("Heronite/res/a.pak", b"a")],
-        );
+        make_zip(&zip, &[("Heronite/", b""), ("Heronite/heronite.exe", EXE), ("Heronite/LICENSE", b"MIT"), ("Heronite/res/a.pak", b"a")]);
         let files = unpack(&zip, &tmp.path().join("ok"), &no).unwrap();
-        assert_eq!(files, [PathBuf::from("heronite-rs.exe"), "LICENSE".into(), r"res\a.pak".into()]);
+        assert_eq!(files, [PathBuf::from("heronite.exe"), "LICENSE".into(), r"res\a.pak".into()]);
         assert_eq!(fs::read(tmp.path().join(r"ok\res\a.pak")).unwrap(), b"a");
 
         let refused = |entries: &[(&str, &[u8])], why: &str| {
@@ -450,17 +448,17 @@ mod tests {
             let err = unpack(&zip, &dest, &no).unwrap_err().to_string();
             assert!(err.contains(why), "{err}");
         };
-        refused(&[("Heronite/heronite-rs.exe", EXE), ("Heronite/../evil.dll", b"x")], "outside");
-        refused(&[("Heronite/heronite-rs.exe", EXE), ("Heronite/data/x.json", b"x")], "outside");
-        refused(&[("Heronite/LICENSE", b"MIT")], "has no heronite-rs.exe");
-        refused(&[("Heronite/heronite-rs.exe", b"#!/bin/sh")], "has no heronite-rs.exe");
-        refused(&[("Heronite/heronite-rs.exe", EXE), ("Heronite/LICENSE", b"a"), ("Heronite/license", b"b")], "twice");
+        refused(&[("Heronite/heronite.exe", EXE), ("Heronite/../evil.dll", b"x")], "outside");
+        refused(&[("Heronite/heronite.exe", EXE), ("Heronite/data/x.json", b"x")], "outside");
+        refused(&[("Heronite/LICENSE", b"MIT")], "has no heronite.exe");
+        refused(&[("Heronite/heronite.exe", b"#!/bin/sh")], "has no heronite.exe");
+        refused(&[("Heronite/heronite.exe", EXE), ("Heronite/LICENSE", b"a"), ("Heronite/license", b"b")], "twice");
 
         // A symbolic link entry (Unix mode S_IFLNK).
         let link = tmp.path().join("link.zip");
         let mut w = zip::ZipWriter::new(File::create(&link).unwrap());
         let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
-        w.start_file("Heronite/heronite-rs.exe", opts).unwrap();
+        w.start_file("Heronite/heronite.exe", opts).unwrap();
         w.write_all(EXE).unwrap();
         w.add_symlink("Heronite/escape", r"C:\Windows", opts).unwrap();
         w.finish().unwrap();
@@ -506,9 +504,9 @@ mod tests {
         let copy = copy_in(tmp.path());
         let (from, files) = new_files(tmp.path());
         let olds = swap_in(&from, &files, &copy.root, &exe_name(&copy.exe)).unwrap();
-        assert_eq!(olds, [PathBuf::from("heronite-rs.exe.old"), "portable.txt.old".into()]);
+        assert_eq!(olds, [PathBuf::from("heronite.exe.old"), "portable.txt.old".into()]);
         assert_eq!(fs::read(copy.root.join(PROGRAM)).unwrap(), EXE);
-        assert_eq!(fs::read(copy.root.join("heronite-rs.exe.old")).unwrap(), b"MZ old program");
+        assert_eq!(fs::read(copy.root.join("heronite.exe.old")).unwrap(), b"MZ old program");
         assert_eq!(fs::read(copy.root.join(r"res\a.pak")).unwrap(), b"a");
         for d in ["data", "config", "cache"] {
             assert_eq!(fs::read_to_string(copy.root.join(d).join("mine.json")).unwrap(), d);
@@ -517,7 +515,7 @@ mod tests {
         remember_olds(&copy.old_list(), &olds);
         fs::create_dir_all(copy.staging()).unwrap();
         copy.sweep();
-        assert!(!copy.root.join("heronite-rs.exe.old").exists() && !copy.root.join("portable.txt.old").exists());
+        assert!(!copy.root.join("heronite.exe.old").exists() && !copy.root.join("portable.txt.old").exists());
         assert!(!copy.old_list().exists() && !copy.staging().exists());
         assert!(copy.root.join("cache").join("mine.json").exists());
     }
@@ -527,11 +525,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join("copy");
         fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("Heronite.exe"), b"MZ old").unwrap();
-        let copy = Portable::detect(root.clone(), root.join("Heronite.exe")).unwrap();
+        fs::write(root.join("Heronite Launcher.exe"), b"MZ old").unwrap();
+        let copy = Portable::detect(root.clone(), root.join("Heronite Launcher.exe")).unwrap();
         let (from, files) = new_files(tmp.path());
         swap_in(&from, &files, &copy.root, &exe_name(&copy.exe)).unwrap();
-        assert_eq!(fs::read(root.join("Heronite.exe")).unwrap(), EXE);
+        assert_eq!(fs::read(root.join("Heronite Launcher.exe")).unwrap(), EXE);
         assert!(!root.join(PROGRAM).exists());
     }
 
@@ -551,10 +549,10 @@ mod tests {
         assert!(err.to_string().contains("Could not replace"), "{err}");
         assert_eq!(fs::read(copy.root.join(PROGRAM)).unwrap(), b"MZ old program");
         assert_eq!(fs::read(copy.root.join(r"res\a.pak")).unwrap(), b"old a");
-        assert!(!copy.root.join("heronite-rs.exe.old").exists() && !copy.root.join("portable.txt.old").exists());
+        assert!(!copy.root.join("heronite.exe.old").exists() && !copy.root.join("portable.txt.old").exists());
         let mut names: Vec<_> = fs::read_dir(&copy.root).unwrap().map(|e| e.unwrap().file_name()).collect();
         names.sort();
-        assert_eq!(names, ["cache", "config", "data", "heronite-rs.exe", "notes.txt", "portable.txt", "res"]);
+        assert_eq!(names, ["cache", "config", "data", "heronite.exe", "notes.txt", "portable.txt", "res"]);
 
         // Folders the swap made are removed again.
         fs::remove_dir_all(copy.root.join("res")).unwrap();
@@ -587,22 +585,22 @@ mod tests {
         let (from, files) = new_files(tmp.path());
         let result = swap_in(&from, &files, &copy.root, &exe_name(&copy.exe));
         // …the sweep cannot remove it yet either, and keeps the list.
-        remember_olds(&copy.old_list(), &[PathBuf::from("heronite-rs.exe.old")]);
+        remember_olds(&copy.old_list(), &[PathBuf::from("heronite.exe.old")]);
         let _ = running.kill();
         let _ = running.wait();
         result.unwrap();
         assert_eq!(fs::read(copy.root.join(PROGRAM)).unwrap(), EXE);
         copy.sweep();
-        assert!(!copy.root.join("heronite-rs.exe.old").exists());
+        assert!(!copy.root.join("heronite.exe.old").exists());
     }
 
     /// Second test key, for the Windows fixtures; not the release key. Made
     /// with minisign 0.12 (`minisign -G -W`; the secret key was not kept):
     /// `portable-0.1.4.zip` holds `Heronite/` with a stand-in
-    /// `heronite-rs.exe` (`MZ …`), `portable.txt` and `LICENSE`, stored, and
+    /// `heronite.exe` (`MZ …`), `portable.txt` and `LICENSE`, stored, and
     /// was signed with `minisign -S -t "version:0.1.4
     /// file:Heronite-Portable-x86_64.zip"`.
-    const TEST_KEY_2: &str = "RWRqLltp08OtbomHRa3MbmFMkaunSZk7qXsx7iv+DIdZVgNMMDkcnmkA";
+    const TEST_KEY_2: &str = "RWRdPqM6P+uWa0r7iqtDR7FLHNLdT+gAgZVuLbxsKa3Gr8etIwrwS/cN";
     const ZIP_014: &[u8] = include_bytes!("../tests/fixtures/portable-0.1.4.zip");
     const ZIP_014_SIG: &str = include_str!("../tests/fixtures/portable-0.1.4.zip.minisig");
 
@@ -656,11 +654,11 @@ mod tests {
         assert_eq!(last.downloaded, ZIP_014.len() as u64);
         assert_eq!(fs::read(copy.root.join(PROGRAM)).unwrap(), b"MZ heronite 0.1.4 test program\n");
         assert_eq!(fs::read(copy.root.join("LICENSE")).unwrap(), b"test license\n");
-        assert_eq!(fs::read(copy.root.join("heronite-rs.exe.old")).unwrap(), b"MZ old program");
+        assert_eq!(fs::read(copy.root.join("heronite.exe.old")).unwrap(), b"MZ old program");
         assert_eq!(fs::read_to_string(copy.root.join(r"data\mine.json")).unwrap(), "data");
         assert!(!copy.staging().exists());
         copy.sweep();
-        assert!(!copy.root.join("heronite-rs.exe.old").exists() && !copy.root.join("portable.txt.old").exists());
+        assert!(!copy.root.join("heronite.exe.old").exists() && !copy.root.join("portable.txt.old").exists());
 
         let mut unsigned = release(&base, "0.1.4");
         unsigned.windows.pop();

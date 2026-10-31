@@ -1,6 +1,6 @@
 This is a portable copy of Heronite.
 
-While this file sits next to heronite-rs.exe, Heronite keeps everything in
+While this file sits next to heronite.exe, Heronite keeps everything in
 this folder: your library and settings in "data" and "config", thumbnails and
 other throwaway files in "cache". It does not use your user folders and
 registers nothing in Windows on its own (no heronite:// links), so you can
