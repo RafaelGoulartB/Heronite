@@ -86,7 +86,6 @@ pub fn controls(window: &Window, cx: &App) -> Option<Div> {
             .flex_none()
             .items_center()
             .gap(px(2.))
-            .ml(px(6.))
             .when(min, |d| {
                 d.child(button("win-minimize", WindowControlArea::Min, minimize(), tr!("Minimize"), theme::ink_a(0.08), |w, _| {
                     w.minimize_window()
