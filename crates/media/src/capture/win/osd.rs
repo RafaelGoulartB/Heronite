@@ -65,7 +65,11 @@ pub fn show(monitor: isize, title: &str, detail: &str) -> bool {
     let (shown, result) = mpsc::channel();
     let (title, detail) = (title.to_owned(), detail.to_owned());
     let spawned = std::thread::Builder::new().name("heronite-capture-notice".into()).spawn(move || run(monitor, &title, &detail, shown));
-    spawned.is_ok() && result.recv_timeout(Duration::from_secs(1)).unwrap_or(false)
+    spawned.is_ok()
+        && result.recv_timeout(Duration::from_secs(1)).unwrap_or_else(|_| {
+            log::warn!("the screenshot notice did not show in time");
+            false
+        })
 }
 
 fn s(v: f32, scale: f32) -> i32 {
@@ -74,16 +78,16 @@ fn s(v: f32, scale: f32) -> i32 {
 
 fn run(monitor: isize, title: &str, detail: &str, shown: mpsc::Sender<bool>) {
     let _dpi = PerMonitorDpi::enter();
-    let Some(class) = register_class() else {
+    let fail = |why: String| {
+        log::warn!("the screenshot notice could not be shown: {why}");
         let _ = shown.send(false);
-        return;
     };
+    let Some(class) = register_class() else { return fail("RegisterClassExW failed".into()) };
     let monitor = HMONITOR(monitor as *mut _);
     let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
     // SAFETY: `info` has its size set; a stale monitor handle just fails.
     if !unsafe { GetMonitorInfoW(monitor, &mut info) }.as_bool() {
-        let _ = shown.send(false);
-        return;
+        return fail("GetMonitorInfoW failed".into());
     }
     let (mut dpi_x, mut dpi_y) = (96, 96);
     // SAFETY: out pointers to locals.
@@ -100,9 +104,9 @@ fn run(monitor: isize, title: &str, detail: &str, shown: mpsc::Sender<bool>) {
     unsafe {
         let instance = GetModuleHandleW(None).ok().map(Into::into);
         let style = WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT;
-        let Ok(hwnd) = CreateWindowExW(style, class, w!("Heronite"), WS_POPUP, x, y, w, h, None, None, instance, None) else {
-            let _ = shown.send(false);
-            return;
+        let hwnd = match CreateWindowExW(style, class, w!("Heronite"), WS_POPUP, x, y, w, h, None, None, instance, None) {
+            Ok(hwnd) => hwnd,
+            Err(e) => return fail(format!("CreateWindowExW: {e}")),
         };
         let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 240, LWA_ALPHA);
         // Windows 10 2004 and later; older ones keep it in captures.
@@ -116,6 +120,7 @@ fn run(monitor: isize, title: &str, detail: &str, shown: mpsc::Sender<bool>) {
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         SetTimer(Some(hwnd), 1, SHOWN_FOR.as_millis() as u32, None);
+        log::debug!("screenshot notice shown at {x},{y} ({w}x{h})");
         let _ = shown.send(true);
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
@@ -160,6 +165,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
                 LRESULT(0)
             }
             WM_DESTROY => {
+                log::debug!("screenshot notice closed");
                 PostQuitMessage(0);
                 LRESULT(0)
             }
@@ -230,5 +236,35 @@ fn paint(hwnd: HWND) {
             let _ = DeleteObject(accent.into());
         });
         let _ = EndPaint(hwnd, &ps);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTOPRIMARY};
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetForegroundWindow, IsWindowVisible};
+
+    use super::*;
+
+    /// The notice shows on the primary monitor, leaves the focus where it
+    /// was and goes away by itself.
+    #[test]
+    fn the_notice_shows_and_goes() {
+        if !super::super::screen::has_output() {
+            eprintln!("no desktop here: no notice to show");
+            return;
+        }
+        // SAFETY: plain queries.
+        let (monitor, focus) = unsafe { (MonitorFromPoint(Default::default(), MONITOR_DEFAULTTOPRIMARY), GetForegroundWindow()) };
+        assert!(show(monitor.0 as isize, "Screenshot saved", "Test"));
+        // SAFETY: plain queries.
+        unsafe {
+            let notice = FindWindowW(CLASS, None).expect("the notice window");
+            assert!(IsWindowVisible(notice).as_bool());
+            assert_eq!(GetForegroundWindow(), focus);
+        }
+        std::thread::sleep(SHOWN_FOR + Duration::from_millis(700));
+        // SAFETY: as above.
+        assert!(unsafe { FindWindowW(CLASS, None) }.is_err());
     }
 }
