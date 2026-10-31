@@ -391,8 +391,11 @@ ended with that log (`launch-problem-toast:` for the toast, `troubleshoot[:<log>
 segmented pills in the header slot; each tab is a stack of `caption` + `card`. The tabs are the same for
 every game, by what the user wants to change: Game (images, details, the time played and, in the same card, the "Sessions" row:
 their sum, Recalculate, and when expanded the sessions 3 per page to fix, delete or add by hand, `sessions.rs`; `HERONITE_DEBUG_SESSION=open|page:<n>|new|invalid|edit:<row>|delete:<row>|recalc`;
-the card menu has no "Edit playtime"), Launch (Play, the actions,
-the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
+the card menu has no "Edit playtime"), Actions (one card: Play, then "In the menu next to Play" with the
+user's actions; each is a one-line summary that opens its editor in place, one at a time, with its own Cancel / Save while
+the other rows dim; Play opens only for local games, others show a lock; actions reorder by dragging, an empty menu
+offers shortcuts (Mod manager, Settings tool...); `HERONITE_DEBUG_PLAY_EDIT=1`, `HERONITE_DEBUG_ACTION_EDIT=new|<id>`),
+Launch (the panel's launch settings), Compatibility (Wine / Proton), Performance (overlays, FPS limit, frame
 generation, image, system) and Saves (Ludusavi backups + cloud saves); a tab only goes away when the
 game has nothing for it. Sandbox shows only for a game whose settings have the sandbox on (set when it
 was added or installed); turning it off there keeps the tab until the drawer closes. Descriptions are one short line saying the effect; paths and rare warnings
