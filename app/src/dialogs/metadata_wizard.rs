@@ -105,6 +105,23 @@ impl MetadataHub {
         cx.emit(HubEvent::OpenWizard);
     }
 
+    /// Covers for the local games that have none (games just added from a
+    /// folder); the Collection reloads when some were found.
+    pub fn fill_local_covers(&mut self, cx: &mut Context<Self>) {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let found = cx.background_spawn(async move { service.refresh_missing_local_covers() }).await;
+            match found {
+                Ok(n) if n > 0 => {
+                    this.update(cx, |_, cx| cx.emit(HubEvent::DataChanged)).ok();
+                }
+                Ok(_) => {}
+                Err(err) => log::warn!("cover fill: {err:#}"),
+            }
+        })
+        .detach();
+    }
+
     /// Idle maintenance like Heronite's `scheduleIdleMaintenance` (90 s after
     /// startup): fills missing Collection metadata when `autoFillMissing` is
     /// on, and local covers. Runs off the UI thread.

@@ -398,6 +398,18 @@ impl CollectionView {
                             this.open_add_game(window, cx);
                         })),
                     )
+                    .child(
+                        nav_row(
+                            "nav-scan-folder".into(),
+                            Icon::FolderOpen,
+                            tr!("Add from folder"),
+                            Trailing::Meta(tr!("Find many games at once").into(), false),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_scan_folder(window, cx);
+                        })),
+                    )
                     .child(menu_separator())
                     .child(
                         nav_row("nav-console".into(), Icon::Tv, tr!("Console mode"), Trailing::None, false)

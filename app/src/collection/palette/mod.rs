@@ -276,6 +276,9 @@ impl CollectionView {
             Act::AddGame => {
                 self.open_add_game(window, cx);
             }
+            Act::ScanFolder => {
+                self.open_scan_folder(window, cx);
+            }
             Act::InstallScript => self.open_install_script(None, window, cx),
             Act::Refresh => self.refresh_all(cx),
             Act::ScanRoms => self.open_scan_roms(Default::default(), window, cx),

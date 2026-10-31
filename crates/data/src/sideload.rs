@@ -230,103 +230,133 @@ fn looks_like_steam_binary(path: &str) -> bool {
     path == "steam" || n.ends_with("/steam") || n.ends_with("/steam.exe") || n.ends_with("/steam.sh")
 }
 
-/// `applySideloadAppToLocalMeta`: keeps the overlay meta of the game in line
-/// with the sideload entry (the executable is what the Collection launches).
-fn apply_local_meta(paths: &DataPaths, spec: &SideloadSpec) -> Result<()> {
-    let executable = spec.executable.trim().to_string();
-    // A game started by a command runs like an executable one.
-    let runnable = !executable.is_empty() || (spec.platform == SideloadPlatform::Linux && !spec.command.trim().is_empty());
-    // Decide before touching the file: a skipped game must not even rewrite it.
+/// `applySideloadAppToLocalMeta`: keeps the overlay meta of the games in line
+/// with their sideload entries (the executable is what the Collection
+/// launches). One write for all of them.
+fn apply_local_meta(paths: &DataPaths, specs: &[SideloadSpec]) -> Result<()> {
+    // Decide before touching the file: skipped games must not even rewrite it.
     let current: LocalMetaFile = json_store::read(&paths.local_meta())?;
-    let existing = current.games.get(&spec.app_name);
-    if !runnable && existing.is_none() {
+    let plans: Vec<(&SideloadSpec, Option<String>)> = specs
+        .iter()
+        .filter_map(|spec| {
+            let executable = spec.executable.trim();
+            // A game started by a command runs like an executable one.
+            let runnable = !executable.is_empty() || (spec.platform == SideloadPlatform::Linux && !spec.command.trim().is_empty());
+            let existing = current.games.get(&spec.app_name);
+            if !runnable && existing.is_none() {
+                return None;
+            }
+            if let Some(e) = existing {
+                if e.launch_kind == "steam-uri" && (!runnable || looks_like_steam_binary(executable)) {
+                    return None;
+                }
+            }
+            // Installing into an emulated entry: the emulator's arguments go away.
+            let emulator_args = existing
+                .filter(|e| spec.install && runnable && e.launch_kind == "emulator")
+                .map(|e| e.launcher_args.clone().unwrap_or_default());
+            Some((spec, emulator_args))
+        })
+        .collect();
+    if plans.is_empty() {
         return Ok(());
     }
-    if let Some(e) = existing {
-        if e.launch_kind == "steam-uri" && (!runnable || looks_like_steam_binary(&executable)) {
-            return Ok(());
-        }
-    }
-    // Installing into an emulated entry: the emulator's arguments go away.
-    let emulator_args =
-        existing.filter(|e| spec.install && runnable && e.launch_kind == "emulator").map(|e| e.launcher_args.clone().unwrap_or_default());
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
-        let existing = file.games.get(&spec.app_name).cloned();
-        let mut meta = existing.clone().unwrap_or_default();
-        if emulator_args.is_some() {
-            meta.launcher_args = None;
-            // No longer an emulated game: it reads as a local one.
-            if meta.source == "emulator" {
+        for (spec, emulator_args) in &plans {
+            let executable = spec.executable.trim().to_string();
+            let runnable = !executable.is_empty() || (spec.platform == SideloadPlatform::Linux && !spec.command.trim().is_empty());
+            let mut meta = file.games.get(&spec.app_name).cloned().unwrap_or_default();
+            if emulator_args.is_some() {
+                meta.launcher_args = None;
+                // No longer an emulated game: it reads as a local one.
+                if meta.source == "emulator" {
+                    meta.source = "manual".into();
+                }
+            }
+            meta.app_name = spec.app_name.clone();
+            meta.runner = "sideload".into();
+            if meta.playnite_id.is_empty() {
+                meta.playnite_id = format!("heroic_{}", spec.app_name);
+            }
+            if meta.source.is_empty() {
                 meta.source = "manual".into();
             }
-        }
-        meta.app_name = spec.app_name.clone();
-        meta.runner = "sideload".into();
-        if meta.playnite_id.is_empty() {
-            meta.playnite_id = format!("heroic_{}", spec.app_name);
-        }
-        if meta.source.is_empty() {
-            meta.source = "manual".into();
-        }
-        meta.launch_kind = if runnable {
-            if meta.launch_kind == "emulator" && !spec.install {
-                "emulator".into()
+            meta.launch_kind = if runnable {
+                if meta.launch_kind == "emulator" && !spec.install {
+                    "emulator".into()
+                } else {
+                    "executable".into()
+                }
+            } else if meta.launch_kind.is_empty() {
+                "unavailable".into()
             } else {
-                "executable".into()
+                meta.launch_kind.clone()
+            };
+            if !spec.title.is_empty() {
+                meta.title = spec.title.clone();
+            } else if meta.title.is_empty() {
+                meta.title = spec.app_name.clone();
             }
-        } else if meta.launch_kind.is_empty() {
-            "unavailable".into()
-        } else {
-            meta.launch_kind.clone()
-        };
-        if !spec.title.is_empty() {
-            meta.title = spec.title.clone();
-        } else if meta.title.is_empty() {
-            meta.title = spec.app_name.clone();
+            meta.remapped_executable = (!executable.is_empty()).then_some(executable);
+            if let Some(run_as) = &spec.run_as {
+                meta.run_as = Some(run_as.clone());
+            }
+            file.games.insert(spec.app_name.clone(), meta);
         }
-        meta.remapped_executable = (!executable.is_empty()).then_some(executable.clone());
-        if let Some(run_as) = &spec.run_as {
-            meta.run_as = Some(run_as.clone());
-        }
-        file.games.insert(spec.app_name.clone(), meta);
         Ok(())
     })?;
-    match emulator_args {
-        Some(args) => game_config::forget_emulator_args(paths, &spec.app_name, &args),
-        None => Ok(()),
+    for (spec, emulator_args) in plans {
+        if let Some(args) = emulator_args {
+            game_config::forget_emulator_args(paths, &spec.app_name, &args)?;
+        }
     }
+    Ok(())
 }
 
 /// `SideloadLibraryManager.addNewApp` + the overlay hooks: adds the game, or
 /// edits it when `app_name` exists.
 pub fn save_game(paths: &DataPaths, spec: &SideloadSpec) -> Result<SaveOutcome> {
-    let game = build_game(spec);
-    let (added, written) = json_store::update_value(&paths.sideload_library(), |doc| {
+    let mut out = save_games(paths, std::slice::from_ref(spec))?;
+    Ok(out.remove(0))
+}
+
+/// [`save_game`] for many games at once (adding the games found in a
+/// folder): one write of each file, outcomes in the order of `specs`.
+pub fn save_games(paths: &DataPaths, specs: &[SideloadSpec]) -> Result<Vec<SaveOutcome>> {
+    if specs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let outcomes = json_store::update_value(&paths.sideload_library(), |doc| {
         let obj = doc.as_object_mut().expect("update_value gives an object");
         let games = obj.entry("games").or_insert_with(|| Value::Array(Vec::new()));
         if !games.is_array() {
             *games = Value::Array(Vec::new());
         }
         let list = games.as_array_mut().expect("array");
-        let index = list.iter().position(|g| g.get("app_name").and_then(Value::as_str) == Some(spec.app_name.as_str()));
-        match index {
-            Some(i) => {
-                if let Some(cur) = list[i].as_object_mut() {
-                    merge_into(cur, game);
-                } else {
-                    list[i] = Value::Object(game);
+        let mut out = Vec::with_capacity(specs.len());
+        for spec in specs {
+            let game = build_game(spec);
+            let index = list.iter().position(|g| g.get("app_name").and_then(Value::as_str) == Some(spec.app_name.as_str()));
+            out.push(match index {
+                Some(i) => {
+                    if let Some(cur) = list[i].as_object_mut() {
+                        merge_into(cur, game);
+                    } else {
+                        list[i] = Value::Object(game);
+                    }
+                    SaveOutcome { added: false, game: list[i].clone() }
                 }
-                Ok((false, list[i].clone()))
-            }
-            None => {
-                let v = Value::Object(game);
-                list.push(v.clone());
-                Ok((true, v))
-            }
+                None => {
+                    let v = Value::Object(game);
+                    list.push(v.clone());
+                    SaveOutcome { added: true, game: v }
+                }
+            });
         }
+        Ok(out)
     })?;
-    apply_local_meta(paths, spec)?;
-    Ok(SaveOutcome { added, game: written })
+    apply_local_meta(paths, specs)?;
+    Ok(outcomes)
 }
 
 /// The Wine settings a new Windows game gets (`writeConfig` of the dialog):
@@ -588,6 +618,27 @@ mod tests {
         let raw = json_store::read_value(&paths.local_meta()).unwrap();
         let keys: Vec<&str> = raw["games"]["abc"].as_object().unwrap().keys().map(String::as_str).collect();
         assert_eq!(keys, ["appName", "runner", "playniteId", "source", "launchKind", "title", "remappedExecutable"]);
+    }
+
+    #[test]
+    fn many_games_are_saved_in_order_and_an_existing_one_is_edited() {
+        let (_d, paths) = setup();
+        save_game(&paths, &spec("old", "/g/old.exe", SideloadPlatform::Windows)).unwrap();
+        let mut edited = spec("old", "/g/new.exe", SideloadPlatform::Windows);
+        edited.title = "Old Game".into();
+        let specs = [spec("a", "/g/a/a.exe", SideloadPlatform::Windows), edited, spec("b", "/g/b/b.sh", SideloadPlatform::Linux)];
+        let out = save_games(&paths, &specs).unwrap();
+        assert_eq!(out.iter().map(|o| o.added).collect::<Vec<_>>(), [true, false, true]);
+        let doc = json_store::read_value(&paths.sideload_library()).unwrap();
+        let names: Vec<&str> = doc["games"].as_array().unwrap().iter().map(|g| g["app_name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["old", "a", "b"]);
+        assert_eq!(doc["games"][0]["install"]["executable"], "/g/new.exe");
+        assert_eq!(doc["games"][2]["folder_name"], "/g/b");
+        let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        assert_eq!(metas.games.len(), 3);
+        assert_eq!(metas.games["old"].title, "Old Game");
+        assert_eq!(metas.games["b"].remapped_executable.as_deref(), Some("/g/b/b.sh"));
+        assert!(save_games(&paths, &[]).unwrap().is_empty());
     }
 
     #[test]

@@ -488,7 +488,7 @@ mod tests {
         let pages = search(&e, "", Filter::Pages, &[]);
         assert_eq!(pages.count(), 14 + crate::pages::settings::Section::ALL.len());
         let actions = search(&e, "", Filter::Actions, &[]);
-        assert_eq!(actions.count(), 13);
+        assert_eq!(actions.count(), 14);
         let games = search(&e, "", Filter::Games, &[]);
         assert_eq!(captions(&games), ["Recently played", "Games"]);
         assert_eq!(games.count(), 5);

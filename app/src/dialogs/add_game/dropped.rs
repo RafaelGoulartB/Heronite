@@ -80,7 +80,7 @@ pub(super) fn classify(path: &Path, is_dir: bool, executable: bool) -> Kind {
 
 /// A title from a file or folder name: `_`, `-` and `.` become spaces and the
 /// spaces are tidied. A file loses its extension first.
-pub(super) fn title_from_name(path: &Path, is_dir: bool) -> String {
+pub(crate) fn title_from_name(path: &Path, is_dir: bool) -> String {
     let name = if is_dir { path.file_name() } else { path.file_stem() };
     let name = name.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let spaced: String = name.chars().map(|c| if matches!(c, '_' | '-' | '.') { ' ' } else { c }).collect();
@@ -89,11 +89,11 @@ pub(super) fn title_from_name(path: &Path, is_dir: bool) -> String {
 
 /// Program names that do not name the game ("start.exe", "Launcher.exe"):
 /// its folder does.
-const GENERIC_STEMS: [&str; 14] =
+pub(crate) const GENERIC_STEMS: [&str; 14] =
     ["game", "launcher", "launch", "start", "play", "run", "main", "app", "client", "bin", "start game", "play game", "win64", "x64"];
 
 /// Folders between a game's own folder and its program.
-const GENERIC_DIRS: [&str; 16] = [
+pub(crate) const GENERIC_DIRS: [&str; 16] = [
     "bin", "bin32", "bin64", "binaries", "win32", "win64", "x86", "x64", "x86_64", "game", "data", "program", "windows", "linux",
     "release", "shipping",
 ];
@@ -104,7 +104,7 @@ const BUILD_SUFFIXES: [&str; 7] = ["-win64-shipping", "-wingdk-shipping", "-linu
 /// The title an executable gives: its name without what build tools add,
 /// or, when that name is generic ("start.exe"), the nearest folder that is
 /// not a `bin` / `Win64` one.
-pub(super) fn title_from_executable(path: &Path) -> String {
+pub(crate) fn title_from_executable(path: &Path) -> String {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let lower = stem.to_lowercase();
     let trimmed = BUILD_SUFFIXES.iter().find(|s| lower.ends_with(*s)).map_or(stem.as_str(), |s| &stem[..stem.len() - s.len()]);
