@@ -157,6 +157,9 @@ impl GogJob {
     fn update(&self, el: &DmElement, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<bool> {
         let app = el.params.app_name.as_str();
         let Some(mut entry) = installed::get(&self.paths, app) else { bail!(tr!("{app} is not installed", app = app)) };
+        if entry.from_galaxy() {
+            bail!(tr!("GOG Galaxy installed this game: update it in GOG Galaxy"));
+        }
         let language = if entry.language.is_empty() { DEFAULT_LANGUAGE.to_string() } else { entry.language.clone() };
         let support = self.gogdl.support_dir(app);
         let args = Transfer {
@@ -208,6 +211,9 @@ impl Job for GogJob {
 /// what is broken or missing. `on_percent` is `0..=100`.
 pub fn repair(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, cancel: &Cancel, on_percent: &mut dyn FnMut(f64)) -> Result<()> {
     let Some(entry) = installed::get(paths, app_name) else { bail!(tr!("{app} is not installed", app = app_name)) };
+    if entry.from_galaxy() {
+        bail!(tr!("GOG Galaxy installed this game: repair it in GOG Galaxy"));
+    }
     if !gogdl.manifest_file(app_name).exists() {
         bail!(tr!("gogdl has no record of this game's files, so it cannot be repaired"));
     }
@@ -246,11 +252,17 @@ pub fn repair(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, cancel: &Cancel,
 }
 
 /// Deletes the game's files and gogdl's records. Never runs the game's own
-/// uninstaller. A folder that is already gone only drops the records.
-pub fn uninstall(paths: &DataPaths, app_name: &str) -> Result<()> {
+/// uninstaller. A folder that is already gone only drops the records. A game
+/// GOG Galaxy installed is only taken off the list (its files are Galaxy's):
+/// the note says so.
+pub fn uninstall(paths: &DataPaths, app_name: &str) -> Result<Option<String>> {
     if let Some(entry) = installed::get(paths, app_name) {
+        if entry.from_galaxy() {
+            forget(paths, app_name)?;
+            return Ok(Some(tr!("Its files stay where GOG Galaxy put them: uninstall it in GOG Galaxy to delete them.").to_string()));
+        }
         let folder = Path::new(&entry.install_path);
-        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let home = crate::disk::home();
         if entry.install_path.is_empty() || !safe_to_remove(folder, home.as_deref()) {
             bail!(tr!("Refusing to delete the game at {path}", path = entry.install_path));
         }
@@ -258,7 +270,8 @@ pub fn uninstall(paths: &DataPaths, app_name: &str) -> Result<()> {
             remove_tree(folder).map_err(|e| anyhow!(tr!("Could not delete {path}: {error}", path = entry.install_path, error = e)))?;
         }
     }
-    forget(paths, app_name)
+    forget(paths, app_name)?;
+    Ok(None)
 }
 
 /// Takes the game off the installed list and drops gogdl's records of it,
@@ -270,6 +283,8 @@ pub fn forget(paths: &DataPaths, app_name: &str) -> Result<()> {
     installed::remove(paths, app_name)?;
     updates::forget(paths, app_name);
     library::sync_install_state(paths, app_name, None);
+    // Installed again, it is set up again at its first launch.
+    heronite_launch::native_setup::forget(paths, "gog", app_name);
     Ok(())
 }
 
@@ -303,27 +318,23 @@ pub fn import(paths: &DataPaths, gogdl: &Gogdl, folder: &str) -> Result<String> 
 mod tests {
     use super::*;
     use crate::cmd::testing::*;
-    #[cfg(unix)]
     use heronite_data::json_store;
     use heronite_epic::cache_store::CacheStore;
-    #[cfg(unix)]
     use heronite_epic::queue::{DmStatus, InstallParams};
     use serde_json::json;
-    #[cfg(unix)]
     use std::time::Duration;
 
-    #[cfg(unix)]
     const INFO: &str = r#"{"size":{"*":{"download_size":1000,"disk_size":2000},"en-US":{"download_size":1,"disk_size":2}},"dlcs":[{"title":"DLC","id":"77","size":{"*":{"download_size":5,"disk_size":5}}}],"buildId":"900","languages":["en-US","de-DE"],"folder_name":"The Game","dependencies":[],"versionEtag":"\"tag1\"","versionName":"1.5","available_branches":[null]}"#;
 
-    #[cfg(unix)]
-    const PROGRESS: &str = r#"
-echo '[PROGRESS] INFO: = Progress: 42.50 4250/10000, Running for: 00:00:05, ETA: 00:01:23' >&2
-echo '[PROGRESS] INFO: = Downloaded: 123.45 MiB, Written: 150.00 MiB' >&2
-echo '[PROGRESS] INFO:  + Download	- 5.12 MiB/s (raw) / 8.00 MiB/s (decompressed)' >&2
-echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
-"#;
+    /// gogdl's progress lines, on stderr.
+    fn progress(reply: Reply) -> Reply {
+        reply
+            .err("[PROGRESS] INFO: = Progress: 42.50 4250/10000, Running for: 00:00:05, ETA: 00:01:23")
+            .err("[PROGRESS] INFO: = Downloaded: 123.45 MiB, Written: 150.00 MiB")
+            .err("[PROGRESS] INFO:  + Download\t- 5.12 MiB/s (raw) / 8.00 MiB/s (decompressed)")
+            .err("[PROGRESS] INFO:  + Disk\t- 9.00 MiB/s (write) / 0.00 MiB/s (read)")
+    }
 
-    #[cfg(unix)]
     fn element(kind: ElementKind, base: &Path, dlcs: &[&str]) -> DmElement {
         DmElement::new(
             kind,
@@ -339,12 +350,13 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         )
     }
 
-    /// A gogdl that answers `info`, and for `download` fills the game folder.
-    #[cfg(unix)]
-    fn fake_gog(dir: &Path, paths: &DataPaths, download: &str) -> Gogdl {
-        std::fs::write(dir.join("info.json"), INFO).unwrap();
-        let body = format!("case \"$3\" in\ninfo) cat \"{info}\";;\n*) {download};;\nesac", info = dir.join("info.json").display());
-        fake(dir, paths, &body)
+    /// A gogdl that answers `info`, and the rest with `rest`.
+    fn fake_gog(dir: &Path, rest: Reply) -> FakeTool {
+        fake_tool(dir).on(&["info"], Reply::new().out(INFO)).otherwise(rest)
+    }
+
+    fn job(tool: &FakeTool, paths: &DataPaths) -> GogJob {
+        GogJob { paths: paths.clone(), gogdl: gogdl(tool, paths) }
     }
 
     fn library_with_game(paths: &DataPaths) {
@@ -353,14 +365,13 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
             .unwrap();
     }
 
-    #[cfg(unix)]
     #[test]
     fn install_runs_gogdl_and_records_the_game() {
         let (dir, paths) = setup();
         let base = dir.path().join("Games");
         library_with_game(&paths);
-        let download = format!("{PROGRESS}\nmkdir -p \"{b}/The Game\"; echo data > \"{b}/The Game/a.bin\"", b = base.display());
-        let job = GogJob { paths: paths.clone(), gogdl: fake_gog(dir.path(), &paths, &download) };
+        let tool = fake_gog(dir.path(), progress(Reply::new()).write_file(base.join("The Game").join("a.bin"), "data\n"));
+        let job = job(&tool, &paths);
         // A manifest of an earlier install is removed first.
         std::fs::create_dir_all(job.gogdl.manifest_file("42").parent().unwrap()).unwrap();
         std::fs::write(job.gogdl.manifest_file("42"), "{}").unwrap();
@@ -370,7 +381,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert_eq!(result.status, DmStatus::Done, "{:?}", result.error);
         assert!(!job.gogdl.manifest_file("42").exists());
 
-        let calls = calls(dir.path());
+        let calls = calls_of(&tool);
         assert_eq!(calls[0], "info 42 --os windows");
         assert_eq!(
             calls[1],
@@ -384,7 +395,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert_eq!((reports[0].percent, reports[0].eta.as_str()), (42.5, "00:01:23"));
 
         let entry = installed::get(&paths, "42").unwrap();
-        assert_eq!(entry.install_path, format!("{}/The Game", base.display()));
+        assert_eq!(entry.install_path, base.join("The Game").display().to_string());
         assert_eq!((entry.platform.as_str(), entry.language.as_str(), entry.version.as_str()), ("windows", "de-DE", "1.5"));
         assert_eq!((entry.build_id.as_str(), entry.version_etag.as_str()), ("900", "\"tag1\""));
         assert_eq!(entry.installed_dlcs, ["77"]);
@@ -401,58 +412,58 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert_eq!(saved["games"][0]["install"]["install_path"], entry.install_path.as_str());
     }
 
-    #[cfg(unix)]
     #[test]
     fn install_without_dlcs_skips_them_and_passes_the_worker_limit() {
         let (dir, paths) = setup();
         std::fs::create_dir_all(paths.global_config().parent().unwrap()).unwrap();
         std::fs::write(paths.global_config(), r#"{"defaultSettings":{"maxWorkers":6}}"#).unwrap();
         let base = dir.path().join("Games");
-        let job = GogJob { paths: paths.clone(), gogdl: fake_gog(dir.path(), &paths, "true") };
+        let tool = fake_gog(dir.path(), Reply::new());
         let mut el = element(ElementKind::Install, &base, &[]);
         el.params.install_language = String::new();
-        assert_eq!(job.run(&el, &Cancel::new(), &mut |_| {}).status, DmStatus::Done);
-        let download = calls(dir.path()).remove(1);
+        assert_eq!(job(&tool, &paths).run(&el, &Cancel::new(), &mut |_| {}).status, DmStatus::Done);
+        let download = calls_of(&tool).remove(1);
         assert!(download.ends_with("--lang en-US --skip-dlcs --max-workers 6"), "{download}");
     }
 
-    #[cfg(unix)]
     #[test]
     fn a_failed_install_reports_gogdl_errors() {
         let (dir, paths) = setup();
-        let job = GogJob { paths: paths.clone(), gogdl: fake_gog(dir.path(), &paths, "echo '[V2] ERROR: chunk failed' >&2; exit 1") };
-        let result = job.run(&element(ElementKind::Install, &dir.path().join("g"), &[]), &Cancel::new(), &mut |_| {});
+        let tool = fake_gog(dir.path(), Reply::new().err("[V2] ERROR: chunk failed").exit(1));
+        let result = job(&tool, &paths).run(&element(ElementKind::Install, &dir.path().join("g"), &[]), &Cancel::new(), &mut |_| {});
         assert_eq!(result.status, DmStatus::Error);
         assert_eq!(result.error.as_deref(), Some("[V2] ERROR: chunk failed"));
         assert!(installed::get(&paths, "42").is_none());
 
-        let silent = GogJob { paths: paths.clone(), gogdl: fake_gog(dir.path(), &paths, "exit 4") };
-        let result = silent.run(&element(ElementKind::Install, &dir.path().join("g"), &[]), &Cancel::new(), &mut |_| {});
+        let silent = fake_gog(dir.path(), Reply::new().exit(4));
+        let result = job(&silent, &paths).run(&element(ElementKind::Install, &dir.path().join("g"), &[]), &Cancel::new(), &mut |_| {});
         assert!(result.error.unwrap().contains("gogdl exited with Some(4)"));
+
+        let full = fake_gog(dir.path(), Reply::new().out("[ERROR] Not enough disk space").exit(1));
+        let result = job(&full, &paths).run(&element(ElementKind::Install, &dir.path().join("g"), &[]), &Cancel::new(), &mut |_| {});
+        assert_eq!(result.error.as_deref(), Some("Not enough disk space"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn cancelling_an_install_aborts_it() {
         let (dir, paths) = setup();
-        let job = GogJob { paths: paths.clone(), gogdl: fake_gog(dir.path(), &paths, "sleep 60 & wait") };
+        let tool = fake_gog(dir.path(), Reply::new().sleep(Duration::from_secs(60)));
         let cancel = Cancel::new();
         let c2 = cancel.clone();
         let t = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(700));
             c2.request();
         });
-        let result = job.run(&element(ElementKind::Install, &dir.path().join("g"), &[]), &cancel, &mut |_| {});
+        let result = job(&tool, &paths).run(&element(ElementKind::Install, &dir.path().join("g"), &[]), &cancel, &mut |_| {});
         t.join().unwrap();
         assert_eq!(result.status, DmStatus::Abort);
         assert!(installed::get(&paths, "42").is_none());
     }
 
-    #[cfg(unix)]
     #[test]
     fn update_runs_in_place_and_refreshes_the_entry() {
         let (dir, paths) = setup();
-        let game_dir = dir.path().join("Games/The Game");
+        let game_dir = dir.path().join("Games").join("The Game");
         std::fs::create_dir_all(&game_dir).unwrap();
         std::fs::write(game_dir.join("a.bin"), [0u8; 2048]).unwrap();
         let mut old = Installed::new("42");
@@ -466,10 +477,11 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         installed::upsert(&paths, &old).unwrap();
         updates::save(&paths, &["42".to_string(), "9".to_string()]).unwrap();
 
-        let job = GogJob { paths: paths.clone(), gogdl: fake_gog(dir.path(), &paths, "true") };
+        let tool = fake_gog(dir.path(), Reply::new());
+        let job = job(&tool, &paths);
         let result = job.run(&element(ElementKind::Update, &dir.path().join("ignored"), &[]), &Cancel::new(), &mut |_| {});
         assert_eq!(result.status, DmStatus::Done, "{:?}", result.error);
-        let calls = calls(dir.path());
+        let calls = calls_of(&tool);
         assert_eq!(
             calls[0],
             format!(
@@ -491,11 +503,10 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert!(job.run(&other, &Cancel::new(), &mut |_| {}).error.unwrap().contains("not installed"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn repair_needs_a_manifest_and_passes_the_build() {
         let (dir, paths) = setup();
-        let game_dir = dir.path().join("Games/The Game");
+        let game_dir = dir.path().join("Games").join("The Game");
         std::fs::create_dir_all(&game_dir).unwrap();
         let mut entry = Installed::new("42");
         entry.platform = "windows".into();
@@ -503,19 +514,19 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         entry.language = "pt-BR".into();
         entry.build_id = "900".into();
         installed::upsert(&paths, &entry).unwrap();
-        let body = format!("echo '[VERIFY] INFO: Verification progress: 3/8 (37.5%)' >&2\n{PROGRESS}");
-        let g = fake(dir.path(), &paths, &body);
+        let tool = fake_tool(dir.path()).otherwise(progress(Reply::new().err("[VERIFY] INFO: Verification progress: 3/8 (37.5%)")));
+        let g = gogdl(&tool, &paths);
 
         let mut percents = Vec::new();
         let err = repair(&paths, &g, "42", &Cancel::new(), &mut |p| percents.push(p)).unwrap_err().to_string();
         assert!(err.contains("cannot be repaired"), "{err}");
-        assert!(calls(dir.path()).is_empty());
+        assert!(calls_of(&tool).is_empty());
 
         std::fs::create_dir_all(g.manifest_file("42").parent().unwrap()).unwrap();
         std::fs::write(g.manifest_file("42"), "{}").unwrap();
         repair(&paths, &g, "42", &Cancel::new(), &mut |p| percents.push(p)).unwrap();
         assert_eq!(
-            calls(dir.path()),
+            calls_of(&tool),
             [format!(
                 "repair 42 --platform windows --path {} --support {} --lang pt-BR --skip-dlcs -b=900",
                 game_dir.display(),
@@ -530,7 +541,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
     fn uninstall_removes_files_records_and_the_install_state() {
         let (dir, paths) = setup();
         library_with_game(&paths);
-        let game_dir = dir.path().join("Games/The Game");
+        let game_dir = dir.path().join("Games").join("The Game");
         std::fs::create_dir_all(&game_dir).unwrap();
         std::fs::write(game_dir.join("a.bin"), "x").unwrap();
         let mut entry = Installed::new("42");
@@ -543,6 +554,7 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         std::fs::create_dir_all(g.support_dir("42")).unwrap();
         std::fs::write(g.support_dir("42").join("setup.exe"), "x").unwrap();
         updates::save(&paths, &["42".into()]).unwrap();
+        heronite_launch::native_setup::record(&paths, "gog", "42", &entry.install_path).unwrap();
 
         uninstall(&paths, "42").unwrap();
         assert!(!game_dir.exists());
@@ -551,6 +563,8 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert!(installed::get(&paths, "42").is_none());
         assert!(updates::cached_updates(&paths).is_empty());
         assert_eq!(library::game_info(&paths, "42").unwrap()["is_installed"], false);
+        // Installed again, the game is set up again.
+        assert!(!heronite_launch::native_setup::is_recorded(&paths, "gog", "42", &entry.install_path));
         // Nothing left to do is fine.
         uninstall(&paths, "42").unwrap();
     }
@@ -581,8 +595,12 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
     #[test]
     fn uninstall_refuses_dangerous_folders() {
         let (_dir, paths) = setup();
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/nobody".into());
-        for (i, bad) in ["", "/", "relative/dir", "/tmp", home.as_str(), "/tmp/a/../b"].into_iter().enumerate() {
+        let home = crate::disk::home().map(|h| h.display().to_string()).unwrap_or_else(|| "/home/nobody".into());
+        let mut bad = vec!["", "/", "relative/dir", "/tmp", home.as_str(), "/tmp/a/../b"];
+        if cfg!(windows) {
+            bad.extend([r"C:\", r"C:\Games", r"C:\Users", r"C:\Games\..\Windows\System32", r"\Games\Game"]);
+        }
+        for (i, bad) in bad.into_iter().enumerate() {
             let app = format!("bad{i}");
             let mut entry = Installed::new(&app);
             entry.install_path = bad.to_string();
@@ -593,19 +611,18 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn import_records_a_game_found_on_disk() {
         let (dir, paths) = setup();
         library_with_game(&paths);
-        let folder = dir.path().join("existing/The Game");
+        let folder = dir.path().join("existing").join("The Game");
         std::fs::create_dir_all(&folder).unwrap();
         std::fs::write(folder.join("a.bin"), [0u8; 1024]).unwrap();
         let reply = r#"{"appName":"42","buildId":"123","title":"The Game","tasks":null,"installedLanguage":"fr-FR","dlcs":["5","6"],"platform":"windows","versionName":"3.0"}"#;
-        let g = fake(dir.path(), &paths, &format!("echo '{reply}'"));
-        let name = import(&paths, &g, &folder.display().to_string()).unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(reply));
+        let name = import(&paths, &gogdl(&tool, &paths), &folder.display().to_string()).unwrap();
         assert_eq!(name, "42");
-        assert_eq!(calls(dir.path()), [format!("import {}", folder.display())]);
+        assert_eq!(calls_of(&tool), [format!("import {}", folder.display())]);
         let entry = installed::get(&paths, "42").unwrap();
         assert_eq!(entry.install_path, folder.display().to_string());
         assert_eq!((entry.platform.as_str(), entry.version.as_str(), entry.build_id.as_str()), ("windows", "3.0", "123"));
@@ -614,18 +631,17 @@ echo '[PROGRESS] INFO:  + Disk	- 9.00 MiB/s (write) / 0.00 MiB/s (read)' >&2
         assert_eq!(library::game_info(&paths, "42").unwrap()["is_installed"], true);
     }
 
-    #[cfg(unix)]
     #[test]
     fn import_rejects_unknown_and_unowned_games() {
         let (dir, paths) = setup();
         library_with_game(&paths);
-        let nothing = fake(dir.path(), &paths, "echo 'Error importing, no info file'");
-        let err = import(&paths, &nothing, "/x").unwrap_err().to_string();
+        let nothing = fake_tool(dir.path()).otherwise(Reply::new().out("Error importing, no info file"));
+        let err = import(&paths, &gogdl(&nothing, &paths), "/x").unwrap_err().to_string();
         assert!(err.contains("No GOG game was found"), "{err}");
-        let null_name = fake(dir.path(), &paths, "echo '{\"appName\": null}'");
-        assert!(import(&paths, &null_name, "/x").is_err());
-        let foreign = fake(dir.path(), &paths, "echo '{\"appName\": \"999\", \"platform\": \"windows\"}'");
-        let err = import(&paths, &foreign, "/x").unwrap_err().to_string();
+        let null_name = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"appName": null}"#));
+        assert!(import(&paths, &gogdl(&null_name, &paths), "/x").is_err());
+        let foreign = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"appName": "999", "platform": "windows"}"#));
+        let err = import(&paths, &gogdl(&foreign, &paths), "/x").unwrap_err().to_string();
         assert!(err.contains("not in your GOG library"), "{err}");
         assert!(installed::load(&paths).is_empty());
     }

@@ -94,6 +94,11 @@ pub fn english_name(code: &str) -> String {
     LANGUAGES.iter().find(|(c, _)| c.eq_ignore_ascii_case(code)).map_or_else(|| code.to_string(), |(_, name)| name.to_string())
 }
 
+/// The code of an English language name, any case (GOG Galaxy's `language`).
+pub fn code_of(name: &str) -> Option<&'static str> {
+    LANGUAGES.iter().find(|(_, n)| n.eq_ignore_ascii_case(name.trim())).map(|(c, _)| *c)
+}
+
 /// Whether `value` (a code or an English name, any case) is this language.
 pub fn matches(code: &str, value: &str) -> bool {
     value.eq_ignore_ascii_case(code) || value.eq_ignore_ascii_case(&english_name(code))

@@ -134,6 +134,23 @@ impl<K: StoreKind> StorePage<K> {
                 .into_any_element(),
             );
         }
+        if self.galaxy {
+            let busy = self.svc.read(cx).gog_galaxy_importing();
+            rows.push(
+                row(
+                    tr!("Games of GOG Galaxy"),
+                    Some(tr!("Show the games GOG Galaxy installed on this PC as installed, without downloading them again. GOG Galaxy keeps updating them.")),
+                    action_button(
+                        self.id("galaxy"),
+                        ButtonKind::Glass,
+                        if busy { tr!("Adding...") } else { tr!("Add games") },
+                        !busy,
+                        cx.listener(|this, _, _, cx| this.import_galaxy_games(cx)),
+                    ),
+                )
+                .into_any_element(),
+            );
+        }
         div().child(caption(tr!("Account"))).child(card(rows))
     }
 

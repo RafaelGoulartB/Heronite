@@ -15,6 +15,7 @@ mod amazon_app;
 mod connectivity;
 mod debug;
 mod eos;
+mod gog_galaxy;
 mod gog_saves;
 mod launch_setup;
 mod library_file;
@@ -88,6 +89,8 @@ pub struct Downloads {
     amazon_login: Option<heronite_amazon::user::LoginRequest>,
     /// Games of the Amazon Games app are being brought in (`amazon_app`).
     amazon_app_importing: bool,
+    /// GOG Galaxy's games are being looked for (`gog_galaxy`).
+    gog_galaxy_importing: bool,
 }
 
 impl EventEmitter<DownloadsEvent> for Downloads {}
@@ -148,6 +151,7 @@ impl Downloads {
             amazon: StoreState::default(),
             amazon_login: None,
             amazon_app_importing: false,
+            gog_galaxy_importing: false,
         };
         this.reload_local(cx);
         this.eos_reload(false, cx);

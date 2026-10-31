@@ -155,29 +155,9 @@ pub(crate) mod testing {
         parts.next().unwrap_or("").to_string()
     }
 
-    /// A fake `gogdl`: a shell script that records its arguments and the config
-    /// path, then runs `body`. Unix only: it needs `sh`.
-    #[cfg(unix)]
-    pub fn fake(dir: &Path, paths: &DataPaths, body: &str) -> Gogdl {
-        let bin = dir.join("gogdl");
-        let script = format!(
-            "#!/bin/sh\necho \"$@\" >> \"{log}\"\necho \"CFG=$GOGDL_CONFIG_PATH\" >> \"{log}\"\n{body}\n",
-            log = dir.join("calls.log").display()
-        );
-        std::fs::write(&bin, script).unwrap();
-        heronite_platform::fs::make_executable(&bin).unwrap();
-        Gogdl::with_bin(bin, paths)
-    }
-
-    /// The recorded command lines, without the `--auth-config-path <file>` prefix.
-    #[cfg(unix)]
-    pub fn calls(dir: &Path) -> Vec<String> {
-        std::fs::read_to_string(dir.join("calls.log"))
-            .unwrap_or_default()
-            .lines()
-            .filter(|l| !l.starts_with("CFG="))
-            .map(without_auth)
-            .collect()
+    /// gogdl as `tool`.
+    pub fn gogdl(tool: &FakeTool, paths: &DataPaths) -> Gogdl {
+        Gogdl::with_bin(tool.bin(), paths)
     }
 
     pub fn setup() -> (tempfile::TempDir, DataPaths) {
@@ -216,34 +196,17 @@ mod tests {
         let g = Gogdl::with_bin(tool.bin(), &paths);
         let cancel = Cancel::new();
         let c2 = cancel.clone();
-        let t = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(500));
-            c2.request();
-        });
         let mut lines = Vec::new();
         let started = Instant::now();
-        let out = g.run_streaming(&["download"], &cancel, |l| lines.push(l.to_string())).unwrap();
-        t.join().unwrap();
-        assert!(out.aborted);
-        assert!(started.elapsed() < Duration::from_secs(10));
-        assert!(lines.contains(&"a".to_string()) && lines.contains(&"b".to_string()), "{lines:?}");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn streams_lines_and_cancels() {
-        let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "printf 'a\\rb\\n' >&2; echo started; sleep 60 & wait");
-        let cancel = Cancel::new();
-        let c2 = cancel.clone();
-        let t = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(500));
-            c2.request();
-        });
-        let mut lines = Vec::new();
-        let started = Instant::now();
-        let out = g.run_streaming(&["download"], &cancel, |l| lines.push(l.to_string())).unwrap();
-        t.join().unwrap();
+        // Cancelled once it runs (a busy machine may take a while to start it).
+        let out = g
+            .run_streaming(&["download"], &cancel, |l| {
+                lines.push(l.to_string());
+                if l == "started" {
+                    c2.request();
+                }
+            })
+            .unwrap();
         assert!(out.aborted);
         assert!(started.elapsed() < Duration::from_secs(10));
         assert!(lines.contains(&"a".to_string()) && lines.contains(&"b".to_string()), "{lines:?}");
@@ -268,7 +231,7 @@ mod tests {
     fn manifest_and_support_paths() {
         let (_dir, paths) = setup();
         let g = Gogdl::with_bin("/x/gogdl", &paths);
-        assert!(g.manifest_file("42").ends_with(format!("gogdlConfig/{TOOL_DIR}/manifests/42")));
-        assert!(g.support_dir("42").ends_with(format!("gogdlConfig/{TOOL_DIR}/gog-support/42")));
+        assert!(g.manifest_file("42").ends_with(Path::new("gogdlConfig").join(TOOL_DIR).join("manifests/42")));
+        assert!(g.support_dir("42").ends_with(Path::new("gogdlConfig").join(TOOL_DIR).join("gog-support/42")));
     }
 }

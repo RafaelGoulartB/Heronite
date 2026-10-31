@@ -1,6 +1,18 @@
 {
+  "Add the games of GOG Galaxy": "Adicionar os jogos do GOG Galaxy",
+  "Added {n} game from GOG Galaxy": "{n} jogo do GOG Galaxy adicionado",
+  "Added {n} games from GOG Galaxy": "{n} jogos do GOG Galaxy adicionados",
+  "Could not add the games of GOG Galaxy: {error}": "Não foi possível adicionar os jogos do GOG Galaxy: {error}",
+  "Could not move the game: {error}": "Não foi possível mover o jogo: {error}",
   "Could not run {program}: {error}": "Não foi possível executar {program}: {error}",
+  "GOG Galaxy has no other games of your library": "O GOG Galaxy não tem outros jogos da sua biblioteca",
+  "GOG Galaxy installed this game: move it in GOG Galaxy": "Este jogo foi instalado pelo GOG Galaxy: mova-o pelo GOG Galaxy",
+  "GOG Galaxy installed this game: repair it in GOG Galaxy": "Este jogo foi instalado pelo GOG Galaxy: repare-o pelo GOG Galaxy",
+  "GOG Galaxy installed this game: update it in GOG Galaxy": "Este jogo foi instalado pelo GOG Galaxy: atualize-o pelo GOG Galaxy",
+  "Games of GOG Galaxy": "Jogos do GOG Galaxy",
   "Installing the game's requirements...": "Instalando o que o jogo precisa...",
+  "Its files stay where GOG Galaxy put them: uninstall it in GOG Galaxy to delete them.": "Os arquivos continuam onde o GOG Galaxy os colocou: desinstale o jogo pelo GOG Galaxy para apagá-los.",
+  "Show the games GOG Galaxy installed on this PC as installed, without downloading them again. GOG Galaxy keeps updating them.": "Mostra como instalados os jogos que o GOG Galaxy instalou neste PC, sem baixá-los de novo. O GOG Galaxy continua atualizando-os.",
   "{program} needs administrator rights: answer the Windows prompt": "{program} precisa de permissão de administrador: responda ao aviso do Windows",
   "{program} was not installed: the administrator prompt was declined. It is asked again at the next launch.": "{program} não foi instalado: a permissão de administrador foi recusada. Ela será pedida de novo na próxima vez que o jogo abrir."
 }

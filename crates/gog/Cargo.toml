@@ -17,6 +17,10 @@ anyhow = "1"
 log = "0.4"
 ureq = "3"
 
+# Windows' own save folders (Saved Games, AppData...).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Registry", "Win32_UI_Shell"] }
+
 [dev-dependencies]
 heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"

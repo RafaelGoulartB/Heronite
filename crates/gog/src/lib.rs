@@ -10,9 +10,12 @@
 //! * [`updates`]: which installed games have a newer build.
 //! * [`saves`]: cloud saves through `gogdl save-sync`.
 //! * [`playtime`]: GOG's play time for the games never played here.
-//! * [`setup`]: Windows programs to run in the Wine prefix at the first launch.
+//! * [`setup`]: the Windows programs to run at the first launch (in the Wine
+//!   prefix on Linux, as they are on Windows).
+//! * [`galaxy`]: games GOG Galaxy installed on this PC (Windows).
 
 pub mod cmd;
+pub mod galaxy;
 pub mod info;
 pub mod installed;
 pub mod library;

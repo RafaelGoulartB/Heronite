@@ -64,6 +64,8 @@ pub struct StorePage<K: StoreKind> {
     login_url: Option<String>,
     /// Amazon: the Amazon Games app has games on this PC (Windows).
     amazon_app: bool,
+    /// GOG: GOG Galaxy has games on this PC (Windows).
+    galaxy: bool,
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
@@ -128,6 +130,7 @@ impl<K: StoreKind> StorePage<K> {
             fetching_url: false,
             login_url: None,
             amazon_app: K::STORE == Store::Amazon && heronite_amazon::amazon_app::database().is_some(),
+            galaxy: K::STORE == Store::Gog && heronite_gog::galaxy::has_games(),
             notice: None,
             dialog: None,
             dialog_sub: None,
@@ -182,6 +185,10 @@ impl<K: StoreKind> StorePage<K> {
     /// Amazon: brings in the games the Amazon Games app installed.
     fn import_app_games(&mut self, cx: &mut Context<Self>) {
         self.svc.update(cx, |s, cx| s.amazon_import_app_games(false, cx));
+    }
+
+    fn import_galaxy_games(&mut self, cx: &mut Context<Self>) {
+        self.svc.update(cx, |s, cx| s.gog_import_galaxy(cx));
     }
 
     fn open_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {

@@ -88,7 +88,8 @@ fn check_one(token: &str, game: &Installed) -> Result<bool> {
 /// and returns the app names with an update. Network.
 pub fn check(paths: &DataPaths, gogdl: &Gogdl) -> Result<Vec<String>> {
     let creds = user::credentials(paths, gogdl)?;
-    let games: Vec<Installed> = installed::load(paths).into_iter().filter(|g| !g.pinned_version).collect();
+    // GOG Galaxy keeps the games it installed up to date itself.
+    let games: Vec<Installed> = installed::load(paths).into_iter().filter(|g| !g.pinned_version && !g.from_galaxy()).collect();
     let results = parallel_map(&games, WORKERS, |g| (g.app_name.clone(), check_one(&creds.access_token, g)));
     let mut updates = Vec::new();
     for (app, result) in results {
@@ -190,7 +191,6 @@ mod tests {
         assert!(cached_updates(&paths).is_empty());
     }
 
-    #[cfg(unix)]
     #[test]
     fn pinned_games_and_missing_tags_are_not_checked() {
         let (dir, paths) = setup();
@@ -201,9 +201,9 @@ mod tests {
         let mut pinned = Installed::new("6");
         pinned.pinned_version = true;
         installed::upsert(&paths, &pinned).unwrap();
-        let g = fake(dir.path(), &paths, "echo '{\"access_token\":\"t\",\"user_id\":\"1\"}'");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"access_token":"t","user_id":"1"}"#));
         // Neither game makes a request, so no network is needed.
-        assert!(check(&paths, &g).unwrap().is_empty());
+        assert!(check(&paths, &gogdl(&tool, &paths)).unwrap().is_empty());
         assert!(cached_updates(&paths).is_empty());
         assert!(paths.gog_store("updates").exists());
     }
