@@ -204,7 +204,17 @@ mod tests {
         let two = folder(dir.path(), "Two", "2");
         let foreign = folder(dir.path(), "Foreign", "9");
         let entries = [
-            entry("1", &[("path", &format!("{one}\\")), ("gameName", "One"), ("buildId", "555"), ("ver", "1.2"), ("langCode", "de-DE")]),
+            // Galaxy's paths end with the system's separator.
+            entry(
+                "1",
+                &[
+                    ("path", &format!("{one}{}", std::path::MAIN_SEPARATOR)),
+                    ("gameName", "One"),
+                    ("buildId", "555"),
+                    ("ver", "1.2"),
+                    ("langCode", "de-DE"),
+                ],
+            ),
             entry("11", &[("path", &one), ("dependsOn", "1")]),
             entry("2", &[("path", &two), ("language", "French")]),
             // Not in the library, its folder gone, no path at all.
