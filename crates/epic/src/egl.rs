@@ -119,7 +119,14 @@ pub fn import_new(data_paths: &DataPaths, legendary: &Legendary) -> Option<OpRes
         return None;
     }
     log::info!("the Epic Games Launcher has {} game(s) to take in: {:?}", new.len(), new.iter().map(|g| &g.app_name).collect::<Vec<_>>());
-    Some(import(data_paths, legendary))
+    let before = library::installed_games(data_paths).len();
+    let r = import(data_paths, legendary);
+    // legendary took none of them (not in its database): said once, in the log.
+    if r.ok && library::installed_games(data_paths).len() <= before {
+        log::info!("{}", r.message);
+        return None;
+    }
+    Some(r)
 }
 
 #[cfg(test)]

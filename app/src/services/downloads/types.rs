@@ -155,6 +155,9 @@ pub struct EosStatus {
     pub latest: String,
     /// "Check for updates" is running.
     pub checking: bool,
+    /// Windows: whether the overlay is on, for every game at once (`None`
+    /// until read, and on Linux, where it is per prefix).
+    pub enabled: Option<bool>,
 }
 
 /// Whether the overlay is on for the prefix of one game.

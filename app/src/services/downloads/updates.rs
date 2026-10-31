@@ -116,6 +116,10 @@ impl Downloads {
                                 } else {
                                     this.toast(cx, msg, false);
                                 }
+                                // Windows: games of the Epic Games Launcher taken in.
+                                if let Some(r) = r.launcher_import.as_ref().filter(|r| r.ok) {
+                                    this.toast(cx, r.message.clone(), false);
+                                }
                             }
                         }
                         this.emit(cx, DownloadsEvent::LibraryChanged);

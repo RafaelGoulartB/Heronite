@@ -218,6 +218,8 @@ pub struct RefreshResult {
     /// `legendary list` failed (offline, expired login ...); the library was
     /// still rebuilt from what legendary has on disk.
     pub list_error: Option<String>,
+    /// Windows: the Epic Games Launcher had new games, taken in now.
+    pub launcher_import: Option<crate::ops::OpResult>,
 }
 
 /// `refresh`: `legendary list --third-party`, then rebuild the library file.
@@ -240,10 +242,9 @@ pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshR
     }
     // Windows: the games the Epic Games Launcher installed since (with the
     // metadata the list just fetched).
-    if list_error.is_none() {
-        if let Some(r) = crate::egl::import_new(data_paths, legendary).filter(|r| !r.ok) {
-            log::warn!("taking in the Epic Games Launcher's games: {}", r.message);
-        }
+    let launcher_import = if list_error.is_none() { crate::egl::import_new(data_paths, legendary) } else { None };
+    if let Some(r) = launcher_import.as_ref().filter(|r| !r.ok) {
+        log::warn!("taking in the Epic Games Launcher's games: {}", r.message);
     }
     let games = write_library(data_paths)?;
     log::info!("Game list updated, got {games} games & DLCs");
@@ -256,7 +257,7 @@ pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshR
             Err(err) => log::warn!("epic: reading the play time Epic counted: {err:#}"),
         }
     }
-    Ok(RefreshResult { games, list_error })
+    Ok(RefreshResult { games, list_error, launcher_import })
 }
 
 /// App names whose installed version differs from the latest one in
