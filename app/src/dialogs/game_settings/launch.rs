@@ -1,5 +1,6 @@
-//! The Launch tab of local (sideload) games: an executable and "run as", or
-//! a Linux game's folder and the command run in it.
+//! Play of local (sideload) games, in the Actions tab: an executable and
+//! "run as", or a Linux game's folder and the command run in it. One line
+//! that opens into its editor (`HERONITE_DEBUG_PLAY_EDIT=1` opens it).
 
 use std::path::Path;
 
@@ -13,10 +14,10 @@ use heronite_i18n::tr;
 use heronite_launch::native::{detect_executable_kind, effective_platform, ExecutableKind, Platform};
 use heronite_launch::SystemProbe;
 
-use super::{block, Busy, GameSettingsDialog};
+use super::{Busy, GameSettingsDialog};
 use crate::dialogs::DialogEvent;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, help_text, row, ButtonKind};
+use crate::ui::controls::{action_button, help_text, ButtonKind};
 use crate::ui::fields::{input_box, labeled, new_input, select_field};
 
 pub(super) struct LaunchState {
@@ -36,6 +37,8 @@ pub(super) struct LaunchState {
     pub(super) initial_by_command: bool,
     pub(super) initial_folder: String,
     pub(super) initial_command: String,
+    /// Its editor is open in the Actions tab.
+    pub(super) open: bool,
 }
 
 impl LaunchState {
@@ -51,6 +54,23 @@ impl LaunchState {
             } else {
                 self.executable.read(cx).value().as_ref() != self.initial_exe || self.run_as != self.initial_run_as
             }
+    }
+
+    /// Play's line while closed: the file and how it runs, or the command.
+    pub(super) fn summary(&self, cx: &App) -> String {
+        if self.by_command {
+            return format!("{} \u{b7} {}", tr!("Command"), Self::text(&self.command, cx));
+        }
+        let exe = Self::text(&self.executable, cx);
+        let file = Path::new(&exe).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(exe);
+        let how = if !self.exists {
+            tr!("File not found")
+        } else if self.effective == Platform::Linux {
+            tr!("Runs natively on Linux")
+        } else {
+            tr!("Runs through Wine/Proton")
+        };
+        format!("{file} \u{b7} {how}")
     }
 
     /// Why the command cannot start (checked as it is typed).
@@ -143,6 +163,7 @@ impl GameSettingsDialog {
                 detected: ExecutableKind::Unknown,
                 effective: Platform::Windows,
                 saved: false,
+                open: crate::env::flag("HERONITE_DEBUG_PLAY_EDIT"),
             };
             let (exists, detected) = detect(&exe);
             state.exists = exists;
@@ -251,6 +272,7 @@ impl GameSettingsDialog {
                                 }
                             }
                             l.saved = true;
+                            l.open = false;
                         }
                         cx.emit(DialogEvent::Changed);
                     }
@@ -264,142 +286,160 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
-    /// The Actions tab: Play (its program, for local games) and the game's other actions.
-    pub(super) fn launch_tab(&mut self, cx: &mut Context<Self>) -> Div {
-        let play = if self.launch.is_some() { self.local_play(cx) } else { self.play_card() };
-        div().flex().flex_col().gap(px(6.)).child(play).child(self.actions_section(cx))
+    /// Opens Play's editor (an action's closes).
+    pub(super) fn open_play(&mut self, cx: &mut Context<Self>) {
+        if let Some(l) = self.launch.as_mut() {
+            l.open = true;
+        }
+        self.actions.editor = None;
+        self.actions.deleting = None;
+        cx.notify();
     }
 
-    /// How a local game starts: an executable and "run as", or a command.
-    fn local_play(&mut self, cx: &mut Context<Self>) -> Div {
+    /// Closes Play's editor, back to what is saved.
+    pub(super) fn close_play(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(l) = self.launch.as_mut().filter(|l| l.open) else { return };
+        l.open = false;
+        l.run_as_open = false;
+        l.run_as = l.initial_run_as.clone();
+        l.by_command = l.initial_by_command;
+        let exe = l.initial_exe.clone();
+        for (input, value) in [(&l.executable, &l.initial_exe), (&l.folder, &l.initial_folder), (&l.command, &l.initial_command)] {
+            let value = value.clone();
+            input.update(cx, |s, cx| s.set_value(value, window, cx));
+        }
+        self.refresh_launch(&exe);
+        self.error.clear();
+        cx.notify();
+    }
+
+    /// Play's editor, under its row: an executable and "run as", or a command.
+    pub(super) fn play_editor(&mut self, cx: &mut Context<Self>) -> Div {
         let Some(l) = self.launch.as_ref() else { return div() };
         let dirty = l.dirty(cx);
         let can_save = l.can_save(cx);
         let busy = self.busy.is_some();
         let by_command = l.by_command;
         let weak = cx.entity().downgrade();
-        let start = card([block(div().flex().flex_col().child(caption(tr!("Start with"))).child(crate::ui::controls::tabs(
-            "gs-start",
-            &[(false, tr!("An executable")), (true, tr!("A command"))],
-            by_command,
-            move |on, _, cx| {
-                weak.update(cx, |this, cx| this.set_launch_by_command(on, cx)).ok();
-            },
-        )))]);
-        let detected = match l.detected {
-            ExecutableKind::Linux => tr!("Linux program (ELF, script or AppImage)"),
-            ExecutableKind::Windows => tr!("Windows program"),
-            ExecutableKind::Unknown => tr!("Unknown file type"),
-        };
-        let effective = if l.effective == Platform::Linux { tr!("Runs natively on Linux") } else { tr!("Runs through Wine/Proton") };
-        let run_as =
-            [("auto", tr!("Automatic (from the file)")), ("linux", tr!("Linux native")), ("windows", tr!("Windows (Wine/Proton)"))];
-        let current_label = run_as.iter().find(|(v, _)| *v == l.run_as).map(|(_, t)| *t).unwrap_or_default();
-        let options: Vec<(SharedString, bool)> = run_as.iter().map(|(v, t)| ((*t).into(), *v == l.run_as)).collect();
-        let select = select_field(
-            "gs-runas",
-            Some(tr!("Run as")),
-            current_label,
-            false,
-            l.run_as_open,
-            options,
-            cx,
-            |this, _, cx| {
-                if let Some(l) = this.launch.as_mut() {
-                    l.run_as_open = !l.run_as_open;
-                }
-                cx.notify();
-            },
-            move |this, i, _, cx| {
-                let exe = this.launch.as_ref().map(|l| l.executable.read(cx).value().to_string()).unwrap_or_default();
-                if let Some(l) = this.launch.as_mut() {
-                    l.run_as = run_as[i].0.to_string();
-                    l.run_as_open = false;
-                    l.saved = false;
-                }
-                this.refresh_launch(&exe);
-                cx.notify();
-            },
-        );
-        let saved = l.saved && !dirty;
-        let detected_value = div()
-            .flex()
-            .flex_wrap()
-            .justify_end()
-            .text_size(px(13.))
-            .text_color(theme::text_muted())
-            .child(detected)
-            .when(!l.exists, |d| d.child(div().text_color(theme::danger_text()).child(tr!(" (file not found)"))));
-        let exe_row = block(labeled(
-            tr!("Executable"),
-            div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(input_box(&l.executable, false))).child(
-                action_button(
-                    "gs-browse",
-                    ButtonKind::Glass,
-                    tr!("Browse"),
-                    !busy,
-                    cx.listener(|this, _, _, cx| this.browse_executable(cx)),
-                ),
+        let start = labeled(
+            tr!("Start with"),
+            crate::ui::controls::tabs(
+                "gs-start",
+                &[(false, tr!("An executable")), (true, tr!("A command"))],
+                by_command,
+                move |on, _, cx| {
+                    weak.update(cx, |this, cx| this.set_launch_by_command(on, cx)).ok();
+                },
             ),
-        ));
-        let file = card([
-            exe_row,
-            row(tr!("Detected"), None, detected_value).into_any_element(),
-            row(tr!("Current"), None, div().text_size(px(13.)).text_color(theme::text_muted()).child(effective)).into_any_element(),
-        ]);
-        let how = card([block(select)]);
-        let mut col = div().flex().flex_col().gap(px(6.)).child(caption(tr!("Play"))).child(start);
+        );
+        let mut col = div().flex().flex_col().gap(px(14.)).pt(px(2.)).pb(px(14.)).child(start);
         if by_command {
             let problem = l.command_problem(cx);
-            let folder_row = block(labeled(
-                tr!("Game folder"),
-                div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(input_box(&l.folder, false))).child(
-                    action_button(
-                        "gs-browse-folder",
-                        ButtonKind::Glass,
-                        tr!("Browse"),
-                        !busy,
-                        cx.listener(|this, _, _, cx| this.browse_folder(cx)),
-                    ),
-                ),
-            ));
-            let command_row = block(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.))
-                    .child(labeled(tr!("Command"), input_box(&l.command, false)))
-                    .child(help_text(tr!("Runs inside the game folder, like a terminal opened there. Example: ./start.sh --fullscreen")))
-                    .children(problem.map(|p| div().text_size(px(13.)).text_color(theme::danger_text()).child(p))),
-            );
-            col = col.child(caption(tr!("Program"))).child(card([folder_row, command_row]));
-        } else {
             col = col
+                .child(labeled(
+                    tr!("Game folder"),
+                    div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(input_box(&l.folder, false))).child(
+                        action_button(
+                            "gs-browse-folder",
+                            ButtonKind::Glass,
+                            tr!("Browse"),
+                            !busy,
+                            cx.listener(|this, _, _, cx| this.browse_folder(cx)),
+                        ),
+                    ),
+                ))
                 .child(
-                    help_text(tr!(
-                        "Linux programs (ELF binaries, shell scripts, AppImages) run directly; Windows programs run through Wine/Proton. Automatic decides from the file."
-                    ))
-                    .px(px(6.)),
-                )
-                .child(caption(tr!("Program")))
-                .child(file)
-                .child(caption(tr!("How to run it")))
-                .child(how);
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .child(labeled(tr!("Command"), input_box(&l.command, false)))
+                        .child(help_text(tr!(
+                            "Runs inside the game folder, like a terminal opened there. Example: ./start.sh --fullscreen"
+                        )))
+                        .children(problem.map(|p| div().text_size(px(13.)).text_color(theme::danger_text()).child(p))),
+                );
+        } else {
+            let detected = match l.detected {
+                ExecutableKind::Linux => tr!("Linux program (ELF, script or AppImage)"),
+                ExecutableKind::Windows => tr!("Windows program"),
+                ExecutableKind::Unknown => tr!("Unknown file type"),
+            };
+            let effective = if l.effective == Platform::Linux { tr!("Runs natively on Linux") } else { tr!("Runs through Wine/Proton") };
+            let run_as =
+                [("auto", tr!("Automatic (from the file)")), ("linux", tr!("Linux native")), ("windows", tr!("Windows (Wine/Proton)"))];
+            let current_label = run_as.iter().find(|(v, _)| *v == l.run_as).map(|(_, t)| *t).unwrap_or_default();
+            let options: Vec<(SharedString, bool)> = run_as.iter().map(|(v, t)| ((*t).into(), *v == l.run_as)).collect();
+            let select = select_field(
+                "gs-runas",
+                Some(tr!("Run as")),
+                current_label,
+                false,
+                l.run_as_open,
+                options,
+                cx,
+                |this, _, cx| {
+                    if let Some(l) = this.launch.as_mut() {
+                        l.run_as_open = !l.run_as_open;
+                    }
+                    cx.notify();
+                },
+                move |this, i, _, cx| {
+                    let exe = this.launch.as_ref().map(|l| l.executable.read(cx).value().to_string()).unwrap_or_default();
+                    if let Some(l) = this.launch.as_mut() {
+                        l.run_as = run_as[i].0.to_string();
+                        l.run_as_open = false;
+                        l.saved = false;
+                    }
+                    this.refresh_launch(&exe);
+                    cx.notify();
+                },
+            );
+            // What the file is and how it will run, under "Run as".
+            let found = div()
+                .flex()
+                .flex_wrap()
+                .gap(px(4.))
+                .text_size(px(12.))
+                .text_color(theme::text_dim())
+                .child(format!("{detected} \u{b7} {effective}"))
+                .when(!l.exists, |d| d.child(div().text_color(theme::danger_text()).child(tr!(" (file not found)"))));
+            col = col
+                .child(labeled(
+                    tr!("Executable"),
+                    div().flex().items_center().gap(px(8.)).child(div().flex_1().min_w_0().child(input_box(&l.executable, false))).child(
+                        action_button(
+                            "gs-browse",
+                            ButtonKind::Glass,
+                            tr!("Browse"),
+                            !busy,
+                            cx.listener(|this, _, _, cx| this.browse_executable(cx)),
+                        ),
+                    ),
+                ))
+                .child(div().flex().flex_col().gap(px(6.)).child(select).child(found));
         }
         col.child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(12.))
-                .pt(px(10.))
+                .justify_end()
+                .gap(px(8.))
+                .pt(px(2.))
+                .child(action_button(
+                    "gs-launch-cancel",
+                    ButtonKind::Ghost,
+                    tr!("Cancel"),
+                    !busy,
+                    cx.listener(|this, _, window, cx| this.close_play(window, cx)),
+                ))
                 .child(action_button(
                     "gs-launch-save",
                     ButtonKind::Primary,
                     if self.busy == Some(Busy::Launch) { tr!("Saving…") } else { tr!("Save") },
                     !busy && dirty && can_save,
                     cx.listener(|this, _, _, cx| this.save_launch(cx)),
-                ))
-                .when(saved, |d| d.child(div().text_size(px(13.)).text_color(theme::success()).child(tr!("Saved")))),
+                )),
         )
     }
 }

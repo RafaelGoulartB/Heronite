@@ -245,7 +245,7 @@ impl GameSettingsDialog {
             this.show_backups(cx);
         }
         this.debug_set_art(cx);
-        // `HERONITE_DEBUG_ACTION_EDIT=new|<id>`: the Launch tab's action editor starts open.
+        // `HERONITE_DEBUG_ACTION_EDIT=new|<id>`: the Actions tab's action editor starts open.
         if let Some(which) = crate::env::value("HERONITE_DEBUG_ACTION_EDIT") {
             this.edit_action((which != "new").then_some(which), window, cx);
         }
@@ -402,7 +402,7 @@ impl Render for GameSettingsDialog {
         let panel_view = self.panel.as_ref().map(|(p, _)| p.clone());
         let content = match self.tab {
             Tab::Game => div().flex().flex_col().gap(px(6.)).child(self.images_tab(cx)).child(self.details_tab(cx)),
-            Tab::Actions => self.launch_tab(cx),
+            Tab::Actions => self.actions_tab(cx),
             Tab::Saves => div().children(self.backups.clone()),
             _ => div().children(panel_view),
         };
