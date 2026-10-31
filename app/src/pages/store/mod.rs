@@ -77,14 +77,16 @@ pub struct StorePage<K: StoreKind> {
 
 impl<K: StoreKind> EventEmitter<PageEvent> for StorePage<K> {}
 
-/// `heronite-epic-login` (the login window of every store) next to this
-/// executable, else on `PATH`.
+/// `heronite-epic-login` (the login window of every store): in the
+/// [`HELPERS_DIR`](heronite_platform::dirs::HELPERS_DIR) of this
+/// executable's folder (the Windows setup and portable zip), next to it (a
+/// cargo build, the AppImage), else on `PATH`.
 pub(crate) fn login_helper() -> Option<std::path::PathBuf> {
     let name = if cfg!(windows) { "heronite-epic-login.exe" } else { "heronite-epic-login" };
     if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-        let candidate = dir.join(name);
-        if candidate.exists() {
-            return Some(candidate);
+        let candidates = [dir.join(heronite_platform::dirs::HELPERS_DIR).join(name), dir.join(name)];
+        if let Some(found) = candidates.into_iter().find(|c| c.exists()) {
+            return Some(found);
         }
     }
     std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))

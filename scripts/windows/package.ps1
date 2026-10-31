@@ -2,8 +2,9 @@
 .SYNOPSIS
   Builds Heronite's Windows release files in dist\:
     Heronite-Portable-x86_64.zip  one Heronite\ folder: heronite.exe (the cargo build's heronite-rs.exe),
-                                  heronite-epic-login.exe (the stores' login
-                                  window, found next to the program),
+                                  helpers\heronite-epic-login.exe (the
+                                  stores' login window, out of the way of
+                                  the program the user starts),
                                   portable.txt (keeps the data in that folder)
                                   and LICENSE
     Heronite-Setup-x86_64.exe     the per-user installer (Inno Setup 6,
@@ -135,7 +136,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $ZipPath = Join-Path $Dist $ZipName
 $entries = [ordered]@{
     'Heronite/heronite.exe'            = $Exe
-    'Heronite/heronite-epic-login.exe' = $LoginExe
+    'Heronite/helpers/heronite-epic-login.exe' = $LoginExe
     'Heronite/portable.txt'            = (Join-Path $Packaging 'portable.txt')
     'Heronite/LICENSE'                 = (Join-Path $Root 'LICENSE')
 }

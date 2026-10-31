@@ -17,8 +17,14 @@ use std::sync::OnceLock;
 /// portable zip has one; deleting it moves the copy to the user's folders.
 pub const PORTABLE_MARKER: &str = "portable.txt";
 
+/// The subfolder of a Windows copy (portable or installed) that holds the
+/// programs the app starts itself, like the stores' login window, so that
+/// the program the user starts is the only one at the top.
+pub const HELPERS_DIR: &str = "helpers";
+
 /// The folder of this portable copy: the program's own folder when it holds
-/// a [`PORTABLE_MARKER`] (Windows only; `None` elsewhere and for installed
+/// a [`PORTABLE_MARKER`], or the folder above for a program in its
+/// [`HELPERS_DIR`] (Windows only; `None` elsewhere and for installed
 /// copies).
 pub fn portable_root() -> Option<PathBuf> {
     static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -27,9 +33,16 @@ pub fn portable_root() -> Option<PathBuf> {
             return None;
         }
         let exe = std::env::current_exe().ok()?;
-        portable_in(exe.parent()?)
+        portable_for(exe.parent()?)
     })
     .clone()
+}
+
+/// The portable copy a program in `dir` belongs to: `dir` itself, or its
+/// parent when `dir` is the copy's [`HELPERS_DIR`].
+fn portable_for(dir: &Path) -> Option<PathBuf> {
+    let helpers = || dir.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.eq_ignore_ascii_case(HELPERS_DIR));
+    portable_in(dir).or_else(|| helpers().then(|| dir.parent()).flatten().and_then(portable_in))
 }
 
 /// `dir` when it holds a [`PORTABLE_MARKER`].
@@ -132,5 +145,20 @@ mod tests {
         assert_eq!(portable_in(d.path()).as_deref(), Some(d.path()));
         // The test program has none next to it.
         assert_eq!(portable_root(), None);
+    }
+
+    #[test]
+    fn a_helper_belongs_to_the_copy_above_it() {
+        let d = tempfile::tempdir().unwrap();
+        let helpers = d.path().join(HELPERS_DIR);
+        let other = d.path().join("other");
+        std::fs::create_dir(&helpers).unwrap();
+        std::fs::create_dir(&other).unwrap();
+        assert_eq!(portable_for(&helpers), None);
+        std::fs::write(d.path().join(PORTABLE_MARKER), "").unwrap();
+        assert_eq!(portable_for(d.path()).as_deref(), Some(d.path()));
+        assert_eq!(portable_for(&helpers).as_deref(), Some(d.path()));
+        // Only the helpers folder: another subfolder is not part of the copy.
+        assert_eq!(portable_for(&other), None);
     }
 }
