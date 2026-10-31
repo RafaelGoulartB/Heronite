@@ -70,7 +70,7 @@ pub fn read_installs(db: &Path) -> Result<Vec<AppGame>> {
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
         // A row without the flag counts as installed (older databases).
-        let is_installed = flag.map_or(true, |i| row.get::<_, Option<i64>>(i).ok().flatten().unwrap_or(0) != 0);
+        let is_installed = flag.is_none_or(|i| row.get::<_, Option<i64>>(i).ok().flatten().unwrap_or(0) != 0);
         let game = AppGame {
             id: text(row, id),
             title: title.map(|i| text(row, i)).unwrap_or_default(),
