@@ -271,6 +271,12 @@ fn split_command_line(line: &[u16]) -> Vec<String> {
     args
 }
 
+/// [`split_command_line`] of a `&str`, for tests of other modules.
+#[cfg(test)]
+pub(crate) fn split_command_line_for_tests(line: &str) -> Vec<String> {
+    split_command_line(&line.encode_utf16().collect::<Vec<u16>>())
+}
+
 /// When `pid` started, in milliseconds since 1601 (Windows' file time).
 pub fn start_time(pid: u32) -> Option<u64> {
     let h = open(pid, PROCESS_QUERY_LIMITED_INFORMATION)?;
