@@ -93,10 +93,15 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "{#BinDir}\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
-; The stores' login window: the app looks for it next to itself.
-Source: "{#BinDir}\heronite-epic-login.exe"; DestDir: "{app}"; Flags: ignoreversion
+; The stores' login window, in a subfolder so heronite-rs.exe is the only
+; program at the top (the app looks for it there).
+Source: "{#BinDir}\heronite-epic-login.exe"; DestDir: "{app}\helpers"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "package-format"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; Where older versions put the login window.
+Type: files; Name: "{app}\heronite-epic-login.exe"
 
 [Icons]
 Name: "{autoprograms}\Heronite"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "Every game you own, in one launcher"

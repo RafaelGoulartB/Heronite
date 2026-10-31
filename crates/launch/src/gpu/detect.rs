@@ -264,9 +264,11 @@ pub struct VulkanDevice {
 /// The devices `vulkaninfo --summary` lists (nothing when it is missing
 /// or does not answer within a few seconds).
 fn vulkan_devices() -> Vec<VulkanDevice> {
-    let Ok(mut child) =
-        Command::new("vulkaninfo").arg("--summary").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
-    else {
+    let mut cmd = Command::new("vulkaninfo");
+    cmd.arg("--summary").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    // A console tool: without this Windows flashes a console window.
+    heronite_platform::process::new_helper_group(&mut cmd);
+    let Ok(mut child) = cmd.spawn() else {
         return Vec::new();
     };
     // Read while waiting: a full pipe would stall it.

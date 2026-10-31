@@ -33,6 +33,9 @@ use crate::release::{Release, WindowsAsset};
 pub const PROGRAM: &str = "heronite.exe";
 /// The zip's one top folder.
 pub const TOP: &str = "Heronite";
+/// The stores' login window, in the copy's
+/// [`HELPERS_DIR`](heronite_platform::dirs::HELPERS_DIR).
+const LOGIN_HELPER: &str = "heronite-epic-login.exe";
 /// A copy's folders that belong to the user: never written by an update.
 const USER_DIRS: [&str; 4] = ["data", "config", "cache", "Screenshots"];
 /// Limits of what an update unpacks (a few files of some MB in practice).
@@ -71,13 +74,21 @@ impl Portable {
         self.root.join("cache").join("update-old.txt")
     }
 
-    /// Removes what the last update left: an unfinished download and the
-    /// files it replaced. Blocks for up to a few seconds while the previous
-    /// process (a restart) still runs its old program.
+    /// Removes what the last update left: an unfinished download, the
+    /// files it replaced and the login window older copies kept next to the
+    /// program. Blocks for up to a few seconds while the previous process (a
+    /// restart) still runs its old program.
     pub fn sweep(&self) {
         let _lock = SWAP.lock().unwrap_or_else(|e| e.into_inner());
         if fs::remove_dir_all(self.staging()).is_ok() {
             log::info!("removed the unfinished update {}", self.staging().display());
+        }
+        // The update put the new one in the helpers folder; the old one is
+        // not running (the app only starts it to log in).
+        let moved = self.root.join(heronite_platform::dirs::HELPERS_DIR).join(LOGIN_HELPER);
+        let stale = self.root.join(LOGIN_HELPER);
+        if moved.is_file() && fs::remove_file(&stale).is_ok() {
+            log::info!("removed {} (moved to {})", stale.display(), moved.display());
         }
         let list = self.old_list();
         let Ok(text) = fs::read_to_string(&list) else { return };
@@ -520,6 +531,23 @@ mod tests {
         assert!(!copy.root.join("heronite.exe.old").exists() && !copy.root.join("portable.txt.old").exists());
         assert!(!copy.old_list().exists() && !copy.staging().exists());
         assert!(copy.root.join("cache").join("mine.json").exists());
+    }
+
+    #[test]
+    fn the_sweep_removes_the_login_window_an_older_copy_kept_next_to_the_program() {
+        let tmp = tempfile::tempdir().unwrap();
+        let copy = copy_in(tmp.path());
+        let stale = copy.root.join(LOGIN_HELPER);
+        fs::write(&stale, b"MZ old login").unwrap();
+        // Not before the new one is in the helpers folder.
+        copy.sweep();
+        assert!(stale.exists());
+        let helpers = copy.root.join(heronite_platform::dirs::HELPERS_DIR);
+        fs::create_dir_all(&helpers).unwrap();
+        fs::write(helpers.join(LOGIN_HELPER), b"MZ new login").unwrap();
+        copy.sweep();
+        assert!(!stale.exists());
+        assert_eq!(fs::read(helpers.join(LOGIN_HELPER)).unwrap(), b"MZ new login");
     }
 
     #[test]
