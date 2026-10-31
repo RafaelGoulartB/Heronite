@@ -1,7 +1,7 @@
 //! `header.collection__header`: 42px. Left, over the list column: ☰, the
 //! search pill and the View button (its menu is `view_menu/`); then one chip
-//! per active filter; right: bulk metadata, refresh and the focus panel's
-//! close.
+//! per active filter; right: the view switches and bulk metadata (refresh is
+//! on the ☰ menu's Collection row).
 
 use std::time::Duration;
 
@@ -15,7 +15,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::{dropdown, Align, PART_BUTTON};
 use crate::ui::window_controls;
-use crate::ui::{icon, tool_button, tool_button_base};
+use crate::ui::{icon, tool_button_base};
 use heronite_i18n::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -70,6 +70,8 @@ impl CollectionView {
         if self.open_menu != Some(menu) {
             self.open_menu = Some(menu);
             self.menu_parts = PART_BUTTON;
+            // A menu closed under the pointer saw no hover end.
+            self.pages.collection_hovered = false;
         }
         self.menu_open = None;
         self.menu_close = None;
@@ -177,8 +179,6 @@ impl CollectionView {
                 },
             ));
         let view = self.hover_dropdown(Menu::View, view_btn, Align::Left, |this, cx| this.view_menu(cx), cx);
-        let refresh = self.refresh_button(cx);
-        let close = self.focus_close_button(cx);
 
         div()
             .relative()
@@ -213,7 +213,7 @@ impl CollectionView {
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
             .child(self.view_mode_controls(cx))
-            .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)).child(refresh).children(close))
+            .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)))
             .children(window_controls::controls(window))
     }
 
@@ -227,37 +227,6 @@ impl CollectionView {
                 filter_chip(("chip", i), kind, &choice.label).on_click(cx.listener(move |this, _, _, cx| this.apply_pick(&pick, cx)))
             })
             .collect()
-    }
-
-    fn refresh_button(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let refreshing = self.refreshing;
-        let refresh_icon = icon(Icon::Refresh, theme::TOOL_ICON, theme::tool_icon());
-        tool_button_base("hdr-refresh", false)
-            .tooltip(crate::ui::tooltip(tr!("Refresh library")))
-            .on_click(cx.listener(|this, _, _, cx| this.refresh_all(cx)))
-            .child(if refreshing {
-                refresh_icon
-                    .with_animation("refresh-spin", Animation::new(Duration::from_secs(1)).repeat().with_max_fps(30.), |svg, t| {
-                        svg.with_transformation(Transformation::rotate(percentage(t)))
-                    })
-                    .into_any_element()
-            } else {
-                refresh_icon.into_any_element()
-            })
-    }
-
-    /// Closes the focus panel (deselects the game); only shown while it is
-    /// open (the grid's drawer has its own).
-    fn focus_close_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
-        (self.focus.is_some() && !self.ui.grid_view).then(|| {
-            tool_button("hdr-focus-close", Icon::Close, false).tooltip(crate::ui::tooltip(tr!("Close"))).on_click(cx.listener(
-                |this, _, _, cx| {
-                    this.focus = None;
-                    this.selected = None;
-                    cx.notify();
-                },
-            ))
-        })
     }
 
     /// 32px pill: faint fill, brighter with an accent ring while focused;
