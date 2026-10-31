@@ -365,4 +365,23 @@ mod tests {
         let err = logout(&env.paths, &nile).unwrap_err().to_string();
         assert!(err.contains("offline"), "{err}");
     }
+
+    /// The real nile (downloaded into a temp data folder), without an
+    /// account: it makes a sign-in page and knows nobody is signed in.
+    /// `cargo test -p heronite-amazon real_nile -- --ignored`.
+    #[test]
+    #[ignore = "downloads nile (about 12 MB)"]
+    fn real_nile_makes_a_sign_in_page_and_knows_nobody_is_signed_in() {
+        let env = Env::new();
+        let nile = Nile::locate_or_install(&env.paths).unwrap();
+        let request = start_login(&nile).unwrap().expect("a sign-in page");
+        assert!(request.url.starts_with("https://amazon.com/ap/signin?"), "{}", request.url);
+        assert!(!request.client_id.is_empty() && !request.code_verifier.is_empty() && !request.serial.is_empty());
+        assert!(!is_logged_in(&env.paths));
+        let err = library::refresh(&env.paths, &nile).unwrap_err();
+        assert!(heronite_epic::session::is_expired(&err), "{err:#}");
+        // nile fetches the Amazon Games SDK the games read into its folder.
+        let sdk = env.nile_dir().join("SDK").join("Amazon Games Services");
+        assert!(sdk.join("Legacy").is_dir(), "{}", sdk.display());
+    }
 }
