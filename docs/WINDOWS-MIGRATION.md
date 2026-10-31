@@ -25,7 +25,6 @@ What works on Windows, what is left, and what Windows does not need.
 - In-game overlay and replay buffer
 - Launch extras: scripts before and after a game, programs alongside it, presets
 - Settings → Storage
-- Steam's per-game launch options
 - Troubleshoot for Windows
 - Importing games of Battle.net, EA app, Ubisoft Connect, Rockstar and Xbox app
 - GOG Galaxy services (`comet`)
@@ -40,6 +39,7 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 - Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup
 - GameMode, MangoHud, gamescope
 - The "On Linux" row (ProtonDB)
+- Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
 - AppImage and Linux packages
 
 ## Rules for code on both systems
