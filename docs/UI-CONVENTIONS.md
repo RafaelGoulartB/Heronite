@@ -218,7 +218,7 @@ shows each game's hero art, Corners, Density, Under the pointer, Favourite star)
 "Reset to defaults" (the mode's options and the covers' look; dimmed when all are at their default). Header menus
 open on click or after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open
 on click only and close on a click outside, Esc or a change of mode. The ☰ menu (`nav.rs`) is a list:
-pages grouped (Collection, Downloads, Statistics | Stores, Emulators, Wine Manager), then Add game, Console mode,
+pages grouped (Collection, Downloads, Statistics | Stores, Emulators, Wine Manager), then Add game and Add from folder, Console mode,
 then Settings and Command palette with their keys; each row = icon square + title + meta on the right. The Collection
 row shows a refresh button after its count while hovered (spinning, and always shown, while the library reloads). "Stores" is one
 row for Epic Games, GOG, Amazon Games, Steam and the store clients under Wine (Battle.net, EA app, Ubisoft Connect,
@@ -351,6 +351,20 @@ arrow, `ui::dialog::dialog_scrolled_with_back`; Esc goes back too, the install k
 its own for scripts (the palette still opens them directly). `HERONITE_DEBUG_DIALOG=add-game:<states>` (joined with
 `+`): `windows`, `linux`, `command`, `browser`, `shared`, `wine`, `wine-open`, `art-menu`, `address`, `no-note`,
 `script`, `picker`, `art=<cover url>[,<background url>]`.
+
+**Add games from a folder** (`dialogs/scan_folder/`, ☰ › Add from folder and the palette): the folder field (Browse
+searches the chosen folder at once; a typed path when the field is left), "Scan folder" / "Scan again", then the games
+found: one row each with a switch, the title (the pencil edits it in place; Enter or leaving the field keeps it), the
+program that starts it relative to the folder (a chevron when there are others: a menu lists them with their platform)
+and a Windows / Linux pill. A game whose program or folder is already in the Collection is dimmed and locked ("Already in
+Collection"); one with the same name only starts unselected. On Linux, "Give each Windows game its own Wine prefix"
+(on: a prefix named after the title, as in Add game; off: the default prefix) shows while a Windows game is selected.
+"Add {n} to Collection" writes them in one go and their covers are fetched afterwards. `scan::scan` walks up to six
+levels (links to folders are not followed; redistributables, anti-cheat installers, runtimes and Windows' folders are
+skipped), groups programs by the game's folder (past `bin` / `Win64` folders; one folder takes in the ones with
+programs close inside it, unless that is many: a folder of games) and puts first the program named after the folder,
+near its top, big, and native on Linux (a `start.sh` at the top wins). `HERONITE_DEBUG_DIALOG=scan-folder[:<folder>[#<states>]]`
+(joined with `+`): `programs`, `rename`, `none`, `import`.
 
 **Launch problem** (`dialogs/launch_problem/`, `crate::diagnosis`): when a game ends on its own within 30 s with an
 error (a non-zero exit code or a signal; an exit code 0 opens nothing) and the diagnosis knows the cause and a fix for
