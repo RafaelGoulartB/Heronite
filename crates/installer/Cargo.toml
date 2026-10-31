@@ -7,6 +7,7 @@ description = "Installs games from YAML install scripts into the Collection as l
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
 heronite-i18n = { path = "../i18n" }
 heronite-launch = { path = "../launch" }
 heronite-emulation = { path = "../emulation" }

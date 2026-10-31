@@ -70,7 +70,7 @@ pub fn chain_for_url(data_paths: &DataPaths, screenshots: Option<&std::path::Pat
         Some(std::path::PathBuf::from(heronite_data::paths::percent_decode(rest)))
     } else if let Some(rest) = url.strip_prefix("file:") {
         Some(std::path::PathBuf::from(heronite_data::paths::percent_decode(rest)))
-    } else if url.starts_with('/') {
+    } else if url.starts_with('/') || std::path::Path::new(url).is_absolute() {
         Some(std::path::PathBuf::from(url))
     } else {
         None

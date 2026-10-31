@@ -71,9 +71,48 @@ pub fn clean_steam_path(raw: &str) -> PathBuf {
     PathBuf::from(raw.replace('\'', ""))
 }
 
+/// The Steam folder to use for the `defaultSteamPath` setting `configured`
+/// (already through [`clean_steam_path`]). On Windows, where the setting's
+/// default is a Linux folder, a setting without `userdata` gives way to the
+/// folder Steam wrote into the registry, then the usual one.
+pub fn steam_root(configured: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let usable = !configured.as_os_str().is_empty() && configured.join("userdata").is_dir();
+        if !usable {
+            if let Some(found) = windows_roots().into_iter().find(|r| r.join("userdata").is_dir()) {
+                return found;
+            }
+        }
+    }
+    configured
+}
+
+/// Where the Steam client installed itself on Windows, the registry first.
+#[cfg(windows)]
+fn windows_roots() -> Vec<PathBuf> {
+    use heronite_platform::registry::{string, Hive};
+    let mut roots: Vec<PathBuf> = [
+        (Hive::CurrentUser, r"Software\Valve\Steam", "SteamPath"),
+        (Hive::LocalMachine, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+        (Hive::LocalMachine, r"SOFTWARE\Valve\Steam", "InstallPath"),
+    ]
+    .into_iter()
+    .filter_map(|(hive, key, name)| string(hive, key, name))
+    .filter(|p| !p.trim().is_empty())
+    // `SteamPath` is written with forward slashes (`c:/program files (x86)/steam`).
+    .map(|p| PathBuf::from(p.trim().replace('/', "\\")))
+    .collect();
+    let program_files =
+        std::env::var_os("ProgramFiles(x86)").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Program Files (x86)"));
+    roots.push(program_files.join("Steam"));
+    roots
+}
+
 /// Best-effort "is the Steam client running" (`isSteamRunning`): pid files
 /// next to / above the install folder, and Steam Deck game mode counts as
-/// running.
+/// running. On Windows, where Steam writes no pid file, a `steam.exe`
+/// running from `steam`.
 pub fn is_steam_running(steam: &Path) -> bool {
     if std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope") {
         return true;
@@ -83,16 +122,32 @@ pub fn is_steam_running(steam: &Path) -> bool {
         files.push(parent.join("steam.pid"));
     }
     files.push(steam.join("steam.pid"));
-    files.into_iter().any(|file| fs::read_to_string(&file).ok().and_then(|s| s.trim().parse::<i32>().ok()).is_some_and(pid_alive))
+    files.into_iter().any(|file| {
+        fs::read_to_string(&file).ok().and_then(|s| s.trim().parse::<u32>().ok()).is_some_and(heronite_platform::process::is_alive)
+    }) || runs_from(steam)
 }
 
-fn pid_alive(pid: i32) -> bool {
-    if pid <= 0 {
-        return false;
-    }
-    // SAFETY: signal 0 only checks that the process exists.
-    let r = unsafe { libc::kill(pid, 0) };
-    r == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+/// A `steam.exe` started from the folder `steam` runs.
+#[cfg(windows)]
+fn runs_from(steam: &Path) -> bool {
+    use heronite_platform::process::{exe_path, snapshot};
+    // Case and slashes aside, and through links when the folder resolves.
+    let key = |p: &Path| {
+        let p = fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let s = p.to_string_lossy().replace('/', "\\").to_lowercase();
+        s.strip_prefix(r"\\?\").unwrap_or(&s).trim_end_matches('\\').to_string()
+    };
+    let folder = key(steam);
+    snapshot()
+        .into_iter()
+        .filter(|p| p.name.eq_ignore_ascii_case("steam.exe"))
+        .filter_map(|p| exe_path(p.pid))
+        .any(|exe| exe.parent().is_some_and(|dir| key(dir) == folder))
+}
+
+#[cfg(not(windows))]
+fn runs_from(_steam: &Path) -> bool {
+    false
 }
 
 /// User folders under `<steam>/userdata` (not `0` or `ac`); the error text is
@@ -486,7 +541,9 @@ pub fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
 /// next Steam start open its debugging interface.
 pub fn enable_client_api_on_next_start(steam: &Path) {
     let flag = steam.join(crate::steam_client::FLAG_FILE);
-    if !flag.exists() {
+    // Anything already there is left alone, a dangling link too: tools that
+    // keep the interface closed on purpose (Millennium) put one there.
+    if fs::symlink_metadata(&flag).is_err() {
         if let Err(e) = fs::write(&flag, "") {
             log::warn!("Failed to create {} with: {e}", flag.display());
         }
@@ -725,6 +782,57 @@ mod tests {
         assert!(!is_steam_running(&steam));
     }
 
+    /// Windows' Steam writes no pid file: a `steam.exe` running from the
+    /// folder counts (a copy of `ping` under that name here), one elsewhere
+    /// does not.
+    #[cfg(windows)]
+    #[test]
+    fn a_steam_exe_running_from_the_folder_counts_on_windows() {
+        let (_d, steam, file) = steam_with(Some(crate::vdf::tests_support::REAL));
+        let other = steam.parent().unwrap().join("Other");
+        assert!(!is_steam_running(&steam));
+        let system = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        fs::create_dir_all(&other).unwrap();
+        for dir in [&steam, &other] {
+            fs::copy(system.join(r"System32\PING.EXE"), dir.join("steam.exe")).unwrap();
+        }
+        let start = |dir: &Path| {
+            std::process::Command::new(dir.join("steam.exe"))
+                .args(["-n", "30", "127.0.0.1"])
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap()
+        };
+        let mut elsewhere = start(&other);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(!is_steam_running(&steam));
+        let mut here = start(&steam);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        // Through another spelling of the same folder too.
+        let spelled = PathBuf::from(steam.to_string_lossy().to_uppercase().replace('\\', "/"));
+        let (running, running_spelled) = (is_steam_running(&steam), is_steam_running(&spelled));
+        let blocked = add_game(&steam, &game(), &spec(), &ArtFiles::default());
+        for child in [&mut here, &mut elsewhere] {
+            child.kill().ok();
+            child.wait().ok();
+        }
+        assert!(running && running_spelled);
+        assert!(blocked.unwrap_err().to_string().contains("Steam is running"));
+        assert_eq!(fs::read(&file).unwrap(), crate::vdf::tests_support::REAL);
+        assert!(!is_steam_running(&steam));
+    }
+
+    #[test]
+    fn a_configured_steam_folder_with_users_is_kept() {
+        let (_d, steam, _file) = steam_with(None);
+        assert_eq!(steam_root(steam.clone()), steam);
+        // Without users: on Linux the setting stands; on Windows the
+        // registry's Steam, when it has users, else the setting.
+        let empty = steam.parent().unwrap().join("Empty");
+        let root = steam_root(empty.clone());
+        assert!(root == empty || (cfg!(windows) && root.join("userdata").is_dir()), "{}", root.display());
+    }
+
     #[test]
     fn missing_userdata_errors_like_heroic() {
         let dir = tempfile::tempdir().unwrap();
@@ -752,5 +860,26 @@ mod tests {
         let errors = install_art(&config, &ids, &ArtFiles { cover: Some(src), ..Default::default() });
         assert!(errors.is_empty());
         assert!(!config.join("grid").join(format!("{}p.jpg", ids.other)).exists());
+    }
+
+    #[test]
+    fn the_flag_file_is_made_once_and_never_through_another_tool_s_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let flag = dir.path().join(crate::steam_client::FLAG_FILE);
+        enable_client_api_on_next_start(dir.path());
+        assert!(flag.is_file());
+        fs::write(&flag, "kept").unwrap();
+        enable_client_api_on_next_start(dir.path());
+        assert_eq!(fs::read_to_string(&flag).unwrap(), "kept");
+        #[cfg(unix)]
+        {
+            // A link to nowhere keeps the interface closed (Millennium).
+            fs::remove_file(&flag).unwrap();
+            let target = dir.path().join("missing/folder");
+            std::os::unix::fs::symlink(&target, &flag).unwrap();
+            enable_client_api_on_next_start(dir.path());
+            assert!(fs::symlink_metadata(&flag).unwrap().file_type().is_symlink());
+            assert!(!target.exists());
+        }
     }
 }

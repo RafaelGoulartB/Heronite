@@ -96,7 +96,9 @@ pub fn import_scanned_roms(paths: &DataPaths, args: &RomScanImportArgs) -> Resul
         return Ok(result);
     };
     let template = resolve_template(&emulator, &profile);
-    let native = emulator.launch_kind != "wine";
+    // What the emulator is: a Linux program, or a Windows one (under Wine on
+    // Linux; every emulator on Windows).
+    let native = emulator.launch_kind != "wine" && !cfg!(windows);
     let installed_exe = if emulator.launch_kind == "flatpak" { "flatpak".to_string() } else { emulator.executable.clone() };
 
     let scanner = store::upsert_rom_scanner(
@@ -407,7 +409,8 @@ mod tests {
         assert_eq!(g["is_installed"], true);
         assert_eq!(g["canRunOffline"], true);
         assert_eq!(g["install"]["executable"], "/opt/pcsx2");
-        assert_eq!(g["install"]["platform"], "linux");
+        assert_eq!(g["install"]["platform"], if cfg!(windows) { "Windows" } else { "linux" });
+        assert_eq!(g["is_linux_native"], !cfg!(windows));
         assert_eq!(g["folder_name"].as_str().unwrap(), dir);
 
         let md: MetadataFile = json_store::read(&paths.metadata()).unwrap();
@@ -547,6 +550,7 @@ mod tests {
     fn rom_scanners_report_errors_and_continue() {
         let (_h, paths, roms, e, p) = setup();
         let dir = roms.path().to_str().unwrap();
+        let gone = roms.path().join("no").join("such-folder");
         // A broken folder first: it must not stop the good one.
         store::upsert_rom_scanner(
             &paths,
@@ -554,7 +558,7 @@ mod tests {
                 name: Some("Gone".into()),
                 emulator_id: e.clone(),
                 profile_id: p.clone(),
-                directory: "/no/such/folder".into(),
+                directory: gone.to_string_lossy().into_owned(),
                 ..Default::default()
             },
         )
@@ -577,7 +581,7 @@ mod tests {
         .unwrap();
         let r = run_rom_scanners(&paths, None).unwrap();
         assert_eq!((r.scanned, r.imported), (2, 2));
-        assert_eq!(r.errors, ["Gone: Folder does not exist: /no/such/folder"]);
+        assert_eq!(r.errors, [format!("Gone: Folder does not exist: {}", gone.display())]);
         // A single folder is scanned whatever its auto-scan flag.
         write(roms.path().join("Gamma.iso"), "x").unwrap();
         let r = run_rom_scanners(&paths, Some(&good.id)).unwrap();

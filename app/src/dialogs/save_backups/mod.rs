@@ -155,6 +155,9 @@ fn save_kind(game: &Game) -> Option<RunKind> {
     if launch_kind == "emulator" || platform == "browser" || g.rest.get("browserUrl").is_some_and(|v| !v.is_null() && v != "") {
         return None;
     }
+    if cfg!(windows) {
+        return windows_save_kind(game, &platform);
+    }
     if game.installed {
         return Some(GameFacts::of(game).run_kind).filter(|k| *k != RunKind::None);
     }
@@ -169,9 +172,26 @@ fn save_kind(game: &Game) -> Option<RunKind> {
     })
 }
 
+/// Windows: games run as they are. Steam games (installed or not, their
+/// settings are Steam's), installed games that run here (a Windows
+/// program), and games not installed unless they are Linux or macOS builds.
+fn windows_save_kind(game: &Game, platform: &str) -> Option<RunKind> {
+    if game.steam_launch_id.as_deref().is_some_and(|s| !s.is_empty()) {
+        return Some(RunKind::Steam);
+    }
+    if game.installed {
+        return Some(GameFacts::of(game).run_kind).filter(|k| *k == RunKind::Native);
+    }
+    let other_system = platform.contains("linux")
+        || platform.contains("mac")
+        || platform == "osx"
+        || (platform.is_empty() && game.game.is_linux_native == Some(true));
+    (!other_system).then_some(RunKind::Native)
+}
+
 /// Whether a game gets the tab (installed or not).
 pub fn has_tab(game: &Game) -> bool {
-    save_kind(game).is_some()
+    heronite_platform::supported(heronite_platform::Feature::SaveBackups) && save_kind(game).is_some()
 }
 
 impl SaveBackupsView {
@@ -698,6 +718,9 @@ fn resolve_target(
     install: Option<PathBuf>,
     installed: bool,
 ) -> RestoreTarget {
+    if cfg!(windows) {
+        return windows_target(env, steam, install);
+    }
     let login = std::env::var("USER").ok();
     match (kind, steam) {
         (RunKind::Steam, Some(id)) => {
@@ -715,15 +738,31 @@ fn resolve_target(
                 prefix,
                 install_dir: locator.install_dir(id).or(install),
                 steam_userdata: userdata.is_dir().then_some(userdata),
+                user_home: None,
             }
         }
         (RunKind::Wine, _) => {
             let prefix = game_wine_prefix(env, app_name).map(PathBuf::from);
             let user = prefix.as_deref().and_then(|p| wine_user(p, login.as_deref()));
-            RestoreTarget { prefix, user, install_dir: install, steam_userdata: None, needs_prefix: true }
+            RestoreTarget { prefix, user, install_dir: install, steam_userdata: None, user_home: None, needs_prefix: true }
         }
         _ => RestoreTarget { install_dir: install, ..Default::default() },
     }
+}
+
+/// Windows: no prefix, the game writes to its own folders. The game's
+/// folder and Steam's `userdata` (for Steam games), and this user's folder
+/// for backups made by another user or on Linux.
+fn windows_target(env: &LudusaviEnv, steam: Option<&str>, install: Option<PathBuf>) -> RestoreTarget {
+    let (install_dir, steam_userdata) = match steam {
+        Some(id) => {
+            let locator = SteamLocator::detect(&GlobalSettings::load(env.paths), &SystemProbe);
+            let userdata = locator.steam_path.join("userdata");
+            (locator.install_dir(id).or(install), userdata.is_dir().then_some(userdata))
+        }
+        None => (install, None),
+    };
+    RestoreTarget { install_dir, steam_userdata, user_home: heronite_platform::dirs::home(), ..Default::default() }
 }
 
 impl Render for SaveBackupsView {

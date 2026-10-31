@@ -78,6 +78,18 @@ fn status(u: &Updater, cx: &App) -> Status {
             detail: tr!("The package manager is installing it. Enter your password if you are asked.").into(),
             action: Some((tr!("Installing\u{2026}"), ButtonKind::Primary, false, Action::Install)),
         },
+        // The Windows setup is downloaded and runs as the app quits.
+        Phase::Ready if u.installs_on_quit() => {
+            let blocker = crate::system::restart_blocker(cx);
+            Status {
+                title: tr!("Heronite {version} is ready to install", version),
+                detail: match &blocker {
+                    Some(why) => tr!("{why}: restart later, or it installs when you quit Heronite.", why),
+                    None => tr!("Restart to install it now, or it installs when you quit Heronite.").into(),
+                },
+                action: Some((tr!("Restart now"), ButtonKind::Primary, blocker.is_none(), Action::Restart)),
+            }
+        }
         Phase::Ready => {
             let blocker = crate::system::restart_blocker(cx);
             Status {
@@ -106,6 +118,20 @@ fn status(u: &Updater, cx: &App) -> Status {
 const PACKAGE_NO_AUTO: &str = n_!("Packages ask for your password, so Heronite installs them only when you click Update.");
 
 /// Why this copy cannot install updates by itself, for the switches.
+#[cfg(windows)]
+fn unsupported_text(why: &Unsupported) -> String {
+    match why {
+        Unsupported::NotAppImage | Unsupported::Missing(_) => {
+            tr!("Only a copy installed with Heronite's setup or unpacked from its portable zip updates itself.").into()
+        }
+        Unsupported::ReadOnly(dir) => {
+            tr!("This copy's folder ({dir}) is not writable: download new versions by hand.", dir = dir.display())
+        }
+    }
+}
+
+/// Why this copy cannot install updates by itself, for the switches.
+#[cfg(not(windows))]
 fn unsupported_text(why: &Unsupported) -> String {
     match why {
         Unsupported::NotAppImage => tr!("Only the AppImage updates itself. Update this copy the way you installed it.").into(),
@@ -180,7 +206,11 @@ impl SettingsPage {
         };
         let auto_install = {
             let label = tr!("Install updates automatically");
-            let desc = tr!("Download new versions in the background. They are checked against Heronite's signing key and start the next time you open Heronite.");
+            let desc = if u.installs_on_quit() {
+                tr!("Download new versions in the background. They are checked against Heronite's signing key and install when you quit Heronite.")
+            } else {
+                tr!("Download new versions in the background. They are checked against Heronite's signing key and start the next time you open Heronite.")
+            };
             if unsupported.is_some() {
                 row(label, Some(desc), toggle("upd-auto-install-sw", false, true)).into_any_element()
             } else if !u.can_auto_install() {
@@ -244,7 +274,13 @@ pub(super) fn console_rows(cx: &App) -> Vec<Row> {
     let auto = unsupported.is_none() && u.can_auto_install();
     rows.push(
         Row::toggle("upd:auto-install", tr!("Install updates automatically"), u.prefs().auto_install && auto)
-            .desc(if u.package().is_some() { tr(PACKAGE_NO_AUTO) } else { tr!("They start the next time you open Heronite") })
+            .desc(if u.package().is_some() {
+                tr(PACKAGE_NO_AUTO)
+            } else if u.installs_on_quit() {
+                tr!("They install when you quit Heronite")
+            } else {
+                tr!("They start the next time you open Heronite")
+            })
             .enabled(auto),
     );
     if let Some(cmd) = u.manual_command().filter(|_| matches!(u.phase(), Phase::InstallFailed(_))) {
@@ -289,6 +325,7 @@ pub(super) fn palette_commands(cx: &App) -> Vec<crate::pages::commands::PageComm
     let busy = match u.phase() {
         Phase::Checking => Some(tr!("Checking now")),
         Phase::Downloading(_) | Phase::Installing => Some(tr!("An update is installing")),
+        Phase::Ready if u.installs_on_quit() => Some(tr!("An update is ready: restart to install it")),
         Phase::Ready => Some(tr!("An update is installed: restart to use it")),
         _ => None,
     };
@@ -307,9 +344,14 @@ pub(super) fn palette_commands(cx: &App) -> Vec<crate::pages::commands::PageComm
             .keywords("update upgrade new version install atualizar atualização nova versão instalar"),
         ),
         Phase::Ready => v.push(
-            PageCommand::new("upd:restart", tr!("Restart into Heronite {version}", version), tr!("The update is installed"), Icon::Update)
-                .keywords("update upgrade restart relaunch atualizar reiniciar")
-                .disabled(crate::system::restart_blocker(cx)),
+            PageCommand::new(
+                "upd:restart",
+                tr!("Restart into Heronite {version}", version),
+                if u.installs_on_quit() { tr!("The update installs as Heronite restarts") } else { tr!("The update is installed") },
+                Icon::Update,
+            )
+            .keywords("update upgrade restart relaunch atualizar reiniciar")
+            .disabled(crate::system::restart_blocker(cx)),
         ),
         _ => {}
     }

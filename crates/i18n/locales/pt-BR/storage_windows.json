@@ -1,0 +1,19 @@
+{
+  "An update of Heronite is using {path}": "Uma atualização do Heronite está usando {path}",
+  "Could not move {path} to the Recycle Bin: {error}": "Não foi possível mover {path} para a Lixeira: {error}",
+  "Deleted. Heronite downloads them again when needed.": "Apagados. O Heronite os baixa de novo quando precisar.",
+  "Disk space of games, store tools, caches": "Espaço em disco de jogos, ferramentas das lojas, caches",
+  "GOG redistributables": "Redistribuíveis da GOG",
+  "Heronite updates": "Atualizações do Heronite",
+  "Leftover folders go to the Recycle Bin, where they can be restored; the rest is deleted.": "Pastas órfãs vão para a Lixeira, de onde podem ser restauradas; o resto é apagado.",
+  "Move to the Recycle Bin": "Mover para a Lixeira",
+  "No game points to these folders any more. They go to the Recycle Bin, where they can be restored.": "Nenhum jogo aponta mais para essas pastas. Elas vão para a Lixeira, de onde podem ser restauradas.",
+  "Old downloads": "Downloads antigos",
+  "Press A again to move it to the Recycle Bin": "Pressione A de novo para mover para a Lixeira",
+  "Store tools": "Ferramentas das lojas",
+  "To the Recycle Bin": "Para a Lixeira",
+  "Unfinished download of {name}": "Download incompleto de {name}",
+  "{freed} freed, {trashed} moved to the Recycle Bin": "{freed} liberados, {trashed} movidos para a Lixeira",
+  "{path} is on a removable drive, which has no Recycle Bin": "{path} está em uma unidade removível, que não tem Lixeira",
+  "{size} moved to the Recycle Bin": "{size} movidos para a Lixeira"
+}

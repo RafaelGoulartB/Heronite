@@ -1,91 +1,73 @@
-//! Downloads legendary into `<data>/tools/bin/legendary` when no legendary is
-//! available, so a new setup can log in to Epic without installing anything
-//! (Heroic ships the same binary inside its package; see `RELEASE_TAGS` in
-//! its `meta/downloadHelperBinaries.ts`).
+//! Downloads legendary into `<data>/tools/bin/legendary` (`legendary.exe` on
+//! Windows) when no legendary is available, so a new setup can log in to Epic
+//! without installing anything (Heroic ships the same binary inside its
+//! package; see [`crate::store_tools`]).
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::process::Command;
+use std::time::Duration;
 
 use heronite_data::DataPaths;
 
-use crate::legendary::find_legendary;
 use crate::net::{Cancel, Net, CANCELLED};
-use crate::plan::PlanContext;
 use crate::probe::Probe;
+use crate::store_tools::LEGENDARY;
 
 /// The release Heroic pins.
-pub const VERSION: &str = "0.21.1";
-const REPO: &str = "legendary-gl/legendary";
+pub const VERSION: &str = LEGENDARY.version();
 
-/// Release asset for this CPU, `None` where legendary has no Linux build.
+/// Release asset for this system and CPU, `None` where legendary has no build.
 pub fn asset_name() -> Option<&'static str> {
-    match std::env::consts::ARCH {
-        "x86_64" => Some("legendary_linux_x64"),
-        "aarch64" => Some("legendary_linux_arm64"),
-        _ => None,
-    }
+    LEGENDARY.asset_name()
 }
 
 pub fn download_url(asset: &str) -> String {
-    format!("https://github.com/{REPO}/releases/download/{VERSION}/{asset}")
+    LEGENDARY.download_url(asset)
 }
 
-/// One download at a time: the startup check and a login can both ask.
-static BUSY: Mutex<()> = Mutex::new(());
-
 /// The legendary this app runs: an existing one (settings, data folder,
-/// `$PATH`), else a fresh download into the data folder. Blocking.
+/// `PATH`), else a fresh download into the data folder. Blocking.
 pub fn ensure(paths: &DataPaths, probe: &dyn Probe, net: &dyn Net, cancel: Cancel) -> Result<PathBuf, String> {
-    let _guard = BUSY.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(found) = find_legendary(&PlanContext::load(paths), probe) {
-        return Ok(PathBuf::from(found));
-    }
-    let asset = asset_name().ok_or_else(|| format!("legendary has no build for {}", std::env::consts::ARCH))?;
-    if !net.is_online() {
-        return Err("legendary is not installed and there is no internet connection".into());
-    }
-    let target = paths.legendary_bin();
-    install_binary("legendary", &download_url(asset), &target, net, cancel)?;
-    log::info!("legendary {VERSION} downloaded to {}", target.display());
-    Ok(target)
+    LEGENDARY.ensure(paths, probe, net, cancel)
+}
+
+/// Where a download waits until it proved it runs: `<name>.part` next to
+/// `target` (`<name>.part.exe` on Windows, which only starts `.exe` files
+/// as programs).
+pub(crate) fn part_file(target: &Path) -> PathBuf {
+    target.with_extension(format!("part{}", std::env::consts::EXE_SUFFIX))
 }
 
 /// Downloads `name` next to `target`, checks that it runs (`--version`), then
 /// renames it into place, so an interrupted or broken download never becomes
 /// the binary.
 pub(crate) fn install_binary(name: &str, url: &str, target: &Path, net: &dyn Net, cancel: Cancel) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
     let dir = target.parent().ok_or_else(|| format!("{name} has no folder"))?;
     fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
-    let part = target.with_extension("part");
+    let part = part_file(target);
     let _ = fs::remove_file(&part);
     let fail = |msg: String| {
         let _ = fs::remove_file(&part);
         msg
     };
     net.download(url, &part, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
-    fs::set_permissions(&part, fs::Permissions::from_mode(0o755)).map_err(|e| fail(format!("making {name} executable: {e}")))?;
+    heronite_platform::fs::make_executable(&part).map_err(|e| fail(format!("making {name} executable: {e}")))?;
     if !runs_version(&part) {
         return Err(fail(format!("the downloaded {name} does not run")));
     }
-    fs::rename(&part, target).map_err(|e| fail(format!("installing {name}: {e}")))
+    heronite_platform::fs::rename_replacing(&part, target).map_err(|e| fail(format!("installing {name}: {e}")))
 }
 
-/// Whether `bin --version` exits well. A file just written can be "busy"
-/// (`ETXTBSY`) for a moment when another thread forks while it was open for
-/// writing (the child holds the descriptor until it execs): try again then.
+/// Whether `bin --version` exits well. It runs as a helper: no console
+/// window on Windows, and a file just written that is still "busy"
+/// (`ETXTBSY`) is tried again (`heronite_data::proc::spawn`).
 fn runs_version(bin: &Path) -> bool {
-    const ETXTBSY: i32 = 26;
-    for _ in 0..20 {
-        match Command::new(bin).arg("--version").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
-            Ok(s) => return s.success(),
-            Err(e) if e.raw_os_error() == Some(ETXTBSY) => std::thread::sleep(std::time::Duration::from_millis(25)),
-            Err(_) => return false,
-        }
-    }
-    false
+    let mut cmd = Command::new(bin);
+    cmd.arg("--version");
+    // The first run of a Windows build unpacks itself: give it time.
+    let run = heronite_data::proc::Run::new().timeout(Duration::from_secs(120)).grace(Duration::from_secs(2));
+    run.run(&mut cmd).is_ok_and(|out| out.success())
 }
 
 #[cfg(test)]
@@ -94,9 +76,7 @@ mod tests {
     use crate::net::FakeNet;
     use crate::probe::FakeProbe;
 
-    fn fake_bin(ok: bool) -> Vec<u8> {
-        format!("#!/bin/sh\nexit {}\n", if ok { 0 } else { 1 }).into_bytes()
-    }
+    use crate::store_tools::tests::fake_bin;
 
     #[test]
     fn downloads_into_the_data_folder_when_none_is_found() {
@@ -107,7 +87,7 @@ mod tests {
         let got = ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap();
         assert_eq!(got, paths.legendary_bin());
         assert!(paths.legendary_bin().exists());
-        assert!(!paths.legendary_bin().with_extension("part").exists());
+        assert!(!part_file(&paths.legendary_bin()).exists());
 
         // Found now: no second download.
         let probe = FakeProbe::default().with_path(paths.legendary_bin().to_str().unwrap());
@@ -134,7 +114,7 @@ mod tests {
         let err = ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap_err();
         assert!(err.contains("does not run"), "{err}");
         assert!(!paths.legendary_bin().exists());
-        assert!(!paths.legendary_bin().with_extension("part").exists());
+        assert!(!part_file(&paths.legendary_bin()).exists());
     }
 
     #[test]

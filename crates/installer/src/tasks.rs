@@ -308,6 +308,8 @@ mod tests {
         assert_eq!(reg_path("HKEY_CURRENT_USER/Software/Wine"), "HKEY_CURRENT_USER\\Software\\Wine");
     }
 
+    // The wrapper is a `sh` script around Wine: Linux's.
+    #[cfg(unix)]
     #[test]
     fn waiting_wraps_the_command() {
         let c = heronite_launch::Command {

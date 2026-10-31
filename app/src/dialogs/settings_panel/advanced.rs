@@ -101,8 +101,11 @@ impl SettingsPanel {
             );
         }
         col = col.child(heading(tr!("Starting"))).child(start.card());
-        col = col.child(self.scripts_section(false, cx));
-        if game {
+        let extras = logic::extras();
+        if extras {
+            col = col.child(self.scripts_section(false, cx));
+        }
+        if game && extras {
             col = col.child(self.companions_section(cx));
         }
 
@@ -119,7 +122,7 @@ impl SettingsPanel {
             false,
             cx,
         ));
-        if native {
+        if native && extras {
             advanced = advanced.field_help(
                 self.steam_runtime_field(cx),
                 vec![help(tr!("Steam's libraries for Linux games; can help a game that misses some"))],
@@ -138,8 +141,7 @@ impl SettingsPanel {
         }
         col.child(heading(tr!("Advanced")))
             .child(advanced.card())
-            .child(self.presets_section(false, cx))
-            .child(self.pair_table(WRAPPERS, cx))
+            .when(extras, |c| c.child(self.presets_section(false, cx)).child(self.pair_table(WRAPPERS, cx)))
             .child(self.pair_table(ENV, cx))
             .when(self.has_preview(), |c| c.child(self.preview_section(cx)))
     }

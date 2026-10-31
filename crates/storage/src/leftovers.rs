@@ -31,8 +31,10 @@ pub(crate) fn items(ctx: &Ctx, lib: &Library, listed: &[Item], walked: &SizeCach
     ]
     .into_iter()
     .flatten()
-    .map(|s| PathBuf::from(s.trim_end_matches('/')))
+    .map(|s| PathBuf::from(s.trim_end_matches(std::path::is_separator)))
     .filter(|p| p.is_absolute() && p.is_dir())
+    // A whole drive (`D:\`) is no games folder: everything else on it would show.
+    .filter(|p| !cfg!(windows) || p.parent().is_some())
     .collect();
     roots.sort();
     roots.dedup();
@@ -95,21 +97,25 @@ fn game_paths(g: &CollectionGame) -> Vec<PathBuf> {
 /// The visible, non-empty folders of `root` not changed for a while.
 fn candidates(root: &Path) -> Vec<PathBuf> {
     let Ok(rd) = fs::read_dir(root) else { return Vec::new() };
-    let now = SystemTime::now();
     let mut out: Vec<PathBuf> = rd
         .flatten()
         .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .filter(|e| !e.metadata().is_ok_and(|m| heronite_platform::disks::hidden(&m)))
         // Not followed: a link to a folder elsewhere is not this folder's.
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .map(|e| e.path())
         .filter(|p| fs::read_dir(p).is_ok_and(|mut d| d.next().is_some()))
-        .filter(|p| {
-            let changed = fs::metadata(p).and_then(|m| m.modified()).unwrap_or(now);
-            now.duration_since(changed).unwrap_or_default() >= RECENT
-        })
+        .filter(|p| old_enough(p))
         .collect();
     out.sort();
     out
+}
+
+/// Whether `path` was not changed for a while ([`RECENT`]).
+pub(crate) fn old_enough(path: &Path) -> bool {
+    let now = SystemTime::now();
+    let changed = fs::metadata(path).and_then(|m| m.modified()).unwrap_or(now);
+    now.duration_since(changed).unwrap_or_default() >= RECENT
 }
 
 /// Absolute paths among the string values of `v`, at any depth.
@@ -118,7 +124,7 @@ fn json_paths(v: &Value) -> Vec<PathBuf> {
     let mut stack = vec![v];
     while let Some(v) = stack.pop() {
         match v {
-            Value::String(s) if s.starts_with('/') => out.push(PathBuf::from(s.trim_end_matches('/'))),
+            Value::String(s) if Path::new(s).is_absolute() => out.push(PathBuf::from(s.trim_end_matches(std::path::is_separator))),
             Value::Array(a) => stack.extend(a),
             Value::Object(o) => stack.extend(o.values()),
             _ => {}
@@ -134,14 +140,17 @@ mod tests {
 
     #[test]
     fn finds_paths_at_any_depth() {
-        let v = json!({"a": "/games/x/", "b": [{"c": "/roms"}, "relative", 3], "d": "https://x"});
+        let (games, roms) = if cfg!(windows) { (r"D:\Games\x\", r"E:\roms") } else { ("/games/x/", "/roms") };
+        let v = json!({"a": games, "b": [{"c": roms}, "relative", 3], "d": "https://x"});
         let mut p = json_paths(&v);
         p.sort();
-        assert_eq!(p, [PathBuf::from("/games/x"), PathBuf::from("/roms")]);
+        assert_eq!(p, [PathBuf::from(games.trim_end_matches(std::path::is_separator)), PathBuf::from(roms)]);
     }
 
+    // Store clients run under Wine: Linux's.
     /// A store client's prefix and games sit in the games folder like a
     /// leftover would, without any installed game of ours pointing there.
+    #[cfg(unix)]
     #[test]
     fn what_a_store_client_keeps_is_not_a_leftover() {
         use heronite_data::{AppPaths, DataPaths};
@@ -151,6 +160,7 @@ mod tests {
             data_paths: DataPaths::at(dir.path().join("data")),
             app: AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") },
             home: home.clone(),
+            updating: false,
         };
         let root = home.join("Games/Heroic");
         let old = SystemTime::now() - Duration::from_secs(3 * 3600);
@@ -178,6 +188,20 @@ mod tests {
         assert_eq!(found.iter().map(|i| i.folder.clone()).collect::<Vec<_>>(), [folders[2].clone()]);
     }
 
+    /// Sets a folder's modification time.
+    fn age(dir: &Path, when: SystemTime) {
+        let mut open = fs::File::options();
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            // FILE_FLAG_BACKUP_SEMANTICS: a folder opens too.
+            open.write(true).custom_flags(0x0200_0000);
+        }
+        #[cfg(unix)]
+        open.read(true);
+        open.open(dir).unwrap().set_modified(when).unwrap();
+    }
+
     #[test]
     fn candidates_are_old_non_empty_folders() {
         let dir = tempfile::tempdir().unwrap();
@@ -185,13 +209,22 @@ mod tests {
         fs::create_dir_all(r.join("Old Game/saves")).unwrap();
         fs::create_dir_all(r.join("Empty")).unwrap();
         fs::create_dir_all(r.join(".hidden/x")).unwrap();
+        fs::create_dir_all(r.join("System Volume Information/x")).unwrap();
         fs::write(r.join("file.txt"), "x").unwrap();
         // Everything was just made: nothing is old enough yet.
         assert!(candidates(r).is_empty());
         let old = SystemTime::now() - Duration::from_secs(3 * 3600);
-        for d in ["Old Game", "Empty", ".hidden"] {
-            fs::File::open(r.join(d)).unwrap().set_modified(old).unwrap();
+        for d in ["Old Game", "Empty", ".hidden", "System Volume Information"] {
+            age(&r.join(d), old);
         }
-        assert_eq!(candidates(r), [r.join("Old Game")]);
+        #[cfg(windows)]
+        {
+            // Windows hides it by its attributes, not its name.
+            let out = std::process::Command::new("attrib").arg("+h").arg("+s").arg(r.join("System Volume Information")).output().unwrap();
+            assert!(out.status.success());
+            assert_eq!(candidates(r), [r.join("Old Game")]);
+        }
+        #[cfg(unix)]
+        assert_eq!(candidates(r), [r.join("Old Game"), r.join("System Volume Information")]);
     }
 }

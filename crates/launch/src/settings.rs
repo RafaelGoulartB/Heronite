@@ -181,8 +181,8 @@ impl GameSettings {
         let mut wine_prefix = text(m.get("winePrefix"));
         if wine_prefix.is_empty() {
             wine_prefix = format!("{}/default", heronite_data::game_config::default_wine_prefix_dir(home));
-        } else if wine_prefix.contains('~') {
-            wine_prefix = wine_prefix.replacen('~', home, 1);
+        } else {
+            wine_prefix = heronite_data::game_config::expand_tilde(&wine_prefix, home);
         }
         let sandbox = crate::sandbox::Sandbox::from_map(m);
         // In the sandbox the shared folders are an exception: hidden, they

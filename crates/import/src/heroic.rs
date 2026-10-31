@@ -268,6 +268,8 @@ mod tests {
         std::fs::write(p, s).unwrap();
     }
 
+    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
+    #[cfg(unix)]
     #[test]
     fn copies_new_hand_added_games_and_install_records_once() {
         let h = tempfile::tempdir().unwrap();

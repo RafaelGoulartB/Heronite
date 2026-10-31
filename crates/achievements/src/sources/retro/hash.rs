@@ -4,7 +4,6 @@
 //! their file systems, and so on).
 
 use std::ffi::{c_char, c_int, CStr, CString};
-use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
 extern "C" {
@@ -23,7 +22,7 @@ pub struct Candidate {
 }
 
 fn c_path(path: &Path) -> Option<CString> {
-    CString::new(path.as_os_str().as_bytes()).ok()
+    heronite_platform::fs::c_path(path)
 }
 
 fn hash_text(raw: &[c_char; 33]) -> String {

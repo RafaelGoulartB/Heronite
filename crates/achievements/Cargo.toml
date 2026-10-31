@@ -7,6 +7,7 @@ description = "Achievements of every game (Steam, GOG, Epic, RetroAchievements) 
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
 heronite-metadata = { path = "../metadata" }
 heronite-gog = { path = "../gog" }
 heronite-epic = { path = "../epic" }

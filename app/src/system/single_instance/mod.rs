@@ -1,6 +1,8 @@
 //! One running instance per data folder (`app.requestSingleInstanceLock()` in
 //! Heroic): a unix socket in `$XDG_RUNTIME_DIR`, named after the data folder
-//! so an instance on a fixture folder never talks to the user's.
+//! so an instance on a fixture folder never talks to the user's. Windows has
+//! a loopback connection instead, found through a file at the same path
+//! (`transport`).
 //!
 //! A second process connects, sends one line of JSON ([`Message`]) and exits
 //! when the first answers `ok` (only sent once the request was really handed
@@ -12,8 +14,6 @@
 //! a late second process finds no socket instead of a dying listener.
 
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -22,6 +22,8 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::cli::LaunchRequest;
+
+mod transport;
 
 /// What a second invocation asks the running instance to do.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -89,8 +91,7 @@ pub fn socket_path(data_root: &Path) -> PathBuf {
     let dir = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .filter(|p| p.is_dir())
-        // SAFETY: getuid has no preconditions.
-        .unwrap_or_else(|| std::env::temp_dir().join(format!("heronite-rs-{}", unsafe { libc::getuid() })));
+        .unwrap_or_else(|| heronite_platform::dirs::user_temp("heronite-rs"));
     let _ = std::fs::create_dir_all(&dir);
     socket_path_in(&dir, data_root)
 }
@@ -127,7 +128,7 @@ pub fn forward(socket: &Path, msg: &Message) -> std::io::Result<Forward> {
 }
 
 pub fn forward_with(socket: &Path, msg: &Message, timeouts: Timeouts) -> std::io::Result<Forward> {
-    let mut stream = match UnixStream::connect(socket) {
+    let mut stream = match transport::connect(socket) {
         Ok(s) => s,
         Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Ok(Forward::NoInstance),
         Err(e) if matches!(e.kind(), std::io::ErrorKind::ConnectionRefused) => {
@@ -198,21 +199,21 @@ impl Server {
     /// decides the answer (`ok` or `err`). Fails with `AddrInUse` when
     /// another live instance owns the socket.
     pub fn bind(socket: &Path, on_message: impl Fn(Message) -> bool + Send + 'static) -> std::io::Result<Server> {
-        let listener = match UnixListener::bind(socket) {
+        let listener = match transport::bind(socket) {
             Ok(l) => l,
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
                 // Alive? Then it is not ours to take.
-                match UnixStream::connect(socket) {
+                match transport::connect(socket) {
                     Ok(_) => return Err(e),
                     Err(_) => {
                         std::fs::remove_file(socket)?;
-                        UnixListener::bind(socket)?
+                        transport::bind(socket)?
                     }
                 }
             }
             Err(e) => return Err(e),
         };
-        let _ = std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600));
+        let _ = heronite_platform::fs::set_mode(socket, 0o600);
         let closed = Arc::new(AtomicBool::new(false));
         let flag = closed.clone();
         std::thread::Builder::new().name("single-instance".into()).spawn(move || {
@@ -290,7 +291,7 @@ mod tests {
         let b = socket_path_in(rt, Path::new("/tmp/heronite-fixture-system"));
         assert_ne!(a, b);
         assert_eq!(a, socket_path_in(rt, Path::new("/home/u/.local/share/heronite-rs")));
-        assert!(a.to_string_lossy().starts_with("/run/user/1000/heronite-rs-"));
+        assert!(a.starts_with(rt) && a.file_name().unwrap().to_string_lossy().starts_with("heronite-rs-"), "{}", a.display());
     }
 
     #[test]
@@ -324,12 +325,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("s.sock");
         // A socket file nobody listens on (a crashed instance).
-        drop(UnixListener::bind(&sock).unwrap());
+        drop(transport::bind(&sock).unwrap());
         assert!(sock.exists());
         assert_eq!(forward(&sock, &msg()).unwrap(), Forward::NoInstance);
         assert!(!sock.exists(), "stale file removed");
 
-        drop(UnixListener::bind(&sock).unwrap());
+        drop(transport::bind(&sock).unwrap());
         let (tx, rx) = mpsc::channel();
         let _server = Server::bind(&sock, move |m| tx.send(m).is_ok()).unwrap();
         assert_eq!(forward(&sock, &msg()).unwrap(), Forward::Delivered);
@@ -344,7 +345,7 @@ mod tests {
     fn a_listener_that_never_answers_is_unresponsive_not_absent() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("s.sock");
-        let listener = UnixListener::bind(&sock).unwrap();
+        let listener = transport::bind(&sock).unwrap();
         let t = std::time::Instant::now();
         let got = forward_with(&sock, &msg(), quick()).unwrap();
         assert!(matches!(&got, Forward::Unresponsive(r) if r.contains("no answer in time")), "{got:?}");
@@ -358,7 +359,7 @@ mod tests {
     fn a_listener_that_hangs_up_or_answers_an_error_is_unresponsive() {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("s.sock");
-        let listener = UnixListener::bind(&sock).unwrap();
+        let listener = transport::bind(&sock).unwrap();
         // Closes the connection without a word.
         let hangup = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
@@ -402,7 +403,7 @@ mod tests {
         assert_eq!(forward_with(&sock, &msg(), quick()).unwrap(), Forward::NoInstance);
         assert!(rx.try_recv().is_err());
         // A newer instance took the path: dropping the old server leaves it alone.
-        let newer = UnixListener::bind(&sock).unwrap();
+        let newer = transport::bind(&sock).unwrap();
         drop(server);
         assert!(sock.exists());
         drop(newer);
@@ -415,7 +416,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let server = Server::bind(&sock, move |m| tx.send(m).is_ok()).unwrap();
         // Connected before the close, handled after it.
-        let mut stream = UnixStream::connect(&sock).unwrap();
+        let mut stream = transport::connect(&sock).unwrap();
         server.close();
         stream.write_all(msg().to_line().as_bytes()).unwrap();
         stream.write_all(b"\n").unwrap();

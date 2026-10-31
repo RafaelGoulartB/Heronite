@@ -5,7 +5,9 @@
 //! Heronite runs the `ludusavi` program itself (`$PATH`, `/usr/bin`,
 //! `/usr/local/bin`, `~/.local/bin`). The Flatpak is not found there, and
 //! its sandbox would not see the restore's temporary config, so the
-//! download page's Linux build is the one to point at.
+//! download page's Linux build is the one to point at. On Windows it is the
+//! `-win64.zip` (one `ludusavi.exe`), unpacked where Heronite looks, or
+//! winget's or Scoop's package.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -23,14 +25,8 @@ pub const DOWNLOAD_URL: &str = "https://github.com/mtkennerly/ludusavi/releases/
 
 /// Opens the download page in the browser.
 pub fn open_download() {
-    if let Err(e) = std::process::Command::new("xdg-open")
-        .arg(DOWNLOAD_URL)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        log::warn!("xdg-open {DOWNLOAD_URL}: {e}");
+    if let Err(e) = heronite_platform::shell::open(DOWNLOAD_URL) {
+        log::warn!("opening {DOWNLOAD_URL}: {e}");
     }
 }
 
@@ -43,6 +39,14 @@ fn why() -> &'static str {
 }
 
 fn steps() -> [&'static str; 3] {
+    if cfg!(windows) {
+        // `heronite_emulation::ludusavi` looks there, in winget's and Scoop's folders and on `PATH`.
+        return [
+            tr!("1. Download the Windows version (the file ending in -win64.zip)."),
+            tr!("2. Extract ludusavi.exe into %LOCALAPPDATA%\\Programs\\Ludusavi, or install it with winget install mtkennerly.ludusavi or scoop install ludusavi."),
+            tr!("3. Come back here and press Look again."),
+        ];
+    }
     [
         tr!("1. Download the Linux version (the file ending in -linux.tar.gz)."),
         tr!("2. Extract the ludusavi file into ~/.local/bin, or install the ludusavi package of your distribution."),
@@ -51,6 +55,9 @@ fn steps() -> [&'static str; 3] {
 }
 
 fn flatpak_note() -> &'static str {
+    if cfg!(windows) {
+        return tr!("Installed somewhere else? Set the program in Backup location & format.");
+    }
     tr!("The Flatpak version is not found: Heronite runs the ludusavi program itself. Installed somewhere else? Set the program in Backup location & format.")
 }
 

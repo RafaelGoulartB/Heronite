@@ -220,7 +220,7 @@ impl Clients {
             this.states.insert(client, debug::fake(client, &name));
             this.frozen = Some(client);
         }
-        if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
+        if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::supported(heronite_platform::Feature::StoreClients) {
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(FIRST_DELAY).await;
                 loop {

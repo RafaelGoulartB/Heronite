@@ -92,7 +92,8 @@ pub fn settings_for_log(merged: &Map<String, Value>, native: bool) -> Value {
 }
 
 /// Heroic prints `ENV=value ... program args`; values of secret-looking
-/// variables are replaced.
+/// variables are replaced, and so is the sign-in an Epic game gets
+/// (`-AUTH_PASSWORD=<code>`).
 pub fn command_line_for_log(cmd: &crate::plan::Command) -> String {
     let mut parts: Vec<String> = Vec::new();
     for (k, v) in &cmd.env {
@@ -100,7 +101,11 @@ pub fn command_line_for_log(cmd: &crate::plan::Command) -> String {
         let pair = format!("{k}={shown}");
         parts.push(shlex::try_quote(&pair).map(|c| c.into_owned()).unwrap_or(pair));
     }
-    parts.push(cmd.display());
+    let args = cmd.args.iter().map(|a| match a.split_once('=') {
+        Some((key, _)) if key.eq_ignore_ascii_case("-AUTH_PASSWORD") => format!("{key}=<hidden>"),
+        _ => a.clone(),
+    });
+    parts.push(crate::plan::Command { args: args.collect(), env: Default::default(), ..cmd.clone() }.display());
     parts.join(" ")
 }
 

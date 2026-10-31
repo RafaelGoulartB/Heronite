@@ -11,6 +11,7 @@ use heronite_i18n::tr;
 use heronite_launch::emulators::UserEmulator;
 
 use crate::detect::DetectEnv;
+use crate::pathutil::has_dir;
 use crate::store;
 use crate::types::RomScanner;
 
@@ -21,7 +22,8 @@ pub enum Health {
     MissingExecutable,
     /// It exists but is not executable (AppImages that were not `chmod +x`).
     NotExecutable,
-    /// A Flatpak emulator whose app is not installed.
+    /// A Flatpak emulator whose app is not installed (or on Windows, which
+    /// has no Flatpak).
     FlatpakMissing,
 }
 
@@ -35,6 +37,7 @@ impl Health {
             Health::Ok => tr!("Ready"),
             Health::MissingExecutable => tr!("Executable not found"),
             Health::NotExecutable => tr!("Not executable (chmod +x)"),
+            Health::FlatpakMissing if cfg!(windows) => tr!("Flatpak emulators do not run on Windows"),
             Health::FlatpakMissing => tr!("Flatpak not installed"),
         }
     }
@@ -44,6 +47,9 @@ impl Health {
 /// emulators, so call it off the UI thread.
 pub fn emulator_health(env: &dyn DetectEnv, emulator: &UserEmulator) -> Health {
     if emulator.launch_kind == "flatpak" {
+        if cfg!(windows) {
+            return Health::FlatpakMissing;
+        }
         return match emulator.flatpak_id.as_deref().filter(|id| !id.is_empty()) {
             Some(id) if env.flatpak_installed(id) => Health::Ok,
             _ => Health::FlatpakMissing,
@@ -53,7 +59,7 @@ pub fn emulator_health(env: &dyn DetectEnv, emulator: &UserEmulator) -> Health {
     if exe.is_empty() {
         return Health::MissingExecutable;
     }
-    let path = if exe.contains('/') { Some(exe.to_owned()) } else { env.which(exe) };
+    let path = if has_dir(exe) { Some(exe.to_owned()) } else { env.which(exe) };
     let Some(path) = path else { return Health::MissingExecutable };
     match std::fs::metadata(Path::new(&path)) {
         Ok(m) if m.is_file() => {
@@ -139,12 +145,14 @@ mod tests {
     use heronite_data::models::LocalGameMeta;
     use std::collections::HashSet;
 
+    /// `program` is what `$PATH` has as `retroarch`.
     struct Env {
         flatpaks: HashSet<String>,
+        program: String,
     }
     impl DetectEnv for Env {
         fn which(&self, name: &str) -> Option<String> {
-            (name == "retroarch").then(|| "/bin/sh".to_owned())
+            (name == "retroarch").then(|| self.program.clone())
         }
         fn flatpak_installed(&self, id: &str) -> bool {
             self.flatpaks.contains(id)
@@ -160,6 +168,18 @@ mod tests {
         }
     }
 
+    /// An emulator file that can run (`.exe` on Windows).
+    fn program(dir: &Path) -> String {
+        let f = dir.join(if cfg!(windows) { "emu.exe" } else { "emu" });
+        std::fs::write(&f, "x").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        f.to_string_lossy().into_owned()
+    }
+
     fn emu(kind: &str, exe: &str, flatpak: Option<&str>) -> UserEmulator {
         UserEmulator {
             id: "e".into(),
@@ -172,25 +192,29 @@ mod tests {
 
     #[test]
     fn health_covers_native_flatpak_and_permissions() {
-        let env = Env { flatpaks: ["org.x.Y".to_owned()].into() };
-        assert_eq!(emulator_health(&env, &emu("native", "/bin/sh", None)), Health::Ok);
-        assert_eq!(emulator_health(&env, &emu("native", "retroarch", None)), Health::Ok);
-        assert_eq!(emulator_health(&env, &emu("native", "/no/such/file", None)), Health::MissingExecutable);
-        assert_eq!(emulator_health(&env, &emu("native", "", None)), Health::MissingExecutable);
-        assert_eq!(emulator_health(&env, &emu("flatpak", "flatpak", Some("org.x.Y"))), Health::Ok);
-        assert_eq!(emulator_health(&env, &emu("flatpak", "flatpak", Some("org.z.Z"))), Health::FlatpakMissing);
         let d = tempfile::tempdir().unwrap();
-        let f = d.path().join("app.AppImage");
-        std::fs::write(&f, "x").unwrap();
+        let exe = program(d.path());
+        let env = Env { flatpaks: ["org.x.Y".to_owned()].into(), program: exe.clone() };
+        assert_eq!(emulator_health(&env, &emu("native", &exe, None)), Health::Ok);
+        assert_eq!(emulator_health(&env, &emu("native", "retroarch", None)), Health::Ok);
+        let gone = d.path().join("no").join("such-file").to_string_lossy().into_owned();
+        assert_eq!(emulator_health(&env, &emu("native", &gone, None)), Health::MissingExecutable);
+        assert_eq!(emulator_health(&env, &emu("native", "", None)), Health::MissingExecutable);
+        // Flatpak is Linux's.
+        let flatpak = if cfg!(windows) { Health::FlatpakMissing } else { Health::Ok };
+        assert_eq!(emulator_health(&env, &emu("flatpak", "flatpak", Some("org.x.Y"))), flatpak);
+        assert_eq!(emulator_health(&env, &emu("flatpak", "flatpak", Some("org.z.Z"))), Health::FlatpakMissing);
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            let f = d.path().join("app.AppImage");
+            std::fs::write(&f, "x").unwrap();
             std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
             assert_eq!(emulator_health(&env, &emu("native", f.to_str().unwrap(), None)), Health::NotExecutable);
             assert_eq!(emulator_health(&env, &emu("wine", f.to_str().unwrap(), None)), Health::Ok);
             std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+            assert_eq!(emulator_health(&env, &emu("native", f.to_str().unwrap(), None)), Health::Ok);
         }
-        assert_eq!(emulator_health(&env, &emu("native", f.to_str().unwrap(), None)), Health::Ok);
         // A directory is not an executable.
         assert_eq!(emulator_health(&env, &emu("native", d.path().to_str().unwrap(), None)), Health::MissingExecutable);
     }
@@ -198,13 +222,14 @@ mod tests {
     #[test]
     fn overview_counts_games_and_groups_folders() {
         let h = tempfile::tempdir().unwrap();
-        let paths = DataPaths::at(h.path());
+        let paths = DataPaths::at(h.path().join("data"));
+        let exe = program(h.path());
         let a = store::upsert_user_emulator(
             &paths,
             UpsertUserEmulatorArgs {
                 definition_id: "pcsx2".into(),
                 name: "A".into(),
-                executable: "/bin/sh".into(),
+                executable: exe.clone(),
                 launch_kind: "native".into(),
                 ..Default::default()
             },
@@ -213,13 +238,14 @@ mod tests {
         let b =
             store::insert_user_emulator(&paths, UserEmulator { definition_id: "custom".into(), name: "B".into(), ..Default::default() })
                 .unwrap();
-        for dir in ["/r1", "/r2"] {
+        let gone: Vec<String> = ["r1", "r2"].iter().map(|r| h.path().join(r).to_string_lossy().into_owned()).collect();
+        for dir in &gone {
             store::upsert_rom_scanner(
                 &paths,
                 UpsertRomScannerArgs {
                     emulator_id: a.id.clone(),
                     profile_id: a.profiles[0].id.clone(),
-                    directory: dir.into(),
+                    directory: dir.clone(),
                     ..Default::default()
                 },
             )
@@ -232,12 +258,12 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        let o = overview(&paths, &Env { flatpaks: Default::default() }).unwrap();
+        let o = overview(&paths, &Env { flatpaks: Default::default(), program: exe }).unwrap();
         assert_eq!(o.len(), 2);
         assert_eq!((o[0].games, o[0].scanners.len(), o[0].health), (2, 2, Health::Ok));
         assert_eq!((o[1].games, o[1].scanners.len(), o[1].health), (0, 0, Health::MissingExecutable));
         assert_eq!(o[1].emulator.id, b.id);
-        assert_eq!(o[0].missing_folders, ["/r1", "/r2"]);
+        assert_eq!(o[0].missing_folders, gone);
         assert_eq!(scanners_using_profile(&o[0].scanners, &a.id, &a.profiles[0].id), 2);
         assert!(orphan_scanners(&paths).unwrap().is_empty());
     }

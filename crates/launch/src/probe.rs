@@ -61,11 +61,16 @@ impl Probe for SystemProbe {
     }
 
     fn which(&self, name: &str) -> Option<String> {
-        if name.contains('/') {
+        if name.contains('/') || name.contains(std::path::MAIN_SEPARATOR) {
             return is_executable_file(Path::new(name)).then(|| name.to_string());
         }
         let path = std::env::var_os("PATH")?;
-        std::env::split_paths(&path).map(|dir| dir.join(name)).find(|p| is_executable_file(p)).map(|p| p.to_string_lossy().into_owned())
+        // Windows finds `steam` as `steam.exe`.
+        let names: &[&str] = if cfg!(windows) { &["", ".exe", ".cmd", ".bat"] } else { &[""] };
+        std::env::split_paths(&path)
+            .flat_map(|dir| names.iter().map(move |ext| dir.join(format!("{name}{ext}"))))
+            .find(|p| is_executable_file(p))
+            .map(|p| p.to_string_lossy().into_owned())
     }
 
     fn env_var(&self, key: &str) -> Option<String> {
@@ -120,12 +125,11 @@ pub fn implicit_layer_dirs(probe: &dyn Probe) -> Vec<String> {
 }
 
 pub fn dirs_home() -> String {
-    std::env::var("HOME").ok().filter(|h| !h.is_empty()).unwrap_or_else(|| "/".to_string())
+    heronite_platform::dirs::home().map(|h| h.to_string_lossy().into_owned()).filter(|h| !h.is_empty()).unwrap_or_else(|| "/".to_string())
 }
 
 fn is_executable_file(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p).map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+    std::fs::metadata(p).is_ok_and(|m| heronite_platform::fs::is_executable(p, &m))
 }
 
 /// In-memory machine for tests (also handy for the app's own tests).
@@ -196,12 +200,14 @@ impl Probe for FakeProbe {
         self.paths.contains(path) && !self.not_executable.contains(path)
     }
     fn list_dir(&self, path: &str) -> Vec<String> {
-        let prefix = format!("{}/", path.trim_end_matches('/'));
+        // `\` separates too on Windows.
+        let sep = |c: char| c == '/' || (cfg!(windows) && c == '\\');
+        let base = path.trim_end_matches(sep);
         let mut out: Vec<String> = self
             .paths
             .iter()
-            .filter_map(|p| p.strip_prefix(&prefix))
-            .map(|rest| rest.split('/').next().unwrap_or(rest).to_string())
+            .filter_map(|p| p.strip_prefix(base)?.strip_prefix(sep))
+            .map(|rest| rest.split(sep).next().unwrap_or(rest).to_string())
             .collect();
         out.sort();
         out.dedup();

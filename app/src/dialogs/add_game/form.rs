@@ -17,7 +17,7 @@ use crate::ui::{icon, tooltip};
 
 impl AddGameDialog {
     fn platform_tabs(&self, cx: &mut Context<Self>) -> Div {
-        let items: Vec<(SideloadPlatform, &'static str)> = PLATFORMS.iter().map(|p| (*p, platform_label(*p))).collect();
+        let items: Vec<(SideloadPlatform, &'static str)> = platforms().iter().map(|p| (*p, platform_label(*p))).collect();
         let weak = cx.entity().downgrade();
         labeled(
             tr!("Platform"),
@@ -31,7 +31,8 @@ impl AddGameDialog {
     /// "Got it"), or how installing works.
     fn note(&self, cx: &mut Context<Self>) -> Option<Div> {
         let (text, dismiss) = match self.mode {
-            Mode::Add if self.store_note => {
+            // Where the stores run.
+            Mode::Add if self.store_note && heronite_platform::features::any_store() => {
                 (tr!("A game from Epic, GOG or Amazon? Do not add it here: install or import it from its store, in the menu."), true)
             }
             Mode::Add => return None,
@@ -184,7 +185,9 @@ impl AddGameDialog {
     /// "Not installed yet?": run its setup program first (Windows: in the
     /// game's Wine prefix) or install it with a script (adding a game only).
     fn install_row(&self, title: &str, with_installer: bool, cx: &mut Context<Self>) -> Option<Div> {
-        let with_script = matches!(self.mode, Mode::Add);
+        // Both run through Wine.
+        let with_installer = with_installer && uses_wine();
+        let with_script = matches!(self.mode, Mode::Add) && uses_wine();
         if self.is_edit() || !(with_installer || with_script) {
             return None;
         }
@@ -318,7 +321,7 @@ impl AddGameDialog {
                 ))
                 .children(self.install_row(&title, true, cx).map(|r| r.mt(px(-6.))))
                 .child(title_field);
-            if !self.is_edit() {
+            if !self.is_edit() && uses_wine() {
                 right = right.child(self.wine_section(cx));
             }
         }

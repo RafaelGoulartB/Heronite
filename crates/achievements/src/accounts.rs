@@ -66,7 +66,6 @@ pub fn update(paths: &DataPaths, f: impl FnOnce(&mut Accounts)) -> Result<Accoun
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     #[test]
     fn the_file_is_private() {
@@ -76,7 +75,7 @@ mod tests {
         update(&paths, |a| a.retro_achievements = Some(RetroAccount { username: "me".into(), token: "t".into(), ..Default::default() }))
             .unwrap();
         assert_eq!(read(&paths).retro_achievements.unwrap().username, "me");
-        let mode = std::fs::metadata(paths.achievement_accounts()).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
+        #[cfg(unix)]
+        assert_eq!(heronite_platform::fs::mode(&std::fs::metadata(paths.achievement_accounts()).unwrap()).unwrap() & 0o777, 0o600);
     }
 }

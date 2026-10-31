@@ -1,7 +1,8 @@
 //! The desktop look of Settings → Storage: a bar per disk, the "Free up
 //! space" card, the games as a treemap of their art over a list, then a
 //! list per kind of thing (prefixes, Proton, Steam leftovers, caches,
-//! leftover folders), each row with a bar of its size.
+//! leftover folders; on Windows store tools, caches, leftover folders and old
+//! downloads), each row with a bar of its size.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -11,8 +12,8 @@ use heronite_storage::{Group, Item, Kind, State as Use, Sweep};
 
 use super::treemap::squarify;
 use super::{
-    days_since, group_color, group_label, item_meta, open, played_text, remove, seg_color, seg_label, size_text, stale, sweep_color,
-    sweep_effect, sweep_label, unused_color, Confirm, GameSort, Hover, Seg, State,
+    days_since, group_color, group_label, item_meta, open, played_text, remove, remove_label, seg_color, seg_label, size_text, stale,
+    sweep_color, sweep_effect, sweep_label, unused_color, Confirm, GameSort, Hover, Seg, State,
 };
 use crate::icons::Icon;
 use crate::pages::settings::SettingsPage;
@@ -88,7 +89,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let column = (f32::from(window.viewport_size().width) - 24. - 230. - 72.).min(MAX_W);
     let mut col =
         div().flex().flex_col().child(overview(&d.storage, cx)).child(free_up(&d.storage, cx)).child(games(d, column, window, cx));
-    for group in [Group::Prefixes, Group::Builds, Group::Steam, Group::Caches, Group::Leftovers] {
+    for group in Group::ALL.into_iter().filter(|g| *g != Group::Games) {
         col = col.children(group_block(d, group, window, cx));
     }
     col.into_any_element()
@@ -154,13 +155,7 @@ fn overview(st: &State, cx: &mut Context<SettingsPage>) -> Div {
                                 .gap(px(9.))
                                 .min_w_0()
                                 .child(icon(Icon::FaHardDrive, px(15.), theme::text_muted()))
-                                .child(
-                                    div()
-                                        .text_size(px(14.))
-                                        .text_color(theme::text_primary())
-                                        .truncate()
-                                        .child(disk.mount.display().to_string()),
-                                )
+                                .child(div().text_size(px(14.)).text_color(theme::text_primary()).truncate().child(disk.name()))
                                 .child(dim(disk.fs.clone())),
                         )
                         .child(right),
@@ -354,7 +349,9 @@ fn free_up(st: &State, cx: &mut Context<SettingsPage>) -> AnyElement {
     card = card.child(choices);
     if confirming {
         let trashes = st.items().any(|i| i.goes_to_trash() && i.sweep().is_some_and(|s| st.sweeps.contains(&s)));
-        if trashes {
+        if trashes && cfg!(windows) {
+            card = card.child(dim(tr!("Leftover folders go to the Recycle Bin, where they can be restored; the rest is deleted.")));
+        } else if trashes {
             card = card.child(dim(tr!("Prefixes and leftover folders go to the trash, where they can be restored; the rest is deleted.")));
         }
     }
@@ -371,7 +368,11 @@ fn sweep_details(st: &State, s: Sweep) -> Div {
     let mut list = div().flex().flex_col().ml(px(62.)).mr(px(40.)).mb(px(8.)).pl(px(12.)).border_l_1().border_color(theme::ink_a(0.1));
     list = list.child(div().pb(px(6.)).text_size(px(12.)).line_height(px(17.)).text_color(theme::text_muted()).child(sweep_effect(s)));
     for item in items {
-        let action = if item.goes_to_trash() { tr!("To the trash") } else { tr!("Deleted") };
+        let action = match item.goes_to_trash() {
+            true if cfg!(windows) => tr!("To the Recycle Bin"),
+            true => tr!("To the trash"),
+            false => tr!("Deleted"),
+        };
         let paths = item.paths.iter().map(|p| dim(p.display().to_string()).truncate());
         list = list.child(
             div()
@@ -650,6 +651,7 @@ fn leading(d: &mut SettingsPage, item: &Item, scale: f32) -> AnyElement {
         Kind::Runtime => Icon::Build,
         Kind::SteamPrefix { .. } | Kind::SteamShaders { .. } => Icon::SportsEsports,
         Kind::Cache(_) => Icon::Refresh,
+        Kind::Download => Icon::Download,
         Kind::Leftover | Kind::Game { .. } => Icon::Folder,
     };
     div()
@@ -670,7 +672,7 @@ fn trailing(d: &SettingsPage, item: &Item, cx: &mut Context<SettingsPage>) -> An
     let id = item.id.clone();
     let tag = |what: &str| SharedString::from(format!("st-{what}-{id}"));
     if st.confirm.as_ref() == Some(&Confirm::Item(id.clone())) {
-        let label = if item.goes_to_trash() { tr!("Move to the trash") } else { tr!("Delete") };
+        let label = remove_label(item);
         let target = id.clone();
         return div()
             .flex()

@@ -7,6 +7,7 @@ use anyhow::{anyhow, bail, Result};
 use heronite_data::DataPaths;
 use heronite_epic::cache_store::CacheStore;
 use heronite_i18n::tr;
+use heronite_launch::host::{run_mode, Os, RunMode};
 use serde_json::Value;
 
 use crate::cmd::{last_json_object, Gogdl};
@@ -178,12 +179,17 @@ pub fn install_info_fresh(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, plat
     Ok(InstallInfo::parse(platform, &doc))
 }
 
-/// Platforms the game can be installed for.
+/// Platforms the game can be installed for and run here: a Linux build is
+/// not offered on Windows.
 pub fn platforms(paths: &DataPaths, app_name: &str) -> Vec<String> {
     let mut out = vec!["windows".to_string()];
     let linux = library::game_info(paths, app_name).and_then(|g| g.get("is_linux_native").and_then(Value::as_bool)).unwrap_or(false);
     if linux {
         out.push("linux".into());
+    }
+    let runs = |p: &String| Os::from_name(p).is_some_and(|os| run_mode(os) != RunMode::Unavailable);
+    if out.iter().any(runs) {
+        out.retain(runs);
     }
     out
 }
@@ -254,30 +260,30 @@ mod tests {
     #[test]
     fn info_runs_gogdl_and_is_cached() {
         let (dir, paths) = setup();
-        let body = format!("echo '[INFO] noise' >&2; echo '{}'", windows_doc());
-        let g = fake(dir.path(), &paths, &body);
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[INFO] noise").out(&windows_doc().to_string()));
+        let g = gogdl(&tool, &paths);
         let info = install_info(&paths, &g, "42", "Windows").unwrap();
         assert_eq!(info.build_id, "5555");
-        assert_eq!(calls(dir.path()), ["info 42 --os windows"]);
+        assert_eq!(calls_of(&tool), ["info 42 --os windows"]);
         // The second call is answered from the cache.
         install_info(&paths, &g, "42", "windows").unwrap();
-        assert_eq!(calls(dir.path()).len(), 1);
+        assert_eq!(calls_of(&tool).len(), 1);
         install_info_fresh(&paths, &g, "42", "windows").unwrap();
-        assert_eq!(calls(dir.path()).len(), 2);
+        assert_eq!(calls_of(&tool).len(), 2);
     }
 
     #[test]
     fn unsupported_platforms_give_a_clear_error() {
         let (dir, paths) = setup();
-        let g = fake(
-            dir.path(),
-            &paths,
-            "echo \"[GENERIC DOWNLOAD_MANAGER] ERROR: Game doesn't support content system api, unable to proceed using platform linux\" >&2; exit 1",
+        let tool = fake_tool(dir.path()).otherwise(
+            Reply::new()
+                .err("[GENERIC DOWNLOAD_MANAGER] ERROR: Game doesn't support content system api, unable to proceed using platform linux")
+                .exit(1),
         );
-        let err = install_info(&paths, &g, "42", "linux").unwrap_err().to_string();
+        let err = install_info(&paths, &gogdl(&tool, &paths), "42", "linux").unwrap_err().to_string();
         assert!(err.contains("cannot be installed for linux"), "{err}");
-        let broken = fake(dir.path(), &paths, "echo '[X] ERROR: boom' >&2; exit 1");
-        let err = install_info(&paths, &broken, "43", "windows").unwrap_err().to_string();
+        let broken = fake_tool(dir.path()).otherwise(Reply::new().err("[X] ERROR: boom").exit(1));
+        let err = install_info(&paths, &gogdl(&broken, &paths), "43", "windows").unwrap_err().to_string();
         assert!(err.contains("boom"), "{err}");
     }
 
@@ -287,7 +293,9 @@ mod tests {
         assert_eq!(platforms(&paths, "1"), ["windows"]);
         let game = |native: bool| json!([{"app_name": "1", "is_linux_native": native}]);
         CacheStore::new(&paths, "gog_library", None).set("games", game(true)).unwrap();
-        assert_eq!(platforms(&paths, "1"), ["windows", "linux"]);
+        // Linux builds do not run on Windows.
+        let both: &[&str] = if cfg!(windows) { &["windows"] } else { &["windows", "linux"] };
+        assert_eq!(platforms(&paths, "1"), both);
         CacheStore::new(&paths, "gog_library", None).set("games", game(false)).unwrap();
         assert_eq!(platforms(&paths, "1"), ["windows"]);
     }

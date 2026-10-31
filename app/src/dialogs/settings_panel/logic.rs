@@ -82,7 +82,12 @@ impl GameFacts {
         let launch_kind = game.launch_kind.as_deref().unwrap_or("");
         let steam_app_id = game.steam_launch_id.clone().filter(|_| game.installed && launch_kind == "steam-uri");
         let run_kind = if steam_app_id.is_some() {
-            RunKind::Steam
+            // Steam's settings are edited through its client.
+            if heronite_platform::supported(heronite_platform::Feature::SteamGameSettings) {
+                RunKind::Steam
+            } else {
+                RunKind::None
+            }
         } else if !game.installed
             || matches!(launch_kind, "emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
             || platform == "browser"
@@ -91,22 +96,33 @@ impl GameFacts {
             RunKind::None
         } else if g.runner == "sideload" || g.runner == "zoom" {
             let exe = g.install.executable.clone().unwrap_or_default();
+            // On Windows a Windows program is the native one, and a Linux
+            // one does not run at all.
             match effective_platform(g, game.meta.as_deref(), &exe, &SystemProbe) {
+                Platform::Linux if cfg!(windows) => RunKind::None,
+                Platform::Windows if cfg!(windows) => RunKind::Native,
                 Platform::Linux => RunKind::Native,
                 Platform::Windows => RunKind::Wine,
             }
         } else if platform.contains("linux") || (platform.is_empty() && g.is_linux_native == Some(true)) {
             // The installed build decides: a GOG game with a Linux build may
-            // be installed as its Windows build.
-            RunKind::Native
+            // be installed as its Windows build. Linux builds do not run on Windows.
+            if cfg!(windows) {
+                RunKind::None
+            } else {
+                RunKind::Native
+            }
         } else if platform.contains("mac") || platform == "osx" {
             RunKind::None
+        } else if cfg!(windows) {
+            // A store's Windows build runs as it is on Windows.
+            RunKind::Native
         } else {
             RunKind::Wine
         };
         let cloud_saves = if game.runner == "gog" {
             // Two small files, no network: the tab list is built on the UI thread.
-            run_kind == RunKind::Wine && heronite_gog::saves::supported(&heronite_data::DataPaths::detect(), &game.app_name)
+            run_kind != RunKind::None && heronite_gog::saves::supported(&heronite_data::DataPaths::detect(), &game.app_name)
         } else {
             g.rest.get("cloud_save_enabled").and_then(Value::as_bool).unwrap_or(false)
         };
@@ -145,10 +161,17 @@ impl GameFacts {
     pub fn start_section(&self) -> Option<Section> {
         match self.run_kind {
             RunKind::Wine | RunKind::Steam => Some(Section::Compatibility),
+            RunKind::Native if !extras() => Some(Section::Launch),
             RunKind::Native => Some(Section::Performance),
             RunKind::None => None,
         }
     }
+}
+
+/// Whether Linux's launch extras exist here (`heronite_platform::Feature::LaunchExtras`):
+/// without them a native game only has the Launch tab.
+pub fn extras() -> bool {
+    heronite_platform::supported(heronite_platform::Feature::LaunchExtras)
 }
 
 /// The panel's sections of a game, in tab order.
@@ -156,6 +179,7 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
     let mut out = vec![Section::Launch];
     match run_kind {
         RunKind::None => return Vec::new(),
+        RunKind::Native if !extras() => return out,
         RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance, Section::Gpu]),
         RunKind::Native => out.extend([Section::Performance, Section::Gpu]),
     }
@@ -389,7 +413,9 @@ mod tests {
         use Section::*;
         assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Gpu, Sandbox, Saves]);
         assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance, Gpu, Sandbox]);
-        assert_eq!(sections_for(RunKind::Native, "sideload", false), [Launch, Performance, Gpu, Sandbox]);
+        // Without Linux's launch extras (Windows), a native game only has Launch.
+        let native: &[Section] = if extras() { &[Launch, Performance, Gpu, Sandbox] } else { &[Launch] };
+        assert_eq!(sections_for(RunKind::Native, "sideload", false), native);
         assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));

@@ -40,7 +40,8 @@ pub(super) fn resolve(paths: &DataPaths, app_name: &str, rom_path: Option<&str>)
     let Some(emulator) = emulators.get(&emulator_id).cloned() else {
         return Ok(None);
     };
-    if emulator.launch_kind == "wine" {
+    // Under Wine its folders are in a prefix; Windows runs it as it is.
+    if emulator.launch_kind == "wine" && !cfg!(windows) {
         return Ok(None);
     }
     let engine_id = engine_id_for(&emulator);
@@ -223,7 +224,7 @@ mod tests {
         let sandbox = tempfile::tempdir().unwrap();
         let home = sandbox.path().join("home");
         let env = HostEnv::sandbox(&home, sandbox.path().join("tmp"));
-        let data = home.join(".config/PCSX2");
+        let data = if cfg!(windows) { env.documents.join("PCSX2") } else { home.join(".config/PCSX2") };
         let sstates = data.join("sstates");
         fs::create_dir_all(data.join("cache")).unwrap();
         fs::create_dir_all(&sstates).unwrap();
@@ -346,7 +347,8 @@ mod tests {
         let sandbox = tempfile::tempdir().unwrap();
         let home = sandbox.path().join("home");
         let env = HostEnv::sandbox(&home, sandbox.path().join("tmp"));
-        let states = home.join(".local/share/duckstation/savestates");
+        let data = if cfg!(windows) { env.local_appdata.join("DuckStation") } else { home.join(".local/share/duckstation") };
+        let states = data.join("savestates");
         fs::create_dir_all(&states).unwrap();
         let rom = s(&sandbox.path().join("Game.chd"));
         fs::write(&rom, "compressed").unwrap();

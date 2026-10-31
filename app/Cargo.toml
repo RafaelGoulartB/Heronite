@@ -23,6 +23,7 @@ heronite-launch = { path = "../crates/launch" }
 heronite-metadata = { path = "../crates/metadata" }
 serde_json.workspace = true
 heronite-media = { path = "../crates/media" }
+heronite-platform = { path = "../crates/platform" }
 heronite-overlay = { path = "../crates/overlay" }
 heronite-emulation = { path = "../crates/emulation" }
 heronite-import = { path = "../crates/import" }
@@ -55,3 +56,6 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+[build-dependencies]
+embed-resource = "3"

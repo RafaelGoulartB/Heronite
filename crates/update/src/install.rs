@@ -10,11 +10,9 @@
 //! shortcuts that point at it keep working.
 
 use heronite_i18n::tr;
-use std::ffi::{CString, OsString};
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -34,17 +32,22 @@ pub struct Target {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unsupported {
     /// Not started from an AppImage nor from one of our packages (built from
-    /// source, a distribution's own package).
+    /// source, a distribution's own package). On Windows: neither installed
+    /// by our setup nor a portable copy (a build folder).
     NotAppImage,
     /// `$APPIMAGE` does not point at a file.
     Missing(PathBuf),
-    /// The folder of the AppImage is not writable by this user.
+    /// The folder of the AppImage (of the portable copy on Windows) is not
+    /// writable by this user.
     ReadOnly(PathBuf),
 }
 
 impl std::fmt::Display for Unsupported {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Unsupported::NotAppImage if cfg!(windows) => {
+                write!(f, "Heronite was neither installed by its setup nor unpacked as a portable copy")
+            }
             Unsupported::NotAppImage => write!(f, "Heronite was not started from an AppImage"),
             Unsupported::Missing(p) => write!(f, "the AppImage {} was not found", p.display()),
             Unsupported::ReadOnly(dir) => write!(f, "{} is not writable", dir.display()),
@@ -63,7 +66,7 @@ impl Target {
             return Err(Unsupported::Missing(raw));
         }
         let dir = path.parent().ok_or_else(|| Unsupported::Missing(raw.clone()))?;
-        if !writable(dir) {
+        if !heronite_platform::fs::writable_dir(dir) {
             return Err(Unsupported::ReadOnly(dir.to_path_buf()));
         }
         Ok(Self { appimage: path })
@@ -82,12 +85,6 @@ impl Target {
             log::info!("removed the unfinished update {}", staging.display());
         }
     }
-}
-
-fn writable(dir: &Path) -> bool {
-    let Ok(c) = CString::new(dir.as_os_str().as_bytes()) else { return false };
-    // SAFETY: `c` is a valid NUL-terminated path for the duration of the call.
-    unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -283,9 +280,8 @@ fn check_appimage(path: &Path) -> Result<(), InstallError> {
 /// Gives `staging` the old file's permissions (and the owner's execute bit),
 /// then renames it over `appimage` and syncs the folder.
 fn swap_in(staging: &Path, appimage: &Path) -> Result<(), InstallError> {
-    let mode = fs::metadata(appimage).map(|m| m.permissions().mode() & 0o7777).unwrap_or(0o755) | 0o700;
-    fs::set_permissions(staging, fs::Permissions::from_mode(mode))
-        .map_err(|e| failed(tr!("Could not make the update executable: {error}", error = e)))?;
+    let mode = fs::metadata(appimage).ok().and_then(|m| heronite_platform::fs::mode(&m)).unwrap_or(0o755) | 0o700;
+    heronite_platform::fs::set_mode(staging, mode).map_err(|e| failed(tr!("Could not make the update executable: {error}", error = e)))?;
     fs::rename(staging, appimage).map_err(|e| failed(tr!("Could not replace {path}: {error}", path = appimage.display(), error = e)))?;
     if let Some(dir) = appimage.parent() {
         if let Ok(d) = File::open(dir) {
@@ -296,7 +292,7 @@ fn swap_in(staging: &Path, appimage: &Path) -> Result<(), InstallError> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
@@ -304,19 +300,19 @@ mod tests {
 
     /// Test key and signatures of [`blob`] made with `minisign -S -t
     /// "version:<v> file:test.AppImage"`. Not the release key.
-    const TEST_KEY: &str = "RWQrG3DRkOljn+WcHNIkIS0MboE2BJk4FRyrB6GkIvasTo+w/iXW1BLu";
-    const SIG_014: &str = include_str!("../tests/fixtures/blob-0.1.4.minisig");
+    pub(crate) const TEST_KEY: &str = "RWQrG3DRkOljn+WcHNIkIS0MboE2BJk4FRyrB6GkIvasTo+w/iXW1BLu";
+    pub(crate) const SIG_014: &str = include_str!("../tests/fixtures/blob-0.1.4.minisig");
     const SIG_012: &str = include_str!("../tests/fixtures/blob-0.1.2.minisig");
 
     /// The signed test file: an AppImage header and a fixed pattern.
-    fn blob() -> Vec<u8> {
+    pub(crate) fn blob() -> Vec<u8> {
         let mut b = b"\x7fELF\x02\x01\x01\x00AI\x02".to_vec();
         b.extend((0u32..300_000).map(|i| (i.wrapping_mul(7) % 251) as u8));
         b
     }
 
     /// Serves `files` (path -> bytes) over HTTP on a random local port.
-    fn serve(files: Vec<(String, Vec<u8>)>, chunk_delay_ms: u64) -> String {
+    pub(crate) fn serve(files: Vec<(String, Vec<u8>)>, chunk_delay_ms: u64) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         let files = Arc::new(files);
@@ -368,6 +364,7 @@ mod tests {
             appimage: Some(Asset { name: "test.AppImage".into(), url: format!("{base}/test.AppImage"), size }),
             signature: Some(Asset { name: "test.AppImage.minisig".into(), url: format!("{base}/test.AppImage.minisig"), size: 0 }),
             packages: Vec::new(),
+            windows: Vec::new(),
         }
     }
 
@@ -375,7 +372,7 @@ mod tests {
     fn installed(dir: &Path) -> Target {
         let path = dir.join("Heronite-0.1.3-x86_64.AppImage");
         fs::write(&path, b"old").unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o750)).unwrap();
+        heronite_platform::fs::set_mode(&path, 0o750).unwrap();
         Target::detect(Some(path.into_os_string())).unwrap()
     }
 
@@ -388,7 +385,8 @@ mod tests {
         let mut last = Progress::default();
         install(&release(&base, "0.1.4", data.len() as u64), &target, TEST_KEY, &AtomicBool::new(false), &mut |p| last = p).unwrap();
         assert_eq!(fs::read(&target.appimage).unwrap(), data);
-        assert_eq!(fs::metadata(&target.appimage).unwrap().permissions().mode() & 0o777, 0o750);
+        #[cfg(unix)]
+        assert_eq!(heronite_platform::fs::mode(&fs::metadata(&target.appimage).unwrap()).unwrap() & 0o777, 0o750);
         assert_eq!(last.downloaded, data.len() as u64);
         assert_eq!(last.percent(), Some(100.));
         assert!(!target.staging().exists());
@@ -482,6 +480,8 @@ mod tests {
         assert!(check_appimage(&plain).is_ok());
     }
 
+    // Windows makes symlinks only in Developer Mode or as an administrator.
+    #[cfg(unix)]
     #[test]
     fn detect_needs_an_existing_file_in_a_writable_folder() {
         assert_eq!(Target::detect(None), Err(Unsupported::NotAppImage));

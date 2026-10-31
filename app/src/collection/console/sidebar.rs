@@ -95,6 +95,14 @@ pub(super) fn items() -> Vec<Item> {
     let mut out: Vec<Item> = Vec::new();
     for spec in &theme.menu.items {
         let Some(item) = Item::parse(&spec.item) else { continue };
+        let available = match item {
+            Item::Go(page) => page.available(),
+            Item::Stores => crate::pages::stores::PAGES.iter().any(|p| p.available()),
+            _ => true,
+        };
+        if !available {
+            continue;
+        }
         if !spec.on && !heronite_data::console_theme::MENU_LOCKED.contains(&spec.item.as_str()) {
             continue;
         }

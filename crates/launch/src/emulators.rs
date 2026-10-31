@@ -270,6 +270,7 @@ pub struct LaunchVars {
 }
 
 /// Node's `path.dirname` (POSIX).
+#[cfg(not(windows))]
 pub fn node_dirname(path: &str) -> String {
     if path.is_empty() {
         return ".".into();
@@ -292,9 +293,34 @@ pub fn node_dirname(path: &str) -> String {
 }
 
 /// Node's `path.basename` (POSIX).
+#[cfg(not(windows))]
 pub fn node_basename(path: &str) -> String {
     let trimmed = path.trim_end_matches('/');
     trimmed.rsplit('/').next().unwrap_or("").to_string()
+}
+
+/// Node's `path.dirname` on Windows (`path.win32`): `\` and `/` both
+/// separate, and a drive (`C:\`) or share root is its own folder.
+#[cfg(windows)]
+pub fn node_dirname(path: &str) -> String {
+    match std::path::Path::new(path).parent() {
+        Some(dir) if dir.as_os_str().is_empty() => ".".into(),
+        Some(dir) => dir.to_string_lossy().into_owned(),
+        None if path.is_empty() => ".".into(),
+        // A root (`C:\`, `\`, `\\server\share`).
+        None => path.into(),
+    }
+}
+
+/// Node's `path.basename` on Windows (`path.win32`): either separator, and
+/// no drive (`C:x.iso` is `x.iso`).
+#[cfg(windows)]
+pub fn node_basename(path: &str) -> String {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    let last = trimmed.rsplit(['/', '\\']).next().unwrap_or("");
+    let b = last.as_bytes();
+    let drive = last.len() == trimmed.len() && b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':';
+    if drive { &last[2..] } else { last }.to_string()
 }
 
 fn node_extname(base: &str) -> &str {
@@ -366,6 +392,24 @@ mod tests {
         assert_eq!(node_extname("c.tar.gz"), ".gz");
         assert_eq!(node_extname(".hidden"), "");
         assert_eq!(node_extname("a."), ".");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn node_path_helpers_match_node_on_windows() {
+        assert_eq!(node_dirname(r"C:\Emu\PCSX2\pcsx2-qt.exe"), r"C:\Emu\PCSX2");
+        assert_eq!(node_dirname("C:/Emu/pcsx2-qt.exe"), "C:/Emu");
+        assert_eq!(node_dirname(r"C:\pcsx2-qt.exe"), r"C:\");
+        assert_eq!(node_dirname(r"C:\"), r"C:\");
+        assert_eq!(node_dirname(r"\\nas\roms\ps2\a.iso"), r"\\nas\roms\ps2");
+        assert_eq!(node_dirname("a.iso"), ".");
+        assert_eq!(node_basename(r"C:\Roms\Zelda (USA).sfc"), "Zelda (USA).sfc");
+        assert_eq!(node_basename(r"C:\Roms/ps2\a.iso"), "a.iso");
+        assert_eq!(node_basename(r"C:\Roms\"), "Roms");
+        assert_eq!(node_basename("C:a.iso"), "a.iso");
+        let v = vars_for_rom(r"D:\Roms\gba\Advance Wars.gba", Some(r"C:\mGBA"), None, "Advance Wars");
+        assert_eq!(v.image_dir.as_deref(), Some(r"D:\Roms\gba"));
+        assert_eq!(v.image_name_no_ext.as_deref(), Some("Advance Wars"));
     }
 
     #[test]

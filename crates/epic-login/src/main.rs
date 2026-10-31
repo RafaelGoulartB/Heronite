@@ -1,8 +1,10 @@
-//! Store login window. Opens a store's login page in an embedded WebKit
-//! view, waits for the authorization code the store hands back and prints it
-//! to stdout, then exits with status 0. Exits with [`CLOSED`] when the
-//! window is closed first; any other status means it failed (the app tells
-//! the user then).
+//! Store login window. Opens a store's login page in an embedded web view
+//! (WebKitGTK on Linux, WebView2 on Windows), waits for the authorization
+//! code the store hands back and prints it to stdout, then exits with status
+//! 0. Exits with [`CLOSED`] when the window is closed first (on Windows also
+//! when the program that started it exits), and on Windows with 5 when the
+//! WebView2 runtime is not installed; any other status means it failed (the
+//! app tells the user then).
 //!
 //! * no arguments (or `--store epic`): Epic Games;
 //! * `--store gog`: GOG (the code comes back in the `on_login_success` page URL);
@@ -16,6 +18,16 @@
 //! `SMOKE-READY` once it is loaded and stays open for a few seconds, for
 //! checking that the window opens where expected.
 
+// A window program on Windows: no console opens with it (the app reads its
+// redirected stdout all the same).
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
+// The window is WebKitGTK's (Linux) or WebView2's (Windows); elsewhere only
+// the tests use the parsing below.
+#![cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+
+#[cfg(windows)]
+mod windows;
+
 use url::Url;
 
 /// Exit status when the user closes the window before a code arrived (GTK
@@ -26,6 +38,8 @@ const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?responseType=co
 const EPIC_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EpicGamesLauncher";
 const GOG_LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
 /// A desktop browser: the GOG and Amazon pages refuse unknown web views.
+/// (WebView2's own user agent is one already: Microsoft Edge's.)
+#[cfg(target_os = "linux")]
 const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +67,7 @@ impl Store {
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn user_agent(self) -> &'static str {
         match self {
             Self::Epic => EPIC_USER_AGENT,
@@ -242,9 +257,14 @@ fn main() {
     gtk::main();
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
 fn main() {
-    eprintln!("The login window is only available on Linux for now; use the browser login.");
+    windows::main()
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn main() {
+    eprintln!("The login window is only available on Linux and Windows for now; use the browser login.");
     std::process::exit(2);
 }
 

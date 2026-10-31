@@ -283,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn create_and_duplicate_check_the_name() {
+    fn create_and_duplicate_check_the_name_and_the_source() {
         let s = setup();
         let made = create(&s.paths, &s.home, " Fresh ").unwrap();
         assert_eq!(made, s.prefixes.join("Fresh"));
@@ -292,7 +292,13 @@ mod tests {
             assert!(create(&s.paths, &s.home, bad).is_err(), "{bad:?}");
         }
         assert!(duplicate(&made, "Copy", &Cancel::default()).is_err(), "an empty folder is not a prefix yet");
+    }
 
+    // The copy runs `cp`: Wine prefixes are Linux's.
+    #[cfg(unix)]
+    #[test]
+    fn a_prefix_is_copied_once_under_a_new_name() {
+        let s = setup();
         let source = s.prefixes.join("Control");
         proton_prefix(&source);
         fs::write(source.join("pfx/drive_c/save.dat"), "progress").unwrap();

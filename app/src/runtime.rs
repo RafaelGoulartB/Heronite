@@ -414,20 +414,18 @@ pub fn winetricks_install_blocking(
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
+    heronite_platform::process::new_group(&mut cmd);
     // Cancelled while the prefix was made: nothing to stop yet.
     if cancelled() {
         return Err(tr!("{verb}: installation canceled.", verb));
     }
     let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
+    heronite_platform::process::track_group(&child);
     pid.store(child.id(), Ordering::SeqCst);
     // A cancel between the check above and the store found no group to signal.
     if cancelled() {
-        // SAFETY: the group winetricks leads (`process_group(0)`), alive
-        // until the `wait` below reaps it.
-        unsafe {
-            libc::kill(-(child.id() as i32), libc::SIGTERM);
-        }
+        // The group winetricks leads, alive until the `wait` below reaps it.
+        heronite_platform::process::signal_group(child.id(), heronite_platform::process::Signal::Term);
     }
     let err = child.stderr.take();
     let out = child.stdout.take();
@@ -471,19 +469,32 @@ fn forward_lines(pipe: impl std::io::Read, line: &dyn Fn(String)) {
 /// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data) or
 /// `HERONITE_DISABLE_TOOLS_UPDATE` (only this).
 fn spawn_tools_update(paths: DataPaths) {
+    use heronite_platform::{supported, Feature};
     if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") || crate::env::flag("HERONITE_DISABLE_TOOLS_UPDATE") {
+        return;
+    }
+    // Everything below is for Wine and Epic's legendary.
+    let (wine, epic) = (supported(Feature::Wine), supported(Feature::EpicStore));
+    if !wine && !epic {
         return;
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
-        // A new setup with a Proton already on this PC (Steam's
-        // compatibilitytools.d, Lutris) gets it as the default Wine.
-        heronite_wine::default::ensure_default(&paths);
-        // Wine Manager builds where Steam's games can pick them too.
-        heronite_wine::steam_link::sync(&paths);
+        if wine {
+            // A new setup with a Proton already on this PC (Steam's
+            // compatibilitytools.d, Lutris) gets it as the default Wine.
+            heronite_wine::default::ensure_default(&paths);
+            // Wine Manager builds where Steam's games can pick them too.
+            heronite_wine::steam_link::sync(&paths);
+        }
         // A new setup has no legendary yet: get it before the user logs in to Epic.
-        if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
-            log::warn!("{e}");
+        if epic {
+            if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
+                log::warn!("{e}");
+            }
+        }
+        if !wine {
+            return;
         }
         heronite_launch::tools::update_all_if_due(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
         // known_fixes.json (winetricks verbs, env variables) as Heroic keeps it.

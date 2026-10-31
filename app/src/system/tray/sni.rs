@@ -1,7 +1,4 @@
-//! System tray icon (StatusNotifierItem over D-Bus, via `ksni`), the
-//! counterpart of Heroic's `tray_icon.ts`: recent games, Show / Hide the
-//! window, Quit. Runs on its own thread; every action is sent to the UI as a
-//! [`TrayCmd`].
+//! The tray icon on Linux: a StatusNotifierItem over D-Bus, via `ksni`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -13,44 +10,8 @@ use ksni::menu::{MenuItem, StandardItem};
 
 use heronite_i18n::tr;
 
-use super::settings::recent_games;
-
-const ICON_DARK: &[u8] = include_bytes!("../../assets/tray/icon-dark.png");
-const ICON_LIGHT: &[u8] = include_bytes!("../../assets/tray/icon-light.png");
-
-/// What the user asked for in the tray.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TrayCmd {
-    /// Bring the window up (create it when it was closed to the tray).
-    Show,
-    /// Left click: hide when `exitToTray` and visible, else show.
-    Toggle,
-    Quit,
-    /// Launch a recent game (`appName`; the runner is searched).
-    Launch(String),
-}
-
-/// One row of the menu, before it becomes a `ksni` item.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Row {
-    Recent { app_name: String, title: String },
-    Separator,
-    ShowHide { window_open: bool },
-    Quit,
-}
-
-/// Heroic's order: recent games, separator, Show, Quit. The label says what
-/// the click does ("Hide" only makes sense when closing the window keeps the
-/// app alive).
-pub fn menu_rows(recent: &[(String, String)], window_open: bool) -> Vec<Row> {
-    let mut rows: Vec<Row> = recent.iter().map(|(a, t)| Row::Recent { app_name: a.clone(), title: t.clone() }).collect();
-    if !rows.is_empty() {
-        rows.push(Row::Separator);
-    }
-    rows.push(Row::ShowHide { window_open });
-    rows.push(Row::Quit);
-    rows
-}
+use super::common::{click_cmd, current_rows, icon_images, show_hide, Row};
+use super::TrayCmd;
 
 /// `_` starts a mnemonic in `ksni` labels; `__` is a literal underscore.
 fn escape_label(s: &str) -> String {
@@ -59,17 +20,10 @@ fn escape_label(s: &str) -> String {
 
 /// ARGB32 (network byte order) pixmaps of the tray icon at 32 and 64 px.
 pub fn icon_pixmaps(dark: bool) -> Vec<ksni::Icon> {
-    let bytes = if dark { ICON_DARK } else { ICON_LIGHT };
-    let Ok(img) = image::load_from_memory(bytes) else { return Vec::new() };
-    let rgba = img.to_rgba8();
-    [32u32, 64]
+    icon_images(dark, &[32, 64])
         .into_iter()
-        .map(|size| {
-            let scaled = if rgba.width() == size {
-                rgba.clone()
-            } else {
-                image::imageops::resize(&rgba, size, size, image::imageops::FilterType::Lanczos3)
-            };
+        .map(|scaled| {
+            let size = scaled.width();
             let mut data = Vec::with_capacity((size * size * 4) as usize);
             for p in scaled.pixels() {
                 data.extend_from_slice(&[p[3], p[0], p[1], p[2]]);
@@ -112,13 +66,12 @@ impl ksni::Tray for HeroniteTray {
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
-        self.send(if self.exit_to_tray { TrayCmd::Toggle } else { TrayCmd::Show });
+        self.send(click_cmd(self.exit_to_tray));
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let open = self.window_open.load(Ordering::Relaxed);
-        let recent = recent_games(&self.data_paths, self.max_recent);
-        menu_rows(&recent, open)
+        current_rows(&self.data_paths, self.max_recent, open)
             .into_iter()
             .map(|row| match row {
                 Row::Recent { app_name, title } => StandardItem {
@@ -129,13 +82,9 @@ impl ksni::Tray for HeroniteTray {
                 .into(),
                 Row::Separator => MenuItem::Separator,
                 Row::ShowHide { window_open } => {
-                    let hide = window_open && self.exit_to_tray;
-                    StandardItem {
-                        label: if hide { tr!("Hide") } else { tr!("Show") }.into(),
-                        activate: Box::new(move |t: &mut Self| t.send(if hide { TrayCmd::Toggle } else { TrayCmd::Show })),
-                        ..Default::default()
-                    }
-                    .into()
+                    let (label, cmd) = show_hide(window_open, self.exit_to_tray);
+                    StandardItem { label: label.into(), activate: Box::new(move |t: &mut Self| t.send(cmd.clone())), ..Default::default() }
+                        .into()
                 }
                 Row::Quit => StandardItem {
                     label: tr!("Quit").into(),
@@ -203,23 +152,6 @@ pub fn spawn(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn rows_follow_heroic_order() {
-        let recent = vec![("a".to_string(), "A".to_string()), ("b".to_string(), "B".to_string())];
-        assert_eq!(
-            menu_rows(&recent, false),
-            vec![
-                Row::Recent { app_name: "a".into(), title: "A".into() },
-                Row::Recent { app_name: "b".into(), title: "B".into() },
-                Row::Separator,
-                Row::ShowHide { window_open: false },
-                Row::Quit
-            ]
-        );
-        // No recent games: no separator at the top.
-        assert_eq!(menu_rows(&[], true), vec![Row::ShowHide { window_open: true }, Row::Quit]);
-    }
 
     #[test]
     fn labels_escape_mnemonics() {

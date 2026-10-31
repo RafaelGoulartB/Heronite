@@ -4,8 +4,11 @@
 //! Helpers must not outlive the app: each one gets its own process group and,
 //! on Linux, `PR_SET_PDEATHSIG(SIGTERM)` so it is told to stop when the
 //! thread that spawned it dies (the app quitting or being killed). The
-//! blocking runner here also supports cancellation: SIGTERM first, SIGKILL of
-//! the whole group after a grace period.
+//! blocking runner here also supports cancellation: the helper is asked to
+//! stop first (SIGTERM; Ctrl+C on Windows, see
+//! `heronite_platform::process::ask_to_stop`), the whole group is killed
+//! after a grace period. On Windows the group is a job object and a helper
+//! has a console of its own without a window.
 //!
 //! Do NOT use this for games / emulators (they must survive the launcher) nor
 //! for detached openers (`xdg-open`, file managers, editors).
@@ -19,17 +22,18 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
+use heronite_platform::process::{self as os, Signal};
+
 /// Makes `cmd` a guarded helper: own process group, SIGTERM when the spawning
-/// thread dies. No-op outside Unix; the `PDEATHSIG` part is Linux-only.
+/// thread dies. The `PDEATHSIG` part is Linux-only.
 pub fn guard(cmd: &mut Command) -> &mut Command {
-    #[cfg(unix)]
+    os::new_helper_group(cmd);
+    #[cfg(target_os = "linux")]
     {
         use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
         // SAFETY: only an async-signal-safe prctl between fork and exec.
         unsafe {
             cmd.pre_exec(|| {
-                #[cfg(target_os = "linux")]
                 libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
                 Ok(())
             });
@@ -59,13 +63,17 @@ pub fn idle_priority() {
     }
 }
 
-/// Lets another thread stop a running command: SIGTERM first (legendary then
-/// saves its resume data), SIGKILL of the whole process group if it lingers.
+/// Lets another thread stop a running command: asked first, once (SIGTERM,
+/// Ctrl+C on Windows: legendary then saves its resume data), the whole
+/// process group killed if it lingers.
 #[derive(Debug, Default)]
 pub struct Cancel {
     requested: AtomicBool,
     pid: AtomicI32,
     group: AtomicBool,
+    /// The running command was asked to stop (a second Ctrl+C would cut a
+    /// Python tool's own clean-up short).
+    asked: AtomicBool,
 }
 
 impl Cancel {
@@ -76,7 +84,16 @@ impl Cancel {
     pub fn request(&self) {
         self.requested.store(true, Ordering::SeqCst);
         let pid = self.pid.load(Ordering::SeqCst);
-        signal(pid, sig_term(), self.group.load(Ordering::SeqCst));
+        if pid > 0 {
+            self.ask(pid);
+        }
+    }
+
+    /// Asks the command `pid` to stop, unless it already was.
+    fn ask(&self, pid: i32) {
+        if !self.asked.swap(true, Ordering::SeqCst) {
+            os::ask_to_stop(pid as u32, self.group.load(Ordering::SeqCst));
+        }
     }
 
     pub fn is_requested(&self) -> bool {
@@ -94,6 +111,9 @@ impl Cancel {
 /// a generated script): a process forked meanwhile by another thread holds the
 /// written file open until its own `exec`, and executing a file open for
 /// writing fails.
+///
+/// The child's process group starts here too (a job object on Windows,
+/// see `heronite_platform::process::track_group`).
 pub fn spawn(cmd: &mut Command) -> io::Result<Child> {
     let mut tries = 0;
     loop {
@@ -102,39 +122,24 @@ pub fn spawn(cmd: &mut Command) -> io::Result<Child> {
                 tries += 1;
                 std::thread::sleep(Duration::from_millis(25));
             }
+            Ok(child) => {
+                os::track_group(&child);
+                return Ok(child);
+            }
             other => return other,
         }
     }
 }
 
-#[cfg(unix)]
-fn sig_term() -> i32 {
-    libc::SIGTERM
-}
-#[cfg(not(unix))]
-fn sig_term() -> i32 {
-    15
-}
-
 /// Signals the child (`whole_group = false`) or its whole process group.
-#[cfg(unix)]
-fn signal(pid: i32, sig: i32, whole_group: bool) {
+fn signal(pid: i32, sig: Signal, whole_group: bool) {
     if pid > 0 {
-        // SAFETY: signalling the child / process group this module created.
-        unsafe { libc::kill(if whole_group { -pid } else { pid }, sig) };
+        if whole_group {
+            os::signal_group(pid as u32, sig);
+        } else {
+            os::signal(pid as u32, sig);
+        }
     }
-}
-
-#[cfg(not(unix))]
-fn signal(_pid: i32, _sig: i32, _whole_group: bool) {}
-
-#[cfg(unix)]
-fn sig_kill() -> i32 {
-    libc::SIGKILL
-}
-#[cfg(not(unix))]
-fn sig_kill() -> i32 {
-    9
 }
 
 /// Result of a finished run.
@@ -214,13 +219,15 @@ impl<'a> Run<'a> {
         self.timeout = Some(timeout);
         self
     }
-    /// Time between SIGTERM and SIGKILL of the group (default 15 s).
+    /// Time between asking (SIGTERM, Ctrl+C on Windows) and the kill of the
+    /// group (default 15 s).
     pub fn grace(mut self, grace: Duration) -> Self {
         self.grace = grace;
         self
     }
     /// SIGTERM only the main process, so it can save its state (legendary);
-    /// the whole group is still SIGKILLed after the grace period.
+    /// the whole group is still SIGKILLed after the grace period. (On Windows
+    /// the Ctrl+C reaches every process on the helper's console either way.)
     pub fn term_main_only(mut self) -> Self {
         self.term_group = false;
         self
@@ -248,6 +255,7 @@ impl<'a> Run<'a> {
         let local = Cancel::default();
         let cancel = self.cancel.unwrap_or(&local);
         cancel.group.store(self.term_group, Ordering::SeqCst);
+        cancel.asked.store(false, Ordering::SeqCst);
         cancel.pid.store(pid, Ordering::SeqCst);
         // A cancel requested before the pid was known.
         if cancel.is_requested() {
@@ -255,7 +263,7 @@ impl<'a> Run<'a> {
         }
         let result = self.wait(&mut child, pid, cancel);
         // Whatever of the process group is left (download workers).
-        signal(pid, sig_kill(), true);
+        signal(pid, Signal::Kill, true);
         cancel.pid.store(0, Ordering::SeqCst);
         result
     }
@@ -313,9 +321,9 @@ impl<'a> Run<'a> {
                 match term_sent_at {
                     None => {
                         term_sent_at = Some(Instant::now());
-                        signal(pid, sig_term(), self.term_group);
+                        cancel.ask(pid);
                     }
-                    Some(at) if at.elapsed() > self.grace => signal(pid, sig_kill(), true),
+                    Some(at) if at.elapsed() > self.grace => signal(pid, Signal::Kill, true),
                     _ => {}
                 }
             }
@@ -331,7 +339,7 @@ impl<'a> Run<'a> {
                 // the main process died: stop waiting for it after a moment.
                 let at = *gone_at.get_or_insert_with(Instant::now);
                 if at.elapsed() > Duration::from_secs(2) {
-                    signal(pid, sig_kill(), true);
+                    signal(pid, Signal::Kill, true);
                     while let Ok((is_err, chunk)) = rx.try_recv() {
                         feed(&mut out, &mut split, &mut self.on_line, is_err, &chunk);
                     }

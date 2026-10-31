@@ -61,7 +61,11 @@ impl EmulatorsPage {
         let mut rows = vec![
             Row::action("add", tr!("Add emulator\u{2026}")).desc(tr!("Pick one from the catalog or describe any program")).icon(Icon::Add),
             Row::action("detect", tr!("Detect emulators on this PC"))
-                .desc(tr!("Looks in PATH, Flatpak and the usual folders"))
+                .desc(if cfg!(windows) {
+                    tr!("Looks in PATH and the usual folders")
+                } else {
+                    tr!("Looks in PATH, Flatpak and the usual folders")
+                })
                 .icon(Icon::TravelExplore),
             Row::action("scan-folder", tr!("Scan a folder for emulators\u{2026}"))
                 .desc(tr!("Searches a folder you pick, for example your Emulation folder"))
@@ -81,7 +85,7 @@ impl EmulatorsPage {
                 desc.push_str(&format!("  \u{b7}  {p}"));
             }
             rows.push(
-                Row::info(format!("e:{}", e.id), tr!("Emulator"), location(s).rsplit('/').next().unwrap_or_default().to_string())
+                Row::info(format!("e:{}", e.id), tr!("Emulator"), heronite_emulation::pathutil::basename(&location(s)))
                     .desc(desc)
                     .icon(Icon::Settings),
             );

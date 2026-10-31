@@ -4,6 +4,7 @@
 //! (until it closes). Sizes follow the display's height, like console
 //! mode, smaller since the panel floats over a game (1440 px tall → 1.16).
 
+#[cfg(target_os = "linux")]
 use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellNotSupportedError, LayerShellOptions};
 use gpui_kit::*;
 use heronite_data::overlay_prefs::Side;
@@ -40,6 +41,7 @@ fn display_height(cx: &App) -> f32 {
     cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(0., f32::max).max(720.)
 }
 
+#[cfg(target_os = "linux")]
 fn side_anchor(side: Side) -> Anchor {
     match side {
         Side::Left => Anchor::LEFT,
@@ -47,19 +49,9 @@ fn side_anchor(side: Side) -> Anchor {
     }
 }
 
-fn options(namespace: &str, size: Size<Pixels>, anchor: Anchor, margin: Pixels, layer: bool, keyboard: bool) -> WindowOptions {
-    let kind = if layer {
-        WindowKind::LayerShell(LayerShellOptions {
-            namespace: namespace.to_string(),
-            layer: Layer::Overlay,
-            anchor,
-            margin: Some((margin, margin, margin, margin)),
-            keyboard_interactivity: if keyboard { KeyboardInteractivity::Exclusive } else { KeyboardInteractivity::None },
-            ..Default::default()
-        })
-    } else {
-        WindowKind::Normal
-    };
+/// A layer-shell surface sits at the top, along `side`.
+fn options(namespace: &str, size: Size<Pixels>, side: Side, margin: Pixels, layer: bool, keyboard: bool) -> WindowOptions {
+    let kind = if layer { layer_shell(namespace, side, margin, keyboard) } else { WindowKind::Normal };
     WindowOptions {
         titlebar: None,
         window_bounds: Some(WindowBounds::Windowed(Bounds { origin: point(px(0.), px(0.)), size })),
@@ -69,6 +61,25 @@ fn options(namespace: &str, size: Size<Pixels>, anchor: Anchor, margin: Pixels, 
         focus: !layer || keyboard,
         ..Default::default()
     }
+}
+
+#[cfg(target_os = "linux")]
+fn layer_shell(namespace: &str, side: Side, margin: Pixels, keyboard: bool) -> WindowKind {
+    WindowKind::LayerShell(LayerShellOptions {
+        namespace: namespace.to_string(),
+        layer: Layer::Overlay,
+        anchor: side_anchor(side) | Anchor::TOP,
+        margin: Some((margin, margin, margin, margin)),
+        keyboard_interactivity: if keyboard { KeyboardInteractivity::Exclusive } else { KeyboardInteractivity::None },
+        ..Default::default()
+    })
+}
+
+/// Layer-shell is Wayland's: [`wayland`] is false elsewhere, so it is never
+/// asked for.
+#[cfg(not(target_os = "linux"))]
+fn layer_shell(_namespace: &str, _side: Side, _margin: Pixels, _keyboard: bool) -> WindowKind {
+    WindowKind::Normal
 }
 
 /// Opens the panel along one side of the screen. `layer = false` draws it in
@@ -83,8 +94,7 @@ pub fn open_panel<V: Render>(
     let s = scale(cx);
     let height = (PANEL_H * s).min(panel_max_height(cx));
     let size = size(px(PANEL_W * s), px(height));
-    let anchor = side_anchor(side) | Anchor::TOP;
-    cx.open_window(options("overlay", size, anchor, px(EDGE * s), layer, keyboard), build)
+    cx.open_window(options("overlay", size, side, px(EDGE * s), layer, keyboard), build)
 }
 
 /// The tallest the panel may be: the display minus the edge gaps (a Steam
@@ -104,18 +114,25 @@ pub fn open_notice<V: Render>(
     let size = size(px(NOTICE_W * s), px(NOTICE_H * s));
     // Away from the panel's side, so both can show.
     let corner = match side {
-        Side::Left => Anchor::RIGHT,
-        Side::Right => Anchor::LEFT,
+        Side::Left => Side::Right,
+        Side::Right => Side::Left,
     };
-    cx.open_window(options("overlay-notice", size, corner | Anchor::TOP, px(24. * s), layer, false), build)
+    cx.open_window(options("overlay-notice", size, corner, px(24. * s), layer, false), build)
 }
 
 /// The compositor refused a layer-shell surface (GNOME's has none).
+#[cfg(target_os = "linux")]
 pub fn is_layer_shell_missing(e: &anyhow::Error) -> bool {
     e.downcast_ref::<LayerShellNotSupportedError>().is_some()
 }
 
+/// No layer-shell surface is asked for off Linux.
+#[cfg(not(target_os = "linux"))]
+pub fn is_layer_shell_missing(_e: &anyhow::Error) -> bool {
+    false
+}
+
 /// Layer-shell only exists on Wayland (an X11 session cannot show the overlay).
 pub fn wayland() -> bool {
-    std::env::var_os("WAYLAND_DISPLAY").is_some()
+    cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some()
 }

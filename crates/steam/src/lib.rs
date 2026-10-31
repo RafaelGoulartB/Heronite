@@ -176,8 +176,12 @@ impl Steam {
     }
 
     /// Steam's pid file sits next to `~/.steam/steam`, wherever the
-    /// configured folder points.
+    /// configured folder points. Windows has none: the registry and the
+    /// process list tell instead.
     fn running(&self) -> bool {
+        if cfg!(windows) {
+            return self.locator.client_running(&heronite_launch::procs::SystemProcs);
+        }
         self.pid_dirs().iter().any(|dir| is_steam_running(dir))
     }
 
@@ -312,8 +316,7 @@ impl Steam {
     pub fn open(&self, steam_bin: &str) -> Result<(), String> {
         self.prepare_access();
         let mut start = self.command(steam_bin, &[]);
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut start, 0);
+        heronite_platform::process::new_group(&mut start);
         let mut child = start.spawn().map_err(|e| tr!("Could not run Steam: {error}", error = e.to_string()))?;
         // Reaped when it exits; Steam keeps running after Heronite closes.
         std::thread::spawn(move || child.wait());

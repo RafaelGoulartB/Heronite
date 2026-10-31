@@ -11,6 +11,7 @@ anyhow.workspace = true
 log.workspace = true
 dirs = "6"
 heronite-i18n = { path = "../i18n" }
+heronite-platform = { path = "../platform" }
 libc = "0.2"
 parking_lot = "0.12"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
@@ -20,6 +21,10 @@ tempfile = "3"
 icu_collator = "2"
 unicode-normalization = "0.1"
 base64 = "0.22"
+
+[features]
+# Helpers for other crates' tests (`testing`): their `[dev-dependencies]` turn it on.
+testing = []
 
 [dev-dependencies]
 

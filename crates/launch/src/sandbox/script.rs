@@ -202,6 +202,7 @@ mod tests {
     }
 
     /// The program runs: `sh -n` accepts it.
+    #[cfg(unix)]
     #[test]
     fn the_program_is_valid_shell() {
         let open = Sandbox { enabled: true, network: true, ..Default::default() };
@@ -215,6 +216,7 @@ mod tests {
     /// The program runs: with a `bwrap` that prints what it is given, what
     /// it looks up when it runs (the folders it makes, the session, the
     /// shader caches) comes out as arguments, and the command follows.
+    #[cfg(unix)]
     #[test]
     fn the_program_runs_and_hands_its_arguments_to_bwrap() {
         use std::os::unix::fs::PermissionsExt;

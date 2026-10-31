@@ -88,13 +88,22 @@ impl OnboardingDialog {
                 }),
             };
             let kind = if primary && !done { ButtonKind::Primary } else { ButtonKind::Glass };
-            let foot = div().flex().justify_end().child(
-                button_sm(SharedString::from(format!("onb-src-{}", step.id())), kind, label)
-                    .on_click(cx.listener(move |this, _, _, cx| this.go(step, step.action(), cx))),
-            );
+            // Steam's page reads the running client: not on every system.
+            let leads_somewhere = !matches!(step.action(), Action::Page(page) if !page.available());
+            let foot = div().flex().justify_end().when(leads_somewhere, |d| {
+                d.child(
+                    button_sm(SharedString::from(format!("onb-src-{}", step.id())), kind, label)
+                        .on_click(cx.listener(move |this, _, _, cx| this.go(step, step.action(), cx))),
+                )
+            });
             tile(step_icon(step, done, 38.), step.title(), sub, step.description(), foot)
         };
         let [steam, stores, emulators] = GAMES;
+        let (add_sub, add_about) = if cfg!(windows) {
+            (tr!("Windows or browser"), tr!("A Windows program or a browser game."))
+        } else {
+            (tr!("Linux, Windows or browser"), tr!("A Linux program, a Windows .exe (run through Proton) or a browser game."))
+        };
         let add = tile(
             div().size(px(38.)).rounded(px(12.)).flex().items_center().justify_center().bg(theme::ink_a(0.08)).child(icon(
                 Icon::Add,
@@ -102,8 +111,8 @@ impl OnboardingDialog {
                 theme::text_primary(),
             )),
             tr!("Add a game"),
-            div().text_size(px(12.5)).text_color(theme::text_dim()).child(tr!("Linux, Windows or browser")),
-            tr!("A Linux program, a Windows .exe (run through Proton) or a browser game."),
+            div().text_size(px(12.5)).text_color(theme::text_dim()).child(add_sub),
+            add_about,
             div().flex().justify_end().child(
                 button_sm("onb-src-add", ButtonKind::Glass, tr!("Add a game"))
                     .on_click(cx.listener(|this, _, _, cx| this.go(Step::Stores, Action::AddGame, cx))),
@@ -131,8 +140,8 @@ impl OnboardingDialog {
                     .justify_between()
                     .gap_y(px(14.))
                     .child(source(steam, tr!("Open the Steam page"), true))
-                    .child(source(stores, tr!("Log in to a store"), false))
-                    .child(source(emulators, tr!("Set up emulators"), false))
+                    .when(stores.available(), |d| d.child(source(stores, tr!("Log in to a store"), false)))
+                    .when(emulators.available(), |d| d.child(source(emulators, tr!("Set up emulators"), false)))
                     .child(add),
             )
             .children(others)

@@ -14,6 +14,7 @@ use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::{dropdown, Align, PART_BUTTON};
+use crate::ui::window_controls;
 use crate::ui::{icon, tool_button, tool_button_base};
 use heronite_i18n::tr;
 
@@ -201,11 +202,19 @@ impl CollectionView {
                     .child(view)
                     .children(self.onboarding_button(cx)),
             )
-            .child(div().flex().flex_1().min_w_0().items_center().gap(px(6.)).overflow_hidden().children(self.filter_chips(cx)))
+            .child(
+                window_controls::drag_area(
+                    div().id("hdr-drag").flex().flex_1().h_full().min_w_0().items_center().gap(px(6.)).overflow_hidden(),
+                    window,
+                )
+                // Over the drag area: a click on a chip is the chip's.
+                .children(self.filter_chips(cx).into_iter().map(|chip| chip.occlude())),
+            )
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
             .child(self.view_mode_controls(cx))
             .child(div().flex().flex_none().items_center().gap(px(2.)).children(self.bulk_chip(cx)).child(refresh).children(close))
+            .children(window_controls::controls(window))
     }
 
     /// One removable chip per filter the View menu has set.

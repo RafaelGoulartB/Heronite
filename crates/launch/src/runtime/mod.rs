@@ -8,6 +8,7 @@
 mod adopt;
 mod client;
 mod companions;
+mod epic;
 mod fake;
 mod process;
 mod sandboxed;

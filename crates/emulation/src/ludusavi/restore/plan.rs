@@ -1,12 +1,17 @@
 //! Pure rules of a restore: the redirects that retarget a backup to the
-//! game's current prefix, what each file of the backup is, and Ludusavi's
-//! `restore --api` reply.
+//! game's current prefix (Linux) or folders (Windows), what each file of the
+//! backup is, and Ludusavi's `restore --api` reply.
 //!
 //! Ludusavi keeps every file under the absolute path it was backed up from:
 //! `/old/compatdata/1245620/pfx/drive_c/users/steamuser/...` on Linux,
 //! `C:/Users/<name>/...` on Windows. Redirects are plain path-prefix
 //! substitutions applied top to bottom, each seeing the result of the ones
 //! before, so the specific ones come first and `C:` last.
+//!
+//! On Linux a backup lands in the game's Wine prefix. On Windows games run
+//! natively, so files go back to the paths they were backed up from, with
+//! only what moved redirected (another Steam library, another Windows user,
+//! a Wine prefix of a backup made on Linux).
 
 use std::path::Path;
 
@@ -46,7 +51,8 @@ impl Change {
 /// Where a file of the backup lands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileKind {
-    /// In the active prefix, the game's folder or Steam's `userdata`.
+    /// In the active prefix, the game's folder or Steam's `userdata`; on
+    /// Windows any path of this PC.
     Save,
     /// A whole `*.reg` file of the prefix. Ludusavi backs up the full Wine
     /// registry when the game keeps settings there, so restoring it would
@@ -54,7 +60,8 @@ pub enum FileKind {
     Registry,
     /// Somewhere else on this PC (an old Steam library, another prefix).
     Outside,
-    /// A Windows path with no place on Linux (another drive letter).
+    /// A Windows path with no place on Linux (another drive letter); on
+    /// Windows a Linux path or a drive this PC does not have.
     Unmapped,
 }
 
@@ -122,11 +129,40 @@ fn push(out: &mut Vec<Redirect>, source: &str, target: &str) {
     }
 }
 
+/// The Wine prefix most files of a Linux backup are in (the first on ties).
+fn main_wine_prefix(originals: &[String]) -> Option<&str> {
+    let mut counts: Vec<(&str, usize)> = Vec::new();
+    for o in originals.iter().filter(|o| !is_windows_path(o)) {
+        if let Some(src) = wine_prefix_of(o) {
+            match counts.iter_mut().find(|(s, _)| *s == src) {
+                Some((_, n)) => *n += 1,
+                None => counts.push((src, 1)),
+            }
+        }
+    }
+    let primary = counts.iter().fold(None::<(&str, usize)>, |best, &(s, n)| match best {
+        Some((_, b)) if b >= n => best,
+        _ => Some((s, n)),
+    });
+    primary.map(|(s, _)| s)
+}
+
 /// Redirects that put the files of a backup (`originals`, as Ludusavi stored
-/// them) into `target`. Only the prefix holding most files is moved: a stale
-/// copy from another Steam library stays where it was (and is left out by
-/// default as [`FileKind::Outside`]) instead of colliding with the real one.
+/// them) into `target`: [`linux_redirects`] on Linux, [`windows_redirects`]
+/// on Windows.
 pub fn redirects(originals: &[String], target: &RestoreTarget) -> Vec<Redirect> {
+    if cfg!(windows) {
+        windows_redirects(originals, target)
+    } else {
+        linux_redirects(originals, target)
+    }
+}
+
+/// Linux: the files land in the game's prefix. Only the prefix holding most
+/// files is moved: a stale copy from another Steam library stays where it
+/// was (and is left out by default as [`FileKind::Outside`]) instead of
+/// colliding with the real one.
+fn linux_redirects(originals: &[String], target: &RestoreTarget) -> Vec<Redirect> {
     let mut out = Vec::new();
 
     if let Some(dir) = &target.install_dir {
@@ -152,20 +188,7 @@ pub fn redirects(originals: &[String], target: &RestoreTarget) -> Vec<Redirect> 
     let tu = target.user.as_deref().unwrap_or("steamuser");
     let user_dir = |u: &str| format!("{tp}/drive_c/users/{}", if u == "Public" { "Public" } else { tu });
 
-    let mut counts: Vec<(&str, usize)> = Vec::new();
-    for o in originals.iter().filter(|o| !is_windows_path(o)) {
-        if let Some(src) = wine_prefix_of(o) {
-            match counts.iter_mut().find(|(s, _)| *s == src) {
-                Some((_, n)) => *n += 1,
-                None => counts.push((src, 1)),
-            }
-        }
-    }
-    let primary = counts.iter().fold(None::<(&str, usize)>, |best, &(s, n)| match best {
-        Some((_, b)) if b >= n => best,
-        _ => Some((s, n)),
-    });
-    if let Some((src, _)) = primary.filter(|(src, _)| *src != tp) {
+    if let Some(src) = main_wine_prefix(originals).filter(|src| *src != tp) {
         let users_root = format!("{src}/drive_c/users/");
         for o in originals {
             if let Some(user) = o.strip_prefix(&users_root).and_then(|rest| rest.split('/').next()) {
@@ -191,8 +214,104 @@ pub fn redirects(originals: &[String], target: &RestoreTarget) -> Vec<Redirect> 
     out
 }
 
-/// What a restored file is, from where it lands.
+/// A Windows path as Ludusavi writes it: `/` separators, none at the end.
+fn slashes(p: &Path) -> String {
+    let s = p.to_string_lossy().replace('\\', "/");
+    s.trim_end_matches('/').to_string()
+}
+
+/// What follows `dir/` in `path`, case ignored (Windows paths).
+fn under_ci<'a>(path: &'a str, dir: &str) -> Option<&'a str> {
+    let head = path.get(..dir.len())?;
+    let rest = path.get(dir.len()..)?;
+    (head.eq_ignore_ascii_case(dir)).then_some(rest)?.strip_prefix('/')
+}
+
+/// [`push`] for Windows, where a redirect to the same folder in other case
+/// is none.
+fn push_ci(out: &mut Vec<Redirect>, source: &str, target: &str) {
+    if !source.eq_ignore_ascii_case(target) && !out.iter().any(|r| r.source.eq_ignore_ascii_case(source)) {
+        out.push(Redirect { source: source.to_string(), target: target.to_string() });
+    }
+}
+
+/// User folders that are no one's (`C:/Users/Public`...).
+fn shared_user(name: &str) -> bool {
+    ["Public", "Default", "Default User", "All Users"].iter().any(|n| n.eq_ignore_ascii_case(name))
+}
+
+/// Windows: a native game writes its saves where they were backed up from.
+/// What moved is put back on this PC: the game's folder (another Steam
+/// library), Steam's `userdata`, the folder of another Windows user
+/// (another PC) and, for a backup made on Linux, the Wine prefix holding
+/// most files (its users become this user, the rest of `drive_c` the system
+/// drive). Linux paths outside it have no place here.
+fn windows_redirects(originals: &[String], target: &RestoreTarget) -> Vec<Redirect> {
+    let mut out = Vec::new();
+    if let Some(dir) = &target.install_dir {
+        let want = dir.file_name().map(|n| n.to_string_lossy().to_lowercase());
+        for o in originals {
+            if let (Some((base, name)), Some(want)) = (steam_common_dir(o), want.as_deref()) {
+                if name.to_lowercase() == want {
+                    push_ci(&mut out, base, &slashes(dir));
+                }
+            }
+        }
+    }
+    if let Some(userdata) = &target.steam_userdata {
+        for o in originals {
+            if let Some(src) = windows_steam_userdata(o) {
+                push_ci(&mut out, src, &slashes(userdata));
+            }
+        }
+    }
+    let Some(home) = target.user_home.as_deref().map(slashes) else { return out };
+    let (users, me) = home.rsplit_once('/').unwrap_or((home.as_str(), ""));
+    let drive = home.get(..2).filter(|d| is_windows_path(d)).unwrap_or("C:");
+
+    if let Some(src) = main_wine_prefix(originals) {
+        let users_root = format!("{src}/drive_c/users/");
+        for o in originals {
+            if let Some(user) = o.strip_prefix(&users_root).and_then(|rest| rest.split('/').next()).filter(|u| !u.is_empty()) {
+                let to = if shared_user(user) { format!("{users}/{user}") } else { home.clone() };
+                push_ci(&mut out, &format!("{users_root}{user}"), &to);
+            }
+        }
+        push_ci(&mut out, &format!("{src}/drive_c"), drive);
+    }
+
+    for o in originals.iter().filter(|o| is_windows_path(o)) {
+        let Some(user) = under_ci(o, users).and_then(|rest| rest.split('/').next()).filter(|u| !u.is_empty()) else { continue };
+        if !user.eq_ignore_ascii_case(me) && !shared_user(user) {
+            push_ci(&mut out, &o[..users.len() + 1 + user.len()], &home);
+        }
+    }
+    out
+}
+
+/// What a restored file is, from where it lands: [`linux_classify`] on
+/// Linux, [`windows_classify`] on Windows.
 pub fn classify(target_path: &str, target: &RestoreTarget) -> FileKind {
+    if cfg!(windows) {
+        windows_classify(target_path, &|drive| Path::new(&format!("{drive}\\")).exists())
+    } else {
+        linux_classify(target_path, target)
+    }
+}
+
+/// Windows: a native game keeps its own paths, so every Windows path is a
+/// save, unless its drive is not on this PC. Linux paths (a Linux game, the
+/// Wine registry, a stale prefix) have no place here.
+fn windows_classify(target_path: &str, drive_exists: &dyn Fn(&str) -> bool) -> FileKind {
+    if is_windows_path(target_path) && drive_exists(&target_path[..2]) {
+        FileKind::Save
+    } else {
+        FileKind::Unmapped
+    }
+}
+
+/// Linux: what is in the game's prefix or folders.
+fn linux_classify(target_path: &str, target: &RestoreTarget) -> FileKind {
     if is_windows_path(target_path) {
         return FileKind::Unmapped;
     }
@@ -280,7 +399,19 @@ mod tests {
             user: Some("steamuser".into()),
             install_dir: Some("/lib/steamapps/common/ELDEN RING".into()),
             steam_userdata: Some("/home/u/.local/share/Steam/userdata".into()),
+            user_home: None,
             needs_prefix: true,
+        }
+    }
+
+    /// A Steam game on Windows (forward slashes, so the rules can be tested
+    /// on every system).
+    fn windows_target() -> RestoreTarget {
+        RestoreTarget {
+            install_dir: Some("D:/SteamLibrary/steamapps/common/Hollow Knight".into()),
+            steam_userdata: Some("C:/Program Files (x86)/Steam/userdata".into()),
+            user_home: Some("C:/Users/rafael".into()),
+            ..Default::default()
         }
     }
 
@@ -292,7 +423,7 @@ mod tests {
     fn same_prefix_needs_no_redirect() {
         let originals =
             vec!["/lib/steamapps/compatdata/1245620/pfx/drive_c/users/steamuser/AppData/Roaming/EldenRing/ER0000.sl2".to_string()];
-        assert!(redirects(&originals, &steam_target()).is_empty());
+        assert!(linux_redirects(&originals, &steam_target()).is_empty());
     }
 
     #[test]
@@ -304,7 +435,10 @@ mod tests {
         ]
         .map(String::from)
         .into();
-        assert_eq!(redirects(&originals, &steam_target()), [r("/old/compatdata/1245620/pfx", "/lib/steamapps/compatdata/1245620/pfx")]);
+        assert_eq!(
+            linux_redirects(&originals, &steam_target()),
+            [r("/old/compatdata/1245620/pfx", "/lib/steamapps/compatdata/1245620/pfx")]
+        );
     }
 
     #[test]
@@ -314,7 +448,10 @@ mod tests {
             ["/p/old/drive_c/users/steamuser/Documents/G/s.sav", "/p/old/drive_c/users/Public/Documents/G/c.ini", "/p/old/user.reg"]
                 .map(String::from)
                 .into();
-        assert_eq!(redirects(&originals, &t), [r("/p/old/drive_c/users/steamuser", "/p/new/drive_c/users/rafa"), r("/p/old", "/p/new")]);
+        assert_eq!(
+            linux_redirects(&originals, &t),
+            [r("/p/old/drive_c/users/steamuser", "/p/new/drive_c/users/rafa"), r("/p/old", "/p/new")]
+        );
     }
 
     #[test]
@@ -331,7 +468,7 @@ mod tests {
         .into();
         let t = steam_target();
         assert_eq!(
-            redirects(&originals, &t),
+            linux_redirects(&originals, &t),
             [
                 r("D:/SteamLibrary/steamapps/common/ELDEN RING", "/lib/steamapps/common/ELDEN RING"),
                 r("C:/Program Files (x86)/Steam/userdata", "/home/u/.local/share/Steam/userdata"),
@@ -346,27 +483,27 @@ mod tests {
     fn native_games_keep_their_paths() {
         let t = RestoreTarget::default();
         let originals = vec!["/home/u/.config/unity3d/Team Cherry/Hollow Knight/user1.dat".to_string()];
-        assert!(redirects(&originals, &t).is_empty());
-        assert_eq!(classify(&originals[0], &t), FileKind::Save);
-        assert_eq!(classify("C:/Users/x/save", &t), FileKind::Unmapped);
-        assert_eq!(classify("/old/compatdata/1/pfx/drive_c/users/steamuser/s", &t), FileKind::Outside);
-        assert_eq!(classify("/old/prefix/user.reg", &t), FileKind::Outside);
+        assert!(linux_redirects(&originals, &t).is_empty());
+        assert_eq!(linux_classify(&originals[0], &t), FileKind::Save);
+        assert_eq!(linux_classify("C:/Users/x/save", &t), FileKind::Unmapped);
+        assert_eq!(linux_classify("/old/compatdata/1/pfx/drive_c/users/steamuser/s", &t), FileKind::Outside);
+        assert_eq!(linux_classify("/old/prefix/user.reg", &t), FileKind::Outside);
     }
 
     #[test]
     fn classifies_by_destination() {
         let t = steam_target();
         let pfx = "/lib/steamapps/compatdata/1245620/pfx";
-        assert_eq!(classify(&format!("{pfx}/drive_c/users/steamuser/AppData/x"), &t), FileKind::Save);
-        assert_eq!(classify(&format!("{pfx}/user.reg"), &t), FileKind::Registry);
-        assert_eq!(classify(&format!("{pfx}/drive_c/windows/x.reg"), &t), FileKind::Save);
-        assert_eq!(classify("/lib/steamapps/common/ELDEN RING/save.ini", &t), FileKind::Save);
-        assert_eq!(classify("/home/u/.local/share/Steam/userdata/1/2/remote/a", &t), FileKind::Save);
-        assert_eq!(classify("/home/u/.local/share/Steam/steamapps/compatdata/1245620/pfx/x", &t), FileKind::Outside);
-        assert_eq!(classify("/lib/steamapps/compatdata/1245620/pfx2/x", &t), FileKind::Outside);
-        assert_eq!(classify("D:/x", &t), FileKind::Unmapped);
+        assert_eq!(linux_classify(&format!("{pfx}/drive_c/users/steamuser/AppData/x"), &t), FileKind::Save);
+        assert_eq!(linux_classify(&format!("{pfx}/user.reg"), &t), FileKind::Registry);
+        assert_eq!(linux_classify(&format!("{pfx}/drive_c/windows/x.reg"), &t), FileKind::Save);
+        assert_eq!(linux_classify("/lib/steamapps/common/ELDEN RING/save.ini", &t), FileKind::Save);
+        assert_eq!(linux_classify("/home/u/.local/share/Steam/userdata/1/2/remote/a", &t), FileKind::Save);
+        assert_eq!(linux_classify("/home/u/.local/share/Steam/steamapps/compatdata/1245620/pfx/x", &t), FileKind::Outside);
+        assert_eq!(linux_classify("/lib/steamapps/compatdata/1245620/pfx2/x", &t), FileKind::Outside);
+        assert_eq!(linux_classify("D:/x", &t), FileKind::Unmapped);
         let no_prefix_yet = RestoreTarget { needs_prefix: true, ..Default::default() };
-        assert_eq!(classify("/somewhere/save", &no_prefix_yet), FileKind::Outside);
+        assert_eq!(linux_classify("/somewhere/save", &no_prefix_yet), FileKind::Outside);
     }
 
     #[test]
@@ -391,6 +528,110 @@ mod tests {
         assert_eq!(parse_reply(&serde_json::json!({}), "X").unwrap_err(), "no-reply");
     }
 
+    #[test]
+    fn windows_backups_from_this_pc_need_no_redirect() {
+        let originals: Vec<String> = [
+            "C:/Users/rafael/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat",
+            "c:/users/RAFAEL/AppData/LocalLow/Team Cherry/Hollow Knight/user2.dat",
+            "C:/Users/Public/Documents/x.ini",
+            "D:/SteamLibrary/steamapps/common/Hollow Knight/save.ini",
+            "C:/Program Files (x86)/Steam/userdata/1/367520/remote/a",
+        ]
+        .map(String::from)
+        .into();
+        assert!(windows_redirects(&originals, &windows_target()).is_empty());
+        assert!(windows_redirects(&originals, &RestoreTarget::default()).is_empty());
+    }
+
+    #[test]
+    fn windows_backups_from_another_pc_land_in_this_users_folders() {
+        let originals: Vec<String> = [
+            "C:/Users/bob/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat",
+            "C:/Users/bob/Documents/My Games/x.cfg",
+            "C:/Users/Public/Documents/x.ini",
+            "C:/Users/Default/x",
+            "E:/Steam/steamapps/common/Hollow Knight/save.ini",
+            "E:/Steam/userdata/1/367520/remote/a",
+            "C:/Games/Other/save.dat",
+        ]
+        .map(String::from)
+        .into();
+        assert_eq!(
+            windows_redirects(&originals, &windows_target()),
+            [
+                r("E:/Steam/steamapps/common/Hollow Knight", "D:/SteamLibrary/steamapps/common/Hollow Knight"),
+                r("E:/Steam/userdata", "C:/Program Files (x86)/Steam/userdata"),
+                r("C:/Users/bob", "C:/Users/rafael"),
+            ]
+        );
+        // The game folder and Steam come in with either slash.
+        let backslashes = RestoreTarget {
+            install_dir: Some(r"D:\Games\Hollow Knight".into()),
+            steam_userdata: None,
+            user_home: Some(r"C:\Users\rafael\".into()),
+            ..Default::default()
+        };
+        let got = windows_redirects(&originals, &backslashes);
+        assert_eq!(got.last(), Some(&r("C:/Users/bob", "C:/Users/rafael")));
+        assert!(got.iter().all(|r| !r.target.contains('\\')), "{got:?}");
+    }
+
+    #[test]
+    fn linux_backups_land_in_windows_folders() {
+        let pfx = "/home/u/.local/share/Steam/steamapps/compatdata/367520/pfx";
+        let originals: Vec<String> = [
+            format!("{pfx}/drive_c/users/steamuser/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat"),
+            format!("{pfx}/drive_c/users/steamuser/AppData/LocalLow/Team Cherry/Hollow Knight/user2.dat"),
+            format!("{pfx}/drive_c/users/Public/Documents/x.ini"),
+            format!("{pfx}/drive_c/ProgramData/HK/a.dat"),
+            format!("{pfx}/user.reg"),
+            "/home/u/.local/share/Steam/userdata/1/367520/remote/a".into(),
+            "/home/u/.local/share/Steam/steamapps/common/Hollow Knight/save.ini".into(),
+            "/old/compatdata/367520/pfx/drive_c/users/steamuser/stale.dat".into(),
+            "/home/u/.config/unity3d/Team Cherry/Hollow Knight/linux.dat".into(),
+        ]
+        .into();
+        assert_eq!(
+            windows_redirects(&originals, &windows_target()),
+            [
+                r("/home/u/.local/share/Steam/steamapps/common/Hollow Knight", "D:/SteamLibrary/steamapps/common/Hollow Knight"),
+                r("/home/u/.local/share/Steam/userdata", "C:/Program Files (x86)/Steam/userdata"),
+                r(&format!("{pfx}/drive_c/users/steamuser"), "C:/Users/rafael"),
+                r(&format!("{pfx}/drive_c/users/Public"), "C:/Users/Public"),
+                r(&format!("{pfx}/drive_c"), "C:"),
+            ]
+        );
+    }
+
+    #[test]
+    fn windows_restores_every_windows_path_of_this_pc() {
+        let drives = |d: &str| d.eq_ignore_ascii_case("C:") || d == "D:";
+        assert_eq!(windows_classify("C:/Users/rafael/AppData/x", &drives), FileKind::Save);
+        assert_eq!(windows_classify(r"D:\Games\x", &drives), FileKind::Save);
+        assert_eq!(windows_classify("c:/x", &drives), FileKind::Save);
+        assert_eq!(windows_classify("E:/elsewhere/file", &drives), FileKind::Unmapped);
+        assert_eq!(windows_classify("/home/u/.config/x", &drives), FileKind::Unmapped);
+        assert_eq!(windows_classify("/p/pfx/user.reg", &drives), FileKind::Unmapped);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_plans_select_the_saves() {
+        let file = |p: &str| ReplyFile {
+            target: p.into(),
+            original: p.into(),
+            bytes: 1,
+            change: Change::New,
+            ignored: false,
+            failed: false,
+            error: None,
+        };
+        let plan = planned_files(vec![file("/p/pfx/user.reg"), file("C:/Users/u/s")], &RestoreTarget::default());
+        assert_eq!(plan.iter().map(|f| (f.kind, f.selected)).collect::<Vec<_>>(), [(FileKind::Save, true), (FileKind::Unmapped, false)]);
+    }
+
+    // Linux's rules (`classify` is Windows' there).
+    #[cfg(not(windows))]
     #[test]
     fn plans_select_only_saves() {
         let t = steam_target();

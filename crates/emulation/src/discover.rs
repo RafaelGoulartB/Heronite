@@ -1,12 +1,15 @@
 //! Finding emulators that are not on `$PATH`: AppImages and binaries in the
 //! usual places (`~/Applications`, `~/.local/bin`, `~/Games`, `/opt`, the
 //! folders of emulators already configured) or in a folder the user picks,
-//! matched against the catalog by file name.
+//! matched against the catalog by file name. On Windows, `.exe` files in
+//! the catalog's install folders (Program Files, `%LOCALAPPDATA%\Programs`,
+//! `%APPDATA%`, the system drive), Scoop's and EmuDeck's apps and the usual
+//! folders of the home.
 //!
 //! Nothing here executes a file: matching is by name and permission bits only.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -14,8 +17,8 @@ use heronite_data::DataPaths;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use crate::catalog::{emulator_definition, emulator_definitions};
-use crate::detect::{detect_emulators, existing_profiles, DetectEnv};
-use crate::pathutil::{basename, dirname};
+use crate::detect::{detect_emulators, drives, existing_profiles, scoop_apps, windows_install_bases, DetectEnv};
+use crate::pathutil::{basename, dirname, has_dir, join, join_all};
 use crate::store::{self, insert_user_emulator};
 use crate::types::{DetectedEmulator, DetectedEmulatorProfile};
 
@@ -81,9 +84,28 @@ const RULES: &[Rule] = &[
 ];
 
 /// What may follow an alias in a file name token (`PPSSPPSDL`, `pcsx2-qt`,
-/// `shadPS4QtLauncher`).
-const SUFFIXES: &[&str] =
-    &["qt", "sdl", "sdl2", "nogui", "emu", "gui", "qtlauncher", "launcher", "x64", "x8664", "linux", "appimage", "nightly", "mgr"];
+/// `shadPS4QtLauncher`, `PPSSPPWindows64`).
+const SUFFIXES: &[&str] = &[
+    "qt",
+    "sdl",
+    "sdl2",
+    "nogui",
+    "emu",
+    "gui",
+    "qtlauncher",
+    "launcher",
+    "x64",
+    "x8664",
+    "linux",
+    "appimage",
+    "nightly",
+    "mgr",
+    "windows64",
+];
+
+/// Words of the other programs Windows emulators ship next to themselves
+/// (`retroarch_debug.exe`, `azahar-room.exe`, `Ryujinx.Headless.SDL2.exe`).
+const HELPERS: &[&str] = &["debug", "headless", "room", "updater", "uninstall", "setup", "installer", "crashpad", "crashhandler"];
 
 const NOT_EXECUTABLE_EXT: &[&str] = &[
     "so", "txt", "json", "ini", "png", "jpg", "svg", "desktop", "log", "md", "zip", "7z", "gz", "xz", "bz2", "tar", "dll", "yml", "yaml",
@@ -105,10 +127,14 @@ fn identify(file_name: &str) -> Option<&'static Rule> {
     let tokens: Vec<&str> = lower.split(|c: char| !c.is_ascii_alphanumeric()).filter(|t| !t.is_empty()).collect();
     let first = *tokens.first()?;
     let pair = format!("{first}{}", tokens.get(1).copied().unwrap_or(""));
-    let appimage = is_appimage(file_name);
+    // Windows has no KDE: its `Dolphin.exe` is the emulator.
+    let unambiguous = is_appimage(file_name) || (cfg!(windows) && lower.ends_with(".exe"));
+    if lower.ends_with(".exe") && tokens.iter().any(|t| HELPERS.contains(t)) {
+        return None;
+    }
     for rule in RULES {
         for alias in rule.aliases.iter().chain(rule.appimage_only) {
-            if rule.appimage_only.contains(alias) && !appimage {
+            if rule.appimage_only.contains(alias) && !unambiguous {
                 continue;
             }
             if matches_alias(first, alias) || matches_alias(&pair, alias) {
@@ -271,6 +297,10 @@ fn consider(path: &Path, out: &mut Vec<Candidate>) {
     let ext = ext_of(&name);
     let appimage = ext == "appimage";
     let exe = ext == "exe";
+    // Windows runs `.exe` files only.
+    if cfg!(windows) && !exe {
+        return;
+    }
     if !appimage && !exe && NOT_EXECUTABLE_EXT.contains(&ext.as_str()) {
         return;
     }
@@ -282,7 +312,9 @@ fn consider(path: &Path, out: &mut Vec<Candidate>) {
     if !(appimage || exe || has_exec_bit(&meta)) {
         return;
     }
-    out.push(Candidate { path: path.to_string_lossy().into_owned(), definition_id: rule.definition, name: rule.name, wine: exe });
+    // A Windows program needs Wine on Linux; Windows runs it as it is.
+    let wine = exe && !cfg!(windows);
+    out.push(Candidate { path: path.to_string_lossy().into_owned(), definition_id: rule.definition, name: rule.name, wine });
 }
 
 /// A folder to search with its label (shown as the result's source).
@@ -294,13 +326,46 @@ pub struct SearchRoot {
 }
 
 /// The usual places plus the folders of emulators already configured.
-pub fn common_search_roots(home: &str, existing: &[UserEmulator]) -> Vec<SearchRoot> {
+pub fn common_search_roots(env: &dyn DetectEnv, existing: &[UserEmulator]) -> Vec<SearchRoot> {
+    let home = env.home();
     let mut roots: Vec<SearchRoot> = Vec::new();
     let mut add = |path: String, depth: usize, label: &str| {
         if !roots.iter().any(|r| r.path == path) {
             roots.push(SearchRoot { path, depth, label: label.to_owned() });
         }
     };
+    if cfg!(windows) {
+        windows_roots(env, &home, &mut add);
+    } else {
+        linux_roots(&home, &mut add);
+    }
+    for e in existing {
+        if e.launch_kind == "flatpak" || !has_dir(&e.executable) {
+            continue;
+        }
+        let dir = dirname(&e.executable);
+        let parent = dirname(&dir);
+        let grand = dirname(&parent);
+        add(dir.clone(), 3, "next to a configured emulator");
+        // Scoop keeps an app's versions side by side (`apps\<app>\<version>`);
+        // `current` is the one in use, its siblings are old copies.
+        if cfg!(windows) && basename(&dir).eq_ignore_ascii_case("current") {
+            continue;
+        }
+        // Emulators are often kept one per folder (`Emulation/PS1/emulator`,
+        // `Emulation/PS2/emulator`): look at the siblings too, unless that
+        // would mean searching `$HOME` or a top-level folder.
+        let deep_enough = |p: &str| Path::new(p).components().filter(|c| matches!(c, Component::Normal(_))).count() >= 2 && p != home;
+        if deep_enough(&grand) {
+            add(grand, 3, "next to a configured emulator");
+        } else if parent != dir && deep_enough(&parent) {
+            add(parent, 1, "next to a configured emulator");
+        }
+    }
+    roots
+}
+
+fn linux_roots(home: &str, add: &mut dyn FnMut(String, usize, &str)) {
     for (rel, depth) in [
         ("Applications", 2),
         ("Apps", 3),
@@ -313,30 +378,45 @@ pub fn common_search_roots(home: &str, existing: &[UserEmulator]) -> Vec<SearchR
         ("Emulators", 4),
         ("Downloads", 1),
     ] {
-        add(format!("{home}/{rel}"), depth, &format!("~/{rel}"));
+        add(join(home, rel), depth, &format!("~/{rel}"));
     }
     for (abs, depth) in [("/opt", 3), ("/usr/local/bin", 1), ("/usr/games", 1)] {
         add(abs.to_owned(), depth, abs);
     }
-    for e in existing {
-        if e.launch_kind == "flatpak" || !e.executable.contains('/') {
-            continue;
-        }
-        let dir = dirname(&e.executable);
-        let parent = dirname(&dir);
-        let grand = dirname(&parent);
-        add(dir.clone(), 3, "next to a configured emulator");
-        // Emulators are often kept one per folder (`Emulation/PS1/emulator`,
-        // `Emulation/PS2/emulator`): look at the siblings too, unless that
-        // would mean searching `$HOME` or a top-level folder.
-        let deep_enough = |p: &str| p.split('/').filter(|s| !s.is_empty()).count() >= 2 && p != home;
-        if deep_enough(&grand) {
-            add(grand, 3, "next to a configured emulator");
-        } else if parent != dir && deep_enough(&parent) {
-            add(parent, 1, "next to a configured emulator");
+}
+
+/// Windows: the catalog's install folders (`Program Files\PCSX2`...), the
+/// apps of Scoop (`<app>\current`, the version it keeps up to date) and
+/// EmuDeck, and folders of the home and of each drive.
+fn windows_roots(env: &dyn DetectEnv, home: &str, add: &mut dyn FnMut(String, usize, &str)) {
+    let folders: Vec<&str> = emulator_definitions().iter().flat_map(|d| d.install_folders.iter().map(String::as_str)).collect();
+    for (base, label) in windows_install_bases(env) {
+        for folder in &folders {
+            let dir = join(&base, folder);
+            if env.exists(&dir) {
+                add(dir, 2, &label);
+            }
         }
     }
-    roots
+    for apps in scoop_apps(env) {
+        let mut names = env.read_dir(&apps);
+        names.sort();
+        for app in names.iter().filter(|a| folders.iter().any(|f| f.eq_ignore_ascii_case(a)) || identify(a).is_some()) {
+            add(join_all(&apps, &[app, "current"]), 1, "Scoop");
+        }
+    }
+    if let Some(appdata) = env.var("APPDATA") {
+        add(join_all(&appdata, &["EmuDeck", "Emulators"]), 3, "EmuDeck");
+    }
+    for (rel, depth) in [("Emulation", 4), ("Emulators", 4), ("Games", 3), ("Apps", 3), ("Downloads", 1)] {
+        add(join(home, rel), depth, &format!(r"~\{rel}"));
+    }
+    for drive in drives(env) {
+        for (rel, depth) in [("Emulation", 4), ("Emulators", 4), ("Games", 3)] {
+            let dir = join(&drive, rel);
+            add(dir.clone(), depth, &dir);
+        }
+    }
 }
 
 fn canonical(path: &str) -> String {
@@ -409,7 +489,7 @@ fn merge(found: &mut Vec<DetectedEmulator>, extra: Vec<DetectedEmulator>) {
 /// Everything detectable without the user choosing a folder: `$PATH`,
 /// Flatpak, and the usual places. `already_added` marks configured ones.
 pub fn discover_emulators(env: &dyn DetectEnv, existing: &[UserEmulator]) -> Vec<DetectedEmulator> {
-    discover_in_roots(env, existing, &common_search_roots(&env.home(), existing))
+    discover_in_roots(env, existing, &common_search_roots(env, existing))
 }
 
 /// [`discover_emulators`] with explicit search folders.
@@ -452,7 +532,11 @@ pub fn add_discovered(paths: &DataPaths, items: &[DetectedEmulator]) -> Result<V
         }
         let name = if current.iter().any(|e| e.name == item.name) && item.launch_kind != "flatpak" {
             let file = basename(&item.executable);
-            let stem = file.strip_suffix(".AppImage").or_else(|| file.strip_suffix(".appimage")).unwrap_or(&file);
+            let stem = file
+                .strip_suffix(".AppImage")
+                .or_else(|| file.strip_suffix(".appimage"))
+                .or_else(|| file.strip_suffix(".exe").filter(|_| cfg!(windows)))
+                .unwrap_or(&file);
             format!("{} ({stem})", item.name)
         } else {
             item.name.clone()
@@ -504,8 +588,10 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::fs;
 
+    #[derive(Default)]
     struct Env {
         home: String,
+        vars: HashMap<String, String>,
     }
     impl DetectEnv for Env {
         fn which(&self, _: &str) -> Option<String> {
@@ -523,6 +609,13 @@ mod tests {
         fn home(&self) -> String {
             self.home.clone()
         }
+        fn var(&self, key: &str) -> Option<String> {
+            self.vars.get(key).cloned()
+        }
+    }
+
+    fn env(home: &str) -> Env {
+        Env { home: home.into(), ..Default::default() }
     }
 
     fn touch(path: &Path, exec: bool) {
@@ -532,6 +625,18 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(path, fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 })).unwrap();
+        }
+        #[cfg(not(unix))]
+        let _ = exec;
+    }
+
+    /// An emulator file found whatever its permission bits: an AppImage,
+    /// on Windows an `.exe`.
+    fn program(stem: &str) -> String {
+        if cfg!(windows) {
+            format!("{stem}.exe")
+        } else {
+            format!("{stem}.AppImage")
         }
     }
 
@@ -557,8 +662,25 @@ mod tests {
         assert_eq!(id("edentool"), None);
         assert_eq!(id("mamehub"), None);
         assert_eq!(id("firefox"), None);
+        // Windows builds.
+        assert_eq!(id("pcsx2-qt.exe"), Some("PCSX2"));
+        assert_eq!(id("pcsx2-qtx64-avx2.exe"), Some("PCSX2"));
+        assert_eq!(id("duckstation-qt-x64-ReleaseLTCG.exe"), Some("DuckStation"));
+        assert_eq!(id("PPSSPPWindows64.exe"), Some("PPSSPP"));
+        assert_eq!(id("Ryujinx.exe"), Some("Ryujinx"));
+        assert_eq!(id("Vita3K.exe"), Some("Vita3K"));
+        assert_eq!(id("citra-qt.exe"), Some("Azahar"));
+        // Only Windows' `Dolphin.exe` is sure to be the emulator.
+        assert_eq!(id("Dolphin.exe"), cfg!(windows).then_some("Dolphin"));
+        // The other programs shipped next to an emulator.
+        assert_eq!(id("retroarch_debug.exe"), None);
+        assert_eq!(id("azahar-room.exe"), None);
+        assert_eq!(id("Ryujinx.Headless.SDL2.exe"), None);
+        assert_eq!(id("DolphinTool.exe"), None);
     }
 
+    // Execute bits are Linux's: on Windows only `.exe` files run.
+    #[cfg(unix)]
     #[test]
     fn walk_finds_executables_and_skips_game_dirs() {
         let d = tempfile::tempdir().unwrap();
@@ -581,13 +703,35 @@ mod tests {
         assert_eq!(names, ["DuckStation.AppImage", "Ryujinx", "Shadps4-sdl.AppImage", "pcsx2-v2.8.2.AppImage"]);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn walk_finds_windows_programs_and_skips_game_dirs() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        touch(&r.join(r"PS2\PCSX2\pcsx2-qt.exe"), false);
+        touch(&r.join(r"PS1\duckstation\duckstation-qt-x64-ReleaseLTCG.exe"), false);
+        touch(&r.join(r"GC\Dolphin-x64\Dolphin.exe"), false);
+        // Its tools and files: ignored.
+        touch(&r.join(r"GC\Dolphin-x64\DolphinTool.exe"), false);
+        touch(&r.join(r"PS2\PCSX2\pcsx2-qt.pdb"), false);
+        touch(&r.join(r"tools\ryujinx\Ryujinx"), false);
+        touch(&r.join(r"tools\RetroArch-Win64\retroarch_debug.exe"), false);
+        // Game folders are never entered.
+        touch(&r.join(r"PS2\games\pcsx2-demo.exe"), false);
+        let found = find_candidates(r, WalkLimits { max_depth: 4, ..Default::default() });
+        let mut names: Vec<String> = found.iter().map(|c| basename(&c.path)).collect();
+        names.sort();
+        assert_eq!(names, ["Dolphin.exe", "duckstation-qt-x64-ReleaseLTCG.exe", "pcsx2-qt.exe"]);
+        assert!(found.iter().all(|c| !c.wine), "Windows runs them as they are");
+    }
+
     #[test]
     fn huge_directories_are_skipped() {
         let d = tempfile::tempdir().unwrap();
         for i in 0..12 {
             touch(&d.path().join(format!("lib/file{i}.bin")), false);
         }
-        touch(&d.path().join("lib/pcsx2.AppImage"), true);
+        touch(&d.path().join("lib").join(program("pcsx2")), true);
         let found = find_candidates(d.path(), WalkLimits { max_dir_entries: 10, ..Default::default() });
         assert!(found.is_empty());
         let found = find_candidates(d.path(), WalkLimits::default());
@@ -598,12 +742,14 @@ mod tests {
     fn discovery_marks_configured_and_builds_profiles() {
         let d = tempfile::tempdir().unwrap();
         let home = d.path().to_str().unwrap().to_owned();
-        let pcsx2 = d.path().join("Applications/pcsx2-v2.8.2.AppImage");
+        // One of the usual folders of the home.
+        let apps = d.path().join(if cfg!(windows) { "Emulators" } else { "Applications" });
+        let pcsx2 = apps.join(program("pcsx2-v2.8.2"));
         touch(&pcsx2, true);
-        touch(&d.path().join("Applications/yuzu.AppImage"), true);
-        touch(&d.path().join("Games/Emu/PS3/rpcs3.AppImage"), true);
+        touch(&apps.join(program("yuzu")), true);
+        touch(&d.path().join("Games/Emu/PS3").join(program("rpcs3")), true);
         // RetroArch without cores is not listed.
-        touch(&d.path().join("Applications/RetroArch.AppImage"), true);
+        touch(&apps.join(program("RetroArch")), true);
         let existing = vec![UserEmulator {
             id: "e1".into(),
             definition_id: "custom".into(),
@@ -612,9 +758,9 @@ mod tests {
             launch_kind: "native".into(),
             ..Default::default()
         }];
-        let env = Env { home: home.clone() };
+        let env = env(&home);
         let discover = |existing: &[UserEmulator]| {
-            let roots: Vec<SearchRoot> = common_search_roots(&home, existing).into_iter().filter(|r| r.path.starts_with(&home)).collect();
+            let roots: Vec<SearchRoot> = common_search_roots(&env, existing).into_iter().filter(|r| r.path.starts_with(&home)).collect();
             discover_in_roots(&env, existing, &roots)
         };
         let found = discover(&existing);
@@ -630,8 +776,8 @@ mod tests {
         // Catalog order.
         let order: Vec<&str> = found.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(order, ["PCSX2", "RPCS3", "Yuzu"]);
-        // A core next to the AppImage makes RetroArch usable.
-        touch(&d.path().join("Applications/cores/snes9x_libretro.so"), false);
+        // A core next to the emulator makes RetroArch usable.
+        touch(&apps.join("cores").join(if cfg!(windows) { "snes9x_libretro.dll" } else { "snes9x_libretro.so" }), false);
         let found = discover(&existing);
         assert!(found.iter().any(|d| d.name == "RetroArch" && d.profiles[0].id == "snes"));
     }
@@ -640,24 +786,25 @@ mod tests {
     fn configured_folders_are_searched() {
         let d = tempfile::tempdir().unwrap();
         let root = d.path().join("elsewhere/PS2/emulator");
-        touch(&root.join("pcsx2.AppImage"), true);
-        touch(&d.path().join("elsewhere/PS1/emulator/duckstation-qt.AppImage"), true);
+        touch(&root.join(program("pcsx2")), true);
+        touch(&d.path().join("elsewhere/PS1/emulator").join(program("duckstation-qt")), true);
         let existing = vec![UserEmulator {
             id: "e1".into(),
             definition_id: "custom".into(),
-            executable: root.join("pcsx2.AppImage").to_str().unwrap().into(),
+            executable: root.join(program("pcsx2")).to_str().unwrap().into(),
             launch_kind: "native".into(),
             ..Default::default()
         }];
-        let roots = common_search_roots("/nowhere", &existing);
+        let nowhere = env("/nowhere");
+        let roots = common_search_roots(&nowhere, &existing);
         assert!(roots.iter().any(|r| r.path == root.to_str().unwrap()));
         let roots: Vec<SearchRoot> =
-            common_search_roots("/nowhere", &existing).into_iter().filter(|r| r.path.starts_with(d.path().to_str().unwrap())).collect();
-        let found = discover_in_roots(&Env { home: "/nowhere".into() }, &existing, &roots);
+            common_search_roots(&nowhere, &existing).into_iter().filter(|r| r.path.starts_with(d.path().to_str().unwrap())).collect();
+        let found = discover_in_roots(&nowhere, &existing, &roots);
         // Sibling emulator folders (`.../PS1/emulator`) are searched too.
         let names: HashSet<_> = found.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(names, HashSet::from(["PCSX2", "DuckStation"]));
-        let in_folder = discover_in_folder(&Env { home: "/nowhere".into() }, d.path().join("elsewhere").to_str().unwrap(), &existing);
+        let in_folder = discover_in_folder(&nowhere, d.path().join("elsewhere").to_str().unwrap(), &existing);
         let names: HashSet<_> = in_folder.iter().map(|d| d.name.as_str()).collect();
         assert_eq!(names, HashSet::from(["PCSX2", "DuckStation"]));
         assert!(in_folder.iter().all(|d| d.source == "chosen folder"));
@@ -668,12 +815,13 @@ mod tests {
         let h = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(h.path());
         let d = tempfile::tempdir().unwrap();
-        touch(&d.path().join("a/pcsx2-v2.8.AppImage"), true);
-        touch(&d.path().join("b/pcsx2-v2.7.AppImage"), true);
-        touch(&d.path().join("yuzu.AppImage"), true);
-        let env = Env { home: "/nowhere".into() };
+        touch(&d.path().join("a").join(program("pcsx2-v2.8")), true);
+        touch(&d.path().join("b").join(program("pcsx2-v2.7")), true);
+        touch(&d.path().join(program("yuzu")), true);
+        let env = env("/nowhere");
         let found = discover_in_folder(&env, d.path().to_str().unwrap(), &[]);
         assert_eq!(found.len(), 3);
+        assert!(found.iter().all(|d| d.launch_kind == "native"));
         let added = add_discovered(&paths, &found).unwrap();
         assert_eq!(added.len(), 3);
         let names: Vec<_> = added.iter().map(|e| e.name.as_str()).collect();
@@ -686,5 +834,59 @@ mod tests {
         assert_eq!(store::list_user_emulators(&paths).unwrap().len(), 3);
         let again = discover_in_folder(&env, d.path().to_str().unwrap(), &store::list_user_emulators(&paths).unwrap());
         assert!(again.iter().all(|d| d.already_added));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_install_folders_scoop_and_emudeck_are_searched() {
+        let d = tempfile::tempdir().unwrap();
+        let at = |rest: &str| d.path().join(rest);
+        let var = |k: &str, rest: &str| (k.to_string(), at(rest).to_string_lossy().into_owned());
+        let mut env = env(at("home").to_str().unwrap());
+        env.vars = HashMap::from([
+            var("ProgramFiles", "Program Files"),
+            var("ProgramFiles(x86)", "Program Files (x86)"),
+            var("LOCALAPPDATA", r"home\AppData\Local"),
+            var("APPDATA", r"home\AppData\Roaming"),
+            var("SystemDrive", "drive"),
+        ]);
+        touch(&at(r"Program Files\PCSX2\pcsx2-qt.exe"), false);
+        touch(&at(r"Program Files (x86)\PPSSPP\PPSSPPWindows64.exe"), false);
+        touch(&at(r"home\AppData\Local\Programs\Ryujinx\publish\Ryujinx.exe"), false);
+        touch(&at(r"drive\RetroArch-Win64\retroarch.exe"), false);
+        touch(&at(r"drive\RetroArch-Win64\cores\snes9x_libretro.dll"), false);
+        // Scoop: only the version it keeps up to date (`current`).
+        touch(&at(r"home\scoop\apps\duckstation\current\duckstation-qt-x64-ReleaseLTCG.exe"), false);
+        touch(&at(r"home\scoop\apps\duckstation\0.1-7\duckstation-qt-x64-ReleaseLTCG.exe"), false);
+        touch(&at(r"home\scoop\apps\firefox\current\firefox.exe"), false);
+        touch(&at(r"home\AppData\Roaming\EmuDeck\Emulators\Dolphin-x64\Dolphin.exe"), false);
+        touch(&at(r"home\Downloads\melonDS-windows\melonDS.exe"), false);
+        // Somewhere nobody looks.
+        touch(&at(r"elsewhere\xemu\xemu.exe"), false);
+        let found = discover_emulators(&env, &[]);
+        let by: HashMap<&str, (&str, &str)> = found.iter().map(|d| (d.name.as_str(), (d.executable.as_str(), d.source.as_str()))).collect();
+        let s = |rest: &str| at(rest).to_string_lossy().into_owned();
+        assert_eq!(by["PCSX2"], (s(r"Program Files\PCSX2\pcsx2-qt.exe").as_str(), "Program Files"));
+        assert_eq!(by["PPSSPP"].1, "Program Files (x86)");
+        assert_eq!(by["Ryujinx"].1, r"AppData\Local\Programs");
+        assert_eq!(by["RetroArch"].1, s(r"drive\").as_str());
+        assert_eq!(by["DuckStation"], (s(r"home\scoop\apps\duckstation\current\duckstation-qt-x64-ReleaseLTCG.exe").as_str(), "Scoop"));
+        assert_eq!(by["Dolphin"].1, "EmuDeck");
+        assert_eq!(by["melonDS"].1, r"~\Downloads");
+        assert_eq!(found.len(), 7, "{found:#?}");
+        assert!(found.iter().all(|d| d.launch_kind == "native" && d.flatpak_id.is_none()));
+        let ra = found.iter().find(|d| d.name == "RetroArch").unwrap();
+        assert_eq!(ra.profiles[0].core_path.as_deref(), Some(s(r"drive\RetroArch-Win64\cores\snes9x_libretro.dll").as_str()));
+        // Once configured, the old versions next to Scoop's `current` stay out.
+        let duck = found.iter().find(|d| d.name == "DuckStation").unwrap();
+        let configured = vec![UserEmulator {
+            id: "d".into(),
+            definition_id: "duckstation".into(),
+            executable: duck.executable.clone(),
+            launch_kind: "native".into(),
+            ..Default::default()
+        }];
+        let again = discover_emulators(&env, &configured);
+        assert!(again.iter().all(|d| !d.executable.contains("0.1-7")), "{again:#?}");
     }
 }

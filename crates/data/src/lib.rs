@@ -6,6 +6,9 @@ pub mod num;
 pub mod paths;
 pub mod proc;
 pub mod temps;
+/// Helpers for other crates' tests (fake command-line tools).
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod text;
 
 pub mod added;

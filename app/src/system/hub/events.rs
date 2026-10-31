@@ -159,19 +159,31 @@ fn notify_without_window(cx: &App, ev: &LaunchEvent) {
 pub(super) fn on_tray_cmd(cx: &mut App, cmd: TrayCmd) {
     log::info!("tray: {cmd:?}");
     match cmd {
-        TrayCmd::Show => {
-            show_window(cx);
-        }
+        TrayCmd::Show => show_from_tray(cx),
         TrayCmd::Toggle => {
             let open = hub(cx).0.borrow().window.is_some();
             if open {
                 close_window_keep_alive(cx);
             } else {
-                show_window(cx);
+                show_from_tray(cx);
             }
         }
         TrayCmd::Quit => request_quit(cx),
         TrayCmd::Launch(app_name) => launch(cx, LaunchRequest { app_name, ..Default::default() }, true, false),
+    }
+}
+
+/// [`show_window`] for the tray. On Windows a window it opens does not take
+/// the keyboard by itself (the tray's menu or Explorer keeps it): it is
+/// brought to the front like an open one.
+fn show_from_tray(cx: &mut App) {
+    let opening = hub(cx).0.borrow().window.is_none();
+    show_window(cx);
+    if cfg!(windows) && opening {
+        let handle = hub(cx).0.borrow().window.as_ref().map(|w| w.handle);
+        if let Some(handle) = handle {
+            handle.update(cx, |_, window, _| window.activate_window()).ok();
+        }
     }
 }
 

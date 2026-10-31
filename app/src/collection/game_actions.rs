@@ -271,7 +271,8 @@ impl CollectionView {
         }
         v.push(item(A::Log, "log", tr!("View log"), Icon::Description, "logs debug output ver registro depuracao saida"));
         // What Steam starts has no launch log of ours.
-        if game.installed && crate::diagnosis::reads(game) {
+        // The diagnosis reads Wine's and Proton's logs.
+        if game.installed && crate::diagnosis::reads(game) && heronite_platform::supported(heronite_platform::Feature::Wine) {
             v.push(item(
                 A::Troubleshoot,
                 "troubleshoot",

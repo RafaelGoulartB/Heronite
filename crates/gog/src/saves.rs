@@ -1,9 +1,11 @@
 //! Cloud saves of GOG games through `gogdl save-sync`.
 //!
 //! GOG describes where a game keeps its saves with `<?NAME?>` variables
-//! (Windows folders). The locations are resolved once to folders inside the
-//! game's Wine prefix and kept in the game's settings (`gogSaves`), so the
-//! user can see and edit them. Each location is synced on its own; the time
+//! (Windows folders). The locations are resolved once and kept in the game's
+//! settings (`gogSaves`), so the user can see and edit them: on Linux to
+//! folders inside the game's Wine prefix, on Windows to this user's own
+//! folders (`Saved Games`, `%LOCALAPPDATA%`, `%APPDATA%`, `Documents`, which
+//! may be in OneDrive), asked from Windows. Each location is synced on its own; the time
 //! of the last sync is remembered in `gog_store/saveTimestamps.json`.
 
 use std::path::{Path, PathBuf};
@@ -11,6 +13,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::{game_config, json_store, DataPaths};
 use heronite_i18n::tr;
+use heronite_launch::host::{run_mode, Os, RunMode};
 use heronite_launch::{PlanContext, Probe, SystemProbe};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -31,7 +34,7 @@ pub const SETTINGS_KEY: &str = "gogSaves";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SaveLocation {
     pub name: String,
-    /// Linux path inside the game's Wine prefix.
+    /// Linux path inside the game's Wine prefix; a folder of this PC on Windows.
     pub location: String,
 }
 
@@ -105,15 +108,19 @@ fn parse_remote(client_id: &str, doc: &Value) -> Vec<(String, String)> {
 }
 
 /// Where the Windows folders of the user live: `<home>` is
-/// `drive_c/users/<user>` of the prefix.
+/// `drive_c/users/<user>` of the prefix; `None` on Windows, where they are
+/// this user's own ([`known_folder`]).
 struct Folders<'a> {
     install: &'a str,
-    home: PathBuf,
+    home: Option<PathBuf>,
 }
 
 impl Folders<'_> {
     fn variable(&self, name: &str) -> Option<String> {
-        let sub = |rel: &str| self.home.join(rel).display().to_string();
+        let Some(home) = &self.home else {
+            return if name == "INSTALL" { Some(self.install.to_string()) } else { known_folder(name) };
+        };
+        let sub = |rel: &str| home.join(rel).display().to_string();
         Some(match name {
             "INSTALL" => self.install.to_string(),
             "APPLICATION_DATA_LOCAL" => sub("AppData/Local"),
@@ -126,27 +133,102 @@ impl Folders<'_> {
     }
 }
 
-/// `<?NAME?>` variables replaced, `\` turned into `/` (in the template only:
-/// the substituted paths are already Linux paths) and `.` / `..` / `//`
-/// collapsed. `None` for a variable that is not known.
+/// The folder of a GOG variable on Windows (`SHGetKnownFolderPath`).
+#[cfg(windows)]
+fn known_folder(name: &str) -> Option<String> {
+    use windows_sys::Win32::System::Com::CoTaskMemFree;
+    use windows_sys::Win32::UI::Shell::{
+        FOLDERID_Documents, FOLDERID_LocalAppData, FOLDERID_LocalAppDataLow, FOLDERID_RoamingAppData, FOLDERID_SavedGames,
+        SHGetKnownFolderPath, KF_FLAG_DONT_VERIFY,
+    };
+    let id = match name {
+        "APPLICATION_DATA_LOCAL" => &FOLDERID_LocalAppData,
+        "APPLICATION_DATA_LOCAL_LOW" => &FOLDERID_LocalAppDataLow,
+        "APPLICATION_DATA_ROAMING" => &FOLDERID_RoamingAppData,
+        "SAVED_GAMES" => &FOLDERID_SavedGames,
+        "DOCUMENTS" => &FOLDERID_Documents,
+        _ => return None,
+    };
+    let mut path: windows_sys::core::PWSTR = std::ptr::null_mut();
+    // A folder not made yet (`Saved Games` until a game uses it) still has
+    // its path: the sync creates it.
+    // SAFETY: `id` is a known folder id; on success `path` is a
+    // NUL-terminated string Windows allocated, freed below (also on failure,
+    // as the documentation asks).
+    unsafe {
+        let ok = SHGetKnownFolderPath(id, KF_FLAG_DONT_VERIFY as _, std::ptr::null_mut(), &mut path) == 0;
+        let text = (ok && !path.is_null()).then(|| {
+            let len = (0..).take_while(|&i| *path.add(i) != 0).count();
+            String::from_utf16_lossy(std::slice::from_raw_parts(path, len))
+        });
+        CoTaskMemFree(path as *const _);
+        text.filter(|t| !t.is_empty())
+    }
+}
+
+#[cfg(not(windows))]
+fn known_folder(_name: &str) -> Option<String> {
+    None
+}
+
+/// The path separator of the locations.
+const SEP: char = if cfg!(windows) { '\\' } else { '/' };
+
+/// `<?NAME?>` variables replaced, the template's separators turned into this
+/// system's (`/` on Linux: the substituted paths are already Linux paths) and
+/// `.` / `..` / doubled separators collapsed. `None` for a variable that is
+/// not known.
 fn resolve_template(template: &str, folders: &Folders) -> Option<String> {
     let mut out = String::new();
     let mut rest = template;
     while let Some(start) = rest.find("<?") {
-        out.push_str(&rest[..start].replace('\\', "/"));
+        out.push_str(&native_separators(&rest[..start]));
         let after = &rest[start + 2..];
         let end = after.find("?>")?;
         out.push_str(&folders.variable(&after[..end])?);
         rest = &after[end + 2..];
     }
-    out.push_str(&rest.replace('\\', "/"));
+    out.push_str(&native_separators(rest));
     Some(collapse(&out))
+}
+
+fn native_separators(text: &str) -> String {
+    if cfg!(windows) {
+        text.replace('/', "\\")
+    } else {
+        text.replace('\\', "/")
+    }
 }
 
 /// Lexical `.` / `..` / empty-component removal.
 fn collapse(path: &str) -> String {
+    if cfg!(windows) {
+        let path = path.replace('/', "\\");
+        // `\\server\share`: the two leading separators stay.
+        let unc = path.starts_with("\\\\");
+        let mut parts: Vec<&str> = Vec::new();
+        for part in path.split('\\') {
+            match part {
+                "" | "." => {}
+                // Never above the drive.
+                ".." if parts.len() > 1 => {
+                    parts.pop();
+                }
+                ".." => {}
+                p => parts.push(p),
+            }
+        }
+        let joined = parts.join("\\");
+        return if unc {
+            format!("\\\\{joined}")
+        } else if path.starts_with('\\') {
+            format!("\\{joined}")
+        } else {
+            joined
+        };
+    }
     let mut parts: Vec<&str> = Vec::new();
-    for part in path.split('/') {
+    for part in path.split(SEP) {
         match part {
             "" | "." => {}
             ".." => {
@@ -174,9 +256,10 @@ fn system_user() -> String {
     std::env::var("USER").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| "user".to_string())
 }
 
-/// The templates resolved against the game's Wine prefix.
-fn resolve_all(templates: &[(String, String)], install: &str, prefix: &str, proton: bool, user: &str) -> Vec<SaveLocation> {
-    let folders = Folders { install, home: user_home(prefix, proton, user) };
+/// The templates resolved against the game's Wine prefix (`prefix: None`:
+/// this PC's own folders, Windows).
+fn resolve_all(templates: &[(String, String)], install: &str, prefix: Option<(&str, bool)>, user: &str) -> Vec<SaveLocation> {
+    let folders = Folders { install, home: prefix.map(|(prefix, proton)| user_home(prefix, proton, user)) };
     templates
         .iter()
         .filter_map(|(name, template)| match resolve_template(template, &folders) {
@@ -227,12 +310,16 @@ fn locations_with(paths: &DataPaths, app_name: &str, force: bool, fetch: &dyn Fn
     let doc: Value = serde_json::from_str(&body).context("invalid answer from GOG")?;
     let templates = parse_remote(&client, &doc);
 
-    let settings = heronite_launch::settings::load_game_settings(paths, app_name, &PlanContext::load(paths).global, &SystemProbe);
-    if settings.wine_prefix.is_empty() && !templates.is_empty() {
-        bail!(tr!("This game has no Wine prefix yet; choose one in its Wine settings"));
-    }
-    let proton = settings.wine_version.kind == "proton";
-    let list = resolve_all(&templates, &game.install_path, &settings.wine_prefix, proton, &system_user());
+    let list = if run_mode(Os::Windows) == RunMode::Native {
+        resolve_all(&templates, &game.install_path, None, "")
+    } else {
+        let settings = heronite_launch::settings::load_game_settings(paths, app_name, &PlanContext::load(paths).global, &SystemProbe);
+        if settings.wine_prefix.is_empty() && !templates.is_empty() {
+            bail!(tr!("This game has no Wine prefix yet; choose one in its Wine settings"));
+        }
+        let proton = settings.wine_version.kind == "proton";
+        resolve_all(&templates, &game.install_path, Some((&settings.wine_prefix, proton)), &system_user())
+    };
     game_config::set_game_setting(paths, app_name, &SystemProbe.home(), SETTINGS_KEY, json!(list))?;
     Ok(list)
 }
@@ -343,12 +430,15 @@ fn run_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::{calls, fake, setup};
+    use crate::cmd::testing::*;
 
+    #[cfg(unix)]
     fn folders(prefix: &str, proton: bool) -> Folders<'static> {
-        Folders { install: "/games/g", home: user_home(prefix, proton, "rafa") }
+        Folders { install: "/games/g", home: Some(user_home(prefix, proton, "rafa")) }
     }
 
+    // Wine prefixes: Linux.
+    #[cfg(unix)]
     #[test]
     fn variables_resolve_inside_a_wine_prefix() {
         let f = folders("/pfx", false);
@@ -364,6 +454,8 @@ mod tests {
         assert!(resolve_template("<?INSTALL", &f).is_none());
     }
 
+    // Wine prefixes: Linux.
+    #[cfg(unix)]
     #[test]
     fn proton_uses_the_pfx_folder_and_steamuser() {
         let f = folders("/pfx", true);
@@ -399,6 +491,7 @@ mod tests {
         game.display().to_string()
     }
 
+    /// The game's Wine prefix (Linux; Windows does not read it).
     fn set_prefix(paths: &DataPaths, prefix: &Path, proton: bool) {
         let kind = if proton { "proton" } else { "wine" };
         game_config::set_game_setting(paths, "42", "/home/x", "winePrefix", json!(prefix.display().to_string())).unwrap();
@@ -406,7 +499,13 @@ mod tests {
             .unwrap();
     }
 
+    #[cfg(unix)]
     const REMOTE: &str = r#"{"content":{"Windows":{"cloudStorage":{"enabled":true,"locations":[{"name":"saves","location":"<?APPLICATION_DATA_LOCAL?>\\Game\\Saves"}]}}}}"#;
+
+    /// Saves in the install folder: the same on every system, and no test
+    /// writes to the user's own folders.
+    const IN_INSTALL: &str =
+        r#"{"content":{"Windows":{"cloudStorage":{"enabled":true,"locations":[{"name":"saves","location":"<?INSTALL?>\\Saves"}]}}}}"#;
 
     #[test]
     fn supported_needs_a_windows_install_and_a_client_id() {
@@ -431,6 +530,8 @@ mod tests {
         assert_eq!(client_id(&paths, "42", &game).as_deref(), Some("from-manifest"));
     }
 
+    // Wine prefixes: Linux.
+    #[cfg(unix)]
     #[test]
     fn locations_are_fetched_once_and_kept_in_the_game_settings() {
         let (dir, paths) = setup();
@@ -463,10 +564,10 @@ mod tests {
         set_prefix(&paths, &dir.path().join("pfx"), true);
         let off = |_: &str| Ok(r#"{"content":{"Windows":{"cloudStorage":{"enabled":false}}}}"#.to_string());
         assert!(locations_with(&paths, "42", false, &off).unwrap().is_empty());
-        let g = fake(dir.path(), &paths, "echo 1");
-        let out = run_sync(&paths, &g, "42", None, &off).unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out("1"));
+        let out = run_sync(&paths, &gogdl(&tool, &paths), "42", None, &off).unwrap();
         assert!(out.contains("no cloud saves"), "{out}");
-        assert!(calls(dir.path()).is_empty());
+        assert!(calls_of(&tool).is_empty());
         let offline = |_: &str| -> Result<String> { bail!("offline") };
         assert!(locations_with(&paths, "99", true, &offline).is_err());
     }
@@ -474,24 +575,24 @@ mod tests {
     #[test]
     fn syncing_runs_gogdl_per_location_and_remembers_the_time() {
         let (dir, paths) = setup();
-        install(dir.path(), &paths, "windows", Some("777"));
-        let prefix = dir.path().join("pfx");
-        set_prefix(&paths, &prefix, true);
-        let fetch = |_: &str| Ok(REMOTE.to_string());
-        let g = fake(dir.path(), &paths, "echo '[SAVES] INFO: Done' >&2; echo '[SAVES] DEBUG: noise' >&2; echo 1700000000.5");
+        let game = install(dir.path(), &paths, "windows", Some("777"));
+        set_prefix(&paths, &dir.path().join("pfx"), true);
+        let fetch = |_: &str| Ok(IN_INSTALL.to_string());
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[SAVES] INFO: Done").err("[SAVES] DEBUG: noise").out("1700000000.5"));
+        let g = gogdl(&tool, &paths);
         let out = run_sync(&paths, &g, "42", None, &fetch).unwrap();
         assert!(out.contains("Done") && !out.contains("noise"), "{out}");
 
-        let place = prefix.join("pfx/drive_c/users/steamuser/AppData/Local/Game/Saves");
+        let place = Path::new(&game).join("Saves");
         assert!(place.is_dir(), "the location is created first");
-        let first = &calls(dir.path())[0];
+        let first = &calls_of(&tool)[0];
         assert_eq!(first, &format!("save-sync {} 42 --os windows --ts 0 --name saves", place.display()));
         let doc = json_store::read_value(&paths.gog_store("saveTimestamps")).unwrap();
         assert_eq!(doc["42"]["saves"], "1700000000.5");
 
         // The next run passes the stored time, with the flag of the mode.
         run_sync(&paths, &g, "42", SyncMode::ForceUpload.flag(), &fetch).unwrap();
-        assert!(calls(dir.path())[1].ends_with("--ts 1700000000.5 --name saves --force-upload"), "{:?}", calls(dir.path()));
+        assert!(calls_of(&tool)[1].ends_with("--ts 1700000000.5 --name saves --force-upload"), "{:?}", calls_of(&tool));
     }
 
     #[test]
@@ -502,8 +603,8 @@ mod tests {
         let loc = SaveLocation { name: "n".into(), location: "/l".into() };
         assert_eq!(sync_args(&loc, "42", "0", Some("--skip-upload")).last().unwrap(), "--skip-upload");
         let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "true");
-        assert!(sync_flag(&paths, &g, "42", "--bogus").is_err());
+        let tool = fake_tool(dir.path());
+        assert!(sync_flag(&paths, &gogdl(&tool, &paths), "42", "--bogus").is_err());
         assert_eq!(parse_timestamp("noise\n1.5\n"), Some("1.5".to_string()));
         assert_eq!(parse_timestamp("1.5\nnot a time\n"), None);
     }
@@ -513,12 +614,52 @@ mod tests {
         let (dir, paths) = setup();
         install(dir.path(), &paths, "windows", Some("777"));
         set_prefix(&paths, &dir.path().join("pfx"), false);
-        let fetch = |_: &str| Ok(REMOTE.to_string());
+        let fetch = |_: &str| Ok(IN_INSTALL.to_string());
         store_timestamp(&paths, "42", "saves", "5").unwrap();
-        let g = fake(dir.path(), &paths, "echo '[API] ERROR: no token' >&2; exit 1");
-        let err = run_sync(&paths, &g, "42", None, &fetch).unwrap_err().to_string();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[API] ERROR: no token").exit(1));
+        let err = run_sync(&paths, &gogdl(&tool, &paths), "42", None, &fetch).unwrap_err().to_string();
         assert!(err.contains("no token"), "{err}");
         assert_eq!(timestamp(&paths, "42", "saves"), "5");
         assert_eq!(timestamp(&paths, "42", "other"), "0");
+    }
+
+    #[cfg(windows)]
+    mod windows {
+        use super::*;
+
+        fn here() -> Folders<'static> {
+            Folders { install: r"D:\Games\G", home: None }
+        }
+
+        /// Resolution only: nothing is created in the user's folders.
+        #[test]
+        fn variables_resolve_to_this_users_folders() {
+            let f = here();
+            let r = |t: &str| resolve_template(t, &f).unwrap();
+            let known = |n: &str| known_folder(n).unwrap();
+            assert_eq!(r(r"<?INSTALL?>\saves\slot1"), r"D:\Games\G\saves\slot1");
+            assert_eq!(r("<?INSTALL?>/a/../b//./c"), r"D:\Games\G\b\c");
+            assert_eq!(r(r"<?SAVED_GAMES?>\Studio\Game"), format!(r"{}\Studio\Game", known("SAVED_GAMES")));
+            assert_eq!(r("<?APPLICATION_DATA_ROAMING?>/Game"), format!(r"{}\Game", known("APPLICATION_DATA_ROAMING")));
+            assert_eq!(r(r"<?DOCUMENTS?>\My Games\G"), format!(r"{}\My Games\G", known("DOCUMENTS")));
+            assert!(known("SAVED_GAMES").ends_with("Saved Games"), "{}", known("SAVED_GAMES"));
+            assert!(known("APPLICATION_DATA_LOCAL_LOW").ends_with("LocalLow"));
+            let local = known("APPLICATION_DATA_LOCAL");
+            assert_eq!(Some(local.as_str()), std::env::var("LOCALAPPDATA").ok().as_deref());
+            assert_eq!(r(r"<?APPLICATION_DATA_LOCAL?>\..\..\.."), collapse(&format!(r"{local}\..\..\..")));
+            assert!(resolve_template(r"<?NOPE?>\x", &f).is_none());
+            // Never above the drive.
+            assert_eq!(collapse(r"C:\a\..\..\..\b"), r"C:\b");
+            assert_eq!(collapse(r"\\server\share\x\..\y"), r"\\server\share\y");
+        }
+
+        #[test]
+        fn locations_need_no_wine_prefix_on_windows() {
+            let (dir, paths) = setup();
+            let game = install(dir.path(), &paths, "windows", Some("777"));
+            let fetch = |_: &str| Ok(IN_INSTALL.to_string());
+            let list = locations_with(&paths, "42", false, &fetch).unwrap();
+            assert_eq!(list, [SaveLocation { name: "saves".into(), location: format!(r"{game}\Saves") }]);
+        }
     }
 }

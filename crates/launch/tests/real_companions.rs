@@ -4,6 +4,9 @@
 //!   HERONITE_REAL_PROTON=~/.local/share/heronite/tools/proton/GE-Proton-latest \
 //!   cargo test -p heronite-launch --test real_companions -- --ignored --nocapture --test-threads=1
 
+// Real Proton: Linux only.
+#![cfg(unix)]
+
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

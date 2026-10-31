@@ -9,11 +9,18 @@
 //! if the UI thread is stuck: a signal while a quit is already under way (a
 //! second signal, or one after a menu Quit) ends the process at once with
 //! `128 + signal`.
+//!
+//! Windows has no such signals for a windowed app: the session's end reaches
+//! the window instead, and [`spawn`] installs nothing.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+use futures::channel::mpsc::UnboundedReceiver;
+#[cfg(unix)]
+use futures::channel::mpsc::{unbounded, UnboundedSender};
+#[cfg(unix)]
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
+#[cfg(unix)]
 use signal_hook::iterator::Signals;
 
 /// Set by the hub when its graceful quit starts.
@@ -24,11 +31,13 @@ pub fn quit_started() {
     QUITTING.store(true, Ordering::SeqCst);
 }
 
+#[cfg(unix)]
 /// Exit status after a signal, as a shell reports it.
 pub fn exit_code_for(signal: i32) -> i32 {
     128 + signal
 }
 
+#[cfg(unix)]
 /// What to do with a signal given what happened before. Separate from the
 /// thread so it can be tested.
 #[derive(Debug, PartialEq, Eq)]
@@ -39,6 +48,7 @@ pub enum Action {
     ExitNow(i32),
 }
 
+#[cfg(unix)]
 pub fn decide(signal: i32, quit_under_way: bool, already_signalled: bool) -> Action {
     if quit_under_way || already_signalled {
         Action::ExitNow(exit_code_for(signal))
@@ -50,6 +60,12 @@ pub fn decide(signal: i32, quit_under_way: bool, already_signalled: bool) -> Act
 /// Starts the signal thread. The receiver gets the signal numbers that ask
 /// for a graceful quit. `None` if the signals cannot be registered (the app
 /// then runs without them).
+#[cfg(not(unix))]
+pub fn spawn() -> Option<UnboundedReceiver<i32>> {
+    None
+}
+
+#[cfg(unix)]
 pub fn spawn() -> Option<UnboundedReceiver<i32>> {
     let mut signals = match Signals::new([SIGTERM, SIGINT, SIGHUP]) {
         Ok(s) => s,
@@ -69,6 +85,7 @@ pub fn spawn() -> Option<UnboundedReceiver<i32>> {
     }
 }
 
+#[cfg(unix)]
 fn run(signals: &mut Signals, tx: UnboundedSender<i32>) {
     let mut signalled = false;
     for signal in signals.forever() {
@@ -89,7 +106,7 @@ fn run(signals: &mut Signals, tx: UnboundedSender<i32>) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

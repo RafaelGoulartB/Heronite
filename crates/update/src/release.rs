@@ -43,6 +43,33 @@ pub struct Release {
     /// `.minisig` signatures.
     #[serde(default)]
     pub packages: Vec<Asset>,
+    /// The Windows setup and portable zip ([`WindowsAsset`]) and their
+    /// `.minisig` signatures.
+    #[serde(default)]
+    pub windows: Vec<Asset>,
+}
+
+/// The Windows downloads of a release, found by their exact names.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowsAsset {
+    /// `Heronite-Setup-x86_64.exe`: the per-user installer.
+    Setup,
+    /// `Heronite-Portable-x86_64.zip`: the portable copy (`Heronite/` inside).
+    Portable,
+}
+
+impl WindowsAsset {
+    pub fn file_name(self) -> String {
+        match self {
+            WindowsAsset::Setup => format!("Heronite-Setup-{ARCH}.exe"),
+            WindowsAsset::Portable => format!("Heronite-Portable-{ARCH}.zip"),
+        }
+    }
+
+    fn of(name: &str) -> bool {
+        let name = name.strip_suffix(".minisig").unwrap_or(name);
+        [WindowsAsset::Setup, WindowsAsset::Portable].iter().any(|k| k.file_name() == name)
+    }
 }
 
 impl Release {
@@ -70,6 +97,18 @@ impl Release {
     pub fn package_signature(&self, package: Package) -> Option<&Asset> {
         let name = format!("{}.minisig", self.package(package)?.name);
         self.packages.iter().find(|a| a.name == name)
+    }
+
+    /// The Windows download `kind`.
+    pub fn windows_asset(&self, kind: WindowsAsset) -> Option<&Asset> {
+        let name = kind.file_name();
+        self.windows.iter().find(|a| a.name == name)
+    }
+
+    /// The signature of [`Release::windows_asset`].
+    pub fn windows_signature(&self, kind: WindowsAsset) -> Option<&Asset> {
+        let name = format!("{}.minisig", kind.file_name());
+        self.windows.iter().find(|a| a.name == name)
     }
 
     /// `2026-10-11` from [`Release::published_at`].
@@ -148,6 +187,7 @@ pub fn parse_latest(json: &str) -> Result<Release> {
             })
             .map(Asset::from)
             .collect(),
+        windows: r.assets.iter().filter(|a| WindowsAsset::of(&a.name)).map(Asset::from).collect(),
     })
 }
 
@@ -263,10 +303,37 @@ mod tests {
     }
 
     #[test]
+    fn finds_the_windows_assets_by_their_exact_names() {
+        let json = gh(
+            "v0.3.0",
+            &[
+                "Heronite-Setup-x86_64.exe",
+                "Heronite-Setup-x86_64.exe.minisig",
+                "Heronite-Portable-x86_64.zip",
+                "Heronite-Portable-0.3.0-x86_64.zip",
+                "Heronite-Portable-x86_64.zip.sha256",
+                "Heronite-x86_64.AppImage",
+            ],
+        );
+        let r = parse_latest(&json).unwrap();
+        if ARCH == "x86_64" {
+            assert_eq!(r.windows.len(), 3);
+            assert_eq!(r.windows_asset(WindowsAsset::Setup).unwrap().url, "https://dl/Heronite-Setup-x86_64.exe");
+            assert_eq!(r.windows_signature(WindowsAsset::Setup).unwrap().name, "Heronite-Setup-x86_64.exe.minisig");
+            assert_eq!(r.windows_asset(WindowsAsset::Portable).unwrap().size, 42);
+            // Unsigned: not installable, only announced.
+            assert!(r.windows_signature(WindowsAsset::Portable).is_none());
+        }
+        let none = parse_latest(&gh("v0.3.0", &["Heronite-x86_64.AppImage"])).unwrap();
+        assert!(none.windows.is_empty() && none.windows_asset(WindowsAsset::Setup).is_none());
+    }
+
+    #[test]
     fn stored_release_without_packages_still_reads() {
         let r = parse_latest(&gh("v0.1.4", &["Heronite-x86_64.AppImage"])).unwrap();
         let mut v = serde_json::to_value(&r).unwrap();
         v.as_object_mut().unwrap().remove("packages");
+        v.as_object_mut().unwrap().remove("windows");
         let back: Release = serde_json::from_value(v).unwrap();
         assert_eq!(back, r);
     }

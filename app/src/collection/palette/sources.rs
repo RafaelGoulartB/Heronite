@@ -182,6 +182,9 @@ fn section_help(s: Section) -> &'static str {
         Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
+        Section::Storage if !heronite_platform::supported(heronite_platform::Feature::Wine) => {
+            tr!("Disk space of games, store tools, caches")
+        }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
         Section::Overlay => tr!("Guide button panel over games (beta)"),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
@@ -255,7 +258,8 @@ pub(super) fn static_entries() -> Vec<Entry> {
         "stats playtime hours activity chart most played estatisticas tempo de jogo horas atividade grafico mais jogados",
     ));
     v.push(page(Page::Settings, tr!("Global settings"), "Ctrl ,", "preferences options config preferencias opcoes configuracoes ajustes"));
-    for s in Section::ALL {
+    v.retain(|e| !matches!(e.act, Act::Go(p) if !p.available()));
+    for s in Section::ALL.into_iter().filter(|s| s.available()) {
         let mut e = Entry::new(
             Kind::Page,
             Act::Section(s),
@@ -793,6 +797,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn static_entries_list_every_page_section_and_action() {
         let v = static_entries();
@@ -836,6 +842,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn ids_are_unique_and_stable() {
         let v = static_entries();
@@ -848,6 +856,8 @@ mod tests {
         assert_eq!(ids.len(), v.len());
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn shortcuts_shown_are_the_ones_that_exist() {
         let v = static_entries();

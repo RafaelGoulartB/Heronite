@@ -33,6 +33,16 @@ pub fn last_backup(paths: &DataPaths, title: &str, steam_app_id: Option<&str>) -
     if !settings.enabled {
         return None;
     }
+    if cfg!(windows) {
+        // No `HOME` there: the user's folder, and Ludusavi's config where
+        // the program found (or set in Settings) keeps it.
+        use heronite_launch::probe::Probe as _;
+        let probe = heronite_launch::SystemProbe;
+        let binary = super::detect::resolve_binary(&probe, Some(settings.binary_path.as_str()));
+        let config = super::detect::windows_config_file(&probe, binary.as_deref());
+        let root = backup_root(settings.use_installed_config, &settings.backup_path, Some(Path::new(&config)), &probe.home())?;
+        return find_in(&root, title, steam_app_id);
+    }
     let home = std::env::var_os("HOME");
     let config = ludusavi_config_path(std::env::var_os("XDG_CONFIG_HOME"), home.as_deref());
     let root = backup_root(

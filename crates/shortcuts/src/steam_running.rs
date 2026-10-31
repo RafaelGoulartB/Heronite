@@ -230,6 +230,7 @@ pub fn add_with_url_handler(h: &UrlHandler, steam: &Path, game: &GameId, spec: &
 mod tests {
     use super::*;
     use crate::steam_client::testing::start;
+    #[cfg(unix)]
     use crate::vdf::{self, Document, Entry, Node};
     use serde_json::json;
 
@@ -339,6 +340,8 @@ mod tests {
     }
 
     /// A `steam` that records its argument and an entry Steam would have written.
+    /// Unix only: it is a shell script.
+    #[cfg(unix)]
     #[test]
     fn url_handler_writes_the_wrapper_and_places_artwork() {
         let dir = tempfile::tempdir().unwrap();

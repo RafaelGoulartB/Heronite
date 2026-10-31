@@ -8,6 +8,7 @@ description = "Game launching, playtime tracking and session recording compatibl
 [dependencies]
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
+heronite-platform = { path = "../platform" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"
@@ -20,6 +21,7 @@ ureq = "3"
 toml = "0.8"
 
 [dev-dependencies]
+heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
 
 [lints]

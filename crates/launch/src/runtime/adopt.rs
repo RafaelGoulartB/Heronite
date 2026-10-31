@@ -94,6 +94,9 @@ pub(super) enum Tracked {
         cloud_saves: Option<CloudSaves>,
         #[serde(default)]
         keep_awake: bool,
+        /// The app itself held the computer awake (Windows).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        hold_awake: bool,
     },
     /// A Steam game: the pids Steam's logs named, with their start ticks.
     #[serde(rename_all = "camelCase")]
@@ -181,6 +184,7 @@ pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::Proce
         after_script: plan.after_script.clone(),
         cloud_saves: plan.prep.cloud_saves.clone(),
         keep_awake: plan.keep_awake.is_some(),
+        hold_awake: plan.hold_awake,
     })
 }
 
@@ -323,7 +327,7 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
     let log = GameLog::continuing(path, disabled_globally || !verbose);
     log.info("The app was restarted; following the game again");
     match &entry.tracked {
-        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, .. } => {
+        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, hold_awake, .. } => {
             let services = shared.services.lock().unwrap().clone();
             let status = |n: Notice| {
                 if n.warning {
@@ -338,9 +342,13 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
                 .then(|| crate::keep_awake::command(&*services.probe, &entry.title, std::process::id()))
                 .flatten()
                 .and_then(|cmd| shared.spawner.spawn(&cmd, None).ok());
+            let held = hold_awake.then(|| super::process::hold_awake(&log, &entry.title)).flatten();
             let aborted = follow_group(&shared, &control, *pid, *start_ticks);
             if let Some(h) = awake.as_mut() {
                 h.terminate();
+            }
+            if let Some(held) = held {
+                held.release();
             }
             let stopped = control.kill.load(Ordering::SeqCst);
             if !aborted && !stopped {

@@ -4,7 +4,6 @@
 //! use a client already installed in a prefix of the user's.
 
 use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -125,7 +124,7 @@ pub fn install(paths: &DataPaths, client: Client, home: &str, cancel: &Cancel, o
     command.env.insert(UMU_NSENTER.into(), "1".into());
     let _ = writeln!(log, "$ {}", command.display());
     let mut process = spawn::std_command(&command);
-    process.stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log.try_clone()?).process_group(0);
+    heronite_platform::process::new_group(process.stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log.try_clone()?));
     // Not tied to the app: the installer may become the client.
     let child = heronite_data::proc::spawn(&mut process)
         .map_err(|e| anyhow!(tr!("Could not start {program}: {error}", program = command.program, error = e)))?;
@@ -280,7 +279,6 @@ pub fn forget(paths: &DataPaths, client: Client) -> Result<()> {
 mod tests {
     use super::*;
     use heronite_launch::procs::FakeProcs;
-    use std::os::unix::fs::PermissionsExt;
 
     const HOME: &str = "/home/tester";
 
@@ -291,7 +289,8 @@ mod tests {
     }
 
     /// A Proton that makes a prefix and puts the client in it, for the test
-    /// to run a whole setup without Wine.
+    /// to run a whole setup without Wine. Unix only: it needs `sh`.
+    #[cfg(unix)]
     fn fake_proton(dir: &Path) -> PathBuf {
         let script = dir.join("proton");
         let body = r#"#!/bin/sh
@@ -307,7 +306,7 @@ case "$1" in
 esac
 "#;
         std::fs::write(&script, body).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        heronite_platform::fs::make_executable(&script).unwrap();
         script
     }
 
@@ -318,6 +317,7 @@ esac
 
     /// The client's settings file with only Proton's own launcher asked for
     /// (a file made by a setting change would also name the shared prefix).
+    #[cfg(unix)]
     fn run_proton_directly(paths: &DataPaths, client: Client) {
         let app = client.config_app();
         std::fs::create_dir_all(paths.games_config_dir()).unwrap();
@@ -335,6 +335,7 @@ esac
         assert_eq!(default_prefix(&paths, Client::Rockstar, HOME), PathBuf::from("/data/prefixes/Rockstar Games Launcher"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_default_wine_must_be_there_to_count() {
         let (dir, paths) = paths();
@@ -437,6 +438,7 @@ esac
         assert_eq!(prefix_of(&paths, Client::BattleNet, HOME), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_whole_setup_with_a_fake_proton() {
         let (dir, paths) = paths();
@@ -471,13 +473,15 @@ esac
         assert_eq!(again, [Step::Installing]);
     }
 
+    // The fake Proton is a shell script.
+    #[cfg(unix)]
     #[test]
     fn a_setup_that_leaves_no_client_says_where_to_look() {
         let (dir, paths) = paths();
         let home = dir.path().to_string_lossy().into_owned();
         let script = dir.path().join("proton");
         std::fs::write(&script, "#!/bin/sh\nmkdir -p \"$WINEPREFIX/pfx/drive_c\" \"$WINEPREFIX/pfx/dosdevices\"\n: > \"$WINEPREFIX/pfx/system.reg\"\n: > \"$WINEPREFIX/pfx/user.reg\"\n").unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        heronite_platform::fs::make_executable(&script).unwrap();
         set_default_wine(&paths, &script);
         game_config::set_global_setting(&paths, &home, "defaultWinePrefixDir", json!(dir.path().join("prefixes"))).unwrap();
         run_proton_directly(&paths, Client::Rockstar);

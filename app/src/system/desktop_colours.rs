@@ -106,6 +106,7 @@ fn read(portal: Option<Rgb>) -> DesktopColours {
 }
 
 /// The portal's accent; its channels out of 0..=1 mean the desktop has none.
+#[cfg(any(test, target_os = "linux"))]
 fn portal_rgb((r, g, b): (f64, f64, f64)) -> Option<Rgb> {
     let ch = |v: f64| (0.0..=1.0).contains(&v).then(|| (v * 255.).round() as u8);
     Some((ch(r)?, ch(g)?, ch(b)?))

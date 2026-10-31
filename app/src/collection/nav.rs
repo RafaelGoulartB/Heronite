@@ -12,6 +12,7 @@ use crate::pages::{self, Page, PageCtx, PageEvent};
 use crate::services::downloads::Store;
 use crate::theme;
 use crate::ui::dropdown::{menu_separator, Align};
+use crate::ui::window_controls;
 use crate::ui::{glass, icon};
 use heronite_data::clients::Client;
 use heronite_i18n::{tr, trn};
@@ -57,7 +58,7 @@ impl Pages {
 
     /// The store page the "Stores" entry opens.
     pub(super) fn stores_page(&self) -> Page {
-        self.last_store.unwrap_or(Page::Epic)
+        self.last_store.or_else(|| pages::stores::shown().first().copied()).unwrap_or(Page::Steam)
     }
 }
 
@@ -344,7 +345,7 @@ impl CollectionView {
                     if i > 0 {
                         p = p.child(menu_separator());
                     }
-                    for &page in group {
+                    for &page in group.iter().filter(|p| p.available()) {
                         let is_stores = pages::stores::is_store_page(page);
                         let (id, ic, title) = if is_stores {
                             (SharedString::from("nav-stores"), Icon::Storefront, pages::stores::title())
@@ -402,6 +403,9 @@ impl CollectionView {
     pub(super) fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         self.open_menu = None;
         self.context_menu = None;
+        if !page.available() {
+            return;
+        }
         if page == Page::Downloads || self.page == Page::Downloads {
             self.pages.downloads_seen = heronite_epic::queue::now_ms();
         }
@@ -873,7 +877,7 @@ impl CollectionView {
     }
 
     /// Header + body of the current non-Collection page.
-    pub(super) fn render_page(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn render_page(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let view = match self.page {
             Page::Collection => return None,
             Page::Downloads => self.pages.downloads.clone(),
@@ -890,15 +894,24 @@ impl CollectionView {
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
         }?;
-        let header =
-            div().flex().flex_none().items_center().h(theme::HEADER_H).px(px(12.)).gap(px(10.)).child(self.nav_dropdown(cx)).child(
+        let header = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .h(theme::HEADER_H)
+            .px(px(12.))
+            .gap(px(10.))
+            .child(self.nav_dropdown(cx))
+            .child(
                 div()
                     .font_family(theme::font_heading())
                     .text_size(px(17.6))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::page_title())
                     .child(if pages::stores::is_store_page(self.page) { pages::stores::title() } else { self.page.title() }),
-            );
+            )
+            .child(window_controls::drag_area(div().id("page-drag").flex_1().h_full(), window))
+            .children(window_controls::controls(window));
         Some(
             div()
                 .absolute()

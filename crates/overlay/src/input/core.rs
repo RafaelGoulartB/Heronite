@@ -1,5 +1,5 @@
 //! What the Guide button does, without devices: pure, so it is tested
-//! without a controller. The thread in `input::mod` feeds it the presses of
+//! without a controller. The thread in `input::linux` feeds it the presses of
 //! every controller and applies the grabs it asks for.
 //!
 //! - Guide down grabs that controller at once, so what follows (RB, ↑ ↓)

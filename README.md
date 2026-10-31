@@ -11,26 +11,23 @@
     <img alt="Latest release" src="https://img.shields.io/github/v/release/RafaelGoulartB/Heronite?color=2B8CA8&label=release" />
   </a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-2B8CA8.svg?logo=rust&logoColor=white" />
-  <img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-2B8CA8.svg?logo=linux&logoColor=white" />
+  <img alt="Platform: Linux and Windows" src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows-2B8CA8.svg" />
   <a href="https://github.com/RafaelGoulartB/Heronite/releases">
     <img alt="Downloads" src="https://img.shields.io/github/downloads/RafaelGoulartB/Heronite/total?color=2B8CA8&logo=github&label=downloads" />
   </a>
 </p>
 
 <p align="center">
-  Every game you own, on Linux, in one fast native launcher.
+  Every game you own, on Linux and Windows, in one fast native launcher.
 </p>
 
 https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
 
-> [!NOTE]
-> **Windows support is coming soon.** Heronite runs on Linux today, and a Windows version is on the way.
-
-Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them through Wine/Proton or an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
+Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
 
 ## Your library, organized
 
-- **Collection:** a list with a details panel (Focus) or a grid of covers. Group by status, store, genre, series, year and more. The details show screenshots, How Long To Beat, ProtonDB and anti-cheat status, achievements, and a play timeline.
+- **Collection:** a list with a details panel (Focus) or a grid of covers. Group by status, store, genre, series, year and more. The details show screenshots, How Long To Beat, achievements, a play timeline, and on Linux the ProtonDB and anti-cheat status.
 - **Journal:** notes on the days you played and on your screenshots, and where you left off.
 - **Views:** filter, sort, and save presets (Playing now, Backlog, Finished, Favourites). Search forgives accents and typos.
 - **Bulk edits:** change many games at once, with undo; rename and merge genres, companies, and series.
@@ -46,20 +43,20 @@ Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net
 
 ## Stores and launchers
 
-- **Epic Games, GOG, and Amazon Games:** log in from Heronite. One download queue installs, updates, repairs, moves, imports, and uninstalls; it pauses offline and retries failed downloads.
+- **Epic Games, GOG, and Amazon Games:** log in from Heronite. One download queue installs, updates, repairs, moves, imports, and uninstalls; it pauses offline and retries failed downloads. On Windows, games installed by the Epic Games Launcher, GOG Galaxy, or the Amazon Games app come in without downloading them again.
 - **Steam:** your library comes in by itself, no login needed.
-- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games:** Heronite sets up each store's own app in a Wine prefix of its own. The games you install there show up in your Collection and start from it.
-- **Other launchers:** bring in the games of Heroic, Lutris, Bottles, and Faugus, and keep them in sync.
+- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games (Linux):** Heronite sets up each store's own app in a Wine prefix of its own. The games you install there show up in your Collection and start from it.
+- **Other launchers (Linux):** bring in the games of Heroic, Lutris, Bottles, and Faugus, and keep them in sync.
 
 ## Configure and play
 
-- **Wine and Proton:** per-game Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, umu protonfixes, and Lossless Scaling frame generation (lsfg-vk).
-- **Wine Manager:** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage prefixes.
-- **Launching:** follow and cancel each step, run scripts before and after, programs alongside, and your own actions next to Play.
-- **Sandbox:** run a game you do not trust through bubblewrap, with no network and no access to your home folder. Let one thing through when it needs more.
+- **Wine and Proton (Linux):** per-game Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, umu protonfixes, and Lossless Scaling frame generation (lsfg-vk).
+- **Wine Manager (Linux):** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage prefixes.
+- **Launching:** follow and cancel each step, and add your own actions next to Play. On Linux, also run scripts before and after and programs alongside.
+- **Sandbox (Linux):** run a game you do not trust through bubblewrap, with no network and no access to your home folder. Let one thing through when it needs more.
 - **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
-- **In-game overlay (beta):** the controller's Guide button opens volume, microphone, FPS limit, screenshots, and journal notes over the game.
-- **Replay (off by default):** keep the last seconds of play and save them as a moment with Guide + X, recorded on the GPU by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/).
+- **In-game overlay (beta, Linux):** the controller's Guide button opens volume, microphone, FPS limit, screenshots, and journal notes over the game.
+- **Replay (off by default, Linux):** keep the last seconds of play and save them as a moment with Guide + X, recorded on the GPU by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/).
 
 <table>
   <tr>
@@ -129,13 +126,9 @@ A single native process that draws its UI on the GPU, with no bundled browser en
 | Install size | **64 MB** (app + store login helper) |
 | Start to library on screen | **~215 ms** median |
 
-## Your data
-
-Everything stays on your machine, in Heroic-compatible files under `~/.local/share/heronite/` (or `HERONITE_DATA_DIR`). An existing Heroic setup is copied once on first start; Heroic's folders are never written to. IGDB metadata needs your Twitch client ID and secret in **Settings → Metadata**.
-
 ## Download
 
-Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has an AppImage and packages for Debian/Ubuntu, Fedora/openSUSE, and Arch:
+Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has an AppImage and packages for Debian/Ubuntu, Fedora/openSUSE, and Arch, and an installer and a portable zip for Windows:
 
 | System | File | Install |
 |---|---|---|
@@ -143,19 +136,24 @@ Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has 
 | Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `heronite_<version>-1_amd64.deb` | `sudo apt install ./heronite_*_amd64.deb` |
 | Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
 | Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
+| Windows 10 and 11 (**recommended**) | `Heronite-Setup-x86_64.exe` | Run it: it installs for your user, no administrator rights needed |
+| Windows 10 and 11, portable | `Heronite-Portable-x86_64.zip` | Extract it anywhere and run `Heronite\heronite.exe`; the library and settings stay in that folder |
 
-Heronite updates itself, and every download is checked against its signing key. Keep the AppImage in a writable folder (like `~/Applications`) so it can update in place.
+Heronite updates itself, and every download is checked against its signing key. Keep the AppImage in a writable folder (like `~/Applications`) so it can update in place. The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
 
 ## Run from source
 
-You need stable Rust, `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK. Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
+You need stable Rust. On Linux, also `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK; on Windows, the Visual Studio Build Tools ("Desktop development with C++"). Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
 
 ```bash
 # quick build (the login window is its own binary, so build it too)
 cargo build --profile quick -p heronite-epic-login && cargo run --profile quick -p heronite
 
-# release build, installed for the current user
+# release build, installed for the current user (Linux)
 scripts/install.sh
+
+# installer and portable zip in dist\ (Windows, needs Inno Setup 6)
+powershell -ExecutionPolicy Bypass -File scripts\windows\package.ps1
 ```
 
 ## Development

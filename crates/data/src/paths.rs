@@ -27,7 +27,7 @@ fn fnv32(s: &str) -> u32 {
 
 #[derive(Debug, Clone)]
 pub struct DataPaths {
-    /// `~/.local/share/heronite` on Linux.
+    /// `~/.local/share/heronite` on Linux, `%APPDATA%\heronite\data` on Windows.
     pub root: PathBuf,
 }
 
@@ -41,9 +41,9 @@ impl DataPaths {
         Self { root: Self::default_root().unwrap_or_else(|| PathBuf::from(APP_DIR)) }
     }
 
-    /// `$XDG_DATA_HOME/heronite`.
+    /// `$XDG_DATA_HOME/heronite` (`%APPDATA%\heronite\data` on Windows).
     pub fn default_root() -> Option<PathBuf> {
-        dirs::data_dir().map(|d| d.join(APP_DIR))
+        heronite_platform::dirs::data(APP_DIR)
     }
 
     /// Whether this is the real data folder (not a fixture or a copy).
@@ -215,6 +215,11 @@ impl DataPaths {
     pub fn gog_redist_dir(&self) -> PathBuf {
         self.j("tools/redist/gog")
     }
+    /// The installers of the stores some Epic games need (the EA app,
+    /// Ubisoft Connect), downloaded once.
+    pub fn legendary_redist_dir(&self) -> PathBuf {
+        self.tools_dir().join("redist").join("legendary")
+    }
     /// `NILE_CONFIG_PATH`: nile keeps its files in `nile/` under it.
     pub fn nile_config_dir(&self) -> PathBuf {
         self.j("nile_config")
@@ -261,9 +266,10 @@ impl DataPaths {
     pub fn sandbox_home_of_game(&self, app_name: &str) -> PathBuf {
         self.j("sandbox").join(format!("game-{}-{:08x}", file_name_safe(app_name), fnv32(app_name)))
     }
-    /// The legendary binary this app runs (copied in by `migrate`).
+    /// The legendary binary this app runs (copied in by `migrate`, or
+    /// downloaded): `tools/bin/legendary`, `legendary.exe` on Windows.
     pub fn legendary_bin(&self) -> PathBuf {
-        self.j("tools/bin/legendary")
+        self.tools_dir().join("bin").join(format!("legendary{}", std::env::consts::EXE_SUFFIX))
     }
     pub fn known_fixes(&self) -> PathBuf {
         self.j("known_fixes.json")
@@ -311,8 +317,8 @@ pub struct AppPaths {
 
 impl AppPaths {
     pub fn detect() -> Self {
-        let config = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
-        let cache = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
+        let config = heronite_platform::dirs::config(APP_DIR).unwrap_or_else(|| PathBuf::from(".").join(APP_DIR));
+        let cache = heronite_platform::dirs::cache(APP_DIR).unwrap_or_else(|| PathBuf::from(".").join(APP_DIR));
         Self { config, cache }
     }
     /// The app state that belongs to a data folder: the real one for the

@@ -223,18 +223,13 @@ mod tests {
     fn login_runs_auth_with_the_code() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        let mut lg = fake(dir.path(), "true");
-        lg.config_dir = data_paths.legendary_config_dir();
         // The fake "logs in" by writing user.json.
-        let body = format!(
-            "mkdir -p \"{cfg}\"; echo '{{\"displayName\":\"P\",\"account_id\":\"id1\"}}' > \"{cfg}/user.json\"",
-            cfg = data_paths.legendary_config_dir().display()
-        );
-        let lg = fake(dir.path(), &body);
-        let lg = Legendary::with_bin(lg.bin, data_paths.legendary_config_dir());
+        let tool = fake_tool(dir.path())
+            .otherwise(Reply::new().write_file("${LEGENDARY_CONFIG_PATH}/user.json", r#"{"displayName":"P","account_id":"id1"}"#));
+        let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
         let info = login(&data_paths, &lg, CODE).unwrap();
         assert_eq!(info.display_name, "P");
-        assert_eq!(calls(dir.path()), [format!("auth --code {CODE}")]);
+        assert_eq!(tool.calls(), [format!("auth --code {CODE}")]);
         assert!(login(&data_paths, &lg, "short").is_err());
     }
 
@@ -247,7 +242,7 @@ mod tests {
         let library = CacheStore::library(&data_paths);
         library.set("library", json!([{"app_name": "Inst"}, {"app_name": "Owned"}])).unwrap();
         CacheStore::install_info(&data_paths).set("Owned", json!({})).unwrap();
-        let lg = Legendary::with_bin(fake(dir.path(), "true").bin, data_paths.legendary_config_dir());
+        let lg = Legendary::with_bin(fake_tool(dir.path()).bin(), data_paths.legendary_config_dir());
         logout(&data_paths, &lg).unwrap();
         assert_eq!(library.get("library").unwrap(), json!([{"app_name": "Inst"}]));
         assert!(CacheStore::install_info(&data_paths).get("Owned").is_none());
@@ -257,8 +252,8 @@ mod tests {
     fn failed_logins_are_reported() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        let lg = fake(dir.path(), "echo '[cli] ERROR: Logging in with code failed' >&2; exit 1");
-        let err = login(&data_paths, &lg, CODE).unwrap_err().to_string();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[cli] ERROR: Logging in with code failed").exit(1));
+        let err = login(&data_paths, &legendary_of(&tool, dir.path()), CODE).unwrap_err().to_string();
         assert!(err.contains("Failed to login"), "{err}");
     }
 }

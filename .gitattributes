@@ -1,0 +1,3 @@
+# The same line ends everywhere: Windows checkouts get LF like Linux, so the
+# sources, rustfmt and tests that compare text read the same on both.
+* text=auto eol=lf

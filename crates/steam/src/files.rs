@@ -226,13 +226,14 @@ fn tools_not_in(locator: &SteamLocator, read: &[PathBuf]) -> Vec<CompatTool> {
 /// without a `compat_log`. The change time, not the modification time:
 /// archives keep their files' old dates.
 fn tools_added_since(locator: &SteamLocator, since: std::time::SystemTime) -> Vec<CompatTool> {
-    use std::os::unix::fs::MetadataExt;
-    let since = since.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+    let secs = |t: std::time::SystemTime| t.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    let since = secs(since);
     let mut out = Vec::new();
     for dir in compat_tool_dirs(locator) {
         let Ok(rd) = fs::read_dir(&dir) else { continue };
         for e in rd.flatten() {
-            let changed = fs::metadata(e.path().join("compatibilitytool.vdf")).is_ok_and(|m| m.ctime() > since);
+            let changed = fs::metadata(e.path().join("compatibilitytool.vdf"))
+                .is_ok_and(|m| heronite_platform::fs::changed_time(&m).is_some_and(|t| secs(t) > since));
             if changed {
                 out.extend(read_compat_tool_vdf(&e.path()).into_iter().flatten());
             }

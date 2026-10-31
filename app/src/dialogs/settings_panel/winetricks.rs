@@ -232,11 +232,8 @@ impl SettingsPanel {
             return;
         }
         run.cancelled = true;
-        // SAFETY: signals the process group winetricks leads (started with
-        // `process_group(0)`), so its Wine children stop too.
-        unsafe {
-            libc::kill(-(pid as i32), libc::SIGTERM);
-        }
+        // The process group winetricks leads, so its Wine children stop too.
+        heronite_platform::process::signal_group(pid, heronite_platform::process::Signal::Term);
         cx.notify();
     }
 

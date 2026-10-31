@@ -126,7 +126,11 @@ impl CollectionView {
     /// "Add/Remove shortcuts" and "Add to / Remove from Steam" for installed
     /// games (Heroic's context menu).
     pub(super) fn system_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<GameActionItem> {
-        if !game.installed || matches!(game.launch_kind.as_deref(), Some("steam-uri")) || game.game.install.is_dlc == Some(true) {
+        if !game.installed
+            || matches!(game.launch_kind.as_deref(), Some("steam-uri"))
+            || game.game.install.is_dlc == Some(true)
+            || !heronite_platform::supported(heronite_platform::Feature::DesktopShortcuts)
+        {
             return Vec::new();
         }
         let (has_shortcuts, in_steam) = self.probe_shortcuts(game, cx);

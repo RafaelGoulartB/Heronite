@@ -276,8 +276,9 @@ pub fn after_play(
     runner: &dyn CommandRunner,
     probe: &dyn Probe,
 ) -> Option<Notice> {
+    // A setting restored from Linux does not run it where it is off.
     let ludusavi = match heronite_data::settings::load(paths) {
-        Ok(s) => s.ludusavi.enabled,
+        Ok(s) => s.ludusavi.enabled && heronite_platform::supported(heronite_platform::Feature::SaveBackups),
         Err(e) => {
             log::warn!("reading the settings after the game: {e:#}");
             false
@@ -381,7 +382,13 @@ mod tests {
         let (_d, paths) = data_dir(ENABLED);
         let runner = FakeLudusavi::default();
         let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
-        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &probe).expect("a backup notice");
+        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &probe);
+        if !heronite_platform::supported(heronite_platform::Feature::SaveBackups) {
+            assert_eq!(n, None, "save backups are off on this system, whatever the setting");
+            assert!(runner.0.lock().unwrap().is_empty());
+            return;
+        }
+        let n = n.expect("a backup notice");
         assert!(!n.error && n.desktop);
         assert_eq!(n.title, "Ludusavi");
         assert!(n.text.contains("Hades"), "{}", n.text);
@@ -405,7 +412,12 @@ mod tests {
         let _turn = turn();
         let (_d, paths) = data_dir(ENABLED);
         let runner = FakeLudusavi::default();
-        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &FakeProbe::new("/h")).expect("an error notice");
+        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &FakeProbe::new("/h"));
+        if !heronite_platform::supported(heronite_platform::Feature::SaveBackups) {
+            assert_eq!(n, None, "save backups are off on this system, whatever the setting");
+            return;
+        }
+        let n = n.expect("an error notice");
         assert!(n.error && !n.desktop);
         assert!(n.text.contains("not found"), "{}", n.text);
     }

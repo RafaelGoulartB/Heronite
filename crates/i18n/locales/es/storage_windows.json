@@ -1,0 +1,19 @@
+{
+  "An update of Heronite is using {path}": "Una actualización de Heronite está usando {path}",
+  "Could not move {path} to the Recycle Bin: {error}": "No se pudo mover {path} a la Papelera de reciclaje: {error}",
+  "Deleted. Heronite downloads them again when needed.": "Eliminados. Heronite los descarga de nuevo cuando hacen falta.",
+  "Disk space of games, store tools, caches": "Espacio en disco de juegos, herramientas de las tiendas, cachés",
+  "GOG redistributables": "Redistribuibles de GOG",
+  "Heronite updates": "Actualizaciones de Heronite",
+  "Leftover folders go to the Recycle Bin, where they can be restored; the rest is deleted.": "Las carpetas huérfanas van a la Papelera de reciclaje, desde donde se pueden restaurar; el resto se elimina.",
+  "Move to the Recycle Bin": "Mover a la Papelera de reciclaje",
+  "No game points to these folders any more. They go to the Recycle Bin, where they can be restored.": "Ningún juego apunta ya a estas carpetas. Van a la Papelera de reciclaje, desde donde se pueden restaurar.",
+  "Old downloads": "Descargas antiguas",
+  "Press A again to move it to the Recycle Bin": "Pulsa A de nuevo para moverlo a la Papelera de reciclaje",
+  "Store tools": "Herramientas de las tiendas",
+  "To the Recycle Bin": "A la Papelera de reciclaje",
+  "Unfinished download of {name}": "Descarga sin terminar de {name}",
+  "{freed} freed, {trashed} moved to the Recycle Bin": "{freed} liberados, {trashed} movidos a la Papelera de reciclaje",
+  "{path} is on a removable drive, which has no Recycle Bin": "{path} está en una unidad extraíble, que no tiene Papelera de reciclaje",
+  "{size} moved to the Recycle Bin": "{size} movidos a la Papelera de reciclaje"
+}

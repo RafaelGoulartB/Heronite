@@ -141,6 +141,7 @@ mod tests {
             data_paths: DataPaths::at(dir.path().join("data")),
             app: AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") },
             home: home.clone(),
+            updating: false,
         };
         let paths = &ctx.data_paths;
         let build = |version: &str| {

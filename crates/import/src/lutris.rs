@@ -153,6 +153,7 @@ fn game_section(file: &Path) -> GameSection {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn library(data: &Path) {
         std::fs::create_dir_all(data).unwrap();
         let conn = Connection::open(data.join("pga.db")).unwrap();
@@ -172,6 +173,8 @@ mod tests {
         .unwrap();
     }
 
+    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
+    #[cfg(unix)]
     #[test]
     fn reads_the_installed_games_but_steams() {
         let h = tempfile::tempdir().unwrap();

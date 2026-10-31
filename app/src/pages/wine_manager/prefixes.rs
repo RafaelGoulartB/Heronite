@@ -83,8 +83,8 @@ fn home() -> String {
 }
 
 fn open_folder(path: &std::path::Path) {
-    if let Err(e) = std::process::Command::new("xdg-open").arg(path).spawn() {
-        log::warn!("xdg-open {}: {e}", path.display());
+    if let Err(e) = heronite_platform::shell::open(path) {
+        log::warn!("opening {}: {e}", path.display());
     }
 }
 

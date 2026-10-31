@@ -8,17 +8,22 @@ Thanks for helping! Bug reports, ideas, and pull requests are all welcome.
 
 ## Build
 
-Heronite is Linux only. You need a stable Rust toolchain, `clang` and `lld` (the linker set in `.cargo/config.toml`), and the development packages for xkbcommon, xcb, Wayland, udev, fontconfig, freetype, GTK 3, and WebKitGTK 4.1. On Ubuntu, [`scripts/ci-deps.sh`](scripts/ci-deps.sh) installs everything CI uses.
+Heronite runs on Linux, and on Windows in part (the port is tracked in [WINDOWS-MIGRATION.md](docs/WINDOWS-MIGRATION.md)). The same commands build and test it on both:
 
 ```bash
 # fast optimised build for trying the app
 cargo run --profile quick -p heronite
 
-# what CI runs; all three must pass
+# what CI runs, on Linux and on Windows; all must pass
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+- **Linux:** a stable Rust toolchain, `clang` and `lld` (the linker set in `.cargo/config.toml`), and the development packages for xkbcommon, xcb, Wayland, udev, fontconfig, freetype, GTK 3, and WebKitGTK 4.1. On Ubuntu, [`scripts/ci-deps.sh`](scripts/ci-deps.sh) installs everything CI uses.
+- **Windows:** a stable Rust toolchain for `x86_64-pc-windows-msvc` and the Visual Studio Build Tools with "Desktop development with C++" (MSVC and a Windows SDK). Run the tests from PowerShell or `cmd`, as CI does: Git Bash puts Unix tools (`sh`, `cp`, `sleep`) on the `PATH` that Windows itself does not have, and sets `HOME`.
+
+A change to code both systems build is checked by both CI jobs; [WINDOWS-MIGRATION.md](docs/WINDOWS-MIGRATION.md) has the rules that keep the code building on both.
 
 Point `HERONITE_DATA_DIR` at a copy of a data folder to try changes without touching your real library. To see what a new user sees, run [`scripts/fresh-start.sh`](scripts/fresh-start.sh): it starts the app with an empty home in `/tmp` (add `--steam` to let it find your Steam games, or pass an AppImage to test a release). `HERONITE_DEBUG_*` variables open a page, dialog, or menu at startup, which helps with screenshots.
 
@@ -47,5 +52,9 @@ Merging a pull request with one of these labels publishes a new version:
 | `release:major` | big or breaking changes | 0.1.0 → 1.0.0 |
 
 The release workflow bumps the version in `Cargo.toml`, tags it, builds the AppImage, and publishes a GitHub release. A pull request without a release label is merged without a new version. Maintainers can also start a release from **Actions › Release › Run workflow**.
+
+### Windows packages
+
+The Windows installer (Inno Setup 6, [`packaging/windows/heronite.iss`](packaging/windows/heronite.iss)) and portable zip are built by [`scripts/windows/package.ps1`](scripts/windows/package.ps1) into `dist\`, and [`scripts/windows/smoke.ps1`](scripts/windows/smoke.ps1) checks them (it installs and uninstalls into a temporary folder). Locally you need Inno Setup 6 (`winget install JRSoftware.InnoSetup`). Pull requests that touch the Windows packaging get both files as workflow artifacts (unsigned). The program's icon, `packaging/windows/heronite.ico`, is made from the Linux PNG by [`scripts/windows/make-icon.py`](scripts/windows/make-icon.py).
 
 By contributing, you agree that your work is licensed under the [GPL-3.0](LICENSE).

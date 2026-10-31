@@ -95,6 +95,22 @@ impl Step {
         }
     }
 
+    /// Whether this system has what the step sets up
+    /// (`heronite_platform::features`).
+    pub fn available(self) -> bool {
+        use heronite_platform::{supported, Feature};
+        match self {
+            Step::Stores => heronite_platform::features::any_store(),
+            Step::Emulators => supported(Feature::Emulation),
+            Step::Saves => supported(Feature::SaveBackups),
+            Step::Overlay => supported(Feature::Overlay),
+            Step::Screenshots => supported(Feature::Capture),
+            Step::Proton => supported(Feature::Wine),
+            Step::Tray => supported(Feature::Tray),
+            _ => true,
+        }
+    }
+
     pub fn parse(id: &str) -> Option<Self> {
         ALL.into_iter().find(|s| s.id() == id)
     }
@@ -271,7 +287,12 @@ impl Facts {
     /// The steps the progress counts: the three cards (the overlay only
     /// where the desktop can draw it).
     pub fn counted(&self) -> Vec<Step> {
-        GAMES.into_iter().chain([Step::Appearance]).chain(PLAY.into_iter().filter(|s| *s != Step::Overlay || self.overlay_ok)).collect()
+        GAMES
+            .into_iter()
+            .chain([Step::Appearance])
+            .chain(PLAY.into_iter().filter(|s| *s != Step::Overlay || self.overlay_ok))
+            .filter(|s| s.available())
+            .collect()
     }
 
     pub fn done_count(&self) -> usize {

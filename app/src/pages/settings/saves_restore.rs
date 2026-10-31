@@ -357,13 +357,20 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             div().text_size(px(13.)).text_color(if error { theme::danger_text() } else { theme::text_muted() }).child(text)
         }));
 
+    let about = if cfg!(windows) {
+        tr!(
+            "The Saves tab of each game lists the backups in these folders: the one new backups go to, and only the folders you add. It puts a backup back where the game keeps its saves on this PC, even one made by another Windows user, in another Steam library or on Linux."
+        )
+    } else {
+        tr!(
+            "The Saves tab of each game lists the backups in these folders: the one new backups go to, and only the folders you add. It puts a backup back into the game's prefix as it is now, even one made in another Steam library or on Windows."
+        )
+    };
     div()
         .flex()
         .flex_col()
         .child(caption(tr!("Restoring saves")))
-        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
-            "The Saves tab of each game lists the backups in these folders: the one new backups go to, and only the folders you add. It puts a backup back into the game's prefix as it is now, even one made in another Steam library or on Windows."
-        ))))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(about)))
         .child(list)
         .child(div().mt(px(10.)).flex().child(add))
         .children(suggestion)

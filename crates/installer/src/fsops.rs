@@ -68,7 +68,7 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
         } else if ty.is_symlink() {
             let link = fs::read_link(&from).map_err(|e| err(&from, e))?;
             let _ = fs::remove_file(&to);
-            std::os::unix::fs::symlink(link, &to).map_err(|e| err(&to, e))?;
+            heronite_platform::fs::symlink(&link, &to).map_err(|e| err(&to, e))?;
         } else {
             if to.is_dir() {
                 fs::remove_dir_all(&to).map_err(|e| err(&to, e))?;
@@ -174,11 +174,8 @@ pub fn rename(src: &Path, dst: &Path) -> Result<(), String> {
 }
 
 pub fn make_executable(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    let meta = fs::metadata(path).map_err(|_| tr!("Cannot make {path} executable: it does not exist", path = path.display()))?;
-    let mut perms = meta.permissions();
-    perms.set_mode(perms.mode() | 0o111);
-    fs::set_permissions(path, perms).map_err(|e| err(path, e))
+    fs::metadata(path).map_err(|_| tr!("Cannot make {path} executable: it does not exist", path = path.display()))?;
+    heronite_platform::fs::add_mode(path, 0o111).map_err(|e| err(path, e))
 }
 
 pub fn write_text(path: &Path, content: &str, append: bool) -> Result<(), String> {
@@ -288,6 +285,8 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    // Windows file names ignore case: there is nothing to fix.
+    #[cfg(unix)]
     #[test]
     fn fixes_the_case_of_existing_components() {
         let dir = tempfile::tempdir().unwrap();

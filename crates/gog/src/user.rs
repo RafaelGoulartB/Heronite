@@ -229,29 +229,31 @@ mod tests {
     #[test]
     fn code_login_failures_are_errors() {
         let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "echo '{\"error\": true}'");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"error": true}"#));
+        let g = gogdl(&tool, &paths);
         let err = login(&paths, &g, CODE).unwrap_err().to_string();
         assert!(err.contains("did not accept"), "{err}");
-        assert_eq!(calls(dir.path()), [format!("auth --code {CODE}")]);
+        assert_eq!(calls_of(&tool), [format!("auth --code {CODE}")]);
         assert!(login(&paths, &g, "two words").is_err());
-        assert_eq!(calls(dir.path()).len(), 1);
+        assert_eq!(calls_of(&tool).len(), 1);
     }
 
     #[test]
     fn credentials_come_from_the_auth_command() {
         let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "echo '{\"access_token\":\"tok\",\"user_id\":\"7\"}'");
-        let c = credentials(&paths, &g).unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"access_token":"tok","user_id":"7"}"#));
+        let c = credentials(&paths, &gogdl(&tool, &paths)).unwrap();
         assert_eq!((c.access_token.as_str(), c.user_id.as_str()), ("tok", "7"));
-        assert_eq!(calls(dir.path()), ["auth"]);
-        let none = fake(dir.path(), &paths, "echo null");
-        assert!(credentials(&paths, &none).is_err());
+        assert_eq!(calls_of(&tool), ["auth"]);
+        let none = fake_tool(dir.path()).otherwise(Reply::new().out("null"));
+        assert!(credentials(&paths, &gogdl(&none, &paths)).is_err());
     }
 
     #[test]
     fn tokens_gogdl_cannot_refresh_are_an_expired_session() {
         let (dir, paths) = setup();
-        let refused = fake(dir.path(), &paths, "echo '{\"error\": true}'");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"error": true}"#));
+        let refused = gogdl(&tool, &paths);
         // Not signed in here: just an error.
         assert!(!heronite_epic::session::is_expired(&credentials(&paths, &refused).unwrap_err()));
         std::fs::create_dir_all(paths.gog_auth().parent().unwrap()).unwrap();

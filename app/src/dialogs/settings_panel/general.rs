@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_platform::{supported, Feature};
 use serde_json::Value;
 
 use std::sync::OnceLock;
@@ -18,6 +19,16 @@ use crate::ui::icon;
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::{tr, Lang, Preference};
 use heronite_launch::steam::KEY_CLOSE_AFTER_GAME;
+
+/// The help under a store tool's row: where its own copy lives
+/// (`<data>/tools/bin/<name>`, with `.exe` on Windows).
+fn tool_help(name: &str, linux: &'static str) -> String {
+    if cfg!(windows) {
+        tr!("Leave it empty to use the one in the data folder ({path}).", path = format!(r"tools\bin\{name}.exe"))
+    } else {
+        linux.to_string()
+    }
+}
 
 /// What the global ("General") panel shows. The Settings page hosts one
 /// panel and switches between these; the Game defaults use the other tabs.
@@ -57,23 +68,29 @@ impl SettingsPanel {
 
     /// Store downloads (Epic, GOG, Amazon Games) and game updates.
     fn downloads_view(&mut self, cx: &mut Context<Self>) -> Div {
-        let fields = rows()
-            .field_help(
-                self.max_workers_field(cx),
-                vec![help(tr!("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))],
-            )
-            .field_help(
+        let mut fields = rows().field_help(
+            self.max_workers_field(cx),
+            vec![help(tr!("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))],
+        );
+        // The tool of each store this system has.
+        if supported(Feature::EpicStore) {
+            fields = fields.field_help(
                 self.path_row("altLegendaryBin", Some(tr!("Legendary binary")), false, tr!("Choose the Legendary binary"), true, cx),
-                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/legendary)."))],
-            )
-            .field_help(
-                self.path_row("altGogdlBin", Some(tr!("gogdl binary")), false, tr!("Choose the gogdl binary"), true, cx),
-                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/gogdl)."))],
-            )
-            .field_help(
-                self.path_row("altNileBin", Some(tr!("nile binary")), false, tr!("Choose the nile binary"), true, cx),
-                vec![help(tr!("Leave it empty to use the one in the data folder (tools/bin/nile)."))],
+                vec![help(&tool_help("legendary", tr!("Leave it empty to use the one in the data folder (tools/bin/legendary).")))],
             );
+        }
+        if supported(Feature::GogStore) {
+            fields = fields.field_help(
+                self.path_row("altGogdlBin", Some(tr!("gogdl binary")), false, tr!("Choose the gogdl binary"), true, cx),
+                vec![help(&tool_help("gogdl", tr!("Leave it empty to use the one in the data folder (tools/bin/gogdl).")))],
+            );
+        }
+        if supported(Feature::AmazonStore) {
+            fields = fields.field_help(
+                self.path_row("altNileBin", Some(tr!("nile binary")), false, tr!("Choose the nile binary"), true, cx),
+                vec![help(&tool_help("nile", tr!("Leave it empty to use the one in the data folder (tools/bin/nile).")))],
+            );
+        }
         let toggles = rows()
             .child(self.toggle_row(
                 "download-no-https",
@@ -120,28 +137,37 @@ impl SettingsPanel {
     }
 
     fn general_view(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
-        let folders = rows()
-            .field(self.path_row(
+        // What this system has (`heronite_platform::features`): the folders,
+        // switches and builds of the parts it does not have are left out.
+        let wine = supported(Feature::Wine);
+        let stores = heronite_platform::features::any_store();
+        let mut folders = rows();
+        if stores || wine {
+            folders = folders.field(self.path_row(
                 "defaultInstallPath",
                 Some(tr!("Default install folder")),
                 true,
                 tr!("Choose the default installation folder"),
                 false,
                 cx,
-            ))
-            .field(self.path_row(
-                "defaultWinePrefixDir",
-                Some(tr!("Folder for new Wine prefixes")),
-                true,
-                tr!("Choose the folder for new Wine prefixes"),
-                false,
-                cx,
-            ))
-            .field_help(
-                self.path_row("defaultSteamPath", Some(tr!("Steam folder")), true, tr!("Choose Steam's folder"), false, cx),
-                vec![help(tr!("Where Heronite reads which Proton Steam uses, to add games to Steam."))],
-            );
-        let wine = rows()
+            ));
+        }
+        if wine {
+            folders = folders
+                .field(self.path_row(
+                    "defaultWinePrefixDir",
+                    Some(tr!("Folder for new Wine prefixes")),
+                    true,
+                    tr!("Choose the folder for new Wine prefixes"),
+                    false,
+                    cx,
+                ))
+                .field_help(
+                    self.path_row("defaultSteamPath", Some(tr!("Steam folder")), true, tr!("Choose Steam's folder"), false, cx),
+                    vec![help(tr!("Where Heronite reads which Proton Steam uses, to add games to Steam."))],
+                );
+        }
+        let wine_rows = rows()
             .child(self.toggle_row(
                 "valve-proton",
                 "showValveProton",
@@ -165,20 +191,18 @@ impl SettingsPanel {
         column()
             .child(heading(tr!("Language")))
             .child(rows().field(self.language_field(cx)).card())
-            .child(heading(tr!("Folders")))
-            .child(folders.card())
-            .child(heading(tr!("Startup")))
-            .child(self.startup_rows(cx).card())
-            .child(heading(tr!("System tray")))
-            .child(self.tray_rows(cx).card())
+            .when(stores || wine, |c| c.child(heading(tr!("Folders"))).child(folders.card()))
+            .when(supported(Feature::Autostart), |c| c.child(heading(tr!("Startup"))).child(self.startup_rows(cx).card()))
+            .when(supported(Feature::Tray), |c| c.child(heading(tr!("System tray"))).child(self.tray_rows(cx).card()))
             .child(heading(tr!("When a game starts and ends")))
             .child(self.game_rows(cx).card())
-            .child(heading(tr!("Game shortcuts")))
-            .child(self.shortcut_rows(cx).card())
-            .child(heading(tr!("Wine and Proton")))
-            .child(wine.card())
-            .child(heading(tr!("Other Wine and Proton builds")))
-            .child(self.custom_wine_paths(cx))
+            .when(supported(Feature::DesktopShortcuts), |c| c.child(heading(tr!("Game shortcuts"))).child(self.shortcut_rows(cx).card()))
+            .when(wine, |c| {
+                c.child(heading(tr!("Wine and Proton")))
+                    .child(wine_rows.card())
+                    .child(heading(tr!("Other Wine and Proton builds")))
+                    .child(self.custom_wine_paths(cx))
+            })
     }
 
     /// Starting with the session and without the window (`system/`).

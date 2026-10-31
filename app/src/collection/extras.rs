@@ -235,15 +235,17 @@ impl CollectionView {
                     .palette_only(),
             );
         }
-        v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
-        let auto = self.auto_backup(game);
-        v.push(item(
-            A::AutoBackup { on: !auto },
-            "auto-backup",
-            if auto { tr!("Turn off automatic save backup") } else { tr!("Turn on automatic save backup") },
-            Icon::CloudSync,
-            "saves backup ludusavi after play automatic salvamentos jogos salvos automatico depois de jogar",
-        ));
+        if heronite_platform::supported(heronite_platform::Feature::SaveBackups) {
+            v.push(item(A::Ludusavi, "ludusavi", tr!("Backup save"), Icon::Save, "saves backup ludusavi salvamentos jogos salvos"));
+            let auto = self.auto_backup(game);
+            v.push(item(
+                A::AutoBackup { on: !auto },
+                "auto-backup",
+                if auto { tr!("Turn off automatic save backup") } else { tr!("Turn on automatic save backup") },
+                Icon::CloudSync,
+                "saves backup ludusavi after play automatic salvamentos jogos salvos automatico depois de jogar",
+            ));
+        }
         if game.steam_launch_id.is_some() && game.installed && !tracking {
             v.push(item(
                 A::SteamUninstall,
@@ -366,14 +368,7 @@ impl CollectionView {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
         match details_url(&game) {
             Some(url) => {
-                if let Err(err) = std::process::Command::new("xdg-open")
-                    .arg(&url)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                    .and_then(|mut child| std::thread::Builder::new().spawn(move || child.wait()).map(|_| ()))
-                {
+                if let Err(err) = heronite_platform::shell::open(&url) {
                     self.show_toast(tr!("Could not open {url}: {err}", url, err = err.to_string()), true, cx);
                 }
             }

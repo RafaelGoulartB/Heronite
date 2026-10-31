@@ -28,46 +28,21 @@ fn existing_ancestor(path: &Path) -> Option<PathBuf> {
 }
 
 /// Blocking filesystem queries; `None` when nothing of the path exists.
-#[cfg(unix)]
 pub fn check(path: &str) -> Option<DiskSpace> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
     let dir = existing_ancestor(Path::new(path))?;
-    let c = CString::new(dir.as_os_str().as_bytes()).ok()?;
-    // SAFETY: statvfs fills a plain struct; `c` is a valid C string.
-    let (free, total) = unsafe {
-        let mut st: libc::statvfs = std::mem::zeroed();
-        if libc::statvfs(c.as_ptr(), &mut st) != 0 {
-            return None;
-        }
-        let frsize = st.f_frsize as u64;
-        (st.f_bavail as u64 * frsize, st.f_blocks as u64 * frsize)
-    };
-    // SAFETY: access(2) on a valid C string.
-    let writable = unsafe { libc::access(c.as_ptr(), libc::W_OK) == 0 };
+    let (total, free) = heronite_platform::fs::disk_space(&dir)?;
+    let writable = heronite_platform::fs::writable_dir(&dir);
     Some(DiskSpace { free, total, writable, message: format!("{} / {}", file_size_local(free as f64), file_size_local(total as f64)) })
 }
 
-#[cfg(not(unix))]
-pub fn check(_path: &str) -> Option<DiskSpace> {
-    None
-}
-
 /// Filesystem `path` (or the folder it would be created in) is on.
-#[cfg(unix)]
 fn device(path: &str) -> Option<u64> {
-    use std::os::unix::fs::MetadataExt;
     let path = Path::new(path.trim_matches('\''));
     if !path.is_absolute() {
         return None;
     }
-    Some(std::fs::metadata(existing_ancestor(path)?).ok()?.dev())
-}
-
-#[cfg(not(unix))]
-fn device(_path: &str) -> Option<u64> {
-    None
+    let dir = existing_ancestor(path)?;
+    heronite_platform::fs::file_id(&dir, &std::fs::metadata(&dir).ok()?).map(|(device, _)| device)
 }
 
 /// Bytes the downloads in `queued` (`(install path, bytes still to come)`)
@@ -78,7 +53,7 @@ pub fn reserved_on(path: &str, queued: &[(String, f64)]) -> u64 {
     queued.iter().filter(|(p, _)| device(p) == Some(target)).map(|(_, bytes)| bytes.max(0.) as u64).sum()
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -88,7 +63,7 @@ mod tests {
         let here = check(dir.path().to_str().unwrap()).unwrap();
         assert!(here.total > 0 && here.free <= here.total);
         assert!(here.writable);
-        let future = dir.path().join("a/b/c");
+        let future = dir.path().join("a").join("b").join("c");
         let there = check(future.to_str().unwrap()).unwrap();
         assert_eq!(there.total, here.total);
         assert!(there.message.contains('/'));
@@ -98,12 +73,14 @@ mod tests {
     fn queued_downloads_count_only_on_the_same_filesystem() {
         let dir = tempfile::tempdir().unwrap();
         let here = dir.path().to_str().unwrap().to_string();
-        let future = dir.path().join("new/folder").to_str().unwrap().to_string();
-        let queued = vec![(here.clone(), 100.), (future, 50.), ("thirdParty".into(), 7.), ("/proc".into(), 1000.)];
+        let future = dir.path().join("new").join("folder").to_str().unwrap().to_string();
+        let elsewhere = if cfg!(windows) { r"\\?\Volume{00000000-0000-0000-0000-000000000000}\x" } else { "/proc" };
+        let queued = vec![(here.clone(), 100.), (future, 50.), ("thirdParty".into(), 7.), (elsewhere.into(), 1000.)];
         assert_eq!(reserved_on(&here, &queued), 150);
         assert_eq!(reserved_on("relative", &queued), 0);
     }
 
+    #[cfg(unix)]
     #[test]
     fn read_only_locations_are_not_writable() {
         let root = check("/proc/self").unwrap();

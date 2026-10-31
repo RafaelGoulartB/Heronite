@@ -26,7 +26,7 @@ impl SettingsPage {
     /// (each section, then the settings found in it).
     pub(super) fn nav_items(&self) -> Vec<Pick> {
         if self.nav_query.is_empty() {
-            return Section::ALL.iter().map(|&s| Pick::Section(s)).collect();
+            return Section::ALL.iter().filter(|s| s.available()).map(|&s| Pick::Section(s)).collect();
         }
         search::search(&self.nav_query)
             .into_iter()

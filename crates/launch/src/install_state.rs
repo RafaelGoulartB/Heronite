@@ -60,7 +60,8 @@ pub fn next_install_state(
         let executable = emulator_executable(ctx, meta).unwrap_or_else(local_exe);
         let roms_ok = emulator_rom_installed(meta, probe);
         let exe_ok = if meta.emulator_id.as_deref().map(|s| !s.is_empty()).unwrap_or(false) && executable == "flatpak" {
-            true
+            // Flatpak is Linux's.
+            !cfg!(windows)
         } else {
             !executable.is_empty() && probe.exists(&executable)
         };
@@ -91,10 +92,11 @@ pub fn steam_sideload_entry(game: &SteamInstalledGame, steam_bin: Option<&str>, 
         art_cover: Some(art_cover),
         art_square: Some(art_square),
         is_installed: true,
-        is_linux_native: Some(true),
+        // Steam runs it: native to the system Heronite runs on.
+        is_linux_native: Some(cfg!(not(windows))),
         install: InstallInfo {
             executable: Some(steam_bin.unwrap_or("steam").to_string()),
-            platform: Some("linux".into()),
+            platform: Some(if cfg!(windows) { "Windows" } else { "linux" }.into()),
             is_dlc: Some(false),
             ..Default::default()
         },
@@ -335,6 +337,21 @@ mod tests {
     }
 
     #[test]
+    fn flatpak_emulator_games_are_installed_on_linux_only() {
+        let mut c = ctx();
+        c.emulators.emulators[0].launch_kind = "flatpak".into();
+        let probe = FakeProbe::new("/h").with_path("/roms/a.iso");
+        let meta = LocalGameMeta {
+            launch_kind: "emulator".into(),
+            emulator_id: Some("e1".into()),
+            roms: Some(vec![LocalGameRom { name: None, path: "/roms/a.iso".into(), extra: Default::default() }]),
+            ..Default::default()
+        };
+        let s = next_install_state(&c, &probe, &game(""), &meta, &HashSet::new(), None);
+        assert_eq!(s.is_installed, !cfg!(windows));
+    }
+
+    #[test]
     fn games_of_a_launcher_or_a_client_keep_the_state_their_sync_gave() {
         let probe = FakeProbe::new("/h").with_path("/pfx/drive_c/Games/Diablo IV");
         let installed = |folder: Option<&str>| GameInfo {
@@ -373,6 +390,9 @@ mod tests {
         assert_eq!(meta.extra[heronite_data::steam_owned::AUTO_KEY], true);
     }
 
+    // TODO(windows): not isolated there: `library_roots` adds the Steam folder of
+    // the registry (this machine's real Steam) and not the test's `home`.
+    #[cfg(unix)]
     #[test]
     fn refresh_follows_steam_uninstalls_and_installs() {
         let dir = tempfile::tempdir().unwrap();

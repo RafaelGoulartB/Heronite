@@ -219,7 +219,8 @@ fn placeholders(s: &str) -> BTreeSet<String> {
 fn every_key_is_translated_and_every_translation_used() {
     let mut uses = Vec::new();
     for f in sources() {
-        scan(&f, &std::fs::read_to_string(&f).unwrap(), &mut uses);
+        // A Windows checkout may have CRLF line ends; the scan expects `\n`.
+        scan(&f, &std::fs::read_to_string(&f).unwrap().replace("\r\n", "\n"), &mut uses);
     }
     assert!(uses.len() > 10, "the scan found almost nothing ({} keys)", uses.len());
     let mut problems = Vec::new();

@@ -1,8 +1,9 @@
 //! Launcher runtime tests. Nothing here starts a game: plans point at a fake
-//! spawner, or at harmless `sleep` / `sh` processes.
+//! spawner, or at harmless shell commands (`sh` on Unix, `cmd` on Windows).
 
 use std::collections::BTreeMap;
 use std::fs;
+#[cfg(unix)]
 use std::io::Write;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -18,9 +19,11 @@ use heronite_launch::probe::SystemProbe;
 use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
 use heronite_launch::runtime::{FakeSpawner, PrepServices, ProcessHandle, Spawner};
 use heronite_launch::steam::SteamLocator;
+#[cfg(unix)]
+use heronite_launch::StopOptions;
 use heronite_launch::{
-    Command, HandoffConfig, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopOptions,
-    StopSpec, SystemSpawner,
+    Command, HandoffConfig, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopSpec,
+    SystemSpawner,
 };
 
 fn fast_cfg() -> LauncherConfig {
@@ -68,6 +71,25 @@ fn process_plan(program: &str, args: &[&str]) -> ProcessPlan {
     ProcessPlan {
         command: Command { program: program.into(), args: args.iter().map(|s| s.to_string()).collect(), env: BTreeMap::new(), cwd: None },
         ..Default::default()
+    }
+}
+
+/// A plan running `unix` through `sh -c` on Unix, `windows` through
+/// `cmd /C` on Windows: the same program on both, with tools each has.
+fn shell_plan(unix: &str, windows: &str) -> ProcessPlan {
+    if cfg!(windows) {
+        process_plan("cmd", &["/C", windows])
+    } else {
+        process_plan("sh", &["-c", unix])
+    }
+}
+
+/// A plan that waits about `secs` seconds (`ping` waits a second per echo).
+fn sleep_plan(secs: u32) -> ProcessPlan {
+    if cfg!(windows) {
+        process_plan("ping", &["-n", &(secs + 1).to_string(), "127.0.0.1"])
+    } else {
+        process_plan("sleep", &[&secs.to_string()])
     }
 }
 
@@ -251,6 +273,10 @@ fn write_steam_log(r: &Rig, text: &str) -> std::path::PathBuf {
     log
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     let r = rig();
@@ -274,6 +300,10 @@ fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     assert!(ts["steam_400"]["firstPlayed"].is_string());
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
     let r = rig();
@@ -303,6 +333,7 @@ fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
 /// Plays `steam_400` to its end. `steam_open_before`: Steam's pid file names
 /// a live process before the launch (else Steam "starts" with the game).
 /// Returns the URIs opened.
+#[cfg(unix)]
 fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     let r = rig();
     let log = write_steam_log(&r, "");
@@ -329,6 +360,10 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     r.spawner.uris()
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
     assert_eq!(play_steam_game(true, false), ["u", "steam://exit"]);
@@ -371,7 +406,10 @@ fn real_rig() -> (tempfile::TempDir, DataPaths, Launcher, Receiver<LaunchEvent>)
 #[test]
 fn real_process_exit_code_log_and_playtime() {
     let (_d, paths, launcher, rx) = real_rig();
-    let plan = LaunchPlan::Native(process_plan("sh", &["-c", "echo hello from the game; echo oops >&2; exit 3"]));
+    let plan = LaunchPlan::Native(shell_plan(
+        "echo hello from the game; echo oops >&2; exit 3",
+        "echo hello from the game& echo oops 1>&2& exit 3",
+    ));
     launcher.launch(request("g", plan)).unwrap();
     next(&rx);
     next(&rx);
@@ -388,9 +426,10 @@ fn real_process_exit_code_log_and_playtime() {
 #[test]
 fn real_process_is_not_done_while_a_child_holds_its_output() {
     // Heroic waits for the output pipe to close, so a launcher script that
-    // backgrounds the real game keeps the session open.
+    // backgrounds the real game keeps the session open (on Windows the job
+    // object holds it open while the child lives).
     let (_d, _paths, launcher, rx) = real_rig();
-    let plan = LaunchPlan::Native(process_plan("sh", &["-c", "sleep 1 & echo started"]));
+    let plan = LaunchPlan::Native(shell_plan("sleep 1 & echo started", "start /B ping -n 2 127.0.0.1 >nul& echo started"));
     let t = Instant::now();
     launcher.launch(request("g", plan)).unwrap();
     next(&rx);
@@ -401,6 +440,7 @@ fn real_process_is_not_done_while_a_child_holds_its_output() {
 
 /// A script (not executable yet, as a picked file often is) that appends its
 /// name and `HEROIC_GAME_SCRIPT_TYPE` to `out`.
+#[cfg(unix)]
 fn write_script(dir: &std::path::Path, name: &str, out: &std::path::Path) -> String {
     let path = dir.join(name);
     fs::write(&path, format!("#!/bin/sh\necho \"{name} $HEROIC_GAME_SCRIPT_TYPE\" >> '{}'\n", out.display())).unwrap();
@@ -412,6 +452,8 @@ fn script(program: &str, kind: &str) -> Command {
     Command { program: program.into(), env, ..Default::default() }
 }
 
+// Real `sh` processes: Linux only.
+#[cfg(unix)]
 #[test]
 fn real_scripts_run_before_and_after_the_game() {
     let (d, paths, launcher, rx) = real_rig();
@@ -433,7 +475,7 @@ fn real_scripts_run_before_and_after_the_game() {
 #[test]
 fn real_a_missing_script_is_reported_and_the_game_still_runs() {
     let (d, _paths, launcher, rx) = real_rig();
-    let mut plan = process_plan("true", &[]);
+    let mut plan = shell_plan("true", "exit 0");
     plan.before_script = Some(script(&d.path().join("nope.sh").to_string_lossy(), "before"));
     launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
     next(&rx);
@@ -444,6 +486,8 @@ fn real_a_missing_script_is_reported_and_the_game_still_runs() {
     assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
 }
 
+// Real `sh` processes: Linux only.
+#[cfg(unix)]
 #[test]
 fn real_the_after_script_runs_for_a_stopped_game() {
     let (d, _paths, launcher, rx) = real_rig();
@@ -458,6 +502,8 @@ fn real_the_after_script_runs_for_a_stopped_game() {
     assert_eq!(fs::read_to_string(&out).unwrap(), "after.sh after\n");
 }
 
+// Real `sh` processes: Linux only.
+#[cfg(unix)]
 #[test]
 fn real_stop_kills_the_whole_tree() {
     let (_d, _paths, launcher, rx) = real_rig();
@@ -478,6 +524,8 @@ fn real_stop_kills_the_whole_tree() {
     wait_until("both dead", || !procs.is_alive(pid) && !procs.is_alive(grandchild));
 }
 
+// SIGTERM: a Windows process is ended at once.
+#[cfg(unix)]
 #[test]
 fn real_sigterm_ignoring_process_gets_sigkill_after_the_grace_period() {
     let (_d, _paths, launcher, rx) = real_rig();
@@ -497,7 +545,7 @@ fn real_sigterm_ignoring_process_gets_sigkill_after_the_grace_period() {
 #[test]
 fn real_force_clear_leaves_the_process_running() {
     let (_d, _paths, launcher, rx) = real_rig();
-    launcher.launch(request("g", LaunchPlan::Native(process_plan("sleep", &["30"])))).unwrap();
+    launcher.launch(request("g", LaunchPlan::Native(sleep_plan(30)))).unwrap();
     next(&rx);
     let LaunchEvent::Running { pid, .. } = next(&rx) else { panic!() };
     launcher.force_clear("g");
@@ -853,6 +901,27 @@ fn the_keep_awake_lock_lives_as_long_as_the_game() {
     assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "released with the game");
 }
 
+#[cfg(windows)]
+#[test]
+fn the_computer_is_held_awake_as_long_as_the_game_runs() {
+    let held = || heronite_platform::power::requested().is_some_and(|r| r.system && r.display);
+    // Another program may hold it too: then the end of the hold cannot be seen.
+    let others = held();
+    let r = rig();
+    let mut plan = process_plan("/games/run.sh", &[]);
+    plan.hold_awake = true;
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    wait_until("the hold", held);
+    assert_eq!(r.spawner.spawned().len(), 1, "no lock command: the app holds it itself");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    if !others {
+        wait_until("the hold to end", || !held());
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Programs alongside the game
 // ---------------------------------------------------------------------------
@@ -889,6 +958,8 @@ fn a_program_alongside_starts_after_its_delay_and_closes_with_the_game() {
     assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "closed with the game");
 }
 
+// Wine and Proton: Linux only.
+#[cfg(unix)]
 #[test]
 fn with_plain_proton_the_session_follows_the_game_in_its_prefix() {
     let r = rig();
@@ -930,6 +1001,8 @@ fn clearing_a_game_leaves_its_programs_running_and_missing_ones_are_reported() {
     assert!(!r.spawner.handle(1).unwrap().lock().unwrap().terminated);
 }
 
+// Wine and Proton: Linux only.
+#[cfg(unix)]
 #[test]
 fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for_them() {
     let r = rig();
@@ -1056,6 +1129,10 @@ fn an_adopted_game_whose_leader_left_is_followed_through_its_group() {
     assert!(stopped);
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     let r = rig();
@@ -1078,6 +1155,10 @@ fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
 }
 
+// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
+// and pid from the registry (this machine's real Steam), so the fake Steam
+// under the test's `home` is not seen.
+#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
     let r = rig();

@@ -75,7 +75,7 @@ impl<'a> ArtContext<'a> {
 
     /// `isLocalSrc`: `file:`, `localart:` or an absolute path.
     fn is_local(value: &str) -> bool {
-        value.starts_with("file:") || value.starts_with("localart:") || value.starts_with('/')
+        value.starts_with("file:") || value.starts_with("localart:") || value.starts_with('/') || Path::new(value).is_absolute()
     }
 
     /// The file behind a local source, `None` when it cannot be resolved or

@@ -194,6 +194,8 @@ mod tests {
         assert!(missing.unwrap_err().contains("/tools/mods.sh"));
     }
 
+    // A `.sh` program under MangoHud: Linux only.
+    #[cfg(unix)]
     #[test]
     fn playing_starts_the_program_like_the_game() {
         let (_d, ctx) = ctx();

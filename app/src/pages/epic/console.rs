@@ -47,6 +47,18 @@ impl EpicPage {
                     .desc(tr!("Add a game already on this PC without downloading it again"))
                     .icon(Icon::FolderOpen),
             );
+            if self.launcher {
+                let importing = s.busy_of(crate::services::downloads::LAUNCHER_IMPORT).is_some();
+                rows.push(
+                    Row::action(
+                        "launcher-import",
+                        if importing { tr!("Importing\u{2026}") } else { tr!("Import the Epic Games Launcher's games") },
+                    )
+                    .desc(tr!("Games it installed on this PC, without downloading them again"))
+                    .icon(Icon::Download)
+                    .enabled(!importing),
+                );
+            }
             rows.push(Row::action("logout", tr!("Log out\u{2026}")).icon(Icon::Logout).danger());
         } else {
             rows.push(
@@ -104,6 +116,12 @@ impl EpicPage {
                         Row::action("eos-check", if eos.checking { tr!("Checking for updates\u{2026}") } else { tr!("Check for updates") })
                             .icon(Icon::Refresh)
                             .enabled(!eos.checking),
+                    );
+                }
+                if let Some(on) = eos.enabled.filter(|_| crate::services::downloads::eos_global()) {
+                    rows.push(
+                        Row::toggle("eos-global", tr!("Use the overlay in games"), on)
+                            .desc(tr!("On Windows the overlay is on or off for every game at once.")),
                     );
                 }
                 rows.push(Row::action("eos-remove", tr!("Uninstall\u{2026}")).icon(Icon::FaTrash).danger());
@@ -175,6 +193,11 @@ impl EpicPage {
             }
             "eos-update" | "eos-install" => self.svc.update(cx, |s, cx| s.eos_install(cx)),
             "eos-check" => self.svc.update(cx, |s, cx| s.eos_check_updates(cx)),
+            "eos-global" => {
+                let on = self.svc.read(cx).eos().enabled.unwrap_or(false);
+                self.svc.update(cx, |s, cx| s.eos_set_global(!on, cx));
+            }
+            "launcher-import" => self.svc.update(cx, |s, cx| s.import_from_launcher(cx)),
             "eos-remove" => self.confirm(
                 tr!("Uninstall the EOS Overlay?"),
                 tr!("Games that use it lose the overlay until you install it again."),

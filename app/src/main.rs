@@ -1,3 +1,7 @@
+// A windowed app on Windows: no console window opens with it. Debug builds
+// keep theirs for the log; release builds log to the file only.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod assets;
 mod collection;
 mod console;
@@ -20,6 +24,9 @@ use std::time::Instant;
 use gpui_kit::*;
 
 fn main() {
+    // First: on Windows this program may be started again only to send a
+    // helper (legendary, gogdl, nile) the Ctrl+C that asks it to stop.
+    heronite_platform::process::init_stop_helper();
     let started = Instant::now();
     tune_allocator();
     // A restore asked for before a restart: copied before anything reads the

@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 use indexmap::IndexMap;
 use regex::Regex;
 
-use crate::pathutil::{dirname, join};
+use crate::pathutil::{dirname, is_absolute, join};
 
 const SECTOR: usize = 2048;
 const RAW_SECTOR: usize = 2352;
@@ -166,7 +166,7 @@ pub fn resolve_image_path(rom: &Path) -> PathBuf {
     let Some(target) = target else {
         return rom.to_path_buf();
     };
-    let resolved = if target.starts_with('/') { target } else { join(&dirname(&s), &target) };
+    let resolved = if is_absolute(&target) { target } else { join(&dirname(&s), &target) };
     let next = PathBuf::from(&resolved);
     if next == rom {
         return next;

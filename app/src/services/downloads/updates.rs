@@ -41,7 +41,7 @@ impl Downloads {
         let data_paths = self.data_paths.clone();
         // An install move cut short by a quit / kill is finished first; the
         // queue starts after it (two legendary runs would both write installed.json).
-        let move_first = self.resume_interrupted_move(cx);
+        let move_first = heronite_platform::supported(heronite_platform::Feature::EpicStore) && self.resume_interrupted_move(cx);
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_secs(5)).await;
             if !move_first && this.update(cx, |this, cx| this.start_queue_when_online(cx)).is_err() {
@@ -116,6 +116,10 @@ impl Downloads {
                                 } else {
                                     this.toast(cx, msg, false);
                                 }
+                                // Windows: games of the Epic Games Launcher taken in.
+                                if let Some(r) = r.launcher_import.as_ref().filter(|r| r.ok) {
+                                    this.toast(cx, r.message.clone(), false);
+                                }
                             }
                         }
                         this.emit(cx, DownloadsEvent::LibraryChanged);
@@ -157,9 +161,10 @@ impl Downloads {
     /// otherwise refreshes the libraries of the stores logged in and, with
     /// `autoUpdateGames`, queues the updates found (see [`autoupdate`]).
     pub fn check_for_updates(&mut self, auto: bool, cx: &mut Context<Self>) {
-        let epic = !self.refreshing && self.account.logged_in;
+        // Only the stores this system has: a backup from Linux can bring their logins.
+        let epic = !self.refreshing && self.account.logged_in && heronite_platform::supported(heronite_platform::Feature::EpicStore);
         let stores: Vec<Store> =
-            Store::ALL.into_iter().filter(|s| self.store(*s).account.logged_in && !self.store(*s).refreshing).collect();
+            Store::ALL.into_iter().filter(|s| s.available() && self.store(*s).account.logged_in && !self.store(*s).refreshing).collect();
         if !epic && stores.is_empty() {
             return;
         }

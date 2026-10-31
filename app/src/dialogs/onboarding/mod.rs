@@ -84,10 +84,13 @@ impl OnboardingDialog {
         let games = pick_games(&ctx);
         // Whether Ludusavi is installed decides if backups can be turned on.
         let preferred = ctx.lib.settings.ludusavi.binary_path.clone();
+        let saves = heronite_platform::supported(heronite_platform::Feature::SaveBackups);
         cx.spawn(async move |this, cx| {
             let found = cx
                 .background_spawn(async move {
-                    detect_ludusavi(&SystemRunner::default(), &SystemProbe, Some(preferred.as_str()).filter(|p| !p.is_empty())).is_some()
+                    saves
+                        && detect_ludusavi(&SystemRunner::default(), &SystemProbe, Some(preferred.as_str()).filter(|p| !p.is_empty()))
+                            .is_some()
                 })
                 .await;
             this.update(cx, |this, cx| {

@@ -348,7 +348,7 @@ impl CollectionView {
     }
 
     fn open_in_file_manager(&mut self, dir: &std::path::Path, cx: &mut Context<Self>) {
-        if let Err(err) = std::process::Command::new("xdg-open").arg(dir).spawn() {
+        if let Err(err) = heronite_platform::shell::open(dir) {
             self.show_toast(format!("{err}"), true, cx);
         }
     }

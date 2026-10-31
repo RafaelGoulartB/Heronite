@@ -2,11 +2,13 @@
 //! `src/local-library/screenshots/capture.ts`.
 //!
 //! The portable pieces live here and are unit-tested: accelerator parsing and
-//! translation (Hyprland `hl.bind` syntax, XDG GlobalShortcuts triggers), file
-//! naming, destination folder selection, monitor picking. The side-effecting
-//! service ([`CaptureService`], Linux only) lives in `service.rs`.
+//! translation (Hyprland `hl.bind` syntax, XDG GlobalShortcuts triggers,
+//! Windows `RegisterHotKey` keys), file naming, destination folder selection,
+//! monitor picking. The side-effecting service ([`CaptureService`]) lives in
+//! `service.rs` on Linux and in `win/` on Windows (see there for how it
+//! works); elsewhere `unsupported.rs` stands in for it and never captures.
 //!
-//! # How a capture happens
+//! # How a capture happens (Linux)
 //! 1. `begin_session` for a launched game registers the shortcut (only while a
 //!    game is active and `screenshots.captureEnabled` is set).
 //! 2. On Hyprland a temporary, in-memory, non-consuming bind
@@ -27,7 +29,8 @@ use std::path::{Path, PathBuf};
 
 pub use accelerator::{
     hyprland_bind_expression, hyprland_bind_expression_as, hyprland_unbind_expression, parse_accelerator, to_hyprland_binding,
-    to_portal_trigger, Accelerator, HyprlandBind, HyprlandBinding, MOD_ALT, MOD_CTRL, MOD_SHIFT, MOD_SUPER,
+    to_portal_trigger, to_windows_hotkey, Accelerator, HyprlandBind, HyprlandBinding, WindowsHotkey, MOD_ALT, MOD_CTRL, MOD_SHIFT,
+    MOD_SUPER, WIN_MOD_ALT, WIN_MOD_CONTROL, WIN_MOD_NOREPEAT, WIN_MOD_SHIFT, WIN_MOD_WIN,
 };
 
 #[cfg(target_os = "linux")]
@@ -42,11 +45,19 @@ mod hyprland;
 mod portal;
 #[cfg(target_os = "linux")]
 mod service;
+#[cfg(not(any(target_os = "linux", windows)))]
+mod unsupported;
+#[cfg(windows)]
+mod win;
 
 #[cfg(target_os = "linux")]
-pub use hotkey::{GlobalHotkey, HotkeySpec};
+pub use hotkey::GlobalHotkey;
 #[cfg(target_os = "linux")]
-pub use service::{CaptureService, ServiceOptions};
+pub use service::CaptureService;
+#[cfg(not(any(target_os = "linux", windows)))]
+pub use unsupported::{CaptureService, GlobalHotkey};
+#[cfg(windows)]
+pub use win::{CaptureService, GlobalHotkey};
 
 /// Description used for the Hyprland bind and the portal shortcut.
 pub const BIND_DESCRIPTION: &str = "Heronite game screenshot";
@@ -205,6 +216,9 @@ pub enum CaptureOutcome {
 pub enum ShortcutBackend {
     Hyprland,
     Portal,
+    /// `RegisterHotKey`.
+    #[cfg(windows)]
+    Windows,
 }
 
 /// Events emitted by the service.
@@ -236,6 +250,36 @@ pub struct CaptureStatus {
     /// `(app_name, runner, title)` of the game receiving captures.
     pub active_game: Option<(String, String, String)>,
     pub error: Option<String>,
+}
+
+/// [`CaptureService`] construction options.
+#[derive(Debug, Clone, Default)]
+pub struct ServiceOptions {
+    /// Reverse-DNS desktop id registered with the portal for a non-sandboxed
+    /// app (Heronite uses `com.heronite.launcher`, matching its `.desktop`
+    /// file). Without it the portal may not be able to identify the app.
+    pub portal_app_id: Option<String>,
+    pub messages: CaptureMessages,
+}
+
+/// A [`GlobalHotkey`] to register.
+#[derive(Debug, Clone)]
+pub struct HotkeySpec {
+    /// The shortcut's id in its portal session.
+    pub id: &'static str,
+    /// Shown by the desktop; on Hyprland it also recognises a bind left
+    /// behind by a crash.
+    pub description: &'static str,
+    /// Signal the Hyprland bind sends this process. Not `SIGUSR2`: that is the
+    /// screenshot's.
+    #[cfg(target_os = "linux")]
+    pub signal: i32,
+    /// Electron-style (`Super+G`).
+    pub accelerator: String,
+    /// The focused window (the game) does not get the keys (Hyprland).
+    pub consume: bool,
+    /// See [`ServiceOptions::portal_app_id`].
+    pub portal_app_id: Option<String>,
 }
 
 /// Texts of the desktop notifications (`notify.screenshot.*`), in English:

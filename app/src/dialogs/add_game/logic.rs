@@ -181,6 +181,22 @@ pub fn platform_label(p: SideloadPlatform) -> &'static str {
 
 pub const PLATFORMS: [SideloadPlatform; 3] = [SideloadPlatform::Linux, SideloadPlatform::Windows, SideloadPlatform::Browser];
 
+/// The platforms a game can be added for here: Linux programs do not run
+/// on Windows.
+pub fn platforms() -> &'static [SideloadPlatform] {
+    if cfg!(windows) {
+        &PLATFORMS[1..]
+    } else {
+        &PLATFORMS
+    }
+}
+
+/// Whether a Windows game gets Wine options (its version and prefix): not
+/// on Windows, where it runs as it is.
+pub fn uses_wine() -> bool {
+    heronite_platform::supported(heronite_platform::Feature::Wine)
+}
+
 /// What Esc does, outermost layer first: the image picker, a confirmation,
 /// else it asks before throwing away what was typed.
 #[derive(Debug, PartialEq, Eq)]

@@ -335,7 +335,11 @@ fn game_side(b: Board, panel: Hsla, w: f32) -> Div {
                 .border_color(theme::ink_a(if theme::high_contrast() { 0.35 } else { 0.08 }))
                 .child(fact(tr!("Rating"), "★★★★☆".into()))
                 .child(fact(tr!("Save backup"), tr!("Yesterday").into()))
-                .child(fact(tr!("On Linux"), "Platinum".into())),
+                .child(if cfg!(target_os = "linux") {
+                    fact(tr!("On Linux"), "Platinum".into())
+                } else {
+                    fact(tr!("Library"), "Steam".into())
+                }),
         )
 }
 

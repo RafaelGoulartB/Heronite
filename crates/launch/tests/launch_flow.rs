@@ -3,6 +3,9 @@
 //! files the real ones would. Nothing real is started and everything lives in
 //! a temporary directory.
 
+// The fake legendary and Wine are shell scripts.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};

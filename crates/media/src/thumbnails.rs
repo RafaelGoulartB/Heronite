@@ -587,7 +587,8 @@ mod tests {
         // Give distinct access times: s1 oldest, s3 newest.
         for (i, age) in [(1usize, 300u64), (2, 200), (3, 100)] {
             let c = cache.cache_path_for(&srcs[i]);
-            let f = fs::File::open(&c).unwrap();
+            // Windows changes a file's times only through a handle that may write.
+            let f = fs::File::options().write(true).open(&c).unwrap();
             f.set_times(fs::FileTimes::new().set_accessed(SystemTime::now() - Duration::from_secs(age))).unwrap();
         }
         let total = cache.info().size_bytes;

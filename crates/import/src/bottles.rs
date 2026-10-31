@@ -190,6 +190,8 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
+    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
+    #[cfg(unix)]
     #[test]
     fn reads_the_programs_of_every_bottle() {
         let h = tempfile::tempdir().unwrap();

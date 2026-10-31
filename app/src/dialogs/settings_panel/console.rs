@@ -5,6 +5,7 @@
 //! so they are saved the same way. Hosted by the console game settings and
 //! the console Settings page.
 
+use heronite_platform::{supported, Feature};
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -685,6 +686,9 @@ impl SettingsPanel {
         let with_system = self.flag("startWithSystem", false);
         let app_paths = heronite_data::AppPaths::for_data(&self.paths);
         let (choices, names, selected) = super::general::language_options(&app_paths);
+        // What this system has, as on the desktop (`general.rs`).
+        let wine = supported(Feature::Wine);
+        let stores = heronite_platform::features::any_store();
         let mut v = vec![
             Self::c_header(tr!("Language")),
             item(
@@ -695,23 +699,31 @@ impl SettingsPanel {
                     }
                 })),
             ),
-            Self::c_header(tr!("Folders")),
-            self.c_path("defaultInstallPath", tr!("Default install folder"), true, cx),
-            self.c_path("defaultWinePrefixDir", tr!("Folder for new Wine prefixes"), true, cx),
-            self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
-            Self::c_header(tr!("Startup")),
-            self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false),
         ];
-        // Starting minimized belongs to starting with the system, as on the desktop.
-        if with_system {
-            v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray));
+        if stores || wine {
+            v.extend([Self::c_header(tr!("Folders")), self.c_path("defaultInstallPath", tr!("Default install folder"), true, cx)]);
         }
-        v.extend([
-            Self::c_header(tr!("System tray")),
-            self.c_toggle("exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray),
-            self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon"), Some(tr!("Takes effect after Heronite restarts.")), no_tray),
-            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
-        ]);
+        if wine {
+            v.extend([
+                self.c_path("defaultWinePrefixDir", tr!("Folder for new Wine prefixes"), true, cx),
+                self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
+            ]);
+        }
+        if supported(Feature::Autostart) {
+            v.extend([Self::c_header(tr!("Startup")), self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false)]);
+            // Starting minimized belongs to starting with the system, as on the desktop.
+            if with_system {
+                v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray));
+            }
+        }
+        if supported(Feature::Tray) {
+            v.extend([
+                Self::c_header(tr!("System tray")),
+                self.c_toggle("exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray),
+                self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon"), Some(tr!("Takes effect after Heronite restarts.")), no_tray),
+                self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
+            ]);
+        }
         if self.restart_needed() {
             let free = crate::system::restart_blocker(cx).is_none();
             v.push(Self::c_do("restart-now", tr!("Restart now"), Icon::Replay, free, |_, _, cx| crate::system::restart_now(cx)));
@@ -733,10 +745,19 @@ impl SettingsPanel {
                 Some(tr!("Only when Steam was not running before Heronite started the game")),
                 false,
             ),
-            Self::c_header(tr!("Game shortcuts")),
-            self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
-            self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
-            self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),
+        ]);
+        if supported(Feature::DesktopShortcuts) {
+            v.extend([
+                Self::c_header(tr!("Game shortcuts")),
+                self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
+                self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
+                self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),
+            ]);
+        }
+        if !wine {
+            return v;
+        }
+        v.extend([
             Self::c_header(tr!("Wine and Proton")),
             self.c_toggle(
                 "showValveProton",
@@ -784,14 +805,18 @@ impl SettingsPanel {
                     .desc(tr!("More workers download faster but use more CPU, memory and disk")),
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxWorkers", json!(i as i64), cx))),
             ),
-            self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx),
-            self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx),
-            self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx),
+        ]
+        .into_iter()
+        .chain(supported(Feature::EpicStore).then(|| self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx)))
+        .chain(supported(Feature::GogStore).then(|| self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx)))
+        .chain(supported(Feature::AmazonStore).then(|| self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx)))
+        .chain([
             self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
             Self::c_header(tr!("Updates")),
             self.c_toggle("checkForUpdatesOnStartup", true, tr!("Check for game updates at startup"), None, false),
             self.c_toggle("autoUpdateGames", false, tr!("Update games automatically"), None, false),
-        ]
+        ])
+        .collect()
     }
 
     // ------------------------------------------------------------- editors

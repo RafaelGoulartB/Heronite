@@ -408,7 +408,7 @@ pub fn search(query: &str) -> Vec<Hit> {
         return Vec::new();
     }
     let mut hits: Vec<(i32, usize, Hit)> = Vec::new();
-    for (ix, &section) in Section::ALL.iter().enumerate() {
+    for (ix, &section) in Section::ALL.iter().enumerate().filter(|(_, s)| s.available()) {
         let own = section_score(&tokens, section);
         let name = fuzzy::fold(section.label());
         let mut found: Vec<(i32, usize, Setting)> = settings_of(section)
@@ -433,14 +433,18 @@ pub fn search(query: &str) -> Vec<Hit> {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
     fn sections(query: &str) -> Vec<Section> {
         search(query).into_iter().map(|h| h.section).collect()
     }
 
+    #[cfg(target_os = "linux")]
     fn labels(query: &str, section: Section) -> Vec<&'static str> {
         search(query).into_iter().find(|h| h.section == section).map(|h| h.settings.iter().map(|s| s.label).collect()).unwrap_or_default()
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn finds_sections_by_label_keyword_and_group() {
         assert!(search("").is_empty());
@@ -455,6 +459,8 @@ mod tests {
         assert!(search("zzqx").is_empty());
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn finds_the_settings_inside_a_section() {
         let language = search("language");

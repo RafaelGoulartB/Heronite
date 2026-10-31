@@ -11,7 +11,7 @@
 //! `closed`, `opening`, `restarting`, `restart`, `failed`, `reading` or
 //! `connected`; `looking`, `none`, `ready` or `unplayable`.
 
-use std::path::PathBuf;
+use heronite_platform::Feature;
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
@@ -89,7 +89,9 @@ impl CollectionView {
         if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             return;
         }
-        self.start_emulation_setup(cx);
+        if heronite_platform::supported(Feature::Emulation) {
+            self.start_emulation_setup(cx);
+        }
         if self.welcome.watch.is_some() {
             return;
         }
@@ -127,8 +129,8 @@ impl CollectionView {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let media = PathBuf::from("/run/media").join(std::env::var("USER").unwrap_or_default());
-                    heronite_emulation::setup::auto_setup(&paths, &heronite_emulation::SystemEnv, &media).map_err(|e| format!("{e:#}"))
+                    let disks = heronite_emulation::setup::disks();
+                    heronite_emulation::setup::auto_setup(&paths, &heronite_emulation::SystemEnv, &disks).map_err(|e| format!("{e:#}"))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -246,12 +248,13 @@ impl CollectionView {
             tile(id, Icon::Storefront, name, tr!("Log in").into(), tint)
                 .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
         };
+        // The stores this system has (`heronite_platform::features`).
         let stores = div()
             .flex()
             .gap(px(10.))
-            .child(store("welcome-epic", Page::Epic, "Epic Games", (226, 232, 240)))
-            .child(store("welcome-gog", Page::Gog, "GOG", (185, 166, 255)))
-            .child(store("welcome-amazon", Page::Amazon, "Amazon Games", (255, 196, 107)));
+            .when(Page::Epic.available(), |d| d.child(store("welcome-epic", Page::Epic, "Epic Games", (226, 232, 240))))
+            .when(Page::Gog.available(), |d| d.child(store("welcome-gog", Page::Gog, "GOG", (185, 166, 255))))
+            .when(Page::Amazon.available(), |d| d.child(store("welcome-amazon", Page::Amazon, "Amazon Games", (255, 196, 107))));
         let clients = self.client_tiles(cx);
         let add = div().mt(px(10.)).flex().child(icon_button_sm(
             "welcome-add",
@@ -289,13 +292,19 @@ impl CollectionView {
                     .child(tr!("Heronite looks on this PC and brings in what it finds by itself.")),
             )
             .child(label(Icon::TravelExplore, tr!("Found on this PC")))
-            .child(div().flex().flex_col().gap(px(10.)).child(steam).child(self.emulation_row(cx)))
-            .when_some(self.launcher_tiles(cx), |d, tiles| {
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .child(steam)
+                    .when(heronite_platform::supported(Feature::Emulation), |d| d.child(self.emulation_row(cx))),
+            )
+            .when_some(heronite_platform::supported(Feature::LauncherImports).then(|| self.launcher_tiles(cx)).flatten(), |d, tiles| {
                 d.child(label(Icon::CallMerge, tr!("Bring in from another launcher"))).child(tiles)
             })
-            .child(label(Icon::Storefront, tr!("Log in to a store")))
-            .child(stores)
-            .child(clients)
+            .when(heronite_platform::features::any_store(), |d| d.child(label(Icon::Storefront, tr!("Log in to a store"))).child(stores))
+            .when(heronite_platform::supported(Feature::StoreClients), |d| d.child(clients))
             .child(add)
             .child(
                 div()

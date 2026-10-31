@@ -1,8 +1,11 @@
 //! Emulation set up by itself for a new setup: registers the emulators
 //! found on this machine and, in the usual ROM folders (EmuDeck's,
-//! RetroDECK's, `~/ROMs` with one folder per system), adds a ROM folder for
-//! each system an emulator can play and imports its games. Only the empty
-//! Collection runs it; elsewhere adding folders stays the user's call.
+//! RetroDECK's, `~/ROMs` with one folder per system; on Windows `ROMs` and
+//! `Documents\ROMs` of the home and EmuDeck's `Emulation\roms` at the top of
+//! each drive), adds a ROM folder for each system an emulator can play and
+//! imports its games.
+//! Only the empty Collection runs it; elsewhere adding folders stays the
+//! user's call.
 //!
 //! Nothing here executes a file; the folder walk is bounded.
 
@@ -14,14 +17,15 @@ use heronite_data::DataPaths;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 
 use crate::catalog::emulator_definitions;
-use crate::detect::DetectEnv;
+use crate::detect::{drives, DetectEnv, SystemEnv};
 use crate::discover::{add_discovered, discover_emulators};
 use crate::import::run_rom_scanners;
 use crate::store::{list_rom_scanners, list_user_emulators, upsert_rom_scanner};
 use crate::types::UpsertRomScannerArgs;
 
 /// Where ROM collections usually live, under the home folder.
-const ROOTS: [&str; 10] = [
+#[cfg(not(windows))]
+const ROOTS: &[&str] = &[
     "ROMs",
     "Roms",
     "roms",
@@ -34,7 +38,17 @@ const ROOTS: [&str; 10] = [
     "RetroDECK/roms",
 ];
 /// The same, at the top of other disks (a Steam Deck's SD card).
-const DISK_ROOTS: [&str; 3] = ["Emulation/roms", "roms", "retrodeck/roms"];
+#[cfg(not(windows))]
+const DISK_ROOTS: &[&str] = &["Emulation/roms", "roms", "retrodeck/roms"];
+/// Windows: under the home folder (names there ignore case, `ROMs` is also
+/// `roms`).
+#[cfg(windows)]
+const ROOTS: &[&str] =
+    &["ROMs", "Emulation/roms", "Games/ROMs", "Games/Emulation/roms", "Documents/ROMs", "OneDrive/Documents/ROMs", "Emulators/ROMs"];
+/// Windows: at the top of every drive, the system drive's and the others'
+/// alike (EmuDeck's `Emulation\roms`).
+#[cfg(windows)]
+const DISK_ROOTS: &[&str] = &["Emulation/roms", "ROMs", "Games/ROMs", "RetroArch-Win64/roms"];
 /// Entries looked at per system folder before giving up on finding a game.
 const WALK_BUDGET: usize = 4000;
 
@@ -94,12 +108,27 @@ pub fn platform_of(folder: &str) -> Option<&'static str> {
     })
 }
 
-/// The ROM roots that exist: under `home`, and on the disks mounted in
-/// `media` (`/run/media/<user>`).
-pub fn rom_roots(home: &Path, media: &Path) -> Vec<PathBuf> {
-    let disks = std::fs::read_dir(media).into_iter().flatten().flatten().map(|e| e.path());
-    let mut all: Vec<PathBuf> = ROOTS.iter().map(|r| home.join(r)).collect();
-    all.extend(disks.flat_map(|d| DISK_ROOTS.iter().map(move |r| d.join(r))));
+/// `base` joined with each `/`-separated part of `rel`.
+fn under(base: &Path, rel: &str) -> PathBuf {
+    rel.split('/').fold(base.to_path_buf(), |p, part| p.join(part))
+}
+
+/// The tops of the other disks ROM folders may be on: the disks mounted in
+/// `/run/media/<user>` (a Steam Deck's SD card); on Windows the drives, the
+/// system drive first ([`drives`]).
+pub fn disks() -> Vec<PathBuf> {
+    if cfg!(windows) {
+        return drives(&SystemEnv).into_iter().map(PathBuf::from).collect();
+    }
+    let media = PathBuf::from("/run/media").join(std::env::var("USER").unwrap_or_default());
+    std::fs::read_dir(media).into_iter().flatten().flatten().map(|e| e.path()).collect()
+}
+
+/// The ROM roots that exist: under `home`, and at the top of `disks`
+/// ([`disks`]).
+pub fn rom_roots(home: &Path, disks: &[PathBuf]) -> Vec<PathBuf> {
+    let mut all: Vec<PathBuf> = ROOTS.iter().map(|r| under(home, r)).collect();
+    all.extend(disks.iter().flat_map(|d| DISK_ROOTS.iter().map(move |r| under(d, r))));
     let mut seen = BTreeSet::new();
     all.into_iter().filter(|p| p.is_dir() && seen.insert(std::fs::canonicalize(p).unwrap_or_else(|_| p.clone()))).collect()
 }
@@ -179,9 +208,9 @@ fn catalog_platform(platform_id: &str) -> (String, Vec<String>) {
 }
 
 /// Registers the emulators found and imports the games of the usual ROM
-/// folders (see the module). Blocking: detection asks Flatpak, the walk
-/// reads folders; seconds at most.
-pub fn auto_setup(paths: &DataPaths, env: &dyn DetectEnv, media: &Path) -> Result<SetupReport> {
+/// folders (see the module), at the top of `disks` too ([`disks`]).
+/// Blocking: detection asks Flatpak, the walk reads folders; seconds at most.
+pub fn auto_setup(paths: &DataPaths, env: &dyn DetectEnv, disks: &[PathBuf]) -> Result<SetupReport> {
     let current = list_user_emulators(paths)?;
     let new: Vec<_> = discover_emulators(env, &current).into_iter().filter(|d| !d.already_added).collect();
     if !new.is_empty() {
@@ -194,7 +223,7 @@ pub fn auto_setup(paths: &DataPaths, env: &dyn DetectEnv, media: &Path) -> Resul
 
     let known: Vec<PathBuf> = list_rom_scanners(paths)?.into_iter().map(|s| PathBuf::from(s.directory)).collect();
     let mut unplayable = BTreeSet::new();
-    for folder in find_rom_folders(&rom_roots(Path::new(&env.home()), media)) {
+    for folder in find_rom_folders(&rom_roots(Path::new(&env.home()), disks)) {
         if known.contains(&folder.dir) {
             continue;
         }
@@ -252,7 +281,7 @@ mod tests {
         }
     }
 
-    /// A machine with nothing to detect, at `home`.
+    /// A machine with nothing to detect, at `home` (its system drive too).
     struct Bare(PathBuf);
     impl DetectEnv for Bare {
         fn which(&self, _: &str) -> Option<String> {
@@ -270,6 +299,9 @@ mod tests {
         fn home(&self) -> String {
             self.0.to_string_lossy().into_owned()
         }
+        fn var(&self, key: &str) -> Option<String> {
+            (key == "SystemDrive").then(|| self.home())
+        }
     }
 
     #[test]
@@ -286,15 +318,14 @@ mod tests {
             crate::types::UpsertUserEmulatorArgs {
                 definition_id: "pcsx2".into(),
                 name: "PCSX2".into(),
-                executable: "/bin/sh".into(),
+                executable: h.path().join("pcsx2").to_string_lossy().into_owned(),
                 launch_kind: "native".into(),
                 ..Default::default()
             },
         )
         .unwrap();
         let env = Bare(home.clone());
-        let media = h.path().join("media");
-        let report = auto_setup(&paths, &env, &media).unwrap();
+        let report = auto_setup(&paths, &env, &[]).unwrap();
         assert_eq!(report.emulators, ["PCSX2"]);
         assert_eq!((report.folders, report.imported), (1, 1));
         assert_eq!(report.unplayable, ["Nintendo GameCube"]);
@@ -302,7 +333,7 @@ mod tests {
         assert_eq!(scanners.len(), 1);
         assert!(scanners[0].auto_scan_on_refresh);
         // A folder added once is left alone.
-        let again = auto_setup(&paths, &env, &media).unwrap();
+        let again = auto_setup(&paths, &env, &[]).unwrap();
         assert_eq!((again.folders, again.imported), (0, 0));
     }
 
@@ -318,15 +349,43 @@ mod tests {
     #[test]
     fn finds_the_roots_and_their_system_folders() {
         let h = tempfile::tempdir().unwrap();
-        let (home, media) = (h.path().join("home"), h.path().join("media"));
+        let (home, sd) = (h.path().join("home"), h.path().join("media").join("sd"));
         touch(&home.join("Emulation/roms/ps2/God of War.iso"));
         touch(&home.join("Emulation/roms/bios/scph.bin"));
-        touch(&media.join("sd/Emulation/roms/gba/Advance Wars.gba"));
-        let roots = rom_roots(&home, &media);
-        assert_eq!(roots, [home.join("Emulation/roms"), media.join("sd/Emulation/roms")]);
+        touch(&sd.join("Emulation/roms/gba/Advance Wars.gba"));
+        let roots = rom_roots(&home, std::slice::from_ref(&sd));
+        assert_eq!(roots, [under(&home, "Emulation/roms"), under(&sd, "Emulation/roms")]);
         let folders = find_rom_folders(&roots);
         let found: Vec<_> = folders.iter().map(|f| f.platform_id).collect();
         assert_eq!(found, ["sony_playstation2", "nintendo_gameboyadvance"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rom_folders_are_looked_for_by_name_on_every_drive() {
+        let h = tempfile::tempdir().unwrap();
+        let (c, d, e) = (h.path().join("c"), h.path().join("d"), h.path().join("e"));
+        touch(&c.join("Emulation/roms/ps2/Okami.iso"));
+        touch(&d.join("Emulation/roms/gba/Advance Wars.gba"));
+        touch(&d.join("Games/ROMs/snes/Zelda.sfc"));
+        // Names ignore case: `roms` is the `ROMs` the setup looks for.
+        touch(&e.join("roms/psx/Crash.bin"));
+        std::fs::create_dir_all(e.join("Music")).unwrap();
+        let missing = h.path().join("f");
+        let roots = rom_roots(&h.path().join("home"), &[c.clone(), d.clone(), e.clone(), missing]);
+        assert_eq!(roots, [under(&c, "Emulation/roms"), under(&d, "Emulation/roms"), under(&d, "Games/ROMs"), under(&e, "ROMs")]);
+        let found: Vec<_> = find_rom_folders(&roots).iter().map(|f| f.platform_id).collect();
+        assert_eq!(found, ["sony_playstation2", "nintendo_gameboyadvance", "nintendo_super_nes", "sony_playstation"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_system_drive_comes_first_among_the_disks() {
+        let disks = disks();
+        let system = format!("{}\\", std::env::var("SystemDrive").unwrap_or_else(|_| "C:".into()));
+        assert_eq!(disks[0], PathBuf::from(system));
+        let mut seen = BTreeSet::new();
+        assert!(disks.iter().all(|d| seen.insert(d.to_string_lossy().to_ascii_uppercase())), "{disks:?}");
     }
 
     #[test]

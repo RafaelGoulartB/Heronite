@@ -3,7 +3,6 @@
 //! app quits, like a game.
 
 use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -74,7 +73,7 @@ pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::proces
     let command = open_command(paths, client, home)?;
     let mut cmd = spawn::std_command(&command);
     // Not `proc::guard`: the client outlives the app.
-    cmd.stdin(Stdio::null()).process_group(0);
+    heronite_platform::process::new_group(cmd.stdin(Stdio::null()));
     let log = spawn::create_log(&spawn::log_path(paths, &format!("{}.log", client.id()))).ok();
     let (out, err) = match log {
         Some(mut file) => {
@@ -238,14 +237,14 @@ mod tests {
     }
 
     /// A Proton that records how it was called and what it was asked, so
-    /// the client can be opened and closed for real.
+    /// the client can be opened and closed for real. Unix only: it needs `sh`.
+    #[cfg(unix)]
     fn set_up_with_fake_proton(rig: &Rig, client: Client) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
         let script = rig.dir.path().join("proton");
         let body =
             "#!/bin/sh\necho \"$@\" >> \"$WINEPREFIX/calls.txt\"\necho \"verb=$PROTON_VERB nsenter=$UMU_CONTAINER_NSENTER\"\nsleep 1\n";
         std::fs::write(&script, body).unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        heronite_platform::fs::make_executable(&script).unwrap();
         let app = client.config_app();
         let wine = json!({"bin": script, "name": "Fake", "type": "proton"});
         let section = json!({"winePrefix": rig.prefix(), "wineVersion": wine, "disableUMU": true});
@@ -255,6 +254,7 @@ mod tests {
         rig.install(client)
     }
 
+    #[cfg(unix)]
     #[test]
     fn opens_the_client_in_a_group_of_its_own_with_its_output_in_a_log() {
         let rig = Rig::new();
@@ -277,6 +277,7 @@ mod tests {
         assert_eq!(again.matches("verb=run").count(), 1);
     }
 
+    #[cfg(unix)]
     #[test]
     fn closing_asks_the_prefix_to_end_its_programs() {
         let rig = Rig::new();

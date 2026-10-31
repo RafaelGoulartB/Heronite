@@ -223,11 +223,13 @@ impl State {
 
 /// Lists everything (off the UI thread), then walks the items without a size.
 fn scan(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    let updating = updating(cx);
     let st = &mut d.storage;
     let mine = st.generation.fetch_add(1, Ordering::Relaxed) + 1;
     st.loading = true;
     st.walking = None;
     let generation = st.generation.clone();
+    st.ctx.updating = updating;
     let ctx = st.ctx.clone();
     let lib = st.lib.clone();
     // Shown while they are measured again.
@@ -328,6 +330,7 @@ fn remove(d: &mut SettingsPage, ids: Vec<String>, cx: &mut Context<SettingsPage>
     }
     st.stop();
     st.removing = true;
+    st.ctx.updating = updating(cx);
     let ctx = st.ctx.clone();
     cx.notify();
     cx.spawn(async move |this, cx| {
@@ -367,13 +370,35 @@ fn remove(d: &mut SettingsPage, ids: Vec<String>, cx: &mut Context<SettingsPage>
     .detach();
 }
 
-/// "12.3 GB freed", "4.1 GB moved to the trash", or both.
+/// Whether an update of the app is being downloaded or waits to be
+/// installed: its files are not offered.
+fn updating(cx: &App) -> bool {
+    use crate::services::update::Phase;
+    crate::services::update::get(cx).is_some_and(|u| matches!(u.read(cx).phase(), Phase::Downloading(_) | Phase::Installing | Phase::Ready))
+}
+
+/// "12.3 GB freed", "4.1 GB moved to the trash" (Windows: the Recycle Bin),
+/// or both.
 fn removed_text(r: Removed) -> String {
     match (r.deleted, r.trashed) {
         (0, 0) => tr!("Done").into(),
         (d, 0) => tr!("{size} freed", size = human_size(d)),
+        (0, t) if cfg!(windows) => tr!("{size} moved to the Recycle Bin", size = human_size(t)),
         (0, t) => tr!("{size} moved to the trash", size = human_size(t)),
+        (d, t) if cfg!(windows) => {
+            tr!("{freed} freed, {trashed} moved to the Recycle Bin", freed = human_size(d), trashed = human_size(t))
+        }
         (d, t) => tr!("{freed} freed, {trashed} moved to the trash", freed = human_size(d), trashed = human_size(t)),
+    }
+}
+
+/// "Move to the trash" for removing `item` (Windows: the Recycle Bin), or
+/// "Delete".
+fn remove_label(item: &Item) -> &'static str {
+    match item.goes_to_trash() {
+        true if cfg!(windows) => tr!("Move to the Recycle Bin"),
+        true => tr!("Move to the trash"),
+        false => tr!("Delete"),
     }
 }
 
@@ -382,7 +407,7 @@ fn open(item: &Item) {
     let path = item.path();
     let dir = if path.is_file() { path.parent().unwrap_or(path) } else { path };
     if let Err(e) = super::open_folder(dir) {
-        log::warn!("xdg-open {}: {e}", dir.display());
+        log::warn!("opening {}: {e}", dir.display());
     }
 }
 
@@ -392,8 +417,10 @@ fn group_label(g: Group) -> &'static str {
         Group::Prefixes => tr!("Wine prefixes"),
         Group::Builds => tr!("Proton and runtimes"),
         Group::Steam => tr!("Steam leftovers"),
+        Group::Tools => tr!("Store tools"),
         Group::Caches => tr!("Caches"),
         Group::Leftovers => tr!("Leftover folders"),
+        Group::Downloads => tr!("Old downloads"),
     }
 }
 
@@ -413,6 +440,9 @@ fn group_color(g: Group) -> Hsla {
         Group::Steam => theme::chart_series(1),
         Group::Caches => theme::chart_series(3),
         Group::Leftovers => theme::chart_series(4),
+        // Builds' and Steam's: those are Wine's, these are where there is none.
+        Group::Tools => theme::chart_series(2),
+        Group::Downloads => theme::chart_series(1),
     }
     .into()
 }
@@ -433,6 +463,7 @@ fn sweep_label(s: Sweep) -> &'static str {
         Sweep::Leftovers => tr!("Leftover folders"),
         Sweep::Caches => tr!("Caches"),
         Sweep::Shaders => tr!("Compiled shaders"),
+        Sweep::Downloads => tr!("Old downloads"),
     }
 }
 
@@ -442,9 +473,13 @@ fn sweep_effect(s: Sweep) -> &'static str {
         Sweep::Prefixes => tr!("No installed game uses these prefixes. They go to the trash with the saves and settings inside them, and can be restored from there."),
         Sweep::Steam => tr!("Steam keeps these for games no longer installed. Proton prefixes go to the trash, where they can be restored; shader caches are deleted."),
         Sweep::Builds => tr!("No installed game uses these builds. They are uninstalled and can be downloaded again from the Wine Manager."),
+        Sweep::Leftovers if cfg!(windows) => {
+            tr!("No game points to these folders any more. They go to the Recycle Bin, where they can be restored.")
+        }
         Sweep::Leftovers => tr!("No game points to these folders any more. They go to the trash, where they can be restored."),
         Sweep::Caches => tr!("Deleted. They are rebuilt by themselves when needed."),
         Sweep::Shaders => tr!("Deleted. Games compile them again as they run, and stutter for a while until they do."),
+        Sweep::Downloads => tr!("Deleted. Heronite downloads them again when needed."),
     }
 }
 
@@ -454,6 +489,7 @@ fn sweep_color(s: Sweep) -> Hsla {
         Sweep::Steam => Group::Steam,
         Sweep::Builds => Group::Builds,
         Sweep::Leftovers => Group::Leftovers,
+        Sweep::Downloads => Group::Downloads,
         Sweep::Caches | Sweep::Shaders => Group::Caches,
     })
 }
@@ -514,11 +550,15 @@ fn item_meta(st: &State, item: &Item) -> String {
         Kind::Prefix { default: true } | Kind::Build { default: true, .. } => tr!("Games without a choice of their own use it").into(),
         Kind::Build { .. } if item.state == Use::InUse => tr!("Used by Steam").into(),
         Kind::Prefix { .. } | Kind::Build { .. } => tr!("No installed game uses it").into(),
-        Kind::Runtime => tr!("Needed to run games").into(),
+        // A store tool names its store.
+        Kind::Runtime => match &item.source {
+            Some(source) => format!("{source} \u{b7} {}", tr!("Needed to run games")),
+            None => tr!("Needed to run games").into(),
+        },
         Kind::SteamPrefix { .. } => tr!("Proton prefix of a game no longer installed").into(),
         Kind::SteamShaders { .. } => tr!("Shader cache of a game no longer installed").into(),
         Kind::Cache(_) => tr!("Rebuilt when needed").into(),
-        Kind::Leftover => item.path().display().to_string(),
+        Kind::Leftover | Kind::Download => item.path().display().to_string(),
     }
 }
 
