@@ -626,7 +626,7 @@ impl Library {
         }
 
         let statuses = sorted_or_default(statuses_file.statuses);
-        let settings = EffectiveSettings::from_files(&settings_file, &config);
+        let settings = EffectiveSettings::for_paths(paths, &settings_file, &config);
 
         let config_games = config.games.unwrap_or_default();
         let hidden: HashSet<&str> = config_games.hidden.iter().map(|g| g.app_name.as_str()).collect();

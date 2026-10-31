@@ -70,7 +70,7 @@ Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net
 
 - **Statistics:** play time by week, month, year, or all time in five tabs: Overview, Journeys, Backlog (a yearly goal of games to beat), Discoveries, and Album.
 - **Year in review:** your year as full-screen stories, with a card to share.
-- **Sessions:** every launch is recorded, screenshots are matched to the game, and sessions can be edited.
+- **Sessions:** every launch is recorded, screenshots are matched to the game, and sessions can be edited. Captures go to `Pictures/Heronite` (the portable copy's `Screenshots` folder on Windows) until you choose another folder.
 
 <table>
   <tr>
@@ -138,7 +138,7 @@ Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has 
 | Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
 | Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
 | Windows 10 and 11 (**recommended**) | `Heronite-Setup-x86_64.exe` | Run it: it installs for your user, no administrator rights needed |
-| Windows 10 and 11, portable | `Heronite-Portable-x86_64.zip` | Extract it anywhere and run `Heronite\heronite.exe`; the library and settings stay in that folder |
+| Windows 10 and 11, portable | `Heronite-Portable-x86_64.zip` | Extract it anywhere and run `Heronite\heronite.exe`; the library, settings, and screenshots stay in that folder |
 
 Heronite updates itself, and every download is checked against its signing key. Keep the AppImage in a writable folder (like `~/Applications`) so it can update in place. The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
 

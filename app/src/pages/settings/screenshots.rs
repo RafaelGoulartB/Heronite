@@ -33,9 +33,14 @@ pub struct State {
 impl State {
     pub fn new(ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
         let folder = new_input(window, cx, &s.screenshots.folder, "");
-        on_commit(&folder, window, cx, |d: &mut SettingsPage, value, _, cx| {
+        on_commit(&folder, window, cx, |d: &mut SettingsPage, value, window, cx| {
             if value != d.settings.screenshots.folder {
-                save(d, Some(value), None, None, None, cx);
+                save(d, Some(value.clone()), None, None, None, cx);
+                // An emptied field shows the default folder it went back to.
+                let now = d.settings.screenshots.folder.clone();
+                if now != value {
+                    d.screenshots.folder.update(cx, |s, cx| s.set_value(now, window, cx));
+                }
             }
         });
         let limit = new_input(window, cx, &format_number(s.screenshots.cache_limit_mb.get()), "");
@@ -254,6 +259,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let s = d.settings.screenshots.clone();
     let st = &d.screenshots;
     let has_folder = !s.folder.is_empty();
+    // The default folder offers "Browse"; one the user chose offers "Clear",
+    // which goes back to the default.
+    let default_folder = d.ctx.data_paths.default_screenshots().map(|p| p.to_string_lossy().into_owned());
+    let chosen = has_folder && default_folder.as_deref() != Some(s.folder.as_str());
     let accel = if s.capture_accelerator.is_empty() { DEFAULT_CAPTURE_ACCELERATOR.to_string() } else { s.capture_accelerator.clone() };
     let status = screenshots_global(cx).and_then(|g| g.capture).map(|c| c.status());
     let focused = st.hotkey.is_focused(window);
@@ -276,12 +285,14 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             "shot-folder-icon",
             Some(tr!("Screenshots folder")),
             &st.folder,
-            has_folder,
+            chosen,
             false,
             cx.listener(move |d: &mut SettingsPage, _: &ClickEvent, window, cx| {
-                // "Clear" empties the folder, "Browse" opens the chooser.
-                if has_folder {
-                    d.screenshots.folder.update(cx, |s, cx| s.set_value("", window, cx));
+                // "Clear" empties the folder (back to the default, if any),
+                // "Browse" opens the chooser.
+                if chosen {
+                    let value = default_folder.clone().unwrap_or_default();
+                    d.screenshots.folder.update(cx, |s, cx| s.set_value(value, window, cx));
                     save(d, Some(String::new()), None, None, None, cx);
                 } else {
                     choose_path(window, cx, true, tr!("Choose"), |d: &mut SettingsPage, path, window, cx| {

@@ -1,6 +1,7 @@
 //! A portable copy on Windows: a folder holding `heronite.exe` and the
 //! marker `portable.txt` ([`heronite_platform::dirs::PORTABLE_MARKER`]),
-//! with the user's `data`, `config` and `cache` folders beside them.
+//! with the user's `data`, `config`, `cache` and `Screenshots` folders
+//! beside them.
 //!
 //! The release's `Heronite-Portable-<arch>.zip` has one top folder,
 //! `Heronite/`, with the program files. An update downloads it into
@@ -33,7 +34,7 @@ pub const PROGRAM: &str = "heronite.exe";
 /// The zip's one top folder.
 pub const TOP: &str = "Heronite";
 /// A copy's folders that belong to the user: never written by an update.
-const USER_DIRS: [&str; 3] = ["data", "config", "cache"];
+const USER_DIRS: [&str; 4] = ["data", "config", "cache", "Screenshots"];
 /// Limits of what an update unpacks (a few files of some MB in practice).
 const MAX_FILES: usize = 10_000;
 const MAX_BYTES: u64 = 4 << 30;
@@ -416,6 +417,7 @@ mod tests {
             "Heronite/data/collection.json",
             "Heronite/Config/x",
             "Heronite/CACHE/",
+            "Heronite/screenshots/x.png",
             "Heronite/x.",
             "Heronite/x ",
             "Heronite/NUL",

@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 
 /// Folder name of this app under the XDG base directories.
 pub const APP_DIR: &str = "heronite";
+/// Folder name of this app in the user's own folders (Pictures).
+pub const APP_TITLE: &str = "Heronite";
 
 /// File-name-safe, at most 48 characters.
 fn file_name_safe(s: &str) -> String {
@@ -285,6 +287,13 @@ impl DataPaths {
     /// Copy of areweanticheatyet.com.
     pub fn anticheat(&self) -> PathBuf {
         self.j("areweanticheatyet.json")
+    }
+
+    /// The screenshots folder used while none is chosen (see
+    /// `heronite_platform::dirs::screenshots`). Only for the real data
+    /// folder: fixtures and copies never point into the user's Pictures.
+    pub fn default_screenshots(&self) -> Option<PathBuf> {
+        self.is_default().then(|| heronite_platform::dirs::screenshots(APP_TITLE)).flatten()
     }
 
     /// Resolves a `localart://<kind>/<rest>` URL to a file, refusing traversal.

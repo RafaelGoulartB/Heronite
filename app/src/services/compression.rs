@@ -277,11 +277,17 @@ impl Compression {
         if !self.enabled() || self.game_running() {
             return;
         }
-        let Some(folder) = folder.filter(|f| f.is_dir()) else {
+        let Some(folder) = folder else {
             self.phase = Phase::NoFolder;
             cx.notify();
             return;
         };
+        // The default folder appears with the first capture: nothing to do yet.
+        if !folder.is_dir() {
+            self.phase = Phase::Idle;
+            cx.notify();
+            return;
+        }
         self.stop_run();
         self.next_id += 1;
         let cancel = Arc::new(AtomicBool::new(false));
