@@ -193,7 +193,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
             .map(|(command, args)| {
                 let mut parts = vec![setup_program(probe, install_path, command)];
                 parts.extend(args.iter().cloned());
-                SetupStep { parts, cwd: Some(install_path.to_string()) }
+                SetupStep { parts, cwd: Some(install_path.to_string()), ..Default::default() }
             })
             .collect();
         process.prep.first_launch = Some(FirstLaunch {

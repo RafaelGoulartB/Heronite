@@ -147,7 +147,7 @@ impl Ctx<'_> {
     }
 
     fn step(&self, parts: Vec<String>) -> SetupStep {
-        SetupStep { parts, cwd: Some(self.install_path.to_string()) }
+        SetupStep { parts, cwd: Some(self.install_path.to_string()), ..Default::default() }
     }
 
     fn dependency_step(&self, id: &str) -> Option<SetupStep> {

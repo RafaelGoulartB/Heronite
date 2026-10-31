@@ -1,0 +1,6 @@
+{
+  "Could not run {program}: {error}": "No se pudo ejecutar {program}: {error}",
+  "Installing the game's requirements...": "Instalando lo que el juego necesita...",
+  "{program} needs administrator rights: answer the Windows prompt": "{program} necesita permisos de administrador: responde al aviso de Windows",
+  "{program} was not installed: the administrator prompt was declined. It is asked again at the next launch.": "{program} no se instaló: se rechazó el permiso de administrador. Se volverá a pedir la próxima vez que abras el juego."
+}

@@ -185,13 +185,18 @@ impl CloudSaves {
     }
 }
 
-/// A Windows program run in the prefix during the first-launch setup.
+/// A Windows program run during the first-launch setup: in the prefix
+/// through Wine, or as it is on Windows ([`crate::native_setup`]).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SetupStep {
-    /// Program (a Linux path or a Wine built-in such as `msiexec`) and its arguments.
+    /// Program (a full path, or a built-in such as `msiexec`) and its arguments.
     pub parts: Vec<String>,
     /// Folder it starts in.
     pub cwd: Option<String>,
+    /// Windows: started through the administrator prompt right away (others
+    /// go through it only when Windows refuses to start them without).
+    /// Ignored under Wine.
+    pub elevate: bool,
 }
 
 impl PrepSpec {

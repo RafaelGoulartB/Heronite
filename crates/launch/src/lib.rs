@@ -33,6 +33,7 @@ pub mod log_reader;
 pub mod log_writer;
 pub mod lsfg;
 pub mod native;
+pub mod native_setup;
 pub mod net;
 pub mod nile;
 pub mod plan;
