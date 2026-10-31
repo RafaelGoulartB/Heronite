@@ -63,15 +63,12 @@ pub fn build_plan_with_settings(
         user_id: &settings.umu_id,
     };
     crate::umu_ids::attach(&mut plan, ctx, keys);
-    // logind's lock, `sh` scripts and programs started alongside are Linux's;
-    // Windows only keeps the computer awake (its own call, no tool needed).
-    let extras = heronite_platform::supported(Feature::LaunchExtras);
-    if extras || cfg!(windows) {
-        crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
-    }
-    if extras {
+    // On Windows keeping the computer awake is its own call, no tool needed.
+    crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+    if heronite_platform::supported(Feature::LaunchExtras) {
         crate::scripts::attach(&mut plan, probe, game, settings);
         crate::companions::attach(&mut plan, ctx, probe, game, settings);
+        crate::steam_extras::attach(&mut plan, probe, game, settings);
     }
     plan
 }
@@ -120,7 +117,8 @@ fn build_sideload(
             if steam::find_steam_binary(probe).is_none() {
                 return LaunchPlan::Unavailable(tr!("Steam client was not found on PATH").into());
             }
-            return LaunchPlan::SteamUri { app_id: app_id.to_string(), uri: steam::steam_uri("rungameid", app_id) };
+            let uri = steam::steam_uri("rungameid", app_id);
+            return LaunchPlan::SteamUri { app_id: app_id.to_string(), uri, extras: Default::default() };
         }
     }
     LaunchPlan::Unavailable(tr!("This game has no launch method").into())

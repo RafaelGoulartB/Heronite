@@ -107,6 +107,9 @@ pub(super) enum Tracked {
         /// Steam was not running before the launch (see `steam::close_steam`).
         #[serde(default)]
         opened_steam: bool,
+        /// The game's script after it (Windows, see `crate::steam_extras`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after_script: Option<Command>,
     },
 }
 
@@ -189,8 +192,9 @@ pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::Proce
 }
 
 /// What a Steam session writes down (see [`remember`]).
-pub(super) fn steam_entry(shared: &Shared, control: &Control, app_id: &str, opened_steam: bool) -> Tracked {
-    Tracked::Steam { app_id: app_id.to_string(), pids: steam_pids(&*shared.procs, &control.steam_pids.lock().unwrap()), opened_steam }
+pub(super) fn steam_entry(shared: &Shared, control: &Control, app_id: &str, opened_steam: bool, after_script: Option<Command>) -> Tracked {
+    let pids = steam_pids(&*shared.procs, &control.steam_pids.lock().unwrap());
+    Tracked::Steam { app_id: app_id.to_string(), pids, opened_steam, after_script }
 }
 
 /// The Steam game's pids that are still the same processes.
@@ -375,7 +379,7 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             }
             finish(&shared, &log, &req, &control, elapsed, None);
         }
-        Tracked::Steam { app_id, opened_steam, .. } => {
+        Tracked::Steam { app_id, opened_steam, after_script, .. } => {
             let locator = shared.steam.clone();
             let seeded: BTreeSet<u32> = control.steam_pids.lock().unwrap().clone();
             let outcome = crate::playtime_watch::follow_steam_session(
@@ -389,8 +393,22 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
                 seeded,
             );
             log.info("Steam game finished");
-            finish(&shared, &log, &req, &control, control.played(), None);
-            if *opened_steam && matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished) {
+            let finished = matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished);
+            let elapsed = control.played();
+            if let Some(script) = after_script.as_ref().filter(|_| finished) {
+                let probe = shared.services.lock().unwrap().probe.clone();
+                let status = |n: Notice| {
+                    if n.warning {
+                        log.warning(&n.log);
+                    } else {
+                        log.info(&n.log);
+                    }
+                    shared.send(LaunchEvent::Status { app_name: entry.app_name.clone(), message: n.message, warning: n.warning })
+                };
+                run_script(&shared, &control, &*probe, script, &log, &status);
+            }
+            finish(&shared, &log, &req, &control, elapsed, None);
+            if *opened_steam && finished {
                 super::steam::close_steam(&shared, &entry.title);
             }
         }

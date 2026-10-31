@@ -1,7 +1,8 @@
 //! The scripts of the game settings run before the game starts and after it
 //! exits (port of `runBeforeLaunchScript`, `runAfterLaunchScript` and
 //! `runScriptForGame` in Heroic's `backend/launcher.ts`). Only builds the
-//! commands; the runtime runs them.
+//! commands; the runtime runs them (on Windows, a script through its host:
+//! see `runtime::spawner::script_host`).
 
 use heronite_data::models::GameInfo;
 
@@ -118,7 +119,7 @@ mod tests {
         let p = plan.process().unwrap();
         assert_eq!(p.before_script.as_ref().unwrap().program, "/s/b");
         assert_eq!(p.after_script.as_ref().unwrap().env["HEROIC_GAME_SCRIPT_TYPE"], "after");
-        let mut steam = LaunchPlan::SteamUri { app_id: "1".into(), uri: "steam://rungameid/1".into() };
+        let mut steam = LaunchPlan::SteamUri { app_id: "1".into(), uri: "steam://rungameid/1".into(), extras: Default::default() };
         attach(&mut steam, &probe, &game(), &s);
         assert!(steam.process().is_none());
     }

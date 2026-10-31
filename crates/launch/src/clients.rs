@@ -245,6 +245,11 @@ mod tests {
         assert!(if cfg!(windows) { process.hold_awake } else { process.keep_awake.is_some() });
         assert_eq!(process.companions.len(), 1);
         let trainer = &process.companions[0].command;
+        if cfg!(windows) {
+            // Windows runs the program as it is.
+            assert_eq!(trainer.program, "/t/trainer.exe");
+            return;
+        }
         assert_eq!(trainer.env["WINEPREFIX"], "/pfx/bnet", "beside the game, in the client's prefix");
         assert_eq!(trainer.env["PROTON_VERB"], "runinprefix");
     }

@@ -131,6 +131,17 @@ pub struct CompanionPlan {
     pub delay: std::time::Duration,
 }
 
+/// What Heronite runs around a Steam game it opens, on Windows (see
+/// [`crate::steam_extras`]). Steam still starts the game itself, as it
+/// would from its own library: the scripts run before the URI is opened and
+/// after the game is gone, the programs while it runs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SteamExtras {
+    pub before_script: Option<Command>,
+    pub after_script: Option<Command>,
+    pub companions: Vec<CompanionPlan>,
+}
+
 /// Work around a launch that needs the network, the tools folder or the
 /// Wine prefix (run by [`crate::prepare`] on the launch thread).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -212,7 +223,7 @@ impl PrepSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaunchPlan {
     /// Open `steam://rungameid/<id>`; the game process is found in Steam's logs.
-    SteamUri { app_id: String, uri: String },
+    SteamUri { app_id: String, uri: String, extras: SteamExtras },
     /// A Linux program started directly (with Heroic's wrappers and env).
     Native(ProcessPlan),
     /// A Windows program through umu/Proton/Wine.

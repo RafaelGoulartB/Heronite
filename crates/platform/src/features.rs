@@ -45,11 +45,13 @@ pub enum Feature {
     SteamGameSettings,
     /// Running games in a sandbox (bubblewrap).
     Sandbox,
-    /// What Linux's launch adds around a game: wrappers (GameMode,
-    /// MangoHud, gamescope), scripts before and after it, programs alongside
-    /// it, launch presets, the Steam runtime, and the Performance and GPU
-    /// settings built on them.
+    /// What the launch adds around a game: scripts before and after it,
+    /// programs alongside it and launch presets.
     LaunchExtras,
+    /// What Linux's launch wraps a game in: wrapper commands, GameMode,
+    /// MangoHud, gamescope, the Steam runtime, and the Performance and GPU
+    /// settings built on them.
+    Wrappers,
     /// Settings → Storage: what games, Wine prefixes, Proton builds and
     /// caches take on disk, and cleaning them up (on Windows: games, store
     /// tools, caches and old downloads).
@@ -69,7 +71,7 @@ pub enum Feature {
 }
 
 impl Feature {
-    pub const ALL: [Feature; 19] = [
+    pub const ALL: [Feature; 20] = [
         Feature::Wine,
         Feature::EpicStore,
         Feature::GogStore,
@@ -83,6 +85,7 @@ impl Feature {
         Feature::SteamGameSettings,
         Feature::Sandbox,
         Feature::LaunchExtras,
+        Feature::Wrappers,
         Feature::Storage,
         Feature::Tray,
         Feature::SelfUpdate,
@@ -107,6 +110,7 @@ impl Feature {
             Feature::SteamGameSettings => "steam-game-settings",
             Feature::Sandbox => "sandbox",
             Feature::LaunchExtras => "launch-extras",
+            Feature::Wrappers => "wrappers",
             Feature::Storage => "storage",
             Feature::Tray => "tray",
             Feature::SelfUpdate => "self-update",
@@ -151,7 +155,8 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::EpicStore
         | Feature::GogStore
         | Feature::AmazonStore
-        | Feature::Storage => true,
+        | Feature::Storage
+        | Feature::LaunchExtras => true,
         Feature::Wine
         | Feature::StoreClients
         | Feature::LauncherImports
@@ -159,7 +164,7 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::Overlay
         | Feature::SteamGameSettings
         | Feature::Sandbox
-        | Feature::LaunchExtras => false,
+        | Feature::Wrappers => false,
     }
 }
 

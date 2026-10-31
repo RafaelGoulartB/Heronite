@@ -1,12 +1,21 @@
 //! Steam games: open the `steam://` URI and follow the game through Steam's logs.
+//! On Windows the game's scripts run before and after, and its programs
+//! alongside while it runs (see [`crate::steam_extras`]); Steam still starts
+//! the game itself.
 
 use heronite_i18n::tr;
+use std::cell::RefCell;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use super::companions::Companions;
+use super::process::{finish_aborted, run_script};
 use super::session::{fail, finish};
 use super::state::{Control, Shared};
 use super::{LaunchEvent, LaunchRequest};
 use crate::log_writer::GameLog;
+use crate::plan::SteamExtras;
 use crate::playtime_watch::{wait_for_steam_session, SteamWaitOutcome};
 use crate::prepare::Notice;
 use crate::procs::processes_matching;
@@ -14,7 +23,36 @@ use crate::record;
 use crate::settings::GlobalSettings;
 use crate::steam::KEY_CLOSE_AFTER_GAME;
 
-pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, control: &Control, app_id: &str, uri: &str) {
+pub(super) fn run_steam(
+    shared: &Shared,
+    log: &Arc<GameLog>,
+    req: &LaunchRequest,
+    control: &Control,
+    app_id: &str,
+    uri: &str,
+    extras: &SteamExtras,
+) {
+    let probe = shared.services.lock().unwrap().probe.clone();
+    let status = |n: Notice| {
+        if n.warning {
+            log.warning(&n.log);
+        } else {
+            log.info(&n.log);
+        }
+        let app_name = req.app_name.clone();
+        shared.send(if !n.warning && !control.playing.load(Ordering::SeqCst) {
+            LaunchEvent::Preparing { app_name, message: n.message, cancellable: !n.uncancellable }
+        } else {
+            LaunchEvent::Status { app_name, message: n.message, warning: n.warning }
+        })
+    };
+    if let Some(script) = &extras.before_script {
+        status(Notice::info("Running the script before launch...", tr!("Running the script before launch...")));
+        let cancelled = || control.abort.load(Ordering::SeqCst) || control.kill.load(Ordering::SeqCst);
+        if !run_script(shared, control, &*probe, script, log, &status) || cancelled() {
+            return finish_aborted(shared, log, req);
+        }
+    }
     log.info(&format!("Opening {uri}"));
     shared.send(LaunchEvent::Preparing {
         app_name: req.app_name.clone(),
@@ -33,6 +71,8 @@ pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, con
     }
     let locator = shared.steam.clone();
     let mut announced: Option<u32> = None;
+    // Started once Steam's logs show the game; their delays count from then.
+    let companions: RefCell<Option<Companions>> = RefCell::new(None);
     let outcome = wait_for_steam_session(
         app_id,
         &*shared.procs,
@@ -49,10 +89,24 @@ pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, con
             // clock starts here, not when Steam was asked to open it.
             let started_at = control.set_playing();
             let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
-            super::adopt::remember(shared, control, req, super::adopt::steam_entry(shared, control, app_id, opened_steam));
+            super::adopt::remember(
+                shared,
+                control,
+                req,
+                super::adopt::steam_entry(shared, control, app_id, opened_steam, extras.after_script.clone()),
+            );
             shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid });
+            if !extras.companions.is_empty() {
+                *companions.borrow_mut() = Some(Companions::new(&extras.companions, Instant::now(), None));
+            }
+        },
+        &mut || {
+            if let Some(c) = companions.borrow_mut().as_mut() {
+                c.start_due(shared, &*probe, log, &status);
+            }
         },
     );
+    let mut companions = companions.into_inner();
     match outcome {
         SteamWaitOutcome::NotStarted => {
             let seconds = shared.cfg.steam.start_timeout.as_secs();
@@ -65,12 +119,42 @@ pub(super) fn run_steam(shared: &Shared, log: &GameLog, req: &LaunchRequest, con
         }
         SteamWaitOutcome::Finished | SteamWaitOutcome::Aborted => {
             log.info("Steam game finished");
-            finish(shared, log, req, control, control.played(), None);
+            let finished = matches!(outcome, SteamWaitOutcome::Finished);
+            if let Some(c) = companions.as_mut() {
+                if finished || game_gone(shared, control) {
+                    c.stop(shared.cfg.kill_grace, log);
+                }
+            }
+            // The session ends here; the script after it is not playtime.
+            let elapsed = control.played();
+            if finished {
+                if let Some(script) = &extras.after_script {
+                    run_script(shared, control, &*probe, script, log, &status);
+                }
+            }
+            finish(shared, log, req, control, elapsed, None);
             // Stopping only ends the tracking: the game may still run.
             if opened_steam && matches!(outcome, SteamWaitOutcome::Finished) {
                 close_steam(shared, &req.title);
             }
         }
+    }
+}
+
+/// Whether the game is gone after its tracking stopped: Stop in the app ends
+/// its processes too (they get the grace period), so its programs alongside
+/// close with it; tracking dropped while the game runs leaves them running.
+fn game_gone(shared: &Shared, control: &Control) -> bool {
+    let pids: Vec<u32> = control.steam_pids.lock().unwrap().iter().copied().collect();
+    let deadline = Instant::now() + shared.cfg.kill_grace;
+    loop {
+        if pids.iter().all(|p| !shared.procs.is_alive(*p)) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(100));
     }
 }
 

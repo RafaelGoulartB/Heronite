@@ -118,7 +118,7 @@ fn installed_games_get_sensible_plans() {
     // Every installed Steam game is a steam:// URI (or says Steam is missing).
     for r in rows.iter().filter(|r| r.meta.as_ref().map(|m| m.launch_kind == "steam-uri").unwrap_or(false)) {
         match &r.plan {
-            LaunchPlan::SteamUri { app_id, uri } => {
+            LaunchPlan::SteamUri { app_id, uri, .. } => {
                 assert_eq!(uri, &format!("steam://rungameid/{app_id}"))
             }
             LaunchPlan::Unavailable(reason) => assert!(reason.contains("Steam"), "{reason}"),
