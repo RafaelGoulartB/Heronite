@@ -1010,7 +1010,7 @@ mod tests {
         assert_eq!(m.snapshot().finished.iter().find(|e| e.params.app_name == "a").unwrap().status, Some(DmStatus::Error));
     }
 
-    // Linux paths; Epic is off on Windows (`Feature::StoreAccounts`).
+    // Linux paths; Epic is off on Windows (`Feature::EpicStore`).
     #[cfg(unix)]
     #[test]
     fn only_a_base_game_install_has_a_folder_to_delete() {

@@ -688,7 +688,7 @@ impl SettingsPanel {
         let (choices, names, selected) = super::general::language_options(&app_paths);
         // What this system has, as on the desktop (`general.rs`).
         let wine = supported(Feature::Wine);
-        let stores = supported(Feature::StoreAccounts);
+        let stores = heronite_platform::features::any_store();
         let mut v = vec![
             Self::c_header(tr!("Language")),
             item(
@@ -805,14 +805,18 @@ impl SettingsPanel {
                     .desc(tr!("More workers download faster but use more CPU, memory and disk")),
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxWorkers", json!(i as i64), cx))),
             ),
-            self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx),
-            self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx),
-            self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx),
+        ]
+        .into_iter()
+        .chain(supported(Feature::EpicStore).then(|| self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx)))
+        .chain(supported(Feature::GogStore).then(|| self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx)))
+        .chain(supported(Feature::AmazonStore).then(|| self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx)))
+        .chain([
             self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
             Self::c_header(tr!("Updates")),
             self.c_toggle("checkForUpdatesOnStartup", true, tr!("Check for game updates at startup"), None, false),
             self.c_toggle("autoUpdateGames", false, tr!("Update games automatically"), None, false),
-        ]
+        ])
+        .collect()
     }
 
     // ------------------------------------------------------------- editors

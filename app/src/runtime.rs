@@ -473,9 +473,9 @@ fn spawn_tools_update(paths: DataPaths) {
     if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") || crate::env::flag("HERONITE_DISABLE_TOOLS_UPDATE") {
         return;
     }
-    // Everything below is for Wine and the stores' tools.
-    let (wine, stores) = (supported(Feature::Wine), supported(Feature::StoreAccounts));
-    if !wine && !stores {
+    // Everything below is for Wine and Epic's legendary.
+    let (wine, epic) = (supported(Feature::Wine), supported(Feature::EpicStore));
+    if !wine && !epic {
         return;
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
@@ -488,7 +488,7 @@ fn spawn_tools_update(paths: DataPaths) {
             heronite_wine::steam_link::sync(&paths);
         }
         // A new setup has no legendary yet: get it before the user logs in to Epic.
-        if stores {
+        if epic {
             if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
                 log::warn!("{e}");
             }

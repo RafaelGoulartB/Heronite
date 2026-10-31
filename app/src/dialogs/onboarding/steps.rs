@@ -100,7 +100,7 @@ impl Step {
     pub fn available(self) -> bool {
         use heronite_platform::{supported, Feature};
         match self {
-            Step::Stores => supported(Feature::StoreAccounts),
+            Step::Stores => heronite_platform::features::any_store(),
             Step::Emulators => supported(Feature::Emulation),
             Step::Saves => supported(Feature::SaveBackups),
             Step::Overlay => supported(Feature::Overlay),

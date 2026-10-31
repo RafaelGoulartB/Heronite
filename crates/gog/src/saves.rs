@@ -351,7 +351,7 @@ mod tests {
         Folders { install: "/games/g", home: user_home(prefix, proton, "rafa") }
     }
 
-    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::GogStore`).
     #[cfg(unix)]
     #[test]
     fn variables_resolve_inside_a_wine_prefix() {
@@ -368,7 +368,7 @@ mod tests {
         assert!(resolve_template("<?INSTALL", &f).is_none());
     }
 
-    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::GogStore`).
     #[cfg(unix)]
     #[test]
     fn proton_uses_the_pfx_folder_and_steamuser() {
@@ -417,7 +417,7 @@ mod tests {
     #[cfg(unix)]
     const REMOTE: &str = r#"{"content":{"Windows":{"cloudStorage":{"enabled":true,"locations":[{"name":"saves","location":"<?APPLICATION_DATA_LOCAL?>\\Game\\Saves"}]}}}}"#;
 
-    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::GogStore`).
     #[cfg(unix)]
     #[test]
     fn supported_needs_a_windows_install_and_a_client_id() {
@@ -431,7 +431,7 @@ mod tests {
         assert!(!supported(&paths, "42"));
     }
 
-    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::GogStore`).
     #[cfg(unix)]
     #[test]
     fn the_manifest_gives_the_client_id_first() {
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(client_id(&paths, "42", &game).as_deref(), Some("from-manifest"));
     }
 
-    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::StoreAccounts`).
+    // Linux paths and Wine prefixes; GOG is off on Windows (`Feature::GogStore`).
     #[cfg(unix)]
     #[test]
     fn locations_are_fetched_once_and_kept_in_the_game_settings() {
