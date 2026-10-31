@@ -21,6 +21,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Epic Games, GOG and Amazon Games: login, downloads, first launch, cloud saves, the official launchers' games
 - Settings → Storage: the drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
 - Launch extras: scripts before and after a game (`.bat`, `.cmd`, `.ps1`, programs), programs alongside it (started as they are, closed with the game), presets (variables and arguments; Windows has no wrappers)
+- Steam games' scripts and programs alongside: Heronite runs them around `steam://rungameid` when you play from Heronite, and Steam starts the game as it is, with nothing in between (`heronite_launch::steam_extras`)
 
 ## ⬜ To do
 
