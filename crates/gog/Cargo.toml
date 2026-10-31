@@ -18,6 +18,7 @@ log = "0.4"
 ureq = "3"
 
 [dev-dependencies]
+heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
 
 [lints]

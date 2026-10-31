@@ -130,8 +130,30 @@ pub fn last_json_object(text: &str) -> Option<serde_json::Value> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    #[cfg(unix)]
     use std::path::Path;
+
+    pub use heronite_data::testing::{FakeTool, Reply};
+
+    /// A fake `gogdl` in `dir` that records the config path it gets
+    /// (`heronite_data::testing::FakeTool`, the same on every system): tell
+    /// it what to answer with `.on(...)` / `.otherwise(...)`, then run it
+    /// as `Gogdl::with_bin(tool.bin(), &paths)`. Its calls start with
+    /// `--auth-config-path <file>`: [`calls_of`] leaves that out.
+    pub fn fake_tool(dir: &Path) -> FakeTool {
+        FakeTool::new(dir, "gogdl").record_env("GOGDL_CONFIG_PATH")
+    }
+
+    /// The calls `tool` got, without the `--auth-config-path <file>` prefix.
+    pub fn calls_of(tool: &FakeTool) -> Vec<String> {
+        tool.calls().iter().map(|l| without_auth(l)).collect()
+    }
+
+    fn without_auth(line: &str) -> String {
+        let mut parts = line.splitn(3, ' ');
+        assert_eq!(parts.next(), Some("--auth-config-path"));
+        parts.next();
+        parts.next().unwrap_or("").to_string()
+    }
 
     /// A fake `gogdl`: a shell script that records its arguments and the config
     /// path, then runs `body`. Unix only: it needs `sh`.
@@ -154,12 +176,7 @@ pub(crate) mod testing {
             .unwrap_or_default()
             .lines()
             .filter(|l| !l.starts_with("CFG="))
-            .map(|l| {
-                let mut parts = l.splitn(3, ' ');
-                assert_eq!(parts.next(), Some("--auth-config-path"));
-                parts.next();
-                parts.next().unwrap_or("").to_string()
-            })
+            .map(without_auth)
             .collect()
     }
 
@@ -174,24 +191,42 @@ pub(crate) mod testing {
 mod tests {
     use super::testing::*;
     use super::*;
-    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
-    #[cfg(unix)]
     #[test]
     fn passes_the_auth_file_and_config_path() {
         let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "echo out; echo err >&2; exit 3");
-        let out = g.run(&["info", "123"]).unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out("out").err("err").exit(3));
+        let out = Gogdl::with_bin(tool.bin(), &paths).run(&["info", "123"]).unwrap();
         assert_eq!(out.code, Some(3));
         assert_eq!(out.stdout.trim(), "out");
         assert_eq!(out.stderr.trim(), "err");
-        assert_eq!(calls(dir.path()), ["info 123"]);
-        let log = std::fs::read_to_string(dir.path().join("calls.log")).unwrap();
-        assert!(log.contains(&format!("--auth-config-path {}", paths.gog_auth().display())), "{log}");
-        assert!(log.contains(&format!("CFG={}", paths.gogdl_config_dir().display())), "{log}");
+        assert_eq!(calls_of(&tool), ["info 123"]);
+        assert_eq!(tool.calls(), [format!("--auth-config-path {} info 123", paths.gog_auth().display())]);
+        assert_eq!(tool.env_seen("GOGDL_CONFIG_PATH"), [paths.gogdl_config_dir().display().to_string()]);
         // gogdl does not create the auth file's folder itself.
         assert!(paths.gog_auth().parent().unwrap().is_dir());
+    }
+
+    #[test]
+    fn streams_lines_and_cancels_a_running_tool() {
+        let (dir, paths) = setup();
+        let reply = Reply::new().err_raw("a\rb\n").out("started").sleep(Duration::from_secs(60));
+        let tool = fake_tool(dir.path()).on(&["download"], reply);
+        let g = Gogdl::with_bin(tool.bin(), &paths);
+        let cancel = Cancel::new();
+        let c2 = cancel.clone();
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(500));
+            c2.request();
+        });
+        let mut lines = Vec::new();
+        let started = Instant::now();
+        let out = g.run_streaming(&["download"], &cancel, |l| lines.push(l.to_string())).unwrap();
+        t.join().unwrap();
+        assert!(out.aborted);
+        assert!(started.elapsed() < Duration::from_secs(10));
+        assert!(lines.contains(&"a".to_string()) && lines.contains(&"b".to_string()), "{lines:?}");
     }
 
     #[cfg(unix)]

@@ -18,6 +18,7 @@ log = "0.4"
 regex = "1"
 
 [dev-dependencies]
+heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
 
 [lints]

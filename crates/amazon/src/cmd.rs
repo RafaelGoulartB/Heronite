@@ -103,6 +103,8 @@ pub(crate) mod testing {
     use super::*;
     use std::path::Path;
 
+    pub use heronite_data::testing::{FakeTool, Reply};
+
     /// A temp data folder with a fake nile that can be pointed at it.
     pub struct Env {
         pub dir: tempfile::TempDir,
@@ -118,6 +120,20 @@ pub(crate) mod testing {
 
         pub fn root(&self) -> &Path {
             self.dir.path()
+        }
+
+        /// A fake `nile` in `<root>/bin` that records the config path it
+        /// gets (`heronite_data::testing::FakeTool`, the same on every
+        /// system): tell it what to answer with `.on(...)` /
+        /// `.otherwise(...)`, then run it through [`Env::nile_of`].
+        /// `${NILE_CONFIG_PATH}` in what it writes is the folder it got.
+        pub fn fake_tool(&self) -> FakeTool {
+            FakeTool::new(&self.root().join("bin"), "nile").record_env("NILE_CONFIG_PATH")
+        }
+
+        /// A [`Nile`] running `tool` on this data folder.
+        pub fn nile_of(&self, tool: &FakeTool) -> Nile {
+            Nile::with_bin(tool.bin(), &self.paths)
         }
 
         /// A fake `nile`: a shell script that records its arguments and the
@@ -169,29 +185,28 @@ pub(crate) mod testing {
 mod tests {
     use super::testing::*;
     use super::*;
-    #[cfg(unix)]
     use std::time::{Duration, Instant};
 
-    #[cfg(unix)]
     #[test]
     fn captures_both_streams_and_passes_the_config_path() {
         let env = Env::new();
-        let nile = env.nile("echo out; echo err >&2; exit 3");
+        let tool = env.fake_tool().otherwise(Reply::new().out("out").err("err").exit(3));
+        let nile = env.nile_of(&tool);
         let out = nile.run(&["library", "sync"]).unwrap();
         assert_eq!(out.code, Some(3));
         assert!(!out.success());
         assert_eq!(out.stdout.trim(), "out");
         assert_eq!(out.stderr.trim(), "err");
-        assert_eq!(env.calls(), ["library sync"]);
-        assert!(env.call_log().contains(&format!("CFG={}", env.paths.nile_config_dir().display())));
+        assert_eq!(tool.calls(), ["library sync"]);
+        assert_eq!(tool.env_seen("NILE_CONFIG_PATH"), [env.paths.nile_config_dir().display().to_string()]);
         assert_eq!(nile.data_dir(), env.paths.nile_config_dir().join("nile"));
     }
 
-    #[cfg(unix)]
     #[test]
     fn streams_lines_split_on_carriage_returns() {
         let env = Env::new();
-        let nile = env.nile("printf 'a\\rb\\nc' >&2");
+        let tool = env.fake_tool().otherwise(Reply::new().err_raw("a\rb\nc"));
+        let nile = env.nile_of(&tool);
         let mut lines = Vec::new();
         let out = nile.run_streaming(&["x"], &Cancel::new(), |l| lines.push(l.to_string())).unwrap();
         assert!(out.success());

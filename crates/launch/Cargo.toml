@@ -21,6 +21,7 @@ ureq = "3"
 toml = "0.8"
 
 [dev-dependencies]
+heronite-data = { path = "../data", features = ["testing"] }
 tempfile = "3"
 
 [lints]
