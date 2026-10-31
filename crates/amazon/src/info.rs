@@ -61,8 +61,7 @@ fn parse_size(stdout: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(unix)]
-    use crate::cmd::testing::Env;
+    use crate::cmd::testing::{Env, Reply};
 
     #[test]
     fn size_is_read_from_the_json_line() {
@@ -72,11 +71,10 @@ mod tests {
         assert_eq!(parse_size("{\"other\": 1}"), None);
     }
 
-    #[cfg(unix)]
     #[test]
     fn info_is_fetched_once_and_cached() {
         let env = Env::new();
-        let nile = env.nile("echo 'INFO [CLI]:\t Found: Game' >&2; echo '{\"download_size\": 5000000}'");
+        let nile = env.nile(Reply::new().err("INFO [CLI]:\t Found: Game").out(r#"{"download_size": 5000000}"#));
         let info = install_info(&env.paths, &nile, "amzn1.adg.product.AAA").unwrap();
         assert_eq!(info, InstallInfo { download_size: 5_000_000, disk_size: 5_000_000 });
         let again = install_info(&env.paths, &nile, "amzn1.adg.product.AAA").unwrap();
@@ -84,14 +82,13 @@ mod tests {
         assert_eq!(env.calls(), ["install --info --json amzn1.adg.product.AAA"]);
     }
 
-    #[cfg(unix)]
     #[test]
     fn failure_carries_nile_errors() {
         let env = Env::new();
-        let nile = env.nile("echo 'ERROR [CLI]:\t Couldn'\"'\"'t find what you are looking for' >&2");
+        let nile = env.nile(Reply::new().err("ERROR [CLI]:\t Couldn't find what you are looking for"));
         let err = install_info(&env.paths, &nile, "x").unwrap_err().to_string();
         assert!(err.contains("find what you are looking for"), "{err}");
-        let nile = env.nile("true");
+        let nile = env.nile(Reply::new());
         assert!(install_info(&env.paths, &nile, "x").unwrap_err().to_string().contains("Failed to get install info for x"));
     }
 }

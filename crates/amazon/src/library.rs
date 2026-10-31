@@ -302,11 +302,10 @@ mod tests {
         assert!(!env.paths.nile_library().exists());
     }
 
-    #[cfg(unix)]
     #[test]
     fn refresh_reports_other_failures() {
         let env = Env::new();
-        let nile = env.nile("echo 'ERROR [LIBRARY]:\t There was an error syncing library' >&2; exit 1");
+        let nile = env.nile(Reply::new().err("ERROR [LIBRARY]:\t There was an error syncing library").exit(1));
         let err = refresh(&env.paths, &nile).unwrap_err().to_string();
         assert!(err.contains("error syncing library"), "{err}");
     }
