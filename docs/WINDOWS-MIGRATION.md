@@ -19,12 +19,12 @@ What works on Windows, what is left, and what Windows does not need.
 
 - Playing Steam games
 - Epic Games, GOG and Amazon Games: login, downloads, first launch, cloud saves, the official launchers' games
+- Settings → Storage: the drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
 
 ## ⬜ To do
 
 - In-game overlay and replay buffer
 - Launch extras: scripts before and after a game, programs alongside it, presets
-- Settings → Storage
 - Troubleshoot for Windows
 - Importing games of Battle.net, EA app, Ubisoft Connect, Rockstar and Xbox app
 - GOG Galaxy services (`comet`)
