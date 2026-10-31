@@ -139,6 +139,7 @@ impl CollectionView {
         self.saturation = bg.saturation.get() as f32 / 100.;
         self.stage_enabled = bg.enabled;
         self.grey_uninstalled = s.grey_uninstalled_games && !s.all_tiles_in_color;
+        self.set_card_shape(s.cover_aspect);
         // Textures are keyed by game, not by image: a game whose art changed
         // (custom cover/background, metadata) must load it again.
         let mut stale: Vec<String> = Vec::new();
@@ -149,7 +150,7 @@ impl CollectionView {
         }
         for (key, chain) in &self.stage_chains {
             if l.stages.get(key) != Some(chain) {
-                stale.extend([format!("s:{key}:"), format!("g:{key}:")]);
+                stale.extend([format!("s:{key}:"), format!("g:{key}:"), format!("b:{key}:")]);
             }
         }
         if !stale.is_empty() {

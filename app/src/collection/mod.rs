@@ -59,6 +59,8 @@ mod update_pill;
 mod user_actions;
 mod view_filters;
 mod view_menu;
+mod view_mode;
+mod view_options;
 mod welcome;
 pub use load::{discard_preload, preload_library};
 pub use screenshots::screenshots_global;
@@ -203,6 +205,10 @@ pub struct CollectionView {
     stage_enabled: bool,
     grey_uninstalled: bool,
     cover_aspect: f32,
+    /// Settings → Appearance → "Cover aspect" of the list's and the grid's
+    /// cards (`settings.json`), and its height / width.
+    card_shape: heronite_data::settings::CoverAspect,
+    card_aspect: f32,
     /// Page shown (☰ menu); the Collection itself is `Page::Collection`.
     page: crate::pages::Page,
     pages: nav::Pages,
@@ -228,6 +234,7 @@ impl CollectionView {
         let data_paths = DataPaths::detect();
         let app_paths = AppPaths::for_data(&data_paths);
         let ui = UiState::load(&app_paths);
+        let drawer_closed = !ui.grid_open_on_select;
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
         // Theme "System": the desktop's light or dark style, now and when it changes.
@@ -339,7 +346,7 @@ impl CollectionView {
             items: Vec::new(),
             columns: 3,
             card_w: theme::CARD_W,
-            grid: Default::default(),
+            grid: grid::GridUi { drawer_closed, ..Default::default() },
             look: Default::default(),
             resizing: None,
             list_state,
@@ -355,6 +362,8 @@ impl CollectionView {
             stage_enabled: true,
             grey_uninstalled: false,
             cover_aspect: 1.5,
+            card_shape: heronite_data::settings::CoverAspect::Steam,
+            card_aspect: 1.5,
             page: crate::pages::Page::Collection,
             pages: nav::Pages::default(),
             palette: palette::Host::new(window, cx),

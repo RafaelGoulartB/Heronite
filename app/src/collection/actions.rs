@@ -316,7 +316,10 @@ impl CollectionView {
             self.focus_scroll.set_offset(point(px(0.), px(0.)));
         }
         self.selected = Some(key.clone());
-        self.grid.drawer_closed = false;
+        // Off, the drawer stays as it is: closed until a double click opens it.
+        if self.ui.grid_open_on_select {
+            self.grid.drawer_closed = false;
+        }
         if persist {
             self.ui.focused_game = Some(key.to_string());
             self.ui_focus_dirty = true;

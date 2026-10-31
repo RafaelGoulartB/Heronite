@@ -57,11 +57,16 @@ pub struct UiState {
     pub grid_view: bool,
     /// Smallest cover width of the grid, in logical px ([`GRID_COVER_W`]).
     pub grid_cover_w: f32,
-    /// The grid shows each game's title under its cover.
-    pub grid_titles: bool,
+    /// What the grid shows under each cover.
+    pub grid_label: GridLabel,
+    /// Selecting a game in the grid opens its drawer; off, the drawer opens
+    /// on a double click or Enter and the grid keeps the whole width.
+    pub grid_open_on_select: bool,
     /// The Focus list shows one game per row (thumbnail, title, playtime)
     /// instead of its covers.
     pub focus_list: bool,
+    /// How big the Focus list's covers are.
+    pub focus_cover_size: FocusCoverSize,
     /// The focus panel shows the Journal instead of the Timeline.
     pub journal_view: bool,
     /// Width the Focus list column was dragged to, in logical px. `None`: the
@@ -82,6 +87,69 @@ pub struct UiState {
 
 /// Range and default of [`UiState::grid_cover_w`].
 pub const GRID_COVER_W: (f32, f32, f32) = (110., 240., 150.);
+
+/// What the grid shows under each cover: the title, the info line of
+/// Settings → Appearance → "Under the cover" (playtime, last played,
+/// status...), both or nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GridLabel {
+    Nothing,
+    Title,
+    #[default]
+    Info,
+    TitleInfo,
+}
+
+impl GridLabel {
+    pub const ALL: [GridLabel; 4] = [Self::Nothing, Self::Title, Self::Info, Self::TitleInfo];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Nothing => "none",
+            Self::Title => "title",
+            Self::Info => "info",
+            Self::TitleInfo => "titleInfo",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|l| l.as_str() == value)
+    }
+
+    pub fn title(self) -> bool {
+        matches!(self, Self::Title | Self::TitleInfo)
+    }
+
+    pub fn info(self) -> bool {
+        matches!(self, Self::Info | Self::TitleInfo)
+    }
+}
+
+/// Size of the Focus list's covers: Medium is the list's own width
+/// (`theme::CARD_W`); Small fits a cover more on each row, Large one less.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FocusCoverSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl FocusCoverSize {
+    pub const ALL: [FocusCoverSize; 3] = [Self::Small, Self::Medium, Self::Large];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Small => "small",
+            Self::Medium => "medium",
+            Self::Large => "large",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|l| l.as_str() == value)
+    }
+}
 
 impl Default for UiState {
     fn default() -> Self {
@@ -104,8 +172,10 @@ impl Default for UiState {
             palette_recent: Vec::new(),
             grid_view: true,
             grid_cover_w: GRID_COVER_W.2,
-            grid_titles: false,
+            grid_label: GridLabel::default(),
+            grid_open_on_select: true,
             focus_list: false,
+            focus_cover_size: FocusCoverSize::default(),
             journal_view: false,
             list_column_w: None,
             grid_drawer_w: None,
@@ -146,8 +216,15 @@ impl UiState {
         if let Some(w) = value.get("gridCoverWidth").and_then(Value::as_f64).filter(|w| w.is_finite()) {
             state.grid_cover_w = (w as f32).clamp(GRID_COVER_W.0, GRID_COVER_W.1);
         }
-        state.grid_titles = flag("gridTitles");
+        // `gridTitles` came first: the info line always showed, the title on request.
+        state.grid_label = match value.get("gridLabel").and_then(Value::as_str).and_then(GridLabel::parse) {
+            Some(label) => label,
+            None if flag("gridTitles") => GridLabel::TitleInfo,
+            None => GridLabel::Info,
+        };
+        state.grid_open_on_select = value.get("gridOpenOnSelect").and_then(Value::as_bool).unwrap_or(true);
         state.focus_list = flag("focusList");
+        state.focus_cover_size = value.get("focusCoverSize").and_then(Value::as_str).and_then(FocusCoverSize::parse).unwrap_or_default();
         state.journal_view = flag("journalView");
         let width = |key: &str| value.get(key).and_then(Value::as_f64).filter(|w| w.is_finite() && *w > 0.).map(|w| w as f32);
         state.list_column_w = width("listColumnWidth");
@@ -169,8 +246,10 @@ impl UiState {
             "paletteRecent": self.palette_recent,
             "gridView": self.grid_view,
             "gridCoverWidth": self.grid_cover_w,
-            "gridTitles": self.grid_titles,
+            "gridLabel": self.grid_label.as_str(),
+            "gridOpenOnSelect": self.grid_open_on_select,
             "focusList": self.focus_list,
+            "focusCoverSize": self.focus_cover_size.as_str(),
             "journalView": self.journal_view,
             "listColumnWidth": self.list_column_w,
             "gridDrawerWidth": self.grid_drawer_w,
@@ -617,6 +696,15 @@ mod tests {
     }
 
     #[test]
+    fn the_grid_label_follows_the_old_titles_switch() {
+        assert_eq!(UiState::from_value(&json!({})).grid_label, GridLabel::Info);
+        assert_eq!(UiState::from_value(&json!({"gridTitles": true})).grid_label, GridLabel::TitleInfo);
+        assert_eq!(UiState::from_value(&json!({"gridTitles": true, "gridLabel": "none"})).grid_label, GridLabel::Nothing);
+        assert!(UiState::from_value(&json!({})).grid_open_on_select);
+        assert_eq!(UiState::from_value(&json!({"focusCoverSize": "huge"})).focus_cover_size, FocusCoverSize::Medium);
+    }
+
+    #[test]
     fn save_and_load_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let paths = app_paths(dir.path());
@@ -633,8 +721,10 @@ mod tests {
             only: OnlyFilters { favourites: true, updates: false, offline: true },
             grid_view: false,
             grid_cover_w: 180.,
-            grid_titles: true,
+            grid_label: GridLabel::Title,
+            grid_open_on_select: false,
             focus_list: true,
+            focus_cover_size: FocusCoverSize::Large,
             list_column_w: Some(560.),
             ..Default::default()
         };

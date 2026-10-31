@@ -43,7 +43,6 @@
   "No status": "Kein Status",
   "Your rating": "Deine Bewertung",
   "Other ways to install": "Weitere Installationsarten",
-  "Show titles": "Titel anzeigen",
   "On Linux": "Unter Linux",
   "Save backup": "Save-Backup",
   "Today": "Heute",
@@ -515,5 +514,13 @@
   "What's new in Heronite {version}": "Neu in Heronite {version}",
   "Enjoying Heronite?": "Gefällt dir Heronite?",
   "A star on GitHub helps more people find it. Ideas and feedback go in Discussions.": "Ein Stern auf GitHub hilft, dass mehr Leute es finden. Ideen und Feedback gehören in die Diskussionen.",
-  "Discussions": "Diskussionen"
+  "Discussions": "Diskussionen",
+  "View options": "Ansichtsoptionen",
+  "Game list": "Spieleliste",
+  "Cover size": "Covergröße",
+  "Info": "Info",
+  "Title and info": "Titel und Info",
+  "Open details on select": "Details bei Auswahl öffnen",
+  "More in Appearance": "Mehr unter Darstellung",
+  "Reset to defaults": "Auf Standard zurücksetzen"
 }
