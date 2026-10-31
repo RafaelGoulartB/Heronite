@@ -261,9 +261,10 @@ impl DataPaths {
     pub fn sandbox_home_of_game(&self, app_name: &str) -> PathBuf {
         self.j("sandbox").join(format!("game-{}-{:08x}", file_name_safe(app_name), fnv32(app_name)))
     }
-    /// The legendary binary this app runs (copied in by `migrate`).
+    /// The legendary binary this app runs (copied in by `migrate`, or
+    /// downloaded): `tools/bin/legendary`, `legendary.exe` on Windows.
     pub fn legendary_bin(&self) -> PathBuf {
-        self.j("tools/bin/legendary")
+        self.tools_dir().join("bin").join(format!("legendary{}", std::env::consts::EXE_SUFFIX))
     }
     pub fn known_fixes(&self) -> PathBuf {
         self.j("known_fixes.json")

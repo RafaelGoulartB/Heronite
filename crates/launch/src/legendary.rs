@@ -12,22 +12,15 @@ use crate::sandbox;
 use crate::settings::GameSettings;
 use crate::wine;
 
-/// Where the legendary binary may live, in priority order.
+/// Where the legendary binary may live, in priority order
+/// (`HERONITE_LEGENDARY_BIN`, `altLegendaryBin`, the data folder's copy).
 pub fn legendary_candidates(ctx: &PlanContext, probe: &dyn Probe) -> Vec<String> {
-    let mut out = Vec::new();
-    if let Some(p) = probe.env_var("HERONITE_LEGENDARY_BIN").filter(|s| !s.is_empty()) {
-        out.push(p);
-    }
-    if let Some(p) = ctx.global.alt_legendary_bin() {
-        out.push(p);
-    }
-    out.push(ctx.paths.legendary_bin().to_string_lossy().into_owned());
-    out
+    crate::store_tools::LEGENDARY.candidates(ctx, probe)
 }
 
-/// First existing candidate, else `legendary` on `$PATH`.
+/// First existing candidate, else `legendary` on `PATH`.
 pub fn find_legendary(ctx: &PlanContext, probe: &dyn Probe) -> Option<String> {
-    legendary_candidates(ctx, probe).into_iter().find(|p| probe.exists(p)).or_else(|| probe.which("legendary"))
+    crate::store_tools::LEGENDARY.find(ctx, probe)
 }
 
 /// Heroic's `known_fixes.json` env variables for a game of `store`
