@@ -190,7 +190,13 @@ fn post_install_steps(probe: &dyn Probe, install_path: &str, fuel: &Fuel) -> Vec
     fuel.post_install
         .iter()
         .map(|(command, args)| {
-            let mut parts = vec![setup_program(probe, install_path, command)];
+            let program = setup_program(probe, install_path, command);
+            // Windows starts an `.msi` package through its installer only.
+            let mut parts = if cfg!(windows) && program.to_lowercase().ends_with(".msi") {
+                vec!["msiexec".to_string(), "/i".to_string(), program]
+            } else {
+                vec![program]
+            };
             parts.extend(args.iter().cloned());
             SetupStep { parts, cwd: Some(install_path.to_string()), ..Default::default() }
         })
@@ -427,6 +433,19 @@ mod tests {
             assert_eq!(first.post_install[0].cwd.as_deref(), Some(DIR));
             assert!(!first.post_install[0].elevate, "Windows asks for administrator rights when the installer needs them");
             assert!(first.winetricks.is_empty() && first.run_in_prefix.is_empty());
+        }
+
+        #[test]
+        fn an_msi_package_runs_through_the_windows_installer() {
+            let fuel = r#"{"Main": {"Command": "Game.exe"}, "PostInstall": [{"Command": "redist\\PhysX.msi", "Args": ["/qn"]}]}"#;
+            let probe = FakeProbe::new(r"C:\Users\u")
+                .with_path(DIR)
+                .with_path(r"D:\Games\Cool Game\Game.exe")
+                .with_path(r"D:\Games\Cool Game\redist\PhysX.msi")
+                .with_file(r"D:\Games\Cool Game\fuel.json", fuel.as_bytes());
+            let LaunchPlan::Native(p) = build(&ctx(), &probe, &game(), &settings(json!({})), &Default::default()) else { panic!() };
+            let first = p.prep.first_launch.unwrap();
+            assert_eq!(first.post_install[0].parts, ["msiexec", "/i", r"D:\Games\Cool Game\redist\PhysX.msi", "/qn"]);
         }
 
         #[test]
