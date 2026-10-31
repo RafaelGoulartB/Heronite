@@ -624,6 +624,8 @@ fn store_game(runner: &str, app: &str, path: &str, platform: &str) -> GameInfo {
     }
 }
 
+// Wine and Linux builds: Linux (GOG on Windows is in `crate::gog`).
+#[cfg(unix)]
 #[test]
 fn gog_windows_games_run_their_primary_task_in_wine() {
     let info = br#"{"playTasks": [{"category": "game", "isPrimary": true, "type": "FileTask", "path": "bin\\game.exe", "arguments": "-x", "workingDir": "bin"}]}"#;
@@ -653,6 +655,8 @@ fn gog_windows_games_run_their_primary_task_in_wine() {
     assert!(plan.unavailable_reason().unwrap().contains("goggame-42.info"), "{plan:?}");
 }
 
+// Wine and Linux builds: Linux (GOG on Windows is in `crate::gog`).
+#[cfg(unix)]
 #[test]
 fn gog_linux_builds_start_their_script() {
     let probe = FakeProbe::new("/home/u").with_path("/games/l").with_file("/games/l/start.sh", b"#!/bin/sh\n");
