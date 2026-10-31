@@ -123,7 +123,7 @@ pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<
     spawn_checkpointer(shared.clone(), req.app_name.clone(), control.clone());
     let log = open_game_log(&shared, &req);
     match &req.plan {
-        LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri),
+        LaunchPlan::SteamUri { app_id, uri, extras } => run_steam(&shared, &log, &req, &control, app_id, uri, extras),
         LaunchPlan::Unavailable(r) => fail(&shared, &log, &req, Notice::warn(r.clone(), r.clone())),
         other => {
             let process = other.process().expect("process plan").clone();

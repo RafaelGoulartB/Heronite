@@ -343,7 +343,7 @@ fn steam_games_become_uris_when_steam_exists() {
     };
     assert_eq!(
         build_plan_with_settings(&ctx(json!({})), &with_steam, &game, Some(&m), &settings(json!({})), &Default::default()),
-        LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into() }
+        LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() }
     );
     let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
     assert_eq!(plan, LaunchPlan::Unavailable("Steam client was not found on PATH".into()));

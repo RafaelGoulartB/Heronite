@@ -479,6 +479,13 @@ impl SettingsPanel {
     }
 
     fn c_advanced(&self, cx: &App) -> Vec<Item> {
+        if self.steam_direct() {
+            let mut v = vec![Self::c_header(tr!("Launch"))];
+            v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
+            v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+            v.extend(self.c_companions());
+            return v;
+        }
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
         let game = self.is_game();

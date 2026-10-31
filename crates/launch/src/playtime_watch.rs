@@ -206,7 +206,9 @@ pub enum SteamWaitOutcome {
 ///
 /// `log_files` is called now and then to discover Steam's logs; `shared`
 /// mirrors the tracked pids (so a caller can kill them); `on_first_pid` fires
-/// once, when the game process is first seen.
+/// once, when the game process is first seen; `on_tick` on every poll while
+/// the game runs.
+#[allow(clippy::too_many_arguments)]
 pub fn wait_for_steam_session(
     app_id: &str,
     procs: &dyn Procs,
@@ -216,6 +218,7 @@ pub fn wait_for_steam_session(
     wake: &Wake,
     shared: &Mutex<BTreeSet<u32>>,
     on_first_pid: &mut dyn FnMut(u32),
+    on_tick: &mut dyn FnMut(),
 ) -> SteamWaitOutcome {
     let mut watch = SteamWatch::new(app_id);
     let mut tails: HashMap<PathBuf, LogTail> = HashMap::new();
@@ -269,7 +272,7 @@ pub fn wait_for_steam_session(
         sync(&watch, &new, &mut announced, on_first_pid);
     }
 
-    follow(&mut watch, &mut tails, procs, cfg, abort, wake, shared)
+    follow(&mut watch, &mut tails, procs, cfg, abort, wake, shared, on_tick)
 }
 
 /// Follows a Steam game seen running with `pids` until it exits, as
@@ -287,10 +290,11 @@ pub fn follow_steam_session(
 ) -> SteamWaitOutcome {
     let mut watch = SteamWatch::resume(app_id, pids);
     let mut tails: HashMap<PathBuf, LogTail> = log_files().into_iter().map(|f| (f.clone(), LogTail::open(&f).0)).collect();
-    follow(&mut watch, &mut tails, procs, cfg, abort, wake, shared)
+    follow(&mut watch, &mut tails, procs, cfg, abort, wake, shared, &mut || {})
 }
 
 /// Until every tracked pid is gone (or tracking is aborted).
+#[allow(clippy::too_many_arguments)]
 fn follow(
     watch: &mut SteamWatch,
     tails: &mut HashMap<PathBuf, LogTail>,
@@ -299,6 +303,7 @@ fn follow(
     abort: &AtomicBool,
     wake: &Wake,
     shared: &Mutex<BTreeSet<u32>>,
+    on_tick: &mut dyn FnMut(),
 ) -> SteamWaitOutcome {
     loop {
         if abort.load(Ordering::SeqCst) {
@@ -309,6 +314,7 @@ fn follow(
         if watch.finished() {
             return SteamWaitOutcome::Finished;
         }
+        on_tick();
         wake.wait_while(cfg.poll_interval, || !abort.load(Ordering::SeqCst));
         for t in tails.values_mut() {
             if let Some(chunk) = t.read_new() {
@@ -396,10 +402,19 @@ mod tests {
 
         let (p2, a2, s2, l2) = (procs.clone(), abort.clone(), shared.clone(), log.clone());
         let handle = std::thread::spawn(move || {
-            let mut first = None;
-            let out = wait_for_steam_session("400", &*p2, &move || vec![l2.clone()], &fast_cfg(), &a2, &Wake::default(), &s2, &mut |pid| {
-                first = Some(pid)
-            });
+            let (mut first, mut ticks) = (None, 0);
+            let out = wait_for_steam_session(
+                "400",
+                &*p2,
+                &move || vec![l2.clone()],
+                &fast_cfg(),
+                &a2,
+                &Wake::default(),
+                &s2,
+                &mut |pid| first = Some(pid),
+                &mut || ticks += 1,
+            );
+            assert!(ticks > 0, "polled while the game ran");
             (out, first)
         });
 
@@ -424,13 +439,32 @@ mod tests {
         let shared = Mutex::new(BTreeSet::new());
         let cfg = SteamWaitConfig { start_timeout: Duration::from_millis(80), ..fast_cfg() };
         let l = log.clone();
-        let out = wait_for_steam_session("400", &procs, &move || vec![l.clone()], &cfg, &abort, &Wake::default(), &shared, &mut |_| {});
+        let out = wait_for_steam_session(
+            "400",
+            &procs,
+            &move || vec![l.clone()],
+            &cfg,
+            &abort,
+            &Wake::default(),
+            &shared,
+            &mut |_| {},
+            &mut || {},
+        );
         assert_eq!(out, SteamWaitOutcome::NotStarted);
 
         abort.store(true, Ordering::SeqCst);
         let l = log.clone();
-        let out =
-            wait_for_steam_session("400", &procs, &move || vec![l.clone()], &fast_cfg(), &abort, &Wake::default(), &shared, &mut |_| {});
+        let out = wait_for_steam_session(
+            "400",
+            &procs,
+            &move || vec![l.clone()],
+            &fast_cfg(),
+            &abort,
+            &Wake::default(),
+            &shared,
+            &mut |_| {},
+            &mut || {},
+        );
         assert_eq!(out, SteamWaitOutcome::Aborted);
     }
 }

@@ -4,6 +4,7 @@
   "Adds its variables and arguments to this game, without duplicates.": "Añade sus variables y argumentos a este juego, sin duplicados.",
   "Nothing to save: add environment variables or game arguments first.": "Nada que guardar: añade antes variables de entorno o argumentos del juego.",
   "Saves this game's variables and arguments under a name, to reuse in other games.": "Guarda con un nombre las variables y argumentos de este juego, para reutilizarlos en otros juegos.",
+  "Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.": "Steam inicia el juego por sí mismo, como desde su biblioteca. Heronite ejecuta esto cuando juegas desde Heronite.",
   "This game's variables and arguments, for other games": "Las variables y argumentos de este juego, para otros juegos",
   "Trainers and tools started with the game and closed with it.": "Trainers y herramientas que se inician con el juego y se cierran con él."
 }

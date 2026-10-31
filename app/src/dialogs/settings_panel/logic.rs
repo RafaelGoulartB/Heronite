@@ -53,6 +53,10 @@ pub enum RunKind {
     Native,
     /// Installed Steam game: the settings are Steam's own (`heronite_steam`).
     Steam,
+    /// Installed Steam game that Steam starts as it is (Windows): only what
+    /// Heronite runs around it, the scripts and the programs alongside
+    /// (`heronite_launch::steam_extras`).
+    SteamDirect,
     /// Browser games, emulated ROMs, not installed: no Heroic settings.
     None,
 }
@@ -85,6 +89,8 @@ impl GameFacts {
             // Steam's settings are edited through its client.
             if heronite_platform::supported(heronite_platform::Feature::SteamGameSettings) {
                 RunKind::Steam
+            } else if heronite_launch::steam_extras::supported() {
+                RunKind::SteamDirect
             } else {
                 RunKind::None
             }
@@ -132,6 +138,8 @@ impl GameFacts {
                 .flatten()
                 .find(|s| !s.is_empty())
                 .map(str::to_owned);
+        // Only a game whose settings are Steam's reads them from Steam.
+        let steam_app_id = steam_app_id.filter(|_| run_kind == RunKind::Steam);
         Self {
             app_name: game.app_name.clone(),
             title: game.title.clone(),
@@ -162,6 +170,7 @@ impl GameFacts {
         match self.run_kind {
             RunKind::Wine | RunKind::Steam => Some(Section::Compatibility),
             RunKind::Native if !wrappers() => Some(Section::Launch),
+            RunKind::SteamDirect => Some(Section::Launch),
             RunKind::Native => Some(Section::Performance),
             RunKind::None => None,
         }
@@ -186,6 +195,7 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
     match run_kind {
         RunKind::None => return Vec::new(),
         RunKind::Native if !wrappers() => return out,
+        RunKind::SteamDirect => return out,
         RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance, Section::Gpu]),
         RunKind::Native => out.extend([Section::Performance, Section::Gpu]),
     }
@@ -427,6 +437,7 @@ mod tests {
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
         assert!(!sections_for(RunKind::Wine, "gog", false).contains(&Section::Saves));
         assert_eq!(sections_for(RunKind::Steam, "sideload", true), [Launch, Compatibility, Performance, Gpu]);
+        assert_eq!(sections_for(RunKind::SteamDirect, "sideload", true), [Launch]);
     }
 
     #[test]

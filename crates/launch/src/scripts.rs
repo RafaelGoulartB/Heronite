@@ -119,7 +119,7 @@ mod tests {
         let p = plan.process().unwrap();
         assert_eq!(p.before_script.as_ref().unwrap().program, "/s/b");
         assert_eq!(p.after_script.as_ref().unwrap().env["HEROIC_GAME_SCRIPT_TYPE"], "after");
-        let mut steam = LaunchPlan::SteamUri { app_id: "1".into(), uri: "steam://rungameid/1".into() };
+        let mut steam = LaunchPlan::SteamUri { app_id: "1".into(), uri: "steam://rungameid/1".into(), extras: Default::default() };
         attach(&mut steam, &probe, &game(), &s);
         assert!(steam.process().is_none());
     }

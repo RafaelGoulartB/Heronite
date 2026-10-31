@@ -57,6 +57,11 @@ pub fn to_value(list: &[Companion]) -> Value {
     Value::Array(list.iter().map(|c| json!({ "path": c.path, "delay": c.delay_secs })).collect())
 }
 
+/// `path` started as it is, from its folder, and told about the game.
+pub(crate) fn direct_command(game: &GameInfo, settings: &GameSettings, path: &str) -> Command {
+    Command { program: path.to_string(), args: vec![], env: game_env(game, settings, &[]), cwd: Some(node_dirname(path)) }
+}
+
 /// Adds the game's programs to a plan that spawns a process. A Windows
 /// program that cannot get a Wine is left out with a note in the log.
 pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &GameSettings) {
@@ -82,7 +87,7 @@ pub fn attach(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game:
                     }
                 }
             }
-            _ => Command { program: c.path.clone(), args: vec![], env: game_env(game, settings, &[]), cwd: Some(node_dirname(&c.path)) },
+            _ => direct_command(game, settings, &c.path),
         };
         process.companions.push(CompanionPlan { path: c.path.clone(), command, delay: Duration::from_secs(c.delay_secs.into()) });
     }

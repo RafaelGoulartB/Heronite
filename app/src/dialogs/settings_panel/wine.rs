@@ -28,6 +28,11 @@ impl SettingsPanel {
         matches!(&self.target, Target::Game(f) if f.run_kind == RunKind::Native)
     }
 
+    /// A Steam game Steam starts as it is ([`RunKind::SteamDirect`]).
+    pub(super) fn steam_direct(&self) -> bool {
+        matches!(&self.target, Target::Game(f) if f.run_kind == RunKind::SteamDirect)
+    }
+
     pub(super) fn compat_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
         let wine = self.wine_version();
         let mut col = column();

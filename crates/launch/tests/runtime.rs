@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use heronite_data::models::SessionsFile;
 use heronite_data::{json_store, DataPaths};
 use heronite_launch::net::FakeNet;
+use heronite_launch::plan::SteamExtras;
 use heronite_launch::plan::{CloudSaves, CompanionPlan, Handoff, PrepSpec};
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::prepare::CloudSync;
@@ -281,7 +282,7 @@ fn write_steam_log(r: &Rig, text: &str) -> std::path::PathBuf {
 fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     let r = rig();
     let log = write_steam_log(&r, "");
-    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into() };
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() };
     r.launcher.launch(request("steam_400", plan)).unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
     wait_until("uri opened", || r.spawner.uris() == ["steam://rungameid/400"]);
@@ -300,6 +301,64 @@ fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     assert!(ts["steam_400"]["firstPlayed"].is_string());
 }
 
+/// Scripts and programs alongside a Steam game (Windows'
+/// `heronite_launch::steam_extras`). The fake Steam folder is a system root,
+/// which Windows looks in too (it also reads this machine's own Steam logs,
+/// whose games are not running in the fake process list).
+#[test]
+fn steam_extras_run_around_the_game_steam_starts() {
+    use std::io::Write as _;
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(dir.path().join("heroic"));
+    let home = dir.path().join("home");
+    let steam_path = home.join(".steam/steam");
+    let steam = SteamLocator { home: home.clone(), steam_path: steam_path.clone(), system_roots: vec![steam_path.clone()] };
+    let (tx, rx) = channel();
+    let (spawner, procs) = (Arc::new(FakeSpawner::new()), Arc::new(FakeProcs::new()));
+    let launcher = Launcher::new(paths.clone(), steam, spawner.clone(), procs.clone(), fast_cfg(), tx);
+    let r = Rig { _dir: dir, paths, launcher, rx, spawner, procs };
+    let log = write_steam_log(&r, "");
+    let file = |name: &str| {
+        let path = r._dir.path().join(name);
+        fs::write(&path, "").unwrap();
+        path.to_string_lossy().into_owned()
+    };
+    let (before, after, trainer) = (file("before.bat"), file("after.bat"), file("trainer.exe"));
+    let extras = SteamExtras {
+        before_script: Some(script(&before, "before")),
+        after_script: Some(script(&after, "after")),
+        companions: vec![CompanionPlan {
+            path: trainer.clone(),
+            command: Command { program: trainer.clone(), ..Default::default() },
+            delay: Duration::ZERO,
+        }],
+    };
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras };
+    r.launcher.launch(request("steam_400", plan)).unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
+    // The script runs first; Steam is asked only once it is done.
+    wait_until("script before", || r.spawner.spawned().len() == 1);
+    assert_eq!(r.spawner.spawned()[0].program, before);
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(r.spawner.uris().is_empty());
+    r.spawner.finish(0, 0);
+    wait_until("uri opened", || r.spawner.uris() == ["steam://rungameid/400"]);
+
+    // The trainer starts once Steam's log shows the game, and closes with it.
+    r.procs.start(7777, "reaper", None);
+    fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    wait_until("trainer", || r.spawner.spawned().len() == 2);
+    assert_eq!(r.spawner.spawned()[1].program, trainer);
+    r.procs.exit(7777);
+    wait_until("script after", || r.spawner.spawned().len() == 3);
+    assert!(r.spawner.handle(1).unwrap().lock().unwrap().terminated, "the trainer closed with the game");
+    assert_eq!(r.spawner.spawned()[2].program, after);
+    r.spawner.finish(2, 0);
+    let LaunchEvent::Exited { record, .. } = next(&r.rx) else { panic!() };
+    assert!(record.unwrap().session_recorded);
+}
+
 // TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
 // and pid from the registry (this machine's real Steam), so the fake Steam
 // under the test's `home` is not seen.
@@ -308,7 +367,7 @@ fn steam_games_are_found_through_the_log_and_followed_until_exit() {
 fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
     let r = rig();
     let log = write_steam_log(&r, "");
-    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into() };
+    let plan = LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() };
     r.launcher.launch(request("steam_400", plan)).unwrap();
     next(&r.rx);
     r.procs.start(7777, "reaper", None);
@@ -320,7 +379,9 @@ fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
 
     let r = rig();
     let log = write_steam_log(&r, "");
-    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    r.launcher
+        .launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into(), extras: Default::default() }))
+        .unwrap();
     next(&r.rx);
     r.procs.start(7777, "reaper", None);
     fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
@@ -346,7 +407,9 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     if steam_open_before {
         steam_running();
     }
-    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    r.launcher
+        .launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into(), extras: Default::default() }))
+        .unwrap();
     next(&r.rx);
     wait_until("uri opened", || r.spawner.uris() == ["u"]);
     steam_running();
@@ -375,7 +438,9 @@ fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
 fn steam_that_never_starts_the_game_is_an_error_without_recording() {
     let r = rig();
     write_steam_log(&r, "");
-    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    r.launcher
+        .launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into(), extras: Default::default() }))
+        .unwrap();
     next(&r.rx);
     let LaunchEvent::Error { message, .. } = next(&r.rx) else { panic!() };
     assert!(message.contains("did not start"));
@@ -383,7 +448,9 @@ fn steam_that_never_starts_the_game_is_an_error_without_recording() {
     assert!(!r.launcher.is_running("steam_400"));
 
     r.spawner.fail_next_uri("xdg-open missing");
-    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    r.launcher
+        .launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into(), extras: Default::default() }))
+        .unwrap();
     next(&r.rx);
     let LaunchEvent::Error { message, .. } = next(&r.rx) else { panic!() };
     assert!(message.contains("xdg-open missing"));
@@ -762,7 +829,9 @@ fn preparing_the_launch_is_not_playtime() {
 fn stopping_a_steam_game_before_it_starts_records_nothing() {
     let r = rig();
     write_steam_log(&r, "");
-    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    r.launcher
+        .launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into(), extras: Default::default() }))
+        .unwrap();
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
     wait_until("uri opened", || !r.spawner.uris().is_empty());
     assert!(r.launcher.stop("steam_400"));
@@ -1137,7 +1206,9 @@ fn an_adopted_game_whose_leader_left_is_followed_through_its_group() {
 fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     let r = rig();
     let log = write_steam_log(&r, "");
-    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    r.launcher
+        .launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into(), extras: Default::default() }))
+        .unwrap();
     next(&r.rx);
     r.procs.start(7777, "reaper", None);
     r.procs.set_start_ticks(7777, 42);
@@ -1164,7 +1235,9 @@ fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
     let r = rig();
     let log = write_steam_log(&r, "");
     json_store::write(&r.paths.global_config(), &serde_json::json!({"defaultSettings": {"heroniteCloseSteamAfterGame": true}})).unwrap();
-    r.launcher.launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into() })).unwrap();
+    r.launcher
+        .launch(request("steam_400", LaunchPlan::SteamUri { app_id: "400".into(), uri: "u".into(), extras: Default::default() }))
+        .unwrap();
     next(&r.rx);
     wait_until("uri opened", || r.spawner.uris() == ["u"]);
     fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000").unwrap();
