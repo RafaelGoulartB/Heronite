@@ -38,6 +38,7 @@ pub mod quit_confirm;
 pub mod remove_game;
 pub mod rom_folder;
 pub mod save_backups;
+pub mod scan_folder;
 pub mod scan_roms;
 pub mod screenshot_art;
 pub mod script_install;
@@ -68,6 +69,9 @@ pub enum DialogEvent {
 /// a question) or asked before throwing away what was typed.
 pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool {
     if let Ok(d) = view.clone().downcast::<add_game::AddGameDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<scan_folder::ScanFolderDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     if let Ok(d) = view.clone().downcast::<manage_statuses::ManageStatusesDialog>() {

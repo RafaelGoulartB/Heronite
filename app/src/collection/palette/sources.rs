@@ -32,6 +32,8 @@ pub(super) enum Act {
     /// Settings, opened on this section.
     Section(Section),
     AddGame,
+    /// "Add games from a folder".
+    ScanFolder,
     /// Install a game from an install script file.
     InstallScript,
     Refresh,
@@ -286,6 +288,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         )
         .shortcut("Ctrl N"),
     );
+    v.push(action(
+        Act::ScanFolder,
+        "scan-folder",
+        tr!("Add games from a folder\u{2026}"),
+        tr!("Find the games in a folder and add them at once"),
+        Icon::FolderOpen,
+        "scan folder import many bulk escanear pasta importar varios jogos",
+    ));
     v.push(action(
         Act::InstallScript,
         "install-script",
@@ -827,6 +837,7 @@ mod tests {
         assert!(v.iter().filter(|e| matches!(e.act, Act::Section(_))).all(|e| e.secondary));
         for a in [
             Act::AddGame,
+            Act::ScanFolder,
             Act::InstallScript,
             Act::Refresh,
             Act::ScanRoms,

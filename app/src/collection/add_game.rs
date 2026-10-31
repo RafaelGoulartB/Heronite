@@ -1,12 +1,14 @@
 //! Add game / Edit game glue of the Collection: opens the dialog from the ☰
-//! menu, the game context menu and the debug hook. The work is in
-//! `dialogs::add_game`.
+//! menu, the game context menu and the debug hook, and "Add games from a
+//! folder" from the ☰ menu and the palette. The work is in
+//! `dialogs::add_game` and `dialogs::scan_folder`.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::CollectionView;
 use crate::dialogs::add_game::{AddGameDialog, Mode};
+use crate::dialogs::scan_folder::ScanFolderDialog;
 use crate::icons::Icon;
 use crate::theme;
 
@@ -45,6 +47,28 @@ impl CollectionView {
         let view = cx.new(|cx| AddGameDialog::new(ctx, mode, window, cx));
         self.open_dialog(view.clone(), cx);
         Some(view)
+    }
+
+    pub(super) fn open_scan_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<ScanFolderDialog>> {
+        self.open_menu = None;
+        self.context_menu = None;
+        let ctx = self.dialog_ctx()?;
+        let view = cx.new(|cx| ScanFolderDialog::new(ctx, window, cx));
+        self.open_dialog(view.clone(), cx);
+        Some(view)
+    }
+
+    /// `HERONITE_DEBUG_DIALOG=scan-folder[:<folder>[#<states>]]`: the dialog,
+    /// with that folder searched (states are `+`-joined, see
+    /// `ScanFolderDialog::debug_state`).
+    pub(super) fn scan_folder_debug_dialog(&mut self, which: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let rest = which.strip_prefix("scan-folder").unwrap_or("").trim_start_matches(':');
+        let (folder, states) = rest.split_once('#').unwrap_or((rest, ""));
+        if let Some(view) = self.open_scan_folder(window, cx) {
+            if !folder.is_empty() {
+                view.update(cx, |d, cx| d.debug_state(folder, states, window, cx));
+            }
+        }
     }
 
     /// `HERONITE_DEBUG_DIALOG=add-game[:<state>]` / `edit-game:<appName>[:<state>]`

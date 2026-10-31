@@ -231,6 +231,7 @@ impl CollectionView {
             w if matches!(w, "playtime" | "remove" | "ludusavi" | "steam-missing") || w.starts_with("ludusavi:") => {
                 self.open_extras_debug(which.as_str(), window, cx)
             }
+            w if w.starts_with("scan-folder") => self.scan_folder_debug_dialog(w, window, cx),
             w if w.starts_with("add-game") || w.starts_with("edit-game") => {
                 self.add_game_debug_dialog(w, window, cx);
             }

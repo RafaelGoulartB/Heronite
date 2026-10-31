@@ -47,6 +47,7 @@ Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net
 - **Steam:** your library comes in by itself, no login needed.
 - **Battle.net, EA app, Ubisoft Connect, and Rockstar Games (Linux):** Heronite sets up each store's own app in a Wine prefix of its own. The games you install there show up in your Collection and start from it.
 - **Other launchers (Linux):** bring in the games of Heroic, Lutris, Bottles, and Faugus, and keep them in sync.
+- **Games you already have:** add a program by hand, or point at a folder and add every game found in it at once (Windows programs, and on Linux also AppImages, start scripts, and Linux programs).
 
 ## Configure and play
 

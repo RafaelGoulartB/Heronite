@@ -8,6 +8,7 @@ use heronite_data::text::remove_special_characters;
 use heronite_i18n::tr;
 use heronite_launch::native::{detect_executable_kind, ExecutableKind};
 use heronite_launch::Probe;
+use heronite_wine::WineInstallation;
 
 /// Heroic's title field is limited to 40 characters.
 pub const TITLE_MAX: usize = 40;
@@ -105,6 +106,17 @@ pub fn run_as_for(chosen: SideloadPlatform, detected: Option<SideloadPlatform>, 
             Some(e) if e != "auto" && !e.is_empty() => Some("auto".to_string()),
             _ => None,
         },
+    }
+}
+
+/// `WineSelector`'s pick: the configured version, else the first one
+/// installed. A configured one that is not installed anymore (its folder is
+/// gone) is replaced too: one with the same name, else the first.
+pub fn default_wine(current: Option<&WineInstallation>, list: &[WineInstallation]) -> Option<WineInstallation> {
+    match current {
+        Some(w) if list.iter().any(|l| l.bin == w.bin) => Some(w.clone()),
+        Some(w) => list.iter().find(|l| l.name.replace(' ', "-").eq_ignore_ascii_case(&w.name.replace(' ', "-"))).or(list.first()).cloned(),
+        None => list.first().cloned(),
     }
 }
 
@@ -335,6 +347,19 @@ mod tests {
         assert_eq!(missing_field("G", Linux, cmd("", "./run"), ""), Some(tr!("Select the game folder")));
         assert_eq!(missing_field("G", Linux, cmd("/g", " "), ""), Some(tr!("Type the command that starts the game")));
         assert_eq!(missing_field("G", Linux, cmd("/g", "./run"), ""), None);
+    }
+
+    #[test]
+    fn the_wine_picked_is_the_configured_one_while_installed() {
+        let w =
+            |name: &str, bin: &str| WineInstallation { name: name.into(), bin: bin.into(), kind: "proton".into(), ..Default::default() };
+        let list = [w("GE-Proton10-1", "/a/proton"), w("Proton Experimental", "/b/proton")];
+        assert_eq!(default_wine(None, &list), Some(list[0].clone()));
+        assert_eq!(default_wine(Some(&list[1]), &list), Some(list[1].clone()));
+        // Moved: the one with the same name; gone: the first.
+        assert_eq!(default_wine(Some(&w("Proton-Experimental", "/old")), &list), Some(list[1].clone()));
+        assert_eq!(default_wine(Some(&w("Wine 9", "/old")), &list), Some(list[0].clone()));
+        assert_eq!(default_wine(None, &[]), None);
     }
 
     #[test]

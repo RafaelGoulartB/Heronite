@@ -1,0 +1,21 @@
+{
+  "A game with this name is in your Collection": "Um jogo com este nome já está na sua Coleção",
+  "Add from folder": "Adicionar de uma pasta",
+  "Add games from a folder": "Adicionar jogos de uma pasta",
+  "Add games from a folder…": "Adicionar jogos de uma pasta…",
+  "Choose the folder your games are in. Heronite looks for the programs that start them, and you choose the games to add.": "Escolha a pasta onde estão seus jogos. O Heronite procura os programas que os iniciam, e você escolhe os jogos a adicionar.",
+  "Could not add the games: {error}": "Não foi possível adicionar os jogos: {error}",
+  "Find many games at once": "Vários jogos de uma vez",
+  "Find the games in a folder and add them at once": "Encontra os jogos de uma pasta e adiciona todos de uma vez",
+  "Games are found by the programs that start them (.exe). Try the folder of one game, or the one that holds them.": "Os jogos são encontrados pelos programas que os iniciam (.exe). Tente a pasta de um jogo, ou a pasta que reúne todos.",
+  "Games are found by the programs that start them: Windows programs (.exe), AppImages, start scripts and Linux programs. Try the folder of one game, or the one that holds them.": "Os jogos são encontrados pelos programas que os iniciam: programas do Windows (.exe), AppImages, scripts de início e programas do Linux. Tente a pasta de um jogo, ou a pasta que reúne todos.",
+  "Games folder": "Pasta dos jogos",
+  "Give each Windows game its own Wine prefix": "Dar a cada jogo do Windows seu próprio prefixo Wine",
+  "Looking for games…": "Procurando jogos…",
+  "No games were found in this folder.": "Nenhum jogo foi encontrado nesta pasta.",
+  "Scan again": "Procurar de novo",
+  "The folder your games are in": "A pasta onde estão seus jogos",
+  "This folder does not exist.": "Esta pasta não existe.",
+  "This folder is very big: only part of it was searched.": "Esta pasta é muito grande: só uma parte dela foi pesquisada.",
+  "{n} already in Collection": "{n} já na Coleção"
+}

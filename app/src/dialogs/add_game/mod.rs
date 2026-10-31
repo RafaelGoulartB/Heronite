@@ -9,7 +9,7 @@ mod actions;
 mod art;
 mod console;
 mod debug;
-mod dropped;
+pub(crate) mod dropped;
 mod form;
 mod logic;
 pub mod picker;
@@ -38,6 +38,7 @@ use crate::ui::controls::{action_button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{meta_text, new_input};
 use logic::*;
+pub(crate) use logic::{clean_title, default_wine, install_folder, suggested_prefix};
 use picker::{ImagePicker, Slot};
 
 /// Id of the store note in `ui-state.json` once "Got it" hides it.
