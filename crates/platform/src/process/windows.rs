@@ -15,8 +15,8 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation, QueryInformationJobObject, TerminateJobObject,
-    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    AssignProcessToJobObject, CreateJobObjectW, IsProcessInJob, JobObjectBasicAccountingInformation, QueryInformationJobObject,
+    TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
 };
 use windows_sys::Win32::System::SystemInformation::GetTickCount64;
 use windows_sys::Win32::System::Threading::{
@@ -126,6 +126,18 @@ pub(super) fn signal_group(leader: u32, sig: Signal) {
         },
         None => signal(leader, sig),
     }
+}
+
+/// Whether `pid` runs in one of the groups started here (the job of a game
+/// the app launched, or of a program that game started).
+pub fn in_tracked_group(pid: u32) -> bool {
+    let Some(process) = open(pid, PROCESS_QUERY_LIMITED_INFORMATION) else { return false };
+    let jobs = jobs().lock().unwrap_or_else(|e| e.into_inner());
+    jobs.values().any(|job| {
+        let mut inside = 0;
+        // SAFETY: both handles are open; `inside` receives the answer.
+        unsafe { IsProcessInJob(process.0, job.0, &mut inside) != 0 && inside != 0 }
+    })
 }
 
 pub(super) fn detach(cmd: &mut Command) -> &mut Command {
