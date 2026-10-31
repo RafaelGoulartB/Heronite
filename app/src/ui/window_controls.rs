@@ -1,19 +1,26 @@
 //! Minimize, maximize and close in the app's own style, at the right end of
 //! the top bars, where the system draws no title bar: the window has
 //! `titlebar: None` (Windows) and asks a Linux compositor to leave its frame
-//! to the app. A compositor that keeps drawing its own (X11 without a
-//! compositor, one that ignores the request) gets no buttons from the app.
+//! to the app.
+//!
+//! Close is always there (outside fullscreen), even where the compositor
+//! keeps a frame of its own (Hyprland). Minimize and maximize only where the
+//! app draws the frame: always on Windows; on Linux those of the desktop's
+//! button layout (GNOME shows only close) that the compositor supports.
 //!
 //! On Windows they are window control areas: Windows itself minimizes,
 //! maximizes or restores (and offers its snap layouts), and closing goes
 //! through the window's should-close check like Alt+F4. Linux has no such
 //! areas, so the buttons ask the compositor, and close asks first like the
-//! compositor's close. There the buttons follow the desktop: those of its
-//! button layout (GNOME shows only close) that the compositor supports;
-//! close is always there.
+//! compositor's close.
 //!
-//! The empty part of a top bar moves the window and a double click on it
-//! maximizes ([`drag_area`]); on Linux a right click opens the window menu.
+//! Where the app draws the frame, the empty part of a top bar moves the
+//! window and a double click on it maximizes ([`drag_area`]); on Linux a
+//! right click opens the window menu.
+//!
+//! `HERONITE_DEBUG_WINDOW_BUTTONS=<layout>` (GNOME's `button-layout`, like
+//! `minimize,maximize,close`) makes the app draw the frame with those
+//! buttons, whatever the desktop and the compositor say.
 
 use std::cell::Cell;
 
@@ -25,30 +32,50 @@ use super::icon;
 use crate::icons::Icon;
 use crate::theme;
 
-/// Whether the app draws the window's controls: on Windows, and on Linux
-/// when the compositor left the frame to the app; never in fullscreen.
-pub fn shown(window: &Window) -> bool {
-    let own_frame = cfg!(windows) || (cfg!(target_os = "linux") && matches!(window.window_decorations(), Decorations::Client { .. }));
-    own_frame && !window.is_fullscreen()
+#[cfg(target_os = "linux")]
+fn debug_layout() -> Option<WindowButtonLayout> {
+    static LAYOUT: std::sync::OnceLock<Option<WindowButtonLayout>> = std::sync::OnceLock::new();
+    *LAYOUT.get_or_init(|| {
+        let layout = crate::env::value("HERONITE_DEBUG_WINDOW_BUTTONS")?;
+        WindowButtonLayout::parse(&layout).map_err(|e| log::warn!("HERONITE_DEBUG_WINDOW_BUTTONS: {e:#}")).ok()
+    })
+}
+
+/// Whether the app draws the window's frame: on Windows, and on Linux when
+/// the compositor left it to the app; never in fullscreen.
+fn own_frame(window: &Window) -> bool {
+    #[cfg(target_os = "linux")]
+    let own = debug_layout().is_some() || matches!(window.window_decorations(), Decorations::Client { .. });
+    #[cfg(not(target_os = "linux"))]
+    let own = cfg!(windows);
+    own && !window.is_fullscreen()
 }
 
 /// Which of minimize and maximize show (close always does).
 #[cfg(target_os = "linux")]
 fn wanted(window: &Window, cx: &App) -> (bool, bool) {
+    if !own_frame(window) {
+        return (false, false);
+    }
+    let listed = |layout: WindowButtonLayout, b| layout.left.iter().chain(&layout.right).any(|x| *x == Some(b));
+    if let Some(layout) = debug_layout() {
+        return (listed(layout, WindowButton::Minimize), listed(layout, WindowButton::Maximize));
+    }
     let layout = cx.button_layout().unwrap_or_else(WindowButtonLayout::linux_default);
-    let listed = |b| layout.left.iter().chain(&layout.right).any(|x| *x == Some(b));
     let can = window.window_controls();
-    (listed(WindowButton::Minimize) && can.minimize, listed(WindowButton::Maximize) && can.maximize)
+    (listed(layout, WindowButton::Minimize) && can.minimize, listed(layout, WindowButton::Maximize) && can.maximize)
 }
 
 #[cfg(not(target_os = "linux"))]
-fn wanted(_: &Window, _: &App) -> (bool, bool) {
-    (true, true)
+fn wanted(window: &Window, _: &App) -> (bool, bool) {
+    let own = own_frame(window);
+    (own, own)
 }
 
-/// The buttons, for the right end of a top bar, in Windows' order.
+/// The buttons, for the right end of a top bar, in Windows' order. Only
+/// Windows and Linux (macOS has its own).
 pub fn controls(window: &Window, cx: &App) -> Option<Div> {
-    if !shown(window) {
+    if !(cfg!(windows) || cfg!(target_os = "linux")) || window.is_fullscreen() {
         return None;
     }
     let (min, max) = wanted(window, cx);
@@ -86,9 +113,9 @@ thread_local! {
     static MOVE_PENDING: Cell<bool> = const { Cell::new(false) };
 }
 
-/// `el` moves the window when dragged, where the app draws the controls.
+/// `el` moves the window when dragged, where the app draws the frame.
 pub fn drag_area<E: InteractiveElement>(el: E, window: &Window) -> E {
-    if !shown(window) {
+    if !own_frame(window) {
         return el;
     }
     if cfg!(windows) {
