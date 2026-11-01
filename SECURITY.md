@@ -7,7 +7,7 @@ Please **do not open a public issue** for a security problem. Report it privatel
 1. Go to the [Security tab](https://github.com/RafaelGoulartB/Heronite/security) of this repository.
 2. Click **Report a vulnerability** and fill in the form.
 
-Only the maintainers can see the report. Include what an attacker could do, the steps to reproduce it, and the Heronite version (**Settings › About**).
+Only the maintainers can see the report. If you cannot use GitHub, email [security@heronite.app](mailto:security@heronite.app) instead. Include what an attacker could do, the steps to reproduce it, and the Heronite version (**Settings › About**).
 
 You will get an answer within 7 days. Once the problem is fixed and a release is out, the advisory is published with credit to you, unless you prefer to stay anonymous.
 

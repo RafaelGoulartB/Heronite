@@ -13,12 +13,14 @@ section: games
 priority: optional
 maintainer: RafaGoulartB <rafagoulartb@gmail.com>
 description: |-
-  Native game launcher for Linux.
-  Every game you own in one Collection: Epic Games (through legendary),
-  sideloaded and Steam games, and emulated ROMs, launched with Wine, Proton
-  or natively.
+  Fast native game launcher for Steam, Epic, GOG, emulators and more.
+  Every game you own in one Collection: Steam, Epic Games, GOG, Amazon Games,
+  Battle.net, EA app, Ubisoft Connect, Rockstar Games, emulated ROMs, and
+  native Linux and Windows games, launched natively, with Wine or Proton, or
+  through an emulator. Records every session, with play time statistics and a
+  controller-first console mode.
 vendor: Heronite
-homepage: https://github.com/RafaelGoulartB/Heronite
+homepage: https://heronite.app
 license: GPL-3.0-only
 
 contents:
