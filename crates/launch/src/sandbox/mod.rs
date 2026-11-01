@@ -187,8 +187,8 @@ pub fn prelude(
     owner: Owner,
     req: &Request,
 ) -> Result<Option<Vec<String>>, String> {
-    // A system without the sandbox (the Flatpak) ignores the setting.
-    if !settings.sandbox.enabled || !heronite_platform::supported(heronite_platform::Feature::Sandbox) {
+    // Inside the Flatpak bubblewrap cannot run: the setting is ignored.
+    if !settings.sandbox.enabled || heronite_platform::flatpak::active() {
         return Ok(None);
     }
     if let Some(why) = unavailable(probe) {
