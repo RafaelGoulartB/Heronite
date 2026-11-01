@@ -409,7 +409,9 @@ impl ScriptInstallDialog {
         body = body.children(self.issues());
         body = body.child(self.game_fields(cx));
         body = body.children(self.wine_field(cx));
-        body = body.child(self.sandbox_field(cx));
+        if heronite_platform::supported(heronite_platform::Feature::Sandbox) {
+            body = body.child(self.sandbox_field(cx));
+        }
         body = body.children(self.files_to_pick(cx));
         body = body.children(self.steps(cx));
         body.child(meta_text(tr!(
