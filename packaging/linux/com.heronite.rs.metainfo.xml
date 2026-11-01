@@ -11,18 +11,23 @@
   </developer>
   <description>
     <p>
-      Heronite gathers Epic Games, sideloaded and Steam games and emulated ROMs in one
-      Collection, and launches them with Wine, Proton or natively.
+      Heronite gathers your games from Steam, Epic Games, GOG, Amazon Games, Battle.net,
+      EA app, Ubisoft Connect and Rockstar Games, plus emulated ROMs and native Linux and
+      Windows games, in one Collection, and launches them natively, with Wine or Proton,
+      or through an emulator.
     </p>
     <ul>
-      <li>Statuses, ratings, playtime, sessions and statistics for every game</li>
-      <li>Metadata and artwork from IGDB, Steam and Lutris</li>
+      <li>Install, update and repair Epic, GOG and Amazon games from one download queue</li>
+      <li>Statuses, ratings, playtime, sessions, statistics and a year in review</li>
+      <li>Metadata and artwork from IGDB, SteamGridDB, Steam and Lutris</li>
       <li>Wine and Proton manager, save backups with Ludusavi</li>
-      <li>A controller-first console mode</li>
+      <li>Emulator detection, ROM folder scanning and RetroAchievements</li>
+      <li>A controller-first console mode with shareable themes</li>
     </ul>
   </description>
   <launchable type="desktop-id">com.heronite.rs.desktop</launchable>
-  <url type="homepage">https://github.com/RafaelGoulartB/Heronite</url>
+  <url type="homepage">https://heronite.app</url>
+  <url type="vcs-browser">https://github.com/RafaelGoulartB/Heronite</url>
   <url type="bugtracker">https://github.com/RafaelGoulartB/Heronite/issues</url>
   <categories>
     <category>Game</category>
