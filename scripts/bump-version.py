@@ -5,8 +5,11 @@
 
 Prints the new version. Every crate inherits `[workspace.package] version`,
 so this is the only number to change; the lock file gets the same version
-for the workspace's own packages (the ones without a `source`).
+for the workspace's own packages (the ones without a `source`). The new
+version also goes on top of the AppStream data's releases, which software
+centres (and Flathub) show.
 """
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -46,6 +49,15 @@ def main() -> None:
         if re.search(r'^name = "heronite(-[a-z0-9-]+)?"$', block, re.M) and "\nsource = " not in block:
             blocks[i] = re.sub(r'^version = ".*"$', f'version = "{new}"', block, count=1, flags=re.M)
     lock_path.write_text("\n[[package]]\n".join(blocks))
+
+    metainfo_path = ROOT / "packaging/linux/com.heronite.rs.metainfo.xml"
+    metainfo = metainfo_path.read_text()
+    if f'<release version="{new}"' not in metainfo:
+        today = datetime.date.today().isoformat()
+        metainfo, n = re.subn(r"^(\s*)<releases>\n", rf'\g<0>\1  <release version="{new}" date="{today}"/>\n', metainfo, count=1, flags=re.M)
+        if n != 1:
+            sys.exit(f"no <releases> in {metainfo_path}")
+        metainfo_path.write_text(metainfo)
     print(new)
 
 
