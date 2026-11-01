@@ -18,7 +18,7 @@ description: |-
   sideloaded and Steam games, and emulated ROMs, launched with Wine, Proton
   or natively.
 vendor: Heronite
-homepage: https://github.com/RafaelGoulartB/Heronite
+homepage: https://heronite.app
 license: GPL-3.0-only
 
 contents:
