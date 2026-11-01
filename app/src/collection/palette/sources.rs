@@ -195,7 +195,7 @@ fn section_help(s: Section) -> &'static str {
         Section::Screenshots => tr!("Folder, capture shortcut, preview cache"),
         Section::Saves => tr!("Ludusavi save backups and restoring them"),
         Section::Backups => tr!("Scheduled copy of the data folder"),
-        Section::Sync => tr!("The same library on your other PCs"),
+        Section::Cloud => tr!("Sync, backups, saves and screenshots in your account"),
         Section::Logs => tr!("Logs of this app and your games"),
         Section::About => tr!("Version, data folders, system"),
     }

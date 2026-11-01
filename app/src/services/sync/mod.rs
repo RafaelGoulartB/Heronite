@@ -1,11 +1,16 @@
-//! The library sync between PCs (`heronite_sync`, Settings → Sync): a sync
-//! [`AFTER_START`] after the app starts, [`AFTER_GAME`] after each game and
-//! every [`EVERY`] (never while a game launched from here runs), plus "Sync
-//! now". Connecting a cloud account runs here too, so the page can close
+//! The cloud account (`heronite_sync`, Settings → Cloud): the library sync
+//! between PCs [`AFTER_START`] after the app starts, [`AFTER_GAME`] after
+//! each game and every [`EVERY`] (never while a game launched from here
+//! runs), plus "Sync now", and the uploads (`uploads`: backups, game saves,
+//! screenshots). Connecting the account runs here too, so the page can close
 //! while the browser sign-in waits.
 //!
 //! A sync that changed the Collection sends [`SyncEvent::Changed`]: the
 //! Collection reads it again.
+
+mod uploads;
+
+pub use uploads::Job;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,6 +25,9 @@ use heronite_sync::{Provider, Server, SyncError};
 const AFTER_START: Duration = Duration::from_secs(20);
 const AFTER_GAME: Duration = Duration::from_secs(5);
 const EVERY: Duration = Duration::from_secs(10 * 60);
+/// The screenshots are looked at every this many syncs too (hourly), in case
+/// a capture came in without a game or a compression run.
+const CAPTURES_EVERY: u32 = 6;
 
 #[derive(Clone, Debug)]
 pub enum SyncEvent {
@@ -42,6 +50,9 @@ pub struct LibrarySync {
     connecting: Option<Connecting>,
     /// Why the last connection failed.
     connect_error: Option<String>,
+    queue: uploads::Queue,
+    /// Whether the compression was busy at its last change.
+    compressing: bool,
 }
 
 impl EventEmitter<SyncEvent> for LibrarySync {}
@@ -58,22 +69,50 @@ pub fn init(cx: &mut App, data_paths: DataPaths) {
     let entity = cx.new(|cx| {
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(AFTER_START).await;
+            let mut round = 0u32;
             loop {
                 let alive = this
                     .update(cx, |s: &mut LibrarySync, cx: &mut Context<LibrarySync>| {
                         if crate::system::restart_blocker(cx).is_none() {
                             s.sync(cx);
                         }
+                        // What came in while the app was closed, then hourly.
+                        if round == 0 {
+                            s.upload(Job::Saves, cx);
+                        }
+                        if round.is_multiple_of(CAPTURES_EVERY) {
+                            s.upload(Job::Captures, cx);
+                        }
                     })
                     .is_ok();
                 if !alive {
                     break;
                 }
+                round = round.wrapping_add(1);
                 cx.background_executor().timer(EVERY).await;
             }
         })
         .detach();
-        LibrarySync { data_paths, app_paths, running: false, connecting: None, connect_error: None }
+        // Captures go up once the compression has nothing left.
+        if let Some(compression) = crate::services::compression::get(cx) {
+            cx.observe(&compression, |s: &mut LibrarySync, c, cx| {
+                let busy = c.read(cx).busy();
+                if s.compressing && !busy {
+                    s.upload(Job::Captures, cx);
+                }
+                s.compressing = busy;
+            })
+            .detach();
+        }
+        LibrarySync {
+            data_paths,
+            app_paths,
+            running: false,
+            connecting: None,
+            connect_error: None,
+            queue: Default::default(),
+            compressing: false,
+        }
     });
     cx.set_global(SyncGlobal(entity));
 }
@@ -83,16 +122,41 @@ pub fn get(cx: &App) -> Option<Entity<LibrarySync>> {
     cx.try_global::<SyncGlobal>().map(|g| g.0.clone())
 }
 
-/// A game ended: its session goes to the other PCs.
+/// A game ended (its post-game work, the Ludusavi backup too, is done):
+/// its session goes to the other PCs and its saves to the account. Its
+/// screenshots follow the compression (or go now when it is off).
 pub fn after_game(cx: &mut App) {
     let Some(svc) = get(cx) else { return };
+    let compression_on = crate::services::compression::get(cx).is_some_and(|c| c.read(cx).enabled());
     svc.update(cx, |_, cx| {
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(AFTER_GAME).await;
-            this.update(cx, |s, cx| s.sync(cx)).ok();
+            this.update(cx, |s, cx| {
+                s.sync(cx);
+                s.upload(Job::Saves, cx);
+                if !compression_on {
+                    s.upload(Job::Captures, cx);
+                }
+            })
+            .ok();
         })
         .detach();
     });
+}
+
+/// A game started: uploads stop until it ends, so they do not take its
+/// bandwidth.
+pub fn game_started(cx: &mut App) {
+    if let Some(svc) = get(cx) {
+        svc.update(cx, |s, cx| s.pause_for_game(cx));
+    }
+}
+
+/// A backup of the data folder was made at `path`.
+pub fn backup_made(path: std::path::PathBuf, cx: &mut App) {
+    if let Some(svc) = get(cx) {
+        svc.update(cx, |s, cx| s.upload(Job::Backup(path), cx));
+    }
 }
 
 impl LibrarySync {
@@ -172,7 +236,10 @@ impl LibrarySync {
                         Msg::Done(result) => {
                             s.connecting = None;
                             match result {
-                                Ok(()) => s.sync(cx),
+                                Ok(()) => {
+                                    s.sync(cx);
+                                    s.upload_all(cx);
+                                }
                                 Err(SyncError::Cancelled) => {}
                                 Err(e) => s.connect_error = Some(e.localized()),
                             }

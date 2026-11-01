@@ -103,6 +103,10 @@ impl Upkeep {
             let outcome = cx.background_spawn(async move { heronite_backup::run::run(&data, &app, force, Local::now()) }).await;
             this.update(cx, |u, cx| {
                 u.running = false;
+                // The new backup goes to the cloud account too, when on.
+                if let (true, None, Some(path)) = (outcome.ran, &outcome.error, &outcome.path) {
+                    crate::services::sync::backup_made(path.clone(), cx);
+                }
                 // A schedule that was not due is not news.
                 if force || outcome.ran || outcome.error.is_some() {
                     u.last = Some(outcome);

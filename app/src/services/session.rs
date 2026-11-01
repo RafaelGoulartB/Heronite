@@ -113,6 +113,7 @@ impl Session {
                 self.running.insert(app_name.clone());
                 self.begin_capture(app_name, cx);
                 self.tell_client(app_name, true, cx);
+                crate::services::sync::game_started(cx);
             }
             LaunchEvent::Exited { app_name, elapsed, .. } => {
                 self.running.remove(app_name);
@@ -130,6 +131,7 @@ impl Session {
                 self.running.insert(app_name.clone());
                 self.begin_capture(app_name, cx);
                 self.tell_client(app_name, true, cx);
+                crate::services::sync::game_started(cx);
             }
             LaunchEvent::Running { .. } | LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => {}
         }
