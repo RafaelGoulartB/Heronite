@@ -38,7 +38,7 @@ XKBCOMMON=${XKBCOMMON-$(scripts/xkbcommon.sh)}
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 APPDIR=$WORK/Heronite.AppDir
-ID=com.heronite.rs
+ID=app.heronite.Heronite
 # Linked by heronite-rs, directly or through each other: keyboard input
 # (xkbcommon, from $XKBCOMMON) and controllers (udev).
 BUNDLED_LIBS=(libxkbcommon.so.0 libxkbcommon-x11.so.0 libxcb-xkb.so.1 libudev.so.1)

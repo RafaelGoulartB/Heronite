@@ -3734,6 +3734,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "heronite-data",
+ "heronite-platform",
  "log",
  "rusqlite",
  "serde-saphyr",

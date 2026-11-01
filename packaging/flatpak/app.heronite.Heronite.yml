@@ -1,0 +1,176 @@
+# The Flatpak of Heronite, built by scripts/flatpak.sh into
+# dist/Heronite-x86_64.flatpak (see packaging/flatpak/README.md).
+# The build is offline: cargo-sources.json, made by the script from
+# Cargo.lock, lists every crate for flatpak-builder to download first.
+id: app.heronite.Heronite
+runtime: org.gnome.Platform
+# GNOME's runtime has WebKitGTK 4.1, the stores' login window.
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  # clang and lld: the linker of .cargo/config.toml; libclang for bindgen.
+  - org.freedesktop.Sdk.Extension.llvm22
+command: heronite-rs
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  # Games under Wine still need X11 (Xwayland).
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  # The GPU, controllers (the overlay reads them with evdev), the Steam Deck.
+  - --device=all
+  # Wine and Proton: 32-bit programs, the Steam runtime's pressure-vessel.
+  - --allow=multiarch
+  - --allow=devel
+  - --allow=per-app-dev-shm
+  - --env=PATH=/app/bin:/usr/bin:/usr/lib/extensions/vulkan/MangoHud/bin:/usr/lib/extensions/vulkan/gamescope/bin
+  - --env=LD_LIBRARY_PATH=/usr/lib/extensions/vulkan/gamescope/lib
+  - --env=XDG_DATA_DIRS=/app/share:/usr/lib/extensions/vulkan/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share
+  - --env=XDG_CONFIG_DIRS=/etc/xdg:/usr/lib/x86_64-linux-gnu/GL:/usr/lib/i386-linux-gnu/GL
+  # Steam (starting and closing it) and Flatpak emulators run on the host,
+  # through flatpak-spawn --host.
+  - --talk-name=org.freedesktop.Flatpak
+  # The tray icon, notifications, GameMode, keeping the screen on.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=com.feralinteractive.GameMode
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --system-talk-name=org.freedesktop.login1
+  # Wine lists the disks through UDisks2.
+  - --system-talk-name=org.freedesktop.UDisks2
+  - --system-talk-name=org.freedesktop.UPower
+  # Games live anywhere: the home folder (also Steam's and the other
+  # launchers' folders, ROM folders, game shortcuts in the menu and on the
+  # Desktop, the autostart entry) and other drives.
+  - --filesystem=home
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=/run/udev:ro
+  - --filesystem=xdg-run/gamescope-0
+  # The home folder leaves out ~/.var/app: the Flatpaks whose games and
+  # files Heronite reads.
+  - --filesystem=~/.var/app/com.valvesoftware.Steam
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl:ro
+  - --filesystem=~/.var/app/net.lutris.Lutris:ro
+  - --filesystem=~/.var/app/com.usebottles.bottles:ro
+  - --filesystem=~/.var/app/io.github.Faugus.faugus-launcher:ro
+
+add-extensions:
+  org.freedesktop.Platform.Compat.i386:
+    directory: lib/i386-linux-gnu
+    version: '26.08'
+
+  org.freedesktop.Platform.Compat.i386.Debug:
+    directory: lib/debug/lib/i386-linux-gnu
+    version: '26.08'
+    no-autodownload: true
+
+  org.freedesktop.Platform.GL32:
+    directory: lib/i386-linux-gnu/GL
+    version: '1.4'
+    versions: 26.08;1.4
+    subdirectories: true
+    no-autodownload: true
+    autodelete: false
+    add-ld-path: lib
+    merge-dirs: vulkan/icd.d;glvnd/egl_vendor.d;OpenCL/vendors;lib/dri;lib/d3d;vulkan/explicit_layer.d;vulkan/implicit_layer.d
+    download-if: active-gl-driver
+    enable-if: active-gl-driver
+    autoprune-unless: active-gl-driver
+
+modules:
+  # vulkaninfo: the graphics cards and their driver (heronite_launch::gpu).
+  - name: vulkan-tools
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DVULKAN_HEADERS_INSTALL_DIR=/app
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_CUBE=OFF
+      - -DBUILD_ICD=OFF
+    cleanup:
+      - /include
+      - /share/cmake
+      - /share/vulkan/registry
+    sources:
+      - type: git
+        url: https://github.com/KhronosGroup/Vulkan-Tools.git
+        tag: v1.4.362
+        commit: 532e2c0e1bce627c5188ed2c90819af2f52a12e1
+    modules:
+      - name: vulkan-headers
+        buildsystem: cmake-ninja
+        sources:
+          - type: git
+            url: https://github.com/KhronosGroup/Vulkan-Headers.git
+            tag: v1.4.362
+            commit: ee2ec5fd83dafce291024683b50dc89219333076
+
+  # 7z: install scripts and winetricks unpack archives with it.
+  - name: 7zip
+    buildsystem: simple
+    subdir: CPP/7zip/Bundles/Alone2
+    build-commands:
+      - make -j $FLATPAK_BUILDER_N_JOBS -f makefile.gcc CFLAGS_WARN_WALL="-Wall -Wextra"
+      - install -Dm755 ./_o/7zz -t /app/bin
+      - ln -s 7zz /app/bin/7za
+      - ln -s 7zz /app/bin/7z
+    sources:
+      - type: git
+        url: https://github.com/ip7z/7zip.git
+        tag: '26.03'
+        commit: 0766b733fe3e06dd2a7f9a3cfbf2108ac73abd17
+
+  # cabextract: winetricks unpacks Microsoft's redistributables with it.
+  - name: cabextract
+    buildsystem: simple
+    subdir: cabextract
+    build-commands:
+      - autoreconf -fi -I /usr/share/gettext/m4
+      - ./configure --prefix=$FLATPAK_DEST
+      - make -j $FLATPAK_BUILDER_N_JOBS
+      - make install
+    cleanup:
+      - /share/man
+    sources:
+      - type: git
+        url: https://github.com/kyz/libmspack.git
+        tag: v1.11
+        commit: 305907723a4e7ab2018e58040059ffb5e77db837
+
+  - name: heronite
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/llvm22/bin
+      prepend-ld-library-path: /usr/lib/sdk/llvm22/lib
+      env:
+        CARGO_HOME: /run/build/heronite/cargo
+        LIBCLANG_PATH: /usr/lib/sdk/llvm22/lib
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --locked -p heronite -p heronite-epic-login
+      - install -Dm755 target/release/heronite-rs -t /app/bin
+      - install -Dm755 target/release/heronite-epic-login -t /app/bin
+      - install -Dm644 packaging/linux/app.heronite.Heronite.desktop -t /app/share/applications
+      - install -Dm644 packaging/linux/app.heronite.Heronite.png -t /app/share/icons/hicolor/256x256/apps
+      - install -Dm644 packaging/linux/app.heronite.Heronite.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 LICENSE THIRD-PARTY-NOTICES.md -t /app/share/doc/heronite
+      - cp -r licenses /app/share/doc/heronite/licenses
+      # Where the 32-bit libraries of the extensions above are mounted, and
+      # where the loader finds them.
+      - mkdir -p /app/lib/i386-linux-gnu/GL /app/lib/debug/lib/i386-linux-gnu
+      - install -Dm644 packaging/flatpak/ld.so.conf -t /app/etc
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - .claude
+          - .flatpak-builder
+          - target
+          - dist
+      - cargo-sources.json

@@ -94,6 +94,7 @@
   "Favourites · {count}": "Favoritos · {count}",
   "Field priority (advanced)": "Prioridad de campos (avanzado)",
   "Fill missing metadata in the background": "Rellenar metadatos que faltan en segundo plano",
+  "Flatpak updates this copy: run flatpak update, or update it in your software center.": "Flatpak actualiza esta copia: ejecuta flatpak update o actualízala en tu centro de software.",
   "Folder with a subfolder per game (Xbox Game Bar Captures, NVIDIA, etc.). Collection matches those names to the selected game even when they are not identical.": "Carpeta con una subcarpeta por juego (Xbox Game Bar Captures, NVIDIA, etc.). La Colección asocia esos nombres con el juego seleccionado aunque no sean idénticos.",
   "Folders and cache": "Carpetas y caché",
   "For bug reports": "Para informar de errores",

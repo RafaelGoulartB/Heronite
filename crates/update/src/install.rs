@@ -35,6 +35,8 @@ pub enum Unsupported {
     /// source, a distribution's own package). On Windows: neither installed
     /// by our setup nor a portable copy (a build folder).
     NotAppImage,
+    /// A Flatpak: Flatpak installs its updates.
+    Flatpak,
     /// `$APPIMAGE` does not point at a file.
     Missing(PathBuf),
     /// The folder of the AppImage (of the portable copy on Windows) is not
@@ -49,6 +51,7 @@ impl std::fmt::Display for Unsupported {
                 write!(f, "Heronite was neither installed by its setup nor unpacked as a portable copy")
             }
             Unsupported::NotAppImage => write!(f, "Heronite was not started from an AppImage"),
+            Unsupported::Flatpak => write!(f, "Heronite runs as a Flatpak, which Flatpak updates"),
             Unsupported::Missing(p) => write!(f, "the AppImage {} was not found", p.display()),
             Unsupported::ReadOnly(dir) => write!(f, "{} is not writable", dir.display()),
         }

@@ -187,8 +187,9 @@ impl GameSettingsDialog {
         let facts = GameFacts::of(&game);
         let mut sections = facts.sections();
         // The Sandbox tab only for a game put in the sandbox (when it was
-        // added or installed). Decided once: turning it off here keeps the tab.
-        if !sandboxed(&ctx, &game.app_name) {
+        // added or installed), where there is one (not in the Flatpak).
+        // Decided once: turning it off here keeps the tab.
+        if !heronite_platform::supported(heronite_platform::Feature::Sandbox) || !sandboxed(&ctx, &game.app_name) {
             sections.retain(|s| *s != Section::Sandbox);
         }
         let panel = (!sections.is_empty()).then(|| {

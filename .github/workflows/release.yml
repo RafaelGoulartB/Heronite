@@ -8,10 +8,12 @@ name: Release
 #   straight to main);
 # - pushing a `vX.Y.Z` tag by hand (Cargo.toml must already have X.Y.Z).
 # Then, from the tag and side by side, the AppImage and the .deb / .rpm / Arch
-# packages are built and checked on clean containers (job appimage), and the
-# Windows installer and portable zip are built and checked (job windows).
-# The publish job gathers both, signs every file (secret MINISIGN_SECRET_KEY,
-# see scripts/sign-release.sh) and publishes them as one GitHub release.
+# packages are built and checked on clean containers (job appimage), the
+# Flatpak bundle is built (job flatpak), and the Windows installer and
+# portable zip are built and checked (job windows).
+# The publish job gathers them, signs the files the in-app updater installs
+# (secret MINISIGN_SECRET_KEY, see scripts/sign-release.sh; Flatpak updates
+# the Flatpak) and publishes them as one GitHub release.
 on:
   pull_request_target:
     types: [closed]
@@ -139,6 +141,30 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  flatpak:
+    name: Flatpak bundle (x86_64)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - name: flatpak-builder
+        run: scripts/ci-flatpak-deps.sh
+      # The downloads (crates, the tools' sources) and the tools' builds.
+      - uses: actions/cache@v4
+        with:
+          path: target/flatpak/state
+          key: flatpak-${{ hashFiles('packaging/flatpak/app.heronite.Heronite.yml', 'Cargo.lock') }}
+          restore-keys: flatpak-
+      - name: Build
+        run: scripts/flatpak.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Heronite-flatpak
+          path: dist/Heronite-x86_64.flatpak
+          if-no-files-found: error
+
   windows:
     name: Windows installer and portable zip (x86_64)
     needs: version
@@ -211,7 +237,7 @@ jobs:
 
   publish:
     name: Sign and publish
-    needs: [version, appimage, windows]
+    needs: [version, appimage, flatpak, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -222,6 +248,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: Heronite-linux
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: Heronite-flatpak
           path: dist
       - uses: actions/download-artifact@v4
         with:
@@ -242,7 +272,7 @@ jobs:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
           TAG: ${{ needs.version.outputs.tag }}
         run: |
-          for f in Heronite-x86_64.AppImage Heronite-Setup-x86_64.exe Heronite-Portable-x86_64.zip; do
+          for f in Heronite-x86_64.AppImage Heronite-x86_64.flatpak Heronite-Setup-x86_64.exe Heronite-Portable-x86_64.zip; do
             [[ -f dist/$f ]] || { echo "::error::dist/$f is missing"; exit 1; }
           done
           scripts/sign-release.sh "${TAG#v}" dist
@@ -266,7 +296,7 @@ jobs:
           # A short guide to the assets goes first: the .minisig and .zsync
           # files sit next to the downloads but are only for the updaters.
           cat > notes.md <<'EOF'
-          **Linux:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). Or the package for your system: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora, openSUSE), `.pkg.tar.zst` (Arch, CachyOS).
+          **Linux:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). Or the package for your system: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora, openSUSE), `.pkg.tar.zst` (Arch, CachyOS), or `Heronite-x86_64.flatpak` (`flatpak install --user ./Heronite-x86_64.flatpak`; Windows games also need `flatpak install --user flathub org.freedesktop.Platform.Compat.i386//26.08 org.freedesktop.Platform.GL32.default//26.08`).
 
           **Windows 10 and 11:** `Heronite-Setup-x86_64.exe` installs Heronite for your user, no administrator rights needed (recommended). `Heronite-Portable-x86_64.zip` runs from any folder you extract it to and keeps its library and settings in that folder.
           EOF

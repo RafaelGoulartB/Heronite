@@ -1,0 +1,44 @@
+name: Flatpak
+
+# Builds the Flatpak the way a release does (scripts/flatpak.sh) and keeps
+# the bundle as a workflow artifact for trying out. Never published:
+# releases are made by release.yml.
+on:
+  pull_request:
+    paths:
+      - "packaging/flatpak/**"
+      - "packaging/linux/**"
+      - "scripts/flatpak.sh"
+      - "scripts/ci-flatpak-deps.sh"
+      - "crates/platform/src/flatpak.rs"
+      - ".github/workflows/flatpak.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flatpak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    name: Flatpak bundle (x86_64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: flatpak-builder
+        run: scripts/ci-flatpak-deps.sh
+      # The downloads (crates, the tools' sources) and the tools' builds.
+      - uses: actions/cache@v4
+        with:
+          path: target/flatpak/state
+          key: flatpak-${{ hashFiles('packaging/flatpak/app.heronite.Heronite.yml', 'Cargo.lock') }}
+          restore-keys: flatpak-
+      - name: Build
+        run: scripts/flatpak.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Heronite-flatpak
+          path: dist/Heronite-x86_64.flatpak
+          if-no-files-found: error

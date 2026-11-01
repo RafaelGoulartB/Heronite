@@ -53,8 +53,10 @@ impl DetectEnv for SystemEnv {
         if cfg!(windows) {
             return false;
         }
-        let Ok(mut child) =
-            Command::new("flatpak").args(["info", id]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
+        let mut info = Command::new("flatpak");
+        info.args(["info", id]);
+        // Inside Heronite's own Flatpak the host knows its Flatpaks.
+        let Ok(mut child) = heronite_platform::flatpak::host(info).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()
         else {
             return false;
         };

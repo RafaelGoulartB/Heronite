@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- AppStream data: software centres (GNOME Software, Discover) show it for the packages. -->
 <component type="desktop-application">
-  <id>com.heronite.rs</id>
+  <id>app.heronite.Heronite</id>
   <name>Heronite</name>
   <summary>Every game you own, on Linux, in one native launcher</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
-  <developer id="io.github.rafaelgoulartb">
+  <developer id="app.heronite">
     <name>RafaGoulartB</name>
   </developer>
   <description>
@@ -25,14 +25,26 @@
       <li>A controller-first console mode with shareable themes</li>
     </ul>
   </description>
-  <launchable type="desktop-id">com.heronite.rs.desktop</launchable>
+  <launchable type="desktop-id">app.heronite.Heronite.desktop</launchable>
   <url type="homepage">https://heronite.app</url>
   <url type="vcs-browser">https://github.com/RafaelGoulartB/Heronite</url>
   <url type="bugtracker">https://github.com/RafaelGoulartB/Heronite/issues</url>
   <categories>
     <category>Game</category>
   </categories>
+  <branding>
+    <color type="primary" scheme_preference="light">#8fd3e3</color>
+    <color type="primary" scheme_preference="dark">#1b4f5c</color>
+  </branding>
   <content_rating type="oars-1.1"/>
+  <!-- scripts/bump-version.py adds each new version on top. -->
+  <releases>
+    <release version="1.0.0" date="2026-10-31"/>
+  </releases>
+  <!-- The id of the versions up to 1.0: software centres take this for the same app. -->
+  <replaces>
+    <id>com.heronite.rs</id>
+  </replaces>
   <provides>
     <binary>heronite-rs</binary>
   </provides>

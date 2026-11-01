@@ -51,7 +51,11 @@ Merging a pull request with one of these labels publishes a new version:
 | `release:minor` | new features or changed behaviour | 0.1.0 → 0.2.0 |
 | `release:major` | big or breaking changes | 0.1.0 → 1.0.0 |
 
-The release workflow bumps the version in `Cargo.toml`, tags it, builds the AppImage, and publishes a GitHub release. A pull request without a release label is merged without a new version. Maintainers can also start a release from **Actions › Release › Run workflow**.
+The release workflow bumps the version in `Cargo.toml`, tags it, builds the AppImage, the system packages, the Flatpak and the Windows files, and publishes a GitHub release. A pull request without a release label is merged without a new version. Maintainers can also start a release from **Actions › Release › Run workflow**.
+
+### Flatpak
+
+The Flatpak ([`packaging/flatpak/app.heronite.Heronite.yml`](packaging/flatpak/app.heronite.Heronite.yml)) is built by [`scripts/flatpak.sh`](scripts/flatpak.sh) into `dist/Heronite-x86_64.flatpak` (`--install` also installs it for your user). It needs `flatpak`, `python3` and `flatpak-builder` (or the `org.flatpak.Builder` Flatpak); the SDK comes from Flathub. Pull requests that touch it get the bundle as a workflow artifact. [`packaging/flatpak/README.md`](packaging/flatpak/README.md) lists what the app does differently in its sandbox.
 
 ### Windows packages
 

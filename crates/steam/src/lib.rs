@@ -300,14 +300,17 @@ impl Steam {
         } else {
             Command::new(steam_bin)
         };
-        // Not this app's environment: when Steam started Heronite it holds
-        // Steam's overlay preload, its runtime and the AppImage's paths.
-        c.args(args)
-            .env_clear()
-            .envs(desktop_protocol_env(std::env::vars()))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+        c.args(args);
+        if heronite_platform::flatpak::active() {
+            // Steam is the host's when Heronite runs as a Flatpak: the host
+            // starts it with the session's own environment.
+            c = heronite_platform::flatpak::host(c);
+        } else {
+            // Not this app's environment: when Steam started Heronite it holds
+            // Steam's overlay preload, its runtime and the AppImage's paths.
+            c.env_clear().envs(desktop_protocol_env(std::env::vars()));
+        }
+        c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         c
     }
 

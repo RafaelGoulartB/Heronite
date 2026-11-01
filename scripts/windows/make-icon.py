@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Makes packaging/windows/heronite.ico (the program's icon on Windows) from
-packaging/linux/com.heronite.rs.png. Run it again when the PNG changes and
+packaging/linux/app.heronite.Heronite.png. Run it again when the PNG changes and
 commit the .ico; builds do not run it.
 
 Sizes 16, 24, 32, 48, 64, 128 and 256: each one resized from the 256 px PNG
@@ -19,7 +19,7 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "packaging" / "linux" / "com.heronite.rs.png"
+SOURCE = ROOT / "packaging" / "linux" / "app.heronite.Heronite.png"
 TARGET = ROOT / "packaging" / "windows" / "heronite.ico"
 SIZES = [16, 24, 32, 48, 64, 128, 256]
 

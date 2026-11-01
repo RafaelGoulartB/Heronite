@@ -308,7 +308,7 @@ impl OverlayService {
             signal: signal_hook::consts::SIGUSR1,
             accelerator: accelerator.clone(),
             consume: true,
-            portal_app_id: Some("com.heronite.launcher".into()),
+            portal_app_id: Some("app.heronite.Heronite".into()),
         };
         let hotkey = GlobalHotkey::start(
             spec,
