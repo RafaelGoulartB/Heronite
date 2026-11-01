@@ -115,6 +115,11 @@ pub(crate) fn own_exe() -> PathBuf {
     if let Some(appimage) = super::own_exe::own_appimage() {
         return appimage;
     }
+    // A Flatpak's executable is only inside its sandbox: the host starts it
+    // through the launcher Flatpak exports.
+    if let Some(launcher) = heronite_platform::flatpak::launcher() {
+        return launcher;
+    }
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("heronite-rs"));
     // A replaced binary shows up as ".../heronite-rs (deleted)".
     let s = exe.to_string_lossy();

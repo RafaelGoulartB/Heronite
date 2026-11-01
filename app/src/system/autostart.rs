@@ -49,6 +49,9 @@ fn place(data_paths: &DataPaths) -> Option<Place> {
     }
     if cfg!(windows) {
         Some(Place::RunKey(RUN_KEY.to_string()))
+    } else if heronite_platform::flatpak::active() {
+        // The session reads the host's folder, not the sandbox's.
+        heronite_platform::flatpak::host_xdg("XDG_CONFIG_HOME", ".config").map(|d| Place::Folder(d.join("autostart")))
     } else {
         dirs::config_dir().map(|d| Place::Folder(d.join("autostart")))
     }
