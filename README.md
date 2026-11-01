@@ -66,12 +66,12 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 
 ## Your library, organized
 
-- **Collection:** a list with a details panel (Focus) or a grid of covers. Group by status, store, genre, series, year and more. The details show screenshots, How Long To Beat, achievements, a play timeline, and on Linux the ProtonDB and anti-cheat status.
-- **Journal:** notes on the days you played and on your screenshots, and where you left off.
-- **Views:** filter, sort, and save presets (Playing now, Backlog, Finished, Favourites). Search forgives accents and typos.
-- **Bulk edits:** change many games at once, with undo; rename and merge genres, companies, and series.
-- **Command palette:** <kbd>Ctrl</kbd> <kbd>K</kbd> opens any page, runs any action, or plays a game.
-- **Add any game:** native Linux and Windows programs, browser games, install scripts, or ROM folders. Art from Steam, SteamGridDB, IGDB, Lutris, the web, or your screenshots. On first run, Heronite finds your Steam library, emulators, and ROM folders by itself.
+- **Collection:** a list with details or a grid of covers, grouped by status, store, genre, series, or year. Details show screenshots, How Long To Beat, achievements, and a play timeline.
+- **Journal:** notes on your play days and screenshots.
+- **Views:** filter, sort, and save presets like Playing now or Backlog. Search forgives typos.
+- **Bulk edits:** change many games at once, with undo.
+- **Command palette:** <kbd>Ctrl</kbd> <kbd>K</kbd> opens any page, action, or game.
+- **Add any game:** programs, browser games, scripts, or ROM folders, with art from Steam, SteamGridDB, IGDB, and more.
 
 <table>
   <tr>
@@ -82,21 +82,21 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 
 ## Stores and launchers
 
-- **Epic Games, GOG, and Amazon Games:** log in from Heronite. One download queue installs, updates, repairs, moves, imports, and uninstalls; it pauses offline and retries failed downloads. On Windows, games installed by the Epic Games Launcher, GOG Galaxy, or the Amazon Games app come in without downloading them again.
+- **Epic Games, GOG, and Amazon Games:** log in and install, update, repair, or move games from one download queue. On Windows, games from their official launchers come in without downloading again.
 - **Steam:** your library comes in by itself, no login needed.
-- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games (Linux):** Heronite sets up each store's own app in a Wine prefix of its own. The games you install there show up in your Collection and start from it.
-- **Other launchers (Linux):** bring in the games of Heroic, Lutris, Bottles, and Faugus, and keep them in sync.
-- **Games you already have:** add a program by hand, or point at a folder and add every game found in it at once (Windows programs, and on Linux also AppImages, start scripts, and Linux programs).
+- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games (Linux):** each store's app runs in its own Wine prefix, and its games show up in your Collection.
+- **Other launchers (Linux):** import and sync games from Heroic, Lutris, Bottles, and Faugus.
+- **Games you already have:** add one by hand, or a whole folder at once.
 
 ## Configure and play
 
-- **Wine and Proton (Linux):** per-game Wine version and prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, umu protonfixes, and Lossless Scaling frame generation (lsfg-vk).
-- **Wine Manager (Linux):** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage prefixes.
-- **Launching:** follow and cancel each step, and add your own actions next to Play. Run scripts before and after (on Windows: programs, batch files and PowerShell scripts), programs alongside such as trainers, and save launch presets to reuse in other games. On Windows, Steam games get the scripts and programs too, while Steam still starts the game itself.
-- **Sandbox (Linux):** run a game you do not trust through bubblewrap, with no network and no access to your home folder. Let one thing through when it needs more.
-- **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
-- **In-game overlay (beta, Linux):** the controller's Guide button opens volume, microphone, FPS limit, screenshots, and journal notes over the game.
-- **Replay (off by default, Linux):** keep the last seconds of play and save them as a moment with Guide + X, recorded on the GPU by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/).
+- **Wine and Proton (Linux):** per-game version and prefix, DXVK, gamescope, FPS limit, DLSS/FSR upgrades, Winetricks, and Lossless Scaling frame generation.
+- **Wine Manager (Linux):** download Proton-CachyOS, GE-Proton, and other builds, and manage prefixes.
+- **Launching:** scripts before and after, programs alongside (like trainers), and presets to reuse.
+- **Sandbox (Linux):** run untrusted games without network or access to your home folder.
+- **Emulators:** detected by themselves or added with RetroArch cores, with ROM scanning and save states.
+- **In-game overlay (beta, Linux):** the Guide button opens volume, FPS limit, screenshots, and notes over the game.
+- **Replay (Linux):** save the last seconds of play with Guide + X, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/).
 
 <table>
   <tr>
@@ -107,9 +107,9 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 
 ## Look back at what you played
 
-- **Statistics:** play time by week, month, year, or all time in five tabs: Overview, Journeys, Backlog (a yearly goal of games to beat), Discoveries, and Album.
+- **Statistics:** play time by week, month, or year, plus a yearly backlog goal.
 - **Year in review:** your year as full-screen stories, with a card to share.
-- **Sessions:** every launch is recorded, screenshots are matched to the game, and sessions can be edited. Captures go to `Pictures/Heronite` (the portable copy's `Screenshots` folder on Windows) until you choose another folder.
+- **Sessions:** every launch is recorded, and screenshots are matched to the game.
 
 <table>
   <tr>
@@ -123,11 +123,11 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 
 ## Console mode
 
-A controller-first layout for the couch or a TV, with an on-screen keyboard and a Power menu. Turn it on from the palette, the ☰ menu, or with `--console`.
+A controller-first layout for the couch or a TV. Turn it on from the ☰ menu, the palette, or with `--console`.
 
-- **Themes:** change every part of it, live from the couch or in Settings → Console mode: up to four tabs with their own layout (Shelves, Spotlight, Cinema, Dashboard, Grid, Wheel, Carousel, Series X), covers, background, colours, fonts, button glyphs, menus, and game pages.
-- **Share them:** seven built-in themes (Minimal, Classic, Cinema, Pulse, Arcade, Hub, Living room). Export your own to a `.heronite-theme.json` file and import it anywhere.
-- **Light when off:** nothing of it loads while console mode is off. It can open at startup or when a controller connects.
+- **Themes:** eight layouts (Shelves, Spotlight, Cinema, Grid, Wheel, and more), with your own covers, colours, fonts, and menus.
+- **Share them:** seven built-in themes, or export yours as a `.heronite-theme.json` file.
+- **Light when off:** nothing loads until you turn it on. It can open at startup or when a controller connects.
 
 <table>
   <tr>
@@ -138,11 +138,11 @@ A controller-first layout for the couch or a TV, with an on-screen keyboard and 
 
 ## Make it yours
 
-- **Appearance:** dark or light theme (or the desktop's), accent colour (or the game's), fonts, density, cover style, and a background picture or slideshow.
-- **Language:** English, Portuguese (Brazil), Spanish, and German, following the system by default.
-- **Saves and backups:** Ludusavi save backups after each session, and scheduled backups of your Collection, history, settings, and art.
+- **Appearance:** dark or light, accent colour, fonts, density, and a background picture.
+- **Language:** English, Portuguese (Brazil), Spanish, and German.
+- **Saves and backups:** Ludusavi save backups after each session, and scheduled Collection backups.
 - **Storage:** see what your games take on each disk and clean up leftovers.
-- **Startup:** start with the system, and launch games from `heronite://launch` links or `--launch`.
+- **Startup:** start with the system, and launch games from `heronite://` links.
 
 <table>
   <tr>
@@ -157,7 +157,7 @@ A controller-first layout for the couch or a TV, with an on-screen keyboard and 
 
 ## Light on your PC
 
-A single native process that draws its UI on the GPU, with no bundled browser engine. When idle, it does almost no work.
+A single native process drawn on the GPU, with no bundled browser.
 
 | | Heronite |
 |---|---|
