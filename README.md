@@ -181,18 +181,6 @@ scripts/install.sh
 powershell -ExecutionPolicy Bypass -File scripts\windows\package.ps1
 ```
 
-## Development
-
-A Cargo workspace: `app/` is the GPUI binary, `crates/` holds the GPUI-free libraries, and `heronite-epic-login` is the separate store login window.
-
-```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets
-cargo test --workspace
-```
-
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CODE-STYLE.md](docs/CODE-STYLE.md), and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md). To release, merge a pull request labelled `release:patch`, `release:minor`, or `release:major`. Issues and pull requests are welcome.
-
 ## License
 
 Copyright (C) 2026 [Rafael Goulart](https://www.linkedin.com/in/rafael-goulartb/)
