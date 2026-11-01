@@ -62,6 +62,10 @@ pub const WEBDAV_VENDORS: [(&str, &str); 5] =
 #[serde(rename_all = "camelCase", default)]
 pub struct SyncPrefs {
     pub enabled: bool,
+    /// This PC publishes only its play (sessions and play time): what is
+    /// changed here (status, favourites, notes...) stays here. For a PC the
+    /// user does not keep organised.
+    pub play_only: bool,
     pub provider: Provider,
     /// [`Provider::Folder`]: the shared folder.
     pub folder: String,
@@ -86,6 +90,7 @@ impl Default for SyncPrefs {
     fn default() -> Self {
         Self {
             enabled: false,
+            play_only: false,
             provider: Provider::Folder,
             folder: String::new(),
             remote_folder: DEFAULT_REMOTE_FOLDER.into(),

@@ -11,6 +11,9 @@
 //!   made smaller by hand: the newest such change is followed.
 //! - A game the other PC has and this one does not is left alone: its data
 //!   stays in that PC's file and comes in once the game is here too.
+//! - A PC that publishes only its play (`publish_edits` off, for a PC the
+//!   user does not keep organised) sends its sessions and play time and none
+//!   of its fields; what is changed there loses to any other PC's value.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
@@ -51,9 +54,10 @@ pub struct Outcome {
 }
 
 /// Merges `remotes` (the other PCs' files; this PC's own is skipped) into
-/// `local`. `now`: RFC 3339, UTC.
-pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], me: &DeviceInfo, now: &str) -> Outcome {
-    stamp_local_changes(local, &mut ledger, me, now);
+/// `local`. `now`: RFC 3339, UTC. `publish_edits` off: this PC's file holds
+/// only its play.
+pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], me: &DeviceInfo, now: &str, publish_edits: bool) -> Outcome {
+    stamp_local_changes(local, &mut ledger, me, now, publish_edits);
     let remotes: Vec<&DeviceFile> = remotes.iter().filter(|r| r.device.id != me.id && r.format <= FORMAT).collect();
     for r in &remotes {
         ledger.clock = ledger.clock.max(r.clock);
@@ -124,12 +128,23 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
     }
 
     ledger.games.retain(|_, g| !g.is_empty());
-    let own = own_file(local, &ledger, &playtimes, me, now);
+    let mut own = own_file(local, &ledger, &playtimes, me, now);
+    if !publish_edits {
+        own.statuses.clear();
+        for g in own.games.values_mut() {
+            g.fields.clear();
+            if let Some(p) = &mut g.playtime {
+                p.lowered = None;
+            }
+        }
+        own.games.retain(|_, g| g.playtime.is_some() || !g.sessions.is_empty());
+    }
     Outcome { changes, ledger, own, summary }
 }
 
-/// Gives the fields changed here since the last sync a new stamp.
-fn stamp_local_changes(local: &LocalLibrary, ledger: &mut Ledger, me: &DeviceInfo, now: &str) {
+/// Gives the fields changed here since the last sync a new stamp (the
+/// weakest of all when this PC does not publish them).
+fn stamp_local_changes(local: &LocalLibrary, ledger: &mut Ledger, me: &DeviceInfo, now: &str, publish_edits: bool) {
     let Ledger { clock, games } = ledger;
     for (key, g) in &local.games {
         let lg = games.entry(key.clone()).or_default();
@@ -140,6 +155,7 @@ fn stamp_local_changes(local: &LocalLibrary, ledger: &mut Ledger, me: &DeviceInf
             let value = g.value(field);
             let stamp = match lg.fields.get(field.key()) {
                 Some(s) if s.value == value => continue,
+                _ if !publish_edits => Stamp::default(),
                 Some(_) => {
                     *clock += 1;
                     Stamp { clock: *clock, at: now.to_owned(), device: me.id.clone() }
@@ -156,7 +172,7 @@ fn stamp_local_changes(local: &LocalLibrary, ledger: &mut Ledger, me: &DeviceInf
             };
             lg.fields.insert(field.key().to_owned(), Stamped { value, stamp });
         }
-        if lg.published_minutes.is_some_and(|before| g.playtime.minutes < before) {
+        if publish_edits && lg.published_minutes.is_some_and(|before| g.playtime.minutes < before) {
             *clock += 1;
             lg.lowered = Some(Stamp { clock: *clock, at: now.to_owned(), device: me.id.clone() });
         }

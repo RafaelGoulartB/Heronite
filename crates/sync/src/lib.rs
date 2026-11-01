@@ -131,7 +131,7 @@ fn run_locked(data: &DataPaths, app: &AppPaths) -> Result<Report, SyncError> {
         os: std::env::consts::OS.into(),
         app_version: env!("CARGO_PKG_VERSION").into(),
     };
-    let outcome = merge::merge(&local, ledger, &remotes, &me, &now());
+    let outcome = merge::merge(&local, ledger, &remotes, &me, &now(), !prefs.play_only);
     if !outcome.changes.is_empty() {
         keep_copies(data);
         local::write(data, &outcome.changes).map_err(data_error)?;

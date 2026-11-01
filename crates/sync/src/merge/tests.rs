@@ -6,6 +6,8 @@ use crate::local::LocalGame;
 /// A PC: its Collection and its ledger, synced in memory.
 struct Pc {
     me: DeviceInfo,
+    /// Publishes only its play.
+    play_only: bool,
     local: LocalLibrary,
     ledger: Ledger,
     own: Option<DeviceFile>,
@@ -15,6 +17,7 @@ impl Pc {
     fn new(id: &str) -> Self {
         Pc {
             me: DeviceInfo { id: id.into(), name: id.into(), os: "linux".into(), app_version: String::new() },
+            play_only: false,
             local: Default::default(),
             ledger: Default::default(),
             own: None,
@@ -54,7 +57,7 @@ impl Pc {
     /// One sync against the others' files, written back like `local::write`.
     fn sync(&mut self, others: &[&Pc], now: &str) -> Summary {
         let remotes: Vec<DeviceFile> = others.iter().filter_map(|p| p.own.clone()).collect();
-        let out = merge(&self.local, std::mem::take(&mut self.ledger), &remotes, &self.me, now);
+        let out = merge(&self.local, std::mem::take(&mut self.ledger), &remotes, &self.me, now, !self.play_only);
         for c in &out.changes.fields {
             self.local.games.get_mut(&c.key).unwrap().values.insert(c.field, c.value.clone());
         }
@@ -276,8 +279,36 @@ fn custom_statuses_travel_with_the_games() {
     linux.local.custom_statuses.push(custom);
     linux.set(ELDEN, Field::Status, json!("custom-1"));
     linux.sync(&[], "2026-11-01T10:00:00.000Z");
-    let out = merge(&windows.local, Ledger::default(), &[linux.own.clone().unwrap()], &windows.me, "2026-11-01T11:00:00.000Z");
+    let out = merge(&windows.local, Ledger::default(), &[linux.own.clone().unwrap()], &windows.me, "2026-11-01T11:00:00.000Z", true);
     assert_eq!(out.changes.statuses.len(), 1);
     windows.sync(&[&linux], "2026-11-01T11:00:00.000Z");
     assert_eq!(windows.get(ELDEN, Field::Status), json!("custom-1"));
+}
+
+#[test]
+fn a_play_only_pc_sends_its_play_and_none_of_its_edits() {
+    let (mut linux, mut windows) = dual_boot();
+    windows.play_only = true;
+    linux.sync(&[], "2026-11-01T10:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T11:00:00.000Z");
+    assert_eq!(windows.get(ELDEN, Field::Status), json!("playing"));
+
+    // Careless on Windows: a status, a hidden game, the play time cut down.
+    windows.set(ELDEN, Field::Status, json!("abandoned"));
+    windows.set(ELDEN, Field::Hidden, json!(true));
+    windows.game(ELDEN).playtime.minutes = 5;
+    windows.play(ELDEN, "2026-11-01T20:00:00.000Z", 60);
+    windows.sync(&[&linux], "2026-11-01T21:30:00.000Z");
+    let own = windows.own.as_ref().unwrap();
+    assert!(own.games[ELDEN].fields.is_empty());
+
+    linux.sync(&[&windows], "2026-11-02T09:00:00.000Z");
+    assert_eq!(linux.get(ELDEN, Field::Status), json!("playing"));
+    assert_eq!(linux.get(ELDEN, Field::Hidden), Value::Null);
+    assert_eq!(linux.sessions(ELDEN), ["2026-10-01T20:00:00.000Z", "2026-11-01T20:00:00.000Z"]);
+    assert_eq!(linux.local.games[ELDEN].playtime.minutes, 120, "Linux' total is larger");
+
+    // Windows takes Linux' values back.
+    windows.sync(&[&linux], "2026-11-02T10:00:00.000Z");
+    assert_eq!(windows.get(ELDEN, Field::Status), json!("playing"));
 }
