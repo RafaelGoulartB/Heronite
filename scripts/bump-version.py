@@ -50,7 +50,7 @@ def main() -> None:
             blocks[i] = re.sub(r'^version = ".*"$', f'version = "{new}"', block, count=1, flags=re.M)
     lock_path.write_text("\n[[package]]\n".join(blocks))
 
-    metainfo_path = ROOT / "packaging/linux/com.heronite.rs.metainfo.xml"
+    metainfo_path = ROOT / "packaging/linux/app.heronite.Heronite.metainfo.xml"
     metainfo = metainfo_path.read_text()
     if f'<release version="{new}"' not in metainfo:
         today = datetime.date.today().isoformat()

@@ -11,7 +11,7 @@ LOG=$(mktemp /tmp/heronite-rs-XXXX.log)
 list() { hyprctl clients -j | python3 -I -c "
 import json,sys
 for c in json.load(sys.stdin):
-  if c['class']=='com.heronite.rs': print(c['stableId'], c['pid'])"; }
+  if c['class']=='app.heronite.Heronite': print(c['stableId'], c['pid'])"; }
 BEFORE=$(list | cut -d' ' -f1 | tr '\n' ' ')
 hyprctl eval "hl.exec_cmd(\"env HERONITE_NO_ANIMATIONS=1 HERONITE_NO_SINGLE_INSTANCE=1 HERONITE_NO_TRAY=1 HERONITE_NO_ONBOARDING=1 HERONITE_NO_GAMEPAD=1 ${SHOT_ENV:-} $BIN > $LOG 2>&1\", { workspace = \"7 silent\" })" >/dev/null
 ID=""; P=""

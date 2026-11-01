@@ -2,7 +2,7 @@
 # dist/Heronite-x86_64.flatpak (see packaging/flatpak/README.md).
 # The build is offline: cargo-sources.json, made by the script from
 # Cargo.lock, lists every crate for flatpak-builder to download first.
-id: com.heronite.rs
+id: app.heronite.Heronite
 runtime: org.gnome.Platform
 # GNOME's runtime has WebKitGTK 4.1, the stores' login window.
 runtime-version: '51'
@@ -155,9 +155,9 @@ modules:
       - cargo --offline build --release --locked -p heronite -p heronite-epic-login
       - install -Dm755 target/release/heronite-rs -t /app/bin
       - install -Dm755 target/release/heronite-epic-login -t /app/bin
-      - install -Dm644 packaging/linux/com.heronite.rs.desktop -t /app/share/applications
-      - install -Dm644 packaging/linux/com.heronite.rs.png -t /app/share/icons/hicolor/256x256/apps
-      - install -Dm644 packaging/linux/com.heronite.rs.metainfo.xml -t /app/share/metainfo
+      - install -Dm644 packaging/linux/app.heronite.Heronite.desktop -t /app/share/applications
+      - install -Dm644 packaging/linux/app.heronite.Heronite.png -t /app/share/icons/hicolor/256x256/apps
+      - install -Dm644 packaging/linux/app.heronite.Heronite.metainfo.xml -t /app/share/metainfo
       - install -Dm644 LICENSE THIRD-PARTY-NOTICES.md -t /app/share/doc/heronite
       - cp -r licenses /app/share/doc/heronite/licenses
       # Where the 32-bit libraries of the extensions above are mounted, and

@@ -31,12 +31,12 @@ contents:
   - src: ${BIN}/heronite-epic-login
     dst: /usr/bin/heronite-epic-login
     file_info: { mode: 0755 }
-  - src: packaging/linux/com.heronite.rs.desktop
-    dst: /usr/share/applications/com.heronite.rs.desktop
-  - src: packaging/linux/com.heronite.rs.png
-    dst: /usr/share/icons/hicolor/256x256/apps/com.heronite.rs.png
-  - src: packaging/linux/com.heronite.rs.metainfo.xml
-    dst: /usr/share/metainfo/com.heronite.rs.metainfo.xml
+  - src: packaging/linux/app.heronite.Heronite.desktop
+    dst: /usr/share/applications/app.heronite.Heronite.desktop
+  - src: packaging/linux/app.heronite.Heronite.png
+    dst: /usr/share/icons/hicolor/256x256/apps/app.heronite.Heronite.png
+  - src: packaging/linux/app.heronite.Heronite.metainfo.xml
+    dst: /usr/share/metainfo/app.heronite.Heronite.metainfo.xml
   - src: LICENSE
     dst: /usr/share/doc/heronite/LICENSE
   - src: THIRD-PARTY-NOTICES.md

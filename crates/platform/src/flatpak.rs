@@ -131,21 +131,24 @@ mod tests {
 
     #[test]
     fn reads_the_id_and_where_the_app_is() {
-        let text = "[Application]\nname=com.heronite.rs\nruntime=runtime/org.gnome.Platform/x86_64/51\n\n[Instance]\ninstance-id=1\napp-path=/var/lib/flatpak/app/com.heronite.rs/x86_64/stable/abc/files\nbranch=stable\n";
+        let text = "[Application]\nname=app.heronite.Heronite\nruntime=runtime/org.gnome.Platform/x86_64/51\n\n[Instance]\ninstance-id=1\napp-path=/var/lib/flatpak/app/app.heronite.Heronite/x86_64/stable/abc/files\nbranch=stable\n";
         let info = parse_info(text);
-        assert_eq!(info.id, "com.heronite.rs");
-        assert_eq!(info.app_path.as_deref(), Some(Path::new("/var/lib/flatpak/app/com.heronite.rs/x86_64/stable/abc/files")));
+        assert_eq!(info.id, "app.heronite.Heronite");
+        assert_eq!(info.app_path.as_deref(), Some(Path::new("/var/lib/flatpak/app/app.heronite.Heronite/x86_64/stable/abc/files")));
         assert_eq!(parse_info("[Instance]\nname=x\n"), Info::default(), "keys of another section");
     }
 
     #[test]
     fn the_launcher_is_in_the_installations_exports() {
-        let system = Path::new("/var/lib/flatpak/app/com.heronite.rs/x86_64/stable/abc/files");
-        assert_eq!(launcher_of("com.heronite.rs", system), Some(PathBuf::from("/var/lib/flatpak/exports/bin/com.heronite.rs")));
-        let user = Path::new("/home/u/.local/share/flatpak/app/com.heronite.rs/x86_64/master/abc/files");
-        assert_eq!(launcher_of("com.heronite.rs", user), Some(PathBuf::from("/home/u/.local/share/flatpak/exports/bin/com.heronite.rs")));
+        let system = Path::new("/var/lib/flatpak/app/app.heronite.Heronite/x86_64/stable/abc/files");
+        assert_eq!(launcher_of("app.heronite.Heronite", system), Some(PathBuf::from("/var/lib/flatpak/exports/bin/app.heronite.Heronite")));
+        let user = Path::new("/home/u/.local/share/flatpak/app/app.heronite.Heronite/x86_64/master/abc/files");
+        assert_eq!(
+            launcher_of("app.heronite.Heronite", user),
+            Some(PathBuf::from("/home/u/.local/share/flatpak/exports/bin/app.heronite.Heronite"))
+        );
         // `flatpak-builder --run`: the build folder, not an installation.
-        assert_eq!(launcher_of("com.heronite.rs", Path::new("/src/.flatpak-builder/build/files")), None);
+        assert_eq!(launcher_of("app.heronite.Heronite", Path::new("/src/.flatpak-builder/build/files")), None);
         assert_eq!(launcher_of("", system), None);
     }
 

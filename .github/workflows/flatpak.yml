@@ -33,7 +33,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: target/flatpak/state
-          key: flatpak-${{ hashFiles('packaging/flatpak/com.heronite.rs.yml', 'Cargo.lock') }}
+          key: flatpak-${{ hashFiles('packaging/flatpak/app.heronite.Heronite.yml', 'Cargo.lock') }}
           restore-keys: flatpak-
       - name: Build
         run: scripts/flatpak.sh

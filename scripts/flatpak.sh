@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Flatpak (packaging/flatpak/com.heronite.rs.yml) into
+# Builds the Flatpak (packaging/flatpak/app.heronite.Heronite.yml) into
 # dist/Heronite-x86_64.flatpak, a single-file bundle users install with
 # `flatpak install --user ./Heronite-x86_64.flatpak` (the GNOME runtime
 # comes from Flathub). The build is offline: packaging/flatpak/
@@ -18,7 +18,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-ID=com.heronite.rs
+ID=app.heronite.Heronite
 MANIFEST=packaging/flatpak/$ID.yml
 NAME=Heronite-x86_64.flatpak
 INSTALL=false

@@ -55,7 +55,7 @@ The release workflow bumps the version in `Cargo.toml`, tags it, builds the AppI
 
 ### Flatpak
 
-The Flatpak ([`packaging/flatpak/com.heronite.rs.yml`](packaging/flatpak/com.heronite.rs.yml)) is built by [`scripts/flatpak.sh`](scripts/flatpak.sh) into `dist/Heronite-x86_64.flatpak` (`--install` also installs it for your user). It needs `flatpak`, `python3` and `flatpak-builder` (or the `org.flatpak.Builder` Flatpak); the SDK comes from Flathub. Pull requests that touch it get the bundle as a workflow artifact. [`packaging/flatpak/README.md`](packaging/flatpak/README.md) lists what the app does differently in its sandbox.
+The Flatpak ([`packaging/flatpak/app.heronite.Heronite.yml`](packaging/flatpak/app.heronite.Heronite.yml)) is built by [`scripts/flatpak.sh`](scripts/flatpak.sh) into `dist/Heronite-x86_64.flatpak` (`--install` also installs it for your user). It needs `flatpak`, `python3` and `flatpak-builder` (or the `org.flatpak.Builder` Flatpak); the SDK comes from Flathub. Pull requests that touch it get the bundle as a workflow artifact. [`packaging/flatpak/README.md`](packaging/flatpak/README.md) lists what the app does differently in its sandbox.
 
 ### Windows packages
 

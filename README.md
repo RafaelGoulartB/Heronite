@@ -53,7 +53,7 @@ Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net
 | System | File | Install |
 |---|---|---|
 | Any distribution (**recommended**) | `Heronite-x86_64.AppImage` | `chmod +x Heronite-x86_64.AppImage && ./Heronite-x86_64.AppImage` |
-| Any distribution, sandboxed | `Heronite-x86_64.flatpak` | `flatpak install --user ./Heronite-x86_64.flatpak`, then for Windows games `flatpak install --user flathub org.freedesktop.Platform.Compat.i386//26.08 org.freedesktop.Platform.GL32.default//26.08`; start it with `flatpak run com.heronite.rs` ([what differs](packaging/flatpak/README.md#what-changes-in-the-flatpak)) |
+| Any distribution, sandboxed | `Heronite-x86_64.flatpak` | `flatpak install --user ./Heronite-x86_64.flatpak`, then for Windows games `flatpak install --user flathub org.freedesktop.Platform.Compat.i386//26.08 org.freedesktop.Platform.GL32.default//26.08`; start it with `flatpak run app.heronite.Heronite` ([what differs](packaging/flatpak/README.md#what-changes-in-the-flatpak)) |
 | Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `heronite_<version>-1_amd64.deb` | `sudo apt install ./heronite_*_amd64.deb` |
 | Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
 | Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
