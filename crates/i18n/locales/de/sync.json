@@ -1,0 +1,11 @@
+{
+  "A sync is already running.": "Es läuft schon ein Sync.",
+  "Cancelled.": "Abgebrochen.",
+  "Choose where to sync first.": "Wähle zuerst, wohin synchronisiert wird.",
+  "Could not get rclone: {error}": "rclone konnte nicht geholt werden: {error}",
+  "Could not update the Collection: {error}": "Die Sammlung konnte nicht aktualisiert werden: {error}",
+  "Could not write to the sync folder: {error}": "In den Sync-Ordner konnte nicht geschrieben werden: {error}",
+  "The account did not answer: {error}": "Das Konto hat nicht geantwortet: {error}",
+  "The sync folder is read-only. If it is on a Windows drive, turn off Fast Startup in Windows and shut Windows down fully.": "Der Sync-Ordner ist schreibgeschützt. Liegt er auf einem Windows-Laufwerk, schalte den Schnellstart von Windows aus und fahre Windows vollständig herunter.",
+  "The sync folder {folder} is not there. Is its drive connected?": "Der Sync-Ordner {folder} ist nicht da. Ist sein Laufwerk verbunden?"
+}

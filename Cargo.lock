@@ -3907,6 +3907,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-sync"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-launch",
+ "heronite-metadata",
+ "heronite-platform",
+ "log",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "zip",
+]
+
+[[package]]
 name = "heronite-update"
 version = "1.0.0"
 dependencies = [

@@ -1,0 +1,11 @@
+{
+  "A sync is already running.": "Uma sincronização já está em andamento.",
+  "Cancelled.": "Cancelado.",
+  "Choose where to sync first.": "Escolha antes onde sincronizar.",
+  "Could not get rclone: {error}": "Não foi possível obter o rclone: {error}",
+  "Could not update the Collection: {error}": "Não foi possível atualizar a Coleção: {error}",
+  "Could not write to the sync folder: {error}": "Não foi possível gravar na pasta de sincronização: {error}",
+  "The account did not answer: {error}": "A conta não respondeu: {error}",
+  "The sync folder is read-only. If it is on a Windows drive, turn off Fast Startup in Windows and shut Windows down fully.": "A pasta de sincronização está só leitura. Se ela estiver num disco do Windows, desative a Inicialização Rápida do Windows e desligue o Windows por completo.",
+  "The sync folder {folder} is not there. Is its drive connected?": "A pasta de sincronização {folder} não está lá. O disco dela está conectado?"
+}
