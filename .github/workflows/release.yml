@@ -296,7 +296,7 @@ jobs:
           # A short guide to the assets goes first: the .minisig and .zsync
           # files sit next to the downloads but are only for the updaters.
           cat > notes.md <<'EOF'
-          **Linux:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). Or the package for your system: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora, openSUSE), `.pkg.tar.zst` (Arch, CachyOS), or `Heronite-x86_64.flatpak` (`flatpak install --user ./Heronite-x86_64.flatpak`).
+          **Linux:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). Or the package for your system: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora, openSUSE), `.pkg.tar.zst` (Arch, CachyOS), or `Heronite-x86_64.flatpak` (`flatpak install --user ./Heronite-x86_64.flatpak`; Windows games also need `flatpak install --user flathub org.freedesktop.Platform.Compat.i386//26.08 org.freedesktop.Platform.GL32.default//26.08`).
 
           **Windows 10 and 11:** `Heronite-Setup-x86_64.exe` installs Heronite for your user, no administrator rights needed (recommended). `Heronite-Portable-x86_64.zip` runs from any folder you extract it to and keeps its library and settings in that folder.
           EOF

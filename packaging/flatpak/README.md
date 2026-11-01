@@ -15,7 +15,15 @@ scripts/flatpak.sh --install  # and install it for this user
 flatpak run com.heronite.rs
 ```
 
-It needs `flatpak`, `python3` and `flatpak-builder` (or the
+A bundle brings its runtime from Flathub but not the extensions the app
+asks for, so Wine and Proton games also need the 32-bit libraries (Flathub
+installs them by itself once the app comes from there):
+
+```bash
+flatpak install --user flathub org.freedesktop.Platform.Compat.i386//26.08 org.freedesktop.Platform.GL32.default//26.08
+```
+
+The build needs `flatpak`, `python3` and `flatpak-builder` (or the
 `org.flatpak.Builder` Flatpak); the GNOME SDK, Rust and LLVM extensions come
 from Flathub. On Ubuntu, [`scripts/ci-flatpak-deps.sh`](../../scripts/ci-flatpak-deps.sh)
 installs what CI uses. Every release attaches the bundle, and pull requests
