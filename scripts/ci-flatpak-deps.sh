@@ -6,7 +6,7 @@
 set -euo pipefail
 sudo=""; [[ $(id -u) -ne 0 ]] && sudo=sudo
 $sudo apt-get update
-$sudo apt-get install -y --no-install-recommends flatpak python3-venv curl ca-certificates
+$sudo apt-get install -y --no-install-recommends flatpak dbus python3-venv curl ca-certificates
 # Ubuntu 24.04 keeps unprivileged programs from making user namespaces,
 # which flatpak-builder's bubblewrap needs.
 if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then

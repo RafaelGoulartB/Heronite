@@ -34,6 +34,12 @@ elif command -v flatpak-builder >/dev/null; then
   BUILDER=(flatpak-builder)
 else
   BUILDER=(flatpak run org.flatpak.Builder)
+  # The Flatpak of flatpak-builder installs the SDK and builds through the
+  # host's flatpak over the session bus: without a session (CI), a bus of
+  # its own for the whole build.
+  if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} && -z ${HERONITE_FLATPAK_BUS:-} ]]; then
+    HERONITE_FLATPAK_BUS=1 exec dbus-run-session -- "$0" "$@"
+  fi
 fi
 
 OUT=target/flatpak
