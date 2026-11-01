@@ -13,6 +13,7 @@
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
 //!   `screenshots.rs`, `saves.rs` + `backup/`). Any write ends in
 //!   [`SettingsPage::saved`].
+//! - Sync: the library synced between PCs (`sync.rs`, `sync.json` in the app state).
 //! - Console mode: the console themes and every option of console mode
 //!   (`console_mode/`; its state exists only once the section was shown).
 //! - About: updates (`updates.rs`), version, folders and system information
@@ -25,7 +26,7 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|sync|logs|about]`.
 
 mod about;
 mod achievements;
@@ -48,6 +49,7 @@ mod screenshots;
 mod search;
 mod section;
 mod storage;
+mod sync;
 pub mod sysinfo;
 mod updates;
 
@@ -130,6 +132,7 @@ pub struct SettingsPage {
     backup: backup::State,
     saves: saves::State,
     saves_restore: saves_restore::State,
+    sync: sync::State,
     section: Section,
     global: Option<Entity<SettingsPanel>>,
     defaults: Option<Entity<SettingsPanel>>,
@@ -195,6 +198,7 @@ impl SettingsPage {
         let metadata = metadata::State::new(&ctx, &settings, window, cx);
         let backup = backup::State::new(&ctx, &settings, window, cx);
         let saves = saves::State::new(&ctx, &settings, window, cx);
+        let sync = sync::State::new(&ctx, window, cx);
         // `HERONITE_DEBUG_SETTINGS_SEARCH=<text>[!]`: the section list filtered by it (`!`: and Enter).
         let debug_search = crate::env::value("HERONITE_DEBUG_SETTINGS_SEARCH").unwrap_or_default();
         let debug_enter = debug_search.ends_with('!');
@@ -226,6 +230,7 @@ impl SettingsPage {
             backup,
             saves,
             saves_restore: Default::default(),
+            sync,
             library: library::State::new(&ctx),
             launchers: launchers::State::new(cx),
             overlay: overlay::State::new(&ctx, cx),
@@ -424,6 +429,7 @@ impl SettingsPage {
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
             Section::Backups => backup::shown(self, cx),
+            Section::Sync => sync::shown(self, window, cx),
             Section::ConsoleMode => console_mode::shown(self, window, cx),
             _ => {}
         }
@@ -724,6 +730,7 @@ impl SettingsPage {
                 Self::collection_section(body, self.error.clone())
             }
             Section::Backups => Self::collection_section(backup::render(self, window, cx), self.error.clone()),
+            Section::Sync => sync::render(self, window, cx),
             Section::ConsoleMode => console_mode::render(self, window, cx),
             Section::Logs => self.logs_section(cx),
             Section::About => self.about_section(cx).into_any_element(),

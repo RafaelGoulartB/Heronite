@@ -3521,6 +3521,7 @@ dependencies = [
  "heronite-shortcuts",
  "heronite-steam",
  "heronite-storage",
+ "heronite-sync",
  "heronite-update",
  "heronite-wine",
  "image",

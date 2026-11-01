@@ -225,6 +225,19 @@ const INDEX: &[(Section, &[&str])] = &[
         ],
     ),
     (
+        Section::Sync,
+        &[
+            "Library sync",
+            "Sync this PC",
+            "Sync through",
+            "Sync folder",
+            "Folder in the account",
+            "This PC's name",
+            "Your other PCs",
+            "What syncs",
+        ],
+    ),
+    (
         Section::Advanced,
         &[
             "Logging",
