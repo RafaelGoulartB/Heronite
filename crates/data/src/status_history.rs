@@ -51,6 +51,22 @@ pub fn record(paths: &DataPaths, changes: &[(String, String)], at: &str) -> Resu
     })
 }
 
+/// Adds `(appName, status id, at)` changes, each made at its own time, in one
+/// write. The list of a game stays oldest first.
+pub fn record_dated(paths: &DataPaths, changes: &[(String, String, String)]) -> Result<()> {
+    if changes.is_empty() {
+        return Ok(());
+    }
+    json_store::update::<HistoryFile, _>(&paths.status_history(), |file| {
+        for (app_name, status, at) in changes {
+            let list = file.changes.entry(app_name.clone()).or_default();
+            list.push(Change { status: status.clone(), at: at.clone() });
+            list.sort_by(|a, b| a.at.cmp(&b.at));
+        }
+        Ok(())
+    })
+}
+
 /// [`record`] stamped now; a failure is only logged (the status itself is saved).
 pub(crate) fn record_now(paths: &DataPaths, changes: &[(String, String)]) {
     let at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);

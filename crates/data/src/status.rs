@@ -283,8 +283,31 @@ fn current_status<'a>(file: &'a LocalMetaFile, app_name: &str) -> Option<&'a str
 /// [`set_game_status`] for many games in one write: `(app_name, status_id,
 /// extras)`, each game its own status (an undo puts back different ones).
 pub fn set_games_status(paths: &DataPaths, games: &[(String, String, SetStatusExtras)]) -> Result<()> {
+    let changed = put_statuses(paths, games)?;
+    crate::status_history::record_now(paths, &changed);
+    Ok(())
+}
+
+/// [`set_games_status`] for changes made earlier, on another PC (the library
+/// sync): `at` (RFC 3339) is when each one was made, so the history keeps the
+/// day a game was beaten there.
+pub fn set_games_status_made_at(paths: &DataPaths, games: &[(String, String, SetStatusExtras, String)]) -> Result<()> {
+    let plain: Vec<(String, String, SetStatusExtras)> = games.iter().map(|(a, s, e, _)| (a.clone(), s.clone(), e.clone())).collect();
+    let changed = put_statuses(paths, &plain)?;
+    let dated: Vec<(String, String, String)> = changed
+        .into_iter()
+        .map(|(app_name, status_id)| {
+            let at = games.iter().find(|(a, ..)| *a == app_name).map(|(.., at)| at.clone()).unwrap_or_default();
+            (app_name, status_id, at)
+        })
+        .collect();
+    crate::status_history::record_dated(paths, &dated)
+}
+
+/// Writes the statuses in one go; the `(app_name, status id)` that changed.
+fn put_statuses(paths: &DataPaths, games: &[(String, String, SetStatusExtras)]) -> Result<Vec<(String, String)>> {
     if games.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let mut changed = Vec::new();
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
@@ -297,8 +320,7 @@ pub fn set_games_status(paths: &DataPaths, games: &[(String, String, SetStatusEx
         }
         Ok(())
     })?;
-    crate::status_history::record_now(paths, &changed);
-    Ok(())
+    Ok(changed)
 }
 
 fn put_status(file: &mut LocalMetaFile, app_name: &str, status_id: &str, extras: &SetStatusExtras) -> LocalGameMeta {

@@ -145,6 +145,14 @@ impl DataPaths {
     pub fn achievement_accounts(&self) -> PathBuf {
         self.j("local_library/achievement-accounts.json")
     }
+    /// What the library sync last published and took in (`heronite_sync::ledger`).
+    pub fn sync_ledger(&self) -> PathBuf {
+        self.j("local_library/sync-ledger.json")
+    }
+    /// The Collection's files as they were before the last sync changed them.
+    pub fn sync_before_dir(&self) -> PathBuf {
+        self.j("local_library/sync-before")
+    }
 
     // Core stores (Heroic's layout and formats).
     pub fn sideload_library(&self) -> PathBuf {
@@ -392,6 +400,19 @@ impl AppPaths {
     }
     pub fn thumbs_dir(&self) -> PathBuf {
         self.cache.join("thumbs")
+    }
+    /// Settings → Sync of this PC: where the library syncs and this PC's id
+    /// (see `heronite_sync::prefs`).
+    pub fn sync_prefs(&self) -> PathBuf {
+        self.config.join("sync.json")
+    }
+    /// rclone's settings for the sync: the cloud account's token (0600).
+    pub fn rclone_conf(&self) -> PathBuf {
+        self.config.join("rclone.conf")
+    }
+    /// The other PCs' files, as last downloaded from a cloud account.
+    pub fn sync_mirror_dir(&self) -> PathBuf {
+        self.cache.join("sync")
     }
 }
 
