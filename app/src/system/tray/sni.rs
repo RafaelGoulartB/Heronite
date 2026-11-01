@@ -140,7 +140,8 @@ pub fn spawn(
 ) -> Option<TrayHandle> {
     let window_open = Arc::new(AtomicBool::new(window_open));
     let tray = HeroniteTray { data_paths, dark, exit_to_tray, max_recent, window_open: window_open.clone(), tx };
-    match tray.spawn() {
+    // A Flatpak may not own the `StatusNotifierItem-<pid>-<n>` name.
+    match tray.disable_dbus_name(heronite_platform::flatpak::active()).spawn() {
         Ok(handle) => Some(TrayHandle { handle, window_open }),
         Err(e) => {
             log::warn!("no tray icon: {e}");
