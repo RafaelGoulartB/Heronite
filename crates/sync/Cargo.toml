@@ -6,6 +6,7 @@ license.workspace = true
 description = "The library synced between PCs: each PC's own file in a shared folder or a cloud account (rclone), merged without losing anything"
 
 [dependencies]
+heronite-backup = { path = "../backup" }
 heronite-data = { path = "../data" }
 heronite-i18n = { path = "../i18n" }
 heronite-metadata = { path = "../metadata" }

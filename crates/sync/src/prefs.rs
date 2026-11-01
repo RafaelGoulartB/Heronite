@@ -1,6 +1,9 @@
-//! Settings → Sync of this PC (`sync.json` in the app state): where the
-//! library syncs, this PC's id and name, and how the last sync went. They
-//! belong to the PC: none of it syncs.
+//! Settings → Cloud of this PC (`sync.json` in the app state): the account
+//! or folder everything goes to, what goes (the library sync, backups, game
+//! saves, screenshots), this PC's id and name, and how the last sync and
+//! uploads went. They belong to the PC: none of it syncs.
+
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use heronite_data::{json_store, AppPaths};
@@ -61,11 +64,20 @@ pub const WEBDAV_VENDORS: [(&str, &str); 5] =
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SyncPrefs {
+    /// The library syncs with the other PCs.
     pub enabled: bool,
     /// This PC publishes only its play (sessions and play time): what is
     /// changed here (status, favourites, notes...) stays here. For a PC the
     /// user does not keep organised.
     pub play_only: bool,
+    /// Each backup of the data folder goes up as a zip (without sign-ins).
+    pub backups: bool,
+    /// The Ludusavi backups go up after each game.
+    pub saves: bool,
+    /// The screenshots go up once compressed.
+    pub captures: bool,
+    /// With the screenshots, the replays (videos).
+    pub replays: bool,
     pub provider: Provider,
     /// [`Provider::Folder`]: the shared folder.
     pub folder: String,
@@ -79,11 +91,24 @@ pub struct SyncPrefs {
     pub account: String,
     pub device_id: String,
     pub device_name: String,
+    /// This PC's folder in the account (`Backups/<it>`, `Saves/<it>`):
+    /// its name when it first uploaded, so a rename does not split them.
+    pub device_folder: String,
     pub last_sync_at: Option<String>,
     pub last_error: Option<String>,
     pub last_summary: Option<LastSummary>,
     /// The other PCs found by the last sync.
     pub devices: Vec<SeenDevice>,
+    /// How the last upload of each kind went (`Upload::key`).
+    pub uploads: BTreeMap<String, LastUpload>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LastUpload {
+    /// When it last went through (RFC 3339).
+    pub at: Option<String>,
+    pub error: Option<String>,
 }
 
 impl Default for SyncPrefs {
@@ -91,6 +116,10 @@ impl Default for SyncPrefs {
         Self {
             enabled: false,
             play_only: false,
+            backups: false,
+            saves: false,
+            captures: false,
+            replays: false,
             provider: Provider::Folder,
             folder: String::new(),
             remote_folder: DEFAULT_REMOTE_FOLDER.into(),
@@ -99,10 +128,12 @@ impl Default for SyncPrefs {
             account: String::new(),
             device_id: String::new(),
             device_name: String::new(),
+            device_folder: String::new(),
             last_sync_at: None,
             last_error: None,
             last_summary: None,
             devices: Vec::new(),
+            uploads: BTreeMap::new(),
         }
     }
 }
@@ -136,6 +167,11 @@ impl SyncPrefs {
             Provider::Custom => self.custom_remote.contains(':'),
             p => self.connected == Some(p),
         }
+    }
+
+    /// Whether anything goes to the account or folder.
+    pub fn any_on(&self) -> bool {
+        self.enabled || self.backups || self.saves || self.captures
     }
 
     /// The name this PC shows to the others.

@@ -14,8 +14,12 @@
 //! time and play sessions. What does not: installs, Wine prefixes, game
 //! settings, store sign-ins.
 //!
+//! The same account takes the backups, the game saves and the screenshots
+//! too ([`cloud`]).
+//!
 //! All functions block; the app runs them off the UI thread.
 
+pub mod cloud;
 pub mod format;
 pub mod ledger;
 pub mod local;

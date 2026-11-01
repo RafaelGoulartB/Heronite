@@ -1,5 +1,6 @@
-//! Where the PCs' files are read and written: a folder, or a cloud account
-//! through rclone (its files copied into `AppPaths::sync_mirror_dir` first).
+//! Where the PCs' files are read and written: `Sync/` of a folder, or of a
+//! cloud account through rclone (its files copied into
+//! `AppPaths::sync_mirror_dir` first).
 
 use std::fs;
 use std::io;
@@ -7,14 +8,20 @@ use std::path::{Path, PathBuf};
 
 use heronite_data::AppPaths;
 
+use crate::cloud;
 use crate::format::{DeviceFile, DEVICES_DIR, STATE_FILE};
 use crate::prefs::{Provider, SyncPrefs};
-use crate::rclone::{self, Rclone, RcloneError};
+use crate::rclone::{remote_path, Rclone, RcloneError};
 use crate::SyncError;
 
 pub enum Place {
+    /// The chosen folder (its `Sync/` holds the files); read and written
+    /// directly, so a folder needs no rclone.
     Folder(PathBuf),
-    Cloud { rclone: Rclone, root: String },
+    Cloud {
+        rclone: Rclone,
+        root: String,
+    },
 }
 
 /// Where `prefs` sync to. A cloud account needs rclone, downloaded here when
@@ -23,14 +30,8 @@ pub fn place(data: &heronite_data::DataPaths, app: &AppPaths, prefs: &SyncPrefs)
     if prefs.provider == Provider::Folder {
         return Ok(Place::Folder(PathBuf::from(prefs.folder.trim())));
     }
-    let bin = rclone::ensure(data, &|| false).map_err(SyncError::NoRclone)?;
-    Ok(match prefs.provider {
-        Provider::Custom => Place::Cloud { rclone: Rclone { bin, config: None }, root: prefs.custom_remote.trim().to_owned() },
-        _ => Place::Cloud {
-            rclone: Rclone { bin, config: Some(app.rclone_conf()) },
-            root: rclone::remote_path(&format!("{}:", rclone::REMOTE), &prefs.remote_folder),
-        },
-    })
+    let (rclone, root) = cloud::root(data, app, prefs)?;
+    Ok(Place::Cloud { rclone, root: remote_path(&root, cloud::SYNC_DIR) })
 }
 
 impl Place {
@@ -41,7 +42,7 @@ impl Place {
                 if !folder.is_dir() {
                     return Err(SyncError::FolderMissing(folder.display().to_string()));
                 }
-                Ok(read_devices(folder))
+                Ok(read_devices(&folder.join(cloud::SYNC_DIR)))
             }
             Place::Cloud { rclone, root } => {
                 let mirror = app.sync_mirror_dir();
@@ -60,7 +61,7 @@ impl Place {
                 if !folder.is_dir() {
                     return Err(SyncError::FolderMissing(folder.display().to_string()));
                 }
-                let dir = folder.join(DEVICES_DIR).join(&own.device.id);
+                let dir = folder.join(cloud::SYNC_DIR).join(DEVICES_DIR).join(&own.device.id);
                 fs::create_dir_all(&dir)
                     .and_then(|()| heronite_data::temps::write_atomic(&dir.join(STATE_FILE), &bytes, None))
                     .map_err(|e| write_error(folder, e))
@@ -124,8 +125,8 @@ mod tests {
             let file = DeviceFile { format: FORMAT, device: DeviceInfo { id: id.into(), ..Default::default() }, ..Default::default() };
             place.push(&app, &file).unwrap();
         }
-        fs::create_dir_all(dir.path().join("shared/devices/broken")).unwrap();
-        fs::write(dir.path().join("shared/devices/broken/state.json"), b"{\"format\":1,").unwrap();
+        fs::create_dir_all(dir.path().join("shared/Sync/devices/broken")).unwrap();
+        fs::write(dir.path().join("shared/Sync/devices/broken/state.json"), b"{\"format\":1,").unwrap();
         let mut ids: Vec<String> = place.pull(&app).unwrap().into_iter().map(|f| f.device.id).collect();
         ids.sort();
         assert_eq!(ids, ["linux", "windows"]);

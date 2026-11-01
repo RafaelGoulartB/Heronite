@@ -36,6 +36,9 @@ const COPY_TIME: Duration = Duration::from_secs(3 * 60);
 /// Network flags of every transfer: give up early instead of hanging.
 const NET_FLAGS: [&str; 8] = ["--contimeout", "20s", "--timeout", "60s", "--retries", "2", "--low-level-retries", "3"];
 
+/// A whole upload (the first one of the screenshots can be gigabytes).
+const TRANSFER_TIME: Duration = Duration::from_secs(12 * 3600);
+
 /// rclone's exit code for "directory not found".
 const EXIT_DIR_NOT_FOUND: i32 = 3;
 
@@ -188,7 +191,7 @@ impl Rclone {
         timeout: Duration,
         cancel: Option<&Cancel>,
         on_line: Option<&mut dyn FnMut(&str)>,
-    ) -> Result<(), RcloneError> {
+    ) -> Result<String, RcloneError> {
         let mut cmd = self.command();
         cmd.args(args);
         let mut run = Run::new().timeout(timeout).grace(Duration::from_secs(3));
@@ -206,7 +209,7 @@ impl Rclone {
             return Err(RcloneError::Failed("rclone took too long".into()));
         }
         match out.code {
-            Some(0) => Ok(()),
+            Some(0) => Ok(out.stdout_text()),
             Some(EXIT_DIR_NOT_FOUND) => Err(RcloneError::NotFound),
             _ => Err(RcloneError::Failed(last_error(&out.stderr_text()))),
         }
@@ -238,16 +241,16 @@ impl Rclone {
         };
         let made = self
             .run(&args, SIGN_IN_TIME, Some(cancel), Some(&mut on_line))
-            .and_then(|()| self.run(&["mkdir", &remote_path(&format!("{REMOTE}:"), folder)], COPY_TIME, Some(cancel), None));
+            .and_then(|_| self.run(&["mkdir", &remote_path(&format!("{REMOTE}:"), folder)], COPY_TIME, Some(cancel), None));
         if made.is_err() {
             let _ = self.disconnect();
         }
-        made
+        made.map(drop)
     }
 
     /// Removes [`REMOTE`] (and its token) from this app's settings.
     pub fn disconnect(&self) -> Result<(), RcloneError> {
-        self.run(&["config", "delete", REMOTE], Duration::from_secs(30), None, None)
+        self.run(&["config", "delete", REMOTE], Duration::from_secs(30), None, None).map(drop)
     }
 
     /// Copies `<root>/devices/*/state.json` into `mirror` (exactly: files gone
@@ -263,7 +266,7 @@ impl Rclone {
                 let _ = fs::remove_dir_all(&dest);
                 Ok(())
             }
-            other => other,
+            other => other.map(drop),
         }
     }
 
@@ -271,9 +274,54 @@ impl Rclone {
     pub fn push(&self, file: &Path, root: &str, device: &str) -> Result<(), RcloneError> {
         let dest = remote_path(root, &format!("{}/{device}/{}", crate::format::DEVICES_DIR, crate::format::STATE_FILE));
         let file = file.to_string_lossy();
-        let mut args = vec!["copyto", file.as_ref(), dest.as_str()];
+        self.copy_file(file.as_ref(), &dest, None)
+    }
+
+    /// Copies one file (`copyto`), either way.
+    pub fn copy_file(&self, from: &str, to: &str, cancel: Option<&Cancel>) -> Result<(), RcloneError> {
+        let mut args = vec!["copyto", from, to];
         args.extend(NET_FLAGS);
-        self.run(&args, COPY_TIME, None, None)
+        self.run(&args, COPY_TIME, cancel, None).map(drop)
+    }
+
+    /// A long transfer (`copy`, `sync`...): `args` after the command name's
+    /// own flags; `on_percent` gets how far it is (`0..=100`).
+    pub fn transfer(&self, args: &[&str], cancel: &Cancel, on_percent: &mut dyn FnMut(u8)) -> Result<(), RcloneError> {
+        let mut all: Vec<&str> = args.to_vec();
+        all.extend(NET_FLAGS);
+        all.extend(["--transfers", "6", "--checkers", "8", "--stats", "2s", "--stats-one-line", "--stats-log-level", "NOTICE"]);
+        let mut on_line = |line: &str| {
+            if let Some(p) = percent_of(line) {
+                on_percent(p);
+            }
+        };
+        self.run(&all, TRANSFER_TIME, Some(cancel), Some(&mut on_line)).map(drop)
+    }
+
+    /// The names in `path` (`lsf`): folders (ending in `/`) or files. A
+    /// folder not made yet is an empty one.
+    pub fn list(&self, path: &str, dirs: bool) -> Result<Vec<String>, RcloneError> {
+        let kind = if dirs { "--dirs-only" } else { "--files-only" };
+        let mut args = vec!["lsf", path, kind];
+        args.extend(NET_FLAGS);
+        match self.run(&args, COPY_TIME, None, None) {
+            Ok(out) => Ok(out.lines().map(|l| l.trim_end_matches('/').to_owned()).filter(|l| !l.is_empty()).collect()),
+            Err(RcloneError::NotFound) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn delete_file(&self, path: &str) -> Result<(), RcloneError> {
+        let mut args = vec!["deletefile", path];
+        args.extend(NET_FLAGS);
+        self.run(&args, COPY_TIME, None, None).map(drop)
+    }
+
+    /// The account's space (`about`): (used, total) bytes, when it says.
+    pub fn about(&self, remote: &str) -> Option<(u64, u64)> {
+        let out = self.run(&["about", remote, "--json"], Duration::from_secs(60), None, None).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&out).ok()?;
+        Some((v["used"].as_u64()?, v["total"].as_u64()?))
     }
 }
 
@@ -310,6 +358,12 @@ pub fn remote_path(root: &str, rel: &str) -> String {
     } else {
         format!("{root}/{rel}")
     }
+}
+
+/// The percentage of a `--stats-one-line` line
+/// (`… 15.938 MiB / 60.000 MiB, 27%, 5.312 MiB/s, ETA 8s`).
+fn percent_of(line: &str) -> Option<u8> {
+    line.split(", ").find_map(|part| part.trim().strip_suffix('%')?.parse::<u8>().ok()).map(|p| p.min(100))
 }
 
 /// The last thing rclone said went wrong, without its date.
@@ -361,6 +415,13 @@ mod tests {
             Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
         );
         assert_eq!(expected_sha256(listed, "rclone-v1.75.2-linux-arm64.zip"), None);
+    }
+
+    #[test]
+    fn progress_is_read_from_the_stats_line() {
+        assert_eq!(percent_of("2026/11/01 19:00:00 NOTICE:   15.938 MiB / 60.000 MiB, 27%, 5.312 MiB/s, ETA 8s"), Some(27));
+        assert_eq!(percent_of("Transferred: 0 B / 0 B, -, 0 B/s, ETA -"), None);
+        assert_eq!(percent_of("2026/11/01 19:00:00 INFO  : a.webp: Copied (new)"), None);
     }
 
     #[test]
