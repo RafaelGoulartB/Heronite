@@ -60,7 +60,7 @@ Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net
 
 </details>
 
-Heronite updates itself, and every download is checked against its signing key. Keep the AppImage in a writable folder (like `~/Applications`) so it can update in place. The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
+The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
 
 ---
 
