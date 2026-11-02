@@ -71,9 +71,12 @@ pub fn x11_window_icon(icon: AppIcon) -> Option<Arc<RgbaImage>> {
 /// under `data_home` (`$XDG_DATA_HOME`). Blocking: call it off the UI thread.
 #[cfg(target_os = "linux")]
 pub fn write_desktop_icon(data_home: &std::path::Path, icon: AppIcon) -> std::io::Result<()> {
-    let dir = data_home.join("icons/hicolor/256x256/apps");
+    let theme = data_home.join("icons/hicolor");
+    let dir = theme.join("256x256/apps");
     std::fs::create_dir_all(&dir)?;
-    heronite_data::temps::write_atomic(&dir.join("com.heronite.rs.png"), png(icon), Some(0o644))
+    heronite_data::temps::write_atomic(&dir.join("com.heronite.rs.png"), png(icon), Some(0o644))?;
+    // A theme folder newer than its icon-theme.cache makes GTK and Qt look again.
+    std::fs::File::open(&theme)?.set_modified(std::time::SystemTime::now())
 }
 
 #[cfg(test)]

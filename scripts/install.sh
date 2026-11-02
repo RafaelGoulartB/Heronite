@@ -28,6 +28,8 @@ ICON_NAME=com.heronite.rs
 if [[ -f "$ICON_SRC" ]]; then
   mkdir -p "$ICON_DIR"
   install -m 644 "$ICON_SRC" "$ICON_DIR/$ICON_NAME.png"
+  # Overwriting the file leaves hicolor's icon-theme.cache as it was.
+  command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -f -t "${ICON_DIR%/256x256/apps}" || true
 fi
 
 cat > "$APP_DIR/com.heronite.rs.desktop" <<DESKTOP
