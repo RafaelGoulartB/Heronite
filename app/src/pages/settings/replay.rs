@@ -18,12 +18,22 @@ use heronite_overlay::replay::{estimate, Encoding, Estimate, Info, Program};
 
 use super::screenshots::format_size;
 use super::{overlay, SettingsPage};
+use crate::icons::Icon;
 use crate::overlay::HotkeyState;
 use crate::pages::PageCtx;
 use crate::services::replay::{Detected, Status};
 use crate::theme;
-use crate::ui::controls::{button, caption, card, card_box, row, tabs, toggle_row, with_sub_rows, ButtonKind};
+use crate::ui::controls::{
+    button, caption, card, card_box, info_tip, row, tabs, toggle_row, toggle_row_info, with_sub_rows, ButtonKind, CAPTION_H,
+};
 use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
+use crate::ui::icon;
+
+/// Width of the column beside the options: the status and the cost.
+const SIDE_W: f32 = 250.;
+
+/// The section's width: the options and the column beside them.
+pub const MAX_W: f32 = 1080.;
 
 /// Screen the estimate assumes until the recorder says which ones there are.
 const ASSUMED_SCREEN: (u32, u32) = (1920, 1080);
@@ -199,8 +209,51 @@ fn estimate_for(o: &Options, st: &State) -> (Estimate, Encoding, Option<String>)
     (estimate(o, encoding, w, h, vendor), encoding, screen.map(|s| s.name.clone()))
 }
 
-fn estimate_card(o: &Options, st: &State) -> Div {
+/// A card of the column beside the options: its title and `body`.
+fn side_card(title: &'static str, body: Div) -> Div {
+    card_box()
+        .py(px(14.))
+        .gap(px(12.))
+        .child(div().text_size(px(12.)).font_weight(theme::W_BOLD).text_color(theme::text_muted()).child(title))
+        .child(body)
+}
+
+/// One cost of the replay and how big it is next to the most it can take
+/// (`max`, the same option at its largest), as a bar.
+fn cost_bar(label: &'static str, bytes: u64, max: u64) -> Div {
+    let share = if max == 0 { 0. } else { (bytes as f32 / max as f32).clamp(0.03, 1.) };
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(5.))
+        .child(
+            div()
+                .flex()
+                .justify_between()
+                .gap(px(8.))
+                .text_size(px(12.5))
+                .child(div().text_color(theme::text_muted()).child(label))
+                .child(div().font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(format_size(bytes))),
+        )
+        .child(
+            div()
+                .h(px(6.))
+                .w_full()
+                .rounded_full()
+                .bg(theme::ink_a(0.08))
+                .child(div().h_full().w(relative(share)).rounded_full().bg(theme::accent())),
+        )
+}
+
+/// What the replay costs while a game runs: its RAM (against the longest
+/// length), its video memory (against the screen's resolution) and each
+/// replay on disk (against the longest length), with how it was worked out
+/// in the (i).
+fn cost_card(o: &Options, st: &State) -> Div {
     let (e, encoding, name) = estimate_for(o, st);
+    let longest = Options { seconds: SECONDS[SECONDS.len() - 1], ..o.clone() };
+    let (e_long, _, _) = estimate_for(&longest, st);
+    let (e_native, _, _) = estimate_for(&Options { resolution: Resolution::Native, ..o.clone() }, st);
     let video = tr!(
         "{w} × {h} at {fps} FPS, {mbps} Mbit/s {codec} through {encoder}",
         w = e.width,
@@ -210,61 +263,77 @@ fn estimate_card(o: &Options, st: &State) -> Div {
         codec = codec_label(encoding.codec),
         encoder = encoder_name(encoding.vulkan, info_of(st))
     );
-    let screen = match name {
-        Some(n) => tr!("For {name}: {video}.", name = n, video = video),
-        None => tr!("For a 1920 × 1080 screen: {video}.", video = video),
-    };
-    let kept = if o.panel_margin > 0 {
+    let mut how = vec![
+        match name {
+            Some(n) => tr!("For {name}: {video}.", name = n, video = video),
+            None => tr!("For a 1920 × 1080 screen: {video}.", video = video),
+        },
+        if o.panel_margin > 0 {
+            tr!(
+                "It keeps {kept} s: the {n} s saved and {margin} s for a save from the panel, whose time is cut off.",
+                kept = buffer_seconds(o),
+                n = o.seconds,
+                margin = o.panel_margin
+            )
+        } else {
+            tr!("It keeps the {n} s saved.", n = o.seconds)
+        },
+    ];
+    if e.disk_bytes_per_sec > 0 {
+        how.push(tr!("It writes about {size} an hour to disk while a game runs.", size = format_size(e.disk_bytes_per_sec * 3600)));
+    }
+    how.push(
         tr!(
-            "It keeps {kept} s: the {n} s saved and {margin} s for a save from the panel, whose time is cut off.",
-            kept = buffer_seconds(o),
-            n = o.seconds,
-            margin = o.panel_margin
+            "The graphics card encodes the video with a part of its own, and the whole monitor is captured straight from the display. The game still shares the card's memory with it: that is the video memory above."
         )
-    } else {
-        tr!("It keeps the {n} s saved.", n = o.seconds)
-    };
-    let ram_grows = match o.storage {
-        Storage::Ram => tr!("Grows with the length saved."),
-        Storage::Disk => tr!("The buffer is on disk: only the recorder's own."),
-    };
-    let stats = div()
-        .flex()
-        .flex_wrap()
-        .gap(px(32.))
-        .child(stat(tr!("About {size}", size = format_size(e.ram_bytes)), tr!("Memory (RAM)"), ram_grows))
-        .child(stat(
-            tr!("About {size}", size = format_size(e.vram_bytes)),
-            tr!("Video memory (VRAM)"),
-            tr!("Grows with the video's resolution."),
-        ));
-    let mut col = div()
+        .to_string(),
+    );
+    let body = div()
         .flex()
         .flex_col()
-        .gap(px(6.))
-        .py(px(12.))
-        .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(tr!("Memory while a game runs")))
-        .child(stats.mb(px(4.)))
-        .child(meta_text(screen))
-        .child(meta_text(kept));
-    if e.disk_bytes_per_sec > 0 {
-        col = col.child(meta_text(tr!(
-            "It writes about {size} an hour to disk while a game runs.",
-            size = format_size(e.disk_bytes_per_sec * 3600)
-        )));
-    }
-    card_box().child(col.child(meta_text(tr!("Each replay takes about {size} on disk.", size = format_size(e.file_bytes)))))
+        .gap(px(10.))
+        .child(cost_bar(tr!("Memory (RAM)"), e.ram_bytes, e_long.ram_bytes.max(e.ram_bytes)))
+        .child(cost_bar(tr!("Video memory (VRAM)"), e.vram_bytes, e_native.vram_bytes.max(e.vram_bytes)))
+        .child(cost_bar(tr!("Each replay on disk"), e.file_bytes, e_long.file_bytes.max(e.file_bytes)))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .child(info_tip("replay-cost-info", &how.join("\n\n")))
+                .child(meta_text(tr!("How it is worked out"))),
+        );
+    side_card(tr!("While a game runs"), body)
 }
 
-/// One number of the estimate, what it is and what makes it grow.
-fn stat(value: String, label: &'static str, grows: &'static str) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(2.))
-        .child(div().text_size(px(22.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(value))
-        .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(label))
-        .child(meta_text(grows))
+/// One line of the status card: a check (or a warning), what it is and how
+/// it is.
+fn status_item(ok: bool, title: &'static str, value: String, tip: Option<(&'static str, &'static str)>) -> Div {
+    let mark = if ok { icon(Icon::Check, px(15.), theme::success()) } else { icon(Icon::Warning, px(15.), theme::warning()) };
+    div().flex().items_start().gap(px(8.)).child(div().mt(px(1.)).child(mark)).child(
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .text_size(px(13.))
+                    .text_color(theme::text_primary())
+                    .child(title)
+                    .children(tip.map(|(id, text)| info_tip(id, text))),
+            )
+            .child(
+                div()
+                    .text_size(px(12.5))
+                    .line_height(px(17.))
+                    .text_color(if ok { theme::text_dim() } else { theme::warning() })
+                    .child(value),
+            ),
+    )
 }
 
 fn program_text(d: Option<&Detected>) -> (String, bool) {
@@ -315,10 +384,6 @@ fn status_text(st: &State, cx: &App) -> (String, bool) {
         }
         Status::Unavailable(why) => (why.clone(), false),
     }
-}
-
-fn status_line(text: String, ok: bool) -> Div {
-    div().text_size(px(13.)).text_color(if ok { theme::text_primary() } else { theme::danger_text() }).max_w(px(420.)).child(text)
 }
 
 /// Picks among `items` with tabs that save at once.
@@ -563,12 +628,17 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let o = &p.options;
     let seconds: Vec<(u32, &'static str)> = SECONDS.iter().map(|s| (*s, seconds_label(*s))).collect();
     let main = card([with_sub_rows(
-        toggle_row(
+        toggle_row_info(
             "replay-enabled",
             tr!("Keep a replay of the game"),
-            Some(tr!(
-                "While a game opened by Heronite runs, its last seconds stay in memory. Guide + X or the overlay's \"Save replay\" saves them in the game's screenshots folder, under replays, and marks them as a moment in its journal."
-            )),
+            tr!("The last seconds stay in memory; save them when something good happens."),
+            &format!(
+                "{} {}",
+                tr!(
+                    "While a game opened by Heronite runs, its last seconds stay in memory. Guide + X or the overlay's \"Save replay\" saves them in the game's screenshots folder, under replays, and marks them as a moment in its journal."
+                ),
+                tr!("What is on the monitor is in the replay, notifications and the overlay's notices included.")
+            ),
             p.enabled,
         )
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
@@ -597,56 +667,44 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let (program, program_ok) = program_text(detected);
     let (now, now_ok) = status_text(&d.replay, cx);
     let has_folder = !d.settings.screenshots.folder.trim().is_empty();
-    let mut status_rows = vec![row("gpu-screen-recorder", None, status_line(program, program_ok)).into_any_element()];
-    if let Some((text, ok)) = encoder_text(detected) {
-        status_rows.push(row(tr!("Video encoder"), None, status_line(text, ok)).into_any_element());
-    }
-    status_rows.push(
-        row(
-            tr!("Saved in"),
-            None,
-            status_line(
-                if has_folder {
-                    tr!("{folder}/<game>/replays", folder = d.settings.screenshots.folder.trim().trim_end_matches('/'))
-                } else {
-                    tr!("Choose a screenshots folder in Settings → Screenshots").into()
-                },
-                has_folder,
+    let mut status = div().flex().flex_col().gap(px(10.)).child(status_item(
+        program_ok,
+        "gpu-screen-recorder",
+        program,
+        Some((
+            "replay-program-info",
+            tr!(
+                "It needs gpu-screen-recorder 6.0 or newer, from your distribution (Arch: pacman -S gpu-screen-recorder) or Flathub (com.dec05eba.gpu_screen_recorder)."
             ),
-        )
-        .into_any_element(),
-    );
-    status_rows.push(row(tr!("Now"), None, status_line(now, now_ok)).into_any_element());
-    let status = card(status_rows);
-
-    let notes = div()
+        )),
+    ));
+    if let Some((text, ok)) = encoder_text(detected) {
+        status = status.child(status_item(ok, tr!("Video encoder"), text, None));
+    }
+    let saved_in = if has_folder {
+        tr!("{folder}/<game>/replays", folder = d.settings.screenshots.folder.trim().trim_end_matches('/'))
+    } else {
+        tr!("Choose a screenshots folder in Settings → Screenshots").into()
+    };
+    let status = status.child(status_item(has_folder, tr!("Saved in"), saved_in, None)).child(status_item(now_ok, tr!("Now"), now, None));
+    let side = div()
         .flex()
         .flex_col()
-        .gap(px(6.))
-        .px(px(6.))
-        .child(meta_text(tr!(
-            "It needs gpu-screen-recorder 6.0 or newer, from your distribution (Arch: pacman -S gpu-screen-recorder) or Flathub (com.dec05eba.gpu_screen_recorder)."
-        )))
-        .child(meta_text(tr!(
-            "The graphics card encodes the video with a part of its own, and the whole monitor is captured straight from the display. The game still shares the card's memory with it: that is the video memory above."
-        )))
-        .child(meta_text(tr!("What is on the monitor is in the replay, notifications and the overlay's notices included.")));
+        .flex_none()
+        .w(px(SIDE_W))
+        .gap(px(12.))
+        // Level with the first card, under its caption.
+        .mt(px(CAPTION_H + 20.))
+        .child(side_card(tr!("Status"), status))
+        .child(div().when(!p.any_enabled(), |d| d.opacity(0.5)).child(cost_card(o, &d.replay)));
 
     let dim = |enabled: bool, el: Div| div().when(!enabled, |d| d.opacity(0.5)).child(el);
     let on = p.any_enabled();
-    div()
+    let column = div()
         .flex()
         .flex_col()
         .child(caption(tr!("Replay")))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(12.))
-                .child(main)
-                .child(dim(on, estimate_card(o, &d.replay)))
-                .child(div().px(px(6.)).child(meta_text(per_game))),
-        )
+        .child(div().flex().flex_col().gap(px(12.)).child(main).child(div().px(px(6.)).child(meta_text(per_game))))
         .child(caption(tr!("Controller")))
         .child(dim(on, overlay::replay_shortcut_card(d, cx)))
         .child(caption(tr!("Keyboard")))
@@ -656,12 +714,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(caption(tr!("Memory")))
         .child(dim(on, memory))
         .child(caption(tr!("Sound")))
-        .child(dim(on, sound))
-        .child(caption(tr!("Status")))
-        .child(status)
-        .child(caption(tr!("Good to know")))
-        .child(notes)
-        .into_any_element()
+        .child(dim(on, sound));
+    div().flex().items_start().gap(px(18.)).child(column.flex_1().min_w_0()).child(side).into_any_element()
 }
 
 /// The RAM line for console mode.

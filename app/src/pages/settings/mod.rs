@@ -787,6 +787,7 @@ impl Render for SettingsPage {
         let max_w = match section {
             Section::Logs => px(1400.),
             Section::Storage => px(storage::MAX_W),
+            Section::Replay => px(replay::MAX_W),
             Section::ConsoleMode if studio => px(console_mode::STUDIO_MAX_W),
             _ => px(880.),
         };

@@ -190,7 +190,6 @@ const INDEX: &[(Section, &[&str])] = &[
             "Microphone too",
             "Saved in",
             "Status",
-            "Good to know",
         ],
     ),
     (Section::Storage, &["Free up space"]),
