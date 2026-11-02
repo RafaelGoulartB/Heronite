@@ -109,10 +109,10 @@ pub(super) fn apply_window_flags(cx: &mut App, console: bool, fullscreen: bool) 
         .ok();
 }
 
-/// Settings → Appearance picked another icon: the tray and, on Windows, the
-/// open window take it now (on X11 the window takes it when it opens again);
-/// on Linux it also becomes the icon of the `.desktop` entry, which the
-/// launcher, the dock and Wayland's windows show.
+/// Settings → Appearance picked another icon: on Windows the open window
+/// takes it now (on X11 the window takes it when it opens again); on Linux it
+/// also becomes the icon of the `.desktop` entry, which the launcher, the
+/// dock and Wayland's windows show. The tray keeps its own plain H.
 pub fn set_app_icon(cx: &mut App, icon: AppIcon) {
     let Some(hub) = cx.try_global::<Hub>().cloned() else { return };
     let window = {
@@ -121,9 +121,6 @@ pub fn set_app_icon(cx: &mut App, icon: AppIcon) {
             return;
         }
         s.app_icon = icon;
-        if let Some(t) = &s.tray {
-            t.set_icon(icon);
-        }
         s.window.as_ref().map(|w| w.handle)
     };
     #[cfg(windows)]

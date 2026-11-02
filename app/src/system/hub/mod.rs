@@ -96,7 +96,7 @@ struct State {
     /// `--fullscreen` was asked for: every window of this run opens fullscreen.
     fullscreen: bool,
     settings: SysSettings,
-    /// Settings → Appearance's: the tray's, and the window's when it opens.
+    /// Settings → Appearance's: the window's when it opens.
     app_icon: AppIcon,
     settings_stamp: Option<SystemTime>,
 }

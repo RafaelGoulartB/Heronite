@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::channel::mpsc::UnboundedSender;
-use heronite_data::appearance::AppIcon;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
 use heronite_platform::tray::{Icon, MenuItem, Options, Tray};
@@ -17,8 +16,8 @@ use super::TrayCmd;
 /// at 400 %; the tray picks the size that fits.
 const ICON_SIZES: [u32; 10] = [16, 20, 24, 28, 32, 36, 40, 48, 56, 64];
 
-fn icons(icon: AppIcon) -> Vec<Icon> {
-    icon_images(icon, &ICON_SIZES).into_iter().filter_map(|img| Icon::from_rgba(img.width(), img.height(), img.into_raw())).collect()
+fn icons(dark: bool) -> Vec<Icon> {
+    icon_images(dark, &ICON_SIZES).into_iter().filter_map(|img| Icon::from_rgba(img.width(), img.height(), img.into_raw())).collect()
 }
 
 /// The menu as it is when it opens: the recent games on disk, the label of
@@ -56,11 +55,6 @@ impl TrayHandle {
         self.window_open.store(open, Ordering::Relaxed);
     }
 
-    /// The app's icon changed.
-    pub fn set_icon(&self, icon: AppIcon) {
-        self.tray.set_icon(icons(icon));
-    }
-
     /// Nothing to do: the menu is built each time it opens.
     pub fn refresh(&self) {}
 
@@ -76,7 +70,7 @@ impl TrayHandle {
 /// app can never end up with no window and no icon.
 pub fn spawn(
     data_paths: DataPaths,
-    icon: AppIcon,
+    dark: bool,
     exit_to_tray: bool,
     max_recent: usize,
     window_open: bool,
@@ -88,7 +82,7 @@ pub fn spawn(
     let close = tx.clone();
     let options = Options {
         tooltip: "Heronite".into(),
-        icons: icons(icon),
+        icons: icons(dark),
         on_click: Box::new(move || {
             let _ = click.unbounded_send(click_cmd(exit_to_tray));
         }),
@@ -115,7 +109,7 @@ mod tests {
 
     #[test]
     fn icons_come_at_every_size() {
-        assert_eq!(icons(AppIcon::DEFAULT).len(), ICON_SIZES.len());
+        assert_eq!(icons(false).len(), ICON_SIZES.len());
     }
 
     #[test]

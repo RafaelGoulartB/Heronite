@@ -238,6 +238,15 @@ impl SettingsPanel {
         let list = rows()
             .child(self.toggle_row("exit-to-tray", "exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray, cx))
             .child(self.toggle_row(
+                "dark-tray",
+                "darkTrayIcon",
+                false,
+                tr!("Dark tray icon"),
+                Some(tr!("Takes effect after Heronite restarts.")),
+                no_tray,
+                cx,
+            ))
+            .child(self.toggle_row(
                 "no-tray",
                 "noTrayIcon",
                 false,
@@ -408,26 +417,28 @@ pub(super) fn language_options(app_paths: &AppPaths) -> (Vec<Preference>, Vec<Sh
     (choices, names, selected)
 }
 
-/// "Hide the tray icon" as the app started with it: it reads it only then.
-static TRAY_AT_START: OnceLock<bool> = OnceLock::new();
+/// The tray switches as the app started with them: it reads them only then.
+static TRAY_AT_START: OnceLock<(bool, bool)> = OnceLock::new();
 
 impl SettingsPanel {
-    /// Notes the tray switch the app started with (the first global panel
-    /// reads it before any change).
+    /// Notes the tray switches the app started with (the first global panel
+    /// reads them before any change).
     pub(super) fn note_tray_at_start(&self) {
         if !self.is_game() {
-            TRAY_AT_START.get_or_init(|| self.flag("noTrayIcon", false));
+            TRAY_AT_START.get_or_init(|| (self.flag("darkTrayIcon", false), self.flag("noTrayIcon", false)));
         }
     }
 
-    /// The tray switch changed since the app started: it takes a restart
-    /// (`HERONITE_DEBUG_RESTART_ROW=1`: as if it had).
+    /// A tray switch changed since the app started: it takes a restart
+    /// (`HERONITE_DEBUG_RESTART_ROW=1`: as if one had).
     pub(super) fn restart_needed(&self) -> bool {
         crate::env::flag("HERONITE_DEBUG_RESTART_ROW")
-            || TRAY_AT_START.get().is_some_and(|&hidden| hidden != self.flag("noTrayIcon", false))
+            || TRAY_AT_START
+                .get()
+                .is_some_and(|&(dark, hidden)| dark != self.flag("darkTrayIcon", false) || hidden != self.flag("noTrayIcon", false))
     }
 
-    /// "Restart now" under the tray switches once the hiding one changed; what keeps
+    /// "Restart now" under the tray switches once one changed; what keeps
     /// the app from restarting (a running game) shows instead of acting.
     fn restart_row(&self, cx: &mut Context<Self>) -> AnyElement {
         let blocker = crate::system::restart_blocker(cx);

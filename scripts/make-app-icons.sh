@@ -5,7 +5,7 @@
 # what it writes; builds do not run it.
 #   app/assets/app-icon/<name>.png        256 px, the full icon (Settings →
 #                                         Appearance, the window, the desktop)
-#   app/assets/app-icon/<name>-small.png  64 px, the small one (the tray, 16
+#   app/assets/app-icon/<name>-small.png  64 px, the small one (the 16
 #                                         and 32 px window icons)
 #   packaging/linux/com.heronite.rs.png   the default icon (graphite), 256 px
 #   packaging/windows/heronite.ico        through scripts/windows/make-icon.py

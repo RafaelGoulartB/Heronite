@@ -734,6 +734,7 @@ impl SettingsPanel {
             v.extend([
                 Self::c_header(tr!("System tray")),
                 self.c_toggle("exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray),
+                self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon"), Some(tr!("Takes effect after Heronite restarts.")), no_tray),
                 self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
             ]);
         }

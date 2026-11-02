@@ -1,7 +1,7 @@
 //! The app's icon, one of [`AppIcon`] (Settings → Appearance): its pictures,
 //! and where the system shows it.
 //!
-//! - The tray shows the small picture (no controller buttons).
+//! - The tray keeps its own plain H (`assets/tray/`), sharper at its sizes.
 //! - The main window: on X11 it gets the icon when it opens
 //!   (`WindowOptions::icon`), on Windows at once (`WM_SETICON`; the
 //!   executable's own icon is the default one).
@@ -32,6 +32,7 @@ pub fn png(icon: AppIcon) -> &'static [u8] {
 }
 
 /// The small icon (the H without its buttons), 64 px.
+#[cfg(any(test, windows))]
 pub fn small_png(icon: AppIcon) -> &'static [u8] {
     match icon {
         AppIcon::Graphite => include_bytes!("../../assets/app-icon/graphite-small.png"),
@@ -44,19 +45,13 @@ fn decode(bytes: &[u8]) -> Option<RgbaImage> {
     image::load_from_memory(bytes).ok().map(|img| img.to_rgba8())
 }
 
+#[cfg(any(test, windows))]
 fn scaled(img: &RgbaImage, size: u32) -> RgbaImage {
     if img.width() == size {
         img.clone()
     } else {
         image::imageops::resize(img, size, size, image::imageops::FilterType::Lanczos3)
     }
-}
-
-/// The small icon at each of `sizes` (px, square), for the tray; empty if it
-/// cannot be decoded.
-pub fn tray_images(icon: AppIcon, sizes: &[u32]) -> Vec<RgbaImage> {
-    let Some(small) = decode(small_png(icon)) else { return Vec::new() };
-    sizes.iter().map(|&size| scaled(&small, size)).collect()
 }
 
 /// The icon at each of `sizes` (px, square): the small one up to 32 px, the
@@ -99,7 +94,6 @@ mod tests {
         assert_eq!(imgs.iter().map(|i| i.width()).collect::<Vec<_>>(), [16, 32, 48, 256]);
         assert_eq!(imgs[1], scaled(&decode(small_png(AppIcon::Graphite)).unwrap(), 32));
         assert_eq!(imgs[3], decode(png(AppIcon::Graphite)).unwrap());
-        assert_eq!(tray_images(AppIcon::Light, &[64])[0], decode(small_png(AppIcon::Light)).unwrap());
     }
 
     #[cfg(target_os = "linux")]

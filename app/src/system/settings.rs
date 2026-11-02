@@ -20,6 +20,7 @@ pub struct SysSettings {
     pub minimize_on_launch: bool,
     /// Open the window again when the games it was closed for end.
     pub restore_after_game: bool,
+    pub dark_tray_icon: bool,
     pub hide_window_on_protocol_launch: bool,
     /// Keep an XDG autostart entry (see `system::autostart`).
     pub start_with_system: bool,
@@ -37,6 +38,7 @@ impl SysSettings {
             no_tray_icon: flag("noTrayIcon"),
             minimize_on_launch: flag("minimizeOnLaunch"),
             restore_after_game: flag(KEY_RESTORE_AFTER_GAME),
+            dark_tray_icon: flag("darkTrayIcon"),
             hide_window_on_protocol_launch: flag("hideWindowOnProtocolLaunch"),
             start_with_system: flag("startWithSystem"),
             max_recent,
@@ -85,6 +87,7 @@ mod tests {
         let m: Settings = json!({
             "exitToTray": true,
             "startInTray": true,
+            "darkTrayIcon": true,
             "maxRecentGames": 3,
             "hideWindowOnProtocolLaunch": true,
             "heroniteRestoreAfterGame": true
@@ -93,7 +96,7 @@ mod tests {
         .unwrap()
         .clone();
         let s = SysSettings::from_map(&m);
-        assert!(s.exit_to_tray && s.start_in_tray && s.hide_window_on_protocol_launch && s.restore_after_game);
+        assert!(s.exit_to_tray && s.start_in_tray && s.dark_tray_icon && s.hide_window_on_protocol_launch && s.restore_after_game);
         assert_eq!(s.max_recent, 3);
         // 0 means "use the default", like `maxRecentGames || 5`.
         let m: Settings = json!({"maxRecentGames": 0}).as_object().unwrap().clone();
