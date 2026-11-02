@@ -1,7 +1,8 @@
 //! The RetroAchievements card of Settings → Achievements: sign in with the
 //! username and password (the password goes to the site once and is never
 //! kept: the login's token is), the account's points, signing the emulators
-//! in too (each one's state), hardcore mode, and the optional Web API key.
+//! in too (a tile per emulator, and opening one that has no settings yet),
+//! hardcore mode, and the optional Web API key.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -10,6 +11,9 @@ use heronite_achievements::accounts::RetroAccount;
 use heronite_achievements::emulators::{Emulator, State as EmuState, Status};
 use heronite_achievements::sources::retro::{api, connect};
 use heronite_i18n::{tr, trn};
+use heronite_launch::plan::{open_emulator_command, PlanContext};
+use heronite_launch::probe::{Probe, SystemProbe};
+use heronite_launch::settings::GameSettings;
 use heronite_metadata::{Endpoints, Http};
 
 use super::super::SettingsPage;
@@ -31,6 +35,8 @@ pub struct State {
     session: Option<connect::Session>,
     /// The kept token was refused: the password is needed again.
     expired: bool,
+    /// What happened to the last emulator opened from its tile (`true`: an error).
+    opened: Option<(SharedString, bool)>,
 }
 
 impl State {
@@ -48,7 +54,7 @@ impl State {
         on_commit(&api_key, window, cx, |_: &mut SettingsPage, value, _, cx| {
             service::get(cx).update(cx, |s, cx| s.set_retro_api_key(value, cx));
         });
-        Self { username, password, api_key, busy: false, error: None, session: None, expired: false }
+        Self { username, password, api_key, busy: false, error: None, session: None, expired: false, opened: None }
     }
 }
 
@@ -148,9 +154,46 @@ fn merged_state(list: &[&Status]) -> EmuState {
     list.iter().map(|s| &s.state).min_by_key(|s| rank(s)).cloned().unwrap_or(EmuState::NotSetUp)
 }
 
+/// Starts `emulator` on its own (it writes its settings the first time),
+/// through the copy added on the Emulators page.
+fn open_emulator(d: &mut SettingsPage, emulator: Emulator, cx: &mut Context<SettingsPage>) {
+    let name = emulator.name();
+    d.achievements.retro.opened = Some((tr!("Opening {name}\u{2026}", name).into(), false));
+    let paths = d.ctx.data_paths.clone();
+    cx.spawn(async move |this, cx| {
+        let res = cx
+            .background_spawn(async move {
+                let key = name.to_lowercase().replace(' ', "");
+                let matches = |s: &str| s.to_lowercase().replace([' ', '-', '_'], "").contains(&key);
+                let list = heronite_emulation::store::list_user_emulators(&paths).map_err(|e| format!("{e:#}"))?;
+                let Some(e) = list.into_iter().find(|e| matches(&e.definition_id) || matches(&e.name)) else { return Ok(false) };
+                let probe = SystemProbe;
+                let ctx = PlanContext::load(&paths);
+                let home = probe.home();
+                let settings = GameSettings::from_map(&heronite_data::game_config::load_global(&paths, &home), &home);
+                let c = open_emulator_command(&ctx, &probe, &settings, &e)?;
+                log::info!("opening emulator {}: {}", e.name, c.display());
+                crate::runtime::spawn_detached(&c).map(|()| true)
+            })
+            .await;
+        this.update(cx, |d, cx| {
+            let opened = &mut d.achievements.retro.opened;
+            match res {
+                Ok(true) => {}
+                Ok(false) => *opened = Some((tr!("{name} is not on the Emulators page yet: add it there first.", name).into(), true)),
+                Err(e) => *opened = Some((e.into(), true)),
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+}
+
 /// The emulators as a grid of tiles, one per emulator (its settings files in
 /// the tooltip), under how many are signed in and a button that looks again.
-fn emulator_grid(statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
+/// A tile without settings yet can open its emulator.
+fn emulator_grid(d: &SettingsPage, statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
     let mut emulators: Vec<(Emulator, Vec<&Status>)> = Vec::new();
     for s in statuses {
         match emulators.iter_mut().find(|(e, _)| *e == s.emulator) {
@@ -184,6 +227,7 @@ fn emulator_grid(statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
     let mut grid = div().grid().grid_cols(3).gap(px(8.));
     for i in order {
         let ((emulator, list), state) = (&emulators[i], &states[i]);
+        let emulator = *emulator;
         let signed_in = matches!(state, EmuState::SignedIn);
         let (mut text, colour) = emulator_text(state);
         if signed_in && list.len() > 1 {
@@ -203,6 +247,12 @@ fn emulator_grid(statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
             ),
             _ => None,
         };
+        let open = matches!(state, EmuState::NotSetUp).then(|| {
+            button_sm(ElementId::NamedInteger("ach-emu-open".into(), i as u64), ButtonKind::Ghost, tr!("Open"))
+                .h(px(24.))
+                .px(px(8.))
+                .on_click(cx.listener(move |d, _, _, cx| open_emulator(d, emulator, cx)))
+        });
         let paths: Vec<String> = list.iter().filter_map(|s| s.config.as_ref().map(|p| p.display().to_string())).collect();
         let tile = div()
             .id(ElementId::NamedInteger("ach-emu".into(), i as u64))
@@ -223,7 +273,8 @@ fn emulator_grid(statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
                     .justify_between()
                     .gap(px(8.))
                     .h(px(24.))
-                    .child(div().text_size(px(13.5)).text_color(theme::text_primary()).child(emulator.name())),
+                    .child(div().text_size(px(13.5)).text_color(theme::text_primary()).child(emulator.name()))
+                    .children(open),
             )
             .child(
                 div()
@@ -239,7 +290,10 @@ fn emulator_grid(statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
             .when(!paths.is_empty(), |t| t.tooltip(crate::ui::tooltip(paths.join("\n"))));
         grid = grid.child(tile);
     }
-    div().flex().flex_col().gap(px(10.)).py(px(10.)).child(head).child(grid)
+    let opened = d.achievements.retro.opened.clone().map(|(text, error)| {
+        div().text_size(px(12.5)).text_color(if error { theme::danger_text() } else { theme::text_muted() }).child(text)
+    });
+    div().flex().flex_col().gap(px(10.)).py(px(10.)).child(head).child(grid).children(opened)
 }
 
 pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
@@ -295,7 +349,7 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     .into_any_element();
     let mut subs = Vec::new();
     if prefs.emulators && signed_in && !statuses.is_empty() {
-        subs.push(emulator_grid(&statuses, cx).into_any_element());
+        subs.push(emulator_grid(d, &statuses, cx).into_any_element());
     }
     subs.push(
         div()
