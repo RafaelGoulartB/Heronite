@@ -146,6 +146,11 @@ pub fn with_sub_rows(parent: AnyElement, rows: Vec<AnyElement>) -> AnyElement {
     if rows.is_empty() {
         return parent;
     }
+    div().flex().flex_col().child(parent).child(sub_rows(rows)).into_any_element()
+}
+
+/// The indented group of [`with_sub_rows`], for a parent laid out by hand.
+pub fn sub_rows(rows: Vec<AnyElement>) -> Div {
     let mut group = div().flex().flex_col().ml(px(4.)).mb(px(10.)).pl(px(16.)).border_l_2().border_color(theme::ink_a(0.1));
     for (i, r) in rows.into_iter().enumerate() {
         if i > 0 {
@@ -153,7 +158,7 @@ pub fn with_sub_rows(parent: AnyElement, rows: Vec<AnyElement>) -> AnyElement {
         }
         group = group.child(r);
     }
-    div().flex().flex_col().child(parent).child(group).into_any_element()
+    group
 }
 
 /// Line height of a [`caption`].
