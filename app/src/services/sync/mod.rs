@@ -8,8 +8,10 @@
 //! A sync that changed the Collection sends [`SyncEvent::Changed`]: the
 //! Collection reads it again.
 
+mod restores;
 mod uploads;
 
+pub use restores::{Bring, Step};
 pub use uploads::Job;
 
 use std::sync::Arc;
@@ -51,8 +53,12 @@ pub struct LibrarySync {
     /// Why the last connection failed.
     connect_error: Option<String>,
     queue: uploads::Queue,
+    restores: restores::Restores,
     /// Whether the compression was busy at its last change.
     compressing: bool,
+    /// Goes up each time `sync.json` may have changed (a sign-in or
+    /// sign-out, a sync, an upload ended): Settings → Cloud reads it again.
+    changes: u64,
 }
 
 impl EventEmitter<SyncEvent> for LibrarySync {}
@@ -74,14 +80,15 @@ pub fn init(cx: &mut App, data_paths: DataPaths) {
                 let alive = this
                     .update(cx, |s: &mut LibrarySync, cx: &mut Context<LibrarySync>| {
                         if crate::system::restart_blocker(cx).is_none() {
-                            s.sync(cx);
+                            s.sync(false, cx);
                         }
                         // What came in while the app was closed, then hourly.
                         if round == 0 {
-                            s.upload(Job::Saves, cx);
+                            s.upload(Job::LatestBackup, false, cx);
+                            s.upload(Job::Saves, false, cx);
                         }
                         if round.is_multiple_of(CAPTURES_EVERY) {
-                            s.upload(Job::Captures, cx);
+                            s.upload(Job::Captures, false, cx);
                         }
                     })
                     .is_ok();
@@ -98,7 +105,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths) {
             cx.observe(&compression, |s: &mut LibrarySync, c, cx| {
                 let busy = c.read(cx).busy();
                 if s.compressing && !busy {
-                    s.upload(Job::Captures, cx);
+                    s.upload(Job::Captures, false, cx);
                 }
                 s.compressing = busy;
             })
@@ -111,7 +118,9 @@ pub fn init(cx: &mut App, data_paths: DataPaths) {
             connecting: None,
             connect_error: None,
             queue: Default::default(),
+            restores: Default::default(),
             compressing: false,
+            changes: 0,
         }
     });
     cx.set_global(SyncGlobal(entity));
@@ -132,10 +141,10 @@ pub fn after_game(cx: &mut App) {
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(AFTER_GAME).await;
             this.update(cx, |s, cx| {
-                s.sync(cx);
-                s.upload(Job::Saves, cx);
+                s.sync(false, cx);
+                s.upload(Job::Saves, false, cx);
                 if !compression_on {
-                    s.upload(Job::Captures, cx);
+                    s.upload(Job::Captures, false, cx);
                 }
             })
             .ok();
@@ -152,10 +161,23 @@ pub fn game_started(cx: &mut App) {
     }
 }
 
+/// The app is closing: the upload running and a sign-in waiting stop.
+pub fn shutdown(cx: &mut App) {
+    if let Some(svc) = get(cx) {
+        svc.update(cx, |s, cx| {
+            s.stop_for_quit();
+            s.stop_bringing(cx);
+            if let Some(c) = &s.connecting {
+                c.cancel.request();
+            }
+        });
+    }
+}
+
 /// A backup of the data folder was made at `path`.
 pub fn backup_made(path: std::path::PathBuf, cx: &mut App) {
     if let Some(svc) = get(cx) {
-        svc.update(cx, |s, cx| s.upload(Job::Backup(path), cx));
+        svc.update(cx, |s, cx| s.upload(Job::Backup(path), false, cx));
     }
 }
 
@@ -172,9 +194,20 @@ impl LibrarySync {
         self.connect_error.as_deref()
     }
 
-    /// Syncs now ("Sync now", the timer, after a game). Does nothing while
-    /// one runs or when the sync is off.
-    pub fn sync(&mut self, cx: &mut Context<Self>) {
+    /// Moves each time `sync.json` may have changed: Settings → Cloud reads
+    /// it again then.
+    pub fn changes(&self) -> u64 {
+        self.changes
+    }
+
+    pub(super) fn changed(&mut self) {
+        self.changes = self.changes.wrapping_add(1);
+    }
+
+    /// Syncs now ("Sync now": `manual`, the timer, after a game). Does
+    /// nothing while one runs, when the sync is off, or when it is manual and
+    /// this is not.
+    pub fn sync(&mut self, manual: bool, cx: &mut Context<Self>) {
         if self.running {
             return;
         }
@@ -182,9 +215,10 @@ impl LibrarySync {
         cx.notify();
         let (data, app) = (self.data_paths.clone(), self.app_paths.clone());
         cx.spawn(async move |this, cx| {
-            let result = cx.background_spawn(async move { heronite_sync::run(&data, &app) }).await;
+            let result = cx.background_spawn(async move { heronite_sync::run(&data, &app, manual) }).await;
             this.update(cx, |s, cx| {
                 s.running = false;
+                s.changed();
                 // How it went is kept in `sync.json` for the settings page.
                 match result {
                     Ok(report) if report.summary.changed() => cx.emit(SyncEvent::Changed),
@@ -235,10 +269,13 @@ impl LibrarySync {
                         }
                         Msg::Done(result) => {
                             s.connecting = None;
+                            s.changed();
+                            s.forget_cloud_backups();
                             match result {
+                                // What is automatic starts; the rest waits for "Send now".
                                 Ok(()) => {
-                                    s.sync(cx);
-                                    s.upload_all(cx);
+                                    s.sync(false, cx);
+                                    s.upload_all(false, cx);
                                 }
                                 Err(SyncError::Cancelled) => {}
                                 Err(e) => s.connect_error = Some(e.localized()),
@@ -269,6 +306,8 @@ impl LibrarySync {
         cx.spawn(async move |this, cx| {
             let result = cx.background_spawn(async move { heronite_sync::disconnect(&data, &app) }).await;
             this.update(cx, |s, cx| {
+                s.changed();
+                s.forget_cloud_backups();
                 if let Err(e) = result {
                     s.connect_error = Some(e.localized());
                 }

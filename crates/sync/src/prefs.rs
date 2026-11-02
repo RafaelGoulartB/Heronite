@@ -57,6 +57,57 @@ impl Provider {
     }
 }
 
+/// When something goes to the account.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    #[default]
+    Off,
+    /// Only from Settings → Cloud ("Send now", "Sync now").
+    Manual,
+    /// By itself too: at start, after a game, as backups are made.
+    Auto,
+}
+
+/// `off`, `manual` or `auto`; the on/off switches these replaced read as
+/// `auto` and `off`, so settings saved by them still load.
+impl<'de> Deserialize<'de> for Mode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Switch(bool),
+            Name(String),
+        }
+        Ok(match Raw::deserialize(d)? {
+            Raw::Switch(true) => Mode::Auto,
+            Raw::Switch(false) => Mode::Off,
+            Raw::Name(name) => match name.as_str() {
+                "auto" => Mode::Auto,
+                "manual" => Mode::Manual,
+                _ => Mode::Off,
+            },
+        })
+    }
+}
+
+impl Mode {
+    pub const ALL: [Mode; 3] = [Mode::Off, Mode::Manual, Mode::Auto];
+
+    pub fn is_on(self) -> bool {
+        self != Mode::Off
+    }
+
+    /// Whether a run asked by the user (`manual`) or by itself may go.
+    pub fn allows(self, manual: bool) -> bool {
+        match self {
+            Mode::Off => false,
+            Mode::Manual => manual,
+            Mode::Auto => true,
+        }
+    }
+}
+
 /// The WebDAV servers rclone knows (`vendor`).
 pub const WEBDAV_VENDORS: [(&str, &str); 5] =
     [("nextcloud", "Nextcloud"), ("owncloud", "ownCloud"), ("sharepoint", "SharePoint"), ("fastmail", "Fastmail"), ("other", "Other")];
@@ -64,18 +115,19 @@ pub const WEBDAV_VENDORS: [(&str, &str); 5] =
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SyncPrefs {
-    /// The library syncs with the other PCs.
-    pub enabled: bool,
+    /// The library syncs with the other PCs (`enabled` when it was a switch).
+    #[serde(alias = "enabled")]
+    pub library: Mode,
     /// This PC publishes only its play (sessions and play time): what is
     /// changed here (status, favourites, notes...) stays here. For a PC the
     /// user does not keep organised.
     pub play_only: bool,
     /// Each backup of the data folder goes up as a zip (without sign-ins).
-    pub backups: bool,
-    /// The Ludusavi backups go up after each game.
-    pub saves: bool,
+    pub backups: Mode,
+    /// The Ludusavi backups go up (automatic: after each game).
+    pub saves: Mode,
     /// The screenshots go up once compressed.
-    pub captures: bool,
+    pub captures: Mode,
     /// With the screenshots, the replays (videos).
     pub replays: bool,
     pub provider: Provider,
@@ -89,6 +141,13 @@ pub struct SyncPrefs {
     /// (`user@host`, or empty for a cloud account).
     pub connected: Option<Provider>,
     pub account: String,
+    /// New on each sign-in: what went up belongs to one sign-in (another
+    /// account, or another Google app, sees none of it).
+    pub connection: String,
+    /// Google Drive: the user's own Google app (`client_id`, `client_secret`)
+    /// instead of the one this build carries (or rclone's).
+    pub google_client_id: String,
+    pub google_client_secret: String,
     pub device_id: String,
     pub device_name: String,
     /// This PC's folder in the account (`Backups/<it>`, `Saves/<it>`):
@@ -114,11 +173,11 @@ pub struct LastUpload {
 impl Default for SyncPrefs {
     fn default() -> Self {
         Self {
-            enabled: false,
+            library: Mode::Off,
             play_only: false,
-            backups: false,
-            saves: false,
-            captures: false,
+            backups: Mode::Off,
+            saves: Mode::Off,
+            captures: Mode::Off,
             replays: false,
             provider: Provider::Folder,
             folder: String::new(),
@@ -126,6 +185,9 @@ impl Default for SyncPrefs {
             custom_remote: String::new(),
             connected: None,
             account: String::new(),
+            connection: String::new(),
+            google_client_id: String::new(),
+            google_client_secret: String::new(),
             device_id: String::new(),
             device_name: String::new(),
             device_folder: String::new(),
@@ -169,9 +231,31 @@ impl SyncPrefs {
         }
     }
 
+    /// Where things go now, to tell what went up there from what went
+    /// elsewhere: the folder, the remote, or the sign-in and its folder.
+    pub fn destination(&self) -> String {
+        match self.provider {
+            Provider::Folder => format!("folder:{}", self.folder.trim()),
+            Provider::Custom => format!("custom:{}", self.custom_remote.trim()),
+            _ => format!("{}:{}", self.connection, self.remote_folder.trim()),
+        }
+    }
+
     /// Whether anything goes to the account or folder.
     pub fn any_on(&self) -> bool {
-        self.enabled || self.backups || self.saves || self.captures
+        [self.library, self.backups, self.saves, self.captures].iter().any(|m| m.is_on())
+    }
+
+    /// The Google app Google Drive signs in with: the user's own, else the
+    /// one this build was made with (`HERONITE_GOOGLE_CLIENT_ID` and
+    /// `HERONITE_GOOGLE_CLIENT_SECRET` at build time), else none (rclone's
+    /// own, whose requests are shared by all its users).
+    pub fn google_app(&self) -> Option<(String, String)> {
+        if !self.google_client_id.trim().is_empty() {
+            return Some((self.google_client_id.trim().to_owned(), self.google_client_secret.trim().to_owned()));
+        }
+        let id = option_env!("HERONITE_GOOGLE_CLIENT_ID").filter(|s| !s.is_empty())?;
+        Some((id.to_owned(), option_env!("HERONITE_GOOGLE_CLIENT_SECRET").unwrap_or_default().to_owned()))
     }
 
     /// The name this PC shows to the others.
@@ -245,6 +329,16 @@ mod tests {
         assert_eq!(load(&app).unwrap().device_id, first.device_id);
         assert_eq!(first.remote_folder, DEFAULT_REMOTE_FOLDER);
         assert!(!first.ready());
+    }
+
+    #[test]
+    fn settings_of_the_switches_load_as_modes() {
+        let old = r#"{"enabled":true,"backups":false,"saves":true,"provider":"drive","connected":"drive","deviceId":"a"}"#;
+        let p: SyncPrefs = serde_json::from_str(old).unwrap();
+        assert_eq!((p.library, p.backups, p.saves, p.captures), (Mode::Auto, Mode::Off, Mode::Auto, Mode::Off));
+        let new: SyncPrefs = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(new, p);
+        assert_eq!(serde_json::to_value(Mode::Manual).unwrap(), "manual");
     }
 
     #[test]

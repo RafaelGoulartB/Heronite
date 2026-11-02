@@ -1,5 +1,5 @@
-//! Settings → Cloud: the account or folder (the place, connecting it, its
-//! space).
+//! Settings → Cloud: where things go (the service, connecting it) and its
+//! advanced options (the folder in the account, a Google app of one's own).
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -36,6 +36,7 @@ fn connect(d: &mut SettingsPage, provider: Provider, window: &mut Window, cx: &m
         user: value(&d.cloud.user, cx),
         password: d.cloud.password.read(cx).value().to_string(),
         vendor: WEBDAV_VENDORS[d.cloud.vendor].0.to_owned(),
+        ..Default::default()
     };
     if provider.is_server() && server.host.is_empty() {
         d.cloud.error =
@@ -55,7 +56,7 @@ pub(super) fn render_where(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context
     let options: Vec<(SharedString, bool)> = Provider::ALL.iter().map(|o| (provider_label(*o).into(), *o == p.provider)).collect();
     let select = select_field(
         "sync-provider",
-        Some(tr!("Sync through")),
+        Some(tr!("Service")),
         provider_label(p.provider),
         false,
         d.cloud.provider_open,
@@ -163,8 +164,57 @@ fn render_account(d: &mut SettingsPage, p: &SyncPrefs, provider: Provider, cx: &
         .gap(px(8.))
         .child(account)
         .children(error.map(|e| div().text_size(px(12.5)).text_color(theme::danger_text()).child(e)))
-        .child(text_field(tr!("Folder in the account"), &d.cloud.remote_folder))
         .children(drive_note)
+}
+
+/// What few need to change: the folder in the account, and for Google
+/// Drive the Google app it signs in with. `None` for a shared folder or a
+/// remote of one's own (nothing to set there).
+pub(super) fn render_advanced(d: &SettingsPage, p: &SyncPrefs) -> Option<Div> {
+    if matches!(p.provider, Provider::Folder | Provider::Custom) {
+        return None;
+    }
+    let folder = div()
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .child(text_field(tr!("Folder in the account"), &d.cloud.remote_folder))
+        .child(meta_text(tr!("All your PCs must use the same folder.")));
+    let google = (p.provider == Provider::Drive).then(|| render_google_app(d, p));
+    Some(div().flex().flex_col().gap(px(16.)).child(folder).children(google))
+}
+
+/// Google Drive: the Google app it signs in with. Google limits the
+/// requests an app makes a minute; the one this build carries is shared by
+/// everyone using Heronite (rclone's, by everyone using rclone, when it
+/// carries none), and one of the user's own has the limit to itself.
+fn render_google_app(d: &SettingsPage, p: &SyncPrefs) -> Div {
+    let about = if !p.google_client_id.trim().is_empty() {
+        tr!("Google Drive signs in with your own Google app.")
+    } else if p.google_app().is_some() {
+        tr!("Google Drive signs in with Heronite's Google app, shared by everyone using Heronite. Google limits how many requests an app makes a minute: if uploads often have to wait, a Google app of your own has the limit to itself.")
+    } else {
+        tr!("Google Drive signs in with rclone's Google app, shared by everyone using rclone, so uploads may have to wait. A Google app of your own has the limit to itself.")
+    };
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(8.))
+        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Your own Google app")))
+        .child(meta_text(about))
+        .child(
+            div()
+                .flex()
+                .gap(px(12.))
+                .child(div().flex_1().child(labeled(tr!("Your Google app's client ID"), input_box(&d.cloud.google_id, false))))
+                .child(div().flex_1().child(labeled(tr!("Client secret"), input_box(&d.cloud.google_secret, false)))),
+        )
+        .child(meta_text(tr!(
+            "Make one in Google Cloud Console: turn on the Google Drive API, then APIs & Services → Credentials → OAuth client ID, of type Desktop app. After saving it here, disconnect and connect again, and use the same one on all your PCs: each Google app sees only the files it made."
+        )))
+        .child(div().flex().child(button_sm("cloud-google-how", ButtonKind::Ghost, tr!("How to make one")).on_click(|_, _, _| {
+            crate::ui::open_external("https://rclone.org/drive/#making-your-own-client-id")
+        })))
 }
 
 fn render_server_form(d: &mut SettingsPage, provider: Provider, cx: &mut Context<SettingsPage>) -> Div {

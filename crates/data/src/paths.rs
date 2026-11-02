@@ -410,6 +410,10 @@ impl AppPaths {
     pub fn rclone_conf(&self) -> PathBuf {
         self.config.join("rclone.conf")
     }
+    /// What went up to the cloud account last (`heronite_sync::sent`).
+    pub fn cloud_sent(&self) -> PathBuf {
+        self.config.join("cloud-sent.json")
+    }
     /// The other PCs' files, as last downloaded from a cloud account.
     pub fn sync_mirror_dir(&self) -> PathBuf {
         self.cache.join("sync")

@@ -131,6 +131,25 @@ fn load_other(path: PathBuf, cx: &mut Context<SettingsPage>) {
     .detach();
 }
 
+/// A backup just brought from the cloud into the backup folder: the list is
+/// read again and the backup opens with the question to restore it.
+pub(in crate::pages::settings) fn open_and_ask(d: &mut SettingsPage, path: PathBuf, cx: &mut Context<SettingsPage>) {
+    reload(d, cx);
+    cx.spawn(async move |this, cx| {
+        let info = cx.background_spawn(async move { snapshot::read_info(&path) }).await;
+        this.update(cx, |d, cx| {
+            if let Some(info) = info {
+                d.backup.restore.open = None;
+                select(d, &info);
+                d.backup.restore.ask_restore(info.path);
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+}
+
 pub(super) fn select(d: &mut SettingsPage, info: &Info) {
     let r = &mut d.backup.restore;
     if r.open.as_ref() == Some(&info.path) {

@@ -9,7 +9,7 @@
 
 mod console;
 mod render;
-mod treemap;
+pub(in crate::pages::settings) mod treemap;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};

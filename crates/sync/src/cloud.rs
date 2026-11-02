@@ -16,6 +16,7 @@
 //! save nothing and send a month again for each new capture, so they go one
 //! by one, several at a time, and only the ones not there yet.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -24,9 +25,10 @@ use heronite_backup::{Manifest, Part};
 use heronite_data::proc::Cancel;
 use heronite_data::{AppPaths, DataPaths};
 
-use crate::prefs::{self, LastUpload, Provider, SyncPrefs};
+use crate::prefs::{self, LastUpload, Mode, Provider, SyncPrefs};
 use crate::rclone::{self, remote_path, Rclone, RcloneError};
 use crate::SyncError;
+use crate::{sent, usage};
 
 pub const SYNC_DIR: &str = "Sync";
 pub const BACKUPS_DIR: &str = "Backups";
@@ -58,7 +60,7 @@ impl Upload {
         }
     }
 
-    pub fn is_on(self, p: &SyncPrefs) -> bool {
+    pub fn mode(self, p: &SyncPrefs) -> Mode {
         match self {
             Upload::Backups => p.backups,
             Upload::Saves => p.saves,
@@ -84,10 +86,11 @@ pub fn root(data: &DataPaths, app: &AppPaths, p: &SyncPrefs) -> Result<(Rclone, 
     })
 }
 
-/// The settings, when `upload` is on and has somewhere to go.
-fn prefs_for(app: &AppPaths, upload: Upload) -> Result<SyncPrefs, SyncError> {
+/// The settings, when `upload` may run now (asked by the user: `manual`)
+/// and has somewhere to go.
+fn prefs_for(app: &AppPaths, upload: Upload, manual: bool) -> Result<SyncPrefs, SyncError> {
     let p = prefs::load(app).map_err(|e| SyncError::Data(format!("{e:#}")))?;
-    if !upload.is_on(&p) || !p.ready() {
+    if !upload.mode(&p).allows(manual) || !p.ready() {
         return Err(SyncError::Off);
     }
     Ok(p)
@@ -114,7 +117,7 @@ fn pc_folder(app: &AppPaths, p: &SyncPrefs) -> String {
 fn cloud_error(e: RcloneError) -> SyncError {
     match e {
         RcloneError::Cancelled => SyncError::Cancelled,
-        other => SyncError::Cloud(other.to_string()),
+        other => SyncError::from_cloud(other.to_string()),
     }
 }
 
@@ -142,14 +145,19 @@ fn record(app: &AppPaths, upload: Upload, result: &Result<(), SyncError>) {
 /// Sends the backup in `backup` (a backup folder of `heronite_backup`) as
 /// one zip, the artwork next to it, and keeps the newest `keep` zips of this
 /// PC (0: all).
-pub fn upload_backup(data: &DataPaths, app: &AppPaths, backup: &Path, keep: u32, cancel: &Cancel) -> Result<(), SyncError> {
+pub fn upload_backup(data: &DataPaths, app: &AppPaths, backup: &Path, keep: u32, manual: bool, cancel: &Cancel) -> Result<(), SyncError> {
     let result = (|| {
-        let p = prefs_for(app, Upload::Backups)?;
+        let p = prefs_for(app, Upload::Backups, manual)?;
         let (rc, root) = root(data, app, &p)?;
         let dest = remote_path(&root, &format!("{BACKUPS_DIR}/{}", pc_folder(app, &p)));
         let name = backup.file_name().map(|n| n.to_string_lossy().into_owned()).ok_or(SyncError::Off)?;
+        // Sent already (the app restarted after it, say): only on request.
+        if !manual && sent::load(app, &p.destination()).backups.contains(&name) {
+            return Ok(());
+        }
         let outbox = app.sync_mirror_dir().join("outbox");
         fs::create_dir_all(&outbox).map_err(|e| SyncError::Data(e.to_string()))?;
+        clear_stale_zips(&outbox);
         let zip = outbox.join(format!("{name}.zip"));
         let made = backup_zip(backup, &zip).map_err(|e| SyncError::Data(format!("{e:#}")));
         let sent = made.and_then(|()| {
@@ -157,6 +165,7 @@ pub fn upload_backup(data: &DataPaths, app: &AppPaths, backup: &Path, keep: u32,
         });
         let _ = fs::remove_file(&zip);
         sent?;
+        let art = art_files(data);
         for dir in ["art", "metadata-art"] {
             let local = data.root.join("local_library").join(dir);
             if local.is_dir() {
@@ -164,10 +173,43 @@ pub fn upload_backup(data: &DataPaths, app: &AppPaths, backup: &Path, keep: u32,
                 rc.transfer(&["copy", &src, &to], cancel, &mut |_| {}).map_err(cloud_error)?;
             }
         }
-        prune_backups(&rc, &dest, keep)
+        prune_backups(&rc, &dest, keep)?;
+        keep_sent(app, &p, |s| {
+            s.backups.insert(name.clone());
+            s.art = art;
+        });
+        Ok(())
     })();
     record(app, Upload::Backups, &result);
     result
+}
+
+/// The artwork as the backups send it: `art/…`, `metadata-art/…` → bytes.
+fn art_files(data: &DataPaths) -> BTreeMap<String, u64> {
+    let mut files = BTreeMap::new();
+    for dir in ["art", "metadata-art"] {
+        for f in usage::walk(&data.root.join("local_library").join(dir)) {
+            files.insert(format!("{dir}/{}", f.rel), f.size);
+        }
+    }
+    files
+}
+
+/// Records what an upload sent; a failure only costs the green dot.
+fn keep_sent(app: &AppPaths, p: &SyncPrefs, f: impl FnOnce(&mut sent::Sent)) {
+    if let Err(e) = sent::update(app, &p.destination(), f) {
+        log::warn!("cloud: saving what was sent: {e:#}");
+    }
+}
+
+/// Zips a stopped upload left behind (the app closed while sending).
+fn clear_stale_zips(outbox: &Path) {
+    for e in fs::read_dir(outbox).into_iter().flatten().flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".zip") || name.ends_with(".zip.partial") {
+            let _ = fs::remove_file(e.path());
+        }
+    }
 }
 
 /// Keeps the newest `keep` backup zips in `dest` (0: all).
@@ -223,11 +265,12 @@ pub fn upload_saves(
     data: &DataPaths,
     app: &AppPaths,
     saves: &Path,
+    manual: bool,
     cancel: &Cancel,
     on_percent: &mut dyn FnMut(u8),
 ) -> Result<(), SyncError> {
     let result = (|| {
-        let p = prefs_for(app, Upload::Saves)?;
+        let p = prefs_for(app, Upload::Saves, manual)?;
         // An empty or missing folder (a drive not mounted) must not empty
         // the copy in the account.
         if fs::read_dir(saves).map_or(true, |mut d| d.next().is_none()) {
@@ -236,8 +279,11 @@ pub fn upload_saves(
         let (rc, root) = root(data, app, &p)?;
         let dest = remote_path(&root, &format!("{SAVES_DIR}/{}", pc_folder(app, &p)));
         let src = saves.to_string_lossy().into_owned();
+        let files = usage::walk(saves).into_iter().filter(|f| !f.rel.ends_with(".tmp")).map(|f| (f.rel, f.size)).collect();
         rc.transfer(&["sync", &src, &dest, "--max-delete", MAX_SAVES_DELETED, "--exclude", "*.tmp"], cancel, on_percent)
-            .map_err(cloud_error)
+            .map_err(cloud_error)?;
+        keep_sent(app, &p, |s| s.saves = files);
+        Ok(())
     })();
     record(app, Upload::Saves, &result);
     result
@@ -251,11 +297,12 @@ pub fn upload_captures(
     app: &AppPaths,
     captures: &Path,
     pending_png: bool,
+    manual: bool,
     cancel: &Cancel,
     on_percent: &mut dyn FnMut(u8),
 ) -> Result<(), SyncError> {
     let result = (|| {
-        let p = prefs_for(app, Upload::Captures)?;
+        let p = prefs_for(app, Upload::Captures, manual)?;
         if !captures.is_dir() {
             return Err(SyncError::FolderMissing(captures.display().to_string()));
         }
@@ -271,49 +318,175 @@ pub fn upload_captures(
         if !p.replays {
             args.extend(["--exclude", "*.{mp4,mkv,webm,mov}", "--exclude", "**/replays/**"]);
         }
-        rc.transfer(&args, cancel, on_percent).map_err(cloud_error)
+        // What this run sets out to send; a capture taken meanwhile waits
+        // for the next one.
+        let files: BTreeMap<String, u64> = usage::walk(captures)
+            .into_iter()
+            .filter(|f| usage::capture_goes(&f.rel, p.replays, pending_png))
+            .map(|f| (f.rel, f.size))
+            .collect();
+        rc.transfer(&args, cancel, on_percent).map_err(cloud_error)?;
+        // Deleting one here keeps it in the cloud: still sent.
+        keep_sent(app, &p, |s| s.captures.extend(files));
+        Ok(())
     })();
     record(app, Upload::Captures, &result);
     result
 }
 
-/// Brings the newest backup of each PC in the account into `into` (the
-/// backup folder), where Settings → Backups lists and restores it, and the
-/// artwork missing here into the data folder. How many backups came.
-pub fn fetch_backups(data: &DataPaths, app: &AppPaths, into: &Path, cancel: &Cancel) -> Result<usize, SyncError> {
+/// A backup in the account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloudBackup {
+    /// The PC's folder (`Backups/<pc>`).
+    pub pc: String,
+    /// `heronite-YYYY-MM-DD_HHMMSS`.
+    pub name: String,
+    pub bytes: u64,
+}
+
+impl CloudBackup {
+    /// When it was made, from its name (`YYYY-MM-DD HH:MM:SS`, local time
+    /// of the PC that made it).
+    pub fn made(&self) -> Option<chrono::NaiveDateTime> {
+        let stamp = self.name.strip_prefix(heronite_backup::snapshot::PREFIX)?;
+        chrono::NaiveDateTime::parse_from_str(stamp.get(..17)?, "%Y-%m-%d_%H%M%S").ok()
+    }
+}
+
+/// The backups of every PC in the account, newest first (one listing, when
+/// the user asks).
+pub fn list_backups(data: &DataPaths, app: &AppPaths) -> Result<Vec<CloudBackup>, SyncError> {
     let p = prefs::load(app).map_err(|e| SyncError::Data(format!("{e:#}")))?;
     if !p.ready() {
         return Err(SyncError::Off);
     }
     let (rc, root) = root(data, app, &p)?;
-    let base = remote_path(&root, BACKUPS_DIR);
+    let files = rc.list_files(&remote_path(&root, BACKUPS_DIR), "/*/heronite-*.zip").map_err(cloud_error)?;
+    let mut list: Vec<CloudBackup> = files
+        .into_iter()
+        .filter_map(|(path, bytes)| {
+            let (pc, file) = path.split_once('/')?;
+            Some(CloudBackup { pc: pc.to_owned(), name: file.strip_suffix(".zip")?.to_owned(), bytes })
+        })
+        .collect();
+    list.sort_by(|a, b| b.name.cmp(&a.name));
+    Ok(list)
+}
+
+/// Brings `backup` into `into` (the backup folder), where Settings → Backups
+/// lists and restores it, with the artwork of its PC missing here. Its
+/// folder there (already there: nothing is downloaded).
+pub fn download_backup(data: &DataPaths, app: &AppPaths, backup: &CloudBackup, into: &Path, cancel: &Cancel) -> Result<PathBuf, SyncError> {
+    let target = into.join(&backup.name);
+    if target.join(heronite_backup::manifest::MANIFEST_FILE).is_file() {
+        return Ok(target);
+    }
+    let p = prefs::load(app).map_err(|e| SyncError::Data(format!("{e:#}")))?;
+    if !p.ready() {
+        return Err(SyncError::Off);
+    }
+    let (rc, root) = root(data, app, &p)?;
+    let dir = remote_path(&root, &format!("{BACKUPS_DIR}/{}", backup.pc));
     let inbox = app.sync_mirror_dir().join("inbox");
     fs::create_dir_all(&inbox).map_err(|e| SyncError::Data(e.to_string()))?;
-    let mut fetched = 0;
-    for pc in rc.list(&base, true).map_err(cloud_error)? {
-        let dir = remote_path(&base, &pc);
-        let mut zips: Vec<String> = rc.list(&dir, false).map_err(cloud_error)?.into_iter().filter(|n| n.ends_with(".zip")).collect();
-        zips.sort();
-        let Some(newest) = zips.pop() else { continue };
-        let name = newest.trim_end_matches(".zip").to_owned();
-        if !into.join(&name).exists() {
-            let zip = inbox.join(&newest);
-            rc.copy_file(&remote_path(&dir, &newest), &zip.to_string_lossy(), Some(cancel)).map_err(cloud_error)?;
-            let unpacked = unpack_backup(&zip, into, &name).map_err(|e| SyncError::Data(format!("{e:#}")));
-            let _ = fs::remove_file(&zip);
-            unpacked?;
-            fetched += 1;
-        }
-        for art in ["art", "metadata-art"] {
-            let local = data.root.join("local_library").join(art).to_string_lossy().into_owned();
-            let from = remote_path(&dir, art);
-            match rc.transfer(&["copy", &from, &local, "--ignore-existing"], cancel, &mut |_| {}) {
-                Ok(()) | Err(RcloneError::NotFound) => {}
-                Err(e) => return Err(cloud_error(e)),
-            }
+    fs::create_dir_all(into).map_err(|e| SyncError::Data(e.to_string()))?;
+    let zip = inbox.join(format!("{}.zip", backup.name));
+    rc.copy_file(&remote_path(&dir, &format!("{}.zip", backup.name)), &zip.to_string_lossy(), Some(cancel)).map_err(cloud_error)?;
+    let unpacked = unpack_backup(&zip, into, &backup.name).map_err(|e| SyncError::Data(format!("{e:#}")));
+    let _ = fs::remove_file(&zip);
+    unpacked?;
+    for art in ["art", "metadata-art"] {
+        let local = data.root.join("local_library").join(art).to_string_lossy().into_owned();
+        match rc.transfer(&["copy", &remote_path(&dir, art), &local, "--ignore-existing"], cancel, &mut |_| {}) {
+            Ok(()) | Err(RcloneError::NotFound) => {}
+            Err(e) => return Err(cloud_error(e)),
         }
     }
-    Ok(fetched)
+    Ok(target)
+}
+
+/// What the account holds to bring back to a PC (a new one, or one
+/// formatted): the backups, the PCs with game saves, whether screenshots.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InCloud {
+    /// Newest first.
+    pub backups: Vec<CloudBackup>,
+    /// The PCs whose game saves are there (`Saves/<pc>`).
+    pub saves: Vec<String>,
+    pub captures: bool,
+}
+
+impl InCloud {
+    /// Every PC with something there, the one of the newest backup first.
+    pub fn pcs(&self) -> Vec<String> {
+        let mut pcs: Vec<String> = Vec::new();
+        for pc in self.backups.iter().map(|b| &b.pc).chain(self.saves.iter()) {
+            if !pcs.contains(pc) {
+                pcs.push(pc.clone());
+            }
+        }
+        pcs
+    }
+}
+
+/// Lists what can be brought back (a few listings, when the user asks).
+pub fn in_cloud(data: &DataPaths, app: &AppPaths) -> Result<InCloud, SyncError> {
+    let backups = list_backups(data, app)?;
+    let p = prefs::load(app).map_err(|e| SyncError::Data(format!("{e:#}")))?;
+    let (rc, root) = root(data, app, &p)?;
+    let saves = rc.list(&remote_path(&root, SAVES_DIR), true).map_err(cloud_error)?;
+    let captures = !rc.list(&remote_path(&root, CAPTURES_DIR), true).map_err(cloud_error)?.is_empty();
+    Ok(InCloud { backups, saves, captures })
+}
+
+/// Brings the game saves `pc` sent into `into`, Ludusavi's backup folder:
+/// only its backups come back, a game's own save folder is never touched
+/// (restoring one is Ludusavi's, from the game's Saves tab). What is newer
+/// here stays; nothing here is deleted.
+pub fn download_saves(
+    data: &DataPaths,
+    app: &AppPaths,
+    pc: &str,
+    into: &Path,
+    cancel: &Cancel,
+    on_percent: &mut dyn FnMut(u8),
+) -> Result<(), SyncError> {
+    let p = prefs::load(app).map_err(|e| SyncError::Data(format!("{e:#}")))?;
+    if !p.ready() {
+        return Err(SyncError::Off);
+    }
+    let (rc, root) = root(data, app, &p)?;
+    fs::create_dir_all(into).map_err(|e| SyncError::Data(e.to_string()))?;
+    let from = remote_path(&root, &format!("{SAVES_DIR}/{pc}"));
+    let to = into.to_string_lossy().into_owned();
+    rc.transfer(&["copy", &from, &to, "--update"], cancel, on_percent).map_err(cloud_error)
+}
+
+/// Brings the screenshots of the account into `into` (the captures folder);
+/// the ones already here are left as they are.
+pub fn download_captures(
+    data: &DataPaths,
+    app: &AppPaths,
+    into: &Path,
+    cancel: &Cancel,
+    on_percent: &mut dyn FnMut(u8),
+) -> Result<(), SyncError> {
+    let p = prefs::load(app).map_err(|e| SyncError::Data(format!("{e:#}")))?;
+    if !p.ready() {
+        return Err(SyncError::Off);
+    }
+    let (rc, root) = root(data, app, &p)?;
+    fs::create_dir_all(into).map_err(|e| SyncError::Data(e.to_string()))?;
+    let from = remote_path(&root, CAPTURES_DIR);
+    let to = into.to_string_lossy().into_owned();
+    rc.transfer(&["copy", &from, &to, "--ignore-existing"], cancel, on_percent).map_err(cloud_error)?;
+    // What came down is in the cloud already: it does not show as not sent.
+    let files: BTreeMap<String, u64> =
+        usage::walk(into).into_iter().filter(|f| usage::capture_goes(&f.rel, true, false)).map(|f| (f.rel, f.size)).collect();
+    let listed = rc.list_files(&from, "**").map_err(cloud_error)?;
+    let there: std::collections::HashMap<String, u64> = listed.into_iter().collect();
+    keep_sent(app, &p, |s| s.captures.extend(files.into_iter().filter(|(rel, size)| there.get(rel) == Some(size))));
+    Ok(())
 }
 
 /// Unpacks a backup zip as `into/<name>` (through `<name>.partial`, which
@@ -340,22 +513,6 @@ fn unpack_backup(zip: &Path, into: &Path, name: &str) -> anyhow::Result<()> {
     Manifest::read(&partial)?;
     fs::rename(&partial, into.join(name))?;
     Ok(())
-}
-
-/// The account's space: (used, total) bytes. `None` for a folder or an
-/// account that does not say.
-pub fn quota(data: &DataPaths, app: &AppPaths) -> Option<(u64, u64)> {
-    let p = prefs::load(app).ok()?;
-    if p.provider == Provider::Folder {
-        let (total, free) = heronite_platform::fs::disk_space(Path::new(p.folder.trim()))?;
-        return Some((total.saturating_sub(free), total));
-    }
-    if !p.ready() {
-        return None;
-    }
-    let (rc, root) = root(data, app, &p).ok()?;
-    let remote = root.split_once(':').map(|(r, _)| format!("{r}:"))?;
-    rc.about(&remote)
 }
 
 #[cfg(test)]

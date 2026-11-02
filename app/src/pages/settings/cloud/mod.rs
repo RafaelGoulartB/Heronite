@@ -1,12 +1,19 @@
 //! Settings → Cloud: one place for everything that leaves this PC
-//! (`heronite_sync`, run by `services::sync`). The account (`account.rs`: a
-//! shared folder, a cloud account or a server through rclone, signed in
-//! once), what goes there (`features.rs`: the library sync, backups, game
-//! saves, screenshots), "Sync now", how the last sync went and the other PCs
-//! found. Backups, Saves and Screenshots link here (`features::link_row`).
+//! (`heronite_sync`, run by `services::sync`), top to bottom: how things
+//! stand (`overview.rs`: connected or not, how much is up, "Send everything
+//! now"); 1, where they go (`account.rs`: a shared folder, a cloud account or
+//! a server through rclone, signed in once; the folder in the account and a
+//! Google app of one's own behind "Advanced options"); 2, what goes there and when (`features.rs`: the library
+//! sync, backups, game saves, screenshots, each off, manual or automatic);
+//! 3, the space it needs (`space.rs`, measured on this PC); and the PCs
+//! (this one's name, the others found, how the last sync went). Backups, Saves and
+//! Screenshots link here (`features::link_row`).
 
 mod account;
 mod features;
+mod overview;
+mod restore;
+mod space;
 
 pub(super) use features::link_row;
 
@@ -18,10 +25,12 @@ use heronite_sync::prefs::{self, LastSummary};
 use heronite_sync::SyncPrefs;
 
 use super::SettingsPage;
-use crate::pages::{status_pill, PageCtx};
+use crate::icons::Icon;
+use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{caption, card_box, row};
 use crate::ui::fields::{meta_text, new_input, on_commit, text_field};
+use crate::ui::icon;
 
 pub struct State {
     /// `sync.json` as last read or written here (`None` until read).
@@ -36,16 +45,30 @@ pub struct State {
     port: Entity<InputState>,
     user: Entity<InputState>,
     password: Entity<InputState>,
+    /// Google Drive: the user's own Google app.
+    google_id: Entity<InputState>,
+    google_secret: Entity<InputState>,
     /// WebDAV server kind (`WEBDAV_VENDORS`).
     vendor: usize,
     provider_open: bool,
     vendor_open: bool,
-    /// The account's space: (used, total) bytes, measured when shown.
-    quota: Option<(u64, u64)>,
+    /// What this PC sends, measured here when shown.
+    usage: Option<heronite_sync::usage::Usage>,
+    measuring: bool,
+    /// The treemap of what takes the space is open.
+    map_open: bool,
+    /// "Advanced options" of the account are shown.
+    advanced_open: bool,
+    /// The PC to bring things back from (`None`: the newest backup's), and
+    /// whether its menu is open.
+    restore_pc: Option<String>,
+    restore_pc_open: bool,
+    /// The part of the space bar under the pointer.
+    hover: Option<heronite_sync::usage::Kind>,
     /// A server's form was not filled in, or a write failed.
     error: Option<SharedString>,
-    /// Whether the service was busy at its last change.
-    was_busy: bool,
+    /// The service's change count last seen (`LibrarySync::changes`).
+    seen_changes: u64,
 }
 
 impl State {
@@ -77,14 +100,36 @@ impl State {
             }
         });
         let password = cx.new(|cx| InputState::new(window, cx).masked(true));
+        let google_id = new_input(window, cx, "", "1234-abc.apps.googleusercontent.com");
+        on_commit(&google_id, window, cx, |d: &mut SettingsPage, value, _, cx| {
+            if d.cloud.prefs.as_ref().is_some_and(|p| p.google_client_id != value) {
+                persist(d, move |p| p.google_client_id = value, cx);
+            }
+        });
+        let google_secret = cx.new(|cx| InputState::new(window, cx).masked(true));
+        on_commit(&google_secret, window, cx, |d: &mut SettingsPage, value, _, cx| {
+            if d.cloud.prefs.as_ref().is_some_and(|p| p.google_client_secret != value) {
+                persist(d, move |p| p.google_client_secret = value, cx);
+            }
+        });
         if let Some(svc) = crate::services::sync::get(cx) {
-            cx.observe(&svc, |d, svc, cx| {
-                let s = svc.read(cx);
-                let busy = s.running() || s.connecting().is_some() || s.uploading().is_some() || s.fetching();
-                if d.cloud.was_busy && !busy {
+            cx.observe_in(&svc, window, |d, svc, window, cx| {
+                // A sign-in, a sign-out, a sync or an upload ended: what it
+                // changed shows at once, whatever else still runs.
+                let changes = svc.read(cx).changes();
+                if changes != d.cloud.seen_changes {
+                    d.cloud.seen_changes = changes;
                     reload(d, cx);
+                    // What went up changed the dots.
+                    if d.section == super::Section::Cloud {
+                        space::measure(d, cx);
+                    }
                 }
-                d.cloud.was_busy = busy;
+                // A backup brought from the cloud to be restored: Backups asks.
+                if let Some(path) = svc.update(cx, |s, _| s.take_backup_to_restore()) {
+                    d.select(super::Section::Backups, window, cx);
+                    super::backup::open_and_ask(d, path, cx);
+                }
                 cx.notify();
             })
             .detach();
@@ -107,12 +152,22 @@ impl State {
             port: new_input(window, cx, "", ""),
             user: new_input(window, cx, "", ""),
             password,
+            google_id,
+            google_secret,
             vendor: 0,
             provider_open: false,
             vendor_open: false,
-            quota: None,
+            usage: None,
+            measuring: false,
+            // `HERONITE_DEBUG_CLOUD_MAP=1`: the treemap starts open.
+            map_open: crate::env::flag("HERONITE_DEBUG_CLOUD_MAP"),
+            // `HERONITE_DEBUG_CLOUD_ADVANCED=1`: "Advanced options" start open.
+            advanced_open: crate::env::flag("HERONITE_DEBUG_CLOUD_ADVANCED"),
+            restore_pc: None,
+            restore_pc_open: false,
+            hover: None,
             error: None,
-            was_busy: false,
+            seen_changes: 0,
         }
     }
 }
@@ -133,20 +188,7 @@ pub(super) fn shown(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<
         .ok();
     })
     .detach();
-    measure_quota(d, cx);
-}
-
-fn measure_quota(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
-    let (data, app) = (d.ctx.data_paths.clone(), d.ctx.app.clone());
-    cx.spawn(async move |this, cx| {
-        let quota = cx.background_spawn(async move { heronite_sync::cloud::quota(&data, &app) }).await;
-        this.update(cx, |d, cx| {
-            d.cloud.quota = quota;
-            cx.notify();
-        })
-        .ok();
-    })
-    .detach();
+    space::measure(d, cx);
 }
 
 /// Reads `sync.json` again (a sync, an upload or a connection ended).
@@ -176,6 +218,8 @@ fn fill_inputs(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Setti
         (&s.remote_folder, p.remote_folder.clone()),
         (&s.custom_remote, p.custom_remote.clone()),
         (&s.device_name, p.device_name.clone()),
+        (&s.google_id, p.google_client_id.clone()),
+        (&s.google_secret, p.google_client_secret.clone()),
     ] {
         input.update(cx, |i, cx| i.set_value(value, window, cx));
     }
@@ -195,7 +239,7 @@ fn persist(d: &mut SettingsPage, f: impl FnOnce(&mut SyncPrefs), cx: &mut Contex
 
 fn sync_now(cx: &mut App) {
     if let Some(svc) = crate::services::sync::get(cx) {
-        svc.update(cx, |s, cx| s.sync(cx));
+        svc.update(cx, |s, cx| s.sync(false, cx));
     }
 }
 
@@ -238,7 +282,7 @@ fn summary_lines(s: &LastSummary) -> Vec<String> {
 fn render_sync_result(p: &SyncPrefs) -> Div {
     let (lines, error): (Vec<String>, bool) = match (&p.last_error, &p.last_summary) {
         (Some(e), _) => (vec![e.clone()], true),
-        (None, Some(s)) if p.last_sync_at.is_some() && p.enabled => (summary_lines(s), false),
+        (None, Some(s)) if p.last_sync_at.is_some() && p.library.is_on() => (summary_lines(s), false),
         _ => (Vec::new(), false),
     };
     div().flex().flex_col().children(lines.into_iter().map(move |text| {
@@ -251,50 +295,104 @@ fn render_sync_result(p: &SyncPrefs) -> Div {
     }))
 }
 
-fn render_devices(p: &SyncPrefs) -> Div {
-    let col = div().flex().flex_col().child(caption(tr!("Your other PCs")));
-    if p.devices.is_empty() {
-        return col.child(
-            div()
-                .px(px(6.))
-                .child(meta_text(tr!("None yet. Turn the sync on in Heronite on your other PCs, with the same folder or account."))),
-        );
-    }
-    let mut card = card_box();
-    for (i, dev) in p.devices.iter().enumerate() {
-        if i > 0 {
-            card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator()));
+/// One step of the page: its heading, a line on what it is for, and its body.
+fn step(heading: &str, about: &str, body: impl IntoElement) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .child(caption(heading.to_owned()))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(about.to_owned())))
+        .child(body)
+}
+
+/// Where things go, with "Advanced options" folded under it.
+fn render_place(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
+    let mut card = card_box().py(px(12.)).gap(px(12.)).child(account::render_where(d, p, cx));
+    if let Some(advanced) = account::render_advanced(d, p) {
+        let open = d.cloud.advanced_open;
+        let toggle = div()
+            .id("cloud-advanced")
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .py(px(4.))
+            .cursor_pointer()
+            .text_size(px(13.))
+            .text_color(theme::text_muted())
+            .hover(|s| s.text_color(theme::text_bright()))
+            .child(icon(if open { Icon::ExpandMore } else { Icon::ChevronRight }, px(16.), theme::text_muted()))
+            .child(tr!("Advanced options"))
+            .on_click(cx.listener(move |d, _, _, cx| {
+                d.cloud.advanced_open = !open;
+                cx.notify();
+            }));
+        card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(toggle);
+        if open {
+            card = card.child(div().pl(px(22.)).pb(px(4.)).child(advanced));
         }
+    }
+    card
+}
+
+/// This PC's name, the other PCs found, and how the last sync went.
+fn render_devices(d: &SettingsPage, p: &SyncPrefs) -> Div {
+    let mut card = card_box().py(px(12.)).gap(px(4.)).child(text_field(tr!("This PC's name"), &d.cloud.device_name));
+    if p.devices.is_empty() {
+        card = card.child(div().pt(px(8.)).child(meta_text(tr!(
+            "No other PC yet. Set up Heronite on your other PCs with the same account or folder, and they show here."
+        ))));
+    }
+    for dev in &p.devices {
         let when = tr!("last synced {when}", when = super::format_time(&dev.written_at));
         let detail = format!("{} \u{b7} {when}", os_label(&dev.os));
-        card = card.child(row(dev.name.clone(), Some(&detail), div()));
+        card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(row(dev.name.clone(), Some(&detail), div()));
     }
-    col.child(card)
+    div().flex().flex_col().child(card).child(render_sync_result(p))
 }
 
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let Some(p) = d.cloud.prefs.clone() else {
-        return meta_text(tr!("Loading…")).into_any_element();
+        // `sync.json` could not be read: say why instead of waiting forever.
+        return match d.cloud.error.clone() {
+            Some(e) => div().text_size(px(13.)).text_color(theme::danger_text()).child(e).into_any_element(),
+            None => meta_text(tr!("Loading…")).into_any_element(),
+        };
     };
-    let separator = || div().h(px(1.)).w_full().bg(theme::row_separator());
-    let mut place = card_box().py(px(12.)).gap(px(12.)).child(account::render_where(d, &p, cx));
-    if let Some((used, total)) = d.cloud.quota.filter(|_| p.ready()) {
-        let human = heronite_data::maintenance::human_size;
-        place = place.child(meta_text(tr!("{used} used of {total}", used = human(used), total = human(total))));
-    }
-    let place = place.child(separator()).child(text_field(tr!("This PC's name"), &d.cloud.device_name));
-    let ready = (p.any_on() && !p.ready()).then(|| status_pill(tr!("Choose where to sync"), theme::status_color("on-hold")));
+    let place = render_place(d, &p, cx);
+    let what = features::render(d, &p, cx);
+    let space = space::render(d, &p, cx);
+    let what_about = if p.ready() {
+        tr!("Automatic: Heronite sends by itself, never during a game. Manual: only when you press Send now. Installed games, Wine prefixes, game settings and store sign-ins always stay on each PC.")
+    } else {
+        tr!("Connect above first. Then choose, for each, whether it goes by itself (Automatic), only when you press Send now (Manual), or not at all.")
+    };
     div()
         .flex()
         .flex_col()
-        .child(caption(tr!("Account")))
-        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
-            "Sign in once: the library sync, the backups, the game saves and the screenshots all use this account. Each PC writes only its own files, so nothing is overwritten."
-        ))))
-        .child(place)
-        .children(ready.map(|pill| div().mt(px(10.)).mx(px(6.)).flex().child(pill)))
-        .child(div().mt(px(18.)).child(features::render(d, &p, cx)))
-        .child(render_sync_result(&p))
-        .child(div().mt(px(18.)).child(render_devices(&p)))
+        .gap(px(22.))
+        .child(overview::render(d, &p, cx))
+        .child(step(
+            tr!("1. Where your things go"),
+            tr!("A cloud account, a server, or a folder all your PCs reach. Sign in once: everything below uses it."),
+            place,
+        ))
+        .child(step(tr!("2. What goes there"), what_about, what))
+        .child(step(
+            tr!("3. Space it needs"),
+            tr!("Measured on this PC: how much room the account needs for what you send. The account itself is not asked."),
+            space,
+        ))
+        .children(p.ready().then(|| {
+            step(
+                tr!("4. Restore from the cloud"),
+                tr!("New PC, or formatted this one? Connect, then bring back your Collection, game saves and screenshots."),
+                restore::render(d, cx),
+            )
+        }))
+        .child(step(
+            tr!("Your PCs"),
+            tr!("Every PC that syncs with this account or folder, and the name the others see for this one."),
+            render_devices(d, &p),
+        ))
         .into_any_element()
 }

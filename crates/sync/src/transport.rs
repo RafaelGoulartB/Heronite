@@ -80,7 +80,7 @@ impl Place {
 fn cloud_error(e: RcloneError) -> SyncError {
     match e {
         RcloneError::Cancelled => SyncError::Cancelled,
-        other => SyncError::Cloud(other.to_string()),
+        other => SyncError::from_cloud(other.to_string()),
     }
 }
 

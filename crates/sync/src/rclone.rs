@@ -34,7 +34,27 @@ const SIGN_IN_TIME: Duration = Duration::from_secs(10 * 60);
 /// One copy to or from the account.
 const COPY_TIME: Duration = Duration::from_secs(3 * 60);
 /// Network flags of every transfer: give up early instead of hanging.
-const NET_FLAGS: [&str; 8] = ["--contimeout", "20s", "--timeout", "60s", "--retries", "2", "--low-level-retries", "3"];
+///
+/// The accounts limit the requests a minute (Google Drive the hardest, and
+/// for rclone's own app, shared by all its users, it is often spent): at
+/// most a few requests a second, and when one is refused rclone waits and
+/// tries again (its pacer backs off on every refused request).
+const NET_FLAGS: [&str; 14] = [
+    "--contimeout",
+    "20s",
+    "--timeout",
+    "60s",
+    "--retries",
+    "3",
+    "--retries-sleep",
+    "20s",
+    "--low-level-retries",
+    "10",
+    "--tpslimit",
+    "4",
+    "--tpslimit-burst",
+    "4",
+];
 
 /// A whole upload (the first one of the screenshots can be gigabytes).
 const TRANSFER_TIME: Duration = Duration::from_secs(12 * 3600);
@@ -53,6 +73,10 @@ pub struct Server {
     pub password: String,
     /// WebDAV: `nextcloud`, `owncloud`...
     pub vendor: String,
+    /// Google Drive: an app of one's own (`client_id`, `client_secret`),
+    /// with requests of its own. Empty: rclone's, shared by all its users.
+    pub client_id: String,
+    pub client_secret: String,
 }
 
 impl Server {
@@ -239,13 +263,23 @@ impl Rclone {
                 on_link(url.trim());
             }
         };
-        let made = self
-            .run(&args, SIGN_IN_TIME, Some(cancel), Some(&mut on_line))
-            .and_then(|_| self.run(&["mkdir", &remote_path(&format!("{REMOTE}:"), folder)], COPY_TIME, Some(cancel), None));
-        if made.is_err() {
+        self.run(&args, SIGN_IN_TIME, Some(cancel), Some(&mut on_line)).inspect_err(|_| {
             let _ = self.disconnect();
+        })?;
+        // The folder proves the account works (a wrong password shows here).
+        // An account refusing requests for a minute does not undo the
+        // sign-in: the first upload makes the folder.
+        let dir = remote_path(&format!("{REMOTE}:"), folder);
+        let mut mkdir = vec!["mkdir", dir.as_str()];
+        mkdir.extend(NET_FLAGS);
+        match self.run(&mkdir, COPY_TIME, Some(cancel), None) {
+            Ok(_) => Ok(()),
+            Err(RcloneError::Failed(e)) if is_rate_limited(&e) => Ok(()),
+            Err(e) => {
+                let _ = self.disconnect();
+                Err(e)
+            }
         }
-        made.map(drop)
     }
 
     /// Removes [`REMOTE`] (and its token) from this app's settings.
@@ -289,7 +323,20 @@ impl Rclone {
     pub fn transfer(&self, args: &[&str], cancel: &Cancel, on_percent: &mut dyn FnMut(u8)) -> Result<(), RcloneError> {
         let mut all: Vec<&str> = args.to_vec();
         all.extend(NET_FLAGS);
-        all.extend(["--transfers", "6", "--checkers", "8", "--stats", "2s", "--stats-one-line", "--stats-log-level", "NOTICE"]);
+        // Few at a time; folders keep their dates (setting them is one more
+        // request per folder).
+        all.extend([
+            "--transfers",
+            "4",
+            "--checkers",
+            "4",
+            "--no-update-dir-modtime",
+            "--stats",
+            "2s",
+            "--stats-one-line",
+            "--stats-log-level",
+            "NOTICE",
+        ]);
         let mut on_line = |line: &str| {
             if let Some(p) = percent_of(line) {
                 on_percent(p);
@@ -311,17 +358,25 @@ impl Rclone {
         }
     }
 
+    /// The files under `path` matching `include` (an rclone filter), with
+    /// their sizes, `/`-separated paths relative to it (`lsjson -R`, one
+    /// listing). A folder not made yet is an empty one.
+    pub fn list_files(&self, path: &str, include: &str) -> Result<Vec<(String, u64)>, RcloneError> {
+        let mut args = vec!["lsjson", path, "-R", "--files-only", "--no-mimetype", "--no-modtime", "--fast-list", "--include", include];
+        args.extend(NET_FLAGS);
+        let out = match self.run(&args, COPY_TIME, None, None) {
+            Ok(out) => out,
+            Err(RcloneError::NotFound) => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
+        let list: Vec<serde_json::Value> = serde_json::from_str(&out).map_err(|e| RcloneError::Failed(e.to_string()))?;
+        Ok(list.iter().filter_map(|f| Some((f["Path"].as_str()?.to_owned(), f["Size"].as_u64().unwrap_or(0)))).collect())
+    }
+
     pub fn delete_file(&self, path: &str) -> Result<(), RcloneError> {
         let mut args = vec!["deletefile", path];
         args.extend(NET_FLAGS);
         self.run(&args, COPY_TIME, None, None).map(drop)
-    }
-
-    /// The account's space (`about`): (used, total) bytes, when it says.
-    pub fn about(&self, remote: &str) -> Option<(u64, u64)> {
-        let out = self.run(&["about", remote, "--json"], Duration::from_secs(60), None, None).ok()?;
-        let v: serde_json::Value = serde_json::from_str(&out).ok()?;
-        Some((v["used"].as_u64()?, v["total"].as_u64()?))
     }
 }
 
@@ -329,7 +384,13 @@ impl Rclone {
 fn create_args(provider: Provider, s: &Server) -> Vec<&str> {
     match provider {
         // Only the files rclone made: the rest of the Drive stays out of reach.
-        Provider::Drive => vec!["drive", "scope", "drive.file"],
+        Provider::Drive => {
+            let mut args = vec!["drive", "scope", "drive.file"];
+            if !s.client_id.trim().is_empty() {
+                args.extend(["client_id", s.client_id.trim(), "client_secret", s.client_secret.trim()]);
+            }
+            args
+        }
         Provider::Dropbox => vec!["dropbox"],
         Provider::OneDrive => vec!["onedrive"],
         Provider::Box => vec!["box"],
@@ -364,6 +425,18 @@ pub fn remote_path(root: &str, rel: &str) -> String {
 /// (`… 15.938 MiB / 60.000 MiB, 27%, 5.312 MiB/s, ETA 8s`).
 fn percent_of(line: &str) -> Option<u8> {
     line.split(", ").find_map(|part| part.trim().strip_suffix('%')?.parse::<u8>().ok()).map(|p| p.min(100))
+}
+
+/// Whether rclone's error is the account refusing requests for a while
+/// (too many a minute): worth trying again later.
+pub fn is_rate_limited(error: &str) -> bool {
+    let e = error.to_ascii_lowercase();
+    e.contains("ratelimit")
+        || e.contains("rate limit")
+        || e.contains("quota exceeded")
+        || e.contains("too many requests")
+        || e.contains("too_many_requests")
+        || e.contains("error 429")
 }
 
 /// The last thing rclone said went wrong, without its date.
@@ -425,6 +498,18 @@ mod tests {
     }
 
     #[test]
+    fn a_full_request_quota_is_told_apart() {
+        assert!(is_rate_limited(
+            "googleapi: Error 403: Quota exceeded for quota metric 'Queries' and limit 'Previous quota: Requests per minute'"
+        ));
+        assert!(is_rate_limited(
+            "googleapi: Error 403: User Rate Limit Exceeded. Rate of requests for user exceed configured project quota"
+        ));
+        assert!(is_rate_limited("too_many_requests/"));
+        assert!(!is_rate_limited("couldn't find root directory ID: googleapi: Error 404: File not found"));
+    }
+
+    #[test]
     fn errors_keep_what_rclone_said() {
         let stderr = "2026/11/01 18:37:49 NOTICE: something\n2026/11/01 18:37:50 ERROR : Failed to create file system: login denied\n";
         assert_eq!(last_error(stderr), "Failed to create file system: login denied");
@@ -436,6 +521,11 @@ mod tests {
         let s = Server { host: "nas.local".into(), user: "rafa".into(), password: "x".into(), ..Default::default() };
         assert_eq!(create_args(Provider::Smb, &s), ["smb", "host", "nas.local", "user", "rafa", "pass", "x"]);
         assert_eq!(create_args(Provider::Drive, &s), ["drive", "scope", "drive.file"]);
+        let own = Server { client_id: "123.apps.googleusercontent.com".into(), client_secret: "s".into(), ..Default::default() };
+        assert_eq!(
+            create_args(Provider::Drive, &own),
+            ["drive", "scope", "drive.file", "client_id", "123.apps.googleusercontent.com", "client_secret", "s"]
+        );
         assert_eq!(s.shown(), "rafa@nas.local");
         let w = Server { host: "https://cloud.me/remote.php/dav/files/rafa/".into(), ..Default::default() };
         assert_eq!(w.shown(), "cloud.me/remote.php/dav/files/rafa");
