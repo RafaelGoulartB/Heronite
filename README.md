@@ -28,7 +28,7 @@
 </p>
 
 <p align="center">
-  <img alt="Heronite's Collection in Focus view: picking CONTROL, God of War and ELDEN RING, then going through ELDEN RING's game settings: Launch, Compatibility, Performance and GPU" src="assets/screenshots/demo.webp" width="100%" />
+  <img alt="Heronite's Collection in Focus view: picking CONTROL and back to ELDEN RING, a look at its Compatibility, Performance and GPU settings, then the Grid view and back to Focus" src="assets/screenshots/demo.webp" width="100%" />
 </p>
 
 Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
