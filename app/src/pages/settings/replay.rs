@@ -6,7 +6,7 @@
 //! `replay.json` (`heronite_data::replay_prefs`), are the same for every
 //! game and reach the running service at once; a game can only have it on or
 //! off on its own (Game settings → Performance). Guide + X is the overlay's
-//! (`overlay::replay_shortcut_card`); the keyboard shortcut, none unless set,
+//! (`overlay::replay_shortcut_row`); the keyboard shortcut, none unless set,
 //! is registered by the service while a game records.
 
 use gpui_kit::prelude::*;
@@ -584,7 +584,7 @@ fn taken_by(d: &SettingsPage, accelerator: &str) -> Option<String> {
 
 /// The keyboard shortcut that saves the replay: a field (none unless set;
 /// Backspace or Delete clears it) and whether it is registered.
-fn keyboard_card(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Context<SettingsPage>) -> Div {
+fn keyboard_row(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Context<SettingsPage>) -> Div {
     let accelerator = p.keyboard_accelerator.trim();
     let focused = d.replay.hotkey.is_focused(window);
     let text = match (accelerator.is_empty(), focused) {
@@ -632,7 +632,7 @@ fn keyboard_card(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Co
             })
         }
     };
-    card([div()
+    div()
         .py(px(12.))
         .flex()
         .flex_col()
@@ -647,7 +647,6 @@ fn keyboard_card(d: &SettingsPage, p: &ReplayPrefs, window: &Window, cx: &mut Co
         .children(status.map(|(text, error)| {
             div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
         }))
-        .into_any_element()])
 }
 
 pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
@@ -691,7 +690,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             "{n} games have it on or off on its own (Game settings → Performance)."
         ),
     };
-    let keyboard = keyboard_card(d, &p, window, cx);
+    // Both ways to save it: Guide + X and the keyboard shortcut.
+    let saving = card([overlay::replay_shortcut_row(d, cx), keyboard_row(d, &p, window, cx).into_any_element()]);
     let video = video_card(d, o, cx);
     let memory = memory_card(d, o, cx);
     let sound = sound_card(d, o, cx);
@@ -738,10 +738,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .flex_col()
         .child(caption(tr!("Replay")))
         .child(div().flex().flex_col().gap(px(12.)).child(main).child(div().px(px(6.)).child(meta_text(per_game))))
-        .child(caption(tr!("Controller")))
-        .child(dim(on, overlay::replay_shortcut_card(d, cx)))
-        .child(caption(tr!("Keyboard")))
-        .child(dim(on, keyboard))
+        .child(caption(tr!("Saving it")))
+        .child(dim(on, saving))
         .child(caption(tr!("Video")))
         .child(dim(on, video))
         .child(caption(tr!("Memory")))

@@ -181,11 +181,16 @@ fn replay_desc(p: &OverlayPrefs) -> &'static str {
 }
 
 /// The Guide + X toggle, here and in Settings → Replay.
-pub(super) fn replay_shortcut_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+pub(super) fn replay_shortcut_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let p = &d.overlay.prefs;
-    card([toggle_row("overlay-replay", tr!("Guide + X: save the replay"), Some(replay_desc(p)), p.replay_shortcut)
+    toggle_row("overlay-replay", tr!("Guide + X: save the replay"), Some(replay_desc(p)), p.replay_shortcut)
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.replay_shortcut = !p.replay_shortcut)))
-        .into_any_element()])
+        .into_any_element()
+}
+
+/// [`replay_shortcut_row`] in a card of its own.
+pub(super) fn replay_shortcut_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+    card([replay_shortcut_row(d, cx)])
 }
 
 /// Console row of Guide + X, here and in Settings → Replay.

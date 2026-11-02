@@ -171,9 +171,8 @@ const INDEX: &[(Section, &[&str])] = &[
         &[
             "Keep a replay of the game",
             "Length saved",
-            "Controller",
+            "Saving it",
             "Guide + X: save the replay",
-            "Keyboard",
             "Keyboard shortcut",
             "Video",
             "Quality",
