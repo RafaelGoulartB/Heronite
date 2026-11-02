@@ -35,6 +35,12 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # The Google app Google Drive signs in with (Settings → Cloud), built into
+  # the binaries (heronite_sync::prefs::SyncPrefs::google_app). Without these
+  # secrets the release uses rclone's own Google app, whose request quota is
+  # shared by everyone using rclone.
+  HERONITE_GOOGLE_CLIENT_ID: ${{ secrets.HERONITE_GOOGLE_CLIENT_ID }}
+  HERONITE_GOOGLE_CLIENT_SECRET: ${{ secrets.HERONITE_GOOGLE_CLIENT_SECRET }}
 
 jobs:
   version:
