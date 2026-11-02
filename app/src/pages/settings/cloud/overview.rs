@@ -1,7 +1,8 @@
 //! Settings → Cloud: the card at the top. Before an account is connected,
-//! what the cloud does and the three steps to it; after, where things go,
-//! how much is up (one line for everything: all sent, what is not, the
-//! upload running with Stop, or why uploads wait) and "Send everything now".
+//! what the cloud does and the three steps to it, the first one lit; after,
+//! where things go, how much is up (one line for everything: all sent, what
+//! is not, the upload running with Stop, or why uploads wait), "Account"
+//! (the page unfolds the account under it) and "Send everything now".
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -16,7 +17,7 @@ use crate::icons::Icon;
 use crate::pages::settings::SettingsPage;
 use crate::services::widgets::progress_bar;
 use crate::theme;
-use crate::ui::controls::{action_button, button_sm, card_box, ButtonKind};
+use crate::ui::controls::{action_button, button_sm, card_box, icon_button_sm, ButtonKind};
 use crate::ui::icon;
 
 /// Whether the kind goes to the cloud.
@@ -33,26 +34,39 @@ fn dot(color: Hsla) -> Div {
     div().flex_none().size(px(9.)).rounded_full().bg(color)
 }
 
-/// One step of the intro: a number and what to do.
-fn step(n: &str, text: &str) -> Div {
-    div()
+/// One step of the intro: a number and what to do; `now` lights the one to
+/// do now (the first: the intro shows until an account is connected).
+fn step(n: &str, text: &str, now: bool) -> Div {
+    let number = div()
+        .flex_none()
+        .size(px(24.))
+        .rounded_full()
         .flex()
         .items_center()
-        .gap(px(8.))
-        .child(
-            div()
-                .flex_none()
-                .size(px(22.))
-                .rounded_full()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(theme::ink_a(0.08))
-                .text_size(px(12.))
-                .text_color(theme::text_primary())
-                .child(n.to_owned()),
-        )
-        .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(text.to_owned()))
+        .justify_center()
+        .text_size(px(12.))
+        .font_weight(theme::W_BOLD)
+        .map(|b| {
+            if now {
+                b.bg(theme::accent()).text_color(theme::on_accent())
+            } else {
+                b.bg(theme::ink_a(0.08)).text_color(theme::text_muted())
+            }
+        });
+    div()
+        .flex()
+        .flex_1()
+        .min_w(px(180.))
+        .items_center()
+        .gap(px(10.))
+        .px(px(12.))
+        .py(px(10.))
+        .rounded(px(12.))
+        .bg(theme::recess_a(0.12))
+        .border_1()
+        .border_color(if now { theme::accent_alpha(0.7).into() } else { theme::card_border() })
+        .child(number.child(n.to_owned()))
+        .child(div().text_size(px(13.)).text_color(if now { theme::text_primary() } else { theme::text_muted() }).child(text.to_owned()))
 }
 
 fn intro() -> Div {
@@ -74,11 +88,10 @@ fn intro() -> Div {
             div()
                 .flex()
                 .flex_wrap()
-                .gap_x(px(22.))
-                .gap_y(px(8.))
-                .child(step("1", tr!("Choose where and connect")))
-                .child(step("2", tr!("Choose what goes, and when")))
-                .child(step("3", tr!("Heronite does the rest"))),
+                .gap(px(10.))
+                .child(step("1", tr!("Choose where and connect"), true))
+                .child(step("2", tr!("Choose what goes, and when"), false))
+                .child(step("3", tr!("Heronite does the rest"), false)),
         )
 }
 
@@ -178,6 +191,18 @@ fn connected(d: &SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) ->
             })
         }),
     );
+    let open = d.cloud.account_open;
+    let account = icon_button_sm(
+        "cloud-account",
+        if open { ButtonKind::Glass } else { ButtonKind::Ghost },
+        if open { Icon::FaChevronUp } else { Icon::FaChevronDown },
+        tr!("Account"),
+        true,
+        cx.listener(move |d, _, _, cx| {
+            d.cloud.account_open = !open;
+            cx.notify();
+        }),
+    );
     let head = div()
         .flex()
         .items_center()
@@ -193,7 +218,7 @@ fn connected(d: &SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) ->
                     .child(div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(detail)),
             ),
         )
-        .child(send_all);
+        .child(div().flex().flex_none().items_center().gap(px(8.)).child(account).child(send_all));
     card_box().py(px(16.)).gap(px(14.)).child(head).child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(status_line(d, p, cx))
 }
 

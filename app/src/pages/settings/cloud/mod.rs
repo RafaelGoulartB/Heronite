@@ -1,12 +1,16 @@
 //! Settings → Cloud: one place for everything that leaves this PC
-//! (`heronite_sync`, run by `services::sync`), top to bottom: how things
-//! stand (`overview.rs`: connected or not, how much is up, "Send everything
-//! now"); 1, where they go (`account.rs`: a shared folder, a cloud account or
-//! a server through rclone, signed in once; the folder in the account and a
-//! Google app of one's own behind "Advanced options"); 2, what goes there and when (`features.rs`: the library
-//! sync, backups, game saves, screenshots, each off, manual or automatic);
-//! 3, the space it needs (`space.rs`, measured on this PC); and the PCs
-//! (this one's name, the others found, how the last sync went). Backups, Saves and
+//! (`heronite_sync`, run by `services::sync`).
+//!
+//! Before an account is connected the page walks through it: the steps
+//! (`overview.rs`), 1, where things go (`account.rs`: a shared folder, a
+//! cloud account or a server through rclone; the folder in the account and a
+//! Google app of one's own behind "Advanced options"), and 2, what goes
+//! there, waiting for the connection. Once connected: how things stand, with
+//! the account folded under "Account"; what goes to the cloud (`features.rs`:
+//! the library sync, backups, game saves, screenshots, each off, manual or
+//! automatic, under the space they take, `space.rs`, measured on this PC);
+//! then, folded, restoring from the cloud (`restore.rs`) and the PCs (this
+//! one's name, the others found, how the last sync went). Backups, Saves and
 //! Screenshots link here (`features::link_row`).
 
 mod account;
@@ -30,6 +34,7 @@ use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{caption, card_box, row};
 use crate::ui::fields::{meta_text, new_input, on_commit, text_field};
+use crate::ui::find::flash;
 use crate::ui::icon;
 
 pub struct State {
@@ -59,12 +64,16 @@ pub struct State {
     map_open: bool,
     /// "Advanced options" of the account are shown.
     advanced_open: bool,
+    /// Once connected, the account (service, sign-in, advanced options) is
+    /// unfolded in the top card; before, it is always shown.
+    account_open: bool,
+    /// "Restore from the cloud" and "Your PCs" are unfolded.
+    restore_open: bool,
+    pcs_open: bool,
     /// The PC to bring things back from (`None`: the newest backup's), and
     /// whether its menu is open.
     restore_pc: Option<String>,
     restore_pc_open: bool,
-    /// The part of the space bar under the pointer.
-    hover: Option<heronite_sync::usage::Kind>,
     /// A server's form was not filled in, or a write failed.
     error: Option<SharedString>,
     /// The service's change count last seen (`LibrarySync::changes`).
@@ -141,6 +150,9 @@ impl State {
             this.update(cx, |d, cx| took(d, loaded, cx)).ok();
         })
         .detach();
+        // `HERONITE_DEBUG_CLOUD_OPEN=account,restore,pcs`: those parts start unfolded.
+        let unfolded = crate::env::value("HERONITE_DEBUG_CLOUD_OPEN").unwrap_or_default();
+        let starts_open = |part: &str| unfolded.split(',').any(|p| p.trim() == part);
         Self {
             prefs: None,
             filled: false,
@@ -163,9 +175,11 @@ impl State {
             map_open: crate::env::flag("HERONITE_DEBUG_CLOUD_MAP"),
             // `HERONITE_DEBUG_CLOUD_ADVANCED=1`: "Advanced options" start open.
             advanced_open: crate::env::flag("HERONITE_DEBUG_CLOUD_ADVANCED"),
+            account_open: starts_open("account"),
+            restore_open: starts_open("restore"),
+            pcs_open: starts_open("pcs"),
             restore_pc: None,
             restore_pc_open: false,
-            hover: None,
             error: None,
             seen_changes: 0,
         }
@@ -295,19 +309,66 @@ fn render_sync_result(p: &SyncPrefs) -> Div {
     }))
 }
 
-/// One step of the page: its heading, a line on what it is for, and its body.
-fn step(heading: &str, about: &str, body: impl IntoElement) -> Div {
-    div()
+/// The Settings search jumped to `label` (its English key): unfolds the
+/// part of the page that draws it, so it can flash.
+pub(super) fn reveal(d: &mut SettingsPage, label: &str) {
+    let s = &mut d.cloud;
+    match label {
+        "Service" | "Sync folder" | "Advanced options" => s.account_open = true,
+        "Folder in the account" | "Your own Google app" => {
+            s.account_open = true;
+            s.advanced_open = true;
+        }
+        "Restore from the cloud" | "What is in the cloud" => s.restore_open = true,
+        "Your PCs" | "This PC's name" => s.pcs_open = true,
+        _ => {}
+    }
+}
+
+fn separator() -> Div {
+    div().h(px(1.)).w_full().bg(theme::row_separator())
+}
+
+/// A square with the icon of a line or a part of the page.
+fn tile(ic: Icon, fill: impl Into<Hsla>, color: impl Into<Hsla>) -> Div {
+    div().flex_none().size(px(34.)).rounded(px(10.)).flex().items_center().justify_center().bg(fill.into()).child(icon(ic, px(18.), color))
+}
+
+/// One step before an account is connected: its number and heading, a line
+/// on what it is for, and its body. Only the step to do now is lit.
+fn step(n: &str, heading: &str, about: &str, now: bool, body: impl IntoElement) -> Div {
+    let badge = div()
+        .flex_none()
+        .size(px(20.))
+        .rounded_full()
         .flex()
-        .flex_col()
-        .child(caption(heading.to_owned()))
-        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(about.to_owned())))
-        .child(body)
+        .items_center()
+        .justify_center()
+        .text_size(px(11.))
+        .font_weight(theme::W_BOLD)
+        .map(|b| {
+            if now {
+                b.bg(theme::accent()).text_color(theme::on_accent())
+            } else {
+                b.bg(theme::ink_a(0.08)).text_color(theme::text_muted())
+            }
+        })
+        .child(n.to_owned());
+    let title = div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .mx(px(6.))
+        .mb(px(4.))
+        .child(badge)
+        .child(div().text_size(px(14.)).text_color(if now { theme::text_primary() } else { theme::text_muted() }).child(heading.to_owned()))
+        .children((!now).then(|| icon(Icon::Lock, px(14.), theme::text_dim())));
+    div().flex().flex_col().child(title).child(div().px(px(6.)).pb(px(8.)).child(meta_text(about.to_owned()))).child(body)
 }
 
 /// Where things go, with "Advanced options" folded under it.
 fn render_place(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
-    let mut card = card_box().py(px(12.)).gap(px(12.)).child(account::render_where(d, p, cx));
+    let mut col = div().flex().flex_col().gap(px(12.)).child(account::render_where(d, p, cx));
     if let Some(advanced) = account::render_advanced(d, p) {
         let open = d.cloud.advanced_open;
         let toggle = div()
@@ -326,28 +387,142 @@ fn render_place(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPa
                 d.cloud.advanced_open = !open;
                 cx.notify();
             }));
-        card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(toggle);
+        col = col.child(separator()).child(toggle);
         if open {
-            card = card.child(div().pl(px(22.)).pb(px(4.)).child(advanced));
+            col = col.child(div().pl(px(22.)).pb(px(4.)).child(advanced));
         }
     }
-    card
+    col
 }
 
 /// This PC's name, the other PCs found, and how the last sync went.
 fn render_devices(d: &SettingsPage, p: &SyncPrefs) -> Div {
-    let mut card = card_box().py(px(12.)).gap(px(4.)).child(text_field(tr!("This PC's name"), &d.cloud.device_name));
+    let mut col = div().flex().flex_col().gap(px(4.)).child(text_field(tr!("This PC's name"), &d.cloud.device_name));
     if p.devices.is_empty() {
-        card = card.child(div().pt(px(8.)).child(meta_text(tr!(
+        col = col.child(div().pt(px(8.)).child(meta_text(tr!(
             "No other PC yet. Set up Heronite on your other PCs with the same account or folder, and they show here."
         ))));
     }
     for dev in &p.devices {
         let when = tr!("last synced {when}", when = super::format_time(&dev.written_at));
         let detail = format!("{} \u{b7} {when}", os_label(&dev.os));
-        card = card.child(div().h(px(1.)).w_full().bg(theme::row_separator())).child(row(dev.name.clone(), Some(&detail), div()));
+        col = col.child(separator()).child(row(dev.name.clone(), Some(&detail), div()));
     }
-    div().flex().flex_col().child(card).child(render_sync_result(p))
+    col.child(render_sync_result(p))
+}
+
+/// A part of the page folded under one line (its icon, name and what it
+/// holds); `body` is drawn under it while unfolded.
+fn fold(
+    id: &'static str,
+    ic: Icon,
+    label: &'static str,
+    about: String,
+    body: Option<Div>,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Div {
+    let open = body.is_some();
+    let head = div()
+        .id(id)
+        .relative()
+        .children(flash(label, 8.))
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .py(px(12.))
+        .cursor_pointer()
+        .child(tile(ic, theme::ink_a(0.06), theme::text_muted()))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .gap(px(1.))
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label))
+                .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(about)),
+        )
+        .child(icon(if open { Icon::ExpandMore } else { Icon::ChevronRight }, px(18.), theme::text_muted()))
+        .on_click(on_click);
+    div().flex().flex_col().child(head).children(body.map(|b| div().pl(px(46.)).pb(px(12.)).child(b)))
+}
+
+fn pcs_fold(d: &SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
+    let name = if p.device_name.trim().is_empty() { prefs::default_device_name() } else { p.device_name.trim().to_owned() };
+    let about = format!("{} \u{b7} {}", tr!("This PC: {name}", name), trn!(p.devices.len(), "{n} other PC", "{n} other PCs"));
+    let open = d.cloud.pcs_open;
+    fold(
+        "cloud-pcs",
+        Icon::Tv,
+        tr!("Your PCs"),
+        about,
+        open.then(|| render_devices(d, p)),
+        cx.listener(move |d, _, _, cx| {
+            d.cloud.pcs_open = !open;
+            cx.notify();
+        }),
+    )
+}
+
+/// Connected: how things stand (the account folded in it), what goes to the
+/// cloud, then restoring and the PCs, folded.
+fn render_connected(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
+    let mut top = overview::render(d, p, cx);
+    if d.cloud.account_open {
+        top = top.child(separator()).child(render_place(d, p, cx));
+    }
+    let restore_open = d.cloud.restore_open;
+    let restore = fold(
+        "cloud-restore",
+        Icon::CloudDownload,
+        tr!("Restore from the cloud"),
+        tr!("New PC, or formatted this one? Connect, then bring back your Collection, game saves and screenshots.").to_owned(),
+        restore_open.then(|| restore::render(d, cx)),
+        cx.listener(move |d, _, _, cx| {
+            d.cloud.restore_open = !restore_open;
+            cx.notify();
+        }),
+    );
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(22.))
+        .child(top)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .child(caption(tr!("What goes to the cloud")))
+                .child(features::render(d, p, cx))
+                .child(features::stays_note()),
+        )
+        .child(card_box().child(restore).child(separator()).child(pcs_fold(d, p, cx)))
+}
+
+/// Before an account is connected: the steps, the one to do now, and what
+/// comes after it, waiting for the connection.
+fn render_first_use(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
+    let place = card_box().py(px(12.)).child(render_place(d, p, cx));
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(22.))
+        .child(overview::render(d, p, cx))
+        .child(step(
+            "1",
+            tr!("Choose where and connect"),
+            tr!("A cloud account, a server, or a folder all your PCs reach. Sign in once: everything below uses it."),
+            true,
+            place,
+        ))
+        .child(step(
+            "2",
+            tr!("Choose what goes, and when"),
+            tr!("Connect above first. Then choose, for each, whether it goes by itself (Automatic), only when you press Send now (Manual), or not at all."),
+            false,
+            div().flex().flex_col().child(features::render(d, p, cx)).child(features::stays_note()),
+        ))
+        .child(card_box().child(pcs_fold(d, p, cx)))
 }
 
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
@@ -358,41 +533,9 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             None => meta_text(tr!("Loading…")).into_any_element(),
         };
     };
-    let place = render_place(d, &p, cx);
-    let what = features::render(d, &p, cx);
-    let space = space::render(d, &p, cx);
-    let what_about = if p.ready() {
-        tr!("Automatic: Heronite sends by itself, never during a game. Manual: only when you press Send now. Installed games, Wine prefixes, game settings and store sign-ins always stay on each PC.")
+    if p.ready() {
+        render_connected(d, &p, cx).into_any_element()
     } else {
-        tr!("Connect above first. Then choose, for each, whether it goes by itself (Automatic), only when you press Send now (Manual), or not at all.")
-    };
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(22.))
-        .child(overview::render(d, &p, cx))
-        .child(step(
-            tr!("1. Where your things go"),
-            tr!("A cloud account, a server, or a folder all your PCs reach. Sign in once: everything below uses it."),
-            place,
-        ))
-        .child(step(tr!("2. What goes there"), what_about, what))
-        .child(step(
-            tr!("3. Space it needs"),
-            tr!("Measured on this PC: how much room the account needs for what you send. The account itself is not asked."),
-            space,
-        ))
-        .children(p.ready().then(|| {
-            step(
-                tr!("4. Restore from the cloud"),
-                tr!("New PC, or formatted this one? Connect, then bring back your Collection, game saves and screenshots."),
-                restore::render(d, cx),
-            )
-        }))
-        .child(step(
-            tr!("Your PCs"),
-            tr!("Every PC that syncs with this account or folder, and the name the others see for this one."),
-            render_devices(d, &p),
-        ))
-        .into_any_element()
+        render_first_use(d, &p, cx).into_any_element()
+    }
 }

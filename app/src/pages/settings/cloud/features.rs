@@ -1,8 +1,8 @@
 //! Settings → Cloud: what goes to the account (the library sync, backups,
 //! game saves, screenshots), each Off, Manual (only "Send now") or
-//! Automatic, with a dot for how much of it is up; bringing the backups
-//! back; and the row the Backups, Saves and Screenshots sections show to
-//! link here.
+//! Automatic, with a dot for how much of it is up, what its mode does and
+//! the space it takes, under the bar of that space (`space.rs`); and the row
+//! the Backups, Saves and Screenshots sections show to link here.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -13,12 +13,15 @@ use heronite_sync::sent::Status;
 use heronite_sync::usage::Kind;
 use heronite_sync::{Mode, SyncPrefs};
 
-use super::{account, persist};
+use super::{account, persist, space, tile};
+use crate::icons::Icon;
 use crate::pages::settings::{Section, SettingsPage};
 use crate::services::sync::{Job, LibrarySync};
 use crate::theme;
-use crate::ui::controls::{button_sm, card, card_box, row, segmented, toggle_row, with_sub_rows, ButtonKind};
+use crate::ui::controls::{button_sm, card, card_box, row, segmented, sub_rows, toggle_row, ButtonKind};
 use crate::ui::fields::meta_text;
+use crate::ui::find::flash;
+use crate::ui::icon;
 
 pub(super) fn with_service(cx: &mut App, f: impl FnOnce(&mut LibrarySync, &mut Context<LibrarySync>)) {
     if let Some(svc) = crate::services::sync::get(cx) {
@@ -45,6 +48,24 @@ impl Line {
         match self {
             Line::Library => p.library,
             Line::Up(u) => u.mode(p),
+        }
+    }
+
+    fn kind(self) -> Kind {
+        match self {
+            Line::Library => Kind::Library,
+            Line::Up(Upload::Backups) => Kind::Backups,
+            Line::Up(Upload::Saves) => Kind::Saves,
+            Line::Up(Upload::Captures) => Kind::Captures,
+        }
+    }
+
+    fn icon(self) -> Icon {
+        match self {
+            Line::Library => Icon::Collections,
+            Line::Up(Upload::Backups) => Icon::History,
+            Line::Up(Upload::Saves) => Icon::Save,
+            Line::Up(Upload::Captures) => Icon::PhotoCamera,
         }
     }
 
@@ -91,12 +112,7 @@ pub(super) fn upload_what(upload: Upload) -> &'static str {
 /// and a few words: green all sent, yellow something new, red nothing yet.
 fn status_of(d: &SettingsPage, line: Line) -> Option<(Hsla, String)> {
     let usage = d.cloud.usage.as_ref()?;
-    let kind = match line {
-        Line::Library => Kind::Library,
-        Line::Up(Upload::Backups) => Kind::Backups,
-        Line::Up(Upload::Saves) => Kind::Saves,
-        Line::Up(Upload::Captures) => Kind::Captures,
-    };
+    let kind = line.kind();
     let green: Hsla = theme::status_color("playing").into();
     let yellow: Hsla = theme::status_color("on-hold").into();
     let red: Hsla = theme::danger_text().into();
@@ -114,13 +130,12 @@ fn status_of(d: &SettingsPage, line: Line) -> Option<(Hsla, String)> {
     })
 }
 
-/// The line's description: its upload running or waiting for the account,
-/// how much is sent, and when it last went (or why it failed), else what
-/// its mode does.
-fn description(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &App) -> String {
-    let mode = line.mode(p);
-    if !mode.is_on() {
-        return line.about(mode).to_owned();
+/// How the line stands: its upload running or waiting for the account, how
+/// much is sent, and when it last went (or why it failed). `None` while it
+/// is off or nothing is known yet.
+fn status_text(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &App) -> Option<String> {
+    if !line.mode(p).is_on() {
+        return None;
     }
     let status = status_of(d, line).map(|(_, text)| text);
     let Line::Up(upload) = line else {
@@ -131,29 +146,32 @@ fn description(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &App) -> String 
                 trn!(p.devices.len(), "{n} other PC", "{n} other PCs")
             )
         });
-        return [status, synced].into_iter().flatten().collect::<Vec<_>>().join(" \u{b7} ");
+        return joined([status, synced]);
     };
     let svc = crate::services::sync::get(cx);
     let svc = svc.as_ref().map(|s| s.read(cx));
     if let Some(percent) = svc.and_then(|s| s.uploading()).filter(|u| u.job.upload() == upload).map(|u| u.percent) {
-        return match percent {
+        return Some(match percent {
             Some(percent) => tr!("Uploading… {percent}%", percent),
             None => tr!("Uploading…").into(),
-        };
+        });
     }
     if let Some(at) = svc.and_then(|s| s.retry_at(upload)).filter(|at| *at > std::time::SystemTime::now()) {
         let at: chrono::DateTime<chrono::Local> = at.into();
-        return tr!("The account is refusing requests for now: trying again at {time}.", time = at.format("%H:%M"));
+        return Some(tr!("The account is refusing requests for now: trying again at {time}.", time = at.format("%H:%M")));
     }
     let last = p.uploads.get(upload.key());
     if let Some(error) = last.and_then(|l| l.error.clone()) {
-        return tr!("The last upload failed: {error}", error);
+        return Some(tr!("The last upload failed: {error}", error));
     }
     let when = last.and_then(|l| l.at.as_deref()).map(|at| tr!("last upload {when}", when = crate::pages::settings::format_time(at)));
-    match (status, when) {
-        (None, None) => line.about(mode).to_owned(),
-        (status, when) => [status, when].into_iter().flatten().collect::<Vec<_>>().join(" \u{b7} "),
-    }
+    joined([status, when])
+}
+
+/// The parts there are, joined by a dot (`None` when there is none).
+fn joined(parts: [Option<String>; 2]) -> Option<String> {
+    let parts: Vec<String> = parts.into_iter().flatten().collect();
+    (!parts.is_empty()).then(|| parts.join(" \u{b7} "))
 }
 
 /// The upload "Send now" starts (`None`: nothing to send yet).
@@ -193,7 +211,8 @@ fn send_now(d: &SettingsPage, line: Line, manual: bool, cx: &mut App) {
     }
 }
 
-/// A line: its name, what it does or did, "Send now" and its mode.
+/// A line: its icon, name, how it stands, what its mode does, the space it
+/// takes, "Send now" and its mode.
 fn line_row(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &mut Context<SettingsPage>) -> AnyElement {
     let mode = line.mode(p);
     let ready = p.ready();
@@ -213,31 +232,68 @@ fn line_row(d: &SettingsPage, p: &SyncPrefs, line: Line, cx: &mut Context<Settin
         button_sm(SharedString::from(format!("cloud-send-{}", line.key())), ButtonKind::Glass, label)
             .on_click(cx.listener(move |d, _, _, cx| send_now(d, line, true, cx)))
     });
-    let controls = div().flex().items_center().gap(px(8.)).children(send).child(modes);
+    let size = d.cloud.usage.as_ref().map(|u| u.total(line.kind())).filter(|b| *b > 0).map(|b| {
+        div()
+            .w(px(72.))
+            .text_right()
+            .text_size(px(12.))
+            .text_color(if mode.is_on() { theme::text_muted() } else { theme::text_dim() })
+            .child(human_size(b))
+    });
+    let controls = div().flex().flex_none().items_center().gap(px(8.)).children(size).children(send).child(modes);
     let dot = mode.is_on().then(|| status_of(d, line)).flatten().map(|(color, _)| color);
-    status_row(line.label(), dot, &description(d, p, line, cx), controls).into_any_element()
-}
-
-/// [`row`] with a coloured dot before the label.
-fn status_row(label: &'static str, dot: Option<Hsla>, description: &str, control: impl IntoElement) -> Div {
-    let title = div()
+    let status = status_text(d, p, line, cx).map(|text| {
+        div()
+            .flex()
+            .items_start()
+            .gap(px(6.))
+            .children(dot.map(|c| div().flex_none().mt(px(4.)).size(px(8.)).rounded_full().bg(c)))
+            .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_muted()).child(text))
+    });
+    let color = space::kind_color(line.kind());
+    let text = div()
         .flex()
-        .items_center()
-        .gap(px(8.))
-        .children(dot.map(|c| div().flex_none().size(px(9.)).rounded_full().bg(c)))
-        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label));
+        .flex_col()
+        .flex_1()
+        .min_w_0()
+        .gap(px(1.))
+        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(line.label()))
+        .children(status)
+        .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(line.about(mode)));
     div()
         .relative()
-        .children(crate::ui::find::flash(&SharedString::from(label), 8.))
+        .children(flash(line.label(), 8.))
         .flex()
         .items_center()
-        .justify_between()
-        .gap(px(16.))
+        .gap(px(12.))
         .py(px(11.))
-        .child(div().flex().flex_col().flex_1().min_w_0().gap(px(1.)).child(title).child(
-            div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(SharedString::from(description.to_owned())),
-        ))
-        .child(div().flex_none().child(control))
+        .child(tile(line.icon(), color.opacity(0.16), theme::readable(color)).when(!mode.is_on(), |t| t.opacity(0.5)))
+        .child(text)
+        .child(controls)
+        .into_any_element()
+}
+
+/// `parent` with the rows that only matter because of it under its text
+/// (past the tile).
+fn with_sub_rows(parent: AnyElement, rows: Vec<AnyElement>) -> AnyElement {
+    if rows.is_empty() {
+        return parent;
+    }
+    div().flex().flex_col().child(parent).child(div().pl(px(42.)).child(sub_rows(rows))).into_any_element()
+}
+
+/// Under the card: what Automatic never does and what never leaves a PC.
+pub(super) fn stays_note() -> Div {
+    div()
+        .flex()
+        .items_start()
+        .gap(px(6.))
+        .mt(px(8.))
+        .mx(px(6.))
+        .child(div().flex_none().pt(px(1.)).child(icon(Icon::InfoOutlined, px(14.), theme::text_dim())))
+        .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(tr!(
+            "Automatic never sends during a game. Installed games, Wine prefixes, game settings and store sign-ins always stay on each PC."
+        )))
 }
 
 fn library_row(d: &SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> AnyElement {
@@ -284,9 +340,16 @@ fn captures_row(d: &SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>)
     with_sub_rows(parent, sub.into_iter().collect())
 }
 
-/// The four lines, each with its mode (dimmed until an account is connected).
+/// The space it all takes, then the four lines, each with its mode (dimmed
+/// until an account is connected).
 pub(super) fn render(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
-    let rows = vec![library_row(d, p, cx), backups_row(d, p, cx), line_row(d, p, Line::Up(Upload::Saves), cx), captures_row(d, p, cx)];
+    let rows = vec![
+        space::render(d, p, cx).into_any_element(),
+        library_row(d, p, cx),
+        backups_row(d, p, cx),
+        line_row(d, p, Line::Up(Upload::Saves), cx),
+        captures_row(d, p, cx),
+    ];
     card(rows).when(!p.ready(), |c| c.opacity(0.55))
 }
 

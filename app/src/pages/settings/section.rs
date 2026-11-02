@@ -182,7 +182,7 @@ impl Section {
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
             Section::Screenshots => "screenshots capture shortcut hotkey folder thumbnails cache gallery capturas de tela atalho pasta miniaturas galeria",
             Section::Saves => "saves ludusavi backup restore retention locked differential zip compression game list manifest salvamentos restaurar retencao travado diferencial compressao lista de jogos",
-            Section::Cloud => "cloud sync synchronize upload backup saves screenshots google drive dropbox onedrive box ftp smb webdav rclone syncthing dual boot windows linux other pc devices sincronizar sincronizacao nuvem outro computador dispositivos enviar backup capturas",
+            Section::Cloud => "cloud sync synchronize upload backup saves screenshots google drive dropbox onedrive box ftp smb webdav rclone syncthing dual boot windows linux other pc devices space restore sincronizar sincronizacao nuvem outro computador dispositivos enviar backup capturas espaco restaurar",
             Section::Backups => "backups backup restore data folder config copy schedule retention sign-ins artwork pasta de dados copia agendar agendamento restaurar retencao logins arte",
             Section::Logs => "logs log viewer debug registros visualizador depurar",
             Section::About => "about version system info update upgrade new release changelog sobre versao sistema atualizacao atualizar novidades",
