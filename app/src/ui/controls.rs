@@ -85,10 +85,29 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<Shared
     toggle_row(id, label, None, checked).py(px(7.))
 }
 
+/// A [`toggle_row`] with a short description and the whole text in the
+/// tooltip of an (i) after the label.
+pub fn toggle_row_info(id: impl Into<ElementId>, label: impl Into<SharedString>, short: &str, full: &str, on: bool) -> Stateful<Div> {
+    let id: ElementId = id.into();
+    let sw = toggle(SharedString::from(format!("{id}-sw")), on, false);
+    let label: SharedString = label.into();
+    let tip = info_tip(SharedString::from(format!("{id}-info")), full);
+    row_with(label, Some(short), Some(tip.into_any_element()), sw).id(id).cursor_pointer()
+}
+
+/// A small (i) whose tooltip holds `text`: the whole help of a setting that
+/// shows one line of it.
+pub fn info_tip(id: impl Into<ElementId>, text: &str) -> Stateful<Div> {
+    div().id(id).flex_none().tooltip(super::tooltip(text.to_string())).child(icon(Icon::InfoOutlined, px(14.), theme::text_dim()))
+}
+
 /// Label (14px) with an optional description (12px) on the left, `control`
 /// on the right. Padding 11px 0; put rows inside a [`card`].
 pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: impl IntoElement) -> Div {
-    let label: SharedString = label.into();
+    row_with(label.into(), description, None, control)
+}
+
+fn row_with(label: SharedString, description: Option<&str>, after_label: Option<AnyElement>, control: impl IntoElement) -> Div {
     div()
         .relative()
         .children(super::find::flash(&label, 8.))
@@ -104,7 +123,16 @@ pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: i
                 .flex_1()
                 .min_w_0()
                 .gap(px(1.))
-                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(14.))
+                        .text_color(theme::text_primary())
+                        .child(label)
+                        .children(after_label),
+                )
                 .children(description.map(|d| {
                     div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(SharedString::from(d.to_string()))
                 })),

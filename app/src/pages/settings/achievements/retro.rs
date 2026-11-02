@@ -17,7 +17,7 @@ use super::{masked, set_prefs};
 use crate::pages::status_pill;
 use crate::services::achievements as service;
 use crate::theme;
-use crate::ui::controls::{button_sm, card, row, toggle_row, with_sub_rows, ButtonKind};
+use crate::ui::controls::{button_sm, card, row, toggle_row, toggle_row_info, with_sub_rows, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit};
 
 pub struct State {
@@ -181,10 +181,11 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     } else {
         rows.push(login_form(d, account.as_ref(), cx).into_any_element());
     }
-    let emulators = toggle_row(
+    let emulators = toggle_row_info(
         "ach-emulators",
         tr!("Sign the emulators in too"),
-        Some(tr!("RetroArch, DuckStation, PCSX2, PPSSPP, Dolphin and Flycast get this account, so games unlock achievements while you play. Emulators without RetroAchievements (RPCS3, Cemu, Ryujinx…) are left alone.")),
+        tr!("Games unlock achievements while you play."),
+        tr!("RetroArch, DuckStation, PCSX2, PPSSPP, Dolphin and Flycast get this account, so games unlock achievements while you play. Emulators without RetroAchievements (RPCS3, Cemu, Ryujinx…) are left alone."),
         prefs.emulators,
     )
     .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.emulators = !p.emulators)))
