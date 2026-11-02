@@ -27,7 +27,11 @@
   <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest"><b>Download</b></a>
 </p>
 
-https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
+<p align="center">
+  <img alt="Heronite's Collection in Focus view: hovering over the library, then opening ELDEN RING's game settings on the Compatibility tab with the Proton options" src="assets/screenshots/demo.webp" width="100%" />
+</p>
+
+<p align="center"><a href="https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54">▶ Watch the full video</a></p>
 
 Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
 
