@@ -13,6 +13,8 @@
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
 //!   `screenshots.rs`, `saves.rs` + `backup/`). Any write ends in
 //!   [`SettingsPage::saved`].
+//! - Cloud: the account the library sync, backups, game saves and screenshots
+//!   go to (`cloud/`, `sync.json` in the app state).
 //! - Console mode: the console themes and every option of console mode
 //!   (`console_mode/`; its state exists only once the section was shown).
 //! - About: updates (`updates.rs`), version, folders and system information
@@ -25,13 +27,14 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
 mod achievements;
 mod advanced;
 mod appearance;
 mod backup;
+mod cloud;
 mod console;
 mod console_mode;
 mod launchers;
@@ -66,6 +69,7 @@ use heronite_data::settings::{self as store, EffectiveSettings};
 use heronite_data::Library;
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
+use heronite_sync::cloud::Upload;
 
 use super::{Page, PageCtx, PageEvent};
 use crate::dialogs::settings_panel::logic::{Section as HSection, DEFAULT_SECTIONS};
@@ -130,6 +134,7 @@ pub struct SettingsPage {
     backup: backup::State,
     saves: saves::State,
     saves_restore: saves_restore::State,
+    cloud: cloud::State,
     section: Section,
     global: Option<Entity<SettingsPanel>>,
     defaults: Option<Entity<SettingsPanel>>,
@@ -195,6 +200,7 @@ impl SettingsPage {
         let metadata = metadata::State::new(&ctx, &settings, window, cx);
         let backup = backup::State::new(&ctx, &settings, window, cx);
         let saves = saves::State::new(&ctx, &settings, window, cx);
+        let cloud = cloud::State::new(&ctx, window, cx);
         // `HERONITE_DEBUG_SETTINGS_SEARCH=<text>[!]`: the section list filtered by it (`!`: and Enter).
         let debug_search = crate::env::value("HERONITE_DEBUG_SETTINGS_SEARCH").unwrap_or_default();
         let debug_enter = debug_search.ends_with('!');
@@ -226,6 +232,7 @@ impl SettingsPage {
             backup,
             saves,
             saves_restore: Default::default(),
+            cloud,
             library: library::State::new(&ctx),
             launchers: launchers::State::new(cx),
             overlay: overlay::State::new(&ctx, cx),
@@ -424,6 +431,7 @@ impl SettingsPage {
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
             Section::Backups => backup::shown(self, cx),
+            Section::Cloud => cloud::shown(self, window, cx),
             Section::ConsoleMode => console_mode::shown(self, window, cx),
             _ => {}
         }
@@ -461,6 +469,12 @@ impl SettingsPage {
                 .ok();
         });
         div().flex().flex_col().gap(px(16.)).child(bar).child(panel).into_any_element()
+    }
+
+    /// `body` under the row saying whether it goes to the cloud account
+    /// (Backups, Saves, Screenshots).
+    fn with_cloud_row(&self, upload: Upload, body: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+        div().flex().flex_col().gap(px(18.)).child(cloud::link_row(self, upload, cx)).child(body).into_any_element()
     }
 
     /// Body of a Collection section plus the last write error, if any.
@@ -712,7 +726,11 @@ impl SettingsPage {
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
             Section::Achievements => achievements::render(self, window, cx),
-            Section::Screenshots => Self::collection_section(screenshots::render(self, window, cx), self.error.clone()),
+            Section::Screenshots => {
+                let body = screenshots::render(self, window, cx);
+                let body = self.with_cloud_row(Upload::Captures, body, cx);
+                Self::collection_section(body, self.error.clone())
+            }
             Section::Saves => {
                 let body = div()
                     .flex()
@@ -721,9 +739,15 @@ impl SettingsPage {
                     // Restoring needs Ludusavi: the card above says how to get it.
                     .when(!self.saves.missing(), |d| d.child(div().mt(px(12.)).child(saves_restore::render(self, window, cx))))
                     .into_any_element();
+                let body = self.with_cloud_row(Upload::Saves, body, cx);
                 Self::collection_section(body, self.error.clone())
             }
-            Section::Backups => Self::collection_section(backup::render(self, window, cx), self.error.clone()),
+            Section::Backups => {
+                let body = backup::render(self, window, cx);
+                let body = self.with_cloud_row(Upload::Backups, body, cx);
+                Self::collection_section(body, self.error.clone())
+            }
+            Section::Cloud => cloud::render(self, window, cx),
             Section::ConsoleMode => console_mode::render(self, window, cx),
             Section::Logs => self.logs_section(cx),
             Section::About => self.about_section(cx).into_any_element(),

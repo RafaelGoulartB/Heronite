@@ -3521,6 +3521,7 @@ dependencies = [
  "heronite-shortcuts",
  "heronite-steam",
  "heronite-storage",
+ "heronite-sync",
  "heronite-update",
  "heronite-wine",
  "image",
@@ -3904,6 +3905,26 @@ dependencies = [
  "serde_json",
  "tempfile",
  "trash",
+]
+
+[[package]]
+name = "heronite-sync"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-backup",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-launch",
+ "heronite-metadata",
+ "heronite-platform",
+ "log",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "zip",
 ]
 
 [[package]]

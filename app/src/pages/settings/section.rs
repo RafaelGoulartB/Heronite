@@ -33,6 +33,9 @@ pub enum Section {
     Saves,
     /// Backups of the data folder and the app settings, and restoring them.
     Backups,
+    /// The account the library sync, backups, game saves and screenshots go
+    /// to (`heronite_sync`).
+    Cloud,
     Logs,
     About,
 }
@@ -44,12 +47,12 @@ impl Section {
         (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers]),
         (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
         (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
-        (n_!("Data"), &[Section::Storage, Section::Saves, Section::Backups]),
+        (n_!("Data"), &[Section::Storage, Section::Saves, Section::Backups, Section::Cloud]),
         (n_!("System"), &[Section::Advanced, Section::Logs, Section::About]),
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 18] = [
+    pub const ALL: [Section; 19] = [
         Section::General,
         Section::Appearance,
         Section::ConsoleMode,
@@ -65,6 +68,7 @@ impl Section {
         Section::Storage,
         Section::Saves,
         Section::Backups,
+        Section::Cloud,
         Section::Advanced,
         Section::Logs,
         Section::About,
@@ -105,6 +109,7 @@ impl Section {
             Section::Screenshots => tr!("Screenshots"),
             Section::Saves => tr!("Saves"),
             Section::Backups => tr!("Backups"),
+            Section::Cloud => tr!("Cloud"),
             Section::Logs => tr!("Logs"),
             Section::About => tr!("About"),
         }
@@ -128,6 +133,7 @@ impl Section {
             Section::Screenshots => Icon::Fullscreen,
             Section::Saves => Icon::Save,
             Section::Backups => Icon::History,
+            Section::Cloud => Icon::CloudSync,
             Section::Logs => Icon::Description,
             Section::About => Icon::Memory,
         }
@@ -152,6 +158,7 @@ impl Section {
             Section::Screenshots => tr!("Where your captures live, the in-game shortcut and the preview cache of the gallery."),
             Section::Saves => tr!("Game saves backed up with Ludusavi after you close a game, and the folders a game's Saves tab restores them from."),
             Section::Backups => tr!("Scheduled backups of your Collection, play history and settings, and putting one back."),
+            Section::Cloud => tr!("One account for the library synced between your PCs, your backups, game saves and screenshots: Google Drive, Dropbox, OneDrive, a server or a shared folder."),
             Section::Logs => tr!("The logs of this app, the runners and every game you launched. Logging is turned off in Advanced (Turn off logs) and made more detailed per game (Detailed logs)."),
             Section::About => tr!("Updates, help and feedback, this app's data folders and the system it runs on."),
         }
@@ -175,6 +182,7 @@ impl Section {
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
             Section::Screenshots => "screenshots capture shortcut hotkey folder thumbnails cache gallery capturas de tela atalho pasta miniaturas galeria",
             Section::Saves => "saves ludusavi backup restore retention locked differential zip compression game list manifest salvamentos restaurar retencao travado diferencial compressao lista de jogos",
+            Section::Cloud => "cloud sync synchronize upload backup saves screenshots google drive dropbox onedrive box ftp smb webdav rclone syncthing dual boot windows linux other pc devices sincronizar sincronizacao nuvem outro computador dispositivos enviar backup capturas",
             Section::Backups => "backups backup restore data folder config copy schedule retention sign-ins artwork pasta de dados copia agendar agendamento restaurar retencao logins arte",
             Section::Logs => "logs log viewer debug registros visualizador depurar",
             Section::About => "about version system info update upgrade new release changelog sobre versao sistema atualizacao atualizar novidades",
@@ -208,6 +216,7 @@ impl Section {
             "screenshots" => Some(Section::Screenshots),
             "saves" | "ludusavi" => Some(Section::Saves),
             "backups" | "backup" => Some(Section::Backups),
+            "cloud" | "sync" => Some(Section::Cloud),
             "logs" => Some(Section::Logs),
             "about" => Some(Section::About),
             _ => None,

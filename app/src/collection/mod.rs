@@ -31,6 +31,7 @@ mod launch_options;
 mod launch_problem;
 mod launch_progress;
 mod launchers;
+mod library_sync;
 mod list;
 mod list_row;
 mod list_view;
@@ -380,6 +381,7 @@ impl CollectionView {
         this.start_idle_jobs(cx);
         this.watch_launcher_imports(cx);
         this.watch_clients(cx);
+        this.watch_library_sync(cx);
         this.init_metadata(window, cx);
         this.spawn_disk_watch(cx);
         this.spawn_debug_browse(cx);

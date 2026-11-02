@@ -225,6 +225,28 @@ const INDEX: &[(Section, &[&str])] = &[
         ],
     ),
     (
+        Section::Cloud,
+        &[
+            "Service",
+            "Sync folder",
+            "Advanced options",
+            "Folder in the account",
+            "Your own Google app",
+            "2. What goes there",
+            "Library between PCs",
+            "This PC only sends play time and sessions",
+            "Heronite backups",
+            "4. Restore from the cloud",
+            "What is in the cloud",
+            "Game saves (Ludusavi)",
+            "Screenshots",
+            "Include replays (videos)",
+            "3. Space it needs",
+            "Your PCs",
+            "This PC's name",
+        ],
+    ),
+    (
         Section::Advanced,
         &[
             "Logging",

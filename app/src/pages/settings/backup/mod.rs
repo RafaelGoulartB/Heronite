@@ -7,6 +7,7 @@ mod console;
 mod restore;
 
 pub(super) use console::{console_apply, console_rows};
+pub(super) use restore::open_and_ask;
 
 use chrono::{DateTime, Datelike, Local, Utc};
 use gpui_kit::component::input::InputState;

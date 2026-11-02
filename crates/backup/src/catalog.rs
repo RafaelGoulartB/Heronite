@@ -151,6 +151,7 @@ pub fn classify_data(rel: &str) -> Class {
         "legendaryConfig/legendary/metadata",
         "legendaryConfig/legendary/tmp",
         "save-restore-undo",
+        "local_library/sync-before",
         "store/download-manager.json",
         "store/wine-downloader-info.json",
         "store/wine-release-checks.json",
@@ -170,6 +171,10 @@ pub fn classify_config(rel: &str) -> Class {
     }
     if is_temp(rel) || ["epic-move.json", crate::restore::PENDING_FILE, "wine-releases-fetched"].contains(&rel) {
         return Class::Out(Left::Temp);
+    }
+    // The library sync's cloud account.
+    if rel == "rclone.conf" {
+        return Class::In(Part::Logins);
     }
     Class::In(Part::Settings)
 }
@@ -284,6 +289,9 @@ mod tests {
         assert_eq!(classify_config("logs/x.log"), Class::Out(Left::Logs));
         assert_eq!(classify_config("epic-move.json"), Class::Out(Left::Temp));
         assert_eq!(classify_config(crate::restore::PENDING_FILE), Class::Out(Left::Temp));
+        assert_eq!(classify_config("rclone.conf"), Class::In(Part::Logins));
+        assert_eq!(classify_data("local_library/sync-before/local_library-sessions.json"), Class::Out(Left::Caches));
+        assert_eq!(classify_data("local_library/sync-ledger.json"), Class::In(Part::Collection));
     }
 
     #[test]
