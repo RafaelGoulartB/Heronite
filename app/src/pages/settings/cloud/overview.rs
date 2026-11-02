@@ -79,7 +79,7 @@ fn intro() -> Div {
                 .items_center()
                 .gap(px(12.))
                 .child(icon(Icon::CloudSync, px(26.), theme::accent()))
-                .child(div().text_size(px(17.)).font_weight(theme::W_BOLD).text_color(theme::text_bright()).child(tr!("Your games, in the cloud"))),
+                .child(div().text_size(px(17.)).font_weight(theme::W_BOLD).text_color(theme::text_bright()).child(tr!("Your library, in the cloud"))),
         )
         .child(div().text_size(px(13.)).line_height(px(19.)).text_color(theme::text_muted()).child(tr!(
             "Keep the same library on every PC you play on, and a copy of your Heronite backups, game saves and screenshots. Each PC writes only its own files, so nothing is overwritten."
