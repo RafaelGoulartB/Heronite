@@ -21,7 +21,7 @@ use super::{masked, set_prefs};
 use crate::icons::Icon;
 use crate::services::achievements as service;
 use crate::theme;
-use crate::ui::controls::{button_sm, card, icon_button_sm, row, sub_rows, toggle_row, toggle_row_info, ButtonKind};
+use crate::ui::controls::{button_sm, icon_button_sm, sub_rows, toggle_row, toggle_row_info, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit};
 use crate::ui::icon;
 
@@ -296,6 +296,103 @@ fn emulator_grid(d: &SettingsPage, statuses: &[Status], cx: &mut Context<Setting
     div().flex().flex_col().gap(px(10.)).py(px(10.)).child(head).child(grid).children(opened)
 }
 
+/// The tile with the gold trophy that stands for RetroAchievements.
+fn brand_tile() -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(44.))
+        .rounded(px(12.))
+        .bg(Hsla { a: 0.14, ..theme::brand_gold().into() })
+        .child(icon(Icon::Trophy, px(22.), theme::brand_gold()))
+}
+
+fn brand_name() -> Div {
+    div()
+        .font_family(theme::font_heading())
+        .font_weight(theme::W_BOLD)
+        .text_size(px(16.))
+        .text_color(theme::text_primary())
+        .child("RetroAchievements")
+}
+
+fn connected_pill(connected: bool) -> Div {
+    let ok = theme::status_color("playing");
+    let pill = div().flex().flex_none().items_center().gap(px(5.)).px(px(9.)).py(px(2.)).rounded_full().text_size(px(12.));
+    if connected {
+        pill.bg(Hsla { a: 0.14, ..ok.into() })
+            .text_color(theme::readable(ok))
+            .child(icon(Icon::Check, px(12.), theme::readable(ok)))
+            .child(tr!("Connected"))
+    } else {
+        pill.bg(theme::ink_a(0.07)).text_color(theme::text_muted()).child(tr!("Not connected"))
+    }
+}
+
+/// The card's top while signed in: the tile, the name, the
+/// account and its points, its page on the site and signing out.
+fn account_band(account: &RetroAccount, session: Option<&connect::Session>, cx: &mut Context<SettingsPage>) -> Div {
+    let line = match session {
+        Some(s) => format!(
+            "{} · {}",
+            account.username,
+            tr!(
+                "{hardcore} hardcore points · {softcore} softcore",
+                hardcore = heronite_i18n::grouped(s.points as i64),
+                softcore = heronite_i18n::grouped(s.softcore_points as i64)
+            )
+        ),
+        None => account.username.clone(),
+    };
+    let profile = format!("https://retroachievements.org/user/{}", account.username);
+    div()
+        .flex()
+        .items_center()
+        .gap(px(14.))
+        .px(px(16.))
+        .py(px(14.))
+        .border_b_1()
+        .border_color(theme::row_separator())
+        .child(brand_tile())
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .gap(px(2.))
+                .child(div().flex().items_center().gap(px(8.)).child(brand_name()).child(connected_pill(true)))
+                .child(div().text_size(px(12.5)).text_color(theme::text_dim()).child(line)),
+        )
+        .child(icon_button_sm("ach-ra-profile", ButtonKind::Ghost, Icon::OpenInNew, tr!("Profile"), true, move |_, _, cx| {
+            cx.open_url(&profile)
+        }))
+        .child(button_sm("ach-ra-sign-out", ButtonKind::Glass, tr!("Sign out")).on_click(cx.listener(|d, _, _, cx| {
+            d.achievements.retro.session = None;
+            service::get(cx).update(cx, |s, cx| s.set_retro_account(None, cx));
+        })))
+}
+
+/// The frame of the card: it has parts that reach its edges (the top, the
+/// brand column), so it carries no padding of its own.
+fn card_frame() -> Div {
+    div().flex().flex_col().w_full().rounded(px(theme::R_CARD)).bg(theme::card_fill()).border_1().border_color(theme::card_border())
+}
+
+/// Rows with 1px separators, padded like a card's.
+fn rows_body(rows: Vec<AnyElement>) -> Div {
+    let mut body = div().flex().flex_col().px(px(16.)).py(px(4.));
+    for (i, r) in rows.into_iter().enumerate() {
+        if i > 0 {
+            body = body.child(div().h(px(1.)).w_full().bg(theme::row_separator()));
+        }
+        body = body.child(r);
+    }
+    body
+}
+
 pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let (account, prefs, statuses) = {
         let svc = service::get(cx);
@@ -304,30 +401,12 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     };
     let state = &d.achievements.retro;
     let signed_in = account.as_ref().is_some_and(|a| !a.token.is_empty()) && !state.expired;
-    let mut rows: Vec<AnyElement> = Vec::new();
-    if let (true, Some(account)) = (signed_in, account.as_ref()) {
-        let detail = match &state.session {
-            Some(s) => tr!(
-                "Connected · {hardcore} hardcore points, {softcore} softcore",
-                hardcore = heronite_i18n::grouped(s.points as i64),
-                softcore = heronite_i18n::grouped(s.softcore_points as i64)
-            ),
-            None => tr!("Connected").to_string(),
-        };
-        rows.push(
-            row(
-                account.username.clone(),
-                Some(&detail),
-                button_sm("ach-ra-sign-out", ButtonKind::Ghost, tr!("Sign out")).on_click(cx.listener(|d, _, _, cx| {
-                    d.achievements.retro.session = None;
-                    service::get(cx).update(cx, |s, cx| s.set_retro_account(None, cx));
-                })),
-            )
-            .into_any_element(),
-        );
-    } else {
-        rows.push(login_form(d, account.as_ref(), cx).into_any_element());
-    }
+    let Some(account) = account.clone().filter(|_| signed_in) else {
+        // An account kept from before (a refused sign-in) still has its key.
+        let key = account.is_some().then(|| rows_body(vec![api_key_field(&d.achievements.retro.api_key).into_any_element()]));
+        let split = signed_out_split(d, account.as_ref(), cx);
+        return card_frame().child(split).children(key.map(|k| k.border_t_1().border_color(theme::row_separator())));
+    };
     let emulators = toggle_row_info(
         "ach-emulators",
         tr!("Sign the emulators in too"),
@@ -348,7 +427,7 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.hardcore = !p.hardcore)))
     .into_any_element();
     let mut subs = Vec::new();
-    if prefs.emulators && signed_in && !statuses.is_empty() {
+    if prefs.emulators && !statuses.is_empty() {
         subs.push(emulator_grid(d, &statuses, cx).into_any_element());
     }
     subs.push(
@@ -358,47 +437,132 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
             .when(!prefs.emulators, |d| d.opacity(0.42).child(div().absolute().inset_0().occlude()))
             .into_any_element(),
     );
-    rows.push(div().flex().flex_col().child(emulators).child(sub_rows(subs)).into_any_element());
-    rows.push(
-        div()
-            .py(px(11.))
-            .flex()
-            .flex_col()
-            .gap(px(6.))
-            .child(labeled(tr!("Web API key (optional)"), input_box(&d.achievements.retro.api_key, false)))
-            .child(meta_text(tr!("Adds the time of unlocks made before you connected. It is at retroachievements.org → Settings → Keys.")))
-            .into_any_element(),
-    );
-    card(rows)
+    let band = account_band(&account, d.achievements.retro.session.as_ref(), cx);
+    let rows = vec![
+        div().flex().flex_col().child(emulators).child(sub_rows(subs)).into_any_element(),
+        api_key_field(&d.achievements.retro.api_key).into_any_element(),
+    ];
+    card_frame().child(band).child(rows_body(rows))
+}
+
+/// The optional Web API key.
+fn api_key_field(input: &Entity<InputState>) -> Div {
+    div()
+        .py(px(11.))
+        .flex()
+        .flex_col()
+        .gap(px(6.))
+        .child(labeled(tr!("Web API key (optional)"), input_box(input, false)))
+        .child(meta_text(tr!("Adds the time of unlocks made before you connected. It is at retroachievements.org → Settings → Keys.")))
+}
+
+/// One thing signing in brings: an icon in gold, the point in bold and the rest.
+fn benefit(ic: Icon, lead: &str, rest: &str) -> Div {
+    let text = format!("{lead} {rest}");
+    let bold = HighlightStyle { font_weight: Some(theme::W_BOLD), color: Some(theme::text_primary().into()), ..Default::default() };
+    div()
+        .flex()
+        .items_start()
+        .gap(px(10.))
+        .text_size(px(13.))
+        .line_height(px(18.))
+        .text_color(theme::text_muted())
+        .child(div().mt(px(1.)).child(icon(ic, px(16.), theme::brand_gold())))
+        .child(div().flex_1().min_w_0().child(StyledText::new(text).with_highlights([(0..lead.len(), bold)])))
+}
+
+/// Signed out: the brand and what signing in brings on the left, the
+/// sign-in form on the right.
+fn signed_out_split(d: &mut SettingsPage, account: Option<&RetroAccount>, cx: &mut Context<SettingsPage>) -> Div {
+    let brand = div()
+        .w(relative(0.45))
+        .flex_none()
+        .flex()
+        .flex_col()
+        .gap(px(14.))
+        .p(px(18.))
+        .border_r_1()
+        .border_color(theme::row_separator())
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .child(brand_tile())
+                .child(div().flex().flex_col().items_start().gap(px(4.)).child(brand_name()).child(connected_pill(false))),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(10.))
+                .child(benefit(Icon::Collections, tr!("Your ROMs' achievements"), tr!("on each game's page and in the Timeline.")))
+                .child(benefit(
+                    Icon::SportsEsports,
+                    tr!("Emulators signed in for you:"),
+                    tr!("RetroArch, DuckStation, PCSX2, PPSSPP, Dolphin and Flycast."),
+                ))
+                .child(benefit(Icon::Star, tr!("Points and hardcore mode,"), tr!("kept by Heronite even if the account goes away."))),
+        );
+    div().flex().w_full().child(brand).child(div().flex_1().min_w_0().p(px(18.)).child(login_form(d, account, cx)))
 }
 
 fn login_form(d: &mut SettingsPage, account: Option<&RetroAccount>, cx: &mut Context<SettingsPage>) -> Div {
     let state = &d.achievements.retro;
+    // Only an account kept from before needs a word on why.
     let lead = if state.expired {
-        tr!("RetroAchievements no longer accepts the saved sign-in (the password changed?). Sign in again.")
+        Some(tr!("RetroAchievements no longer accepts the saved sign-in (the password changed?). Sign in again."))
     } else if account.is_some_and(|a| a.token.is_empty()) {
-        tr!("Sign in with your password to also connect the emulators.")
+        Some(tr!("Sign in with your password to also connect the emulators."))
     } else {
-        tr!("Sign in to see the achievements of your ROMs and to connect the emulators. The password goes to RetroAchievements once and is never saved.")
+        None
     };
+    let busy = state.busy;
+    let sign_in_button = div()
+        .id("ach-ra-sign-in")
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .h(px(theme::BUTTON_H))
+        .px(px(18.))
+        .rounded_full()
+        .bg(theme::brand_gold())
+        .text_size(px(13.))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::brand_gold_text())
+        .child(if busy { tr!("Signing in…") } else { tr!("Sign in") })
+        .when(busy, |b| b.opacity(0.7))
+        .when(!busy, |b| b.cursor_pointer().hover(|s| s.opacity(0.9)).on_click(cx.listener(|d, _, window, cx| sign_in(d, window, cx))));
+    let create = div()
+        .id("ach-ra-create")
+        .flex()
+        .items_center()
+        .gap(px(4.))
+        .text_size(px(13.))
+        .text_color(theme::accent())
+        .cursor_pointer()
+        .hover(|s| s.opacity(0.85))
+        .child(tr!("No account? Create one"))
+        .child(icon(Icon::OpenInNew, px(13.), theme::accent()))
+        .on_click(|_, _, cx| cx.open_url("https://retroachievements.org/createaccount.php"));
     div()
-        .py(px(12.))
         .flex()
         .flex_col()
-        .gap(px(10.))
-        .child(meta_text(lead))
+        .gap(px(12.))
+        .children(lead.map(meta_text))
+        .child(labeled(tr!("Username"), input_box(&state.username, busy)))
+        .child(labeled(tr!("Password"), input_box(&state.password, busy)))
+        .children(state.error.clone().map(|e| div().text_size(px(12.5)).text_color(theme::danger_text()).child(e)))
+        .child(div().flex().flex_wrap().items_center().gap(px(14.)).child(sign_in_button).child(create))
         .child(
             div()
                 .flex()
-                .gap(px(12.))
-                .child(div().flex_1().child(labeled(tr!("Username"), input_box(&state.username, state.busy))))
-                .child(div().flex_1().child(labeled(tr!("Password"), input_box(&state.password, state.busy)))),
-        )
-        .children(state.error.clone().map(|e| div().text_size(px(12.5)).text_color(theme::danger_text()).child(e)))
-        .child(
-            div().flex().child(
-                button_sm("ach-ra-sign-in", ButtonKind::Primary, if state.busy { tr!("Signing in…") } else { tr!("Sign in") })
-                    .on_click(cx.listener(|d, _, window, cx| sign_in(d, window, cx))),
-            ),
+                .items_center()
+                .gap(px(6.))
+                .text_size(px(12.))
+                .text_color(theme::text_dim())
+                .child(icon(Icon::Lock, px(13.), theme::text_dim()))
+                .child(tr!("The password goes to RetroAchievements once and is never saved.")),
         )
 }

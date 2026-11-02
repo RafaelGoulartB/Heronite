@@ -218,6 +218,15 @@ pub fn danger() -> Rgba {
 pub fn warning() -> Rgba {
     status(0xf5cd5b, 0x745808)
 }
+/// The gold of the RetroAchievements card (Settings → Achievements): its
+/// trophy, benefit icons and Sign in button, with `brand_gold_text` on the
+/// button; the same in both themes.
+pub fn brand_gold() -> Rgba {
+    rgb(0xf2c75c)
+}
+pub fn brand_gold_text() -> Rgba {
+    rgb(0x2b1a07)
+}
 pub fn selected_ring() -> Rgba {
     cpick(0xe8dcc0, 0x2a313b, |p| p.text)
 }
