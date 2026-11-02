@@ -21,7 +21,7 @@ use super::{masked, set_prefs};
 use crate::icons::Icon;
 use crate::services::achievements as service;
 use crate::theme;
-use crate::ui::controls::{button_sm, icon_button_sm, sub_rows, toggle_row, toggle_row_info, ButtonKind};
+use crate::ui::controls::{button_sm, icon_button_sm, info_tip, sub_rows, toggle_row, toggle_row_info, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit};
 use crate::ui::icon;
 
@@ -37,6 +37,9 @@ pub struct State {
     expired: bool,
     /// What happened to the last emulator opened from its tile (`true`: an error).
     opened: Option<(SharedString, bool)>,
+    /// "Show advanced" is open (the Web API key); open from the start when a
+    /// key is saved.
+    advanced: bool,
 }
 
 impl State {
@@ -54,7 +57,8 @@ impl State {
         on_commit(&api_key, window, cx, |_: &mut SettingsPage, value, _, cx| {
             service::get(cx).update(cx, |s, cx| s.set_retro_api_key(value, cx));
         });
-        Self { username, password, api_key, busy: false, error: None, session: None, expired: false, opened: None }
+        let advanced = !key.is_empty();
+        Self { username, password, api_key, busy: false, error: None, session: None, expired: false, opened: None, advanced }
     }
 }
 
@@ -403,7 +407,7 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let signed_in = account.as_ref().is_some_and(|a| !a.token.is_empty()) && !state.expired;
     let Some(account) = account.clone().filter(|_| signed_in) else {
         // An account kept from before (a refused sign-in) still has its key.
-        let key = account.is_some().then(|| rows_body(vec![api_key_field(&d.achievements.retro.api_key).into_any_element()]));
+        let key = account.is_some().then(|| rows_body(vec![advanced_part(d, cx).into_any_element()]));
         let split = signed_out_split(d, account.as_ref(), cx);
         return card_frame().child(split).children(key.map(|k| k.border_t_1().border_color(theme::row_separator())));
     };
@@ -438,22 +442,71 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
             .into_any_element(),
     );
     let band = account_band(&account, d.achievements.retro.session.as_ref(), cx);
-    let rows = vec![
-        div().flex().flex_col().child(emulators).child(sub_rows(subs)).into_any_element(),
-        api_key_field(&d.achievements.retro.api_key).into_any_element(),
-    ];
+    let rows =
+        vec![div().flex().flex_col().child(emulators).child(sub_rows(subs)).into_any_element(), advanced_part(d, cx).into_any_element()];
     card_frame().child(band).child(rows_body(rows))
 }
 
-/// The optional Web API key.
-fn api_key_field(input: &Entity<InputState>) -> Div {
+/// "Show advanced", and under it once open the optional Web API key.
+fn advanced_part(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+    let open = d.achievements.retro.advanced;
+    let toggle = div()
+        .id("ach-ra-advanced")
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .py(px(12.))
+        .cursor_pointer()
+        .text_size(px(13.))
+        .text_color(theme::text_muted())
+        .hover(|s| s.text_color(theme::text_primary()))
+        .child(icon(if open { Icon::ExpandMore } else { Icon::ChevronRight }, px(16.), theme::text_muted()))
+        .child(if open { tr!("Hide advanced") } else { tr!("Show advanced") })
+        .on_click(cx.listener(|d, _, _, cx| {
+            d.achievements.retro.advanced = !d.achievements.retro.advanced;
+            cx.notify();
+        }));
+    div().flex().flex_col().child(toggle).when(open, |c| c.child(api_key_row(&d.achievements.retro.api_key).pt(px(0.))))
+}
+
+/// The search jumped to `label`: open what hides it.
+pub fn reveal(d: &mut SettingsPage, label: &str) {
+    if label == "Web API key" {
+        d.achievements.retro.advanced = true;
+    }
+}
+
+/// The optional Web API key: its label, one line of help (the rest in the
+/// (i)) and the field.
+fn api_key_row(input: &Entity<InputState>) -> Div {
+    let label = SharedString::from(tr!("Web API key"));
     div()
-        .py(px(11.))
+        .relative()
+        .children(crate::ui::find::flash(&label, 8.))
+        .py(px(12.))
         .flex()
         .flex_col()
-        .gap(px(6.))
-        .child(labeled(tr!("Web API key (optional)"), input_box(input, false)))
-        .child(meta_text(tr!("Adds the time of unlocks made before you connected. It is at retroachievements.org → Settings → Keys.")))
+        .gap(px(8.))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(1.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label))
+                        .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(tr!("Optional")))
+                        .child(info_tip(
+                            "ach-ra-key-info",
+                            tr!("Adds the time of unlocks made before you connected. It is at retroachievements.org → Settings → Keys."),
+                        )),
+                )
+                .child(meta_text(tr!("Adds the time of unlocks made before you connected."))),
+        )
+        .child(input_box(input, false))
 }
 
 /// One thing signing in brings: an icon in gold, the point in bold and the rest.

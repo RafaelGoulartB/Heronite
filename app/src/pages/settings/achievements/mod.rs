@@ -47,6 +47,11 @@ impl State {
     }
 }
 
+/// The search jumped to `label`: open what hides it.
+pub fn reveal(d: &mut SettingsPage, label: &str) {
+    retro::reveal(d, label);
+}
+
 /// Reads the account's points and the emulators' state when the section shows.
 pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     retro::shown(d, cx);

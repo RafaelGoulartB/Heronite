@@ -115,7 +115,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "RetroAchievements",
             "Sign the emulators in too",
             "Hardcore mode in the emulators",
-            "Web API key (optional)",
+            "Web API key",
             "Steam",
             "Read from this PC's Steam",
             "Steam Web API key (optional)",
