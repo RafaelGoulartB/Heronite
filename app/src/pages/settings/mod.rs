@@ -643,6 +643,12 @@ impl SettingsPage {
         if section == Section::Cloud {
             cloud::reveal(self, setting.label);
         }
+        if section == Section::Achievements {
+            achievements::reveal(self, setting.label);
+        }
+        if section == Section::Replay {
+            replay::reveal(self, setting.label);
+        }
         crate::ui::find::set_target(tr(setting.label).to_string());
         self.find_frames = FIND_FRAMES;
         self.find_task = Some(cx.spawn(async move |this, cx| {
@@ -784,6 +790,7 @@ impl Render for SettingsPage {
         let max_w = match section {
             Section::Logs => px(1400.),
             Section::Storage => px(storage::MAX_W),
+            Section::Replay => px(replay::MAX_W),
             Section::ConsoleMode if studio => px(console_mode::STUDIO_MAX_W),
             _ => px(880.),
         };
