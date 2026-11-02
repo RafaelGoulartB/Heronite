@@ -24,7 +24,7 @@ use crate::pages::PageCtx;
 use crate::services::replay::{Detected, Status};
 use crate::theme;
 use crate::ui::controls::{
-    button, caption, card, card_box, info_tip, row, tabs, toggle_row, toggle_row_info, with_sub_rows, ButtonKind, CAPTION_H,
+    button, caption, card, card_box, icon_button_sm, info_tip, row, tabs, toggle_row, toggle_row_info, with_sub_rows, ButtonKind, CAPTION_H,
 };
 use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
 use crate::ui::icon;
@@ -207,6 +207,33 @@ fn estimate_for(o: &Options, st: &State) -> (Estimate, Encoding, Option<String>)
     let encoding = encoding_for(o, info);
     let vendor = info.map(|i| i.vendor.as_str()).unwrap_or_default();
     (estimate(o, encoding, w, h, vendor), encoding, screen.map(|s| s.name.clone()))
+}
+
+/// Under the main switch while gpu-screen-recorder is missing or too old:
+/// what is wrong, where to get it, and Flathub.
+fn missing_recorder(program: String) -> Div {
+    div()
+        .py(px(12.))
+        .flex()
+        .flex_col()
+        .items_start()
+        .gap(px(8.))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .text_size(px(13.5))
+                .text_color(theme::warning())
+                .child(icon(Icon::Warning, px(16.), theme::warning()))
+                .child(format!("gpu-screen-recorder: {program}")),
+        )
+        .child(meta_text(tr!(
+            "It needs gpu-screen-recorder 6.0 or newer, from your distribution (Arch: pacman -S gpu-screen-recorder) or Flathub (com.dec05eba.gpu_screen_recorder)."
+        )))
+        .child(icon_button_sm("replay-flathub", ButtonKind::Glass, Icon::OpenInNew, tr!("Get it on Flathub"), true, |_, _, cx| {
+            cx.open_url("https://flathub.org/apps/com.dec05eba.gpu_screen_recorder")
+        }))
 }
 
 /// A card of the column beside the options: its title and `body`.
@@ -627,7 +654,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let p = prefs(d, cx);
     let o = &p.options;
     let seconds: Vec<(u32, &'static str)> = SECONDS.iter().map(|s| (*s, seconds_label(*s))).collect();
-    let main = card([with_sub_rows(
+    let mut main_rows = vec![with_sub_rows(
         toggle_row_info(
             "replay-enabled",
             tr!("Keep a replay of the game"),
@@ -649,7 +676,13 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             choice_tabs("replay-seconds", &seconds, o.seconds, cx, |o, v| o.seconds = v),
         )
         .into_any_element()],
-    )]);
+    )];
+    // Missing or too old (not while it is still looked for).
+    let (program, program_ok) = program_text(d.replay.detected.as_ref());
+    if !program_ok {
+        main_rows.push(missing_recorder(program).into_any_element());
+    }
+    let main = card(main_rows);
     let per_game = match p.games.len() {
         0 => tr!("A game can have it on or off on its own: Game settings → Performance.").to_string(),
         n => heronite_i18n::trn!(
