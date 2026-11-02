@@ -76,7 +76,6 @@
   "Sound": "Sonido",
   "Still starting: try again in a moment": "Aún se está iniciando: inténtalo de nuevo en un momento",
   "The audio source was not found": "No se encontró la fuente de audio",
-  "The buffer stays in memory: the RAM above grows with the length.": "El búfer se queda en memoria: la RAM de arriba crece con la duración.",
   "The game's is the one its window is on (Hyprland), else the first one.": "El del juego es aquel donde está su ventana (Hyprland); si no, el primero.",
   "The game's: no voice chat, music or notifications.": "El del juego: sin chat de voz, música ni notificaciones.",
   "The graphics card cannot encode this video format": "La tarjeta gráfica no puede codificar este formato de vídeo",
@@ -123,5 +122,7 @@
   "The last seconds stay in memory; save them when something good happens.": "Los últimos segundos se quedan en memoria; guárdalos cuando pase algo bueno.",
   "While a game runs": "Mientras un juego se ejecuta",
   "Get it on Flathub": "Descargar en Flathub",
-  "Saving it": "Para guardarlo"
+  "Saving it": "Para guardarlo",
+  "The buffer stays in memory: its RAM grows with the length.": "El búfer se queda en memoria: su RAM crece con la duración.",
+  "Picture and sound": "Imagen y sonido"
 }

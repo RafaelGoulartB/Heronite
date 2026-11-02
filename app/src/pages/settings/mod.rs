@@ -646,6 +646,9 @@ impl SettingsPage {
         if section == Section::Achievements {
             achievements::reveal(self, setting.label);
         }
+        if section == Section::Replay {
+            replay::reveal(self, setting.label);
+        }
         crate::ui::find::set_target(tr(setting.label).to_string());
         self.find_frames = FIND_FRAMES;
         self.find_task = Some(cx.spawn(async move |this, cx| {

@@ -45,6 +45,8 @@ pub struct State {
     looking: bool,
     /// The menu of the monitor is open.
     monitor_open: bool,
+    /// Show advanced is open.
+    advanced: bool,
     /// The keyboard shortcut field.
     hotkey: FocusHandle,
     /// The combination last pressed in it is another shortcut's.
@@ -57,7 +59,7 @@ impl State {
         if let Some(service) = crate::services::replay::get(cx) {
             cx.observe(&service, |_, _, cx| cx.notify()).detach();
         }
-        Self { detected: None, looking: false, monitor_open: false, hotkey: cx.focus_handle(), hotkey_taken: None }
+        Self { detected: None, looking: false, monitor_open: false, advanced: false, hotkey: cx.focus_handle(), hotkey_taken: None }
     }
 }
 
@@ -462,23 +464,48 @@ fn monitor_select(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>)
     ))
 }
 
-/// Quality, frame rate, resolution, format and monitor.
-fn video_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> Div {
+/// What most people change: the picture's quality, the sound and the microphone.
+fn picture_sound_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> Div {
     let qualities: Vec<(Quality, &'static str)> = Quality::ALL.iter().map(|q| (*q, quality_label(*q))).collect();
-    let rates: Vec<(u32, &'static str)> = FPS.iter().map(|f| (*f, fps_label(*f))).collect();
-    let sizes: Vec<(Resolution, &'static str)> = Resolution::ALL.iter().map(|r| (*r, resolution_label(*r))).collect();
-    let codecs: Vec<(Codec, &'static str)> = Codec::ALL.iter().map(|c| (*c, codec_label(*c))).collect();
-    let codec_desc = match info_of(&d.replay) {
-        Some(i) if !i.encodes(o.codec) => tr!("This graphics card cannot encode it: H.264 is used instead."),
-        _ => tr!("H.264 plays everywhere. HEVC and AV1 look the same in less memory and space."),
+    let audios: Vec<(Audio, &'static str)> = Audio::ALL.iter().map(|a| (*a, audio_label(*a))).collect();
+    let audio_desc = match info_of(&d.replay) {
+        Some(i) if !i.app_audio && o.audio == Audio::Game => {
+            tr!("This system cannot record one app alone (it needs PipeWire): everything the PC plays is recorded.")
+        }
+        _ => tr!("The game's: no voice chat, music or notifications."),
     };
-    let mut rows = vec![
+    card([
         row(
             tr!("Quality"),
             Some(tr!("More bits for each frame: a sharper picture, more memory.")),
             choice_tabs("replay-quality", &qualities, o.quality, cx, |o, v| o.quality = v),
         )
         .into_any_element(),
+        row(tr!("Sound"), Some(audio_desc), choice_tabs("replay-audio", &audios, o.audio, cx, |o, v| o.audio = v)).into_any_element(),
+        toggle_row(
+            "replay-mic",
+            tr!("Microphone too"),
+            Some(tr!("On a track of its own, so a video editor can lower or remove it.")),
+            o.microphone,
+        )
+        .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.options.microphone = !p.options.microphone)))
+        .into_any_element(),
+    ])
+}
+
+/// The rest, under Show advanced: frame rate, resolution, format and
+/// monitor, then what spares memory and video memory (the encoder, where the
+/// buffer is kept, the panel's margin).
+fn advanced_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> Div {
+    let info = info_of(&d.replay);
+    let rates: Vec<(u32, &'static str)> = FPS.iter().map(|f| (*f, fps_label(*f))).collect();
+    let sizes: Vec<(Resolution, &'static str)> = Resolution::ALL.iter().map(|r| (*r, resolution_label(*r))).collect();
+    let codecs: Vec<(Codec, &'static str)> = Codec::ALL.iter().map(|c| (*c, codec_label(*c))).collect();
+    let codec_desc = match info {
+        Some(i) if !i.encodes(o.codec) => tr!("This graphics card cannot encode it: H.264 is used instead."),
+        _ => tr!("H.264 plays everywhere. HEVC and AV1 look the same in less memory and space."),
+    };
+    let mut rows = vec![
         row(tr!("Frame rate"), None, choice_tabs("replay-fps", &rates, o.fps, cx, |o, v| o.fps = v)).into_any_element(),
         row(
             tr!("Resolution"),
@@ -498,13 +525,6 @@ fn video_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> 
             .into_any_element(),
         );
     }
-    card(rows)
-}
-
-/// The encoder, where the buffer is kept and the panel's margin: what
-/// spares memory and video memory.
-fn memory_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> Div {
-    let info = info_of(&d.replay);
     let (e, encoding, _) = estimate_for(o, &d.replay);
     let encoders: Vec<(Encoder, &'static str)> = Encoder::ALL.iter().map(|x| (*x, encoder_label(*x))).collect();
     let encoder_desc = match (o.encoder, info) {
@@ -519,14 +539,14 @@ fn memory_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) ->
     };
     let storages: Vec<(Storage, &'static str)> = Storage::ALL.iter().map(|s| (*s, storage_label(*s))).collect();
     let storage_desc: String = match o.storage {
-        Storage::Ram => tr!("The buffer stays in memory: the RAM above grows with the length.").into(),
+        Storage::Ram => tr!("The buffer stays in memory: its RAM grows with the length.").into(),
         Storage::Disk => tr!(
             "No memory for the buffer, but about {size} written each hour to the disk of the screenshots folder.",
             size = format_size(e.disk_bytes_per_sec * 3600)
         ),
     };
     let margins: Vec<(u32, &'static str)> = PANEL_MARGINS.iter().map(|m| (*m, margin_label(*m))).collect();
-    card([
+    rows.extend([
         row(tr!("Encoder"), Some(encoder_desc), choice_tabs("replay-encoder", &encoders, o.encoder, cx, |o, v| o.encoder = v))
             .into_any_element(),
         row(tr!("Buffer"), Some(&storage_desc), choice_tabs("replay-storage", &storages, o.storage, cx, |o, v| o.storage = v))
@@ -539,29 +559,43 @@ fn memory_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) ->
             choice_tabs("replay-margin", &margins, o.panel_margin, cx, |o, v| o.panel_margin = v),
         )
         .into_any_element(),
-    ])
+    ]);
+    card(rows)
 }
 
-/// What it hears: the game's sound (or everything) and the microphone.
-fn sound_card(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> Div {
-    let audios: Vec<(Audio, &'static str)> = Audio::ALL.iter().map(|a| (*a, audio_label(*a))).collect();
-    let audio_desc = match info_of(&d.replay) {
-        Some(i) if !i.app_audio && o.audio == Audio::Game => {
-            tr!("This system cannot record one app alone (it needs PipeWire): everything the PC plays is recorded.")
-        }
-        _ => tr!("The game's: no voice chat, music or notifications."),
-    };
-    card([
-        row(tr!("Sound"), Some(audio_desc), choice_tabs("replay-audio", &audios, o.audio, cx, |o, v| o.audio = v)).into_any_element(),
-        toggle_row(
-            "replay-mic",
-            tr!("Microphone too"),
-            Some(tr!("On a track of its own, so a video editor can lower or remove it.")),
-            o.microphone,
-        )
-        .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.options.microphone = !p.options.microphone)))
-        .into_any_element(),
-    ])
+/// The settings [`advanced_card`] holds (`search::INDEX` labels).
+const ADVANCED: [&str; 7] = ["Frame rate", "Resolution", "Format", "Monitor", "Encoder", "Buffer", "Room for the panel"];
+
+/// The search jumped to `label`: open Show advanced when it is in there.
+pub fn reveal(d: &mut SettingsPage, label: &str) {
+    if ADVANCED.contains(&label) {
+        d.replay.advanced = true;
+    }
+}
+
+/// "Show advanced", and [`advanced_card`] under it once open.
+fn advanced_part(d: &SettingsPage, o: &Options, cx: &mut Context<SettingsPage>) -> Div {
+    let open = d.replay.advanced;
+    let toggle = div()
+        .id("replay-advanced")
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .mt(px(16.))
+        .mx(px(6.))
+        .mb(px(8.))
+        .cursor_pointer()
+        .text_size(px(13.))
+        .text_color(theme::text_muted())
+        .hover(|s| s.text_color(theme::text_primary()))
+        .child(icon(if open { Icon::ExpandMore } else { Icon::ChevronRight }, px(16.), theme::text_muted()))
+        .child(if open { tr!("Hide advanced") } else { tr!("Show advanced") })
+        .on_click(cx.listener(|d, _, _, cx| {
+            d.replay.advanced = !d.replay.advanced;
+            d.replay.monitor_open = false;
+            cx.notify();
+        }));
+    div().flex().flex_col().child(toggle).when(open, |c| c.child(advanced_card(d, o, cx)))
 }
 
 /// `CommandOrControl` as the keyboard says it.
@@ -692,9 +726,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     };
     // Both ways to save it: Guide + X and the keyboard shortcut.
     let saving = card([overlay::replay_shortcut_row(d, cx), keyboard_row(d, &p, window, cx).into_any_element()]);
-    let video = video_card(d, o, cx);
-    let memory = memory_card(d, o, cx);
-    let sound = sound_card(d, o, cx);
+    let picture_sound = picture_sound_card(d, o, cx);
+    let advanced = advanced_part(d, o, cx);
 
     let detected = d.replay.detected.as_ref();
     let (program, program_ok) = program_text(detected);
@@ -737,15 +770,13 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .flex()
         .flex_col()
         .child(caption(tr!("Replay")))
-        .child(div().flex().flex_col().gap(px(12.)).child(main).child(div().px(px(6.)).child(meta_text(per_game))))
+        .child(main)
         .child(caption(tr!("Saving it")))
         .child(dim(on, saving))
-        .child(caption(tr!("Video")))
-        .child(dim(on, video))
-        .child(caption(tr!("Memory")))
-        .child(dim(on, memory))
-        .child(caption(tr!("Sound")))
-        .child(dim(on, sound));
+        .child(caption(tr!("Picture and sound")))
+        .child(dim(on, picture_sound))
+        .child(dim(on, advanced))
+        .child(div().mt(px(14.)).px(px(6.)).child(meta_text(per_game)));
     div().flex().items_start().gap(px(18.)).child(column.flex_1().min_w_0()).child(side).into_any_element()
 }
 
