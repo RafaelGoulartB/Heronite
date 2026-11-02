@@ -204,6 +204,8 @@ pub struct CollectionView {
     blur_px: f32,
     saturation: f32,
     stage_enabled: bool,
+    /// The view menu's sections and sliders (`view_options.rs`).
+    view_look: view_options::LookMenu,
     grey_uninstalled: bool,
     cover_aspect: f32,
     /// Settings → Appearance → "Cover aspect" of the list's and the grid's
@@ -361,6 +363,7 @@ impl CollectionView {
             blur_px: 6.,
             saturation: 0.94,
             stage_enabled: true,
+            view_look: Default::default(),
             grey_uninstalled: false,
             cover_aspect: 1.5,
             card_shape: heronite_data::settings::CoverAspect::Steam,

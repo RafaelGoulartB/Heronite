@@ -86,7 +86,7 @@ impl CollectionView {
         // The menu lines up with the right edge of the active mode.
         let menu_right = if grid { TRACK_PAD } else { TRACK_PAD + grid_mode.base + SEG_GAP };
         let max_h = (f32::from(window.viewport_size().height) - SEG_H - 2. * TRACK_PAD - 24.).max(160.);
-        let menu = open.then(|| self.view_options(max_h, cx));
+        let menu = open.then(|| self.view_options(max_h, window, cx));
 
         let on_focus = cx.listener(|this, _: &ClickEvent, _, cx| this.pick_view_mode(false, cx));
         let on_grid = cx.listener(|this, _: &ClickEvent, _, cx| this.pick_view_mode(true, cx));
@@ -150,8 +150,8 @@ impl CollectionView {
 
     /// The active mode's options, fading in as they drop 6px into place.
     /// They scroll when the window is too short for them.
-    fn view_options(&mut self, max_h: f32, cx: &mut Context<Self>) -> AnyElement {
-        let body = self.view_options_body(cx);
+    fn view_options(&mut self, max_h: f32, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let body = self.view_options_body(window, cx);
         let panel = div().relative().child(
             menu_panel(MENU_W)
                 .w(px(MENU_W))

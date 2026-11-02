@@ -165,7 +165,7 @@ fn panel_opacity() -> f32 {
 }
 
 /// Panel opacity above which the art under the glass darkens towards fully
-/// hidden at 100% (below it the dim stays at 50%). The default opacity (90%)
+/// hidden at 100% (below it the dim stays at 50%). The default opacity (95%)
 /// sits above it.
 const DIM_KNEE: f32 = 0.84;
 
@@ -320,8 +320,8 @@ mod appearance_tests {
     #[test]
     fn glass_tokens_follow_the_appearance() {
         set_appearance(Appearance::default());
-        assert!((glass_fill().a - 0.90).abs() < 1e-6);
-        assert!((glass_fill_solid().a - 0.94).abs() < 1e-6);
+        assert!((glass_fill().a - 0.95).abs() < 1e-6);
+        assert!((glass_fill_solid().a - 0.95).abs() < 1e-6);
         assert!(glass_art_dim().a > 0.5 && glass_art_dim().a < 1.);
         assert!(glass_shows_art());
         assert_eq!(glass_blur_px(), 30.);
@@ -354,7 +354,7 @@ mod appearance_tests {
         let light = Appearance { theme: Theme::Light, ..Appearance::default() };
         set_appearance(light);
         assert!(is_light());
-        assert_eq!(glass_fill(), with_alpha(crate::theme::LIGHT_PAPER, 0.9));
+        assert_eq!(glass_fill(), with_alpha(crate::theme::LIGHT_PAPER, 0.95));
         assert_eq!(accent_rgb(), Accent::Ice.rgb_light().unwrap());
         set_appearance(Appearance { interface_mode: InterfaceMode::Solid, solid_tint_light: SolidTint::Sand, ..light });
         assert_eq!(solid_tint(), SolidTint::Sand);
@@ -399,7 +399,7 @@ mod appearance_tests {
         set_appearance(Appearance { theme: Theme::Custom, custom, ..Appearance::default() });
         assert!(!is_light());
         assert_eq!(panel_rgb(), (40, 20, 30));
-        assert_eq!(glass_fill(), with_alpha((40, 20, 30), 0.9));
+        assert_eq!(glass_fill(), with_alpha((40, 20, 30), 0.95));
         assert_eq!(accent_rgb(), (250, 120, 30));
         assert_eq!(crate::theme::ink_a(0.1), with_alpha(custom.text, 0.1));
         set_dark_only(true);

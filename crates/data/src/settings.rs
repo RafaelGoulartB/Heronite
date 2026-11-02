@@ -499,7 +499,7 @@ mod tests {
         assert_eq!(b.blur.get(), 40.0);
         assert_eq!(b.dimming.get(), 0.0);
         assert_eq!(b.saturation.get(), 11.0);
-        assert_eq!(b.scrim.get(), 100.0);
+        assert_eq!(b.scrim.get(), 95.0);
     }
 
     #[test]
