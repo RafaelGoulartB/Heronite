@@ -9,7 +9,8 @@ use std::time::Instant;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use futures::StreamExt;
 use gpui_kit::*;
-use heronite_data::DataPaths;
+use heronite_data::appearance::Appearance;
+use heronite_data::{AppPaths, DataPaths};
 
 use super::debug::debug_hooks;
 use super::events::{on_event, on_message, on_tray_cmd};
@@ -34,6 +35,7 @@ pub fn init(
 ) {
     let data_paths = DataPaths::detect();
     let settings = SysSettings::load(&data_paths);
+    let app_icon = Appearance::load(&AppPaths::for_data(&data_paths)).app_icon;
     // Points the entry at this executable (a new AppImage may live elsewhere),
     // or removes one left behind while the setting is off.
     let (autostart_paths, autostart_on) = (data_paths.clone(), settings.start_with_system);
@@ -53,9 +55,7 @@ pub fn init(
 
     let (tray_tx, tray_rx) = unbounded();
     let tray = (!settings.no_tray_icon && !crate::env::flag("HERONITE_NO_TRAY"))
-        .then(|| {
-            tray::spawn(data_paths.clone(), settings.dark_tray_icon, settings.exit_to_tray, settings.max_recent, false, tray_tx.clone())
-        })
+        .then(|| tray::spawn(data_paths.clone(), app_icon, settings.exit_to_tray, settings.max_recent, false, tray_tx.clone()))
         .flatten();
     let fake_tray = crate::env::flag("HERONITE_DEBUG_FAKE_TRAY");
     let tray_alive = tray.is_some() || fake_tray;
@@ -86,6 +86,7 @@ pub fn init(
         // The first window opens fullscreen right away.
         fullscreen: cli.fullscreen && !hide,
         settings,
+        app_icon,
         settings_stamp: data_paths.global_config().metadata().and_then(|m| m.modified()).ok(),
     }))));
     STARTED.with(|s| s.set(Some(started)));

@@ -106,6 +106,18 @@ choice! {
 }
 
 choice! {
+    /// The app's icon: the window, the taskbar or dock, the tray.
+    AppIcon {
+        /// Off-white controller-H on a graphite tile.
+        Graphite = "graphite",
+        /// Near-black controller-H on a light tile.
+        Light = "light",
+        /// The graphite one, its H raised with a shallow extrusion.
+        Extruded = "extruded",
+    } default Graphite
+}
+
+choice! {
     /// Font families of the interface.
     FontChoice {
         /// Cabin for text, Rubik for titles.
@@ -326,6 +338,9 @@ mod tests {
         }
         for t in Theme::ALL {
             assert_eq!(Theme::parse(t.as_str()), Some(*t));
+        }
+        for i in AppIcon::ALL {
+            assert_eq!(AppIcon::parse(i.as_str()), Some(*i));
         }
         assert_eq!(CoverLabel::parse("lastPlayed"), Some(CoverLabel::LastPlayed));
         assert_eq!(Motion::parse("slow"), None);

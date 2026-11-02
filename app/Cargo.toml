@@ -52,6 +52,10 @@ shlex = "1"
 ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }
 
+[target.'cfg(windows)'.dependencies]
+# The main window's handle, for its icon (`WM_SETICON`).
+raw-window-handle = "0.6"
+
 [dev-dependencies]
 tempfile = "3"
 

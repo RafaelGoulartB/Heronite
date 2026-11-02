@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::channel::mpsc::UnboundedSender;
+use heronite_data::appearance::AppIcon;
 use heronite_data::DataPaths;
 use ksni::blocking::{Handle, TrayMethods};
 use ksni::menu::{MenuItem, StandardItem};
@@ -19,8 +20,8 @@ fn escape_label(s: &str) -> String {
 }
 
 /// ARGB32 (network byte order) pixmaps of the tray icon at 32 and 64 px.
-pub fn icon_pixmaps(dark: bool) -> Vec<ksni::Icon> {
-    icon_images(dark, &[32, 64])
+pub fn icon_pixmaps(icon: AppIcon) -> Vec<ksni::Icon> {
+    icon_images(icon, &[32, 64])
         .into_iter()
         .map(|scaled| {
             let size = scaled.width();
@@ -35,7 +36,7 @@ pub fn icon_pixmaps(dark: bool) -> Vec<ksni::Icon> {
 
 pub struct HeroniteTray {
     data_paths: DataPaths,
-    dark: bool,
+    icon: AppIcon,
     exit_to_tray: bool,
     max_recent: usize,
     window_open: Arc<AtomicBool>,
@@ -62,7 +63,7 @@ impl ksni::Tray for HeroniteTray {
     }
 
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {
-        icon_pixmaps(self.dark)
+        icon_pixmaps(self.icon)
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
@@ -111,6 +112,14 @@ impl TrayHandle {
         self.refresh();
     }
 
+    /// The app's icon changed.
+    pub fn set_icon(&self, icon: AppIcon) {
+        let handle = self.handle.clone();
+        std::thread::spawn(move || {
+            handle.update(move |t| t.icon = icon);
+        });
+    }
+
     /// Re-reads the menu (recent games changed). Off the UI thread: the
     /// handle's calls wait for the tray service.
     pub fn refresh(&self) {
@@ -132,14 +141,14 @@ impl TrayHandle {
 /// tray did not exist, so the app can never end up with no window and no icon.
 pub fn spawn(
     data_paths: DataPaths,
-    dark: bool,
+    icon: AppIcon,
     exit_to_tray: bool,
     max_recent: usize,
     window_open: bool,
     tx: UnboundedSender<TrayCmd>,
 ) -> Option<TrayHandle> {
     let window_open = Arc::new(AtomicBool::new(window_open));
-    let tray = HeroniteTray { data_paths, dark, exit_to_tray, max_recent, window_open: window_open.clone(), tx };
+    let tray = HeroniteTray { data_paths, icon, exit_to_tray, max_recent, window_open: window_open.clone(), tx };
     match tray.spawn() {
         Ok(handle) => Some(TrayHandle { handle, window_open }),
         Err(e) => {
@@ -161,8 +170,8 @@ mod tests {
 
     #[test]
     fn pixmaps_are_argb32() {
-        for dark in [true, false] {
-            let icons = icon_pixmaps(dark);
+        for &icon in AppIcon::ALL {
+            let icons = icon_pixmaps(icon);
             assert_eq!(icons.len(), 2);
             for i in &icons {
                 assert_eq!(i.data.len(), (i.width * i.height * 4) as usize);

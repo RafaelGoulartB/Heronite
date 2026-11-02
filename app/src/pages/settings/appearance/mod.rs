@@ -518,6 +518,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     );
     let profiles = profiles::profiles_group(d, cx);
     let colour = look::colour_group(d, cx);
+    let app_icon = look::icon_group(d, cx);
     let reading = look::reading_group(d, cx);
     let layout = look::layout_group(d, f32::from(window.viewport_size().width), cx);
     let enabled = d.appearance.enabled;
@@ -545,6 +546,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             tr!("Back to the Dark theme, glass panels and the Ice accent. Your custom theme's colours are kept.").into(),
             reset_theme,
         ))
+        .child(caption(tr!("Icon")))
+        .child(app_icon)
         .child(caption(tr!("Behind the Collection")))
         .when(enabled, |d| d.child(preview).child(div().h(px(10.))))
         .child(background)
@@ -645,6 +648,7 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("theme", tr!("Theme"), console_choice(&scheme::theme_items(), a.theme)).desc(tr!("Console mode stays dark")),
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
         Row::toggle("high-contrast", tr!("High contrast"), a.high_contrast),
+        choice("app-icon", tr!("App icon"), console_choice(&look::icon_items(), a.app_icon)),
         Row::header(tr!("Reading")),
         choice("font", tr!("Font"), console_choice(&look::font_items(), a.font)),
         choice("density", tr!("Density"), console_choice(&look::density_items(), a.density)),
@@ -710,6 +714,11 @@ fn console_apply_look(
                     a.accent = v;
                     a.accent_own = None;
                 })
+            }
+        }
+        ("app-icon", i, _) => {
+            if let Some(v) = pick(&look::icon_items(), i) {
+                look::set_app_icon(d, v, cx)
             }
         }
         ("font", i, _) => {

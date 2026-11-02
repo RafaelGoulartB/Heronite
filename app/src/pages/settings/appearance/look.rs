@@ -1,14 +1,16 @@
-//! Settings → Appearance: colour, reading, the cover options, the picture
-//! behind the Collection, motion and layout. All of it lives in
+//! Settings → Appearance: colour, the app's icon, reading, the cover options,
+//! the picture behind the Collection, motion and layout. All of it lives in
 //! `appearance.json` and applies at once.
+
+use std::sync::{Arc, OnceLock};
 
 use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView, Theme,
+    Accent, AppIcon, Appearance, BackgroundSource, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView, Theme,
 };
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trc};
 
 use super::scheme::colour_dot as dot;
 use super::{apply_interface, slider_of, Field, SettingsPage};
@@ -50,6 +52,10 @@ pub(super) fn accent_label(a: Accent) -> &'static str {
         Accent::Game => tr!("From the game"),
         Accent::Desktop => tr!("From the desktop"),
     }
+}
+
+pub(super) fn icon_items() -> [(AppIcon, &'static str); 3] {
+    [(AppIcon::Graphite, tr!("Graphite")), (AppIcon::Light, trc!("app icon", "Light")), (AppIcon::Extruded, tr!("Raised"))]
 }
 
 pub(super) fn font_items() -> [(FontChoice, &'static str); 3] {
@@ -219,6 +225,60 @@ pub(super) fn new_accent_picker(window: &mut Window, cx: &mut Context<SettingsPa
     })
     .detach();
     picker
+}
+
+/// Picks the app's icon: saved with the look, then shown by the tray and
+/// the window (`system::set_app_icon`).
+pub(super) fn set_app_icon(d: &mut SettingsPage, icon: AppIcon, cx: &mut Context<SettingsPage>) {
+    set_look(d, cx, |a| a.app_icon = icon);
+    crate::system::set_app_icon(cx, icon);
+}
+
+/// The picture of `icon`, decoded once for every frame that draws it.
+fn icon_picture(icon: AppIcon) -> Arc<gpui_kit::Image> {
+    static PICTURES: OnceLock<Vec<Arc<gpui_kit::Image>>> = OnceLock::new();
+    let all = PICTURES.get_or_init(|| {
+        AppIcon::ALL
+            .iter()
+            .map(|&i| Arc::new(gpui_kit::Image::from_bytes(ImageFormat::Png, crate::system::app_icon::png(i).to_vec())))
+            .collect()
+    });
+    all[AppIcon::ALL.iter().position(|&i| i == icon).unwrap_or(0)].clone()
+}
+
+/// The app's icon: its three pictures, the picked one ringed in the accent.
+pub(super) fn icon_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
+    let current = d.appearance.ui.app_icon;
+    let mut pictures = div().flex().flex_wrap().justify_end().gap(px(6.));
+    for (icon, label) in icon_items() {
+        let on = icon == current;
+        pictures = pictures.child(
+            div()
+                .id(SharedString::from(format!("app-icon-{}", icon.as_str())))
+                .flex()
+                .flex_col()
+                .items_center()
+                .gap(px(4.))
+                .w(px(84.))
+                .pt(px(8.))
+                .pb(px(6.))
+                .rounded(px(theme::R_TILE))
+                .border_2()
+                .border_color(if on { theme::accent().into() } else { gpui_kit::transparent_black() })
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::ink_a(0.06)))
+                .child(img(icon_picture(icon)).size(px(56.)))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .text_color(if on { theme::text_bright() } else { theme::text_muted().into() })
+                        .when(on, |el| el.font_weight(theme::W_BOLD))
+                        .child(label),
+                )
+                .on_click(cx.listener(move |d, _, _, cx| set_app_icon(d, icon, cx))),
+        );
+    }
+    card([row(tr!("App icon"), Some(tr!("In the taskbar or the dock, the tray and the window.")), pictures).into_any_element()])
 }
 
 /// Font, density and animations.

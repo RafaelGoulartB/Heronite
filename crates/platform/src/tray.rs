@@ -565,7 +565,7 @@ fn icon_size() -> u32 {
 
 /// The picture for `size`: that size, else the next larger one (shrinking
 /// looks better than growing), else the largest.
-fn pick(icons: &[Icon], size: u32) -> Option<&Icon> {
+pub(crate) fn pick(icons: &[Icon], size: u32) -> Option<&Icon> {
     icons.iter().filter(|i| i.width >= size).min_by_key(|i| i.width).or_else(|| icons.iter().max_by_key(|i| i.width))
 }
 
@@ -587,7 +587,7 @@ fn icon_bits(icon: &Icon) -> (Vec<u8>, Vec<u8>) {
     (mask, color)
 }
 
-fn create_icon(icon: &Icon) -> HICON {
+pub(crate) fn create_icon(icon: &Icon) -> HICON {
     let (mask, color) = icon_bits(icon);
     // SAFETY: `mask` and `color` hold the 1-bit and 32-bit bitmaps of a
     // `width × height` icon.
@@ -604,7 +604,7 @@ fn make_icon(icons: &[Icon]) -> HICON {
     hicon
 }
 
-fn destroy_icon(hicon: HICON) {
+pub(crate) fn destroy_icon(hicon: HICON) {
     if !hicon.is_null() {
         // SAFETY: an icon we made, destroyed once.
         unsafe { DestroyIcon(hicon) };
