@@ -1,8 +1,9 @@
-//! Settings → Cloud, "Restore from the cloud": a new or formatted PC
-//! connects and brings everything back. What the account holds is listed
-//! when asked; one PC is picked (the one of the newest backup first); then
-//! its Heronite backup, its game saves (into Ludusavi's backup folder only)
-//! and the screenshots come back one by one, or all at once.
+//! Settings → Cloud, "Restore from the cloud" (folded at the end of the
+//! page): a new or formatted PC connects and brings everything back. What
+//! the account holds is listed when asked; one PC is picked (the one of the
+//! newest backup first); then its Heronite backup, its game saves (into
+//! Ludusavi's backup folder only) and the screenshots come back one by one,
+//! or all at once.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -15,7 +16,7 @@ use crate::pages::settings::SettingsPage;
 use crate::services::sync::{Bring, Step};
 use crate::services::widgets::progress_bar;
 use crate::theme;
-use crate::ui::controls::{action_button, button_sm, card_box, row, ButtonKind};
+use crate::ui::controls::{action_button, button_sm, row, ButtonKind};
 use crate::ui::fields::{meta_text, select_field};
 
 /// When a backup was made, in words.
@@ -203,11 +204,11 @@ pub(super) fn render(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Di
     };
     let head = row(
         tr!("What is in the cloud"),
-        Some(tr!("A new or formatted PC: connect, look, and bring everything back.")),
+        None,
         button_sm("cloud-look", ButtonKind::Glass, label)
             .when(!listing, |b| b.on_click(cx.listener(|_, _, _, cx| with_service(cx, |s, cx| s.list_cloud(cx))))),
     );
-    let mut card = card_box().py(px(10.)).child(head);
+    let mut card = div().flex().flex_col().child(head);
     match listed {
         Some(Err(e)) => card = card.child(div().pb(px(8.)).text_size(px(12.5)).text_color(theme::danger_text()).child(e)),
         Some(Ok(listed)) => card = card.child(separator()).child(listed_body(d, &listed, bringing.is_some(), cx)),

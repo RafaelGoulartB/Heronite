@@ -1,7 +1,8 @@
 //! Settings → Cloud: what this PC sends to the cloud, measured on this PC
-//! (`heronite_sync::usage`; the account is never asked). A bar of each kind
-//! (faded when it is off), the total of what is on, how fast the screenshots
-//! grow, and, on demand, a treemap of what takes the space by game.
+//! (`heronite_sync::usage`; the account is never asked), at the top of the
+//! card of what goes. A bar of each kind (faded when it is off), the total of
+//! what is on, how fast the screenshots grow, and, on demand, a treemap of
+//! what takes the space by game.
 
 use std::path::Path;
 
@@ -17,7 +18,7 @@ use heronite_sync::SyncPrefs;
 use crate::pages::settings::storage::treemap::squarify;
 use crate::pages::settings::SettingsPage;
 use crate::theme;
-use crate::ui::controls::{button_sm, card_box, ButtonKind};
+use crate::ui::controls::{button_sm, ButtonKind};
 use crate::ui::fields::meta_text;
 
 /// Tiles of the treemap; the rest share one.
@@ -34,7 +35,7 @@ pub(super) fn kind_label(kind: Kind) -> &'static str {
     }
 }
 
-fn kind_color(kind: Kind) -> Hsla {
+pub(super) fn kind_color(kind: Kind) -> Hsla {
     match kind {
         Kind::Library => theme::chart_series(0),
         Kind::Backups => theme::chart_series(2),
@@ -104,54 +105,13 @@ pub(super) fn measure(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     .detach();
 }
 
-fn dot(color: Hsla) -> Div {
-    div().flex_none().size(px(8.)).rounded_full().bg(color)
-}
-
-fn bar(d: &SettingsPage, u: &Usage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
+fn bar(u: &Usage, p: &SyncPrefs) -> Div {
     let whole = Kind::ALL.iter().map(|k| u.total(*k)).sum::<u64>().max(1) as f32;
-    div().flex().w_full().h(px(14.)).rounded(px(7.)).overflow_hidden().bg(theme::chart_empty()).children(
+    div().flex().w_full().h(px(10.)).rounded(px(5.)).overflow_hidden().bg(theme::chart_empty()).children(
         Kind::ALL.into_iter().filter(|k| u.total(*k) > 0).map(|kind| {
-            let on = d.cloud.hover == Some(kind);
-            div()
-                .id(SharedString::from(format!("cloud-seg-{kind:?}")))
-                .h_full()
-                .w(relative(u.total(kind) as f32 / whole))
-                .bg(color(kind, p))
-                .border_r_1()
-                .border_color(theme::black_a(0.4))
-                .when(on, |d| d.opacity(0.75))
-                .on_hover(cx.listener(move |d, over: &bool, _, cx| {
-                    if *over {
-                        d.cloud.hover = Some(kind);
-                    } else if d.cloud.hover == Some(kind) {
-                        d.cloud.hover = None;
-                    }
-                    cx.notify();
-                }))
+            div().h_full().w(relative(u.total(kind) as f32 / whole)).bg(color(kind, p)).border_r_1().border_color(theme::black_a(0.4))
         }),
     )
-}
-
-fn legend(u: &Usage, p: &SyncPrefs) -> Div {
-    let mut legend = div().flex().flex_wrap().gap_x(px(18.)).gap_y(px(6.));
-    for k in Kind::ALL {
-        let bytes = u.total(k);
-        if bytes == 0 {
-            continue;
-        }
-        let size = if is_on(k, p) { human_size(bytes) } else { tr!("{size}, off", size = human_size(bytes)) };
-        legend = legend.child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(7.))
-                .child(dot(color(k, p)))
-                .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(kind_label(k)))
-                .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(size)),
-        );
-    }
-    legend
 }
 
 /// What the kinds that are on take in all, and how the screenshots grow.
@@ -232,30 +192,14 @@ fn map(u: &Usage, p: &SyncPrefs) -> Div {
     area
 }
 
+/// The top of the card of what goes: what is on takes in all and how the
+/// screenshots grow, "Show what takes space" (the treemap) and "Measure
+/// again", and the bar of each kind (the lines below carry its colours).
 pub(super) fn render(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<SettingsPage>) -> Div {
-    // The page draws the heading of this step.
-    let col = div().flex().flex_col();
+    let col = div().flex().flex_col().gap(px(10.)).py(px(12.));
     let Some(u) = d.cloud.usage.clone() else {
         return col.child(meta_text(tr!("Measuring…")));
     };
-    let total: u64 = Kind::ALL.iter().map(|k| u.total(*k)).sum();
-    let right = match d.cloud.hover {
-        Some(kind) => div()
-            .flex()
-            .items_center()
-            .gap(px(7.))
-            .child(dot(color(kind, p)))
-            .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(kind_label(kind)))
-            .child(div().text_size(px(13.)).text_color(theme::text_muted()).child(human_size(u.total(kind)))),
-        None => div().text_size(px(13.)).text_color(theme::text_muted()).child(tr!("{size} on this PC", size = human_size(total))),
-    };
-    let head = div()
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(px(12.))
-        .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Space it takes in the cloud")))
-        .child(right);
     let open = d.cloud.map_open;
     let toggle = button_sm("cloud-map", ButtonKind::Ghost, if open { tr!("Hide what takes space") } else { tr!("Show what takes space") })
         .on_click(cx.listener(move |d, _, _, cx| {
@@ -264,15 +208,12 @@ pub(super) fn render(d: &mut SettingsPage, p: &SyncPrefs, cx: &mut Context<Setti
         }));
     let again = button_sm("cloud-measure", ButtonKind::Ghost, if d.cloud.measuring { tr!("Measuring…") } else { tr!("Measure again") })
         .when(!d.cloud.measuring, |b| b.on_click(cx.listener(|d, _, _, cx| measure(d, cx))));
-    col.child(
-        card_box()
-            .py(px(14.))
-            .gap(px(10.))
-            .child(head)
-            .child(bar(d, &u, p, cx))
-            .child(legend(&u, p))
-            .child(div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(summary(&u, p)))
-            .child(div().flex().gap(px(8.)).child(toggle).child(again))
-            .when(open, |c| c.child(map(&u, p))),
-    )
+    let head = div()
+        .flex()
+        .items_center()
+        .justify_between()
+        .gap(px(12.))
+        .child(div().flex_1().min_w_0().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(summary(&u, p)))
+        .child(div().flex().flex_none().gap(px(4.)).child(toggle).child(again));
+    col.child(head).child(bar(&u, p)).when(open, |c| c.child(map(&u, p)))
 }
