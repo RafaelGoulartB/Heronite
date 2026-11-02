@@ -7,18 +7,19 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_achievements::accounts::RetroAccount;
-use heronite_achievements::emulators::{State as EmuState, Status};
+use heronite_achievements::emulators::{Emulator, State as EmuState, Status};
 use heronite_achievements::sources::retro::{api, connect};
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trn};
 use heronite_metadata::{Endpoints, Http};
 
 use super::super::SettingsPage;
 use super::{masked, set_prefs};
-use crate::pages::status_pill;
+use crate::icons::Icon;
 use crate::services::achievements as service;
 use crate::theme;
-use crate::ui::controls::{button_sm, card, row, toggle_row, toggle_row_info, with_sub_rows, ButtonKind};
+use crate::ui::controls::{button_sm, card, icon_button_sm, row, sub_rows, toggle_row, toggle_row_info, ButtonKind};
 use crate::ui::fields::{input_box, labeled, meta_text, new_input, on_commit};
+use crate::ui::icon;
 
 pub struct State {
     username: Entity<InputState>,
@@ -128,25 +129,117 @@ fn emulator_text(state: &EmuState) -> (String, Option<Rgba>) {
     match state {
         EmuState::SignedIn => (tr!("Signed in").into(), Some(theme::status_color("playing"))),
         EmuState::SignedOut => (tr!("Not signed in").into(), None),
-        EmuState::NotSetUp => (tr!("Not found: open it once so it creates its settings").into(), None),
+        EmuState::NotSetUp => (tr!("Open it once to set it up").into(), None),
         EmuState::Running => (tr!("Open now: it is signed in once it closes").into(), Some(theme::status_color("on-hold"))),
         EmuState::Failed(e) => (tr!("Could not sign it in: {error}", error = e.as_str()), Some(theme::status_color("abandoned"))),
     }
 }
 
-fn emulator_rows(statuses: &[Status]) -> Vec<AnyElement> {
-    statuses
-        .iter()
-        .map(|s| {
-            let (text, colour) = emulator_text(&s.state);
-            let detail = s.config.as_ref().map(|p| p.display().to_string());
-            let status: AnyElement = match colour {
-                Some(c) => status_pill(text, c).into_any_element(),
-                None => div().text_size(px(12.)).text_color(theme::ink_a(0.55)).child(text).into_any_element(),
-            };
-            row(s.emulator.name(), detail.as_deref(), status).into_any_element()
-        })
-        .collect()
+/// One emulator's state across its settings files (DuckStation can have two):
+/// the one that needs a look first.
+fn merged_state(list: &[&Status]) -> EmuState {
+    let rank = |s: &EmuState| match s {
+        EmuState::Failed(_) => 0,
+        EmuState::Running => 1,
+        EmuState::SignedOut => 2,
+        EmuState::SignedIn => 3,
+        EmuState::NotSetUp => 4,
+    };
+    list.iter().map(|s| &s.state).min_by_key(|s| rank(s)).cloned().unwrap_or(EmuState::NotSetUp)
+}
+
+/// The emulators as a grid of tiles, one per emulator (its settings files in
+/// the tooltip), under how many are signed in and a button that looks again.
+fn emulator_grid(statuses: &[Status], cx: &mut Context<SettingsPage>) -> Div {
+    let mut emulators: Vec<(Emulator, Vec<&Status>)> = Vec::new();
+    for s in statuses {
+        match emulators.iter_mut().find(|(e, _)| *e == s.emulator) {
+            Some((_, list)) => list.push(s),
+            None => emulators.push((s.emulator, vec![s])),
+        }
+    }
+    let states: Vec<EmuState> = emulators.iter().map(|(_, list)| merged_state(list)).collect();
+    let signed = states.iter().filter(|s| matches!(s, EmuState::SignedIn)).count();
+    let ok = theme::status_color("playing");
+    let ok_a = |a: f32| Hsla { a, ..ok.into() };
+    let mut meter = div().flex().gap(px(3.));
+    for i in 0..states.len() {
+        meter = meter.child(div().w(px(18.)).h(px(5.)).rounded_full().bg(if i < signed { ok.into() } else { theme::ink_a(0.12) }));
+    }
+    let head = div()
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .child(div().text_size(px(13.5)).text_color(theme::text_primary()).child(tr!("Emulators")))
+        .child(meta_text(tr!("{signed} of {total} signed in", signed = signed, total = states.len())))
+        .child(meter)
+        .child(div().flex_1())
+        .child(icon_button_sm("ach-emu-check", ButtonKind::Ghost, Icon::Refresh, tr!("Check again"), true, {
+            let svc = service::get(cx);
+            move |_, _, cx| svc.update(cx, |s, cx| s.check_emulators(cx))
+        }));
+    // Signed in first, then the rest in the usual order.
+    let mut order: Vec<usize> = (0..emulators.len()).collect();
+    order.sort_by_key(|&i| !matches!(states[i], EmuState::SignedIn));
+    let mut grid = div().grid().grid_cols(3).gap(px(8.));
+    for i in order {
+        let ((emulator, list), state) = (&emulators[i], &states[i]);
+        let signed_in = matches!(state, EmuState::SignedIn);
+        let (mut text, colour) = emulator_text(state);
+        if signed_in && list.len() > 1 {
+            text = trn!(list.len(), "Signed in · {n} config", "Signed in · {n} configs");
+        }
+        let status_icon = match state {
+            EmuState::SignedIn => Some(icon(Icon::Check, px(13.), ok).into_any_element()),
+            EmuState::NotSetUp => Some(
+                div()
+                    .flex_none()
+                    .size(px(11.))
+                    .rounded_full()
+                    .border_1()
+                    .border_dashed()
+                    .border_color(theme::text_dim())
+                    .into_any_element(),
+            ),
+            _ => None,
+        };
+        let paths: Vec<String> = list.iter().filter_map(|s| s.config.as_ref().map(|p| p.display().to_string())).collect();
+        let tile = div()
+            .id(ElementId::NamedInteger("ach-emu".into(), i as u64))
+            .flex()
+            .flex_col()
+            .gap(px(3.))
+            .min_w_0()
+            .px(px(12.))
+            .py(px(10.))
+            .rounded(px(11.))
+            .border_1()
+            .border_color(if signed_in { ok_a(0.28) } else { theme::ink_a(0.08) })
+            .bg(if signed_in { ok_a(0.05) } else { theme::ink_a(0.02) })
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(8.))
+                    .h(px(24.))
+                    .child(div().text_size(px(13.5)).text_color(theme::text_primary()).child(emulator.name())),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.))
+                    .text_size(px(12.))
+                    .line_height(px(16.))
+                    .text_color(colour.map_or(theme::text_dim(), Into::into))
+                    .children(status_icon)
+                    .child(text),
+            )
+            .when(!paths.is_empty(), |t| t.tooltip(crate::ui::tooltip(paths.join("\n"))));
+        grid = grid.child(tile);
+    }
+    div().flex().flex_col().gap(px(10.)).py(px(10.)).child(head).child(grid)
 }
 
 pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
@@ -190,18 +283,28 @@ pub fn card_view(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     )
     .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.emulators = !p.emulators)))
     .into_any_element();
-    let shown_statuses = if prefs.emulators && signed_in { emulator_rows(&statuses) } else { Vec::new() };
-    rows.push(with_sub_rows(emulators, shown_statuses));
-    rows.push(
-        toggle_row(
-            "ach-hardcore",
-            tr!("Hardcore mode in the emulators"),
-            Some(tr!("No save states, rewind or cheats; earns hardcore points.")),
-            prefs.hardcore,
-        )
-        .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.hardcore = !p.hardcore)))
-        .into_any_element(),
+    // Hardcore only reaches the emulators: it sits under them, greyed out and
+    // inert while they are off.
+    let hardcore = toggle_row(
+        "ach-hardcore",
+        tr!("Hardcore mode in the emulators"),
+        Some(tr!("No save states, rewind or cheats; earns hardcore points.")),
+        prefs.hardcore,
+    )
+    .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.hardcore = !p.hardcore)))
+    .into_any_element();
+    let mut subs = Vec::new();
+    if prefs.emulators && signed_in && !statuses.is_empty() {
+        subs.push(emulator_grid(&statuses, cx).into_any_element());
+    }
+    subs.push(
+        div()
+            .relative()
+            .child(hardcore)
+            .when(!prefs.emulators, |d| d.opacity(0.42).child(div().absolute().inset_0().occlude()))
+            .into_any_element(),
     );
+    rows.push(div().flex().flex_col().child(emulators).child(sub_rows(subs)).into_any_element());
     rows.push(
         div()
             .py(px(11.))

@@ -31,10 +31,10 @@
   "No achievements match.": "Nenhuma conquista corresponde.",
   "No achievements to show yet.": "Nenhuma conquista para mostrar ainda.",
   "No save states, rewind or cheats; earns hardcore points.": "Sem save states, rewind ou trapaças; vale pontos hardcore.",
-  "Not found: open it once so it creates its settings": "Não encontrado: abra-o uma vez para ele criar as configurações",
   "Not updated yet": "Ainda não atualizado",
   "Notify new achievements": "Avisar novas conquistas",
   "One achievement": "Uma conquista",
+  "Open it once to set it up": "Abra-o uma vez para configurá-lo",
   "Open now: it is signed in once it closes": "Aberto agora: será conectado quando fechar",
   "Password": "Senha",
   "Pick the game…": "Escolher o jogo…",
@@ -61,6 +61,8 @@
   "Sign in with your password to also connect the emulators.": "Entre com sua senha para conectar também os emuladores.",
   "Sign out": "Sair",
   "Sign the emulators in too": "Conectar os emuladores também",
+  "Signed in · {n} config": "Conectado · {n} configuração",
+  "Signed in · {n} configs": "Conectado · {n} configurações",
   "Signing in…": "Entrando…",
   "Speed Demon": "Demônio da Velocidade",
   "Steam Web API key (optional)": "Chave da Steam Web API (opcional)",
@@ -98,5 +100,6 @@
   "{n} new achievement in {title}": "{n} nova conquista em {title}",
   "{n} new achievements in {title}": "{n} novas conquistas em {title}",
   "{n} points": "{n} pontos",
-  "{n} rare": "{n} raras"
+  "{n} rare": "{n} raras",
+  "{signed} of {total} signed in": "{signed} de {total} conectados"
 }

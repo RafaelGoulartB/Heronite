@@ -31,10 +31,10 @@
   "No achievements match.": "Keine passenden Erfolge.",
   "No achievements to show yet.": "Noch keine Erfolge zum Anzeigen.",
   "No save states, rewind or cheats; earns hardcore points.": "Keine Save States, kein Zurückspulen und keine Cheats; bringt Hardcore-Punkte.",
-  "Not found: open it once so it creates its settings": "Nicht gefunden: Öffne es einmal, damit es seine Einstellungen anlegt",
   "Not updated yet": "Noch nicht aktualisiert",
   "Notify new achievements": "Bei neuen Erfolgen benachrichtigen",
   "One achievement": "Ein Erfolg",
+  "Open it once to set it up": "Einmal öffnen, um es einzurichten",
   "Open now: it is signed in once it closes": "Gerade geöffnet: Die Anmeldung erfolgt, sobald es geschlossen wird",
   "Password": "Passwort",
   "Pick the game…": "Spiel auswählen…",
@@ -61,6 +61,8 @@
   "Sign in with your password to also connect the emulators.": "Melde dich mit deinem Passwort an, um auch die Emulatoren zu verbinden.",
   "Sign out": "Abmelden",
   "Sign the emulators in too": "Emulatoren ebenfalls anmelden",
+  "Signed in · {n} config": "Angemeldet · {n} Konfiguration",
+  "Signed in · {n} configs": "Angemeldet · {n} Konfigurationen",
   "Signing in…": "Anmeldung läuft…",
   "Speed Demon": "Speed Demon",
   "Steam Web API key (optional)": "Steam-Web-API-Schlüssel (optional)",
@@ -98,5 +100,6 @@
   "{n} new achievement in {title}": "{n} neuer Erfolg in {title}",
   "{n} new achievements in {title}": "{n} neue Erfolge in {title}",
   "{n} points": "{n} Punkte",
-  "{n} rare": "{n} selten"
+  "{n} rare": "{n} selten",
+  "{signed} of {total} signed in": "{signed} von {total} angemeldet"
 }
