@@ -8,10 +8,14 @@ name: Release
 #   straight to main);
 # - pushing a `vX.Y.Z` tag by hand (Cargo.toml must already have X.Y.Z).
 # Then, from the tag and side by side, the AppImage and the .deb / .rpm / Arch
-# packages are built and checked on clean containers (job appimage), and the
-# Windows installer and portable zip are built and checked (job windows).
-# The publish job gathers both, signs every file (secret MINISIGN_SECRET_KEY,
-# see scripts/sign-release.sh) and publishes them as one GitHub release.
+# packages are built and checked on clean containers (job appimage), the
+# Flatpak bundle is built (job flatpak), and the Windows installer and
+# portable zip are built and checked (job windows).
+# The publish job gathers them, signs them (secret MINISIGN_SECRET_KEY, see
+# scripts/sign-release.sh) and publishes them as one GitHub release. The
+# Flatpak bundle is not published until Heronite is on Flathub (a bundle
+# gets no updates): it stays an artifact of the run, and a release whose
+# Flatpak does not build fails.
 on:
   pull_request_target:
     types: [closed]
@@ -145,6 +149,30 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  flatpak:
+    name: Flatpak bundle (x86_64)
+    needs: version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+      - name: flatpak-builder
+        run: scripts/ci-flatpak-deps.sh
+      # The downloads (crates, the tools' sources) and the tools' builds.
+      - uses: actions/cache@v4
+        with:
+          path: target/flatpak/state
+          key: flatpak-${{ hashFiles('packaging/flatpak/app.heronite.Heronite.yml', 'Cargo.lock') }}
+          restore-keys: flatpak-
+      - name: Build
+        run: scripts/flatpak.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Heronite-flatpak
+          path: dist/Heronite-x86_64.flatpak
+          if-no-files-found: error
+
   windows:
     name: Windows installer and portable zip (x86_64)
     needs: version
@@ -217,7 +245,7 @@ jobs:
 
   publish:
     name: Sign and publish
-    needs: [version, appimage, windows]
+    needs: [version, appimage, flatpak, windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -241,8 +269,11 @@ jobs:
           echo "9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73  $RUNNER_TEMP/minisign.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/minisign.tar.gz" -C "$RUNNER_TEMP" minisign-linux/x86_64/minisign
           sudo install -m755 "$RUNNER_TEMP/minisign-linux/x86_64/minisign" /usr/local/bin/minisign
-      # The in-app updater only installs files signed with the key whose
-      # public half is built into the app (crates/update/src/lib.rs).
+      # The in-app updater only installs files listed in SHA256SUMS, signed
+      # with the key whose public half is built into the app
+      # (crates/update/src/lib.rs); until the switch, every file is also
+      # signed on its own for the versions up to 1.0
+      # (scripts/sign-release.sh, PER_FILE_SIGNATURES).
       - name: Sign
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
@@ -281,7 +312,7 @@ jobs:
             truncate -s -1 notes.md
             printf ' They are not code-signed yet, so Windows SmartScreen may say "Windows protected your PC": choose **More info**, then **Run anyway**.\n' >> notes.md
           fi
-          printf '\nThe `.minisig` and `.zsync` files are for the updaters; you do not need them.\n\n' >> notes.md
+          printf '\n`SHA256SUMS` lists the SHA-256 of every file (signed in `SHA256SUMS.minisig`). The `.minisig` and `.zsync` files are for the updaters; you do not need them.\n\n' >> notes.md
           if [[ $(git tag --list 'v*' | wc -l) -le 1 ]]; then
             printf 'First public release of Heronite. See the [README](https://github.com/RafaelGoulartB/Heronite#readme) for what it can do.\n' >> notes.md
           else

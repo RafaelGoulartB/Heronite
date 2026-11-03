@@ -12,9 +12,9 @@
 //!   program files in place (the old ones kept as `.old` until the next
 //!   start), restarts.
 //!
-//! Anything else (built from source, a distribution's own package, a
-//! Windows build folder) is updated by whatever installed it, so it only
-//! checks when asked.
+//! Anything else (built from source, a distribution's own package, the
+//! Flatpak, a Windows build folder) is updated by whatever installed it, so
+//! it only checks when asked.
 //!
 //! Checks run [`FIRST_CHECK`] after the start (skipped when the last one is
 //! younger than [`RECHECK_AFTER`]) and every [`CHECK_EVERY`] while "Check for
@@ -126,6 +126,9 @@ impl Method {
 
     #[cfg(not(windows))]
     fn detect() -> Result<Self, Unsupported> {
+        if heronite_platform::flatpak::active() {
+            return Err(Unsupported::Flatpak);
+        }
         // Not `$APPIMAGE` as is: it may be another AppImage's, inherited.
         match Target::detect(crate::system::own_exe::own_appimage().map(Into::into)) {
             Ok(t) => Ok(Method::AppImage(t)),
@@ -284,6 +287,7 @@ impl Updater {
                 .detach();
             }
             Err(Unsupported::NotAppImage) => {}
+            Err(Unsupported::Flatpak) => log::info!("running as a Flatpak: updates go through Flatpak"),
             Err(why) => log::info!("updates cannot be installed in place: {why}"),
         }
         let mut this = Self {
@@ -384,11 +388,9 @@ impl Updater {
         let Some(release) = &self.release else { return false };
         match &self.method {
             Ok(Method::AppImage(_)) => release.installable(),
-            Ok(Method::Package { kind, .. }) => release.package_signature(*kind).is_some(),
+            Ok(Method::Package { kind, .. }) => release.package_proof(*kind).is_some(),
             #[cfg(windows)]
-            Ok(Method::Installer(_) | Method::Portable(_)) => {
-                self.windows_asset().is_some_and(|k| release.windows_asset(k).is_some() && release.windows_signature(k).is_some())
-            }
+            Ok(Method::Installer(_) | Method::Portable(_)) => self.windows_asset().is_some_and(|k| release.windows_proof(k).is_some()),
             Err(_) => false,
         }
     }
@@ -607,12 +609,13 @@ impl Updater {
                     (heronite_update::portable::install(&release, &copy, key, &cancel, &mut progress), None)
                 }
                 Method::Package { kind, .. } => {
-                    let (Some(asset), Some(sig)) = (release.package(kind), release.package_signature(kind)) else {
+                    let (Some(asset), Some(proof)) = (release.package(kind), release.package_proof(kind)) else {
                         return (Err(InstallError::Failed(tr!("This release has no signed package for this system").into())), None);
                     };
                     log::info!("downloading {} into {}", asset.name, dir.display());
                     let file =
-                        match heronite_update::install::download_signed(asset, sig, &release.version, &dir, key, &cancel, &mut progress) {
+                        match heronite_update::install::download_signed(asset, &proof, &release.version, &dir, key, &cancel, &mut progress)
+                        {
                             Ok(file) => file,
                             Err(e) => return (Err(e), None),
                         };
@@ -827,6 +830,7 @@ mod tests {
             signature: None,
             packages: Vec::new(),
             windows: Vec::new(),
+            checksums: None,
         }
     }
 

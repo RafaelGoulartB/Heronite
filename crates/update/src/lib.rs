@@ -1,10 +1,14 @@
 //! Self-update of the AppImage and of the Windows copies.
 //!
 //! The release workflow publishes, for every tag, `Heronite-<arch>.AppImage`
-//! (and on Windows `Heronite-Setup-<arch>.exe` and
-//! `Heronite-Portable-<arch>.zip`) and `<file>.minisig`, a minisign signature made with the key whose public
-//! half is [`PUBLIC_KEY`]. Its trusted comment carries `version:<X.Y.Z>`, so
-//! an older signed build cannot be served as a newer release.
+//! (and the system packages, `Heronite-Setup-<arch>.exe` and
+//! `Heronite-Portable-<arch>.zip`) with `SHA256SUMS`, every file's SHA-256,
+//! and `SHA256SUMS.minisig`, its minisign signature made with the key whose
+//! public half is [`PUBLIC_KEY`]. Releases up to 1.0 signed every file
+//! instead (`<file>.minisig`); those signatures are still published for a
+//! while, for the versions that only read them, and are the fallback here.
+//! The trusted comment of a signature carries `version:<X.Y.Z>`, so an older
+//! signed build cannot be served as a newer release.
 //!
 //! - [`release`]: asks GitHub for the latest release (conditional request with
 //!   the last ETag) and picks the assets for this architecture.
@@ -40,7 +44,7 @@ pub use package::Package;
 #[cfg(windows)]
 pub use portable::Portable;
 pub use prefs::Prefs;
-pub use release::{Asset, Fetched, Release, WindowsAsset};
+pub use release::{Asset, Checksums, Fetched, Proof, Release, WindowsAsset};
 #[cfg(windows)]
 pub use setup::Installer;
 pub use version::Version;
