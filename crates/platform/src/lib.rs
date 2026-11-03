@@ -13,6 +13,8 @@
 //! - [`shell`]: opening a file, folder or URL with the desktop's handler.
 //! - [`features`]: which parts of the app this system has, for the UI to
 //!   show or hide.
+//! - [`packages`]: the Microsoft Store packages of this user (none on other
+//!   systems).
 //! - `registry` (Windows): values of the registry.
 //! - `tray` (Windows): an icon in the taskbar's notification area, with a
 //!   menu.
@@ -29,6 +31,7 @@ pub mod dirs;
 pub mod disks;
 pub mod features;
 pub mod fs;
+pub mod packages;
 pub mod process;
 pub mod shell;
 

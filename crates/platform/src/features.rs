@@ -1,7 +1,8 @@
 //! The parts of the app each system has.
 //!
-//! Linux has everything. On Windows the port is under way
-//! (`docs/WINDOWS-MIGRATION.md`): a part turns on here once it works there.
+//! Linux has everything but Windows' own store (Xbox). On Windows the port
+//! is under way (`docs/WINDOWS-MIGRATION.md`): a part turns on here once it
+//! works there.
 //! The UI asks [`supported`] before it shows a page, a menu entry or a
 //! setting, and services that would only fail do not start.
 //!
@@ -68,10 +69,13 @@ pub enum Feature {
     DesktopShortcuts,
     /// Taking screenshots of a running game.
     Capture,
+    /// The Microsoft Store and PC Game Pass games the Xbox app installs
+    /// (Windows' own packages): its page and the games it brings in.
+    XboxStore,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 20] = [
+    pub const ALL: [Feature; 21] = [
         Feature::Wine,
         Feature::EpicStore,
         Feature::GogStore,
@@ -92,6 +96,7 @@ impl Feature {
         Feature::Autostart,
         Feature::DesktopShortcuts,
         Feature::Capture,
+        Feature::XboxStore,
     ];
 
     /// Its name in `HERONITE_FEATURES`.
@@ -117,6 +122,7 @@ impl Feature {
             Feature::Autostart => "autostart",
             Feature::DesktopShortcuts => "desktop-shortcuts",
             Feature::Capture => "capture",
+            Feature::XboxStore => "xbox",
         }
     }
 }
@@ -141,7 +147,8 @@ pub fn any_store() -> bool {
 /// What this system has, without `HERONITE_FEATURES`.
 const fn built_in(feature: Feature) -> bool {
     if cfg!(target_os = "linux") {
-        return true;
+        // Packages of the Microsoft Store exist on Windows only.
+        return !matches!(feature, Feature::XboxStore);
     }
     match feature {
         // Ported to Windows.
@@ -156,7 +163,8 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::GogStore
         | Feature::AmazonStore
         | Feature::Storage
-        | Feature::LaunchExtras => true,
+        | Feature::LaunchExtras
+        | Feature::XboxStore => true,
         Feature::Wine
         | Feature::StoreClients
         | Feature::LauncherImports
@@ -227,9 +235,13 @@ mod tests {
     }
 
     #[test]
-    fn linux_has_everything() {
+    fn linux_has_everything_but_windows_own_store() {
         if cfg!(target_os = "linux") {
-            assert!(Feature::ALL.into_iter().all(built_in));
+            assert!(Feature::ALL.into_iter().filter(|f| *f != Feature::XboxStore).all(built_in));
+            assert!(!built_in(Feature::XboxStore));
+        }
+        if cfg!(windows) {
+            assert!(built_in(Feature::XboxStore));
         }
     }
 }
