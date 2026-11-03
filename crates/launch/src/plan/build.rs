@@ -103,6 +103,11 @@ fn build_sideload(
         return launcher_plan(probe, game, m);
     }
 
+    // Microsoft Store and Game Pass games: Windows starts their package.
+    if let Some(m) = meta.filter(|m| m.launch_kind == heronite_data::xbox::LAUNCH_KIND) {
+        return crate::xbox::build(probe, game, m);
+    }
+
     // 2. Local executables (tryLaunchNativeLocalGame, else Heroic's launchGame).
     if is_executable_game(game, meta) {
         if is_browser_game(game) {
@@ -143,7 +148,7 @@ fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> La
     LaunchPlan::Native(ProcessPlan {
         command: Command { program, args, env: Default::default(), cwd: folder.clone() },
         // Nothing to find the game by: the session ends with the command.
-        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder, client: None }),
+        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder, ..Default::default() }),
         ..Default::default()
     })
 }

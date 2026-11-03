@@ -93,12 +93,15 @@ pub fn check_command(command: &str, folder: &str, probe: &dyn Probe) -> Result<O
     Err(heronite_i18n::tr!("{program} was not found: it is not installed", program))
 }
 
-/// Local executables only: emulators and Steam URIs launch their own way.
+/// Local executables only: emulators, Steam URIs and packages launch their own way.
 pub fn is_executable_game(game: &GameInfo, meta: Option<&LocalGameMeta>) -> bool {
     if game.runner != "sideload" {
         return false;
     }
-    !matches!(meta.map(|m| m.launch_kind.as_str()), Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND))
+    !matches!(
+        meta.map(|m| m.launch_kind.as_str()),
+        Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND | heronite_data::xbox::LAUNCH_KIND)
+    )
 }
 
 /// `runAs` from the Collection, else detection, else the stored platform.

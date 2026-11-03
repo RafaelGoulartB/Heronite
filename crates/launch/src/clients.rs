@@ -79,6 +79,7 @@ pub(crate) fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, meta:
             main: client.main_program().to_string(),
             join,
         }),
+        ..Default::default()
     });
     LaunchPlan::Wine { process, runtime, prefix }
 }

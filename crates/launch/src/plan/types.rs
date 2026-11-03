@@ -102,6 +102,9 @@ pub struct Handoff {
     /// A store client starts the game: the session follows the game, not the
     /// command.
     pub client: Option<ClientHandoff>,
+    /// The command's exit code says nothing: `explorer.exe` returns 1 after
+    /// passing the request on. Any exit counts as handed on.
+    pub exit_ignored: bool,
 }
 
 /// A Windows store client (Battle.net, the EA app...) that starts the game

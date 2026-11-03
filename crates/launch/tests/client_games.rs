@@ -71,6 +71,7 @@ fn client_plan() -> ProcessPlan {
                 main: "battle.net.exe".into(),
                 join: command("/umu", &["join", "Battle.net.exe", "--exec=launch WoW"]),
             }),
+            ..Default::default()
         }),
         ..Default::default()
     }
