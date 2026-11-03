@@ -1,6 +1,7 @@
-//! The store clients under Wine (`heronite_clients`): Battle.net, the EA
-//! app, Ubisoft Connect and the Rockstar Games Launcher. Their status, setup,
-//! opening and closing, and their installed games kept in the Collection.
+//! The store clients (`heronite_clients`): Battle.net, the EA app, Ubisoft
+//! Connect and the Rockstar Games Launcher, under Wine on Linux and as they
+//! are on Windows. Their status, setup, opening and closing, and their
+//! installed games kept in the Collection.
 //!
 //! The service starts with the app (`system/hub/start.rs`) and costs nothing
 //! while no client is set up: ten seconds after the start it looks at every

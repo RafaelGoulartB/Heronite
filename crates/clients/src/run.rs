@@ -339,7 +339,8 @@ mod tests {
     #[test]
     fn on_this_pc_the_games_are_told_by_their_folders() {
         use heronite_launch::procs::WinProgram;
-        let exe = PathBuf::from(r"C:\Program Files (x86)\Battle.net\Battle.net.exe");
+        // Joined, so that its folder is the same on Linux too.
+        let exe = Path::new(r"C:\Program Files (x86)\Battle.net").join("Battle.net.exe");
         let wow = crate::ClientGame {
             id: "wow".into(),
             title: "World of Warcraft".into(),
