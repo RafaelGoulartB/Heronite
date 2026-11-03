@@ -87,11 +87,25 @@ impl<K: ClientKind> ClientPage<K> {
                     .child(bar)
                     .into_any_element(),
             );
+        } else if !st.installed() && heronite_clients::native() {
+            rows.push(paragraph(tr!(
+                "Heronite downloads the official installer of {client} and runs it. Windows may ask you to allow it.",
+                client = client.name()
+            )));
         } else if !st.installed() {
             rows.push(paragraph(tr!(
                 "Heronite downloads the official installer and installs {client} in a Wine prefix of its own, with your default Proton. It takes about 5 minutes.",
                 client = client.name()
             )));
+        }
+        if heronite_clients::native() {
+            // No prefix, Wine settings or other install to use: the client is the PC's.
+            if let Some(folder) = logic::program_folder(st) {
+                let open =
+                    icon_button_sm(self.id("folder"), ButtonKind::Glass, Icon::FolderOpen, tr!("Open folder"), true, act!(cx, "folder"));
+                rows.push(row(tr!("Installed in"), Some(&folder.to_string_lossy()), open).into_any_element());
+            }
+            return self.client_column(st, rows);
         }
         let idle = !st.busy();
         match st.prefix().filter(|_| st.installed()) {
@@ -139,6 +153,11 @@ impl<K: ClientKind> ClientPage<K> {
             ),
             None => {}
         }
+        self.client_column(st, rows)
+    }
+
+    /// The client's card, and the notice under it.
+    fn client_column(&self, st: &ClientState, rows: Vec<AnyElement>) -> Div {
         let mut column = div().child(caption(tr!("Client"))).child(card(rows));
         if let Some(notice) = &st.notice {
             column = column.child(
@@ -265,6 +284,13 @@ impl<K: ClientKind> ClientPage<K> {
 
     fn render_about(&self) -> Div {
         let client = K::CLIENT;
+        // The notes are about Wine and Linux.
+        if heronite_clients::native() {
+            return div().child(caption(tr!("About"))).child(card([paragraph(tr!(
+                "You sign in, install and update games in {client}; Heronite starts them through it and counts the play time for the game, not for {client}.",
+                client = client.name()
+            ))]));
+        }
         div().child(caption(tr!("About"))).child(card([
             paragraph(tr!(
                 "{client} runs under Wine in a prefix of its own. You sign in, install and update games in it; Heronite starts them through it and counts the play time for the game, not for {client}.",

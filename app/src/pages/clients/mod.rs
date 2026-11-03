@@ -1,9 +1,11 @@
 //! The Battle.net, EA app, Ubisoft Connect and Rockstar Games pages of the
 //! Stores: the store's own program, run by Wine in a prefix of its own
-//! (`services::clients`). The page sets it up, opens and closes it, lists
-//! the games it installed (they come into the Collection by themselves) and
-//! opens its Wine settings. One view serves the four; the client is a type
-//! parameter so each page has its own palette commands.
+//! (`services::clients`), or on Windows installed on the PC as it is. The
+//! page sets it up, opens and closes it, lists the games it installed (they
+//! come into the Collection by themselves) and opens its Wine settings
+//! (Linux only, like the prefix and using an existing install). One view
+//! serves the four; the client is a type parameter so each page has its own
+//! palette commands.
 
 mod console;
 mod logic;
@@ -176,10 +178,11 @@ impl<K: ClientKind> ClientPage<K> {
         self.open_dialog(dialog, cx);
     }
 
-    /// Opens the prefix folder in the file manager.
-    fn open_prefix_folder(&self, cx: &App) {
-        if let Some(prefix) = self.svc.read(cx).state(K::CLIENT).prefix() {
-            crate::ui::open_external(&prefix.to_string_lossy());
+    /// Opens the prefix folder (on Windows the client's own folder) in the
+    /// file manager.
+    fn open_folder(&self, cx: &App) {
+        if let Some(folder) = logic::folder_to_open(self.svc.read(cx).state(K::CLIENT)) {
+            crate::ui::open_external(&folder.to_string_lossy());
         }
     }
 
@@ -204,7 +207,7 @@ impl<K: ClientKind> ClientPage<K> {
             "close" => self.svc.update(cx, |s, cx| s.close(client, cx)),
             "sync" => self.svc.update(cx, |s, cx| s.sync(client, cx)),
             "settings" => self.open_settings(window, cx),
-            "folder" => self.open_prefix_folder(cx),
+            "folder" => self.open_folder(cx),
             "adopt" => self.choose_existing(window, cx),
             "forget" => self.confirm_forget = true,
             "forget-no" => self.confirm_forget = false,

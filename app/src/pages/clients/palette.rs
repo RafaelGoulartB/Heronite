@@ -38,15 +38,14 @@ pub(super) fn commands(client: Client, st: Option<&ClientState>) -> Vec<PageComm
     let st = st.unwrap_or(&default);
     let first = || (!st.installed()).then(|| tr!("Set up {client} first", client = name));
     let busy = || busy_reason(st).map(str::to_string);
+    let native = heronite_clients::native();
+    let (setup_line, close_line) = if native {
+        (tr!("Download its installer and install it"), tr!("Closes it and its helper programs"))
+    } else {
+        (tr!("Download its installer and install it with Wine"), tr!("Closes it and what runs in its Wine prefix"))
+    };
     vec![
-        PageCommand::new(
-            "setup",
-            tr!("Set up {client}", client = name),
-            tr!("Download its installer and install it with Wine"),
-            Icon::Download,
-        )
-        .keywords(keywords(client))
-        .disabled(
+        PageCommand::new("setup", tr!("Set up {client}", client = name), setup_line, Icon::Download).keywords(keywords(client)).disabled(
             busy()
                 .or_else(|| st.installed().then(|| tr!("Already set up").to_string()))
                 .or_else(|| st.status.is_none().then(|| tr!("Looking\u{2026}").to_string())),
@@ -54,7 +53,7 @@ pub(super) fn commands(client: Client, st: Option<&ClientState>) -> Vec<PageComm
         PageCommand::new("open", tr!("Open {client}", client = name), tr!("Sign in and install games"), Icon::OpenInNew)
             .keywords(keywords(client))
             .disabled(first().or_else(busy)),
-        PageCommand::new("close", tr!("Close {client}", client = name), tr!("Closes it and what runs in its Wine prefix"), Icon::Stop)
+        PageCommand::new("close", tr!("Close {client}", client = name), close_line, Icon::Stop)
             .keywords(keywords(client))
             .disabled(
                 first()
