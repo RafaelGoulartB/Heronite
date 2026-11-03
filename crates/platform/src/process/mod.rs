@@ -88,7 +88,7 @@ pub fn signal_group(leader: u32, sig: Signal) {
 /// SIGTERM to `pid`, or to its whole group, on Unix; on Windows Ctrl+C on
 /// the console the helper has to itself (without a window), which reaches
 /// every process on it. Console programs take Ctrl+C as Unix ones take
-/// SIGTERM: Python's tools (legendary, gogdl, nile) get a
+/// SIGTERM: Python's tools (nile) get a
 /// `KeyboardInterrupt` and stop, saving what they can.
 ///
 /// Windows needs a second process to send it: this program, started again

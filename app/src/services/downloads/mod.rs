@@ -270,7 +270,7 @@ impl Downloads {
                 })
                 .await;
             this.update(cx, |this, cx| {
-                // legendary deletes its login when Epic refuses it.
+                // The sign-in is deleted when Epic refuses it.
                 let lost = this.account.logged_in && !signed_in && !this.logging_out;
                 this.apply_account(info);
                 if lost {

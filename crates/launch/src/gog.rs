@@ -4,10 +4,8 @@
 //! of their folder. A build this system cannot run is unavailable
 //! ([`crate::host::run_mode`]).
 //!
-//! On Windows the task is started directly rather than through `gogdl
-//! launch`: gogdl would only read the same file and start the same program,
-//! one process later, and the session follows the game's own process tree
-//! (its job object) from the start.
+//! On Windows the task is started directly, so the session follows the
+//! game's own process tree (its job object) from the start.
 
 use heronite_data::models::GameInfo;
 use heronite_i18n::tr;

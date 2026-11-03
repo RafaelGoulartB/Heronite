@@ -58,7 +58,7 @@ fn text(doc: &Value, key: &str) -> String {
 }
 
 impl InstallInfo {
-    /// Reads the JSON `gogdl info` prints.
+    /// Reads the install info JSON (the shape `gogdl info` printed).
     pub fn parse(platform: &str, doc: &Value) -> Self {
         let linux = platform == "linux";
         let sizes = if linux {

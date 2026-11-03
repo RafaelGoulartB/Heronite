@@ -44,7 +44,7 @@ pub struct Prerequisite {
     pub args: String,
 }
 
-/// What the setup needs from the Epic side (legendary), implemented by the
+/// What the setup needs from the Epic side, implemented by the
 /// app because the Epic crate depends on this one.
 pub trait EpicSetup: Send + Sync {
     /// `getInstallInfo(...).manifest.prerequisites` (`Ok(None)`: none).

@@ -1,5 +1,5 @@
-//! GOG: `gameplay.gog.com`, with the signed-in user's token (gogdl
-//! refreshes it). Heroic's `getAchievements` reads the same endpoint.
+//! GOG: `gameplay.gog.com`, with the signed-in user's token (renewed by
+//! heronite-gog). Heroic's `getAchievements` reads the same endpoint.
 
 use chrono::{DateTime, Utc};
 use heronite_data::paths::DataPaths;

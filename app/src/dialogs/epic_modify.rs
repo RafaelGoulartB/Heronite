@@ -29,7 +29,7 @@ struct Row {
     /// Library entry of the DLC (its `GameInfo`); `None` until loaded.
     info: Option<Value>,
     installed: bool,
-    /// Bytes to download; `None` while `legendary info` runs.
+    /// Bytes to download; `None` while the install info loads.
     size: Option<f64>,
 }
 
@@ -41,7 +41,7 @@ pub struct EpicModifyDialog {
     platform: String,
     install_path: String,
     rows: Vec<Row>,
-    /// `legendary info` of the game has been answered.
+    /// The game's install info has been answered.
     loaded: bool,
     error: Option<String>,
     /// DLC waiting for the answer to "Do you want to uninstall...".
@@ -83,7 +83,7 @@ impl EpicModifyDialog {
         this
     }
 
-    /// The DLC list from `legendary info`, then each DLC's library entry and size.
+    /// The DLC list from the install info, then each DLC's library entry and size.
     fn load(&mut self, cx: &mut Context<Self>) {
         let (data_paths, app, platform) = (self.data_paths.clone(), self.app_name.clone(), self.platform.clone());
         cx.spawn(async move |this, cx| {

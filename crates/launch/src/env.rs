@@ -300,7 +300,7 @@ pub struct WrapperPlan {
 
 /// Port of the Linux half of `prepareLaunch` + `setupWrappers`.
 /// `steam_runtime` is the umu binary when the wrapper list should include it
-/// (native games with the Steam runtime, or legendary through Proton+umu).
+/// (native games with the Steam runtime).
 pub fn build_wrappers(s: &GameSettings, probe: &dyn Probe, steam_runtime: Option<&str>) -> WrapperPlan {
     build_wrappers_in(s, probe, steam_runtime, None)
 }

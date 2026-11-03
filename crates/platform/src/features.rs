@@ -18,7 +18,7 @@ use std::sync::OnceLock;
 pub enum Feature {
     /// Wine and Proton: the Wine Manager, Wine settings, prefixes, winetricks.
     Wine,
-    /// Epic Games through legendary: its page, login, library, installs,
+    /// Epic Games: its page, login, library, installs,
     /// cloud saves and the EOS overlay.
     EpicStore,
     /// GOG: its page, login, library, installs and cloud saves.

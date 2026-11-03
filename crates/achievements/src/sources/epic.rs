@@ -359,12 +359,12 @@ mod tests {
             Ok(())
         });
         assert_eq!(renewed, Ok(Some(("acc1".into(), "tok".into()))));
-        // Epic refused the stored sign-in: legendary deleted user.json.
+        // Epic refused the stored sign-in: user.json was deleted.
         write_user(&paths, "2020-01-01T00:00:00.000Z");
         let refused =
             credentials_with(&paths, || std::fs::remove_file(paths.legendary_config_dir().join("user.json")).map_err(|e| e.to_string()));
         assert_eq!(refused, Ok(None));
-        // A token that is still valid does not call legendary.
+        // A token that is still valid is not renewed.
         write_user(&paths, &future());
         assert!(credentials_with(&paths, || Err("must not run".into())).unwrap().is_some());
     }

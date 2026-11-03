@@ -253,7 +253,7 @@ impl Downloads {
     }
 
     /// Cloud saves: syncs with the folder in the game settings (detecting it
-    /// when empty) and shows legendary's output.
+    /// when empty) and shows what the sync did.
     pub fn sync_saves(&mut self, app_name: &str, title: &str, cx: &mut Context<Self>) {
         let (app, title_owned) = (app_name.to_string(), title.to_string());
         let (tx, mut rx) = unbounded::<Result<String, String>>();

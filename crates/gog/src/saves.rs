@@ -333,7 +333,7 @@ fn timestamps_file(paths: &DataPaths) -> PathBuf {
     paths.gog_store("saveTimestamps")
 }
 
-/// The time (seconds since the epoch, as gogdl prints it) of the last sync of
+/// The time (seconds since the epoch, as gogdl printed it) of the last sync of
 /// a location; `"0"` when it never synced.
 fn timestamp(paths: &DataPaths, app_name: &str, name: &str) -> String {
     let doc = json_store::read_value(&timestamps_file(paths)).unwrap_or(Value::Null);
