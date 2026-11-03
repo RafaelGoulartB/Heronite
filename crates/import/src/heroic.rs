@@ -95,18 +95,33 @@ impl Library {
     }
 }
 
-/// Heroic's folder (native, else Flatpak), unless it is this app's own.
+/// Heroic's folder, unless it is this app's own: the native one, else the
+/// Flatpak's; with both around, the one with more games (a native folder
+/// left behind by a switch to the Flatpak has none).
 pub fn detect(home: &Path, data: &DataPaths) -> Result<Option<Found>> {
     let candidates = [
         (crate::xdg(home, "XDG_CONFIG_HOME", ".config").join("heroic"), false),
         (home.join(".var/app").join(FLATPAK_ID).join("config/heroic"), true),
     ];
     let same = |a: &Path, b: &Path| std::fs::canonicalize(a).ok().is_some_and(|a| std::fs::canonicalize(b).is_ok_and(|b| a == b));
-    let Some((root, flatpak)) =
-        candidates.into_iter().find(|(r, _)| (r.join("config.json").is_file() || r.join("store").is_dir()) && !same(r, &data.root))
-    else {
+    let mut found = candidates
+        .into_iter()
+        .filter(|(r, _)| (r.join("config.json").is_file() || r.join("store").is_dir()) && !same(r, &data.root))
+        .map(|(root, flatpak)| (read_library(root), flatpak));
+    let Some(mut best) = found.next() else {
         return Ok(None);
     };
+    for other in found {
+        if other.0.count() > best.0.count() {
+            best = other;
+        }
+    }
+    let (heroic, flatpak) = best;
+    Ok(Some(Found { launcher: Launcher::Heroic, location: heroic.root.clone(), flatpak, games: Vec::new(), heroic: Some(heroic) }))
+}
+
+/// The games added by hand and the install records in Heroic's `root`.
+fn read_library(root: PathBuf) -> Library {
     let sideload = json_store::read_value(&root.join("sideload_apps/library.json"))
         .ok()
         .and_then(|d| d.get("games").and_then(Value::as_array).cloned())
@@ -119,8 +134,7 @@ pub fn detect(home: &Path, data: &DataPaths) -> Result<Option<Found>> {
         .map(|kind| Installs { kind, entries: kind.read(&kind.source(&root)) })
         .filter(|i| !i.entries.is_empty())
         .collect();
-    let heroic = Library { root: root.clone(), sideload, installs };
-    Ok(Some(Found { launcher: Launcher::Heroic, location: root, flatpak, games: Vec::new(), heroic: Some(heroic) }))
+    Library { root, sideload, installs }
 }
 
 /// Copies what this app does not have yet; play time of the copied games
@@ -314,6 +328,33 @@ mod tests {
 
         // Again: nothing new.
         assert_eq!(sync(&paths, lib, &BTreeSet::new()).unwrap(), Report::default());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_flatpak_folder_wins_over_an_empty_native_one() {
+        let h = tempfile::tempdir().unwrap();
+        let home = h.path().join("home");
+        let paths = DataPaths::at(h.path().join("data"));
+        let native = home.join(".config/heroic");
+        w(&native.join("config.json"), "{}");
+        let flatpak = home.join(".var/app").join(FLATPAK_ID).join("config/heroic");
+        w(&flatpak.join("config.json"), "{}");
+        let game = h.path().join("games/Control");
+        std::fs::create_dir_all(&game).unwrap();
+        w(
+            &flatpak.join("legendaryConfig/legendary/installed.json"),
+            &format!(r#"{{"ctl":{{"app_name":"ctl","install_path":"{}"}}}}"#, game.display()),
+        );
+        let found = detect(&home, &paths).unwrap().unwrap();
+        assert!(found.flatpak);
+        assert_eq!(found.location, flatpak);
+        assert_eq!(found.count(), 1);
+        // Nothing in either: the native one.
+        std::fs::remove_file(flatpak.join("legendaryConfig/legendary/installed.json")).unwrap();
+        let found = detect(&home, &paths).unwrap().unwrap();
+        assert!(!found.flatpak);
+        assert_eq!(found.location, native);
     }
 
     #[test]
