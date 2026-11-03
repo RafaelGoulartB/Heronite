@@ -11,9 +11,11 @@ name: Release
 # packages are built and checked on clean containers (job appimage), the
 # Flatpak bundle is built (job flatpak), and the Windows installer and
 # portable zip are built and checked (job windows).
-# The publish job gathers them, signs the files the in-app updater installs
-# (secret MINISIGN_SECRET_KEY, see scripts/sign-release.sh; Flatpak updates
-# the Flatpak) and publishes them as one GitHub release.
+# The publish job gathers them, signs them (secret MINISIGN_SECRET_KEY, see
+# scripts/sign-release.sh) and publishes them as one GitHub release. The
+# Flatpak bundle is not published until Heronite is on Flathub (a bundle
+# gets no updates): it stays an artifact of the run, and a release whose
+# Flatpak does not build fails.
 on:
   pull_request_target:
     types: [closed]
@@ -251,10 +253,6 @@ jobs:
           path: dist
       - uses: actions/download-artifact@v4
         with:
-          name: Heronite-flatpak
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
           name: Heronite-windows
           path: dist
       - name: minisign
@@ -275,7 +273,7 @@ jobs:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
           TAG: ${{ needs.version.outputs.tag }}
         run: |
-          for f in Heronite-x86_64.AppImage Heronite-x86_64.flatpak Heronite-Setup-x86_64.exe Heronite-Portable-x86_64.zip; do
+          for f in Heronite-x86_64.AppImage Heronite-Setup-x86_64.exe Heronite-Portable-x86_64.zip; do
             [[ -f dist/$f ]] || { echo "::error::dist/$f is missing"; exit 1; }
           done
           scripts/sign-release.sh "${TAG#v}" dist
@@ -299,7 +297,7 @@ jobs:
           # A short guide to the assets goes first: the .minisig and .zsync
           # files sit next to the downloads but are only for the updaters.
           cat > notes.md <<'EOF'
-          **Linux:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). Or the package for your system: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora, openSUSE), `.pkg.tar.zst` (Arch, CachyOS), or `Heronite-x86_64.flatpak` (`flatpak install --user ./Heronite-x86_64.flatpak`; Windows games also need `flatpak install --user flathub org.freedesktop.Platform.Compat.i386//26.08 org.freedesktop.Platform.GL32.default//26.08`).
+          **Linux:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). Or the package for your system: `.deb` (Debian, Ubuntu, Mint), `.rpm` (Fedora, openSUSE), `.pkg.tar.zst` (Arch, CachyOS).
 
           **Windows 10 and 11:** `Heronite-Setup-x86_64.exe` installs Heronite for your user, no administrator rights needed (recommended). `Heronite-Portable-x86_64.zip` runs from any folder you extract it to and keeps its library and settings in that folder.
           EOF

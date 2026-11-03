@@ -26,8 +26,10 @@ flatpak install --user flathub org.freedesktop.Platform.Compat.i386//26.08 org.f
 The build needs `flatpak`, `python3` and `flatpak-builder` (or the
 `org.flatpak.Builder` Flatpak); the GNOME SDK, Rust and LLVM extensions come
 from Flathub. On Ubuntu, [`scripts/ci-flatpak-deps.sh`](../../scripts/ci-flatpak-deps.sh)
-installs what CI uses. Every release attaches the bundle, and pull requests
-that touch the Flatpak get it as a workflow artifact.
+installs what CI uses. Every release run and every pull request that
+touches the Flatpak build the bundle and keep it as a workflow artifact. It
+is not attached to the releases: a bundle gets no updates (neither from
+Flatpak nor from the app), so Heronite's Flatpak waits for Flathub.
 
 ## What changes in the Flatpak
 
