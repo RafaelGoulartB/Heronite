@@ -11,9 +11,10 @@
 //!
 //! The rest reads GOG's answers into plain models that know nothing of how
 //! the bytes are written: [`api`] (HTTP), [`builds`], [`v2`], [`v1`],
-//! [`files`] (the files of a build and the difference between two) and
-//! [`chunk`] (secure links, chunk addresses and decoding). [`language`] is
-//! GOG's table of language codes.
+//! [`files`] (the files of a build and the difference between two),
+//! [`chunk`] (secure links, chunk addresses and decoding) and [`linux`] (the
+//! zip inside a Linux installer). [`language`] is GOG's table of language
+//! codes.
 
 pub mod api;
 pub mod auth;
@@ -21,6 +22,7 @@ pub mod builds;
 pub mod chunk;
 pub mod files;
 pub mod language;
+pub mod linux;
 pub mod stored;
 pub mod v1;
 pub mod v2;
