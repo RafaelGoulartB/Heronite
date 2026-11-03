@@ -7,9 +7,9 @@ use gpui_kit::*;
 use heronite_data::game_config;
 use heronite_data::DataPaths;
 use heronite_epic::autoupdate;
-use heronite_epic::cmd::Legendary;
 use heronite_epic::library;
 use heronite_epic::ops;
+use heronite_epic::Epic;
 use heronite_i18n::{tr, trn};
 use serde_json::Value;
 
@@ -78,8 +78,7 @@ impl Downloads {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths)?;
-                    let r = library::refresh(&data_paths, &lg)?;
+                    let r = library::refresh(&data_paths, &Epic::new(&data_paths))?;
                     let signed_in = heronite_epic::user::is_logged_in(&data_paths);
                     anyhow::Ok((r, signed_in, library::updates_available(&data_paths), read_stats(&data_paths)))
                 })
@@ -91,9 +90,7 @@ impl Downloads {
                         this.updates = updates.into_iter().collect();
                         this.stats = stats;
                         // legendary refused the login (and deleted it).
-                        let expired = this.account.logged_in
-                            && !this.logging_out
-                            && (!signed_in || r.list_error.as_deref().is_some_and(heronite_epic::session::legendary_expired));
+                        let expired = this.account.logged_in && !this.logging_out && (!signed_in || r.expired);
                         match r.list_error {
                             _ if expired => this.mark_expired(None, cx),
                             Some(e) => {

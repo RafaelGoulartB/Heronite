@@ -7,10 +7,10 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::DataPaths;
-use heronite_epic::cmd::Legendary;
 use heronite_epic::info::{self, Dlc};
 use heronite_epic::manager::DmState;
 use heronite_epic::util::{file_size, file_size_local};
+use heronite_epic::Epic;
 use heronite_i18n::tr;
 use serde_json::Value;
 
@@ -89,11 +89,7 @@ impl EpicModifyDialog {
         cx.spawn(async move |this, cx| {
             let first = {
                 let (data_paths, app, platform) = (data_paths.clone(), app.clone(), platform.clone());
-                cx.background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths)?;
-                    info::install_info(&data_paths, &lg, &app, &platform)
-                })
-                .await
+                cx.background_spawn(async move { info::install_info(&data_paths, &Epic::new(&data_paths), &app, &platform) }).await
             };
             let dlcs = match first {
                 Ok(i) => i.owned_dlc(),
@@ -120,8 +116,7 @@ impl EpicModifyDialog {
                 let (entry, size) = cx
                     .background_spawn(async move {
                         let entry = library_entry(&data_paths, &name);
-                        let size = Legendary::locate(&data_paths)
-                            .and_then(|lg| info::install_info(&data_paths, &lg, &name, &platform))
+                        let size = info::install_info(&data_paths, &Epic::new(&data_paths), &name, &platform)
                             .map(|i| i.download_size())
                             .unwrap_or(0.);
                         (entry, size)
@@ -251,7 +246,7 @@ impl EpicModifyDialog {
                 .into_any_element();
         }
         if row.installed {
-            // Legendary cannot uninstall while it is downloading something.
+            // Nothing is uninstalled while a download writes the game's folder.
             return if downloading {
                 label(tr!("Not while installing").to_string()).opacity(0.7).into_any_element()
             } else {

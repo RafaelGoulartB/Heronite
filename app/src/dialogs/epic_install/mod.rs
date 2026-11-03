@@ -13,11 +13,11 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::game_config;
 use heronite_data::{AppPaths, DataPaths};
-use heronite_epic::cmd::Legendary;
 use heronite_epic::disk::{self, DiskSpace};
 use heronite_epic::info::{self, Dlc, InstallInfo, Sdl};
 use heronite_epic::third_party::{self, Provider};
 use heronite_epic::util::{file_size, remove_special_characters};
+use heronite_epic::Epic;
 use heronite_i18n::tr;
 use heronite_wine::WineInstallation;
 use serde_json::Value;
@@ -167,12 +167,7 @@ impl EpicInstallDialog {
     fn load_info(&mut self, cx: &mut Context<Self>) {
         let (data_paths, app, platform) = (self.data_paths.clone(), self.app_name.clone(), self.platform.clone());
         cx.spawn(async move |this, cx| {
-            let res = cx
-                .background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths)?;
-                    info::install_info(&data_paths, &lg, &app, &platform)
-                })
-                .await;
+            let res = cx.background_spawn(async move { info::install_info(&data_paths, &Epic::new(&data_paths), &app, &platform) }).await;
             this.update(cx, |this, cx| {
                 match res {
                     Ok(i) => this.apply_info(i),

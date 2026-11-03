@@ -1,6 +1,6 @@
-//! Game operations through legendary (port of the `install`, `update`,
-//! `repair`, `uninstall`, `moveInstall` and `importGame` parts of
-//! `LegendaryGame`).
+//! Game operations (port of the `install`, `update`, `repair`, `uninstall`,
+//! `moveInstall` and `importGame` parts of `LegendaryGame`), natively: see
+//! [`crate::download`] for what installs, updates and repairs write.
 
 use std::path::Path;
 
@@ -8,18 +8,23 @@ use anyhow::{bail, Result};
 use heronite_data::game_config;
 use heronite_data::sideload::{self, PrefixOutcome};
 use heronite_data::DataPaths;
+use heronite_depot as depot;
+use heronite_epic_api::installed::{self, Install, InstalledGame};
+use heronite_epic_api::library::{self as lib, GameMeta};
+use heronite_epic_api::{info as api_info, legendary_config, Manifest};
 use heronite_i18n::tr;
 use serde_json::{json, Value};
 
-use crate::cmd::{Cancel, Legendary, Output};
-use crate::info::install_info;
+use crate::client::Epic;
+use crate::cmd::Cancel;
+use crate::download::{self, RepairStep, Request};
 use crate::library;
 use crate::manager::{Job, JobResult};
-use crate::progress::{verification_percent, Progress, ProgressParser};
+use crate::progress::Progress;
 use crate::queue::{DmElement, DmStatus, ElementKind};
 use crate::third_party::{self, Provider};
 
-/// Settings of `config.json` that change how legendary downloads.
+/// Settings of `config.json` that change how games download (every store's).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DownloadSettings {
     pub max_workers: u32,
@@ -32,15 +37,6 @@ impl DownloadSettings {
         Self {
             max_workers: g.get("maxWorkers").and_then(Value::as_u64).unwrap_or(0) as u32,
             no_https: g.get("downloadNoHttps").and_then(Value::as_bool).unwrap_or(false),
-        }
-    }
-
-    fn append(&self, args: &mut Vec<String>) {
-        if self.max_workers > 0 {
-            args.extend(["--max-workers".into(), self.max_workers.to_string()]);
-        }
-        if self.no_https {
-            args.push("--no-https".into());
         }
     }
 }
@@ -56,45 +52,28 @@ pub fn home() -> String {
     std::env::var("HOME").unwrap_or_default()
 }
 
-/// `legendary install` arguments (`commandToArgsArray` order).
-pub fn install_args(app_name: &str, platform: &str, base_path: &str, sdl_tags: &[String], dl: &DownloadSettings) -> Vec<String> {
-    let mut args: Vec<String> = vec!["install".into(), app_name.into()];
-    let tags: Vec<&String> = sdl_tags.iter().filter(|t| !t.is_empty()).collect();
-    if !tags.is_empty() {
-        args.push("--install-tag=".into());
-        for t in &tags {
-            args.extend(["--install-tag".into(), (*t).clone()]);
-        }
+/// The install tags of a new install: the ones picked in the install
+/// dialog, else (a game with selective downloads installed without asking)
+/// the untagged files and the required components, like `--skip-sdl`;
+/// `None` installs every file.
+fn install_tags(data_paths: &DataPaths, app_name: &str, picked: &[String]) -> Option<Vec<String>> {
+    if !picked.is_empty() {
+        return Some(picked.to_vec());
     }
-    args.extend([
-        "--platform".into(),
-        platform.into(),
-        "--base-path".into(),
-        base_path.replace('\'', ""),
-        "--skip-dlcs".into(),
-        "-y".into(),
-    ]);
-    dl.append(&mut args);
-    if tags.is_empty() {
-        args.push("--skip-sdl".into());
-    }
-    args
-}
-
-/// `legendary update` / `repair` arguments.
-pub fn update_args(verb: &str, app_name: &str, dl: &DownloadSettings) -> Vec<String> {
-    let mut args: Vec<String> = vec![verb.into(), app_name.into(), "-y".into(), "--skip-sdl".into()];
-    dl.append(&mut args);
-    args
+    let sdl = crate::info::game_sdl(data_paths, app_name);
+    let required = sdl.iter().find(|s| s.required)?;
+    let mut tags = vec![String::new()];
+    tags.extend(required.tags.iter().cloned());
+    Some(tags)
 }
 
 /// Port of `LegendaryGame.install` / `update` as a download-manager job.
-pub struct LegendaryJob {
+pub struct EpicJob {
     pub data_paths: DataPaths,
-    pub legendary: Legendary,
+    pub epic: Epic,
 }
 
-impl LegendaryJob {
+impl EpicJob {
     fn run_install(&self, el: &DmElement, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
         let p = &el.params;
         match third_party::managed_by(&p.game_info) {
@@ -103,40 +82,27 @@ impl LegendaryJob {
             None => {}
         }
         let platform = if p.platform_to_install.is_empty() { "Windows" } else { p.platform_to_install.as_str() };
-        // Heroic scales progress by the manifest's download size. An update only
-        // fetches the changed files, so there legendary's own percent is used.
-        let total = match el.kind {
-            ElementKind::Install => install_info(&self.data_paths, &self.legendary, &p.app_name, platform).map(|i| i.download_size()).ok(),
-            ElementKind::Update => None,
+        let update = el.kind == ElementKind::Update;
+        let req = Request {
+            app_name: p.app_name.clone(),
+            platform: platform.to_string(),
+            base_path: p.path.clone(),
+            install_tags: if update { None } else { install_tags(&self.data_paths, &p.app_name, &p.sdl_list) },
+            ignore_free_space: p.ignore_free_space,
         };
-        let dl = DownloadSettings::load(&self.data_paths);
-        let mut args = match el.kind {
-            ElementKind::Install => install_args(&p.app_name, platform, &p.path, &p.sdl_list, &dl),
-            ElementKind::Update => update_args("update", &p.app_name, &dl),
-        };
-        if p.ignore_free_space {
-            args.push("--ignore-free-space".into());
-        }
-        let mut result = self.run_once(&args, total, cancel, on_progress);
-        // Retry with a higher shared memory limit, like Heroic.
-        if let Ok(out) = &result {
-            if !out.success() && !out.aborted && out.stderr.contains("MemoryError:") && el.kind == ElementKind::Install {
-                args.extend(["--max-shared-memory".into(), "5000".into()]);
-                result = self.run_once(&args, total, cancel, on_progress);
+        let settings = DownloadSettings::load(&self.data_paths);
+        match download::install(&self.epic, &req, update, &settings, cancel, &mut |d| on_progress(Progress::from(d))) {
+            Err(_) if cancel.is_requested() => JobResult::abort(),
+            Err(err) => {
+                log::error!("epic: {} of {} failed: {err:#}", if update { "update" } else { "install" }, p.app_name);
+                JobResult::error(format!("{err:#}"))
             }
-        }
-        match result {
-            Err(err) => JobResult::error(format!("{err:#}")),
-            Ok(out) if out.aborted => JobResult::abort(),
-            Ok(out) if out.success() => {
+            Ok(depot::Outcome::Cancelled) => JobResult::abort(),
+            Ok(depot::Outcome::Done) => {
                 if let Err(err) = library::write_library(&self.data_paths) {
                     log::warn!("rebuilding the library: {err:#}");
                 }
                 JobResult::done()
-            }
-            Ok(out) => {
-                let why = out.error_lines();
-                JobResult::error(if why.is_empty() { tr!("legendary exited with {code}", code = format!("{:?}", out.code)) } else { why })
             }
         }
     }
@@ -167,18 +133,9 @@ impl LegendaryJob {
         }
         JobResult::done()
     }
-
-    fn run_once(&self, args: &[String], total: Option<f64>, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> Result<Output> {
-        let mut parser = ProgressParser::new(total);
-        self.legendary.run_streaming(args, &[], cancel, |line| {
-            if let Some(p) = parser.feed(line) {
-                on_progress(p);
-            }
-        })
-    }
 }
 
-impl Job for LegendaryJob {
+impl Job for EpicJob {
     fn run(&self, el: &DmElement, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
         self.run_install(el, cancel, on_progress)
     }
@@ -204,6 +161,9 @@ impl OpResult {
     pub(crate) fn err(message: impl Into<String>) -> Self {
         Self { ok: false, aborted: false, warning: false, message: message.into() }
     }
+    pub(crate) fn cancelled() -> Self {
+        Self { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() }
+    }
 }
 
 /// Percent of `repair` (file verification, then re-download of broken files).
@@ -214,40 +174,29 @@ pub enum RepairUpdate {
 }
 
 /// `repair`: verify the files and download what is missing or corrupted.
-pub fn repair(
-    data_paths: &DataPaths,
-    legendary: &Legendary,
-    app_name: &str,
-    cancel: &Cancel,
-    mut on_update: impl FnMut(RepairUpdate),
-) -> OpResult {
-    // Repairs download only what is broken: legendary's own percent is used.
-    let mut parser = ProgressParser::new(None);
-    let args = update_args("repair", app_name, &DownloadSettings::load(data_paths));
-    let out = legendary.run_streaming(&args, &[], cancel, |line| {
-        if let Some(p) = verification_percent(line) {
-            on_update(RepairUpdate::Verifying(p));
-        } else if let Some(p) = parser.feed(line) {
-            on_update(RepairUpdate::Downloading(p));
-        }
+pub fn repair(data_paths: &DataPaths, epic: &Epic, app_name: &str, cancel: &Cancel, mut on_update: impl FnMut(RepairUpdate)) -> OpResult {
+    let settings = DownloadSettings::load(data_paths);
+    let out = download::repair(epic, app_name, &settings, cancel, &mut |step| match step {
+        RepairStep::Verifying(p) => on_update(RepairUpdate::Verifying(p)),
+        RepairStep::Downloading(p) => on_update(RepairUpdate::Downloading(Progress::from(&p))),
     });
     match out {
+        Err(_) if cancel.is_requested() => OpResult::cancelled(),
         Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) if out.aborted => OpResult { ok: false, aborted: true, warning: false, message: tr!("Cancelled").into() },
-        Ok(out) if out.success() => {
+        Ok(depot::Outcome::Cancelled) => OpResult::cancelled(),
+        Ok(depot::Outcome::Done) => {
             let _ = library::write_library(data_paths);
             OpResult::ok(tr!("Finished repairing"))
         }
-        Ok(out) => OpResult::err(out.error_lines()),
     }
 }
 
-/// `uninstall` (`legendary uninstall -y`) and rebuilds the library file. The
-/// caller removes the prefix / settings afterwards if the user asked for it.
-/// An EA app / Ubisoft Connect game only leaves `third-party-installed.json`
-/// (the game itself lives inside the prefix, with its store app).
-pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
-    let r = uninstall_game(data_paths, legendary, app_name);
+/// `uninstall` and rebuilds the library file. The caller removes the
+/// prefix / settings afterwards if the user asked for it. An EA app /
+/// Ubisoft Connect game only leaves `third-party-installed.json` (the game
+/// itself lives inside the prefix, with its store app).
+pub fn uninstall(data_paths: &DataPaths, epic: &Epic, app_name: &str) -> OpResult {
+    let r = uninstall_game(data_paths, epic, app_name);
     if r.ok {
         // Installed again, it runs its prerequisites again (Windows).
         heronite_launch::native_setup::forget(data_paths, "legendary", app_name);
@@ -255,7 +204,7 @@ pub fn uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) 
     r
 }
 
-fn uninstall_game(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
+fn uninstall_game(data_paths: &DataPaths, epic: &Epic, app_name: &str) -> OpResult {
     if third_party::is_installed(data_paths, app_name) {
         return match third_party::remove_installed(data_paths, app_name) {
             Ok(_) => {
@@ -265,76 +214,114 @@ fn uninstall_game(data_paths: &DataPaths, legendary: &Legendary, app_name: &str)
             Err(err) => OpResult::err(format!("{err:#}")),
         };
     }
-    // A folder already gone has nothing to delete: legendary only drops the record.
+    let dir = &epic.config_dir;
+    let Some(game) = installed::get(dir, app_name) else {
+        let _ = library::write_library(data_paths);
+        return OpResult::ok(tr!("Uninstalled"));
+    };
+    // A folder already gone has nothing to delete: only the record goes.
     if install_folder_missing(data_paths, app_name) {
-        return force_uninstall(data_paths, legendary, app_name);
+        return force_uninstall(data_paths, epic, app_name);
     }
-    match legendary.run(&["uninstall", app_name, "-y"], &[]) {
-        Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) if out.success() => {
-            let _ = library::write_library(data_paths);
-            OpResult::ok(tr!("Uninstalled"))
+    // Its DLCs first (they share the folder), then the game and its folder
+    // once empty (legendary's `uninstall_game`).
+    let mut problem = None;
+    if !game.is_dlc {
+        for dlc in GameMeta::load(dir, app_name).map(|g| lib::dlcs_of(dir, &g)).unwrap_or_default() {
+            if let Some(idlc) = installed::get(dir, &dlc.app_name) {
+                if let Err(err) = download::delete_files(dir, &idlc, false) {
+                    problem.get_or_insert(err);
+                }
+                if let Err(err) = installed::remove(dir, &idlc.app_name) {
+                    return OpResult::err(format!("{err:#}"));
+                }
+            }
         }
-        Ok(out) => OpResult::err(out.error_lines()),
+    }
+    if let Err(err) = download::delete_files(dir, &game, !game.is_dlc) {
+        problem.get_or_insert(err);
+    }
+    if let Err(err) = installed::remove(dir, app_name) {
+        return OpResult::err(format!("{err:#}"));
+    }
+    let _ = std::fs::remove_file(download::state_file(dir, app_name));
+    let _ = library::write_library(data_paths);
+    match problem {
+        None => OpResult::ok(tr!("Uninstalled")),
+        Some(err) => {
+            log::warn!("epic: uninstalling {app_name}: {err:#}");
+            OpResult::warn(tr!(
+                "Uninstalled, but some files are left in {path}: {error}",
+                path = game.install_path.as_str(),
+                error = format!("{err:#}")
+            ))
+        }
     }
 }
 
-/// legendary records the game at a folder that no longer exists.
+/// The install is recorded at a folder that no longer exists.
 fn install_folder_missing(data_paths: &DataPaths, app_name: &str) -> bool {
-    let installed = heronite_data::json_store::read_value(&data_paths.legendary_config_dir().join("installed.json")).unwrap_or(Value::Null);
-    let path = installed.get(app_name).and_then(|e| e.get("install_path")).and_then(Value::as_str).unwrap_or_default();
-    !path.is_empty() && !Path::new(path).exists()
+    let path = installed::get(&data_paths.legendary_config_dir(), app_name).map(|g| g.install_path).unwrap_or_default();
+    !path.is_empty() && !Path::new(&path).exists()
 }
 
 /// `forceUninstall`: forget the install in `installed.json` but keep the files.
-pub fn force_uninstall(data_paths: &DataPaths, legendary: &Legendary, app_name: &str) -> OpResult {
-    match legendary.run(&["uninstall", app_name, "-y", "--keep-files"], &[]) {
+pub fn force_uninstall(data_paths: &DataPaths, epic: &Epic, app_name: &str) -> OpResult {
+    match installed::remove(&epic.config_dir, app_name) {
         Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) if out.success() => {
+        Ok(()) => {
             let _ = library::write_library(data_paths);
             OpResult::ok(tr!("Removed from the installed games"))
         }
-        Ok(out) => OpResult::err(out.error_lines()),
     }
 }
 
+/// Points the install of `app_name` (and of its DLCs in the same folder)
+/// at `new_path` without moving anything (`legendary move --skip-move`).
+pub(crate) fn record_install_path(config_dir: &Path, app_name: &str, new_path: &str) -> Result<()> {
+    let Some(mut game) = installed::get(config_dir, app_name) else { bail!(tr!("The game is not installed")) };
+    let old = std::mem::replace(&mut game.install_path, new_path.to_string());
+    installed::set(config_dir, &game)?;
+    for (_, mut other) in installed::read_all(config_dir) {
+        if other.is_dlc && other.install_path == old && other.app_name != app_name {
+            other.install_path = new_path.to_string();
+            installed::set(config_dir, &other)?;
+        }
+    }
+    Ok(())
+}
+
 /// The game's folder was moved or renamed outside the app: checks that
-/// `folder` holds the game, then has legendary point the install at it
-/// without moving anything. legendary keeps the folder's own name (only the
-/// parent changes), so a renamed folder is refused with a hint.
-pub fn relocate(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, folder: &str) -> OpResult {
+/// `folder` holds the game, then points the install at it without moving
+/// anything. Epic games keep the folder's own name (only the parent
+/// changes), so a renamed folder is refused with a hint.
+pub fn relocate(data_paths: &DataPaths, epic: &Epic, app_name: &str, folder: &str) -> OpResult {
     let folder = folder.trim().trim_end_matches(SEPARATORS);
     let dir = Path::new(folder);
     if !dir.is_dir() {
         return OpResult::err(tr!("The folder does not exist"));
     }
-    let installed = heronite_data::json_store::read_value(&data_paths.legendary_config_dir().join("installed.json")).unwrap_or(Value::Null);
-    let Some(entry) = installed.get(app_name) else { return OpResult::err(tr!("The game is not installed")) };
-    let old = entry.get("install_path").and_then(Value::as_str).unwrap_or_default();
-    let old_name = Path::new(old.trim_end_matches(SEPARATORS)).file_name();
+    let Some(entry) = installed::get(&epic.config_dir, app_name) else { return OpResult::err(tr!("The game is not installed")) };
+    let old_name = Path::new(entry.install_path.trim_end_matches(SEPARATORS)).file_name();
     if old_name.is_some() && !same_name(dir.file_name(), old_name) {
         let name = old_name.map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         return OpResult::err(tr!("Epic games keep the name of their folder: pick a folder named {name}, or rename it back.", name));
     }
-    let exe = entry.get("executable").and_then(Value::as_str).unwrap_or_default().replace('\\', "/");
+    let exe = entry.executable.replace('\\', "/");
     if !exe.is_empty() && !dir.join(&exe).exists() {
         return OpResult::err(tr!("That folder does not have the game's {exe}", exe));
     }
-    let Some(parent) = dir.parent().map(|p| p.to_string_lossy().into_owned()) else {
-        return OpResult::err(tr!("The folder does not exist"));
-    };
-    match legendary.run(&["move", app_name, &parent, "--skip-move"], &[]) {
+    match record_install_path(&epic.config_dir, app_name, folder) {
         Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) if out.success() => {
+        Ok(()) => {
             let _ = library::write_library(data_paths);
             OpResult::ok(tr!("Install location changed"))
         }
-        Ok(out) => OpResult::err(out.error_lines()),
     }
 }
 
-/// What may end a folder path: `/`, and `\` on Windows (legendary writes
-/// `C:\Games\Control` there).
+/// What may end a folder path: `/`, and `\` on Windows (Epic paths are
+/// written `C:\Games\Control` there).
 const SEPARATORS: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
 
 /// Folder names compare the way the file system does: without case on
@@ -346,31 +333,104 @@ fn same_name(a: Option<&std::ffi::OsStr>, b: Option<&std::ffi::OsStr>) -> bool {
     }
 }
 
-/// `importGame`: tells legendary an existing folder is the install of a game.
-pub fn import_game(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, folder: &str, platform: &str) -> OpResult {
-    if !Path::new(folder).is_dir() {
-        return OpResult::err(tr!("The folder does not exist"));
-    }
-    let args = ["import", app_name, folder, "--with-dlcs", "--platform", platform];
-    match legendary.run(&args, &[]) {
-        Err(err) => OpResult::err(format!("{err:#}")),
-        Ok(out) => {
-            let errors: Vec<&str> = out.stderr.lines().filter(|l| l.contains("ERROR:")).collect();
-            if out.success() && errors.is_empty() {
-                let _ = library::write_library(data_paths);
-                OpResult::ok(tr!("Game imported"))
-            } else {
-                OpResult::err(if errors.is_empty() { out.error_lines() } else { errors.join("\n") })
-            }
+/// `importGame`: records an existing folder as the install of a game (and
+/// of its DLCs found in it), like `legendary import --with-dlcs`. The
+/// Epic Games Launcher's own record in the folder (`.egstore`) gives the
+/// installed version; without one the files must be verified before the
+/// game can update. Blocking, network.
+pub fn import_game(data_paths: &DataPaths, epic: &Epic, app_name: &str, folder: &str, platform: &str) -> OpResult {
+    match import(epic, app_name, folder, platform, None) {
+        Ok(()) => {
+            let _ = library::write_library(data_paths);
+            OpResult::ok(tr!("Game imported"))
         }
+        Err(err) => OpResult::err(format!("{err:#}")),
     }
 }
 
+/// The work of [`import_game`]; `egl_guid` names the launcher's install
+/// (`egl`).
+pub(crate) fn import(epic: &Epic, app_name: &str, folder: &str, platform: &str, egl_guid: Option<&str>) -> Result<()> {
+    let dir = &epic.config_dir;
+    let path = Path::new(folder);
+    if !path.is_dir() {
+        bail!(tr!("The folder does not exist"));
+    }
+    if installed::get(dir, app_name).is_some() {
+        bail!(tr!("The game is already installed"));
+    }
+    let session = epic.session()?;
+    let game = GameMeta::load(dir, app_name)
+        .ok_or_else(|| anyhow::anyhow!(tr!("{app_name} is not in the Epic library: refresh it and try again", app_name)))?;
+    let platform = if platform.is_empty() { "Windows" } else { platform };
+    import_one(epic, &session, &game, path, platform, egl_guid, true)?;
+    // Its DLCs in the same folder.
+    for dlc in lib::dlcs_of(dir, &game) {
+        if installed::get(dir, &dlc.app_name).is_some() || !dlc.asset_infos.contains_key(platform) {
+            continue;
+        }
+        if let Err(err) = import_one(epic, &session, &dlc, path, platform, None, false) {
+            log::info!("epic: DLC {} is not in {}: {err:#}", dlc.app_name, path.display());
+        }
+    }
+    Ok(())
+}
+
+/// Records `game` as installed in `path` when its files are there.
+fn import_one(
+    epic: &Epic,
+    session: &heronite_epic_api::Session,
+    game: &GameMeta,
+    path: &Path,
+    platform: &str,
+    egl_guid: Option<&str>,
+    check_exe: bool,
+) -> Result<()> {
+    let dir = &epic.config_dir;
+    let egl = (!game.is_dlc()).then(|| installed::egl_install(path, &game.app_name, egl_guid)).flatten();
+    let (manifest, base_urls, needs_verification) = match &egl {
+        Some(e) => (Manifest::parse(&e.manifest)?, game.base_urls.clone(), e.needs_verification),
+        None => {
+            let f = api_info::fetch_manifest(&epic.client, session.access_token(), game, platform)?;
+            (f.manifest, f.info.base_urls, true)
+        }
+    };
+    let found = manifest.files.iter().filter(|f| path.join(&f.filename).exists()).count();
+    if found == 0 {
+        bail!(tr!("None of the files of {title} are in {path}", title = game.app_title.as_str(), path = path.display()));
+    }
+    let exe = manifest.meta.launch_exe.trim_start_matches('/');
+    if check_exe && !exe.is_empty() && !heronite_epic_api::saves::case_insensitive(&path.join(exe)).exists() {
+        bail!(tr!("That folder does not have the game's {exe}", exe));
+    }
+    if (found as f64) < manifest.files.len() as f64 * 0.95 {
+        log::warn!("epic: {} of {} files of {} found in {}", found, manifest.files.len(), game.app_name, path.display());
+    }
+    installed::save_manifest(dir, &game.app_name, platform, &manifest)?;
+    let exe_override = legendary_config::cached_exe_override(dir, &game.app_name);
+    let install_size = manifest.files.iter().map(|f| f.size()).sum();
+    let mut record = InstalledGame::from_install(&Install {
+        game,
+        manifest: &manifest,
+        install_path: &path.to_string_lossy(),
+        platform,
+        install_tags: &[],
+        install_size,
+        base_urls: &base_urls,
+        is_dlc: game.is_dlc(),
+        egl_guid: egl.as_ref().map_or("", |e| e.guid.as_str()),
+        is_preloaded: false,
+        exe_override: exe_override.as_deref(),
+    });
+    record.needs_verification = needs_verification;
+    installed::set(dir, &record)
+}
+
 /// `moveOnUnix` + `changeGameInstallPath`: moves the install folder into
-/// `new_parent` and tells legendary where it is now (resumable, see
+/// `new_parent` and records where it is now (resumable, see
 /// [`crate::moves`]).
-pub fn move_install(data_paths: &DataPaths, legendary: &Legendary, app_name: &str, install_path: &str, new_parent: &str) -> OpResult {
-    crate::moves::move_install(data_paths, legendary, app_name, install_path, new_parent)
+pub fn move_install(data_paths: &DataPaths, epic: &Epic, app_name: &str, install_path: &str, new_parent: &str) -> OpResult {
+    crate::moves::move_install(data_paths, epic, app_name, install_path, new_parent)
 }
 
 /// `removePrefix`: deletes the game's Wine prefix, with Heroic's sanity checks
@@ -451,320 +511,314 @@ pub fn ensure_logged_in(data_paths: &DataPaths) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::{fake_tool, FakeTool, Reply};
+    use crate::download::testing::{serve_build, sign_in_and_own, Server};
     use crate::queue::InstallParams;
 
-    fn dl() -> DownloadSettings {
-        DownloadSettings::default()
+    struct Fx {
+        dir: tempfile::TempDir,
+        data_paths: DataPaths,
+        server: Server,
+        job: EpicJob,
+    }
+
+    impl Fx {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let data_paths = DataPaths::at(dir.path().join("h"));
+            let server = Server::start();
+            sign_in_and_own(&data_paths.legendary_config_dir(), "Calluna", "Control");
+            let job = EpicJob { data_paths: data_paths.clone(), epic: server.epic(&data_paths.legendary_config_dir()) };
+            Self { dir, data_paths, server, job }
+        }
+
+        fn epic(&self) -> &Epic {
+            &self.job.epic
+        }
+
+        fn games(&self) -> String {
+            self.dir.path().join("games").to_string_lossy().into_owned()
+        }
+
+        fn element(&self, kind: ElementKind) -> DmElement {
+            DmElement::new(
+                kind,
+                InstallParams {
+                    app_name: "Calluna".into(),
+                    path: self.games(),
+                    runner: "legendary".into(),
+                    platform_to_install: "Windows".into(),
+                    game_info: json!({"title": "Control"}),
+                    ..Default::default()
+                },
+            )
+        }
+
+        /// Installs the build `version` through the job.
+        fn install(&self, version: &str, files: &[(&str, &[u8])]) -> JobResult {
+            serve_build(&self.server, "Calluna", version, files);
+            self.job.run(&self.element(ElementKind::Install), &Cancel::new(), &mut |_| {})
+        }
+
+        fn root(&self) -> std::path::PathBuf {
+            self.dir.path().join("games").join("Control")
+        }
     }
 
     #[test]
-    fn install_arguments_follow_heroics_order() {
-        assert_eq!(
-            install_args("Calluna", "Windows", "/g/Con'trol", &[], &dl()),
-            ["install", "Calluna", "--platform", "Windows", "--base-path", "/g/Control", "--skip-dlcs", "-y", "--skip-sdl"]
-        );
-        let tags = vec!["".to_string(), "voices".to_string()];
-        let dls = DownloadSettings { max_workers: 4, no_https: true };
-        assert_eq!(
-            install_args("A", "Windows", "/g", &tags, &dls),
-            [
-                "install",
-                "A",
-                "--install-tag=",
-                "--install-tag",
-                "voices",
-                "--platform",
-                "Windows",
-                "--base-path",
-                "/g",
-                "--skip-dlcs",
-                "-y",
-                "--max-workers",
-                "4",
-                "--no-https"
-            ]
-        );
-        assert_eq!(update_args("update", "A", &dls), ["update", "A", "-y", "--skip-sdl", "--max-workers", "4", "--no-https"]);
-        assert_eq!(update_args("repair", "A", &dl()), ["repair", "A", "-y", "--skip-sdl"]);
-    }
-
-    fn job(dir: &Path, tool: FakeTool) -> (LegendaryJob, DataPaths, FakeTool) {
-        let data_paths = DataPaths::at(dir.join("h"));
-        std::fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
-        let legendary = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
-        (LegendaryJob { data_paths: data_paths.clone(), legendary }, data_paths, tool)
-    }
-
-    fn element(kind: ElementKind) -> DmElement {
-        DmElement::new(
-            kind,
-            InstallParams {
-                app_name: "Calluna".into(),
-                path: "/games".into(),
-                runner: "legendary".into(),
-                platform_to_install: "Windows".into(),
-                game_info: json!({"title": "Control"}),
-                ..Default::default()
-            },
-        )
-    }
-
-    /// legendary's progress report (stderr).
-    fn report(reply: Reply) -> Reply {
-        reply
-            .err("[DLManager] INFO: = Progress: 50.00% (1/2), Running for 00:00:10, ETA: 00:00:10")
-            .err("[DLManager] INFO:  - Downloaded: 100.00 MiB, Written: 99.00 MiB")
-            .err("[DLManager] INFO:  + Download\t- 5.00 MiB/s (raw) / 5.00 MiB/s (decompressed)")
-            .err("[DLManager] INFO:  + Disk\t- 4.00 MiB/s (write) / 0.00 MiB/s (read)")
-    }
-
-    fn info(json: &str) -> Reply {
-        Reply::new().out(json)
-    }
-
-    #[test]
-    fn install_job_reports_progress_and_finishes() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path())
-            .on(&["info"], info(r#"{"manifest": {"download_size": 209715200, "disk_size": 1}}"#))
-            .otherwise(report(Reply::new()));
-        let (job, data_paths, tool) = job(dir.path(), tool);
+    fn install_and_update_jobs_report_progress_and_rebuild_the_library() {
+        let fx = Fx::new();
+        serve_build(&fx.server, "Calluna", "1", &[("Control.exe", b"MZ 1")]);
         let mut seen = Vec::new();
-        let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |p| seen.push(p));
+        let r = fx.job.run(&fx.element(ElementKind::Install), &Cancel::new(), &mut |p| seen.push(p));
         assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
-        assert_eq!(seen.len(), 1);
-        assert_eq!(seen[0].percent, 50.);
-        let c = tool.calls();
-        assert_eq!(c[0], "info Calluna --json --platform Windows");
-        assert_eq!(c[1], "install Calluna --platform Windows --base-path /games --skip-dlcs -y --skip-sdl");
-        // The library file was rebuilt (empty metadata folder -> no games).
-        assert!(data_paths.legendary_library().exists());
+        assert_eq!(seen.last().map(|p| p.percent), Some(100.));
+        assert_eq!(std::fs::read(fx.root().join("Control.exe")).unwrap(), b"MZ 1");
+        // The library file was rebuilt with the game installed.
+        let lib = crate::cache_store::CacheStore::library(&fx.data_paths).get("library").unwrap();
+        assert_eq!(lib[0]["is_installed"], true, "{lib}");
+
+        serve_build(&fx.server, "Calluna", "2", &[("Control.exe", b"MZ 2")]);
+        let r = fx.job.run(&fx.element(ElementKind::Update), &Cancel::new(), &mut |_| {});
+        assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
+        assert_eq!(std::fs::read(fx.root().join("Control.exe")).unwrap(), b"MZ 2");
+        assert_eq!(installed::get(&fx.epic().config_dir, "Calluna").unwrap().version, "2");
     }
 
-    /// Windows: legendary gets the folder as Windows writes it.
+    /// Windows: the folder is written as Windows writes it.
+    #[cfg(windows)]
     #[test]
-    fn a_windows_base_path_reaches_legendary_as_it_is() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path()).on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#));
-        let (job, _, tool) = job(dir.path(), tool);
-        let mut el = element(ElementKind::Install);
-        el.params.path = r"D:\Games\Epic".into();
-        assert_eq!(job.run(&el, &Cancel::new(), &mut |_| {}).status, DmStatus::Done);
-        assert_eq!(tool.calls()[1], r"install Calluna --platform Windows --base-path D:\Games\Epic --skip-dlcs -y --skip-sdl");
-    }
-
-    #[test]
-    fn update_job_uses_the_update_command() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path()).on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#));
-        let (job, _, tool) = job(dir.path(), tool);
-        let r = job.run(&element(ElementKind::Update), &Cancel::new(), &mut |_| {});
-        assert_eq!(r.status, DmStatus::Done);
-        assert_eq!(tool.calls(), ["update Calluna -y --skip-sdl"]);
+    fn a_windows_base_path_is_kept_as_it_is() {
+        let fx = Fx::new();
+        assert_eq!(fx.install("1", &[("Control.exe", b"MZ")]).status, DmStatus::Done);
+        let rec = installed::get(&fx.epic().config_dir, "Calluna").unwrap();
+        assert!(rec.install_path.ends_with(r"games\Control"), "{}", rec.install_path);
     }
 
     #[test]
     fn failures_and_unsupported_stores_are_errors() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool =
-            fake_tool(dir.path()).on(&["info"], info(r#"{"manifest": {}}"#)).otherwise(Reply::new().err("[cli] ERROR: disk full").exit(1));
-        let (job, _, _tool) = job(dir.path(), tool);
-        let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |_| {});
+        let fx = Fx::new();
+        // Epic does not know the build.
+        let r = fx.job.run(&fx.element(ElementKind::Install), &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Error);
-        assert!(r.error.unwrap().contains("disk full"));
-        let mut third = element(ElementKind::Install);
+        assert!(r.error.is_some_and(|e| !e.is_empty()));
+        let mut third = fx.element(ElementKind::Install);
         third.params.game_info = json!({"title": "Overwatch", "thirdPartyManagedApp": "Battle.net"});
-        let r = job.run(&third, &Cancel::new(), &mut |_| {});
+        let r = fx.job.run(&third, &Cancel::new(), &mut |_| {});
         assert_eq!(r.status, DmStatus::Error);
         assert!(r.error.unwrap().contains("Battle.net, which is not supported"));
     }
 
     #[test]
-    fn ea_and_ubisoft_games_install_and_uninstall_without_legendary() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("called").exit(1));
-        let (job, data_paths, tool) = job(dir.path(), tool);
-        // The installer is already there: nothing to download.
-        let redist = third_party::redist_dir(&data_paths);
-        std::fs::create_dir_all(&redist).unwrap();
-        std::fs::write(redist.join("UbisoftConnectInstaller.exe"), "MZ").unwrap();
-        let mut el = element(ElementKind::Install);
-        el.params.app_name = "Anchovy".into();
-        el.params.path = "thirdParty".into();
-        el.params.game_info = json!({"title": "Rayman Legends", "thirdPartyManagedApp": "UbisoftConnect"});
-        let r = job.run(&el, &Cancel::new(), &mut |_| {});
-        assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
-        assert!(third_party::is_installed(&data_paths, "Anchovy"));
-        assert!(tool.calls().is_empty(), "legendary must not run");
-        assert!(data_paths.legendary_library().exists());
-
-        let r = uninstall(&data_paths, &job.legendary, "Anchovy");
-        assert!(r.ok, "{}", r.message);
-        assert!(!third_party::is_installed(&data_paths, "Anchovy"));
-        assert!(tool.calls().is_empty(), "legendary must not run");
+    fn an_expired_sign_in_fails_the_job_with_its_message() {
+        let fx = Fx::new();
+        let user = fx.epic().config_dir.join("user.json");
+        std::fs::write(
+            &user,
+            json!({"account_id": "a", "access_token": "t", "refresh_token": "r", "expires_at": "2000-01-01T00:00:00.000Z"}).to_string(),
+        )
+        .unwrap();
+        fx.server.route(
+            "/account/api/oauth/token",
+            400,
+            r#"{"errorCode": "errors.com.epicgames.account.auth_token.invalid_refresh_token"}"#,
+        );
+        let r = fx.job.run(&fx.element(ElementKind::Install), &Cancel::new(), &mut |_| {});
+        assert_eq!(r.status, DmStatus::Error);
+        assert!(crate::session::expired_message(&r.error.unwrap()));
     }
 
     #[test]
-    fn memory_errors_retry_with_more_shared_memory() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path())
-            .on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#))
-            .on(&["--max-shared-memory"], Reply::new())
-            .otherwise(Reply::new().err("MemoryError: x").exit(1));
-        let (job, _, tool) = job(dir.path(), tool);
-        let r = job.run(&element(ElementKind::Install), &Cancel::new(), &mut |_| {});
-        assert_eq!(r.status, DmStatus::Done);
-        assert!(tool.calls().last().unwrap().ends_with("--max-shared-memory 5000"));
+    fn ea_and_ubisoft_games_install_and_uninstall_without_epics_cdn() {
+        let fx = Fx::new();
+        // The installer is already there: nothing to download.
+        let redist = third_party::redist_dir(&fx.data_paths);
+        std::fs::create_dir_all(&redist).unwrap();
+        std::fs::write(redist.join("UbisoftConnectInstaller.exe"), "MZ").unwrap();
+        let mut el = fx.element(ElementKind::Install);
+        el.params.app_name = "Anchovy".into();
+        el.params.path = "thirdParty".into();
+        el.params.game_info = json!({"title": "Rayman Legends", "thirdPartyManagedApp": "UbisoftConnect"});
+        let r = fx.job.run(&el, &Cancel::new(), &mut |_| {});
+        assert_eq!(r.status, DmStatus::Done, "{:?}", r.error);
+        assert!(third_party::is_installed(&fx.data_paths, "Anchovy"));
+        assert!(fx.data_paths.legendary_library().exists());
+        let r = uninstall(&fx.data_paths, fx.epic(), "Anchovy");
+        assert!(r.ok, "{}", r.message);
+        assert!(!third_party::is_installed(&fx.data_paths, "Anchovy"));
+        assert!(fx.server.seen.lock().unwrap().is_empty(), "Epic was not asked");
     }
 
     #[test]
     fn cancelled_jobs_abort() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path())
-            .on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#))
-            .otherwise(Reply::new().sleep(std::time::Duration::from_secs(30)));
-        let (job, _, _tool) = job(dir.path(), tool);
+        let fx = Fx::new();
         let cancel = Cancel::new();
-        let c = cancel.clone();
-        let t = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(600));
-            c.request();
-        });
-        let started = std::time::Instant::now();
-        let r = job.run(&element(ElementKind::Install), &cancel, &mut |_| {});
-        t.join().unwrap();
+        cancel.request();
+        serve_build(&fx.server, "Calluna", "1", &[("Control.exe", b"MZ")]);
+        let r = fx.job.run(&fx.element(ElementKind::Install), &cancel, &mut |_| {});
         assert_eq!(r.status, DmStatus::Abort);
-        assert!(started.elapsed() < std::time::Duration::from_secs(20));
+        assert!(installed::get(&fx.epic().config_dir, "Calluna").is_none());
     }
 
     #[test]
-    fn uninstall_import_and_force_uninstall_commands() {
-        let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
-        assert!(uninstall(&data_paths, &job.legendary, "Calluna").ok);
-        assert!(force_uninstall(&data_paths, &job.legendary, "Calluna").ok);
-        let game_dir = dir.path().join("game");
-        std::fs::create_dir_all(&game_dir).unwrap();
-        assert!(import_game(&data_paths, &job.legendary, "Calluna", game_dir.to_str().unwrap(), "Windows").ok);
-        assert!(!import_game(&data_paths, &job.legendary, "Calluna", "/nonexistent-dir", "Windows").ok);
-        let c = tool.calls();
-        assert_eq!(c[0], "uninstall Calluna -y");
-        assert_eq!(c[1], "uninstall Calluna -y --keep-files");
-        assert_eq!(c[2], format!("import Calluna {} --with-dlcs --platform Windows", game_dir.display()));
+    fn uninstall_deletes_the_game_and_force_uninstall_only_forgets_it() {
+        let fx = Fx::new();
+        assert_eq!(fx.install("1", &[("Control.exe", b"MZ"), ("data/a.pak", b"pak")]).status, DmStatus::Done);
+        assert!(force_uninstall(&fx.data_paths, fx.epic(), "Calluna").ok);
+        assert!(installed::get(&fx.epic().config_dir, "Calluna").is_none());
+        assert!(fx.root().join("Control.exe").exists(), "the files stay");
+
+        assert_eq!(fx.install("1", &[("Control.exe", b"MZ"), ("data/a.pak", b"pak")]).status, DmStatus::Done);
+        std::fs::write(fx.root().join("data/save.sav"), "mine").unwrap();
+        let r = uninstall(&fx.data_paths, fx.epic(), "Calluna");
+        assert!(r.ok && !r.warning, "{}", r.message);
+        assert!(installed::get(&fx.epic().config_dir, "Calluna").is_none());
+        assert!(!fx.root().join("Control.exe").exists() && !fx.root().join("data/a.pak").exists());
+        assert!(fx.root().join("data/save.sav").exists(), "files the game made stay");
     }
 
     #[test]
     fn an_uninstalled_game_runs_its_first_launch_setup_again() {
-        let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths, _tool) = job(dir.path(), fake_tool(dir.path()));
-        heronite_launch::native_setup::record(&data_paths, "legendary", "Calluna", "/games/Control").unwrap();
-        assert!(uninstall(&data_paths, &job.legendary, "Calluna").ok);
-        assert!(!heronite_launch::native_setup::is_recorded(&data_paths, "legendary", "Calluna", "/games/Control"));
+        let fx = Fx::new();
+        assert_eq!(fx.install("1", &[("Control.exe", b"MZ")]).status, DmStatus::Done);
+        heronite_launch::native_setup::record(&fx.data_paths, "legendary", "Calluna", "/games/Control").unwrap();
+        assert!(uninstall(&fx.data_paths, fx.epic(), "Calluna").ok);
+        assert!(!heronite_launch::native_setup::is_recorded(&fx.data_paths, "legendary", "Calluna", "/games/Control"));
     }
 
     #[test]
-    fn relocate_checks_the_folder_then_tells_legendary() {
-        let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
+    fn a_game_whose_folder_is_gone_is_only_forgotten() {
+        let fx = Fx::new();
+        assert_eq!(fx.install("1", &[("Control.exe", b"MZ")]).status, DmStatus::Done);
+        std::fs::remove_dir_all(fx.root()).unwrap();
+        let r = uninstall(&fx.data_paths, fx.epic(), "Calluna");
+        assert!(r.ok, "{}", r.message);
+        assert!(installed::get(&fx.epic().config_dir, "Calluna").is_none());
+    }
+
+    #[test]
+    fn import_records_a_folder_with_the_game_and_refuses_others() {
+        let fx = Fx::new();
+        serve_build(&fx.server, "Calluna", "3", &[("Control.exe", b"MZ")]);
+        let empty = fx.dir.path().join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        let r = import_game(&fx.data_paths, fx.epic(), "Calluna", empty.to_str().unwrap(), "Windows");
+        assert!(!r.ok && r.message.contains("None of the files"), "{}", r.message);
+        assert!(!import_game(&fx.data_paths, fx.epic(), "Calluna", "/nonexistent-dir", "Windows").ok);
+        let r = import_game(&fx.data_paths, fx.epic(), "Other", empty.to_str().unwrap(), "Windows");
+        assert!(!r.ok && r.message.contains("not in the Epic library"), "{}", r.message);
+
+        let game = fx.dir.path().join("Control");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(game.join("Control.exe"), "MZ").unwrap();
+        let r = import_game(&fx.data_paths, fx.epic(), "Calluna", game.to_str().unwrap(), "Windows");
+        assert!(r.ok, "{}", r.message);
+        let rec = installed::get(&fx.epic().config_dir, "Calluna").unwrap();
+        assert_eq!((rec.version.as_str(), rec.install_path.as_str()), ("3", game.to_str().unwrap()));
+        assert!(rec.needs_verification, "not from the Epic Games Launcher: to be checked");
+        let again = import_game(&fx.data_paths, fx.epic(), "Calluna", game.to_str().unwrap(), "Windows");
+        assert!(!again.ok && again.message.contains("already installed"), "{}", again.message);
+    }
+
+    #[test]
+    fn relocate_checks_the_folder_then_records_it() {
+        let fx = Fx::new();
+        let cfg = &fx.epic().config_dir;
         let old = if cfg!(windows) { r"D:\old\Control" } else { "/old/Control" };
-        std::fs::write(
-            data_paths.legendary_config_dir().join("installed.json"),
-            json!({"Calluna": {"install_path": old, "executable": "Bin\\Control.exe"}}).to_string(),
-        )
-        .unwrap();
-        let moved = dir.path().join("disk2").join("Control");
+        let game = InstalledGame {
+            app_name: "Calluna".into(),
+            install_path: old.into(),
+            executable: "Bin\\Control.exe".into(),
+            ..Default::default()
+        };
+        installed::set(cfg, &game).unwrap();
+        let moved = fx.dir.path().join("disk2").join("Control");
         std::fs::create_dir_all(moved.join("Bin")).unwrap();
         // Not the game yet: its executable is missing.
-        assert!(!relocate(&data_paths, &job.legendary, "Calluna", moved.to_str().unwrap()).ok);
+        assert!(!relocate(&fx.data_paths, fx.epic(), "Calluna", moved.to_str().unwrap()).ok);
         std::fs::write(moved.join("Bin").join("Control.exe"), "").unwrap();
-        let renamed = dir.path().join("disk2").join("Ctrl");
+        let renamed = fx.dir.path().join("disk2").join("Ctrl");
         std::fs::create_dir_all(&renamed).unwrap();
-        let r = relocate(&data_paths, &job.legendary, "Calluna", renamed.to_str().unwrap());
+        let r = relocate(&fx.data_paths, fx.epic(), "Calluna", renamed.to_str().unwrap());
         assert!(!r.ok && r.message.contains("Control"), "a renamed folder is refused: {}", r.message);
-        assert!(!relocate(&data_paths, &job.legendary, "Other", moved.to_str().unwrap()).ok, "not installed");
-        assert!(!relocate(&data_paths, &job.legendary, "Calluna", "/nonexistent-dir/Control").ok);
-        assert!(tool.calls().is_empty(), "nothing ran yet");
+        assert!(!relocate(&fx.data_paths, fx.epic(), "Other", moved.to_str().unwrap()).ok, "not installed");
+        assert!(!relocate(&fx.data_paths, fx.epic(), "Calluna", "/nonexistent-dir/Control").ok);
+        assert_eq!(installed::get(cfg, "Calluna").unwrap().install_path, old, "nothing changed yet");
         let sep = std::path::MAIN_SEPARATOR;
-        let r = relocate(&data_paths, &job.legendary, "Calluna", &format!("{}{sep}", moved.display()));
+        let r = relocate(&fx.data_paths, fx.epic(), "Calluna", &format!("{}{sep}", moved.display()));
         assert!(r.ok, "{}", r.message);
-        assert_eq!(tool.calls(), [format!("move Calluna {} --skip-move", moved.parent().unwrap().display())]);
+        assert_eq!(installed::get(cfg, "Calluna").unwrap().install_path, moved.to_string_lossy());
     }
 
     /// Windows' folder names ignore case: `control` is the game's `Control`.
     #[cfg(windows)]
     #[test]
     fn relocate_ignores_the_case_of_the_folder_name_on_windows() {
-        let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
-        std::fs::write(
-            data_paths.legendary_config_dir().join("installed.json"),
-            json!({"Calluna": {"install_path": r"C:\Games\Control", "executable": "Control.exe"}}).to_string(),
-        )
-        .unwrap();
-        let moved = dir.path().join("control");
+        let fx = Fx::new();
+        let cfg = &fx.epic().config_dir;
+        let game = InstalledGame {
+            app_name: "Calluna".into(),
+            install_path: r"C:\Games\Control".into(),
+            executable: "Control.exe".into(),
+            ..Default::default()
+        };
+        installed::set(cfg, &game).unwrap();
+        let moved = fx.dir.path().join("control");
         std::fs::create_dir_all(&moved).unwrap();
         std::fs::write(moved.join("Control.exe"), "").unwrap();
-        let r = relocate(&data_paths, &job.legendary, "Calluna", moved.to_str().unwrap());
+        let r = relocate(&fx.data_paths, fx.epic(), "Calluna", moved.to_str().unwrap());
         assert!(r.ok, "{}", r.message);
-        assert_eq!(tool.calls().len(), 1);
-    }
-
-    #[test]
-    fn import_errors_come_from_stderr() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[cli] ERROR: Game is not in the library"));
-        let (job, data_paths, _tool) = job(dir.path(), tool);
-        let r = import_game(&data_paths, &job.legendary, "x", dir.path().to_str().unwrap(), "Windows");
-        assert!(!r.ok);
-        assert!(r.message.contains("not in the library"));
     }
 
     #[test]
     fn repair_reports_verification_and_download() {
-        let dir = tempfile::tempdir().unwrap();
-        let tool = fake_tool(dir.path())
-            .on(&["info"], info(r#"{"manifest": {"download_size": 1}}"#))
-            .otherwise(report(Reply::new().err("[cli] INFO: Verification progress: 1/2 (50.0%) [10 MiB/s]")));
-        let (job, data_paths, _tool) = job(dir.path(), tool);
+        let fx = Fx::new();
+        assert_eq!(fx.install("1", &[("Control.exe", b"MZ"), ("data/a.pak", b"pak")]).status, DmStatus::Done);
+        std::fs::write(fx.root().join("data/a.pak"), "broken").unwrap();
         let mut updates = Vec::new();
-        let r = repair(&data_paths, &job.legendary, "Calluna", &Cancel::new(), |u| updates.push(u));
+        let r = repair(&fx.data_paths, fx.epic(), "Calluna", &Cancel::new(), |u| updates.push(u));
         assert!(r.ok, "{}", r.message);
-        assert_eq!(updates[0], RepairUpdate::Verifying(50.));
-        assert!(matches!(updates[1], RepairUpdate::Downloading(_)));
+        assert_eq!(std::fs::read(fx.root().join("data/a.pak")).unwrap(), b"pak");
+        assert!(matches!(updates[0], RepairUpdate::Verifying(_)));
+        assert!(updates.iter().any(|u| matches!(u, RepairUpdate::Downloading(_))));
+        assert!(!repair(&fx.data_paths, fx.epic(), "Other", &Cancel::new(), |_| {}).ok);
     }
 
     #[test]
-    fn move_install_moves_the_folder_and_updates_legendary() {
-        let dir = tempfile::tempdir().unwrap();
-        let (job, data_paths, tool) = job(dir.path(), fake_tool(dir.path()));
-        let src = dir.path().join("old").join("Control");
+    fn move_install_moves_the_folder_and_records_it() {
+        let fx = Fx::new();
+        let src = fx.dir.path().join("old").join("Control");
         std::fs::create_dir_all(src.join("sub")).unwrap();
         std::fs::write(src.join("sub").join("a.txt"), "x").unwrap();
-        let new_parent = dir.path().join("new");
-        let r = move_install(&data_paths, &job.legendary, "Calluna", src.to_str().unwrap(), new_parent.to_str().unwrap());
+        let cfg = &fx.epic().config_dir;
+        installed::set(
+            cfg,
+            &InstalledGame { app_name: "Calluna".into(), install_path: src.to_string_lossy().into(), ..Default::default() },
+        )
+        .unwrap();
+        let new_parent = fx.dir.path().join("new");
+        let r = move_install(&fx.data_paths, fx.epic(), "Calluna", src.to_str().unwrap(), new_parent.to_str().unwrap());
         assert!(r.ok, "{}", r.message);
         assert!(new_parent.join("Control").join("sub").join("a.txt").exists());
         assert!(!src.exists());
-        assert_eq!(tool.calls()[0], format!("move Calluna {} --skip-move", new_parent.display()));
+        assert_eq!(installed::get(cfg, "Calluna").unwrap().install_path, new_parent.join("Control").to_string_lossy());
         // Into itself, and onto a non-empty destination: refused.
         let again = move_install(
-            &data_paths,
-            &job.legendary,
+            &fx.data_paths,
+            fx.epic(),
             "Calluna",
             new_parent.join("Control").to_str().unwrap(),
             new_parent.join("Control").join("x").to_str().unwrap(),
         );
         assert!(!again.ok);
-        let clash = dir.path().join("clash").join("Control");
+        let clash = fx.dir.path().join("clash").join("Control");
         std::fs::create_dir_all(&clash).unwrap();
         std::fs::write(clash.join("f"), "x").unwrap();
         let r = move_install(
-            &data_paths,
-            &job.legendary,
+            &fx.data_paths,
+            fx.epic(),
             "Calluna",
             new_parent.join("Control").to_str().unwrap(),
-            dir.path().join("clash").to_str().unwrap(),
+            fx.dir.path().join("clash").to_str().unwrap(),
         );
         assert!(!r.ok && r.message.contains("not empty"));
     }

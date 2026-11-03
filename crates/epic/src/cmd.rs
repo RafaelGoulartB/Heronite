@@ -1,7 +1,8 @@
-//! Running the `legendary` CLI the way Heroic's `callRunner` does:
-//! `LEGENDARY_CONFIG_PATH` points at the data folder's legendary config, arguments are
-//! passed as-is and output (stdout and stderr) is captured, or streamed line by
-//! line for long operations that can be cancelled.
+//! Running a store's command-line tool: the [`Output`] of a run and its
+//! [`Cancel`] (gogdl and nile use them too), and the `legendary` CLI the way
+//! Heroic's `callRunner` runs it (`LEGENDARY_CONFIG_PATH` points at the data
+//! folder's legendary config). Heronite does everything of Epic's natively
+//! but starting the games, which legendary still does.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -155,16 +156,6 @@ pub(crate) mod testing {
         std::fs::write(&bin, script).unwrap();
         heronite_platform::fs::make_executable(&bin).unwrap();
         Legendary::with_bin(bin, dir.join("cfg"))
-    }
-
-    #[cfg(unix)]
-    pub fn calls(dir: &Path) -> Vec<String> {
-        std::fs::read_to_string(dir.join("calls.log"))
-            .unwrap_or_default()
-            .lines()
-            .filter(|l| !l.starts_with("CFG="))
-            .map(str::to_string)
-            .collect()
     }
 }
 

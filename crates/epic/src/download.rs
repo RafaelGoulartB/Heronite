@@ -304,6 +304,30 @@ pub fn install(
     Ok(depot::Outcome::Done)
 }
 
+/// Writes the EOS overlay's planned install (see
+/// [`heronite_epic_api::eos::prepare_install`]). Blocking, network.
+pub(crate) fn install_overlay(
+    epic: &Epic,
+    prepared: &heronite_epic_api::eos::OverlayInstall,
+    settings: &DownloadSettings,
+    cancel: &Cancel,
+    on_progress: &mut dyn FnMut(&depot::Progress),
+) -> Result<depot::Outcome> {
+    let (dplan, paths) = depot_plan(&prepared.plan, &prepared.manifest);
+    let mut source = cdn(epic, None, "", "Windows", &prepared.info.base_urls, false, &prepared.info.secrets, settings)?;
+    source.chunks = prepared.plan.chunks.clone();
+    source.paths = paths;
+    let root = Path::new(&prepared.record.install_path);
+    depot::install(
+        root,
+        &dplan,
+        &source,
+        &depot::Options { workers: settings.max_workers as usize, ..Default::default() },
+        cancel,
+        on_progress,
+    )
+}
+
 /// Checks the files of an installed game against its manifest and fetches
 /// the broken ones again, keeping its version (`legendary repair`).
 /// Blocking, network when something is broken.
@@ -558,6 +582,37 @@ pub(crate) mod testing {
             answer.to_string(),
         );
         m
+    }
+
+    /// The EOS overlay's build (`version`), served anonymously.
+    pub fn serve_overlay(server: &Server, version: &str) {
+        let mut m = Manifest::new(heronite_epic_api::eos::APP_NAME, version);
+        let files: [(&str, &[u8]); 2] = [("EOSOVH-Win64-Shipping.dll", b"dll"), ("EOSOverlayRenderer-Win64-Shipping.exe", b"MZ")];
+        for (i, (path, data)) in files.iter().enumerate() {
+            let guid = Guid([i as u32 + 1, 99, 3, 4]);
+            let (bytes, info) = chunk::encode(guid, data).unwrap();
+            server.route(&format!("/cdn/{}", m.chunk_path(&info)), 200, bytes);
+            let mut fm = FileManifest { filename: path.to_string(), ..Default::default() };
+            fm.hash = sha1_smol::Sha1::from(*data).digest().bytes();
+            fm.chunk_parts.push(ChunkPart { guid, offset: 0, size: data.len() as u32 });
+            m.chunks.push(info);
+            m.files.push(fm);
+        }
+        let bytes = m.to_bytes().unwrap();
+        let hash = sha1_smol::Sha1::from(&bytes).digest().to_string();
+        server.route("/cdn/overlay.manifest", 200, bytes);
+        server.route(
+            "/account/api/oauth/token",
+            200,
+            json!({"access_token": "anon", "expires_at": "2099-01-01T00:00:00.000Z"}).to_string(),
+        );
+        let answer = json!({"elements": [{"hash": hash, "buildVersion": version, "manifests": [{"uri": format!("{}/cdn/overlay.manifest", server.url)}]}]});
+        // The overlay's namespace and catalog item, as Epic publishes them.
+        let path = format!(
+            "/launcher/api/public/assets/v2/platform/Windows/namespace/302e5ede476149b1bc3e4fe6ae45e50e/catalogItem/cc15684f44d849e89e9bf4cec0508b68/app/{}/label/Live",
+            heronite_epic_api::eos::APP_NAME
+        );
+        server.route(&path, 200, answer.to_string());
     }
 
     /// legendary's files for a signed-in account that owns `app`.

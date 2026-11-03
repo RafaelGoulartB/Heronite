@@ -8,9 +8,10 @@ use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::game_config;
 use heronite_data::DataPaths;
-use heronite_epic::cmd::{Cancel, Legendary};
+use heronite_epic::cmd::Cancel;
 use heronite_epic::ops::{self, OpResult, RepairUpdate};
 use heronite_epic::saves;
+use heronite_epic::Epic;
 use heronite_i18n::tr;
 use serde_json::Value;
 
@@ -24,10 +25,6 @@ enum OpMsg {
     Done(OpResult),
 }
 
-fn locate(data_paths: &DataPaths) -> Result<Legendary, OpResult> {
-    Legendary::locate(data_paths).map_err(|e| OpResult { ok: false, aborted: false, warning: false, message: format!("{e:#}") })
-}
-
 impl Downloads {
     pub(super) fn run_op(
         &mut self,
@@ -35,7 +32,7 @@ impl Downloads {
         label: &str,
         cancellable: bool,
         cx: &mut Context<Self>,
-        work: impl FnOnce(&DataPaths, &Legendary, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
+        work: impl FnOnce(&DataPaths, &Epic, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
     ) {
         self.run_op_then(app_name, label, cancellable, cx, work, |_, _, _| {});
     }
@@ -48,7 +45,7 @@ impl Downloads {
         label: &str,
         cancellable: bool,
         cx: &mut Context<Self>,
-        work: impl FnOnce(&DataPaths, &Legendary, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
+        work: impl FnOnce(&DataPaths, &Epic, &Arc<Cancel>, &dyn Fn(Option<f32>)) -> OpResult + Send + 'static,
         then: impl FnOnce(&mut Self, &OpResult, &mut Context<Self>) + 'static,
     ) {
         self.run_task_then(
@@ -56,10 +53,7 @@ impl Downloads {
             label,
             cancellable,
             cx,
-            move |data_paths, cancel, report| match locate(data_paths) {
-                Err(r) => r,
-                Ok(lg) => work(data_paths, &lg, cancel, report),
-            },
+            move |data_paths, cancel, report| work(data_paths, &Epic::new(data_paths), cancel, report),
             then,
         );
     }

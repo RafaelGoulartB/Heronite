@@ -8,13 +8,14 @@ use gpui_kit::*;
 use heronite_amazon::cmd::Nile;
 use heronite_amazon::ops::NileJob;
 use heronite_data::DataPaths;
-use heronite_epic::cmd::{Cancel, Legendary};
+use heronite_epic::cmd::Cancel;
 use heronite_epic::info;
 use heronite_epic::manager::{DmState, DownloadManager, Event as DmEvent, Job, JobResult};
-use heronite_epic::ops::{self, LegendaryJob};
+use heronite_epic::ops::{self, EpicJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
 use heronite_epic::util::{file_size, parse_size};
+use heronite_epic::Epic;
 use heronite_gog::cmd::Gogdl;
 use heronite_gog::ops::GogJob;
 use heronite_i18n::tr;
@@ -137,9 +138,9 @@ impl Downloads {
                             self.auto_failed.insert(element.params.app_name.clone());
                         }
                         let why = error.unwrap_or_default();
-                        let legendary = !matches!(element.params.runner.as_str(), "gog" | "nile");
-                        if legendary && heronite_epic::session::legendary_expired(&why) && !self.account.expired {
-                            // Its message says what to do; the history keeps legendary's.
+                        let epic = !matches!(element.params.runner.as_str(), "gog" | "nile");
+                        if epic && heronite_epic::session::expired_message(&why) && !self.account.expired {
+                            // The login asks to sign in again; the history keeps the message.
                             self.mark_expired(None, cx);
                             self.reload_local(cx);
                             return cx.notify();
@@ -241,9 +242,8 @@ impl Downloads {
         cx.background_spawn(async move {
             // GOG and Amazon only know the size of a full download, not of the update.
             let size = (runner == "legendary")
-                .then(|| Legendary::locate(&data_paths).ok())
+                .then(|| info::install_info(&data_paths, &Epic::new(&data_paths), &app, &platform).ok())
                 .flatten()
-                .and_then(|lg| info::install_info(&data_paths, &lg, &app, &platform).ok())
                 .map(|i| file_size(i.download_size()));
             manager.add(DmElement::new(
                 ElementKind::Update,
@@ -496,10 +496,7 @@ impl Job for LazyJob {
                 Ok(nile) => NileJob { paths, nile }.run(element, cancel, on_progress),
                 Err(err) => failed(err),
             },
-            _ => match Legendary::locate(&paths) {
-                Ok(legendary) => LegendaryJob { data_paths: paths, legendary }.run(element, cancel, on_progress),
-                Err(err) => failed(err),
-            },
+            _ => EpicJob { epic: Epic::new(&paths), data_paths: paths }.run(element, cancel, on_progress),
         }
     }
 }
