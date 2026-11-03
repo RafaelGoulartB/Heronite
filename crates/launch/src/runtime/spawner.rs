@@ -187,7 +187,9 @@ impl SystemSpawner {
                 }
                 match std::fs::File::create(p) {
                     Ok(mut f) => {
-                        let _ = f.write_all(format!("Launching: {}\n\nGame Log:\n", cmd.display()).as_bytes());
+                        let _ = f.write_all(
+                            format!("Launching: {}\n\nGame Log:\n", crate::log_writer::without_sign_in(cmd).display()).as_bytes(),
+                        );
                         // stdout and stderr share one open file description.
                         match f.try_clone() {
                             Ok(f2) => (Stdio::from(f), Stdio::from(f2)),

@@ -14,8 +14,8 @@ use heronite_i18n::tr;
 use serde_json::Value;
 
 use crate::env::join;
+use crate::epic::{cached_umu_id, known_fixes_env, known_fixes_steps};
 use crate::host::{run_mode, unavailable_reason, Os, RunMode};
-use crate::legendary::{cached_umu_id, known_fixes_env, known_fixes_steps};
 use crate::plan::{native_plan, split_args, windows_plan, CloudSaves, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::GameSettings;

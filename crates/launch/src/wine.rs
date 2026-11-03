@@ -223,6 +223,30 @@ pub fn build_wine_plan(
     executable: &str,
     args: &[String],
 ) -> LaunchPlan {
+    build_wine_plan_for(ctx, probe, game, settings, executable, args, &StoreGame::default())
+}
+
+/// What a store's game adds to a Wine plan.
+#[derive(Debug, Clone, Default)]
+pub struct StoreGame<'a> {
+    /// The install folder, for the variables that name it
+    /// (`STEAM_COMPAT_INSTALL_PATH`).
+    pub install_path: Option<&'a str>,
+    /// The game's id in the Wine variables (`SteamGameId`); `"0"` when empty.
+    pub game_id: &'a str,
+}
+
+/// [`build_wine_plan`] for a store's game. A bare program name (Wine's
+/// `start`) has no folder of its own: the sandbox then shows no game folder.
+pub fn build_wine_plan_for(
+    ctx: &PlanContext,
+    probe: &dyn Probe,
+    game: &GameInfo,
+    settings: &GameSettings,
+    executable: &str,
+    args: &[String],
+    store: &StoreGame,
+) -> LaunchPlan {
     if executable.starts_with('/') && !probe.exists(executable) {
         return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
     }
@@ -232,14 +256,16 @@ pub fn build_wine_plan(
     };
     let s = &wine.settings;
     let mut env = setup_wrapper_env_vars(&game.app_name, &game.runner);
-    env.extend(setup_env_vars(s, None, probe));
-    env.extend(setup_wine_env_vars(s, "0", &ctx.runtime_dir(), probe));
+    env.extend(setup_env_vars(s, store.install_path, probe));
+    let game_id = if store.game_id.is_empty() { "0" } else { store.game_id };
+    env.extend(setup_wine_env_vars(s, game_id, &ctx.runtime_dir(), probe));
     env.insert("PROTON_VERB".into(), "waitforexitandrun".into());
     if let Err(err) = crate::lsfg::apply(&mut env, &s.lsfg, &ctx.global, probe) {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
-    let folder = game_folder(game, executable);
-    let req = sandbox::Request { folder: Some(&folder), read: Vec::new(), env: Some(&env) };
+    let bare = !executable.contains(['/', '\\']) && store.install_path.is_none();
+    let folder = (!bare).then(|| game_folder(game, executable));
+    let req = sandbox::Request { folder: folder.as_deref(), read: Vec::new(), env: Some(&env) };
     let prelude = match sandbox::prelude(ctx, probe, s, sandbox::Owner::Prefix(&s.wine_prefix), &req) {
         Ok(p) => p,
         Err(e) => return LaunchPlan::Unavailable(e),

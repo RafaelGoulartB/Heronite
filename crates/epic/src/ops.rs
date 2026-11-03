@@ -111,7 +111,7 @@ impl EpicJob {
     /// (run in the prefix at the first launch) and mark the game installed.
     fn run_third_party(&self, el: &DmElement, provider: Provider, cancel: &Cancel, on_progress: &mut dyn FnMut(Progress)) -> JobResult {
         // Windows: a store app already installed opens the game; nothing to fetch.
-        let have_app = cfg!(windows) && heronite_launch::legendary_windows::link_handler_installed(provider.link_scheme());
+        let have_app = cfg!(windows) && heronite_launch::epic_launch::link_handler_installed(provider.link_scheme());
         if have_app {
             log::info!("{} is installed: no installer to fetch", provider.label());
         } else if let Err(err) = third_party::ensure_installer(&self.data_paths, provider, cancel, on_progress) {

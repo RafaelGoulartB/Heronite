@@ -11,7 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
-use heronite_launch::{legendary::find_legendary, PlanContext, SystemProbe};
+use heronite_launch::{store_tools::LEGENDARY, PlanContext, SystemProbe};
 
 /// The legendary binary and the config folder it works on.
 #[derive(Debug, Clone)]
@@ -52,7 +52,7 @@ impl Legendary {
     /// `$PATH`; `HERONITE_LEGENDARY_BIN` overrides all).
     pub fn locate(data_paths: &DataPaths) -> Result<Self> {
         let ctx = PlanContext::load(data_paths);
-        let bin = find_legendary(&ctx, &SystemProbe).ok_or_else(|| anyhow!(tr!("The legendary binary was not found")))?;
+        let bin = LEGENDARY.find(&ctx, &SystemProbe).ok_or_else(|| anyhow!(tr!("The legendary binary was not found")))?;
         Ok(Self { bin: PathBuf::from(bin), config_dir: data_paths.legendary_config_dir() })
     }
 

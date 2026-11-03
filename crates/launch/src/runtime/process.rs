@@ -171,9 +171,9 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     // MangoHud's limit moves into a file of ours so the overlay can change it.
     let mut command = plan.command.clone();
-    // An Epic game on Windows: legendary names the program to start.
-    if plan.ask_legendary {
-        match super::epic::ask_legendary(shared, log, req, control, &command, &status) {
+    // An Epic game: Epic signs in and names what starts.
+    if let Some(launch) = &plan.epic {
+        match super::epic::ask_epic(shared, log, req, control, &command, launch, &status) {
             Some(game) => command = game,
             None => return,
         }
