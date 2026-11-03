@@ -1,7 +1,8 @@
 //! GOG's own protocol, the work gogdl did for the app: signing in, the
 //! builds and depot manifests of the content system (v1 and v2), secure
-//! links and chunks, redistributables and Linux installers. Everything is
-//! blocking: call it from worker threads.
+//! links and chunks, redistributables, Linux installers, cloud saves and
+//! importing a game already on disk. Everything is blocking: call it from
+//! worker threads.
 //!
 //! It keeps gogdl's files, so installs made by gogdl keep updating and the
 //! rest of the app reads them as before:
@@ -16,18 +17,20 @@
 //! [`files`] (the files of a build and the difference between two), [`chunk`]
 //! (secure links, chunk addresses and decoding), [`info`] (what `gogdl info`
 //! printed), [`linux`] (the zip inside a Linux installer), [`plan`] (what an
-//! install, update or repair does). [`language`] is GOG's table of language codes.
+//! install, update or repair does), [`saves`] and [`import`]. [`language`] is GOG's table of language codes.
 
 pub mod api;
 pub mod auth;
 pub mod builds;
 pub mod chunk;
 pub mod files;
+pub mod import;
 pub mod info;
 pub mod language;
 pub mod linux;
 pub mod plan;
 pub mod redist;
+pub mod saves;
 pub mod stored;
 pub mod v1;
 pub mod v2;
