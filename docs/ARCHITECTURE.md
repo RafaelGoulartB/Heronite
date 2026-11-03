@@ -39,6 +39,10 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      Ubisoft Connect, Rockstar Games Launcher):
  │                      setup, their games, sign-in, open / close     → data, launch, epic
  ├─ heronite-emulation  emulators, ROM scan, save states, Ludusavi   → data, launch
+ ├─ heronite-xbox       the Microsoft Store and PC Game Pass games the
+ │                      Xbox app installs (Windows packages): found
+ │                      among the user's packages, kept in the
+ │                      Collection                                   → data, platform
  ├─ heronite-import     games of Heroic, Lutris, Bottles and Faugus
  │                      brought into the Collection                  → data
  ├─ heronite-installer  games from YAML install scripts              → data, launch, emulation
@@ -289,6 +293,24 @@ device when the last window closes (the app lives on in the tray); see its
   soundtracks, demos, test servers or games hidden in Steam), caches it and
   adds the games the Collection does not have yet; Steam's play time moves
   the Steam entries up when it is ahead.
+- **heronite-xbox:** Windows only (`Feature::XboxStore`). The Microsoft
+  Store and PC Game Pass games are Windows packages: `heronite_platform::packages`
+  reads the user's packages from the registry the deployment service keeps
+  (`AppModel\Repository\Packages` of `HKCU`: folder, display name, one key
+  per application) and resolves `ms-resource:` names with
+  `SHLoadIndirectString`. A package is a game when its folder has
+  `MicrosoftGame.config` (GDK games, installed by the Xbox app under
+  `XboxGames`) or `xboxservices.config` (Store games that sign in to Xbox);
+  `files` reads those and `AppxManifest.xml` for the title and the
+  application to start. `collection` keeps them as sideload entries of
+  `launchKind` `xbox` (`heronite_data::xbox`; `launcherArgs` is the AUMID,
+  `local_library/xbox.json` the games the user removed). `heronite_launch::xbox`
+  starts them with `explorer.exe shell:AppsFolder\<AUMID>`, which returns at
+  once with exit code 1 (`Handoff::exit_ignored`), and the session follows
+  the programs running from the package's folder. Owned and Game Pass games
+  are the same packages: only Microsoft's services know the licence, so
+  both show as Xbox. `services::xbox_library` reads them after the start,
+  every ten minutes and on request (the Xbox page, the refresh button).
 - **heronite-installer:** installs a game from a YAML (or JSON) install
   script. `script` reads the file (one script, a list, or an API dump;
   repeated keys keep the last value), `steps` types the `installer` list,
