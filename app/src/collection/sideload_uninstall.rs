@@ -43,10 +43,10 @@ impl Job {
 
 /// A sideloaded program installed from files on this computer (not a Steam,
 /// emulated or browser entry, nor one another launcher has), or an installed
-/// game of a store client, whose uninstall is the client's
+/// game of a store client or of the Xbox app, whose uninstall is theirs
 /// ([`CollectionView::open_sideload_uninstall`] sends the user there).
 pub(super) fn can_uninstall_local(game: &CollectionGame) -> bool {
-    if game.client().is_some() {
+    if game.client().is_some() || game.is_xbox() {
         return game.installed;
     }
     game.runner == "sideload"
@@ -154,6 +154,10 @@ impl CollectionView {
             self.ask_client_uninstall(&game.title, client, window, cx);
             return;
         }
+        if game.is_xbox() {
+            self.ask_xbox_uninstall(&game.title, window, cx);
+            return;
+        }
         let job = job_for(&lib, &game);
         let paths = self.data_paths.clone();
         cx.spawn_in(window, async move |this, cx| {
@@ -184,6 +188,32 @@ impl CollectionView {
                 move |_, cx| {
                     let svc = crate::services::clients(cx);
                     svc.update(cx, |s, cx| s.open(client, cx));
+                },
+                window,
+                cx,
+            )
+        });
+        self.open_dialog(view, cx);
+    }
+
+    /// A game of the Xbox app is uninstalled there: offers to open it.
+    fn ask_xbox_uninstall(&mut self, title: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let name = heronite_data::xbox::NAME;
+        let mut spec = Confirm::new(
+            "xbox-uninstall",
+            tr!("Uninstall"),
+            tr!("\"{title}\" belongs to {client}, so {client} uninstalls it. Open {client} to uninstall it there?", title, client = name),
+        );
+        spec.confirm = Some(tr!("Open {client}", client = name));
+        let weak = cx.entity().downgrade();
+        let view = cx.new(|cx| {
+            EpicConfirmDialog::new(
+                spec,
+                move |_, cx| {
+                    if let Err(e) = crate::services::xbox_library::open_xbox_app(true) {
+                        let text = tr!("Could not open the Xbox app: {error}", error = e);
+                        weak.update(cx, |this, cx| this.show_toast(text, true, cx)).ok();
+                    }
                 },
                 window,
                 cx,

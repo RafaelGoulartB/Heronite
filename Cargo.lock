@@ -3524,6 +3524,7 @@ dependencies = [
  "heronite-sync",
  "heronite-update",
  "heronite-wine",
+ "heronite-xbox",
  "image",
  "ksni",
  "libc",

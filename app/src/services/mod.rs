@@ -16,6 +16,7 @@ pub mod sync;
 pub mod update;
 pub mod upkeep;
 pub mod widgets;
+pub mod xbox_library;
 
 use gpui_kit::*;
 use heronite_data::DataPaths;
@@ -72,6 +73,24 @@ pub fn steam_library(cx: &mut App) -> Entity<steam_library::SteamLibrary> {
     }
     let entity = cx.new(|cx| steam_library::SteamLibrary::new(DataPaths::detect(), cx));
     cx.set_global(SteamLibraryGlobal(entity.clone()));
+    entity
+}
+
+struct XboxLibraryGlobal(Entity<xbox_library::XboxLibrary>);
+impl Global for XboxLibraryGlobal {}
+
+/// The Xbox games service when something started it already.
+pub fn xbox_library_started(cx: &App) -> Option<Entity<xbox_library::XboxLibrary>> {
+    cx.try_global::<XboxLibraryGlobal>().map(|g| g.0.clone())
+}
+
+/// The Xbox games service (created, and its timer started, on first use).
+pub fn xbox_library(cx: &mut App) -> Entity<xbox_library::XboxLibrary> {
+    if let Some(g) = cx.try_global::<XboxLibraryGlobal>() {
+        return g.0.clone();
+    }
+    let entity = cx.new(|cx| xbox_library::XboxLibrary::new(DataPaths::detect(), cx));
+    cx.set_global(XboxLibraryGlobal(entity.clone()));
     entity
 }
 

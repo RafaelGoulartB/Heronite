@@ -59,6 +59,8 @@ pub fn remove_from_collection(paths: &DataPaths, runner: &str, app_name: &str) -
 pub enum Origin {
     Launcher(Launcher),
     Client(Client),
+    /// The Xbox app (Microsoft Store and PC Game Pass games).
+    Xbox,
 }
 
 /// The launcher (Heroic, Lutris, Bottles, Faugus) or the store client a game
@@ -67,6 +69,9 @@ pub enum Origin {
 pub fn launcher_of(lib: &Library, app_name: &str) -> Option<Origin> {
     let game = lib.games.iter().find(|g| g.app_name == app_name)?;
     let meta = game.meta.as_ref()?;
+    if meta.launch_kind == heronite_data::xbox::LAUNCH_KIND {
+        return Some(Origin::Xbox);
+    }
     match Client::from_id(&meta.source).filter(|_| meta.launch_kind == clients::LAUNCH_KIND) {
         Some(client) => Some(Origin::Client(client)),
         None => Launcher::from_source(&meta.source).map(Origin::Launcher),
@@ -84,6 +89,10 @@ pub fn note_removed(origin: Option<Origin>, app_name: &str, cx: &mut App) {
         Some(Origin::Client(client)) => {
             let svc = crate::services::clients(cx);
             svc.update(cx, |s, cx| s.note_removed(client, app_name, cx));
+        }
+        Some(Origin::Xbox) => {
+            let svc = crate::services::xbox_library(cx);
+            svc.update(cx, |s, cx| s.note_removed(app_name, cx));
         }
         None => {}
     }

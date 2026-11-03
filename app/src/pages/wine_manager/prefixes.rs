@@ -69,7 +69,13 @@ fn runs_through_wine(g: &heronite_data::library::CollectionGame) -> bool {
     windows
         && !matches!(
             g.launch_kind.as_deref(),
-            Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+            Some(
+                "emulator"
+                    | "steam-uri"
+                    | heronite_data::launchers::LAUNCH_KIND
+                    | heronite_data::clients::LAUNCH_KIND
+                    | heronite_data::xbox::LAUNCH_KIND
+            )
         )
 }
 

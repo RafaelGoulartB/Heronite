@@ -1,7 +1,7 @@
 //! The games of the Microsoft Store and PC Game Pass on Windows: the Xbox
 //! app (or the Store) installs them as packages, each with its folder and
 //! its applications. Heronite reads, without starting anything, which of
-//! the user's packages are games ([`games`]) and keeps them in the
+//! the user's packages are games ([`scan`]) and keeps them in the
 //! Collection ([`collection`]); Windows starts them by their application's
 //! id (`heronite_launch`, `launchKind` `xbox`).
 //!
@@ -25,6 +25,8 @@ use heronite_platform::packages::{self, Package};
 pub const XBOX_APP_FAMILY: &str = "Microsoft.GamingApp_8wekyb3d8bbwe";
 /// The Xbox app's AUMID: what opens its window.
 pub const XBOX_APP: &str = "Microsoft.GamingApp_8wekyb3d8bbwe!Microsoft.Xbox.App";
+/// The Xbox app's product id in the Microsoft Store.
+pub const XBOX_APP_STORE_ID: &str = "9MV0B5HZVK9Z";
 
 /// Microsoft's own packages that carry Xbox files and are not games.
 const NOT_GAMES: [&str; 8] = [
@@ -61,15 +63,20 @@ impl XboxGame {
     }
 }
 
-/// The games among this user's packages, by title. Reads the registry and
-/// a few small files; empty on other systems.
-pub fn games() -> Vec<XboxGame> {
-    games_in(&packages::installed(), &packages::resolve)
+/// What this user's packages hold.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Scan {
+    /// The Xbox app is installed.
+    pub xbox_app: bool,
+    /// The games, by title.
+    pub games: Vec<XboxGame>,
 }
 
-/// Whether the Xbox app is installed for this user.
-pub fn xbox_app_installed() -> bool {
-    packages::installed().iter().any(|p| p.family_name() == XBOX_APP_FAMILY)
+/// Looks at this user's packages: reads the registry and a few small files,
+/// starts nothing. Empty on other systems.
+pub fn scan() -> Scan {
+    let list = packages::installed();
+    Scan { xbox_app: list.iter().any(|p| p.family_name() == XBOX_APP_FAMILY), games: games_in(&list, &packages::resolve) }
 }
 
 /// The games among `list`; `resolve` turns a package's display name into

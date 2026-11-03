@@ -19,6 +19,7 @@ pub mod steam;
 pub mod store;
 pub mod stores;
 pub mod wine_manager;
+pub mod xbox;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -40,6 +41,9 @@ pub enum Page {
     Amazon,
     /// The Steam page of the Stores (the library read from the Steam client).
     Steam,
+    /// The Xbox page of the Stores (Windows): the Microsoft Store and PC Game
+    /// Pass games installed as packages.
+    Xbox,
     /// The pages of the Stores that run the store's own program under Wine
     /// (`heronite_clients`).
     BattleNet,
@@ -63,6 +67,7 @@ impl Page {
             Page::Gog => "GOG",
             Page::Amazon => "Amazon Games",
             Page::Steam => "Steam",
+            Page::Xbox => "Xbox",
             Page::BattleNet => "Battle.net",
             Page::Ea => "EA app",
             Page::Ubisoft => "Ubisoft Connect",
@@ -82,6 +87,7 @@ impl Page {
             Page::Gog => Icon::BrandGog,
             Page::Amazon => Icon::BrandAmazon,
             Page::Steam => Icon::BrandSteam,
+            Page::Xbox => Icon::ShoppingBag,
             Page::BattleNet => Icon::BrandBattleNet,
             Page::Ea => Icon::BrandEa,
             Page::Ubisoft => Icon::BrandUbisoft,
@@ -101,6 +107,7 @@ impl Page {
             Page::Epic => supported(Feature::EpicStore),
             Page::Gog => supported(Feature::GogStore),
             Page::Amazon => supported(Feature::AmazonStore),
+            Page::Xbox => supported(Feature::XboxStore),
             Page::BattleNet | Page::Ea | Page::Ubisoft | Page::Rockstar => supported(Feature::StoreClients),
             Page::WineManager => supported(Feature::Wine),
             Page::Emulators => supported(Feature::Emulation),
@@ -128,6 +135,7 @@ impl Page {
             "gog" => Some(Page::Gog),
             "amazon" => Some(Page::Amazon),
             "steam" => Some(Page::Steam),
+            "xbox" => Some(Page::Xbox),
             "battlenet" => Some(Page::BattleNet),
             "ea" => Some(Page::Ea),
             "ubisoft" => Some(Page::Ubisoft),

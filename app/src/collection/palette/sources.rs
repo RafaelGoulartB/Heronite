@@ -211,6 +211,7 @@ fn page_name_en(p: Page) -> &'static str {
         Page::Gog => "gog",
         Page::Amazon => "amazon games",
         Page::Steam => "steam",
+        Page::Xbox => "xbox microsoft store",
         Page::BattleNet => "battle.net",
         Page::Ea => "ea app",
         Page::Ubisoft => "ubisoft connect",
@@ -249,6 +250,7 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(page(Page::Gog, tr!("Account and library"), "", "gog galaxy store account login gogdl loja conta entrar biblioteca"));
     v.push(page(Page::Amazon, tr!("Account and library"), "", "amazon prime gaming store account login nile loja conta entrar biblioteca"));
     v.push(page(Page::Steam, tr!("Your Steam library"), "", "steam valve store library import loja biblioteca importar"));
+    v.push(page(Page::Xbox, tr!("Microsoft Store and PC Game Pass games"), "", "xbox microsoft store game pass gamepass loja jogos"));
     v.push(page(Page::BattleNet, tr!("Blizzard games, under Wine"), "", "battle.net battlenet blizzard wow overwatch diablo loja"));
     v.push(page(Page::Ea, tr!("EA games, under Wine"), "", "ea app origin electronic arts loja"));
     v.push(page(Page::Ubisoft, tr!("Ubisoft games, under Wine"), "", "ubisoft connect uplay loja"));
