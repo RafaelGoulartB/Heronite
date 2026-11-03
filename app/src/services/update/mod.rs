@@ -388,11 +388,9 @@ impl Updater {
         let Some(release) = &self.release else { return false };
         match &self.method {
             Ok(Method::AppImage(_)) => release.installable(),
-            Ok(Method::Package { kind, .. }) => release.package_signature(*kind).is_some(),
+            Ok(Method::Package { kind, .. }) => release.package_proof(*kind).is_some(),
             #[cfg(windows)]
-            Ok(Method::Installer(_) | Method::Portable(_)) => {
-                self.windows_asset().is_some_and(|k| release.windows_asset(k).is_some() && release.windows_signature(k).is_some())
-            }
+            Ok(Method::Installer(_) | Method::Portable(_)) => self.windows_asset().is_some_and(|k| release.windows_proof(k).is_some()),
             Err(_) => false,
         }
     }
@@ -611,12 +609,13 @@ impl Updater {
                     (heronite_update::portable::install(&release, &copy, key, &cancel, &mut progress), None)
                 }
                 Method::Package { kind, .. } => {
-                    let (Some(asset), Some(sig)) = (release.package(kind), release.package_signature(kind)) else {
+                    let (Some(asset), Some(proof)) = (release.package(kind), release.package_proof(kind)) else {
                         return (Err(InstallError::Failed(tr!("This release has no signed package for this system").into())), None);
                     };
                     log::info!("downloading {} into {}", asset.name, dir.display());
                     let file =
-                        match heronite_update::install::download_signed(asset, sig, &release.version, &dir, key, &cancel, &mut progress) {
+                        match heronite_update::install::download_signed(asset, &proof, &release.version, &dir, key, &cancel, &mut progress)
+                        {
                             Ok(file) => file,
                             Err(e) => return (Err(e), None),
                         };
@@ -831,6 +830,7 @@ mod tests {
             signature: None,
             packages: Vec::new(),
             windows: Vec::new(),
+            checksums: None,
         }
     }
 
