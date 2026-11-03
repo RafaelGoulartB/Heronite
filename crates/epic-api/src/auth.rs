@@ -18,6 +18,32 @@ pub(crate) const CLIENT_SECRET: &str = "daafbccc737745039dffe53d94fc76cf";
 /// A token with less left than this is renewed first (legendary's 10 minutes).
 const REFRESH_MARGIN_MINUTES: i64 = 10;
 
+/// Held while a sign-in is read and renewed: two threads renewing at once
+/// would both spend the same refresh token, and Epic refuses the second
+/// (which would then sign the user out).
+static RENEWING: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
+/// A renewed sign-in that could not be saved, by config folder: Epic already
+/// took the old refresh token back, so this is the only good one left. It is
+/// used for the rest of the run and saved again at every chance.
+static UNSAVED: parking_lot::Mutex<Option<(std::path::PathBuf, Session)>> = parking_lot::Mutex::new(None);
+
+/// [`Session::save`], tried a few times (a full disk may free up, an
+/// antivirus may let go of the file).
+fn save_retrying(session: &Session, config_dir: &Path) -> Result<()> {
+    let mut tries = 0;
+    loop {
+        match session.save(config_dir) {
+            Ok(()) => return Ok(()),
+            Err(err) if tries >= 2 => return Err(err),
+            Err(_) => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
+    }
+}
+
 /// `user.json` below legendary's config folder.
 pub fn user_file(config_dir: &Path) -> std::path::PathBuf {
     config_dir.join("user.json")
@@ -42,6 +68,16 @@ impl std::fmt::Display for SignInRefused {
 }
 
 impl std::error::Error for SignInRefused {}
+
+impl SignInRefused {
+    /// The saved sign-in can never work again (its refresh token expired or
+    /// was revoked), as opposed to Epic wanting the user to act first.
+    pub fn is_dead(&self) -> bool {
+        ["invalid_refresh_token", "invalid_grant", "no_refresh_token", "refresh_token_expired", "token_expired"]
+            .iter()
+            .any(|c| self.code.contains(c))
+    }
+}
 
 /// Whether `err`, or what caused it, is a [`SignInRefused`].
 pub fn is_sign_in_refused(err: &anyhow::Error) -> bool {
@@ -156,7 +192,12 @@ impl Client {
             bail!("Epic's sign-in service is unavailable (HTTP {})", resp.status);
         }
         let doc = resp.json().unwrap_or(Value::Null);
-        if let Some(code) = doc.get("errorCode").and_then(Value::as_str) {
+        let code = doc.get("errorCode").and_then(Value::as_str);
+        // Asked to slow down: the sign-in is fine, try again later.
+        if resp.status == 429 || code.is_some_and(|c| c.contains("throttled")) {
+            bail!("Epic's sign-in service is busy (HTTP {}); try again in a moment", resp.status);
+        }
+        if let Some(code) = code {
             return Err(SignInRefused {
                 code: code.to_string(),
                 continuation_url: doc.get("continuationUrl").and_then(Value::as_str).map(str::to_string),
@@ -196,16 +237,36 @@ impl Client {
             return Err(SignInRefused { code: "no_refresh_token".into(), continuation_url: None }.into());
         }
         let renewed = session.merged(self.token(Grant::RefreshToken(token))?);
-        renewed.save(config_dir)?;
+        // The old refresh token is spent: losing the new one would sign the
+        // user out, so a failed save is tried again and, failing that, the
+        // session is kept for this run (see [`UNSAVED`]).
+        if let Err(err) = save_retrying(&renewed, config_dir) {
+            log::error!("epic: the renewed sign-in could not be saved ({err:#}); it is kept until it can be");
+            *UNSAVED.lock() = Some((config_dir.to_path_buf(), renewed.clone()));
+        }
         Ok(renewed)
     }
 
     /// The saved session with a token good for at least 10 more minutes,
     /// renewed first when needed. Signed out gives `Ok(None)`. When Epic
     /// refuses the refresh token, `user.json` is deleted (as legendary does)
-    /// and the error is a [`SignInRefused`].
+    /// and the error is a [`SignInRefused`]. Renewals are done one at a time:
+    /// a thread that waited reads the session the other one saved.
     pub fn ensure_session(&self, config_dir: &Path) -> Result<Option<Session>> {
-        let Some(session) = Session::load(config_dir)? else { return Ok(None) };
+        let _renewing = RENEWING.lock();
+        let unsaved = UNSAVED.lock().as_ref().filter(|(dir, _)| dir == config_dir).map(|(_, s)| s.clone());
+        let session = match unsaved {
+            Some(s) => {
+                if save_retrying(&s, config_dir).is_ok() {
+                    *UNSAVED.lock() = None;
+                }
+                s
+            }
+            None => match Session::load(config_dir)? {
+                Some(s) => s,
+                None => return Ok(None),
+            },
+        };
         if !session.needs_refresh(Utc::now()) {
             return Ok(Some(session));
         }
@@ -214,7 +275,10 @@ impl Client {
             Ok(s) => Ok(Some(s)),
             Err(err) if is_sign_in_refused(&err) => {
                 log::warn!("epic: the saved sign-in was refused: {err}");
-                let _ = std::fs::remove_file(user_file(config_dir));
+                // Only a sign-in that can never work again is forgotten.
+                if err.chain().filter_map(|e| e.downcast_ref::<SignInRefused>()).any(SignInRefused::is_dead) {
+                    let _ = std::fs::remove_file(user_file(config_dir));
+                }
                 Err(err)
             }
             Err(err) => Err(err),
@@ -223,6 +287,11 @@ impl Client {
 
     /// Ends the session at Epic (best effort) and deletes `user.json`.
     pub fn logout(&self, config_dir: &Path) -> Result<()> {
+        // Not while a renewal could write the file back.
+        let _renewing = RENEWING.lock();
+        if UNSAVED.lock().as_ref().is_some_and(|(dir, _)| dir == config_dir) {
+            *UNSAVED.lock() = None;
+        }
         if let Ok(Some(session)) = Session::load(config_dir) {
             let url = format!("{}/account/api/oauth/sessions/kill/{}", self.endpoints.oauth, session.access_token());
             let req = Request { method: "DELETE", ..self.get(&url).bearer(session.access_token()) };
@@ -339,6 +408,55 @@ mod tests {
         assert!(is_sign_in_refused(&err));
         assert!(!user_file(dir.path()).exists());
         server.join().unwrap();
+    }
+
+    #[test]
+    fn being_throttled_or_asked_to_act_keeps_the_sign_in() {
+        let (url, server) = serve(vec![
+            (429, r#"{"errorCode":"errors.com.epicgames.common.throttled","errorMessage":"slow down"}"#),
+            (400, r#"{"errorCode":"errors.com.epicgames.oauth.corrective_action_required","continuationUrl":"https://x"}"#),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        files::write_json(&user_file(dir.path()), &json!({"access_token": "old", "refresh_token": "r", "account_id": "a"}), true).unwrap();
+        let client = Client::new(Endpoints::all_at(&url));
+        let err = client.ensure_session(dir.path()).unwrap_err();
+        assert!(!is_sign_in_refused(&err), "{err:#}");
+        assert!(user_file(dir.path()).exists());
+        let err = client.ensure_session(dir.path()).unwrap_err();
+        assert!(is_sign_in_refused(&err));
+        assert!(user_file(dir.path()).exists(), "the user accepts the terms, then the same sign-in works");
+        server.join().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_renewed_sign_in_that_cannot_be_saved_is_kept() {
+        use std::os::unix::fs::PermissionsExt;
+        let answer = Box::leak(token_answer("new", "2099-01-01T00:00:00.000Z").into_boxed_str());
+        let (url, server) = serve(vec![(200, answer)]);
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("cfg");
+        files::write_json(
+            &user_file(&cfg),
+            &json!({"access_token": "old", "refresh_token": "r-old", "account_id": "a", "expires_at": "2000-01-01T00:00:00Z"}),
+            true,
+        )
+        .unwrap();
+        std::fs::set_permissions(&cfg, std::fs::Permissions::from_mode(0o500)).unwrap();
+        if std::fs::write(cfg.join("probe"), b"").is_ok() {
+            // Running as root: nothing can be made unwritable.
+            std::fs::set_permissions(&cfg, std::fs::Permissions::from_mode(0o700)).unwrap();
+            return;
+        }
+        let client = Client::new(Endpoints::all_at(&url));
+        let s = client.ensure_session(&cfg).unwrap().unwrap();
+        assert_eq!(s.access_token(), "new");
+        server.join().unwrap();
+        // The file could not change; the next ask uses the kept session (no
+        // request: the server is gone) and saves it once it can.
+        std::fs::set_permissions(&cfg, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(client.ensure_session(&cfg).unwrap().unwrap().access_token(), "new");
+        assert_eq!(files::read_json(&user_file(&cfg)).unwrap()["refresh_token"], "r-new");
     }
 
     #[test]
