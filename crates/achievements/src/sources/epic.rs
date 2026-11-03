@@ -18,7 +18,6 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
-use heronite_epic::cmd::Legendary;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -175,8 +174,8 @@ fn read_session(paths: &DataPaths) -> Option<Session> {
     Some(Session { account_id: text("account_id")?, token: text("access_token")?, fresh })
 }
 
-/// Account id and a valid token. `legendary status` renews an expired token
-/// (and removes `user.json` when Epic refuses the stored sign-in): `Ok(None)`
+/// Account id and a valid token. An expired token is renewed first (and
+/// `user.json` removed when Epic refuses the stored sign-in): `Ok(None)`
 /// then, as for a signed-out user.
 fn credentials_with(paths: &DataPaths, renew: impl FnOnce() -> Result<(), String>) -> Result<Option<(String, String)>, String> {
     let mut session = read_session(paths);
@@ -188,9 +187,11 @@ fn credentials_with(paths: &DataPaths, renew: impl FnOnce() -> Result<(), String
 }
 
 fn credentials(paths: &DataPaths) -> Result<Option<(String, String)>, String> {
-    credentials_with(paths, || {
-        let legendary = Legendary::locate(paths).map_err(|e| e.to_string())?;
-        legendary.run(&["status"], &[]).map(drop).map_err(|e| format!("{e:#}"))
+    credentials_with(paths, || match heronite_epic::Epic::new(paths).session() {
+        Ok(_) => Ok(()),
+        // Refused: forgotten, so the next read finds no sign-in.
+        Err(err) if heronite_epic::session::is_expired(&err) => Ok(()),
+        Err(err) => Err(format!("{err:#}")),
     })
 }
 
