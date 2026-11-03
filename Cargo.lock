@@ -3794,6 +3794,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-gog-api"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flate2",
+ "heronite-data",
+ "heronite-i18n",
+ "hex",
+ "log",
+ "md-5",
+ "parking_lot",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
+]
+
+[[package]]
 name = "heronite-i18n"
 version = "1.0.0"
 dependencies = [
