@@ -79,6 +79,60 @@ pub const NILE: StoreTool = StoreTool {
     ],
 };
 
+/// The file only NixOS has.
+const NIXOS_MARKER: &str = "/etc/NIXOS";
+
+/// Why `bin` cannot start here, when what starts it is missing: the Linux
+/// builds of legendary and gogdl are Python zipapps (`#!/usr/bin/env
+/// python3`), nile's a program for the usual Linux loader
+/// (`/lib64/ld-linux-x86-64.so.2`), which NixOS has only with nix-ld.
+/// `None` when it has what it needs, or is not a script or such a program.
+pub(crate) fn missing_runtime(name: &str, bin: &str, probe: &dyn Probe) -> Option<String> {
+    let head = probe.read_head(bin, 4096)?;
+    let nixos = probe.exists(NIXOS_MARKER);
+    if let Some(line) = head.strip_prefix(b"#!") {
+        let line = String::from_utf8_lossy(line.split(|&b| b == b'\n').next().unwrap_or_default()).into_owned();
+        let mut words = line.split_whitespace();
+        let first = words.next()?;
+        let program = if first.ends_with("/env") { words.find(|w| !w.starts_with('-'))? } else { first };
+        let found = if program.contains('/') { probe.exists(program) } else { probe.which(program).is_some() };
+        if found {
+            return None;
+        }
+        let python = program.rsplit('/').next().unwrap_or(program).starts_with("python");
+        let needs = if python { format!("{program} (Python 3)") } else { program.to_string() };
+        let fix = if nixos {
+            format!("add python3 to your NixOS packages, or install {name} from nixpkgs")
+        } else {
+            format!("install Python 3 from your system's packages, or {name} itself")
+        };
+        return Some(format!("{name} needs {needs}, which is not installed: {fix}"));
+    }
+    if head.starts_with(b"\x7fELF") {
+        let interp = elf_interpreter(&head)?;
+        if probe.exists(&interp) {
+            return None;
+        }
+        let fix = if nixos {
+            format!("enable programs.nix-ld in your NixOS configuration, or install {name} from nixpkgs")
+        } else {
+            format!("install {name} from your system's packages")
+        };
+        return Some(format!("{name} is a program for the usual Linux systems and needs {interp}, which this system does not have: {fix}"));
+    }
+    None
+}
+
+/// The loader a dynamic Linux program names (its `PT_INTERP`, near the
+/// start of the file): the `/...ld-linux...` path in `head`.
+fn elf_interpreter(head: &[u8]) -> Option<String> {
+    let at = head.windows(8).position(|w| w == b"ld-linux")?;
+    let start = head[..at].iter().rposition(|&b| b == 0).map_or(0, |i| i + 1);
+    let end = head[at..].iter().position(|&b| b == 0).map_or(head.len(), |i| at + i);
+    let path = std::str::from_utf8(&head[start..end]).ok()?;
+    path.starts_with('/').then(|| path.to_string())
+}
+
 /// One download of each tool at a time per process: a login and a refresh
 /// can both ask.
 fn busy(tool: &StoreTool) -> &'static Mutex<()> {
@@ -128,9 +182,17 @@ impl StoreTool {
     }
 
     /// First existing candidate, else the tool on `PATH` (`<name>.exe` on
-    /// Windows).
+    /// Windows). On NixOS the one on `PATH` comes before the data folder's
+    /// copy: a tool from nixpkgs runs as is, the downloaded build only with
+    /// what NixOS leaves out ([`missing_runtime`]).
     pub fn find(&self, ctx: &PlanContext, probe: &dyn Probe) -> Option<String> {
-        self.candidates(ctx, probe).into_iter().find(|p| probe.exists(p)).or_else(|| probe.which(self.name))
+        let mut candidates = self.candidates(ctx, probe);
+        if probe.exists(NIXOS_MARKER) {
+            if let Some(on_path) = probe.which(self.name) {
+                candidates.insert(candidates.len() - 1, on_path);
+            }
+        }
+        candidates.into_iter().find(|p| probe.exists(p)).or_else(|| probe.which(self.name))
     }
 
     /// The binary to run: an existing one, else a fresh download into the
@@ -138,6 +200,9 @@ impl StoreTool {
     pub fn ensure(&self, paths: &DataPaths, probe: &dyn Probe, net: &dyn Net, cancel: Cancel) -> Result<PathBuf, String> {
         let _guard = busy(self).lock().unwrap_or_else(|e| e.into_inner());
         if let Some(found) = self.find(&PlanContext::load(paths), probe) {
+            if let Some(why) = missing_runtime(self.name, &found, probe) {
+                return Err(why);
+            }
             return Ok(PathBuf::from(found));
         }
         let asset = self
@@ -229,6 +294,56 @@ pub(crate) mod tests {
         let probe = FakeProbe::default().with_bin("gogdl", "/usr/bin/gogdl");
         assert_eq!(GOGDL.find(&ctx, &probe).as_deref(), Some("/usr/bin/gogdl"));
         assert_eq!(GOGDL.find(&ctx, &FakeProbe::default()), None);
+    }
+
+    #[test]
+    fn nixos_takes_the_tool_on_path_before_the_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        let ctx = PlanContext::load(&paths);
+        let data = LEGENDARY.data_bin(&paths).to_string_lossy().into_owned();
+        let nix = "/run/current-system/sw/bin/legendary";
+        let probe = FakeProbe::default().with_path(&data).with_bin("legendary", nix);
+        assert_eq!(LEGENDARY.find(&ctx, &probe).as_deref(), Some(data.as_str()));
+        let probe = probe.with_path(NIXOS_MARKER);
+        assert_eq!(LEGENDARY.find(&ctx, &probe).as_deref(), Some(nix));
+        // The setting still wins.
+        let probe = probe.with_env("HERONITE_LEGENDARY_BIN", "/opt/legendary").with_path("/opt/legendary");
+        assert_eq!(LEGENDARY.find(&ctx, &probe).as_deref(), Some("/opt/legendary"));
+    }
+
+    #[test]
+    fn what_a_build_needs_to_start_is_checked() {
+        let zipapp = b"#!/usr/bin/env python3\nPK\x03\x04...";
+        let probe = FakeProbe::default().with_file("/t/legendary", zipapp);
+        let why = missing_runtime("legendary", "/t/legendary", &probe).unwrap();
+        assert!(why.contains("legendary needs python3 (Python 3)"), "{why}");
+        let probe = probe.with_bin("python3", "/usr/bin/python3");
+        assert_eq!(missing_runtime("legendary", "/t/legendary", &probe), None);
+
+        let mut elf = b"\x7fELF\x02\x01\x01\0".to_vec();
+        elf.extend_from_slice(&[0; 56]);
+        elf.extend_from_slice(b"/lib64/ld-linux-x86-64.so.2\0more");
+        let probe = FakeProbe::default().with_file("/t/nile", &elf).with_path(NIXOS_MARKER);
+        let why = missing_runtime("nile", "/t/nile", &probe).unwrap();
+        assert!(why.contains("/lib64/ld-linux-x86-64.so.2") && why.contains("nix-ld"), "{why}");
+        let probe = probe.with_path("/lib64/ld-linux-x86-64.so.2");
+        assert_eq!(missing_runtime("nile", "/t/nile", &probe), None);
+
+        // Not a script nor a program for a loader: nothing to say.
+        let probe = FakeProbe::default().with_file("/t/x", b"MZ\x90\0");
+        assert_eq!(missing_runtime("x", "/t/x", &probe), None);
+        assert_eq!(missing_runtime("x", "/t/missing", &probe), None);
+    }
+
+    #[test]
+    fn a_found_tool_that_cannot_start_is_explained() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        let data = GOGDL.data_bin(&paths).to_string_lossy().into_owned();
+        let probe = FakeProbe::default().with_file(&data, b"#!/usr/bin/env python3\n");
+        let err = GOGDL.ensure(&paths, &probe, &FakeNet::offline(), &|| false).unwrap_err();
+        assert!(err.contains("gogdl needs python3"), "{err}");
     }
 
     #[test]
