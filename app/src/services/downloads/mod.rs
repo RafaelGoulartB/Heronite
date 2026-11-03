@@ -104,7 +104,7 @@ impl Downloads {
         let job: Arc<dyn Job> = if fake.is_some() {
             Arc::new(debug::FakeJob)
         } else {
-            // legendary is located when the first element runs.
+            // Each store's handle is made when its first element runs.
             Arc::new(LazyJob { data_paths: data_paths.clone() })
         };
         let notify = move |ev| {
@@ -157,14 +157,14 @@ impl Downloads {
         };
         this.reload_local(cx);
         this.eos_reload(false, cx);
-        // Runs one operation at startup (end-to-end checks with a fake legendary); see `debug_op`.
+        // Runs one operation at startup (end-to-end checks); see `debug_op`.
         if let Some(op) = crate::env::value("HERONITE_DEBUG_EPIC_OP") {
             this.debug_op(&op, cx);
         }
         if let Some(app) = fake {
             this.seed_fake(&app);
         } else if let Some(app) = crate::env::value("HERONITE_DEBUG_QUEUE_INSTALL") {
-            // Integration check with a fake legendary (HERONITE_LEGENDARY_BIN): queues a real install.
+            // Integration check: queues a real install.
             this.debug_queue_install(&app, cx);
         } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::features::any_store() {
             this.spawn_idle_jobs(cx);

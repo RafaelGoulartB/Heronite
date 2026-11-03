@@ -821,7 +821,6 @@ impl SettingsPanel {
             ),
         ]
         .into_iter()
-        .chain(supported(Feature::EpicStore).then(|| self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx)))
         .chain(supported(Feature::GogStore).then(|| self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx)))
         .chain(supported(Feature::AmazonStore).then(|| self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx)))
         .chain([

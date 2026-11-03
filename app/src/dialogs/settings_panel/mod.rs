@@ -99,7 +99,6 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("defaultInstallPath", s("defaultInstallPath"), ""),
     ("defaultWinePrefixDir", s("defaultWinePrefixDir"), ""),
     ("defaultSteamPath", s("defaultSteamPath"), ""),
-    ("altLegendaryBin", s("altLegendaryBin"), n_!("Using built-in Legendary binary...")),
     ("altGogdlBin", s("altGogdlBin"), n_!("Using built-in gogdl binary...")),
     ("altNileBin", s("altNileBin"), n_!("Using built-in nile binary...")),
     ("env.key", Bind::Scratch, n_!("NAME")),

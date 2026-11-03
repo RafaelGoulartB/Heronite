@@ -71,7 +71,7 @@ pub enum Group {
     Prefixes,
     /// Proton / Wine builds, runtimes and tools.
     Builds,
-    /// The stores' command-line tools (legendary, gogdl, nile) and what they
+    /// The stores' command-line tools (gogdl, nile) and what they
     /// keep, where there is no Wine (with Wine they are among the runtimes).
     Tools,
     /// Proton prefixes and shader caches Steam keeps for games no longer installed.

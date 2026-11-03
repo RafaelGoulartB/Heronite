@@ -72,13 +72,7 @@ impl SettingsPanel {
             self.max_workers_field(cx),
             vec![help(tr!("More workers download faster but use more CPU, memory and disk. \"Max\" uses every core."))],
         );
-        // The tool of each store this system has.
-        if supported(Feature::EpicStore) {
-            fields = fields.field_help(
-                self.path_row("altLegendaryBin", Some(tr!("Legendary binary")), false, tr!("Choose the Legendary binary"), true, cx),
-                vec![help(&tool_help("legendary", tr!("Leave it empty to use the one in the data folder (tools/bin/legendary).")))],
-            );
-        }
+        // The tool of each store this system has (Epic needs none).
         if supported(Feature::GogStore) {
             fields = fields.field_help(
                 self.path_row("altGogdlBin", Some(tr!("gogdl binary")), false, tr!("Choose the gogdl binary"), true, cx),

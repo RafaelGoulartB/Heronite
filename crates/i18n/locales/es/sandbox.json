@@ -23,7 +23,7 @@
   "No network and no home folder: the game sees the system read-only, its prefix and its folder": "Sin red y sin tu carpeta personal: el juego ve el sistema en solo lectura, su prefijo y su carpeta",
   "Off until a game needs one. Each lets one thing through: turn on only what makes this game work.": "Desactivadas hasta que un juego las necesite. Cada una permite una cosa: activa solo lo que haga funcionar este juego.",
   "Open its home folder": "Abrir su carpeta personal",
-  "Outside the sandbox, as before: your scripts before and after launch, cloud saves and the store's own tools (legendary, gogdl, nile).": "Fuera del sandbox, como antes: tus scripts previos y posteriores al inicio, los guardados en la nube y las herramientas propias de la tienda (legendary, gogdl, nile).",
+  "Outside the sandbox, as before: your scripts before and after launch, cloud saves, the stores' sign-in and their own tools (gogdl, nile).": "Fuera del sandbox, como antes: tus scripts previos y posteriores al inicio, los guardados en la nube, el inicio de sesión de las tiendas y sus propias herramientas (gogdl, nile).",
   "Risk: {risk}": "Riesgo: {risk}",
   "Run in a sandbox": "Ejecutar en un sandbox",
   "Sandbox": "Sandbox",

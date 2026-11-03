@@ -220,7 +220,6 @@
   "Refresh": "Aktualisieren",
   "Release date": "Erscheinungsdatum",
   "Source": "Quelle",
-  "The legendary binary was not found": "Die legendary-Binärdatei wurde nicht gefunden",
   "Game folder not found: {folder}": "Spielordner nicht gefunden: {folder}",
   "To run {program} from the game folder, write ./{program}": "Um {program} aus dem Spielordner auszuführen, schreibe ./{program}",
   "{program} is not in the game folder": "{program} befindet sich nicht im Spielordner",

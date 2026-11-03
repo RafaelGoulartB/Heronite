@@ -21,8 +21,7 @@
 //! * [`eos_overlay`]: the EOS Overlay.
 //! * [`third_party`]: games of the EA app and Ubisoft Connect.
 //! * [`egl`]: games the Epic Games Launcher installed (Windows).
-//! * [`cmd`]: running a store's command-line tool (legendary still starts
-//!   the games; gogdl and nile).
+//! * [`cmd`]: what gogdl and nile left when they finished, and [`cmd::Cancel`].
 //!
 //! The account, library and installs stay in legendary's files
 //! (`legendaryConfig/legendary/**`), in its formats, so installs made with
