@@ -4,12 +4,11 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use heronite_data::clients::drive_c;
-
-use crate::files::{machine_keys, read_text, subfolders, unix_path, UNINSTALL};
+use crate::files::{read_text, subfolders, UNINSTALL};
+use crate::place::User;
 use crate::winpath::join_ci;
 use crate::xml::{elements, Element};
-use crate::{user_dirs, Account, ClientGame};
+use crate::{Account, ClientGame, Place};
 
 const EA_DESKTOP: &str = "Program Files/Electronic Arts/EA Desktop";
 /// The programs of the app, in the order it is started by.
@@ -20,8 +19,8 @@ const USER_SETTINGS: &str = "AppData/Local/Electronic Arts/EA Desktop";
 
 /// The EA app's program when a fresh install left it in a versioned folder
 /// (`EA Desktop/<version>/EA Desktop/EALauncher.exe`).
-pub fn versioned_exe(prefix: &Path) -> Option<PathBuf> {
-    let root = join_ci(&drive_c(prefix), EA_DESKTOP);
+pub fn versioned_exe(place: &Place) -> Option<PathBuf> {
+    let root = place.drive(EA_DESKTOP);
     let program_in = |dir: &Path| PROGRAMS.iter().map(|p| join_ci(dir, p)).find(|p| p.is_file());
     subfolders(&root)
         .into_iter()
@@ -31,7 +30,7 @@ pub fn versioned_exe(prefix: &Path) -> Option<PathBuf> {
         })
         .max()
         .map(|(_, exe)| exe)
-        .or_else(|| registered_exe(prefix).and_then(|dir| program_in(&dir)))
+        .or_else(|| registered_exe(place).and_then(|dir| program_in(&dir)))
 }
 
 /// The numbers of a folder name (`12.0.4.5` is `[12, 0, 4, 5]`), to order
@@ -42,10 +41,10 @@ fn version_key(name: &str) -> Vec<u64> {
 
 /// The folder the registry says the app is in (`LauncherAppPath` and
 /// `ClientPath` name its program or its folder).
-fn registered_exe(prefix: &Path) -> Option<PathBuf> {
-    let keys = machine_keys(prefix, &REGISTRY);
+fn registered_exe(place: &Place) -> Option<PathBuf> {
+    let keys = place.machine_keys(&REGISTRY);
     keys.iter().flat_map(|k| ["LauncherAppPath", "ClientPath"].into_iter().filter_map(move |v| k.str(v))).find_map(|win| {
-        let path = unix_path(prefix, win)?;
+        let path = place.local_path(win)?;
         let is_file = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe"));
         let dir = if is_file { path.parent()?.to_path_buf() } else { path };
         dir.is_dir().then_some(dir)
@@ -59,8 +58,8 @@ struct Candidate {
     display_name: Option<String>,
 }
 
-/// The games the EA app has installed in `prefix`.
-pub fn games(prefix: &Path) -> Vec<ClientGame> {
+/// The games the EA app has installed in `place`.
+pub fn games(place: &Place) -> Vec<ClientGame> {
     let mut seen: HashMap<String, usize> = HashMap::new();
     let mut found: Vec<Candidate> = Vec::new();
     let mut add = |folder: PathBuf, display_name: Option<String>| {
@@ -76,15 +75,15 @@ pub fn games(prefix: &Path) -> Vec<ClientGame> {
             }
         }
     };
-    for folder in subfolders(&join_ci(&drive_c(prefix), "Program Files/EA Games")) {
+    for folder in subfolders(&place.drive("Program Files/EA Games")) {
         add(folder, None);
     }
-    for root in library_roots(prefix) {
+    for root in library_roots(place) {
         for folder in subfolders(&root) {
             add(folder, None);
         }
     }
-    for (folder, name) in installed_by_ea(prefix) {
+    for (folder, name) in installed_by_ea(place) {
         add(folder, name);
     }
     found.into_iter().filter_map(|c| game(&c)).collect()
@@ -92,19 +91,20 @@ pub fn games(prefix: &Path) -> Vec<ClientGame> {
 
 /// The games the Uninstall keys say the EA app's installer put in
 /// `InstallLocation`.
-fn installed_by_ea(prefix: &Path) -> Vec<(PathBuf, Option<String>)> {
-    machine_keys(prefix, &UNINSTALL)
+fn installed_by_ea(place: &Place) -> Vec<(PathBuf, Option<String>)> {
+    place
+        .machine_keys(&UNINSTALL)
         .iter()
         .filter(|k| k.str("UninstallString").is_some_and(|s| s.to_ascii_lowercase().contains("eainstaller")))
-        .filter_map(|k| Some((unix_path(prefix, k.str("InstallLocation")?)?, k.str("DisplayName").map(str::to_string))))
+        .filter_map(|k| Some((place.local_path(k.str("InstallLocation")?)?, k.str("DisplayName").map(str::to_string))))
         .collect()
 }
 
 /// The folders games are installed to besides `Program Files/EA Games`
 /// (`downloadinplacedir` of the machine's and the users' settings).
-fn library_roots(prefix: &Path) -> Vec<PathBuf> {
-    let mut inis = vec![join_ci(&drive_c(prefix), "ProgramData/EA Desktop/machine.ini")];
-    for user in user_dirs(prefix) {
+fn library_roots(place: &Place) -> Vec<PathBuf> {
+    let mut inis = vec![place.drive("ProgramData/EA Desktop/machine.ini")];
+    for user in place.users() {
         inis.extend(user_inis(&user));
     }
     let mut roots: Vec<PathBuf> = Vec::new();
@@ -113,7 +113,7 @@ fn library_roots(prefix: &Path) -> Vec<PathBuf> {
             let Some((key, value)) = line.split_once('=') else { continue };
             let key = key.trim().to_ascii_lowercase();
             if key == "downloadinplacedir" || key.ends_with(".downloadinplacedir") {
-                if let Some(root) = unix_path(prefix, value).filter(|r| !roots.contains(r)) {
+                if let Some(root) = place.local_path(value).filter(|r| !roots.contains(r)) {
                     roots.push(root);
                 }
             }
@@ -123,8 +123,8 @@ fn library_roots(prefix: &Path) -> Vec<PathBuf> {
 }
 
 /// `user_<id>.ini` files of a user's EA app settings.
-fn user_inis(user: &Path) -> Vec<PathBuf> {
-    let Ok(rd) = std::fs::read_dir(join_ci(user, USER_SETTINGS)) else { return Vec::new() };
+fn user_inis(user: &User) -> Vec<PathBuf> {
+    let Ok(rd) = std::fs::read_dir(user.path(USER_SETTINGS)) else { return Vec::new() };
     let mut out: Vec<PathBuf> = rd
         .flatten()
         .filter(|e| {
@@ -184,10 +184,10 @@ fn title_of(xml: &str) -> Option<String> {
 }
 
 /// Whether the EA app is signed in.
-pub fn account(prefix: &Path) -> Account {
+pub fn account(place: &Place) -> Account {
     let mut out = Account::Unknown;
-    for user in user_dirs(prefix) {
-        if !join_ci(&user, USER_SETTINGS).is_dir() {
+    for user in place.users() {
+        if !user.path(USER_SETTINGS).is_dir() {
             continue;
         }
         out = Account::SignedOut;
@@ -280,7 +280,7 @@ mod tests {
 "#,
         );
 
-        let mut games = games(dir.path());
+        let mut games = games(&dir.path().into());
         games.sort_by(|a, b| a.id.cmp(&b.id));
         let got: Vec<_> = games.iter().map(|g| (g.id.as_str(), g.title.as_str(), g.launch.as_str())).collect();
         assert_eq!(
@@ -301,12 +301,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let drive = dir.path().join("drive_c");
         game_folder(&drive, "Program Files/EA Games/Folder Name", "<contentID>9</contentID>");
-        assert_eq!(games(dir.path())[0].title, "Folder Name");
+        assert_eq!(games(&dir.path().into())[0].title, "Folder Name");
         put(
             &dir.path().join("system.reg"),
             "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\X] 1\n\"DisplayName\"=\"Registry Name\"\n\"InstallLocation\"=\"C:\\\\Program Files\\\\EA Games\\\\Folder Name\"\n\"UninstallString\"=\"EAInstaller.exe -x\"\n",
         );
-        let games = games(dir.path());
+        let games = games(&dir.path().into());
         assert_eq!(games.len(), 1, "one folder is one game");
         assert_eq!(games[0].title, "Registry Name");
     }
@@ -315,13 +315,13 @@ mod tests {
     fn the_app_is_found_in_a_versioned_folder_or_by_the_registry() {
         let dir = tempfile::tempdir().unwrap();
         let drive = dir.path().join("drive_c");
-        assert_eq!(versioned_exe(dir.path()), None);
+        assert_eq!(versioned_exe(&dir.path().into()), None);
         let old = drive.join("Program Files/Electronic Arts/EA Desktop/12.9.0.1/EA Desktop/EALauncher.exe");
         let new = drive.join("Program Files/Electronic Arts/EA Desktop/12.10.2.5/EA Desktop/EALauncher.exe");
         put(&old, "MZ");
         put(&new, "MZ");
         std::fs::create_dir_all(drive.join("Program Files/Electronic Arts/EA Desktop/empty")).unwrap();
-        assert_eq!(versioned_exe(dir.path()), Some(new));
+        assert_eq!(versioned_exe(&dir.path().into()), Some(new));
 
         let registered = tempfile::tempdir().unwrap();
         let exe = registered.path().join("drive_c/Apps/EA/EALauncher.exe");
@@ -330,7 +330,7 @@ mod tests {
             &registered.path().join("system.reg"),
             "[Software\\\\Wow6432Node\\\\Electronic Arts\\\\EA Desktop] 1\n\"ClientPath\"=\"C:\\\\Apps\\\\EA\\\\EADesktop.exe\"\n",
         );
-        assert_eq!(versioned_exe(registered.path()), Some(exe));
+        assert_eq!(versioned_exe(&registered.path().into()), Some(exe));
     }
 
     fn prefix_with_settings(files: &[(&str, &str)]) -> tempfile::TempDir {
@@ -346,10 +346,10 @@ mod tests {
     #[test]
     fn a_user_id_in_the_settings_means_signed_in() {
         let signed = prefix_with_settings(&[("user_1000.ini", "user.country=BR\nuser.userid=1000123\n")]);
-        assert_eq!(account(signed.path()), Account::SignedIn(None));
+        assert_eq!(account(&signed.path().into()), Account::SignedIn(None));
         let out = prefix_with_settings(&[("user_1000.ini", "user.country=BR\n"), ("other.ini", "user.userid=5")]);
-        assert_eq!(account(out.path()), Account::SignedOut);
-        assert_eq!(account(prefix_with_settings(&[]).path()), Account::SignedOut);
-        assert_eq!(account(tempfile::tempdir().unwrap().path()), Account::Unknown);
+        assert_eq!(account(&out.path().into()), Account::SignedOut);
+        assert_eq!(account(&prefix_with_settings(&[]).path().into()), Account::SignedOut);
+        assert_eq!(account(&tempfile::tempdir().unwrap().path().into()), Account::Unknown);
     }
 }

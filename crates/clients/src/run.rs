@@ -16,7 +16,7 @@ use heronite_launch::settings::{load_game_settings, GameSettings};
 use heronite_launch::wine_tools::{alongside_command, kill_prefix_command, run_exe_command, UMU_NSENTER};
 use heronite_launch::{Command, PlanContext, Probe, SystemProbe};
 
-use crate::{find_exe, spawn, Client};
+use crate::{find_exe, spawn, Client, Place};
 
 /// How long closing the client may take.
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -51,7 +51,7 @@ pub fn open_command(paths: &DataPaths, client: Client, home: &str) -> Result<Com
 
 fn command_with(paths: &DataPaths, client: Client, home: &str, probe: &dyn Probe, procs: &dyn Procs) -> Result<Command, String> {
     let (prefix, ctx, settings) = setup_of(paths, client, home, probe)?;
-    let exe = find_exe(client, &prefix)
+    let exe = find_exe(client, &Place::Prefix(prefix.clone()))
         .ok_or_else(|| tr!("{client} is not installed in its prefix yet. Set it up in Stores → {client}.", client = client.name()))?;
     if settings.sandbox.enabled {
         return Err(tr!("The sandbox does not run {client}. Turn it off in Stores → {client}.", client = client.name()));

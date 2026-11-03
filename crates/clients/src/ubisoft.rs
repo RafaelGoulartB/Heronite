@@ -4,10 +4,10 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::files::{last_part, machine_keys, unix_path, UNINSTALL};
+use crate::files::{last_part, UNINSTALL};
 use crate::pbuf::{Fields, Value};
 use crate::winpath::join_ci;
-use crate::{user_dirs, Account, ClientGame};
+use crate::{Account, ClientGame, Place};
 
 /// The key of each game the launcher installed, in the 32-bit view (where
 /// the launcher writes it) and in the native one.
@@ -19,10 +19,10 @@ const REMEMBER_ME: &[u8] = b"RememberMeTicket";
 /// The first byte of `uplay_install.state` once the game is installed.
 const INSTALLED_STATE: u8 = 0x0A;
 
-/// The games Ubisoft Connect has installed in `prefix`.
-pub fn games(prefix: &Path) -> Vec<ClientGame> {
+/// The games Ubisoft Connect has installed in `place`.
+pub fn games(place: &Place) -> Vec<ClientGame> {
     let under: Vec<&str> = INSTALLS.iter().chain(&UNINSTALL).copied().collect();
-    let keys = machine_keys(prefix, &under);
+    let keys = place.machine_keys(&under);
     // The title the launcher gave the game's Uninstall key (`Uplay Install 635`).
     let title_of = |id: &str| {
         let key = format!("Uplay Install {id}");
@@ -38,7 +38,7 @@ pub fn games(prefix: &Path) -> Vec<ClientGame> {
         if id.is_empty() || !seen.insert(id.clone()) {
             continue;
         }
-        let folder = unix_path(prefix, dir);
+        let folder = place.local_path(dir);
         if let Some(folder) = &folder {
             if !folder.is_dir() || still_downloading(folder) {
                 continue;
@@ -61,12 +61,12 @@ fn still_downloading(folder: &Path) -> bool {
 }
 
 /// Whether Ubisoft Connect is signed in.
-pub fn account(prefix: &Path) -> Account {
+pub fn account(place: &Place) -> Account {
     let mut out = Account::Unknown;
-    for user in user_dirs(prefix) {
-        let Ok(storage) = std::fs::read(join_ci(&user, STORAGE)) else { continue };
+    for user in place.users() {
+        let Ok(storage) = std::fs::read(user.path(STORAGE)) else { continue };
         if storage.windows(REMEMBER_ME.len()).any(|w| w == REMEMBER_ME) {
-            let name = std::fs::read(join_ci(&user, USER_DAT)).ok().and_then(|dat| account_name(&dat));
+            let name = std::fs::read(user.path(USER_DAT)).ok().and_then(|dat| account_name(&dat));
             return Account::SignedIn(name);
         }
         out = Account::SignedOut;
@@ -147,7 +147,7 @@ mod tests {
         std::fs::create_dir_all(games_dir.join("Plain Folder")).unwrap();
         put(&dir.path().join("system.reg"), REG);
 
-        let games = games(dir.path());
+        let games = games(&dir.path().into());
         let got: Vec<_> = games.iter().map(|g| (g.id.as_str(), g.title.as_str(), g.launch.as_str())).collect();
         assert_eq!(
             got,
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn no_registry_means_no_games() {
-        assert!(games(tempfile::tempdir().unwrap().path()).is_empty());
+        assert!(games(&tempfile::tempdir().unwrap().path().into()).is_empty());
     }
 
     fn prefix_with(storage: Option<&[u8]>, user_dat: Option<&[u8]>) -> tempfile::TempDir {
@@ -182,21 +182,24 @@ mod tests {
     fn the_remember_me_ticket_means_signed_in() {
         let storage = [&[0u8, 1, 2][..], b"xx RememberMeTicket xx"].concat();
         let dat = Writer::default().text(1, "player_one").text(5, "me@example.com").0;
-        assert_eq!(account(prefix_with(Some(&storage), Some(&dat)).path()), Account::SignedIn(Some("player_one".into())));
+        assert_eq!(account(&prefix_with(Some(&storage), Some(&dat)).path().into()), Account::SignedIn(Some("player_one".into())));
         // Without a username the email is the name; without a readable file, none.
         let email_only = Writer::default().num(2, 1).text(5, "me@example.com").0;
-        assert_eq!(account(prefix_with(Some(&storage), Some(&email_only)).path()), Account::SignedIn(Some("me@example.com".into())));
-        assert_eq!(account(prefix_with(Some(&storage), None).path()), Account::SignedIn(None));
-        assert_eq!(account(prefix_with(Some(&storage), Some(&[0xFF, 0x00, 0x13, 0x99])).path()), Account::SignedIn(None));
+        assert_eq!(
+            account(&prefix_with(Some(&storage), Some(&email_only)).path().into()),
+            Account::SignedIn(Some("me@example.com".into()))
+        );
+        assert_eq!(account(&prefix_with(Some(&storage), None).path().into()), Account::SignedIn(None));
+        assert_eq!(account(&prefix_with(Some(&storage), Some(&[0xFF, 0x00, 0x13, 0x99])).path().into()), Account::SignedIn(None));
         let binary_name = Writer::default().bytes(1, &[0x01, 0xFF, 0x00, 0x7F]).0;
-        assert_eq!(account(prefix_with(Some(&storage), Some(&binary_name)).path()), Account::SignedIn(None));
+        assert_eq!(account(&prefix_with(Some(&storage), Some(&binary_name)).path().into()), Account::SignedIn(None));
     }
 
     #[test]
     fn storage_without_the_ticket_is_signed_out_and_none_is_unknown() {
-        assert_eq!(account(prefix_with(Some(b"empty storage"), None).path()), Account::SignedOut);
-        assert_eq!(account(prefix_with(Some(b""), None).path()), Account::SignedOut);
-        assert_eq!(account(prefix_with(None, None).path()), Account::Unknown);
-        assert_eq!(account(tempfile::tempdir().unwrap().path()), Account::Unknown);
+        assert_eq!(account(&prefix_with(Some(b"empty storage"), None).path().into()), Account::SignedOut);
+        assert_eq!(account(&prefix_with(Some(b""), None).path().into()), Account::SignedOut);
+        assert_eq!(account(&prefix_with(None, None).path().into()), Account::Unknown);
+        assert_eq!(account(&tempfile::tempdir().unwrap().path().into()), Account::Unknown);
     }
 }

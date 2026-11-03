@@ -24,7 +24,7 @@ use serde_json::{json, Value};
 
 use crate::spawn::{self, Installer, Waits};
 use crate::winpath::join_ci;
-use crate::{find_exe, user_dirs, Client};
+use crate::{find_exe, user_dirs, Client, Place};
 
 /// Where a setup is.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -129,12 +129,13 @@ pub fn install(paths: &DataPaths, client: Client, home: &str, cancel: &Cancel, o
     let child = heronite_data::proc::spawn(&mut process)
         .map_err(|e| anyhow!(tr!("Could not start {program}: {error}", program = command.program, error = e)))?;
     let prefix_name = prefix.to_string_lossy().into_owned();
-    let installed = || find_exe(client, &prefix).is_some();
+    let place = Place::Prefix(prefix);
+    let installed = || find_exe(client, &place).is_some();
     let installer_state =
         Installer { running: &|| installer_running(&SystemProcs, &prefix_name, !installed()), client_installed: &installed };
     spawn::wait_for_installer(child, &SystemProcs, &installer_state, cancel, &Waits::default(), client.name())?;
 
-    if find_exe(client, &prefix).is_none() {
+    if find_exe(client, &place).is_none() {
         bail!(tr!("{client} was not installed. The installer's log is in {log}", client = client.name(), log = log_file.display()));
     }
     Ok(())
@@ -252,7 +253,7 @@ fn write_client_settings(client: Client, prefix: &Path) {
 /// or the user's): its settings point there, with the default Wine. Fails
 /// when the client's program is not in that prefix.
 pub fn adopt(paths: &DataPaths, client: Client, home: &str, prefix: &Path) -> Result<()> {
-    if find_exe(client, prefix).is_none() {
+    if find_exe(client, &prefix.into()).is_none() {
         bail!(tr!("{client} is not installed in {prefix}", client = client.name(), prefix = prefix.display()));
     }
     let mut changes = vec![("winePrefix".to_string(), json!(prefix.to_string_lossy()))];
@@ -457,7 +458,7 @@ esac
 
         let prefix = dir.path().join("prefixes/Battle.net");
         assert_eq!(prefix_of(&paths, Client::BattleNet, &home), Some(prefix.clone()));
-        assert!(find_exe(Client::BattleNet, &prefix).is_some());
+        assert!(find_exe(Client::BattleNet, &Place::Prefix(prefix.clone())).is_some());
         assert!(!prefix.join(CREATING_MARKER).exists());
         assert!(prefix.join("pfx/drive_c/users/steamuser/AppData/Roaming/Battle.net/Battle.net.config").is_file());
         let calls = std::fs::read_to_string(prefix.join("calls.txt")).unwrap();
