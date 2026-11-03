@@ -265,8 +265,11 @@ jobs:
           echo "9a599b48ba6eb7b1e80f12f36b94ceca7c00b7a5173c95c3efc88d9822957e73  $RUNNER_TEMP/minisign.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/minisign.tar.gz" -C "$RUNNER_TEMP" minisign-linux/x86_64/minisign
           sudo install -m755 "$RUNNER_TEMP/minisign-linux/x86_64/minisign" /usr/local/bin/minisign
-      # The in-app updater only installs files signed with the key whose
-      # public half is built into the app (crates/update/src/lib.rs).
+      # The in-app updater only installs files listed in SHA256SUMS, signed
+      # with the key whose public half is built into the app
+      # (crates/update/src/lib.rs); until the switch, every file is also
+      # signed on its own for the versions up to 1.0
+      # (scripts/sign-release.sh, PER_FILE_SIGNATURES).
       - name: Sign
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
@@ -305,7 +308,7 @@ jobs:
             truncate -s -1 notes.md
             printf ' They are not code-signed yet, so Windows SmartScreen may say "Windows protected your PC": choose **More info**, then **Run anyway**.\n' >> notes.md
           fi
-          printf '\nThe `.minisig` and `.zsync` files are for the updaters; you do not need them.\n\n' >> notes.md
+          printf '\n`SHA256SUMS` lists the SHA-256 of every file (signed in `SHA256SUMS.minisig`). The `.minisig` and `.zsync` files are for the updaters; you do not need them.\n\n' >> notes.md
           if [[ $(git tag --list 'v*' | wc -l) -le 1 ]]; then
             printf 'First public release of Heronite. See the [README](https://github.com/RafaelGoulartB/Heronite#readme) for what it can do.\n' >> notes.md
           else
