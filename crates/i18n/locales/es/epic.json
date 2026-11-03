@@ -390,5 +390,12 @@
   "Install the game of {title} first": "Instala primero el juego de {title}",
   "No write access to {path}": "Sin permiso de escritura en {path}",
   "Some files of the game could not be deleted from {path}": "No se pudieron borrar algunos archivos del juego de {path}",
-  "{app_name} is not in the Epic library: refresh it and try again": "{app_name} no está en la biblioteca de Epic: actualízala y vuelve a intentarlo"
+  "{app_name} is not in the Epic library: refresh it and try again": "{app_name} no está en la biblioteca de Epic: actualízala y vuelve a intentarlo",
+  "Cloud saves are up to date": "Las partidas guardadas en la nube están al día",
+  "The saves changed both on this PC and in the cloud: upload or download them by hand": "Las partidas cambiaron en este PC y en la nube: súbelas o descárgalas a mano",
+  "The saves in the cloud are newer: nothing was uploaded": "Las partidas de la nube son más recientes: no se subió nada",
+  "The saves on this PC are newer: nothing was downloaded": "Las partidas de este PC son más recientes: no se descargó nada",
+  "The saves were downloaded from the cloud": "Las partidas se descargaron de la nube",
+  "The saves were uploaded to the cloud": "Las partidas se subieron a la nube",
+  "There are no saves to sync yet": "Todavía no hay partidas que sincronizar"
 }

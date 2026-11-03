@@ -390,5 +390,12 @@
   "Install the game of {title} first": "Installiere zuerst das Spiel zu {title}",
   "No write access to {path}": "Kein Schreibzugriff auf {path}",
   "Some files of the game could not be deleted from {path}": "Einige Dateien des Spiels konnten nicht aus {path} gelöscht werden",
-  "{app_name} is not in the Epic library: refresh it and try again": "{app_name} ist nicht in der Epic-Bibliothek: aktualisiere sie und versuche es erneut"
+  "{app_name} is not in the Epic library: refresh it and try again": "{app_name} ist nicht in der Epic-Bibliothek: aktualisiere sie und versuche es erneut",
+  "Cloud saves are up to date": "Die Cloud-Spielstände sind aktuell",
+  "The saves changed both on this PC and in the cloud: upload or download them by hand": "Die Spielstände haben sich auf diesem PC und in der Cloud geändert: lade sie von Hand hoch oder herunter",
+  "The saves in the cloud are newer: nothing was uploaded": "Die Spielstände in der Cloud sind neuer: nichts wurde hochgeladen",
+  "The saves on this PC are newer: nothing was downloaded": "Die Spielstände auf diesem PC sind neuer: nichts wurde heruntergeladen",
+  "The saves were downloaded from the cloud": "Die Spielstände wurden aus der Cloud heruntergeladen",
+  "The saves were uploaded to the cloud": "Die Spielstände wurden in die Cloud hochgeladen",
+  "There are no saves to sync yet": "Es gibt noch keine Spielstände zum Synchronisieren"
 }
