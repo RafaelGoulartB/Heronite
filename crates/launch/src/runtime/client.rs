@@ -1,13 +1,14 @@
 //! Games a store client starts (see [`ClientHandoff`]). The client runs in a
-//! Wine prefix of its own and stays open after the game ends, maybe started
-//! long before: the session follows the game, not the command that asked for
-//! it. That command is the client itself, or a request to the client that
-//! already runs; either may outlive the game or exit at once, and neither
-//! ends the session.
+//! Wine prefix of its own (on Windows, on the PC as it is) and stays open
+//! after the game ends, maybe started long before: the session follows the
+//! game, not the command that asked for it. That command is the client
+//! itself, or a request to the client that already runs; either may outlive
+//! the game or exit at once, and neither ends the session.
 //!
 //! The game is any Windows program running from the game's folder (any in
-//! the prefix when the folder is not known) that is not one of the client's. The session clock starts when it
-//! shows up. A stop signals only the game's programs.
+//! the prefix when the folder is not known) that is not one of the client's.
+//! The session clock starts when it shows up. A stop signals only the game's
+//! programs.
 
 use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
@@ -85,9 +86,15 @@ impl Watch<'_> {
                 seen.main |= self.client.main.eq_ignore_ascii_case(&name);
             } else if self.ours.contains(&name) {
                 continue;
-            } else if folder.is_none_or(|f| p.from_folder || windows_path_under(&p.path, prefix, f)) {
+            } else if match folder {
                 // With the game's folder known, only what runs from it: the
                 // client may run installers (redistributables) first.
+                Some(f) => p.from_folder || windows_path_under(&p.path, prefix, f),
+                // Without it, any program of the prefix; with no prefix
+                // either (Windows: every program of the PC) nothing tells
+                // the game apart.
+                None => !prefix.is_empty(),
+            } {
                 seen.game.push(p.pid);
             }
         }
@@ -108,7 +115,12 @@ impl Session<'_> {
         let (shared, log, control, plan) = (self.shared, self.log, self.control, self.plan);
         let cfg = shared.cfg.handoff;
         let name = client.name.as_str();
-        let ours = plan.companions.iter().filter_map(|c| c.path.rsplit('/').next()).map(str::to_lowercase).collect();
+        let ours = plan
+            .companions
+            .iter()
+            .filter_map(|c| std::path::Path::new(&c.path).file_name())
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .collect();
         let watch = Watch { handoff, client, ours };
         if control.stopped() {
             return finish_aborted(shared, log, self.req);

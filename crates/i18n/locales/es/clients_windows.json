@@ -1,5 +1,6 @@
 {
   "{client} is not installed on this PC. Set it up in Stores → {client}.": "{client} no está instalado en este PC. Instálalo en Tiendas → {client}.",
   "{client} was not installed: the administrator prompt was declined.": "{client} no se instaló: se rechazó el permiso de administrador.",
-  "The installer of {client} closed before {client} was installed.": "El instalador de {client} se cerró antes de que {client} quedara instalado."
+  "The installer of {client} closed before {client} was installed.": "El instalador de {client} se cerró antes de que {client} quedara instalado.",
+  "The folder of this game was not found. Refresh the games of {client} in Stores → {client}.": "No se encontró la carpeta de este juego. Actualiza los juegos de {client} en Tiendas → {client}."
 }
