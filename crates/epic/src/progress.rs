@@ -1,6 +1,6 @@
 //! What the download queue shows of a running download: [`Progress`], from
 //! a native download's report ([`heronite_depot::Progress`]) or from the
-//! progress lines of gogdl and nile ([`ToolProgressParser`]).
+//! progress lines of nile ([`ToolProgressParser`]).
 
 use std::sync::OnceLock;
 
@@ -53,14 +53,14 @@ fn num(s: &str) -> Option<f64> {
     s.trim().parse::<f64>().ok().filter(|v| !v.is_nan())
 }
 
-/// The report of gogdl (GOG) and nile (Amazon Games), printed every second:
+/// The report of nile (Amazon Games), printed every second:
 /// ```text
 /// [PROGRESS] INFO: = Progress: 12.34 1234/10000, Running for: 00:00:05, ETA: 00:01:23
 /// [PROGRESS] INFO: = Downloaded: 123.45 MiB, Written: 150.00 MiB
 /// [PROGRESS] INFO:  + Download\t- 5.12 MiB/s (raw) / 8.00 MiB/s (decompressed)
 /// [PROGRESS] INFO:  + Disk\t- 9.00 MiB/s (write) / 0.00 MiB/s (read)
 /// ```
-/// nile leaves out the parts in parentheses. The percent is the tool's own
+/// nile leaves out the parts in parentheses (gogdl printed them). The percent is the tool's own
 /// (it already counts what an earlier run fetched); the `Disk` line closes a
 /// report.
 #[derive(Debug, Default)]
@@ -109,15 +109,6 @@ impl ToolProgressParser {
     }
 }
 
-/// `Verification progress: 3/8 (37.5%)` style percentages of `repair`.
-pub fn verification_percent(line: &str) -> Option<f64> {
-    static VERIFY: OnceLock<Regex> = OnceLock::new();
-    if !line.contains("erif") {
-        return None;
-    }
-    re(&VERIFY, r"\(([\d.]+)%\)").captures(line).and_then(|c| num(&c[1]))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,11 +129,5 @@ mod tests {
         let r = Progress::from(&p);
         assert_eq!(r, Progress { percent: 65., downloaded_mib: 512., eta: "03:25:07".into(), down_speed: 5.5, disk_speed: 2. });
         assert_eq!(Progress::from(&heronite_depot::Progress::default()).eta, "");
-    }
-
-    #[test]
-    fn verification_lines() {
-        assert_eq!(verification_percent("[cli] INFO: Verification progress: 3/8 (37.5%) [12.5 MiB/s]"), Some(37.5));
-        assert_eq!(verification_percent("[DLManager] INFO: = Progress: 12.34% (1/2)"), None);
     }
 }

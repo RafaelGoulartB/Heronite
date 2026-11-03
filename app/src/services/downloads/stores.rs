@@ -1,7 +1,7 @@
 //! GOG and Amazon Games: accounts, library refreshes and update checks, and
 //! the one-off operations on their games (verify, uninstall, move, import).
 //! Installs and updates run in the shared download queue (`queue.rs`), which
-//! hands their elements to gogdl / nile.
+//! runs GOG's elements itself and hands Amazon's to nile.
 
 use gpui_kit::*;
 use heronite_amazon::cmd::Nile;
@@ -509,8 +509,8 @@ pub fn gog_sync_saves_flag(paths: &DataPaths, app_name: &str, flag: &str) -> Res
     heronite_gog::saves::sync_flag(paths, app_name, flag).map_err(|e| format!("{e:#}"))
 }
 
-/// The first launch of a GOG game in a prefix asks gogdl for the game's
-/// installers and redistributables (the launch crate cannot depend on the
+/// The first launch of a GOG game in a prefix asks the GOG crate for the
+/// game's installers and redistributables (the launch crate cannot depend on the
 /// GOG crate).
 pub struct StoreLaunchSetup(pub DataPaths);
 

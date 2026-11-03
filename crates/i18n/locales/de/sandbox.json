@@ -23,7 +23,7 @@
   "No network and no home folder: the game sees the system read-only, its prefix and its folder": "Kein Netzwerk und kein Home-Ordner: Das Spiel sieht das System schreibgeschützt, sein Prefix und seinen Ordner",
   "Off until a game needs one. Each lets one thing through: turn on only what makes this game work.": "Aus, bis ein Spiel eine braucht. Jede lässt eine Sache durch: Aktiviere nur, was dieses Spiel zum Laufen bringt.",
   "Open its home folder": "Home-Ordner öffnen",
-  "Outside the sandbox, as before: your scripts before and after launch, cloud saves, the stores' sign-in and their own tools (gogdl, nile).": "Außerhalb der Sandbox, wie bisher: deine Skripte vor und nach dem Start, Cloud-Speicherstände, die Anmeldung der Stores und ihre eigenen Tools (gogdl, nile).",
+  "Outside the sandbox, as before: your scripts before and after launch, cloud saves, the stores' sign-in and Amazon Games' own tool (nile).": "Außerhalb der Sandbox, wie bisher: deine Skripte vor und nach dem Start, Cloud-Speicherstände, die Anmeldung der Stores und das eigene Tool von Amazon Games (nile).",
   "Risk: {risk}": "Risiko: {risk}",
   "Run in a sandbox": "In einer Sandbox ausführen",
   "Sandbox": "Sandbox",

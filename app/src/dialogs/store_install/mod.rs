@@ -1,5 +1,5 @@
 //! Install / import dialog of a GOG or Amazon Games game: install folder with
-//! free space, platform and language (GOG), DLCs, sizes from gogdl / nile, and
+//! free space, platform and language (GOG), DLCs, sizes from GOG / nile, and
 //! the Wine settings on Linux. "Import game" adds a copy that is already on disk.
 
 mod console;
@@ -366,8 +366,8 @@ impl StoreInstallDialog {
     }
 
     /// Free space left for this game once the downloads queued before it are
-    /// in. A shortage is only shown: gogdl and nile check the space
-    /// themselves and cannot be told to skip it (no "Force install" here).
+    /// in. A shortage is only shown: GOG's download and nile check the space
+    /// themselves (no "Force install" here).
     fn free_after_queue(&self) -> Option<f64> {
         self.space.as_ref().map(|s| s.free.saturating_sub(self.reserved) as f64)
     }

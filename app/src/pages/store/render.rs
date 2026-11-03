@@ -229,7 +229,7 @@ impl<K: StoreKind> StorePage<K> {
     fn render_about(&self) -> Div {
         let text = match self.store() {
             Store::Gog => {
-                tr!("Games are downloaded and verified with gogdl. After you log in, your whole GOG library shows in your Collection, and you install games from there.")
+                tr!("Heronite downloads and verifies the games itself, from GOG's servers. After you log in, your whole GOG library shows in your Collection, and you install games from there.")
             }
             Store::Amazon => {
                 tr!("Games are downloaded and verified with nile. After you log in, your whole Amazon Games library, including the Prime Gaming games you claimed, shows in your Collection, and you install games from there.")

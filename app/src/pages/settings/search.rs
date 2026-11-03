@@ -84,7 +84,6 @@ const INDEX: &[(Section, &[&str])] = &[
         Section::Downloads,
         &[
             "Download workers",
-            "gogdl binary",
             "nile binary",
             "Updates",
             "Download games without HTTPS",

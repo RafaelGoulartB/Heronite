@@ -13,7 +13,7 @@
 //! * [`moves`]: the resumable install move and its journal.
 //! * [`queue`], [`manager`]: the download queue (`store/download-manager.json`).
 //! * [`progress`]: what the queue shows of a download (and the progress
-//!   lines of gogdl and nile).
+//!   lines of nile).
 //! * [`saves`]: cloud saves.
 //! * [`playtime`]: Epic's play time for the games never played here.
 //! * [`session`]: a sign-in that expired, for every store.
@@ -21,7 +21,7 @@
 //! * [`eos_overlay`]: the EOS Overlay.
 //! * [`third_party`]: games of the EA app and Ubisoft Connect.
 //! * [`egl`]: games the Epic Games Launcher installed (Windows).
-//! * [`cmd`]: what gogdl and nile left when they finished, and [`cmd::Cancel`].
+//! * [`cmd`]: what nile left when it finished, and [`cmd::Cancel`].
 //!
 //! The account, library and installs stay in legendary's files
 //! (`legendaryConfig/legendary/**`), in its formats, so installs made with

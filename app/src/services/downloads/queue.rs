@@ -24,8 +24,8 @@ use serde_json::Value;
 use super::connectivity::{self, Check};
 use super::{library_entry, Downloads, DownloadsEvent, InstallRequest, QueueState};
 
-/// Reports kept for the speed chart (legendary, gogdl and nile report about
-/// once a second: about a minute and a half).
+/// Reports kept for the speed chart (downloads report about once a
+/// second: about a minute and a half).
 const SPEED_SAMPLES: usize = 90;
 
 impl Downloads {
@@ -177,8 +177,8 @@ impl Downloads {
     }
 
     /// Queues an install (and its DLCs) the way Heroic's `install` handler
-    /// does. GOG installs the chosen DLCs with the game (gogdl takes them
-    /// along); Epic DLCs are elements of their own.
+    /// does. GOG installs the chosen DLCs with the game (one download takes
+    /// them along); Epic DLCs are elements of their own.
     pub fn queue_install(&mut self, req: InstallRequest, cx: &mut Context<Self>) {
         let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
@@ -447,7 +447,7 @@ impl Downloads {
 }
 
 /// Queues an install and, for Epic, its DLCs as elements of their own (GOG
-/// installs the chosen DLCs with the game: gogdl takes them along).
+/// installs the chosen DLCs with the game: one download takes them along).
 fn add_install(manager: &DownloadManager, data_paths: &DataPaths, mut base: InstallParams) {
     if base.runner == "nile" {
         // The folder nile creates, which "Stop, delete files" deletes.

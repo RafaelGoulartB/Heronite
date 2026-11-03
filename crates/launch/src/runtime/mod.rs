@@ -98,7 +98,7 @@ impl Launcher {
         *self.shared.epic_service.lock().unwrap() = Some(epic);
     }
 
-    /// What the first launch of a GOG game in a prefix asks gogdl
+    /// What the first launch of a GOG game in a prefix asks the store for
     /// (redistributables, the game's install scripts).
     pub fn set_store_setup(&self, store: Arc<dyn StoreSetup>) {
         *self.shared.store_setup.lock().unwrap() = Some(store);

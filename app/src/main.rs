@@ -25,7 +25,7 @@ use gpui_kit::*;
 
 fn main() {
     // First: on Windows this program may be started again only to send a
-    // helper (gogdl, nile) the Ctrl+C that asks it to stop.
+    // helper (nile) the Ctrl+C that asks it to stop.
     heronite_platform::process::init_stop_helper();
     let started = Instant::now();
     tune_allocator();

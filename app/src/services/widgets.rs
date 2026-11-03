@@ -111,7 +111,7 @@ pub fn progress_ring(percent: f32, stroke: f32, color: Hsla) -> Canvas<()> {
     )
 }
 
-/// Seconds of legendary's / gogdl's `HH:MM:SS` ETA (`MM:SS` too); `None`
+/// Seconds of a download's `HH:MM:SS` ETA (`MM:SS` too); `None`
 /// when empty or unreadable.
 pub fn eta_secs(eta: &str) -> Option<u64> {
     let parts: Vec<u64> = eta.trim().split(':').map(|p| p.trim().parse().ok()).collect::<Option<_>>()?;

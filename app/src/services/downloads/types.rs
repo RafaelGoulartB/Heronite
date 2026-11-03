@@ -42,7 +42,8 @@ pub struct GameFlags {
     pub third_party: bool,
 }
 
-/// The stores besides Epic: their games install through gogdl / nile but
+/// The stores besides Epic: their games install natively (GOG) or through
+/// nile (Amazon Games) but
 /// share the download queue, the Collection glue and the pages with Epic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Store {
@@ -125,8 +126,8 @@ pub struct InstallRequest {
     /// Wine settings to store for the game (Linux): prefix and wine version.
     pub wine_prefix: Option<String>,
     pub wine_version: Option<Value>,
-    /// "Force install" with too little free space: legendary skips its own
-    /// check (gogdl and nile cannot).
+    /// "Force install" with too little free space: the native downloads
+    /// skip their own check (nile cannot).
     pub ignore_free_space: bool,
 }
 

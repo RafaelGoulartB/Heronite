@@ -1,21 +1,21 @@
 //! The stores' command-line tools where there is no Wine (Windows): the
-//! copies of gogdl and nile the app downloaded into `<data>/tools/bin`, and
-//! GOG's shared redistributables. A copy the app does not run (the settings
-//! name another one, or no store needs it any more, like legendary since
-//! Epic is native) is an old download.
+//! copy of nile the app downloaded into `<data>/tools/bin`, and GOG's shared
+//! redistributables. A copy the app does not run (the settings name another
+//! one, or no store needs it any more, like legendary and gogdl since Epic
+//! and GOG are native) is an old download.
 
 use heronite_i18n::tr;
 use heronite_launch::plan::PlanContext;
-use heronite_launch::store_tools::{StoreTool, GOGDL, NILE};
+use heronite_launch::store_tools::{StoreTool, NILE};
 use heronite_launch::SystemProbe;
 
 use crate::{Ctx, Group, Item, Kind, State};
 
 /// Each tool with the store it is for.
-const TOOLS: [(StoreTool, &str); 2] = [(GOGDL, "GOG"), (NILE, "Amazon Games")];
+const TOOLS: [(StoreTool, &str); 1] = [(NILE, "Amazon Games")];
 
 /// Tools the app downloaded once and no store runs any more.
-const RETIRED: [(&str, &str); 1] = [("legendary", "Epic Games")];
+const RETIRED: [(&str, &str); 2] = [("legendary", "Epic Games"), ("gogdl", "GOG")];
 
 pub(crate) fn items(ctx: &Ctx) -> Vec<Item> {
     let plan = PlanContext::load(&ctx.data_paths);

@@ -1,5 +1,5 @@
-//! What a store's command-line tool left when it finished (gogdl for GOG,
-//! nile for Amazon Games; Epic needs none), and the [`Cancel`] every long
+//! What a store's command-line tool left when it finished (nile for Amazon
+//! Games; Epic and GOG need none), and the [`Cancel`] every long
 //! operation of the stores takes.
 
 /// Result of a finished run.

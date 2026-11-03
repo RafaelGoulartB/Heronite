@@ -246,7 +246,7 @@ pub(super) fn static_entries() -> Vec<Entry> {
         "proton wine runner compatibility executor compatibilidade",
     ));
     v.push(page(Page::Epic, tr!("Account and library"), "Ctrl 4", "epic games store account login legendary loja conta entrar biblioteca"));
-    v.push(page(Page::Gog, tr!("Account and library"), "", "gog galaxy store account login gogdl loja conta entrar biblioteca"));
+    v.push(page(Page::Gog, tr!("Account and library"), "", "gog galaxy store account login loja conta entrar biblioteca"));
     v.push(page(Page::Amazon, tr!("Account and library"), "", "amazon prime gaming store account login nile loja conta entrar biblioteca"));
     v.push(page(Page::Steam, tr!("Your Steam library"), "", "steam valve store library import loja biblioteca importar"));
     v.push(page(Page::BattleNet, tr!("Blizzard games, under Wine"), "", "battle.net battlenet blizzard wow overwatch diablo loja"));

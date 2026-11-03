@@ -11,7 +11,7 @@ use heronite_i18n::tr;
 use super::{Downloads, DownloadsEvent};
 
 impl Downloads {
-    /// Syncs the saves of a GOG game and shows gogdl's log in a message.
+    /// Syncs the saves of a GOG game and shows what was done in a message.
     pub fn gog_sync_saves(&mut self, app_name: &str, title: &str, mode: SyncMode, cx: &mut Context<Self>) {
         let (app, title) = (app_name.to_string(), title.to_string());
         let (tx, mut rx) = unbounded::<String>();

@@ -821,7 +821,6 @@ impl SettingsPanel {
             ),
         ]
         .into_iter()
-        .chain(supported(Feature::GogStore).then(|| self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx)))
         .chain(supported(Feature::AmazonStore).then(|| self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx)))
         .chain([
             self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
