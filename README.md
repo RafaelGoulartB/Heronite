@@ -170,7 +170,7 @@ A single native process drawn on the GPU, with no bundled browser.
 
 ## Run from source
 
-You need stable Rust. On Linux, also `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK; on Windows, the Visual Studio Build Tools ("Desktop development with C++"). Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
+You need stable Rust. On Linux, also `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK; on Windows, the Visual Studio Build Tools ("Desktop development with C++"). Epic Games and GOG need no other tools; for Amazon Games, Heronite downloads nile itself. [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
 
 ```bash
 # quick build (the login window is its own binary, so build it too)
