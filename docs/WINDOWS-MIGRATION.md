@@ -19,6 +19,7 @@ What works on Windows, what is left, and what Windows does not need.
 
 - Playing Steam games
 - Epic Games, GOG and Amazon Games: login, downloads, first launch, cloud saves, the official launchers' games
+- Battle.net, EA app, Ubisoft Connect and Rockstar Games Launcher, as they are (no Wine): set up with the official installer (or found already installed), sign-in, their games read from this PC (`heronite_clients::place`: the same readers as in a Wine prefix), opening and closing them (`heronite_clients::native`), playing through them (the session follows the programs running from the game's folder). The registry keys of a client installed outside its default folder and the installers' native behaviour are not checked yet
 - Xbox (Windows only): the Microsoft Store and PC Game Pass games the Xbox app installed, found among the user's packages (`heronite_platform::packages`, `heronite-xbox`) and started by their AUMID through `explorer.exe shell:AppsFolder\...`; the session follows the programs running from the package's folder. Checked against this machine's real packages (none of them a game) and fixtures, not yet with a real game
 - Settings → Storage: the drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
 - Launch extras: scripts before and after a game (`.bat`, `.cmd`, `.ps1`, programs), programs alongside it (started as they are, closed with the game), presets (variables and arguments; Windows has no wrappers)
@@ -27,7 +28,6 @@ What works on Windows, what is left, and what Windows does not need.
 ## ⬜ To do
 
 - In-game overlay and replay buffer
-- Importing games of Battle.net, EA app, Ubisoft Connect and Rockstar
 - GOG Galaxy services (`comet`)
 - RetroAchievements sign-in of the emulators: `heronite_achievements::emulators` only knows their Linux config files (`~/.config`, Flatpak), not where they keep them on Windows (`%APPDATA%`, portable folders)
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
@@ -41,7 +41,7 @@ What works on Windows, what is left, and what Windows does not need.
 
 Windows runs Windows games directly, so these Linux parts are not needed:
 
-- Wine, Proton, winetricks and store clients under Wine
+- Wine, Proton, winetricks and store clients under Wine (on Windows they run as they are)
 - Sandbox (bubblewrap)
 - Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup
 - GameMode, MangoHud, gamescope, wrapper commands and the Steam runtime (`Feature::Wrappers`)

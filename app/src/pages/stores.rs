@@ -101,7 +101,7 @@ fn xbox_glance(found: Option<&Found>, syncing: bool) -> Glance {
     }
 }
 
-/// A store whose program runs under Wine.
+/// A store whose own program runs (under Wine on Linux).
 fn client_glance(st: &ClientState) -> Glance {
     if matches!(st.activity, Activity::SettingUp(_)) {
         return glance(Dot::Busy, tr!("Setting up\u{2026}"));

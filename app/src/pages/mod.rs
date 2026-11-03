@@ -44,8 +44,8 @@ pub enum Page {
     /// The Xbox page of the Stores (Windows): the Microsoft Store and PC Game
     /// Pass games installed as packages.
     Xbox,
-    /// The pages of the Stores that run the store's own program under Wine
-    /// (`heronite_clients`).
+    /// The pages of the Stores that run the store's own program, under Wine
+    /// on Linux (`heronite_clients`).
     BattleNet,
     Ea,
     Ubisoft,
