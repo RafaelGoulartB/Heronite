@@ -8,7 +8,8 @@
 #     --keep     reuse the previous fresh home instead of starting empty
 #     --dir DIR  where the fresh home lives (default /tmp/heronite-fresh)
 #
-# Without a binary it builds and runs `target/quick/heronite-rs`.
+# Without a binary it builds and runs `target/quick/heronite-rs`, with the
+# login window (`heronite-epic-login`) it finds next to it.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,20 +30,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z $BIN ]]; then
-  (cd "$ROOT" && cargo build --profile quick -p heronite)
+  (cd "$ROOT" && cargo build --profile quick -p heronite -p heronite-epic-login)
   BIN="$ROOT/target/quick/heronite-rs"
 fi
 BIN=$(realpath "$BIN")
 [[ -x $BIN ]] || { echo "not executable: $BIN" >&2; exit 1; }
 
 # Never wipe a real home by mistake: only a folder that holds nothing but
-# what a fresh home has.
+# what a fresh home has (.nv: the NVIDIA driver's shader cache).
 is_fresh_home() {
   local entry
   for entry in "$1"/* "$1"/.*; do
     [[ -e $entry || -L $entry ]] || continue
     case ${entry##*/} in
-      . | .. | .config | .local | .cache | .steam | .var | .heronite-fresh | heronite.log) ;;
+      . | .. | .config | .local | .cache | .steam | .var | .nv | .heronite-fresh | heronite.log) ;;
       *) return 1 ;;
     esac
   done
