@@ -150,12 +150,22 @@ pub(crate) fn install(
     let args = installer_args(client);
     log::info!("{}: running {} {}", client.name(), installer.display(), args.join(" "));
     let mut running = start.start(&installer, &args)?;
-    let installers = || procs.prefix_programs("", None).iter().any(|p| INSTALLERS.contains(&p.name.as_str()));
+    let installers = || setup_running(procs, client, !installed());
     wait(&mut *running, &installers, &installed, cancel, waits, client, &installer)?;
     if !installed() {
         bail!(tr!("The installer of {client} closed before {client} was installed.", client = client.name()));
     }
     Ok(())
+}
+
+/// Whether the setup still runs: a program of an installer, or, while the
+/// client's program is not there yet, one of the client's (Battle.net's
+/// setup can hand over to its Agent, which downloads the client).
+fn setup_running(procs: &dyn Procs, client: Client, client_missing: bool) -> bool {
+    procs
+        .prefix_programs("", None)
+        .iter()
+        .any(|p| INSTALLERS.contains(&p.name.as_str()) || (client_missing && client.programs().contains(&p.name.as_str())))
 }
 
 /// Waits for an installer, the way a setup under Wine does: done when it
@@ -395,6 +405,19 @@ mod tests {
         let err = wait_for(&mut never, &|| true, &|| true, &Cancel::new(), &waits).unwrap_err();
         assert_eq!(err.to_string(), "Ubisoft Connect took too long to install");
         assert!(stopped.get());
+    }
+
+    #[test]
+    fn the_setup_runs_while_an_installer_or_until_the_client_is_there_its_programs_do() {
+        let procs = procs_with(vec![program(20, r"C:\Windows\explorer.exe")]);
+        assert!(!setup_running(&procs, Client::BattleNet, true));
+        let procs = procs_with(vec![program(21, r"C:\Users\u\AppData\Local\Temp\x\EAappInstaller.exe")]);
+        assert!(setup_running(&procs, Client::Ea, false));
+        // Battle.net's Agent downloads the client after its setup is gone.
+        let procs = procs_with(vec![program(22, r"C:\ProgramData\Battle.net\Agent\Agent.9001\Agent.exe")]);
+        assert!(setup_running(&procs, Client::BattleNet, true));
+        assert!(!setup_running(&procs, Client::BattleNet, false), "once the client is there it may keep running");
+        assert!(!setup_running(&procs, Client::Ubisoft, true), "not Ubisoft Connect's");
     }
 
     #[test]
