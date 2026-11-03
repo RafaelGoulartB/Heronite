@@ -3,8 +3,8 @@
 //! themselves are [`heronite_data::clients::Client`]).
 //!
 //! On Linux each client is installed into a Wine prefix of its own
-//! ([`setup`]); on Windows it is installed on the PC as it is, and one
-//! already there is used. The user signs in and installs games
+//! ([`setup`]); on Windows it is installed on the PC as it is ([`native`]),
+//! and one already there is used. The user signs in and installs games
 //! inside the client. Heronite reads, without running anything, what the
 //! client installed ([`games`]) and whether it is signed in ([`account`]),
 //! brings those games into the Collection ([`collection`]) and opens or
@@ -21,6 +21,7 @@
 pub mod battlenet;
 pub mod collection;
 pub mod ea;
+pub mod native;
 pub mod place;
 pub mod reg;
 pub mod rockstar;

@@ -1,7 +1,8 @@
 //! Installing a client into a Wine prefix of its own: download its
 //! installer, create the prefix with the default Wine, write the settings
 //! that make the client behave under Wine, run the installer silently. Or
-//! use a client already installed in a prefix of the user's.
+//! use a client already installed in a prefix of the user's. On Windows
+//! the installer runs on the PC as it is ([`crate::native`]).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -87,7 +88,27 @@ fn default_wine(paths: &DataPaths, home: &str) -> Option<Value> {
 /// short is picked up again by the next one. Fails when no Wine or Proton
 /// is installed, when cancelled, or when the client's program is not there
 /// once the installer is done.
+///
+/// On Windows a client already installed needs nothing; else its installer
+/// runs on the PC, through the administrator prompt when it asks for it.
 pub fn install(paths: &DataPaths, client: Client, home: &str, cancel: &Cancel, on_step: &mut dyn FnMut(Step)) -> Result<()> {
+    if crate::native() {
+        let place = Place::machine();
+        return crate::native::install(
+            paths,
+            client,
+            &place,
+            &SystemProcs,
+            &crate::native::SystemStart,
+            cancel,
+            on_step,
+            &Waits::default(),
+        );
+    }
+    install_under_wine(paths, client, home, cancel, on_step)
+}
+
+fn install_under_wine(paths: &DataPaths, client: Client, home: &str, cancel: &Cancel, on_step: &mut dyn FnMut(Step)) -> Result<()> {
     let wine = default_wine(paths, home).ok_or_else(|| anyhow!(tr!("No Wine or Proton is installed. Get one in the Wine Manager.")))?;
     let prefix = match prefix_of(paths, client, home) {
         Some(prefix) => prefix,
@@ -149,7 +170,7 @@ fn check_cancel(cancel: &Cancel) -> Result<()> {
 }
 
 /// The client's installer, downloaded once and kept.
-fn get_installer(paths: &DataPaths, client: Client, cancel: &Cancel, on_step: &mut dyn FnMut(Step)) -> Result<PathBuf> {
+pub(crate) fn get_installer(paths: &DataPaths, client: Client, cancel: &Cancel, on_step: &mut dyn FnMut(Step)) -> Result<PathBuf> {
     let mut progress = |percent: f64| on_step(Step::Downloading((percent > 0.0).then_some(percent)));
     let failed = |e: anyhow::Error| {
         if cancel.is_requested() {
@@ -212,7 +233,7 @@ fn create_prefix(
 }
 
 /// What the client's installer is given.
-fn installer_args(client: Client) -> Vec<String> {
+pub(crate) fn installer_args(client: Client) -> Vec<String> {
     let args: &[&str] = match client {
         Client::BattleNet => &["--lang=enUS", "--installpath=C:\\Program Files (x86)\\Battle.net"],
         Client::Ea => &["/quiet", "EAX_LAUNCH_CLIENT=0", "IGNORE_INSTALLED=1"],
@@ -434,7 +455,7 @@ esac
     #[test]
     fn without_a_wine_nothing_starts() {
         let (_dir, paths) = paths();
-        let err = install(&paths, Client::BattleNet, HOME, &Cancel::new(), &mut |_| panic!("no step")).unwrap_err();
+        let err = install_under_wine(&paths, Client::BattleNet, HOME, &Cancel::new(), &mut |_| panic!("no step")).unwrap_err();
         assert_eq!(err.to_string(), "No Wine or Proton is installed. Get one in the Wine Manager.");
         assert_eq!(prefix_of(&paths, Client::BattleNet, HOME), None);
     }
@@ -453,7 +474,7 @@ esac
         std::fs::write(&installer, "MZ").unwrap();
 
         let mut steps = Vec::new();
-        install(&paths, Client::BattleNet, &home, &Cancel::new(), &mut |s| steps.push(s)).unwrap();
+        install_under_wine(&paths, Client::BattleNet, &home, &Cancel::new(), &mut |s| steps.push(s)).unwrap();
         assert_eq!(steps, [Step::CreatingPrefix, Step::Installing]);
 
         let prefix = dir.path().join("prefixes/Battle.net");
@@ -470,7 +491,7 @@ esac
 
         // Again: the prefix and the client are there, the installer runs once more.
         let mut again = Vec::new();
-        install(&paths, Client::BattleNet, &home, &Cancel::new(), &mut |s| again.push(s)).unwrap();
+        install_under_wine(&paths, Client::BattleNet, &home, &Cancel::new(), &mut |s| again.push(s)).unwrap();
         assert_eq!(again, [Step::Installing]);
     }
 
@@ -490,13 +511,13 @@ esac
         std::fs::create_dir_all(installer.parent().unwrap()).unwrap();
         std::fs::write(&installer, "MZ").unwrap();
 
-        let err = install(&paths, Client::Rockstar, &home, &Cancel::new(), &mut |_| {}).unwrap_err();
+        let err = install_under_wine(&paths, Client::Rockstar, &home, &Cancel::new(), &mut |_| {}).unwrap_err();
         assert!(err.to_string().starts_with("Rockstar Games Launcher was not installed. The installer's log is in "), "{err}");
         assert!(err.to_string().ends_with("rockstar-setup.log"), "{err}");
 
         let cancel = Cancel::new();
         cancel.request();
-        let err = install(&paths, Client::Rockstar, &home, &cancel, &mut |_| panic!("cancelled before any step")).unwrap_err();
+        let err = install_under_wine(&paths, Client::Rockstar, &home, &cancel, &mut |_| panic!("cancelled before any step")).unwrap_err();
         assert_eq!(err.to_string(), "Cancelled");
     }
 }

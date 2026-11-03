@@ -1,0 +1,5 @@
+{
+  "{client} is not installed on this PC. Set it up in Stores → {client}.": "{client} ist auf diesem PC nicht installiert. Richte es unter Stores → {client} ein.",
+  "{client} was not installed: the administrator prompt was declined.": "{client} wurde nicht installiert: Die Administratorabfrage wurde abgelehnt.",
+  "The installer of {client} closed before {client} was installed.": "Der Installer von {client} wurde geschlossen, bevor {client} installiert war."
+}

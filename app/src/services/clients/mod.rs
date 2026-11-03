@@ -19,7 +19,7 @@ mod run;
 mod setup;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -408,8 +408,8 @@ impl Clients {
                     .background_spawn(async move {
                         targets
                             .into_iter()
-                            .map(|(c, prefix)| {
-                                let (running, game) = heronite_clients::run::running(c, &prefix);
+                            .map(|(c, status)| {
+                                let (running, game) = heronite_clients::run::running(c, &status);
                                 (c, running, game)
                             })
                             .collect::<Vec<_>>()
@@ -427,12 +427,13 @@ impl Clients {
         }));
     }
 
-    /// The installed clients whose state matters now, with their prefixes.
-    fn poll_targets(&self) -> Vec<(Client, PathBuf)> {
+    /// The installed clients whose state matters now, with what was last
+    /// seen of them (their prefix, or their program and games on Windows).
+    fn poll_targets(&self) -> Vec<(Client, Status)> {
         self.states
             .iter()
             .filter(|(c, s)| (s.visible || s.watched) && self.frozen != Some(**c))
-            .filter_map(|(c, s)| s.installed().then(|| s.prefix().map(|p| (*c, p.to_path_buf()))).flatten())
+            .filter_map(|(c, s)| s.status.as_ref().filter(|st| st.installed()).map(|st| (*c, st.clone())))
             .collect()
     }
 
