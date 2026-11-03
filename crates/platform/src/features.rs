@@ -26,7 +26,7 @@ pub enum Feature {
     /// Amazon Games through nile: its page, login, library and installs.
     AmazonStore,
     /// Battle.net, the EA app, Ubisoft Connect and the Rockstar Games
-    /// Launcher under Wine.
+    /// Launcher (under Wine on Linux, as they are on Windows).
     StoreClients,
     /// Games of Heroic, Lutris, Bottles and Faugus.
     LauncherImports,
@@ -164,9 +164,9 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::AmazonStore
         | Feature::Storage
         | Feature::LaunchExtras
+        | Feature::StoreClients
         | Feature::XboxStore => true,
         Feature::Wine
-        | Feature::StoreClients
         | Feature::LauncherImports
         | Feature::HeroicMigration
         | Feature::Overlay

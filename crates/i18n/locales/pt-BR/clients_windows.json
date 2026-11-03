@@ -8,5 +8,9 @@
   "You sign in, install and update games in {client}; Heronite starts them through it and counts the play time for the game, not for {client}.": "Você entra na sua conta, instala e atualiza os jogos no {client}; o Heronite abre os jogos por ele e conta o tempo de jogo para o jogo, não para o {client}.",
   "Downloads the official installer and runs it.": "Baixa o instalador oficial e o executa.",
   "Download its installer and install it": "Baixar o instalador e instalar",
-  "Closes it and its helper programs": "Fecha o cliente e os programas auxiliares dele"
+  "Closes it and its helper programs": "Fecha o cliente e os programas auxiliares dele",
+  "Blizzard games": "Jogos da Blizzard",
+  "EA games": "Jogos da EA",
+  "Ubisoft games": "Jogos da Ubisoft",
+  "Rockstar games": "Jogos da Rockstar"
 }
