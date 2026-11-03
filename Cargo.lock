@@ -3635,6 +3635,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-depot"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "crossbeam-channel",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-platform",
+ "log",
+ "md-5",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha1_smol",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
 name = "heronite-emulation"
 version = "1.0.0"
 dependencies = [
