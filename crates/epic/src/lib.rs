@@ -3,6 +3,8 @@
 //! here is blocking: call it from worker threads.
 //!
 //! * [`cmd`]: running legendary (binary lookup, env, streaming, cancel).
+//! * [`client`]: [`Epic`], the native handle: legendary's files and Epic's services.
+//! * [`download`]: installs, updates and repairs written by heronite-depot.
 //! * [`user`]: login / logout and the account kept in `store/config.json`.
 //! * [`library`]: `legendary list`, `store_cache/legendary_library.json`,
 //!   update detection.
@@ -24,8 +26,10 @@
 
 pub mod autoupdate;
 pub mod cache_store;
+pub mod client;
 pub mod cmd;
 pub mod disk;
+pub mod download;
 pub mod egl;
 pub mod eos_overlay;
 pub mod info;
@@ -42,3 +46,5 @@ pub mod session;
 pub mod third_party;
 pub mod user;
 pub mod util;
+
+pub use client::Epic;

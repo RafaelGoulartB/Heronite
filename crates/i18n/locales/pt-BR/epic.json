@@ -385,5 +385,10 @@
   "Always the newest release. Once installed, it updates by itself.": "Sempre a versão mais nova. Depois de instalada, se atualiza sozinha.",
   "Hide other versions": "Ocultar outras versões",
   "Other versions ({n})": "Outras versões ({n})",
-  "The newest release.": "A versão mais nova."
+  "The newest release.": "A versão mais nova.",
+  "Choose where to install the game": "Escolha onde instalar o jogo",
+  "Install the game of {title} first": "Instale primeiro o jogo de {title}",
+  "No write access to {path}": "Sem permissão de escrita em {path}",
+  "Some files of the game could not be deleted from {path}": "Alguns arquivos do jogo não puderam ser apagados de {path}",
+  "{app_name} is not in the Epic library: refresh it and try again": "{app_name} não está na biblioteca da Epic: atualize-a e tente de novo"
 }

@@ -30,6 +30,29 @@ pub struct Progress {
     pub disk_speed: f64,
 }
 
+const MIB: f64 = 1024. * 1024.;
+
+/// `HH:MM:SS` (hours may pass 99).
+fn clock(d: std::time::Duration) -> String {
+    let s = d.as_secs();
+    format!("{:02}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+}
+
+impl From<&heronite_depot::Progress> for Progress {
+    /// A native download's report: the percent of the whole install
+    /// (files an earlier run finished count as done), this run's MiB, speeds
+    /// in MiB/s.
+    fn from(p: &heronite_depot::Progress) -> Self {
+        Self {
+            percent: (p.percent() * 100.).round() / 100.,
+            downloaded_mib: (p.downloaded as f64 / MIB * 100.).round() / 100.,
+            eta: p.eta.map(clock).unwrap_or_default(),
+            down_speed: (p.down_speed / MIB * 100.).round() / 100.,
+            disk_speed: (p.disk_speed / MIB * 100.).round() / 100.,
+        }
+    }
+}
+
 fn re(cell: &'static OnceLock<Regex>, pattern: &str) -> &'static Regex {
     cell.get_or_init(|| Regex::new(pattern).expect("valid regex"))
 }
@@ -270,6 +293,24 @@ mod tests {
         assert_eq!((out[0].percent, out[0].down_speed, out[0].disk_speed), (7., 2., 3.));
         // A report without its percent line gives nothing.
         assert!(p.feed(nile[3]).is_none());
+    }
+
+    #[test]
+    fn native_reports() {
+        let p = heronite_depot::Progress {
+            downloaded: 512 << 20,
+            download_total: 1024 << 20,
+            written: 300 << 20,
+            write_total: 1000 << 20,
+            resumed: 1000 << 20,
+            down_speed: 5.5 * MIB,
+            disk_speed: 2. * MIB,
+            eta: Some(std::time::Duration::from_secs(3 * 3600 + 25 * 60 + 7)),
+            ..Default::default()
+        };
+        let r = Progress::from(&p);
+        assert_eq!(r, Progress { percent: 65., downloaded_mib: 512., eta: "03:25:07".into(), down_speed: 5.5, disk_speed: 2. });
+        assert_eq!(Progress::from(&heronite_depot::Progress::default()).eta, "");
     }
 
     #[test]
