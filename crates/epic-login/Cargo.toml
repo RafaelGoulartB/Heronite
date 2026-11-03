@@ -16,6 +16,8 @@ url = "2"
 [target.'cfg(target_os = "linux")'.dependencies]
 wry = { version = "0.55", default-features = false, features = ["os-webview"] }
 gtk = "0.18"
+# The popup views wry hands over (the same version wry uses).
+webkit2gtk = "2.0"
 
 # A plain Win32 window holding WebView2 (wry's Windows backend).
 [target.'cfg(windows)'.dependencies]
