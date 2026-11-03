@@ -3964,6 +3964,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-xbox"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-data",
+ "heronite-platform",
+ "log",
+ "roxmltree 0.21.1",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
