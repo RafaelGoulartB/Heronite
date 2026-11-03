@@ -16,7 +16,6 @@ use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
 use heronite_epic::util::{file_size, parse_size};
 use heronite_epic::Epic;
-use heronite_gog::cmd::Gogdl;
 use heronite_gog::ops::GogJob;
 use heronite_i18n::tr;
 use heronite_launch::net::{Net, SystemNet};
@@ -477,8 +476,8 @@ fn add_install(manager: &DownloadManager, data_paths: &DataPaths, mut base: Inst
     }
 }
 
-/// Locates the element's tool (legendary, gogdl or nile) when it runs (cheap
-/// to create, and picks up a binary changed in the settings).
+/// Picks the element's store when it runs (cheap to create; nile is
+/// located then, so a binary changed in the settings is picked up).
 pub(super) struct LazyJob {
     pub(super) data_paths: DataPaths,
 }
@@ -488,10 +487,7 @@ impl Job for LazyJob {
         let paths = self.data_paths.clone();
         let failed = |err: anyhow::Error| JobResult { status: DmStatus::Error, error: Some(format!("{err:#}")) };
         match element.params.runner.as_str() {
-            "gog" => match Gogdl::locate_or_install(&paths) {
-                Ok(gogdl) => GogJob { paths, gogdl }.run(element, cancel, on_progress),
-                Err(err) => failed(err),
-            },
+            "gog" => GogJob { paths }.run(element, cancel, on_progress),
             "nile" => match Nile::locate_or_install(&paths) {
                 Ok(nile) => NileJob { paths, nile }.run(element, cancel, on_progress),
                 Err(err) => failed(err),

@@ -3783,12 +3783,17 @@ name = "heronite-gog"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "flate2",
  "heronite-data",
+ "heronite-depot",
  "heronite-epic",
+ "heronite-gog-api",
  "heronite-i18n",
  "heronite-launch",
  "heronite-platform",
+ "hex",
  "log",
+ "md-5",
  "serde",
  "serde_json",
  "tempfile",

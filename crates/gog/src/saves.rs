@@ -1,4 +1,5 @@
-//! Cloud saves of GOG games through `gogdl save-sync`.
+//! Cloud saves of GOG games, synced as gogdl's `save-sync` did
+//! ([`heronite_gog_api::saves`]).
 //!
 //! GOG describes where a game keeps its saves with `<?NAME?>` variables
 //! (Windows folders). The locations are resolved once and kept in the game's
@@ -18,8 +19,12 @@ use heronite_launch::{PlanContext, Probe, SystemProbe};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::cmd::{manifest_file, Gogdl};
+use heronite_epic::session::SessionExpired;
+use heronite_gog_api::saves::{GameClient, Preference, Storage};
+use heronite_gog_api::{auth, SignInExpired};
+
 use crate::installed::{self, Installed};
+use crate::manifest_file;
 
 /// Where GOG publishes per-game client settings (no authentication).
 const REMOTE_CONFIG: &str = "https://remote-config.gog.com/components/galaxy_client/clients";
@@ -347,45 +352,63 @@ fn store_timestamp(paths: &DataPaths, app_name: &str, name: &str, ts: &str) -> R
     })
 }
 
-/// The new sync time gogdl prints as the last line of stdout.
-fn parse_timestamp(stdout: &str) -> Option<String> {
-    stdout.lines().rev().map(str::trim).find(|l| !l.is_empty()).filter(|l| l.parse::<f64>().is_ok()).map(str::to_string)
+/// The game's own client (its cloud saves are kept under it): from the
+/// stored build, else from GOG (network).
+fn game_client(paths: &DataPaths, app_name: &str) -> Result<GameClient> {
+    let doc = json_store::read_value(&manifest_file(&paths.gogdl_config_dir(), app_name)).unwrap_or(Value::Null);
+    let text = |k: &str| doc.get(k).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string);
+    if let (Some(client_id), Some(client_secret)) = (text("clientId"), text("clientSecret")) {
+        return Ok(GameClient { client_id, client_secret });
+    }
+    crate::download::signed_in_client(paths)?.game_client(app_name, "windows")
 }
 
-/// `gogdl save-sync` arguments (without the auth file prefix).
-fn sync_args(location: &SaveLocation, app_name: &str, ts: &str, flag: Option<&str>) -> Vec<String> {
-    let mut args: Vec<String> = ["save-sync", &location.location, app_name, "--os", "windows", "--ts", ts, "--name", &location.name]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    args.extend(flag.map(str::to_string));
-    args
+/// Syncs one location with the cloud: the game's client and its tokens,
+/// then [`heronite_gog_api::saves::sync`]. Blocking, network.
+fn sync_location(paths: &DataPaths, app_name: &str, location: &SaveLocation, ts: &str, preference: Preference) -> Result<Outcome> {
+    let game = game_client(paths, app_name)?;
+    let creds = auth::game_credentials(&paths.gog_auth(), &game.client_id, &game.client_secret).map_err(|err| {
+        if err.downcast_ref::<SignInExpired>().is_some() {
+            anyhow!(SessionExpired).context(tr!("Your GOG sign-in expired: log in again"))
+        } else {
+            err
+        }
+    })?;
+    let storage = Storage::new(&creds, &game, &location.name);
+    let done = heronite_gog_api::saves::sync(&storage, Path::new(&location.location), ts, preference)?;
+    Ok(Outcome { timestamp: done.timestamp, log: done.log })
 }
 
-/// Syncs every save folder of the game. Returns gogdl's log for the message
-/// dialog. Blocking.
-pub fn sync(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, mode: SyncMode) -> Result<String> {
-    run_sync(paths, gogdl, app_name, mode.flag(), &fetch_remote)
+/// What a location's sync did.
+struct Outcome {
+    /// The time to keep as the last sync.
+    timestamp: String,
+    /// One line each, for the user.
+    log: Vec<String>,
 }
 
-/// [`sync`] with a gogdl flag: `--skip-upload` (only download),
+/// Syncs every save folder of the game. Returns what was done, for the
+/// message dialog. Blocking, network.
+pub fn sync(paths: &DataPaths, app_name: &str, mode: SyncMode) -> Result<String> {
+    sync_flag(paths, app_name, mode.flag().unwrap_or(""))
+}
+
+/// [`sync`] with Heroic's flag: `--skip-upload` (only download),
 /// `--skip-download` (only upload), `--force-download`, `--force-upload` or
 /// `""` (both ways).
-pub fn sync_flag(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, flag: &str) -> Result<String> {
-    let flag = match flag {
-        "" => None,
-        "--skip-upload" | "--skip-download" | "--force-download" | "--force-upload" => Some(flag),
-        other => bail!("unknown cloud saves flag {other}"),
-    };
-    run_sync(paths, gogdl, app_name, flag, &fetch_remote)
+pub fn sync_flag(paths: &DataPaths, app_name: &str, flag: &str) -> Result<String> {
+    let Some(preference) = Preference::from_flag(Some(flag).filter(|f| !f.is_empty())) else { bail!("unknown cloud saves flag {flag}") };
+    run_sync(paths, app_name, preference, &fetch_remote, &|location, ts, preference| {
+        sync_location(paths, app_name, location, ts, preference)
+    })
 }
 
 fn run_sync(
     paths: &DataPaths,
-    gogdl: &Gogdl,
     app_name: &str,
-    flag: Option<&str>,
+    preference: Preference,
     fetch: &dyn Fn(&str) -> Result<String>,
+    sync_one: &dyn Fn(&SaveLocation, &str, Preference) -> Result<Outcome>,
 ) -> Result<String> {
     let list = locations_with(paths, app_name, false, fetch)?;
     if list.is_empty() {
@@ -399,25 +422,24 @@ fn run_sync(
             continue;
         }
         let ts = timestamp(paths, app_name, &location.name);
-        let out = gogdl.run(&sync_args(location, app_name, &ts, flag))?;
         if list.len() > 1 {
             log.push_str(&format!("{}\n", location.name));
         }
-        for line in out.stderr.lines().map(str::trim).filter(|l| !l.is_empty() && !l.contains("DEBUG")) {
-            log.push_str(line);
-            log.push('\n');
-        }
-        if !out.success() {
-            let why = out.error_lines();
-            let why = if why.is_empty() {
-                out.stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or_default().trim().to_string()
-            } else {
-                why
-            };
-            log::error!("gog saves of {app_name} ({}): {why}", location.name);
-            failures.push(if why.is_empty() { format!("gogdl exit code {:?}", out.code) } else { why });
-        } else if let Some(ts) = parse_timestamp(&out.stdout) {
-            store_timestamp(paths, app_name, &location.name, &ts)?;
+        match sync_one(location, &ts, preference) {
+            Ok(done) => {
+                for line in &done.log {
+                    log.push_str(line);
+                    log.push('\n');
+                }
+                store_timestamp(paths, app_name, &location.name, &done.timestamp)?;
+            }
+            Err(err) => {
+                log::error!("gog saves of {app_name} ({}): {err:#}", location.name);
+                if heronite_epic::session::is_expired(&err) {
+                    return Err(err);
+                }
+                failures.push(format!("{err:#}"));
+            }
         }
     }
     if failures.is_empty() {
@@ -430,7 +452,8 @@ fn run_sync(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::*;
+    use crate::testing::setup;
+    use std::cell::RefCell;
 
     #[cfg(unix)]
     fn folders(prefix: &str, proton: bool) -> Folders<'static> {
@@ -564,35 +587,43 @@ mod tests {
         set_prefix(&paths, &dir.path().join("pfx"), true);
         let off = |_: &str| Ok(r#"{"content":{"Windows":{"cloudStorage":{"enabled":false}}}}"#.to_string());
         assert!(locations_with(&paths, "42", false, &off).unwrap().is_empty());
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().out("1"));
-        let out = run_sync(&paths, &gogdl(&tool, &paths), "42", None, &off).unwrap();
+        let synced = RefCell::new(0);
+        let never = |_: &SaveLocation, _: &str, _: Preference| -> Result<Outcome> {
+            *synced.borrow_mut() += 1;
+            bail!("not asked")
+        };
+        let out = run_sync(&paths, "42", Preference::Both, &off, &never).unwrap();
         assert!(out.contains("no cloud saves"), "{out}");
-        assert!(calls_of(&tool).is_empty());
+        assert_eq!(*synced.borrow(), 0);
         let offline = |_: &str| -> Result<String> { bail!("offline") };
         assert!(locations_with(&paths, "99", true, &offline).is_err());
     }
 
     #[test]
-    fn syncing_runs_gogdl_per_location_and_remembers_the_time() {
+    fn each_location_syncs_from_its_last_time_and_remembers_the_new_one() {
         let (dir, paths) = setup();
         let game = install(dir.path(), &paths, "windows", Some("777"));
         set_prefix(&paths, &dir.path().join("pfx"), true);
         let fetch = |_: &str| Ok(IN_INSTALL.to_string());
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[SAVES] INFO: Done").err("[SAVES] DEBUG: noise").out("1700000000.5"));
-        let g = gogdl(&tool, &paths);
-        let out = run_sync(&paths, &g, "42", None, &fetch).unwrap();
-        assert!(out.contains("Done") && !out.contains("noise"), "{out}");
-
+        let asked = RefCell::new(Vec::new());
+        let sync_one = |l: &SaveLocation, ts: &str, p: Preference| -> Result<Outcome> {
+            asked.borrow_mut().push((l.clone(), ts.to_string(), p));
+            Ok(Outcome { timestamp: "1700000000.500000".into(), log: vec!["Uploading files".into()] })
+        };
+        let out = run_sync(&paths, "42", Preference::Both, &fetch, &sync_one).unwrap();
+        assert!(out.contains("Uploading files"), "{out}");
         let place = Path::new(&game).join("Saves");
         assert!(place.is_dir(), "the location is created first");
-        let first = &calls_of(&tool)[0];
-        assert_eq!(first, &format!("save-sync {} 42 --os windows --ts 0 --name saves", place.display()));
+        assert_eq!(
+            asked.borrow()[0],
+            (SaveLocation { name: "saves".into(), location: place.display().to_string() }, "0".into(), Preference::Both)
+        );
         let doc = json_store::read_value(&paths.gog_store("saveTimestamps")).unwrap();
-        assert_eq!(doc["42"]["saves"], "1700000000.5");
+        assert_eq!(doc["42"]["saves"], "1700000000.500000");
 
-        // The next run passes the stored time, with the flag of the mode.
-        run_sync(&paths, &g, "42", SyncMode::ForceUpload.flag(), &fetch).unwrap();
-        assert!(calls_of(&tool)[1].ends_with("--ts 1700000000.5 --name saves --force-upload"), "{:?}", calls_of(&tool));
+        // The next run passes the stored time, with the mode.
+        run_sync(&paths, "42", Preference::ForceUpload, &fetch, &sync_one).unwrap();
+        assert_eq!((asked.borrow()[1].1.as_str(), asked.borrow()[1].2), ("1700000000.500000", Preference::ForceUpload));
     }
 
     #[test]
@@ -600,24 +631,19 @@ mod tests {
         assert_eq!(SyncMode::Both.flag(), None);
         assert_eq!(SyncMode::ForceDownload.flag(), Some("--force-download"));
         assert_eq!(SyncMode::ForceUpload.flag(), Some("--force-upload"));
-        let loc = SaveLocation { name: "n".into(), location: "/l".into() };
-        assert_eq!(sync_args(&loc, "42", "0", Some("--skip-upload")).last().unwrap(), "--skip-upload");
-        let (dir, paths) = setup();
-        let tool = fake_tool(dir.path());
-        assert!(sync_flag(&paths, &gogdl(&tool, &paths), "42", "--bogus").is_err());
-        assert_eq!(parse_timestamp("noise\n1.5\n"), Some("1.5".to_string()));
-        assert_eq!(parse_timestamp("1.5\nnot a time\n"), None);
+        let (_dir, paths) = setup();
+        assert!(sync_flag(&paths, "42", "--bogus").is_err());
     }
 
     #[test]
-    fn a_failing_gogdl_is_an_error_and_keeps_the_old_time() {
+    fn a_failed_sync_is_an_error_and_keeps_the_old_time() {
         let (dir, paths) = setup();
         install(dir.path(), &paths, "windows", Some("777"));
         set_prefix(&paths, &dir.path().join("pfx"), false);
         let fetch = |_: &str| Ok(IN_INSTALL.to_string());
         store_timestamp(&paths, "42", "saves", "5").unwrap();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[API] ERROR: no token").exit(1));
-        let err = run_sync(&paths, &gogdl(&tool, &paths), "42", None, &fetch).unwrap_err().to_string();
+        let failing = |_: &SaveLocation, _: &str, _: Preference| -> Result<Outcome> { bail!("no token") };
+        let err = run_sync(&paths, "42", Preference::Both, &fetch, &failing).unwrap_err().to_string();
         assert!(err.contains("no token"), "{err}");
         assert_eq!(timestamp(&paths, "42", "saves"), "5");
         assert_eq!(timestamp(&paths, "42", "other"), "0");

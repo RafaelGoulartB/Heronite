@@ -50,8 +50,8 @@ impl Downloads {
 
     /// `HERONITE_DEBUG_QUEUE_INSTALL=<appName>`: queues an install of that game
     /// into `$HERONITE_DEBUG_INSTALL_DIR` the way the install dialog would
-    /// (any store's game; GOG / Amazon with a fake gogdl / nile through
-    /// `HERONITE_GOGDL_BIN` / `HERONITE_NILE_BIN`).
+    /// (any store's game; Amazon with a fake nile through
+    /// `HERONITE_NILE_BIN`).
     pub(super) fn debug_queue_install(&mut self, app_name: &str, cx: &mut Context<Self>) {
         let Some(game_info) = super::stores::any_library_entry(&self.data_paths, app_name) else {
             log::warn!("debug install: {app_name} is not in a store library");

@@ -173,7 +173,7 @@ pub fn import_from(paths: &DataPaths, entries: &[Entry]) -> Result<Report> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::setup;
+    use crate::testing::setup;
     use heronite_epic::cache_store::CacheStore;
 
     fn entry(id: &str, values: &[(&str, &str)]) -> Entry {
@@ -275,8 +275,7 @@ mod tests {
         let cancel = heronite_data::proc::Cancel::new();
         let err = crate::ops::move_install(&paths, "1", &dir.path().join("elsewhere").display().to_string(), &cancel, &mut |_| {});
         assert!(err.unwrap_err().to_string().contains("GOG Galaxy"));
-        let g = crate::cmd::Gogdl::with_bin("gogdl", &paths);
-        assert!(crate::ops::repair(&paths, &g, "1", &cancel, &mut |_| {}).unwrap_err().to_string().contains("GOG Galaxy"));
+        assert!(crate::ops::repair(&paths, "1", &cancel, &mut |_| {}).unwrap_err().to_string().contains("GOG Galaxy"));
         let note = crate::ops::uninstall(&paths, "1").unwrap().expect("a note");
         assert!(note.contains("GOG Galaxy"), "{note}");
         assert!(Path::new(&one).join("game.exe").exists());

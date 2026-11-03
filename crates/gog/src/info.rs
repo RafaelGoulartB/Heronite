@@ -1,16 +1,14 @@
-//! Install information from `gogdl info <id> --os <platform>`: sizes per
+//! Install information of a game (what `gogdl info <id> --os <platform>` printed): sizes per
 //! language, languages, DLCs, build and folder name.
 
 use std::collections::BTreeMap;
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::Result;
 use heronite_data::DataPaths;
 use heronite_epic::cache_store::CacheStore;
-use heronite_i18n::tr;
 use heronite_launch::host::{run_mode, Os, RunMode};
 use serde_json::Value;
 
-use crate::cmd::{last_json_object, Gogdl};
 use crate::gamesdb::id_text;
 use crate::library;
 
@@ -139,40 +137,28 @@ fn cache_key(app_name: &str, platform: &str) -> String {
     format!("{app_name}_{platform}")
 }
 
-/// Runs `gogdl info` and returns its JSON. Network.
-fn fetch(gogdl: &Gogdl, app_name: &str, platform: &str) -> Result<Value> {
-    let out = gogdl.run(&["info", app_name, "--os", platform])?;
-    if out.stderr.contains("Game doesn't support content system api") {
-        bail!(tr!("This game cannot be installed for {platform}", platform = platform));
-    }
-    match last_json_object(&out.stdout) {
-        Some(doc) if out.success() => Ok(doc),
-        _ => {
-            let why = out.error_lines();
-            Err(anyhow!(if why.is_empty() {
-                tr!("gogdl could not read the install information").to_string()
-            } else {
-                tr!("gogdl could not read the install information: {error}", error = why)
-            }))
-        }
-    }
+/// The install information of the game for `platform`, from GOG (the JSON
+/// `gogdl info` printed). Network.
+fn fetch(paths: &DataPaths, app_name: &str, platform: &str) -> Result<Value> {
+    let client = crate::download::signed_in_client(paths)?;
+    heronite_gog_api::info::fetch(&client, app_name, platform)
 }
 
 /// Install information, from the 6 hour cache when it has it.
-pub fn install_info(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, platform: &str) -> Result<InstallInfo> {
+pub fn install_info(paths: &DataPaths, app_name: &str, platform: &str) -> Result<InstallInfo> {
     let platform = os_name(platform);
     let cache = CacheStore::new(paths, CACHE, Some(LIFESPAN_MINUTES));
     let key = cache_key(app_name, platform);
     if let Some(doc) = cache.get(&key) {
         return Ok(InstallInfo::parse(platform, &doc));
     }
-    install_info_fresh(paths, gogdl, app_name, platform)
+    install_info_fresh(paths, app_name, platform)
 }
 
-/// [`install_info`] asking gogdl again (after an update).
-pub fn install_info_fresh(paths: &DataPaths, gogdl: &Gogdl, app_name: &str, platform: &str) -> Result<InstallInfo> {
+/// [`install_info`] asking GOG again.
+pub fn install_info_fresh(paths: &DataPaths, app_name: &str, platform: &str) -> Result<InstallInfo> {
     let platform = os_name(platform);
-    let doc = fetch(gogdl, app_name, platform)?;
+    let doc = fetch(paths, app_name, platform)?;
     if let Err(err) = CacheStore::new(paths, CACHE, Some(LIFESPAN_MINUTES)).set(&cache_key(app_name, platform), doc.clone()) {
         log::warn!("saving the install information: {err:#}");
     }
@@ -197,7 +183,7 @@ pub fn platforms(paths: &DataPaths, app_name: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::*;
+    use crate::testing::setup;
     use serde_json::json;
 
     fn windows_doc() -> Value {
@@ -258,33 +244,13 @@ mod tests {
     }
 
     #[test]
-    fn info_runs_gogdl_and_is_cached() {
-        let (dir, paths) = setup();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[INFO] noise").out(&windows_doc().to_string()));
-        let g = gogdl(&tool, &paths);
-        let info = install_info(&paths, &g, "42", "Windows").unwrap();
+    fn info_is_answered_from_the_cache() {
+        let (_dir, paths) = setup();
+        CacheStore::new(&paths, CACHE, Some(LIFESPAN_MINUTES)).set("42_windows", windows_doc()).unwrap();
+        // No sign-in is needed while the cache has it.
+        let info = install_info(&paths, "42", "Windows").unwrap();
         assert_eq!(info.build_id, "5555");
-        assert_eq!(calls_of(&tool), ["info 42 --os windows"]);
-        // The second call is answered from the cache.
-        install_info(&paths, &g, "42", "windows").unwrap();
-        assert_eq!(calls_of(&tool).len(), 1);
-        install_info_fresh(&paths, &g, "42", "windows").unwrap();
-        assert_eq!(calls_of(&tool).len(), 2);
-    }
-
-    #[test]
-    fn unsupported_platforms_give_a_clear_error() {
-        let (dir, paths) = setup();
-        let tool = fake_tool(dir.path()).otherwise(
-            Reply::new()
-                .err("[GENERIC DOWNLOAD_MANAGER] ERROR: Game doesn't support content system api, unable to proceed using platform linux")
-                .exit(1),
-        );
-        let err = install_info(&paths, &gogdl(&tool, &paths), "42", "linux").unwrap_err().to_string();
-        assert!(err.contains("cannot be installed for linux"), "{err}");
-        let broken = fake_tool(dir.path()).otherwise(Reply::new().err("[X] ERROR: boom").exit(1));
-        let err = install_info(&paths, &gogdl(&broken, &paths), "43", "windows").unwrap_err().to_string();
-        assert!(err.contains("boom"), "{err}");
+        assert!(install_info(&paths, "43", "windows").is_err());
     }
 
     #[test]

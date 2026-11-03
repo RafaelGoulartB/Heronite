@@ -13,7 +13,6 @@ use heronite_data::game_config;
 use heronite_data::DataPaths;
 use heronite_epic::disk::{self, DiskSpace};
 use heronite_epic::util::{file_size, remove_special_characters};
-use heronite_gog::cmd::Gogdl;
 use heronite_gog::info::{Dlc, InstallInfo as GogInfo};
 use heronite_i18n::Lang;
 use heronite_wine::WineInstallation;
@@ -259,10 +258,7 @@ impl StoreInstallDialog {
             let res = cx
                 .background_spawn(async move {
                     match store {
-                        Store::Gog => {
-                            let gogdl = Gogdl::locate_or_install(&data_paths)?;
-                            heronite_gog::info::install_info(&data_paths, &gogdl, &app, &platform).map(Loaded::Gog)
-                        }
+                        Store::Gog => heronite_gog::info::install_info(&data_paths, &app, &platform).map(Loaded::Gog),
                         Store::Amazon => {
                             let nile = Nile::locate_or_install(&data_paths)?;
                             heronite_amazon::info::install_info(&data_paths, &nile, &app).map(Loaded::Amazon)
