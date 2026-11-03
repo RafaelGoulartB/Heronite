@@ -161,11 +161,17 @@ impl SystemSpawner {
             }
             None => std::process::Command::new(&cmd.program),
         };
-        c.args(&cmd.args).envs(&cmd.env).stdin(Stdio::null());
+        c.args(&cmd.args).envs(&cmd.env);
         crate::wine::drop_host_certs(cmd, &mut c);
         if let Some(dir) = cmd.cwd.as_deref().filter(|d| !d.is_empty()) {
             c.current_dir(dir);
         }
+        // Another Flatpak (an emulator) starts from the host when Heronite
+        // runs as a Flatpak itself.
+        if cmd.program == "flatpak" {
+            c = heronite_platform::flatpak::host(c);
+        }
+        c.stdin(Stdio::null());
         // A script's console would stay empty (its output goes to the log):
         // Windows opens none for it.
         if cfg!(windows) && (host.is_some() || is_batch(&cmd.program)) {

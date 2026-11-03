@@ -256,7 +256,7 @@ pub struct CaptureStatus {
 #[derive(Debug, Clone, Default)]
 pub struct ServiceOptions {
     /// Reverse-DNS desktop id registered with the portal for a non-sandboxed
-    /// app (Heronite uses `com.heronite.launcher`, matching its `.desktop`
+    /// app (Heronite uses `app.heronite.Heronite`, matching its `.desktop`
     /// file). Without it the portal may not be able to identify the app.
     pub portal_app_id: Option<String>,
     pub messages: CaptureMessages,

@@ -1,5 +1,5 @@
 //! "Start with the system": an XDG autostart entry
-//! (`~/.config/autostart/com.heronite.rs.desktop`) on Linux, a value of the
+//! (`~/.config/autostart/app.heronite.Heronite.desktop`) on Linux, a value of the
 //! user's `Run` key (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`)
 //! on Windows, that follows the `startWithSystem` global setting. The entry
 //! passes `--autostart`: only that start honours "Start minimized"
@@ -21,7 +21,10 @@ use std::path::{Path, PathBuf};
 use heronite_data::DataPaths;
 use heronite_shortcuts::desktop::quote_exec_arg;
 
-const FILE_NAME: &str = "com.heronite.rs.desktop";
+const FILE_NAME: &str = "app.heronite.Heronite.desktop";
+/// The entry of the versions up to 1.0, named after their app id: removed
+/// when the entry is written or turned off, so Heronite never starts twice.
+const OLD_FILE_NAME: &str = "com.heronite.rs.desktop";
 
 /// The `Run` key of the user and the value that starts Heronite.
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -49,6 +52,9 @@ fn place(data_paths: &DataPaths) -> Option<Place> {
     }
     if cfg!(windows) {
         Some(Place::RunKey(RUN_KEY.to_string()))
+    } else if heronite_platform::flatpak::active() {
+        // The session reads the host's folder, not the sandbox's.
+        heronite_platform::flatpak::host_xdg("XDG_CONFIG_HOME", ".config").map(|d| Place::Folder(d.join("autostart")))
     } else {
         dirs::config_dir().map(|d| Place::Folder(d.join("autostart")))
     }
@@ -56,19 +62,21 @@ fn place(data_paths: &DataPaths) -> Option<Place> {
 
 fn entry_text(exe: &Path) -> String {
     format!(
-        "[Desktop Entry]\nType=Application\nName=Heronite\nComment=Every game you own, on Linux, in one native launcher\nExec={} --autostart\nIcon=com.heronite.rs\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
+        "[Desktop Entry]\nType=Application\nName=Heronite\nComment=Every game you own, on Linux, in one native launcher\nExec={} --autostart\nIcon=app.heronite.Heronite\nTerminal=false\nX-GNOME-Autostart-enabled=true\n",
         quote_exec_arg(&exe.to_string_lossy())
     )
 }
 
 /// Writes (`on`) or removes the entry in `dir`. Rewrites only when it changed.
 fn apply_in(dir: &Path, exe: &Path, on: bool) -> std::io::Result<()> {
+    let remove = |file: PathBuf| match std::fs::remove_file(file) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        r => r,
+    };
+    remove(dir.join(OLD_FILE_NAME))?;
     let file = dir.join(FILE_NAME);
     if !on {
-        return match std::fs::remove_file(&file) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            r => r,
-        };
+        return remove(file);
     }
     let text = entry_text(exe);
     if std::fs::read_to_string(&file).is_ok_and(|t| t == text) {
@@ -136,6 +144,18 @@ mod tests {
         assert!(!dir.join(FILE_NAME).exists());
         // Already gone: still fine.
         apply_in(&dir, exe, false).unwrap();
+    }
+
+    #[test]
+    fn the_entry_of_the_old_app_id_goes() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = Path::new("/usr/bin/heronite-rs");
+        for on in [true, false] {
+            std::fs::write(dir.path().join(OLD_FILE_NAME), "[Desktop Entry]\n").unwrap();
+            apply_in(dir.path(), exe, on).unwrap();
+            assert!(!dir.path().join(OLD_FILE_NAME).exists());
+            assert_eq!(dir.path().join(FILE_NAME).exists(), on);
+        }
     }
 
     #[test]
