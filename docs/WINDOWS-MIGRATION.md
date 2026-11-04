@@ -15,16 +15,6 @@ What works on Windows, what is left, and what Windows does not need.
 - Installer, portable zip, self-update, releases
 - Restoring a backup made on Linux
 
-## 🚧 Needs a real-world check
-
-- Playing Steam games
-- Epic Games, GOG and Amazon Games: login, downloads, first launch, cloud saves, the official launchers' games
-- Battle.net, EA app, Ubisoft Connect and Rockstar Games Launcher, as they are (no Wine): set up with the official installer (or found already installed), sign-in, their games read from this PC (`heronite_clients::place`: the same readers as in a Wine prefix), opening and closing them (`heronite_clients::native`), playing through them (the session follows the programs running from the game's folder). The registry keys of a client installed outside its default folder and the installers' native behaviour are not checked yet
-- Xbox (Windows only): the Microsoft Store and PC Game Pass games the Xbox app installed, found among the user's packages (`heronite_platform::packages`, `heronite-xbox`) and started by their AUMID through `explorer.exe shell:AppsFolder\...`; the session follows the programs running from the package's folder. Checked against this machine's real packages (none of them a game) and fixtures, not yet with a real game
-- Settings → Storage: the drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
-- Launch extras: scripts before and after a game (`.bat`, `.cmd`, `.ps1`, programs), programs alongside it (started as they are, closed with the game), presets (variables and arguments; Windows has no wrappers)
-- Steam games' scripts and programs alongside: Heronite runs them around `steam://rungameid` when you play from Heronite, and Steam starts the game as it is, with nothing in between (`heronite_launch::steam_extras`)
-
 ## ⬜ To do
 
 - In-game overlay and replay buffer
