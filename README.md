@@ -1,4 +1,4 @@
-<h1 align="center">Heronite</h1>
+<h1 align="center"><img src="packaging/icons/graphite.svg" alt="" width="44" height="44" align="absmiddle" /> Heronite</h1>
 
 <p align="center">
   <a href="https://github.com/RafaelGoulartB/Heronite">
