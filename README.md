@@ -1,20 +1,12 @@
-<h1 align="center"><img src="packaging/icons/graphite.svg" alt="" width="44" height="44" align="absmiddle" /> Heronite</h1>
+<h1 align="center"><a href="https://heronite.app"><img src="assets/icon.svg" alt="" width="44" height="51" align="absmiddle" /></a> Heronite</h1>
 
 <p align="center">
-  <a href="https://github.com/RafaelGoulartB/Heronite">
-    <img alt="GitHub stars" src="https://img.shields.io/github/stars/RafaelGoulartB/Heronite?style=social" />
-  </a>
-  <a href="LICENSE">
-    <img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPL_v3-2B8CA8.svg" />
-  </a>
-  <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/RafaelGoulartB/Heronite?color=2B8CA8&label=release" />
-  </a>
+  <a href="https://github.com/RafaelGoulartB/Heronite"><img alt="GitHub stars" src="https://img.shields.io/github/stars/RafaelGoulartB/Heronite?style=social" /></a>
+  <a href="LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPL_v3-2B8CA8.svg" /></a>
+  <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RafaelGoulartB/Heronite?color=2B8CA8&label=release" /></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-2B8CA8.svg?logo=rust&logoColor=white" />
   <img alt="Platform: Linux and Windows" src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows-2B8CA8.svg" />
-  <a href="https://github.com/RafaelGoulartB/Heronite/releases">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/RafaelGoulartB/Heronite/total?color=2B8CA8&logo=github&label=downloads" />
-  </a>
+  <a href="https://github.com/RafaelGoulartB/Heronite/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/RafaelGoulartB/Heronite/total?color=2B8CA8&logo=github&label=downloads" /></a>
 </p>
 
 <p align="center">
