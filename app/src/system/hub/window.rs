@@ -22,6 +22,8 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<
         app_id: Some("app.heronite.Heronite".into()),
         window_background: WindowBackgroundAppearance::Opaque,
         window_min_size: Some(size(px(640.), px(480.))),
+        // X11 only; Wayland's compositor takes the `.desktop` entry's.
+        icon: cfg!(target_os = "linux").then(crate::system::app_icon::x11_window_icon).flatten(),
         ..Default::default()
     };
     // The library loads while the window and the GPU come up.
