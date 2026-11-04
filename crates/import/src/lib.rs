@@ -21,6 +21,7 @@ pub mod collection;
 pub mod duplicates;
 pub mod faugus;
 pub mod heroic;
+pub mod litedb;
 pub mod lutris;
 
 use std::collections::BTreeSet;
