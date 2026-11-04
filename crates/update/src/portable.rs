@@ -135,11 +135,11 @@ pub fn install(
 ) -> Result<(), InstallError> {
     let kind = WindowsAsset::Portable;
     let asset = release.windows_asset(kind).ok_or_else(|| failed(tr!("This release has no portable zip")))?;
-    let signature = release.windows_signature(kind).ok_or_else(|| failed(tr!("This release is not signed")))?;
+    let proof = release.windows_proof(kind).ok_or_else(|| failed(tr!("This release is not signed")))?;
     let staging = copy.staging();
     let _ = fs::remove_dir_all(&staging);
     let result = (|| {
-        let zip = download_signed(asset, signature, &release.version, &staging, public_key, cancel, on_progress)?;
+        let zip = download_signed(asset, &proof, &release.version, &staging, public_key, cancel, on_progress)?;
         let unpacked = staging.join("new");
         let files = unpack(&zip, &unpacked, cancel)?;
         if cancel.load(Ordering::Relaxed) {
@@ -649,6 +649,7 @@ mod tests {
                 .into_iter()
                 .map(|name| crate::release::Asset { url: format!("{base}/{name}"), name, size: 0 })
                 .collect(),
+            checksums: None,
         }
     }
 

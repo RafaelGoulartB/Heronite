@@ -1,7 +1,8 @@
 //! The parts of the app each system has.
 //!
-//! Linux has everything but Windows' own store (Xbox). On Windows the port
-//! is under way (`docs/WINDOWS-MIGRATION.md`): a part turns on here once it
+//! Linux has everything but Windows' own store (Xbox), except what a
+//! Flatpak sandbox cannot do ([`crate::flatpak`]). On Windows the port is
+//! under way (`docs/WINDOWS-MIGRATION.md`): a part turns on here once it
 //! works there.
 //! The UI asks [`supported`] before it shows a page, a menu entry or a
 //! setting, and services that would only fail do not start.
@@ -135,7 +136,13 @@ pub fn supported(feature: Feature) -> bool {
             return on;
         }
     }
-    built_in(feature)
+    built_in(feature) && !(crate::flatpak::active() && off_in_flatpak(feature))
+}
+
+/// What the Flatpak's sandbox rules out: bubblewrap cannot make the
+/// namespaces of a sandbox inside it, and Flatpak installs the updates.
+const fn off_in_flatpak(feature: Feature) -> bool {
+    matches!(feature, Feature::Sandbox | Feature::SelfUpdate)
 }
 
 /// Whether any of the stores Heronite signs in to is on: what they share

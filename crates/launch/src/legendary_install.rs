@@ -54,7 +54,8 @@ pub(crate) fn install_binary(name: &str, url: &str, target: &Path, net: &dyn Net
     net.download(url, &part, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
     heronite_platform::fs::make_executable(&part).map_err(|e| fail(format!("making {name} executable: {e}")))?;
     if !runs_version(&part) {
-        return Err(fail(format!("the downloaded {name} does not run")));
+        let why = crate::store_tools::missing_runtime(name, &part.to_string_lossy(), &crate::probe::SystemProbe);
+        return Err(fail(why.unwrap_or_else(|| format!("the downloaded {name} does not run"))));
     }
     heronite_platform::fs::rename_replacing(&part, target).map_err(|e| fail(format!("installing {name}: {e}")))
 }

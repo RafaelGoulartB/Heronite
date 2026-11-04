@@ -1,8 +1,9 @@
 //! Replacing the running AppImage with a newer, signed one.
 //!
 //! The new file is downloaded next to the old one (same folder, so same file
-//! system) under a hidden name, checked while it streams (minisign over the
-//! whole file, size, AppImage magic) and only then renamed over `$APPIMAGE`.
+//! system) under a hidden name, checked while it streams (its SHA-256 in the
+//! release's signed `SHA256SUMS`, or minisign over the whole file; size,
+//! AppImage magic) and only then renamed over `$APPIMAGE`.
 //! Never write into the old file: the AppImage runtime of the running app
 //! reads its squashfs from it, so truncating it would crash the app. After
 //! the rename the running app keeps the old inode open; the next launch
@@ -18,9 +19,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::anyhow;
-use minisign_verify::{PublicKey, Signature};
+use minisign_verify::{PublicKey, Signature, StreamVerifier};
+use sha2::{Digest, Sha256};
 
-use crate::release::{Asset, Release};
+use crate::release::{Asset, Checksums, Proof, Release};
 
 /// The running AppImage, writable in place.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +37,8 @@ pub enum Unsupported {
     /// source, a distribution's own package). On Windows: neither installed
     /// by our setup nor a portable copy (a build folder).
     NotAppImage,
+    /// A Flatpak: Flatpak installs its updates.
+    Flatpak,
     /// `$APPIMAGE` does not point at a file.
     Missing(PathBuf),
     /// The folder of the AppImage (of the portable copy on Windows) is not
@@ -49,6 +53,7 @@ impl std::fmt::Display for Unsupported {
                 write!(f, "Heronite was neither installed by its setup nor unpacked as a portable copy")
             }
             Unsupported::NotAppImage => write!(f, "Heronite was not started from an AppImage"),
+            Unsupported::Flatpak => write!(f, "Heronite runs as a Flatpak, which Flatpak updates"),
             Unsupported::Missing(p) => write!(f, "the AppImage {} was not found", p.display()),
             Unsupported::ReadOnly(dir) => write!(f, "{} is not writable", dir.display()),
         }
@@ -126,6 +131,60 @@ fn failed(m: impl std::fmt::Display) -> InstallError {
 
 /// The largest signature file read.
 const MAX_SIGNATURE_BYTES: u64 = 16 * 1024;
+/// The largest `SHA256SUMS` read (a line per file of the release).
+const MAX_CHECKSUMS_BYTES: u64 = 64 * 1024;
+
+/// What a download must match, from its [`Proof`].
+enum Expected {
+    /// Its SHA-256, from the signed checksums.
+    Sha256([u8; 32]),
+    /// Its own signature.
+    Signature(Signature),
+}
+
+/// What `asset` of the release `version` must match: its line of the
+/// checksums once their signature, made with `key` for `version`, checks
+/// out; or its own signature, made for `version`.
+fn expected(asset: &Asset, proof: &Proof, version: &str, key: &PublicKey) -> Result<Expected, InstallError> {
+    match proof {
+        Proof::Signature(sig) => {
+            let signature = fetch_signature(&sig.url)?;
+            check_trusted_version(&signature, version)?;
+            Ok(Expected::Signature(signature))
+        }
+        Proof::Checksums(Checksums { list, signature }) => {
+            let signature = fetch_signature(&signature.url)?;
+            check_trusted_version(&signature, version)?;
+            let text = fetch_text(&list.url, MAX_CHECKSUMS_BYTES)
+                .map_err(|e| failed(tr!("Could not download the checksums: {error}", error = format!("{e:#}"))))?;
+            key.verify(text.as_bytes(), &signature, false).map_err(|_| failed(tr!("The checksums do not match their signature")))?;
+            checksum_of(&text, &asset.name)
+                .map(Expected::Sha256)
+                .ok_or_else(|| failed(tr!("The checksums do not list {file}", file = asset.name.as_str())))
+        }
+    }
+}
+
+/// The SHA-256 `sha256sum` lists for `name` (`<hex>  <name>`, or
+/// `<hex> *<name>` for its binary mode).
+fn checksum_of(text: &str, name: &str) -> Option<[u8; 32]> {
+    text.lines().find_map(|line| {
+        let (hex, file) = line.trim_end().split_once(' ')?;
+        let file = file.trim_start_matches(' ');
+        (file.strip_prefix('*').unwrap_or(file) == name).then(|| parse_sha256(hex)).flatten()
+    })
+}
+
+fn parse_sha256(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    Some(out)
+}
 
 /// Downloads `release` and puts it in place of `target`. `public_key` is
 /// minisign's base64 key ([`crate::PUBLIC_KEY`]). Nothing changes unless the
@@ -138,14 +197,13 @@ pub fn install(
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<(), InstallError> {
     let asset = release.appimage.as_ref().ok_or_else(|| failed(tr!("This release has no AppImage")))?;
-    let sig_asset = release.signature.as_ref().ok_or_else(|| failed(tr!("This release is not signed")))?;
+    let proof = release.appimage_proof().ok_or_else(|| failed(tr!("This release is not signed")))?;
     let key = PublicKey::from_base64(public_key).map_err(|e| failed(tr!("Bad update key: {error}", error = e)))?;
-    let signature = fetch_signature(&sig_asset.url)?;
-    check_trusted_version(&signature, &release.version)?;
+    let expected = expected(asset, &proof, &release.version, &key)?;
 
     let staging = target.staging();
     let _ = fs::remove_file(&staging);
-    let result = download_verified(&asset.url, asset.size, &staging, &key, &signature, cancel, on_progress)
+    let result = download_verified(&asset.url, asset.size, &staging, &key, &expected, cancel, on_progress)
         .and_then(|()| check_appimage(&staging))
         .and_then(|()| swap_in(&staging, &target.appimage));
     if result.is_err() {
@@ -154,17 +212,54 @@ pub fn install(
     result
 }
 
-fn fetch_signature(url: &str) -> Result<Signature, InstallError> {
-    let text = crate::agent()
+/// A small text file, at most `limit` bytes.
+fn fetch_text(url: &str, limit: u64) -> anyhow::Result<String> {
+    crate::agent()
         .get(url)
         .config()
         .timeout_global(Some(Duration::from_secs(30)))
         .build()
         .call()
         .map_err(crate::http_error)
-        .and_then(|mut r| r.body_mut().with_config().limit(MAX_SIGNATURE_BYTES).read_to_string().map_err(|e| anyhow!("{e}")))
+        .and_then(|mut r| r.body_mut().with_config().limit(limit).read_to_string().map_err(|e| anyhow!("{e}")))
+}
+
+fn fetch_signature(url: &str) -> Result<Signature, InstallError> {
+    let text = fetch_text(url, MAX_SIGNATURE_BYTES)
         .map_err(|e| failed(tr!("Could not download the signature: {error}", error = format!("{e:#}"))))?;
     Signature::decode(&text).map_err(|e| failed(tr!("Unreadable signature: {error}", error = e)))
+}
+
+/// Checks a download as it streams, against what [`expected`] found.
+enum Verifier<'a> {
+    Sha256(Sha256, &'a [u8; 32]),
+    Signature(Box<StreamVerifier<'a>>),
+}
+
+impl<'a> Verifier<'a> {
+    fn new(key: &'a PublicKey, expected: &'a Expected) -> Result<Self, InstallError> {
+        Ok(match expected {
+            Expected::Sha256(hash) => Verifier::Sha256(Sha256::new(), hash),
+            Expected::Signature(signature) => Verifier::Signature(Box::new(
+                key.verify_stream(signature).map_err(|e| failed(tr!("The signature does not match the update key: {error}", error = e)))?,
+            )),
+        })
+    }
+
+    fn update(&mut self, data: &[u8]) {
+        match self {
+            Verifier::Sha256(hasher, _) => hasher.update(data),
+            Verifier::Signature(verifier) => verifier.update(data),
+        }
+    }
+
+    fn finalize(self) -> Result<(), InstallError> {
+        let matches = match self {
+            Verifier::Sha256(hasher, hash) => hasher.finalize().as_slice() == hash.as_slice(),
+            Verifier::Signature(mut verifier) => verifier.finalize().is_ok(),
+        };
+        matches.then_some(()).ok_or_else(|| failed(tr!("The downloaded file does not match its signature")))
+    }
 }
 
 /// The signed comment must name the version the release claims, or an old
@@ -183,12 +278,11 @@ fn download_verified(
     expected_size: u64,
     dest: &Path,
     key: &PublicKey,
-    signature: &Signature,
+    expected: &Expected,
     cancel: &AtomicBool,
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<(), InstallError> {
-    let mut verifier =
-        key.verify_stream(signature).map_err(|e| failed(tr!("The signature does not match the update key: {error}", error = e)))?;
+    let mut verifier = Verifier::new(key, expected)?;
     let mut resp = crate::agent()
         .get(url)
         .call()
@@ -227,18 +321,18 @@ fn download_verified(
     if total > 0 && downloaded != total {
         return Err(failed(tr!("The download stopped after {downloaded} of {total} bytes", downloaded, total)));
     }
-    verifier.finalize().map_err(|_| failed(tr!("The downloaded file does not match its signature")))?;
+    verifier.finalize()?;
     file.sync_all().map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))?;
     on_progress(Progress { downloaded, total: downloaded, bytes_per_sec: 0. });
     Ok(())
 }
 
 /// Downloads `asset` into `dir` (as `dir/<name>`, through a hidden partial
-/// file) and checks it against `signature` like [`install`] does. Returns the
+/// file) and checks it against `proof` like [`install`] does. Returns the
 /// file. Used for the system packages, which their package manager installs.
 pub fn download_signed(
     asset: &Asset,
-    signature: &Asset,
+    proof: &Proof,
     version: &str,
     dir: &Path,
     public_key: &str,
@@ -249,13 +343,12 @@ pub fn download_signed(
         return Err(failed(format!("Bad file name {:?}", asset.name)));
     }
     let key = PublicKey::from_base64(public_key).map_err(|e| failed(tr!("Bad update key: {error}", error = e)))?;
-    let signature = fetch_signature(&signature.url)?;
-    check_trusted_version(&signature, version)?;
+    let expected = expected(asset, proof, version, &key)?;
     fs::create_dir_all(dir).map_err(|e| failed(tr!("Could not create {path}: {error}", path = dir.display(), error = e)))?;
     let dest = dir.join(&asset.name);
     let part = dir.join(format!(".{}.part", asset.name));
     let _ = fs::remove_file(&part);
-    let result = download_verified(&asset.url, asset.size, &part, &key, &signature, cancel, on_progress).and_then(|()| {
+    let result = download_verified(&asset.url, asset.size, &part, &key, &expected, cancel, on_progress).and_then(|()| {
         fs::rename(&part, &dest).map_err(|e| failed(tr!("Could not write {path}: {error}", path = dest.display(), error = e)))
     });
     if result.is_err() {
@@ -303,6 +396,12 @@ pub(crate) mod tests {
     pub(crate) const TEST_KEY: &str = "RWQrG3DRkOljn+WcHNIkIS0MboE2BJk4FRyrB6GkIvasTo+w/iXW1BLu";
     pub(crate) const SIG_014: &str = include_str!("../tests/fixtures/blob-0.1.4.minisig");
     const SIG_012: &str = include_str!("../tests/fixtures/blob-0.1.2.minisig");
+    /// A second test key, which signed `SHA256SUMS-0.1.4` (the SHA-256 of
+    /// [`blob`] as `test.AppImage` and `heronite.deb`) with `minisign -S -t
+    /// "version:0.1.4 file:SHA256SUMS"`. Not the release key.
+    const SUMS_KEY: &str = "RWRcOm8haq8yg+KXgDnqxn6yIw8XFIwPJZG/ONHDETQqiyO82Tqf5hHV";
+    const SUMS_014: &str = include_str!("../tests/fixtures/SHA256SUMS-0.1.4");
+    const SUMS_014_SIG: &str = include_str!("../tests/fixtures/SHA256SUMS-0.1.4.minisig");
 
     /// The signed test file: an AppImage header and a fixed pattern.
     pub(crate) fn blob() -> Vec<u8> {
@@ -365,6 +464,17 @@ pub(crate) mod tests {
             signature: Some(Asset { name: "test.AppImage.minisig".into(), url: format!("{base}/test.AppImage.minisig"), size: 0 }),
             packages: Vec::new(),
             windows: Vec::new(),
+            checksums: None,
+        }
+    }
+
+    /// The release at `base` proven by its signed checksums only.
+    fn listed(base: &str, version: &str) -> Release {
+        let file = |name: &str| Asset { name: name.into(), url: format!("{base}/{name}"), size: 0 };
+        Release {
+            signature: None,
+            checksums: Some(Checksums { list: file("SHA256SUMS"), signature: file("SHA256SUMS.minisig") }),
+            ..release(base, version, 0)
         }
     }
 
@@ -432,7 +542,7 @@ pub(crate) mod tests {
             0,
         );
         let asset = |name: &str| Asset { name: name.into(), url: format!("{base}/{name}"), size: 0 };
-        let sig = asset("heronite.deb.minisig");
+        let sig = Proof::Signature(asset("heronite.deb.minisig"));
         let no = AtomicBool::new(false);
         let dir = tmp.path().join("updates");
         let file = download_signed(&asset("heronite.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap();
@@ -443,6 +553,85 @@ pub(crate) mod tests {
         assert!(!dir.join("bad.deb").exists() && !dir.join(".bad.deb.part").exists());
         let err = download_signed(&asset("../x.deb"), &sig, "0.1.4", &dir, TEST_KEY, &no, &mut |_| {}).unwrap_err();
         assert!(err.to_string().contains("Bad file name"));
+    }
+
+    #[test]
+    fn installs_an_update_its_signed_checksums_vouch_for() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = installed(tmp.path());
+        let data = blob();
+        let base = serve(
+            vec![
+                ("/test.AppImage".into(), data.clone()),
+                ("/SHA256SUMS".into(), SUMS_014.into()),
+                ("/SHA256SUMS.minisig".into(), SUMS_014_SIG.into()),
+            ],
+            0,
+        );
+        install(&listed(&base, "0.1.4"), &target, SUMS_KEY, &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!(fs::read(&target.appimage).unwrap(), data);
+        // The packages and the Windows files the same way.
+        let dir = tmp.path().join("updates");
+        let deb = Asset { name: "heronite.deb".into(), url: format!("{base}/test.AppImage"), size: 0 };
+        let proof = listed(&base, "0.1.4").appimage_proof().unwrap();
+        let file = download_signed(&deb, &proof, "0.1.4", &dir, SUMS_KEY, &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!(fs::read(file).unwrap(), data);
+    }
+
+    #[test]
+    fn refuses_what_the_signed_checksums_do_not_vouch_for() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = installed(tmp.path());
+        let data = blob();
+        let mut tampered = data.clone();
+        tampered[5000] ^= 1;
+        let edited = SUMS_014.replacen("ee90", "ee91", 1);
+        let serve_with = |file: Vec<u8>, sums: &str| {
+            serve(
+                vec![
+                    ("/test.AppImage".into(), file),
+                    ("/SHA256SUMS".into(), sums.into()),
+                    ("/SHA256SUMS.minisig".into(), SUMS_014_SIG.into()),
+                ],
+                0,
+            )
+        };
+        let no = AtomicBool::new(false);
+        let try_install =
+            |base: &str, version: &str, key: &str| install(&listed(base, version), &target, key, &no, &mut |_| {}).unwrap_err().to_string();
+
+        let err = try_install(&serve_with(tampered, SUMS_014), "0.1.4", SUMS_KEY);
+        assert!(err.contains("does not match its signature"), "{err}");
+        let err = try_install(&serve_with(data.clone(), &edited), "0.1.4", SUMS_KEY);
+        assert!(err.contains("checksums do not match their signature"), "{err}");
+        // Genuine checksums of 0.1.4 offered as 0.1.5.
+        let err = try_install(&serve_with(data.clone(), SUMS_014), "0.1.5", SUMS_KEY);
+        assert!(err.contains("another version"), "{err}");
+        let err = try_install(&serve_with(data.clone(), SUMS_014), "0.1.4", TEST_KEY);
+        assert!(err.contains("checksums do not match their signature"), "{err}");
+        // A file the list does not name.
+        let base = serve_with(data, SUMS_014);
+        let other = Asset { name: "heronite.rpm".into(), url: format!("{base}/test.AppImage"), size: 0 };
+        let proof = listed(&base, "0.1.4").appimage_proof().unwrap();
+        let dir = tmp.path().join("updates");
+        let err = download_signed(&other, &proof, "0.1.4", &dir, SUMS_KEY, &no, &mut |_| {}).unwrap_err();
+        assert!(err.to_string().contains("do not list heronite.rpm"), "{err}");
+
+        assert_eq!(fs::read(&target.appimage).unwrap(), b"old");
+        assert!(!target.staging().exists());
+    }
+
+    #[test]
+    fn reads_sha256sum_lines() {
+        let hash = "ee90ba26bf17c62d3806805a01554132522335e733b4d8f68e6e41bba4facd11";
+        let text = format!("{hash}  Heronite-x86_64.AppImage\n{hash} *heronite_1.1.0-1_amd64.deb\nnot a line\n");
+        let bytes = parse_sha256(hash).unwrap();
+        assert_eq!((bytes[0], bytes[31]), (0xee, 0x11));
+        assert_eq!(checksum_of(&text, "Heronite-x86_64.AppImage"), Some(bytes));
+        assert_eq!(checksum_of(&text, "heronite_1.1.0-1_amd64.deb"), Some(bytes), "binary mode");
+        assert_eq!(checksum_of(&text, "Heronite-x86_64.flatpak"), None);
+        assert_eq!(parse_sha256("ee90"), None);
+        assert_eq!(parse_sha256(&"zz".repeat(32)), None);
     }
 
     #[test]

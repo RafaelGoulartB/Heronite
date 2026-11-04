@@ -502,8 +502,11 @@ device when the last window closes (the app lives on in the tray); see its
   (`restart_into`, refused while a game runs) and `main` starts the new
   AppImage once the socket is gone.
 - **App updates.** `heronite_update` reads the latest GitHub release and
-  checks every download against its minisign signature (key in
-  `crates/update/src/lib.rs`, trusted comment `version:<X.Y.Z>`). From an
+  checks every download against its SHA-256 in the release's `SHA256SUMS`,
+  whose minisign signature (`SHA256SUMS.minisig`, key in
+  `crates/update/src/lib.rs`, trusted comment `version:<X.Y.Z>`) it checks
+  first; a release without the list (up to 1.0) is checked against each
+  file's own `.minisig` (`release::Proof`). From an
   AppImage (`$APPIMAGE`) it downloads `Heronite-x86_64.AppImage` next to the
   running one and renames it over the old file: the running app keeps the old
   inode, and nothing is written into it. From our .deb / .rpm / Arch package

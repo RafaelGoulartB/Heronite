@@ -39,9 +39,18 @@ impl Roots {
             .map(PathBuf::from)
             .or_else(dirs::desktop_dir)
             .or_else(|| dirs::home_dir().map(|h| h.join("Desktop")));
+        // In a Flatpak `dirs::data_dir()` is the sandbox's: the menu reads
+        // the host's.
+        let data_dir = || {
+            if heronite_platform::flatpak::active() {
+                heronite_platform::flatpak::host_xdg("XDG_DATA_HOME", ".local/share")
+            } else {
+                dirs::data_dir()
+            }
+        };
         let applications = std::env::var_os("HERONITE_APPLICATIONS_DIR")
             .map(PathBuf::from)
-            .or_else(|| dirs::data_dir().map(|d| d.join(MENU_UNDER_DATA_DIR)))
+            .or_else(|| data_dir().map(|d| d.join(MENU_UNDER_DATA_DIR)))
             .unwrap_or_else(|| PathBuf::from(MENU_UNDER_DATA_DIR));
         Self { desktop, applications }
     }

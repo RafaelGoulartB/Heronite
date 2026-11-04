@@ -21,7 +21,9 @@ pub struct UserInfo {
     pub user: String,
 }
 
-pub const LOGIN_URL: &str = "https://www.epicgames.com/id/login?responseType=code";
+/// legendary's login page: Epic shows the code for legendary's client on
+/// `/id/api/redirect` once signed in.
+pub const LOGIN_URL: &str = "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
 /// Page that shows the authorization code in the browser (SID login).
 pub const BROWSER_LOGIN_URL: &str = "https://legendary.gl/epiclogin";
 /// User agent Heroic's webview uses for the Epic login.

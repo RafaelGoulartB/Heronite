@@ -6,12 +6,12 @@
 use std::time::Duration;
 
 use gpui_kit::*;
-use heronite_update::{Asset, Package, Progress, Release, WindowsAsset};
+use heronite_update::{Asset, Checksums, Package, Progress, Release, WindowsAsset};
 
 use super::{Method, Phase, Updater};
 
 /// The made-up release's notes: the shape of the real ones (`release.yml`).
-const NOTES: &str = "**Download:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). The `.minisig` and `.zsync` files are for the updaters; you do not need them.
+const NOTES: &str = "**Download:** `Heronite-x86_64.AppImage` runs on any distribution (recommended). `SHA256SUMS` lists the SHA-256 of every file (signed in `SHA256SUMS.minisig`). The `.minisig` and `.zsync` files are for the updaters; you do not need them.
 
 ## ✨ Highlights
 
@@ -104,6 +104,10 @@ impl Updater {
                 .flat_map(|n| [(format!("{n}.minisig"), 0), (n, 14_600_000)])
                 .map(|(name, size)| Asset { name, url: String::new(), size })
                 .collect(),
+            checksums: Some(Checksums {
+                list: Asset { name: heronite_update::release::CHECKSUMS.into(), url: String::new(), size: 0 },
+                signature: Asset { name: heronite_update::release::CHECKSUMS_SIGNATURE.into(), url: String::new(), size: 0 },
+            }),
         };
         self.prefs.last_check = Some(super::now_secs().saturating_sub(7200));
         if state == "whatsnew" {

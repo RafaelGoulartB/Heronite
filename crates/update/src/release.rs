@@ -14,6 +14,12 @@ pub const ARCH: &str = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x8
 /// The largest API answer read (a release with its notes and assets is a few KB).
 const MAX_API_BYTES: u64 = 1024 * 1024;
 
+/// The release's list of every file's SHA-256 (`sha256sum`'s format), signed
+/// once in [`CHECKSUMS_SIGNATURE`].
+pub const CHECKSUMS: &str = "SHA256SUMS";
+/// The minisign signature of [`CHECKSUMS`].
+pub const CHECKSUMS_SIGNATURE: &str = "SHA256SUMS.minisig";
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Asset {
@@ -47,6 +53,30 @@ pub struct Release {
     /// `.minisig` signatures.
     #[serde(default)]
     pub windows: Vec<Asset>,
+    /// [`CHECKSUMS`] and its signature, when the release has both.
+    #[serde(default)]
+    pub checksums: Option<Checksums>,
+}
+
+/// The signed list of the release's checksums.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Checksums {
+    pub list: Asset,
+    pub signature: Asset,
+}
+
+/// What shows a download is the release's own file.
+///
+/// Releases up to 1.0 sign every file (`<file>.minisig`); later ones also
+/// publish one signed [`CHECKSUMS`] list, which is checked first. The
+/// per-file signatures stay for a while, for the versions that only read
+/// them, and then go (the list alone is enough from then on).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Proof {
+    /// The file's SHA-256 in the signed [`CHECKSUMS`].
+    Checksums(Checksums),
+    /// The file's own `.minisig`.
+    Signature(Asset),
 }
 
 /// The Windows downloads of a release, found by their exact names.
@@ -84,7 +114,35 @@ impl Release {
 
     /// The app can download and swap it in by itself.
     pub fn installable(&self) -> bool {
-        self.appimage.is_some() && self.signature.is_some()
+        self.appimage_proof().is_some()
+    }
+
+    /// The signed list when the release has one, else the file's own
+    /// signature `own`.
+    fn proof(&self, own: Option<&Asset>) -> Option<Proof> {
+        match (&self.checksums, own) {
+            (Some(c), _) => Some(Proof::Checksums(c.clone())),
+            (None, Some(sig)) => Some(Proof::Signature(sig.clone())),
+            (None, None) => None,
+        }
+    }
+
+    /// What proves [`Release::appimage`] (`None` without an AppImage).
+    pub fn appimage_proof(&self) -> Option<Proof> {
+        self.appimage.as_ref()?;
+        self.proof(self.signature.as_ref())
+    }
+
+    /// What proves [`Release::package`] (`None` without that package).
+    pub fn package_proof(&self, package: Package) -> Option<Proof> {
+        self.package(package)?;
+        self.proof(self.package_signature(package))
+    }
+
+    /// What proves [`Release::windows_asset`] (`None` without that file).
+    pub fn windows_proof(&self, kind: WindowsAsset) -> Option<Proof> {
+        self.windows_asset(kind)?;
+        self.proof(self.windows_signature(kind))
     }
 
     /// The file of `package`'s format for this architecture.
@@ -93,8 +151,8 @@ impl Release {
         self.packages.iter().find(|a| a.name.starts_with("heronite") && a.name.ends_with(&suffix))
     }
 
-    /// The signature of [`Release::package`].
-    pub fn package_signature(&self, package: Package) -> Option<&Asset> {
+    /// The own signature of [`Release::package`].
+    fn package_signature(&self, package: Package) -> Option<&Asset> {
         let name = format!("{}.minisig", self.package(package)?.name);
         self.packages.iter().find(|a| a.name == name)
     }
@@ -105,8 +163,8 @@ impl Release {
         self.windows.iter().find(|a| a.name == name)
     }
 
-    /// The signature of [`Release::windows_asset`].
-    pub fn windows_signature(&self, kind: WindowsAsset) -> Option<&Asset> {
+    /// The own signature of [`Release::windows_asset`].
+    fn windows_signature(&self, kind: WindowsAsset) -> Option<&Asset> {
         let name = format!("{}.minisig", kind.file_name());
         self.windows.iter().find(|a| a.name == name)
     }
@@ -170,6 +228,8 @@ pub fn parse_latest(json: &str) -> Result<Release> {
         let name = format!("{}.minisig", a.name);
         r.assets.iter().find(|s| s.name == name)
     });
+    let named = |name: &str| r.assets.iter().find(|a| a.name == name).map(Asset::from);
+    let checksums = named(CHECKSUMS).zip(named(CHECKSUMS_SIGNATURE)).map(|(list, signature)| Checksums { list, signature });
     Ok(Release {
         version: version.to_string(),
         name: r.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| format!("Heronite {}", r.tag_name)),
@@ -188,6 +248,7 @@ pub fn parse_latest(json: &str) -> Result<Release> {
             .map(Asset::from)
             .collect(),
         windows: r.assets.iter().filter(|a| WindowsAsset::of(&a.name)).map(Asset::from).collect(),
+        checksums,
     })
 }
 
@@ -329,11 +390,53 @@ mod tests {
     }
 
     #[test]
+    fn the_signed_checksums_come_first_and_the_own_signatures_stay_a_fallback() {
+        let both = [
+            "Heronite-x86_64.AppImage",
+            "Heronite-x86_64.AppImage.minisig",
+            "heronite_1.1.0-1_amd64.deb",
+            "Heronite-Setup-x86_64.exe",
+            "SHA256SUMS",
+            "SHA256SUMS.minisig",
+        ];
+        let r = parse_latest(&gh("v1.1.0", &both)).unwrap();
+        let list = Checksums {
+            list: Asset { name: CHECKSUMS.into(), url: "https://dl/SHA256SUMS".into(), size: 42 },
+            signature: Asset { name: CHECKSUMS_SIGNATURE.into(), url: "https://dl/SHA256SUMS.minisig".into(), size: 42 },
+        };
+        assert_eq!(r.checksums.as_ref(), Some(&list));
+        if ARCH == "x86_64" {
+            assert_eq!(r.appimage_proof(), Some(Proof::Checksums(list.clone())));
+            // No .minisig of their own: the list is enough.
+            assert_eq!(r.package_proof(Package::Deb), Some(Proof::Checksums(list.clone())));
+            assert_eq!(r.windows_proof(WindowsAsset::Setup), Some(Proof::Checksums(list)));
+        }
+        assert_eq!(r.package_proof(Package::Rpm), None, "no such file");
+
+        // Up to 1.0: only the own signatures.
+        let old = parse_latest(&gh("v1.0.0", &both[..3])).unwrap();
+        assert!(old.checksums.is_none());
+        if ARCH == "x86_64" {
+            let sig = Asset {
+                name: "Heronite-x86_64.AppImage.minisig".into(),
+                url: "https://dl/Heronite-x86_64.AppImage.minisig".into(),
+                size: 42,
+            };
+            assert_eq!(old.appimage_proof(), Some(Proof::Signature(sig)));
+            assert_eq!(old.package_proof(Package::Deb), None, "unsigned");
+        }
+        // A list without its signature proves nothing.
+        let unsigned = parse_latest(&gh("v1.1.0", &["Heronite-x86_64.AppImage", "SHA256SUMS"])).unwrap();
+        assert!(unsigned.checksums.is_none() && !unsigned.installable());
+    }
+
+    #[test]
     fn stored_release_without_packages_still_reads() {
         let r = parse_latest(&gh("v0.1.4", &["Heronite-x86_64.AppImage"])).unwrap();
         let mut v = serde_json::to_value(&r).unwrap();
         v.as_object_mut().unwrap().remove("packages");
         v.as_object_mut().unwrap().remove("windows");
+        v.as_object_mut().unwrap().remove("checksums");
         let back: Release = serde_json::from_value(v).unwrap();
         assert_eq!(back, r);
     }
