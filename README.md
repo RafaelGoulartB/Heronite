@@ -144,7 +144,12 @@ A controller-first layout for the couch or a TV. Turn it on from the ☰ menu, t
 - **Storage:** see what your games take on each disk and clean up leftovers.
 - **Startup:** start with the system, and launch games from `heronite://` links.
 
-<p align="center"><a href="assets/screenshots/storage.webp"><img src="assets/screenshots/storage.webp" width="70%" alt="Storage settings with disk usage bars, space to free up, and a treemap of installed games by size" /></a></p>
+<table>
+  <tr>
+    <td width="50%" align="center"><a href="assets/screenshots/console-settings.webp"><img src="assets/screenshots/console-settings.webp" width="100%" alt="Console mode settings: the Minimal, Classic, Cinema, and Pulse themes, and the theme in use with a live preview next to its focus colour, cover shape and size, corners, background picture, font, hint bar, and button glyphs" /></a><br /><sub><b>Console mode themes</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/storage.webp"><img src="assets/screenshots/storage-panel.webp" width="100%" alt="Storage settings with disk usage bars, space to free up, and a treemap of installed games by size" /></a><br /><sub><b>Storage</b></sub></td>
+  </tr>
+</table>
 
 ## Light on your PC
 
