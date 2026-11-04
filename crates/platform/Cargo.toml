@@ -12,6 +12,11 @@ dirs = "6"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+# The Notification portal, for the Flatpak (`flatpak::notify`).
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "notification"] }
+pollster = "0.4"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Wdk_System_Threading",

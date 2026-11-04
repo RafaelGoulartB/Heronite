@@ -1,10 +1,19 @@
 //! Desktop notifications (freedesktop `org.freedesktop.Notifications`, through
-//! `notify-rust`) for results nobody would see otherwise: post-game work and
-//! background updates while the window is closed to the tray.
+//! `notify-rust`; the Notification portal in a Flatpak) for results nobody
+//! would see otherwise: post-game work and background updates while the
+//! window is closed to the tray.
 //!
 //! Sending blocks on D-Bus, so it runs on its own thread. Every notification
 //! is also logged (`[notify] title: body`). `HERONITE_DEBUG_NO_NOTIFY=1`
 //! only logs (tests and screenshot runs).
+
+/// Shows one notification: through the portal inside a Flatpak.
+fn show(title: &str, body: &str) -> Result<(), String> {
+    if heronite_platform::flatpak::active() {
+        return heronite_platform::flatpak::notify(title, body);
+    }
+    notify_rust::Notification::new().appname("Heronite").summary(title).body(body).show().map(|_| ()).map_err(|e| e.to_string())
+}
 
 /// Shows a notification; never blocks the caller and never fails loudly.
 pub fn send(title: impl Into<String>, body: impl Into<String>) {
@@ -14,7 +23,7 @@ pub fn send(title: impl Into<String>, body: impl Into<String>) {
         return;
     }
     let spawned = std::thread::Builder::new().name("notify".into()).spawn(move || {
-        if let Err(e) = notify_rust::Notification::new().appname("Heronite").summary(&title).body(&body).show() {
+        if let Err(e) = show(&title, &body) {
             log::warn!("desktop notification failed: {e}");
         }
     });
@@ -33,7 +42,7 @@ pub fn send_and_wait(title: impl Into<String>, body: impl Into<String>, wait: st
     }
     let (done, finished) = std::sync::mpsc::channel();
     let spawned = std::thread::Builder::new().name("notify".into()).spawn(move || {
-        if let Err(e) = notify_rust::Notification::new().appname("Heronite").summary(&title).body(&body).show() {
+        if let Err(e) = show(&title, &body) {
             log::warn!("desktop notification failed: {e}");
         }
         let _ = done.send(());
