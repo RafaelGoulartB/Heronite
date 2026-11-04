@@ -3,14 +3,13 @@
 use std::time::Instant;
 
 use gpui_kit::*;
-use heronite_data::appearance::AppIcon;
 
 use super::quit::{allow_user_close, maybe_exit_idle, request_quit};
 use super::start::STARTED;
 use super::{hub, Hub, MainWindow};
 use crate::collection::CollectionView;
 
-fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool, icon: AppIcon) -> Option<MainWindow> {
+fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<MainWindow> {
     let bounds = Bounds::centered(None, size(px(1600.), px(1000.)), cx);
     let options = WindowOptions {
         // Fullscreen keeps `bounds` for when F11 switches back.
@@ -24,18 +23,13 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool, icon: AppI
         window_background: WindowBackgroundAppearance::Opaque,
         window_min_size: Some(size(px(640.), px(480.))),
         // X11 only; Wayland's compositor takes the `.desktop` entry's.
-        icon: cfg!(target_os = "linux").then(|| crate::system::app_icon::x11_window_icon(icon)).flatten(),
+        icon: cfg!(target_os = "linux").then(crate::system::app_icon::x11_window_icon).flatten(),
         ..Default::default()
     };
     // The library loads while the window and the GPU come up.
     crate::collection::preload_library(cx);
     let opened = gpui_kit::open_window(options, cx, |window, cx| {
         window.set_window_title("Heronite");
-        // The executable's own icon is the default one.
-        #[cfg(windows)]
-        if icon != AppIcon::DEFAULT {
-            set_windows_icon(window, icon);
-        }
         // The close button / compositor "close": ask first when quitting
         // would leave games or post-game work behind.
         window.on_window_should_close(cx, |_, cx| allow_user_close(cx));
@@ -66,11 +60,8 @@ pub fn show_window(cx: &mut App) -> Option<WeakEntity<CollectionView>> {
         }
     }
     let started = STARTED.with(|s| s.take()).unwrap_or_else(Instant::now);
-    let (fullscreen, icon) = {
-        let s = hub.0.borrow();
-        (s.fullscreen, s.app_icon)
-    };
-    let window = open_main_window(cx, started, fullscreen, icon)?;
+    let fullscreen = hub.0.borrow().fullscreen;
+    let window = open_main_window(cx, started, fullscreen)?;
     let view = window.view.clone();
     let mut s = hub.0.borrow_mut();
     s.window = Some(window);
@@ -107,50 +98,6 @@ pub(super) fn apply_window_flags(cx: &mut App, console: bool, fullscreen: bool) 
             }
         })
         .ok();
-}
-
-/// Settings → Appearance picked another icon: on Windows the open window
-/// takes it now (on X11 the window takes it when it opens again); on Linux it
-/// also becomes the icon of the `.desktop` entry, which the launcher, the
-/// dock and Wayland's windows show. The tray keeps its own plain H.
-pub fn set_app_icon(cx: &mut App, icon: AppIcon) {
-    let Some(hub) = cx.try_global::<Hub>().cloned() else { return };
-    let window = {
-        let mut s = hub.0.borrow_mut();
-        if s.app_icon == icon {
-            return;
-        }
-        s.app_icon = icon;
-        s.window.as_ref().map(|w| w.handle)
-    };
-    #[cfg(windows)]
-    if let Some(handle) = window {
-        handle.update(cx, |_, window, _| set_windows_icon(window, icon)).ok();
-    }
-    #[cfg(not(windows))]
-    let _ = window;
-    #[cfg(target_os = "linux")]
-    if let Some(data_home) = dirs::data_dir() {
-        std::thread::spawn(move || {
-            if let Err(e) = crate::system::app_icon::write_desktop_icon(&data_home, icon) {
-                log::warn!("could not write the desktop icon: {e}");
-            }
-        });
-    }
-}
-
-/// `icon` on the window's taskbar button and in Alt+Tab.
-#[cfg(windows)]
-fn set_windows_icon(window: &Window, icon: AppIcon) {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    const SIZES: [u32; 10] = [16, 20, 24, 32, 40, 48, 64, 96, 128, 256];
-    let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
-    let RawWindowHandle::Win32(h) = handle.as_raw() else { return };
-    let icons: Vec<_> = crate::system::app_icon::window_images(icon, &SIZES)
-        .into_iter()
-        .filter_map(|img| heronite_platform::tray::Icon::from_rgba(img.width(), img.height(), img.into_raw()))
-        .collect();
-    heronite_platform::window_icon::set_window_icon(h.hwnd.get(), &icons);
 }
 
 /// The app's own close button (Linux): asks first like the compositor's close,

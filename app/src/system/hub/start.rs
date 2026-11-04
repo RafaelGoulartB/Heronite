@@ -9,8 +9,7 @@ use std::time::Instant;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver};
 use futures::StreamExt;
 use gpui_kit::*;
-use heronite_data::appearance::Appearance;
-use heronite_data::{AppPaths, DataPaths};
+use heronite_data::DataPaths;
 
 use super::debug::debug_hooks;
 use super::events::{on_event, on_message, on_tray_cmd};
@@ -35,7 +34,6 @@ pub fn init(
 ) {
     let data_paths = DataPaths::detect();
     let settings = SysSettings::load(&data_paths);
-    let app_icon = Appearance::load(&AppPaths::for_data(&data_paths)).app_icon;
     // Points the entry at this executable (a new AppImage may live elsewhere),
     // or removes one left behind while the setting is off.
     let (autostart_paths, autostart_on) = (data_paths.clone(), settings.start_with_system);
@@ -88,7 +86,6 @@ pub fn init(
         // The first window opens fullscreen right away.
         fullscreen: cli.fullscreen && !hide,
         settings,
-        app_icon,
         settings_stamp: data_paths.global_config().metadata().and_then(|m| m.modified()).ok(),
     }))));
     STARTED.with(|s| s.set(Some(started)));

@@ -20,7 +20,6 @@
 //! - `registry` (Windows): values of the registry.
 //! - `tray` (Windows): an icon in the taskbar's notification area, with a
 //!   menu.
-//! - `window_icon` (Windows): changing a window's icon while it runs.
 //! - `power` (Windows): keeping the computer awake.
 //! - `shortcut` (Windows): `.lnk` shortcuts.
 //! - `system` (Windows): what the computer is (processor, memory, graphics
@@ -49,7 +48,5 @@ pub mod shortcut;
 pub mod system;
 #[cfg(windows)]
 pub mod tray;
-#[cfg(windows)]
-pub mod window_icon;
 
 pub use features::{supported, Feature};

@@ -58,8 +58,6 @@ const INDEX: &[(Section, &[&str])] = &[
             "Panels",
             "Accent colour",
             "High contrast",
-            "Icon",
-            "App icon",
             "Behind the Collection",
             "Use the game artwork as page background",
             "Picture",

@@ -223,7 +223,6 @@ pub struct Appearance {
     pub start_view: StartView,
     pub auto_view: AutoView,
     pub sections: Sections,
-    pub app_icon: AppIcon,
 }
 
 /// Seconds between two screenshots of the background slideshow.
@@ -258,7 +257,6 @@ impl Appearance {
         start_view: StartView::DEFAULT,
         auto_view: AutoView::DEFAULT,
         sections: Sections::DEFAULT,
-        app_icon: AppIcon::DEFAULT,
     };
 }
 
@@ -292,11 +290,11 @@ impl Appearance {
         self
     }
 
-    /// `self` with `other`'s [`AutoView`], [`Theme`], custom colours and
-    /// [`AppIcon`]. They follow the window and the desktop, not a look:
-    /// applying or matching a profile neither changes nor breaks them.
+    /// `self` with `other`'s [`AutoView`], [`Theme`] and custom colours. They
+    /// follow the window and the desktop, not a look: applying or matching a
+    /// profile neither changes nor breaks them.
     pub fn with_window_choices_of(self, other: &Appearance) -> Self {
-        Self { auto_view: other.auto_view, theme: other.theme, custom: other.custom, app_icon: other.app_icon, ..self }
+        Self { auto_view: other.auto_view, theme: other.theme, custom: other.custom, ..self }
     }
 
     pub fn from_value(value: &Value) -> Self {
@@ -337,7 +335,6 @@ impl Appearance {
             start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
             auto_view: AutoView { on: flag("autoView", d.auto_view.on), width: num("autoViewWidth", d.auto_view.width) },
             sections: Sections::from_names(names("sections"), names("hiddenSections")),
-            app_icon: name("appIcon").and_then(AppIcon::parse).unwrap_or_default(),
         }
         .normalized()
     }
@@ -372,7 +369,6 @@ impl Appearance {
             "autoViewWidth": self.auto_view.width,
             "sections": self.sections.order().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             "hiddenSections": self.sections.hidden_names(),
-            "appIcon": self.app_icon.as_str(),
         })
     }
 
@@ -484,7 +480,6 @@ mod tests {
             start_view: StartView::Grid,
             auto_view: AutoView { on: true, width: 1600. },
             sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
-            app_icon: AppIcon::Extruded,
         };
         a.save(&p).unwrap();
         assert_eq!(Appearance::load(&p), a);
@@ -505,7 +500,6 @@ mod tests {
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
         assert_eq!(on_disk["autoView"], true);
         assert_eq!(on_disk["autoViewWidth"], 1600.0);
-        assert_eq!(on_disk["appIcon"], "extruded");
     }
 
     #[test]
@@ -531,7 +525,6 @@ mod tests {
         assert_eq!(a.cover_corners.radius(), 6.);
         assert_eq!(a.sections, Sections::DEFAULT);
         assert_eq!(a.motion, Motion::Full);
-        assert_eq!(a.app_icon, AppIcon::Graphite);
     }
 
     #[test]
@@ -565,17 +558,15 @@ mod tests {
     }
 
     #[test]
-    fn profiles_keep_the_theme_auto_view_and_icon() {
+    fn profiles_keep_the_theme_and_auto_view() {
         let mine = Appearance {
             theme: Theme::Custom,
             custom: Palette::DARK,
             auto_view: AutoView { on: true, width: 1200. },
-            app_icon: AppIcon::Light,
             ..Appearance::DEFAULT
         };
         let look = Appearance { accent: Accent::Rose, ..Appearance::DEFAULT }.with_window_choices_of(&mine);
         assert_eq!((look.theme, look.custom, look.auto_view, look.accent), (Theme::Custom, Palette::DARK, mine.auto_view, Accent::Rose));
-        assert_eq!(look.app_icon, AppIcon::Light);
     }
 
     /// WCAG relative luminance of an sRGB colour.

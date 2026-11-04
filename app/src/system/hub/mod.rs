@@ -36,7 +36,6 @@ use std::time::SystemTime;
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use gpui_kit::*;
-use heronite_data::appearance::AppIcon;
 use heronite_data::DataPaths;
 use heronite_launch::LaunchEvent;
 
@@ -53,7 +52,7 @@ pub use quit::{
 #[cfg(windows)]
 pub use quit::run_on_quit;
 pub use start::init;
-pub use window::{close_window, has_window, set_app_icon, show_window};
+pub use window::{close_window, has_window, show_window};
 
 /// Process exit code (non-zero when a launch from outside failed).
 static EXIT_CODE: AtomicI32 = AtomicI32::new(0);
@@ -96,8 +95,6 @@ struct State {
     /// `--fullscreen` was asked for: every window of this run opens fullscreen.
     fullscreen: bool,
     settings: SysSettings,
-    /// Settings → Appearance's: the window's when it opens.
-    app_icon: AppIcon,
     settings_stamp: Option<SystemTime>,
 }
 
