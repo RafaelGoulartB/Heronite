@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Every game you own, on Linux and Windows, in one fast native launcher, synced across your PCs.
+  Every game you own, on Linux and Windows, in one fast native launcher.
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@
 
 Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Xbox and PC Game Pass, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
 
-Coming from Heroic, Lutris, Bottles, Faugus, or Playnite? Heronite imports those libraries, and [Sync](#sync-between-pcs) keeps your Collection and play time the same on all your PCs, even across the Linux and Windows sides of a dual boot.
+Coming from Heroic, Lutris, Bottles, Faugus, or Playnite? Heronite imports your games from them.
 
 ## 📥 Download
 
@@ -86,15 +86,6 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 - **Other launchers:** import and sync games from Heroic, Lutris, Bottles, and Faugus on Linux, and from Playnite on Windows.
 - **Games you already have:** add one by hand, or a whole folder at once.
 
-## Sync between PCs
-
-Sync keeps one Collection across your PCs, or across the Linux and Windows sides of a dual boot, through a shared folder or your own cloud account (Google Drive, Dropbox, OneDrive, Nextcloud, and more through [rclone](https://rclone.org/)).
-
-- **What syncs:** completion status, favourites, hidden games, ratings, notes, play time, and sessions. Installs, Wine prefixes, game settings, and store sign-ins stay on each PC.
-- **Backups in the cloud:** the same account keeps your Collection backups, game saves, and screenshots, by hand or automatically.
-- **A new PC:** restore everything from the cloud and pick up where you left off.
-
-
 ## Configure and play
 
 - **Wine and Proton (Linux):** per-game version and prefix, DXVK, gamescope, FPS limit, DLSS/FSR upgrades, Winetricks, and Lossless Scaling frame generation.
@@ -149,6 +140,7 @@ A controller-first layout for the couch or a TV. Turn it on from the ☰ menu, t
 - **Appearance:** dark or light, accent colour, fonts, density, and a background picture.
 - **Language:** English, Portuguese (Brazil), Spanish, and German.
 - **Saves and backups:** Ludusavi save backups after each session, and scheduled Collection backups.
+- **Sync:** status, ratings, notes, and play time stay the same across your PCs or both sides of a dual boot, through a shared folder or a cloud account ([rclone](https://rclone.org/)), which can also keep your backups, saves, and screenshots.
 - **Storage:** see what your games take on each disk and clean up leftovers.
 - **Startup:** start with the system, and launch games from `heronite://` links.
 
