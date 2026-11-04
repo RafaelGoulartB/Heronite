@@ -394,6 +394,37 @@ fn bottles_gets_the_bottle_and_program_whole() {
     assert_eq!(plan, LaunchPlan::Unavailable("Bottles was not found on this PC".into()));
 }
 
+/// Playnite's link goes through the shell, which returns at once whatever it
+/// says; the game is followed where its emulator runs from.
+#[test]
+fn playnite_starts_its_games_through_its_link() {
+    use heronite_data::launchers::{LAUNCH_KIND, RUNS_FROM_KEY};
+    let mut m = LocalGameMeta {
+        source: "playnite".into(),
+        launcher_args: Some("explorer.exe playnite://playnite/start/71581114-f5b5-44e2-b5c9-d2ff835b199e".into()),
+        ..meta(LAUNCH_KIND)
+    };
+    let mut game = sideload("playnite_71581114-f5b5-44e2-b5c9-d2ff835b199e", "", "windows");
+    game.install.install_path = Some(r"D:\Games\PS\Castlevania".into());
+    let probe = FakeProbe::new("/h").with_bin("explorer.exe", r"C:\Windows\explorer.exe").with_path(r"D:\Games\PS\Castlevania");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.program, "explorer.exe");
+    assert_eq!(p.command.args, ["playnite://playnite/start/71581114-f5b5-44e2-b5c9-d2ff835b199e"]);
+    let handoff = p.handoff.unwrap();
+    assert_eq!((handoff.folder.as_deref(), handoff.exit_ignored), (Some(r"D:\Games\PS\Castlevania"), true));
+
+    // An emulated game: followed in its emulator's folder, once it is there.
+    m.extra.insert(RUNS_FROM_KEY.into(), json!(r"D:\Emulators\duckstation"));
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.handoff.unwrap().folder.as_deref(), Some(r"D:\Games\PS\Castlevania"), "the emulator is gone");
+    let probe = probe.with_path(r"D:\Emulators\duckstation");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.handoff.unwrap().folder.as_deref(), Some(r"D:\Emulators\duckstation"));
+}
+
 fn emu_ctx(emu: UserEmulator) -> PlanContext {
     let mut c = ctx(json!({}));
     c.emulators.emulators.push(emu);
