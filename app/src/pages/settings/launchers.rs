@@ -62,6 +62,9 @@ pub fn what(launcher: Launcher) -> &'static str {
             "The programs you added to its bottles, with the covers of its Library. Bottles keeps starting them, in their bottle and with its settings."
         ),
         Launcher::Faugus => tr!("Its games, with their covers and play time. Faugus keeps starting them, with the settings you gave them there."),
+        Launcher::Playnite => tr!(
+            "Its installed games, with their covers and play time. Playnite keeps starting them, with the settings and emulators you gave them there. Its Steam, Epic, GOG, Amazon, Xbox, Battle.net, EA and Ubisoft games are left to their own pages here."
+        ),
     }
 }
 
@@ -220,6 +223,7 @@ pub fn launcher_icon(launcher: Launcher) -> Icon {
         Launcher::Lutris => Icon::SportsEsports,
         Launcher::Bottles => Icon::Inbox,
         Launcher::Faugus => Icon::WineBar,
+        Launcher::Playnite => Icon::Collections,
     }
 }
 
@@ -345,7 +349,7 @@ fn duplicates_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Option<D
 
 pub fn render(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let duplicates = duplicates_card(d, cx);
-    let cards: Vec<Div> = Launcher::ALL.iter().map(|l| launcher_card(d, *l, cx)).collect();
+    let cards: Vec<Div> = Launcher::here().iter().map(|l| launcher_card(d, *l, cx)).collect();
     div()
         .flex()
         .flex_col()
@@ -377,7 +381,7 @@ pub fn console_rows(d: &SettingsPage, cx: &App) -> Vec<Row> {
             rows.push(Row::action(SharedString::from(format!("dup-keep|{}", dup.id())), tr!("Keep both")).enabled(!busy));
         }
     }
-    for launcher in Launcher::ALL {
+    for &launcher in Launcher::here() {
         let (found, here) = found_line(s, launcher);
         let on = s.prefs.enabled.contains(&launcher);
         rows.push(Row::header(launcher.name()));
