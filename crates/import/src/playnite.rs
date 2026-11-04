@@ -250,7 +250,8 @@ fn game(d: &Document, install: &Install, emulators: &HashMap<String, PathBuf>) -
     })
 }
 
-#[cfg(test)]
+// Playnite and its paths are Windows' (the Linux launchers' tests are Unix ones).
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     use crate::litedb::write::{file, guid_bytes};
@@ -294,8 +295,6 @@ mod tests {
         install(dir, None).unwrap()
     }
 
-    // Playnite's paths are Windows ones.
-    #[cfg(windows)]
     #[test]
     fn reads_its_installed_games_but_hidden_and_store_ones() {
         let d = tempfile::tempdir().unwrap();
@@ -371,7 +370,6 @@ mod tests {
 
     /// While Playnite runs its library cannot be read: no games, and no
     /// error either.
-    #[cfg(windows)]
     #[test]
     fn a_library_held_open_is_in_use() {
         use std::os::windows::fs::OpenOptionsExt;
@@ -419,13 +417,11 @@ mod tests {
     fn database_paths_and_commands_are_expanded() {
         let (program, appdata) = (Path::new(r"C:\Playnite"), Path::new(r"C:\Users\u\AppData\Roaming"));
         assert_eq!(database_path(r"{PlayniteDir}\library", program, None), PathBuf::from(r"C:\Playnite\library"));
-        if cfg!(windows) {
-            assert_eq!(database_path(r"%AppData%\Playnite\library", program, Some(appdata)), appdata.join(r"Playnite\library"));
-            assert_eq!(database_path("library", program, None), program.join("library"));
-            assert_eq!(program_of(r#""C:\Play nite\Playnite.DesktopApp.exe" --uridata "%1""#), Some(PathBuf::from(r"C:\Play nite")));
-            assert_eq!(program_of(r"C:\Playnite\Playnite.DesktopApp.exe --uridata %1"), Some(PathBuf::from(r"C:\Playnite")));
-            assert_eq!(absolute(r"D:\"), Some(PathBuf::from(r"D:\")));
-        }
+        assert_eq!(database_path(r"%AppData%\Playnite\library", program, Some(appdata)), appdata.join(r"Playnite\library"));
+        assert_eq!(database_path("library", program, None), program.join("library"));
+        assert_eq!(program_of(r#""C:\Play nite\Playnite.DesktopApp.exe" --uridata "%1""#), Some(PathBuf::from(r"C:\Play nite")));
+        assert_eq!(program_of(r"C:\Playnite\Playnite.DesktopApp.exe --uridata %1"), Some(PathBuf::from(r"C:\Playnite")));
+        assert_eq!(absolute(r"D:\"), Some(PathBuf::from(r"D:\")));
         assert_eq!(program_of(r#""Playnite.DesktopApp.exe""#), None);
         assert_eq!(absolute("games"), None);
     }
