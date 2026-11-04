@@ -8,6 +8,7 @@ What works on Windows, what is left, and what Windows does not need.
 
 - App: window and its controls, tray, single instance, start with Windows, `heronite://` links, keep awake
 - Collection: Steam (installed games and the whole library), games added by hand, play time
+- Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite
 - Emulators and ROM folders
 - Save backups (Ludusavi)
 - Screenshots
@@ -33,7 +34,7 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 
 - Wine, Proton, winetricks and store clients under Wine (on Windows they run as they are)
 - Sandbox (bubblewrap)
-- Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup
+- Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup (Windows imports Playnite instead)
 - GameMode, MangoHud, gamescope, wrapper commands and the Steam runtime (`Feature::Wrappers`)
 - The "On Linux" row (ProtonDB)
 - Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)

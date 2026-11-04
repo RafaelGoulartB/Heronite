@@ -117,7 +117,14 @@ pub fn detect(home: &Path, data: &DataPaths) -> Result<Option<Found>> {
         }
     }
     let (heroic, flatpak) = best;
-    Ok(Some(Found { launcher: Launcher::Heroic, location: heroic.root.clone(), flatpak, games: Vec::new(), heroic: Some(heroic) }))
+    Ok(Some(Found {
+        launcher: Launcher::Heroic,
+        location: heroic.root.clone(),
+        flatpak,
+        games: Vec::new(),
+        heroic: Some(heroic),
+        in_use: false,
+    }))
 }
 
 /// The games added by hand and the install records in Heroic's `root`.

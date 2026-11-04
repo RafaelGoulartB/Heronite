@@ -329,6 +329,7 @@ pub fn store_facet(source: Option<&str>, runner: &str, steam_entry: bool, also_o
         ("lutris", _) => "Lutris",
         ("bottles", _) => "Bottles",
         ("faugus", _) => "Faugus",
+        ("playnite", _) => "Playnite",
         ("battlenet", _) => "Battle.net",
         ("ea", _) => "EA app",
         ("ubisoft", _) => "Ubisoft Connect",

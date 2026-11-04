@@ -187,15 +187,14 @@ pub fn content_width(window: &Window) -> f32 {
 }
 
 /// Settings → Other launchers, under the stores: the games of Heroic,
-/// Lutris, Bottles and Faugus come in from there.
+/// Lutris, Bottles and Faugus (Playnite on Windows) come in from there.
 fn other_launchers<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> Stateful<Div> {
     // Names: not translated.
-    side_nav::link("stores-nav-launchers", Icon::CallMerge, tr!("Other launchers"), "Heroic, Lutris, Bottles, Faugus").on_click(
-        cx.listener(|_, _, _, cx| {
-            super::settings::request_section(Section::Launchers, cx);
-            cx.emit(PageEvent::Navigate(Page::Settings));
-        }),
-    )
+    let names = heronite_data::launchers::Launcher::here().iter().map(|l| l.name()).collect::<Vec<_>>().join(", ");
+    side_nav::link("stores-nav-launchers", Icon::CallMerge, tr!("Other launchers"), names).on_click(cx.listener(|_, _, _, cx| {
+        super::settings::request_section(Section::Launchers, cx);
+        cx.emit(PageEvent::Navigate(Page::Settings));
+    }))
 }
 
 /// The list on the left of a store page: "Stores", the stores in their

@@ -44,7 +44,7 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      Xbox app installs (Windows packages): found
  │                      among the user's packages, kept in the
  │                      Collection                                   → data, platform
- ├─ heronite-import     games of Heroic, Lutris, Bottles and Faugus
+ ├─ heronite-import     games of Heroic, Lutris, Bottles, Faugus and Playnite
  │                      brought into the Collection                  → data
  ├─ heronite-installer  games from YAML install scripts              → data, launch, emulation
  ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
@@ -203,14 +203,20 @@ device when the last window closes (the app lives on in the tray); see its
   Wine/Proton plan of local games; the first launch in a prefix runs the
   store's installers (`first_launch::StoreSetup`, Amazon's `PostInstall`).
 
-- **heronite-import:** the other Linux launchers. `detect` finds Heroic,
+- **heronite-import:** the other launchers: Linux's, and Playnite on
+  Windows (`Launcher::here`). `detect` finds Heroic,
   Lutris, Bottles and Faugus (native or Flatpak) and reads their libraries,
   read only: Lutris' `pga.db` (SQLite, compiled in through rusqlite's
   `bundled`) and the Wine prefix from each game's YAML, each bottle's
   `bottle.yml` (its programs; the bottle is their prefix) and Bottles'
   `library.yml` (covers), Faugus' `games.json`, Heroic's sideload library and
-  install records. `collection` writes the installed games of Lutris,
-  Bottles and Faugus as sideload entries whose `launchKind` is
+  install records. On Windows `playnite` finds Playnite through the program
+  its `playnite://` link opens (portable or installed) and reads its
+  `games.db` and `emulators.db` with `litedb`, a reader of LiteDB 4 files;
+  while Playnite runs it holds them open (`Found::in_use`) and nothing is
+  synced. Its games of the stores this app brings in itself are left out.
+  `collection` writes the installed games of Lutris,
+  Bottles, Faugus and Playnite as sideload entries whose `launchKind` is
   `launcher` (`heronite_data::launchers`): `launcherArgs` holds the command
   that asks the launcher to start them, the launcher's play time moves up
   when it is ahead, and a game gone from the launcher stays as not
@@ -220,12 +226,14 @@ device when the last window closes (the app lives on in the tray); see its
   `local_library/launcher-imports.json`; the app's `services::launcher_imports`
   keeps them in sync. A `launcher` game's plan is a native process with a
   `Handoff`: when the launcher returns at once (Lutris already open passes
-  the request to its window), the runtime follows the game's processes
-  (`Procs::game_pids`: files under its folder, Windows programs in its
+  the request to its window; Playnite's link goes through `explorer.exe`,
+  whose exit code says nothing), the runtime follows the game's processes
+  (`Procs::game_pids`: files under its folder, or under the folder its
+  program runs from, a Playnite game's emulator; Windows programs in its
   prefix) until they are gone, and a stop ends them.
   `duplicates` pairs the games then in the Collection twice: added here by
   hand (pointing into the launcher's prefix or folder, or with the same
-  name) and brought in from Lutris, Bottles or Faugus. Settings → Other
+  name) and brought in from Lutris, Bottles, Faugus or Playnite. Settings → Other
   launchers merges a pair (`heronite_data::carry_over` moves play time, sessions,
   status and its history, notes, journal, rating, favourites, categories and
   custom fields onto the launcher's entry, then the other leaves the

@@ -29,7 +29,8 @@ pub enum Feature {
     /// Battle.net, the EA app, Ubisoft Connect and the Rockstar Games
     /// Launcher (under Wine on Linux, as they are on Windows).
     StoreClients,
-    /// Games of Heroic, Lutris, Bottles and Faugus.
+    /// Games of the other launchers: Heroic, Lutris, Bottles and Faugus on
+    /// Linux, Playnite on Windows.
     LauncherImports,
     /// Copying an existing Heroic setup in at the first start
     /// (`heronite_data::migrate`): Heroic's Windows folder holds stores
@@ -172,14 +173,11 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::Storage
         | Feature::LaunchExtras
         | Feature::StoreClients
-        | Feature::XboxStore => true,
-        Feature::Wine
         | Feature::LauncherImports
-        | Feature::HeroicMigration
-        | Feature::Overlay
-        | Feature::SteamGameSettings
-        | Feature::Sandbox
-        | Feature::Wrappers => false,
+        | Feature::XboxStore => true,
+        Feature::Wine | Feature::HeroicMigration | Feature::Overlay | Feature::SteamGameSettings | Feature::Sandbox | Feature::Wrappers => {
+            false
+        }
     }
 }
 

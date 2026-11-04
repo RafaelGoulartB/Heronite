@@ -98,7 +98,7 @@ fn build_sideload(
         };
     }
 
-    // Games another launcher (Lutris, Bottles, Faugus) starts.
+    // Games another launcher (Lutris, Bottles, Faugus, Playnite) starts.
     if let Some(m) = meta.filter(|m| m.launch_kind == heronite_data::launchers::LAUNCH_KIND) {
         return launcher_plan(probe, game, m);
     }
@@ -131,9 +131,12 @@ fn build_sideload(
 
 /// Asks the launcher that has the game to start it (`launcherArgs`). The
 /// launcher sets the game up (Wine, wrappers); the session follows it, and
-/// the game itself when the launcher hands it to its open window.
+/// the game itself when the launcher hands it to its open window: by the
+/// programs running from the game's folder (or from where its program is,
+/// a Playnite game's emulator) or in its Wine prefix. Playnite's link goes
+/// through the shell, which passes it on and returns at once.
 fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> LaunchPlan {
-    use heronite_data::launchers::{Launcher, PREFIX_KEY};
+    use heronite_data::launchers::{Launcher, PREFIX_KEY, RUNS_FROM_KEY};
     let mut args = split_args(meta.launcher_args.as_deref().unwrap_or_default());
     if args.is_empty() {
         return LaunchPlan::Unavailable(tr!("This game has no launch method").into());
@@ -144,11 +147,19 @@ fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> La
         return LaunchPlan::Unavailable(tr!("{launcher} was not found on this PC", launcher));
     }
     let folder = game.install.install_path.clone().filter(|f| !f.is_empty() && probe.exists(f));
-    let prefix = meta.extra.get(PREFIX_KEY).and_then(serde_json::Value::as_str).filter(|p| !p.is_empty()).map(str::to_owned);
+    let path = |key: &str| meta.extra.get(key).and_then(serde_json::Value::as_str).filter(|p| !p.is_empty()).map(str::to_owned);
+    let prefix = path(PREFIX_KEY);
+    let runs_from = path(RUNS_FROM_KEY).filter(|f| probe.exists(f));
+    let exit_ignored = Launcher::from_source(&meta.source) == Some(Launcher::Playnite);
     LaunchPlan::Native(ProcessPlan {
         command: Command { program, args, env: Default::default(), cwd: folder.clone() },
         // Nothing to find the game by: the session ends with the command.
-        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder, ..Default::default() }),
+        handoff: (prefix.is_some() || folder.is_some() || runs_from.is_some()).then(|| crate::plan::Handoff {
+            prefix,
+            folder: runs_from.or(folder),
+            exit_ignored,
+            ..Default::default()
+        }),
         ..Default::default()
     })
 }
