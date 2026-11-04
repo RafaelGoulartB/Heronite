@@ -251,6 +251,12 @@ impl CollectionGame {
         crate::clients::Client::from_id(&meta.source)
     }
 
+    /// The game is one of the Xbox app's (a Microsoft Store or PC Game Pass
+    /// package, which Windows starts and the Xbox app uninstalls).
+    pub fn is_xbox(&self) -> bool {
+        self.launch_kind.as_deref() == Some(crate::xbox::LAUNCH_KIND)
+    }
+
     /// The Steam app id of the game's installed Steam copy, if any (a Steam
     /// entry, or the Steam twin of another entry).
     pub fn steam_installed_id(&self) -> Option<&str> {

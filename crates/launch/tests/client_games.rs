@@ -71,6 +71,7 @@ fn client_plan() -> ProcessPlan {
                 main: "battle.net.exe".into(),
                 join: command("/umu", &["join", "Battle.net.exe", "--exec=launch WoW"]),
             }),
+            ..Default::default()
         }),
         ..Default::default()
     }
@@ -362,4 +363,51 @@ fn only_what_runs_from_the_game_folder_is_the_game() {
     r.procs.set_win_programs(vec![client, redist, wow]);
     assert_eq!(next_after_waiting(&r.rx), LaunchEvent::Running { app_name: "wow".into(), pid: 900 });
     r.launcher.stop("wow");
+}
+
+/// Windows: no prefix, every program of the PC is listed, and the game is
+/// what runs from its folder.
+fn native_plan(folder: Option<&str>) -> ProcessPlan {
+    let mut plan = client_plan();
+    let handoff = plan.handoff.as_mut().unwrap();
+    handoff.prefix = None;
+    handoff.folder = folder.map(str::to_string);
+    plan
+}
+
+#[test]
+fn on_windows_the_game_is_what_runs_from_its_folder() {
+    use heronite_launch::procs::WinProgram;
+    let r = rig();
+    launch(&r, native_plan(Some(r"C:\Games\World of Warcraft")));
+    wait_until("the command", || !r.spawner.spawned().is_empty());
+    let program =
+        |pid: u32, name: &str, path: &str, from_folder: bool| WinProgram { pid, name: name.into(), path: path.into(), from_folder };
+    let client = program(800, "battle.net.exe", r"C:\Program Files (x86)\Battle.net\Battle.net.exe", false);
+    let other = program(810, "explorer.exe", r"C:\Windows\explorer.exe", false);
+    for p in [&client, &other] {
+        r.procs.start(p.pid, &p.name, None);
+    }
+    r.procs.set_win_programs(vec![client.clone(), other.clone()]);
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(r.launcher.pid_of("wow").is_none_or(|pid| pid != 810), "the PC's other programs are not the game");
+    assert!(nothing_played(&r));
+
+    let wow = program(900, "wow.exe", r"C:\Games\World of Warcraft\_retail_\Wow.exe", true);
+    r.procs.start(900, "wow.exe", None);
+    r.procs.set_win_programs(vec![client, other, wow]);
+    assert_eq!(next_after_waiting(&r.rx), LaunchEvent::Running { app_name: "wow".into(), pid: 900 });
+    r.procs.exit(900);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { stopped: false, .. }));
+    assert!(r.procs.signals().is_empty(), "the client is left alone");
+}
+
+#[test]
+fn without_a_folder_or_a_prefix_nothing_is_taken_for_the_game() {
+    let r = rig();
+    launch(&r, native_plan(None));
+    running(&r, &[(900, "wow.exe")]);
+    let LaunchEvent::Error { message, .. } = next_after_waiting(&r.rx) else { panic!() };
+    assert_eq!(message, "Battle.net did not start the game");
+    assert!(nothing_played(&r));
 }

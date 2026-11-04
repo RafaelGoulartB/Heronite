@@ -319,9 +319,9 @@ impl CollectionView {
             )
     }
 
-    /// The stores that run their own program under Wine (Battle.net, the EA
-    /// app, Ubisoft Connect, Rockstar Games): "Set up", or "Ready" once they
-    /// are. A click opens their page.
+    /// The stores that run their own program (under Wine on Linux:
+    /// Battle.net, the EA app, Ubisoft Connect, Rockstar Games): "Set up",
+    /// or "Ready" once they are. A click opens their page.
     fn client_tiles(&self, cx: &mut Context<Self>) -> Div {
         let svc = crate::services::clients_started(cx);
         let tiles = Client::ALL.into_iter().map(|client| {

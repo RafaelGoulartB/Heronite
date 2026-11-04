@@ -37,12 +37,19 @@ impl<K: ClientKind> ClientPage<K> {
             action = action.desc(logic::step_text(client, progress, st.cancelling()));
         } else if let Some(why) = main.why {
             action = action.desc(why);
+        } else if !st.installed() && heronite_clients::native() {
+            action = action.desc(tr!("Downloads the official installer and runs it."));
         } else if !st.installed() {
             action =
                 action.desc(tr!("Downloads the official installer and installs it in a Wine prefix of its own, with your default Proton."));
         }
         rows.push(action);
-        if st.installed() && !st.busy() {
+        if heronite_clients::native() {
+            // No prefix, Wine settings or other install to use: the client is the PC's.
+            if let Some(folder) = logic::program_folder(st).filter(|_| !st.busy()) {
+                rows.push(Row::action("folder", tr!("Open folder")).desc(folder.to_string_lossy().into_owned()).icon(Icon::FolderOpen));
+            }
+        } else if st.installed() && !st.busy() {
             rows.push(Row::action("settings", tr!("Wine settings")).desc(self.wine.clone().unwrap_or_default()).icon(Icon::Settings));
             if let Some(prefix) = st.prefix() {
                 rows.push(

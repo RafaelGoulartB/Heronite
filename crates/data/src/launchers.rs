@@ -9,7 +9,7 @@
 //! The folders and Wine prefixes of those games belong to their launcher
 //! ([`managed_paths`]): uninstalling a game added here never deletes them.
 //! The same goes for the prefix and the games of a store client
-//! ([`crate::clients`]).
+//! ([`crate::clients`]) and the games of the Xbox app ([`crate::xbox`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -22,6 +22,7 @@ use crate::clients::{self, Client};
 use crate::json_store;
 use crate::models::{Extra, LocalGameMeta, LocalMetaFile};
 use crate::paths::DataPaths;
+use crate::xbox;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -121,9 +122,10 @@ pub struct Managed {
 
 /// The folders and Wine prefixes that are not this app's to delete: those
 /// of the games Lutris, Bottles and Faugus start (the Collection's entries of
-/// [`LAUNCH_KIND`]), and each store client's Wine prefix and the folders of
-/// its games ([`clients::LAUNCH_KIND`]), installed or not. Unreadable files
-/// give none. `home` expands the `~` of a client's prefix setting.
+/// [`LAUNCH_KIND`]), each store client's Wine prefix and the folders of
+/// its games ([`clients::LAUNCH_KIND`]), and the folders of the Xbox app's
+/// games ([`xbox::LAUNCH_KIND`]), installed or not. Unreadable files give
+/// none. `home` expands the `~` of a client's prefix setting.
 pub fn managed_paths(paths: &DataPaths, home: &str) -> Vec<Managed> {
     let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap_or_default();
     // App name -> (who keeps it, the entry).
@@ -134,6 +136,7 @@ pub fn managed_paths(paths: &DataPaths, home: &str) -> Vec<Managed> {
             let owner = match m.launch_kind.as_str() {
                 LAUNCH_KIND => Launcher::from_source(&m.source)?.name(),
                 clients::LAUNCH_KIND => Client::from_id(&m.source)?.name(),
+                xbox::LAUNCH_KIND => xbox::NAME,
                 _ => return None,
             };
             Some((m.app_name.as_str(), (owner, m)))
@@ -225,7 +228,6 @@ mod tests {
         assert_eq!(Launcher::from_source("faugus"), Some(Launcher::Faugus));
     }
 
-    #[cfg(unix)]
     fn write_collection(paths: &DataPaths, library: Value, meta: Value) {
         json_store::write(&paths.sideload_library(), &library).unwrap();
         json_store::write(&paths.local_meta(), &meta).unwrap();
@@ -309,5 +311,23 @@ mod tests {
         assert_eq!(managed_in(&managed, Path::new("/home/u/Prefixes")).len(), 2, "a folder holding them");
         assert_eq!(managed_by(&managed, Path::new("/games/ubi")).map(|m| m.owner), Some("Ubisoft Connect"));
         assert_eq!(managed_by(&managed, Path::new("/games/other")), None);
+    }
+
+    // The Xbox app's games are Windows packages.
+    #[cfg(windows)]
+    #[test]
+    fn the_xbox_apps_games_are_kept_by_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        write_collection(
+            &paths,
+            serde_json::json!({"games": [{"app_name": "xbox_game_abc", "install": {"install_path": r"D:\XboxGames\Game\Content"}}]}),
+            serde_json::json!({"games": {
+                "xbox_game_abc": {"appName": "xbox_game_abc", "runner": "sideload", "source": "xbox", "launchKind": "xbox", "title": "Game"}}}),
+        );
+        let managed = managed_paths(&paths, r"C:\Users\u");
+        let kept: Vec<_> = managed.iter().map(|m| (m.path.to_str().unwrap(), m.owner, m.title.as_str())).collect();
+        assert_eq!(kept, [(r"D:\XboxGames\Game\Content", "Xbox", "Game")]);
+        assert_eq!(managed_by(&managed, Path::new(r"D:\XboxGames")).map(|m| m.owner), Some("Xbox"));
     }
 }

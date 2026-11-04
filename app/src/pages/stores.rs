@@ -1,5 +1,5 @@
-//! Steam, Epic Games, GOG, Amazon Games and the stores that run their own
-//! program under Wine (Battle.net, the EA app, Ubisoft Connect, Rockstar
+//! Steam, Epic Games, GOG, Amazon Games, Xbox (Windows) and the stores that
+//! run their own program (Battle.net, the EA app, Ubisoft Connect, Rockstar
 //! Games) share one entry ("Stores") in the ☰ menu, the console sidebar and
 //! the welcome card: each store keeps its own page, laid out by [`sheet`]
 //! with every store listed on its left (LB / RB in console mode), and a link
@@ -22,14 +22,16 @@ use crate::icons::Icon;
 use crate::services::clients::{Activity, ClientState};
 use crate::services::downloads::Store;
 use crate::services::steam_library::{SteamState, Summary};
+use crate::services::xbox_library::Found;
 
 /// The store pages, in the order of the list (and of LB / RB).
-pub const PAGES: [Page; 8] = [Page::Steam, Page::Epic, Page::Gog, Page::Amazon, Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar];
+pub const PAGES: [Page; 9] =
+    [Page::Steam, Page::Epic, Page::Gog, Page::Amazon, Page::Xbox, Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar];
 
 /// The list's groups: the stores Heronite signs in to or reads, then the
-/// ones whose own program runs under Wine.
+/// ones whose own program runs (under Wine on Linux).
 const GROUPS: [(&str, &[Page]); 2] = [
-    (n_!("Stores"), &[Page::Steam, Page::Epic, Page::Gog, Page::Amazon]),
+    (n_!("Stores"), &[Page::Steam, Page::Epic, Page::Gog, Page::Amazon, Page::Xbox]),
     (n_!("Store apps"), &[Page::BattleNet, Page::Ea, Page::Ubisoft, Page::Rockstar]),
 ];
 
@@ -88,7 +90,18 @@ fn steam_glance(state: SteamState, summary: &Summary) -> Glance {
     }
 }
 
-/// A store whose program runs under Wine.
+/// Xbox: the games found among the packages.
+fn xbox_glance(found: Option<&Found>, syncing: bool) -> Glance {
+    match found {
+        None if syncing => glance(Dot::Busy, tr!("Checking")),
+        None => glance(Dot::Off, ""),
+        Some(f) if f.games.is_empty() && !f.xbox_app => glance(Dot::Off, tr!("Xbox app not found")),
+        Some(f) if f.games.is_empty() => glance(Dot::On, tr!("No games yet")),
+        Some(f) => glance(Dot::On, trn!(f.games.len(), "{n} game", "{n} games")),
+    }
+}
+
+/// A store whose own program runs (under Wine on Linux).
 fn client_glance(st: &ClientState) -> Glance {
     if matches!(st.activity, Activity::SettingUp(_)) {
         return glance(Dot::Busy, tr!("Setting up\u{2026}"));
@@ -128,6 +141,10 @@ fn glance_of(page: Page, cx: &App) -> Glance {
             let s = s.read(cx);
             steam_glance(s.state(), &s.summary)
         }),
+        Page::Xbox => crate::services::xbox_library_started(cx).map_or_else(unknown, |s| {
+            let s = s.read(cx);
+            xbox_glance(s.found.as_ref(), s.syncing)
+        }),
         Page::BattleNet => client(Client::BattleNet),
         Page::Ea => client(Client::Ea),
         Page::Ubisoft => client(Client::Ubisoft),
@@ -148,6 +165,7 @@ pub fn watch<V: 'static>(cx: &mut Context<V>) {
     observe(crate::services::downloads_started(cx), &shown, cx);
     observe(crate::services::steam_library_started(cx), &shown, cx);
     observe(crate::services::clients_started(cx), &shown, cx);
+    observe(crate::services::xbox_library_started(cx), &shown, cx);
 }
 
 fn observe<V: 'static, T: 'static>(entity: Option<Entity<T>>, shown: &Rc<RefCell<Vec<Glance>>>, cx: &mut Context<V>) {
@@ -254,10 +272,11 @@ mod tests {
         let switch = |active, pad| super::switch_in(&PAGES, active, pad);
         assert_eq!(switch(Page::Steam, Pad::RB), Some(Page::Epic));
         assert_eq!(switch(Page::Epic, Pad::RB), Some(Page::Gog));
-        assert_eq!(switch(Page::Amazon, Pad::RB), Some(Page::BattleNet));
+        assert_eq!(switch(Page::Amazon, Pad::RB), Some(Page::Xbox));
+        assert_eq!(switch(Page::Xbox, Pad::RB), Some(Page::BattleNet));
         assert_eq!(switch(Page::Rockstar, Pad::RB), Some(Page::Steam));
         assert_eq!(switch(Page::Steam, Pad::LB), Some(Page::Rockstar));
-        assert_eq!(switch(Page::BattleNet, Pad::LB), Some(Page::Amazon));
+        assert_eq!(switch(Page::BattleNet, Pad::LB), Some(Page::Xbox));
         assert_eq!(switch(Page::Gog, Pad::A), None);
         assert_eq!(switch(Page::Downloads, Pad::RB), None);
         assert!(is_store_page(Page::Gog) && is_store_page(Page::Ubisoft) && !is_store_page(Page::Emulators));
@@ -285,6 +304,14 @@ mod tests {
         assert_eq!(steam_glance(SteamState::NotInstalled, &Summary::default()).dot, Dot::Off);
         assert_eq!(steam_glance(SteamState::NeedsRestart, &read).dot, Dot::Attention);
         assert_eq!(steam_glance(SteamState::Reading, &read).dot, Dot::Busy);
+    }
+
+    #[test]
+    fn xbox_says_how_many_games_it_found() {
+        use super::{xbox_glance, Dot, Found};
+        assert_eq!(xbox_glance(None, true).dot, Dot::Busy);
+        assert_eq!(xbox_glance(Some(&Found::default()), false).dot, Dot::Off);
+        assert_eq!(xbox_glance(Some(&Found { xbox_app: true, ..Default::default() }), false).dot, Dot::On);
     }
 
     #[test]

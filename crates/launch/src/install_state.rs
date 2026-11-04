@@ -49,9 +49,12 @@ pub fn next_install_state(
         };
     }
 
-    // Installed in the launcher or store client it came from (their sync says
-    // so; there is no executable), while its folder is there.
-    if matches!(meta.launch_kind.as_str(), heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND) {
+    // Installed in the launcher, store client or Xbox app it came from (their
+    // sync says so; there is no executable), while its folder is there.
+    if matches!(
+        meta.launch_kind.as_str(),
+        heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND | heronite_data::xbox::LAUNCH_KIND
+    ) {
         let folder = game.install.install_path.as_deref().filter(|f| !f.is_empty());
         return InstallState { is_installed: game.is_installed && folder.is_none_or(|f| probe.exists(f)), executable: String::new() };
     }
@@ -359,7 +362,7 @@ mod tests {
             install: InstallInfo { install_path: folder.map(Into::into), ..Default::default() },
             ..game("")
         };
-        for kind in [heronite_data::launchers::LAUNCH_KIND, heronite_data::clients::LAUNCH_KIND] {
+        for kind in [heronite_data::launchers::LAUNCH_KIND, heronite_data::clients::LAUNCH_KIND, heronite_data::xbox::LAUNCH_KIND] {
             let meta = LocalGameMeta { launch_kind: kind.into(), ..Default::default() };
             let state = |g: &GameInfo| next_install_state(&ctx(), &probe, g, &meta, &HashSet::new(), None);
             let kept = state(&installed(Some("/pfx/drive_c/Games/Diablo IV")));

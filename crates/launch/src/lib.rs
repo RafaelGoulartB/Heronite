@@ -60,6 +60,7 @@ pub mod wake;
 pub mod wine;
 pub mod wine_tools;
 pub mod winetricks;
+mod xbox;
 
 pub use plan::{build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 pub use probe::{Probe, SystemProbe};

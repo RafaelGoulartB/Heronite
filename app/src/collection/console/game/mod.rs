@@ -161,7 +161,13 @@ impl CollectionView {
             && !playing
             && !matches!(
                 g.launch_kind.as_deref(),
-                Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+                Some(
+                    "steam-uri"
+                        | "emulator"
+                        | heronite_data::launchers::LAUNCH_KIND
+                        | heronite_data::clients::LAUNCH_KIND
+                        | heronite_data::xbox::LAUNCH_KIND
+                )
             )
         {
             manage.push(Row::action("x:edit", tr!("Edit game")).icon(Icon::Edit));

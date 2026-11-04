@@ -20,7 +20,10 @@ const LOG_TAIL: u64 = 1 << 20;
 pub fn reads(game: &CollectionGame) -> bool {
     !(game.via_steam
         || game.runner == "steam"
-        || matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | "launcher" | heronite_data::clients::LAUNCH_KIND)))
+        || matches!(
+            game.launch_kind.as_deref(),
+            Some("steam-uri" | "emulator" | "launcher" | heronite_data::clients::LAUNCH_KIND | heronite_data::xbox::LAUNCH_KIND)
+        ))
 }
 
 /// Diagnoses the last launch of `game` (`log`: another log file to read,

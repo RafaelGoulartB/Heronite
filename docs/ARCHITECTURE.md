@@ -35,10 +35,15 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      library, installs, updates, cloud saves      → data, launch, epic
  ├─ heronite-amazon     nile CLI: Amazon Games account, library,
  │                      installs, updates                            → data, launch, epic
- ├─ heronite-clients    store clients under Wine (Battle.net, EA app,
- │                      Ubisoft Connect, Rockstar Games Launcher):
+ ├─ heronite-clients    store clients (Battle.net, EA app, Ubisoft
+ │                      Connect, Rockstar Games Launcher), under Wine
+ │                      on Linux, as they are on Windows:
  │                      setup, their games, sign-in, open / close     → data, launch, epic
  ├─ heronite-emulation  emulators, ROM scan, save states, Ludusavi   → data, launch
+ ├─ heronite-xbox       the Microsoft Store and PC Game Pass games the
+ │                      Xbox app installs (Windows packages): found
+ │                      among the user's packages, kept in the
+ │                      Collection                                   → data, platform
  ├─ heronite-import     games of Heroic, Lutris, Bottles and Faugus
  │                      brought into the Collection                  → data
  ├─ heronite-installer  games from YAML install scripts              → data, launch, emulation
@@ -89,7 +94,7 @@ device when the last window closes (the app lives on in the tray); see its
   `console_theme` (console mode themes: the shareable JSON format with every option, read leniently so themes of
   other versions load; built-in `presets`; `store` for saved themes, export and import; `ConsolePrefs` in
   `console.json`), `console_art` (where console mode finds a game's logo),
-  `clients` (the store clients under Wine: their ids, settings file, prefix and program, and
+  `clients` (the store clients, under Wine on Linux and as they are on Windows: their ids, settings file, prefix and program, where they install on Windows, and
   `local_library/clients.json`: when each was synced and the games the user took out),
   `replay_prefs` (Settings → Replay, `replay.json` in the app state: the
   switch, the options every game uses and the games that have it on or off on their own),
@@ -232,9 +237,17 @@ device when the last window closes (the app lives on in the tray); see its
   store client's prefix and its games' folders (`managed_paths` returns
   them too, named after the client).
 
-- **heronite-clients:** the Windows store clients that run under Wine:
-  Battle.net, the EA app, Ubisoft Connect and the Rockstar Games Launcher
-  (`heronite_data::clients::Client`). Each client lives in a Wine prefix of
+- **heronite-clients:** the Windows store clients: Battle.net, the EA app,
+  Ubisoft Connect and the Rockstar Games Launcher
+  (`heronite_data::clients::Client`), under Wine on Linux and as they are on
+  Windows. `place::Place` is where a client lives (`Prefix` on Linux,
+  `Machine` on Windows: this PC's drive, the user's folders wherever Windows
+  keeps them, the real `HKLM`); the readers ask it for files and keys and
+  never look at which one it is. On Windows `native` sets a client up with
+  its official installer (elevated when its manifest asks), uses one already
+  installed as it is, opens it detached, closes the programs running from
+  its folder and tells whether it or a game runs, by name and by folder.
+  On Linux each client lives in a Wine prefix of
   its own (`<defaultWinePrefixDir>/<client>`), set with its Wine build in
   `GamesConfig/heronite-client-<id>.json`, so the game settings panel edits
   it like a game's. `setup::install` downloads the official installer
@@ -267,7 +280,11 @@ device when the last window closes (the app lives on in the tray); see its
   is run by `runtime::client`, which follows the game (a program of the
   prefix running from the game's folder that is not one of the client's,
   `Procs::prefix_programs`), starts the clock when it shows up, never stops
-  the client and gives up after ten minutes or when the client closed.
+  the client and gives up after ten minutes or when the client closed. On
+  Windows the plan runs the client's program as it is with `launcherArgs`
+  (a client already open takes the same command as a request) and
+  `Procs::prefix_programs` lists every program of the PC, the game being the
+  ones running from its folder.
 
 - **heronite-steam:** Steam games keep launching through Steam
   (`steam://rungameid`), with Steam's Proton and prefix. Their game settings
@@ -289,6 +306,24 @@ device when the last window closes (the app lives on in the tray); see its
   soundtracks, demos, test servers or games hidden in Steam), caches it and
   adds the games the Collection does not have yet; Steam's play time moves
   the Steam entries up when it is ahead.
+- **heronite-xbox:** Windows only (`Feature::XboxStore`). The Microsoft
+  Store and PC Game Pass games are Windows packages: `heronite_platform::packages`
+  reads the user's packages from the registry the deployment service keeps
+  (`AppModel\Repository\Packages` of `HKCU`: folder, display name, one key
+  per application) and resolves `ms-resource:` names with
+  `SHLoadIndirectString`. A package is a game when its folder has
+  `MicrosoftGame.config` (GDK games, installed by the Xbox app under
+  `XboxGames`) or `xboxservices.config` (Store games that sign in to Xbox);
+  `files` reads those and `AppxManifest.xml` for the title and the
+  application to start. `collection` keeps them as sideload entries of
+  `launchKind` `xbox` (`heronite_data::xbox`; `launcherArgs` is the AUMID,
+  `local_library/xbox.json` the games the user removed). `heronite_launch::xbox`
+  starts them with `explorer.exe shell:AppsFolder\<AUMID>`, which returns at
+  once with exit code 1 (`Handoff::exit_ignored`), and the session follows
+  the programs running from the package's folder. Owned and Game Pass games
+  are the same packages: only Microsoft's services know the licence, so
+  both show as Xbox. `services::xbox_library` reads them after the start,
+  every ten minutes and on request (the Xbox page, the refresh button).
 - **heronite-installer:** installs a game from a YAML (or JSON) install
   script. `script` reads the file (one script, a list, or an API dump;
   repeated keys keep the last value), `steps` types the `installer` list,
@@ -428,7 +463,7 @@ device when the last window closes (the app lives on in the tray); see its
 | `main.rs` | logging, CLI, single instance, signals, the GPUI loop |
 | `env.rs` | `HERONITE_*` switches (`flag`, `value`, `parse`) |
 | `system/` | lifecycle `hub/` (window, quit, launch requests, tray events), `cli`, `single_instance`, `signals`, `tray`, `notify`, `shortcuts` |
-| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `proton_setup` (the newest GE-Proton downloaded on its own when an install dialog finds no Wine or Proton, through the app's one `WineManager`, which the Wine Manager page shares; it becomes the default Wine; it also keeps the installed `-latest` builds up to date (`autoUpdateLatestProton`, on by default): three minutes after the start and then every six hours it checks only the sources that have one, through `heronite_wine::checks` (the release feed first, an API call only when something was published), and downloads a new release in the background, never while a game runs. `HERONITE_WINE_ONLY_TOOLS=1` makes the detection see only the data folder's builds, to try it with a copy), `launcher_imports` (the games of Heroic, Lutris, Bottles and Faugus: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button of the ☰ menu), `clients/` (the store clients under Wine, `heronite_clients`: their setup, opening, closing and sign-in; it starts with the app and costs nothing while none is set up: it looks at them ten seconds after the start and every quarter of an hour, syncing the installed ones' games into the Collection; whether a client runs is asked every 3 s while its page is on screen and every 15 s while a client opened from here runs, and one that closes, or whose game ended, is synced; `HERONITE_DEBUG_CLIENT=<id>:<state>` shows a state without Wine, see `debug.rs`), `achievements` (each game's local copy read when the Collection shows it and refreshed when older than six hours, 20 s after a session ends, from the focus panel, the dialog and Settings → "Update now", one game at a time; new unlocks become a desktop notification (off by default); it also signs the emulators in to RetroAchievements: at start, on sign-in, when the options change and after a game for one that was open, and on sign-out clears only the emulators holding this account), `sync` (the cloud account, `heronite_sync`: the library sync 20 s after start, 5 s after each game and every ten minutes, never during a game, plus "Sync now"; it connects the account on a thread of its own while the browser sign-in waits, and a sync that changed the Collection makes it reload; `uploads` is one queue for the rest: a backup as it is made (`upkeep`), the saves after each game, the screenshots when the compression has nothing left, one upload at a time on a thread of its own, stopped by a game launch and resumed after it, tried again after 2, 5, 15 then 30 minutes when the account refuses requests, stopped when the app quits and resumed at the next start; `cloud_backups` lists, brings and restores the backups in the account), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
+| `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `proton_setup` (the newest GE-Proton downloaded on its own when an install dialog finds no Wine or Proton, through the app's one `WineManager`, which the Wine Manager page shares; it becomes the default Wine; it also keeps the installed `-latest` builds up to date (`autoUpdateLatestProton`, on by default): three minutes after the start and then every six hours it checks only the sources that have one, through `heronite_wine::checks` (the release feed first, an API call only when something was published), and downloads a new release in the background, never while a game runs. `HERONITE_WINE_ONLY_TOOLS=1` makes the detection see only the data folder's builds, to try it with a copy), `launcher_imports` (the games of Heroic, Lutris, Bottles and Faugus: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button of the ☰ menu), `clients/` (the store clients, `heronite_clients`, under Wine on Linux and as they are on Windows: their setup, opening, closing and sign-in; it starts with the app and costs nothing while none is set up: it looks at them ten seconds after the start and every quarter of an hour, syncing the installed ones' games into the Collection; whether a client runs is asked every 3 s while its page is on screen and every 15 s while a client opened from here runs, and one that closes, or whose game ended, is synced; `HERONITE_DEBUG_CLIENT=<id>:<state>` shows a state without Wine, see `debug.rs`), `achievements` (each game's local copy read when the Collection shows it and refreshed when older than six hours, 20 s after a session ends, from the focus panel, the dialog and Settings → "Update now", one game at a time; new unlocks become a desktop notification (off by default); it also signs the emulators in to RetroAchievements: at start, on sign-in, when the options change and after a game for one that was open, and on sign-out clears only the emulators holding this account), `sync` (the cloud account, `heronite_sync`: the library sync 20 s after start, 5 s after each game and every ten minutes, never during a game, plus "Sync now"; it connects the account on a thread of its own while the browser sign-in waits, and a sync that changed the Collection makes it reload; `uploads` is one queue for the rest: a backup as it is made (`upkeep`), the saves after each game, the screenshots when the compression has nothing left, one upload at a time on a thread of its own, stopped by a game launch and resumed after it, tried again after 2, 5, 15 then 30 minutes when the account refuses requests, stopped when the app quits and resumed at the next start; `cloud_backups` lists, brings and restores the backups in the account), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `diagnosis/` | the launch diagnosis for the UI: `gather` reads what `heronite_launch::diagnose` needs for a game, `apply` applies a fix (winetricks components, game settings, the best Proton, ending a wineserver, `vm.max_map_count` through `pkexec`), `text` says it; the fixes applied this run are remembered so one that did not help is not offered as the answer again. The Collection runs it when a game ends within `FAILED_LAUNCH_WINDOW` and opens `dialogs/launch_problem`; without a window the cause goes into the notification |
 | `overlay/` | the in-game overlay (beta, off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard) and notices (`toast.rs`) as layer-shell windows (`window.rs`); `moment.rs` marks a moment in the game's journal (a capture and an empty note); `replay.rs` saves the replay (Guide + X, the panel's "Save replay", the keyboard shortcut of `services::replay`) and marks it as a moment (`clip` in the journal entry) |

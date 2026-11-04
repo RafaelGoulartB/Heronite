@@ -55,6 +55,7 @@ pub mod status_history;
 pub mod steam_owned;
 pub mod timeline;
 pub mod ui_state;
+pub mod xbox;
 
 pub use art::{ArtContext, ImageRef};
 pub use collection::{FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery};

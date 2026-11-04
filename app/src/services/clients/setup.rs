@@ -1,8 +1,10 @@
 //! Setting a client up (or using one that is installed), and forgetting it.
 //!
-//! A setup needs a Wine: when this PC has none, the newest GE-Proton comes
-//! first (`services::proton_setup`, which the Wine Manager and the install
-//! dialogs share) and the setup goes on once it is there.
+//! A setup under Wine needs one: when this PC has none, the newest
+//! GE-Proton comes first (`services::proton_setup`, which the Wine Manager
+//! and the install dialogs share) and the setup goes on once it is there.
+//! On Windows the client's installer runs as it is, with no Wine to wait
+//! for.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -29,6 +31,9 @@ impl Clients {
         st.notice = None;
         st.cancel = Some(Cancel::new());
         cx.notify();
+        if heronite_clients::native() {
+            return self.run_setup(client, cx);
+        }
         self.check_wine(client, false, cx);
     }
 
