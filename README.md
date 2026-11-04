@@ -55,8 +55,6 @@ Coming from Heroic, Lutris, Bottles, Faugus, or Playnite? Heronite imports your 
 
 </details>
 
-Every release ships a `SHA256SUMS` signed with [minisign](https://jedisct1.github.io/minisign/), and Heronite's updater checks that signature before it installs a new version.
-
 The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
 
 ---
