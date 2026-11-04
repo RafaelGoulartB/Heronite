@@ -13,6 +13,11 @@
 //! the data folder, the app state folder and home are rewritten when the
 //! backup came from other folders (another user, another machine, another
 //! system: a backup made on Linux restores on Windows).
+//!
+//! This PC's identity for the library sync (its id, name and folder in
+//! `sync.json`) never comes from a backup: a backup of another PC restored
+//! here would make both PCs one, ignoring each other's files and writing
+//! into the same folders of the account.
 
 use std::collections::HashSet;
 use std::fs;
@@ -160,6 +165,8 @@ pub fn restore(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
     };
     let mut done =
         Restored { snapshot: snapshot.to_path_buf(), created_at: info.created_at.clone(), parts: parts.clone(), ..Default::default() };
+    let sync_prefs = app.sync_prefs();
+    let own = own_identity(&sync_prefs);
     let mut kept: HashSet<(Side, String)> = HashSet::new();
     for f in &files {
         let dest = root(f.side).join(&f.rel);
@@ -171,12 +178,23 @@ pub fn restore(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
             }
             None => bytes,
         };
+        let bytes = if dest == sync_prefs { with_identity(&bytes, &own) } else { bytes };
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
         }
         temps::write_atomic(&dest, &bytes, None).with_context(|| format!("writing {}", dest.display()))?;
         done.written += 1;
         kept.insert((f.side, f.rel.clone()));
+    }
+    // A backup without the sync's settings (made before it) still leaves
+    // this PC its identity.
+    if let Ok(rel) = sync_prefs.strip_prefix(&app.config) {
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        let restored = matches!(catalog::classify_config(&rel), Class::In(part) if parts.contains(&part));
+        if restored && !own.is_empty() && kept.insert((Side::Config, rel)) {
+            temps::write_atomic(&sync_prefs, &with_identity(b"{}", &own), None)
+                .with_context(|| format!("writing {}", sync_prefs.display()))?;
+        }
     }
     // The rest of each restored part goes.
     for side in [Side::Data, Side::Config] {
@@ -196,6 +214,34 @@ pub fn restore(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
         done.rewritten
     );
     Ok(done)
+}
+
+/// The fields of `sync.json` that name this PC (heronite_sync::prefs::SyncPrefs).
+const IDENTITY: [&str; 3] = ["deviceId", "deviceName", "deviceFolder"];
+
+/// This PC's [`IDENTITY`] fields in its `sync.json` (empty without one).
+fn own_identity(sync_prefs: &Path) -> serde_json::Map<String, serde_json::Value> {
+    let current = fs::read(sync_prefs).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    let Some(serde_json::Value::Object(mut current)) = current else { return Default::default() };
+    current.retain(|k, _| IDENTITY.contains(&k.as_str()));
+    current
+}
+
+/// The backup's `sync.json` with this PC's identity `own` in place of the
+/// backup's; a field this PC has not got yet is left out (the sync makes a
+/// new one). A file that is not a JSON object keeps only the identity.
+fn with_identity(bytes: &[u8], own: &serde_json::Map<String, serde_json::Value>) -> Vec<u8> {
+    let mut prefs = match serde_json::from_slice::<serde_json::Value>(bytes) {
+        Ok(serde_json::Value::Object(prefs)) => prefs,
+        _ => serde_json::Map::new(),
+    };
+    for key in IDENTITY {
+        match own.get(key) {
+            Some(v) => prefs.insert(key.to_owned(), v.clone()),
+            None => prefs.remove(key),
+        };
+    }
+    serde_json::to_vec_pretty(&prefs).unwrap_or_default()
 }
 
 /// Old → new folder pairs, most specific first; empty when the backup came
@@ -395,5 +441,45 @@ mod tests {
         assert!(restore(&data, &app, &old, &Part::ALL).is_err());
         assert!(prepare(&data, &app, &old, &Part::ALL, &d.path().join("backups")).is_err());
         assert_eq!(fs::read_to_string(data.root.join("local_library/library.json")).unwrap(), r#"{"games":{"a":{},"b":{}}}"#);
+    }
+
+    #[test]
+    fn this_pc_keeps_its_sync_identity() {
+        let _s = crate::tests::serial();
+        let d = tempfile::tempdir().unwrap();
+        let (data, app) = fixture(d.path());
+        let folder = d.path().join("backups");
+        fs::create_dir(&folder).unwrap();
+        let prefs = |path: &Path| serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap();
+        // The other PC's backup.
+        let theirs = r#"{"library":"auto","saves":"auto","deviceId":"other","deviceName":"Desk","deviceFolder":"Desk"}"#;
+        fs::write(app.sync_prefs(), theirs).unwrap();
+        let made = snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now()).unwrap();
+
+        fs::write(app.sync_prefs(), r#"{"library":"off","deviceId":"this","deviceFolder":"Deck"}"#).unwrap();
+        restore(&data, &app, &made.path, &[Part::Settings]).unwrap();
+        let v = prefs(&app.sync_prefs());
+        assert_eq!((v["library"].as_str(), v["saves"].as_str()), (Some("auto"), Some("auto")), "the settings come back");
+        assert_eq!((v["deviceId"].as_str(), v["deviceFolder"].as_str()), (Some("this"), Some("Deck")));
+        assert!(v.get("deviceName").is_none(), "this PC had none");
+
+        // Without a sync.json here, the sync makes a new identity.
+        fs::remove_file(app.sync_prefs()).unwrap();
+        restore(&data, &app, &made.path, &[Part::Settings]).unwrap();
+        let v = prefs(&app.sync_prefs());
+        assert!(IDENTITY.iter().all(|k| v.get(k).is_none()), "{v}");
+        assert_eq!(v["library"], "auto");
+
+        // A backup made before the sync: the restored settings go, the identity stays.
+        fs::remove_file(app.sync_prefs()).unwrap();
+        let before =
+            snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now() + chrono::Duration::minutes(1)).unwrap();
+        fs::write(app.sync_prefs(), r#"{"library":"auto","deviceId":"this"}"#).unwrap();
+        restore(&data, &app, &before.path, &[Part::Settings]).unwrap();
+        assert_eq!(prefs(&app.sync_prefs()), serde_json::json!({"deviceId": "this"}));
+        // Only when the settings are restored.
+        fs::write(app.sync_prefs(), r#"{"library":"auto","deviceId":"this"}"#).unwrap();
+        restore(&data, &app, &before.path, &[Part::Collection]).unwrap();
+        assert_eq!(prefs(&app.sync_prefs())["library"], "auto");
     }
 }
