@@ -1,6 +1,5 @@
 //! Opening and closing a client, and following the process that opened it.
 
-use std::path::Path;
 use std::time::Instant;
 
 use gpui_kit::*;
@@ -44,13 +43,13 @@ impl Clients {
         cx.notify();
     }
 
-    /// Closes the client and what runs in its prefix, unless one of its
-    /// games runs.
+    /// Closes the client and what runs in its prefix (on Windows, its
+    /// programs), unless one of its games runs.
     pub fn close(&mut self, client: Client, cx: &mut Context<Self>) {
         if self.frozen == Some(client) || self.state(client).busy() {
             return;
         }
-        let Some(prefix) = self.state(client).prefix().map(Path::to_path_buf) else { return };
+        let Some(status) = self.state(client).status.clone().filter(|s| s.installed()) else { return };
         let st = self.state_mut(client);
         st.activity = Activity::Closing;
         st.notice = None;
@@ -58,7 +57,7 @@ impl Clients {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    if heronite_clients::run::game_running(client, &prefix) {
+                    if heronite_clients::run::game_running(client, &status) {
                         return Err(tr!("{client} stays open while one of its games runs. Close the game first.", client = client.name()));
                     }
                     heronite_clients::run::close(&paths, client, &home())

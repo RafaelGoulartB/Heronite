@@ -153,6 +153,21 @@ pub(super) fn tilde(path: &Path, home: &str) -> String {
     }
 }
 
+/// The folder the client's program is in, once it is installed.
+pub(super) fn program_folder(st: &ClientState) -> Option<&Path> {
+    st.status.as_ref()?.exe.as_deref()?.parent()
+}
+
+/// The folder "Open folder" opens: the client's prefix, or on Windows the
+/// folder of its program.
+pub(super) fn folder_to_open(st: &ClientState) -> Option<&Path> {
+    if heronite_clients::native() {
+        program_folder(st)
+    } else {
+        st.prefix()
+    }
+}
+
 /// The Collection's key of a game the client installed (a sideload entry).
 pub(super) fn collection_key(client: Client, game_id: &str) -> String {
     format!("sideload_{}", heronite_clients::collection::app_name(client, game_id))
@@ -264,6 +279,19 @@ mod tests {
         assert!(synced_text(&at(5), now).unwrap().contains('5'));
         assert!(synced_text(&at(120), now).unwrap().contains("2026-10-26 10:00"));
         assert_eq!(synced_text("yesterday", now), None);
+    }
+
+    #[test]
+    fn the_folder_to_open_is_the_prefix_or_the_programs() {
+        let st = installed();
+        assert_eq!(super::program_folder(&st), Some(Path::new("/p")));
+        // Its program is in its prefix here: either way the same folder.
+        assert_eq!(super::folder_to_open(&st), Some(Path::new("/p")));
+        let mut on_pc = ClientState::default();
+        on_pc.status = Some(Status { exe: Some("/pc/Battle.net/Battle.net.exe".into()), ..Default::default() });
+        let expected = if heronite_clients::native() { Some(Path::new("/pc/Battle.net")) } else { None };
+        assert_eq!(super::folder_to_open(&on_pc), expected);
+        assert_eq!(super::program_folder(&ClientState::default()), None);
     }
 
     #[test]

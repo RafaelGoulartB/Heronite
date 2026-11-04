@@ -80,6 +80,10 @@ impl DataPaths {
     pub fn clients(&self) -> PathBuf {
         self.j("local_library/clients.json")
     }
+    /// The Xbox app's games synced into the Collection (`xbox::XboxPrefs`).
+    pub fn xbox(&self) -> PathBuf {
+        self.j("local_library/xbox.json")
+    }
     pub fn sessions(&self) -> PathBuf {
         self.j("local_library/sessions.json")
     }

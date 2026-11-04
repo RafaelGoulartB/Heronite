@@ -1,4 +1,5 @@
-//! Games of the other Linux launchers brought into the Collection.
+//! Games of the other launchers brought into the Collection: Linux's
+//! (Heroic, Lutris, Bottles, Faugus) and, on Windows, Playnite.
 //!
 //! * [`lutris`] reads Lutris' library (`pga.db`), [`bottles`] the programs
 //!   added to each bottle of Bottles (`bottle.yml`) and [`faugus`] Faugus
@@ -9,19 +10,23 @@
 //! * [`heroic`] copies the games added by hand in Heroic (with their game
 //!   settings: they start here) and its records of installed Epic, GOG and
 //!   Amazon games, so those show as installed once logged in here.
+//! * [`playnite`] reads Playnite's library (a LiteDB file, [`litedb`]) on
+//!   Windows: its installed games start through Playnite, like Lutris'.
 //!
-//! [`detect`] finds the launchers on this machine (native or Flatpak) and
-//! reads their libraries: small files, read only. [`sync`] writes the
+//! [`detect`] finds this system's launchers ([`Launcher::here`]; on Linux
+//! native or Flatpak) and reads their libraries: small files, read only. [`sync`] writes the
 //! Collection; a game gone from its launcher stays, as not installed.
 //! [`duplicates`] finds the games then in the Collection twice (added here by
-//! hand, and brought in from Lutris, Bottles or Faugus).
+//! hand, and brought in from Lutris, Bottles, Faugus or Playnite).
 
 pub mod bottles;
 pub mod collection;
 pub mod duplicates;
 pub mod faugus;
 pub mod heroic;
+pub mod litedb;
 pub mod lutris;
+pub mod playnite;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -38,10 +43,13 @@ pub struct Found {
     pub location: PathBuf,
     /// Installed through Flatpak.
     pub flatpak: bool,
-    /// Games another launcher starts (Lutris, Bottles, Faugus).
+    /// Games another launcher starts (Lutris, Bottles, Faugus, Playnite).
     pub games: Vec<Game>,
     /// Heroic only: what [`heroic`] copies.
     pub heroic: Option<heroic::Library>,
+    /// The launcher holds its library open (Playnite while it runs): its
+    /// games cannot be read now, and none are listed.
+    pub in_use: bool,
 }
 
 impl Found {
@@ -52,11 +60,11 @@ impl Found {
     }
 }
 
-/// An installed game of Lutris, Bottles or Faugus.
+/// An installed game of Lutris, Bottles, Faugus or Playnite.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Game {
     /// The launcher's id for it (Lutris' numeric id, the program's id in
-    /// Bottles, Faugus' `gameid`).
+    /// Bottles, Faugus' `gameid`, Playnite's game id).
     pub id: String,
     pub title: String,
     /// Its folder, when known.
@@ -72,6 +80,9 @@ pub struct Game {
     pub command: String,
     /// Its Wine prefix (Windows games).
     pub prefix: Option<String>,
+    /// Where the program that runs it is when that is not its folder (the
+    /// emulator of a Playnite game): the session follows it there.
+    pub runs_from: Option<String>,
 }
 
 /// What a [`sync`] changed in the Collection.
@@ -83,15 +94,16 @@ pub struct Report {
 }
 
 /// The launchers on this machine (`home` is the user's home folder), in
-/// [`Launcher::ALL`] order. One that cannot be read is logged and left out.
+/// [`Launcher::here`] order. One that cannot be read is logged and left out.
 pub fn detect(home: &Path, data: &DataPaths) -> Vec<Found> {
     let mut out = Vec::new();
-    for launcher in Launcher::ALL {
+    for &launcher in Launcher::here() {
         let found = match launcher {
             Launcher::Heroic => heroic::detect(home, data),
             Launcher::Lutris => lutris::detect(home),
             Launcher::Bottles => bottles::detect(home),
             Launcher::Faugus => faugus::detect(home),
+            Launcher::Playnite => playnite::detect(),
         };
         match found {
             Ok(Some(f)) => out.push(f),
@@ -103,8 +115,10 @@ pub fn detect(home: &Path, data: &DataPaths) -> Vec<Found> {
 }
 
 /// Brings `found`'s games into the Collection, but the ones the user took
-/// out (`removed`: their app names). Blocking (small files).
+/// out (`removed`: their app names). Blocking (small files). A library in
+/// use is an error: none of its games would be marked as not installed.
 pub fn sync(paths: &DataPaths, found: &Found, removed: &BTreeSet<String>) -> Result<Report> {
+    anyhow::ensure!(!found.in_use, "{} holds its library open", found.launcher.name());
     match &found.heroic {
         Some(library) => heroic::sync(paths, library, removed),
         None => collection::sync(paths, found.launcher, &found.games, removed),
@@ -112,8 +126,10 @@ pub fn sync(paths: &DataPaths, found: &Found, removed: &BTreeSet<String>) -> Res
 }
 
 /// An XDG base folder of `home`: the variable when `home` is this user's
-/// home, else `home/default`.
+/// home, else `home/default`. In Heronite's Flatpak the variables point into
+/// its sandbox; the host's are `HOST_<var>` there.
 pub(crate) fn xdg(home: &Path, var: &str, default: &str) -> PathBuf {
     let own = std::env::var_os("HOME").is_some_and(|h| Path::new(&h) == home);
+    let var = if heronite_platform::flatpak::active() { format!("HOST_{var}") } else { var.to_string() };
     std::env::var_os(var).filter(|_| own).map(PathBuf::from).unwrap_or_else(|| home.join(default))
 }

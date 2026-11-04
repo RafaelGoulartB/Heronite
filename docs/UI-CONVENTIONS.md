@@ -62,11 +62,13 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   (`nav_keys.rs`) are the Collection search's: ↓ to the list, ↑ ↓ Home End move, ↑ on the first item back to the
   search, Enter / Space open, a letter types in the search; Esc empties the search, then leaves it, then the page. Emulators and ROM
   folders are NOT a Settings section: they live on the ☰ Emulators page.
-  Other launchers (`launchers.rs`) is a card per launcher (Heroic, Lutris, Bottles, Faugus): whether it is on this PC
-  and how many games it has, a switch that brings its games in and keeps them in sync, "Bring in now", and
-  "Remove them" for the games of one turned off. The same switch is offered where games come from: a tile per
-  launcher on the empty Collection and a row in "Getting started" → Your games, shown only for the launchers
-  found with games and not imported yet.
+  Other launchers (`launchers.rs`) is a card per launcher (Heroic, Lutris, Bottles, Faugus on Linux; Playnite on
+  Windows, `Launcher::here`): whether it is on this PC and how many games it has, a switch that brings its games in and
+  keeps them in sync, "Bring in now", and "Remove them" for the games of one turned off. On Linux the same switch is
+  offered where games come from: a tile per launcher on the empty Collection and a row in "Getting started" → Your
+  games, shown only for the launchers found with games and not imported yet. On Windows Playnite's games come in only
+  from this section (`launcher_imports::OFFERED_ELSEWHERE`); while Playnite runs it holds its library open, and the
+  card asks to close it.
 - Command palette (Ctrl K, `app/src/collection/palette/`): it reads the app's own lists, so a new feature reaches it
   without palette code. A game action goes in `collection/game_actions.rs` (`GameAction`, listed by
   `CollectionView::game_actions`, run by `run_game_action`): the card's context menu draws the same list. A page action
@@ -646,9 +648,9 @@ has only System, and Home ends with "Open Heronite".
 The panel takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
 (which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
-window (`com.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
+window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
-plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`com.heronite.overlay-notice`);
+plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`);
 `HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and

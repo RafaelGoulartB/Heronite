@@ -8,6 +8,7 @@ What works on Windows, what is left, and what Windows does not need.
 
 - App: window and its controls, tray, single instance, start with Windows, `heronite://` links, keep awake
 - Collection: Steam (installed games and the whole library), games added by hand, play time
+- Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite
 - Emulators and ROM folders
 - Save backups (Ludusavi)
 - Screenshots
@@ -15,18 +16,9 @@ What works on Windows, what is left, and what Windows does not need.
 - Installer, portable zip, self-update, releases
 - Restoring a backup made on Linux
 
-## 🚧 Needs a real-world check
-
-- Playing Steam games
-- Epic Games, GOG and Amazon Games: login, downloads, first launch, cloud saves, the official launchers' games
-- Settings → Storage: the drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
-- Launch extras: scripts before and after a game (`.bat`, `.cmd`, `.ps1`, programs), programs alongside it (started as they are, closed with the game), presets (variables and arguments; Windows has no wrappers)
-- Steam games' scripts and programs alongside: Heronite runs them around `steam://rungameid` when you play from Heronite, and Steam starts the game as it is, with nothing in between (`heronite_launch::steam_extras`)
-
 ## ⬜ To do
 
 - In-game overlay and replay buffer
-- Importing games of Battle.net, EA app, Ubisoft Connect, Rockstar and Xbox app
 - GOG Galaxy services (`comet`)
 - RetroAchievements sign-in of the emulators: `heronite_achievements::emulators` only knows their Linux config files (`~/.config`, Flatpak), not where they keep them on Windows (`%APPDATA%`, portable folders)
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
@@ -40,9 +32,9 @@ What works on Windows, what is left, and what Windows does not need.
 
 Windows runs Windows games directly, so these Linux parts are not needed:
 
-- Wine, Proton, winetricks and store clients under Wine
+- Wine, Proton, winetricks and store clients under Wine (on Windows they run as they are)
 - Sandbox (bubblewrap)
-- Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup
+- Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup (Windows imports Playnite instead)
 - GameMode, MangoHud, gamescope, wrapper commands and the Steam runtime (`Feature::Wrappers`)
 - The "On Linux" row (ProtonDB)
 - Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)

@@ -162,6 +162,9 @@ pub struct Request<'a> {
 /// Why the sandbox cannot run here, or `None` when it can (also used by the
 /// settings to show the state).
 pub fn unavailable(probe: &dyn Probe) -> Option<String> {
+    if heronite_platform::flatpak::active() {
+        return Some(tr!("The sandbox does not run inside the Flatpak of Heronite, which keeps its games in its own sandbox. Turn it off for this game, or use the AppImage.").into());
+    }
     match probe.bwrap() {
         None => Some(tr!("The sandbox needs bubblewrap (bwrap), which is not installed. Install the bubblewrap package, or turn the sandbox off for this game.").into()),
         Some(b) if !b.supported() => Some(tr!(
@@ -184,7 +187,8 @@ pub fn prelude(
     owner: Owner,
     req: &Request,
 ) -> Result<Option<Vec<String>>, String> {
-    if !settings.sandbox.enabled {
+    // Inside the Flatpak bubblewrap cannot run: the setting is ignored.
+    if !settings.sandbox.enabled || heronite_platform::flatpak::active() {
         return Ok(None);
     }
     if let Some(why) = unavailable(probe) {

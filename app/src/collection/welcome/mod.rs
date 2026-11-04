@@ -319,9 +319,9 @@ impl CollectionView {
             )
     }
 
-    /// The stores that run their own program under Wine (Battle.net, the EA
-    /// app, Ubisoft Connect, Rockstar Games): "Set up", or "Ready" once they
-    /// are. A click opens their page.
+    /// The stores that run their own program (under Wine on Linux:
+    /// Battle.net, the EA app, Ubisoft Connect, Rockstar Games): "Set up",
+    /// or "Ready" once they are. A click opens their page.
     fn client_tiles(&self, cx: &mut Context<Self>) -> Div {
         let svc = crate::services::clients_started(cx);
         let tiles = Client::ALL.into_iter().map(|client| {
@@ -343,6 +343,9 @@ impl CollectionView {
     /// The launchers on this PC with games to bring in (Heroic, Lutris,
     /// Faugus): a click turns the import on, and the games come in.
     fn launcher_tiles(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if !crate::services::launcher_imports::OFFERED_ELSEWHERE {
+            return None;
+        }
         let svc = crate::services::launcher_imports(cx);
         let s = svc.read(cx);
         let found: Vec<_> = s

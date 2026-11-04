@@ -1,0 +1,22 @@
+{
+  "A game is found when it is made for Xbox on PC, as almost every game of the Xbox app is. Apps that are not games are left out.": "Um jogo é encontrado quando é feito para o Xbox no PC, como quase todos os jogos do app do Xbox. Apps que não são jogos ficam de fora.",
+  "Add the Microsoft Store and PC Game Pass games installed on this PC": "Adicionar os jogos da Microsoft Store e do PC Game Pass instalados neste PC",
+  "Could not open the Xbox app: {error}": "Não foi possível abrir o app do Xbox: {error}",
+  "Get the Xbox app": "Baixar o app do Xbox",
+  "Heronite finds the games the Xbox app and the Microsoft Store installed on this PC, bought or from PC Game Pass, and adds them to your Collection by itself. There is no login: the Xbox app keeps installing, updating and signing in to them, and Heronite starts them and counts their play time.": "O Heronite encontra os jogos que o app do Xbox e a Microsoft Store instalaram neste PC, comprados ou do PC Game Pass, e os adiciona à sua Coleção sozinho. Não há login: o app do Xbox continua instalando, atualizando e entrando na conta deles, e o Heronite os inicia e conta o tempo de jogo.",
+  "Install PC Game Pass and Microsoft Store games": "Instale jogos do PC Game Pass e da Microsoft Store",
+  "Microsoft Store and PC Game Pass": "Microsoft Store e PC Game Pass",
+  "Microsoft Store and PC Game Pass games": "Jogos da Microsoft Store e do PC Game Pass",
+  "Microsoft Store games run on Windows only": "Jogos da Microsoft Store só rodam no Windows",
+  "No games yet. Install them in the Xbox app or the Microsoft Store: they come into your Collection by themselves.": "Nenhum jogo ainda. Instale-os no app do Xbox ou na Microsoft Store: eles entram na sua Coleção sozinhos.",
+  "Open the Xbox app": "Abrir o app do Xbox",
+  "Read games now": "Ler jogos agora",
+  "Read the Xbox games": "Ler os jogos do Xbox",
+  "The Collection already has every game installed from the Xbox app.": "A Coleção já tem todos os jogos instalados pelo app do Xbox.",
+  "The Xbox app was not found on this PC. Get it from the Microsoft Store to install PC Game Pass games; the games you installed from the Microsoft Store show up here anyway.": "O app do Xbox não foi encontrado neste PC. Baixe-o na Microsoft Store para instalar jogos do PC Game Pass; os jogos que você instalou pela Microsoft Store aparecem aqui mesmo assim.",
+  "Xbox app found": "App do Xbox encontrado",
+  "Xbox app not found": "App do Xbox não encontrado",
+  "Your Microsoft Store and PC Game Pass games.": "Seus jogos da Microsoft Store e do PC Game Pass.",
+  "{n} game installed": "{n} jogo instalado",
+  "{n} games installed": "{n} jogos instalados"
+}

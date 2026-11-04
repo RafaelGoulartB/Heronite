@@ -20,7 +20,7 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool, icon: AppI
         // Linux the compositor is asked to leave the frame to the app.
         titlebar: None,
         window_decorations: Some(WindowDecorations::Client),
-        app_id: Some("com.heronite.rs".into()),
+        app_id: Some("app.heronite.Heronite".into()),
         window_background: WindowBackgroundAppearance::Opaque,
         window_min_size: Some(size(px(640.), px(480.))),
         // X11 only; Wayland's compositor takes the `.desktop` entry's.

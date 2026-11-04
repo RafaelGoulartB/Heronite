@@ -1,4 +1,4 @@
-//! The Collection entries of the games Lutris, Bottles and Faugus start: a sideload
+//! The Collection entries of the games Lutris, Bottles, Faugus and Playnite start: a sideload
 //! entry (`sideload_apps/library.json`) and its Collection metadata
 //! (`local_library/library.json`) with the launcher's command line
 //! ([`LAUNCH_KIND`]), plus the launcher's play time when it is ahead.
@@ -6,7 +6,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use anyhow::Result;
-use heronite_data::launchers::{Launcher, LAUNCH_KIND, PREFIX_KEY};
+use heronite_data::launchers::{Launcher, LAUNCH_KIND, PREFIX_KEY, RUNS_FROM_KEY};
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile, TimestampFile};
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Map, Value};
@@ -53,10 +53,19 @@ fn meta(launcher: Launcher, game: &Game, status: &str) -> LocalGameMeta {
         completion_status_id: Some(status.to_string()),
         ..Default::default()
     };
-    if let Some(prefix) = &game.prefix {
-        meta.extra.insert(PREFIX_KEY.into(), Value::String(prefix.clone()));
-    }
+    set_paths(&mut meta, game);
     meta
+}
+
+/// The game's Wine prefix and the folder its program runs from, as the
+/// launcher has them now.
+fn set_paths(meta: &mut LocalGameMeta, game: &Game) {
+    for (key, value) in [(PREFIX_KEY, &game.prefix), (RUNS_FROM_KEY, &game.runs_from)] {
+        match value {
+            Some(v) => meta.extra.insert(key.into(), Value::String(v.clone())),
+            None => meta.extra.remove(key),
+        };
+    }
 }
 
 /// Sets on an existing entry what the launcher may have changed.
@@ -97,10 +106,7 @@ pub fn sync(paths: &DataPaths, launcher: Launcher, games: &[Game], removed: &BTr
             match file.games.get_mut(&info.app_name) {
                 Some(m) => {
                     m.launcher_args = Some(game.command.clone());
-                    match &game.prefix {
-                        Some(p) => m.extra.insert(PREFIX_KEY.into(), Value::String(p.clone())),
-                        None => m.extra.remove(PREFIX_KEY),
-                    };
+                    set_paths(m, game);
                 }
                 None => {
                     let status = heronite_data::status::inferred_status_id(game.minutes as f64, &statuses);
@@ -265,6 +271,7 @@ mod tests {
         let m = celeste.meta.as_ref().unwrap();
         assert_eq!(m.launcher_args.as_deref(), Some("lutris lutris:rungameid/1"));
         assert_eq!(m.extra.get(PREFIX_KEY), Some(&json!("/prefixes/1")));
+        assert_eq!(m.extra.get(RUNS_FROM_KEY), None);
 
         // Again: nothing new, and nothing written (the Collection would reload).
         let (meta_time, list_time) = (json_store::mtime(&paths.local_meta()), json_store::mtime(&paths.sideload_library()));
@@ -296,6 +303,23 @@ mod tests {
         assert_eq!(sync(&paths, Launcher::Lutris, &games, &removed).unwrap(), Report { added: 1, updated: 0 });
         let lib = Library::load(&paths).unwrap();
         assert!(lib.get("sideload_lutris_1").is_some() && lib.get("sideload_lutris_2").is_none());
+    }
+
+    /// Playnite's games are labelled as its, and remember where their
+    /// emulator runs from.
+    #[test]
+    fn playnites_games_are_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let mut castlevania = game("71581114-f5b5-44e2-b5c9-d2ff835b199e", "Castlevania", 129);
+        castlevania.prefix = None;
+        castlevania.runs_from = Some("/emulators/duckstation".into());
+        assert_eq!(sync(&paths, Launcher::Playnite, &[castlevania], &BTreeSet::new()).unwrap(), Report { added: 1, updated: 0 });
+        let lib = Library::load(&paths).unwrap();
+        let g = lib.get("sideload_playnite_71581114-f5b5-44e2-b5c9-d2ff835b199e").unwrap();
+        assert_eq!(g.source_label, "Playnite");
+        let m = g.meta.as_ref().unwrap();
+        assert_eq!((m.extra.get(RUNS_FROM_KEY), m.extra.get(PREFIX_KEY)), (Some(&json!("/emulators/duckstation")), None));
     }
 
     #[test]

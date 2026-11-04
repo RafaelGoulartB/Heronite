@@ -56,19 +56,23 @@ pub trait Procs: Send + Sync {
     fn user_ns(&self, pid: u32) -> Option<String>;
     /// The Windows programs (not Wine's own, see [`WINE_SERVICES`]) running in
     /// the Wine prefix `prefix` or from `folder`. A store client's game is
-    /// told from the client by name and by where it runs from.
+    /// told from the client by name and by where it runs from. On Windows,
+    /// with no Wine, every program of the PC (`prefix` aside).
     fn prefix_programs(&self, prefix: &str, folder: Option<&str>) -> Vec<WinProgram>;
 }
 
-/// A Windows program running in a Wine prefix (see [`Procs::prefix_programs`]).
+/// A Windows program running in a Wine prefix, or on Windows (see
+/// [`Procs::prefix_programs`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WinProgram {
     pub pid: u32,
     /// Lowercase file name (`game.exe`).
     pub name: String,
-    /// The Windows path Wine gives it (`C:\games\Game.exe`).
+    /// The Windows path Wine gives it (`C:\games\Game.exe`), or its
+    /// program's path on Windows (empty when it cannot be read).
     pub path: String,
-    /// Its working folder is the folder asked for, or inside it.
+    /// Its working folder (Linux) or its program (Windows) is in the folder
+    /// asked for.
     pub from_folder: bool,
 }
 

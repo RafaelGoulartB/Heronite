@@ -34,7 +34,11 @@ use url::Url;
 /// itself exits with 1 when it loses the display).
 const CLOSED: i32 = 4;
 
-const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?responseType=code";
+/// legendary's own login (what `legendary.gl/epiclogin` redirects to): after
+/// signing in, Epic shows the code for legendary's client as JSON on
+/// `/id/api/redirect`. A code for any other client is refused by `legendary
+/// auth`.
+const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
 const EPIC_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EpicGamesLauncher";
 const GOG_LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
 /// A desktop browser: the GOG and Amazon pages refuse unknown web views.
@@ -142,7 +146,7 @@ fn main() {
 
     use gtk::glib;
     use gtk::prelude::*;
-    use wry::{PageLoadEvent, WebViewBuilder, WebViewBuilderExtUnix};
+    use wry::{PageLoadEvent, WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let smoke = args.iter().any(|a| a == "--smoke");
@@ -175,7 +179,10 @@ fn main() {
     });
 
     let (tx, rx) = mpsc::channel::<String>();
-    let (tx_nav, tx_load) = (tx.clone(), tx.clone());
+    let (tx_nav, tx_load, tx_popup) = (tx.clone(), tx.clone(), tx.clone());
+    // The popups and their views live as long as the login window.
+    let popups: std::rc::Rc<std::cell::RefCell<Vec<(gtk::Window, wry::WebView)>>> = Default::default();
+    let (popup_parent, popup_list) = (window.clone(), popups.clone());
     let mut builder = WebViewBuilder::new()
         .with_incognito(true)
         .with_user_agent(store.user_agent())
@@ -186,6 +193,18 @@ fn main() {
                 false
             }
             None => true,
+        })
+        // "Sign in with Google" and the like may open a popup, which
+        // WebKitGTK drops unless it is given a view.
+        .with_new_window_req_handler(move |_, features| {
+            match open_popup(store, &popup_parent, features.opener.webview, tx_popup.clone()) {
+                Some((popup, view)) => {
+                    let webview = view.webview();
+                    popup_list.borrow_mut().push((popup, view));
+                    wry::NewWindowResponse::Create { webview }
+                }
+                None => wry::NewWindowResponse::Deny,
+            }
         });
     builder = if smoke {
         builder.with_html("<html><body style='font-family:sans-serif;background:#222;color:#eee'><h2>Login helper</h2><p>Smoke test page.</p></body></html>")
@@ -212,26 +231,21 @@ fn main() {
             .expect("creating the web view"),
     );
 
-    // Epic's JSON page of /id/api/redirect shows the code as text.
+    // Epic's JSON page of /id/api/redirect shows the code as text. Read
+    // again while it is open: the address changes before the text is there.
     let page_check = webview.clone();
     let tx_page = tx.clone();
-    let mut last_url = String::new();
     glib::timeout_add_local(Duration::from_millis(700), move || {
         if smoke || store != Store::Epic {
             return glib::ControlFlow::Break;
         }
-        if let Ok(url) = page_check.url() {
-            if url != last_url {
-                last_url = url.clone();
-                if url.contains("/id/api/redirect") {
-                    let tx = tx_page.clone();
-                    let _ = page_check.evaluate_script_with_callback("document.body ? document.body.innerText : ''", move |text| {
-                        if let Some(code) = code_from_page_text(&text) {
-                            let _ = tx.send(code);
-                        }
-                    });
+        if page_check.url().is_ok_and(|url| url.contains("/id/api/redirect")) {
+            let tx = tx_page.clone();
+            let _ = page_check.evaluate_script_with_callback("document.body ? document.body.innerText : ''", move |text| {
+                if let Some(code) = code_from_page_text(&text) {
+                    let _ = tx.send(code);
                 }
-            }
+            });
         }
         glib::ControlFlow::Continue
     });
@@ -255,6 +269,50 @@ fn main() {
 
     window.show_all();
     gtk::main();
+    drop(popups);
+}
+
+/// Opens the popup a page asked for in a window over the login window, with
+/// a view related to the page's (same session, and `window.opener` works).
+/// It closes when its page closes itself; a code it navigates to counts too.
+#[cfg(target_os = "linux")]
+fn open_popup(
+    store: Store,
+    parent: &gtk::Window,
+    opener: webkit2gtk::WebView,
+    tx: std::sync::mpsc::Sender<String>,
+) -> Option<(gtk::Window, wry::WebView)> {
+    use gtk::prelude::*;
+    use webkit2gtk::WebViewExt as _;
+    use wry::{WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
+
+    let popup = gtk::Window::new(gtk::WindowType::Toplevel);
+    popup.set_title(store.title());
+    popup.set_transient_for(Some(parent));
+    popup.set_default_size(480, 640);
+    let built = WebViewBuilder::new()
+        .with_related_view(opener)
+        .with_user_agent(store.user_agent())
+        .with_navigation_handler(move |url| match store.code_from_url(&url) {
+            Some(code) => {
+                let _ = tx.send(code);
+                false
+            }
+            None => true,
+        })
+        .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
+        .build_gtk(&popup);
+    let view = match built {
+        Ok(view) => view,
+        Err(e) => {
+            eprintln!("could not open a popup window: {e}");
+            return None;
+        }
+    };
+    let closing = popup.clone();
+    view.webview().connect_close(move |_| closing.close());
+    popup.show_all();
+    Some((popup, view))
 }
 
 #[cfg(windows)]

@@ -27,7 +27,9 @@
   <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest"><b>Download</b></a>
 </p>
 
-https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
+<p align="center">
+  <img alt="Heronite's Collection in Focus view: picking CONTROL and back to ELDEN RING, a look at its Compatibility, Performance and GPU settings, then the Grid view and back to Focus" src="assets/screenshots/demo.webp" width="100%" />
+</p>
 
 Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
 
@@ -85,7 +87,7 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 - **Epic Games, GOG, and Amazon Games:** log in and install, update, repair, or move games from one download queue. On Windows, games from their official launchers come in without downloading again.
 - **Steam:** your library comes in by itself, no login needed.
 - **Battle.net, EA app, Ubisoft Connect, and Rockstar Games (Linux):** each store's app runs in its own Wine prefix, and its games show up in your Collection.
-- **Other launchers (Linux):** import and sync games from Heroic, Lutris, Bottles, and Faugus.
+- **Other launchers:** import and sync games from Heroic, Lutris, Bottles, and Faugus on Linux, and from Playnite on Windows.
 - **Games you already have:** add one by hand, or a whole folder at once.
 
 ## Configure and play

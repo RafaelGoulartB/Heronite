@@ -51,8 +51,8 @@ impl Installer {
     ) -> Result<PathBuf, InstallError> {
         let kind = WindowsAsset::Setup;
         let asset = release.windows_asset(kind).ok_or_else(|| InstallError::Failed(tr!("This release has no Windows setup").into()))?;
-        let signature = release.windows_signature(kind).ok_or_else(|| InstallError::Failed(tr!("This release is not signed").into()))?;
-        download_signed(asset, signature, &release.version, dir, public_key, cancel, on_progress)
+        let proof = release.windows_proof(kind).ok_or_else(|| InstallError::Failed(tr!("This release is not signed").into()))?;
+        download_signed(asset, &proof, &release.version, dir, public_key, cancel, on_progress)
     }
 
     /// The setup's switches for an unattended update: no window nor
@@ -101,6 +101,7 @@ mod tests {
             signature: None,
             packages: Vec::new(),
             windows: assets.iter().map(|n| Asset { name: n.to_string(), url: format!("{base}/{n}"), size: 0 }).collect(),
+            checksums: None,
         }
     }
 

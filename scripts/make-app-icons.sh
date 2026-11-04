@@ -7,7 +7,7 @@
 #                                         Appearance, the window, the desktop)
 #   app/assets/app-icon/<name>-small.png  64 px, the small one (the 16
 #                                         and 32 px window icons)
-#   packaging/linux/com.heronite.rs.png   the default icon (graphite), 256 px
+#   packaging/linux/app.heronite.Heronite.png  the default icon (graphite), 256 px
 #   packaging/windows/heronite.ico        through scripts/windows/make-icon.py
 #
 #   usage: scripts/make-app-icons.sh      (needs rsvg-convert and Pillow)
@@ -23,5 +23,5 @@ for name in graphite light extruded; do
   rsvg-convert -w 256 -h 256 "$SRC/$name.svg" -o "$OUT/$name.png"
   rsvg-convert -w 64 -h 64 "$SRC/$name-small.svg" -o "$OUT/$name-small.png"
 done
-cp "$OUT/$DEFAULT.png" "$ROOT/packaging/linux/com.heronite.rs.png"
+cp "$OUT/$DEFAULT.png" "$ROOT/packaging/linux/app.heronite.Heronite.png"
 python3 "$ROOT/scripts/windows/make-icon.py"

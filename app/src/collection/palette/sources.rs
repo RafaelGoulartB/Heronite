@@ -183,6 +183,7 @@ fn section_help(s: Section) -> &'static str {
         Section::GameDefaults => tr!("Values new games start with"),
         Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
+        Section::Launchers if cfg!(windows) => tr!("Bring in games from Playnite"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
         Section::Storage if !heronite_platform::supported(heronite_platform::Feature::Wine) => {
             tr!("Disk space of games, store tools, caches")
@@ -211,6 +212,7 @@ fn page_name_en(p: Page) -> &'static str {
         Page::Gog => "gog",
         Page::Amazon => "amazon games",
         Page::Steam => "steam",
+        Page::Xbox => "xbox microsoft store",
         Page::BattleNet => "battle.net",
         Page::Ea => "ea app",
         Page::Ubisoft => "ubisoft connect",
@@ -249,10 +251,17 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(page(Page::Gog, tr!("Account and library"), "", "gog galaxy store account login gogdl loja conta entrar biblioteca"));
     v.push(page(Page::Amazon, tr!("Account and library"), "", "amazon prime gaming store account login nile loja conta entrar biblioteca"));
     v.push(page(Page::Steam, tr!("Your Steam library"), "", "steam valve store library import loja biblioteca importar"));
-    v.push(page(Page::BattleNet, tr!("Blizzard games, under Wine"), "", "battle.net battlenet blizzard wow overwatch diablo loja"));
-    v.push(page(Page::Ea, tr!("EA games, under Wine"), "", "ea app origin electronic arts loja"));
-    v.push(page(Page::Ubisoft, tr!("Ubisoft games, under Wine"), "", "ubisoft connect uplay loja"));
-    v.push(page(Page::Rockstar, tr!("Rockstar games, under Wine"), "", "rockstar social club gta red dead loja"));
+    v.push(page(Page::Xbox, tr!("Microsoft Store and PC Game Pass games"), "", "xbox microsoft store game pass gamepass loja jogos"));
+    // On Windows the clients run as they are.
+    let native = cfg!(windows);
+    let blizzard = if native { tr!("Blizzard games") } else { tr!("Blizzard games, under Wine") };
+    let ea = if native { tr!("EA games") } else { tr!("EA games, under Wine") };
+    let ubisoft = if native { tr!("Ubisoft games") } else { tr!("Ubisoft games, under Wine") };
+    let rockstar = if native { tr!("Rockstar games") } else { tr!("Rockstar games, under Wine") };
+    v.push(page(Page::BattleNet, blizzard, "", "battle.net battlenet blizzard wow overwatch diablo loja"));
+    v.push(page(Page::Ea, ea, "", "ea app origin electronic arts loja"));
+    v.push(page(Page::Ubisoft, ubisoft, "", "ubisoft connect uplay loja"));
+    v.push(page(Page::Rockstar, rockstar, "", "rockstar social club gta red dead loja"));
     v.push(page(Page::Emulators, tr!("Emulators and ROM folders"), "Ctrl 5", "emulator rom retro console emulador emuladores"));
     v.push(page(
         Page::Statistics,

@@ -95,7 +95,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Automatically update games",
         ],
     ),
-    (Section::Launchers, &["Heroic", "Lutris", "Bottles", "Faugus"]),
+    (Section::Launchers, if cfg!(windows) { &["Playnite"] } else { &["Heroic", "Lutris", "Bottles", "Faugus"] }),
     (Section::Library, &["Show hidden games", "Recent games", "Recent games to show", "Clear recent games"]),
     (
         Section::Metadata,

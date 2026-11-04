@@ -329,6 +329,9 @@ mod tests {
         assert_eq!(load(&app).unwrap().device_id, first.device_id);
         assert_eq!(first.remote_folder, DEFAULT_REMOTE_FOLDER);
         assert!(!first.ready());
+        // The names a restore keeps as they are on this PC (heronite_backup::restore).
+        let v = serde_json::to_value(&first).unwrap();
+        assert!(["deviceId", "deviceName", "deviceFolder"].iter().all(|k| v.get(k).is_some()), "{v}");
     }
 
     #[test]

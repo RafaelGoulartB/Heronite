@@ -224,7 +224,13 @@ impl CollectionView {
         if game.runner == "sideload"
             && !matches!(
                 game.launch_kind.as_deref(),
-                Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+                Some(
+                    "steam-uri"
+                        | "emulator"
+                        | heronite_data::launchers::LAUNCH_KIND
+                        | heronite_data::clients::LAUNCH_KIND
+                        | heronite_data::xbox::LAUNCH_KIND
+                )
             )
         {
             v.push(item(

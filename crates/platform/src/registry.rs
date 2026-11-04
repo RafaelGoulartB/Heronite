@@ -4,8 +4,9 @@ use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegDeleteKeyValueW, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW, RegSetKeyValueW, HKEY, HKEY_CURRENT_USER,
-    HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, REG_SZ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+    RegCloseKey, RegDeleteKeyValueW, RegDeleteTreeW, RegEnumKeyExW, RegEnumValueW, RegGetValueW, RegOpenKeyExW, RegSetKeyValueW, HKEY,
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE, REG_DWORD, REG_EXPAND_SZ, REG_SZ, RRF_RT_REG_DWORD,
+    RRF_RT_REG_SZ,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,6 +24,35 @@ fn root(hive: Hive) -> HKEY {
 
 fn wide(s: &str) -> Vec<u16> {
     OsStr::new(s).encode_wide().chain([0]).collect()
+}
+
+/// A value of the registry, as [`values`] reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Value {
+    /// `REG_SZ` and `REG_EXPAND_SZ` (its variables not expanded).
+    Str(String),
+    Dword(u32),
+    /// Binary, multi-string, 64-bit numbers and the other types: not read.
+    Other,
+}
+
+/// A key opened with `RegOpenKeyExW`, closed when dropped.
+struct Open(HKEY);
+
+impl Open {
+    fn new(hive: Hive, key: &str, access: u32) -> Option<Self> {
+        let key = wide(key);
+        let mut open: HKEY = std::ptr::null_mut();
+        // SAFETY: `key` is NUL-terminated; `open` receives the handle on success.
+        (unsafe { RegOpenKeyExW(root(hive), key.as_ptr(), 0, access, &mut open) } == 0).then_some(Self(open))
+    }
+}
+
+impl Drop for Open {
+    fn drop(&mut self) {
+        // SAFETY: the key was opened by `Open::new` and is closed once.
+        unsafe { RegCloseKey(self.0) };
+    }
 }
 
 /// The number value `name` (a `REG_DWORD`) of the key `key`.
@@ -107,6 +137,49 @@ pub fn subkeys(hive: Hive, key: &str) -> Vec<String> {
     names
 }
 
+/// Every value of the key `key` with its name (`""` is the default value),
+/// in the registry's order; `None` when `key` is missing or cannot be read.
+pub fn values(hive: Hive, key: &str) -> Option<Vec<(String, Value)>> {
+    let open = Open::new(hive, key, KEY_QUERY_VALUE)?;
+    let mut out = Vec::new();
+    // A value name has at most 16383 characters, plus the NUL.
+    let mut name = vec![0u16; 16384];
+    let mut data = vec![0u8; 1024];
+    let mut index = 0;
+    loop {
+        let mut name_len = name.len() as u32;
+        let mut data_len = data.len() as u32;
+        let mut kind = 0u32;
+        // SAFETY: `open` is an open key; `name` holds `name_len` characters and `data` `data_len` bytes.
+        let r = unsafe {
+            RegEnumValueW(open.0, index, name.as_mut_ptr(), &mut name_len, std::ptr::null(), &mut kind, data.as_mut_ptr(), &mut data_len)
+        };
+        match r {
+            0 => {}
+            // ERROR_MORE_DATA: `data_len` now says how much the value needs.
+            234 if data_len as usize > data.len() => {
+                data.resize(data_len as usize, 0);
+                continue;
+            }
+            // ERROR_NO_MORE_ITEMS, or the key went away meanwhile.
+            _ => break,
+        }
+        let bytes = &data[..(data_len as usize).min(data.len())];
+        let value = match kind {
+            REG_SZ | REG_EXPAND_SZ => {
+                let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
+                let end = units.iter().position(|&c| c == 0).unwrap_or(units.len());
+                Value::Str(String::from_utf16_lossy(&units[..end]))
+            }
+            REG_DWORD => bytes.first_chunk::<4>().map_or(Value::Other, |b| Value::Dword(u32::from_le_bytes(*b))),
+            _ => Value::Other,
+        };
+        out.push((String::from_utf16_lossy(&name[..(name_len as usize).min(name.len())]), value));
+        index += 1;
+    }
+    Some(out)
+}
+
 /// Sets the text value `name` of the key `key`, creating the key if needed.
 pub fn set_string(hive: Hive, key: &str, name: &str, value: &str) -> std::io::Result<()> {
     let (key, name, data) = (wide(key), wide(name), wide(value));
@@ -123,6 +196,18 @@ pub fn delete_value(hive: Hive, key: &str, name: &str) -> std::io::Result<()> {
     let r = unsafe { RegDeleteKeyValueW(root(hive), key.as_ptr(), name.as_ptr()) };
     match r {
         // ERROR_FILE_NOT_FOUND: no such key or value.
+        2 => Ok(()),
+        r => result(r),
+    }
+}
+
+/// Removes the key `key` and every key and value below it; fine when it is
+/// not there.
+pub fn delete_tree(hive: Hive, key: &str) -> std::io::Result<()> {
+    let key = wide(key);
+    // SAFETY: `key` is NUL-terminated.
+    match unsafe { RegDeleteTreeW(root(hive), key.as_ptr()) } {
+        // ERROR_FILE_NOT_FOUND: no such key.
         2 => Ok(()),
         r => result(r),
     }
@@ -168,6 +253,45 @@ mod tests {
         // SAFETY: a test key of this process, under HKCU\Software\HeroniteSubkeysTest.
         let tree = wide(r"Software\HeroniteSubkeysTest");
         unsafe { windows_sys::Win32::System::Registry::RegDeleteTreeW(HKEY_CURRENT_USER, tree.as_ptr()) };
+    }
+
+    #[test]
+    fn lists_the_values_of_a_key_with_their_types() {
+        use windows_sys::Win32::System::Registry::REG_BINARY;
+        // Its own root: `writes_and_removes_a_value` clears `Software\Heronite` meanwhile.
+        let key = format!(r"Software\HeroniteValuesTest\{}", std::process::id());
+        set_string(Hive::CurrentUser, &key, "", "default").unwrap();
+        set_string(Hive::CurrentUser, &key, "InstallDir", "C:/Program Files (x86)/Ubisoft/").unwrap();
+        // Longer than the first buffer.
+        let long = "x".repeat(3000);
+        set_string(Hive::CurrentUser, &key, "Long", &long).unwrap();
+        let raw = |name: &str, kind: u32, bytes: &[u8]| {
+            let (k, n) = (wide(&key), wide(name));
+            // SAFETY: the strings are NUL-terminated; `bytes` holds the value's bytes.
+            unsafe { RegSetKeyValueW(HKEY_CURRENT_USER, k.as_ptr(), n.as_ptr(), kind, bytes.as_ptr().cast(), bytes.len() as u32) }
+        };
+        assert_eq!(raw("Size", REG_DWORD, &10u32.to_le_bytes()), 0);
+        assert_eq!(raw("Blob", REG_BINARY, &[1, 2, 3]), 0);
+
+        let mut found = values(Hive::CurrentUser, &key).unwrap();
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            found,
+            [
+                (String::new(), Value::Str("default".into())),
+                ("Blob".into(), Value::Other),
+                ("InstallDir".into(), Value::Str("C:/Program Files (x86)/Ubisoft/".into())),
+                ("Long".into(), Value::Str(long)),
+                ("Size".into(), Value::Dword(10)),
+            ]
+        );
+        assert_eq!(values(Hive::CurrentUser, &format!(r"{key}\Missing")), None);
+        let current = values(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion").unwrap();
+        assert!(current.iter().any(|(n, v)| n == "SystemRoot" && matches!(v, Value::Str(_))), "{current:?}");
+        delete_tree(Hive::CurrentUser, &key).unwrap();
+        assert_eq!(values(Hive::CurrentUser, &key), None);
+        // Already gone: still fine.
+        delete_tree(Hive::CurrentUser, &key).unwrap();
     }
 
     #[test]

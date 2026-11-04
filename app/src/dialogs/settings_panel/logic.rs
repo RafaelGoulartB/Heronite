@@ -95,7 +95,14 @@ impl GameFacts {
                 RunKind::None
             }
         } else if !game.installed
-            || matches!(launch_kind, "emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+            || matches!(
+                launch_kind,
+                "emulator"
+                    | "steam-uri"
+                    | heronite_data::launchers::LAUNCH_KIND
+                    | heronite_data::clients::LAUNCH_KIND
+                    | heronite_data::xbox::LAUNCH_KIND
+            )
             || platform == "browser"
             || g.rest.get("browserUrl").is_some_and(|v| !v.is_null() && v != "")
         {

@@ -121,7 +121,7 @@ const PACKAGE_NO_AUTO: &str = n_!("Packages ask for your password, so Heronite i
 #[cfg(windows)]
 fn unsupported_text(why: &Unsupported) -> String {
     match why {
-        Unsupported::NotAppImage | Unsupported::Missing(_) => {
+        Unsupported::NotAppImage | Unsupported::Flatpak | Unsupported::Missing(_) => {
             tr!("Only a copy installed with Heronite's setup or unpacked from its portable zip updates itself.").into()
         }
         Unsupported::ReadOnly(dir) => {
@@ -135,6 +135,7 @@ fn unsupported_text(why: &Unsupported) -> String {
 fn unsupported_text(why: &Unsupported) -> String {
     match why {
         Unsupported::NotAppImage => tr!("Only the AppImage updates itself. Update this copy the way you installed it.").into(),
+        Unsupported::Flatpak => tr!("Flatpak updates this copy: run flatpak update, or update it in your software center.").into(),
         Unsupported::Missing(_) => tr!("The AppImage file was moved or deleted while Heronite runs.").into(),
         Unsupported::ReadOnly(dir) => {
             tr!("The AppImage's folder ({dir}) is not writable: download new versions by hand.", dir = dir.display())

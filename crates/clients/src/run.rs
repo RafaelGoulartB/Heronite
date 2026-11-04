@@ -1,6 +1,6 @@
 //! Opening and closing a client. It runs with its own settings (Wine,
 //! prefix, environment) and is not tied to Heronite: it stays open when the
-//! app quits, like a game.
+//! app quits, like a game. On Windows it runs as it is ([`crate::native`]).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -16,7 +16,7 @@ use heronite_launch::settings::{load_game_settings, GameSettings};
 use heronite_launch::wine_tools::{alongside_command, kill_prefix_command, run_exe_command, UMU_NSENTER};
 use heronite_launch::{Command, PlanContext, Probe, SystemProbe};
 
-use crate::{find_exe, spawn, Client};
+use crate::{find_exe, spawn, Client, Place, Status};
 
 /// How long closing the client may take.
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -51,7 +51,7 @@ pub fn open_command(paths: &DataPaths, client: Client, home: &str) -> Result<Com
 
 fn command_with(paths: &DataPaths, client: Client, home: &str, probe: &dyn Probe, procs: &dyn Procs) -> Result<Command, String> {
     let (prefix, ctx, settings) = setup_of(paths, client, home, probe)?;
-    let exe = find_exe(client, &prefix)
+    let exe = find_exe(client, &Place::Prefix(prefix.clone()))
         .ok_or_else(|| tr!("{client} is not installed in its prefix yet. Set it up in Stores → {client}.", client = client.name()))?;
     if settings.sandbox.enabled {
         return Err(tr!("The sandbox does not run {client}. Turn it off in Stores → {client}.", client = client.name()));
@@ -69,7 +69,11 @@ fn command_with(paths: &DataPaths, client: Client, home: &str, probe: &dyn Probe
 
 /// Starts [`open_command`] in a process group of its own; the child is the
 /// caller's to wait for (it lives as long as the client when it started it).
+/// On Windows the client's program starts on its own.
 pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::process::Child, String> {
+    if crate::native() {
+        return crate::native::open(client, &Place::machine());
+    }
     let command = open_command(paths, client, home)?;
     let mut cmd = spawn::std_command(&command);
     // Not `proc::guard`: the client outlives the app.
@@ -89,16 +93,28 @@ pub fn open(paths: &DataPaths, client: Client, home: &str) -> Result<std::proces
     heronite_data::proc::spawn(&mut cmd).map_err(|e| tr!("Could not start {client}: {error}", client = client.name(), error = e))
 }
 
-/// `(the client's main program runs, a program that is not the client's
-/// runs)` in `prefix`, from one look at the processes.
-pub fn running(client: Client, prefix: &Path) -> (bool, bool) {
-    running_in(&SystemProcs, client, prefix)
+/// `(the client's main program runs, one of its games runs)` for the client
+/// `status` found, from one look at the processes: in its prefix any
+/// program that is not the client's is a game; on this PC a program
+/// running from the folder of one of its games.
+pub fn running(client: Client, status: &Status) -> (bool, bool) {
+    running_with(&SystemProcs, client, status)
 }
 
-/// Whether a program other than the client's runs in `prefix` (one of its
-/// games, most likely).
-pub fn game_running(client: Client, prefix: &Path) -> bool {
-    running_in(&SystemProcs, client, prefix).1
+/// Whether one of the client's games runs (see [`running`]).
+pub fn game_running(client: Client, status: &Status) -> bool {
+    running(client, status).1
+}
+
+fn running_with(procs: &dyn Procs, client: Client, status: &Status) -> (bool, bool) {
+    match (&status.prefix, &status.exe) {
+        (Some(prefix), _) => running_in(procs, client, prefix),
+        (None, Some(exe)) => {
+            let folders: Vec<PathBuf> = status.games.iter().filter_map(|g| g.folder.clone()).collect();
+            crate::native::running(procs, client, exe, &folders)
+        }
+        (None, None) => (false, false),
+    }
 }
 
 /// `(the client's main program runs, a program that is not the client's
@@ -111,8 +127,12 @@ fn running_in(procs: &dyn Procs, client: Client, prefix: &Path) -> (bool, bool) 
 }
 
 /// Closes the client and everything running in its prefix
-/// (`wineserver -k`), waiting for it (a few seconds).
+/// (`wineserver -k`), waiting for it (a few seconds). On Windows its
+/// programs are ended (see [`crate::native`]).
 pub fn close(paths: &DataPaths, client: Client, home: &str) -> Result<(), String> {
+    if crate::native() {
+        return crate::native::close_here(&SystemProcs, client, CLOSE_TIMEOUT);
+    }
     let (_, ctx, settings) = setup_of(paths, client, home, &SystemProbe)?;
     let command = kill_prefix_command(&ctx, &SystemProbe, &settings)?;
     let out = Run::new()
@@ -188,8 +208,11 @@ mod tests {
         rig.set_up(Client::BattleNet, json!({}));
         let err = command_with(&rig.paths, Client::BattleNet, "/home/u", &probe, &FakeProcs::new()).unwrap_err();
         assert_eq!(err, "Battle.net is not installed in its prefix yet. Set it up in Stores → Battle.net.");
-        assert!(open(&rig.paths, Client::BattleNet, "/home/u").is_err());
-        assert!(close(&rig.paths, Client::Ea, "/home/u").is_err());
+        // On Windows these would be the PC's own clients.
+        if !crate::native() {
+            assert!(open(&rig.paths, Client::BattleNet, "/home/u").is_err());
+            assert!(close(&rig.paths, Client::Ea, "/home/u").is_err());
+        }
     }
 
     #[test]
@@ -304,8 +327,42 @@ mod tests {
         assert_eq!(running_in(&procs, Client::BattleNet, prefix), (true, true));
         procs.set_prefix_programs(&[(3, "wow.exe")]);
         assert_eq!(running_in(&procs, Client::BattleNet, prefix), (false, true));
-        // Nothing runs under a prefix no process uses.
-        assert_eq!(running(Client::BattleNet, Path::new("/nowhere/at/all")), (false, false));
-        assert!(!game_running(Client::BattleNet, Path::new("/nowhere/at/all")));
+        assert_eq!(running_with(&procs, Client::BattleNet, &Status::default()), (false, false), "not installed");
+        // Nothing runs under a prefix no process uses (Windows has no prefixes).
+        if !crate::native() {
+            let nowhere = Status { prefix: Some("/nowhere/at/all".into()), ..Default::default() };
+            assert_eq!(running(Client::BattleNet, &nowhere), (false, false));
+            assert!(!game_running(Client::BattleNet, &nowhere));
+        }
+    }
+
+    #[test]
+    fn on_this_pc_the_games_are_told_by_their_folders() {
+        use heronite_launch::procs::WinProgram;
+        // Joined, so that its folder is the same on Linux too.
+        let exe = Path::new(r"C:\Program Files (x86)\Battle.net").join("Battle.net.exe");
+        let wow = crate::ClientGame {
+            id: "wow".into(),
+            title: "World of Warcraft".into(),
+            folder: Some(r"C:\Program Files (x86)\World of Warcraft".into()),
+            launch: String::new(),
+        };
+        let status = Status { exe: Some(exe), games: vec![wow], ..Default::default() };
+        let procs = FakeProcs::new();
+        let program = |pid: u32, name: &str, path: &str| WinProgram { pid, name: name.into(), path: path.into(), from_folder: false };
+        let programs = vec![
+            program(1, "battle.net.exe", r"C:\Program Files (x86)\Battle.net\Battle.net.13999\Battle.net.exe"),
+            program(2, "explorer.exe", r"C:\Windows\explorer.exe"),
+        ];
+        for p in &programs {
+            procs.start(p.pid, &p.name, None);
+        }
+        procs.set_win_programs(programs.clone());
+        assert_eq!(running_with(&procs, Client::BattleNet, &status), (true, false), "the PC's other programs are not games");
+        procs.start(3, "wow.exe", None);
+        let mut with_game = programs;
+        with_game.push(program(3, "wow.exe", r"C:\Program Files (x86)\World of Warcraft\_retail_\Wow.exe"));
+        procs.set_win_programs(with_game);
+        assert_eq!(running_with(&procs, Client::BattleNet, &status), (true, true));
     }
 }

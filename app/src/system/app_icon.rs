@@ -6,7 +6,7 @@
 //!   (`WindowOptions::icon`), on Windows at once (`WM_SETICON`; the
 //!   executable's own icon is the default one).
 //! - On Linux the launcher, the dock and Wayland's windows show the icon the
-//!   `.desktop` entry names, `com.heronite.rs`: a change writes the picked one
+//!   `.desktop` entry names, `app.heronite.Heronite`: a change writes the picked one
 //!   to `$XDG_DATA_HOME/icons/hicolor/256x256/apps/`, which comes before the
 //!   system's folders.
 //!
@@ -67,14 +67,14 @@ pub fn x11_window_icon(icon: AppIcon) -> Option<Arc<RgbaImage>> {
     decode(png(icon)).map(Arc::new)
 }
 
-/// Writes `icon` as `com.heronite.rs.png` in `icons/hicolor/256x256/apps`
+/// Writes `icon` as `app.heronite.Heronite.png` in `icons/hicolor/256x256/apps`
 /// under `data_home` (`$XDG_DATA_HOME`). Blocking: call it off the UI thread.
 #[cfg(target_os = "linux")]
 pub fn write_desktop_icon(data_home: &std::path::Path, icon: AppIcon) -> std::io::Result<()> {
     let theme = data_home.join("icons/hicolor");
     let dir = theme.join("256x256/apps");
     std::fs::create_dir_all(&dir)?;
-    heronite_data::temps::write_atomic(&dir.join("com.heronite.rs.png"), png(icon), Some(0o644))?;
+    heronite_data::temps::write_atomic(&dir.join("app.heronite.Heronite.png"), png(icon), Some(0o644))?;
     // A theme folder newer than its icon-theme.cache makes GTK and Qt look again.
     std::fs::File::open(&theme)?.set_modified(std::time::SystemTime::now())
 }
@@ -104,7 +104,7 @@ mod tests {
     fn the_desktop_icon_is_replaced() {
         let dir = tempfile::tempdir().unwrap();
         write_desktop_icon(dir.path(), AppIcon::Light).unwrap();
-        let file = dir.path().join("icons/hicolor/256x256/apps/com.heronite.rs.png");
+        let file = dir.path().join("icons/hicolor/256x256/apps/app.heronite.Heronite.png");
         assert_eq!(std::fs::read(&file).unwrap(), png(AppIcon::Light));
         write_desktop_icon(dir.path(), AppIcon::Extruded).unwrap();
         assert_eq!(std::fs::read(&file).unwrap(), png(AppIcon::Extruded));

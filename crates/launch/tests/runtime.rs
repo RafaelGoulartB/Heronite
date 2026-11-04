@@ -171,7 +171,7 @@ fn full_lifecycle_records_everything_like_heronite() {
 fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let r = rig();
     let mut plan = process_plan("lutris", &["lutris:rungameid/12"]);
-    plan.handoff = Some(Handoff { prefix: Some("/pfx".into()), folder: Some("/games/celeste".into()), client: None });
+    plan.handoff = Some(Handoff { prefix: Some("/pfx".into()), folder: Some("/games/celeste".into()), ..Default::default() });
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
@@ -202,6 +202,26 @@ fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     r.spawner.finish(2, 1);
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed < Duration::from_millis(300), "{elapsed:?}");
+}
+
+/// `explorer.exe` starting a Store game exits with 1 whatever happened.
+#[test]
+fn a_hand_off_whose_exit_code_says_nothing_is_followed() {
+    let r = rig();
+    let mut plan = process_plan("explorer.exe", &[r"shell:AppsFolder\Studio.Game_abc!Game"]);
+    plan.handoff = Some(Handoff { folder: Some("/games/xbox".into()), exit_ignored: true, ..Default::default() });
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 1);
+    r.procs.start(901, "Game.exe", None);
+    r.procs.set_game_pids(&[901]);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(r.launcher.is_running("xbox_game"), "followed past the wait for it");
+    r.procs.exit(901);
+    let LaunchEvent::Exited { elapsed, exit, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed >= Duration::from_millis(500));
+    assert_eq!(exit.unwrap().code, Some(0), "not a failed launch");
 }
 
 #[test]

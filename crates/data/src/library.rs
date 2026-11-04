@@ -134,6 +134,7 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
             "lutris" => return "Lutris",
             "bottles" => return "Bottles",
             "faugus" => return "Faugus",
+            "playnite" => return "Playnite",
             "manual" => return tr!("Local"),
             "other" => return tr!("Other"),
             other => {
@@ -249,6 +250,12 @@ impl CollectionGame {
     pub fn client(&self) -> Option<crate::clients::Client> {
         let meta = self.meta.as_deref().filter(|m| m.launch_kind == crate::clients::LAUNCH_KIND)?;
         crate::clients::Client::from_id(&meta.source)
+    }
+
+    /// The game is one of the Xbox app's (a Microsoft Store or PC Game Pass
+    /// package, which Windows starts and the Xbox app uninstalls).
+    pub fn is_xbox(&self) -> bool {
+        self.launch_kind.as_deref() == Some(crate::xbox::LAUNCH_KIND)
     }
 
     /// The Steam app id of the game's installed Steam copy, if any (a Steam
