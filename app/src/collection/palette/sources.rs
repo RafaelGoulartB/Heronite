@@ -183,6 +183,7 @@ fn section_help(s: Section) -> &'static str {
         Section::GameDefaults => tr!("Values new games start with"),
         Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
+        Section::Launchers if cfg!(windows) => tr!("Bring in games from Playnite"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
         Section::Storage if !heronite_platform::supported(heronite_platform::Feature::Wine) => {
             tr!("Disk space of games, store tools, caches")

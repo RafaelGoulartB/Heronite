@@ -63,7 +63,7 @@ pub enum Origin {
     Xbox,
 }
 
-/// The launcher (Heroic, Lutris, Bottles, Faugus) or the store client a game
+/// The launcher (Heroic, Lutris, Bottles, Faugus, Playnite) or the store client a game
 /// of `lib` was brought in from, whose import must leave it out once it is
 /// removed.
 pub fn launcher_of(lib: &Library, app_name: &str) -> Option<Origin> {

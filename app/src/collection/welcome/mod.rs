@@ -343,6 +343,9 @@ impl CollectionView {
     /// The launchers on this PC with games to bring in (Heroic, Lutris,
     /// Faugus): a click turns the import on, and the games come in.
     fn launcher_tiles(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if !crate::services::launcher_imports::OFFERED_ELSEWHERE {
+            return None;
+        }
         let svc = crate::services::launcher_imports(cx);
         let s = svc.read(cx);
         let found: Vec<_> = s

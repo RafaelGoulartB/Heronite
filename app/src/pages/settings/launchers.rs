@@ -1,8 +1,9 @@
-//! Settings → Other launchers: Heroic, Lutris, Bottles and Faugus, whether each is on
-//! this PC and how many games it has, and a switch to bring its games into
-//! the Collection (kept in sync while on). Turning one off keeps its games;
-//! "Remove them" takes them out. Games then in the Collection twice (added
-//! here by hand, and from Lutris, Bottles or Faugus) are listed below the cards, to
+//! Settings → Other launchers: Heroic, Lutris, Bottles and Faugus on Linux,
+//! Playnite on Windows, whether each is on this PC and how many games it
+//! has, and a switch to bring its games into the Collection (kept in sync
+//! while on). Turning one off keeps its games; "Remove them" takes them out.
+//! Games then in the Collection twice (added here by hand, and from a
+//! launcher) are listed below the cards, to
 //! merge, replace or keep both. The work is the service's
 //! (`services::launcher_imports`).
 
@@ -73,6 +74,7 @@ fn found_line(s: &LauncherImports, launcher: Launcher) -> (String, bool) {
     match (s.found.as_ref(), s.summary(launcher)) {
         (None, _) => (tr!("Looking\u{2026}").into(), true),
         (Some(_), None) => (tr!("Not found on this PC").into(), false),
+        (Some(_), Some(f)) if f.in_use => (tr!("Open right now: close it to read its games").into(), true),
         (Some(_), Some(f)) => {
             let mut parts = vec![trn!(f.games, "{n} game", "{n} games")];
             if f.flatpak {
