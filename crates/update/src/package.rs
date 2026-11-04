@@ -4,6 +4,10 @@
 //! back: the app downloads the release's file of the same format, checks its
 //! signature like the AppImage's, and hands it to the package manager
 //! through `pkexec`.
+//!
+//! The AUR's `heronite-bin` also writes the marker (`aur`), but it conflicts
+//! with our Arch package: the app only tells that a new version is out, and
+//! the user's AUR helper installs it.
 
 use heronite_i18n::tr;
 use std::ffi::OsString;
@@ -18,6 +22,8 @@ pub enum Package {
     Deb,
     Rpm,
     Arch,
+    /// `heronite-bin` from the AUR: updated by the user's AUR helper.
+    Aur,
 }
 
 impl Package {
@@ -29,6 +35,7 @@ impl Package {
             "deb" => Some(Package::Deb),
             "rpm" => Some(Package::Rpm),
             "arch" => Some(Package::Arch),
+            "aur" => Some(Package::Aur),
             _ => None,
         }
     }
@@ -45,27 +52,32 @@ impl Package {
             Package::Deb => ".deb",
             Package::Rpm => ".rpm",
             Package::Arch => "Arch",
+            Package::Aur => "AUR",
         }
     }
 
     /// The command a user types to install a downloaded `file` (an absolute
-    /// path: apt and dnf need a `/` to read a file instead of a name).
+    /// path: apt and dnf need a `/` to read a file instead of a name). The
+    /// AUR has no file: its helper updates the package.
     pub fn install_command(self, file: &str) -> String {
         match self {
             Package::Deb => format!("sudo apt install {file}"),
             Package::Rpm => format!("sudo dnf install {file}"),
             Package::Arch => format!("sudo pacman -U {file}"),
+            Package::Aur => "yay -Syu".into(),
         }
     }
 
     /// End of this format's file name in a release (nfpm's default names:
     /// `heronite_0.2.0-1_amd64.deb`, `heronite-0.2.0-1.x86_64.rpm`,
-    /// `heronite-0.2.0-1-x86_64.pkg.tar.zst`).
-    pub fn file_suffix(self) -> String {
+    /// `heronite-0.2.0-1-x86_64.pkg.tar.zst`). `None` for the AUR: the app
+    /// never downloads its package.
+    pub fn file_suffix(self) -> Option<String> {
         match self {
-            Package::Deb => format!("_{}.deb", if ARCH == "aarch64" { "arm64" } else { "amd64" }),
-            Package::Rpm => format!(".{ARCH}.rpm"),
-            Package::Arch => format!("-{ARCH}.pkg.tar.zst"),
+            Package::Deb => Some(format!("_{}.deb", if ARCH == "aarch64" { "arm64" } else { "amd64" })),
+            Package::Rpm => Some(format!(".{ARCH}.rpm")),
+            Package::Arch => Some(format!("-{ARCH}.pkg.tar.zst")),
+            Package::Aur => None,
         }
     }
 }
@@ -77,8 +89,8 @@ fn which(name: &str) -> Option<PathBuf> {
 
 impl Package {
     /// The package manager call (run as root) that installs `file`; `None`
-    /// when the manager is not on `PATH`. Dependencies come from the
-    /// configured repositories.
+    /// when the manager is not on `PATH` (and for the AUR, which the app does
+    /// not install). Dependencies come from the configured repositories.
     pub fn install_args(self, file: &Path) -> Option<Vec<OsString>> {
         let file = file.as_os_str().to_owned();
         let args = |tool: PathBuf, rest: &[&str]| {
@@ -93,6 +105,7 @@ impl Package {
                 .map(|t| args(t, &["install", "-y"]))
                 .or_else(|| which("zypper").map(|t| args(t, &["--non-interactive", "install", "--allow-unsigned-rpm"]))),
             Package::Arch => which("pacman").map(|t| args(t, &["-U", "--noconfirm"])),
+            Package::Aur => None,
         }
     }
 
@@ -137,12 +150,22 @@ mod tests {
         std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
         std::fs::write(&marker, "rpm\n").unwrap();
         assert_eq!(Package::detect(&exe), Some(Package::Rpm));
+        std::fs::write(&marker, "aur\n").unwrap();
+        assert_eq!(Package::detect(&exe), Some(Package::Aur));
         std::fs::write(&marker, "snap").unwrap();
         assert_eq!(Package::detect(&exe), None);
         assert_eq!(Package::Deb.install_command("/tmp/heronite_0.2.0_amd64.deb"), "sudo apt install /tmp/heronite_0.2.0_amd64.deb");
         if super::ARCH == "x86_64" {
-            assert_eq!(Package::Deb.file_suffix(), "_amd64.deb");
-            assert_eq!(Package::Arch.file_suffix(), "-x86_64.pkg.tar.zst");
+            assert_eq!(Package::Deb.file_suffix().as_deref(), Some("_amd64.deb"));
+            assert_eq!(Package::Arch.file_suffix().as_deref(), Some("-x86_64.pkg.tar.zst"));
         }
+    }
+
+    #[test]
+    fn the_aur_package_is_never_downloaded_nor_installed() {
+        assert_eq!(Package::parse("aur"), Some(Package::Aur));
+        assert_eq!(Package::Aur.label(), "AUR");
+        assert_eq!(Package::Aur.file_suffix(), None);
+        assert_eq!(Package::Aur.install_args(std::path::Path::new("/tmp/heronite.pkg.tar.zst")), None);
     }
 }

@@ -6,6 +6,7 @@
   " · {package} package": " · paquete {package}",
   "A shows it again": "A lo muestra de nuevo",
   "API keys are left out": "Las claves de API se omiten",
+  "AUR packages are updated by your AUR helper, not by Heronite.": "Los paquetes de AUR los actualiza tu AUR helper, no Heronite.",
   "All captures are compressed": "Todas las capturas están comprimidas",
   "An update is installed: restart to use it": "Se instaló una actualización: reinicia para usarla",
   "An update is installing": "Se está instalando una actualización",
