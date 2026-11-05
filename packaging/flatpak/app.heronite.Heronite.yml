@@ -15,32 +15,39 @@ command: heronite-rs
 separate-locales: false
 
 finish-args:
+  # The X11 socket needs it.
   - --share=ipc
+  # The stores' APIs, metadata, downloads, updates of the tools.
   - --share=network
-  # Games under Wine still need X11 (Xwayland).
+  # Games under Wine and Proton need X11 (Xwayland) even in a Wayland session:
+  # they inherit the sockets of this sandbox. The window of Heronite itself
+  # is native Wayland.
   - --socket=x11
   - --socket=wayland
   - --socket=pulseaudio
-  # The GPU, controllers (the overlay reads them with evdev), the Steam Deck.
+  # The GPU, and the controllers (games read them through hidraw and evdev,
+  # the in-game overlay through evdev).
   - --device=all
-  # Wine and Proton: 32-bit programs, the Steam runtime's pressure-vessel.
+  # Wine and Proton: 32-bit programs, the Steam runtime's pressure-vessel
+  # (a container of its own: it needs `devel` and a /dev/shm per app).
   - --allow=multiarch
   - --allow=devel
   - --allow=per-app-dev-shm
+  # MangoHud and gamescope are Flathub's Vulkan layers (extensions of the
+  # runtime), and the games find them in these paths.
   - --env=PATH=/app/bin:/usr/bin:/usr/lib/extensions/vulkan/MangoHud/bin:/usr/lib/extensions/vulkan/gamescope/bin
   - --env=LD_LIBRARY_PATH=/usr/lib/extensions/vulkan/gamescope/lib
   - --env=XDG_DATA_DIRS=/app/share:/usr/lib/extensions/vulkan/share:/usr/share:/usr/share/runtime/share:/run/host/user-share:/run/host/share
   - --env=XDG_CONFIG_DIRS=/etc/xdg:/usr/lib/x86_64-linux-gnu/GL:/usr/lib/i386-linux-gnu/GL
-  # Steam (starting and closing it) and Flatpak emulators run on the host,
-  # through flatpak-spawn --host.
+  # Steam (starting and closing it) and the emulators installed as Flatpaks
+  # run on the host, through flatpak-spawn --host: nothing else can start
+  # another Flatpak or the host's Steam.
   - --talk-name=org.freedesktop.Flatpak
-  # The tray icon, notifications, GameMode, keeping the screen on.
+  # The tray icon.
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=com.feralinteractive.GameMode
+  # Games (SDL, Wine) keep the screen on while they run.
   - --talk-name=org.freedesktop.ScreenSaver
-  - --system-talk-name=org.freedesktop.login1
-  # Wine lists the disks through UDisks2.
+  # Wine lists the disks through UDisks2 and the battery through UPower.
   - --system-talk-name=org.freedesktop.UDisks2
   - --system-talk-name=org.freedesktop.UPower
   # Games live anywhere: the home folder (also Steam's and the other
@@ -50,15 +57,20 @@ finish-args:
   - --filesystem=/mnt
   - --filesystem=/media
   - --filesystem=/run/media
+  # The controllers' database (SDL reads it to tell what a device is).
   - --filesystem=/run/udev:ro
-  - --filesystem=xdg-run/gamescope-0
-  # The home folder leaves out ~/.var/app: the Flatpaks whose games and
-  # files Heronite reads.
+  # The Wayland socket of gamescope's session, on a Steam Deck.
+  - --filesystem=xdg-run/gamescope-0:ro
+  # The home folder leaves out ~/.var/app. Steam's Flatpak is written to
+  # (each game's launch options and compatibility tool); of the other
+  # launchers' Flatpaks only the folders with their game lists, read-only.
   - --filesystem=~/.var/app/com.valvesoftware.Steam
-  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl:ro
-  - --filesystem=~/.var/app/net.lutris.Lutris:ro
-  - --filesystem=~/.var/app/com.usebottles.bottles:ro
-  - --filesystem=~/.var/app/io.github.Faugus.faugus-launcher:ro
+  - --filesystem=~/.var/app/com.heroicgameslauncher.hgl/config/heroic:ro
+  - --filesystem=~/.var/app/net.lutris.Lutris/data/lutris:ro
+  - --filesystem=~/.var/app/net.lutris.Lutris/config/lutris:ro
+  - --filesystem=~/.var/app/com.usebottles.bottles/data/bottles:ro
+  - --filesystem=~/.var/app/io.github.Faugus.faugus-launcher/data/faugus-launcher:ro
+  - --filesystem=~/.var/app/io.github.Faugus.faugus-launcher/config/faugus-launcher:ro
 
 add-extensions:
   org.freedesktop.Platform.Compat.i386:
