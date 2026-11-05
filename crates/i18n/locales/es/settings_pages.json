@@ -7,6 +7,7 @@
   "A shows it again": "A lo muestra de nuevo",
   "API keys are left out": "Las claves de API se omiten",
   "AUR packages are updated by your AUR helper, not by Heronite.": "Los paquetes de AUR los actualiza tu AUR helper, no Heronite.",
+  "COPR packages are updated by your package manager, not by Heronite.": "Los paquetes de COPR los actualiza tu gestor de paquetes, no Heronite.",
   "Scoop updates this copy, not Heronite.": "Scoop actualiza esta copia, no Heronite.",
   "All captures are compressed": "Todas las capturas están comprimidas",
   "An update is installed: restart to use it": "Se instaló una actualización: reinicia para usarla",

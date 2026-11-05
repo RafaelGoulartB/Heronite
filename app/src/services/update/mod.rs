@@ -10,6 +10,9 @@
 //!   downloaded;
 //! - Windows, installed by Scoop (`packaging/scoop`): the same, `scoop update
 //!   heronite` installs it (Scoop owns the files of each version);
+//! - the Fedora COPR's `heronite` (`packaging/copr`): the same, dnf (or
+//!   rpm-ostree on an atomic desktop) installs it from the COPR, which builds
+//!   it from source: the release's `.rpm` must not replace it;
 //! - Windows, installed by our setup: downloads the release's setup, which
 //!   runs silently as the app quits (a restart, or a normal quit) and
 //!   replaces the files once this process is gone ([`crate::system::run_on_quit`]);
@@ -40,7 +43,7 @@
 //! (nothing is downloaded, written or restarted; `simulate-auto` presses
 //! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
 //! new" at once;
-//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch|aur|scoop` pretends this copy came from
+//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch|aur|scoop|copr` pretends this copy came from
 //! that package (with `HERONITE_DEBUG_UPDATE`; on Windows `setup|portable`,
 //! the setup by default);
 //! `HERONITE_DEBUG_UPDATE_KEY=<minisign public key>` (debug builds only)
@@ -74,6 +77,10 @@ const RECHECK_AFTER: Duration = Duration::from_secs(30 * 60);
 pub const AUR_UPDATE: &str = n_!("Update with your AUR helper, for example yay -Syu");
 /// What Scoop's copy shows for a new version, instead of the Update button.
 pub const SCOOP_UPDATE: &str = n_!("Update with Scoop: scoop update heronite");
+/// What the COPR's copy shows for a new version, instead of the Update button.
+pub const COPR_UPDATE: &str = n_!("Update with dnf: sudo dnf upgrade");
+/// [`COPR_UPDATE`] on Fedora's atomic desktops (Silverblue, Kinoite, Bazzite).
+pub const COPR_OSTREE_UPDATE: &str = n_!("Update with rpm-ostree: rpm-ostree upgrade");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Phase {
@@ -156,7 +163,7 @@ impl Method {
     }
 
     /// The release can be downloaded and installed this way (never the
-    /// AUR's package nor Scoop's: they have no release file).
+    /// AUR's package, Scoop's nor the COPR's: they have no release file).
     fn can_install(&self, release: &Release) -> bool {
         match self {
             Method::AppImage(_) => release.installable(),
@@ -390,12 +397,14 @@ impl Updater {
     }
 
     /// How to update a copy whose own package manager installs updates
-    /// (the AUR, Scoop), shown instead of the Update button; `None` when
+    /// (the AUR, Scoop, the COPR), shown instead of the Update button; `None` when
     /// Heronite installs them or sends people to the release page.
     pub fn manager_update(&self) -> Option<&'static str> {
         match self.package()? {
             Package::Aur => Some(AUR_UPDATE),
             Package::Scoop => Some(SCOOP_UPDATE),
+            Package::Copr if heronite_update::package::ostree_booted() => Some(COPR_OSTREE_UPDATE),
+            Package::Copr => Some(COPR_UPDATE),
             _ => None,
         }
     }
@@ -903,6 +912,7 @@ mod tests {
         assert!(!package(Package::Aur).can_install(&r), "heronite-bin conflicts with our Arch package");
         assert!(!package(Package::Aur).can_install(&Release { packages: Vec::new(), ..r.clone() }));
         assert!(!package(Package::Scoop).can_install(&r), "Scoop owns its copy's files");
+        assert!(!package(Package::Copr).can_install(&r), "dnf updates it from the COPR, not from the release's .rpm");
     }
 
     #[test]
