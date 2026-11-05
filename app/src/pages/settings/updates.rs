@@ -4,7 +4,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{n_, tr};
-use heronite_update::Unsupported;
+use heronite_update::{Package, Unsupported};
 
 use super::SettingsPage;
 use crate::console::list::{Outcome, Row, Value};
@@ -65,8 +65,9 @@ fn status(u: &Updater, cx: &App) -> Status {
             Status {
                 title: tr!("Heronite {version} is available", version),
                 detail,
-                // The AUR helper installs it: nothing to press (see `update::AUR_UPDATE`).
-                action: (!u.aur()).then_some((label, ButtonKind::Primary, true, get(Action::Install))),
+                // The AUR helper or Scoop installs it: nothing to press
+                // (see `Updater::manager_update`).
+                action: u.manager_update().is_none().then_some((label, ButtonKind::Primary, true, get(Action::Install))),
             }
         }
         Phase::Downloading(p) => Status {
@@ -120,16 +121,17 @@ const PACKAGE_NO_AUTO: &str = n_!("Packages ask for your password, so Heronite i
 
 /// Why "Install updates automatically" is off for a package.
 fn package_no_auto(u: &Updater) -> &'static str {
-    if u.aur() {
-        tr!("AUR packages are updated by your AUR helper, not by Heronite.")
-    } else {
-        tr(PACKAGE_NO_AUTO)
+    match u.package() {
+        Some(Package::Aur) => tr!("AUR packages are updated by your AUR helper, not by Heronite."),
+        Some(Package::Scoop) => tr!("Scoop updates this copy, not Heronite."),
+        _ => tr(PACKAGE_NO_AUTO),
     }
 }
 
-/// The AUR copy's way to update, while a new version is on offer.
-fn aur_update(u: &Updater) -> bool {
-    u.aur() && matches!(u.phase(), Phase::Available)
+/// How a copy updated by its own package manager (the AUR, Scoop) gets the
+/// new version on offer.
+fn manager_update(u: &Updater) -> Option<&'static str> {
+    u.manager_update().filter(|_| matches!(u.phase(), Phase::Available))
 }
 
 /// Why this copy cannot install updates by itself, for the switches.
@@ -239,9 +241,9 @@ impl SettingsPage {
             }
         };
 
-        let aur = aur_update(u).then(|| row(tr(update::AUR_UPDATE), None, div()).into_any_element());
+        let how = manager_update(u).map(|how| row(tr(how), None, div()).into_any_element());
 
-        let rows = std::iter::once(main.into_any_element()).chain(manual).chain(aur).chain([auto_check, auto_install]);
+        let rows = std::iter::once(main.into_any_element()).chain(manual).chain(how).chain([auto_check, auto_install]);
         let mut col = div().flex().flex_col().child(caption(tr!("Updates"))).child(card(rows));
         if let (true, Some(r)) = (show_notes, release) {
             let page = r.page_url.clone();
@@ -283,8 +285,8 @@ pub(super) fn console_rows(cx: &App) -> Vec<Row> {
         Some((label, _, enabled, _)) => Row::action("upd:action", format!("{}: {label}", s.title)).desc(s.detail).enabled(enabled),
         None => Row::info("upd:status", s.title, s.detail),
     });
-    if aur_update(u) {
-        rows.push(Row::info("upd:aur", tr(update::AUR_UPDATE), ""));
+    if let Some(how) = manager_update(u) {
+        rows.push(Row::info("upd:manager", tr(how), ""));
     }
     let unsupported = u.unsupported().map(unsupported_text);
     let check = Row::toggle("upd:auto-check", tr!("Check for updates automatically"), u.prefs().auto_check && unsupported.is_none());
