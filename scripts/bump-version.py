@@ -6,8 +6,8 @@
 Prints the new version. Every crate inherits `[workspace.package] version`,
 so this is the only number to change; the lock file gets the same version
 for the workspace's own packages (the ones without a `source`). The new
-version also goes on top of the AppStream data's releases, which software
-centres (and Flathub) show.
+version also goes on top of the AppStream data's releases (with a link to the
+release notes), which software centres (and Flathub) show.
 """
 import datetime
 import re
@@ -54,7 +54,9 @@ def main() -> None:
     metainfo = metainfo_path.read_text()
     if f'<release version="{new}"' not in metainfo:
         today = datetime.date.today().isoformat()
-        metainfo, n = re.subn(r"^(\s*)<releases>\n", rf'\g<0>\1  <release version="{new}" date="{today}"/>\n', metainfo, count=1, flags=re.M)
+        notes = f"https://github.com/RafaelGoulartB/Heronite/releases/tag/v{new}"
+        entry = rf'\1  <release version="{new}" date="{today}">\n\1    <url type="details">{notes}</url>\n\1  </release>\n'
+        metainfo, n = re.subn(r"^(\s*)<releases>\n", rf"\g<0>{entry}", metainfo, count=1, flags=re.M)
         if n != 1:
             sys.exit(f"no <releases> in {metainfo_path}")
         metainfo_path.write_text(metainfo)
