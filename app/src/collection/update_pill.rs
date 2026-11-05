@@ -35,6 +35,8 @@ struct UpdateView {
     highlights: Vec<String>,
     more: usize,
     can_install: bool,
+    /// An AUR copy: its helper installs the update.
+    aur: bool,
     manual: Option<String>,
     page: String,
     blocker: Option<String>,
@@ -84,6 +86,7 @@ impl CollectionView {
             highlights,
             more,
             can_install: u.can_install(),
+            aur: u.aur(),
             manual: u.manual_command(),
             page: release.page_url.clone(),
             blocker: crate::system::restart_blocker(cx),
@@ -194,18 +197,21 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
                 }
             });
             let main = if v.can_install {
-                button_sm("upd-install", ButtonKind::Primary, tr!("Update")).on_click(act(Updater::install))
+                Some(button_sm("upd-install", ButtonKind::Primary, tr!("Update")).on_click(act(Updater::install)))
+            } else if v.aur {
+                None
             } else {
-                button_sm("upd-page", ButtonKind::Primary, tr!("Download")).on_click(move |_, _, _| update::open_page(&page))
+                Some(button_sm("upd-page", ButtonKind::Primary, tr!("Download")).on_click(move |_, _, _| update::open_page(&page)))
             };
             panel
                 .child(title(format!("Heronite {}", v.version)))
                 .child(detail(you_have))
+                .children(v.aur.then(|| detail(tr(update::AUR_UPDATE).into())))
                 .child(
                     div().pt(px(6.)).text_size(px(11.)).font_weight(theme::W_BOLD).text_color(theme::text_dim()).child(tr!("What's new")),
                 )
                 .child(list)
-                .child(footer.child(notes).child(main))
+                .child(footer.child(notes).children(main))
         }
         (Banner::Downloading, Phase::Downloading(p)) => panel
             .child(title(tr!("Downloading Heronite {version}", version = v.version)))

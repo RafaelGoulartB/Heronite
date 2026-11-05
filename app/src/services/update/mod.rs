@@ -5,6 +5,9 @@
 //!   same format and hands it to apt / dnf / pacman through `pkexec` (the
 //!   desktop's password prompt), then restarts. Never automatic: it asks for
 //!   a password.
+//! - the AUR's `heronite-bin`: only tells that a release is out. Its AUR
+//!   helper installs it (our Arch package conflicts with it), so nothing is
+//!   downloaded;
 //! - Windows, installed by our setup: downloads the release's setup, which
 //!   runs silently as the app quits (a restart, or a normal quit) and
 //!   replaces the files once this process is gone ([`crate::system::run_on_quit`]);
@@ -35,7 +38,7 @@
 //! (nothing is downloaded, written or restarted; `simulate-auto` presses
 //! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
 //! new" at once;
-//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch` pretends this copy came from
+//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch|aur` pretends this copy came from
 //! that package (with `HERONITE_DEBUG_UPDATE`; on Windows `setup|portable`,
 //! the setup by default);
 //! `HERONITE_DEBUG_UPDATE_KEY=<minisign public key>` (debug builds only)
@@ -56,7 +59,7 @@ use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::AppPaths;
-use heronite_i18n::tr;
+use heronite_i18n::{n_, tr};
 use heronite_update::{Asset, Fetched, InstallError, Package, Prefs, Progress, Release, Target, Unsupported, Version};
 #[cfg(windows)]
 use heronite_update::{Installer, Portable, WindowsAsset};
@@ -65,6 +68,8 @@ const FIRST_CHECK: Duration = Duration::from_secs(3);
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
 /// A start this soon after the last check waits for the next period instead.
 const RECHECK_AFTER: Duration = Duration::from_secs(30 * 60);
+/// What an AUR copy shows for a new version, instead of the Update button.
+pub const AUR_UPDATE: &str = n_!("Update with your AUR helper, for example yay -Syu");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Phase {
@@ -138,6 +143,19 @@ impl Method {
                 Ok(Method::Package { kind, exe })
             }
             Err(e) => Err(e),
+        }
+    }
+
+    /// The release can be downloaded and installed this way (never the
+    /// AUR's package: it has no release file).
+    fn can_install(&self, release: &Release) -> bool {
+        match self {
+            Method::AppImage(_) => release.installable(),
+            Method::Package { kind, .. } => release.package_proof(*kind).is_some(),
+            #[cfg(windows)]
+            Method::Installer(_) => release.windows_proof(WindowsAsset::Setup).is_some(),
+            #[cfg(windows)]
+            Method::Portable(_) => release.windows_proof(WindowsAsset::Portable).is_some(),
         }
     }
 
@@ -277,6 +295,9 @@ impl Updater {
                 let p = p.clone();
                 let _ = std::thread::Builder::new().name("update-sweep".into()).spawn(move || p.sweep());
             }
+            Ok(Method::Package { kind: Package::Aur, .. }) => {
+                log::info!("installed from the AUR: updates are only announced, the AUR helper installs them");
+            }
             Ok(Method::Package { kind, .. }) => {
                 log::info!("installed from a {} package: updates go through its package manager", kind.label());
                 // Packages of earlier updates (installed or not).
@@ -359,6 +380,11 @@ impl Updater {
         }
     }
 
+    /// This copy came from the AUR, whose helper installs updates.
+    pub fn aur(&self) -> bool {
+        self.package() == Some(Package::Aur)
+    }
+
     /// The Windows download this copy updates from.
     #[cfg(windows)]
     fn windows_asset(&self) -> Option<WindowsAsset> {
@@ -386,13 +412,7 @@ impl Updater {
     /// The release can be downloaded and installed from here.
     pub fn can_install(&self) -> bool {
         let Some(release) = &self.release else { return false };
-        match &self.method {
-            Ok(Method::AppImage(_)) => release.installable(),
-            Ok(Method::Package { kind, .. }) => release.package_proof(*kind).is_some(),
-            #[cfg(windows)]
-            Ok(Method::Installer(_) | Method::Portable(_)) => self.windows_asset().is_some_and(|k| release.windows_proof(k).is_some()),
-            Err(_) => false,
-        }
+        self.method.as_ref().is_ok_and(|m| m.can_install(release))
     }
 
     /// Updates may install without a click (not packages: they ask for a
@@ -559,7 +579,8 @@ impl Updater {
             return;
         }
         self.notified = Some(r.version.clone());
-        crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), tr!("Open Heronite to update."));
+        let how = if self.aur() { tr(AUR_UPDATE) } else { tr!("Open Heronite to update.") };
+        crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), how);
     }
 
     /// Downloads the release and installs it ([`Method`]).
@@ -816,8 +837,8 @@ fn arrival(prefs: &mut Prefs, current: &Version) -> Option<Option<Release>> {
 
 #[cfg(test)]
 mod tests {
-    use super::arrival;
-    use heronite_update::{Prefs, Release, Version};
+    use super::{arrival, Method};
+    use heronite_update::{Asset, Checksums, Package, Prefs, Release, Version};
 
     fn release(version: &str) -> Release {
         Release {
@@ -832,6 +853,37 @@ mod tests {
             windows: Vec::new(),
             checksums: None,
         }
+    }
+
+    fn asset(name: &str) -> Asset {
+        Asset { name: name.into(), url: format!("https://dl/{name}"), size: 1 }
+    }
+
+    /// A release with every package, signed by one checksum list.
+    fn signed_release() -> Release {
+        Release {
+            packages: ["heronite_1.2.0-1_amd64.deb", "heronite-1.2.0-1.x86_64.rpm", "heronite-1.2.0-1-x86_64.pkg.tar.zst"]
+                .map(asset)
+                .to_vec(),
+            checksums: Some(Checksums { list: asset("SHA256SUMS"), signature: asset("SHA256SUMS.minisig") }),
+            ..release("1.2.0")
+        }
+    }
+
+    fn package(kind: Package) -> Method {
+        Method::Package { kind, exe: "/usr/bin/heronite-rs".into() }
+    }
+
+    #[test]
+    fn the_aur_copy_is_told_of_updates_but_never_installs_them() {
+        let r = signed_release();
+        if heronite_update::release::ARCH == "x86_64" {
+            assert!(package(Package::Deb).can_install(&r));
+            assert!(package(Package::Rpm).can_install(&r));
+            assert!(package(Package::Arch).can_install(&r), "our Arch package replaces itself");
+        }
+        assert!(!package(Package::Aur).can_install(&r), "heronite-bin conflicts with our Arch package");
+        assert!(!package(Package::Aur).can_install(&Release { packages: Vec::new(), ..r }));
     }
 
     #[test]
