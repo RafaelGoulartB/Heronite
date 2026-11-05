@@ -37,6 +37,14 @@ jobs:
           restore-keys: flatpak-
       - name: Build
         run: scripts/flatpak.sh
+      # What Flathub's reviewers run on the submission: its linter on the
+      # manifest, the AppStream data and the repository the build made.
+      - name: Lint
+        run: |
+          lint() { flatpak run --command=flatpak-builder-lint org.flatpak.Builder "$@"; }
+          lint manifest packaging/flatpak/app.heronite.Heronite.yml
+          lint appstream packaging/linux/app.heronite.Heronite.metainfo.xml
+          lint repo target/flatpak/repo
       - uses: actions/upload-artifact@v4
         with:
           name: Heronite-flatpak

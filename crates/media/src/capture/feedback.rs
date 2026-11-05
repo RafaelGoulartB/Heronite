@@ -19,9 +19,15 @@ pub fn show_osd(message: &str, value: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Desktop notification via `notify-rust` (freedesktop Notifications).
+/// Desktop notification via `notify-rust` (freedesktop Notifications), or the
+/// Notification portal inside a Flatpak.
 pub fn notify(title: &str, body: &str) {
-    if let Err(e) = notify_rust::Notification::new().appname("Heronite").summary(title).body(body).show() {
+    let shown = if heronite_platform::flatpak::active() {
+        heronite_platform::flatpak::notify(title, body)
+    } else {
+        notify_rust::Notification::new().appname("Heronite").summary(title).body(body).show().map(|_| ()).map_err(|e| e.to_string())
+    };
+    if let Err(e) = shown {
         log::error!("Collection screenshot notification failed: {e}");
     }
 }

@@ -57,8 +57,13 @@ python3 -m venv "$WORK/venv"
 "$WORK/venv/bin/pip" install --quiet --disable-pip-version-check 'aiohttp>=3.9.5,<4' 'PyYAML>=6.0.2,<7' 'tomlkit>=0.13.3,<1'
 "$WORK/venv/bin/python" -I "$WORK/flatpak-cargo-generator.py" Cargo.lock -o packaging/flatpak/cargo-sources.json
 
-# The repository is the build's output; the bundle is made from it.
+# The repository is the build's output; the bundle is made from it. Like
+# Flathub's own build (`flathub-build`), the AppStream data's screenshots and
+# icon are copied into the repository with their links changed to Flathub's
+# server (what the linter's check of the repository asks for). Flathub also
+# builds with --sandbox, which does not take this manifest's `dir` source.
 "${BUILDER[@]}" --user --install-deps-from=flathub --force-clean --disable-rofiles-fuse \
+  --mirror-screenshots-url=https://dl.flathub.org/media --compose-url-policy=full \
   --state-dir="$STATE" --repo="$OUT/repo" "$OUT/build" "$MANIFEST"
 
 mkdir -p dist
