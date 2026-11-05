@@ -16,6 +16,9 @@ name: Release
 # Flatpak bundle is not published until Heronite is on Flathub (a bundle
 # gets no updates): it stays an artifact of the run, and a release whose
 # Flatpak does not build fails.
+# Last, the winget job opens the new version's pull request on
+# microsoft/winget-pkgs. Scoop's bucket (packaging/scoop) needs nothing from
+# here: its Excavator finds the release by itself.
 on:
   pull_request_target:
     types: [closed]
@@ -326,3 +329,26 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
         run: gh release create "$TAG" dist/* --title "Heronite $TAG" --notes-file notes.md
+
+  # Opens the pull request of the new version on microsoft/winget-pkgs
+  # (packaging/winget/README.md). Its own job: the release is out either way.
+  # Needs the secret WINGET_TOKEN (a classic token with public_repo) and a
+  # fork of microsoft/winget-pkgs on this account; without the token it only
+  # says so. The first version of the package goes in by hand.
+  winget:
+    name: winget
+    runs-on: ubuntu-latest
+    needs: [version, publish]
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - name: No token
+        if: env.WINGET_TOKEN == ''
+        run: echo "::notice::WINGET_TOKEN is not set, so no winget pull request was opened"
+      - uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
+        if: env.WINGET_TOKEN != ''
+        with:
+          identifier: Heronite.Heronite
+          release-tag: ${{ needs.version.outputs.tag }}
+          installers-regex: 'Heronite-Setup-x86_64\.exe$'
+          token: ${{ env.WINGET_TOKEN }}
