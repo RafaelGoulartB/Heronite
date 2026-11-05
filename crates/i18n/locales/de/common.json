@@ -76,6 +76,8 @@
   "Release page": "Release-Seite",
   "Update with your AUR helper, for example yay -Syu": "Aktualisiere mit deinem AUR-Helper, zum Beispiel yay -Syu",
   "Update with Scoop: scoop update heronite": "Aktualisiere mit Scoop: scoop update heronite",
+  "Update with dnf: sudo dnf upgrade": "Aktualisiere mit dnf: sudo dnf upgrade",
+  "Update with rpm-ostree: rpm-ostree upgrade": "Aktualisiere mit rpm-ostree: rpm-ostree upgrade",
   "Try again": "Erneut versuchen",
   "Log in": "Anmelden",
   "Automatic": "Automatisch",
