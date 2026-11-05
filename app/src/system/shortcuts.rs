@@ -121,6 +121,12 @@ pub(crate) fn own_exe() -> PathBuf {
         return launcher;
     }
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("heronite-rs"));
+    // Scoop deletes old version folders: its `current` junction follows
+    // every update.
+    #[cfg(windows)]
+    if let Some(current) = heronite_platform::scoop::current(&exe) {
+        return current;
+    }
     // A replaced binary shows up as ".../heronite-rs (deleted)".
     let s = exe.to_string_lossy();
     PathBuf::from(s.strip_suffix(" (deleted)").unwrap_or(&s).to_string())

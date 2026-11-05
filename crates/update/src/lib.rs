@@ -18,7 +18,8 @@
 //!   disturbed; the new version starts with the next launch.
 //! - [`relaunch`]: starts the new AppImage, detached, as the app quits.
 //! - [`package`]: .deb / .rpm / Arch installs, which are only told about new
-//!   versions (their package manager owns the files).
+//!   versions (their package manager owns the files), and the AUR's and
+//!   Scoop's copies, whose package manager also installs them.
 //! - [`setup`] (Windows): a copy installed by the setup downloads the new
 //!   setup and runs it, silently, as the app quits.
 //! - [`portable`] (Windows): a portable copy downloads the new zip and swaps

@@ -35,8 +35,8 @@ struct UpdateView {
     highlights: Vec<String>,
     more: usize,
     can_install: bool,
-    /// An AUR copy: its helper installs the update.
-    aur: bool,
+    /// How a copy its own package manager updates (the AUR, Scoop) gets it.
+    manager_update: Option<&'static str>,
     manual: Option<String>,
     page: String,
     blocker: Option<String>,
@@ -86,7 +86,7 @@ impl CollectionView {
             highlights,
             more,
             can_install: u.can_install(),
-            aur: u.aur(),
+            manager_update: u.manager_update(),
             manual: u.manual_command(),
             page: release.page_url.clone(),
             blocker: crate::system::restart_blocker(cx),
@@ -198,7 +198,7 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
             });
             let main = if v.can_install {
                 Some(button_sm("upd-install", ButtonKind::Primary, tr!("Update")).on_click(act(Updater::install)))
-            } else if v.aur {
+            } else if v.manager_update.is_some() {
                 None
             } else {
                 Some(button_sm("upd-page", ButtonKind::Primary, tr!("Download")).on_click(move |_, _, _| update::open_page(&page)))
@@ -206,7 +206,7 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
             panel
                 .child(title(format!("Heronite {}", v.version)))
                 .child(detail(you_have))
-                .children(v.aur.then(|| detail(tr(update::AUR_UPDATE).into())))
+                .children(v.manager_update.map(|how| detail(tr(how).into())))
                 .child(
                     div().pt(px(6.)).text_size(px(11.)).font_weight(theme::W_BOLD).text_color(theme::text_dim()).child(tr!("What's new")),
                 )

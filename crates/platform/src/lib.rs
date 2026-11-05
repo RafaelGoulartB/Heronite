@@ -13,6 +13,8 @@
 //! - [`shell`]: opening a file, folder or URL with the desktop's handler.
 //! - [`flatpak`]: running inside a Flatpak sandbox, and the host's programs
 //!   from there.
+//! - [`scoop`]: a copy installed by Scoop on Windows, and the path that
+//!   follows its updates.
 //! - [`features`]: which parts of the app this system has, for the UI to
 //!   show or hide.
 //! - [`packages`]: the Microsoft Store packages of this user (none on other
@@ -36,6 +38,7 @@ pub mod flatpak;
 pub mod fs;
 pub mod packages;
 pub mod process;
+pub mod scoop;
 pub mod shell;
 
 #[cfg(windows)]

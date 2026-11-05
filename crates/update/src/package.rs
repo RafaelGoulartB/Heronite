@@ -8,6 +8,9 @@
 //! The AUR's `heronite-bin` also writes the marker (`aur`), but it conflicts
 //! with our Arch package: the app only tells that a new version is out, and
 //! the user's AUR helper installs it.
+//!
+//! On Windows, a copy installed by Scoop ([`heronite_platform::scoop`]) is
+//! the same: `scoop update heronite` installs new versions.
 
 use heronite_i18n::tr;
 use std::ffi::OsString;
@@ -24,6 +27,8 @@ pub enum Package {
     Arch,
     /// `heronite-bin` from the AUR: updated by the user's AUR helper.
     Aur,
+    /// Scoop's copy on Windows: updated by `scoop update`.
+    Scoop,
 }
 
 impl Package {
@@ -36,6 +41,7 @@ impl Package {
             "rpm" => Some(Package::Rpm),
             "arch" => Some(Package::Arch),
             "aur" => Some(Package::Aur),
+            "scoop" => Some(Package::Scoop),
             _ => None,
         }
     }
@@ -53,31 +59,39 @@ impl Package {
             Package::Rpm => ".rpm",
             Package::Arch => "Arch",
             Package::Aur => "AUR",
+            Package::Scoop => "Scoop",
         }
+    }
+
+    /// Its own package manager installs updates (the AUR helper, Scoop): the
+    /// app only tells that one is out, and never downloads it.
+    pub fn managed(self) -> bool {
+        matches!(self, Package::Aur | Package::Scoop)
     }
 
     /// The command a user types to install a downloaded `file` (an absolute
     /// path: apt and dnf need a `/` to read a file instead of a name). The
-    /// AUR has no file: its helper updates the package.
+    /// AUR and Scoop have no file: their package manager updates the app.
     pub fn install_command(self, file: &str) -> String {
         match self {
             Package::Deb => format!("sudo apt install {file}"),
             Package::Rpm => format!("sudo dnf install {file}"),
             Package::Arch => format!("sudo pacman -U {file}"),
             Package::Aur => "yay -Syu".into(),
+            Package::Scoop => "scoop update heronite".into(),
         }
     }
 
     /// End of this format's file name in a release (nfpm's default names:
     /// `heronite_0.2.0-1_amd64.deb`, `heronite-0.2.0-1.x86_64.rpm`,
-    /// `heronite-0.2.0-1-x86_64.pkg.tar.zst`). `None` for the AUR: the app
-    /// never downloads its package.
+    /// `heronite-0.2.0-1-x86_64.pkg.tar.zst`). `None` for the AUR and
+    /// Scoop: the app never downloads their package.
     pub fn file_suffix(self) -> Option<String> {
         match self {
             Package::Deb => Some(format!("_{}.deb", if ARCH == "aarch64" { "arm64" } else { "amd64" })),
             Package::Rpm => Some(format!(".{ARCH}.rpm")),
             Package::Arch => Some(format!("-{ARCH}.pkg.tar.zst")),
-            Package::Aur => None,
+            Package::Aur | Package::Scoop => None,
         }
     }
 }
@@ -105,7 +119,7 @@ impl Package {
                 .map(|t| args(t, &["install", "-y"]))
                 .or_else(|| which("zypper").map(|t| args(t, &["--non-interactive", "install", "--allow-unsigned-rpm"]))),
             Package::Arch => which("pacman").map(|t| args(t, &["-U", "--noconfirm"])),
-            Package::Aur => None,
+            Package::Aur | Package::Scoop => None,
         }
     }
 
@@ -167,5 +181,15 @@ mod tests {
         assert_eq!(Package::Aur.label(), "AUR");
         assert_eq!(Package::Aur.file_suffix(), None);
         assert_eq!(Package::Aur.install_args(std::path::Path::new("/tmp/heronite.pkg.tar.zst")), None);
+    }
+
+    #[test]
+    fn scoops_copy_is_only_told_of_updates() {
+        assert_eq!(Package::parse("scoop\r\n"), Some(Package::Scoop));
+        assert!(Package::Scoop.managed() && Package::Aur.managed());
+        assert!(!Package::Deb.managed() && !Package::Rpm.managed() && !Package::Arch.managed());
+        assert_eq!(Package::Scoop.file_suffix(), None);
+        assert_eq!(Package::Scoop.install_args(std::path::Path::new("C:/heronite.zip")), None);
+        assert_eq!(Package::Scoop.install_command(""), "scoop update heronite");
     }
 }

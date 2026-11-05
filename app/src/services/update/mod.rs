@@ -8,6 +8,8 @@
 //! - the AUR's `heronite-bin`: only tells that a release is out. Its AUR
 //!   helper installs it (our Arch package conflicts with it), so nothing is
 //!   downloaded;
+//! - Windows, installed by Scoop (`packaging/scoop`): the same, `scoop update
+//!   heronite` installs it (Scoop owns the files of each version);
 //! - Windows, installed by our setup: downloads the release's setup, which
 //!   runs silently as the app quits (a restart, or a normal quit) and
 //!   replaces the files once this process is gone ([`crate::system::run_on_quit`]);
@@ -38,7 +40,7 @@
 //! (nothing is downloaded, written or restarted; `simulate-auto` presses
 //! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
 //! new" at once;
-//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch|aur` pretends this copy came from
+//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch|aur|scoop` pretends this copy came from
 //! that package (with `HERONITE_DEBUG_UPDATE`; on Windows `setup|portable`,
 //! the setup by default);
 //! `HERONITE_DEBUG_UPDATE_KEY=<minisign public key>` (debug builds only)
@@ -70,6 +72,8 @@ const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
 const RECHECK_AFTER: Duration = Duration::from_secs(30 * 60);
 /// What an AUR copy shows for a new version, instead of the Update button.
 pub const AUR_UPDATE: &str = n_!("Update with your AUR helper, for example yay -Syu");
+/// What Scoop's copy shows for a new version, instead of the Update button.
+pub const SCOOP_UPDATE: &str = n_!("Update with Scoop: scoop update heronite");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Phase {
@@ -117,11 +121,16 @@ pub enum Method {
 }
 
 impl Method {
-    /// A copy installed by our setup, else a portable one (the setup owns
-    /// the files it installed, even next to a portable marker).
+    /// A copy installed by Scoop, else by our setup, else a portable one
+    /// (the setup owns the files it installed, even next to a portable
+    /// marker; Scoop's manifest takes that marker out, but an older copy of
+    /// it may still have one).
     #[cfg(windows)]
     fn detect() -> Result<Self, Unsupported> {
         let exe = std::env::current_exe().map_err(|_| Unsupported::NotAppImage)?;
+        if heronite_platform::scoop::installed(&exe) {
+            return Ok(Method::Package { kind: Package::Scoop, exe });
+        }
         if let Some(installer) = Installer::detect(&exe) {
             return Ok(Method::Installer(installer));
         }
@@ -147,7 +156,7 @@ impl Method {
     }
 
     /// The release can be downloaded and installed this way (never the
-    /// AUR's package: it has no release file).
+    /// AUR's package nor Scoop's: they have no release file).
     fn can_install(&self, release: &Release) -> bool {
         match self {
             Method::AppImage(_) => release.installable(),
@@ -295,8 +304,8 @@ impl Updater {
                 let p = p.clone();
                 let _ = std::thread::Builder::new().name("update-sweep".into()).spawn(move || p.sweep());
             }
-            Ok(Method::Package { kind: Package::Aur, .. }) => {
-                log::info!("installed from the AUR: updates are only announced, the AUR helper installs them");
+            Ok(Method::Package { kind, .. }) if kind.managed() => {
+                log::info!("installed with {}: updates are only announced, its package manager installs them", kind.label());
             }
             Ok(Method::Package { kind, .. }) => {
                 log::info!("installed from a {} package: updates go through its package manager", kind.label());
@@ -380,9 +389,15 @@ impl Updater {
         }
     }
 
-    /// This copy came from the AUR, whose helper installs updates.
-    pub fn aur(&self) -> bool {
-        self.package() == Some(Package::Aur)
+    /// How to update a copy whose own package manager installs updates
+    /// (the AUR, Scoop), shown instead of the Update button; `None` when
+    /// Heronite installs them or sends people to the release page.
+    pub fn manager_update(&self) -> Option<&'static str> {
+        match self.package()? {
+            Package::Aur => Some(AUR_UPDATE),
+            Package::Scoop => Some(SCOOP_UPDATE),
+            _ => None,
+        }
     }
 
     /// The Windows download this copy updates from.
@@ -579,7 +594,10 @@ impl Updater {
             return;
         }
         self.notified = Some(r.version.clone());
-        let how = if self.aur() { tr(AUR_UPDATE) } else { tr!("Open Heronite to update.") };
+        let how = match self.manager_update() {
+            Some(how) => tr(how),
+            None => tr!("Open Heronite to update."),
+        };
         crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), how);
     }
 
@@ -883,7 +901,8 @@ mod tests {
             assert!(package(Package::Arch).can_install(&r), "our Arch package replaces itself");
         }
         assert!(!package(Package::Aur).can_install(&r), "heronite-bin conflicts with our Arch package");
-        assert!(!package(Package::Aur).can_install(&Release { packages: Vec::new(), ..r }));
+        assert!(!package(Package::Aur).can_install(&Release { packages: Vec::new(), ..r.clone() }));
+        assert!(!package(Package::Scoop).can_install(&r), "Scoop owns its copy's files");
     }
 
     #[test]
