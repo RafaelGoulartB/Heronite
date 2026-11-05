@@ -35,7 +35,8 @@ struct UpdateView {
     highlights: Vec<String>,
     more: usize,
     can_install: bool,
-    /// How a copy its own package manager updates (the AUR, Scoop) gets it.
+    /// How a copy its own package manager updates (the AUR, Scoop, the COPR)
+    /// gets it.
     manager_update: Option<&'static str>,
     manual: Option<String>,
     page: String,

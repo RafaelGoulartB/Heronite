@@ -330,6 +330,7 @@ mod tests {
             assert_eq!(r.package(Package::Arch).unwrap().name, "heronite-0.1.4-1-x86_64.pkg.tar.zst");
         }
         assert!(r.package(Package::Aur).is_none(), "the AUR's package is not a release file");
+        assert!(r.package(Package::Copr).is_none(), "the COPR's package is not a release file");
         assert_eq!(r.version, "0.1.4");
         assert_eq!(r.date(), "2026-10-11");
         assert_eq!(r.notes, "### Features\n- Something new");
@@ -414,6 +415,7 @@ mod tests {
         }
         assert_eq!(r.package_proof(Package::Rpm), None, "no such file");
         assert_eq!(r.package_proof(Package::Aur), None, "the AUR's helper installs it");
+        assert_eq!(r.package_proof(Package::Copr), None, "dnf installs it from the COPR");
 
         // Up to 1.0: only the own signatures.
         let old = parse_latest(&gh("v1.0.0", &both[..3])).unwrap();

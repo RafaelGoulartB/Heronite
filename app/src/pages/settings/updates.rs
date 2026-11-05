@@ -65,7 +65,7 @@ fn status(u: &Updater, cx: &App) -> Status {
             Status {
                 title: tr!("Heronite {version} is available", version),
                 detail,
-                // The AUR helper or Scoop installs it: nothing to press
+                // The AUR helper, Scoop or dnf installs it: nothing to press
                 // (see `Updater::manager_update`).
                 action: u.manager_update().is_none().then_some((label, ButtonKind::Primary, true, get(Action::Install))),
             }
@@ -124,11 +124,12 @@ fn package_no_auto(u: &Updater) -> &'static str {
     match u.package() {
         Some(Package::Aur) => tr!("AUR packages are updated by your AUR helper, not by Heronite."),
         Some(Package::Scoop) => tr!("Scoop updates this copy, not Heronite."),
+        Some(Package::Copr) => tr!("COPR packages are updated by your package manager, not by Heronite."),
         _ => tr(PACKAGE_NO_AUTO),
     }
 }
 
-/// How a copy updated by its own package manager (the AUR, Scoop) gets the
+/// How a copy updated by its own package manager (the AUR, Scoop, the COPR) gets the
 /// new version on offer.
 fn manager_update(u: &Updater) -> Option<&'static str> {
     u.manager_update().filter(|_| matches!(u.phase(), Phase::Available))

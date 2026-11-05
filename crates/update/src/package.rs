@@ -11,6 +11,10 @@
 //!
 //! On Windows, a copy installed by Scoop ([`heronite_platform::scoop`]) is
 //! the same: `scoop update heronite` installs new versions.
+//!
+//! The Fedora COPR's `heronite` (`packaging/copr`) writes `copr`: COPR builds
+//! it from source, and dnf (rpm-ostree on an atomic desktop) updates it from
+//! there, never from the release's `.rpm`.
 
 use heronite_i18n::tr;
 use std::ffi::OsString;
@@ -29,6 +33,17 @@ pub enum Package {
     Aur,
     /// Scoop's copy on Windows: updated by `scoop update`.
     Scoop,
+    /// `heronite` from the Fedora COPR `rafaelgoulartb/heronite`: updated by
+    /// dnf, or rpm-ostree on an atomic desktop.
+    Copr,
+}
+
+/// Booted from an ostree deployment: Fedora's atomic desktops (Silverblue,
+/// Kinoite, Bazzite), where rpm-ostree installs packages instead of dnf.
+/// Read once: the update pill asks on every frame.
+pub fn ostree_booted() -> bool {
+    static BOOTED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *BOOTED.get_or_init(|| Path::new("/run/ostree-booted").exists())
 }
 
 impl Package {
@@ -42,6 +57,7 @@ impl Package {
             "arch" => Some(Package::Arch),
             "aur" => Some(Package::Aur),
             "scoop" => Some(Package::Scoop),
+            "copr" => Some(Package::Copr),
             _ => None,
         }
     }
@@ -60,18 +76,21 @@ impl Package {
             Package::Arch => "Arch",
             Package::Aur => "AUR",
             Package::Scoop => "Scoop",
+            Package::Copr => "COPR",
         }
     }
 
-    /// Its own package manager installs updates (the AUR helper, Scoop): the
-    /// app only tells that one is out, and never downloads it.
+    /// Its own package manager installs updates (the AUR helper, Scoop, dnf
+    /// for the COPR): the app only tells that one is out, and never downloads
+    /// it.
     pub fn managed(self) -> bool {
-        matches!(self, Package::Aur | Package::Scoop)
+        matches!(self, Package::Aur | Package::Scoop | Package::Copr)
     }
 
     /// The command a user types to install a downloaded `file` (an absolute
     /// path: apt and dnf need a `/` to read a file instead of a name). The
-    /// AUR and Scoop have no file: their package manager updates the app.
+    /// AUR, Scoop and the COPR have no file: their package manager updates
+    /// the app.
     pub fn install_command(self, file: &str) -> String {
         match self {
             Package::Deb => format!("sudo apt install {file}"),
@@ -79,19 +98,21 @@ impl Package {
             Package::Arch => format!("sudo pacman -U {file}"),
             Package::Aur => "yay -Syu".into(),
             Package::Scoop => "scoop update heronite".into(),
+            Package::Copr if ostree_booted() => "rpm-ostree upgrade".into(),
+            Package::Copr => "sudo dnf upgrade".into(),
         }
     }
 
     /// End of this format's file name in a release (nfpm's default names:
     /// `heronite_0.2.0-1_amd64.deb`, `heronite-0.2.0-1.x86_64.rpm`,
-    /// `heronite-0.2.0-1-x86_64.pkg.tar.zst`). `None` for the AUR and
-    /// Scoop: the app never downloads their package.
+    /// `heronite-0.2.0-1-x86_64.pkg.tar.zst`). `None` for the AUR, Scoop
+    /// and the COPR: the app never downloads their package.
     pub fn file_suffix(self) -> Option<String> {
         match self {
             Package::Deb => Some(format!("_{}.deb", if ARCH == "aarch64" { "arm64" } else { "amd64" })),
             Package::Rpm => Some(format!(".{ARCH}.rpm")),
             Package::Arch => Some(format!("-{ARCH}.pkg.tar.zst")),
-            Package::Aur | Package::Scoop => None,
+            Package::Aur | Package::Scoop | Package::Copr => None,
         }
     }
 }
@@ -103,8 +124,9 @@ fn which(name: &str) -> Option<PathBuf> {
 
 impl Package {
     /// The package manager call (run as root) that installs `file`; `None`
-    /// when the manager is not on `PATH` (and for the AUR, which the app does
-    /// not install). Dependencies come from the configured repositories.
+    /// when the manager is not on `PATH` (and for the packages their own
+    /// manager updates, which the app does not install). Dependencies come
+    /// from the configured repositories.
     pub fn install_args(self, file: &Path) -> Option<Vec<OsString>> {
         let file = file.as_os_str().to_owned();
         let args = |tool: PathBuf, rest: &[&str]| {
@@ -119,7 +141,7 @@ impl Package {
                 .map(|t| args(t, &["install", "-y"]))
                 .or_else(|| which("zypper").map(|t| args(t, &["--non-interactive", "install", "--allow-unsigned-rpm"]))),
             Package::Arch => which("pacman").map(|t| args(t, &["-U", "--noconfirm"])),
-            Package::Aur | Package::Scoop => None,
+            Package::Aur | Package::Scoop | Package::Copr => None,
         }
     }
 
@@ -166,6 +188,8 @@ mod tests {
         assert_eq!(Package::detect(&exe), Some(Package::Rpm));
         std::fs::write(&marker, "aur\n").unwrap();
         assert_eq!(Package::detect(&exe), Some(Package::Aur));
+        std::fs::write(&marker, "copr\n").unwrap();
+        assert_eq!(Package::detect(&exe), Some(Package::Copr));
         std::fs::write(&marker, "snap").unwrap();
         assert_eq!(Package::detect(&exe), None);
         assert_eq!(Package::Deb.install_command("/tmp/heronite_0.2.0_amd64.deb"), "sudo apt install /tmp/heronite_0.2.0_amd64.deb");
@@ -191,5 +215,16 @@ mod tests {
         assert_eq!(Package::Scoop.file_suffix(), None);
         assert_eq!(Package::Scoop.install_args(std::path::Path::new("C:/heronite.zip")), None);
         assert_eq!(Package::Scoop.install_command(""), "scoop update heronite");
+    }
+
+    #[test]
+    fn the_copr_package_is_only_told_of_updates() {
+        assert_eq!(Package::parse("copr"), Some(Package::Copr));
+        assert_eq!(Package::Copr.label(), "COPR");
+        assert!(Package::Copr.managed());
+        assert_eq!(Package::Copr.file_suffix(), None, "COPR builds it: no release file");
+        assert_eq!(Package::Copr.install_args(std::path::Path::new("/tmp/heronite-1.2.0-1.x86_64.rpm")), None);
+        let update = if super::ostree_booted() { "rpm-ostree upgrade" } else { "sudo dnf upgrade" };
+        assert_eq!(Package::Copr.install_command(""), update);
     }
 }
