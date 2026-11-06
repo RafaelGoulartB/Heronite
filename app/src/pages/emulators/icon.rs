@@ -27,6 +27,11 @@ pub fn of_definition(definition_id: &str) -> Icon {
         "vita3k" => Icon::EmuVita3k,
         "shadps4" => Icon::EmuShadPs4,
         "azahar" => Icon::EmuAzahar,
+        "mupen64plus" => Icon::EmuMupen64Plus,
+        "m64py" => Icon::EmuM64Py,
+        "gopher64" => Icon::EmuGopher64,
+        "epsxe" => Icon::EmuEpsxe,
+        "desmume" => Icon::EmuDesmume,
         _ => Icon::SportsEsports,
     }
 }
@@ -67,6 +72,7 @@ mod tests {
         let e =
             |definition_id: &str, name: &str| UserEmulator { definition_id: definition_id.into(), name: name.into(), ..Default::default() };
         assert_eq!(of(&e("custom", "PCSX2 Nightly")), Icon::EmuPcsx2);
+        assert_eq!(of(&e("custom", "ePSXe (Wine)")), Icon::EmuEpsxe);
         assert_eq!(of(&e("", "My emulator")), Icon::SportsEsports);
         assert_eq!(of(&e("dolphin", "GameCube")), Icon::BrandDolphin);
     }

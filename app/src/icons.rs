@@ -150,6 +150,11 @@ pub enum Icon {
     EmuMame,
     EmuScummVm,
     EmuAzahar,
+    EmuMupen64Plus,
+    EmuM64Py,
+    EmuGopher64,
+    EmuEpsxe,
+    EmuDesmume,
 }
 
 impl Icon {
@@ -287,6 +292,11 @@ impl Icon {
             EmuMame => "icons/emu-mame.svg",
             EmuScummVm => "icons/emu-scummvm.svg",
             EmuAzahar => "icons/emu-azahar.svg",
+            EmuMupen64Plus => "icons/emu-mupen64plus.svg",
+            EmuM64Py => "icons/emu-m64py.svg",
+            EmuGopher64 => "icons/emu-gopher64.svg",
+            EmuEpsxe => "icons/emu-epsxe.svg",
+            EmuDesmume => "icons/emu-desmume.svg",
         }
     }
 }
