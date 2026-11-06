@@ -44,6 +44,8 @@ pub mod shell;
 #[cfg(windows)]
 pub mod audio;
 #[cfg(windows)]
+mod com;
+#[cfg(windows)]
 pub mod gamepad;
 #[cfg(windows)]
 pub mod overlay_window;

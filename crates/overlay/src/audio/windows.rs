@@ -8,8 +8,15 @@ use super::{AppAudio, AudioState, Output, StreamId};
 
 /// The current snapshot; `None` when Core Audio cannot be queried.
 pub fn read(game_pid: Option<u32>) -> Option<AudioState> {
-    let snapshot = reported("reading audio", native::read())?;
-    let game = game_pid.map(game_processes).unwrap_or_default();
+    let processes = process_snapshot();
+    let snapshot = reported("reading audio", native::read(&processes))?;
+    let game = match game_pid {
+        Some(game_pid) => {
+            let mut is_game = game_matcher(game_pid, &processes);
+            snapshot.sessions.iter().map(|s| s.pid).filter(|&pid| is_game(pid)).collect()
+        }
+        None => HashSet::new(),
+    };
     Some(map_snapshot(snapshot, &game))
 }
 
@@ -81,15 +88,20 @@ pub fn set_streams_muted(streams: &[StreamId], muted: bool) {
     reported("setting app mute", native::set_sessions_muted(streams, muted));
 }
 
+/// Sets every session of the game, silent ones included, in one pass.
 pub fn set_game_volume(game_pid: u32, percent: u16) {
-    if let Some(streams) = game_streams(game_pid) {
-        set_streams_volume(&streams.into_iter().map(|s| s.id).collect::<Vec<_>>(), percent);
-    }
+    let is_game = game_matcher(game_pid, &process_snapshot());
+    game_changed(game_pid, reported("setting game volume", native::set_process_sessions_volume(is_game, percent)));
 }
 
 pub fn set_game_muted(game_pid: u32, muted: bool) {
-    if let Some(streams) = game_streams(game_pid) {
-        set_streams_muted(&streams.into_iter().map(|s| s.id).collect::<Vec<_>>(), muted);
+    let is_game = game_matcher(game_pid, &process_snapshot());
+    game_changed(game_pid, reported("setting game mute", native::set_process_sessions_muted(is_game, muted)));
+}
+
+fn game_changed(game_pid: u32, changed: Option<usize>) {
+    if changed == Some(0) {
+        log::debug!("Core Audio: no audio sessions for game PID {game_pid}");
     }
 }
 
@@ -108,16 +120,6 @@ pub fn game_stream_names(_game_pid: u32) -> Vec<String> {
     Vec::new()
 }
 
-fn game_streams(game_pid: u32) -> Option<Vec<Session>> {
-    let game = game_processes(game_pid);
-    let snapshot = reported("reading game audio sessions", native::read())?;
-    let streams: Vec<_> = snapshot.sessions.into_iter().filter(|s| game.contains(&s.pid)).collect();
-    if streams.is_empty() {
-        log::debug!("Core Audio: no active audio sessions for game PID {game_pid}");
-    }
-    Some(streams)
-}
-
 fn reported<T>(action: &str, result: io::Result<T>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
@@ -128,12 +130,32 @@ fn reported<T>(action: &str, result: io::Result<T>) -> Option<T> {
     }
 }
 
-fn game_processes(game_pid: u32) -> HashSet<u32> {
+fn process_snapshot() -> Vec<ProcessEntry> {
     let processes = process::snapshot();
     if processes.is_empty() {
-        log::warn!("Core Audio: process snapshot unavailable; only game PID {game_pid} can be matched");
+        log::warn!("Core Audio: process snapshot unavailable; the game matches by its PID and job only");
     }
-    descendants(game_pid, &processes)
+    processes
+}
+
+/// Whether a session's process is the game's: one in a job this app started
+/// (how screen capture finds the game too; the job keeps whatever the game
+/// starts, even once a process in between has exited), or one under the
+/// game's PID in `processes`, kept for processes outside any job (a game a
+/// store client started). Toolhelp parent PIDs can be stale after a PID is
+/// reused, so the tree alone is not trusted to find the game.
+fn game_matcher(game_pid: u32, processes: &[ProcessEntry]) -> impl FnMut(u32) -> bool {
+    let tree = descendants(game_pid, processes);
+    let own = std::process::id();
+    let mut in_job: HashMap<u32, bool> = HashMap::new();
+    move |pid| {
+        game_pid != 0
+            && belongs_to_game(pid, &tree, |pid| *in_job.entry(pid).or_insert_with(|| pid != own && process::in_tracked_group(pid)))
+    }
+}
+
+fn belongs_to_game(pid: u32, tree: &HashSet<u32>, in_job: impl FnOnce(u32) -> bool) -> bool {
+    pid != 0 && (tree.contains(&pid) || in_job(pid))
 }
 
 fn descendants(root: u32, processes: &[ProcessEntry]) -> HashSet<u32> {
@@ -176,6 +198,18 @@ mod tests {
         assert_eq!(descendants(10, &processes), HashSet::from([10, 20, 30]));
         assert_eq!(descendants(99, &processes), HashSet::from([99]));
         assert!(descendants(0, &processes).is_empty());
+    }
+
+    #[test]
+    fn game_sessions_match_by_job_or_by_tree() {
+        let tree = HashSet::from([10, 20]);
+        assert!(belongs_to_game(30, &tree, |_| true), "a job member whose parent left the tree");
+        assert!(belongs_to_game(20, &tree, |_| false), "a child outside any job (store client)");
+        assert!(!belongs_to_game(40, &tree, |_| false));
+        assert!(!belongs_to_game(0, &tree, |_| true), "the system's idle process is nobody's");
+        let process = |pid, parent| ProcessEntry { pid, parent, name: String::new() };
+        let mut is_game = game_matcher(0, &[process(30, 0)]);
+        assert!(!is_game(30), "no game, no match");
     }
 
     #[test]
