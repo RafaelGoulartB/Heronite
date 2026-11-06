@@ -14,7 +14,7 @@ use heronite_overlay::input::Controller;
 use heronite_platform::{supported, Feature};
 
 use super::SettingsPage;
-use crate::overlay::HotkeyState;
+use crate::overlay::{labels, HotkeyState};
 use crate::pages::{status_pill, PageCtx};
 use crate::theme;
 use crate::ui::controls::{caption, card, row, tabs, toggle_row, with_sub_rows};
@@ -119,19 +119,17 @@ fn button_label(b: ChordButton) -> String {
 }
 
 fn shot_title(p: &OverlayPrefs) -> String {
-    if cfg!(windows) {
-        tr!("Back + Start + {button}: take a screenshot", button = button_short(screenshot_button(p)))
-    } else {
-        tr!("Guide + {button}: take a screenshot", button = button_short(p.screenshot_button))
-    }
+    labels::screenshot(&button_short(screenshot_button(p)))
 }
 
-fn screenshot_buttons() -> &'static [ChordButton] {
-    if cfg!(windows) {
-        &ChordButton::ALL[..8]
-    } else {
-        &ChordButton::ALL
-    }
+/// On Windows Back + Start stand for Guide, so neither can go with it.
+fn stands_for_guide(b: ChordButton) -> bool {
+    cfg!(windows) && matches!(b, ChordButton::Start | ChordButton::Select)
+}
+
+/// The buttons the screenshot can use here.
+fn screenshot_buttons() -> Vec<ChordButton> {
+    ChordButton::ALL.into_iter().filter(|b| !stands_for_guide(*b)).collect()
 }
 
 fn screenshot_button(p: &OverlayPrefs) -> ChordButton {
@@ -142,28 +140,9 @@ fn screenshot_button(p: &OverlayPrefs) -> ChordButton {
     }
 }
 
-fn button_prompt() -> &'static str {
-    if cfg!(windows) {
-        tr!("Button held with Back + Start")
-    } else {
-        tr!("Button held with Guide")
-    }
-}
-
-fn volume_title() -> &'static str {
-    if cfg!(windows) {
-        tr!("Back + Start + ↑ / ↓: change the volume")
-    } else {
-        tr!("Guide + ↑ / ↓: change the volume")
-    }
-}
-
-fn moment_title() -> &'static str {
-    if cfg!(windows) {
-        tr!("Back + Start + Y: mark a moment")
-    } else {
-        tr!("Guide + Y: mark a moment")
-    }
+/// A saved Back or Start (from Linux) is replaced on Windows.
+fn reserved_note() -> &'static str {
+    tr!("Back and Start are reserved. This saved choice uses RB on Windows; choose another button to change it.")
 }
 
 fn controller_limits() -> &'static str {
@@ -207,14 +186,8 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.screenshot_shortcut = !p.screenshot_shortcut)))
         .into_any_element(),
         vec![row(
-            button_prompt(),
-            Some(if cfg!(windows) && screenshot_button(p) != p.screenshot_button {
-                tr!("Back and Start are reserved. This saved choice uses RB on Windows; choose another button to change it.")
-            } else if cfg!(windows) {
-                tr!("Hold Back + Start and press this button. The game also receives the presses. ↑ / ↓ belong to the volume.")
-            } else {
-                tr!("The game does not get it while Guide is held. ↑ / ↓ belong to the volume.")
-            }),
+            labels::button_held(),
+            Some(if screenshot_button(p) != p.screenshot_button { reserved_note() } else { labels::screenshot_button_desc() }),
             div().w(px(220.)).child(select),
         )
         .into_any_element()],
@@ -223,11 +196,7 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
 
 fn moment_desc(p: &OverlayPrefs) -> &'static str {
     if p.screenshot_shortcut && p.screenshot_button == ChordButton::Y {
-        if cfg!(windows) {
-            tr!("Off while Back + Start + Y takes the screenshot: pick another button for it above.")
-        } else {
-            tr!("Off while Guide + Y takes the screenshot: pick another button for it above.")
-        }
+        labels::moment_taken_by_screenshot()
     } else {
         tr!("Adds the time and a screenshot to the game's journal, to write about later in the overlay's Notes tab or the game's Journal.")
     }
@@ -327,31 +296,15 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             "The overlay is new and still being tested: it may not work with every controller, game or desktop. It stays off until you turn it on here."
         ))));
 
-    let main = card([with_sub_rows(toggle_row(
-        "overlay-enabled",
-        tr!("Turn on the overlay"),
-        Some(if cfg!(windows) {
-            tr!("During a game opened by Heronite, press Back + Start together to open it; press them again or B to close it. The game also receives controller input.")
-        } else {
-            tr!("During a game opened by Heronite, press the controller's Guide button (the centre one) to open it; press it again or B to close it.")
-        }),
-        p.enabled,
-    )
-    .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
-    .into_any_element(),
-    vec![toggle_row(
-        "overlay-without-game",
-        tr!("Open it without a game too"),
-        Some(if cfg!(windows) {
-            tr!("Back + Start and the keyboard shortcut open it at any time Heronite is running. Heronite keeps reading XInput controllers; other apps still receive their input. The keyboard shortcut is reserved for the overlay: it stops working in every other app while Heronite runs.")
-        } else {
-            tr!("Guide and the keyboard shortcut open it at any time Heronite is running, with the volume, the controllers and a way back to Heronite. Heronite then reads the controllers all the time, and Guide is the overlay's even outside games.")
-        }),
-        p.without_game,
-    )
-    .when(!p.enabled, |r| r.opacity(0.5))
-    .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.without_game = !p.without_game)))
-    .into_any_element()])]);
+    let main = card([with_sub_rows(
+        toggle_row("overlay-enabled", tr!("Turn on the overlay"), Some(labels::turn_on_desc()), p.enabled)
+            .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
+            .into_any_element(),
+        vec![toggle_row("overlay-without-game", tr!("Open it without a game too"), Some(labels::without_game_desc()), p.without_game)
+            .when(!p.enabled, |r| r.opacity(0.5))
+            .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.without_game = !p.without_game)))
+            .into_any_element()],
+    )]);
 
     let focused = d.overlay.hotkey.is_focused(window);
     let hotkey = hotkey_box(
@@ -399,7 +352,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let volume = card([
         toggle_row(
             "overlay-volume",
-            volume_title(),
+            labels::volume(),
             Some(tr!("Each press moves the system volume one step and shows the level.")),
             p.volume_shortcut,
         )
@@ -408,7 +361,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         row(tr!("Volume step"), Some(tr!("Also used by the volume rows of the overlay.")), step_tabs).into_any_element(),
     ]);
 
-    let moment = card([toggle_row("overlay-moment", moment_title(), Some(moment_desc(&p)), p.moment_shortcut)
+    let moment = card([toggle_row("overlay-moment", labels::moment(), Some(moment_desc(&p)), p.moment_shortcut)
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.moment_shortcut = !p.moment_shortcut)))
         .into_any_element()]);
 
@@ -487,12 +440,13 @@ pub(super) fn console_pad_shot_rows(d: &SettingsPage) -> Vec<crate::console::lis
     let index = screenshot_buttons().iter().position(|b| *b == screenshot_button(p)).unwrap_or(0);
     vec![
         Row::toggle("pad-shot", shot_title(p), p.screenshot_shortcut).desc(if cfg!(windows) { controller_limits() } else { "" }),
-        Row::choice("pad-shot-button", button_prompt(), screenshot_buttons().iter().map(|b| button_label(*b).into()).collect(), index)
-            .desc(if screenshot_button(p) != p.screenshot_button {
-                tr!("Back and Start are reserved. This saved choice uses RB on Windows; choose another button to change it.")
-            } else {
-                ""
-            }),
+        Row::choice(
+            "pad-shot-button",
+            labels::button_held(),
+            screenshot_buttons().iter().map(|b| button_label(*b).into()).collect(),
+            index,
+        )
+        .desc(if screenshot_button(p) != p.screenshot_button { reserved_note() } else { "" }),
     ]
 }
 
@@ -531,16 +485,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     };
     let mut rows = vec![
         Row::info("beta", tr!("Beta"), tr!("Being tested")).desc(tr!("New and still being tested; off until you turn it on.")),
-        Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled).desc(if cfg!(windows) {
-            tr!("Back + Start opens it during a game opened by Heronite")
-        } else {
-            tr!("The Guide button opens it during a game opened by Heronite")
-        }),
-        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game).desc(if cfg!(windows) {
-            tr!("Back + Start and the keyboard shortcut open it at any time")
-        } else {
-            tr!("Guide and the keyboard shortcut open it at any time")
-        }),
+        Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled).desc(labels::turn_on_short()),
+        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game).desc(labels::without_game_short()),
         Row::header(tr!("Keyboard")),
         Row::toggle("keyboard", tr!("Open it with a keyboard shortcut"), p.keyboard_shortcut)
             .desc(tr!("The keyboard drives it while open: arrows, Enter, Esc, Q / E")),
@@ -550,8 +496,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     ];
     rows.extend(console_pad_shot_rows(d));
     rows.extend([
-        Row::toggle("volume", volume_title(), p.volume_shortcut),
-        Row::toggle("moment", moment_title(), p.moment_shortcut).desc(moment_desc(p)),
+        Row::toggle("volume", labels::volume(), p.volume_shortcut),
+        Row::toggle("moment", labels::moment(), p.moment_shortcut).desc(moment_desc(p)),
     ]);
     rows.extend(console_replay_rows(d));
     rows.extend([
@@ -624,7 +570,7 @@ mod tests {
             assert_eq!(screenshot_button(&p), if cfg!(windows) { ChordButton::RB } else { button });
             assert_eq!(p.screenshot_button, button, "keep the saved choice for Linux");
         }
-        for &button in screenshot_buttons() {
+        for button in screenshot_buttons() {
             let p = OverlayPrefs { screenshot_button: button, ..OverlayPrefs::default() };
             assert_eq!(screenshot_button(&p), button);
         }

@@ -30,6 +30,7 @@
 //! desktops without layer-shell (GNOME, X11) cannot show them.
 
 mod debug;
+pub mod labels;
 mod moment;
 pub mod panel;
 mod replay;

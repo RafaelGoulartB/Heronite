@@ -156,8 +156,7 @@ impl Section {
             }
             Section::Launchers => tr!("Bring in the games of Heroic, Lutris, Bottles and Faugus. While on, a game added there shows up here too."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
-            Section::Overlay if cfg!(windows) => tr!("A panel Back + Start or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
-            Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
+            Section::Overlay => crate::overlay::labels::section_blurb(),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags."),
             Section::Achievements => tr!("Achievements from Steam, GOG, Epic Games and RetroAchievements. Heronite keeps its own copy of them, so your history stays even if a store or an account goes away."),
