@@ -1,6 +1,7 @@
 //! Options of the in-game overlay (the Guide button panel), kept in
 //! `AppPaths::overlay_prefs()`: they belong to this machine, not to the
 //! library.
+//! On Windows, Back + Start acts as Guide; controller input is not exclusive.
 //!
 //! - `enabled`: the overlay is off until the user turns it on (beta).
 //! - `screenshotShortcut`: Guide + `screenshotButton` (RB unless changed)
@@ -13,7 +14,7 @@
 //! - `volumeStep`: percent per press of the volume shortcut (2, 5 or 10).
 //! - `side`: `left` (default) or `right` edge of the screen.
 //! - `keyboardShortcut` / `keyboardAccelerator`: a keyboard shortcut
-//!   (`Super+G` unless changed) opens and closes it too.
+//!   (`Ctrl+Shift+G` on Windows, `Super+G` on Linux) opens and closes it too.
 //! - `withoutGame`: Guide and the keyboard shortcut open it with no game
 //!   running too (off: only during a game launched by the app).
 
@@ -104,7 +105,7 @@ impl ChordButton {
 }
 
 /// The keyboard shortcut that opens the overlay unless changed.
-pub const DEFAULT_KEYBOARD_ACCELERATOR: &str = "Super+G";
+pub const DEFAULT_KEYBOARD_ACCELERATOR: &str = if cfg!(windows) { "CommandOrControl+Shift+G" } else { "Super+G" };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OverlayPrefs {
@@ -218,7 +219,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(OverlayPrefs::load(&paths), OverlayPrefs::default());
-        assert_eq!(OverlayPrefs::default().keyboard_accelerator, "Super+G");
+        assert_eq!(OverlayPrefs::default().keyboard_accelerator, DEFAULT_KEYBOARD_ACCELERATOR);
 
         let p = OverlayPrefs {
             enabled: true,
@@ -236,5 +237,21 @@ mod tests {
         p.save(&paths).unwrap();
         assert_eq!(OverlayPrefs::load(&paths), p);
         assert_eq!(json_store::read_value(&paths.overlay_prefs()).unwrap()["other"], 1);
+    }
+
+    #[test]
+    fn default_shortcut_avoids_windows_game_bar() {
+        assert_eq!(DEFAULT_KEYBOARD_ACCELERATOR, if cfg!(windows) { "CommandOrControl+Shift+G" } else { "Super+G" });
+    }
+
+    #[test]
+    fn saved_shortcuts_are_not_replaced_by_the_platform_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::for_data(&crate::DataPaths::at(dir.path().join("heroic")));
+        for accelerator in ["Super+G", "Ctrl+Shift+O", "CommandOrControl+Alt+G"] {
+            let prefs = OverlayPrefs { keyboard_accelerator: accelerator.into(), ..OverlayPrefs::default() };
+            prefs.save(&paths).unwrap();
+            assert_eq!(OverlayPrefs::load(&paths).keyboard_accelerator, accelerator);
+        }
     }
 }

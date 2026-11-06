@@ -1,8 +1,11 @@
-//! The overlay's surfaces: Wayland layer-shell windows on the overlay layer,
+//! The overlay's surfaces: Wayland layer-shell or Windows topmost tool windows,
 //! drawn over everything (fullscreen games included) without keyboard focus,
 //! so the game keeps it; only a panel opened from the keyboard takes it
 //! (until it closes). Sizes follow the display's height, like console
 //! mode, smaller since the panel floats over a game (1440 px tall → 1.16).
+
+#[cfg(windows)]
+mod windows;
 
 #[cfg(target_os = "linux")]
 use gpui_kit::layer_shell::{Anchor, KeyboardInteractivity, Layer, LayerShellNotSupportedError, LayerShellOptions};
@@ -38,7 +41,29 @@ fn display_height(cx: &App) -> f32 {
     if let Some(h) = crate::env::parse::<f32>("HERONITE_DEBUG_OVERLAY_DISPLAY") {
         return h;
     }
+    #[cfg(windows)]
+    match target_screen() {
+        Ok(screen) => return screen.logical_height(),
+        Err(e) => log::warn!("overlay: cannot read the foreground monitor: {e}"),
+    }
     cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(0., f32::max).max(720.)
+}
+
+/// The monitor of the foreground window (the game's). In debug captures,
+/// `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` picks the one holding that desktop
+/// point (physical px) instead, so another monitor is tested without moving
+/// the focus.
+#[cfg(windows)]
+fn target_screen() -> std::io::Result<heronite_platform::overlay_window::Screen> {
+    use heronite_platform::overlay_window;
+    let point = crate::env::value("HERONITE_DEBUG_OVERLAY_MONITOR").and_then(|v| {
+        let (x, y) = v.split_once(',')?;
+        Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+    });
+    match point {
+        Some((x, y)) => overlay_window::screen_at(x, y),
+        None => overlay_window::foreground_screen(),
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -51,6 +76,20 @@ fn side_anchor(side: Side) -> Anchor {
 
 /// A layer-shell surface sits at the top, along `side`.
 fn options(namespace: &str, size: Size<Pixels>, side: Side, margin: Pixels, layer: bool, keyboard: bool) -> WindowOptions {
+    #[cfg(windows)]
+    if layer {
+        return WindowOptions {
+            titlebar: None,
+            window_bounds: Some(WindowBounds::Windowed(Bounds { origin: point(px(0.), px(0.)), size })),
+            app_id: Some(format!("app.heronite.{namespace}")),
+            window_background: WindowBackgroundAppearance::Transparent,
+            kind: WindowKind::PopUp,
+            focus: false,
+            show: false,
+            is_resizable: false,
+            ..Default::default()
+        };
+    }
     let kind = if layer { layer_shell(namespace, side, margin, keyboard) } else { WindowKind::Normal };
     WindowOptions {
         titlebar: None,
@@ -75,7 +114,7 @@ fn layer_shell(namespace: &str, side: Side, margin: Pixels, keyboard: bool) -> W
     })
 }
 
-/// Layer-shell is Wayland's: [`wayland`] is false elsewhere, so it is never
+/// Layer-shell is Wayland's: the native Windows path bypasses this.
 /// asked for.
 #[cfg(not(target_os = "linux"))]
 fn layer_shell(_namespace: &str, _side: Side, _margin: Pixels, _keyboard: bool) -> WindowKind {
@@ -84,17 +123,33 @@ fn layer_shell(_namespace: &str, _side: Side, _margin: Pixels, _keyboard: bool) 
 
 /// Opens the panel along one side of the screen. `layer = false` draws it in
 /// a normal window (debug captures); `keyboard`: it takes the keyboard.
+pub struct OpenedPanel<V: 'static> {
+    pub handle: WindowHandle<V>,
+    #[cfg(windows)]
+    pub shown: Option<Task<anyhow::Result<Option<heronite_platform::overlay_window::FocusReturn>>>>,
+}
+
 pub fn open_panel<V: Render>(
     cx: &mut App,
     side: Side,
     layer: bool,
     keyboard: bool,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
-) -> anyhow::Result<WindowHandle<V>> {
+) -> anyhow::Result<OpenedPanel<V>> {
     let s = scale(cx);
     let height = (PANEL_H * s).min(panel_max_height(cx));
     let size = size(px(PANEL_W * s), px(height));
-    cx.open_window(options("overlay", size, side, px(EDGE * s), layer, keyboard), build)
+    #[cfg(windows)]
+    if layer {
+        let (handle, shown) = windows::open(cx, "overlay", size, side, EDGE * s, keyboard, build)?;
+        return Ok(OpenedPanel { handle, shown: Some(shown) });
+    }
+    let handle = cx.open_window(options("overlay", size, side, px(EDGE * s), layer, keyboard), build)?;
+    Ok(OpenedPanel {
+        handle,
+        #[cfg(windows)]
+        shown: None,
+    })
 }
 
 /// The tallest the panel may be: the display minus the edge gaps (a Steam
@@ -117,6 +172,18 @@ pub fn open_notice<V: Render>(
         Side::Left => Side::Right,
         Side::Right => Side::Left,
     };
+    #[cfg(windows)]
+    if layer {
+        let (handle, shown) = windows::open(cx, "overlay-notice", size, corner, 24. * s, false, build)?;
+        cx.spawn(async move |cx| {
+            if let Err(error) = shown.await {
+                log::warn!("overlay: cannot show the native notice: {error:#}");
+                let _ = handle.update(cx, |_, window, _| window.remove_window());
+            }
+        })
+        .detach();
+        return Ok(handle);
+    }
     cx.open_window(options("overlay-notice", size, corner, px(24. * s), layer, false), build)
 }
 
@@ -132,7 +199,7 @@ pub fn is_layer_shell_missing(_e: &anyhow::Error) -> bool {
     false
 }
 
-/// Layer-shell only exists on Wayland (an X11 session cannot show the overlay).
-pub fn wayland() -> bool {
-    cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some()
+/// Windows has native topmost windows; Linux needs Wayland layer-shell.
+pub fn supported() -> bool {
+    cfg!(windows) || (cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some())
 }

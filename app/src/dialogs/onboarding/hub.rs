@@ -278,7 +278,13 @@ impl OnboardingDialog {
                     .text_size(px(12.))
                     .line_height(px(16.))
                     .text_color(theme::text_dim())
-                    .when(f.overlay_ok, |d| d.child(beta()).child(tr!("The overlay: Guide opens it, Guide + Y marks a moment")))
+                    .when(f.overlay_ok, |d| {
+                        d.child(beta()).child(if cfg!(windows) {
+                            tr!("Back + Start opens the overlay; hold both with Y to mark a moment. The game also receives controller input.")
+                        } else {
+                            tr!("The overlay: Guide opens it, Guide + Y marks a moment")
+                        })
+                    })
                     .when(!f.overlay_ok, |d| d.child(f.overlay_why.clone())),
             )
         })

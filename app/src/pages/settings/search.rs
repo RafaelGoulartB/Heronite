@@ -396,7 +396,25 @@ fn settings_of(section: Section) -> Vec<Setting> {
     if section == Section::GameDefaults {
         return DEFAULTS_INDEX.iter().flat_map(|(tab, labels)| labels.iter().map(|&label| Setting { label, tab: Some(*tab) })).collect();
     }
-    INDEX.iter().filter(|(s, _)| *s == section).flat_map(|(_, labels)| labels.iter().map(|&label| Setting { label, tab: None })).collect()
+    INDEX
+        .iter()
+        .filter(|(s, _)| *s == section)
+        .flat_map(|(_, labels)| labels.iter().copied())
+        .filter(|label| *label != "Guide + X: save the replay" || Section::Replay.available())
+        .map(|label| {
+            let label = if cfg!(windows) {
+                match label {
+                    "Button held with Guide" => "Button held with Back + Start",
+                    "Guide + ↑ / ↓: change the volume" => "Back + Start + ↑ / ↓: change the volume",
+                    "Guide + Y: mark a moment" => "Back + Start + Y: mark a moment",
+                    _ => label,
+                }
+            } else {
+                label
+            };
+            Setting { label, tab: None }
+        })
+        .collect()
 }
 
 /// How well `section` itself matches.
@@ -449,7 +467,25 @@ pub fn search(query: &str) -> Vec<Hit> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{search, settings_of, Section, DEFAULTS_INDEX, INDEX};
+    #[cfg(target_os = "linux")]
+    use super::{Pick, Setting, Tab, SHOWN};
+
+    #[test]
+    fn replay_search_follows_its_own_capability() {
+        let replay = Section::Replay.available();
+        assert_eq!(search("replay").iter().any(|hit| hit.section == Section::Replay), replay);
+        assert_eq!(settings_of(Section::Overlay).iter().any(|setting| setting.label == "Guide + X: save the replay"), replay);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_controller_settings_use_back_start() {
+        let settings = settings_of(Section::Overlay);
+        assert!(settings.iter().any(|s| s.label == "Back + Start + Y: mark a moment"));
+        assert!(settings.iter().all(|s| !s.label.contains("Guide")));
+        assert!(search("Back Start").iter().any(|hit| hit.section == Section::Overlay));
+    }
 
     #[cfg(target_os = "linux")]
     fn sections(query: &str) -> Vec<Section> {

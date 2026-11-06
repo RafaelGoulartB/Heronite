@@ -178,7 +178,10 @@ impl SettingsPage {
         // `HERONITE_DEBUG_PAGE=settings:<section>[:<defaults tab>]`.
         let debug = crate::env::value("HERONITE_DEBUG_PAGE");
         let mut parts = debug.as_deref().unwrap_or("").split(':').skip(1);
-        let section = take_requested_section(cx).or_else(|| parts.next().and_then(Section::parse)).unwrap_or(Section::General);
+        let section = take_requested_section(cx)
+            .or_else(|| parts.next().and_then(Section::parse))
+            .filter(|s| s.available())
+            .unwrap_or(Section::General);
         let defaults_section = match parts.next() {
             Some("performance" | "other" | "gamescope") => HSection::Performance,
             Some("launch" | "advanced") => HSection::Launch,
@@ -396,7 +399,7 @@ impl SettingsPage {
     }
 
     fn select(&mut self, section: Section, window: &mut Window, cx: &mut Context<Self>) {
-        if self.section == section {
+        if !section.available() || self.section == section {
             return;
         }
         self.section = section;

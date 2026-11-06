@@ -42,7 +42,11 @@ pub mod scoop;
 pub mod shell;
 
 #[cfg(windows)]
+pub mod audio;
+#[cfg(windows)]
 pub mod gamepad;
+#[cfg(windows)]
+pub mod overlay_window;
 #[cfg(windows)]
 pub mod power;
 #[cfg(windows)]

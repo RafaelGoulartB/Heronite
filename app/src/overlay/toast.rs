@@ -52,6 +52,11 @@ pub struct NoticeWindow {
 impl OverlayService {
     pub(super) fn show_notice(&mut self, notice: Notice, layer: bool, cx: &mut Context<Self>) {
         let generation = self.notice.as_ref().map_or(0, |n| n.generation + 1);
+        // A new Windows notice follows the current foreground monitor.
+        #[cfg(windows)]
+        if let Some(old) = self.notice.take() {
+            let _ = old.handle.update(cx, |_, window, _| window.remove_window());
+        }
         let reused = self.notice.as_ref().is_some_and(|n| {
             let notice = notice.clone();
             n.handle
@@ -76,7 +81,7 @@ impl OverlayService {
             }
         }
         // Debug captures need the time to find the window.
-        let shown = if self.debug_window { SHOWN_FOR * 6 } else { SHOWN_FOR };
+        let shown = if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() { SHOWN_FOR * 6 } else { SHOWN_FOR };
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(shown).await;
             this.update(cx, |this, cx| {
