@@ -3843,6 +3843,7 @@ dependencies = [
  "evdev",
  "heronite-data",
  "heronite-i18n",
+ "heronite-platform",
  "libc",
  "log",
  "serde_json",
