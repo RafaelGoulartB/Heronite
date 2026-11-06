@@ -52,6 +52,7 @@ Coming from Heroic, Lutris, Bottles, Faugus, or Playnite? Heronite imports your 
 | Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
 | Windows 10 and 11 (**recommended**) | `Heronite-Setup-x86_64.exe` | Run it: it installs for your user, no administrator rights needed |
 | Windows 10 and 11, portable | `Heronite-Portable-x86_64.zip` | Extract it anywhere and run `Heronite\heronite.exe`; the library, settings, and screenshots stay in that folder |
+| Windows 10 and 11, [Scoop](https://scoop.sh) | [`scoop-heronite`](https://github.com/RafaelGoulartB/scoop-heronite) bucket | `scoop bucket add heronite https://github.com/RafaelGoulartB/scoop-heronite`, then `scoop install heronite/heronite`; `scoop update heronite` updates it |
 
 </details>
 
