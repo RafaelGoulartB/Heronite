@@ -2,7 +2,7 @@
 //!
 //! - `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` opens the panel in a normal
 //!   window (`app.heronite.overlay`, for captures) as if the game were
-//!   running; `layer[:<app_name>]` opens the real layer-shell panel. Without
+//!   running; `layer[:<app_name>]` opens the native overlay surface. Without
 //!   an app name, the first installed game of the library; `none` opens it
 //!   with no game (as "without a game" allows).
 //! - `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a,wait:800,b` plays presses on it

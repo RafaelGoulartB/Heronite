@@ -93,13 +93,28 @@ impl OverlayPanel {
         let a = match &self.data.audio {
             None => return mixer::rows(&audio::AudioState::default(), self.game.is_some(), 0),
             Some(None) => {
-                return vec![Row::info("none", tr!("Volume control is not available"), "")
-                    .desc(tr!("It needs pactl (PipeWire or PulseAudio)."))
-                    .enabled(false)]
+                let why = if cfg!(windows) {
+                    tr!("Windows audio devices are not available.")
+                } else {
+                    tr!("It needs pactl (PipeWire or PulseAudio).")
+                };
+                return vec![Row::info("none", tr!("Volume control is not available"), "").desc(why).enabled(false)];
             }
             Some(Some(a)) => a,
         };
         let mut rows = mixer::rows(a, self.game.is_some(), mixer::AUDIO_APPS);
+        if !audio::device_switching_supported() {
+            if let Some(output) = a.default_output.and_then(|i| a.outputs.get(i)) {
+                rows.push(Row::info("output", tr!("Output"), mixer::short_row(&output.description)).icon(Icon::Headphones));
+            }
+            if let Some(input) = a.default_input.and_then(|i| a.inputs.get(i)) {
+                rows.push(Row::info("input", tr!("Microphone"), mixer::short_row(&input.description)).icon(Icon::Mic));
+            }
+            if let Some(muted) = a.mic_muted {
+                rows.push(Row::toggle("mic", tr!("Microphone on"), !muted).icon(if muted { Icon::MicOff } else { Icon::Mic }));
+            }
+            return rows;
+        }
         if !a.outputs.is_empty() {
             let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
             rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
@@ -127,7 +142,14 @@ impl OverlayPanel {
                 None => tr!("Not reported").to_string(),
             };
             rows.push(Row::info(SharedString::from(format!("battery-{i}")), tr!("Battery"), level).icon(Icon::BatteryFull));
-            let link = if c.bluetooth.is_some() { tr!("Bluetooth") } else { tr!("Wired or dongle") }.to_string();
+            let link = if cfg!(windows) {
+                tr!("Not reported by XInput")
+            } else if c.bluetooth.is_some() {
+                tr!("Bluetooth")
+            } else {
+                tr!("Wired or dongle")
+            }
+            .to_string();
             rows.push(Row::info(SharedString::from(format!("link-{i}")), tr!("Connection"), link).icon(Icon::SportsEsports));
             if c.bluetooth.is_some() {
                 rows.push(

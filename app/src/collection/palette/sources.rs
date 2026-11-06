@@ -189,6 +189,7 @@ fn section_help(s: Section) -> &'static str {
             tr!("Disk space of games, store tools, caches")
         }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
+        Section::Overlay if cfg!(windows) => tr!("Back + Start panel over games (beta)"),
         Section::Overlay => tr!("Guide button panel over games (beta)"),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),

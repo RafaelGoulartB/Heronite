@@ -46,6 +46,8 @@ pub mod audio;
 #[cfg(windows)]
 pub mod gamepad;
 #[cfg(windows)]
+pub mod overlay_window;
+#[cfg(windows)]
 pub mod power;
 #[cfg(windows)]
 pub mod registry;

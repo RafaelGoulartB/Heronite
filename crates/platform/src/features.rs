@@ -41,8 +41,10 @@ pub enum Feature {
     /// Save backups through Ludusavi: after play, by hand and restoring
     /// them (into Wine prefixes on Linux).
     SaveBackups,
-    /// The in-game overlay and the replay buffer.
+    /// The in-game overlay.
     Overlay,
+    /// Keeping and saving the last seconds of a game (Linux's replay buffer).
+    Replay,
     /// Steam's per-game settings: the launch options line and the
     /// compatibility tool (Proton) forced for a game.
     SteamGameSettings,
@@ -77,7 +79,7 @@ pub enum Feature {
 }
 
 impl Feature {
-    pub const ALL: [Feature; 21] = [
+    pub const ALL: [Feature; 22] = [
         Feature::Wine,
         Feature::EpicStore,
         Feature::GogStore,
@@ -88,6 +90,7 @@ impl Feature {
         Feature::Emulation,
         Feature::SaveBackups,
         Feature::Overlay,
+        Feature::Replay,
         Feature::SteamGameSettings,
         Feature::Sandbox,
         Feature::LaunchExtras,
@@ -114,6 +117,7 @@ impl Feature {
             Feature::Emulation => "emulation",
             Feature::SaveBackups => "save-backups",
             Feature::Overlay => "overlay",
+            Feature::Replay => "replay",
             Feature::SteamGameSettings => "steam-game-settings",
             Feature::Sandbox => "sandbox",
             Feature::LaunchExtras => "launch-extras",
@@ -175,7 +179,8 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::StoreClients
         | Feature::LauncherImports
         | Feature::XboxStore => true,
-        Feature::Wine | Feature::HeroicMigration | Feature::Overlay | Feature::SteamGameSettings | Feature::Sandbox | Feature::Wrappers => {
+        Feature::Overlay => cfg!(windows),
+        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::SteamGameSettings | Feature::Sandbox | Feature::Wrappers => {
             false
         }
     }
@@ -237,6 +242,14 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), Feature::ALL.len());
+    }
+
+    #[test]
+    fn overlay_and_replay_are_independent_capabilities() {
+        assert_eq!(built_in(Feature::Overlay), cfg!(any(target_os = "linux", windows)));
+        assert_eq!(built_in(Feature::Replay), cfg!(target_os = "linux"));
+        assert_eq!(parse_overrides("+overlay,-replay").0, [(Feature::Overlay, true), (Feature::Replay, false)]);
+        assert_eq!(parse_overrides("-overlay,+replay").0, [(Feature::Overlay, false), (Feature::Replay, true)]);
     }
 
     #[test]
