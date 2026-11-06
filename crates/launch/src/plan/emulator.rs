@@ -5,7 +5,7 @@ use heronite_i18n::tr;
 
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
 use crate::emulators::{
-    emulator_definition, expand_argv, node_basename, node_dirname, resolve_profile_template, vars_for_rom, UserEmulator,
+    emulator_definition, expand_argv, flatpak_run_args, node_basename, node_dirname, resolve_profile_template, vars_for_rom, UserEmulator,
 };
 use crate::env::Env;
 use crate::host::{run_mode, Os, RunMode};
@@ -143,7 +143,9 @@ pub(super) fn emulator_plan(
 
     let (program, args, dir) = match emulator {
         Some(e) if e.launch_kind == "flatpak" && e.flatpak_id.as_deref().map(|f| !f.is_empty()).unwrap_or(false) => {
-            let mut a = vec!["run".to_string(), e.flatpak_id.clone().unwrap()];
+            let mut a = vec!["run".to_string()];
+            a.extend(flatpak_run_args(&e.definition_id).iter().map(|s| s.to_string()));
+            a.push(e.flatpak_id.clone().unwrap());
             a.extend(argv);
             ("flatpak".to_string(), a, String::new())
         }
