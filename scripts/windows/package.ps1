@@ -24,7 +24,11 @@
   The release version (X.Y.Z). Default: the workspace version in Cargo.toml.
 .PARAMETER NoBuild
   Package the heronite-rs.exe and heronite-epic-login.exe already built in
-  target\release.
+  target\<profile> (target\release by default).
+.PARAMETER CargoProfile
+  The Cargo profile to build and package: release (the default, what
+  releases ship) or quick (release without fat LTO, much faster to build;
+  the packaging CI of pull requests uses it).
 .PARAMETER Iscc
   Path to ISCC.exe.
 
@@ -34,7 +38,9 @@
 param(
     [string]$Version,
     [switch]$NoBuild,
-    [string]$Iscc
+    [string]$Iscc,
+    [ValidateSet('release', 'quick')]
+    [string]$CargoProfile = 'release'
 )
 
 Set-StrictMode -Version Latest
@@ -94,7 +100,7 @@ Write-Host "ISCC: $IsccExe"
 Push-Location $Root
 try {
     if (-not $NoBuild) {
-        & cargo build --release -p heronite -p heronite-epic-login --locked
+        & cargo build --profile $CargoProfile -p heronite -p heronite-epic-login --locked
         if ($LASTEXITCODE -ne 0) { Fail "cargo build failed ($LASTEXITCODE)" }
     }
     $meta = & cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json
@@ -102,7 +108,7 @@ try {
 } finally {
     Pop-Location
 }
-$BinDir = Join-Path $meta.target_directory 'release'
+$BinDir = Join-Path $meta.target_directory $CargoProfile
 $Exe = Join-Path $BinDir 'heronite-rs.exe'
 $LoginExe = Join-Path $BinDir 'heronite-epic-login.exe'
 foreach ($f in @($Exe, $LoginExe)) {
