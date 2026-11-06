@@ -169,6 +169,12 @@ impl CollectionView {
                 self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
             }
             "statuses" => self.open_manage_statuses(window, cx),
+            // "All achievements" of the selected game (`HERONITE_DEBUG_SELECT`).
+            "achievements" => {
+                if let Some(key) = self.selected.clone() {
+                    self.open_achievements(key.as_ref(), window, cx);
+                }
+            }
             "batchedit" => self.open_batch_edit(window, cx),
             "categories" => self.open_manage_categories(window, cx),
             // fields[:genres|companies|series|themes|features|platforms]
