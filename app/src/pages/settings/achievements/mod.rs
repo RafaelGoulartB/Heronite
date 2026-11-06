@@ -60,16 +60,19 @@ pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 }
 
 /// "Over the game": a made-up achievement's notice in the overlay, or a
-/// desktop notification saying why it cannot show.
-fn overlay_test(cx: &mut App) {
+/// desktop notification saying why it cannot show (the overlay is off, or
+/// this desktop cannot draw it).
+fn overlay_test(d: &SettingsPage, cx: &mut App) {
     let shown = crate::overlay::get(cx)
         .map(|o| o.update(cx, |s, cx| s.show_achievement(tr!("Treasure Hunter").into(), Some(9.7), String::new(), cx)))
         .unwrap_or(false);
     if !shown {
-        crate::system::notify::send(
-            tr!("The overlay can't show it"),
-            tr!("Turn on the overlay in Settings → Overlay. It draws over games on Wayland desktops with layer-shell."),
-        );
+        let why = if d.overlay_enabled() {
+            crate::overlay::desktop_status().0
+        } else {
+            tr!("Turn on the overlay in Settings → Overlay.").into()
+        };
+        crate::system::notify::send(tr!("The overlay can't show it"), why);
     }
 }
 
@@ -154,7 +157,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                         .when(supported(Feature::Overlay), |d| {
                             d.child(
                                 button_sm("ach-notify-test-overlay", ButtonKind::Glass, tr!("Over the game"))
-                                    .on_click(|_, _, cx| overlay_test(cx)),
+                                    .on_click(cx.listener(|d, _, _, cx| overlay_test(d, cx))),
                             )
                         }),
                 )
