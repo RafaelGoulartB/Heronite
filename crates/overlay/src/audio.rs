@@ -1,16 +1,26 @@
 //! Blocking system and per-app audio controls. Call from a worker, not the UI.
-//! Uses PulseAudio/PipeWire's `pactl`.
+//! Linux uses PulseAudio/PipeWire's `pactl`; Windows uses Core Audio.
 
+#[cfg(not(windows))]
 mod linux;
+#[cfg(not(windows))]
 pub use linux::*;
 
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::*;
+
 /// A playback stream's identity, valid across snapshot enumeration changes.
+#[cfg(windows)]
+pub type StreamId = heronite_platform::audio::SessionId;
+#[cfg(not(windows))]
 pub type StreamId = u32;
 
 /// An output device (or an input one: [`AudioState::inputs`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Output {
-    /// PulseAudio sink/source name.
+    /// PulseAudio sink/source name, or Windows endpoint ID.
     pub name: String,
     /// Human name ("Arctis 7 Game").
     pub description: String,
@@ -31,7 +41,7 @@ pub struct AppAudio {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AudioState {
-    /// Volume of the default output, in percent (above 100 when boosted).
+    /// Volume of the default output, in percent (above 100 when boosted on Linux).
     pub volume: u16,
     pub muted: bool,
     pub outputs: Vec<Output>,
@@ -47,4 +57,9 @@ pub struct AudioState {
     pub game_muted: bool,
     /// Other apps playing, in backend enumeration order.
     pub apps: Vec<AppAudio>,
+}
+
+/// Windows exposes no documented API for changing the default endpoint.
+pub const fn device_switching_supported() -> bool {
+    !cfg!(windows)
 }
