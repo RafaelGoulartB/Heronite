@@ -213,7 +213,8 @@ pub fn candidates(dir: &Path) -> Vec<PathBuf> {
             if !path.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe")) {
                 continue;
             }
-            let Ok(meta) = e.metadata() else { continue };
+            // Followed: a game's executable may be a link.
+            let Ok(meta) = std::fs::metadata(&path) else { continue };
             let graphics = pe::imports(&path).ok().and_then(|i| api_from_imports(&i)).is_some();
             if graphics && meta.is_file() {
                 found.push((meta.len(), path));

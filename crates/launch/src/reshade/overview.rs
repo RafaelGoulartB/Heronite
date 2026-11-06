@@ -72,7 +72,12 @@ pub struct SourceRow {
 pub struct Overview {
     pub state: State,
     pub exe: Option<PathBuf>,
+    /// The game's executable when it is a launcher and `exe` was picked
+    /// next to it.
+    pub launcher: Option<PathBuf>,
     pub target: Option<Target>,
+    /// What `Compatibility.ini` says about the executable.
+    pub compat: Option<Compat>,
     /// Executables that import a graphics API, for "Change…".
     pub candidates: Vec<PathBuf>,
     /// The DLL name ReShade takes (or has, once installed).
@@ -106,10 +111,9 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
     let manifest = manifest::load(paths, f.game_id);
     let game_exe = detect::game_exe(f.install_path, f.executable, f.target_exe);
     let chosen = Some(PathBuf::from(&f.settings.target)).filter(|p| !f.settings.target.is_empty() && p.is_file());
-    let exe = chosen.or(game_exe);
+    let picked = chosen.is_some();
+    let mut exe = chosen.or(game_exe);
     let compat = |e: &Path| -> Option<Compat> { compat_text.as_deref().and_then(|t| catalog::compat(t, &file_name(e))) };
-    let compat_of_exe = exe.as_deref().and_then(compat);
-    let target = exe.as_deref().and_then(|e| detect::target(e, compat_of_exe.as_ref()).ok());
     let mut candidates = Vec::new();
     if let Some(dir) = exe.as_deref().and_then(Path::parent) {
         candidates = detect::candidates(dir);
@@ -119,6 +123,18 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
                     candidates.push(c);
                 }
             }
+        }
+    }
+    let mut compat_of_exe = exe.as_deref().and_then(compat);
+    let mut target = exe.as_deref().and_then(|e| detect::target(e, compat_of_exe.as_ref()).ok());
+    // A launcher draws nothing: the biggest program next to it that imports
+    // a graphics API is the game (the user can pick another).
+    let mut launcher = None;
+    if !picked && target.as_ref().is_some_and(|t| t.api.is_none()) {
+        if let Some(c) = candidates.first() {
+            launcher = exe.replace(c.clone());
+            compat_of_exe = compat(c);
+            target = detect::target(c, compat_of_exe.as_ref()).ok();
         }
     }
     let banned = compat_of_exe.as_ref().is_some_and(|c| c.banned);
@@ -143,16 +159,14 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
     let state = match (&manifest, &target) {
         (Some(_), _) => State::Installed,
         (None, None) => State::NoExecutable,
-        (None, Some(t)) => match (banned, api) {
-            (true, _) => State::Banned,
-            (_, None) => State::Launcher,
-            (_, Some(a @ (Api::Vulkan | Api::D3d8))) => State::Unsupported(a),
-            _ => match detect::find_reshade(&t.dir) {
-                Some((proxy, Occupant::ReShade { version, off, .. })) => State::Manual { proxy, version, off },
-                _ => match proxy.as_deref().map(|p| detect::occupant(&t.dir, p)) {
-                    Some(Occupant::Other { path, product }) => State::Conflict { path, product },
-                    _ => State::NotInstalled,
-                },
+        (None, Some(t)) => match (banned, detect::find_reshade(&t.dir), api) {
+            (true, _, _) => State::Banned,
+            (_, Some((proxy, Occupant::ReShade { version, off, .. })), _) => State::Manual { proxy, version, off },
+            (_, _, None) => State::Launcher,
+            (_, _, Some(a @ (Api::Vulkan | Api::D3d8))) => State::Unsupported(a),
+            _ => match proxy.as_deref().map(|p| detect::occupant(&t.dir, p)) {
+                Some(Occupant::Other { path, product }) => State::Conflict { path, product },
+                _ => State::NotInstalled,
             },
         },
     };
@@ -179,7 +193,9 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
     Overview {
         state,
         exe,
+        launcher,
         target,
+        compat: compat_of_exe,
         candidates,
         proxy,
         manifest,
