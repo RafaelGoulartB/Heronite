@@ -115,8 +115,8 @@ mod imp {
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
 
+    use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, ERROR_CANCELLED, WAIT_FAILED};
-    use windows_sys::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
     use windows_sys::Win32::System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE};
     use windows_sys::Win32::UI::Shell::{
         ShellExecuteExW, ShellExecuteW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
@@ -124,6 +124,7 @@ mod imp {
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
     use super::ElevatedError;
+    use crate::com::Com;
 
     fn wide(s: &OsStr) -> Vec<u16> {
         s.encode_wide().chain([0]).collect()
@@ -154,9 +155,9 @@ mod imp {
     pub(super) fn run_elevated(program: &Path, args: &OsStr, working_dir: Option<&Path>) -> Result<u32, ElevatedError> {
         let (verb, file, params) = (wide(OsStr::new("runas")), wide(program.as_os_str()), wide(args));
         let dir = working_dir.map(|d| wide(d.as_os_str()));
-        // The shell may hand the work to extensions that need COM.
-        // SAFETY: plain initialization of this thread; undone below when it succeeded.
-        let com = unsafe { CoInitializeEx(std::ptr::null(), (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32) } >= 0;
+        // The shell may hand the work to extensions that need COM; released
+        // below, before the wait.
+        let com = Com::init(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
         // SAFETY: zeroed is a valid value of this plain C struct; the fields set below point to strings that live through the call.
         let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
         info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
@@ -171,10 +172,7 @@ mod imp {
         let ok = unsafe { ShellExecuteExW(&mut info) } != 0;
         // SAFETY: reads this thread's last error, set by ShellExecuteExW.
         let error = unsafe { GetLastError() };
-        if com {
-            // SAFETY: pairs the successful CoInitializeEx above.
-            unsafe { CoUninitialize() };
-        }
+        drop(com);
         if !ok {
             return Err(error_of(error));
         }
