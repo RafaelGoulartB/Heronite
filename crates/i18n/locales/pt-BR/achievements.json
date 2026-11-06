@@ -82,6 +82,8 @@
   "Type your username and your password.": "Digite seu usuário e sua senha.",
   "Ultra rare": "Ultrarrara",
   "Uncommon": "Incomum",
+  "Unlocked at {time}": "Desbloqueada às {time}",
+  "Unlocked {date}": "Desbloqueada em {date}",
   "Unlocked {n}": "Desbloqueadas {n}",
   "Untouchable": "Intocável",
   "Up next": "A seguir",
@@ -113,5 +115,7 @@
   "{n} new achievements in {title}": "{n} novas conquistas em {title}",
   "{n} points": "{n} pontos",
   "{n} rare": "{n} raras",
+  "{n} secret achievement": "{n} conquista secreta",
+  "{n} secret achievements": "{n} conquistas secretas",
   "{signed} of {total} signed in": "{signed} de {total} conectados"
 }
