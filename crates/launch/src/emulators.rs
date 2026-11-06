@@ -220,6 +220,32 @@ static CATALOG: &[CatalogEmulator] = &[
         profiles: &[p("3ds", "{ImagePath}")],
     },
     CatalogEmulator {
+        id: "mupen64plus",
+        flatpak_id: None,
+        stop_pattern: Some("mupen64plus"),
+        // Not saved to mupen64plus.cfg: the fullscreen of one launch stays out of the user's own settings.
+        profiles: &[p("n64", "--fullscreen --nosaveoptions {ImagePath}")],
+    },
+    CatalogEmulator {
+        id: "m64py",
+        flatpak_id: Some("net.sourceforge.m64py.M64Py"),
+        stop_pattern: Some("m64py"),
+        profiles: &[p("n64", "{ImagePath}")],
+    },
+    CatalogEmulator {
+        id: "gopher64",
+        flatpak_id: Some("io.github.gopher64.gopher64"),
+        stop_pattern: Some("gopher64"),
+        profiles: &[p("n64", "--fullscreen {ImagePath}")],
+    },
+    CatalogEmulator { id: "epsxe", flatpak_id: None, stop_pattern: Some("epsxe"), profiles: &[p("ps1", "-nogui -loadiso {ImagePath}")] },
+    CatalogEmulator {
+        id: "desmume",
+        flatpak_id: Some("org.desmume.DeSmuME"),
+        stop_pattern: Some("desmume"),
+        profiles: &[p("nds", "{ImagePath}")],
+    },
+    CatalogEmulator {
         id: "retroarch",
         flatpak_id: Some("org.libretro.RetroArch"),
         stop_pattern: Some("retroarch"),
@@ -248,6 +274,17 @@ static CATALOG: &[CatalogEmulator] = &[
     },
     CatalogEmulator { id: "custom", flatpak_id: None, stop_pattern: None, profiles: &[p("custom", "{ImagePath}")] },
 ];
+
+/// Options `flatpak run` gets before the app id. The Flatpaks of these
+/// emulators have no access to the user's files and a ROM given on the command
+/// line is not reachable through a portal, so they read the host read-only
+/// (what the other emulators of the catalog ask for in their manifests).
+pub fn flatpak_run_args(definition_id: &str) -> &'static [&'static str] {
+    match definition_id {
+        "m64py" | "gopher64" | "desmume" => &["--filesystem=host:ro"],
+        _ => &[],
+    }
+}
 
 pub fn emulator_definition(id: &str) -> Option<&'static CatalogEmulator> {
     CATALOG.iter().find(|d| d.id == id)
@@ -432,5 +469,29 @@ mod tests {
         assert_eq!(definition_profile("retroarch", "snes").unwrap().arguments, RA);
         assert_eq!(definition_profile("mame", "arcade").unwrap().working_dir, Some("rom"));
         assert!(emulator_definition("custom").unwrap().stop_pattern.is_none());
+    }
+
+    #[test]
+    fn the_standalone_n64_ps1_and_ds_emulators() {
+        let n64 = |id: &str| definition_profile(id, "n64").unwrap().arguments;
+        assert_eq!(n64("mupen64plus"), "--fullscreen --nosaveoptions {ImagePath}");
+        assert_eq!(n64("m64py"), "{ImagePath}");
+        assert_eq!(n64("gopher64"), "--fullscreen {ImagePath}");
+        assert_eq!(definition_profile("epsxe", "ps1").unwrap().arguments, "-nogui -loadiso {ImagePath}");
+        assert_eq!(definition_profile("desmume", "nds").unwrap().arguments, "{ImagePath}");
+        assert_eq!(emulator_definition("m64py").unwrap().flatpak_id, Some("net.sourceforge.m64py.M64Py"));
+        assert_eq!(emulator_definition("gopher64").unwrap().flatpak_id, Some("io.github.gopher64.gopher64"));
+        assert_eq!(emulator_definition("desmume").unwrap().flatpak_id, Some("org.desmume.DeSmuME"));
+        // Mupen64Plus and ePSXe have no Flatpak.
+        assert!(emulator_definition("mupen64plus").unwrap().flatpak_id.is_none());
+        assert!(emulator_definition("epsxe").unwrap().flatpak_id.is_none());
+    }
+
+    #[test]
+    fn flatpaks_that_cannot_see_the_roms_get_read_access() {
+        assert_eq!(flatpak_run_args("gopher64"), ["--filesystem=host:ro"]);
+        assert_eq!(flatpak_run_args("desmume"), ["--filesystem=host:ro"]);
+        assert_eq!(flatpak_run_args("m64py"), ["--filesystem=host:ro"]);
+        assert!(flatpak_run_args("pcsx2").is_empty() && flatpak_run_args("custom").is_empty());
     }
 }

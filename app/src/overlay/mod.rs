@@ -7,8 +7,9 @@
 //! The service follows the launch events (from the hub, like the post-game
 //! work), so it works with the main window closed to the tray. While a game
 //! runs and the overlay is on, `heronite_overlay::input` reads the
-//! controllers on its own thread; while the panel is open, or Guide is held,
-//! the controllers are grabbed and the game gets none of their input.
+//! controllers on its own thread. Linux grabs them while the panel is open
+//! or Guide is held. Windows uses Back+Start as Guide through XInput and
+//! cannot prevent the game from receiving the same buttons.
 //!
 //! Settings can let it open with no game running too ("without a game"):
 //! then the input thread and the shortcut run while the app does, and the
@@ -23,11 +24,13 @@
 //! as the screenshot shortcut). Opened from the keyboard, the panel takes
 //! the keyboard until it closes, so it can be driven without a controller.
 //!
-//! The panel and the notices are Wayland layer-shell surfaces
-//! ([`window`]): they float over a fullscreen game without taking focus
-//! from it. Desktops without layer-shell (GNOME, X11) cannot show them.
+//! Windows uses native topmost tool windows over borderless/windowed games,
+//! not exclusive fullscreen. Its keyboard default is Ctrl+Shift+G; notices
+//! never activate. Linux uses Wayland layer-shell surfaces ([`window`]);
+//! desktops without layer-shell (GNOME, X11) cannot show them.
 
 mod debug;
+pub mod labels;
 mod moment;
 pub mod panel;
 mod replay;
@@ -101,6 +104,8 @@ pub struct OverlayService {
     watcher: Option<Watcher>,
     controllers: Vec<Controller>,
     panel: Option<WindowHandle<OverlayPanel>>,
+    #[cfg(windows)]
+    focus_return: Option<heronite_platform::overlay_window::FocusReturn>,
     /// When the panel opened (a replay saved from it cuts that time off).
     panel_opened: Option<Instant>,
     notice: Option<toast::NoticeWindow>,
@@ -137,9 +142,11 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         watcher: None,
         controllers: Vec::new(),
         panel: None,
+        #[cfg(windows)]
+        focus_return: None,
         panel_opened: None,
         notice: None,
-        layer_shell: window::wayland(),
+        layer_shell: window::supported(),
         debug_window: false,
         debug_live_fps: None,
         fps_limits: HashMap::new(),
@@ -156,6 +163,9 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
 /// Whether this desktop can draw the overlay over games: it needs Wayland's
 /// layer-shell, which GNOME does not have.
 pub fn desktop_status() -> (String, bool) {
+    if cfg!(windows) {
+        return (tr!("Supported over windowed and borderless games. Exclusive fullscreen is not supported.").into(), true);
+    }
     if std::env::var_os("WAYLAND_DISPLAY").is_none() {
         return (tr!("Not supported on X11: the overlay needs a Wayland session.").into(), false);
     }
@@ -422,15 +432,56 @@ impl OverlayService {
             self.release_input();
             return;
         }
+        let layer = !self.debug_window;
+        if layer && window::exclusive_fullscreen() {
+            self.release_input();
+            return;
+        }
         let service = cx.entity().downgrade();
         let controllers = self.controllers.clone();
         let (paths, step) = (self.data_paths.clone(), self.prefs.volume_step);
-        let layer = !self.debug_window;
-        match window::open_panel(cx, self.prefs.side, layer, keyboard, move |window, cx| {
-            cx.new(|cx| OverlayPanel::new(service, paths, step, game, controllers, keyboard, window, cx))
+        let display = window::Display::current(cx);
+        let scale = display.scale();
+        match window::open_panel(cx, display, self.prefs.side, layer, keyboard, move |window, cx| {
+            #[cfg(windows)]
+            {
+                let closing = service.clone();
+                window.on_window_should_close(cx, move |_, cx| {
+                    if let Some(service) = closing.upgrade() {
+                        cx.defer(move |cx| service.update(cx, |s, cx| s.close_panel(cx)));
+                    }
+                    false
+                });
+            }
+            cx.new(|cx| OverlayPanel::new(service, paths, step, game, controllers, keyboard, scale, window, cx))
         }) {
-            Ok(handle) => {
-                self.panel = Some(handle);
+            Ok(opened) => {
+                self.panel = Some(opened.handle);
+                #[cfg(windows)]
+                if let Some(shown) = opened.shown {
+                    let handle = opened.handle;
+                    cx.spawn(async move |this, cx| match shown.await {
+                        Ok(mut focus) => {
+                            this.update(cx, |s, _| {
+                                if s.panel == Some(handle) {
+                                    s.focus_return = focus.take();
+                                }
+                            })
+                            .ok();
+                            drop(focus);
+                        }
+                        Err(error) => {
+                            log::warn!("overlay: cannot show the native panel: {error:#}");
+                            this.update(cx, |s, cx| {
+                                if s.panel == Some(handle) {
+                                    s.close_panel(cx);
+                                }
+                            })
+                            .ok();
+                        }
+                    })
+                    .detach();
+                }
                 self.panel_opened = Some(Instant::now());
             }
             Err(e) => {
@@ -452,6 +503,18 @@ impl OverlayService {
         self.release_input();
         self.panel_opened = None;
         if let Some(handle) = self.panel.take() {
+            #[cfg(windows)]
+            {
+                let focus = self.focus_return.take();
+                // Focus restoration also sends native messages; do it outside
+                // the App borrow, before GPUI destroys the panel's HWND.
+                cx.spawn(async move |_, cx| {
+                    drop(focus);
+                    let _ = handle.update(cx, |_, window, _| window.remove_window());
+                })
+                .detach();
+            }
+            #[cfg(not(windows))]
             let _ = handle.update(cx, |_, window, _| window.remove_window());
         }
     }
@@ -511,6 +574,9 @@ impl OverlayService {
             return;
         }
         let layer = !self.debug_window;
+        if layer && window::exclusive_fullscreen() {
+            return;
+        }
         self.show_notice(notice, layer, cx);
     }
 
@@ -543,6 +609,6 @@ fn options(prefs: &OverlayPrefs) -> Options {
         screenshot_button: prefs.screenshot_button.into(),
         volume: prefs.volume_shortcut,
         moment: prefs.moment_shortcut,
-        replay: prefs.replay_shortcut,
+        replay: prefs.replay_shortcut && heronite_platform::supported(heronite_platform::Feature::Replay),
     }
 }

@@ -46,7 +46,7 @@ fn rig() -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![], platform_roots: vec![] };
     let (tx, rx) = channel();
     let spawner = Arc::new(FakeSpawner::new());
     let procs = Arc::new(FakeProcs::new());

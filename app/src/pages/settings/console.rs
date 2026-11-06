@@ -68,6 +68,14 @@ const GROUPS: [(&str, &[CSec]); 4] = [
 ];
 
 impl CSec {
+    fn available(self) -> bool {
+        match self {
+            CSec::Panel(s) | CSec::Rows(s) => s.available(),
+            CSec::Defaults(_) => Section::GameDefaults.available(),
+            CSec::Extras => true,
+        }
+    }
+
     fn label(self) -> String {
         match self {
             CSec::Panel(s) | CSec::Rows(s) => s.label().to_string(),
@@ -93,6 +101,10 @@ impl CSec {
     }
 }
 
+fn sections(group: usize) -> Vec<CSec> {
+    GROUPS[group].1.iter().copied().filter(|s| s.available()).collect()
+}
+
 /// Console focus of the Settings page.
 #[derive(Default)]
 pub struct ConsoleState {
@@ -106,7 +118,7 @@ pub struct ConsoleState {
 
 impl SettingsPage {
     fn console_sec(&self) -> CSec {
-        let (_, secs) = GROUPS[self.console.group];
+        let secs = sections(self.console.group);
         secs[self.console.nav.min(secs.len() - 1)]
     }
 
@@ -194,7 +206,7 @@ impl SettingsPage {
 
     pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let sec = self.console_sec();
-        let (_, secs) = GROUPS[self.console.group];
+        let secs = sections(self.console.group);
         let groups: Vec<SharedString> = GROUPS.iter().map(|(g, _)| SharedString::from(tr(g))).collect();
         let content_focus = self.console.content && !self.console.layer.is_open();
         let mut nav = div().flex().flex_col().gap(u(4.)).w(u(320.)).flex_none();
@@ -282,7 +294,7 @@ impl PadTarget for SettingsPage {
             _ => {}
         }
         if !self.console.content {
-            let len = GROUPS[self.console.group].1.len();
+            let len = sections(self.console.group).len();
             match pad {
                 Pad::Up if self.console.nav > 0 => {
                     self.console.nav -= 1;
@@ -398,5 +410,19 @@ impl SettingsPage {
             cx.notify();
         });
         self.console.layer.open(&browser, sub);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sections, CSec, Section, GROUPS};
+
+    #[test]
+    fn console_navigation_hides_unavailable_features() {
+        let sections: Vec<_> = (0..GROUPS.len()).flat_map(sections).collect();
+        assert_eq!(sections.contains(&CSec::Rows(Section::Overlay)), Section::Overlay.available());
+        assert_eq!(sections.contains(&CSec::Rows(Section::Replay)), Section::Replay.available());
+        assert!(sections.iter().all(|s| s.available()));
+        assert!((0..GROUPS.len()).all(|group| !super::sections(group).is_empty()));
     }
 }

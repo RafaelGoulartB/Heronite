@@ -170,7 +170,7 @@ impl Global for ReplayGlobal {}
 
 /// Creates the service (once). Called by the hub with the shared runtime.
 pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
-    if cx.has_global::<ReplayGlobal>() {
+    if !heronite_platform::supported(heronite_platform::Feature::Replay) || cx.has_global::<ReplayGlobal>() {
         return;
     }
     // A tiny file in the app's config folder.

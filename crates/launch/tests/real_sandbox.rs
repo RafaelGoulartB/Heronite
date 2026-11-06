@@ -119,7 +119,8 @@ fn run(proton: &str, umu: bool) {
 
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
-    let steam = SteamLocator { home: dir.path().into(), steam_path: dir.path().join("steam"), system_roots: vec![] };
+    let steam =
+        SteamLocator { home: dir.path().into(), steam_path: dir.path().join("steam"), system_roots: vec![], platform_roots: vec![] };
     let launcher =
         Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs.clone(), LauncherConfig::default(), tx);
     let shmem_before = shmem_kib();

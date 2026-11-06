@@ -41,11 +41,17 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
-  windows:
-    # Keeps the Windows port building: the same clippy and tests on Windows
-    # (formatting is the same on both, the Linux job checks it).
-    name: Clippy and tests (Windows)
+  # Keep the Windows port building: the same clippy and tests on Windows
+  # (formatting is the same on both, the Linux job checks it). Clippy and the
+  # tests are two jobs so they run side by side: the test build is the long
+  # one, and clippy's checking shares nothing with it.
+  windows-clippy:
+    name: Clippy (Windows)
     runs-on: windows-latest
+    env:
+      # lld links several times faster than link.exe (build scripts and
+      # proc macros here). .cargo/config.toml does the same on Linux.
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -56,5 +62,19 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+  windows-tests:
+    name: Tests (Windows)
+    runs-on: windows-latest
+    env:
+      # With link.exe, linking the ~55 test programs took about half of the
+      # test build. Releases still link with link.exe (scripts/windows/package.ps1).
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: rust-lld.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Tests
         run: cargo test --workspace --no-fail-fast

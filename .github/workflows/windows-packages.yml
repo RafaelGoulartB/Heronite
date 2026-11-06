@@ -1,9 +1,9 @@
 name: Windows packages
 
 # Builds the Windows installer and portable zip the way a release does
-# (scripts/windows/package.ps1), checks them (scripts/windows/smoke.ps1) and
-# keeps them as workflow artifacts for trying out. Never signed, never
-# published: releases are made by release.yml.
+# (scripts/windows/package.ps1, with a faster Cargo profile), checks them
+# (scripts/windows/smoke.ps1) and keeps them as workflow artifacts for trying
+# out. Never signed, never published: releases are made by release.yml.
 on:
   pull_request:
     paths:
@@ -51,9 +51,16 @@ jobs:
           $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Inno Setup installer failed ($($p.ExitCode))" }
       - name: Package
-        run: ./scripts/windows/package.ps1
+        # The `quick` profile: the release build without fat LTO and with
+        # many codegen units, the same program for checking the packages in a
+        # fraction of the time. Releases (release.yml) build with `release`.
+        run: ./scripts/windows/package.ps1 -CargoProfile quick
       - name: Check the packages
-        run: ./scripts/windows/smoke.ps1
+        run: |
+          foreach ($language in @('english', 'brazilianportuguese', 'spanish', 'german')) {
+            ./scripts/windows/smoke.ps1 -Language $language
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: Heronite-windows-unsigned

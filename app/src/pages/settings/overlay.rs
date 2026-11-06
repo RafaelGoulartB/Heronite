@@ -11,9 +11,10 @@ use gpui_kit::*;
 use heronite_data::overlay_prefs::{ChordButton, OverlayPrefs, Side, DEFAULT_KEYBOARD_ACCELERATOR, VOLUME_STEPS};
 use heronite_i18n::{tr, trn};
 use heronite_overlay::input::Controller;
+use heronite_platform::{supported, Feature};
 
 use super::SettingsPage;
-use crate::overlay::HotkeyState;
+use crate::overlay::{labels, HotkeyState};
 use crate::pages::{status_pill, PageCtx};
 use crate::theme;
 use crate::ui::controls::{caption, card, row, tabs, toggle_row, with_sub_rows};
@@ -118,7 +119,38 @@ fn button_label(b: ChordButton) -> String {
 }
 
 fn shot_title(p: &OverlayPrefs) -> String {
-    tr!("Guide + {button}: take a screenshot", button = button_short(p.screenshot_button))
+    labels::screenshot(&button_short(screenshot_button(p)))
+}
+
+/// On Windows Back + Start stand for Guide, so neither can go with it.
+fn stands_for_guide(b: ChordButton) -> bool {
+    cfg!(windows) && matches!(b, ChordButton::Start | ChordButton::Select)
+}
+
+/// The buttons the screenshot can use here.
+fn screenshot_buttons() -> Vec<ChordButton> {
+    ChordButton::ALL.into_iter().filter(|b| !stands_for_guide(*b)).collect()
+}
+
+fn screenshot_button(p: &OverlayPrefs) -> ChordButton {
+    if screenshot_buttons().contains(&p.screenshot_button) {
+        p.screenshot_button
+    } else {
+        ChordButton::RB
+    }
+}
+
+/// A saved Back or Start (from Linux) is replaced on Windows.
+fn reserved_note() -> &'static str {
+    tr!("Back and Start are reserved. This saved choice uses RB on Windows; choose another button to change it.")
+}
+
+fn controller_limits() -> &'static str {
+    tr!("Windows does not block controller input: the game also receives Back + Start and the buttons used in the overlay.")
+}
+
+fn controller_support() -> &'static str {
+    tr!("Only XInput controllers are supported. Back + Start replaces Guide; the real Guide button is not available through XInput and Game Bar or Steam may use it.")
 }
 
 /// The Guide screenshot toggle and its button, here and in Settings →
@@ -126,11 +158,11 @@ fn shot_title(p: &OverlayPrefs) -> String {
 pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let p = &d.overlay.prefs;
     let options: Vec<(SharedString, bool)> =
-        ChordButton::ALL.iter().map(|b| (button_label(*b).into(), *b == p.screenshot_button)).collect();
+        screenshot_buttons().iter().map(|b| (button_label(*b).into(), *b == screenshot_button(p))).collect();
     let select = select_field(
         "overlay-shot-button",
         None,
-        button_label(p.screenshot_button),
+        button_label(screenshot_button(p)),
         false,
         d.overlay.button_open,
         options,
@@ -141,7 +173,7 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
         },
         |d: &mut SettingsPage, i, _, cx| {
             d.overlay.button_open = false;
-            update(d, cx, |p| p.screenshot_button = ChordButton::ALL[i]);
+            update(d, cx, |p| p.screenshot_button = screenshot_buttons()[i]);
         },
     );
     card([with_sub_rows(
@@ -154,8 +186,8 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.screenshot_shortcut = !p.screenshot_shortcut)))
         .into_any_element(),
         vec![row(
-            tr!("Button held with Guide"),
-            Some(tr!("The game does not get it while Guide is held. ↑ / ↓ belong to the volume.")),
+            labels::button_held(),
+            Some(if screenshot_button(p) != p.screenshot_button { reserved_note() } else { labels::screenshot_button_desc() }),
             div().w(px(220.)).child(select),
         )
         .into_any_element()],
@@ -164,7 +196,7 @@ pub(super) fn pad_shot_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
 
 fn moment_desc(p: &OverlayPrefs) -> &'static str {
     if p.screenshot_shortcut && p.screenshot_button == ChordButton::Y {
-        tr!("Off while Guide + Y takes the screenshot: pick another button for it above.")
+        labels::moment_taken_by_screenshot()
     } else {
         tr!("Adds the time and a screenshot to the game's journal, to write about later in the overlay's Notes tab or the game's Journal.")
     }
@@ -195,6 +227,9 @@ pub(super) fn replay_shortcut_card(d: &SettingsPage, cx: &mut Context<SettingsPa
 
 /// Console row of Guide + X, here and in Settings → Replay.
 pub(super) fn console_replay_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
+    if !supported(Feature::Replay) {
+        return Vec::new();
+    }
     let p = &d.overlay.prefs;
     vec![crate::console::list::Row::toggle("pad-replay", tr!("Guide + X: save the replay"), p.replay_shortcut).desc(replay_desc(p))]
 }
@@ -202,6 +237,9 @@ pub(super) fn console_replay_rows(d: &SettingsPage) -> Vec<crate::console::list:
 /// Applies a change of [`console_replay_rows`]; `false` when it is not one.
 pub(super) fn console_apply_replay(d: &mut SettingsPage, outcome: &crate::console::list::Outcome, cx: &mut Context<SettingsPage>) -> bool {
     use crate::console::list::{Outcome, Value};
+    if !supported(Feature::Replay) {
+        return false;
+    }
     match outcome {
         Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "pad-replay" => {
             let on = *on;
@@ -258,23 +296,15 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             "The overlay is new and still being tested: it may not work with every controller, game or desktop. It stays off until you turn it on here."
         ))));
 
-    let main = card([with_sub_rows(toggle_row(
-        "overlay-enabled",
-        tr!("Turn on the overlay"),
-        Some(tr!("During a game opened by Heronite, press the controller's Guide button (the centre one) to open it; press it again or B to close it.")),
-        p.enabled,
-    )
-    .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
-    .into_any_element(),
-    vec![toggle_row(
-        "overlay-without-game",
-        tr!("Open it without a game too"),
-        Some(tr!("Guide and the keyboard shortcut open it at any time Heronite is running, with the volume, the controllers and a way back to Heronite. Heronite then reads the controllers all the time, and Guide is the overlay's even outside games.")),
-        p.without_game,
-    )
-    .when(!p.enabled, |r| r.opacity(0.5))
-    .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.without_game = !p.without_game)))
-    .into_any_element()])]);
+    let main = card([with_sub_rows(
+        toggle_row("overlay-enabled", tr!("Turn on the overlay"), Some(labels::turn_on_desc()), p.enabled)
+            .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
+            .into_any_element(),
+        vec![toggle_row("overlay-without-game", tr!("Open it without a game too"), Some(labels::without_game_desc()), p.without_game)
+            .when(!p.enabled, |r| r.opacity(0.5))
+            .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.without_game = !p.without_game)))
+            .into_any_element()],
+    )]);
 
     let focused = d.overlay.hotkey.is_focused(window);
     let hotkey = hotkey_box(
@@ -293,7 +323,11 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         toggle_row(
             "overlay-keyboard",
             tr!("Open it with a keyboard shortcut"),
-            Some(tr!("The same shortcut closes it. Opened from the keyboard, the keyboard drives it: arrows, Enter, Esc and Q / E for the tabs; the game gets no keys until it closes.")),
+            Some(if cfg!(windows) {
+                tr!("The same shortcut closes it. The panel takes keyboard focus: arrows, Enter, Esc and Q / E for the tabs. Games using raw input may still receive keys.")
+            } else {
+                tr!("The same shortcut closes it. Opened from the keyboard, the keyboard drives it: arrows, Enter, Esc and Q / E for the tabs; the game gets no keys until it closes.")
+            }),
             p.keyboard_shortcut,
         )
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.keyboard_shortcut = !p.keyboard_shortcut)))
@@ -318,7 +352,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let volume = card([
         toggle_row(
             "overlay-volume",
-            tr!("Guide + ↑ / ↓: change the volume"),
+            labels::volume(),
             Some(tr!("Each press moves the system volume one step and shows the level.")),
             p.volume_shortcut,
         )
@@ -327,10 +361,9 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         row(tr!("Volume step"), Some(tr!("Also used by the volume rows of the overlay.")), step_tabs).into_any_element(),
     ]);
 
-    let moment = card([toggle_row("overlay-moment", tr!("Guide + Y: mark a moment"), Some(moment_desc(&p)), p.moment_shortcut)
+    let moment = card([toggle_row("overlay-moment", labels::moment(), Some(moment_desc(&p)), p.moment_shortcut)
         .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.moment_shortcut = !p.moment_shortcut)))
         .into_any_element()]);
-    let replay = replay_shortcut_card(d, cx);
 
     let look = card([row(tr!("Side of the screen"), None, side_tabs).into_any_element()]);
 
@@ -344,13 +377,16 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .flex_col()
         .gap(px(6.))
         .px(px(6.))
-        .child(meta_text(tr!("While the overlay is open, or the Guide button is held, the game does not get the controller's buttons.")))
-        .child(meta_text(tr!(
-            "If Steam is open with Steam Input on, it uses the Guide button too: turn off \"Guide Button Focuses Steam\" in Steam → Settings → Controller."
-        )))
-        .child(meta_text(tr!(
-            "Games that read a controller directly (some PlayStation and Switch controllers) may still get the presses."
-        )));
+        .when(cfg!(windows), |d| d.child(meta_text(controller_limits())).child(meta_text(controller_support())))
+        .when(!cfg!(windows), |d| {
+            d.child(meta_text(tr!("While the overlay is open, or the Guide button is held, the game does not get the controller's buttons.")))
+                .child(meta_text(tr!(
+                    "If Steam is open with Steam Input on, it uses the Guide button too: turn off \"Guide Button Focuses Steam\" in Steam → Settings → Controller."
+                )))
+                .child(meta_text(tr!(
+                    "Games that read a controller directly (some PlayStation and Switch controllers) may still get the presses."
+                )))
+        });
 
     let dim = |enabled: bool, el: Div| div().when(!enabled, |d| d.opacity(0.5)).child(el);
     div()
@@ -362,7 +398,17 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(caption(tr!("Keyboard")))
         .child(dim(p.enabled, keyboard))
         .child(caption(tr!("Shortcuts without opening it")))
-        .child(dim(p.enabled, div().flex().flex_col().gap(px(12.)).child(shot).child(volume).child(moment).child(replay)))
+        .child(dim(
+            p.enabled,
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(12.))
+                .child(shot)
+                .child(volume)
+                .child(moment)
+                .when(supported(Feature::Replay), |col| col.child(replay_shortcut_card(d, cx))),
+        ))
         .child(caption(tr!("Position")))
         .child(dim(p.enabled, look))
         .child(caption(tr!("Status")))
@@ -373,7 +419,11 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
 }
 
 /// Shortcuts offered in console mode (a controller cannot record one).
-const CONSOLE_ACCELERATORS: [&str; 4] = ["Super+G", "Super+O", "Super+Shift+G", "CommandOrControl+Shift+G"];
+const CONSOLE_ACCELERATORS: [&str; 4] = if cfg!(windows) {
+    ["CommandOrControl+Shift+G", "CommandOrControl+Shift+O", "CommandOrControl+Alt+G", "CommandOrControl+Alt+O"]
+} else {
+    ["Super+G", "Super+O", "Super+Shift+G", "CommandOrControl+Shift+G"]
+};
 
 fn console_accelerators(current: &str) -> Vec<String> {
     let mut v: Vec<String> = CONSOLE_ACCELERATORS.iter().map(|s| s.to_string()).collect();
@@ -387,15 +437,16 @@ fn console_accelerators(current: &str) -> Vec<String> {
 pub(super) fn console_pad_shot_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
     let p = &d.overlay.prefs;
-    let index = ChordButton::ALL.iter().position(|b| *b == p.screenshot_button).unwrap_or(0);
+    let index = screenshot_buttons().iter().position(|b| *b == screenshot_button(p)).unwrap_or(0);
     vec![
-        Row::toggle("pad-shot", shot_title(p), p.screenshot_shortcut),
+        Row::toggle("pad-shot", shot_title(p), p.screenshot_shortcut).desc(if cfg!(windows) { controller_limits() } else { "" }),
         Row::choice(
             "pad-shot-button",
-            tr!("Button held with Guide"),
-            ChordButton::ALL.iter().map(|b| button_label(*b).into()).collect(),
+            labels::button_held(),
+            screenshot_buttons().iter().map(|b| button_label(*b).into()).collect(),
             index,
-        ),
+        )
+        .desc(if screenshot_button(p) != p.screenshot_button { reserved_note() } else { "" }),
     ]
 }
 
@@ -412,7 +463,7 @@ pub(super) fn console_apply_pad_shot(
             update(d, cx, |p| p.screenshot_shortcut = on);
         }
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "pad-shot-button" => {
-            let button = ChordButton::ALL.get(*index).copied().unwrap_or_default();
+            let button = screenshot_buttons().get(*index).copied().unwrap_or_default();
             update(d, cx, |p| p.screenshot_button = button);
         }
         _ => return false,
@@ -434,10 +485,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     };
     let mut rows = vec![
         Row::info("beta", tr!("Beta"), tr!("Being tested")).desc(tr!("New and still being tested; off until you turn it on.")),
-        Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled)
-            .desc(tr!("The Guide button opens it during a game opened by Heronite")),
-        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game)
-            .desc(tr!("Guide and the keyboard shortcut open it at any time")),
+        Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled).desc(labels::turn_on_short()),
+        Row::toggle("without-game", tr!("Open it without a game too"), p.without_game).desc(labels::without_game_short()),
         Row::header(tr!("Keyboard")),
         Row::toggle("keyboard", tr!("Open it with a keyboard shortcut"), p.keyboard_shortcut)
             .desc(tr!("The keyboard drives it while open: arrows, Enter, Esc, Q / E")),
@@ -447,8 +496,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     ];
     rows.extend(console_pad_shot_rows(d));
     rows.extend([
-        Row::toggle("volume", tr!("Guide + ↑ / ↓: change the volume"), p.volume_shortcut),
-        Row::toggle("moment", tr!("Guide + Y: mark a moment"), p.moment_shortcut).desc(moment_desc(p)),
+        Row::toggle("volume", labels::volume(), p.volume_shortcut),
+        Row::toggle("moment", labels::moment(), p.moment_shortcut).desc(moment_desc(p)),
     ]);
     rows.extend(console_replay_rows(d));
     rows.extend([
@@ -459,6 +508,13 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Row::info("desktop", tr!("Desktop"), if desktop_ok { tr!("Supported") } else { tr!("Not supported") }).desc(desktop),
         Row::info("controllers", tr!("Controllers"), found).desc(controllers_text(d.overlay.controllers.as_ref())),
     ]);
+    if cfg!(windows) {
+        rows.extend([
+            Row::header(tr!("Good to know")),
+            Row::info("input-limits", tr!("Controller input"), "").desc(controller_limits()),
+            Row::info("input-support", tr!("Controllers"), "").desc(controller_support()),
+        ]);
+    }
     rows
 }
 
@@ -488,5 +544,35 @@ pub(super) fn console_apply(d: &mut SettingsPage, outcome: crate::console::list:
             _ => {}
         },
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        console_accelerators, screenshot_button, screenshot_buttons, ChordButton, OverlayPrefs, CONSOLE_ACCELERATORS,
+        DEFAULT_KEYBOARD_ACCELERATOR,
+    };
+
+    #[test]
+    fn console_shortcuts_include_the_default_and_keep_custom_values() {
+        assert!(console_accelerators(DEFAULT_KEYBOARD_ACCELERATOR).iter().any(|a| a == DEFAULT_KEYBOARD_ACCELERATOR));
+        let custom = console_accelerators("Alt+Shift+F8");
+        assert_eq!(custom[0], "Alt+Shift+F8");
+        assert_eq!(custom.len(), CONSOLE_ACCELERATORS.len() + 1);
+    }
+
+    #[test]
+    fn screenshot_buttons_leave_the_windows_guide_chord_free() {
+        for button in [ChordButton::Start, ChordButton::Select] {
+            let p = OverlayPrefs { screenshot_button: button, ..OverlayPrefs::default() };
+            assert_eq!(screenshot_buttons().contains(&button), !cfg!(windows));
+            assert_eq!(screenshot_button(&p), if cfg!(windows) { ChordButton::RB } else { button });
+            assert_eq!(p.screenshot_button, button, "keep the saved choice for Linux");
+        }
+        for button in screenshot_buttons() {
+            let p = OverlayPrefs { screenshot_button: button, ..OverlayPrefs::default() };
+            assert_eq!(screenshot_button(&p), button);
+        }
     }
 }

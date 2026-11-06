@@ -26,6 +26,12 @@
 //! - `shortcut` (Windows): `.lnk` shortcuts.
 //! - `system` (Windows): what the computer is (processor, memory, graphics
 //!   cards, Windows version), for the logs.
+//! - `gamepad` (Windows): XInput controllers, for the overlay.
+//! - `audio` (Windows): Core Audio volumes, mutes and per-app sessions, for
+//!   the overlay.
+//! - `overlay_window` (Windows): placing the overlay's windows over the game
+//!   and handing the focus back.
+//! - `com` (Windows, private): COM on the current thread while a guard lives.
 //!
 //! A module of code that only makes sense on one system (`/proc`, evdev,
 //! Wine) stays in its crate behind `cfg(target_os = "linux")`; what the rest
@@ -41,6 +47,14 @@ pub mod process;
 pub mod scoop;
 pub mod shell;
 
+#[cfg(windows)]
+pub mod audio;
+#[cfg(windows)]
+mod com;
+#[cfg(windows)]
+pub mod gamepad;
+#[cfg(windows)]
+pub mod overlay_window;
 #[cfg(windows)]
 pub mod power;
 #[cfg(windows)]
