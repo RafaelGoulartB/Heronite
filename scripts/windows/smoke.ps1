@@ -9,7 +9,8 @@
   - the setup installs silently into a temporary folder (files, the
     package-format marker, no portable.txt, the Start menu shortcut, the
     uninstall entry), installs again over it the way the app updates itself
-    (/WAITPID: it waits for a process to exit first), and uninstalls
+    (/WAITPID: it waits for a process to exit first), retains the selected
+    installer language and localized shortcut comment, and uninstalls
     silently, removing the program, the shortcut, the uninstall entry and the
     registry entries the app writes for itself.
   Nothing is started from the installed copy (no /RELAUNCH). Registry entries
@@ -19,13 +20,19 @@
 
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File scripts\windows\smoke.ps1
+.PARAMETER Language
+  Inno language selected on the first install; the update must retain it
+  without /LANG. Defaults to Brazilian Portuguese to test a non-English choice.
 #>
 param(
-    [string]$Dist
+    [string]$Dist,
+    [ValidateSet('english', 'brazilianportuguese', 'spanish', 'german')]
+    [string]$Language = 'brazilianportuguese'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$Language = $Language.ToLowerInvariant()
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $Dist) { $Dist = Join-Path $Root 'dist' }
@@ -56,6 +63,19 @@ function Invoke-Setup([string[]]$Arguments) {
     return $p.ExitCode
 }
 
+function Check-InstalledLanguage([string]$Stage) {
+    $entry = Get-ItemProperty -Path $UninstallKey -ErrorAction SilentlyContinue
+    $property = if ($entry) { $entry.PSObject.Properties['Inno Setup: Language'] } else { $null }
+    $selected = if ($property) { $property.Value } else { '' }
+    Check ($selected -ceq $Language) "$Stage language is $Language (got '$selected')"
+    if (Test-Path $Shortcut) {
+        $comment = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut).Description
+        Check ($comment -ceq $ShortcutComment) "$Stage shortcut comment is localized ($comment)"
+    } else {
+        Check $false "$Stage localized shortcut exists"
+    }
+}
+
 foreach ($f in @($Zip, $Setup)) {
     if (-not (Test-Path -LiteralPath $f)) { Write-Error "smoke.ps1: $f not found (run package.ps1 first)" -ErrorAction Continue; exit 1 }
 }
@@ -63,6 +83,11 @@ if (Test-Path $UninstallKey) {
     Write-Error 'smoke.ps1: Heronite is installed with this setup on this computer; uninstall it first (the test would replace it)' -ErrorAction Continue
     exit 1
 }
+
+$message = Select-String -Path (Join-Path $Root 'packaging\windows\heronite.iss') -Encoding UTF8 `
+    -Pattern "^$Language\.ShortcutComment=(.+)$"
+if (-not $message) { throw "No shortcut comment for $Language in heronite.iss" }
+$ShortcutComment = $message.Matches[0].Groups[1].Value
 
 # Portable zip.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -111,7 +136,7 @@ if ($hadClasses) {
 
 try {
     # Install.
-    $code = Invoke-Setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', "/DIR=`"$dir`"", "/LOG=`"$work\install.log`"")
+    $code = Invoke-Setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', "/LANG=$Language", "/DIR=`"$dir`"", "/LOG=`"$work\install.log`"")
     Check ($code -eq 0) "silent install exits with 0 (got $code)"
     Check (Test-Path (Join-Path $dir 'heronite-rs.exe')) 'heronite-rs.exe installed'
     Check (Test-Path (Join-Path $dir 'helpers\heronite-epic-login.exe')) 'helpers\heronite-epic-login.exe (the login window) installed'
@@ -134,6 +159,7 @@ try {
         Write-Host "      version $($entry.DisplayVersion), $($entry.InstallLocation)"
     }
     Check ($null -eq (Get-Process heronite-rs -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$dir\*" })) 'a silent install without /RELAUNCH starts nothing'
+    Check-InstalledLanguage 'install'
 
     # Update over it, the way the app does: /WAITPID makes Setup wait for
     # the given process (here a ping of about 6 s) before replacing files.
@@ -142,6 +168,7 @@ try {
     $code = Invoke-Setup @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/NOCANCEL', "/WAITPID=$($ping.Id)", "/DIR=`"$dir`"", "/LOG=`"$work\update.log`"")
     $watch.Stop()
     Check ($code -eq 0) "silent update exits with 0 (got $code)"
+    Check-InstalledLanguage 'update without /LANG'
     Check ($ping.HasExited) 'the waited-for process had exited when Setup finished'
     Check ($watch.Elapsed.TotalSeconds -ge 4) ("Setup waited for it ({0:N1} s)" -f $watch.Elapsed.TotalSeconds)
     $log = Get-Content -Raw "$work\update.log"
@@ -184,3 +211,4 @@ if ($failures -gt 0) {
     exit 1
 }
 Write-Host 'all checks passed'
+exit 0

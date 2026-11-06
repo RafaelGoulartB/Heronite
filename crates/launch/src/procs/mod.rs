@@ -22,6 +22,11 @@ pub enum Sig {
 }
 
 pub trait Procs: Send + Sync {
+    /// Platform client detection beyond Steam's pid files: registry/process
+    /// on Windows, or the gamescope session on Linux.
+    fn steam_client_running(&self) -> bool {
+        false
+    }
     /// Alive and not a zombie.
     fn is_alive(&self, pid: u32) -> bool;
     /// Short command name (`/proc/<pid>/comm`).
@@ -187,6 +192,8 @@ struct FakeState {
     signals: Vec<(u32, Sig)>,
     group_signals: Vec<(u32, Sig)>,
     windows: HashMap<String, Vec<String>>,
+    /// How many times [`Procs::windows_programs`] was asked.
+    windows_asked: usize,
     /// Start ticks; 0 for a process started without one.
     ticks: HashMap<u32, u64>,
     /// Process group of a pid; its own pid when not set.
@@ -227,6 +234,11 @@ impl FakeProcs {
     pub fn set_windows_programs(&self, prefix: &str, names: &[&str]) {
         self.inner.lock().unwrap().windows.insert(prefix.to_string(), names.iter().map(|n| n.to_string()).collect());
     }
+    /// How many times [`Procs::windows_programs`] was asked: a test can wait
+    /// for a look at a prefix before it changes.
+    pub fn windows_asked(&self) -> usize {
+        self.inner.lock().unwrap().windows_asked
+    }
     pub fn set_start_ticks(&self, pid: u32, ticks: u64) {
         self.inner.lock().unwrap().ticks.insert(pid, ticks);
     }
@@ -260,6 +272,10 @@ impl FakeProcs {
 }
 
 impl Procs for FakeProcs {
+    fn steam_client_running(&self) -> bool {
+        let s = self.inner.lock().unwrap();
+        cfg!(windows) && s.alive.iter().any(|pid| s.comms.get(pid).is_some_and(|name| name.eq_ignore_ascii_case("steam.exe")))
+    }
     fn is_alive(&self, pid: u32) -> bool {
         self.inner.lock().unwrap().alive.contains(&pid)
     }
@@ -280,7 +296,9 @@ impl Procs for FakeProcs {
         self.inner.lock().unwrap().signals.push((pid, sig));
     }
     fn windows_programs(&self, prefix: &str) -> Vec<String> {
-        self.inner.lock().unwrap().windows.get(prefix).cloned().unwrap_or_default()
+        let mut s = self.inner.lock().unwrap();
+        s.windows_asked += 1;
+        s.windows.get(prefix).cloned().unwrap_or_default()
     }
     fn start_ticks(&self, pid: u32) -> Option<u64> {
         let s = self.inner.lock().unwrap();

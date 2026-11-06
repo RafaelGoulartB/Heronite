@@ -42,7 +42,7 @@ impl SteamPage {
             cx.observe(&svc, |_, _, cx| cx.notify()),
             cx.subscribe(&svc, |_, _, ev: &SteamLibraryEvent, cx| {
                 let SteamLibraryEvent::Imported(report) = ev;
-                if report.added > 0 || report.playtime > 0 {
+                if report.changed() {
                     cx.emit(PageEvent::LibraryChanged);
                 }
             }),

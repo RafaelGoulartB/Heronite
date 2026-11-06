@@ -98,7 +98,8 @@ fn launch_speed_against_bare_umu() {
     .unwrap();
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
-    let steam = SteamLocator { home: dir.path().into(), steam_path: dir.path().join("steam"), system_roots: vec![] };
+    let steam =
+        SteamLocator { home: dir.path().into(), steam_path: dir.path().join("steam"), system_roots: vec![], platform_roots: vec![] };
     let launcher = Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs, LauncherConfig::default(), tx);
     let log = paths.root.join("logs/games/notepad_sideload/launch.log");
 

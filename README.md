@@ -171,7 +171,7 @@ cargo build --profile quick -p heronite-epic-login && cargo run --profile quick 
 # release build, installed for the current user (Linux)
 scripts/install.sh
 
-# installer and portable zip in dist\ (Windows, needs Inno Setup 6)
+# installer and portable zip in dist\ (Windows, needs Inno Setup 6.3 or later)
 powershell -ExecutionPolicy Bypass -File scripts\windows\package.ps1
 ```
 
