@@ -65,7 +65,8 @@ function Invoke-Setup([string[]]$Arguments) {
 
 function Check-InstalledLanguage([string]$Stage) {
     $entry = Get-ItemProperty -Path $UninstallKey -ErrorAction SilentlyContinue
-    $selected = if ($entry) { $entry.'Inno Setup: Selected Language' } else { '' }
+    $property = if ($entry) { $entry.PSObject.Properties['Inno Setup: Language'] } else { $null }
+    $selected = if ($property) { $property.Value } else { '' }
     Check ($selected -ceq $Language) "$Stage language is $Language (got '$selected')"
     if (Test-Path $Shortcut) {
         $comment = (New-Object -ComObject WScript.Shell).CreateShortcut($Shortcut).Description
