@@ -249,8 +249,7 @@ pub(super) fn items(set: &AchievementSet, session_start: Option<DateTime<Utc>>) 
 
     let secret = set.achievements.iter().filter(|a| a.is_secret()).count();
     if secret > 0 {
-        let row = Row::info("secret", trn!(secret, "{n} secret achievement", "{n} secret achievements"), "")
-            .desc(tr!("Hidden until you unlock it."));
+        let row = Row::info("secret", trn!(secret, "{n} secret achievement", "{n} secret achievements"), "").desc(secret_hint(secret));
         items.push((row, Item::Secret(secret)));
     }
     items
@@ -398,8 +397,13 @@ fn secret_row(n: usize, focused: bool) -> Div {
                 "{n} secret achievement",
                 "{n} secret achievements"
             )))
-            .child(div().text_size(u(13.)).text_color(ink(focused, theme::text_muted())).child(tr!("Hidden until you unlock it."))),
+            .child(div().text_size(u(13.)).text_color(ink(focused, theme::text_muted())).child(secret_hint(n))),
     )
+}
+
+/// "Hidden until you unlock it", or "them" for several.
+fn secret_hint(n: usize) -> String {
+    trn!(n, "Hidden until you unlock it.", "Hidden until you unlock them.")
 }
 
 /// The game's progress: the count, the bar (gold at 100%), the source,
