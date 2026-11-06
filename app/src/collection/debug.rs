@@ -8,6 +8,17 @@ use super::context_menu::{self, Flyout};
 use super::header::Menu;
 use super::CollectionView;
 
+fn quick_menu(value: &str) -> Option<super::toolbar::QuickMenu> {
+    use super::toolbar::QuickMenu;
+    match value {
+        "sort" => Some(QuickMenu::Sort),
+        "install" => Some(QuickMenu::Install),
+        "group" => Some(QuickMenu::Group),
+        "presets" => Some(QuickMenu::Presets),
+        _ => None,
+    }
+}
+
 /// The flyout `HERONITE_DEBUG_MENU` opens: the status one unless another is asked for.
 fn debug_flyout() -> Flyout {
     let on = |name| crate::env::value(name).is_some();
@@ -36,7 +47,9 @@ impl CollectionView {
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
     /// their select open; `more-group` / `more-sort`: the "More" list of
-    /// that row), `HERONITE_DEBUG_ORGANIZE=<group>,<sort>` groups and sorts
+    /// that row; `quick-sort|quick-install|quick-group|quick-presets`: the
+    /// corresponding quick toolbar menu, only if its trigger fits),
+    /// `HERONITE_DEBUG_ORGANIZE=<group>,<sort>` groups and sorts
     /// the list (`year,releaseDate`), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
     /// the first render that has a window (`open_pending_debug_dialog`).
     ///
@@ -68,6 +81,9 @@ impl CollectionView {
         }
         if let Some(steps) = crate::env::value("HERONITE_DEBUG_BATCH") {
             self.debug_batch(steps, cx);
+        }
+        if let Some(steps) = crate::env::value("HERONITE_DEBUG_TOOLBAR") {
+            self.debug_toolbar(steps, cx);
         }
         if let Some(spec) = crate::env::value("HERONITE_DEBUG_ORGANIZE") {
             let (group, sort) = spec.split_once(',').unwrap_or((spec.as_str(), ""));
@@ -104,11 +120,82 @@ impl CollectionView {
                 "downloads" => Some(Menu::Downloads),
                 "update" => Some(Menu::Update),
                 "display" => Some(Menu::Display),
+                m if m.starts_with("quick-") => quick_menu(&m[6..]).map(Menu::Quick),
                 _ if query.is_some() => Some(Menu::View),
                 _ => None,
             };
             self.view_menu.debug_query = query.map(str::to_owned);
         }
+    }
+
+    /// `HERONITE_DEBUG_TOOLBAR=sort:playtime,direction,install:installed,
+    /// favourites,group:status,preset:0,reset,toolbar:off,toolbar:on,
+    /// open:sort`: runs the same actions as the controls, 1.2 seconds apart,
+    /// without OS input. Presets are zero-based; use a scratch profile as
+    /// these actions persist. `open` accepts sort/install/group/presets.
+    fn debug_toolbar(&mut self, steps: String, cx: &mut Context<Self>) {
+        let steps: Vec<String> = steps.split(',').map(str::to_owned).collect();
+        cx.spawn(async move |this, cx| {
+            for step in steps {
+                cx.background_executor().timer(std::time::Duration::from_millis(1200)).await;
+                if this
+                    .update(cx, |this, cx| {
+                        log::info!("debug toolbar: {step}");
+                        match step.split_once(':') {
+                            Some(("sort", value)) => {
+                                if let Some(mode) = heronite_data::SortMode::parse(value) {
+                                    this.set_sort(mode, cx);
+                                } else {
+                                    log::warn!("unknown toolbar sort: {value}");
+                                }
+                            }
+                            Some(("group", value)) => {
+                                if let Some(by) = heronite_data::GroupBy::parse(value) {
+                                    this.set_group_by(by, cx);
+                                } else {
+                                    log::warn!("unknown toolbar grouping: {value}");
+                                }
+                            }
+                            Some(("install", value)) => {
+                                if let Some(filter) = heronite_data::InstallFilter::parse(value) {
+                                    this.set_install_filter(filter, cx);
+                                } else {
+                                    log::warn!("unknown toolbar install scope: {value}");
+                                }
+                            }
+                            Some(("preset", value)) => {
+                                if let Some(view) = value.parse::<usize>().ok().and_then(|i| this.ui.saved_views.get(i)).cloned() {
+                                    this.apply_view_filters(&view.filters, cx);
+                                } else {
+                                    log::warn!("unknown toolbar preset index: {value}");
+                                }
+                            }
+                            Some(("toolbar", value @ ("on" | "off"))) => {
+                                this.set_look(|a| a.quick_toolbar_controls = value == "on", cx);
+                            }
+                            Some(("open", value)) => {
+                                if let Some(menu) = quick_menu(value) {
+                                    this.open_menu = Some(Menu::Quick(menu));
+                                } else {
+                                    log::warn!("unknown toolbar menu: {value}");
+                                }
+                            }
+                            _ if step == "direction" => this.toggle_sort_direction(cx),
+                            _ if step == "favourites" => {
+                                this.apply_pick(&super::view_menu::Pick::Only(super::view_filters::Only::Favourites), cx)
+                            }
+                            _ if step == "reset" => this.reset_view_filters(cx),
+                            _ => log::warn!("unknown HERONITE_DEBUG_TOOLBAR step: {step}"),
+                        }
+                        cx.notify();
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// `HERONITE_DEBUG_BATCH=status:<id>,cat:<name>,fav,hide,undo`: these
