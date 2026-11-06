@@ -24,6 +24,9 @@ impl OverlayService {
     /// The replay of the game running, for the panel's rows (`None` when it
     /// is off for it).
     pub fn replay_panel(cx: &App) -> Option<PanelState> {
+        if !heronite_platform::supported(heronite_platform::Feature::Replay) {
+            return None;
+        }
         crate::services::replay::get(cx)?.read(cx).panel_state()
     }
 

@@ -189,7 +189,7 @@ fn section_help(s: Section) -> &'static str {
             tr!("Disk space of games, store tools, caches")
         }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
-        Section::Overlay => tr!("Guide button panel over games (beta)"),
+        Section::Overlay => crate::overlay::labels::palette_help(),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),
         Section::Achievements => tr!("RetroAchievements account, Steam key, notifications"),

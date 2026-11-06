@@ -75,6 +75,11 @@ const RULES: &[Rule] = &[
     rule("vita3k", "Vita3K", &["vita3k"]),
     rule("shadps4", "shadPS4", &["shadps4"]),
     rule("azahar", "Azahar", &["azahar", "citra"]),
+    rule("mupen64plus", "Mupen64Plus", &["mupen64plus"]),
+    rule("m64py", "M64Py", &["m64py"]),
+    rule("gopher64", "gopher64", &["gopher64"]),
+    rule("epsxe", "ePSXe", &["epsxe"]),
+    rule("desmume", "DeSmuME", &["desmume"]),
     rule("retroarch", "RetroArch", &["retroarch"]),
     Rule { custom: Some(&SWITCH), ..rule("custom", "Yuzu", &["yuzu"]) },
     Rule { custom: Some(&SWITCH), ..rule("custom", "Suyu", &["suyu"]) },
@@ -657,6 +662,15 @@ mod tests {
         assert_eq!(id("Eden-Linux.AppImage"), Some("Eden"));
         assert_eq!(id("mGBA-0.10.3.AppImage"), Some("mGBA"));
         assert_eq!(id("Cemu-2.0.AppImage"), Some("Cemu"));
+        assert_eq!(id("mupen64plus"), Some("Mupen64Plus"));
+        assert_eq!(id("m64py"), Some("M64Py"));
+        assert_eq!(id("gopher64-linux-x86_64"), Some("gopher64"));
+        assert_eq!(id("epsxe_x64"), Some("ePSXe"));
+        assert_eq!(id("ePSXe"), Some("ePSXe"));
+        assert_eq!(id("desmume"), Some("DeSmuME"));
+        assert_eq!(id("desmume-cli"), Some("DeSmuME"));
+        // The libraries, plugins and data files of Mupen64Plus are not programs.
+        assert_eq!(id("libmupen64plus.so.2.0.0"), None);
         // KDE's file manager and unrelated names are not emulators.
         assert_eq!(id("dolphin"), None);
         assert_eq!(id("edentool"), None);
@@ -670,6 +684,11 @@ mod tests {
         assert_eq!(id("Ryujinx.exe"), Some("Ryujinx"));
         assert_eq!(id("Vita3K.exe"), Some("Vita3K"));
         assert_eq!(id("citra-qt.exe"), Some("Azahar"));
+        assert_eq!(id("mupen64plus-ui-console.exe"), Some("Mupen64Plus"));
+        assert_eq!(id("m64py.exe"), Some("M64Py"));
+        assert_eq!(id("gopher64-windows-x86_64.exe"), Some("gopher64"));
+        assert_eq!(id("ePSXe.exe"), Some("ePSXe"));
+        assert_eq!(id("DeSmuME_0.9.13_x64.exe"), Some("DeSmuME"));
         // Only Windows' `Dolphin.exe` is sure to be the emulator.
         assert_eq!(id("Dolphin.exe"), cfg!(windows).then_some("Dolphin"));
         // The other programs shipped next to an emulator.
@@ -701,6 +720,34 @@ mod tests {
             find_candidates(r, WalkLimits { max_depth: 4, ..Default::default() }).iter().map(|c| basename(&c.path)).collect();
         names.sort();
         assert_eq!(names, ["DuckStation.AppImage", "Ryujinx", "Shadps4-sdl.AppImage", "pcsx2-v2.8.2.AppImage"]);
+    }
+
+    // A Windows program is a Wine one on Linux, and the Linux build of ePSXe is native.
+    #[cfg(unix)]
+    #[test]
+    fn walk_finds_the_new_emulators_and_runs_epsxe_exe_through_wine() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        touch(&r.join("n64/mupen64plus/mupen64plus"), true);
+        touch(&r.join("n64/mupen64plus/mupen64plus-video-rice.so"), true);
+        touch(&r.join("n64/mupen64plus/mupen64plus.ini"), true);
+        touch(&r.join("n64/gopher64-linux-x86_64"), true);
+        touch(&r.join("ps1/epsxe/epsxe_x64"), true);
+        touch(&r.join("ps1/ePSXe-win/ePSXe.exe"), false);
+        touch(&r.join("nds/desmume"), true);
+        let mut found: Vec<(String, &str, bool)> =
+            find_candidates(r, WalkLimits::default()).into_iter().map(|c| (basename(&c.path), c.definition_id, c.wine)).collect();
+        found.sort();
+        assert_eq!(
+            found,
+            [
+                ("desmume".to_string(), "desmume", false),
+                ("ePSXe.exe".to_string(), "epsxe", true),
+                ("epsxe_x64".to_string(), "epsxe", false),
+                ("gopher64-linux-x86_64".to_string(), "gopher64", false),
+                ("mupen64plus".to_string(), "mupen64plus", false),
+            ]
+        );
     }
 
     #[cfg(windows)]

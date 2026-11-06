@@ -273,7 +273,7 @@ impl CollectionView {
                     cx,
                 );
             }
-            if report.added > 0 || report.playtime > 0 {
+            if report.changed() {
                 this.reload(cx);
             }
         })

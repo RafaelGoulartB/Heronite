@@ -278,7 +278,7 @@ impl OnboardingDialog {
                     .text_size(px(12.))
                     .line_height(px(16.))
                     .text_color(theme::text_dim())
-                    .when(f.overlay_ok, |d| d.child(beta()).child(tr!("The overlay: Guide opens it, Guide + Y marks a moment")))
+                    .when(f.overlay_ok, |d| d.child(beta()).child(crate::overlay::labels::onboarding_line()))
                     .when(!f.overlay_ok, |d| d.child(f.overlay_why.clone())),
             )
         })

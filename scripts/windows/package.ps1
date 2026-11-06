@@ -17,14 +17,18 @@
   the setup and its uninstaller are signed; otherwise they are not, and
   SmartScreen warns.
 
-  Needs: Rust (MSVC), Inno Setup 6 (ISCC.exe: -Iscc, the ISCC variable,
+  Needs: Rust (MSVC), Inno Setup 6.3 or later (ISCC.exe: -Iscc, the ISCC variable,
   PATH, or its usual install folders). Windows PowerShell 5.1 or pwsh.
 
 .PARAMETER Version
   The release version (X.Y.Z). Default: the workspace version in Cargo.toml.
 .PARAMETER NoBuild
   Package the heronite-rs.exe and heronite-epic-login.exe already built in
-  target\release.
+  target\<profile> (target\release by default).
+.PARAMETER CargoProfile
+  The Cargo profile to build and package: release (the default, what
+  releases ship) or quick (release without fat LTO, much faster to build;
+  the packaging CI of pull requests uses it).
 .PARAMETER Iscc
   Path to ISCC.exe.
 
@@ -34,7 +38,9 @@
 param(
     [string]$Version,
     [switch]$NoBuild,
-    [string]$Iscc
+    [string]$Iscc,
+    [ValidateSet('release', 'quick')]
+    [string]$CargoProfile = 'release'
 )
 
 Set-StrictMode -Version Latest
@@ -50,6 +56,8 @@ $Packaging = Join-Path $Root 'packaging\windows'
 $Dist = Join-Path $Root 'dist'
 $ZipName = 'Heronite-Portable-x86_64.zip'
 $SetupName = 'Heronite-Setup-x86_64.exe'
+
+& (Join-Path $PSScriptRoot 'test-installer-languages.ps1')
 
 # ISCC.exe of Inno Setup 6.
 function Find-Iscc {
@@ -94,7 +102,7 @@ Write-Host "ISCC: $IsccExe"
 Push-Location $Root
 try {
     if (-not $NoBuild) {
-        & cargo build --release -p heronite -p heronite-epic-login --locked
+        & cargo build --profile $CargoProfile -p heronite -p heronite-epic-login --locked
         if ($LASTEXITCODE -ne 0) { Fail "cargo build failed ($LASTEXITCODE)" }
     }
     $meta = & cargo metadata --format-version 1 --no-deps --locked | ConvertFrom-Json
@@ -102,7 +110,7 @@ try {
 } finally {
     Pop-Location
 }
-$BinDir = Join-Path $meta.target_directory 'release'
+$BinDir = Join-Path $meta.target_directory $CargoProfile
 $Exe = Join-Path $BinDir 'heronite-rs.exe'
 $LoginExe = Join-Path $BinDir 'heronite-epic-login.exe'
 foreach ($f in @($Exe, $LoginExe)) {
