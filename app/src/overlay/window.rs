@@ -126,7 +126,9 @@ fn side_anchor(side: Side) -> Anchor {
     }
 }
 
-/// A layer-shell surface sits at the top, along `side`.
+/// The window of a surface. `layer`: on Linux a layer-shell surface at the
+/// top, along `side`; on Windows a hidden topmost pop-up that `windows::open`
+/// places and shows. Otherwise a normal window (debug captures).
 fn options(namespace: &str, size: Size<Pixels>, side: Side, margin: Pixels, layer: bool, keyboard: bool) -> WindowOptions {
     #[cfg(windows)]
     if layer {
@@ -166,21 +168,26 @@ fn layer_shell(namespace: &str, side: Side, margin: Pixels, keyboard: bool) -> W
     })
 }
 
-/// Layer-shell is Wayland's: the native Windows path bypasses this.
-/// asked for.
+/// Layer-shell is Wayland's, so it is never asked for off Linux: Windows
+/// returns its own pop-up from [`options`] first, and other systems have no
+/// overlay ([`supported`]).
 #[cfg(not(target_os = "linux"))]
 fn layer_shell(_namespace: &str, _side: Side, _margin: Pixels, _keyboard: bool) -> WindowKind {
     WindowKind::Normal
 }
 
-/// Opens the panel along one side of the screen. `layer = false` draws it in
-/// a normal window (debug captures); `keyboard`: it takes the keyboard.
+/// A panel [`open_panel`] opened.
 pub struct OpenedPanel<V: 'static> {
     pub handle: WindowHandle<V>,
+    /// Windows: places and shows the native window, then gives what hands the
+    /// foreground back to the game when a keyboard panel closes. `None` for a
+    /// normal window.
     #[cfg(windows)]
     pub shown: Option<Task<anyhow::Result<Option<heronite_platform::overlay_window::FocusReturn>>>>,
 }
 
+/// Opens the panel along one side of the screen. `layer = false` draws it in
+/// a normal window (debug captures); `keyboard`: it takes the keyboard.
 pub fn open_panel<V: Render>(
     cx: &mut App,
     display: Display,
