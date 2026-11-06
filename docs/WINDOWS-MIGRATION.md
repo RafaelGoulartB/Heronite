@@ -14,6 +14,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Screenshots
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
+- Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
 - Restoring a backup made on Linux
 
 ## ⬜ To do
@@ -25,7 +26,6 @@ What works on Windows, what is left, and what Windows does not need.
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
 - Dark tray menus: the tray menu stays light in dark mode, because the fix needs an undocumented uxtheme call. A new tray icon also starts in Windows 11's hidden-icons flyout until the user pins it
 - Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` and `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`). Until then SmartScreen warns on the first run, and the release notes say so
-- Installer languages: the Inno Setup installer is English only, while the app also speaks pt-BR, es and de
 - Steam tests: the Steam library and session tests (`TODO(windows)` in `heronite-launch`) only run on Linux. `SteamLocator` reads this machine's real Steam from the registry, so the fake Steam of a test is not seen. It first needs a way to leave the registry out
 
 ## ➖ Not planned

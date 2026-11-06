@@ -51,6 +51,8 @@ $Dist = Join-Path $Root 'dist'
 $ZipName = 'Heronite-Portable-x86_64.zip'
 $SetupName = 'Heronite-Setup-x86_64.exe'
 
+& (Join-Path $PSScriptRoot 'test-installer-languages.ps1')
+
 # ISCC.exe of Inno Setup 6.
 function Find-Iscc {
     $candidates = @()

@@ -72,6 +72,9 @@ RestartApplications=no
 SetupLogging=yes
 ; Two setups at once (two update attempts) would fight over the files.
 SetupMutex=HeroniteSetup
+; Keep the chosen language for updates, including the app's silent updater.
+UsePreviousLanguage=yes
+ShowLanguageDialog=yes
 #ifdef Sign
 ; package.ps1 defines the "heronite" sign tool (ISCC /Sheronite=...) when a
 ; code signing certificate is configured; Setup and the uninstaller are then
@@ -82,11 +85,27 @@ SignedUninstaller=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"
 
 [CustomMessages]
 english.DeleteUserData=Also delete your Heronite library, settings and cache?%n%n%1%n%2%n%nGames you installed are not in these folders and stay where they are. Choose No to keep everything for a later install.
 english.PortableFolder=This folder holds a portable copy of Heronite (portable.txt). Choose another folder, or delete portable.txt to turn that copy into an installed one.
 english.CloseRunning=Heronite is running. Close it and continue uninstalling?
+english.ShortcutComment=Every game you own, in one launcher
+brazilianportuguese.DeleteUserData=Excluir também sua biblioteca, configurações e cache do Heronite?%n%n%1%n%2%n%nOs jogos que você instalou não ficam nessas pastas e continuarão onde estão. Escolha Não para manter tudo para uma instalação futura.
+brazilianportuguese.PortableFolder=Esta pasta contém uma cópia portátil do Heronite (portable.txt). Escolha outra pasta ou exclua portable.txt para transformar essa cópia em uma instalação.
+brazilianportuguese.CloseRunning=O Heronite está em execução. Deseja fechá-lo e continuar a desinstalação?
+brazilianportuguese.ShortcutComment=Todos os seus jogos em um só launcher
+spanish.DeleteUserData=¿Quieres eliminar también tu biblioteca, configuración y caché de Heronite?%n%n%1%n%2%n%nLos juegos que has instalado no están en estas carpetas y permanecerán donde están. Elige No para conservarlo todo para una instalación futura.
+spanish.PortableFolder=Esta carpeta contiene una copia portátil de Heronite (portable.txt). Elige otra carpeta o elimina portable.txt para convertir esa copia en una instalación.
+spanish.CloseRunning=Heronite se está ejecutando. ¿Quieres cerrarlo y continuar con la desinstalación?
+spanish.ShortcutComment=Todos tus juegos en un solo lanzador
+german.DeleteUserData=Auch deine Heronite-Bibliothek, Einstellungen und den Cache löschen?%n%n%1%n%2%n%nDeine installierten Spiele befinden sich nicht in diesen Ordnern und bleiben erhalten. Wähle Nein, um alles für eine spätere Installation zu behalten.
+german.PortableFolder=Dieser Ordner enthält eine portable Kopie von Heronite (portable.txt). Wähle einen anderen Ordner oder lösche portable.txt, um diese Kopie in eine installierte Version umzuwandeln.
+german.CloseRunning=Heronite wird ausgeführt. Möchtest du es schließen und mit der Deinstallation fortfahren?
+german.ShortcutComment=Alle deine Spiele in einem Launcher
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -104,8 +123,8 @@ Source: "package-format"; DestDir: "{app}"; Flags: ignoreversion
 Type: files; Name: "{app}\heronite-epic-login.exe"
 
 [Icons]
-Name: "{autoprograms}\Heronite"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "Every game you own, in one launcher"
-Name: "{autodesktop}\Heronite"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "Every game you own, in one launcher"; Tasks: desktopicon
+Name: "{autoprograms}\Heronite"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "{cm:ShortcutComment}"
+Name: "{autodesktop}\Heronite"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Comment: "{cm:ShortcutComment}"; Tasks: desktopicon
 
 [Registry]
 ; Written by the app itself (system/autostart.rs, system/protocol.rs), not by
