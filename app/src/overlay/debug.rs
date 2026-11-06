@@ -7,7 +7,10 @@
 //!   with no game (as "without a game" allows).
 //! - `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a,wait:800,b` plays presses on it
 //!   (the names of `HERONITE_DEBUG_PAD`).
-//! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` shows a notice too.
+//! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` shows a notice too;
+//!   `achievement` a made-up achievement's, `achievement-queue` six in a row
+//!   (four, then "2 more achievements"), with the icon of
+//!   `HERONITE_DEBUG_OVERLAY_NOTICE_ICON` (a URL or a file) when set.
 //! - `HERONITE_DEBUG_OVERLAY_FPS=<limit>` pretends the game's limiter can
 //!   change while it runs (the FPS limit row shows; nothing is applied).
 //! - `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens it as the keyboard shortcut
@@ -84,6 +87,26 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
         });
         let Some(panel) = opened else { return };
         if let Some(kind) = crate::env::value("HERONITE_DEBUG_OVERLAY_NOTICE") {
+            if kind.starts_with("achievement") {
+                // Made-up unlocks; the icon is `HERONITE_DEBUG_OVERLAY_NOTICE_ICON` (a URL or a file).
+                let icon = crate::env::value("HERONITE_DEBUG_OVERLAY_NOTICE_ICON").unwrap_or_default();
+                let made_up: &[(String, Option<f32>)] = &[
+                    (tr!("First Steps").into(), Some(68.4)),
+                    (tr!("Treasure Hunter").into(), Some(9.7)),
+                    (tr!("Untouchable").into(), Some(1.2)),
+                    (tr!("Speed Demon").into(), None),
+                    (tr!("First Steps").into(), Some(40.)),
+                    (tr!("Treasure Hunter").into(), Some(30.)),
+                ];
+                let n = if kind == "achievement-queue" { made_up.len() } else { 1 };
+                entity.update(cx, |s, cx| {
+                    for (name, rarity) in made_up.iter().take(n) {
+                        s.show_achievement(name.clone(), *rarity, icon.clone(), cx);
+                    }
+                });
+                play_script(panel, cx).await;
+                return;
+            }
             let notice = match kind.as_str() {
                 "volume" => Notice::volume(65),
                 "replay" => {
