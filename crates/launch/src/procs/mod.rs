@@ -22,6 +22,11 @@ pub enum Sig {
 }
 
 pub trait Procs: Send + Sync {
+    /// Platform client detection beyond Steam's pid files: registry/process
+    /// on Windows, or the gamescope session on Linux.
+    fn steam_client_running(&self) -> bool {
+        false
+    }
     /// Alive and not a zombie.
     fn is_alive(&self, pid: u32) -> bool;
     /// Short command name (`/proc/<pid>/comm`).
@@ -260,6 +265,10 @@ impl FakeProcs {
 }
 
 impl Procs for FakeProcs {
+    fn steam_client_running(&self) -> bool {
+        let s = self.inner.lock().unwrap();
+        cfg!(windows) && s.alive.iter().any(|pid| s.comms.get(pid).is_some_and(|name| name.eq_ignore_ascii_case("steam.exe")))
+    }
     fn is_alive(&self, pid: u32) -> bool {
         self.inner.lock().unwrap().alive.contains(&pid)
     }

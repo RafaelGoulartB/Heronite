@@ -209,7 +209,7 @@ mod tests {
         if let Some(mask) = user_mask {
             fs::write(local::user_file(&root, ACCOUNT, "620"), user_bytes(mask)).unwrap();
         }
-        let locator = SteamLocator { home: dir.path().to_path_buf(), steam_path: root, system_roots: vec![] };
+        let locator = SteamLocator { home: dir.path().to_path_buf(), steam_path: root, system_roots: vec![], platform_roots: vec![] };
         (dir, locator)
     }
 

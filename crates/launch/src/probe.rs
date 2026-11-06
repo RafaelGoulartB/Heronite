@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub trait Probe: Send + Sync {
     fn exists(&self, path: &str) -> bool;
@@ -13,6 +13,14 @@ pub trait Probe: Send + Sync {
     fn which(&self, name: &str) -> Option<String>;
     fn env_var(&self, key: &str) -> Option<String>;
     fn home(&self) -> String;
+    /// Ordered Steam installation candidates, without checking existence.
+    fn steam_roots(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+    /// Steam library roots checked before the client's library list.
+    fn steam_system_roots(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
     /// Whether the file at `path` has an execute bit (defaults to `exists`).
     fn is_executable(&self, path: &str) -> bool {
         self.exists(path)
@@ -37,6 +45,18 @@ pub trait Probe: Send + Sync {
 pub struct SystemProbe;
 
 impl Probe for SystemProbe {
+    fn steam_roots(&self) -> Vec<PathBuf> {
+        crate::steam::platform_roots(Path::new(&self.home()))
+    }
+
+    fn steam_system_roots(&self) -> Vec<PathBuf> {
+        if cfg!(windows) {
+            Vec::new()
+        } else {
+            vec![PathBuf::from("/usr/share/steam")]
+        }
+    }
+
     fn exists(&self, path: &str) -> bool {
         !path.is_empty() && Path::new(path).exists()
     }
@@ -144,6 +164,8 @@ pub struct FakeProbe {
     /// Existing files without an execute bit.
     pub not_executable: HashSet<String>,
     pub bwrap: Option<crate::sandbox::Bwrap>,
+    pub steam_roots: Vec<PathBuf>,
+    pub steam_system_roots: Vec<PathBuf>,
 }
 
 impl FakeProbe {
@@ -173,6 +195,10 @@ impl FakeProbe {
         self.env.insert(k.to_string(), v.to_string());
         self
     }
+    pub fn with_steam_roots(mut self, roots: Vec<PathBuf>) -> Self {
+        self.steam_roots = roots;
+        self
+    }
     /// A working bubblewrap at `/usr/bin/bwrap` of `version`.
     pub fn with_bwrap(mut self, version: (u32, u32, u32)) -> Self {
         self.bwrap = Some(crate::sandbox::Bwrap { path: "/usr/bin/bwrap".into(), version, error: None, overlay: true });
@@ -181,6 +207,12 @@ impl FakeProbe {
 }
 
 impl Probe for FakeProbe {
+    fn steam_roots(&self) -> Vec<PathBuf> {
+        self.steam_roots.clone()
+    }
+    fn steam_system_roots(&self) -> Vec<PathBuf> {
+        self.steam_system_roots.clone()
+    }
     fn exists(&self, path: &str) -> bool {
         self.paths.contains(path)
     }

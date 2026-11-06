@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-#[cfg(unix)]
 use std::io::Write;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -20,7 +19,6 @@ use heronite_launch::probe::SystemProbe;
 use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
 use heronite_launch::runtime::{FakeSpawner, PrepServices, ProcessHandle, Spawner};
 use heronite_launch::steam::SteamLocator;
-#[cfg(unix)]
 use heronite_launch::StopOptions;
 use heronite_launch::{
     Command, HandoffConfig, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopSpec,
@@ -60,7 +58,12 @@ fn rig() -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     let spawner = Arc::new(FakeSpawner::new());
     let procs = Arc::new(FakeProcs::new());
@@ -294,10 +297,6 @@ fn write_steam_log(r: &Rig, text: &str) -> std::path::PathBuf {
     log
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     let r = rig();
@@ -322,17 +321,15 @@ fn steam_games_are_found_through_the_log_and_followed_until_exit() {
 }
 
 /// Scripts and programs alongside a Steam game (Windows'
-/// `heronite_launch::steam_extras`). The fake Steam folder is a system root,
-/// which Windows looks in too (it also reads this machine's own Steam logs,
-/// whose games are not running in the fake process list).
+/// `heronite_launch::steam_extras`), using only fixture Steam roots.
 #[test]
 fn steam_extras_run_around_the_game_steam_starts() {
-    use std::io::Write as _;
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
     let steam_path = home.join(".steam/steam");
-    let steam = SteamLocator { home: home.clone(), steam_path: steam_path.clone(), system_roots: vec![steam_path.clone()] };
+    let steam =
+        SteamLocator { home: home.clone(), steam_path: steam_path.clone(), system_roots: vec![], platform_roots: vec![steam_path.clone()] };
     let (tx, rx) = channel();
     let (spawner, procs) = (Arc::new(FakeSpawner::new()), Arc::new(FakeProcs::new()));
     let launcher = Launcher::new(paths.clone(), steam, spawner.clone(), procs.clone(), fast_cfg(), tx);
@@ -379,10 +376,6 @@ fn steam_extras_run_around_the_game_steam_starts() {
     assert!(record.unwrap().session_recorded);
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
     let r = rig();
@@ -414,7 +407,6 @@ fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
 /// Plays `steam_400` to its end. `steam_open_before`: Steam's pid file names
 /// a live process before the launch (else Steam "starts" with the game).
 /// Returns the URIs opened.
-#[cfg(unix)]
 fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     let r = rig();
     let log = write_steam_log(&r, "");
@@ -422,7 +414,7 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
         .unwrap();
     let steam_running = || {
         fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
-        r.procs.start(5000, "steam", None);
+        r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
     };
     if steam_open_before {
         steam_running();
@@ -443,10 +435,6 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     r.spawner.uris()
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
     assert_eq!(play_steam_game(true, false), ["u", "steam://exit"]);
@@ -483,7 +471,12 @@ fn steam_that_never_starts_the_game_is_an_error_without_recording() {
 fn real_rig() -> (tempfile::TempDir, DataPaths, Launcher, Receiver<LaunchEvent>) {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
-    let steam = SteamLocator { home: dir.path().join("home"), steam_path: dir.path().join("home/.steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: dir.path().join("home"),
+        steam_path: dir.path().join("home/.steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![dir.path().join("home/.steam/steam")],
+    };
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
     let launcher = Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs, fast_cfg(), tx);
@@ -882,7 +875,12 @@ fn a_panicking_session_frees_the_game_and_says_so() {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     let launcher = Launcher::new(paths, steam, Arc::new(PanickingSpawner(FakeSpawner::new())), Arc::new(FakeProcs::new()), fast_cfg(), tx);
     launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
@@ -1117,7 +1115,12 @@ fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for
 /// while the first one's games still run.
 fn restarted(r: &Rig) -> (Launcher, Receiver<LaunchEvent>) {
     let home = r._dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     (Launcher::new(r.paths.clone(), steam, Arc::new(FakeSpawner::new()), r.procs.clone(), fast_cfg(), tx), rx)
 }
@@ -1218,10 +1221,6 @@ fn an_adopted_game_whose_leader_left_is_followed_through_its_group() {
     assert!(stopped);
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     let r = rig();
@@ -1246,10 +1245,6 @@ fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
     let r = rig();
@@ -1261,14 +1256,19 @@ fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
     next(&r.rx);
     wait_until("uri opened", || r.spawner.uris() == ["u"]);
     fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000").unwrap();
-    r.procs.start(5000, "steam", None);
+    r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
     r.procs.start(7777, "reaper", None);
     fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
     next(&r.rx);
     assert_eq!(running_file(&r.paths)["sessions"]["steam_400"]["tracked"]["openedSteam"], true);
 
     let home = r._dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     let spawner = Arc::new(FakeSpawner::new());
     let again = Launcher::new(r.paths.clone(), steam, spawner.clone(), r.procs.clone(), fast_cfg(), tx);

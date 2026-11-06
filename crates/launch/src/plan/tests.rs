@@ -336,8 +336,8 @@ fn steam_games_become_uris_when_steam_exists() {
     let game = sideload("steam_400", "/usr/bin/steam", "linux");
     // Linux finds `steam` on the PATH, Windows `steam.exe` in Steam's folder.
     let with_steam = if cfg!(windows) {
-        let exe = crate::steam::platform_roots(std::path::Path::new("/h"))[0].join("steam.exe");
-        FakeProbe::new("/h").with_path(&exe.to_string_lossy())
+        let root = std::path::PathBuf::from(r"C:\fixture\Steam");
+        FakeProbe::new("/h").with_path(&root.join("steam.exe").to_string_lossy()).with_steam_roots(vec![root])
     } else {
         FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")
     };

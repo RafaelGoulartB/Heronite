@@ -159,7 +159,12 @@ mod tests {
             install
         };
         let (client_build, spare) = (build("GE-Proton9-1"), build("GE-Proton9-2"));
-        let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: Vec::new() };
+        let steam = SteamLocator {
+            home: home.clone(),
+            steam_path: home.join(".steam/steam"),
+            system_roots: Vec::new(),
+            platform_roots: vec![home.join(".steam/steam")],
+        };
         let state_of = |version: &str| {
             let lib = Library::load(paths).unwrap();
             let found = items(&ctx, &lib, &steam);

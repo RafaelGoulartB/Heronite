@@ -101,6 +101,11 @@ fn parse_stat(stat: &str) -> Option<(char, u32)> {
 }
 
 impl Procs for SystemProcs {
+    fn steam_client_running(&self) -> bool {
+        // In Steam Deck game mode Steam is the session.
+        std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope")
+    }
+
     fn is_alive(&self, pid: u32) -> bool {
         if pid <= 1 {
             return false;

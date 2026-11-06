@@ -393,9 +393,6 @@ mod tests {
         assert_eq!(meta.extra[heronite_data::steam_owned::AUTO_KEY], true);
     }
 
-    // TODO(windows): not isolated there: `library_roots` adds the Steam folder of
-    // the registry (this machine's real Steam) and not the test's `home`.
-    #[cfg(unix)]
     #[test]
     fn refresh_follows_steam_uninstalls_and_installs() {
         let dir = tempfile::tempdir().unwrap();
@@ -420,7 +417,7 @@ mod tests {
             r#"{"games": {"steam_400": {"appName": "steam_400", "runner": "sideload", "launchKind": "steam-uri", "steamAppId": "400", "title": "Portal"}}}"#,
         )
         .unwrap();
-        let probe = FakeProbe::new(home.to_str().unwrap());
+        let probe = FakeProbe::new(home.to_str().unwrap()).with_steam_roots(vec![home.join(".steam/steam")]);
 
         let report = refresh_local_install_states(&paths, &probe).unwrap();
         assert_eq!(report, RefreshReport { updated: 1, added: 1 });

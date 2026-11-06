@@ -28,7 +28,12 @@ fn rig() -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heronite"));
     fs::create_dir_all(paths.games_config_dir()).unwrap();
-    let steam = SteamLocator { home: dir.path().join("home"), steam_path: dir.path().join("home/.steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: dir.path().join("home"),
+        steam_path: dir.path().join("home/.steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![],
+    };
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
     let cfg = LauncherConfig {
