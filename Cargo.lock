@@ -3537,6 +3537,7 @@ dependencies = [
  "signal-hook",
  "smallvec",
  "tempfile",
+ "trash",
 ]
 
 [[package]]

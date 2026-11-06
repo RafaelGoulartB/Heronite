@@ -18,6 +18,10 @@ impl SettingsPanel {
         let mut col = column().child(heading(tr!("On screen"))).child(self.overlay_rows(false, cx).card());
         col = self.replay_section(col, cx);
         col = col.child(self.fps_section(false, cx)).child(self.lsfg_section(false, cx));
+        // Linux games get a line about vkBasalt instead.
+        if self.reshade_applies() || (native && cfg!(not(windows))) {
+            col = col.child(self.reshade_section(cx));
+        }
         let mut image = rows();
         if !native {
             image = self.fsr_rows(image, cx);
