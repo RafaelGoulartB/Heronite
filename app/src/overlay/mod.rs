@@ -56,6 +56,10 @@ use crate::runtime::{GameRuntime, SessionInfo};
 
 /// Time for the compositor to take the panel off screen before a capture.
 const HIDE_BEFORE_CAPTURE: Duration = Duration::from_millis(300);
+/// Size of an achievement's icon in its notice (design px).
+const ICON_PX: f32 = 44.;
+/// An achievement's notice waits this long at most for its icon.
+const ICON_WAIT: Duration = Duration::from_millis(1500);
 
 /// A game launched by the app that is running.
 #[derive(Clone, Debug)]
@@ -104,6 +108,8 @@ pub struct OverlayService {
     /// When the panel opened (a replay saved from it cuts that time off).
     panel_opened: Option<Instant>,
     notice: Option<toast::NoticeWindow>,
+    /// Achievement notices waiting for the screen.
+    achievement_queue: toast::Queue,
     /// `false` once the compositor refused a layer-shell surface.
     layer_shell: bool,
     /// Debug: draw the panel in a normal window (`HERONITE_DEBUG_OVERLAY=window`).
@@ -139,6 +145,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
         panel: None,
         panel_opened: None,
         notice: None,
+        achievement_queue: toast::Queue::default(),
         layer_shell: window::wayland(),
         debug_window: false,
         debug_live_fps: None,
@@ -192,6 +199,7 @@ impl OverlayService {
         self.prefs = prefs;
         if !enabled {
             self.close_panel(cx);
+            self.achievement_queue.clear();
         }
         self.sync_watcher(cx);
         cx.notify();
@@ -504,14 +512,59 @@ impl OverlayService {
         .detach();
     }
 
+    /// Whether notices can be drawn (a layer-shell surface, or the debug window).
+    fn can_notify(&self) -> bool {
+        self.layer_shell || self.debug_window
+    }
+
     /// Shows a short notice in a corner of the screen (replacing the one shown).
     fn notify(&mut self, notice: Notice, cx: &mut Context<Self>) {
-        if !self.layer_shell && !self.debug_window {
+        if !self.can_notify() {
             log::info!("overlay notice: {}", notice.title);
             return;
         }
         let layer = !self.debug_window;
         self.show_notice(notice, layer, cx);
+    }
+
+    /// Shows a new achievement over the game, after the ones already
+    /// waiting. Its icon (a URL or a file; may be empty) is loaded first,
+    /// for at most a moment: the notice never waits long for it. `false`
+    /// when the overlay is off or cannot draw here (the caller notifies the
+    /// desktop instead).
+    pub fn show_achievement(&mut self, name: String, rarity: Option<f32>, icon_url: String, cx: &mut Context<Self>) -> bool {
+        // The debug window shows it whatever the saved options say.
+        if !(self.prefs.enabled || self.debug_window) || !self.can_notify() {
+            return false;
+        }
+        let layer = !self.debug_window;
+        let opts = heronite_images::Opts::new(self.data_paths.images_cache_dir(), Some(AppPaths::for_data(&self.data_paths).thumbs_dir()));
+        let side = (ICON_PX * window::scale(cx)).round() as u32;
+        cx.spawn(async move |this, cx| {
+            let image = if icon_url.is_empty() {
+                None
+            } else {
+                let load = cx.background_spawn(async move {
+                    let chain = if icon_url.starts_with("http") {
+                        heronite_images::ImageRef::Url(icon_url)
+                    } else {
+                        heronite_images::ImageRef::File(icon_url.into())
+                    };
+                    heronite_images::load_cover(&[chain], side, side, &opts).ok().map(|decoded| {
+                        let frame = image::Frame::new(decoded.into_image_buffer());
+                        Arc::new(RenderImage::new(smallvec::smallvec![frame]))
+                    })
+                });
+                let timeout = cx.background_executor().timer(ICON_WAIT);
+                match futures::future::select(load, timeout).await {
+                    futures::future::Either::Left((image, _)) => image,
+                    futures::future::Either::Right(_) => None,
+                }
+            };
+            this.update(cx, |this, cx| this.queue_achievement(Notice::achievement(name, rarity, image), layer, cx)).ok();
+        })
+        .detach();
+        true
     }
 
     /// Ends the game the panel is about.
