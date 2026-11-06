@@ -1156,16 +1156,17 @@ fn a_game_left_running_is_picked_up_by_the_next_run() {
 
     // Up to 30 minutes into the session, the app starts again. The clock
     // counts from boot, so a machine up for less than that (a fresh CI
-    // runner) gets a shorter session.
-    let mut minutes = 0;
+    // runner) gets a shorter session: whole minutes while it can, else half
+    // of its uptime.
+    let mut back_ms = 0;
     json_store::update_value(&r.paths.local_library().join("running.json"), |doc| {
         let mono = doc["sessions"]["g"]["monoStartMs"].as_u64().unwrap();
-        minutes = (mono / 60_000).min(30);
-        doc["sessions"]["g"]["monoStartMs"] = serde_json::json!(mono - minutes * 60_000);
+        back_ms = if mono >= 60_000 { (mono / 60_000).min(30) * 60_000 } else { mono / 2 };
+        doc["sessions"]["g"]["monoStartMs"] = serde_json::json!(mono - back_ms);
         Ok(())
     })
     .unwrap();
-    assert!(minutes > 0, "the machine has been up for less than a minute");
+    assert!(back_ms > 0);
     let (again, rx) = restarted(&r);
     let mut adopted = Vec::new();
     assert_eq!(again.adopt(&mut |g| adopted.push(g.title.clone())), 1);
@@ -1177,8 +1178,8 @@ fn a_game_left_running_is_picked_up_by_the_next_run() {
     r.procs.exit(40_001);
     let LaunchEvent::Exited { stopped, record, elapsed, .. } = next(&rx) else { panic!() };
     assert!(!stopped);
-    assert!(elapsed >= Duration::from_secs(minutes * 60));
-    assert_eq!(record.unwrap().total_played_minutes as u64, minutes);
+    assert!(elapsed >= Duration::from_millis(back_ms));
+    assert_eq!(record.unwrap().total_played_minutes as u64, back_ms / 60_000);
     let doc: SessionsFile = json_store::read(&r.paths.sessions()).unwrap();
     assert_eq!(doc.sessions["g"].len(), 1, "the checkpointed row is updated in place");
     assert!(running_file(&r.paths)["sessions"].get("g").is_none());
