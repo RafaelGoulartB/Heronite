@@ -366,13 +366,20 @@ mod tests {
         assert_ne!(super::fold(Path::new("/a/RetroArch"), false), super::fold(Path::new("/a/retroarch"), false));
     }
 
+    /// `rel` under `base`, one component at a time: the fake probe compares
+    /// paths as text, and on Windows `join("a/b")` keeps the `/` while the
+    /// code under test builds `a\b`.
+    fn under(base: &Path, rel: &str) -> PathBuf {
+        rel.split('/').fold(base.to_path_buf(), |path, part| path.join(part))
+    }
+
     #[test]
     fn scoop_shims_resolve_and_chocolatey_shims_are_skipped() {
         let temp = tempfile::tempdir().unwrap();
         let home = temp.path();
         let scoop = home.join("scoop");
-        let shim = scoop.join("shims/retroarch.exe");
-        let program = scoop.join("apps/retroarch/current/retroarch.exe");
+        let shim = under(&scoop, "shims/retroarch.exe");
+        let program = under(&scoop, "apps/retroarch/current/retroarch.exe");
         let local = program.with_file_name("retroarch.cfg");
         let appdata = home.join("Roaming");
         let mut probe = FakeProbe::new(home.to_str().unwrap())
@@ -398,7 +405,7 @@ mod tests {
             .with_bin("retroarch", shim.to_str().unwrap());
         assert_eq!(ConfigPaths::windows(&none, &gone).candidates(Emulator::RetroArch), [appdata.join("retroarch.cfg")]);
 
-        let chocolatey = home.join("ProgramData/chocolatey/bin/retroarch.exe");
+        let chocolatey = under(home, "ProgramData/chocolatey/bin/retroarch.exe");
         let mut choco = FakeProbe::new(home.to_str().unwrap())
             .with_env("APPDATA", appdata.to_str().unwrap())
             .with_bin("retroarch", chocolatey.to_str().unwrap());
@@ -406,7 +413,7 @@ mod tests {
         let configs = ConfigPaths::windows(&none, &choco);
         assert!(configs.retroarch_programs.is_empty());
         assert_eq!(configs.candidates(Emulator::RetroArch), [appdata.join("retroarch.cfg")]);
-        let custom = home.join("Choco/bin/retroarch.exe");
+        let custom = under(home, "Choco/bin/retroarch.exe");
         let elsewhere = FakeProbe::new(home.to_str().unwrap())
             .with_env("ChocolateyInstall", home.join("Choco").to_str().unwrap())
             .with_bin("retroarch", custom.to_str().unwrap());
