@@ -656,6 +656,16 @@ plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice 
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
 the panel's size follows it.
 
+On Windows the same panel uses a topmost tool window on the foreground
+monitor, over windowed and borderless games (not exclusive fullscreen).
+Ctrl+Shift+G is the default shortcut; Back+Start substitutes for Guide on
+XInput controllers. There is no controller grab: settings must say that
+the game can still receive presses. A keyboard-opened panel takes focus
+and returns it on close only while it still owns foreground. Notices never
+take focus and pass pointer input through. The Audio tab uses Core Audio;
+device names are informational (choose defaults in Windows settings).
+Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
+
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and
   update the entity when done. Never block render.
