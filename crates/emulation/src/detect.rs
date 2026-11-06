@@ -512,6 +512,78 @@ mod tests {
     }
 
     #[test]
+    fn the_standalone_n64_ps1_and_ds_emulators_are_detected_by_their_binary() {
+        let mut env = Fake::default();
+        let ids = ["mupen64plus", "m64py", "gopher64", "epsxe", "desmume"];
+        for id in ids {
+            let bin = emulator_definition(id).unwrap().binaries[0].clone();
+            env.bins.insert(bin.clone(), at(&format!("opt/{id}/{bin}")));
+        }
+        let found = detect_emulators(&env, &[]);
+        let got: Vec<(&str, &str, Vec<&str>)> = found
+            .iter()
+            .map(|d| (d.definition_id.as_str(), d.source.as_str(), d.profiles.iter().map(|p| p.id.as_str()).collect()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("mupen64plus", "PATH", vec!["n64"]),
+                ("m64py", "PATH", vec!["n64"]),
+                ("gopher64", "PATH", vec!["n64"]),
+                ("epsxe", "PATH", vec!["ps1"]),
+                ("desmume", "PATH", vec!["nds"]),
+            ]
+        );
+        assert!(found.iter().all(|d| d.launch_kind == "native" && d.flatpak_id.is_none()));
+    }
+
+    // Flatpak is Linux's.
+    #[cfg(unix)]
+    #[test]
+    fn the_flatpaks_of_the_new_emulators_are_detected() {
+        let mut env = Fake::default();
+        for id in ["net.sourceforge.m64py.M64Py", "io.github.gopher64.gopher64", "org.desmume.DeSmuME"] {
+            env.flatpaks.insert(id.into());
+        }
+        let found: Vec<(String, Option<String>)> =
+            detect_emulators(&env, &[]).into_iter().map(|d| (d.definition_id, d.flatpak_id)).collect();
+        let pair = |a: &str, b: &str| (a.to_string(), Some(b.to_string()));
+        assert_eq!(
+            found,
+            [
+                pair("m64py", "net.sourceforge.m64py.M64Py"),
+                pair("gopher64", "io.github.gopher64.gopher64"),
+                pair("desmume", "org.desmume.DeSmuME"),
+            ]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_new_emulators_are_found_in_their_windows_folders() {
+        let mut env = Fake::default();
+        env.vars.insert("ProgramFiles".into(), r"C:\Program Files".into());
+        env.vars.insert("SCOOP".into(), r"D:\Scoop".into());
+        env.files.insert(r"C:\Program Files\ePSXe\ePSXe.exe".into());
+        env.files.insert(r"C:\Program Files\DeSmuME\DeSmuME_0.9.13_x64.exe".into());
+        env.files.insert(r"C:\Program Files\Mupen64Plus\mupen64plus.exe".into());
+        env.files.insert(r"C:\Program Files\M64Py\m64py.exe".into());
+        env.files.insert(r"D:\Scoop\apps\gopher64\current\gopher64-windows-x86_64.exe".into());
+        let found: Vec<(String, String)> = detect_emulators(&env, &[]).into_iter().map(|d| (d.definition_id, d.executable)).collect();
+        let pair = |a: &str, b: &str| (a.to_string(), b.to_string());
+        assert_eq!(
+            found,
+            [
+                pair("mupen64plus", r"C:\Program Files\Mupen64Plus\mupen64plus.exe"),
+                pair("m64py", r"C:\Program Files\M64Py\m64py.exe"),
+                pair("gopher64", r"D:\Scoop\apps\gopher64\current\gopher64-windows-x86_64.exe"),
+                pair("epsxe", r"C:\Program Files\ePSXe\ePSXe.exe"),
+                pair("desmume", r"C:\Program Files\DeSmuME\DeSmuME_0.9.13_x64.exe"),
+            ]
+        );
+    }
+
+    #[test]
     fn new_emulator_profiles_follow_the_cores_found() {
         let mut env = Fake::default();
         let retroarch = at("opt/ra/retroarch");

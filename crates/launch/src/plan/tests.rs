@@ -582,6 +582,56 @@ fn retroarch_core_in_flatpak() {
     assert_eq!(process.stop.kill_patterns, ["retroarch", "RetroArch"]);
 }
 
+#[cfg(unix)]
+#[test]
+fn mupen64plus_runs_fullscreen_without_touching_its_config() {
+    let emu = UserEmulator {
+        id: "e1".into(),
+        definition_id: "mupen64plus".into(),
+        executable: "/usr/bin/mupen64plus".into(),
+        launch_kind: "native".into(),
+        profiles: vec![profile("n64", "--fullscreen --nosaveoptions {ImagePath}")],
+        ..Default::default()
+    };
+    let probe = FakeProbe::new("/h").with_path("/usr/bin/mupen64plus").with_path("/roms/mario.z64");
+    let m = LocalGameMeta { emulator_profile_id: Some("n64".into()), ..emu_meta(&["/roms/mario.z64"]) };
+    let game = sideload("g", "/usr/bin/mupen64plus", "linux");
+    let LaunchPlan::Emulator { process, .. } =
+        build_plan_with_settings(&emu_ctx(emu), &probe, &game, Some(&m), &settings(json!({})), &Default::default())
+    else {
+        panic!()
+    };
+    assert_eq!(process.command.program, "/usr/bin/mupen64plus");
+    assert_eq!(process.command.args, ["--fullscreen", "--nosaveoptions", "/roms/mario.z64"]);
+    assert_eq!(process.stop.kill_patterns, ["mupen64plus"]);
+}
+
+// Flatpak is Linux's.
+#[cfg(unix)]
+#[test]
+fn flatpak_without_file_access_gets_the_host_read_only() {
+    let emu = UserEmulator {
+        id: "e1".into(),
+        definition_id: "gopher64".into(),
+        name: "gopher64".into(),
+        launch_kind: "flatpak".into(),
+        flatpak_id: Some("io.github.gopher64.gopher64".into()),
+        profiles: vec![profile("n64", "--fullscreen {ImagePath}")],
+        ..Default::default()
+    };
+    let probe = FakeProbe::new("/h").with_path("/roms/mario.z64");
+    let m = LocalGameMeta { emulator_profile_id: Some("n64".into()), ..emu_meta(&["/roms/mario.z64"]) };
+    let game = sideload("g", "flatpak", "linux");
+    let LaunchPlan::Emulator { process, .. } =
+        build_plan_with_settings(&emu_ctx(emu), &probe, &game, Some(&m), &settings(json!({})), &Default::default())
+    else {
+        panic!()
+    };
+    assert_eq!(process.command.program, "flatpak");
+    assert_eq!(process.command.args, ["run", "--filesystem=host:ro", "io.github.gopher64.gopher64", "--fullscreen", "/roms/mario.z64"]);
+    assert_eq!(process.stop.kill_patterns, ["gopher64", "gopher64"]);
+}
+
 #[test]
 fn mame_runs_from_the_rom_folder() {
     let game = sideload("g", "/usr/bin/mame", "linux");
