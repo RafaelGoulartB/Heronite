@@ -8,14 +8,14 @@ use gpui_kit::*;
 use heronite_amazon::cmd::Nile;
 use heronite_amazon::ops::NileJob;
 use heronite_data::DataPaths;
-use heronite_epic::cmd::{Cancel, Legendary};
+use heronite_epic::cmd::Cancel;
 use heronite_epic::info;
 use heronite_epic::manager::{DmState, DownloadManager, Event as DmEvent, Job, JobResult};
-use heronite_epic::ops::{self, LegendaryJob};
+use heronite_epic::ops::{self, EpicJob};
 use heronite_epic::progress::Progress;
 use heronite_epic::queue::{DmElement, DmStatus, ElementKind, InstallParams};
 use heronite_epic::util::{file_size, parse_size};
-use heronite_gog::cmd::Gogdl;
+use heronite_epic::Epic;
 use heronite_gog::ops::GogJob;
 use heronite_i18n::tr;
 use heronite_launch::net::{Net, SystemNet};
@@ -24,8 +24,8 @@ use serde_json::Value;
 use super::connectivity::{self, Check};
 use super::{library_entry, Downloads, DownloadsEvent, InstallRequest, QueueState};
 
-/// Reports kept for the speed chart (legendary, gogdl and nile report about
-/// once a second: about a minute and a half).
+/// Reports kept for the speed chart (downloads report about once a
+/// second: about a minute and a half).
 const SPEED_SAMPLES: usize = 90;
 
 impl Downloads {
@@ -137,9 +137,9 @@ impl Downloads {
                             self.auto_failed.insert(element.params.app_name.clone());
                         }
                         let why = error.unwrap_or_default();
-                        let legendary = !matches!(element.params.runner.as_str(), "gog" | "nile");
-                        if legendary && heronite_epic::session::legendary_expired(&why) && !self.account.expired {
-                            // Its message says what to do; the history keeps legendary's.
+                        let epic = !matches!(element.params.runner.as_str(), "gog" | "nile");
+                        if epic && heronite_epic::session::expired_message(&why) && !self.account.expired {
+                            // The login asks to sign in again; the history keeps the message.
                             self.mark_expired(None, cx);
                             self.reload_local(cx);
                             return cx.notify();
@@ -177,8 +177,8 @@ impl Downloads {
     }
 
     /// Queues an install (and its DLCs) the way Heroic's `install` handler
-    /// does. GOG installs the chosen DLCs with the game (gogdl takes them
-    /// along); Epic DLCs are elements of their own.
+    /// does. GOG installs the chosen DLCs with the game (one download takes
+    /// them along); Epic DLCs are elements of their own.
     pub fn queue_install(&mut self, req: InstallRequest, cx: &mut Context<Self>) {
         let manager = self.manager.clone();
         let data_paths = self.data_paths.clone();
@@ -241,9 +241,8 @@ impl Downloads {
         cx.background_spawn(async move {
             // GOG and Amazon only know the size of a full download, not of the update.
             let size = (runner == "legendary")
-                .then(|| Legendary::locate(&data_paths).ok())
+                .then(|| info::install_info(&data_paths, &Epic::new(&data_paths), &app, &platform).ok())
                 .flatten()
-                .and_then(|lg| info::install_info(&data_paths, &lg, &app, &platform).ok())
                 .map(|i| file_size(i.download_size()));
             manager.add(DmElement::new(
                 ElementKind::Update,
@@ -448,7 +447,7 @@ impl Downloads {
 }
 
 /// Queues an install and, for Epic, its DLCs as elements of their own (GOG
-/// installs the chosen DLCs with the game: gogdl takes them along).
+/// installs the chosen DLCs with the game: one download takes them along).
 fn add_install(manager: &DownloadManager, data_paths: &DataPaths, mut base: InstallParams) {
     if base.runner == "nile" {
         // The folder nile creates, which "Stop, delete files" deletes.
@@ -477,8 +476,8 @@ fn add_install(manager: &DownloadManager, data_paths: &DataPaths, mut base: Inst
     }
 }
 
-/// Locates the element's tool (legendary, gogdl or nile) when it runs (cheap
-/// to create, and picks up a binary changed in the settings).
+/// Picks the element's store when it runs (cheap to create; nile is
+/// located then, so a binary changed in the settings is picked up).
 pub(super) struct LazyJob {
     pub(super) data_paths: DataPaths,
 }
@@ -488,18 +487,12 @@ impl Job for LazyJob {
         let paths = self.data_paths.clone();
         let failed = |err: anyhow::Error| JobResult { status: DmStatus::Error, error: Some(format!("{err:#}")) };
         match element.params.runner.as_str() {
-            "gog" => match Gogdl::locate_or_install(&paths) {
-                Ok(gogdl) => GogJob { paths, gogdl }.run(element, cancel, on_progress),
-                Err(err) => failed(err),
-            },
+            "gog" => GogJob { paths }.run(element, cancel, on_progress),
             "nile" => match Nile::locate_or_install(&paths) {
                 Ok(nile) => NileJob { paths, nile }.run(element, cancel, on_progress),
                 Err(err) => failed(err),
             },
-            _ => match Legendary::locate(&paths) {
-                Ok(legendary) => LegendaryJob { data_paths: paths, legendary }.run(element, cancel, on_progress),
-                Err(err) => failed(err),
-            },
+            _ => EpicJob { epic: Epic::new(&paths), data_paths: paths }.run(element, cancel, on_progress),
         }
     }
 }

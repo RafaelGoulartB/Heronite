@@ -8,11 +8,9 @@
 //! a terminal) must stay as it is. So the app starts itself again
 //! (`--heronite-send-ctrl-c`, see [`init_stop_helper`]) with no console;
 //! that process joins the helper's and sends it. Python's tools take it as
-//! a `KeyboardInterrupt`: legendary stops its download (its resume file
-//! keeps what was done), gogdl's handler stops its workers (it keeps
-//! `.gogdl-resume`); nile has no handler, its download threads go on until
-//! the kill after the grace period (it checks the files it has on the next
-//! run). Ctrl+Break would not do: Python takes it as an exit on the spot.
+//! a `KeyboardInterrupt`; nile has no handler, its download threads go on
+//! until the kill after the grace period (it checks the files it has on the
+//! next run). Ctrl+Break would not do: Python takes it as an exit on the spot.
 
 use std::collections::HashMap;
 use std::os::windows::io::AsRawHandle;

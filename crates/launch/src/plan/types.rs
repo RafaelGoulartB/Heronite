@@ -76,19 +76,15 @@ pub struct ProcessPlan {
     /// Windows' way of the same: the app itself asks the system to stay awake
     /// while the game runs (see [`crate::keep_awake::Hold`]).
     pub hold_awake: bool,
-    /// legendary starts the game through umu (a Wine plan says it with
-    /// [`WineRuntime::Umu`]): its `GAMEID` picks the protonfixes.
-    pub through_umu: bool,
     /// Another launcher or a store client starts the game and may hand it to
     /// its own running instance (see [`Handoff`]).
     pub handoff: Option<Handoff>,
     /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
     /// alongside it join that sandbox.
     pub sandboxed: bool,
-    /// Windows: `command` is `legendary launch ... --json`. legendary signs
-    /// in and names the game's program, which starts instead of it (see
-    /// [`crate::legendary_windows`]).
-    pub ask_legendary: bool,
+    /// An Epic game: Epic's sign-in and the build's arguments complete
+    /// `command` right before it starts (see [`crate::epic_launch`]).
+    pub epic: Option<crate::epic_launch::EpicLaunch>,
 }
 
 /// How to find a game another launcher started when the command that asked
@@ -233,8 +229,6 @@ pub enum LaunchPlan {
     Wine { process: ProcessPlan, runtime: WineRuntime, prefix: String },
     /// An emulator with its ROM.
     Emulator { process: ProcessPlan, emulator: String, rom: Option<String> },
-    /// `legendary launch <app>` (Epic).
-    Legendary { process: ProcessPlan, app_name: String },
     /// Cannot be launched; the string says why.
     Unavailable(String),
 }
@@ -242,20 +236,14 @@ pub enum LaunchPlan {
 impl LaunchPlan {
     pub fn process(&self) -> Option<&ProcessPlan> {
         match self {
-            LaunchPlan::Native(p)
-            | LaunchPlan::Wine { process: p, .. }
-            | LaunchPlan::Emulator { process: p, .. }
-            | LaunchPlan::Legendary { process: p, .. } => Some(p),
+            LaunchPlan::Native(p) | LaunchPlan::Wine { process: p, .. } | LaunchPlan::Emulator { process: p, .. } => Some(p),
             LaunchPlan::SteamUri { .. } | LaunchPlan::Unavailable(_) => None,
         }
     }
 
     pub fn process_mut(&mut self) -> Option<&mut ProcessPlan> {
         match self {
-            LaunchPlan::Native(p)
-            | LaunchPlan::Wine { process: p, .. }
-            | LaunchPlan::Emulator { process: p, .. }
-            | LaunchPlan::Legendary { process: p, .. } => Some(p),
+            LaunchPlan::Native(p) | LaunchPlan::Wine { process: p, .. } | LaunchPlan::Emulator { process: p, .. } => Some(p),
             LaunchPlan::SteamUri { .. } | LaunchPlan::Unavailable(_) => None,
         }
     }
@@ -274,7 +262,6 @@ impl LaunchPlan {
             LaunchPlan::Native(_) => "native",
             LaunchPlan::Wine { .. } => "wine",
             LaunchPlan::Emulator { .. } => "emulator",
-            LaunchPlan::Legendary { .. } => "legendary",
             LaunchPlan::Unavailable(_) => "unavailable",
         }
     }

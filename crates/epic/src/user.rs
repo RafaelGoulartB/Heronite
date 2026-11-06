@@ -1,5 +1,6 @@
-//! Epic account (port of `LegendaryUser`): `legendary auth`, and the
-//! `userInfo` kept in `store/config.json` (Heroic's `configStore` shape).
+//! Epic account (port of `LegendaryUser`): signing in and out (legendary's
+//! `user.json`), and the `userInfo` kept in `store/config.json` (Heroic's
+//! `configStore` shape).
 
 use anyhow::{bail, Result};
 use heronite_data::json_store;
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::cache_store::CacheStore;
-use crate::cmd::Legendary;
+use crate::client::Epic;
 
 /// `UserInfo` of Heroic's `configStore`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -21,7 +22,7 @@ pub struct UserInfo {
     pub user: String,
 }
 
-/// legendary's login page: Epic shows the code for legendary's client on
+/// The login page: Epic shows the code for the launcher's client on
 /// `/id/api/redirect` once signed in.
 pub const LOGIN_URL: &str = "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
 /// Page that shows the authorization code in the browser (SID login).
@@ -112,38 +113,34 @@ pub fn extract_code(input: &str) -> Option<String> {
     (!bare.contains(char::is_whitespace)).then(|| bare.to_string())
 }
 
-/// `legendary auth --code`; on success mirrors the account into the config.
-pub fn login(data_paths: &DataPaths, legendary: &Legendary, input: &str) -> Result<UserInfo> {
+/// Signs in with the authorization code; on success mirrors the account
+/// into the config. Blocking, network.
+pub fn login(data_paths: &DataPaths, epic: &Epic, input: &str) -> Result<UserInfo> {
     let Some(code) = extract_code(input) else { bail!(tr!("That does not look like an authorization code")) };
     if code.len() < 30 {
         bail!(tr!("That does not look like an authorization code"));
     }
-    let out = legendary.run(&["auth", "--code", &code], &[])?;
-    if out.stderr.contains("ERROR: Logging in ") || !out.success() {
-        let why = out.error_lines();
-        if why.is_empty() {
-            bail!(tr!("Failed to login with Legendary"));
-        }
-        bail!(tr!("Failed to login with Legendary: {error}", error = why));
+    if let Err(err) = epic.client.login_with_code(&epic.config_dir, &code) {
+        log::error!("epic: login failed: {err:#}");
+        bail!(tr!("Failed to log in to Epic Games: {error}", error = format!("{err:#}")));
     }
+    // The launcher identity legendary's API publishes, once a day.
+    epic.refresh_launcher_config();
     match sync_user_info(data_paths)? {
         Some(info) => Ok(info),
         None => bail!(tr!("Logged in, but the account information could not be read")),
     }
 }
 
-/// `legendary auth --delete`, then forget the account and the cached library
-/// but its installed games (still on disk, still playable offline and
+/// Ends the session at Epic and forgets it, then the cached library but its
+/// installed games (still on disk, still playable offline and
 /// uninstallable).
-pub fn logout(data_paths: &DataPaths, legendary: &Legendary) -> Result<()> {
-    let out = legendary.run(&["auth", "--delete"], &[])?;
-    if !out.success() {
-        bail!(tr!("Failed to logout: {error}", error = out.error_lines()));
-    }
+pub fn logout(data_paths: &DataPaths, epic: &Epic) -> Result<()> {
+    epic.client.logout(&epic.config_dir).map_err(|e| anyhow::anyhow!(tr!("Failed to logout: {error}", error = format!("{e:#}"))))?;
     remove_stored_user_info(data_paths)?;
     let library = CacheStore::library(data_paths);
     let kept = library.path().exists().then(|| library.get("library")).flatten();
-    clear_caches(data_paths, legendary);
+    clear_caches(data_paths, epic);
     if let Some(list) = kept {
         let installed = crate::library::installed_games(data_paths);
         library.set("library", list)?;
@@ -152,8 +149,9 @@ pub fn logout(data_paths: &DataPaths, legendary: &Legendary) -> Result<()> {
     Ok(())
 }
 
-/// `clearCache('legendary')`.
-pub fn clear_caches(data_paths: &DataPaths, legendary: &Legendary) {
+/// `clearCache('legendary')`, and what `legendary cleanup` removes: the
+/// stored manifests of builds no longer installed and the temporary files.
+pub fn clear_caches(data_paths: &DataPaths, epic: &Epic) {
     for store in [
         CacheStore::install_info(data_paths),
         CacheStore::library(data_paths),
@@ -165,15 +163,17 @@ pub fn clear_caches(data_paths: &DataPaths, legendary: &Legendary) {
             }
         }
     }
-    if let Err(err) = legendary.run(&["cleanup"], &[]) {
-        log::warn!("legendary cleanup: {err:#}");
+    let removed = heronite_epic_api::installed::clean_manifests(&epic.config_dir);
+    if removed > 0 {
+        log::info!("epic: {removed} stored manifest(s) of builds no longer installed removed");
     }
+    heronite_epic_api::installed::clean_tmp(&epic.config_dir);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::*;
+    use crate::download::testing::Server;
     use serde_json::json;
 
     const CODE: &str = "0123456789abcdef0123456789abcdef";
@@ -222,17 +222,21 @@ mod tests {
     }
 
     #[test]
-    fn login_runs_auth_with_the_code() {
+    fn login_signs_in_with_the_code() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        // The fake "logs in" by writing user.json.
-        let tool = fake_tool(dir.path())
-            .otherwise(Reply::new().write_file("${LEGENDARY_CONFIG_PATH}/user.json", r#"{"displayName":"P","account_id":"id1"}"#));
-        let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
-        let info = login(&data_paths, &lg, CODE).unwrap();
-        assert_eq!(info.display_name, "P");
-        assert_eq!(tool.calls(), [format!("auth --code {CODE}")]);
-        assert!(login(&data_paths, &lg, "short").is_err());
+        let server = Server::start();
+        server.route(
+            "/account/api/oauth/token",
+            200,
+            json!({"access_token": "tok", "refresh_token": "ref", "expires_at": "2099-01-01T00:00:00.000Z", "account_id": "id1", "displayName": "P"})
+                .to_string(),
+        );
+        let epic = server.epic(&data_paths.legendary_config_dir());
+        let info = login(&data_paths, &epic, CODE).unwrap();
+        assert_eq!((info.display_name.as_str(), info.account_id.as_str()), ("P", "id1"));
+        assert!(is_logged_in(&data_paths));
+        assert!(login(&data_paths, &epic, "short").is_err());
     }
 
     #[test]
@@ -244,8 +248,9 @@ mod tests {
         let library = CacheStore::library(&data_paths);
         library.set("library", json!([{"app_name": "Inst"}, {"app_name": "Owned"}])).unwrap();
         CacheStore::install_info(&data_paths).set("Owned", json!({})).unwrap();
-        let lg = Legendary::with_bin(fake_tool(dir.path()).bin(), data_paths.legendary_config_dir());
-        logout(&data_paths, &lg).unwrap();
+        let server = Server::start();
+        logout(&data_paths, &server.epic(&data_paths.legendary_config_dir())).unwrap();
+        assert!(!is_logged_in(&data_paths));
         assert_eq!(library.get("library").unwrap(), json!([{"app_name": "Inst"}]));
         assert!(CacheStore::install_info(&data_paths).get("Owned").is_none());
     }
@@ -254,8 +259,14 @@ mod tests {
     fn failed_logins_are_reported() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("[cli] ERROR: Logging in with code failed").exit(1));
-        let err = login(&data_paths, &legendary_of(&tool, dir.path()), CODE).unwrap_err().to_string();
-        assert!(err.contains("Failed to login"), "{err}");
+        let server = Server::start();
+        server.route(
+            "/account/api/oauth/token",
+            400,
+            r#"{"errorCode": "errors.com.epicgames.account.oauth.authorization_code_not_found"}"#,
+        );
+        let err = login(&data_paths, &server.epic(&data_paths.legendary_config_dir()), CODE).unwrap_err().to_string();
+        assert!(err.contains("Failed to log in"), "{err}");
+        assert!(!is_logged_in(&data_paths));
     }
 }

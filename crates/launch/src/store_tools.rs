@@ -1,19 +1,21 @@
-//! The command-line tools behind the stores: `legendary` (Epic), `gogdl`
-//! (GOG downloads, cloud saves) and `nile` (Amazon Games login, library and
-//! downloads). Each is found in the settings, the data folder or `PATH`, and
-//! downloaded into `<data>/tools/bin` (`legendary.exe` there on Windows)
-//! from its GitHub release when none is there. The releases are the ones
-//! Heroic pins (`RELEASE_TAGS` in its `meta/downloadHelperBinaries.ts`);
-//! their Windows builds are standalone programs (PyInstaller), no Python
+//! The command-line tool behind a store: `nile` (Amazon Games login,
+//! library and downloads). Epic and GOG need none (`heronite_epic_api`,
+//! `heronite_gog_api`). It is found in the settings, the data folder or
+//! `PATH`, and downloaded into `<data>/tools/bin` (`nile.exe` there on
+//! Windows) from its GitHub release when none is there. The release is the
+//! one Heroic pins (`RELEASE_TAGS` in its `meta/downloadHelperBinaries.ts`);
+//! its Windows build is a standalone program (PyInstaller), no Python
 //! needed.
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use heronite_data::DataPaths;
 
-use crate::legendary_install::install_binary;
-use crate::net::{Cancel, Net};
+use crate::net::{Cancel, Net, CANCELLED};
 use crate::plan::PlanContext;
 use crate::probe::Probe;
 
@@ -32,36 +34,6 @@ pub struct StoreTool {
     /// Release assets: (system, CPU, file), as `std::env::consts` names them.
     assets: &'static [(&'static str, &'static str, &'static str)],
 }
-
-/// Epic's client.
-pub const LEGENDARY: StoreTool = StoreTool {
-    name: "legendary",
-    env: "HERONITE_LEGENDARY_BIN",
-    setting: "altLegendaryBin",
-    repo: "legendary-gl/legendary",
-    version: "0.21.1",
-    assets: &[
-        ("linux", "x86_64", "legendary_linux_x64"),
-        ("linux", "aarch64", "legendary_linux_arm64"),
-        ("windows", "x86_64", "legendary_windows_x64.exe"),
-        ("windows", "aarch64", "legendary_windows_arm64.exe"),
-    ],
-};
-
-/// GOG's downloader (on Linux a Python zipapp: it needs `python3`).
-pub const GOGDL: StoreTool = StoreTool {
-    name: "gogdl",
-    env: "HERONITE_GOGDL_BIN",
-    setting: "altGogdlBin",
-    repo: "Heroic-Games-Launcher/heroic-gogdl",
-    version: "v1.3.0",
-    assets: &[
-        ("linux", "x86_64", "gogdl_linux_x86_64"),
-        ("linux", "aarch64", "gogdl_linux_arm64"),
-        ("windows", "x86_64", "gogdl_windows_x86_64.exe"),
-        ("windows", "aarch64", "gogdl_windows_arm64.exe"),
-    ],
-};
 
 /// The Amazon Games client.
 pub const NILE: StoreTool = StoreTool {
@@ -82,10 +54,10 @@ pub const NILE: StoreTool = StoreTool {
 /// The file only NixOS has.
 const NIXOS_MARKER: &str = "/etc/NIXOS";
 
-/// Why `bin` cannot start here, when what starts it is missing: the Linux
-/// builds of legendary and gogdl are Python zipapps (`#!/usr/bin/env
-/// python3`), nile's a program for the usual Linux loader
-/// (`/lib64/ld-linux-x86-64.so.2`), which NixOS has only with nix-ld.
+/// Why `bin` cannot start here, when what starts it is missing: a script's
+/// interpreter (a Python zipapp's `#!/usr/bin/env python3`), or the loader
+/// of a program for the usual Linux systems (nile's
+/// `/lib64/ld-linux-x86-64.so.2`), which NixOS has only with nix-ld.
 /// `None` when it has what it needs, or is not a script or such a program.
 pub(crate) fn missing_runtime(name: &str, bin: &str, probe: &dyn Probe) -> Option<String> {
     let head = probe.read_head(bin, 4096)?;
@@ -133,12 +105,11 @@ fn elf_interpreter(head: &[u8]) -> Option<String> {
     path.starts_with('/').then(|| path.to_string())
 }
 
-/// One download of each tool at a time per process: a login and a refresh
+/// One download of a tool at a time per process: a login and a refresh
 /// can both ask.
-fn busy(tool: &StoreTool) -> &'static Mutex<()> {
-    static BUSY: [Mutex<()>; 3] = [Mutex::new(()), Mutex::new(()), Mutex::new(())];
-    let i = [LEGENDARY.name, GOGDL.name, NILE.name].iter().position(|n| *n == tool.name).unwrap_or(0);
-    &BUSY[i]
+fn busy(_tool: &StoreTool) -> &'static Mutex<()> {
+    static BUSY: Mutex<()> = Mutex::new(());
+    &BUSY
 }
 
 impl StoreTool {
@@ -218,6 +189,45 @@ impl StoreTool {
     }
 }
 
+/// Where a download waits until it proved it runs: `<name>.part` next to
+/// `target` (`<name>.part.exe` on Windows, which only starts `.exe` files
+/// as programs).
+fn part_file(target: &Path) -> PathBuf {
+    target.with_extension(format!("part{}", std::env::consts::EXE_SUFFIX))
+}
+
+/// Downloads `name` next to `target`, checks that it runs (`--version`), then
+/// renames it into place, so an interrupted or broken download never becomes
+/// the binary.
+fn install_binary(name: &str, url: &str, target: &Path, net: &dyn Net, cancel: Cancel) -> Result<(), String> {
+    let dir = target.parent().ok_or_else(|| format!("{name} has no folder"))?;
+    fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
+    let part = part_file(target);
+    let _ = fs::remove_file(&part);
+    let fail = |msg: String| {
+        let _ = fs::remove_file(&part);
+        msg
+    };
+    net.download(url, &part, cancel).map_err(|e| fail(if e == CANCELLED { e } else { format!("downloading {name} failed: {e}") }))?;
+    heronite_platform::fs::make_executable(&part).map_err(|e| fail(format!("making {name} executable: {e}")))?;
+    if !runs_version(&part) {
+        let why = missing_runtime(name, &part.to_string_lossy(), &crate::probe::SystemProbe);
+        return Err(fail(why.unwrap_or_else(|| format!("the downloaded {name} does not run"))));
+    }
+    heronite_platform::fs::rename_replacing(&part, target).map_err(|e| fail(format!("installing {name}: {e}")))
+}
+
+/// Whether `bin --version` exits well. It runs as a helper: no console
+/// window on Windows, and a file just written that is still "busy"
+/// (`ETXTBSY`) is tried again (`heronite_data::proc::spawn`).
+fn runs_version(bin: &Path) -> bool {
+    let mut cmd = Command::new(bin);
+    cmd.arg("--version");
+    // The first run of a Windows build unpacks itself: give it time.
+    let run = heronite_data::proc::Run::new().timeout(Duration::from_secs(120)).grace(Duration::from_secs(2));
+    run.run(&mut cmd).is_ok_and(|out| out.success())
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -236,52 +246,39 @@ pub(crate) mod tests {
 
     #[test]
     fn downloads_into_the_data_folder_when_none_is_found() {
-        for tool in [LEGENDARY, GOGDL, NILE] {
-            let dir = tempfile::tempdir().unwrap();
-            let paths = DataPaths::at(dir.path().join("heronite"));
-            let url = tool.download_url(tool.asset_name().unwrap());
-            let net = FakeNet::online().with_file(&url, fake_bin(true));
-            let got = tool.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap();
-            assert_eq!(got, tool.data_bin(&paths));
-            assert!(got.exists());
-            assert!(!crate::legendary_install::part_file(&got).exists());
+        let tool = NILE;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("heronite"));
+        let url = tool.download_url(tool.asset_name().unwrap());
+        let net = FakeNet::online().with_file(&url, fake_bin(true));
+        let got = tool.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap();
+        assert_eq!(got, tool.data_bin(&paths));
+        assert!(got.exists());
+        assert!(!part_file(&got).exists());
 
-            let probe = FakeProbe::default().with_path(got.to_str().unwrap());
-            tool.ensure(&paths, &probe, &net, &|| false).unwrap();
-            assert_eq!(net.requests().len(), 1, "{}", tool.name);
-        }
+        let probe = FakeProbe::default().with_path(got.to_str().unwrap());
+        tool.ensure(&paths, &probe, &net, &|| false).unwrap();
+        assert_eq!(net.requests().len(), 1, "{}", tool.name);
     }
 
     #[test]
     fn each_system_gets_its_own_build() {
         let url = |tool: StoreTool, os, arch| tool.asset_for(os, arch).map(|a| tool.download_url(a));
         assert_eq!(
-            url(LEGENDARY, "windows", "x86_64").as_deref(),
-            Some("https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_windows_x64.exe")
-        );
-        assert_eq!(
-            url(GOGDL, "windows", "x86_64").as_deref(),
-            Some("https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_windows_x86_64.exe")
-        );
-        assert_eq!(
             url(NILE, "windows", "x86_64").as_deref(),
             Some("https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_windows_x86_64.exe")
         );
         assert_eq!(url(NILE, "windows", "aarch64"), url(NILE, "windows", "x86_64"), "x64 under emulation");
-        assert_eq!(LEGENDARY.asset_for("linux", "x86_64"), Some("legendary_linux_x64"));
-        assert_eq!(GOGDL.asset_for("linux", "aarch64"), Some("gogdl_linux_arm64"));
+        assert_eq!(NILE.asset_for("linux", "aarch64"), Some("nile_linux_arm64"));
         assert_eq!(NILE.asset_for("macos", "aarch64"), None);
-        for tool in [LEGENDARY, GOGDL, NILE] {
-            assert!(tool.asset_name().is_some(), "{} has a build for this system", tool.name);
-        }
+        assert!(NILE.asset_name().is_some(), "nile has a build for this system");
     }
 
     #[test]
     fn the_data_folder_copy_is_an_exe_on_windows() {
         let paths = DataPaths::at("/hr");
-        let bin = GOGDL.data_bin(&paths);
-        assert_eq!(bin.file_name().unwrap(), if cfg!(windows) { "gogdl.exe" } else { "gogdl" });
-        assert_eq!(LEGENDARY.data_bin(&paths), paths.legendary_bin());
+        let bin = NILE.data_bin(&paths);
+        assert_eq!(bin.file_name().unwrap(), if cfg!(windows) { "nile.exe" } else { "nile" });
     }
 
     #[test]
@@ -291,9 +288,9 @@ pub(crate) mod tests {
         let ctx = PlanContext::load(&paths);
         let probe = FakeProbe::default().with_env("HERONITE_NILE_BIN", "/opt/nile").with_path("/opt/nile");
         assert_eq!(NILE.find(&ctx, &probe).as_deref(), Some("/opt/nile"));
-        let probe = FakeProbe::default().with_bin("gogdl", "/usr/bin/gogdl");
-        assert_eq!(GOGDL.find(&ctx, &probe).as_deref(), Some("/usr/bin/gogdl"));
-        assert_eq!(GOGDL.find(&ctx, &FakeProbe::default()), None);
+        let probe = FakeProbe::default().with_bin("nile", "/usr/bin/nile");
+        assert_eq!(NILE.find(&ctx, &probe).as_deref(), Some("/usr/bin/nile"));
+        assert_eq!(NILE.find(&ctx, &FakeProbe::default()), None);
     }
 
     #[test]
@@ -301,25 +298,25 @@ pub(crate) mod tests {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
         let ctx = PlanContext::load(&paths);
-        let data = LEGENDARY.data_bin(&paths).to_string_lossy().into_owned();
-        let nix = "/run/current-system/sw/bin/legendary";
-        let probe = FakeProbe::default().with_path(&data).with_bin("legendary", nix);
-        assert_eq!(LEGENDARY.find(&ctx, &probe).as_deref(), Some(data.as_str()));
+        let data = NILE.data_bin(&paths).to_string_lossy().into_owned();
+        let nix = "/run/current-system/sw/bin/nile";
+        let probe = FakeProbe::default().with_path(&data).with_bin("nile", nix);
+        assert_eq!(NILE.find(&ctx, &probe).as_deref(), Some(data.as_str()));
         let probe = probe.with_path(NIXOS_MARKER);
-        assert_eq!(LEGENDARY.find(&ctx, &probe).as_deref(), Some(nix));
+        assert_eq!(NILE.find(&ctx, &probe).as_deref(), Some(nix));
         // The setting still wins.
-        let probe = probe.with_env("HERONITE_LEGENDARY_BIN", "/opt/legendary").with_path("/opt/legendary");
-        assert_eq!(LEGENDARY.find(&ctx, &probe).as_deref(), Some("/opt/legendary"));
+        let probe = probe.with_env("HERONITE_NILE_BIN", "/opt/nile").with_path("/opt/nile");
+        assert_eq!(NILE.find(&ctx, &probe).as_deref(), Some("/opt/nile"));
     }
 
     #[test]
     fn what_a_build_needs_to_start_is_checked() {
         let zipapp = b"#!/usr/bin/env python3\nPK\x03\x04...";
-        let probe = FakeProbe::default().with_file("/t/legendary", zipapp);
-        let why = missing_runtime("legendary", "/t/legendary", &probe).unwrap();
-        assert!(why.contains("legendary needs python3 (Python 3)"), "{why}");
+        let probe = FakeProbe::default().with_file("/t/tool", zipapp);
+        let why = missing_runtime("tool", "/t/tool", &probe).unwrap();
+        assert!(why.contains("tool needs python3 (Python 3)"), "{why}");
         let probe = probe.with_bin("python3", "/usr/bin/python3");
-        assert_eq!(missing_runtime("legendary", "/t/legendary", &probe), None);
+        assert_eq!(missing_runtime("tool", "/t/tool", &probe), None);
 
         let mut elf = b"\x7fELF\x02\x01\x01\0".to_vec();
         elf.extend_from_slice(&[0; 56]);
@@ -340,21 +337,21 @@ pub(crate) mod tests {
     fn a_found_tool_that_cannot_start_is_explained() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
-        let data = GOGDL.data_bin(&paths).to_string_lossy().into_owned();
+        let data = NILE.data_bin(&paths).to_string_lossy().into_owned();
         let probe = FakeProbe::default().with_file(&data, b"#!/usr/bin/env python3\n");
-        let err = GOGDL.ensure(&paths, &probe, &FakeNet::offline(), &|| false).unwrap_err();
-        assert!(err.contains("gogdl needs python3"), "{err}");
+        let err = NILE.ensure(&paths, &probe, &FakeNet::offline(), &|| false).unwrap_err();
+        assert!(err.contains("nile needs python3"), "{err}");
     }
 
     #[test]
     fn a_broken_download_is_not_installed() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
-        let url = GOGDL.download_url(GOGDL.asset_name().unwrap());
+        let url = NILE.download_url(NILE.asset_name().unwrap());
         let net = FakeNet::online().with_file(&url, fake_bin(false));
-        let err = GOGDL.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap_err();
-        assert!(err.contains("gogdl does not run"), "{err}");
-        assert!(!GOGDL.data_bin(&paths).exists());
+        let err = NILE.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap_err();
+        assert!(err.contains("nile does not run"), "{err}");
+        assert!(!NILE.data_bin(&paths).exists());
         assert!(FakeNet::offline().requests().is_empty());
         let err = NILE.ensure(&paths, &FakeProbe::default(), &FakeNet::offline(), &|| false).unwrap_err();
         assert!(err.contains("no internet"), "{err}");
@@ -363,17 +360,16 @@ pub(crate) mod tests {
     /// The real releases, downloaded and run (`--version`) on this system:
     /// `cargo test -p heronite-launch --lib real_releases -- --ignored`.
     #[test]
-    #[ignore = "downloads about 45 MB"]
+    #[ignore = "downloads about 15 MB"]
     fn real_releases_install_and_run_here() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
-        for tool in [LEGENDARY, GOGDL, NILE] {
-            let got = tool.ensure(&paths, &FakeProbe::default(), &crate::net::SystemNet, &|| false).unwrap();
-            assert_eq!(got, tool.data_bin(&paths));
-            let out = heronite_data::proc::output(std::process::Command::new(&got).arg("--version")).unwrap();
-            assert!(out.success(), "{}: {}", tool.name, out.stderr_text());
-            let version = tool.version().trim_start_matches('v');
-            assert!(out.stdout_text().contains(version), "{}: {}", tool.name, out.stdout_text());
-        }
+        let tool = NILE;
+        let got = tool.ensure(&paths, &FakeProbe::default(), &crate::net::SystemNet, &|| false).unwrap();
+        assert_eq!(got, tool.data_bin(&paths));
+        let out = heronite_data::proc::output(std::process::Command::new(&got).arg("--version")).unwrap();
+        assert!(out.success(), "{}: {}", tool.name, out.stderr_text());
+        let version = tool.version().trim_start_matches('v');
+        assert!(out.stdout_text().contains(version), "{}: {}", tool.name, out.stdout_text());
     }
 }

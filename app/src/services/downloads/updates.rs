@@ -7,9 +7,9 @@ use gpui_kit::*;
 use heronite_data::game_config;
 use heronite_data::DataPaths;
 use heronite_epic::autoupdate;
-use heronite_epic::cmd::Legendary;
 use heronite_epic::library;
 use heronite_epic::ops;
+use heronite_epic::Epic;
 use heronite_i18n::{tr, trn};
 use serde_json::Value;
 
@@ -40,7 +40,7 @@ impl Downloads {
     pub(super) fn spawn_idle_jobs(&mut self, cx: &mut Context<Self>) {
         let data_paths = self.data_paths.clone();
         // An install move cut short by a quit / kill is finished first; the
-        // queue starts after it (two legendary runs would both write installed.json).
+        // queue starts after it (both would write installed.json).
         let move_first = heronite_platform::supported(heronite_platform::Feature::EpicStore) && self.resume_interrupted_move(cx);
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_secs(5)).await;
@@ -65,7 +65,7 @@ impl Downloads {
         .detach();
     }
 
-    /// `legendary list` + rebuild of the library file + update detection.
+    /// The Epic library refresh + rebuild of the library file + update detection.
     pub fn refresh_library(&mut self, cx: &mut Context<Self>) {
         if self.refreshing {
             return;
@@ -78,8 +78,7 @@ impl Downloads {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let lg = Legendary::locate(&data_paths)?;
-                    let r = library::refresh(&data_paths, &lg)?;
+                    let r = library::refresh(&data_paths, &Epic::new(&data_paths))?;
                     let signed_in = heronite_epic::user::is_logged_in(&data_paths);
                     anyhow::Ok((r, signed_in, library::updates_available(&data_paths), read_stats(&data_paths)))
                 })
@@ -90,10 +89,8 @@ impl Downloads {
                     Ok((r, signed_in, updates, stats)) => {
                         this.updates = updates.into_iter().collect();
                         this.stats = stats;
-                        // legendary refused the login (and deleted it).
-                        let expired = this.account.logged_in
-                            && !this.logging_out
-                            && (!signed_in || r.list_error.as_deref().is_some_and(heronite_epic::session::legendary_expired));
+                        // Epic refused the sign-in (and it was deleted).
+                        let expired = this.account.logged_in && !this.logging_out && (!signed_in || r.expired);
                         match r.list_error {
                             _ if expired => this.mark_expired(None, cx),
                             Some(e) => {

@@ -8,7 +8,6 @@ use heronite_data::DataPaths;
 use serde_json::{json, Value};
 
 use crate::api::{self, bearer, parallel_map};
-use crate::cmd::Gogdl;
 use crate::installed::{self, Installed};
 use crate::user;
 
@@ -86,10 +85,15 @@ fn check_one(token: &str, game: &Installed) -> Result<bool> {
 
 /// Asks GOG about every installed game that is not pinned to a version, saves
 /// and returns the app names with an update. Network.
-pub fn check(paths: &DataPaths, gogdl: &Gogdl) -> Result<Vec<String>> {
-    let creds = user::credentials(paths, gogdl)?;
+pub fn check(paths: &DataPaths) -> Result<Vec<String>> {
     // GOG Galaxy keeps the games it installed up to date itself.
     let games: Vec<Installed> = installed::load(paths).into_iter().filter(|g| !g.pinned_version && !g.from_galaxy()).collect();
+    // A Windows or macOS build without a saved tag cannot be compared.
+    if !games.iter().any(|g| g.platform == "linux" || !g.version_etag.is_empty()) {
+        save(paths, &[])?;
+        return Ok(Vec::new());
+    }
+    let creds = user::credentials(paths)?;
     let results = parallel_map(&games, WORKERS, |g| (g.app_name.clone(), check_one(&creds.access_token, g)));
     let mut updates = Vec::new();
     for (app, result) in results {
@@ -143,7 +147,7 @@ pub(crate) fn clear(paths: &DataPaths) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::*;
+    use crate::testing::setup;
 
     #[test]
     fn the_public_build_is_followed() {
@@ -193,7 +197,7 @@ mod tests {
 
     #[test]
     fn pinned_games_and_missing_tags_are_not_checked() {
-        let (dir, paths) = setup();
+        let (_dir, paths) = setup();
         let mut no_tag = Installed::new("5");
         no_tag.platform = "windows".into();
         assert!(!check_one("tok", &no_tag).unwrap());
@@ -201,9 +205,8 @@ mod tests {
         let mut pinned = Installed::new("6");
         pinned.pinned_version = true;
         installed::upsert(&paths, &pinned).unwrap();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"access_token":"t","user_id":"1"}"#));
-        // Neither game makes a request, so no network is needed.
-        assert!(check(&paths, &gogdl(&tool, &paths)).unwrap().is_empty());
+        // Neither game makes a request, so no sign-in or network is needed.
+        assert!(check(&paths).unwrap().is_empty());
         assert!(cached_updates(&paths).is_empty());
         assert!(paths.gog_store("updates").exists());
     }

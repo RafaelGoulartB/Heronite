@@ -1,9 +1,8 @@
-//! GOG: `gameplay.gog.com`, with the signed-in user's token (gogdl
-//! refreshes it). Heroic's `getAchievements` reads the same endpoint.
+//! GOG: `gameplay.gog.com`, with the signed-in user's token (renewed by
+//! heronite-gog). Heroic's `getAchievements` reads the same endpoint.
 
 use chrono::{DateTime, Utc};
 use heronite_data::paths::DataPaths;
-use heronite_gog::cmd::Gogdl;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -78,10 +77,9 @@ fn locale(lang: &str) -> &'static str {
     }
 }
 
-/// A fresh token and the user id: gogdl refreshes an expired token.
+/// A fresh token and the user id (an expired token is refreshed first).
 fn credentials(paths: &DataPaths) -> Result<(String, String), String> {
-    let gogdl = Gogdl::locate(paths).map_err(|e| e.to_string())?;
-    let c = heronite_gog::user::credentials(paths, &gogdl).map_err(|e| format!("{e:#}"))?;
+    let c = heronite_gog::user::credentials(paths).map_err(|e| format!("{e:#}"))?;
     Ok((c.access_token, c.user_id))
 }
 

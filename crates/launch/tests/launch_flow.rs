@@ -1,9 +1,10 @@
-//! A whole Epic launch with real processes, but fake binaries: `legendary`
-//! and `wine` are shell scripts that log what they were asked and create the
-//! files the real ones would. Nothing real is started and everything lives in
-//! a temporary directory.
+//! A whole Epic launch with real processes, but fake binaries and a fake
+//! Epic: `wine` is a shell script that logs what it was asked and creates the
+//! files the real one would, and Epic's answers come from
+//! [`heronite_launch::epic_launch::FakeEpic`]. Nothing real is started and
+//! everything lives in a temporary directory.
 
-// The fake legendary and Wine are shell scripts.
+// The fake Wine is a shell script.
 #![cfg(unix)]
 
 use std::fs;
@@ -15,6 +16,8 @@ use std::time::Duration;
 
 use heronite_data::models::{GameInfo, InstallInfo};
 use heronite_data::DataPaths;
+use heronite_epic_api::launch::LaunchParams;
+use heronite_launch::epic_launch::FakeEpic;
 use heronite_launch::first_launch::{EpicSetup, Prerequisite};
 use heronite_launch::net::FakeNet;
 use heronite_launch::plan::{LaunchOptions, PlanContext};
@@ -82,9 +85,7 @@ fi"#,
         ),
     );
     script(&root.join("w/bin/wineserver"), &format!("printf '%s\\n' \"wineserver $*\" >> \"{}\"", log.display()));
-    // Fake legendary: logs its arguments (the game "runs" for a moment).
-    let legendary = root.join("lg/legendary");
-    script(&legendary, &format!("printf '%s\\n' \"legendary $*\" >> \"{}\"; sleep 0.2", log.display()));
+    fs::write(install.join("Control.exe"), "").unwrap();
 
     // An installed DXVK release.
     let release = paths.tools_dir().join("dxvk/dxvk-9");
@@ -94,10 +95,8 @@ fi"#,
     }
     fs::write(paths.tools_dir().join("dxvk/latest_dxvk"), "dxvk-9").unwrap();
 
-    let mut defaults = serde_json::Map::new();
-    defaults.insert("altLegendaryBin".into(), json!(legendary.to_str().unwrap()));
     let mut ctx = PlanContext::load(&paths);
-    ctx.global = GlobalSettings::from_defaults(defaults);
+    ctx.global = GlobalSettings::from_defaults(serde_json::Map::new());
     ctx.ui_language = Some("en".into());
     ctx.known_fixes = known_fixes;
 
@@ -121,21 +120,36 @@ fi"#,
         install: InstallInfo {
             install_path: Some(install.to_string_lossy().into_owned()),
             platform: Some("Windows".into()),
+            executable: Some("Control.exe".into()),
             ..Default::default()
         },
         ..Default::default()
     };
     let opts = LaunchOptions { skip_version_check, ..Default::default() };
     let plan = build_plan_with_settings(&ctx, &SystemProbe, &game, None, &settings, &opts);
-    assert!(matches!(plan, LaunchPlan::Legendary { .. }), "{plan:?}");
+    assert!(matches!(&plan, LaunchPlan::Wine { process, .. } if process.epic.is_some()), "{plan:?}");
     Rig { root, _dir: dir, paths, plan, log }
 }
 
-fn run(r: &Rig) -> (Vec<LaunchEvent>, Vec<String>) {
-    run_with(r, None)
+/// What the fake Epic answers: the game's program and this session's sign-in.
+fn epic(r: &Rig, update: bool) -> FakeEpic {
+    let dir = r.root.join("games/Control").to_string_lossy().into_owned();
+    let params = LaunchParams {
+        game_executable: "Control.exe".into(),
+        game_directory: dir.clone(),
+        working_directory: dir,
+        game_parameters: vec!["-nolauncher".into()],
+        egl_parameters: vec!["-AUTH_PASSWORD=code".into(), "-epicapp=Calluna".into()],
+        user_parameters: vec![],
+    };
+    FakeEpic { params, update, ..Default::default() }
 }
 
-fn run_with(r: &Rig, epic: Option<Arc<dyn EpicSetup>>) -> (Vec<LaunchEvent>, Vec<String>) {
+fn run(r: &Rig) -> (Vec<LaunchEvent>, Vec<String>) {
+    run_with(r, None, epic(r, false))
+}
+
+fn run_with(r: &Rig, setup: Option<Arc<dyn EpicSetup>>, service: FakeEpic) -> (Vec<LaunchEvent>, Vec<String>) {
     let (tx, rx) = channel();
     let home = r.root.join("home");
     let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
@@ -147,9 +161,10 @@ fn run_with(r: &Rig, epic: Option<Arc<dyn EpicSetup>>) -> (Vec<LaunchEvent>, Vec
         net: Arc::new(FakeNet::online()),
         cloud: Some(Arc::new(LoggingCloud(r.log.clone()))),
     });
-    if let Some(epic) = epic {
-        launcher.set_epic_setup(epic);
+    if let Some(setup) = setup {
+        launcher.set_epic_setup(setup);
     }
+    launcher.set_epic_service(Arc::new(service));
     launcher
         .launch(LaunchRequest { app_name: "Calluna".into(), runner: "legendary".into(), title: "Control".into(), plan: r.plan.clone() })
         .unwrap();
@@ -183,14 +198,14 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
                 } else {
                     "saves-up"
                 }
+            } else if l.starts_with("wine ") && l.contains("Control.exe") {
+                "game"
             } else if l.starts_with("wine wineboot") {
                 "prefix"
             } else if l.starts_with("wine reg add HKEY_CLASSES_ROOT") {
                 "epic-setup"
             } else if l.starts_with("wine reg add") {
                 "override"
-            } else if l.starts_with("legendary") {
-                "game"
             } else if l.starts_with("wineserver") {
                 "wineserver"
             } else {
@@ -198,7 +213,7 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
             }
         })
         .collect();
-    assert_eq!(kinds, ["saves-down", "prefix", "wineserver", "epic-setup", "override", "game", "saves-up"], "{log:#?}");
+    assert_eq!(kinds, ["saves-down", "prefix", "wineserver", "epic-setup", "override", "game", "wineserver", "saves-up"], "{log:#?}");
     // The prefix remembers the game, so the setup does not run again.
     assert_eq!(fs::read_to_string(r.root.join("pfx/installed_games")).unwrap(), r#"["Calluna"]"#);
     assert_eq!(log[0], "cloud Calluna --skip-upload /saves/Control".to_string());
@@ -210,10 +225,11 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
     assert!(pfx.join("drive_c/windows/system32/d3d11.dll").exists());
     assert!(pfx.join("drive_c/windows/syswow64/d3d11.dll").exists());
 
-    // The game is legendary with the Wine of the settings, no version check skipped.
-    let game = log.iter().find(|l| l.starts_with("legendary")).unwrap();
-    assert!(game.starts_with("legendary launch Calluna"), "{game}");
-    assert!(game.contains("--wine ") && !game.contains("--skip-version-check"), "{game}");
+    // The game's program through the Wine of the settings, with the build's
+    // arguments and this session's sign-in from Epic.
+    let game = log.iter().find(|l| l.starts_with("wine ") && l.contains("Control.exe")).unwrap();
+    let exe = r.root.join("games/Control/Control.exe");
+    assert!(game.starts_with(&format!("wine {} -nolauncher -AUTH_PASSWORD=code -epicapp=Calluna", exe.display())), "{game}");
 
     // The user was told what happens.
     let messages: Vec<String> = events
@@ -230,6 +246,7 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
             "Preparing prefix...",
             "Installing Redistributables (EPIC)",
             "Installing DXVK in the prefix...",
+            "Logging in to Epic Games...",
             "Uploading cloud saves..."
         ]
     );
@@ -248,15 +265,19 @@ fn an_epic_launch_prepares_everything_in_heroics_order() {
 }
 
 #[test]
-fn play_anyway_reaches_legendary() {
+fn an_update_stops_the_game_unless_play_anyway() {
+    let r = rig(false);
+    let (events, log) = run_with(&r, None, epic(&r, true));
+    assert!(matches!(events.last(), Some(LaunchEvent::Error { message, .. }) if message.contains("Play anyway")), "{events:?}");
+    assert!(!log.iter().any(|l| l.contains("Control.exe")), "{log:#?}");
     let r = rig(true);
-    let (_, log) = run(&r);
-    let game = log.iter().find(|l| l.starts_with("legendary")).unwrap();
-    assert!(game.contains("--skip-version-check"), "{game}");
+    let (events, log) = run_with(&r, None, epic(&r, true));
+    assert!(matches!(events.last(), Some(LaunchEvent::Exited { .. })), "{events:?}");
+    assert!(log.iter().any(|l| l.contains("Control.exe")));
 }
 
-struct FakeEpic;
-impl EpicSetup for FakeEpic {
+struct FakeSetup;
+impl EpicSetup for FakeSetup {
     fn prerequisites(&self, _: &str, _: &str) -> Result<Option<Prerequisite>, String> {
         Ok(Some(Prerequisite { path: "Redist\\setup.exe".into(), args: "/q /norestart".into() }))
     }
@@ -277,8 +298,8 @@ impl EpicSetup for FakeEpic {
 fn the_first_launch_in_a_prefix_runs_prerequisites_and_fixes_once() {
     let fixes = json!({"epic": {"Calluna": {"runInPrefix": ["Fix/vc.exe"]}}});
     let r = rig_with(false, Some(fixes));
-    let epic: Arc<dyn EpicSetup> = Arc::new(FakeEpic);
-    let (events, log) = run_with(&r, Some(epic.clone()));
+    let setup: Arc<dyn EpicSetup> = Arc::new(FakeSetup);
+    let (events, log) = run_with(&r, Some(setup.clone()), epic(&r, false));
     assert!(matches!(events.last(), Some(LaunchEvent::Exited { .. })), "{events:?}");
 
     let game_dir = r.root.join("games/Control");
@@ -301,7 +322,7 @@ fn the_first_launch_in_a_prefix_runs_prerequisites_and_fixes_once() {
 
     // Second launch: the prefix remembers the game.
     fs::remove_file(&r.log).unwrap();
-    let (_, log) = run_with(&r, Some(epic));
+    let (_, log) = run_with(&r, Some(setup), epic(&r, false));
     assert!(!log.iter().any(|l| l.contains("setup.exe") || l.contains("vc.exe") || l.contains("com.epicgames")), "{log:#?}");
-    assert!(log.iter().any(|l| l.starts_with("legendary launch")));
+    assert!(log.iter().any(|l| l.starts_with("wine ") && l.contains("Control.exe")));
 }

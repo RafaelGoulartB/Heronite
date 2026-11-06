@@ -1,6 +1,7 @@
-//! The Epic library (port of `LegendaryLibraryManager`): `legendary list`
-//! refreshes legendary's own files (`metadata/*.json`, `assets.json`), from
-//! which `store_cache/legendary_library.json` is rebuilt in Heroic's format.
+//! The Epic library (port of `LegendaryLibraryManager`): a refresh rewrites
+//! legendary's own files (`metadata/*.json`, `assets.json`) from Epic's
+//! services, and `store_cache/legendary_library.json` is rebuilt from them
+//! in Heroic's format.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
@@ -11,7 +12,7 @@ use heronite_data::DataPaths;
 use serde_json::{json, Map, Value};
 
 use crate::cache_store::CacheStore;
-use crate::cmd::Legendary;
+use crate::client::Epic;
 use crate::user;
 use crate::util::{epic_store_url, file_size};
 
@@ -215,41 +216,56 @@ pub fn write_library(data_paths: &DataPaths) -> Result<usize> {
 #[derive(Debug, Clone, Default)]
 pub struct RefreshResult {
     pub games: usize,
-    /// `legendary list` failed (offline, expired login ...); the library was
-    /// still rebuilt from what legendary has on disk.
+    /// The refresh failed (offline, expired login ...); the library was
+    /// still rebuilt from the files on disk.
     pub list_error: Option<String>,
+    /// Epic refused the sign-in: it is forgotten, only logging in again helps.
+    pub expired: bool,
     /// Windows: the Epic Games Launcher had new games, taken in now.
     pub launcher_import: Option<crate::ops::OpResult>,
 }
 
-/// `refresh`: `legendary list --third-party`, then rebuild the library file.
-pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshResult> {
+/// `refresh`: the account's games and DLCs from Epic into legendary's
+/// files, then the library file rebuilt. Blocking, network.
+pub fn refresh(data_paths: &DataPaths, epic: &Epic) -> Result<RefreshResult> {
     if !user::is_logged_in(data_paths) {
         return Ok(RefreshResult::default());
     }
     log::info!("Refreshing Epic Games...");
-    let mut list_error = None;
-    match legendary.run(&["list", "--third-party"], &[]) {
-        Ok(out) if out.success() => {}
-        Ok(out) => {
-            let why = out.error_lines();
-            list_error = Some(if why.is_empty() { "legendary list failed".to_string() } else { why });
+    let (mut list_error, mut expired) = (None, false);
+    match epic.session() {
+        Ok(session) => {
+            // The launcher identity legendary's API publishes, once a day.
+            epic.refresh_launcher_config();
+            let opts = heronite_epic_api::library::RefreshOptions::default();
+            match heronite_epic_api::library::refresh(&epic.client, &epic.config_dir, &session, &opts) {
+                Ok(report) => {
+                    for (app, why) in &report.failures {
+                        log::warn!("epic: {app}: {why}");
+                    }
+                    log::info!("epic: {} assets, {} catalog entries fetched, {} removed", report.assets, report.fetched, report.pruned);
+                }
+                Err(err) => list_error = Some(format!("{err:#}")),
+            }
         }
-        Err(err) => list_error = Some(format!("{err:#}")),
+        Err(err) => {
+            expired = crate::session::is_expired(&err);
+            list_error = Some(format!("{err:#}"));
+        }
     }
     if let Some(e) = &list_error {
         log::error!("Failed to refresh library: {e}");
     }
     // Windows: the games the Epic Games Launcher installed since (with the
-    // metadata the list just fetched).
-    let launcher_import = if list_error.is_none() { crate::egl::import_new(data_paths, legendary) } else { None };
+    // metadata the refresh just fetched).
+    let launcher_import = if list_error.is_none() { crate::egl::import_new(data_paths, epic) } else { None };
     if let Some(r) = launcher_import.as_ref().filter(|r| !r.ok) {
         log::warn!("taking in the Epic Games Launcher's games: {}", r.message);
     }
     let games = write_library(data_paths)?;
     log::info!("Game list updated, got {games} games & DLCs");
-    // With a fresh list legendary's token is fresh too. A failure here only
-    // costs the play time, never the refresh.
+    // With a fresh list the token is fresh too. A failure here only costs
+    // the play time, never the refresh.
     if list_error.is_none() {
         match crate::playtime::import(data_paths) {
             Ok(0) => {}
@@ -257,7 +273,7 @@ pub fn refresh(data_paths: &DataPaths, legendary: &Legendary) -> Result<RefreshR
             Err(err) => log::warn!("epic: reading the play time Epic counted: {err:#}"),
         }
     }
-    Ok(RefreshResult { games, list_error, launcher_import })
+    Ok(RefreshResult { games, list_error, expired, launcher_import })
 }
 
 /// App names whose installed version differs from the latest one in
@@ -292,7 +308,7 @@ pub fn updates_available(data_paths: &DataPaths) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::{fake_tool, legendary_of, Reply};
+    use crate::download::testing::Server;
     use serde_json::json;
 
     fn meta(extra: Value) -> Value {
@@ -389,7 +405,12 @@ mod tests {
             json!({"Calluna": {"app_name": "Calluna", "version": "1.0", "platform": "Windows", "install_path": "/g/Control", "executable": "c.exe", "install_size": 100}}).to_string(),
         )
         .unwrap();
-        std::fs::write(dir.join("user.json"), json!({"account_id": "1", "displayName": "P"}).to_string()).unwrap();
+        std::fs::write(
+            dir.join("user.json"),
+            json!({"account_id": "1", "displayName": "P", "access_token": "t", "refresh_token": "r", "expires_at": "2099-01-01T00:00:00.000Z"})
+                .to_string(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -419,20 +440,41 @@ mod tests {
     }
 
     #[test]
-    fn refresh_runs_list_then_rebuilds_even_when_list_fails() {
+    fn refresh_rebuilds_the_library_even_when_epic_fails() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
         setup(&data_paths);
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().err("ERROR: offline").exit(1));
-        let lg = legendary_of(&tool, dir.path());
-        let r = refresh(&data_paths, &lg).unwrap();
+        let server = Server::start();
+        server.route("/launcher/api/public/assets/Windows", 503, "offline");
+        let epic = server.epic(&data_paths.legendary_config_dir());
+        let r = refresh(&data_paths, &epic).unwrap();
         assert_eq!(r.games, 1);
-        assert!(r.list_error.unwrap().contains("offline"));
-        assert_eq!(tool.calls(), ["list --third-party"]);
-        // Logged out: nothing runs.
+        assert!(r.list_error.is_some() && !r.expired, "{r:?}");
+        assert!(server.asked("/launcher/api/public/assets/Windows") > 0);
+        // Logged out: nothing is asked.
         std::fs::remove_file(data_paths.legendary_config_dir().join("user.json")).unwrap();
-        assert_eq!(refresh(&data_paths, &lg).unwrap().games, 0);
-        assert_eq!(tool.calls().len(), 1);
+        let before = server.seen.lock().unwrap().len();
+        assert_eq!(refresh(&data_paths, &epic).unwrap().games, 0);
+        assert_eq!(server.seen.lock().unwrap().len(), before);
+    }
+
+    #[test]
+    fn a_refused_sign_in_is_an_expired_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(dir.path().join("h"));
+        setup(&data_paths);
+        let user = data_paths.legendary_config_dir().join("user.json");
+        std::fs::write(
+            &user,
+            json!({"account_id": "1", "access_token": "t", "refresh_token": "r", "expires_at": "2000-01-01T00:00:00.000Z"}).to_string(),
+        )
+        .unwrap();
+        let server = Server::start();
+        server.route("/account/api/oauth/token", 400, r#"{"errorCode": "errors.com.epicgames.account.auth_token.invalid_refresh_token"}"#);
+        let r = refresh(&data_paths, &server.epic(&data_paths.legendary_config_dir())).unwrap();
+        assert!(r.expired, "{r:?}");
+        assert_eq!(r.games, 1, "the installed game stays listed");
+        assert!(!user.exists(), "Epic refused it: it is forgotten");
     }
 
     /// Compares the rebuilt library with the file Heronite wrote. Read-only:

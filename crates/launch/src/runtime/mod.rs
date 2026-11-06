@@ -62,6 +62,7 @@ impl Launcher {
                 system_info: Mutex::new(None),
                 services: Mutex::new(PrepServices::default()),
                 epic: Mutex::new(None),
+                epic_service: Mutex::new(None),
                 store_setup: Mutex::new(None),
                 paths,
                 spawner,
@@ -85,13 +86,19 @@ impl Launcher {
         *self.shared.system_info.lock().unwrap() = Some(f);
     }
 
-    /// What the first launch of an Epic game in a prefix asks legendary
-    /// (prerequisites, EOS overlay).
+    /// What the first launch of an Epic game in a prefix needs from the
+    /// store (prerequisites, EOS overlay).
     pub fn set_epic_setup(&self, epic: Arc<dyn EpicSetup>) {
         *self.shared.epic.lock().unwrap() = Some(epic);
     }
 
-    /// What the first launch of a GOG game in a prefix asks gogdl
+    /// What an Epic game's launch asks Epic (tests; the real services
+    /// otherwise).
+    pub fn set_epic_service(&self, epic: Arc<dyn crate::epic_launch::EpicService>) {
+        *self.shared.epic_service.lock().unwrap() = Some(epic);
+    }
+
+    /// What the first launch of a GOG game in a prefix asks the store for
     /// (redistributables, the game's install scripts).
     pub fn set_store_setup(&self, store: Arc<dyn StoreSetup>) {
         *self.shared.store_setup.lock().unwrap() = Some(store);

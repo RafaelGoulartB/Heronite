@@ -123,7 +123,7 @@ pub fn run_wait(spawner: &dyn Spawner, cmd: &crate::plan::Command, timeout: Dura
     }
 }
 
-/// The first line of a legendary output that reports a failure.
+/// The first line of a sync's output that reports a failure.
 pub fn sync_problem(output: &str) -> Option<String> {
     output
         .lines()

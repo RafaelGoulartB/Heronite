@@ -165,7 +165,7 @@ impl SettingsPanel {
             )));
         }
         col.child(div().px(px(6.)).pt(px(8.)).child(help(tr!(
-            "Outside the sandbox, as before: your scripts before and after launch, cloud saves and the store's own tools (legendary, gogdl, nile)."
+            "Outside the sandbox, as before: your scripts before and after launch, cloud saves, the stores' sign-in and Amazon Games' own tool (nile)."
         ))))
     }
 

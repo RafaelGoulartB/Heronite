@@ -1,6 +1,5 @@
-//! An Epic game on Windows (`ProcessPlan::ask_legendary`): legendary signs in
-//! and names the game's program before it starts (see
-//! [`crate::legendary_windows`]).
+//! An Epic game (`ProcessPlan::epic`): Epic signs in and completes the
+//! game's command right before it starts (see [`crate::epic_launch`]).
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -12,31 +11,38 @@ use super::process::finish_aborted;
 use super::session::{fail, finish};
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchRequest};
-use crate::legendary_windows::{self as lw, Failure, Resolved};
+use crate::epic_launch::{self as el, EpicLaunch, EpicService, Failure, Resolved, SystemEpic};
 use crate::log_writer::GameLog;
 use crate::plan::Command;
 use crate::prepare::Notice;
 
-/// The game's program, or `None` when the session already ended: the
-/// launch was stopped, legendary failed, or the game is one of the EA app /
-/// Ubisoft Connect, which the store's app opens (its play time is not
+/// The game's command, or `None` when the session already ended: the launch
+/// was stopped, Epic refused, or the game is one of the EA app / Ubisoft
+/// Connect that the store's app opens on Windows (its play time is not
 /// followed).
-pub(super) fn ask_legendary(
+pub(super) fn ask_epic(
     shared: &Shared,
     log: &Arc<GameLog>,
     req: &LaunchRequest,
     control: &Control,
     command: &Command,
+    launch: &EpicLaunch,
     status: &dyn Fn(Notice),
 ) -> Option<Command> {
-    status(Notice::info("Logging in to Epic Games...", tr!("Logging in to Epic Games...")));
-    log.info(&format!("Asking legendary how {} starts: {}", req.title, command.display()));
+    if !launch.offline {
+        status(Notice::info("Logging in to Epic Games...", tr!("Logging in to Epic Games...")));
+    }
+    log.info(&format!("Asking Epic Games how {} starts{}", req.title, if launch.offline { " (offline)" } else { "" }));
+    let service: Arc<dyn EpicService> = match shared.epic_service.lock().unwrap().clone() {
+        Some(s) => s,
+        None => Arc::new(SystemEpic::new(&shared.paths.legendary_config_dir())),
+    };
     let cancelled = || control.abort.load(Ordering::SeqCst) || control.kill.load(Ordering::SeqCst);
-    match lw::resolve(command, &cancelled) {
+    match el::resolve_cancellable(command, launch, service, &cancelled) {
         Ok(Resolved::Game(game)) => Some(game),
         Ok(Resolved::Link(uri)) => {
-            let client = lw::link_client(&uri);
-            if !lw::link_handler_installed(&uri) {
+            let client = el::link_client(&uri);
+            if !el::link_handler_installed(&uri) {
                 let notice = Notice::warn(
                     format!("{client} is not installed: it opens this game"),
                     tr!("{client} opens this game, and it is not installed. Install {client}, then play again.", client),

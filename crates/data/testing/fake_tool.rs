@@ -1,4 +1,4 @@
-//! A stand-in for a command-line tool in tests (legendary, gogdl, nile...).
+//! A stand-in for a command-line tool in tests (nile, ...).
 //! `heronite_data::testing` builds it once and copies it where a test wants
 //! the tool; it then replays what the script next to it says
 //! (`<its name>.fake`, written by `testing::FakeTool`). No script: it exits 0

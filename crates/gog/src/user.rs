@@ -1,4 +1,4 @@
-//! The GOG account: gogdl's auth file holds the tokens, `gog_store/config.json`
+//! The GOG account: `gog_store/auth.json` holds the tokens (gogdl's file), `gog_store/config.json`
 //! the name shown in the app.
 
 use std::collections::HashSet;
@@ -8,14 +8,11 @@ use heronite_data::json_store;
 use heronite_data::DataPaths;
 use heronite_epic::cache_store::CacheStore;
 use heronite_epic::session::SessionExpired;
+use heronite_gog_api::{auth, SignInExpired, CLIENT_ID};
 use heronite_i18n::tr;
 use serde_json::{json, Value};
 
 use crate::api;
-use crate::cmd::{last_json_object, Gogdl};
-
-/// Client id of the GOG Galaxy app; gogdl keys its tokens by it.
-const CLIENT_ID: &str = "46899977096215655";
 
 pub const LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
 /// The login page navigates here on success; the `code` parameter is the authorization code.
@@ -68,36 +65,18 @@ pub fn extract_code(input: &str) -> Option<String> {
     (!text.contains(char::is_whitespace)).then(|| text.to_string())
 }
 
-/// `credentials` from the JSON gogdl's `auth` prints; `null` (logged out) and
-/// `{"error": true}` are errors.
-fn parse_credentials(stdout: &str) -> Result<Credentials> {
-    let doc = last_json_object(stdout).ok_or_else(|| anyhow!(tr!("You are not logged in to GOG")))?;
-    if doc.get("error").and_then(Value::as_bool) == Some(true) {
-        bail!(tr!("GOG did not accept that code"));
-    }
-    let text = |k: &str| match doc.get(k) {
-        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
-        Some(Value::Number(n)) => Some(n.to_string()),
-        _ => None,
-    };
-    match (text("access_token"), text("user_id")) {
-        (Some(access_token), Some(user_id)) => Ok(Credentials { access_token, user_id }),
-        _ => bail!(tr!("You are not logged in to GOG")),
-    }
-}
-
-/// Fresh tokens (gogdl refreshes expired ones itself). When gogdl has
-/// tokens but cannot refresh them, the error is a [`SessionExpired`].
-pub fn credentials(paths: &DataPaths, gogdl: &Gogdl) -> Result<Credentials> {
-    let out = gogdl.run(&["auth"])?;
-    parse_credentials(&out.stdout).map_err(|err| {
-        let refused = last_json_object(&out.stdout).is_some_and(|d| d.get("error").and_then(Value::as_bool) == Some(true));
-        if refused && is_logged_in(paths) {
-            anyhow!(SessionExpired).context(tr!("Your GOG sign-in expired: log in again"))
-        } else {
-            err
+/// Fresh tokens of the account, refreshed first when they ran out. Tokens
+/// GOG no longer refreshes are a [`SessionExpired`]. Blocking, network when
+/// refreshing.
+pub fn credentials(paths: &DataPaths) -> Result<Credentials> {
+    match auth::credentials(&paths.gog_auth()) {
+        Ok(c) => Ok(Credentials { access_token: c.access_token, user_id: c.user_id }),
+        Err(err) if err.downcast_ref::<SignInExpired>().is_some() => {
+            log::warn!("gog: the sign-in was refused: {err:#}");
+            Err(anyhow!(SessionExpired).context(tr!("Your GOG sign-in expired: log in again")))
         }
-    })
+        Err(err) => Err(err),
+    }
 }
 
 /// The account saved in `config.json` for a GOG user document.
@@ -109,15 +88,11 @@ fn account_from_user(user_id: &str, doc: &Value) -> (Account, Option<String>) {
     (Account { user_id: user_id.to_string(), username }, avatar_url)
 }
 
-/// Exchanges the code for tokens (`gogdl auth --code`), reads the user's
-/// name and saves the account.
-pub fn login(paths: &DataPaths, gogdl: &Gogdl, input: &str) -> Result<Account> {
+/// Exchanges the code of the login page for tokens, reads the user's name
+/// and saves the account. Blocking, network.
+pub fn login(paths: &DataPaths, input: &str) -> Result<Account> {
     let Some(code) = extract_code(input) else { bail!(tr!("That does not look like an authorization code")) };
-    let out = gogdl.run(&["auth", "--code", &code])?;
-    if !out.success() && last_json_object(&out.stdout).is_none() {
-        bail!(tr!("Failed to log in with gogdl: {error}", error = out.error_lines()));
-    }
-    let creds = parse_credentials(&out.stdout)?;
+    let creds = auth::login(&paths.gog_auth(), &code)?;
     let url = format!("https://users.gog.com/users/{}", creds.user_id);
     let doc = api::get_json(&url, &creds.access_token).with_context(|| tr!("Logged in, but the account information could not be read"))?;
     let (account, avatar_url) = account_from_user(&creds.user_id, &doc);
@@ -169,7 +144,7 @@ pub fn logout(paths: &DataPaths) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::*;
+    use crate::testing::setup;
 
     const CODE: &str = "AbC123-xyz_Code0123456789";
 
@@ -189,17 +164,6 @@ mod tests {
     fn login_url_points_at_the_redirect() {
         assert!(LOGIN_URL.starts_with("https://auth.gog.com/auth?client_id=46899977096215655"));
         assert!(LOGIN_URL.contains("embed.gog.com%2Fon_login_success"));
-    }
-
-    #[test]
-    fn credentials_are_parsed_from_gogdl_output() {
-        let c = parse_credentials("{\"access_token\":\"tok\",\"user_id\":\"4242\",\"expires_in\":3600}\n").unwrap();
-        assert_eq!((c.access_token.as_str(), c.user_id.as_str()), ("tok", "4242"));
-        let numeric = parse_credentials("{\"access_token\":\"t\",\"user_id\":4242}").unwrap();
-        assert_eq!(numeric.user_id, "4242");
-        assert!(parse_credentials("null\n").is_err());
-        assert!(parse_credentials("{\"error\": true}").is_err());
-        assert!(parse_credentials("").is_err());
     }
 
     #[test]
@@ -227,40 +191,39 @@ mod tests {
     }
 
     #[test]
-    fn code_login_failures_are_errors() {
-        let (dir, paths) = setup();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"error": true}"#));
-        let g = gogdl(&tool, &paths);
-        let err = login(&paths, &g, CODE).unwrap_err().to_string();
-        assert!(err.contains("did not accept"), "{err}");
-        assert_eq!(calls_of(&tool), [format!("auth --code {CODE}")]);
-        assert!(login(&paths, &g, "two words").is_err());
-        assert_eq!(calls_of(&tool).len(), 1);
+    fn what_is_not_a_code_is_refused_before_asking_gog() {
+        let (_dir, paths) = setup();
+        let err = login(&paths, "two words").unwrap_err().to_string();
+        assert!(err.contains("does not look like"), "{err}");
+        assert!(!paths.gog_auth().exists());
     }
 
     #[test]
-    fn credentials_come_from_the_auth_command() {
-        let (dir, paths) = setup();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"access_token":"tok","user_id":"7"}"#));
-        let c = credentials(&paths, &gogdl(&tool, &paths)).unwrap();
-        assert_eq!((c.access_token.as_str(), c.user_id.as_str()), ("tok", "7"));
-        assert_eq!(calls_of(&tool), ["auth"]);
-        let none = fake_tool(dir.path()).otherwise(Reply::new().out("null"));
-        assert!(credentials(&paths, &gogdl(&none, &paths)).is_err());
-    }
-
-    #[test]
-    fn tokens_gogdl_cannot_refresh_are_an_expired_session() {
-        let (dir, paths) = setup();
-        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"error": true}"#));
-        let refused = gogdl(&tool, &paths);
-        // Not signed in here: just an error.
-        assert!(!heronite_epic::session::is_expired(&credentials(&paths, &refused).unwrap_err()));
+    fn credentials_come_from_the_auth_file() {
+        let (_dir, paths) = setup();
+        assert!(credentials(&paths).is_err());
         std::fs::create_dir_all(paths.gog_auth().parent().unwrap()).unwrap();
-        std::fs::write(paths.gog_auth(), r#"{"46899977096215655":{"access_token":"t","user_id":"4242"}}"#).unwrap();
-        save_account(&paths, &Account { user_id: "4242".into(), username: "player".into() }, None).unwrap();
-        let err = credentials(&paths, &refused).unwrap_err();
-        assert!(heronite_epic::session::is_expired(&err));
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+        std::fs::write(
+            paths.gog_auth(),
+            format!(
+                r#"{{"46899977096215655":{{"access_token":"tok","refresh_token":"r","user_id":7,"expires_in":3600,"loginTime":{now}}}}}"#
+            ),
+        )
+        .unwrap();
+        let c = credentials(&paths).unwrap();
+        assert_eq!((c.access_token.as_str(), c.user_id.as_str()), ("tok", "7"));
+    }
+
+    #[test]
+    fn tokens_that_cannot_be_refreshed_are_an_expired_session() {
+        let (_dir, paths) = setup();
+        std::fs::create_dir_all(paths.gog_auth().parent().unwrap()).unwrap();
+        // Expired, with no refresh token to renew it.
+        std::fs::write(paths.gog_auth(), r#"{"46899977096215655":{"access_token":"t","user_id":"4242","expires_in":1,"loginTime":0}}"#)
+            .unwrap();
+        let err = credentials(&paths).unwrap_err();
+        assert!(heronite_epic::session::is_expired(&err), "{err:#}");
         assert!(err.to_string().contains("expired"), "{err}");
     }
 

@@ -95,6 +95,8 @@ pub(super) struct Shared {
     pub(super) system_info: Mutex<Option<SystemInfoFn>>,
     pub(super) services: Mutex<PrepServices>,
     pub(super) epic: Mutex<Option<Arc<dyn EpicSetup>>>,
+    /// Epic's services at launch time (the real ones when `None`).
+    pub(super) epic_service: Mutex<Option<Arc<dyn crate::epic_launch::EpicService>>>,
     pub(super) store_setup: Mutex<Option<Arc<dyn StoreSetup>>>,
     pub(super) paths: DataPaths,
     pub(super) spawner: Arc<dyn Spawner>,

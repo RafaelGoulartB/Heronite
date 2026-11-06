@@ -37,7 +37,15 @@ pub fn write_atomic(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<
     let tmp = unique_tmp_path(path);
     let _ = fs::remove_file(&tmp);
     let result = (|| {
-        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Private from the start: the bytes may be a sign-in.
+        #[cfg(unix)]
+        if let Some(mode) = mode {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(mode);
+        }
+        let mut f = options.open(&tmp)?;
         f.write_all(bytes)?;
         #[cfg(unix)]
         if let Some(mode) = mode {
@@ -175,6 +183,16 @@ mod tests {
         ] {
             assert_eq!(tmp_owner_pid(bad), None, "{bad}");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn private_files_are_never_readable_by_others() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("user.json");
+        write_atomic(&p, b"{}", Some(0o600)).unwrap();
+        assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
     }
 
     #[test]

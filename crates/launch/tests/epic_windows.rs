@@ -1,30 +1,30 @@
-//! An Epic game started the Windows way (`ProcessPlan::ask_legendary`), with
-//! the real spawner: legendary (a fake tool) only names the game's program
-//! and exits; the session is the game's (a fake tool that runs a while), so
-//! it ends when the game ends, not when legendary does.
+//! An Epic game started the Windows way (`LaunchPlan::Native` with
+//! `ProcessPlan::epic`), with the real spawner: Epic (a fake service) names
+//! the game's program and this session's sign-in; the session is the game's
+//! (a fake tool that runs a while), so it ends when the game ends.
 
 use std::fs;
-use std::path::Path;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use heronite_data::testing::{FakeTool, Reply};
 use heronite_data::DataPaths;
+use heronite_epic_api::launch::LaunchParams;
+use heronite_launch::epic_launch::{EpicLaunch, FakeEpic, StoreLink};
 use heronite_launch::playtime_watch::SteamWaitConfig;
 use heronite_launch::procs::{Procs, SystemProcs};
 use heronite_launch::steam::SteamLocator;
 use heronite_launch::{Command, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, SystemSpawner};
-use serde_json::json;
 
 struct Rig {
-    dir: tempfile::TempDir,
+    _dir: tempfile::TempDir,
     paths: DataPaths,
     launcher: Launcher,
     rx: Receiver<LaunchEvent>,
 }
 
-fn rig() -> Rig {
+fn rig(epic: FakeEpic) -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heronite"));
     fs::create_dir_all(paths.games_config_dir()).unwrap();
@@ -40,30 +40,17 @@ fn rig() -> Rig {
         handoff: Default::default(),
     };
     let launcher = Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs, cfg, tx);
-    Rig { dir, paths, launcher, rx }
+    launcher.set_epic_service(Arc::new(epic));
+    Rig { _dir: dir, paths, launcher, rx }
 }
 
-/// legendary answering `launch --json` with `answer`.
-fn legendary(dir: &Path, answer: Reply) -> FakeTool {
-    FakeTool::new(&dir.join("lg"), "legendary").record_env("LEGENDARY_CONFIG_PATH").otherwise(answer)
-}
-
-fn plan(paths: &DataPaths, lg: &FakeTool) -> LaunchPlan {
-    let mut env = std::collections::BTreeMap::new();
-    env.insert("LEGENDARY_CONFIG_PATH".to_string(), paths.legendary_config_dir().to_string_lossy().into_owned());
-    LaunchPlan::Legendary {
-        app_name: "Calluna".into(),
-        process: ProcessPlan {
-            command: Command {
-                program: lg.bin().to_string_lossy().into_owned(),
-                args: ["launch", "Calluna", "--json"].map(String::from).to_vec(),
-                env,
-                cwd: None,
-            },
-            ask_legendary: true,
-            ..Default::default()
-        },
-    }
+/// The plan of a Windows build: its program, completed by Epic.
+fn plan(store_link: Option<StoreLink>) -> LaunchPlan {
+    LaunchPlan::Native(ProcessPlan {
+        command: Command { program: "Control.exe".into(), ..Default::default() },
+        epic: Some(EpicLaunch { app_name: "Calluna".into(), game: "Calluna".into(), store_link, ..Default::default() }),
+        ..Default::default()
+    })
 }
 
 /// Launches and waits for the end: the `Exited` (elapsed) or `Error` event.
@@ -93,22 +80,20 @@ fn game_log(paths: &DataPaths) -> String {
 }
 
 #[test]
-fn the_session_follows_the_game_legendary_names_not_legendary() {
-    let r = rig();
-    let game_dir = r.dir.path().join("Control");
+fn the_session_follows_the_game_epic_names() {
+    let base = tempfile::tempdir().unwrap();
+    let game_dir = base.path().join("Control");
     let game = FakeTool::new(&game_dir, "Control").otherwise(Reply::new().out("the game runs").sleep(Duration::from_millis(1500)));
-    let answer = json!({
-        "game_executable": game.bin().file_name().unwrap().to_string_lossy(),
-        "game_directory": game_dir.to_string_lossy(),
-        "game_parameters": ["-nolauncher"],
-        "egl_parameters": ["-AUTH_LOGIN=unused", "-AUTH_PASSWORD=s3cretcode", "-AUTH_TYPE=exchangecode"],
-        "launch_command": [], "working_directory": "", "user_parameters": [], "environment": {}
-    });
-    let lg = legendary(r.dir.path(), Reply::new().err("[cli] INFO: Logging in...").out(&answer.to_string()));
-    let elapsed = run(&r, plan(&r.paths, &lg)).unwrap();
-    assert!(elapsed >= Duration::from_millis(1400), "the session ended with legendary: {elapsed:?}");
-    assert_eq!(lg.calls(), ["launch Calluna --json"]);
-    assert_eq!(lg.env_seen("LEGENDARY_CONFIG_PATH"), [r.paths.legendary_config_dir().to_string_lossy()]);
+    let params = LaunchParams {
+        game_executable: game.bin().file_name().unwrap().to_string_lossy().into_owned(),
+        game_directory: game_dir.to_string_lossy().into_owned(),
+        game_parameters: vec!["-nolauncher".into()],
+        egl_parameters: ["-AUTH_LOGIN=unused", "-AUTH_PASSWORD=s3cretcode", "-AUTH_TYPE=exchangecode"].map(String::from).to_vec(),
+        ..Default::default()
+    };
+    let r = rig(FakeEpic { params, ..Default::default() });
+    let elapsed = run(&r, plan(None)).unwrap();
+    assert!(elapsed >= Duration::from_millis(1400), "the session ended before the game: {elapsed:?}");
     assert_eq!(game.calls(), ["-nolauncher -AUTH_LOGIN=unused -AUTH_PASSWORD=s3cretcode -AUTH_TYPE=exchangecode"]);
     let log = game_log(&r.paths);
     assert!(log.contains("-AUTH_PASSWORD=<hidden>"), "{log}");
@@ -116,17 +101,15 @@ fn the_session_follows_the_game_legendary_names_not_legendary() {
 }
 
 #[test]
-fn legendarys_refusal_ends_the_launch_with_its_reason() {
-    let r = rig();
-    let lg = legendary(r.dir.path(), Reply::new().err("[cli] ERROR: Login failed, cannot continue!").exit(1));
-    let why = run(&r, plan(&r.paths, &lg)).unwrap_err();
-    assert!(why.contains("Login failed, cannot continue!"), "{why}");
+fn epics_refusal_ends_the_launch_with_its_reason() {
+    let r = rig(FakeEpic { fail: Some("Log in to your Epic account first".into()), ..Default::default() });
+    let why = run(&r, plan(None)).unwrap_err();
+    assert!(why.contains("Log in to your Epic account first"), "{why}");
 }
 
 #[test]
 fn a_store_app_that_is_not_installed_is_named() {
-    let r = rig();
-    let lg = legendary(r.dir.path(), Reply::new().out(r#"{"uri": "heronite-test-no-such-app://launchgame/x?AUTH_PASSWORD=1"}"#));
-    let why = run(&r, plan(&r.paths, &lg)).unwrap_err();
+    let r = rig(FakeEpic { link: "heronite-test-no-such-app://launchgame/x?AUTH_PASSWORD=1".into(), ..Default::default() });
+    let why = run(&r, plan(Some(StoreLink::EaApp))).unwrap_err();
     assert!(why.contains("EA app") && why.contains("not installed"), "{why}");
 }

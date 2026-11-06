@@ -16,7 +16,7 @@ use heronite_launch::{
     SystemSpawner,
 };
 
-/// Cloud saves around a launch go through legendary or gogdl (the store
+/// Cloud saves around a launch go through the Epic or GOG crate (the store
 /// crates depend on the launch crate, so the launcher gets this through a
 /// trait).
 struct StoreCloudSaves(DataPaths);
@@ -146,8 +146,8 @@ impl GameRuntime {
         self.launch_with(game, rom, LaunchOptions::default())
     }
 
-    /// "Play anyway" for an Epic game with a pending update: legendary is told
-    /// not to check the game version (`--skip-version-check`).
+    /// "Play anyway" for an Epic game with a pending update: the launch does
+    /// not ask Epic whether the installed version is the latest.
     pub fn play_skip_version_check(&self, game: &CollectionGame) -> Result<(), String> {
         let opts = LaunchOptions { skip_version_check: true, ..Default::default() };
         self.launch_with(game, None, opts).map(|_| ())
@@ -478,29 +478,17 @@ fn spawn_tools_update(paths: DataPaths) {
     if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") || crate::env::flag("HERONITE_DISABLE_TOOLS_UPDATE") {
         return;
     }
-    // Everything below is for Wine and Epic's legendary.
-    let (wine, epic) = (supported(Feature::Wine), supported(Feature::EpicStore));
-    if !wine && !epic {
+    // Everything below is for Wine.
+    if !supported(Feature::Wine) {
         return;
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
-        if wine {
-            // A new setup with a Proton already on this PC (Steam's
-            // compatibilitytools.d, Lutris) gets it as the default Wine.
-            heronite_wine::default::ensure_default(&paths);
-            // Wine Manager builds where Steam's games can pick them too.
-            heronite_wine::steam_link::sync(&paths);
-        }
-        // A new setup has no legendary yet: get it before the user logs in to Epic.
-        if epic {
-            if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
-                log::warn!("{e}");
-            }
-        }
-        if !wine {
-            return;
-        }
+        // A new setup with a Proton already on this PC (Steam's
+        // compatibilitytools.d, Lutris) gets it as the default Wine.
+        heronite_wine::default::ensure_default(&paths);
+        // Wine Manager builds where Steam's games can pick them too.
+        heronite_wine::steam_link::sync(&paths);
         heronite_launch::tools::update_all_if_due(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
         // known_fixes.json (winetricks verbs, env variables) as Heroic keeps it.
         if let Err(e) = heronite_launch::known_fixes::update_if_needed(&paths, &SystemNet, &|| false) {
