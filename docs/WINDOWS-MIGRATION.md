@@ -14,6 +14,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Screenshots
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
+- Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
 - Native launch extras: before/after scripts and delayed companions; real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
 - Steam tests: library and session fixtures run on Windows without reading the host's registry, Steam folders or process list; achievement fixtures are isolated too
@@ -28,7 +29,6 @@ What works on Windows, what is left, and what Windows does not need.
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
 - Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` and `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`). Until then SmartScreen warns on the first run, and the release notes say so
-- Installer languages: the Inno Setup installer is English only, while the app also speaks pt-BR, es and de
 
 ## ➖ Not planned
 

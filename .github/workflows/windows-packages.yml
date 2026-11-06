@@ -53,7 +53,11 @@ jobs:
       - name: Package
         run: ./scripts/windows/package.ps1
       - name: Check the packages
-        run: ./scripts/windows/smoke.ps1
+        run: |
+          foreach ($language in @('english', 'brazilianportuguese', 'spanish', 'german')) {
+            ./scripts/windows/smoke.ps1 -Language $language
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: Heronite-windows-unsigned
