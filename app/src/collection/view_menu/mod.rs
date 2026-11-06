@@ -5,7 +5,7 @@
 //! and the presets (saved views) are `views.rs`.
 
 mod choices;
-mod organize;
+pub(super) mod organize;
 mod render;
 mod views;
 
@@ -245,7 +245,7 @@ impl CollectionView {
     }
 
     /// Switches one filter on or off.
-    pub(super) fn apply_pick(&mut self, pick: &Pick, cx: &mut Context<Self>) {
+    pub(in crate::collection) fn apply_pick(&mut self, pick: &Pick, cx: &mut Context<Self>) {
         match pick {
             Pick::Show(f) => {
                 let next = if self.ui.install_filter == *f { InstallFilter::All } else { *f };
@@ -297,7 +297,7 @@ impl CollectionView {
 
     /// "Reset all": every filter off ("Show hidden games" too); the sort and
     /// the grouping stay.
-    fn reset_view_filters(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::collection) fn reset_view_filters(&mut self, cx: &mut Context<Self>) {
         self.ui.clear_filters();
         self.save_ui();
         self.refresh_groups();

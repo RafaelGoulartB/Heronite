@@ -73,6 +73,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Density",
             "Animations",
             "Layout",
+            "Quick toolbar controls",
             "Open the Collection in",
             "Switch with the window's width",
             "Panel widths",

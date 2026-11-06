@@ -222,6 +222,8 @@ pub struct Appearance {
     pub motion: Motion,
     pub start_view: StartView,
     pub auto_view: AutoView,
+    /// Show Collection shortcuts when the header has room.
+    pub quick_toolbar_controls: bool,
     pub sections: Sections,
 }
 
@@ -256,6 +258,7 @@ impl Appearance {
         motion: Motion::DEFAULT,
         start_view: StartView::DEFAULT,
         auto_view: AutoView::DEFAULT,
+        quick_toolbar_controls: true,
         sections: Sections::DEFAULT,
     };
 }
@@ -290,11 +293,17 @@ impl Appearance {
         self
     }
 
-    /// `self` with `other`'s [`AutoView`], [`Theme`] and custom colours. They
+    /// `self` with `other`'s window layout, [`Theme`] and custom colours. They
     /// follow the window and the desktop, not a look: applying or matching a
     /// profile neither changes nor breaks them.
     pub fn with_window_choices_of(self, other: &Appearance) -> Self {
-        Self { auto_view: other.auto_view, theme: other.theme, custom: other.custom, ..self }
+        Self {
+            auto_view: other.auto_view,
+            quick_toolbar_controls: other.quick_toolbar_controls,
+            theme: other.theme,
+            custom: other.custom,
+            ..self
+        }
     }
 
     pub fn from_value(value: &Value) -> Self {
@@ -334,6 +343,7 @@ impl Appearance {
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
             start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
             auto_view: AutoView { on: flag("autoView", d.auto_view.on), width: num("autoViewWidth", d.auto_view.width) },
+            quick_toolbar_controls: flag("quickToolbarControls", d.quick_toolbar_controls),
             sections: Sections::from_names(names("sections"), names("hiddenSections")),
         }
         .normalized()
@@ -367,6 +377,7 @@ impl Appearance {
             "startView": self.start_view.as_str(),
             "autoView": self.auto_view.on,
             "autoViewWidth": self.auto_view.width,
+            "quickToolbarControls": self.quick_toolbar_controls,
             "sections": self.sections.order().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             "hiddenSections": self.sections.hidden_names(),
         })
@@ -479,6 +490,7 @@ mod tests {
             motion: Motion::Reduced,
             start_view: StartView::Grid,
             auto_view: AutoView { on: true, width: 1600. },
+            quick_toolbar_controls: false,
             sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
         };
         a.save(&p).unwrap();
@@ -500,6 +512,36 @@ mod tests {
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
         assert_eq!(on_disk["autoView"], true);
         assert_eq!(on_disk["autoViewWidth"], 1600.0);
+        assert_eq!(on_disk["quickToolbarControls"], false);
+    }
+
+    #[test]
+    fn quick_toolbar_defaults_on_and_round_trips_off() {
+        for value in [json!({}), json!({"quickToolbarControls": "invalid"}), json!({"quickToolbarControls": null})] {
+            assert!(Appearance::from_value(&value).quick_toolbar_controls);
+        }
+        let off = Appearance::from_value(&json!({"quickToolbarControls": false}));
+        assert!(!Appearance::from_value(&off.to_value()).quick_toolbar_controls);
+        assert!(!Appearance::DEFAULT.with_window_choices_of(&off).quick_toolbar_controls);
+    }
+
+    #[test]
+    fn view_presets_and_filter_reset_leave_toolbar_preference_alone() {
+        use crate::ui_state::{UiState, ViewFilters};
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths(dir.path());
+        let appearance = Appearance { quick_toolbar_controls: false, ..Appearance::DEFAULT };
+        appearance.save(&p).unwrap();
+        let mut ui = UiState::default();
+        let preset = ViewFilters { install_filter: crate::InstallFilter::Installed, sort: crate::SortMode::Playtime, ..Default::default() };
+        ui.apply_view(&preset);
+        ui.save(&p).unwrap();
+        assert!(ui.shows_view(&preset));
+        assert_eq!(Appearance::load(&p), appearance);
+        ui.clear_filters();
+        ui.save(&p).unwrap();
+        assert_eq!(Appearance::load(&p), appearance);
+        assert!(ui.view_filters().to_value().get("quickToolbarControls").is_none());
     }
 
     #[test]
