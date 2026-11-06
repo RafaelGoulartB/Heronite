@@ -38,9 +38,14 @@ impl Achievements {
         let (home, hardcore) = (self.home.clone(), self.prefs.hardcore);
         let paths = self.data_paths.clone();
         let clear = before.or_else(|| self.signed_in_user());
+        if account.is_some() {
+            // Signing in writes every file, the one that waited too.
+            self.emulator_sign_out = None;
+        }
         if account.is_none() && clear.is_none() {
             return;
         }
+        let signing_out = account.is_none().then(|| clear.clone().unwrap_or_default());
         cx.spawn(async move |this, cx| {
             let statuses = cx
                 .background_spawn(async move {
@@ -59,6 +64,9 @@ impl Achievements {
                 }
             }
             this.update(cx, |this, cx| {
+                if let Some(user) = signing_out {
+                    this.emulator_sign_out = statuses.iter().any(|s| s.state == State::Running).then_some(user);
+                }
                 this.emulators = statuses;
                 cx.notify();
             })
@@ -84,11 +92,11 @@ impl Achievements {
         .detach();
     }
 
-    /// An emulator that was open at the last write gets the login once a
-    /// game ends (it has closed by then, usually).
+    /// An emulator that was open at the last write gets the login (or, after
+    /// a sign-out, loses it) once a game ends (it has closed by then, usually).
     pub(super) fn retry_running_emulators(&mut self, cx: &mut Context<Self>) {
         if self.emulators.iter().any(|s| s.state == State::Running) {
-            self.sync_emulators(None, cx);
+            self.sync_emulators(self.emulator_sign_out.clone(), cx);
         }
     }
 }

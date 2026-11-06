@@ -89,6 +89,9 @@ pub struct Achievements {
     /// What each emulator's RetroAchievements login looks like, at the last
     /// write or check.
     emulators: Vec<heronite_achievements::emulators::Status>,
+    /// The user signed out while an emulator was open: their login is
+    /// cleared from it once it closes (`retry_running_emulators`).
+    emulator_sign_out: Option<String>,
     /// The user's home (where the emulators keep their settings).
     home: std::path::PathBuf,
 }
@@ -145,6 +148,7 @@ impl Achievements {
             queue: VecDeque::new(),
             bulk: Bulk::default(),
             emulators: Vec::new(),
+            emulator_sign_out: None,
             home: dirs::home_dir().unwrap_or_default(),
         }
     }
