@@ -1103,9 +1103,12 @@ fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for
     next(&r.rx);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     wait_until("the program", || r.spawner.spawned().len() == 2);
+    // The game counts as gone only once it was seen: let the session look at
+    // the prefix before the game leaves it.
+    wait_until("a look at the prefix", || r.procs.windows_asked() > 0);
     // The game exits; Proton's process stays, waiting for the trainer.
-    r.procs.set_windows_programs("/pfx", &["steam.exe", "services.exe", "trainer.exe"]);
     let t = Instant::now();
+    r.procs.set_windows_programs("/pfx", &["steam.exe", "services.exe", "trainer.exe"]);
     wait_until("the trainer to be closed", || r.spawner.handle(1).unwrap().lock().unwrap().terminated);
     assert!(t.elapsed() >= Duration::from_secs(2), "a launcher may hand over to the game first: {:?}", t.elapsed());
     assert!(r.launcher.is_running("g"));
