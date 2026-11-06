@@ -44,7 +44,8 @@ does not inject code into games.
   closing it returns focus only if the panel still owns it. Windows can
   refuse foreground requests made without user input; Heronite does not
   simulate input to bypass that restriction.
-- **Controller:** an XInput controller's Back+Start acts as Guide. Tap the
+- **Controller:** an XInput controller's Back+Start acts as Guide when both
+  go down within 300 ms (a Back held for a game's map stays Back). Tap the
   combination to open/close; hold it with the configured screenshot button,
   a direction for volume, or Y to mark a moment. Real Guide is not exposed
   by documented XInput and can be claimed by Game Bar or Steam. There is no

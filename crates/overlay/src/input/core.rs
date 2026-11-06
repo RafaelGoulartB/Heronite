@@ -132,7 +132,7 @@ impl Core {
         Self { opts, open: false, guide: None, held: None, stick: None }
     }
 
-    #[cfg(test)]
+    #[cfg(any(windows, test))]
     pub fn is_open(&self) -> bool {
         self.open
     }
@@ -267,11 +267,14 @@ impl Core {
         out
     }
 
-    /// Cancel gestures when the UI changes modes; a held Guide must not reopen
-    /// the panel after the UI closes it.
+    /// Cancel navigation when the UI changes modes. A held Guide keeps its
+    /// chords, but its release must not reopen (or close) the panel the UI
+    /// just changed, so it counts as used.
     #[cfg(any(windows, test))]
     pub fn reset_input(&mut self) {
-        self.guide = None;
+        if let Some((_, used)) = &mut self.guide {
+            *used = true;
+        }
         self.held = None;
         self.stick = None;
     }
