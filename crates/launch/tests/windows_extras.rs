@@ -35,7 +35,7 @@ impl Rig {
         let game = FakeTool::new(&folder, "Native game").otherwise(
             Reply::new()
                 .write_file("game.started", "started")
-                .sleep(Duration::from_secs(if natural_exit { 10 } else { 30 }))
+                .sleep(Duration::from_secs(if natural_exit { 20 } else { 30 }))
                 .write_file("game.finished", "finished"),
         );
         let before = folder.join("Before game.bat");
@@ -58,7 +58,7 @@ impl Rig {
              }\n\
              @($env:HERONITE_GAME_TITLE, $env:HEROIC_GAME_APP_NAME, (Get-Location).Path) | Set-Content -Encoding Unicode companion.txt\n\
              Set-Content companion.pid $PID\n\
-             Start-Sleep -Seconds 30\n\
+             Start-Sleep -Seconds 60\n\
              Set-Content companion.finished 'unexpected'\n",
         )
         .unwrap();
