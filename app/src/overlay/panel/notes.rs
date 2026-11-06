@@ -17,6 +17,7 @@ use super::OverlayPanel;
 use crate::console::list::Row;
 use crate::console::osk::{Osk, OskEvent};
 use crate::icons::Icon;
+use crate::overlay::labels;
 
 /// Notes listed from the last day with notes.
 const LAST_TIME: usize = 4;
@@ -88,12 +89,7 @@ impl OverlayPanel {
         let now: Vec<&Entry> = j.entries.iter().rev().filter(|e| e.at_ms().is_some_and(|ms| ms >= start)).collect();
         rows.push(Row::header(tr!("This session")));
         if now.is_empty() {
-            let (shortcut, description) = if cfg!(windows) {
-                ("Back + Start + Y", tr!("Back + Start + Y marks a moment without opening the panel."))
-            } else {
-                ("Guide + Y", tr!("Guide + Y marks a moment without opening the panel."))
-            };
-            rows.push(Row::info("none", tr!("Nothing yet"), shortcut).desc(description));
+            rows.push(Row::info("none", tr!("Nothing yet"), labels::chord_text("Y")).desc(labels::moment_hint()));
         }
         rows.extend(now.into_iter().map(|e| self.note_row(e)));
         // The last day with notes before this session.

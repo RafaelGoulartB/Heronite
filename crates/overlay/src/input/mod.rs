@@ -33,15 +33,18 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Controller {
     pub name: String,
-    /// An evdev node on Linux, an opaque `xinput-<slot>` ID on Windows.
-    /// [`crate::controller::battery`] accepts either identifier.
-    pub node: PathBuf,
+    /// Which device it is, for [`crate::controller::battery`].
+    pub id: ControllerId,
     /// Known Bluetooth address. `None` does not imply a wired connection.
     pub bluetooth: Option<String>,
 }
 
-#[cfg(windows)]
-pub(crate) fn xinput_index(node: &std::path::Path) -> Option<u32> {
-    let index = node.to_str()?.strip_prefix("xinput-")?.parse().ok()?;
-    (index < heronite_platform::gamepad::CONTROLLER_COUNT).then_some(index)
+/// How the system names a controller.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ControllerId {
+    /// Its evdev node (`/dev/input/event7`), on Linux.
+    Evdev(PathBuf),
+    /// Its XInput slot (below `heronite_platform::gamepad::CONTROLLER_COUNT`),
+    /// on Windows.
+    XInput(u32),
 }

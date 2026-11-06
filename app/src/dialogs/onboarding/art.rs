@@ -11,6 +11,7 @@ use heronite_data::appearance::{BackgroundSource, InterfaceMode};
 use heronite_i18n::tr;
 
 use crate::icons::Icon;
+use crate::overlay::labels;
 use crate::theme;
 use crate::ui::icon;
 
@@ -462,16 +463,8 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
                 .child(tab(Icon::VolumeUp, false))
                 .child(tab(Icon::SportsEsports, false)),
         )
-        .child(row(Icon::PhotoCamera, tr!("Take a screenshot"), true).child(keys(if cfg!(windows) {
-            &["Back", "Start", "RB"]
-        } else {
-            &["Guide", "RB"]
-        })))
-        .child(row(Icon::Bookmark, tr!("Mark a moment"), false).child(keys(if cfg!(windows) {
-            &["Back", "Start", "Y"]
-        } else {
-            &["Guide", "Y"]
-        })))
+        .child(row(Icon::PhotoCamera, tr!("Take a screenshot"), true).child(keys(&labels::chord_keys("RB"))))
+        .child(row(Icon::Bookmark, tr!("Mark a moment"), false).child(keys(&labels::chord_keys("Y"))))
         .child(
             row(Icon::VolumeUp, tr!("Volume"), false).child(
                 div()
@@ -490,9 +483,14 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
     let pad_x = if left { 600. - 14. - if cfg!(windows) { 220. } else { 150. } } else { 18. };
     let pad_hint =
         b.at(pad_x, 262.).flex().items_center().gap(b.p(8.)).child(icon(Icon::SportsEsports, b.p(48.), theme::white_a(0.8))).child(
-            div().px(b.p(8.)).py(b.p(3.)).rounded_full().bg(theme::black_a(0.55)).border_1().border_color(theme::accent_alpha(0.6)).child(
-                b.text(11., theme::text_primary(), if cfg!(windows) { tr!("Back + Start opens it") } else { tr!("Guide opens it") }),
-            ),
+            div()
+                .px(b.p(8.))
+                .py(b.p(3.))
+                .rounded_full()
+                .bg(theme::black_a(0.55))
+                .border_1()
+                .border_color(theme::accent_alpha(0.6))
+                .child(b.text(11., theme::text_primary(), labels::opens_it())),
         );
     div()
         .relative()

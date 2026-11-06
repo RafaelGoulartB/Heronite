@@ -2,7 +2,6 @@
 //! With no controller connected, sleep until the next slot scan.
 
 use std::io;
-use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -10,7 +9,7 @@ use heronite_platform::gamepad;
 
 use super::core::Core;
 use super::xinput::{self, poll_wait, Adapter, Change, Failures};
-use super::{Button, Controller, Event, Options};
+use super::{Button, Controller, ControllerId, Event, Options};
 
 const RESCAN: Duration = Duration::from_secs(1);
 const SLOTS: usize = gamepad::CONTROLLER_COUNT as usize;
@@ -152,7 +151,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
 }
 
 fn controller(index: u32) -> Controller {
-    Controller { name: format!("XInput controller {}", index + 1), node: PathBuf::from(format!("xinput-{index}")), bluetooth: None }
+    Controller { name: format!("XInput controller {}", index + 1), id: ControllerId::XInput(index), bluetooth: None }
 }
 
 /// Blocking snapshot of the four documented XInput slots. Failures are logged,
@@ -175,14 +174,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn controller_identity_roundtrips_without_claiming_a_transport() {
+    fn controller_identity_is_its_slot_without_claiming_a_transport() {
         for index in 0..gamepad::CONTROLLER_COUNT {
             let controller = controller(index);
-            assert_eq!(super::super::xinput_index(&controller.node), Some(index));
+            assert_eq!(controller.id, ControllerId::XInput(index));
             assert!(controller.bluetooth.is_none());
-        }
-        for node in ["xinput-4", "xinput--1", "xinput-", "event7"] {
-            assert_eq!(super::super::xinput_index(std::path::Path::new(node)), None);
         }
     }
 

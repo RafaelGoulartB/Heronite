@@ -130,7 +130,7 @@ impl OverlayPanel {
                 .background_spawn(async move {
                     list.into_iter()
                         .map(|c| {
-                            let b = controller::battery(&c.node);
+                            let b = controller::battery(&c.id);
                             (c, b)
                         })
                         .collect::<Vec<_>>()

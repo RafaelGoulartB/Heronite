@@ -6,6 +6,7 @@
 //!
 //! The labels are the English texts the sections draw (`tr!` keys): a renamed
 //! label must be renamed here too (`every_indexed_label_is_still_drawn`).
+//! The overlay's chord labels are this system's (`overlay::labels`).
 //! `HERONITE_DEBUG_FIND_LABELS=1` logs what a section draws.
 
 use heronite_data::fuzzy;
@@ -13,6 +14,7 @@ use heronite_i18n::tr;
 
 use super::Section;
 use crate::dialogs::settings_panel::logic::Section as Tab;
+use crate::overlay::labels;
 
 /// Settings listed under a section in the results, at most.
 const SHOWN: usize = 3;
@@ -136,10 +138,10 @@ const INDEX: &[(Section, &[&str])] = &[
             "Open it with a keyboard shortcut",
             "Keyboard shortcut",
             "Shortcuts without opening it",
-            "Button held with Guide",
-            "Guide + ↑ / ↓: change the volume",
+            labels::BUTTON_HELD,
+            labels::VOLUME,
             "Volume step",
-            "Guide + Y: mark a moment",
+            labels::MOMENT,
             "Guide + X: save the replay",
             "Position",
             "Side of the screen",
@@ -158,7 +160,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Capture screenshots while a game is running",
             "Screenshot shortcut",
             "With the controller",
-            "Button held with Guide",
+            labels::BUTTON_HELD,
             "Lossless compression",
             "Compress screenshots without quality loss",
             "Preview cache",
@@ -401,19 +403,7 @@ fn settings_of(section: Section) -> Vec<Setting> {
         .filter(|(s, _)| *s == section)
         .flat_map(|(_, labels)| labels.iter().copied())
         .filter(|label| *label != "Guide + X: save the replay" || Section::Replay.available())
-        .map(|label| {
-            let label = if cfg!(windows) {
-                match label {
-                    "Button held with Guide" => "Button held with Back + Start",
-                    "Guide + ↑ / ↓: change the volume" => "Back + Start + ↑ / ↓: change the volume",
-                    "Guide + Y: mark a moment" => "Back + Start + Y: mark a moment",
-                    _ => label,
-                }
-            } else {
-                label
-            };
-            Setting { label, tab: None }
-        })
+        .map(|label| Setting { label, tab: None })
         .collect()
 }
 
