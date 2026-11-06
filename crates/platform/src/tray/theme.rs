@@ -7,6 +7,7 @@ use std::mem;
 use std::ptr;
 use std::sync::OnceLock;
 
+use windows_sys::core::BOOL;
 use windows_sys::w;
 use windows_sys::Win32::Foundation::{FreeLibrary, HMODULE, HWND};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32};
@@ -25,7 +26,7 @@ pub enum MenuTheme {
 type RawProc = unsafe extern "system" fn() -> isize;
 type Version = unsafe extern "system" fn(*mut OSVERSIONINFOW) -> i32;
 type PreferredMode = unsafe extern "system" fn(i32) -> i32;
-type AllowWindow = unsafe extern "system" fn(HWND, bool) -> bool;
+type AllowWindow = unsafe extern "system" fn(HWND, BOOL) -> BOOL;
 type Refresh = unsafe extern "system" fn();
 
 struct Module(isize);
@@ -143,7 +144,7 @@ impl Scope {
                 refresh();
             }
             let previous = (api.preferred)(preferred_mode(theme, contrast));
-            (api.allow_window)(hwnd, !contrast && theme != MenuTheme::Light);
+            (api.allow_window)(hwnd, BOOL::from(!contrast && theme != MenuTheme::Light));
             if let Some(flush) = api.flush {
                 flush();
             }
@@ -157,7 +158,7 @@ impl Drop for Scope {
     fn drop(&mut self) {
         // SAFETY: the hidden tray window and module still live; restore only our change.
         unsafe {
-            (self.api.allow_window)(self.hwnd, false);
+            (self.api.allow_window)(self.hwnd, 0);
             (self.api.preferred)(self.previous);
             if let Some(flush) = self.api.flush {
                 flush();
