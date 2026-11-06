@@ -52,7 +52,8 @@ pub struct AudioState {
     pub inputs: Vec<Output>,
     /// Index of the default input in `inputs`.
     pub default_input: Option<usize>,
-    /// Volume of the game's streams, when it plays any.
+    /// Volume of the game's streams, when it has any, silent ones included
+    /// (a game in a menu or paused still has its row).
     pub game_volume: Option<u16>,
     pub game_muted: bool,
     /// Other apps playing, in backend enumeration order.

@@ -20,8 +20,13 @@ pub fn read(game_pid: Option<u32>) -> Option<AudioState> {
     Some(map_snapshot(snapshot, &game))
 }
 
+/// The game row counts its silent sessions too, so it stays while the game is
+/// quiet (a menu, a pause); the other apps are the ones playing, as on Linux,
+/// where a paused stream leaves the list.
 fn map_snapshot(snapshot: Snapshot, game: &HashSet<u32>) -> AudioState {
     let game_sessions: Vec<_> = snapshot.sessions.iter().filter(|s| game.contains(&s.pid)).collect();
+    // What is heard, when the game plays anything.
+    let game_volume = game_sessions.iter().find(|s| s.active).or(game_sessions.first()).map(|s| s.volume);
     let output = |device: native::Device| Output { name: device.id, description: device.name };
     AudioState {
         volume: snapshot.volume,
@@ -31,9 +36,9 @@ fn map_snapshot(snapshot: Snapshot, game: &HashSet<u32>) -> AudioState {
         mic_muted: snapshot.mic_muted,
         default_input: snapshot.inputs.iter().position(|d| Some(&d.id) == snapshot.default_input.as_ref()),
         inputs: snapshot.inputs.into_iter().map(output).collect(),
-        game_volume: game_sessions.first().map(|s| s.volume),
+        game_volume,
         game_muted: !game_sessions.is_empty() && game_sessions.iter().all(|s| s.muted),
-        apps: group_apps(snapshot.sessions.iter().filter(|s| !game.contains(&s.pid))),
+        apps: group_apps(snapshot.sessions.iter().filter(|s| s.active && !game.contains(&s.pid))),
     }
 }
 
@@ -188,6 +193,7 @@ mod tests {
             binary: binary.into(),
             volume,
             muted,
+            active: true,
         }
     }
 
@@ -264,6 +270,27 @@ mod tests {
         assert_eq!(state.game_volume, None);
         assert!(!state.game_muted);
         assert!(!super::super::device_switching_supported());
+    }
+
+    #[test]
+    fn a_silent_game_keeps_its_row_and_paused_apps_leave_the_list() {
+        let mut menu = session("speakers", "menu", 20, "game.exe", 40, true);
+        menu.active = false;
+        let mut paused = session("speakers", "paused", 40, "player.exe", 80, false);
+        paused.active = false;
+        let browser = session("speakers", "browser", 50, "browser.exe", 70, false);
+        let snapshot = Snapshot { sessions: vec![menu.clone(), paused, browser.clone()], ..Snapshot::default() };
+        let state = map_snapshot(snapshot, &HashSet::from([20]));
+        assert_eq!(state.game_volume, Some(40), "the game is in a menu, not gone");
+        assert!(state.game_muted);
+        assert_eq!(state.apps.len(), 1);
+        assert_eq!(state.apps[0].streams, vec![browser.id]);
+
+        let playing = session("headphones", "playing", 20, "game.exe", 90, false);
+        let snapshot = Snapshot { sessions: vec![menu, playing], ..Snapshot::default() };
+        let state = map_snapshot(snapshot, &HashSet::from([20]));
+        assert_eq!(state.game_volume, Some(90), "the playing session is the one heard");
+        assert!(!state.game_muted);
     }
 
     #[test]

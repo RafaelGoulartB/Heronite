@@ -40,8 +40,9 @@ pub struct Snapshot {
     pub sessions: Vec<Session>,
 }
 
-/// Active output sessions and the default multimedia endpoints. `processes`
-/// (a [`crate::process::snapshot`]) names the sessions' executables.
+/// Output sessions, playing or silent for now (as Windows' Volume Mixer
+/// lists them), and the default multimedia endpoints. `processes` (a
+/// [`crate::process::snapshot`]) names the sessions' executables.
 pub fn read(processes: &[ProcessEntry]) -> io::Result<Snapshot> {
     with_audio(|enumerator| {
         let output = default_device(enumerator, eRender)?;
