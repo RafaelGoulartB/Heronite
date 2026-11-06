@@ -14,6 +14,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Screenshots
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
+- Native launch extras: before/after scripts and delayed companions; real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
 
 ## ⬜ To do
