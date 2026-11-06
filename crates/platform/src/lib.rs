@@ -42,6 +42,8 @@ pub mod scoop;
 pub mod shell;
 
 #[cfg(windows)]
+pub mod gamepad;
+#[cfg(windows)]
 pub mod power;
 #[cfg(windows)]
 pub mod registry;
