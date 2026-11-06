@@ -153,6 +153,16 @@ impl OverlayService {
     }
 
     pub(super) fn show_notice(&mut self, notice: Notice, layer: bool, cx: &mut Context<Self>) {
+        // Windows: a topmost window would minimise a game in exclusive
+        // fullscreen. Nothing shows, and the achievements waiting are dropped
+        // (the one on screen goes too, or its timer would leave it there).
+        if layer && window::exclusive_fullscreen() {
+            self.achievement_queue.clear();
+            if let Some(old) = self.notice.take() {
+                let _ = old.handle.update(cx, |_, window, _| window.remove_window());
+            }
+            return;
+        }
         // An achievement cut short by another notice shows again after it.
         if !notice.achievement {
             if let Some(shown) = self.notice.as_ref().map(|n| n.shown.clone()).filter(|n| n.achievement) {
@@ -201,6 +211,9 @@ impl OverlayService {
                 }
                 Err(e) => {
                     log::warn!("overlay: cannot show a notice: {e:#}");
+                    // Its window is gone: the next notice opens a new one
+                    // (else the achievements would wait for it forever).
+                    self.notice = None;
                     return;
                 }
             }

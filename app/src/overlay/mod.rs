@@ -586,24 +586,23 @@ impl OverlayService {
             log::info!("overlay notice: {}", notice.title);
             return;
         }
-        let layer = !self.debug_window;
-        if layer && window::exclusive_fullscreen() {
-            return;
-        }
-        self.show_notice(notice, layer, cx);
+        self.show_notice(notice, !self.debug_window, cx);
     }
 
     /// Shows a new achievement over the game, after the ones already
     /// waiting. Its icon (a URL or a file; may be empty) is loaded first,
     /// for at most a moment: the notice never waits long for it. `false`
-    /// when the overlay is off or cannot draw here (the caller notifies the
-    /// desktop instead).
+    /// when the overlay is off, cannot draw here or the game is in exclusive
+    /// fullscreen (Windows), for the caller to notify the desktop instead.
     pub fn show_achievement(&mut self, name: String, rarity: Option<f32>, icon_url: String, cx: &mut Context<Self>) -> bool {
         // The debug window shows it whatever the saved options say.
         if !(self.prefs.enabled || self.debug_window) || !self.can_notify() {
             return false;
         }
         let layer = !self.debug_window;
+        if layer && window::exclusive_fullscreen() {
+            return false;
+        }
         let opts = heronite_images::Opts::new(self.data_paths.images_cache_dir(), Some(AppPaths::for_data(&self.data_paths).thumbs_dir()));
         let side = (ICON_PX * window::Display::current(cx).scale()).round() as u32;
         cx.spawn(async move |this, cx| {
