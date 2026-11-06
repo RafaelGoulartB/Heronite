@@ -30,8 +30,13 @@ pub struct Session {
     pub binary: String,
     pub volume: u16,
     pub muted: bool,
+    /// Playing now (active); otherwise silent for now (inactive): stopped
+    /// between sounds, in a menu or paused.
+    pub active: bool,
 }
 
+/// The sessions Windows' Volume Mixer shows: playing ones and silent ones
+/// ([`listed`]), never the system sounds.
 pub(super) fn read(devices: &[(Device, IMMDevice)], processes: &[ProcessEntry]) -> Vec<Session> {
     let processes: HashMap<u32, &str> = processes.iter().map(|p| (p.pid, p.name.as_str())).collect();
     let mut sessions = Vec::new();
@@ -39,7 +44,8 @@ pub(super) fn read(devices: &[(Device, IMMDevice)], processes: &[ProcessEntry]) 
         let result = visit(device, |control| {
             // SAFETY: every interface stays local to the initialized worker.
             unsafe {
-                if control.GetState()? != AudioSessionStateActive {
+                let state = control.GetState()?;
+                if !live(state) {
                     return Ok(());
                 }
                 let system_sounds = control.IsSystemSoundsSession();
@@ -47,8 +53,12 @@ pub(super) fn read(devices: &[(Device, IMMDevice)], processes: &[ProcessEntry]) 
                 if system_sounds == S_OK {
                     return Ok(());
                 }
-                let id = identity(&info.id, control)?;
                 let pid = control.GetProcessId()?;
+                // A process missing from the snapshot may have started since.
+                if !listed(state, || processes.contains_key(&pid) || crate::process::is_alive(pid)) {
+                    return Ok(());
+                }
+                let id = identity(&info.id, control)?;
                 let display = match control.GetDisplayName() {
                     Ok(name) => take_string(name),
                     Err(error) => {
@@ -69,6 +79,7 @@ pub(super) fn read(devices: &[(Device, IMMDevice)], processes: &[ProcessEntry]) 
                     binary,
                     volume: percent(volume.GetMasterVolume()?),
                     muted: volume.GetMute()?.as_bool(),
+                    active: state == AudioSessionStateActive,
                 });
                 Ok(())
             }
@@ -251,6 +262,14 @@ fn live(state: AudioSessionState) -> bool {
     state != AudioSessionStateExpired
 }
 
+/// Whether [`read`] lists a [`live`] session: a playing one, or a silent one
+/// whose process is `alive`. A process that exited can leave its session
+/// inactive instead of expired (Windows expires it only once every
+/// reference to its streams is released), and the Volume Mixer drops it.
+fn listed(state: AudioSessionState, alive: impl FnOnce() -> bool) -> bool {
+    state == AudioSessionStateActive || (live(state) && alive())
+}
+
 fn visit(device: &IMMDevice, mut visit: impl FnMut(&IAudioSessionControl2) -> Result<()>) -> Result<()> {
     // SAFETY: manager, enumerator and controls are created and released on the
     // same initialized worker. A disappearing session must not hide the rest.
@@ -348,6 +367,15 @@ mod tests {
         assert!(live(AudioSessionStateActive));
         assert!(live(AudioSessionStateInactive), "a game in a menu or paused");
         assert!(!live(AudioSessionStateExpired));
+    }
+
+    #[test]
+    fn silent_sessions_are_listed_while_their_process_runs() {
+        use windows::Win32::Media::Audio::AudioSessionStateInactive;
+        assert!(listed(AudioSessionStateActive, || panic!("a playing session needs no process check")));
+        assert!(listed(AudioSessionStateInactive, || true), "a game in a menu or paused");
+        assert!(!listed(AudioSessionStateInactive, || false), "left behind by a process that exited");
+        assert!(!listed(AudioSessionStateExpired, || true), "ended");
     }
 
     #[test]
