@@ -5,7 +5,8 @@ use heronite_i18n::tr;
 
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec};
 use crate::emulators::{
-    emulator_definition, expand_argv, flatpak_run_args, node_basename, node_dirname, resolve_profile_template, vars_for_rom, UserEmulator,
+    emulator_definition, expand_argv, flatpak_run_args, node_basename, node_dirname, resolve_profile_template, vars_for_rom,
+    ProfileTemplate, UserEmulator,
 };
 use crate::env::Env;
 use crate::host::{run_mode, Os, RunMode};
@@ -66,8 +67,7 @@ pub fn open_emulator_command(ctx: &PlanContext, probe: &dyn Probe, settings: &Ga
     if runs_under_wine(e.launch_kind == "wine", &e.executable) {
         return crate::wine_tools::run_exe_command(ctx, probe, settings, &e.executable, &[]).map(|t| t.command);
     }
-    let cwd = e.install_dir.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| node_dirname(&e.executable));
-    Ok(Command { program: e.executable.clone(), args: vec![], env: Env::new(), cwd: Some(cwd) })
+    Ok(Command { program: e.executable.clone(), args: vec![], env: Env::new(), cwd: Some(e.folder()) })
 }
 
 /// Whether an emulator runs through Wine: one set up as a Windows program or
@@ -154,7 +154,7 @@ pub(super) fn emulator_plan(
             (executable.clone(), argv, dir)
         }
     };
-    let cwd = if template.as_ref().and_then(|t| t.working_dir.as_deref()) == Some("rom") && rom_path.is_some() {
+    let cwd = if template.as_ref().is_some_and(ProfileTemplate::in_rom_dir) && rom_path.is_some() {
         Some(node_dirname(rom_path.as_deref().unwrap()))
     } else {
         emulator.and_then(|e| e.install_dir.clone()).filter(|d| !d.is_empty()).or_else(|| (!dir.is_empty()).then_some(dir))

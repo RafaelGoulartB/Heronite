@@ -3,8 +3,6 @@
 //! closes, so we do not write while it is open.
 
 use super::Emulator;
-#[cfg(any(not(windows), test))]
-use std::path::Path;
 
 /// One process: its `comm` and its command line.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -57,7 +55,7 @@ pub fn matches(emulator: Emulator, process: &Proc) -> bool {
 
 /// Every process under `proc_root` (`/proc`).
 #[cfg(any(not(windows), test))]
-pub fn list(proc_root: &Path) -> Vec<Proc> {
+pub fn list(proc_root: &std::path::Path) -> Vec<Proc> {
     let Ok(entries) = std::fs::read_dir(proc_root) else { return Vec::new() };
     entries
         .flatten()
@@ -76,7 +74,7 @@ pub fn list(proc_root: &Path) -> Vec<Proc> {
 #[cfg(not(windows))]
 fn running_from_proc() -> impl Fn(Emulator) -> bool {
     let procs = std::cell::OnceCell::new();
-    move |emulator| procs.get_or_init(|| list(Path::new("/proc"))).iter().any(|p| matches(emulator, p))
+    move |emulator| procs.get_or_init(|| list(std::path::Path::new("/proc"))).iter().any(|p| matches(emulator, p))
 }
 
 pub fn running(retroarch_programs: &[std::path::PathBuf]) -> impl Fn(Emulator) -> bool {
@@ -144,19 +142,32 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_guard_sees_a_real_renamed_process() {
-        use std::process::{Command, Stdio};
+        use std::process::{Child, Command, Stdio};
+        /// Ends the fixture process even when an assertion fails.
+        struct Reap(Child);
+        impl Drop for Reap {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
         let temp = tempfile::tempdir().unwrap();
         let program = temp.path().join("fixture-emulator.exe");
         std::fs::copy(std::env::var_os("ComSpec").expect("Windows command interpreter"), &program).unwrap();
         let mut command = Command::new(&program);
         command.args(["/d", "/c", "set /p value="]).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
         heronite_platform::process::new_helper_group(&mut command);
-        let mut child = command.spawn().unwrap();
+        let child = Reap(command.spawn().unwrap());
+        // An empty snapshot also counts as running (fail closed), so check
+        // that the guard really sees the fixture.
+        let snapshot = heronite_platform::process::snapshot();
+        let pid = child.0.id();
+        assert!(
+            snapshot.iter().any(|p| p.pid == pid && p.name.eq_ignore_ascii_case("fixture-emulator.exe")),
+            "the snapshot lists the fixture"
+        );
         let programs = vec![program];
-        let detected = running(&programs)(Emulator::RetroArch);
-        child.kill().unwrap();
-        child.wait().unwrap();
-        assert!(detected);
+        assert!(running(&programs)(Emulator::RetroArch));
     }
 
     #[test]

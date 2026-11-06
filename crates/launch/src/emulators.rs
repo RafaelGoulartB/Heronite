@@ -83,6 +83,13 @@ impl UserEmulator {
             .or_else(|| self.profiles.iter().find(|p| p.definition_profile_id.as_deref() == Some(profile_id)))
             .or_else(|| self.profiles.first())
     }
+
+    /// The folder `{EmulatorDir}` and `{InstallDir}` name and the emulator
+    /// starts in (unless its profile starts it in the ROM's folder): the
+    /// install folder, else the executable's.
+    pub fn folder(&self) -> String {
+        self.install_dir.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| node_dirname(&self.executable))
+    }
 }
 
 /// What `resolveProfileTemplate` yields that launching needs.
@@ -91,6 +98,13 @@ pub struct ProfileTemplate {
     pub arguments: String,
     pub working_dir: Option<String>,
     pub core_path: Option<String>,
+}
+
+impl ProfileTemplate {
+    /// The profile starts the emulator in the ROM's folder (`workingDir: "rom"`).
+    pub fn in_rom_dir(&self) -> bool {
+        self.working_dir.as_deref() == Some("rom")
+    }
 }
 
 pub fn resolve_profile_template(emulator: &UserEmulator, profile: &UserEmulatorProfile) -> ProfileTemplate {
