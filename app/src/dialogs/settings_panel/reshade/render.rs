@@ -113,7 +113,7 @@ impl SettingsPanel {
             }
             State::Banned => {
                 let text = tr!("ReShade's own compatibility list says {exe} bans or blocks ReShade, so Heronite does not install it.", exe);
-                r = r.child(row("ReShade", None, div())).child(div().pb(px(12.)).child(warn_line(&text)));
+                r = r.child(row("ReShade", None, div())).child(div().py(px(12.)).child(warn_line(&text)));
             }
             State::Conflict { path, product } => {
                 let owner = product.clone().unwrap_or_else(|| tr!("another program").into());
@@ -122,7 +122,7 @@ impl SettingsPanel {
                     file = file_name(path),
                     owner
                 );
-                r = r.child(row("ReShade", None, div())).child(div().pb(px(12.)).child(warn_line(&text)));
+                r = r.child(row("ReShade", None, div())).child(div().py(px(12.)).child(warn_line(&text)));
                 let dxgi = o.target.as_ref().and_then(|t| t.api) == Some(Api::Dxgi) && o.proxy.as_deref() != Some("d3d11.dll");
                 if dxgi {
                     let b = self.outline_button("reshade-as-d3d11", tr!("Install as d3d11.dll instead"), true, cx, |this, _, cx| {
@@ -211,14 +211,14 @@ impl SettingsPanel {
         }
         card = card.child(row(exe, Some(&about), div()));
         if let Some(l) = &o.launcher {
-            card = card.child(div().pb(px(10.)).child(help(&tr!(
+            card = card.child(div().py(px(12.)).child(help(&tr!(
                 "{launcher} is a launcher: ReShade goes with the program that draws the game.",
                 launcher = file_name(l)
             ))));
         }
         card = self.reshade_exe_field(card, o, cx);
         if t.is_some_and(|t| t.small_stack) {
-            card = card.child(div().pb(px(10.)).child(warn_line(tr!("This program reserves little stack memory: ReShade may crash it."))));
+            card = card.child(div().py(px(12.)).child(warn_line(tr!("This program reserves little stack memory: ReShade may crash it."))));
         }
         if t.and_then(|t| t.api) == Some(Api::Dxgi) {
             let current = o.proxy.clone().unwrap_or_default();
@@ -234,7 +234,7 @@ impl SettingsPanel {
         if !o.risk.findings.is_empty() {
             let names: Vec<String> = o.risk.names().iter().map(|n| heronite_data::anticheat::short_name(n)).collect();
             card =
-                card.child(div().pb(px(10.)).child(warn_line(&tr!(
+                card.child(div().py(px(12.)).child(warn_line(&tr!(
                     "Anti-cheat: {names}. You will be asked to confirm before installing.",
                     names = names.join(", ")
                 ))));
@@ -299,7 +299,7 @@ impl SettingsPanel {
                 "Not in ReShade's packages: {files}. After installing, add them with Add folder or Add repository.",
                 files = missing.join(", ")
             );
-            card = card.child(div().pb(px(10.)).child(warn_line(&text)));
+            card = card.child(div().py(px(12.)).child(warn_line(&text)));
         }
         card
     }

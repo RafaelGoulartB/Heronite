@@ -82,7 +82,7 @@ impl SettingsPanel {
             )));
         }
         if !notes.is_empty() {
-            card = card.child(notes.into_iter().fold(div().flex().flex_col().gap(px(4.)).pb(px(10.)), |d, n| d.child(n)));
+            card = card.child(notes.into_iter().fold(div().flex().flex_col().gap(px(4.)).py(px(12.)), |d, n| d.child(n)));
         }
         if let Some(latest) = o.latest.as_deref().filter(|l| newer(l, &m.version)) {
             let update = action_button(
@@ -115,7 +115,7 @@ impl SettingsPanel {
                     this.reshade.adding_repo = true;
                     cx.notify();
                 }));
-            card = card.child(div().flex().flex_col().gap(px(8.)).pb(px(12.)).child(warn_line(&text)).child(add));
+            card = card.child(div().flex().flex_col().gap(px(8.)).py(px(12.)).child(warn_line(&text)).child(add));
             if self.reshade.adding_repo {
                 card = card.field(self.reshade_repo_field(busy, cx));
             }
@@ -128,7 +128,7 @@ impl SettingsPanel {
             let clean = self.outline_button("reshade-clean-overrides", tr!("Remove from my variables"), !busy, cx, |this, _, cx| {
                 this.clean_reshade_overrides(cx)
             });
-            card = card.child(div().flex().flex_col().gap(px(8.)).pb(px(12.)).child(hint(&text)).child(buttons().child(clean)));
+            card = card.child(div().flex().flex_col().gap(px(8.)).py(px(12.)).child(hint(&text)).child(buttons().child(clean)));
         }
         let actions =
             buttons()
