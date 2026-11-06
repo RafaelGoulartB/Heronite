@@ -6,7 +6,7 @@
 //! "N more achievements"), each stays longer, and one that another notice
 //! interrupts shows again after it.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -116,14 +116,43 @@ pub struct Queue {
     waiting: VecDeque<Notice>,
     /// Unlocks past [`QUEUE_MAX`], shown as one notice at the end.
     more: usize,
+    /// The last of them: when it is the only one, it shows as itself.
+    last: Option<Notice>,
+    /// Tickets handed out as unlocks come in, so the ones whose icon loads
+    /// sooner still wait for those before them.
+    next_ticket: u64,
+    /// The ticket that goes in next.
+    due: u64,
+    /// Ready, waiting for an earlier ticket.
+    ready: BTreeMap<u64, Notice>,
 }
 
 impl Queue {
+    /// Holds a place for an unlock whose notice is being made.
+    pub fn ticket(&mut self) -> u64 {
+        self.next_ticket += 1;
+        self.next_ticket - 1
+    }
+
+    /// The notice of `ticket` is ready: it goes in after the earlier ones.
+    fn arrive(&mut self, ticket: u64, notice: Notice) {
+        if ticket < self.due {
+            // Cleared since.
+            return;
+        }
+        self.ready.insert(ticket, notice);
+        while let Some(n) = self.ready.remove(&self.due) {
+            self.push(n);
+            self.due += 1;
+        }
+    }
+
     fn push(&mut self, notice: Notice) {
         if self.waiting.len() < QUEUE_MAX {
             self.waiting.push_back(notice);
         } else {
             self.more += 1;
+            self.last = Some(notice);
         }
     }
 
@@ -131,20 +160,29 @@ impl Queue {
         if let Some(n) = self.waiting.pop_front() {
             return Some(n);
         }
-        let more = std::mem::take(&mut self.more);
-        (more > 0).then(|| Notice::more_achievements(more))
+        let last = self.last.take();
+        match std::mem::take(&mut self.more) {
+            0 => None,
+            1 => last,
+            more => Some(Notice::more_achievements(more)),
+        }
     }
 
     pub fn clear(&mut self) {
         self.waiting.clear();
         self.more = 0;
+        self.last = None;
+        // Notices still being made are dropped when they arrive.
+        self.ready.clear();
+        self.due = self.next_ticket;
     }
 }
 
 impl OverlayService {
-    /// Queues an achievement's notice: it shows when the screen is free.
-    pub(super) fn queue_achievement(&mut self, notice: Notice, layer: bool, cx: &mut Context<Self>) {
-        self.achievement_queue.push(notice);
+    /// Queues an achievement's notice (in the order of `ticket`): it shows
+    /// when the screen is free.
+    pub(super) fn queue_achievement(&mut self, ticket: u64, notice: Notice, layer: bool, cx: &mut Context<Self>) {
+        self.achievement_queue.arrive(ticket, notice);
         if self.notice.is_none() {
             if let Some(next) = self.achievement_queue.next() {
                 self.show_notice(next, layer, cx);
@@ -334,6 +372,38 @@ mod tests {
         assert_eq!(titles[..QUEUE_MAX], ["a0", "a1", "a2", "a3"]);
         assert_eq!(titles[QUEUE_MAX], "3 more achievements");
         assert!(q.next().is_none());
+    }
+
+    #[test]
+    fn notices_keep_the_order_of_the_unlocks() {
+        let mut q = Queue::default();
+        let (a, b, c) = (q.ticket(), q.ticket(), q.ticket());
+        q.arrive(c, Notice::achievement("c", None, None));
+        q.arrive(a, Notice::achievement("a", None, None));
+        assert_eq!(q.next().map(|n| n.title).as_deref(), Some("a"));
+        // "c" waits for "b", whose icon is still loading.
+        assert!(q.next().is_none());
+        q.arrive(b, Notice::achievement("b", None, None));
+        let titles: Vec<String> = std::iter::from_fn(|| q.next()).map(|n| n.title).collect();
+        assert_eq!(titles, ["b", "c"]);
+        // One made before a clear is dropped when it arrives.
+        let late = q.ticket();
+        q.clear();
+        q.arrive(late, Notice::achievement("late", None, None));
+        assert!(q.next().is_none());
+        let after = q.ticket();
+        q.arrive(after, Notice::achievement("after", None, None));
+        assert_eq!(q.next().map(|n| n.title).as_deref(), Some("after"));
+    }
+
+    #[test]
+    fn a_single_one_past_the_queue_shows_as_itself() {
+        let mut q = Queue::default();
+        for i in 0..=QUEUE_MAX {
+            q.push(Notice::achievement(format!("a{i}"), None, None));
+        }
+        let titles: Vec<String> = std::iter::from_fn(|| q.next()).map(|n| n.title).collect();
+        assert_eq!(titles, ["a0", "a1", "a2", "a3", "a4"]);
     }
 
     #[test]

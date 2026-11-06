@@ -645,7 +645,8 @@ show "Save replay" while it records, and Screenshots a switch that turns it off 
 the top corner opposite the panel. Achievement notices (`OverlayService::show_achievement`, Settings → Achievements →
 "Over the game" tries one) queue instead of replacing: 5 s each with the achievement's icon (loaded first, 1.5 s at
 most) or a gold trophy, "Achievement unlocked · 9.7%" in the rarity's colour when rare, up to 4 waiting, then one
-"N more achievements"; a volume or screenshot notice cuts in and the achievement shows again after it. The
+"N more achievements" (a single extra one shows as itself), in the order of the unlocks even when their icons load out
+of order; a volume or screenshot notice cuts in and the achievement shows again after it. The
 screenshot's button is a choice (RB unless changed; not ↑ / ↓ nor the triggers, which many controllers report as axes),
 shown in Settings → Overlay and in Settings → Screenshots ("With the controller"). A keyboard shortcut (Super + G unless
 changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland bind that sends SIGUSR1, else the
