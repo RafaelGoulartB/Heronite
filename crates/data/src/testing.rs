@@ -263,6 +263,9 @@ mod tests {
         // A copy without its script (a download being checked) too.
         let copy = dir.path().join(format!("gogdl.part{}", std::env::consts::EXE_SUFFIX));
         std::fs::copy(fake_tool_program(), &copy).unwrap();
-        assert!(Command::new(&copy).arg("--version").status().unwrap().success());
+        // Through `spawn`, which waits out a busy file: a process another test
+        // forks meanwhile still holds the fresh copy open for writing.
+        let mut child = crate::proc::spawn(Command::new(&copy).arg("--version")).unwrap();
+        assert!(child.wait().unwrap().success());
     }
 }
