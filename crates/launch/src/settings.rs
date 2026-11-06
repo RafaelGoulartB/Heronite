@@ -89,6 +89,8 @@ pub struct GameSettings {
     pub gamescope: Gamescope,
     /// `heroniteLsfg*`: Lossless Scaling frame generation.
     pub lsfg: crate::lsfg::Lsfg,
+    /// `heroniteReshade*` (see [`crate::reshade`]).
+    pub reshade: crate::reshade::ReShade,
     /// `heroniteGpu*` and `nvidiaPrime`: the graphics card settings.
     pub gpu: crate::gpu::Gpu,
     /// `heronitePreferSdl`: Proton reads controllers through SDL.
@@ -235,6 +237,7 @@ impl GameSettings {
             },
             gamescope: gs,
             lsfg: crate::lsfg::Lsfg::from_map(m),
+            reshade: crate::reshade::ReShade::from_map(m),
             gpu: crate::gpu::Gpu::from_map(m),
             prefer_sdl: b(crate::env::KEY_PREFER_SDL),
             // On unless the game or the defaults turned it off.
