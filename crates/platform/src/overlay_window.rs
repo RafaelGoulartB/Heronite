@@ -9,6 +9,7 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUERY_USER_NOTIFICATION_STATE, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow, SetForegroundWindow,
     SetLayeredWindowAttributes, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST, LWA_ALPHA,
@@ -17,7 +18,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 /// Physical monitor coordinates and its logical-to-physical scale.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Screen {
     pub left: i32,
     pub top: i32,
@@ -36,6 +37,15 @@ pub fn foreground_screen() -> io::Result<Screen> {
 pub fn screen_at(x: i32, y: i32) -> io::Result<Screen> {
     // SAFETY: no preconditions.
     screen_of(unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTOPRIMARY) })
+}
+
+/// Whether a Direct3D app holds the display in exclusive fullscreen, where
+/// a topmost window would minimise it or make it switch display modes.
+pub fn exclusive_fullscreen() -> bool {
+    let mut state: QUERY_USER_NOTIFICATION_STATE = 0;
+    // SAFETY: the output is a local.
+    let hr = unsafe { SHQueryUserNotificationState(&mut state) };
+    hr >= 0 && state == QUNS_RUNNING_D3D_FULL_SCREEN
 }
 
 fn screen_of(monitor: HMONITOR) -> io::Result<Screen> {
@@ -130,8 +140,11 @@ pub fn show(
         if keyboard && !notice {
             let mut previous_pid = 0;
             GetWindowThreadProcessId(previous, &mut previous_pid);
+            // Windows may refuse it (foreground lock): the panel stays, for
+            // the controller or a click, which also activates it, and focus
+            // still goes back on close if it then owns foreground.
             if SetForegroundWindow(hwnd) == 0 {
-                return Err(io::Error::other("Windows refused keyboard focus for the overlay"));
+                log::info!("overlay: Windows refused keyboard focus for the panel");
             }
             return Ok(NonZeroIsize::new(previous as isize).map(|previous| FocusReturn { panel: handle, previous, previous_pid }));
         }

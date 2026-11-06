@@ -5,7 +5,7 @@
   "Back + Start + Y marks a moment without opening the panel.": "Back + Start + Y marca un momento sin abrir el panel.",
   "Back + Start + ↑ / ↓: change the volume": "Back + Start + ↑ / ↓: cambiar el volumen",
   "Back + Start and the keyboard shortcut open it at any time": "Back + Start y el atajo de teclado lo abren en cualquier momento",
-  "Back + Start and the keyboard shortcut open it at any time Heronite is running. Heronite keeps reading XInput controllers; other apps still receive their input.": "Back + Start y el atajo de teclado lo abren siempre que Heronite esté en ejecución. Heronite sigue leyendo los mandos XInput; otras aplicaciones también reciben sus pulsaciones.",
+  "Back + Start and the keyboard shortcut open it at any time Heronite is running. Heronite keeps reading XInput controllers; other apps still receive their input. The keyboard shortcut is reserved for the overlay: it stops working in every other app while Heronite runs.": "Back + Start y el atajo de teclado lo abren siempre que Heronite esté en ejecución. Heronite sigue leyendo los mandos XInput; otras aplicaciones también reciben sus pulsaciones. El atajo de teclado queda reservado para el overlay: deja de funcionar en las demás aplicaciones mientras Heronite esté en ejecución.",
   "Back + Start opens it": "Back + Start lo abre",
   "Back + Start opens it during a game opened by Heronite": "Back + Start lo abre durante un juego abierto por Heronite",
   "Back + Start opens the overlay; hold both with Y to mark a moment. The game also receives controller input.": "Back + Start abre el overlay; mantén ambos pulsados con Y para marcar un momento. El juego también recibe las pulsaciones del mando.",

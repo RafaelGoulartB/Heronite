@@ -431,11 +431,17 @@ impl OverlayService {
             self.release_input();
             return;
         }
+        let layer = !self.debug_window;
+        if layer && window::exclusive_fullscreen() {
+            self.release_input();
+            return;
+        }
         let service = cx.entity().downgrade();
         let controllers = self.controllers.clone();
         let (paths, step) = (self.data_paths.clone(), self.prefs.volume_step);
-        let layer = !self.debug_window;
-        match window::open_panel(cx, self.prefs.side, layer, keyboard, move |window, cx| {
+        let display = window::Display::current(cx);
+        let scale = display.scale();
+        match window::open_panel(cx, display, self.prefs.side, layer, keyboard, move |window, cx| {
             #[cfg(windows)]
             {
                 let closing = service.clone();
@@ -446,7 +452,7 @@ impl OverlayService {
                     false
                 });
             }
-            cx.new(|cx| OverlayPanel::new(service, paths, step, game, controllers, keyboard, window, cx))
+            cx.new(|cx| OverlayPanel::new(service, paths, step, game, controllers, keyboard, scale, window, cx))
         }) {
             Ok(opened) => {
                 self.panel = Some(opened.handle);
@@ -567,6 +573,9 @@ impl OverlayService {
             return;
         }
         let layer = !self.debug_window;
+        if layer && window::exclusive_fullscreen() {
+            return;
+        }
         self.show_notice(notice, layer, cx);
     }
 

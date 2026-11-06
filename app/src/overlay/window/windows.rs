@@ -1,10 +1,11 @@
 use gpui_kit::*;
 use heronite_data::overlay_prefs::Side;
-use heronite_platform::overlay_window::{self, FocusReturn};
+use heronite_platform::overlay_window::{self, FocusReturn, Screen};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 pub(super) fn open<V: Render>(
     cx: &mut App,
+    screen: std::io::Result<Screen>,
     namespace: &str,
     size: Size<Pixels>,
     side: Side,
@@ -12,7 +13,7 @@ pub(super) fn open<V: Render>(
     keyboard: bool,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<(WindowHandle<V>, Task<anyhow::Result<Option<FocusReturn>>>)> {
-    let screen = super::target_screen()?;
+    let screen = screen?;
     let notice = namespace == "overlay-notice";
     let handle = cx.open_window(super::options(namespace, size, side, px(margin), true, keyboard), |window, cx| {
         window.set_window_title(if notice { "Heronite overlay notice" } else { "Heronite overlay" });

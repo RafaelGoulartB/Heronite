@@ -343,7 +343,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         "overlay-without-game",
         tr!("Open it without a game too"),
         Some(if cfg!(windows) {
-            tr!("Back + Start and the keyboard shortcut open it at any time Heronite is running. Heronite keeps reading XInput controllers; other apps still receive their input.")
+            tr!("Back + Start and the keyboard shortcut open it at any time Heronite is running. Heronite keeps reading XInput controllers; other apps still receive their input. The keyboard shortcut is reserved for the overlay: it stops working in every other app while Heronite runs.")
         } else {
             tr!("Guide and the keyboard shortcut open it at any time Heronite is running, with the volume, the controllers and a way back to Heronite. Heronite then reads the controllers all the time, and Guide is the overlay's even outside games.")
         }),
