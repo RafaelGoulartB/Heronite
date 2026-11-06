@@ -395,7 +395,10 @@ name = "Control"
         std::fs::create_dir_all(&app).unwrap();
         std::fs::write(app.join("Lossless.dll"), b"").unwrap();
         let manifest = format!("{home}/.local/share/vulkan/implicit_layer.d/VkLayer_LSFGVK_frame_generation.json");
-        let probe = FakeProbe::new(&home).with_path(&format!("{home}/.local/share/Steam")).with_path(&manifest);
+        let probe = FakeProbe::new(&home)
+            .with_steam_roots(vec![dir.path().join(".local/share/Steam")])
+            .with_path(&format!("{home}/.local/share/Steam"))
+            .with_path(&manifest);
         let old = Install::detect(&GlobalSettings::default(), &probe);
         assert_eq!((old.layer, old.dll.as_deref(), old.dll_outdated), (Some(Layer::V2), None, true));
         std::fs::write(app.join("lsfg-vk.dll"), b"").unwrap();

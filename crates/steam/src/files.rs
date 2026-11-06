@@ -390,7 +390,7 @@ mod tests {
         let compat = steam.join("steamapps/compatdata/400");
         fs::create_dir_all(compat.join("pfx")).unwrap();
         write(&compat.join("config_info"), &format!("GE-Proton9-20\n{}/files/share/fonts/\n", proton.display()));
-        let locator = SteamLocator { home, steam_path: steam.clone(), system_roots: vec![steam.clone()] };
+        let locator = SteamLocator { home, steam_path: steam.clone(), system_roots: vec![], platform_roots: vec![steam.clone()] };
         let p = prefix(&locator, "400").unwrap();
         assert_eq!(p.compatdata, compat);
         assert_eq!(p.proton.as_deref(), Some(proton.as_path()));
@@ -410,7 +410,12 @@ mod tests {
             &steam.join("steamapps/appmanifest_2805730.acf"),
             "\"AppState\" { \"appid\" \"2805730\" \"name\" \"Proton 9.0\" \"StateFlags\" \"4\" }",
         );
-        let locator = SteamLocator { home: dir.path().join("home"), steam_path: steam.clone(), system_roots: vec![steam.clone()] };
+        let locator = SteamLocator {
+            home: dir.path().join("home"),
+            steam_path: steam.clone(),
+            system_roots: vec![],
+            platform_roots: vec![steam.clone()],
+        };
         let tools = compat_tools(&locator);
         assert_eq!(
             tools,
@@ -434,7 +439,12 @@ mod tests {
             write(&steam.join(format!("compatibilitytools.d/{name}/compatibilitytool.vdf")), &vdf(name));
         }
         fs::create_dir_all(steam.join("ubuntu12_32")).unwrap();
-        let locator = SteamLocator { home: dir.path().join("home"), steam_path: steam.clone(), system_roots: vec![steam.clone()] };
+        let locator = SteamLocator {
+            home: dir.path().join("home"),
+            steam_path: steam.clone(),
+            system_roots: vec![],
+            platform_roots: vec![steam.clone()],
+        };
         let read = |name: &str| {
             format!(
                 "[x] Processing local tool list at {}/ubuntu12_32/../compatibilitytools.d/{name}/compatibilitytool.vdf...\n",
