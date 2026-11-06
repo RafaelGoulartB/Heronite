@@ -13,13 +13,18 @@
 
 mod file;
 mod ini;
+mod paths;
 mod procs;
 mod secret;
 mod spec;
 #[cfg(test)]
 mod tests;
 
-use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::path::Path;
+use std::path::PathBuf;
+
+pub use paths::ConfigPaths;
 
 /// The RetroAchievements login to write.
 pub struct Login<'a> {
@@ -75,28 +80,33 @@ pub enum State {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Status {
     pub emulator: Emulator,
-    /// `None` when `state` is `NotSetUp`.
+    /// `None` when no config was found or discovery failed.
     pub config: Option<PathBuf>,
     pub state: State,
 }
 
-/// Writes `login` (`None` = sign out) into every emulator found under `home`.
-pub fn apply(home: &Path, login: Option<&Login>) -> Vec<Status> {
-    apply_to(home, &Emulator::ALL, login)
+/// Writes `login` (`None` = sign out) into the discovered emulator configs.
+pub fn apply(configs: &ConfigPaths, login: Option<&Login>) -> Vec<Status> {
+    apply_to(configs, &Emulator::ALL, login)
 }
 
-/// Like `apply`, for the listed emulators only. The app signs out only the
-/// emulators whose file holds its own username (`status`), so a login the
-/// user made by hand with another account is never wiped.
-pub fn apply_to(home: &Path, only: &[Emulator], login: Option<&Login>) -> Vec<Status> {
-    run(home, only, login, &procs::running_from_proc(), now(), &secret::machine_key)
+/// Like `apply`, for the listed emulators only. To clear just one account,
+/// use [`sign_out`] instead of passing `None`.
+pub fn apply_to(configs: &ConfigPaths, only: &[Emulator], login: Option<&Login>) -> Vec<Status> {
+    run(configs, only, login, &procs::running(&configs.retroarch_programs), now(), &secret::machine_key, None)
+}
+
+/// Clears only files that hold this account, including when one emulator
+/// has several installations with different accounts.
+pub fn sign_out(configs: &ConfigPaths, username: &str) -> Vec<Status> {
+    run(configs, &Emulator::ALL, None, &procs::running(&configs.retroarch_programs), now(), &secret::machine_key, Some(username))
 }
 
 /// What each emulator's file holds now for `username`: `SignedIn` when it
 /// has that login (same username, a token, achievements on), `SignedOut`
 /// otherwise, whatever else the file holds. Writes nothing.
-pub fn status(home: &Path, username: Option<&str>) -> Vec<Status> {
-    check(home, username, &secret::machine_key)
+pub fn status(configs: &ConfigPaths, username: Option<&str>) -> Vec<Status> {
+    check(configs, username, &secret::machine_key)
 }
 
 fn now() -> u64 {
@@ -104,9 +114,9 @@ fn now() -> u64 {
 }
 
 /// The config files that exist for `emulator`.
-fn found(home: &Path, emulator: Emulator) -> Vec<PathBuf> {
+fn found(configs: &ConfigPaths, emulator: Emulator) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = Vec::new();
-    for path in spec::candidates(home, emulator) {
+    for path in configs.candidates(emulator) {
         if path.is_file() && !files.contains(&path) {
             files.push(path);
         }
@@ -115,19 +125,20 @@ fn found(home: &Path, emulator: Emulator) -> Vec<PathBuf> {
 }
 
 fn run(
-    home: &Path,
+    configs: &ConfigPaths,
     only: &[Emulator],
     login: Option<&Login>,
     running: &dyn Fn(Emulator) -> bool,
     now: u64,
     machine_key: file::MachineKey,
+    clear_user: Option<&str>,
 ) -> Vec<Status> {
     let mut out = Vec::new();
     for (i, &emulator) in only.iter().enumerate() {
         if only[..i].contains(&emulator) {
             continue;
         }
-        let files = found(home, emulator);
+        let files = found(configs, emulator);
         if files.is_empty() {
             out.push(Status { emulator, config: None, state: State::NotSetUp });
             continue;
@@ -140,7 +151,10 @@ fn run(
             } else {
                 let result = match login {
                     Some(login) => file::sign_in(&spec, &config, login, now, machine_key).map(|()| State::SignedIn),
-                    None => file::sign_out(&spec, &config).map(|()| State::SignedOut),
+                    None => {
+                        let ours = clear_user.map_or(Ok(true), |user| file::holds(&spec, &config, user, machine_key));
+                        ours.and_then(|ours| if ours { file::sign_out(&spec, &config) } else { Ok(()) }).map(|()| State::SignedOut)
+                    }
                 };
                 result.unwrap_or_else(State::Failed)
             };
@@ -150,10 +164,10 @@ fn run(
     out
 }
 
-fn check(home: &Path, username: Option<&str>, machine_key: file::MachineKey) -> Vec<Status> {
+fn check(configs: &ConfigPaths, username: Option<&str>, machine_key: file::MachineKey) -> Vec<Status> {
     let mut out = Vec::new();
     for emulator in Emulator::ALL {
-        let files = found(home, emulator);
+        let files = found(configs, emulator);
         if files.is_empty() {
             out.push(Status { emulator, config: None, state: State::NotSetUp });
         }

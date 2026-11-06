@@ -1,8 +1,9 @@
-//! Which emulators are running now: the names in `/proc/*/comm` and
-//! `/proc/*/cmdline`. An emulator that runs rewrites its config when it
+//! Which emulators are running now: Toolhelp on Windows, `/proc` on Linux.
+//! An emulator that runs rewrites its config when it
 //! closes, so we do not write while it is open.
 
 use super::Emulator;
+#[cfg(any(not(windows), test))]
 use std::path::Path;
 
 /// One process: its `comm` and its command line.
@@ -38,7 +39,7 @@ pub fn flatpak_id(emulator: Emulator) -> &'static str {
 }
 
 fn file_name(arg: &str) -> &str {
-    arg.rsplit('/').next().unwrap_or(arg)
+    arg.rsplit(['/', '\\']).next().unwrap_or(arg)
 }
 
 /// Whether `process` is `emulator`: its `comm` or the file name of its
@@ -55,6 +56,7 @@ pub fn matches(emulator: Emulator, process: &Proc) -> bool {
 }
 
 /// Every process under `proc_root` (`/proc`).
+#[cfg(any(not(windows), test))]
 pub fn list(proc_root: &Path) -> Vec<Proc> {
     let Ok(entries) = std::fs::read_dir(proc_root) else { return Vec::new() };
     entries
@@ -71,9 +73,42 @@ pub fn list(proc_root: &Path) -> Vec<Proc> {
 }
 
 /// Which of the emulators run now, read from `/proc` on the first question.
-pub fn running_from_proc() -> impl Fn(Emulator) -> bool {
+#[cfg(not(windows))]
+fn running_from_proc() -> impl Fn(Emulator) -> bool {
     let procs = std::cell::OnceCell::new();
     move |emulator| procs.get_or_init(|| list(Path::new("/proc"))).iter().any(|p| matches(emulator, p))
+}
+
+pub fn running(retroarch_programs: &[std::path::PathBuf]) -> impl Fn(Emulator) -> bool {
+    #[cfg(windows)]
+    {
+        let names: Vec<_> = retroarch_programs.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect();
+        let procs = std::cell::OnceCell::new();
+        move |emulator| {
+            let processes = procs.get_or_init(|| {
+                let entries = heronite_platform::process::snapshot();
+                if entries.is_empty() {
+                    log::warn!("could not inspect running emulators; leaving their configurations unchanged");
+                }
+                entries.into_iter().map(|p| Proc { comm: p.name, args: Vec::new() }).collect::<Vec<_>>()
+            });
+            windows_running(emulator, processes, &names)
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = retroarch_programs;
+        running_from_proc()
+    }
+}
+
+#[cfg(any(windows, test))]
+fn windows_running(emulator: Emulator, processes: &[Proc], retroarch_names: &[String]) -> bool {
+    processes.is_empty()
+        || processes.iter().any(|p| {
+            matches(emulator, p)
+                || (emulator == Emulator::RetroArch && retroarch_names.iter().any(|name| name.eq_ignore_ascii_case(&p.comm)))
+        })
 }
 
 #[cfg(test)]
@@ -93,6 +128,35 @@ mod tests {
         assert!(matches(Emulator::Dolphin, &proc("dolphin-emu", &[])));
         assert!(matches(Emulator::Flycast, &proc("flycast", &[])));
         assert!(matches(Emulator::RetroArch, &proc("retroarch", &[])));
+        assert!(matches(Emulator::RetroArch, &proc("RETROARCH.EXE", &[])));
+        assert!(matches(Emulator::RetroArch, &proc("", &[r"C:\Emulators\RetroArch\retroarch.exe"])));
+    }
+
+    #[test]
+    fn windows_guard_covers_renamed_programs_and_fails_closed() {
+        let emulator = Emulator::RetroArch;
+        assert!(windows_running(emulator, &[], &[]));
+        assert!(!windows_running(emulator, &[proc("explorer.exe", &[])], &[]));
+        assert!(windows_running(emulator, &[proc("RETROARCH.EXE", &[])], &[]));
+        assert!(windows_running(emulator, &[proc("My-Emulator.exe", &[])], &["my-emulator.exe".into()]));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_guard_sees_a_real_renamed_process() {
+        use std::process::{Command, Stdio};
+        let temp = tempfile::tempdir().unwrap();
+        let program = temp.path().join("fixture-emulator.exe");
+        std::fs::copy(std::env::var_os("ComSpec").expect("Windows command interpreter"), &program).unwrap();
+        let mut command = Command::new(&program);
+        command.args(["/d", "/c", "set /p value="]).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+        heronite_platform::process::new_helper_group(&mut command);
+        let mut child = command.spawn().unwrap();
+        let programs = vec![program];
+        let detected = running(&programs)(Emulator::RetroArch);
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(detected);
     }
 
     #[test]

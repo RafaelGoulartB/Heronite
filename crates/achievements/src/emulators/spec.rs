@@ -2,8 +2,10 @@
 //! it. Every name below is checked against the emulator's source (the file
 //! is named per emulator).
 
+#[cfg(any(not(windows), test))]
 use super::procs::flatpak_id;
 use super::Emulator;
+#[cfg(any(not(windows), test))]
 use std::path::{Path, PathBuf};
 
 /// How an emulator spells a boolean in its file.
@@ -152,12 +154,14 @@ pub fn spec(emulator: Emulator) -> Spec {
 
 /// An absolute `$name` that points inside `home`. Anything else is ignored,
 /// so a test home never reaches the real one.
+#[cfg(any(not(windows), test))]
 fn env_dir(name: &str, home: &Path) -> Option<PathBuf> {
     let dir = PathBuf::from(std::env::var_os(name)?);
     (dir.is_absolute() && dir.starts_with(home)).then_some(dir)
 }
 
 /// `$XDG_CONFIG_HOME` (when set) and `~/.config`.
+#[cfg(any(not(windows), test))]
 fn config_homes(home: &Path) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = env_dir("XDG_CONFIG_HOME", home).into_iter().collect();
     let default = home.join(".config");
@@ -170,6 +174,7 @@ fn config_homes(home: &Path) -> Vec<PathBuf> {
 /// Every place the config file can be: native (and AppImage) then Flatpak,
 /// whose sandbox sets `XDG_CONFIG_HOME` to `~/.var/app/<id>/config`.
 /// The files may not exist.
+#[cfg(any(not(windows), test))]
 pub fn candidates(home: &Path, emulator: Emulator) -> Vec<PathBuf> {
     let under = |config_home: PathBuf| -> PathBuf {
         match emulator {
