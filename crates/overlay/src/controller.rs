@@ -1,5 +1,6 @@
 //! Controller battery (sysfs or XInput) and Linux Bluetooth disconnect.
 
+#[cfg(any(not(windows), test))]
 use std::path::Path;
 #[cfg(not(windows))]
 use std::process::Command;
@@ -8,6 +9,8 @@ use std::time::Duration;
 
 #[cfg(not(windows))]
 use heronite_data::proc::Run;
+
+use crate::input::ControllerId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Battery {
@@ -20,7 +23,8 @@ pub struct Battery {
 /// when its driver reports one (hid-playstation, hid-nintendo, xpadneo...).
 /// Blocking reads of sysfs.
 #[cfg(not(windows))]
-pub fn battery(node: &Path) -> Option<Battery> {
+pub fn battery(id: &ControllerId) -> Option<Battery> {
+    let ControllerId::Evdev(node) = id else { return None };
     let name = node.file_name()?;
     let device = std::fs::canonicalize(Path::new("/sys/class/input").join(name).join("device")).ok()?;
     // The power supply hangs off the HID device, a few levels up the input node.
@@ -80,9 +84,9 @@ pub fn disconnect(address: &str) -> Result<(), String> {
 /// Coarse XInput charge, or `None` for wired/unknown/disconnected devices.
 /// XInput does not report charging. Native failures are logged.
 #[cfg(windows)]
-pub fn battery(node: &Path) -> Option<Battery> {
-    let Some(index) = crate::input::xinput_index(node) else {
-        log::warn!("overlay controller: invalid XInput identifier {}", node.display());
+pub fn battery(id: &ControllerId) -> Option<Battery> {
+    let &ControllerId::XInput(index) = id else {
+        log::warn!("overlay controller: not an XInput controller: {id:?}");
         return None;
     };
     match heronite_platform::gamepad::battery(index) {
