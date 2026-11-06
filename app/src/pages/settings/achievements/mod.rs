@@ -111,6 +111,17 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 )))
                 .into_any_element(),
         ]))
+        .child(caption(tr!("Game files")))
+        .child(card([toggle_row(
+            "ach-game-files",
+            tr!("Read achievements from game files"),
+            Some(tr!(
+                "For DRM-free and offline copies that keep their Steam achievements next to the game, as the open-source Steam API emulators do. Heronite only reads them; names and icons may come from Steam's public pages."
+            )),
+            prefs.game_files,
+        )
+        .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.game_files = !p.game_files)))
+        .into_any_element()]))
         .child(caption(tr!("How they show")))
         .child(card([
             with_sub_rows(

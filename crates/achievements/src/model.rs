@@ -17,18 +17,23 @@ pub enum Source {
     Epic,
     #[serde(rename = "retroachievements")]
     RetroAchievements,
+    /// Files a game keeps next to it (a Steam API emulator's), with a Steam
+    /// app id.
+    Local,
 }
 
 impl Source {
-    pub const ALL: [Source; 4] = [Source::Steam, Source::Gog, Source::Epic, Source::RetroAchievements];
+    pub const ALL: [Source; 5] = [Source::Steam, Source::Gog, Source::Epic, Source::RetroAchievements, Source::Local];
 
-    /// Name shown in the UI (a brand: never translated).
+    /// Name shown in the UI (a brand: never translated). The app names
+    /// `Local` itself ("Game files", translated).
     pub fn label(self) -> &'static str {
         match self {
             Source::Steam => "Steam",
             Source::Gog => "GOG",
             Source::Epic => "Epic Games",
             Source::RetroAchievements => "RetroAchievements",
+            Source::Local => "Game files",
         }
     }
 }
@@ -205,8 +210,25 @@ pub struct GameAchievements {
     /// When a source last said the game has no achievements there (so it is
     /// not asked again at every start).
     pub empty_at: BTreeMap<Source, DateTime<Utc>>,
+    /// Where its game files are, chosen by hand.
+    pub local: Option<LocalPin>,
     /// What a newer Heronite wrote that this one does not know.
     pub unknown: Unknown,
+}
+
+/// The game-files source of one game, set by hand in the dialog.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalPin {
+    /// The folder with the game's achievement files (or its emulator's).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<std::path::PathBuf>,
+    /// The Steam app id, typed by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    /// Not read for this game.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub off: bool,
 }
 
 /// Parts of a game's copy written by a newer Heronite (a set from a source
@@ -240,6 +262,8 @@ struct StoredGame {
     retro_game_id: Option<u32>,
     #[serde(default)]
     empty_at: Map<String, Value>,
+    #[serde(default)]
+    local: Option<LocalPin>,
     #[serde(flatten)]
     fields: Map<String, Value>,
 }
@@ -247,7 +271,7 @@ struct StoredGame {
 impl<'de> Deserialize<'de> for GameAchievements {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let stored = StoredGame::deserialize(deserializer)?;
-        let mut game = GameAchievements { retro_game_id: stored.retro_game_id, ..Default::default() };
+        let mut game = GameAchievements { retro_game_id: stored.retro_game_id, local: stored.local, ..Default::default() };
         game.unknown.fields = stored.fields;
         for set in stored.sets {
             if set.get("source").and_then(known_source).is_some() {
@@ -305,6 +329,8 @@ impl Serialize for GameAchievements {
             retro_game_id: Option<u32>,
             #[serde(skip_serializing_if = "Option::is_none")]
             empty_at: Option<EmptyAt<'a>>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            local: Option<&'a LocalPin>,
             #[serde(flatten)]
             fields: &'a Map<String, Value>,
         }
@@ -314,6 +340,7 @@ impl Serialize for GameAchievements {
             sets: Sets(self),
             retro_game_id: self.retro_game_id,
             empty_at: (!empty).then_some(EmptyAt(self)),
+            local: self.local.as_ref(),
             fields: &self.unknown.fields,
         }
         .serialize(serializer)

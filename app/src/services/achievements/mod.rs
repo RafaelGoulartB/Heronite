@@ -166,7 +166,7 @@ impl Achievements {
         if !enabled() {
             return;
         }
-        let targets = heronite_achievements::targets_of(game);
+        let targets = heronite_achievements::targets_with(game, &self.prefs);
         if targets.is_empty() {
             return;
         }
@@ -263,7 +263,8 @@ impl Achievements {
                 None => {
                     let paths = this.update(cx, |this, _| this.data_paths.clone()).ok();
                     let name = app_name.clone();
-                    cx.background_spawn(async move { paths.and_then(|p| find_game(&p, &name)) }).await
+                    let prefs = this.update(cx, |this, _| this.prefs).unwrap_or_default();
+                    cx.background_spawn(async move { paths.and_then(|p| find_game(&p, &name, &prefs)) }).await
                 }
             };
             let Some(known) = known else { return };
@@ -289,7 +290,8 @@ impl Achievements {
         cx.notify();
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let games = cx.background_spawn(async move { every_game(&paths) }).await;
+            let prefs = this.update(cx, |this, _| this.prefs).unwrap_or_default();
+            let games = cx.background_spawn(async move { every_game(&paths, &prefs) }).await;
             this.update(cx, |this, cx| {
                 this.bulk.total = games.len();
                 for k in games {
@@ -375,10 +377,16 @@ impl Achievements {
 
     pub fn set_prefs(&mut self, prefs: Prefs, cx: &mut Context<Self>) {
         let emulators_changed = (prefs.emulators, prefs.hardcore) != (self.prefs.emulators, self.prefs.hardcore);
+        let game_files_changed = prefs.game_files != self.prefs.game_files;
         let user = self.signed_in_user();
         self.prefs = prefs;
         if emulators_changed {
             self.sync_emulators(user, cx);
+        }
+        if game_files_changed {
+            // Every game's sources change: the Collection asks for them again.
+            self.known.clear();
+            self.games.clear();
         }
         let app = self.app_paths.clone();
         cx.background_spawn(async move {
@@ -432,6 +440,34 @@ impl Achievements {
         })
         .detach();
     }
+
+    /// Sets the game-files choice of a game (a folder, an app id, or off;
+    /// `None` = found by itself again), or with `forget` starts its game-files
+    /// set over. Then reads it again.
+    pub fn pin_local(&mut self, key: &str, pin: Option<heronite_achievements::LocalPin>, forget: bool, cx: &mut Context<Self>) {
+        let Some(known) = self.known.values().find(|k| key_of(&k.runner, &k.app_name) == key).cloned() else { return };
+        let (paths, accounts, key) = (self.data_paths.clone(), self.accounts.clone(), key.to_string());
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(async move {
+                    let http = Http::new(Endpoints::default());
+                    let ctx = Ctx { paths: &paths, http: &http, accounts: &accounts, lang: "en" };
+                    sync::pin_local(&ctx, &known.runner, &known.app_name, pin, forget, &order_of(&known.targets))
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                if let Err(e) = result {
+                    log::warn!("choosing the game files: {e:#}");
+                }
+                if let Some(e) = this.games.get_mut(&key) {
+                    e.refreshed_at = None;
+                }
+                this.refresh(&key, cx);
+            })
+            .ok();
+        })
+        .detach();
+    }
 }
 
 /// Settings → Achievements' test buttons: the notification of `n` made-up
@@ -459,14 +495,14 @@ fn notify_unlocks(title: &str, unlocks: &[(Source, Achievement)]) {
 }
 
 /// A game of the Collection by its app name, with its sources.
-fn find_game(paths: &DataPaths, app_name: &str) -> Option<Known> {
+fn find_game(paths: &DataPaths, app_name: &str, prefs: &Prefs) -> Option<Known> {
     let lib = heronite_data::Library::load(paths).ok()?;
     let game = lib.games.iter().find(|g| g.app_name == app_name)?;
-    known_of(game)
+    known_of(game, prefs)
 }
 
-fn known_of(game: &CollectionGame) -> Option<Known> {
-    let targets = heronite_achievements::targets_of(game);
+fn known_of(game: &CollectionGame, prefs: &Prefs) -> Option<Known> {
+    let targets = heronite_achievements::targets_with(game, prefs);
     (!targets.is_empty()).then(|| Known {
         runner: game.runner.clone(),
         app_name: game.app_name.clone(),
@@ -475,9 +511,9 @@ fn known_of(game: &CollectionGame) -> Option<Known> {
     })
 }
 
-fn every_game(paths: &DataPaths) -> Vec<Known> {
+fn every_game(paths: &DataPaths, prefs: &Prefs) -> Vec<Known> {
     match heronite_data::Library::load(paths) {
-        Ok(lib) => lib.games.iter().filter_map(|g| known_of(g)).collect(),
+        Ok(lib) => lib.games.iter().filter_map(|g| known_of(g, prefs)).collect(),
         Err(e) => {
             log::warn!("reading the Collection for the achievements: {e:#}");
             Vec::new()

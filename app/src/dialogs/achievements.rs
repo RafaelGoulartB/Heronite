@@ -363,6 +363,50 @@ fn kind_label(kind: Kind) -> &'static str {
     }
 }
 
+impl AchievementsDialog {
+    /// Where a game-files set comes from, and the choices about it.
+    fn game_files_footer(&self, app_id: &str, pin: Option<heronite_achievements::LocalPin>, cx: &mut Context<Self>) -> Div {
+        let link = |id: &'static str, text: String| div().id(id).cursor_pointer().text_color(theme::accent()).child(text);
+        let (key, key2, key3) = (self.key.clone(), self.key.clone(), self.key.clone());
+        let line = match pin.as_ref().and_then(|p| p.folder.as_ref()) {
+            Some(folder) => {
+                tr!("From the game's files in {folder} · Steam app id {id}", folder = folder.display().to_string(), id = app_id)
+            }
+            None => tr!("From the game's files · Steam app id {id}", id = app_id),
+        };
+        let mut links = div().flex().flex_wrap().gap(px(14.)).child(link("ach-local-folder", tr!("Choose the folder…").into()).on_click(
+            cx.listener(move |_, _, _, cx| {
+                let rx = cx.prompt_for_paths(PathPromptOptions {
+                    files: false,
+                    directories: true,
+                    multiple: false,
+                    prompt: Some(tr!("Select").into()),
+                });
+                let key = key.clone();
+                cx.spawn(async move |_, cx| {
+                    let Ok(Ok(Some(paths))) = rx.await else { return };
+                    let Some(folder) = paths.into_iter().next() else { return };
+                    cx.update(|cx| {
+                        let pin = heronite_achievements::LocalPin { folder: Some(folder), ..Default::default() };
+                        service::get(cx).update(cx, |s, cx| s.pin_local(&key, Some(pin), false, cx));
+                    });
+                })
+                .detach();
+            }),
+        ));
+        if pin.is_some() {
+            links =
+                links.child(link("ach-local-auto", tr!("Find them by itself again").into()).on_click(cx.listener(move |_, _, _, cx| {
+                    service::get(cx).update(cx, |s, cx| s.pin_local(&key2, None, false, cx));
+                })));
+        }
+        links = links.child(link("ach-local-forget", tr!("Forget these achievements").into()).on_click(cx.listener(move |_, _, _, cx| {
+            service::get(cx).update(cx, |s, cx| s.pin_local(&key3, pin.clone(), true, cx));
+        })));
+        div().flex().flex_col().gap(px(6.)).text_size(px(12.)).text_color(theme::ink_a(0.5)).child(line).child(links)
+    }
+}
+
 impl Render for AchievementsDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
@@ -425,6 +469,11 @@ impl Render for AchievementsDialog {
                     ),
                 ),
             );
+        }
+        if set.as_ref().is_some_and(|s| s.source == Source::Local) {
+            let app_id = set.as_ref().map(|s| s.external_id.clone()).unwrap_or_default();
+            let pin = entry.as_ref().and_then(|e| e.game.local.clone());
+            body = body.child(self.game_files_footer(&app_id, pin, cx));
         }
         if self.scroll.bounds().size.height <= px(0.) {
             cx.notify();

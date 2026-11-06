@@ -17,6 +17,6 @@ pub mod store;
 pub mod sync;
 pub mod target;
 
-pub use model::{Achievement, AchievementSet, GameAchievements, Kind, Progress, Source};
+pub use model::{Achievement, AchievementSet, GameAchievements, Kind, LocalPin, Progress, Source};
 pub use sync::{refresh, Outcome, Problem};
-pub use target::{targets_of, SourceTarget};
+pub use target::{targets_of, targets_with, LocalTarget, SourceTarget};
