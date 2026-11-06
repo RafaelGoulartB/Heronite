@@ -282,8 +282,30 @@ pub fn file_id(path: &Path, meta: &Metadata) -> Option<(u64, u64)> {
     }
 }
 
+/// How many names (hard links) the file at `path` has; `None` when it
+/// cannot be read. Scoop keeps an app's persisted files as hard links, so
+/// replacing such a file (write and rename) would cut it off from its other
+/// names.
+pub fn hard_links(path: &Path) -> Option<u64> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(path).ok().map(|m| m.nlink())
+    }
+    #[cfg(windows)]
+    {
+        windows_file_info(path).map(|info| u64::from(info.nNumberOfLinks))
+    }
+}
+
 #[cfg(windows)]
 fn windows_file_id(path: &Path) -> Option<(u64, u64)> {
+    let info = windows_file_info(path)?;
+    Some((info.dwVolumeSerialNumber as u64, (info.nFileIndexHigh as u64) << 32 | info.nFileIndexLow as u64))
+}
+
+#[cfg(windows)]
+fn windows_file_info(path: &Path) -> Option<windows_sys::Win32::Storage::FileSystem::BY_HANDLE_FILE_INFORMATION> {
     use std::os::windows::fs::OpenOptionsExt;
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Storage::FileSystem::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS};
@@ -294,12 +316,23 @@ fn windows_file_id(path: &Path) -> Option<(u64, u64)> {
     if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
         return None;
     }
-    Some((info.dwVolumeSerialNumber as u64, (info.nFileIndexHigh as u64) << 32 | info.nFileIndexLow as u64))
+    Some(info)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hard_links_counts_the_names_of_a_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.cfg");
+        std::fs::write(&file, "x").unwrap();
+        assert_eq!(hard_links(&file), Some(1));
+        std::fs::hard_link(&file, dir.path().join("b.cfg")).unwrap();
+        assert_eq!(hard_links(&file), Some(2));
+        assert_eq!(hard_links(&dir.path().join("missing")), None);
+    }
 
     #[test]
     fn hard_links_share_their_id() {

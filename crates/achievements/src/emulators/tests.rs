@@ -330,6 +330,18 @@ fn a_symlinked_config_stays_a_symlink() {
     assert!(fs::read_to_string(&real).unwrap().contains("UserName = Rafa"));
 }
 
+// Scoop persists RetroArch's config as a hard link; the same holds anywhere.
+#[test]
+fn a_hard_linked_config_keeps_its_other_name() {
+    let home = tempfile::tempdir().unwrap();
+    let config = put(home.path(), ".config/flycast/emu.cfg", FLYCAST);
+    let persisted = home.path().join("persisted.cfg");
+    fs::hard_link(&config, &persisted).unwrap();
+    sign_in(home.path(), &[Emulator::Flycast], true);
+    assert!(fs::read_to_string(&persisted).unwrap().contains("UserName = Rafa"), "the other name sees the login");
+    assert_eq!(heronite_platform::fs::hard_links(&config), Some(2));
+}
+
 #[test]
 fn the_public_functions_find_nothing_in_an_empty_home() {
     let home = tempfile::tempdir().unwrap();
