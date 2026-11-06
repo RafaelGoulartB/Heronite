@@ -16,6 +16,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Installer, portable zip, self-update, releases
 - Native launch extras: before/after scripts and delayed companions; real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
+- Tray menus follow the app's light/dark theme (including System and Custom) on Windows 10 1903+ and Windows 11. High contrast keeps Windows' native colours. Older Windows versions, or missing uxtheme exports, fall back to the native menu with a warning
 
 ## ⬜ To do
 
@@ -24,7 +25,7 @@ What works on Windows, what is left, and what Windows does not need.
 - RetroAchievements sign-in of the emulators: `heronite_achievements::emulators` only knows their Linux config files (`~/.config`, Flatpak), not where they keep them on Windows (`%APPDATA%`, portable folders)
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
-- Dark tray menus: the tray menu stays light in dark mode, because the fix needs an undocumented uxtheme call. A new tray icon also starts in Windows 11's hidden-icons flyout until the user pins it
+- A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
 - Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` and `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`). Until then SmartScreen warns on the first run, and the release notes say so
 - Installer languages: the Inno Setup installer is English only, while the app also speaks pt-BR, es and de
 - Steam tests: the Steam library and session tests (`TODO(windows)` in `heronite-launch`) only run on Linux. `SteamLocator` reads this machine's real Steam from the registry, so the fake Steam of a test is not seen. It first needs a way to leave the registry out
