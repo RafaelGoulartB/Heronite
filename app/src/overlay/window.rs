@@ -42,11 +42,28 @@ fn display_height(cx: &App) -> f32 {
         return h;
     }
     #[cfg(windows)]
-    match heronite_platform::overlay_window::foreground_screen() {
+    match target_screen() {
         Ok(screen) => return screen.logical_height(),
         Err(e) => log::warn!("overlay: cannot read the foreground monitor: {e}"),
     }
     cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(0., f32::max).max(720.)
+}
+
+/// The monitor of the foreground window (the game's). In debug captures,
+/// `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` picks the one holding that desktop
+/// point (physical px) instead, so another monitor is tested without moving
+/// the focus.
+#[cfg(windows)]
+fn target_screen() -> std::io::Result<heronite_platform::overlay_window::Screen> {
+    use heronite_platform::overlay_window;
+    let point = crate::env::value("HERONITE_DEBUG_OVERLAY_MONITOR").and_then(|v| {
+        let (x, y) = v.split_once(',')?;
+        Some((x.trim().parse().ok()?, y.trim().parse().ok()?))
+    });
+    match point {
+        Some((x, y)) => overlay_window::screen_at(x, y),
+        None => overlay_window::foreground_screen(),
+    }
 }
 
 #[cfg(target_os = "linux")]

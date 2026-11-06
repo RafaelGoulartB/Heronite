@@ -66,7 +66,8 @@ checks are still needed. Background debug hooks cannot prove keyboard
 focus handoff because Windows can refuse it without a real hotkey event.
 The debug hooks also support native Windows windows:
 `HERONITE_DEBUG_OVERLAY=layer[:<app_name>]`; `window` keeps the normal
-debug window. Never simulate keyboard, mouse or controller input on the
+debug window, and `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` targets the
+monitor holding that desktop point. Never simulate keyboard, mouse or controller input on the
 machine: use `HERONITE_DEBUG_OVERLAY_PAD` for in-app navigation.
 
 ## ➖ Not planned

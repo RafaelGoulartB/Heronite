@@ -3,8 +3,10 @@
 use std::io;
 use std::num::NonZeroIsize;
 
-use windows_sys::Win32::Foundation::{GetLastError, SetLastError, HWND, RECT};
-use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY};
+use windows_sys::Win32::Foundation::{GetLastError, SetLastError, HWND, POINT, RECT};
+use windows_sys::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, HMONITOR, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+};
 use windows_sys::Win32::System::Threading::GetCurrentProcessId;
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -26,9 +28,19 @@ pub struct Screen {
 
 /// The foreground window's monitor, including negative desktop origins.
 pub fn foreground_screen() -> io::Result<Screen> {
-    // SAFETY: all handles are queried from Windows; the output structures are initialized.
+    // SAFETY: a null foreground window gives the primary monitor.
+    screen_of(unsafe { MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY) })
+}
+
+/// The monitor holding a desktop point (physical pixels), else the primary.
+pub fn screen_at(x: i32, y: i32) -> io::Result<Screen> {
+    // SAFETY: no preconditions.
+    screen_of(unsafe { MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTOPRIMARY) })
+}
+
+fn screen_of(monitor: HMONITOR) -> io::Result<Screen> {
+    // SAFETY: the monitor handle comes from Windows; the output structures are initialized.
     unsafe {
-        let monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY);
         let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
         if GetMonitorInfoW(monitor, &mut info) == 0 {
             return Err(io::Error::last_os_error());

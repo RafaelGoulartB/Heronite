@@ -13,6 +13,9 @@
 //! - `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens it as the keyboard shortcut
 //!   does (it takes the keyboard); `=shortcut` registers the real shortcut
 //!   instead of opening it (Settings → Overlay's, removed on exit).
+//! - `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` (Windows) puts the native
+//!   surfaces on the monitor holding that desktop point instead of the
+//!   foreground window's.
 
 use std::time::{Duration, Instant};
 

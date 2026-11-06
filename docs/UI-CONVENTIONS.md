@@ -654,7 +654,8 @@ plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice 
 `HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
-the panel's size follows it.
+the panel's size follows it. On Windows, `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` puts the surfaces on the monitor holding
+that desktop point (physical px) instead of the foreground window's, so another monitor is tested without moving focus.
 
 On Windows the same panel uses a topmost tool window on the foreground
 monitor, over windowed and borderless games (not exclusive fullscreen).

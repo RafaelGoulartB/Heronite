@@ -12,7 +12,7 @@ pub(super) fn open<V: Render>(
     keyboard: bool,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<(WindowHandle<V>, Task<anyhow::Result<Option<FocusReturn>>>)> {
-    let screen = overlay_window::foreground_screen()?;
+    let screen = super::target_screen()?;
     let notice = namespace == "overlay-notice";
     let handle = cx.open_window(super::options(namespace, size, side, px(margin), true, keyboard), |window, cx| {
         window.set_window_title(if notice { "Heronite overlay notice" } else { "Heronite overlay" });
