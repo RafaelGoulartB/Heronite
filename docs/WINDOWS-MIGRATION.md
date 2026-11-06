@@ -16,6 +16,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Installer, portable zip, self-update, releases
 - Native launch extras: before/after scripts and delayed companions; real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
+- Steam tests: library and session fixtures run on Windows without reading the host's registry, Steam folders or process list; achievement fixtures are isolated too
 - Tray menus follow the app's light/dark theme (including System and Custom) on Windows 10 1903+ and Windows 11. High contrast keeps Windows' native colours. Older Windows versions, or missing uxtheme exports, fall back to the native menu with a warning
 
 ## ⬜ To do
@@ -28,7 +29,6 @@ What works on Windows, what is left, and what Windows does not need.
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
 - Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` and `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`). Until then SmartScreen warns on the first run, and the release notes say so
 - Installer languages: the Inno Setup installer is English only, while the app also speaks pt-BR, es and de
-- Steam tests: the Steam library and session tests (`TODO(windows)` in `heronite-launch`) only run on Linux. `SteamLocator` reads this machine's real Steam from the registry, so the fake Steam of a test is not seen. It first needs a way to leave the registry out
 
 ## ➖ Not planned
 

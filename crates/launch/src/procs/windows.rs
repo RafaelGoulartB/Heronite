@@ -53,6 +53,13 @@ fn under(path: &Path, folder: &str) -> bool {
 pub struct SystemProcs;
 
 impl Procs for SystemProcs {
+    fn steam_client_running(&self) -> bool {
+        use heronite_platform::registry::{dword, Hive};
+        dword(Hive::CurrentUser, r"Software\Valve\Steam\ActiveProcess", "pid").is_some_and(|pid| pid != 0 && self.is_alive(pid))
+            // Steam does not always keep ActiveProcess up to date.
+            || os::snapshot().iter().any(|p| p.name.eq_ignore_ascii_case("steam.exe"))
+    }
+
     fn is_alive(&self, pid: u32) -> bool {
         pid > 1 && os::is_alive(pid)
     }

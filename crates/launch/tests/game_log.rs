@@ -27,7 +27,12 @@ fn rig(config_json: &str) -> Rig {
     let paths = DataPaths::at(dir.path().join("heroic"));
     fs::create_dir_all(paths.games_config_dir()).unwrap();
     fs::write(paths.root.join("config.json"), config_json).unwrap();
-    let steam = SteamLocator { home: dir.path().join("home"), steam_path: dir.path().join("home/.steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: dir.path().join("home"),
+        steam_path: dir.path().join("home/.steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![],
+    };
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
     let cfg = LauncherConfig {
