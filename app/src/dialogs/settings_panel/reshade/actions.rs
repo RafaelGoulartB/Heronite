@@ -307,7 +307,17 @@ impl SettingsPanel {
                     ],
                     cx,
                 );
-                let mut text = tr!("ReShade was removed. ReShade.ini and the preset are in the trash.").to_string();
+                let mut text = match removal.trashed.is_empty() {
+                    true => tr!("ReShade was removed.").to_string(),
+                    false => tr!("ReShade was removed. ReShade.ini and the preset are in the trash.").to_string(),
+                };
+                if !removal.not_trashed.is_empty() {
+                    text.push(' ');
+                    text.push_str(&tr!(
+                        "The trash refused {files}, so they stay in the game's folder.",
+                        files = removal.not_trashed.join(", ")
+                    ));
+                }
                 if !removal.kept.is_empty() {
                     text.push(' ');
                     text.push_str(&tr!("Kept because you changed them: {files}", files = removal.kept.join(", ")));

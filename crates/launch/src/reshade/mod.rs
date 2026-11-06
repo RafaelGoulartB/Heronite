@@ -156,9 +156,10 @@ pub fn apply(env: &mut Env, paths: &DataPaths, game_id: &str, s: &ReShade, wine:
     if !s.enabled || !m.enabled {
         return None;
     }
-    let dll = m.dir().join(&m.proxy);
-    if !dll.is_file() {
-        log::warn!("ReShade is on but {} is missing; starting without it", dll.display());
+    // The plan is built before `manage::recover` puts a missing DLL back:
+    // it counts as there when it will be.
+    if !manage::will_load(paths, &m) {
+        log::warn!("ReShade is on but {} is missing or not ReShade; starting without it", m.dir().join(&m.proxy).display());
         return None;
     }
     if wine {

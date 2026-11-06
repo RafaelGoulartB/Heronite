@@ -179,3 +179,55 @@ fn the_launch_names_the_dll_only_under_wine_and_when_it_is_on() {
     assert!(off.is_empty());
     assert!(apply(&mut off, &g.paths, "other", &on, true).is_none());
 }
+
+#[test]
+fn a_trash_that_refuses_files_does_not_leave_reshade_half_removed() {
+    let (g, _) = installed(Some("Techniques=Tonemap@Tonemap.fx\n"));
+    let dir = g.dir.path();
+    let r = remove(&g.paths, "sp", &|_: &Path| Err("no trash on this drive".to_string())).unwrap();
+    assert_eq!(r.not_trashed, ["Machete.ini", "ReShade.ini"]);
+    assert!(r.trashed.is_empty());
+    assert!(dir.join("ReShade.ini").exists() && dir.join("Machete.ini").exists());
+    assert!(!dir.join("dxgi.dll").exists() && !dir.join("reshade-shaders").exists());
+    assert!(manifest::load(&g.paths, "sp").is_none());
+    assert_eq!(recover(&g.paths, "sp"), None);
+    assert!(!dir.join("dxgi.dll").exists());
+}
+
+#[test]
+fn a_dll_that_will_be_put_back_is_loaded_by_the_same_launch() {
+    use crate::reshade::{apply, ReShade};
+    let (g, _) = installed(None);
+    let dir = g.dir.path();
+    let on = ReShade { enabled: true, api: "auto".into(), ..Default::default() };
+    std::fs::remove_file(dir.join("dxgi.dll")).unwrap();
+    let mut env = crate::env::Env::new();
+    assert!(apply(&mut env, &g.paths, "sp", &on, true).is_some());
+    assert_eq!(env["WINEDLLOVERRIDES"], "dxgi=n,b");
+    std::fs::write(dir.join("dxgi.dll"), pe_with(MACHINE_X64, &[], Some("Special K"), 0)).unwrap();
+    let mut other = crate::env::Env::new();
+    assert!(apply(&mut other, &g.paths, "sp", &on, true).is_none());
+    assert!(other.is_empty());
+}
+
+#[test]
+fn the_overrides_offered_for_cleanup_are_the_ones_the_launch_adds() {
+    let (g, _) = installed(None);
+    assert_eq!(manifest::load(&g.paths, "sp").unwrap().compiler, None);
+    let env = vec![("WINEDLLOVERRIDES".to_string(), "dxgi,d3dcompiler_47=n,b".to_string())];
+    let exe = g.dir.path().join("FL_2027.exe").to_string_lossy().into_owned();
+    let settings = crate::reshade::ReShade { enabled: true, api: "auto".into(), ..Default::default() };
+    let facts = crate::reshade::Facts {
+        game_id: "sp",
+        title: "SP",
+        steam_app_id: None,
+        install_path: None,
+        executable: Some(&exe),
+        target_exe: "",
+        settings: &settings,
+        env_options: &env,
+        wine: true,
+    };
+    let o = crate::reshade::overview(&g.paths, &crate::net::FakeNet::offline(), &facts, false);
+    assert_eq!(o.user_overrides, ["dxgi"]);
+}

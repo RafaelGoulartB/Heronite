@@ -185,7 +185,10 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
         .as_ref()
         .map(|m| super::manage::sharing(paths, f.game_id, &m.dir()).into_iter().map(|(id, _)| id).collect())
         .unwrap_or_default();
-    let dlls: Vec<&str> = proxy.iter().map(String::as_str).chain(std::iter::once(super::install::COMPILER)).collect();
+    // Only what the launch adds: a game's own d3dcompiler_47 keeps the
+    // user's override.
+    let compiler = manifest.as_ref().is_some_and(|m| m.compiler.is_some()).then_some(super::install::COMPILER);
+    let dlls: Vec<&str> = proxy.iter().map(String::as_str).chain(compiler).collect();
     let user_overrides = match f.wine {
         true => super::user_overrides(f.env_options, &dlls),
         false => Vec::new(),

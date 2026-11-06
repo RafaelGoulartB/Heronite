@@ -63,7 +63,7 @@ pub fn update_dll(ops: &Ops, game_id: &str, version: &str) -> Result<Manifest, S
     Ok(m)
 }
 
-fn arch_of(m: &Manifest) -> Result<Arch, String> {
+pub(super) fn arch_of(m: &Manifest) -> Result<Arch, String> {
     match m.arch.as_str() {
         "x86" => Ok(Arch::X86),
         "x64" => Ok(Arch::X64),
@@ -287,51 +287,77 @@ pub fn import_preset(paths: &DataPaths, game_id: &str, preset: &Path) -> Result<
 /// What a removal did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Removal {
-    /// Changed by the user, so left in place.
+    /// Changed by the user (or not deletable), so left in place.
     pub kept: Vec<String>,
     /// Sent to the trash (settings, the preset copy, the log).
     pub trashed: Vec<String>,
+    /// Meant for the trash, which refused them (a drive without one): they
+    /// stay in the game's folder.
+    pub not_trashed: Vec<String>,
 }
 
-/// Removes ReShade from the game. The DLLs and shaders Heronite wrote go
-/// (when unchanged); `ReShade.ini`, the preset copy and `ReShade.log` hold
-/// the user's settings and go to `discard` (the trash). Files another
-/// game's ReShade in the same folder also lists stay.
+/// Removes ReShade from the game. `ReShade.ini`, the preset copy and
+/// `ReShade.log` hold the user's settings and go to `discard` (the trash)
+/// first: a trash that refuses them leaves them in place and does not stop
+/// the removal. Then the DLL goes (if that fails, nothing else changed and
+/// ReShade stays installed), then the other files Heronite wrote (when
+/// unchanged), and the manifest last, so a half-removed ReShade is never
+/// put back before a launch. Files another game's ReShade in the same folder
+/// also lists stay.
 pub fn remove(paths: &DataPaths, game_id: &str, discard: &dyn Fn(&Path) -> Result<(), String>) -> Result<Removal, String> {
     let m = load(paths, game_id)?;
     let dir = m.dir();
     let shared: Vec<Manifest> = sharing(paths, game_id, &dir).into_iter().map(|(_, m)| m).collect();
+    let ours: Vec<_> = m.files.iter().filter(|f| !shared.iter().any(|o| o.file(&f.path).is_some())).collect();
     let mut out = Removal::default();
-    for f in &m.files {
-        if shared.iter().any(|o| o.file(&f.path).is_some()) {
-            continue;
-        }
-        let path = match f.kind {
-            Kind::Dll => m.dll_path(),
-            _ => join(&dir, &f.path),
-        };
-        if !path.exists() {
-            continue;
-        }
-        match f.kind {
-            Kind::Config | Kind::Preset => {
-                discard(&path)?;
-                out.trashed.push(f.path.clone());
+    let mut settings: Vec<(String, PathBuf)> =
+        ours.iter().filter(|f| matches!(f.kind, Kind::Config | Kind::Preset)).map(|f| (f.path.clone(), join(&dir, &f.path))).collect();
+    if shared.is_empty() {
+        settings.push(("ReShade.log".into(), dir.join("ReShade.log")));
+    }
+    for (name, path) in settings.into_iter().filter(|(_, p)| p.is_file()) {
+        match discard(&path) {
+            Ok(()) => out.trashed.push(name),
+            Err(e) => {
+                log::warn!("ReShade: {name} stays in the game's folder: {e}");
+                out.not_trashed.push(name);
             }
-            _ if sha256_file(&path).is_ok_and(|s| s == f.sha256) => {
-                std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?
-            }
-            _ => out.kept.push(f.path.clone()),
         }
     }
-    let log = dir.join("ReShade.log");
-    if shared.is_empty() && log.is_file() {
-        discard(&log)?;
-        out.trashed.push("ReShade.log".into());
+    let dll = m.dll_path();
+    if let Some(f) = ours.iter().find(|f| f.kind == Kind::Dll) {
+        match sha256_file(&dll) {
+            Ok(sha) if sha == f.sha256 => std::fs::remove_file(&dll).map_err(|e| format!("{}: {e}", dll.display()))?,
+            Ok(_) => out.kept.push(f.path.clone()),
+            Err(_) => {}
+        }
+    }
+    for f in ours.iter().filter(|f| !matches!(f.kind, Kind::Dll | Kind::Config | Kind::Preset)) {
+        let path = join(&dir, &f.path);
+        match sha256_file(&path) {
+            Ok(sha) if sha == f.sha256 => {
+                if let Err(e) = std::fs::remove_file(&path) {
+                    log::warn!("ReShade: could not delete {}: {e}", path.display());
+                    out.kept.push(f.path.clone());
+                }
+            }
+            Ok(_) => out.kept.push(f.path.clone()),
+            Err(_) => {}
+        }
     }
     remove_empty_dirs(&dir.join("reshade-shaders"));
     manifest::delete(paths, game_id);
     Ok(out)
+}
+
+/// Whether ReShade loads at the next start: its DLL is in place, or the
+/// place is free and the cached copy [`recover`] puts back is there.
+pub fn will_load(paths: &DataPaths, m: &Manifest) -> bool {
+    match occupant(&m.dir(), &m.proxy) {
+        Occupant::ReShade { off, .. } => !off,
+        Occupant::Free => arch_of(m).ok().and_then(|a| Cache::new(paths).cached_dll(&m.version, a)).is_some(),
+        Occupant::Other { .. } => false,
+    }
 }
 
 /// Other games whose ReShade is in `dir`.
