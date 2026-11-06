@@ -313,7 +313,12 @@ device when the last window closes (the app lives on in the tray); see its
   reads the account's library from the client (games only: no tools,
   soundtracks, demos, test servers or games hidden in Steam), caches it and
   adds the games the Collection does not have yet; Steam's play time moves
-  the Steam entries up when it is ahead.
+  the Steam entries up when it is ahead. A Steam entry still "Not played"
+  (the status the scan of the installed games gave it before the library was
+  read; the scan now starts a game as "Played" when the cached library has
+  play time for it) becomes "Played" once Steam has play time for it, unless
+  the user ever chose its status (the status history has it): the move is an
+  inferred default like the status at creation, so it is not recorded there.
 - **heronite-xbox:** Windows only (`Feature::XboxStore`). The Microsoft
   Store and PC Game Pass games are Windows packages: `heronite_platform::packages`
   reads the user's packages from the registry the deployment service keeps

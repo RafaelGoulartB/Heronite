@@ -4,7 +4,7 @@
 //! switch the palette reads.
 //!
 //! The appearance is one process-wide value read by every glass helper (no
-//! `cx` needed, no I/O while rendering). The Collection loads it at start and
+//! `cx` needed, no I/O while rendering). Startup loads it even without a window and
 //! the Appearance page updates it while a slider moves.
 
 use gpui_kit::{px, Hsla};
