@@ -21,6 +21,11 @@
 ; (%APPDATA%\heronite, %LOCALAPPDATA%\heronite) stay, unless the user answers
 ; Yes when an interactive uninstall asks; a silent uninstall never deletes them.
 
+; This file is UTF-8 without a BOM (the translations): Inno Setup reads that
+; since 6.3, older versions would garble the accented letters.
+#if Ver < EncodeVer(6, 3, 0)
+  #error Inno Setup 6.3 or later is needed to compile this script
+#endif
 #ifndef AppVersion
   #error Pass the version: ISCC /DAppVersion=X.Y.Z heronite.iss
 #endif
@@ -72,7 +77,9 @@ RestartApplications=no
 SetupLogging=yes
 ; Two setups at once (two update attempts) would fight over the files.
 SetupMutex=HeroniteSetup
-; Keep the chosen language for updates, including the app's silent updater.
+; Inno's defaults, written out because updates rely on them: an interactive
+; setup asks for the language, and an update (also the app's silent one,
+; which passes no /LANG) keeps the one chosen at install.
 UsePreviousLanguage=yes
 ShowLanguageDialog=yes
 #ifdef Sign

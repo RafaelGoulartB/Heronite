@@ -1,7 +1,13 @@
 <#
 .SYNOPSIS
-  Checks installer language coverage, format tokens and upgrade/uninstall
-  safeguards without compiling or running Setup. No external test modules.
+  Checks the installer's translations without compiling or running Setup:
+  every language of [Languages] uses a translation bundled with Inno Setup,
+  has every custom message English has, with the same format tokens, and
+  every text the user sees goes through a custom message. Prints only what
+  fails. No external test modules.
+
+  What Setup does (install, update, uninstall, the language it keeps) is
+  checked by smoke.ps1 on the built setup, not here.
 .PARAMETER Installer
   Installer source to check (defaults to packaging\windows\heronite.iss).
 .EXAMPLE
@@ -14,9 +20,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$checks = 0
 $failures = 0
 function Check([bool]$Ok, [string]$What) {
-    if ($Ok) { Write-Host "ok    $What" } else { Write-Host "FAIL  $What"; $script:failures++ }
+    $script:checks++
+    if (-not $Ok) { Write-Host "FAIL  $What"; $script:failures++ }
 }
 
 # Compare occurrences, not just distinct tokens: losing one line break or
@@ -38,37 +46,31 @@ foreach ($line in ($source -split '\r?\n')) {
         $sections[$section] += $line
     }
 }
-foreach ($required in @('Setup', 'Languages', 'CustomMessages', 'Icons', 'Code')) {
+foreach ($required in @('Languages', 'CustomMessages', 'Code')) {
     if (-not $sections.ContainsKey($required)) { throw "Missing [$required]" }
 }
 
-$expectedLanguages = [ordered]@{
-    english = 'compiler:Default.isl'
-    brazilianportuguese = 'compiler:Languages\BrazilianPortuguese.isl'
-    spanish = 'compiler:Languages\Spanish.isl'
-    german = 'compiler:Languages\German.isl'
-}
-$languages = @{}
+# Languages: English first (Setup falls back to it) and only Inno's own
+# translations, so no translation file has to be kept in this repository.
+$languages = [ordered]@{}
 foreach ($line in $sections.Languages) {
     if ($line -notmatch '^Name: "([^"]+)"; MessagesFile: "([^"]+)"$') {
         Check $false "valid language declaration: $line"
         continue
     }
     $name, $file = $Matches[1], $Matches[2]
-    Check (-not $languages.ContainsKey($name)) "language $name is unique"
+    Check (-not $languages.Contains($name)) "language $name is unique"
+    Check ($file -cmatch '^compiler:') "$name uses a translation bundled with Inno Setup ($file)"
     $languages[$name] = $file
 }
-Check ((($languages.Keys | Sort-Object) -join '|') -ceq (($expectedLanguages.Keys | Sort-Object) -join '|')) 'exactly English, Brazilian Portuguese, Spanish and German'
-Check ($sections.Languages[0] -cmatch '^Name: "english";') 'English is the fallback language'
-foreach ($name in $expectedLanguages.Keys) {
-    Check ($languages[$name] -ceq $expectedLanguages[$name]) "$name uses the bundled Inno translation"
-}
+$first = @($languages.Keys)[0]
+Check ($first -ceq 'english' -and $languages['english'] -ceq 'compiler:Default.isl') 'English (compiler:Default.isl) is the first language'
 
 $messages = @{}
-foreach ($name in $expectedLanguages.Keys) { $messages[$name] = @{} }
+foreach ($name in $languages.Keys) { $messages[$name] = @{} }
 foreach ($line in $sections.CustomMessages) {
     if ($line -notmatch '^([a-z]+)\.([A-Za-z][A-Za-z0-9]*)=(.*)$') {
-        Check $false "qualified custom message: $line"
+        Check $false "custom message qualified by its language: $line"
         continue
     }
     $language, $key, $value = $Matches[1], $Matches[2], $Matches[3]
@@ -80,60 +82,53 @@ foreach ($line in $sections.CustomMessages) {
     Check (-not [string]::IsNullOrWhiteSpace($value)) "$language.$key is not empty"
     $messages[$language][$key] = $value
 }
+if (-not $messages.ContainsKey('english')) { throw 'No English custom messages' }
+$english = $messages.english
 
-$english = @{
-    DeleteUserData = 'Also delete your Heronite library, settings and cache?%n%n%1%n%2%n%nGames you installed are not in these folders and stay where they are. Choose No to keep everything for a later install.'
-    PortableFolder = 'This folder holds a portable copy of Heronite (portable.txt). Choose another folder, or delete portable.txt to turn that copy into an installed one.'
-    CloseRunning = 'Heronite is running. Close it and continue uninstalling?'
-    ShortcutComment = 'Every game you own, in one launcher'
-}
-foreach ($key in $english.Keys) {
-    Check ($messages.english[$key] -ceq $english[$key]) "English $key remains unchanged"
-}
-foreach ($language in $expectedLanguages.Keys) {
+foreach ($language in $languages.Keys) {
     $translated = $messages[$language]
-    Check ((($translated.Keys | Sort-Object) -join '|') -ceq (($messages.english.Keys | Sort-Object) -join '|')) "$language custom message keys match English"
-    foreach ($key in $messages.english.Keys) {
+    Check ((($translated.Keys | Sort-Object) -join '|') -ceq (($english.Keys | Sort-Object) -join '|')) "$language has the same custom messages as English"
+    foreach ($key in $english.Keys) {
+        if (-not $translated.ContainsKey($key)) { continue }
         $value = $translated[$key]
-        Check ((Tokens $value) -ceq (Tokens $messages.english[$key])) "$language.$key preserves all format tokens"
+        Check ((Tokens $value) -ceq (Tokens $english[$key])) "$language.$key keeps the format tokens of English"
         if ($language -ne 'english') {
-            Check ($value -cne $messages.english[$key]) "$language.$key is translated"
+            Check ($value -cne $english[$key]) "$language.$key is translated"
         }
+        # Names the user has to recognise (the app, the portable marker).
         foreach ($literal in @('Heronite', 'portable.txt')) {
-            $count = [regex]::Matches($messages.english[$key], [regex]::Escape($literal)).Count
-            Check ([regex]::Matches([string]$value, [regex]::Escape($literal)).Count -eq $count) "$language.$key preserves $literal"
+            $count = [regex]::Matches($english[$key], [regex]::Escape($literal)).Count
+            Check ([regex]::Matches($value, [regex]::Escape($literal)).Count -eq $count) "$language.$key keeps $literal as English has it"
         }
     }
 }
 
-# Every custom reference must resolve. These three messages come from Inno's
-# bundled .isl files, rather than Heronite's [CustomMessages].
+# Every reference resolves and every message is used. These come from Inno's
+# bundled .isl files rather than [CustomMessages].
 $builtins = @('CreateDesktopIcon', 'AdditionalIcons', 'LaunchProgram')
 $references = @([regex]::Matches($source, "\{cm:([A-Za-z][A-Za-z0-9]*)|CustomMessage\('([^']+)'\)") |
     ForEach-Object { if ($_.Groups[1].Success) { $_.Groups[1].Value } else { $_.Groups[2].Value } })
 foreach ($key in $references) {
-    Check ($messages.english.ContainsKey($key) -or $key -cin $builtins) "custom reference $key resolves"
+    Check ($english.ContainsKey($key) -or $key -cin $builtins) "custom message $key exists"
 }
-foreach ($key in $messages.english.Keys) {
+foreach ($key in $english.Keys) {
     Check ($key -cin $references) "custom message $key is used"
 }
-foreach ($line in $sections.Icons) {
-    Check ($line -cmatch 'Comment: "\{cm:ShortcutComment\}"') 'shortcut comment is localized'
+
+# The texts the user sees: shortcut comments, task and run descriptions, and
+# the dialogs of [Code].
+foreach ($name in @('Icons', 'Tasks', 'Run')) {
+    if (-not $sections.ContainsKey($name)) { continue }
+    foreach ($line in $sections[$name]) {
+        foreach ($field in [regex]::Matches($line, '\b(Comment|Description|GroupDescription): "([^"]*)"')) {
+            Check ($field.Groups[2].Value -cmatch '^\{cm:') "[$name] $($field.Groups[1].Value) is a custom message: $line"
+        }
+    }
 }
-$setup = $sections.Setup -join "`n"
-Check ($setup -cmatch '(?m)^AppId=\{\{104041C7-B50B-4E70-8560-A6CFF660777E\}$') 'AppId is stable'
-Check ($setup -cmatch '(?m)^UsePreviousLanguage=yes$') 'updates retain the selected language'
-Check ($setup -cmatch '(?m)^ShowLanguageDialog=yes$') 'interactive setup offers language selection'
 $code = $sections.Code -join "`n"
 foreach ($dialog in [regex]::Matches($code, '(?:Suppressible)?MsgBox\([^\r\n]+')) {
-    Check ($dialog.Value -cmatch '^(?:Suppressible)?MsgBox\((?:FmtMessage\()?CustomMessage\(') 'custom dialog text is localized'
+    Check ($dialog.Value -cmatch '^(?:Suppressible)?MsgBox\((?:FmtMessage\()?CustomMessage\(') "dialog text is a custom message: $($dialog.Value)"
 }
-Check ($code -cmatch "Result := CustomMessage\('PortableFolder'\);") 'portable-folder warning is localized'
-Check ($code -cmatch "FmtMessage\(CustomMessage\('DeleteUserData'\), \[Roaming, Local\]\)") 'delete-data prompt substitutes both actual folders'
-Check ($code -cmatch 'MB_YESNO or MB_DEFBUTTON2\) = IDYES') 'uninstall defaults to keeping user data'
-Check ($code -cmatch 'if \(CurUninstallStep <> usPostUninstall\) or UninstallSilent\(\) then\s+exit;') 'silent uninstall never deletes user data'
-Check ($code -cmatch "Result := \(not WizardSilent\(\)\) or \(ExpandConstant\('\{param:RELAUNCH\|0\}'\) = '1'\);") 'silent update only relaunches when requested'
-Check ($code -cmatch "StrToIntDef\(ExpandConstant\('\{param:WAITPID\|0\}'\), 0\)") 'updater WAITPID parameter remains supported'
 
-if ($failures -gt 0) { throw "$failures installer language check(s) failed" }
-Write-Host 'all installer language checks passed'
+if ($failures -gt 0) { throw "$failures of $checks installer language check(s) failed" }
+Write-Host "installer languages: $checks checks passed ($($languages.Keys -join ', '))"
