@@ -9,10 +9,9 @@ use std::time::{Duration, Instant};
 use heronite_platform::gamepad;
 
 use super::core::Core;
-use super::xinput::{Adapter, Change};
+use super::xinput::{self, poll_wait, Adapter, Change, Failures};
 use super::{Button, Controller, Event, Options};
 
-const POLL: Duration = Duration::from_millis(16);
 const RESCAN: Duration = Duration::from_secs(1);
 const SLOTS: usize = gamepad::CONTROLLER_COUNT as usize;
 
@@ -67,7 +66,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
     let mut core = Core::new(opts);
     let mut pads: [Option<Adapter>; SLOTS] = std::array::from_fn(|_| None);
     let mut next_scan = [Instant::now(); SLOTS];
-    let mut failures: [Option<String>; SLOTS] = std::array::from_fn(|_| None);
+    let mut failures: [Failures; SLOTS] = std::array::from_fn(|_| Failures::default());
     log::info!("overlay input: started XInput polling (Back+Start, non-exclusive)");
     loop {
         let now = Instant::now();
@@ -77,18 +76,22 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
                 continue;
             }
             next_scan[index] = now + RESCAN;
+            // `Ok(None)` is ERROR_DEVICE_NOT_CONNECTED: gone at once.
             let state = match gamepad::state(index as u32) {
                 Ok(state) => {
-                    if failures[index].take().is_some() {
+                    if failures[index].clear() {
                         log::info!("overlay input: XInput slot {} recovered", index + 1);
                     }
                     state
                 }
                 Err(error) => {
-                    let message = error.to_string();
-                    if failures[index].as_ref() != Some(&message) {
+                    let failure = &mut failures[index];
+                    if failure.record(error.to_string()) {
                         log::warn!("overlay input: XInputGetState slot {}: {error}", index + 1);
-                        failures[index] = Some(message);
+                    }
+                    if pads[index].is_some() && !failure.disconnects() {
+                        // Possibly transient: keep the controller and its held state.
+                        continue;
                     }
                     None
                 }
@@ -96,7 +99,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
             match state {
                 Some(state) => {
                     if let Some(pad) = &mut pads[index] {
-                        for change in pad.update(state.into()) {
+                        for change in pad.update(state.into(), now) {
                             let out = match change {
                                 Change::Button(button, down) => core.button(index, button, down, now),
                                 Change::Stick(x, y) => core.stick(index, x, y, now),
@@ -112,14 +115,19 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
                         changed = true;
                     }
                 }
-                None if pads[index].take().is_some() => {
-                    log::info!("overlay input: XInput controller {} disconnected", index + 1);
-                    for event in core.removed(index, pads.iter().flatten().count()).events {
-                        on_event(event);
+                None => {
+                    if pads[index].take().is_some() {
+                        if failures[index].disconnects() {
+                            log::warn!("overlay input: XInput controller {} dropped after repeated read errors", index + 1);
+                        } else {
+                            log::info!("overlay input: XInput controller {} disconnected", index + 1);
+                        }
+                        for event in core.removed(index, pads.iter().flatten().count()).events {
+                            on_event(event);
+                        }
+                        changed = true;
                     }
-                    changed = true;
                 }
-                None => {}
             }
         }
         if changed {
@@ -133,34 +141,14 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut on_event: impl FnMut(Event)) {
         let now = Instant::now();
         let wait = poll_wait(pads.iter().any(Option::is_some), core.wait(now), &next_scan, now);
         match rx.recv_timeout(wait) {
-            Ok(Cmd::Open) => {
-                core.reset_input();
-                core.open();
-                for pad in pads.iter_mut().flatten() {
-                    pad.reset();
-                }
-            }
-            Ok(Cmd::Close) => {
-                core.close();
-                core.reset_input();
-                for pad in pads.iter_mut().flatten() {
-                    pad.reset();
-                }
-            }
+            Ok(Cmd::Open) => xinput::ui_toggled(&mut core, true, pads.iter_mut().flatten()),
+            Ok(Cmd::Close) => xinput::ui_toggled(&mut core, false, pads.iter_mut().flatten()),
             Ok(Cmd::Options(opts)) => core.opts = opts,
             Err(RecvTimeoutError::Disconnected) => break,
             Err(RecvTimeoutError::Timeout) => {}
         }
     }
     log::info!("overlay input: stopped XInput polling");
-}
-
-fn poll_wait(connected: bool, repeat: Option<Duration>, next_scan: &[Instant; SLOTS], now: Instant) -> Duration {
-    if connected || repeat.is_some() {
-        repeat.unwrap_or(POLL).min(POLL)
-    } else {
-        next_scan.iter().map(|at| at.saturating_duration_since(now)).min().expect("XInput has controller slots")
-    }
 }
 
 fn controller(index: u32) -> Controller {
@@ -185,36 +173,6 @@ pub fn list_controllers() -> Vec<Controller> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn disconnected_idle_waits_for_the_earliest_slot_scan() {
-        let now = Instant::now();
-        let mut next_scan = [now + RESCAN; SLOTS];
-        assert_eq!(poll_wait(false, None, &next_scan, now), RESCAN);
-        next_scan[1] = now + Duration::from_millis(400);
-        assert_eq!(poll_wait(false, None, &next_scan, now), Duration::from_millis(400));
-    }
-
-    #[test]
-    fn due_slot_scans_do_not_wait() {
-        let now = Instant::now();
-        let mut next_scan = [now + RESCAN; SLOTS];
-        next_scan[2] = now;
-        assert_eq!(poll_wait(false, None, &next_scan, now), Duration::ZERO);
-        assert_eq!(poll_wait(false, None, &next_scan, now + Duration::from_millis(1)), Duration::ZERO);
-    }
-
-    #[test]
-    fn connected_or_repeating_input_keeps_polling_without_delaying_repeats() {
-        let now = Instant::now();
-        let next_scan = [now + RESCAN; SLOTS];
-        assert_eq!(poll_wait(true, None, &next_scan, now), POLL);
-        for connected in [false, true] {
-            for repeat in [Duration::ZERO, Duration::from_millis(2), Duration::from_millis(100)] {
-                assert_eq!(poll_wait(connected, Some(repeat), &next_scan, now), repeat.min(POLL));
-            }
-        }
-    }
 
     #[test]
     fn controller_identity_roundtrips_without_claiming_a_transport() {

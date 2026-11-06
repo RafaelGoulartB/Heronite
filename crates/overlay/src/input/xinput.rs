@@ -1,7 +1,23 @@
-//! Pure XInput snapshot conversion. Back/Start taps are delayed until release
-//! so the first half of a Guide combination cannot navigate the panel.
+//! Pure XInput logic, built for tests on every OS: snapshot conversion, the
+//! Back+Start chord, read-error tolerance and the poll interval. Back/Start
+//! taps are delayed until release so the first half of a Guide combination
+//! cannot navigate the panel.
 
+use std::time::{Duration, Instant};
+
+use super::core::Core;
 use super::Button;
+
+/// How often a connected controller is read. Windows' default timer tick is
+/// 15.6 ms, so a 16 ms wait usually sleeps two ticks (~31 ms, ~30 Hz with
+/// jittery repeats); 8 ms wakes on every tick.
+pub(super) const POLL: Duration = Duration::from_millis(8);
+/// The second half of Back+Start must go down this soon after the first for
+/// Guide; otherwise both are plain Back/Start (a game's map held with Back).
+const CHORD_WINDOW: Duration = Duration::from_millis(300);
+/// Consecutive `XInputGetState` errors before a connected controller counts
+/// as gone. "Not connected" disconnects at once; other errors may be transient.
+const READ_FAILURES: u32 = 3;
 
 const START: u32 = 0x0010;
 const BACK: u32 = 0x0020;
@@ -54,11 +70,16 @@ pub(super) enum Change {
     Stick(f32, f32),
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 enum Combo {
     #[default]
     Idle,
-    Pending(u32),
+    /// One half is down since this instant: Guide if the other follows within
+    /// [`CHORD_WINDOW`].
+    Pending(u32, Instant),
+    /// The halves overlapped too late for Guide: each is a plain tap on release
+    /// until both are up.
+    Plain(u32),
     Guide,
     /// The remaining half must be released before another gesture starts.
     Releasing,
@@ -84,32 +105,51 @@ impl Adapter {
         }
     }
 
+    /// An in-progress Guide chord survives, so its release still reaches the core.
     pub fn reset(&mut self) {
+        let guide = matches!(self.combo, Combo::Guide);
         *self = Self::new(self.state);
+        if guide {
+            self.combo = Combo::Guide;
+            self.ignored &= !GUIDE_COMBO;
+        }
     }
 
-    pub fn update(&mut self, state: Snapshot) -> Vec<Change> {
+    pub fn update(&mut self, state: Snapshot, now: Instant) -> Vec<Change> {
         let physical = buttons(state);
         self.ignored &= physical;
         let down = physical & !self.ignored;
         let mut out = Vec::new();
         let combo = down & GUIDE_COMBO;
         let mut release_guide = false;
+        let in_time = |since: Instant| now.saturating_duration_since(since) <= CHORD_WINDOW;
         match self.combo {
-            Combo::Idle | Combo::Pending(_) if combo == GUIDE_COMBO => {
+            Combo::Idle if combo == GUIDE_COMBO => {
                 self.combo = Combo::Guide;
                 out.push(Change::Button(Button::Guide, true));
             }
-            Combo::Idle | Combo::Pending(_) => {
-                if let Combo::Pending(pending) = self.combo {
-                    for (bit, button) in [(START, Button::Start), (BACK, Button::Select)] {
-                        if pending & !combo & bit != 0 {
-                            out.push(Change::Button(button, true));
-                            out.push(Change::Button(button, false));
-                        }
+            Combo::Pending(_, since) if combo == GUIDE_COMBO && in_time(since) => {
+                self.combo = Combo::Guide;
+                out.push(Change::Button(Button::Guide, true));
+            }
+            Combo::Idle | Combo::Pending(..) | Combo::Plain(_) => {
+                let held = match self.combo {
+                    Combo::Pending(held, _) | Combo::Plain(held) => held,
+                    _ => 0,
+                };
+                for (bit, button) in [(START, Button::Start), (BACK, Button::Select)] {
+                    if held & !combo & bit != 0 {
+                        out.push(Change::Button(button, true));
+                        out.push(Change::Button(button, false));
                     }
                 }
-                self.combo = if combo == 0 { Combo::Idle } else { Combo::Pending(combo) };
+                self.combo = match self.combo {
+                    _ if combo == 0 => Combo::Idle,
+                    // The same half is still held: its window started when it went down.
+                    Combo::Pending(held, since) if combo == held => Combo::Pending(held, since),
+                    Combo::Idle | Combo::Pending(..) if combo != GUIDE_COMBO => Combo::Pending(combo, now),
+                    _ => Combo::Plain(combo),
+                };
             }
             Combo::Guide if combo != GUIDE_COMBO => {
                 release_guide = true;
@@ -156,12 +196,70 @@ fn normalize(value: i16) -> f32 {
     f32::from(value) / if value < 0 { 32768. } else { 32767. }
 }
 
+/// The UI opened (`open`) or closed the panel by itself. As on evdev, nothing
+/// changes unless the core's state does: the screenshot, moment and replay
+/// chords close the panel even when it is not open. A held Guide keeps its
+/// chords; only its release no longer toggles the panel.
+pub(super) fn ui_toggled<'a>(core: &mut Core, open: bool, pads: impl IntoIterator<Item = &'a mut Adapter>) {
+    if core.is_open() == open {
+        return;
+    }
+    if open {
+        core.open();
+    } else {
+        core.close();
+    }
+    core.reset_input();
+    for pad in pads {
+        pad.reset();
+    }
+}
+
+/// Consecutive `XInputGetState` errors on one slot.
+#[derive(Default)]
+pub(super) struct Failures {
+    count: u32,
+    last: Option<String>,
+}
+
+impl Failures {
+    /// Records an error; `true` when it is new and should be logged.
+    pub fn record(&mut self, message: String) -> bool {
+        self.count = self.count.saturating_add(1);
+        if self.last.as_ref() == Some(&message) {
+            return false;
+        }
+        self.last = Some(message);
+        true
+    }
+
+    /// Whether a connected controller now counts as gone.
+    pub fn disconnects(&self) -> bool {
+        self.count >= READ_FAILURES
+    }
+
+    /// A successful read; `true` if the slot was failing.
+    pub fn clear(&mut self) -> bool {
+        let failing = self.count > 0;
+        *self = Self::default();
+        failing
+    }
+}
+
+/// How long the polling thread may sleep: [`POLL`] while a controller is
+/// connected or a repeat is due, else until the earliest slot scan.
+pub(super) fn poll_wait(connected: bool, repeat: Option<Duration>, next_scan: &[Instant], now: Instant) -> Duration {
+    if connected || repeat.is_some() {
+        repeat.unwrap_or(POLL).min(POLL)
+    } else {
+        next_scan.iter().map(|at| at.saturating_duration_since(now)).min().expect("XInput has controller slots")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::input::core::Core;
     use crate::input::{Event, Options};
-    use std::time::{Duration, Instant};
 
     const ALL: Options = Options { screenshot: true, screenshot_button: Button::RB, volume: true, moment: true, replay: true };
 
@@ -171,7 +269,7 @@ mod tests {
 
     fn feed(adapter: &mut Adapter, core: &mut Core, state: Snapshot, now: Instant) -> Vec<Event> {
         adapter
-            .update(state)
+            .update(state, now)
             .into_iter()
             .flat_map(|change| match change {
                 Change::Button(button, down) => core.button(0, button, down, now).events,
@@ -254,26 +352,28 @@ mod tests {
 
     #[test]
     fn native_axes_buttons_and_triggers_are_converted() {
+        let now = Instant::now();
         assert_eq!(normalize(i16::MIN), -1.);
         assert_eq!(normalize(0), 0.);
         assert_eq!(normalize(i16::MAX), 1.);
         for (bit, button) in BUTTONS.into_iter().filter(|(bit, _)| *bit < LT) {
             let mut adapter = Adapter::new(Snapshot::default());
-            assert_eq!(adapter.update(snapshot(bit)), vec![Change::Button(button, true)]);
-            assert!(adapter.update(snapshot(bit)).is_empty());
-            assert_eq!(adapter.update(snapshot(0)), vec![Change::Button(button, false)]);
+            assert_eq!(adapter.update(snapshot(bit), now), vec![Change::Button(button, true)]);
+            assert!(adapter.update(snapshot(bit), now).is_empty());
+            assert_eq!(adapter.update(snapshot(0), now), vec![Change::Button(button, false)]);
         }
         let mut adapter = Adapter::new(Snapshot::default());
-        assert!(adapter.update(Snapshot { left_trigger: 30, right_trigger: 30, ..Snapshot::default() }).is_empty());
+        assert!(adapter.update(Snapshot { left_trigger: 30, right_trigger: 30, ..Snapshot::default() }, now).is_empty());
         assert_eq!(
-            adapter.update(Snapshot { left_trigger: 31, right_trigger: 255, left_x: i16::MIN, left_y: i16::MAX, ..Snapshot::default() }),
+            adapter
+                .update(Snapshot { left_trigger: 31, right_trigger: 255, left_x: i16::MIN, left_y: i16::MAX, ..Snapshot::default() }, now),
             vec![Change::Button(Button::LT, true), Change::Button(Button::RT, true), Change::Stick(-1., 1.)]
         );
         assert_eq!(
-            adapter.update(Snapshot::default()),
+            adapter.update(Snapshot::default(), now),
             vec![Change::Button(Button::LT, false), Change::Button(Button::RT, false), Change::Stick(0., 0.)]
         );
-        assert!(adapter.update(snapshot(0x0cc0)).is_empty(), "unsupported bits are not Guide");
+        assert!(adapter.update(snapshot(0x0cc0), now).is_empty(), "unsupported bits are not Guide");
     }
 
     #[test]
@@ -364,6 +464,158 @@ mod tests {
         assert_eq!(feed(&mut adapter, &mut core, snapshot(0), now), vec![Event::Open]);
         assert_eq!(core.removed(0, 0).events, vec![Event::Close]);
         assert_eq!(core.tick(now + Duration::from_secs(5)), None);
+    }
+
+    #[test]
+    fn late_second_half_is_plain_back_and_start() {
+        let t0 = Instant::now();
+        let late = t0 + CHORD_WINDOW + Duration::from_millis(1);
+        let mut adapter = Adapter::new(Snapshot::default());
+        assert!(adapter.update(snapshot(BACK), t0).is_empty());
+        assert!(adapter.update(snapshot(BACK), late).is_empty(), "holding Back alone is not Guide");
+        assert!(adapter.update(snapshot(GUIDE_COMBO), late).is_empty(), "Start long after Back is not Guide");
+        assert_eq!(adapter.update(snapshot(BACK), late), vec![Change::Button(Button::Start, true), Change::Button(Button::Start, false)]);
+        assert!(adapter.update(snapshot(GUIDE_COMBO), late).is_empty(), "plain until both halves are up");
+        assert_eq!(
+            adapter.update(snapshot(0), late),
+            vec![
+                Change::Button(Button::Start, true),
+                Change::Button(Button::Start, false),
+                Change::Button(Button::Select, true),
+                Change::Button(Button::Select, false),
+            ]
+        );
+        assert!(adapter.update(snapshot(START), late).is_empty());
+        assert_eq!(adapter.update(snapshot(GUIDE_COMBO), late + CHORD_WINDOW), vec![Change::Button(Button::Guide, true)]);
+    }
+
+    #[test]
+    fn late_combo_does_not_open_the_overlay() {
+        let t0 = Instant::now();
+        let mut adapter = Adapter::new(Snapshot::default());
+        let mut core = Core::new(ALL);
+        assert!(feed(&mut adapter, &mut core, snapshot(BACK), t0).is_empty());
+        assert!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO), t0 + Duration::from_secs(10)).is_empty());
+        assert!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO | 0x0200), t0 + Duration::from_secs(10)).is_empty());
+        assert!(feed(&mut adapter, &mut core, snapshot(0), t0 + Duration::from_secs(11)).is_empty());
+        assert!(!core.is_open());
+    }
+
+    #[test]
+    fn chord_window_starts_when_the_held_half_went_down() {
+        let t0 = Instant::now();
+        let mut adapter = Adapter::new(Snapshot::default());
+        assert!(adapter.update(snapshot(BACK), t0).is_empty());
+        let swap = t0 + Duration::from_secs(1);
+        assert_eq!(
+            adapter.update(snapshot(START), swap),
+            vec![Change::Button(Button::Select, true), Change::Button(Button::Select, false)]
+        );
+        assert_eq!(adapter.update(snapshot(GUIDE_COMBO), swap + CHORD_WINDOW), vec![Change::Button(Button::Guide, true)]);
+    }
+
+    #[test]
+    fn ui_close_while_closed_keeps_the_guide_chord() {
+        let now = Instant::now();
+        let mut adapter = Adapter::new(Snapshot::default());
+        let mut core = Core::new(ALL);
+        assert_eq!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO | 0x0200), now), vec![Event::Screenshot]);
+        // The screenshot closes the (already closed) panel.
+        ui_toggled(&mut core, false, [&mut adapter]);
+        assert_eq!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO | 0x0001), now), vec![Event::Volume(1)]);
+        assert!(feed(&mut adapter, &mut core, snapshot(0), now).is_empty());
+        assert!(!core.is_open());
+    }
+
+    #[test]
+    fn ui_close_while_open_keeps_the_chord_but_not_the_toggle() {
+        let now = Instant::now();
+        let mut adapter = Adapter::new(Snapshot::default());
+        let mut core = Core::new(ALL);
+        core.open();
+        assert!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO), now).is_empty());
+        assert_eq!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO | 0x0200), now), vec![Event::Screenshot]);
+        ui_toggled(&mut core, false, [&mut adapter]);
+        assert!(!core.is_open());
+        assert!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO | 0x0200), now).is_empty(), "held RB is not a new press");
+        assert_eq!(feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO | 0x0001), now), vec![Event::Volume(1)]);
+        assert!(feed(&mut adapter, &mut core, snapshot(0), now).is_empty());
+        assert!(!core.is_open());
+
+        // Guide held without a chord while the UI closes: its release does not reopen.
+        core.open();
+        feed(&mut adapter, &mut core, snapshot(GUIDE_COMBO), now);
+        ui_toggled(&mut core, false, [&mut adapter]);
+        assert!(feed(&mut adapter, &mut core, snapshot(0), now).is_empty());
+        assert!(!core.is_open());
+    }
+
+    #[test]
+    fn ui_toggle_without_a_state_change_keeps_input() {
+        let now = Instant::now();
+        let mut adapter = Adapter::new(Snapshot::default());
+        let mut core = Core::new(ALL);
+        core.open();
+        assert_eq!(feed(&mut adapter, &mut core, snapshot(0x0002), now), vec![Event::Press(Button::Down)]);
+        ui_toggled(&mut core, true, [&mut adapter]);
+        assert_eq!(core.tick(now + Duration::from_secs(1)), Some(Event::Press(Button::Down)));
+        ui_toggled(&mut core, false, [&mut adapter]);
+        assert!(!core.is_open());
+        assert_eq!(core.tick(now + Duration::from_secs(2)), None);
+        ui_toggled(&mut core, false, [&mut adapter]);
+        ui_toggled(&mut core, true, [&mut adapter]);
+        assert!(core.is_open());
+        assert!(feed(&mut adapter, &mut core, snapshot(0x0002), now).is_empty(), "held before the UI opened");
+    }
+
+    #[test]
+    fn transient_read_errors_do_not_disconnect() {
+        let mut failures = Failures::default();
+        assert!(!failures.clear());
+        assert!(failures.record("busy".into()));
+        assert!(!failures.record("busy".into()), "the same error is logged once");
+        assert!(!failures.disconnects());
+        assert!(failures.clear(), "recovered");
+        for attempt in 1..=READ_FAILURES {
+            assert!(!failures.disconnects());
+            assert_eq!(failures.record("timeout".into()), attempt == 1);
+        }
+        assert!(failures.disconnects());
+        failures.clear();
+        assert!(!failures.disconnects());
+    }
+
+    const SLOTS: usize = 4;
+    const RESCAN: Duration = Duration::from_secs(1);
+
+    #[test]
+    fn disconnected_idle_waits_for_the_earliest_slot_scan() {
+        let now = Instant::now();
+        let mut next_scan = [now + RESCAN; SLOTS];
+        assert_eq!(poll_wait(false, None, &next_scan, now), RESCAN);
+        next_scan[1] = now + Duration::from_millis(400);
+        assert_eq!(poll_wait(false, None, &next_scan, now), Duration::from_millis(400));
+    }
+
+    #[test]
+    fn due_slot_scans_do_not_wait() {
+        let now = Instant::now();
+        let mut next_scan = [now + RESCAN; SLOTS];
+        next_scan[2] = now;
+        assert_eq!(poll_wait(false, None, &next_scan, now), Duration::ZERO);
+        assert_eq!(poll_wait(false, None, &next_scan, now + Duration::from_millis(1)), Duration::ZERO);
+    }
+
+    #[test]
+    fn connected_or_repeating_input_keeps_polling_without_delaying_repeats() {
+        let now = Instant::now();
+        let next_scan = [now + RESCAN; SLOTS];
+        assert_eq!(poll_wait(true, None, &next_scan, now), POLL);
+        for connected in [false, true] {
+            for repeat in [Duration::ZERO, Duration::from_millis(2), Duration::from_millis(100)] {
+                assert_eq!(poll_wait(connected, Some(repeat), &next_scan, now), repeat.min(POLL));
+            }
+        }
     }
 
     #[cfg(windows)]
