@@ -6,9 +6,18 @@
 //! inside an emulator with another account stays.
 
 use gpui_kit::*;
-use heronite_achievements::emulators::{self, Login, State, Status};
+use heronite_achievements::emulators::{self, ConfigPaths, Emulator, Login, State, Status};
+use heronite_data::DataPaths;
+use std::path::Path;
 
 use super::Achievements;
+
+fn with_configs(home: &Path, paths: &DataPaths, operation: impl FnOnce(&ConfigPaths) -> Vec<Status>) -> Vec<Status> {
+    match ConfigPaths::load(home, paths) {
+        Ok(configs) => operation(&configs),
+        Err(message) => vec![Status { emulator: Emulator::RetroArch, config: None, state: State::Failed(message) }],
+    }
+}
 
 impl Achievements {
     /// Each emulator's state at the last write or check.
@@ -27,6 +36,7 @@ impl Achievements {
     pub(super) fn sync_emulators(&mut self, before: Option<String>, cx: &mut Context<Self>) {
         let account = self.accounts.retro_achievements.clone().filter(|a| !a.token.is_empty() && self.prefs.emulators);
         let (home, hardcore) = (self.home.clone(), self.prefs.hardcore);
+        let paths = self.data_paths.clone();
         let clear = before.or_else(|| self.signed_in_user());
         if account.is_none() && clear.is_none() {
             return;
@@ -34,21 +44,13 @@ impl Achievements {
         cx.spawn(async move |this, cx| {
             let statuses = cx
                 .background_spawn(async move {
-                    match &account {
-                        Some(a) => emulators::apply(&home, Some(&Login { username: &a.username, token: &a.token, hardcore })),
+                    with_configs(&home, &paths, |configs| match &account {
+                        Some(a) => emulators::apply(configs, Some(&Login { username: &a.username, token: &a.token, hardcore })),
                         None => {
                             let user = clear.unwrap_or_default();
-                            let ours: Vec<_> = emulators::status(&home, Some(&user))
-                                .into_iter()
-                                .filter(|s| s.state == State::SignedIn)
-                                .map(|s| s.emulator)
-                                .collect();
-                            if !ours.is_empty() {
-                                emulators::apply_to(&home, &ours, None);
-                            }
-                            emulators::status(&home, None)
+                            emulators::sign_out(configs, &user)
                         }
-                    }
+                    })
                 })
                 .await;
             for s in &statuses {
@@ -68,8 +70,11 @@ impl Achievements {
     /// Reads what the emulators hold now (Settings shows it).
     pub fn check_emulators(&mut self, cx: &mut Context<Self>) {
         let (home, user) = (self.home.clone(), self.signed_in_user());
+        let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let statuses = cx.background_spawn(async move { emulators::status(&home, user.as_deref()) }).await;
+            let statuses = cx
+                .background_spawn(async move { with_configs(&home, &paths, |configs| emulators::status(configs, user.as_deref())) })
+                .await;
             this.update(cx, |this, cx| {
                 this.emulators = statuses;
                 cx.notify();

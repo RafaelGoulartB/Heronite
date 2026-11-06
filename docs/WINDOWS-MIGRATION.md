@@ -10,6 +10,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Collection: Steam (installed games and the whole library), games added by hand, play time
 - Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite
 - Emulators and ROM folders
+- RetroAchievements sign-in for RetroArch, including registered installed and portable copies
 - Save backups (Ludusavi)
 - Screenshots
 - Desktop and Start menu shortcuts, Add to Steam
@@ -24,7 +25,7 @@ What works on Windows, what is left, and what Windows does not need.
 
 - Replay buffer (separate from the overlay; hidden on Windows)
 - GOG Galaxy services (`comet`)
-- RetroAchievements sign-in of the emulators: `heronite_achievements::emulators` only knows their Linux config files (`~/.config`, Flatpak), not where they keep them on Windows (`%APPDATA%`, portable folders)
+- RetroAchievements sign-in for the remaining emulators (DuckStation, PCSX2, PPSSPP, Dolphin and Flycast): their Windows config locations and, where needed, token encryption still need support
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
@@ -85,6 +86,24 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 - Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
 - Troubleshoot (its checks are about Wine, Proton and Linux drivers)
 - AppImage and Linux packages
+
+## RetroArch sign-in
+
+Add the native or portable executable on the Emulators page and open RetroArch
+once so it creates its config. Enable emulator sign-in in Settings → Achievements.
+Heronite follows RetroArch's Windows search order: `retroarch.cfg` beside each
+executable, then `%APPDATA%\retroarch.cfg`. Executables found on `PATH` and the
+APPDATA fallback also work without a registered installation. Unopened configs
+are never created, and a running RetroArch (including a renamed registered
+executable) is left alone.
+
+Profile `-c` / `--config` paths override the defaults; absolute paths, paths
+relative to the emulator's working folder, `{EmulatorDir}` and RetroArch's `:\`
+prefix are supported. A relative config with a ROM working folder, or a
+game-dependent config template, reports an error rather than editing a guessed
+file. Signing out clears only configs that still hold Heronite's account.
+DuckStation and the other emulators are intentionally not enabled on Windows by
+this change. Real account authentication still needs a check inside RetroArch.
 
 ## Rules for code on both systems
 
