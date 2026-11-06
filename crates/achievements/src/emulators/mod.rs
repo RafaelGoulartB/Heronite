@@ -113,15 +113,16 @@ fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
-/// The config files that exist for `emulator`.
+/// The config files that exist for `emulator`, each once however it is
+/// spelled (`C:\RetroArch` and `c:\retroarch` are one folder on Windows).
 fn found(configs: &ConfigPaths, emulator: Emulator) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = Vec::new();
-    for path in configs.candidates(emulator) {
-        if path.is_file() && !files.contains(&path) {
-            files.push(path);
-        }
-    }
-    files
+    let mut seen = std::collections::HashSet::new();
+    configs.candidates(emulator).into_iter().filter(|path| path.is_file() && seen.insert(paths::same_file(path))).collect()
+}
+
+/// A config that discovery left out (see [`ConfigPaths`]), as a failure.
+fn skipped(configs: &ConfigPaths, emulator: Emulator) -> impl Iterator<Item = Status> + '_ {
+    configs.skipped(emulator).map(move |why| Status { emulator, config: None, state: State::Failed(why.to_string()) })
 }
 
 fn run(
@@ -138,6 +139,7 @@ fn run(
         if only[..i].contains(&emulator) {
             continue;
         }
+        out.extend(skipped(configs, emulator));
         let files = found(configs, emulator);
         if files.is_empty() {
             out.push(Status { emulator, config: None, state: State::NotSetUp });
@@ -167,6 +169,7 @@ fn run(
 fn check(configs: &ConfigPaths, username: Option<&str>, machine_key: file::MachineKey) -> Vec<Status> {
     let mut out = Vec::new();
     for emulator in Emulator::ALL {
+        out.extend(skipped(configs, emulator));
         let files = found(configs, emulator);
         if files.is_empty() {
             out.push(Status { emulator, config: None, state: State::NotSetUp });

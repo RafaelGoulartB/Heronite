@@ -93,15 +93,21 @@ Add the native or portable executable on the Emulators page and open RetroArch
 once so it creates its config. Enable emulator sign-in in Settings → Achievements.
 Heronite follows RetroArch's Windows search order: `retroarch.cfg` beside each
 executable, then `%APPDATA%\retroarch.cfg`. Executables found on `PATH` and the
-APPDATA fallback also work without a registered installation. Unopened configs
-are never created, and a running RetroArch (including a renamed registered
-executable) is left alone.
+APPDATA fallback also work without a registered installation; a Scoop shim is
+followed to the app's folder, and a Chocolatey shim (whose target cannot be
+read) is skipped. Unopened configs are never created, and a running RetroArch
+(including a renamed registered executable) is left alone; after a sign-out it
+is cleared once the game ends.
 
-Profile `-c` / `--config` paths override the defaults; absolute paths, paths
-relative to the emulator's working folder, `{EmulatorDir}` and RetroArch's `:\`
-prefix are supported. A relative config with a ROM working folder, or a
-game-dependent config template, reports an error rather than editing a guessed
-file. Signing out clears only configs that still hold Heronite's account.
+Profile `-c` / `--config` paths are written as well as the default config (the
+Emulators page opens RetroArch without arguments). Absolute paths, paths
+relative to the emulator's working folder and `{EmulatorDir}` are supported;
+RetroArch opens the `-c` value as given, so its `:\` prefix does not apply
+there. A relative config with a ROM working folder, a drive-relative path
+(`C:x.cfg`, often an unquoted `C:\x.cfg`) or a game-dependent config template
+is reported in Settings and skipped, rather than editing a guessed file; the
+other configs are still written. Signing out clears only configs that still
+hold Heronite's account.
 DuckStation and the other emulators are intentionally not enabled on Windows by
 this change. Real account authentication still needs a check inside RetroArch.
 
