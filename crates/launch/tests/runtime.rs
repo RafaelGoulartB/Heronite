@@ -195,13 +195,17 @@ fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed >= Duration::from_millis(400), "{elapsed:?}");
 
-    // The launcher failed: nothing is waited for (no made-up play time).
+    // The launcher failed: nothing is waited for (no made-up play time), not
+    // even a game that is there. A game following a failed launcher would keep
+    // the session going, which a time limit would only guess at.
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.procs.start(902, "Celeste.exe", None);
+    r.procs.set_game_pids(&[902]);
     r.spawner.finish(2, 1);
-    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
-    assert!(elapsed < Duration::from_millis(300), "{elapsed:?}");
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(!r.launcher.is_running("lutris_12"));
 }
 
 /// `explorer.exe` starting a Store game exits with 1 whatever happened.
@@ -691,10 +695,12 @@ fn status_of(ev: LaunchEvent) -> (String, bool) {
 #[test]
 fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     let r = rig();
-    let cloud = Arc::new(RecordingCloud { upload_delay: Duration::from_millis(500), ..Default::default() });
+    let upload = Duration::from_millis(500);
+    let cloud = Arc::new(RecordingCloud { upload_delay: upload, ..Default::default() });
     r.launcher.set_prep_services(services(true, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
     process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/saves")), ..Default::default() };
+    let launched = Instant::now();
     r.launcher.launch(request("Calluna", LaunchPlan::Native(process))).unwrap();
 
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
@@ -707,8 +713,10 @@ fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     r.spawner.finish(0, 0);
     assert_eq!(status_of(next_any(&r.rx)), ("Uploading cloud saves...".to_string(), false));
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
-    // The upload (500 ms) is not playtime.
-    assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
+    // The upload is not playtime: the clock starts after `launched` and the
+    // upload ends before `Exited`, so this holds however long anything took.
+    let longest = launched.elapsed().saturating_sub(upload);
+    assert!(elapsed <= longest, "{elapsed:?} > {longest:?}");
     assert_eq!(cloud.calls.lock().unwrap()[1], ("--skip-download".to_string(), "Calluna:/saves".to_string()));
     assert!(!r.launcher.is_running("Calluna"));
 }
@@ -832,17 +840,22 @@ fn preparing_the_launch_is_not_playtime() {
     let _ = next_any(&r.rx);
     wait_until("the prefix command", || !r.spawner.spawned().is_empty());
     std::thread::sleep(Duration::from_millis(500));
+    // The session's clock starts after this, so however long the machine
+    // stalls it cannot read more than the time since. One that counted the
+    // 500 ms above would.
+    let prepared = Instant::now();
     r.spawner.finish(0, 0);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     std::thread::sleep(Duration::from_millis(100));
     r.spawner.finish(1, 0);
     let LaunchEvent::Exited { elapsed, record, .. } = next(&r.rx) else { panic!() };
-    assert!(elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(400), "{elapsed:?}");
-    assert!(record.unwrap().elapsed_seconds < 1);
+    let ran = prepared.elapsed();
+    assert!(elapsed >= Duration::from_millis(100) && elapsed <= ran, "{elapsed:?} of {ran:?}");
+    assert!(record.unwrap().elapsed_seconds <= ran.as_secs() as i64);
     let s = &sessions_of(&r.paths, "g")[0];
     let (start, end) =
         (s.started_at.parse::<chrono::DateTime<chrono::Utc>>().unwrap(), s.ended_at.parse::<chrono::DateTime<chrono::Utc>>().unwrap());
-    assert!(end - start < chrono::Duration::milliseconds(400), "{} -> {}", s.started_at, s.ended_at);
+    assert!(end - start <= chrono::Duration::from_std(ran).unwrap(), "{} -> {}", s.started_at, s.ended_at);
 }
 
 #[test]
