@@ -477,7 +477,8 @@ fn show_menu(m: Msg) {
     let hwnd = m.0;
     let (x, y) = anchor(m.2);
     let Some(Some(items)) = with_state(m, |s| guard("menu", &mut s.menu)) else { return };
-    let Some(Some(theme)) = with_state(m, |s| guard("menu theme", &mut s.menu_theme)) else { return };
+    // A panicking theme callback falls back to the Windows menu theme.
+    let Some(theme) = with_state(m, |s| guard("menu theme", &mut s.menu_theme).unwrap_or_default()) else { return };
     let theme = theme::Scope::enter(hwnd, theme);
     // SAFETY: a plain call; a null menu is a failure.
     let menu = unsafe { CreatePopupMenu() };
