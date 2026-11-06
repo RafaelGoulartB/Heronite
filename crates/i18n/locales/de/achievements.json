@@ -82,6 +82,8 @@
   "Type your username and your password.": "Gib deinen Benutzernamen und dein Passwort ein.",
   "Ultra rare": "Ultraselten",
   "Uncommon": "Ungewöhnlich",
+  "Unlocked at {time}": "Freigeschaltet um {time}",
+  "Unlocked {date}": "Freigeschaltet am {date}",
   "Unlocked {n}": "Freigeschaltet {n}",
   "Untouchable": "Unantastbar",
   "Up next": "Als Nächstes",
@@ -113,5 +115,7 @@
   "{n} new achievements in {title}": "{n} neue Erfolge in {title}",
   "{n} points": "{n} Punkte",
   "{n} rare": "{n} selten",
+  "{n} secret achievement": "{n} geheimer Erfolg",
+  "{n} secret achievements": "{n} geheime Erfolge",
   "{signed} of {total} signed in": "{signed} von {total} angemeldet"
 }

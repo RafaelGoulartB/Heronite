@@ -265,6 +265,18 @@ impl ListNav {
     /// The rows in a vertical scroll area (`id` must be unique on screen).
     /// `active` = the list has the focus (else no pill is drawn).
     pub fn render(&mut self, id: impl Into<ElementId>, rows: &[Row], active: bool) -> Stateful<Div> {
+        self.render_with(id, rows, active, |_, r, focused| render_row(r, focused).into_any_element())
+    }
+
+    /// [`render`](Self::render) with rows drawn by `draw(index, row, focused)`
+    /// (a tab whose rows carry more than a label and a value).
+    pub fn render_with(
+        &mut self,
+        id: impl Into<ElementId>,
+        rows: &[Row],
+        active: bool,
+        mut draw: impl FnMut(usize, &Row, bool) -> AnyElement,
+    ) -> Stateful<Div> {
         self.clamp(rows);
         if self.reveal && active {
             self.reveal = false;
@@ -279,7 +291,7 @@ impl ListNav {
         self.shown = true;
         let mut list = div().id(id).flex().flex_col().gap(u(4.)).overflow_y_scroll().track_scroll(self.glide.handle());
         for (i, r) in rows.iter().enumerate() {
-            list = list.child(render_row(r, active && i == self.focus));
+            list = list.child(draw(i, r, active && i == self.focus));
         }
         list.child(self.glide.driver())
     }

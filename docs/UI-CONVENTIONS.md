@@ -632,7 +632,14 @@ microphone (the default source; the outputs' monitors are left out) and its mute
 (`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
-user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
+user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
+their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,
+whatever the source: a progress card (count, bar, gold at 100%, source, points, rare unlocks), what this session
+unlocked (a gold ring and the time), "Up next" and "Recently unlocked", 5 each, every achievement with its icon (a small
+`ImageStore` the tab makes when first drawn; a trophy or a lock when there is none), its rarity in its tier's colour,
+its description (in full, up to 3 lines, when focused) and a bar when the source counts its progress, then how many are
+secret (never their names); showing it reads the sources again (at most once a minute), and Home
+gets an "Achievements" row that leads to it. Quitting the game asks
 first (focus on Cancel). Guide + RB, Guide + ↑ / ↓ and Guide + X (the replay, Settings → Replay; Home and Screenshots
 show "Save replay" while it records, and Screenshots a switch that turns it off until the game ends) show a notice in
 the top corner opposite the panel. The
