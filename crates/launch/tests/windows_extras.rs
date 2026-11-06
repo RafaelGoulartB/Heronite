@@ -150,7 +150,8 @@ impl Rig {
             assert_eq!(lines.len(), 3, "{file}: {text}");
             assert_eq!(lines[0], kind);
             assert_eq!(lines[1], "Native test game");
-            assert_eq!(Path::new(lines[2]), self.folder);
+            // Windows script hosts can expand 8.3 names inherited through TEMP.
+            assert_eq!(fs::canonicalize(lines[2]).unwrap(), fs::canonicalize(&self.folder).unwrap());
         }
     }
 }
@@ -201,7 +202,7 @@ fn scripts_and_companion_follow_a_native_games_natural_exit() {
     let lines: Vec<_> = text.lines().collect();
     assert_eq!(lines.len(), 3, "companion.txt: {text}");
     assert_eq!(&lines[..2], ["Native test game", "native-extras"]);
-    assert_eq!(Path::new(lines[2]), rig.folder);
+    assert_eq!(fs::canonicalize(lines[2]).unwrap(), fs::canonicalize(&rig.folder).unwrap());
     assert_eq!(rig.game.calls().len(), 1);
 }
 
