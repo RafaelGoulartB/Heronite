@@ -57,6 +57,12 @@ The app finds out it runs in a sandbox (`heronite_platform::flatpak`):
   is out of reach, as the home folder leaves `~/.var/app` out: what Heronite
   reads there (save states, RetroAchievements settings) is not found for it.
 
+- ReShade (game settings → Performance) writes into the game's folder: the
+  DLL, `d3dcompiler_47.dll`, `reshade-shaders/`, `ReShade.ini` and the preset
+  copy. A game in a folder outside the home, `/mnt`, `/media` and
+  `/run/media` is out of the app's reach until
+  `flatpak override --user --filesystem=<folder> app.heronite.Heronite`.
+
 Programs installed on the host itself (a native emulator, Ludusavi, the
 system's Wine, gpu-screen-recorder) are not seen from inside the sandbox: use
 their Flatpak or AppImage, or the AppImage of Heronite.

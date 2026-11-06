@@ -133,7 +133,15 @@ device when the last window closes (the app lives on in the tray); see its
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
   first time it runs in a Wine prefix. `lsfg` finds lsfg-vk (Lossless
   Scaling frame generation), the Lossless Scaling DLL and lsfg-vk's profiles,
-  and adds the frame generation variables to a launch. `fps_limit` holds a
+  and adds the frame generation variables to a launch. `reshade` installs
+  ReShade into a Windows game's folder like ReShade's installer (the
+  executable, its API and the DLL name from its PE headers and
+  `Compatibility.ini`; the DLL, `d3dcompiler_47` and shader packages
+  downloaded into `<data>/tools/reshade`), keeps what it wrote in
+  `<data>/reshade/<game>.json` so switching, updating, removing and adopting a
+  manual install only touch Heronite's files, and adds `<dll>=n,b` to
+  `WINEDLLOVERRIDES` at launch while it is on (never failing the launch). It
+  warns about anti-cheats and refuses games ReShade's list bans. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
   a fallback). `live_fps` makes that limit changeable while the game runs when MangoHud or gamescope applies it

@@ -21,6 +21,13 @@ What works on Windows, what is left, and what Windows does not need.
 - Steam tests: library and session fixtures run on Windows without reading the host's registry, Steam folders or process list; achievement fixtures are isolated too
 - Tray menus follow the app's light/dark theme (including System and Custom) on Windows 10 1903+ and Windows 11. High contrast keeps Windows' native colours. Older Windows versions, or missing uxtheme exports, fall back to the native menu with a warning
 
+## 🚧 ReShade per game
+
+The same files go into the game's folder as on Linux (Settings → Performance
+→ ReShade), without the Wine overrides and without `d3dcompiler_47` (Windows
+has it). Covered by the tests on both systems; a DirectX 11 game still needs a
+check on a real Windows machine.
+
 ## ⬜ To do
 
 - Replay buffer (separate from the overlay; hidden on Windows)
