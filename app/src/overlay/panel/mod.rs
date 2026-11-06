@@ -133,6 +133,7 @@ impl OverlayPanel {
         game: Option<GameNow>,
         controllers: Vec<Controller>,
         keyboard: bool,
+        scale: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -147,7 +148,7 @@ impl OverlayPanel {
             volume_step: i64::from(volume_step),
             game,
             controllers,
-            scale: super::window::scale(cx),
+            scale,
             tab: 0,
             nav: ListNav::default(),
             data: Data::default(),

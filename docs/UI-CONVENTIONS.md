@@ -658,11 +658,15 @@ the panel's size follows it. On Windows, `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>
 that desktop point (physical px) instead of the foreground window's, so another monitor is tested without moving focus.
 
 On Windows the same panel uses a topmost tool window on the foreground
-monitor, over windowed and borderless games (not exclusive fullscreen).
-Ctrl+Shift+G is the default shortcut; Back+Start substitutes for Guide on
-XInput controllers. There is no controller grab: settings must say that
-the game can still receive presses. A keyboard-opened panel takes focus
-and returns it on close only while it still owns foreground. Notices never
+monitor, over windowed and borderless games. Nothing opens while a game
+holds exclusive fullscreen (`SHQueryUserNotificationState`), which a
+topmost window would minimise. Ctrl+Shift+G is the default shortcut
+(`RegisterHotKey`: other apps do not get it while it is registered, which
+Settings says); Back+Start substitutes for Guide on XInput controllers.
+There is no controller grab: settings must say that the game can still
+receive presses. A keyboard-opened panel asks for focus (Windows may
+refuse; it stays open) and returns it on close only while it still owns
+foreground. Notices never
 take focus and pass pointer input through. The Audio tab uses Core Audio;
 device names are informational (choose defaults in Windows settings).
 Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.

@@ -47,15 +47,22 @@ pub struct NoticeWindow {
     handle: WindowHandle<NoticeView>,
     /// Bumped by every notice; the timer of an older one does nothing.
     generation: u64,
+    /// Windows: the monitor it was placed on.
+    #[cfg(windows)]
+    screen: Option<heronite_platform::overlay_window::Screen>,
 }
 
 impl OverlayService {
     pub(super) fn show_notice(&mut self, notice: Notice, layer: bool, cx: &mut Context<Self>) {
         let generation = self.notice.as_ref().map_or(0, |n| n.generation + 1);
-        // A new Windows notice follows the current foreground monitor.
+        let display = window::Display::current(cx);
+        // A Windows notice stays where it was placed: one for another
+        // monitor (the foreground window's moved) replaces it.
         #[cfg(windows)]
-        if let Some(old) = self.notice.take() {
-            let _ = old.handle.update(cx, |_, window, _| window.remove_window());
+        if layer && self.notice.as_ref().is_some_and(|n| display.screen().is_some_and(|now| n.screen != Some(now))) {
+            if let Some(old) = self.notice.take() {
+                let _ = old.handle.update(cx, |_, window, _| window.remove_window());
+            }
         }
         let reused = self.notice.as_ref().is_some_and(|n| {
             let notice = notice.clone();
@@ -71,17 +78,28 @@ impl OverlayService {
                 n.generation = generation;
             }
         } else {
-            let scale = window::scale(cx);
-            match window::open_notice(cx, self.prefs.side, layer, |_, cx| cx.new(|_| NoticeView { notice, scale })) {
-                Ok(handle) => self.notice = Some(NoticeWindow { handle, generation }),
+            let scale = display.scale();
+            #[cfg(windows)]
+            let screen = display.screen();
+            match window::open_notice(cx, display, self.prefs.side, layer, |_, cx| cx.new(|_| NoticeView { notice, scale })) {
+                Ok(handle) => {
+                    self.notice = Some(NoticeWindow {
+                        handle,
+                        generation,
+                        #[cfg(windows)]
+                        screen,
+                    })
+                }
                 Err(e) => {
                     log::warn!("overlay: cannot show a notice: {e:#}");
                     return;
                 }
             }
         }
-        // Debug captures need the time to find the window.
-        let shown = if crate::env::value("HERONITE_DEBUG_OVERLAY").is_some() { SHOWN_FOR * 6 } else { SHOWN_FOR };
+        // Debug captures need the time to find the window (on Windows, the
+        // native one of `HERONITE_DEBUG_OVERLAY=layer` too).
+        let debug = self.debug_window || (cfg!(windows) && crate::env::value("HERONITE_DEBUG_OVERLAY").is_some());
+        let shown = if debug { SHOWN_FOR * 6 } else { SHOWN_FOR };
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(shown).await;
             this.update(cx, |this, cx| {

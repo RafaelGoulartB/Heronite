@@ -27,26 +27,78 @@ pub const NOTICE_H: f32 = 76.;
 /// Display height (px) per unit of the console scale.
 const PX_PER_SCALE: f32 = 1240.;
 
-/// The console scale for the display the overlay shows on.
-pub fn scale(cx: &App) -> f32 {
-    (display_height(cx) / PX_PER_SCALE).clamp(1., 2.)
+/// The display one open is for, read once so the size and the place agree
+/// (on Windows the foreground window may move to another monitor between
+/// two reads).
+pub struct Display {
+    height: f32,
+    #[cfg(windows)]
+    screen: std::io::Result<heronite_platform::overlay_window::Screen>,
 }
 
-/// Height of the tallest display. Wayland has no primary display (GPUI
-/// returns none), and the compositor puts the surface on the focused one,
-/// which this cannot know: one display is the usual case.
-/// `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for it (sizes of other
-/// screens in debug captures).
-fn display_height(cx: &App) -> f32 {
-    if let Some(h) = crate::env::parse::<f32>("HERONITE_DEBUG_OVERLAY_DISPLAY") {
-        return h;
+impl Display {
+    /// Height of the tallest display. Wayland has no primary display (GPUI
+    /// returns none), and the compositor puts the surface on the focused one,
+    /// which this cannot know: one display is the usual case. Windows uses
+    /// the target monitor (`target_screen`).
+    /// `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for it (sizes of other
+    /// screens in debug captures).
+    pub fn current(cx: &App) -> Self {
+        #[cfg(windows)]
+        let screen = target_screen();
+        let height = crate::env::parse::<f32>("HERONITE_DEBUG_OVERLAY_DISPLAY").unwrap_or_else(|| {
+            #[cfg(windows)]
+            match &screen {
+                Ok(screen) => return screen.logical_height(),
+                Err(e) => log::warn!("overlay: cannot read the foreground monitor: {e}"),
+            }
+            cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(0., f32::max).max(720.)
+        });
+        Self {
+            height,
+            #[cfg(windows)]
+            screen,
+        }
     }
+
+    /// The console scale for the display the overlay shows on.
+    pub fn scale(&self) -> f32 {
+        (self.height / PX_PER_SCALE).clamp(1., 2.)
+    }
+
+    /// The tallest the panel may be: the display minus the edge gaps (a Steam
+    /// Deck's 800 px is a little short of the full height).
+    fn panel_max_height(&self) -> f32 {
+        (self.height - 2. * EDGE * self.scale()).max(400.)
+    }
+
+    /// The monitor the native surfaces go on, when it could be read.
     #[cfg(windows)]
-    match target_screen() {
-        Ok(screen) => return screen.logical_height(),
-        Err(e) => log::warn!("overlay: cannot read the foreground monitor: {e}"),
+    pub fn screen(&self) -> Option<heronite_platform::overlay_window::Screen> {
+        self.screen.as_ref().ok().copied()
     }
-    cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(0., f32::max).max(720.)
+}
+
+/// Windows: a Direct3D game in exclusive fullscreen, where a topmost window
+/// would minimise it or switch its display mode, so nothing opens. Logged
+/// once per stretch of it.
+#[cfg(windows)]
+pub fn exclusive_fullscreen() -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static LOGGED: AtomicBool = AtomicBool::new(false);
+    let on = heronite_platform::overlay_window::exclusive_fullscreen();
+    if !on {
+        LOGGED.store(false, Ordering::Relaxed);
+    } else if !LOGGED.swap(true, Ordering::Relaxed) {
+        log::info!("overlay: a game is in exclusive fullscreen; the overlay does not open over it");
+    }
+    on
+}
+
+/// Only Windows has an exclusive fullscreen to stay out of.
+#[cfg(not(windows))]
+pub fn exclusive_fullscreen() -> bool {
+    false
 }
 
 /// The monitor of the foreground window (the game's). In debug captures,
@@ -131,17 +183,18 @@ pub struct OpenedPanel<V: 'static> {
 
 pub fn open_panel<V: Render>(
     cx: &mut App,
+    display: Display,
     side: Side,
     layer: bool,
     keyboard: bool,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<OpenedPanel<V>> {
-    let s = scale(cx);
-    let height = (PANEL_H * s).min(panel_max_height(cx));
+    let s = display.scale();
+    let height = (PANEL_H * s).min(display.panel_max_height());
     let size = size(px(PANEL_W * s), px(height));
     #[cfg(windows)]
     if layer {
-        let (handle, shown) = windows::open(cx, "overlay", size, side, EDGE * s, keyboard, build)?;
+        let (handle, shown) = windows::open(cx, display.screen, "overlay", size, side, EDGE * s, keyboard, build)?;
         return Ok(OpenedPanel { handle, shown: Some(shown) });
     }
     let handle = cx.open_window(options("overlay", size, side, px(EDGE * s), layer, keyboard), build)?;
@@ -152,20 +205,15 @@ pub fn open_panel<V: Render>(
     })
 }
 
-/// The tallest the panel may be: the display minus the edge gaps (a Steam
-/// Deck's 800 px is a little short of the full height).
-fn panel_max_height(cx: &App) -> f32 {
-    (display_height(cx) - 2. * EDGE * scale(cx)).max(400.)
-}
-
 /// Opens a notice in the top corner of `side`.
 pub fn open_notice<V: Render>(
     cx: &mut App,
+    display: Display,
     side: Side,
     layer: bool,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<WindowHandle<V>> {
-    let s = scale(cx);
+    let s = display.scale();
     let size = size(px(NOTICE_W * s), px(NOTICE_H * s));
     // Away from the panel's side, so both can show.
     let corner = match side {
@@ -174,7 +222,7 @@ pub fn open_notice<V: Render>(
     };
     #[cfg(windows)]
     if layer {
-        let (handle, shown) = windows::open(cx, "overlay-notice", size, corner, 24. * s, false, build)?;
+        let (handle, shown) = windows::open(cx, display.screen, "overlay-notice", size, corner, 24. * s, false, build)?;
         cx.spawn(async move |cx| {
             if let Err(error) = shown.await {
                 log::warn!("overlay: cannot show the native notice: {error:#}");
