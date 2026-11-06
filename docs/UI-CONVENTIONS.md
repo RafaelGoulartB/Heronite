@@ -632,10 +632,21 @@ microphone (the default source; the outputs' monitors are left out) and its mute
 (`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
-user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
+user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
+their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,
+whatever the source: a progress card (count, bar, gold at 100%, source, points, rare unlocks), what this session
+unlocked (a gold ring and the time), "Up next" and "Recently unlocked", 5 each, every achievement with its icon (a small
+`ImageStore` the tab makes when first drawn; a trophy or a lock when there is none), its rarity in its tier's colour,
+its description (in full, up to 3 lines, when focused) and a bar when the source counts its progress, then how many are
+secret (never their names); showing it reads the sources again (at most once a minute), and Home
+gets an "Achievements" row that leads to it. Quitting the game asks
 first (focus on Cancel). Guide + RB, Guide + ↑ / ↓ and Guide + X (the replay, Settings → Replay; Home and Screenshots
 show "Save replay" while it records, and Screenshots a switch that turns it off until the game ends) show a notice in
-the top corner opposite the panel. The
+the top corner opposite the panel. Achievement notices (`OverlayService::show_achievement`, Settings → Achievements →
+"Over the game" tries one) queue instead of replacing: 5 s each with the achievement's icon (loaded first, 1.5 s at
+most) or a gold trophy, "Achievement unlocked · 9.7%" in the rarity's colour when rare, up to 4 waiting, then one
+"N more achievements" (a single extra one shows as itself), in the order of the unlocks even when their icons load out
+of order; a volume or screenshot notice cuts in and the achievement shows again after it. The
 screenshot's button is a choice (RB unless changed; not ↑ / ↓ nor the triggers, which many controllers report as axes),
 shown in Settings → Overlay and in Settings → Screenshots ("With the controller"). A keyboard shortcut (Super + G unless
 changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland bind that sends SIGUSR1, else the
@@ -650,7 +661,7 @@ The panel takes controller presses from the service (`OverlayPanel::on_pad`); it
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
-plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`);
+plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
 `HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and

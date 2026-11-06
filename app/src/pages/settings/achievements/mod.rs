@@ -12,6 +12,7 @@ use gpui_kit::*;
 use heronite_achievements::prefs::Prefs;
 use heronite_data::appearance::Section;
 use heronite_i18n::tr;
+use heronite_platform::{supported, Feature};
 
 use super::SettingsPage;
 use crate::pages::status_pill;
@@ -56,6 +57,23 @@ pub fn reveal(d: &mut SettingsPage, label: &str) {
 pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     retro::shown(d, cx);
     service::get(cx).update(cx, |s, cx| s.check_emulators(cx));
+}
+
+/// "Over the game": a made-up achievement's notice in the overlay, or a
+/// desktop notification saying why it cannot show (the overlay is off, or
+/// this desktop cannot draw it).
+fn overlay_test(d: &SettingsPage, cx: &mut App) {
+    let shown = crate::overlay::get(cx)
+        .map(|o| o.update(cx, |s, cx| s.show_achievement(tr!("Treasure Hunter").into(), Some(9.7), String::new(), cx)))
+        .unwrap_or(false);
+    if !shown {
+        let why = if d.overlay_enabled() {
+            crate::overlay::desktop_status().0
+        } else {
+            tr!("Turn on the overlay in Settings → Overlay.").into()
+        };
+        crate::system::notify::send(tr!("The overlay can't show it"), why);
+    }
 }
 
 pub(super) fn set_prefs(cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut Prefs)) {
@@ -135,7 +153,13 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                         .child(
                             button_sm("ach-notify-test-3", ButtonKind::Glass, tr!("Several achievements"))
                                 .on_click(|_, _, _| service::notify_test(4)),
-                        ),
+                        )
+                        .when(supported(Feature::Overlay), |d| {
+                            d.child(
+                                button_sm("ach-notify-test-overlay", ButtonKind::Glass, tr!("Over the game"))
+                                    .on_click(cx.listener(|d, _, _, cx| overlay_test(d, cx))),
+                            )
+                        }),
                 )
                 .into_any_element()],
             ),

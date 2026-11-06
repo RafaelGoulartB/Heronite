@@ -24,6 +24,7 @@ impl OverlayPanel {
             Tab::Notes => self.notes_rows(),
             Tab::Audio => self.audio_rows(),
             Tab::Controller => self.controller_rows(),
+            Tab::Achievements => self.achievement_rows(),
         }
     }
 
@@ -62,6 +63,7 @@ impl OverlayPanel {
             let index = self.data.statuses.iter().position(|s| &s.id == id).unwrap_or(0);
             rows.push(Row::choice("status", tr!("Status"), options, index).icon(Icon::Flag));
         }
+        rows.extend(self.achievements_home_row());
         rows.push(Row::action("launcher", tr!("Back to Heronite")).icon(Icon::Home).desc(tr!("The game keeps running")));
         rows.push(Row::action("quit", tr!("Quit game")).icon(Icon::PowerSettingsNew).danger());
         rows
@@ -179,6 +181,7 @@ impl OverlayPanel {
             "launcher" => self.with_service(cx, |s, cx| s.show_launcher(cx)),
             "quit" => self.ask(Confirm::Quit),
             id if self.notes_activate(id, cx) => {}
+            id if self.achievements_activate(id, cx) => {}
             _ => {
                 let Some(i) = id.strip_prefix("disconnect-").and_then(|n| n.parse::<usize>().ok()) else { return };
                 if let Some((c, _)) = self.data.controllers.get(i) {
