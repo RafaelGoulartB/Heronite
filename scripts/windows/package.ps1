@@ -17,7 +17,7 @@
   the setup and its uninstaller are signed; otherwise they are not, and
   SmartScreen warns.
 
-  Needs: Rust (MSVC), Inno Setup 6 (ISCC.exe: -Iscc, the ISCC variable,
+  Needs: Rust (MSVC), Inno Setup 6.3 or later (ISCC.exe: -Iscc, the ISCC variable,
   PATH, or its usual install folders). Windows PowerShell 5.1 or pwsh.
 
 .PARAMETER Version
