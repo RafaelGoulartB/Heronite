@@ -81,7 +81,9 @@ controls already show. Its on/off preference (off by default) belongs to `appear
 
 `vendor/gpui-pre-linux` is GPUI's Linux platform, patched to release the GPU
 device when the last window closes (the app lives on in the tray); see its
-`PATCHES.md`.
+`PATCHES.md`. `vendor/gpui-pre-windows` is GPUI's Windows platform, patched so
+a window the user closes is torn down while its handle is valid (upstream
+leaked it and logged errors); see its `PATCHES.md`.
 
 - **heronite-data:** the base. `paths` (`DataPaths`, `AppPaths`), `migrate`,
   `json_store` (electron-store read-modify-write: tab indent, atomic write,

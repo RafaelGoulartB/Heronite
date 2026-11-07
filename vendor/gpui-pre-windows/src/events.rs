@@ -6,7 +6,7 @@ use windows::{
     Win32::{
         Foundation::*,
         Graphics::Gdi::*,
-        System::SystemServices::*,
+        System::{Ole::RevokeDragDrop, SystemServices::*},
         UI::{
             Controls::*,
             HiDpi::*,
@@ -341,6 +341,10 @@ impl WindowsWindowInner {
     }
 
     fn handle_destroy_msg(&self, handle: HWND) -> Option<isize> {
+        // The handle is valid until this message returns: revoke here, as the
+        // deferred teardown in `WindowsWindow`'s `Drop` may run after it.
+        self.destroyed.set(true);
+        unsafe { RevokeDragDrop(handle).log_err() };
         let callback = { self.state.callbacks.close.take() };
         // Re-enable parent window if this was a modal dialog
         if let Some(parent_hwnd) = self.parent_hwnd {
@@ -353,14 +357,15 @@ impl WindowsWindowInner {
         if let Some(callback) = callback {
             callback();
         }
+        // Sent, not posted: the platform stops tracking the window (the vsync
+        // thread redraws every tracked window) before its handle goes away.
         unsafe {
-            PostMessageW(
-                Some(self.platform_window_handle),
+            SendMessageW(
+                self.platform_window_handle,
                 WM_GPUI_CLOSE_ONE_WINDOW,
-                WPARAM(self.validation_number),
-                LPARAM(handle.0 as isize),
-            )
-            .log_err();
+                Some(WPARAM(self.validation_number)),
+                Some(LPARAM(handle.0 as isize)),
+            );
         }
         Some(0)
     }

@@ -94,6 +94,9 @@ pub struct WindowsWindowState {
 
 pub(crate) struct WindowsWindowInner {
     hwnd: HWND,
+    /// Set by `WM_DESTROY`: the handle is about to become invalid (or be
+    /// reused), so the deferred teardown in `Drop` must not touch it.
+    pub(crate) destroyed: Cell<bool>,
     pub(crate) dialog_owner: Rc<crate::dialog::DialogOwner>,
     drop_target_helper: IDropTargetHelper,
     pub(crate) state: WindowsWindowState,
@@ -284,6 +287,7 @@ impl WindowsWindowInner {
 
         Ok(Rc::new(Self {
             hwnd,
+            destroyed: Cell::new(false),
             dialog_owner: crate::dialog::DialogOwner::new(hwnd),
             drop_target_helper: context.drop_target_helper.clone(),
             state,
@@ -610,7 +614,11 @@ impl rwh::HasDisplayHandle for WindowsWindow {
 impl Drop for WindowsWindow {
     fn drop(&mut self) {
         self.0.dialog_owner.close();
-        unsafe { ShowWindowAsync(self.0.hwnd, SW_HIDE).ok().log_err() };
+        // Closed by the user: Windows is already destroying the window and
+        // `WM_DESTROY` has revoked drag-and-drop.
+        if !self.0.destroyed.get() {
+            unsafe { ShowWindowAsync(self.0.hwnd, SW_HIDE).ok().log_err() };
+        }
         // `DestroyWindow` below sends `WM_SHOWWINDOW`; without a callback the
         // resulting visibility report has nothing to notify.
         self.0.state.callbacks.visibility_change.take();
@@ -620,10 +628,9 @@ impl Drop for WindowsWindow {
             .executor
             .spawn(async move {
                 this.dialog_owner.when_idle().await;
-                let handle = this.hwnd;
-                unsafe {
-                    RevokeDragDrop(handle).log_err();
-                    DestroyWindow(handle).log_err();
+                // `WM_DESTROY` revokes drag-and-drop, while the handle is valid.
+                if !this.destroyed.get() {
+                    unsafe { DestroyWindow(this.hwnd).log_err() };
                 }
             })
             .detach();

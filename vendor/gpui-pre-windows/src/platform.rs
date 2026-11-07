@@ -1373,6 +1373,12 @@ impl Drop for WindowsPlatform {
                 // SAFETY: notification was returned by RegisterSuspendResumeNotification.
                 UnregisterSuspendResumeNotification(notification).log_err();
             }
+            // Tasks woken from here on (the app's are dropped after the
+            // platform) would post their wake-up to the destroyed window.
+            self.inner
+                .dispatcher
+                .wake_posted
+                .store(true, Ordering::Release);
             DestroyWindow(self.handle)
                 .context("Destroying platform window")
                 .log_err();
