@@ -61,6 +61,23 @@ pub enum RunKind {
     None,
 }
 
+impl RunKind {
+    /// Whether ReShade can go into the game (`Some`), and whether Wine or
+    /// Proton runs it (`true`: the game needs `WINEDLLOVERRIDES`). A Steam
+    /// game on Linux may be its Linux build: the files say, once read
+    /// (`heronite_launch::reshade::steam`); under Proton the override goes in
+    /// its launch options. Emulated games have none: ReShade goes next to a
+    /// program, and the emulator's is every game's it runs.
+    pub fn reshade(self) -> Option<bool> {
+        match self {
+            RunKind::Wine => Some(true),
+            RunKind::Steam => Some(cfg!(not(windows))),
+            RunKind::SteamDirect | RunKind::Native if cfg!(windows) => Some(false),
+            _ => None,
+        }
+    }
+}
+
 /// What the settings need to know about one game.
 #[derive(Clone, Debug)]
 pub struct GameFacts {
@@ -196,12 +213,22 @@ pub fn wrappers() -> bool {
     heronite_platform::supported(heronite_platform::Feature::Wrappers)
 }
 
+/// A game whose Performance tab is ReShade alone: Steam starts it as it is,
+/// or Linux's tools (wrappers, overlays, gamescope) are not there (Windows).
+pub fn reshade_only(run_kind: RunKind) -> bool {
+    run_kind == RunKind::SteamDirect || (run_kind == RunKind::Native && !wrappers())
+}
+
 /// The panel's sections of a game, in tab order.
 pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> Vec<Section> {
     let mut out = vec![Section::Launch];
     match run_kind {
         RunKind::None => return Vec::new(),
-        RunKind::Native if !wrappers() => return out,
+        // Their Performance tab only has ReShade (`reshade_only`).
+        RunKind::SteamDirect | RunKind::Native if reshade_only(run_kind) => {
+            out.extend(run_kind.reshade().map(|_| Section::Performance));
+            return out;
+        }
         RunKind::SteamDirect => return out,
         RunKind::Steam | RunKind::Wine => out.extend([Section::Compatibility, Section::Performance, Section::Gpu]),
         RunKind::Native => out.extend([Section::Performance, Section::Gpu]),
@@ -436,15 +463,21 @@ mod tests {
         use Section::*;
         assert_eq!(sections_for(RunKind::Wine, "legendary", true), [Launch, Compatibility, Performance, Gpu, Sandbox, Saves]);
         assert_eq!(sections_for(RunKind::Wine, "sideload", true), [Launch, Compatibility, Performance, Gpu, Sandbox]);
-        // Without Linux's wrappers (Windows), a native game only has Launch.
-        let native: &[Section] = if wrappers() { &[Launch, Performance, Gpu, Sandbox] } else { &[Launch] };
+        // Without Linux's wrappers (Windows), a native game has Launch, and
+        // ReShade where it applies.
+        let native: &[Section] = match (wrappers(), cfg!(windows)) {
+            (true, _) => &[Launch, Performance, Gpu, Sandbox],
+            (false, true) => &[Launch, Performance],
+            (false, false) => &[Launch],
+        };
         assert_eq!(sections_for(RunKind::Native, "sideload", false), native);
         assert!(!sections_for(RunKind::Wine, "legendary", false).contains(&Section::Saves));
         assert!(sections_for(RunKind::None, "legendary", true).is_empty());
         assert!(sections_for(RunKind::Wine, "gog", true).contains(&Section::Saves));
         assert!(!sections_for(RunKind::Wine, "gog", false).contains(&Section::Saves));
         assert_eq!(sections_for(RunKind::Steam, "sideload", true), [Launch, Compatibility, Performance, Gpu]);
-        assert_eq!(sections_for(RunKind::SteamDirect, "sideload", true), [Launch]);
+        let direct: &[Section] = if cfg!(windows) { &[Launch, Performance] } else { &[Launch] };
+        assert_eq!(sections_for(RunKind::SteamDirect, "sideload", true), direct);
     }
 
     #[test]

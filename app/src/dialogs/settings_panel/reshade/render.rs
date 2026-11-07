@@ -52,7 +52,7 @@ pub(super) fn api_label(t: Option<&Target>, api: Option<Api>) -> String {
 impl SettingsPanel {
     pub(in crate::dialogs::settings_panel) fn reshade_section(&mut self, cx: &mut Context<Self>) -> Div {
         let mut col = div().flex().flex_col().gap(px(6.)).child(heading("ReShade"));
-        if !self.reshade_applies() {
+        if !self.reshade_applies() || self.reshade.linux_build {
             let text = tr!("ReShade needs a Windows game. On Linux, vkBasalt applies ReShade effects to Vulkan and OpenGL games.");
             return col.child(rows().child(row("ReShade", Some(text), div())).card());
         }

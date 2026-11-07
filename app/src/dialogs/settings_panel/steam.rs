@@ -122,6 +122,7 @@ impl SettingsPanel {
                 }
                 if read {
                     this.apply_debug_settings(cx);
+                    this.sync_steam_reshade(cx);
                 }
                 cx.notify();
             })
@@ -655,6 +656,9 @@ impl SettingsPanel {
         col = col.child(heading(tr!("On screen"))).child(self.overlay_rows(off, cx).card());
         col = self.replay_section(col, cx);
         col = col.child(self.fps_section(off, cx)).child(self.lsfg_section(off, cx));
+        if self.reshade_applies() {
+            col = col.child(self.reshade_section(cx));
+        }
         col = col.child(self.gamescope_section(rows(), off, cx));
         col.child(heading(tr!("System"))).child(self.game_system_rows(off, cx).card())
     }

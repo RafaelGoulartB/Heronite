@@ -52,6 +52,7 @@ use crate::ui::fields::new_input;
 pub use general::GlobalView;
 pub use logic::{GameFacts, Section};
 pub use reshade::focus_reshade;
+pub(crate) use reshade::Place as ReshadePlace;
 
 /// What the settings are bound to.
 #[derive(Clone, Debug)]
@@ -74,6 +75,9 @@ enum Bind {
     /// A number of the FPS limit (`heronite_launch::fps_limit`), digits only.
     Fps { key: &'static str },
 }
+
+/// Prefix of the ReShade settings keys (`heronite_launch::reshade::KEY_*`).
+const RESHADE_KEYS: &str = heronite_launch::reshade::KEY_ENABLED;
 
 const fn s(key: &'static str) -> Bind {
     Bind::Str { key, trim: true }
@@ -501,6 +505,12 @@ impl SettingsPanel {
             return;
         }
         if self.is_steam() {
+            // Not in Steam's line: ReShade's own files say what it is, and
+            // its overrides are written into the line on their own.
+            if key.starts_with(RESHADE_KEYS) {
+                self.settings.insert(key.to_string(), value);
+                return cx.notify();
+            }
             return self.steam_set(key, value, cx);
         }
         self.settings.insert(key.to_string(), value.clone());
@@ -526,6 +536,13 @@ impl SettingsPanel {
     /// launch options are rebuilt once).
     pub(super) fn set_all(&mut self, values: Vec<(&str, Value)>, cx: &mut Context<Self>) {
         let mut changed: Vec<(&str, Value)> = values.into_iter().filter(|(k, v)| self.settings.get(*k) != Some(v)).collect();
+        if self.is_steam() {
+            // As in `set`: not in Steam's line.
+            for (k, v) in changed.extract_if(.., |(k, _)| k.starts_with(RESHADE_KEYS)) {
+                self.settings.insert(k.to_string(), v);
+                cx.notify();
+            }
+        }
         let Some((last_key, last)) = changed.pop() else { return };
         if self.is_steam() {
             if self.steam_fields_editable() {
@@ -704,6 +721,9 @@ impl Render for SettingsPanel {
             Section::Compatibility if self.winetricks_open() => self.winetricks_tab(cx),
             Section::Compatibility if self.is_steam() => self.proton_tab(cx),
             Section::Performance if self.is_steam() => self.steam_perf_tab(cx),
+            Section::Performance if self.facts().is_some_and(|f| logic::reshade_only(f.run_kind)) => {
+                parts::column().child(self.reshade_section(cx))
+            }
             Section::Launch if self.is_steam() => self.steam_launch_tab(cx),
             Section::Gpu if self.is_steam() => self.steam_gpu_tab(cx),
             Section::General => self.general_tab(window, cx),
