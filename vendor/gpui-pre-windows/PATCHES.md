@@ -26,5 +26,11 @@ Windows destroys before GPUI drops its `WindowsWindow`:
   the app is dropped (after the platform) posted to the destroyed window and
   logged the same error.
 
+Also, for the interface scale (Settings → Appearance → Zoom):
+`WindowsPlatform`'s `open_window`, `displays` and `primary_display`
+(`src/platform.rs`) go through `gpui-zoom` (`vendor/gpui-zoom`, Heronite's own
+crate, a dependency added to `Cargo.toml`). `retrieve_caret_position`
+(`src/events.rs`) multiplies the caret's box by `gpui_zoom::factor`.
+
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.

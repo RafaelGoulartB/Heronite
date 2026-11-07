@@ -464,5 +464,18 @@
   "Every hour": "A cada hora",
   "Every 2 hours": "A cada 2 horas",
   "Every {n} minutes": "A cada {n} minutos",
-  "Starts with the next game you launch. Ludusavi copies the save files as they are at that moment: a game saving during the copy can leave a mixed backup, so the backup after the game closes is the one to trust. Nothing is restored on its own.": "Começa no próximo jogo que você abrir. O Ludusavi copia os arquivos de save como estão naquele momento: um jogo que salva durante a cópia pode deixar um backup misturado, então o backup feito depois que o jogo fecha é o confiável. Nada é restaurado sozinho."
+  "Starts with the next game you launch. Ludusavi copies the save files as they are at that moment: a game saving during the copy can leave a mixed backup, so the backup after the game closes is the one to trust. Nothing is restored on its own.": "Começa no próximo jogo que você abrir. O Ludusavi copia os arquivos de save como estão naquele momento: um jogo que salva durante a cópia pode deixar um backup misturado, então o backup feito depois que o jogo fecha é o confiável. Nada é restaurado sozinho.",
+  "Zoom": "Zoom",
+  "Everything on screen, text and pictures, bigger or smaller. Ctrl + and Ctrl − change it anywhere, Ctrl 0 goes back to the system's.": "Tudo na tela, textos e imagens, maior ou menor. Ctrl + e Ctrl − mudam em qualquer lugar, Ctrl 0 volta ao do sistema.",
+  "Follow the system": "Seguir o sistema",
+  "Zoom in or out": "Aumentar ou diminuir o zoom",
+  "Zoom back to the system's": "Zoom de volta ao do sistema",
+  "Zoom: {percent}%": "Zoom: {percent}%",
+  "Zoom: {percent}%, the system's": "Zoom: {percent}%, o do sistema",
+  "Nothing on this system asks for another size: {percent}%.": "Nada neste sistema pede outro tamanho: {percent}%.",
+  "{percent}%, from GDK_DPI_SCALE.": "{percent}%, de GDK_DPI_SCALE.",
+  "{percent}%, from QT_SCALE_FACTOR.": "{percent}%, de QT_SCALE_FACTOR.",
+  "{percent}%, from the desktop's text size.": "{percent}%, do tamanho de texto do desktop.",
+  "{percent}%, from Windows' text size.": "{percent}%, do tamanho de texto do Windows.",
+  "Console mode fills the screen by itself: this matters most in desktop mode.": "O modo console preenche a tela sozinho: isto vale mais no modo desktop."
 }

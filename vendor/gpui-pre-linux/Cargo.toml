@@ -58,6 +58,7 @@ wayland = [
     "xkbcommon/wayland",
     "open",
     "gpui/wayland",
+    "gpui-zoom/wayland",
 ]
 x11 = [
     "gpui_wgpu",
@@ -129,6 +130,10 @@ version = "0.3.34"
 version = "=0.3.8"
 default-features = false
 package = "gpui-pre"
+
+# Heronite: the interface scale every window opens at (see PATCHES.md).
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui-zoom]
+path = "../gpui-zoom"
 
 [target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies.gpui_util]
 version = "=0.3.8"

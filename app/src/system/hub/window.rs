@@ -9,8 +9,32 @@ use super::start::STARTED;
 use super::{hub, Hub, MainWindow};
 use crate::collection::CollectionView;
 
+/// The window's size when it opens, and its smallest one.
+const OPEN_SIZE: (f32, f32) = (1600., 1000.);
+const MIN_SIZE: (f32, f32) = (640., 480.);
+
+/// The screen the window most likely opens on: the primary one, else (Wayland
+/// names none) the smallest, so the window fits whichever it is.
+fn screen(cx: &App) -> Option<Size<Pixels>> {
+    let area = |s: &Size<Pixels>| f32::from(s.width) * f32::from(s.height);
+    cx.primary_display()
+        .map(|d| d.visible_bounds().size)
+        .or_else(|| cx.displays().iter().map(|d| d.visible_bounds().size).min_by(|a, b| area(a).total_cmp(&area(b))))
+}
+
+/// [`OPEN_SIZE`] and [`MIN_SIZE`], within 95% of `screen` (GPUI px, so the
+/// interface scale counts): a 4K TV at 300% is 1280 × 720. A 1080p screen
+/// keeps the full size.
+fn fitted_sizes(screen: Option<Size<Pixels>>) -> (Size<Pixels>, Size<Pixels>) {
+    let (open, min) = (size(px(OPEN_SIZE.0), px(OPEN_SIZE.1)), size(px(MIN_SIZE.0), px(MIN_SIZE.1)));
+    let Some(screen) = screen.filter(|s| f32::from(s.width) > 0. && f32::from(s.height) > 0.) else { return (open, min) };
+    let room = size(px((f32::from(screen.width) * 0.95).floor()), px((f32::from(screen.height) * 0.95).floor()));
+    (open.min(&room), min.min(&room))
+}
+
 fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<MainWindow> {
-    let bounds = Bounds::centered(None, size(px(1600.), px(1000.)), cx);
+    let (open_size, min_size) = fitted_sizes(screen(cx));
+    let bounds = Bounds::centered(None, open_size, cx);
     let options = WindowOptions {
         // Fullscreen keeps `bounds` for when F11 switches back.
         window_bounds: Some(if fullscreen { WindowBounds::Fullscreen(bounds) } else { WindowBounds::Windowed(bounds) }),
@@ -21,7 +45,7 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<
         window_decorations: Some(WindowDecorations::Client),
         app_id: Some("app.heronite.Heronite".into()),
         window_background: WindowBackgroundAppearance::Opaque,
-        window_min_size: Some(size(px(640.), px(480.))),
+        window_min_size: Some(min_size),
         // X11 only; Wayland's compositor takes the `.desktop` entry's.
         icon: cfg!(target_os = "linux").then(crate::system::app_icon::x11_window_icon).flatten(),
         ..Default::default()
@@ -167,4 +191,25 @@ pub(super) fn on_window_closed(cx: &mut App, id: WindowId) {
 /// notifications).
 pub fn has_window(cx: &App) -> bool {
     cx.try_global::<Hub>().is_some_and(|h| h.0.borrow().window.is_some())
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: GPUI's own `test` macro would shadow `#[test]`.
+    use super::{fitted_sizes, OPEN_SIZE};
+    use gpui_kit::{px, size};
+
+    #[test]
+    fn the_window_fits_the_screen() {
+        let open = size(px(OPEN_SIZE.0), px(OPEN_SIZE.1));
+        assert_eq!(fitted_sizes(None).0, open);
+        assert_eq!(fitted_sizes(Some(size(px(2560.), px(1440.)))).0, open);
+        assert_eq!(fitted_sizes(Some(size(px(1920.), px(1080.)))).0, open);
+        // A 4K TV at 300%.
+        let (o, m) = fitted_sizes(Some(size(px(1280.), px(720.))));
+        assert_eq!((o, m), (size(px(1216.), px(684.)), size(px(640.), px(480.))));
+        // At 200% on top of that: the smallest size fits too.
+        let (o, m) = fitted_sizes(Some(size(px(640.), px(360.))));
+        assert_eq!((o, m), (size(px(608.), px(342.)), size(px(608.), px(342.))));
+    }
 }

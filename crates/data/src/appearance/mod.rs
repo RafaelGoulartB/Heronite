@@ -2,6 +2,8 @@
 //! equivalent), kept in `AppPaths::appearance()` next to `ui-state.json`:
 //!
 //! - the opacity of the Collection background art (`collectionOpacity`, %);
+//! - the interface scale (`interfaceScale`, %; missing or `null` follows the
+//!   system, see the app's `system::ui_scale`);
 //! - the look of the interface surfaces (menus, dialogs, pages...): glass
 //!   (`interfaceMode: "transparent"`, art blurred behind translucent panels)
 //!   or solid, with the panel opacity, the blur and the solid tint;
@@ -37,6 +39,10 @@ pub const INTERFACE_BLUR_STEP: f32 = 5.;
 /// Window widths [`AutoView`] can switch at, logical px.
 pub const AUTO_VIEW_WIDTH_RANGE: (f32, f32) = (800., 2560.);
 pub const AUTO_VIEW_WIDTH_STEP: f32 = 20.;
+/// The interface scale picked by hand, %: 50 lets a 4K screen at 300% show
+/// what a 1080p one does at 150%, 300 makes a 1080p TV read from the couch.
+pub const INTERFACE_SCALE_RANGE: (f32, f32) = (50., 300.);
+pub const INTERFACE_SCALE_STEP: f32 = 5.;
 
 /// The Collection's view picked by the window's width: Grid while the window
 /// is narrower than `width`, Focus from `width` up. Off by default.
@@ -208,6 +214,9 @@ pub struct Appearance {
     pub accent_own: Option<Rgb>,
     /// Stronger secondary text and borders.
     pub high_contrast: bool,
+    /// The size of the whole interface, % ([`INTERFACE_SCALE_RANGE`]), on top
+    /// of the screen's own scale. `None` follows the system.
+    pub interface_scale: Option<f32>,
     pub font: FontChoice,
     pub density: Density,
     pub cover_corners: Corners,
@@ -247,6 +256,7 @@ impl Appearance {
         accent: Accent::DEFAULT,
         accent_own: None,
         high_contrast: false,
+        interface_scale: None,
         font: FontChoice::DEFAULT,
         density: Density::DEFAULT,
         cover_corners: Corners::DEFAULT,
@@ -275,6 +285,11 @@ fn own_colour(value: &Value, key: &str, light: bool) -> Option<Rgb> {
     (is_light_colour(c) == light).then_some(c)
 }
 
+/// `percent` on a step of [`INTERFACE_SCALE_STEP`] within [`INTERFACE_SCALE_RANGE`].
+pub fn interface_scale_step(percent: f32) -> f32 {
+    clamp(INTERFACE_SCALE_RANGE, (percent / INTERFACE_SCALE_STEP).round() * INTERFACE_SCALE_STEP)
+}
+
 fn clamp((lo, hi): (f32, f32), v: f32) -> f32 {
     if v.is_finite() {
         v.clamp(lo, hi)
@@ -290,15 +305,17 @@ impl Appearance {
         self.interface_opacity = clamp(INTERFACE_OPACITY_RANGE, self.interface_opacity).round();
         self.interface_blur = clamp(INTERFACE_BLUR_RANGE, (self.interface_blur / INTERFACE_BLUR_STEP).round() * INTERFACE_BLUR_STEP);
         self.auto_view.width = clamp(AUTO_VIEW_WIDTH_RANGE, (self.auto_view.width / AUTO_VIEW_WIDTH_STEP).round() * AUTO_VIEW_WIDTH_STEP);
+        self.interface_scale = self.interface_scale.filter(|v| v.is_finite()).map(interface_scale_step);
         self
     }
 
-    /// `self` with `other`'s window layout, [`Theme`] and custom colours. They
-    /// follow the window and the desktop, not a look: applying or matching a
-    /// profile neither changes nor breaks them.
+    /// `self` with `other`'s window layout and scale, [`Theme`] and custom
+    /// colours. They follow the window, the screen and the desktop, not a
+    /// look: applying or matching a profile neither changes nor breaks them.
     pub fn with_window_choices_of(self, other: &Appearance) -> Self {
         Self {
             auto_view: other.auto_view,
+            interface_scale: other.interface_scale,
             quick_toolbar_controls: other.quick_toolbar_controls,
             theme: other.theme,
             custom: other.custom,
@@ -332,6 +349,7 @@ impl Appearance {
             accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
             accent_own: name("accentColour").and_then(parse_hex),
             high_contrast: flag("highContrast", d.high_contrast),
+            interface_scale: value.get("interfaceScale").and_then(Value::as_f64).map(|v| v as f32),
             font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
             density: name("density").and_then(Density::parse).unwrap_or_default(),
             cover_corners: name("coverCorners").and_then(Corners::parse).unwrap_or_default(),
@@ -365,6 +383,7 @@ impl Appearance {
             "accent": self.accent.as_str(),
             "accentColour": self.accent_own.map(hex),
             "highContrast": self.high_contrast,
+            "interfaceScale": self.interface_scale,
             "font": self.font.as_str(),
             "density": self.density.as_str(),
             "coverCorners": self.cover_corners.as_str(),
@@ -479,6 +498,7 @@ mod tests {
             accent: Accent::Game,
             accent_own: Some((200, 90, 30)),
             high_contrast: true,
+            interface_scale: Some(120.),
             font: FontChoice::System,
             density: Density::Compact,
             cover_corners: Corners::Round,
@@ -597,6 +617,21 @@ mod tests {
         let (light, c) = own_panel((128, 128, 128));
         let muted = if light { Palette::LIGHT.muted } else { Palette::DARK.muted };
         assert!(contrast(c, muted) >= 4.5);
+    }
+
+    #[test]
+    fn interface_scale_follows_the_system_until_picked() {
+        for value in [json!({}), json!({"interfaceScale": null}), json!({"interfaceScale": "big"})] {
+            assert_eq!(Appearance::from_value(&value).interface_scale, None);
+        }
+        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 83})).interface_scale, Some(85.));
+        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 10})).interface_scale, Some(50.));
+        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 900})).interface_scale, Some(300.));
+        let picked = Appearance { interface_scale: Some(80.), ..Appearance::DEFAULT };
+        assert_eq!(Appearance::from_value(&picked.to_value()), picked);
+        assert_eq!(Appearance::DEFAULT.to_value()["interfaceScale"], Value::Null);
+        // A profile does not change it.
+        assert_eq!(Appearance::DEFAULT.with_window_choices_of(&picked).interface_scale, Some(80.));
     }
 
     #[test]

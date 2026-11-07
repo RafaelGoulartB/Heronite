@@ -71,6 +71,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Favourite star",
             "Under the pointer",
             "Text and motion",
+            "Zoom",
+            "Follow the system",
             "Font",
             "Density",
             "Animations",

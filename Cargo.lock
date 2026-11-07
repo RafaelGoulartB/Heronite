@@ -2964,6 +2964,7 @@ dependencies = [
  "gpui-pre-http-client",
  "gpui-pre-util",
  "gpui-pre-wgpu",
+ "gpui-zoom",
  "libc",
  "log",
  "notify-rust",
@@ -3265,6 +3266,7 @@ dependencies = [
  "gpui-pre-collections",
  "gpui-pre-scheduler",
  "gpui-pre-util",
+ "gpui-zoom",
  "image",
  "itertools 0.14.0",
  "log",
@@ -3308,6 +3310,17 @@ name = "gpui-pre-ztracing-macro"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d337c9acf058238e45ce0570d8a5958439242889492f91ae2d8e324211a61ccd"
+
+[[package]]
+name = "gpui-zoom"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "gpui-pre",
+ "raw-window-handle",
+ "uuid",
+ "windows 0.62.2",
+]
 
 [[package]]
 name = "granit-parser"
@@ -3508,6 +3521,7 @@ dependencies = [
  "futures",
  "gilrs",
  "gpui-kit",
+ "gpui-zoom",
  "heronite-achievements",
  "heronite-amazon",
  "heronite-backup",
