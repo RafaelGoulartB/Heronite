@@ -477,5 +477,18 @@
   "{percent}%, from QT_SCALE_FACTOR.": "{percent}%, de QT_SCALE_FACTOR.",
   "{percent}%, from the desktop's text size.": "{percent}%, do tamanho de texto do desktop.",
   "{percent}%, from Windows' text size.": "{percent}%, do tamanho de texto do Windows.",
-  "Console mode fills the screen by itself: this matters most in desktop mode.": "O modo console preenche a tela sozinho: isto vale mais no modo desktop."
+  "Console mode fills the screen by itself: this matters most in desktop mode.": "O modo console preenche a tela sozinho: isto vale mais no modo desktop.",
+  "A badge on each cover with the game's categories, such as VR or Demo.": "Um selo em cada capa com as categorias do jogo, como VR ou Demo.",
+  "Bookmarks": "Marcadores",
+  "Categories on covers": "Categorias nas capas",
+  "Circles": "Círculos",
+  "Click a style to turn the categories on with it.": "Clique em um estilo para ativar as categorias com ele.",
+  "Click a style to use it. The Collection changes at once.": "Clique em um estilo para usá-lo. A Coleção muda na hora.",
+  "Demo": "Demo",
+  "Each category has its own colour. Put a game in a category from its right-click menu.": "Cada categoria tem sua própria cor. Coloque um jogo em uma categoria pelo menu do botão direito.",
+  "Folded corner": "Canto dobrado",
+  "Ribbon": "Fita",
+  "Show categories on covers": "Mostrar categorias nas capas",
+  "Strip": "Faixa",
+  "Style": "Estilo"
 }

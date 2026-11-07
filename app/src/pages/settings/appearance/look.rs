@@ -6,12 +6,14 @@ use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView, Theme,
+    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView,
+    Theme,
 };
 use heronite_i18n::tr;
 
 use super::scheme::colour_dot as dot;
 use super::{apply_interface, set_scale, set_sliders, slider_of, Field, SettingsPage};
+use crate::collection::category_badges::{self as badges, CategoryBadge};
 use crate::icons::Icon;
 use crate::pages::PageEvent;
 use crate::system::ui_scale;
@@ -323,6 +325,135 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
         )
         .into_any_element(),
     ]
+}
+
+/// The styles of the categories on the covers, in the picker's order.
+pub(super) fn category_style_items() -> [(CategoryStyle, &'static str); 6] {
+    [
+        (CategoryStyle::Tags, tr!("Tags")),
+        (CategoryStyle::Band, tr!("Strip")),
+        (CategoryStyle::Ribbon, tr!("Ribbon")),
+        (CategoryStyle::Circles, tr!("Circles")),
+        (CategoryStyle::Bookmarks, tr!("Bookmarks")),
+        (CategoryStyle::Corner, tr!("Folded corner")),
+    ]
+}
+
+/// Size of a cover in the style picker: about a cover of the list (125px).
+const SAMPLE_W: f32 = 104.;
+const SAMPLE_H: f32 = 156.;
+
+/// The "Categories on covers" card: the switch, then every style drawn on
+/// a sample cover. Clicking one picks it (and turns the categories on), so
+/// the choice is made by looking, not by name. `scale`: the window's.
+pub(super) fn categories_group(d: &SettingsPage, scale: f32, cx: &mut Context<SettingsPage>) -> Div {
+    let a = d.appearance.ui;
+    let on = a.cover_categories;
+    let switch = toggle_row(
+        "cover-categories",
+        tr!("Show categories on covers"),
+        Some(tr!("A badge on each cover with the game's categories, such as VR or Demo.")),
+        on,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_categories = !on)));
+    let samples = [CategoryBadge::new("VR", 0), CategoryBadge::new(tr!("Demo"), 1)];
+    let radius = a.cover_corners.radius();
+    let tiles = category_style_items().into_iter().map(|(style, label)| {
+        let picked = on && a.category_style == style;
+        let cover = div()
+            .relative()
+            .w(px(SAMPLE_W))
+            .h(px(SAMPLE_H))
+            .rounded(px(radius))
+            .bg(linear_gradient(
+                160.,
+                linear_color_stop(theme::rgb_a(0x2b, 0x3a, 0x77, 1.), 0.),
+                linear_color_stop(theme::rgb_a(0x7a, 0x3f, 0xa8, 1.), 1.),
+            ))
+            .shadow(vec![BoxShadow {
+                color: theme::shadow_a(0.35),
+                offset: point(px(0.), px(6.)),
+                blur_radius: px(16.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+            .child(
+                div()
+                    .absolute()
+                    .top(px(34.))
+                    .left_0()
+                    .right_0()
+                    .text_center()
+                    .text_size(px(13.))
+                    .line_height(px(13.))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::white_a(0.85))
+                    .child("STARFALL"),
+            )
+            .children(badges::overlay(style, &samples, badges::Area { w: SAMPLE_W, radius, scale, unit: 1., play_room: true }, false))
+            .when(picked, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .top(px(-3.))
+                        .left(px(-3.))
+                        .right(px(-3.))
+                        .bottom(px(-3.))
+                        .rounded(px(radius + 3.))
+                        .border_2()
+                        .border_color(theme::accent()),
+                )
+            });
+        div()
+            .id(SharedString::from(format!("category-style-{}", style.as_str())))
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(8.))
+            .cursor_pointer()
+            .when(!on, |d| d.opacity(0.55))
+            .hover(|d| d.opacity(1.))
+            .on_click(cx.listener(move |d, _, _, cx| {
+                set_look(d, cx, |a| {
+                    a.cover_categories = true;
+                    a.category_style = style;
+                })
+            }))
+            .child(cover)
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .font_weight(if picked { theme::W_BOLD } else { theme::W_500 })
+                    .text_color(if picked { theme::accent() } else { theme::text_muted() })
+                    .child(label),
+            )
+    });
+    let gallery = div()
+        .flex()
+        .flex_col()
+        .gap(px(12.))
+        .py(px(12.))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(1.))
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Style")))
+                .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(if on {
+                    tr!("Click a style to use it. The Collection changes at once.")
+                } else {
+                    tr!("Click a style to turn the categories on with it.")
+                })),
+        )
+        .child(div().flex().flex_wrap().gap_x(px(18.)).gap_y(px(16.)).pt(px(4.)).pb(px(2.)).children(tiles))
+        .child(
+            div()
+                .text_size(px(12.))
+                .line_height(px(16.))
+                .text_color(theme::text_dim())
+                .child(tr!("Each category has its own colour. Put a game in a category from its right-click menu.")),
+        );
+    card([switch.into_any_element(), gallery.into_any_element()])
 }
 
 /// The Collection background card's picture row, with the slideshow or the

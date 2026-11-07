@@ -170,6 +170,25 @@ choice! {
 }
 
 choice! {
+    /// How a game's categories show on its cover, when they show
+    /// ([`super::Appearance::cover_categories`]).
+    CategoryStyle {
+        /// A diagonal ribbon across the top-right corner (the first category).
+        Ribbon = "ribbon",
+        /// Small tags at the bottom-left, a dot of the category's colour in each.
+        Tags = "tags",
+        /// A coloured strip along the bottom, split between the categories.
+        Band = "band",
+        /// Round coloured badges with the categories' initials, by the star.
+        Circles = "circles",
+        /// Bookmark ribbons hanging from the top edge, on the right.
+        Bookmarks = "bookmarks",
+        /// A folded top-right corner in the first category's colour.
+        Corner = "corner",
+    } default Tags
+}
+
+choice! {
     /// The picture behind the Collection.
     BackgroundSource {
         /// The selected game's hero art.
