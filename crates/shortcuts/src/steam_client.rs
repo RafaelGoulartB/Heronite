@@ -532,8 +532,8 @@ impl WebSocket {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod testing {
+#[cfg(any(test, feature = "test-support"))]
+pub mod testing {
     //! A fake Steam debugger: `/json` plus a WebSocket that answers every
     //! `Runtime.evaluate` with `reply(expression)`.
 

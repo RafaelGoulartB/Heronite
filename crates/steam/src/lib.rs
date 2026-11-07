@@ -139,6 +139,10 @@ pub struct Steam {
     pub client: SteamClient,
 }
 
+/// The end of [`Steam::library_check`]'s why when the client answers but
+/// has not loaded the library yet.
+const STILL_LOADING: &str = "it answers but is still loading the library";
+
 /// Whether the library can be read from the client now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryAccess {
@@ -146,7 +150,7 @@ pub enum LibraryAccess {
     /// Steam is not running.
     Closed,
     /// Steam runs and its client will answer: it is still starting,
-    /// updating or waiting for the user to sign in.
+    /// updating, waiting for the user to sign in, or loading the library.
     Starting,
     /// Steam runs without its debugging interface: it started before the
     /// flag file was there (it is now, for its next start).
@@ -365,8 +369,11 @@ impl Steam {
         if !running {
             return (LibraryAccess::Closed, None);
         }
-        let probe = match self.client.probe() {
-            Ok(()) => return (LibraryAccess::Ready, None),
+        // An answer is not enough: until the client has the library loaded,
+        // a read finds it empty. Still starting, so the checks follow closely.
+        let probe = match self.client.probe().and_then(|()| library::library_loaded(&self.client)) {
+            Ok(true) => return (LibraryAccess::Ready, None),
+            Ok(false) => STILL_LOADING.to_string(),
             Err(e) => format!("{e:#}"),
         };
         // Until its interface process starts, Steam is updating or starting;
@@ -389,6 +396,9 @@ impl Steam {
         match access {
             LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
             LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
+            LibraryAccess::Starting if why.as_deref().is_some_and(|w| w.ends_with(STILL_LOADING)) => {
+                Err(tr!("Steam is still loading your library. It is read by itself as soon as Steam has it.").to_string())
+            }
             // The why is technical, but it is what tells a stuck client apart.
             LibraryAccess::Starting => Err(tr!(
                 "Steam is running but does not answer Heronite yet ({why}). If it is updating or asking you to sign in, finish that; otherwise restart Steam once.",
