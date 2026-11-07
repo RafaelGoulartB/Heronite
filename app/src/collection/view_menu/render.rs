@@ -579,7 +579,8 @@ impl CollectionView {
     }
 
     fn vm_footer(&self, cx: &mut Context<Self>) -> Div {
-        let shown: usize = self.groups.iter().map(|g| g.cards.len()).sum();
+        // A game in several groups (genres, game modes...) counts once.
+        let shown = distinct(self.groups.iter().flat_map(|g| g.cards.iter().map(|c| &c.key)));
         let total = self.lib.as_deref().map_or(0, |l| l.games.len());
         let filtered = self.ui.active_filters() > 0 || self.ui.show_hidden;
         div()
@@ -742,4 +743,17 @@ pub(super) fn seg_item(id: impl Into<ElementId>, on: bool, d: Density) -> Statef
         .text_color(if on { theme::text_bright() } else { theme::seg_text().into() })
         .when(on, |d| d.bg(theme::seg_active()))
         .when(!on, |d| d.hover(|s| s.text_color(theme::text_bright())))
+}
+
+fn distinct<T: std::hash::Hash + Eq>(items: impl Iterator<Item = T>) -> usize {
+    items.collect::<std::collections::HashSet<_>>().len()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_game_in_several_groups_counts_once() {
+        assert_eq!(super::distinct(["a", "b", "a", "c", "b"].into_iter()), 3);
+        assert_eq!(super::distinct(std::iter::empty::<&str>()), 0);
+    }
 }

@@ -109,6 +109,7 @@ pub(super) fn group_icon(by: GroupBy) -> Option<Icon> {
         GroupBy::Genre => Icon::Palette,
         GroupBy::Developer => Icon::Build,
         GroupBy::Series => Icon::Folder,
+        GroupBy::GameMode => Icon::AccountCircle,
         GroupBy::Year => Icon::Event,
         GroupBy::Playtime => Icon::AccessTime,
         GroupBy::InstallSize => Icon::FaHardDrive,
@@ -196,6 +197,9 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     }
     if !d.themes.is_empty() {
         rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes, Some("theme")), split: true });
+    }
+    if !d.game_modes.is_empty() {
+        rows.push(DetailRow { label: tr!("Game modes").into(), value: chips(&d.game_modes, Some("gameMode")), split: true });
     }
     if d.platforms.len() > 1 {
         // The PC ones first: this is a PC launcher.
