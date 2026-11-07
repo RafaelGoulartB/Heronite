@@ -330,12 +330,12 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
 /// The styles of the categories on the covers, in the picker's order.
 pub(super) fn category_style_items() -> [(CategoryStyle, &'static str); 6] {
     [
+        (CategoryStyle::Corner, tr!("Folded corner")),
         (CategoryStyle::Tags, tr!("Tags")),
         (CategoryStyle::Band, tr!("Strip")),
         (CategoryStyle::Ribbon, tr!("Ribbon")),
         (CategoryStyle::Circles, tr!("Circles")),
         (CategoryStyle::Bookmarks, tr!("Bookmarks")),
-        (CategoryStyle::Corner, tr!("Folded corner")),
     ]
 }
 
@@ -343,9 +343,9 @@ pub(super) fn category_style_items() -> [(CategoryStyle, &'static str); 6] {
 const SAMPLE_W: f32 = 104.;
 const SAMPLE_H: f32 = 156.;
 
-/// The "Categories on covers" card: the switch, then every style drawn on
-/// a sample cover. Clicking one picks it (and turns the categories on), so
-/// the choice is made by looking, not by name. `scale`: the window's.
+/// The "Categories on covers" card: the switch and, while it is on, every
+/// style drawn on a sample cover. Clicking one picks it, so the choice is
+/// made by looking, not by name. `scale`: the window's.
 pub(super) fn categories_group(d: &SettingsPage, scale: f32, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     let on = a.cover_categories;
@@ -359,7 +359,7 @@ pub(super) fn categories_group(d: &SettingsPage, scale: f32, cx: &mut Context<Se
     let samples = [CategoryBadge::new("VR", 0), CategoryBadge::new(tr!("Demo"), 1)];
     let radius = a.cover_corners.radius();
     let tiles = category_style_items().into_iter().map(|(style, label)| {
-        let picked = on && a.category_style == style;
+        let picked = a.category_style == style;
         let cover = div()
             .relative()
             .w(px(SAMPLE_W))
@@ -411,14 +411,7 @@ pub(super) fn categories_group(d: &SettingsPage, scale: f32, cx: &mut Context<Se
             .items_center()
             .gap(px(8.))
             .cursor_pointer()
-            .when(!on, |d| d.opacity(0.55))
-            .hover(|d| d.opacity(1.))
-            .on_click(cx.listener(move |d, _, _, cx| {
-                set_look(d, cx, |a| {
-                    a.cover_categories = true;
-                    a.category_style = style;
-                })
-            }))
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.category_style = style)))
             .child(cover)
             .child(
                 div()
@@ -439,11 +432,13 @@ pub(super) fn categories_group(d: &SettingsPage, scale: f32, cx: &mut Context<Se
                 .flex_col()
                 .gap(px(1.))
                 .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Style")))
-                .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(if on {
-                    tr!("Click a style to use it. The Collection changes at once.")
-                } else {
-                    tr!("Click a style to turn the categories on with it.")
-                })),
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .line_height(px(16.))
+                        .text_color(theme::text_dim())
+                        .child(tr!("Click a style to use it. The Collection changes at once.")),
+                ),
         )
         .child(div().flex().flex_wrap().gap_x(px(18.)).gap_y(px(16.)).pt(px(4.)).pb(px(2.)).children(tiles))
         .child(
@@ -453,7 +448,8 @@ pub(super) fn categories_group(d: &SettingsPage, scale: f32, cx: &mut Context<Se
                 .text_color(theme::text_dim())
                 .child(tr!("Each category has its own colour. Put a game in a category from its right-click menu.")),
         );
-    card([switch.into_any_element(), gallery.into_any_element()])
+    let rows = if on { vec![gallery.into_any_element()] } else { Vec::new() };
+    card([with_sub_rows(switch.into_any_element(), rows)])
 }
 
 /// The Collection background card's picture row, with the slideshow or the
