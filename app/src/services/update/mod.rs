@@ -784,7 +784,8 @@ impl Updater {
         cx.notify();
     }
 
-    /// "Later": hides the banner of this version for this session.
+    /// "Ignore" or "Later": hides the banner of this version for this
+    /// session. It is back after a restart, or with a check asked for.
     pub fn dismiss(&mut self, cx: &mut Context<Self>) {
         self.dismissed = self.release.as_ref().map(|r| r.version.clone());
         if matches!(self.phase, Phase::InstallFailed(_)) {
