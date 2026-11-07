@@ -8,12 +8,13 @@ use heronite_data::models::GameInfo;
 use heronite_i18n::tr;
 use serde_json::Value;
 
+use crate::args::split_windows_args;
 use crate::emulators::node_dirname;
 #[cfg(not(windows))]
 use crate::env::join;
 use crate::host::{run_mode, unavailable_reason, Os, RunMode};
 use crate::legendary::{cached_umu_id, known_fixes_env, known_fixes_steps};
-use crate::plan::{split_args, windows_plan, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, SetupStep, WineRuntime};
+use crate::plan::{windows_plan, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, SetupStep, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::GameSettings;
 use crate::wine;
@@ -77,7 +78,7 @@ fn outside_strings(text: &str, skip: impl Fn(&str) -> Option<usize>) -> String {
 fn strings(v: Option<&Value>) -> Vec<String> {
     match v {
         Some(Value::Array(a)) => a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect(),
-        Some(Value::String(s)) => split_args(s),
+        Some(Value::String(s)) => split_windows_args(s),
         _ => Vec::new(),
     }
 }
@@ -233,7 +234,7 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
             (path_in(install_path, &fuel.command), fuel.args.clone(), cwd)
         }
     };
-    args.extend(split_args(&settings.launcher_args));
+    args.extend(split_windows_args(&settings.launcher_args));
     args.extend(opts.extra_args.iter().cloned());
 
     if mode == RunMode::Native {
