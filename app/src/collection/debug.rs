@@ -130,10 +130,11 @@ impl CollectionView {
 
     /// `HERONITE_DEBUG_TOOLBAR=sort:playtime,direction,install:installed,
     /// favourites,group:status,preset:0,reset,toolbar:off,toolbar:on,
-    /// open:sort,hover:on`: runs the same actions as the controls, 1.2 seconds apart,
+    /// open:sort,hover:on,age:12,age:unrated`: runs the same actions as the controls, 1.2 seconds apart,
     /// without OS input. Presets are zero-based; use a scratch profile as
     /// these actions persist. `open` accepts sort/install/group/presets;
-    /// `hover` shows or hides the View button's arrow as a pointer would.
+    /// `hover` shows or hides the View button's arrow as a pointer would;
+    /// `age` sets "Ages up to" (`unrated` also shows the unrated games).
     fn debug_toolbar(&mut self, steps: String, cx: &mut Context<Self>) {
         let steps: Vec<String> = steps.split(',').map(str::to_owned).collect();
         cx.spawn(async move |this, cx| {
@@ -172,6 +173,13 @@ impl CollectionView {
                                 }
                             }
                             Some(("hover", value @ ("on" | "off"))) => this.toolbar.debug_hover(value == "on"),
+                            Some(("age", value)) => {
+                                let age = match value.parse::<u8>() {
+                                    Ok(max) => heronite_data::age_rating::AgeFilter { max: Some(max), ..this.ui.age },
+                                    Err(_) => heronite_data::age_rating::AgeFilter { unrated: value == "unrated", ..this.ui.age },
+                                };
+                                this.apply_pick(&super::view_menu::Pick::Age(age), cx);
+                            }
                             Some(("toolbar", value @ ("on" | "off"))) => {
                                 this.set_look(|a| a.quick_toolbar_controls = value == "on", cx);
                             }

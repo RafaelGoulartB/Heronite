@@ -6,6 +6,7 @@
 //! Everything is blocking. Run calls on worker threads; the service is
 //! `Send + Sync`, keep it in an `Arc`.
 
+mod age_fill;
 mod bulk;
 
 pub use bulk::AUTO_FILL_BATCH;
@@ -79,6 +80,7 @@ pub struct MetadataService {
     bulk_cancel: AtomicBool,
     bulk_running: AtomicBool,
     filling: AtomicBool,
+    rating_fill: AtomicBool,
 }
 
 impl MetadataService {
@@ -100,6 +102,7 @@ impl MetadataService {
             bulk_cancel: AtomicBool::new(false),
             bulk_running: AtomicBool::new(false),
             filling: AtomicBool::new(false),
+            rating_fill: AtomicBool::new(false),
         }
     }
 

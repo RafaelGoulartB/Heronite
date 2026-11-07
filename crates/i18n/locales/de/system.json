@@ -240,5 +240,6 @@
   "Its installed games, with their covers and play time. Playnite keeps starting them, with the settings and emulators you gave them there. Its Steam, Epic, GOG, Amazon, Xbox, Battle.net, EA and Ubisoft games are left to their own pages here.": "Seine installierten Spiele, mit Covern und Spielzeit. Playnite startet sie weiterhin, mit den Einstellungen und Emulatoren, die du dort festgelegt hast. Seine Spiele von Steam, Epic, GOG, Amazon, Xbox, Battle.net, EA und Ubisoft bleiben hier ihren eigenen Seiten überlassen.",
   "Open right now: close it to read its games": "Gerade geöffnet: schließe es, um seine Spiele zu lesen",
   "Bring in games from Playnite": "Spiele aus Playnite importieren",
-  "Bring in the games of Playnite. While on, a game added there shows up here too.": "Importiert die Spiele aus Playnite. Solange aktiviert, erscheint ein dort hinzugefügtes Spiel auch hier."
+  "Bring in the games of Playnite. While on, a game added there shows up here too.": "Importiert die Spiele aus Playnite. Solange aktiviert, erscheint ein dort hinzugefügtes Spiel auch hier.",
+  "Backed up {name} while playing": "Backup von {name} während des Spielens erstellt"
 }

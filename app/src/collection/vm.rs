@@ -33,6 +33,9 @@ pub(super) struct CardVm {
     pub favourite: bool,
     /// Index into the images the view keeps (cover chain id).
     pub cover_key: SharedString,
+    /// How many copies of the game (from several stores) this card stands
+    /// for; `0` when it is the only one.
+    pub copies: usize,
 }
 
 #[derive(Clone)]
@@ -180,6 +183,20 @@ pub(super) struct StatusVm {
     pub color: Rgba,
 }
 
+/// The age rating of the facts card (`heronite_data::age_rating`).
+#[derive(Clone)]
+pub(super) struct AgeVm {
+    /// "ESRB".
+    pub board: SharedString,
+    /// "T", "12", "MA 15+".
+    pub badge: SharedString,
+    /// "Teen", "Ages 12 and up".
+    pub title: SharedString,
+    /// The reasons, joined ("Blood, Mild Violence"); empty when none came.
+    pub reasons: SharedString,
+    pub min_age: Option<u8>,
+}
+
 #[derive(Clone)]
 pub(super) struct FocusVm {
     pub key: SharedString,
@@ -191,6 +208,10 @@ pub(super) struct FocusVm {
     pub overview_html: Option<Arc<Vec<super::html::Block>>>,
     pub related: Vec<RelatedGroupVm>,
     pub details: Vec<DetailRow>,
+    /// `None`: no board rated the game.
+    pub age: Option<AgeVm>,
+    /// Settings → Metadata → "Show age ratings": the facts card has its row.
+    pub age_shown: bool,
     pub hltb: Option<HltbVm>,
     /// Current status (left column selector), `None` when the stored id is unknown.
     pub status: Option<StatusVm>,
@@ -230,6 +251,7 @@ mod tests {
                 hidden: false,
                 favourite: false,
                 cover_key: "".into(),
+                copies: 0,
             })
         };
         GroupVm {

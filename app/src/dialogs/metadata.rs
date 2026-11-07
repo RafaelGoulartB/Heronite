@@ -38,6 +38,7 @@ pub fn field_label(field: &str) -> &'static str {
         "series" => tr!("Series"),
         "features" => tr!("Features"),
         "criticScore" => tr!("Score"),
+        "ageRatings" => tr!("Age ratings"),
         "cover" => tr!("Cover"),
         "hero" => tr!("Background"),
         _ => "",
@@ -74,6 +75,9 @@ fn format_value(md: Option<&CollectionGameMetadata>, field: &str) -> String {
         "gameModes" => join(&m.game_modes),
         "platforms" => join(&m.platforms),
         "features" => join(&m.features),
+        "ageRatings" => {
+            m.age_ratings.iter().map(|r| format!("{} {}", r.board().map_or("", |b| b.name()), r.badge())).collect::<Vec<_>>().join(", ")
+        }
         _ => String::new(),
     }
 }

@@ -76,6 +76,8 @@ pub(super) struct Facts {
     ratings_loading: bool,
     /// Star under the pointer (preview of a new rating).
     pub rating_hover: Option<u8>,
+    /// The "Age rating" row is pointed at: its hide button shows.
+    pub age_hovered: bool,
     pub status_open: bool,
     /// The other ways to install, under the Install button.
     pub install_menu_open: bool,
@@ -258,19 +260,26 @@ impl CollectionView {
         .detach();
     }
 
-    /// Sets (or, with `None`, clears) the rating of `key`; saved off the UI thread.
+    /// Sets (or, with `None`, clears) the rating of `key` (of every copy
+    /// while they are grouped); saved off the UI thread.
     pub(super) fn set_rating(&mut self, key: &str, stars: Option<u8>, cx: &mut Context<Self>) {
+        let mut keys: Vec<String> = self.with_copies(key).iter().map(|g| g.key.clone()).collect();
+        if keys.is_empty() {
+            keys.push(key.to_string());
+        }
         let map = self.facts.ratings.get_or_insert_with(HashMap::new);
-        match stars {
-            Some(s) => map.insert(key.to_string(), s),
-            None => map.remove(key),
-        };
+        for k in &keys {
+            match stars {
+                Some(s) => map.insert(k.clone(), s),
+                None => map.remove(k),
+            };
+        }
         if self.ui.sort == heronite_data::SortMode::Rating {
             self.refresh_groups();
         }
-        let (paths, key) = (self.data_paths.clone(), key.to_string());
+        let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { ratings::set_rating(&paths, &key, stars) }).await;
+            let res = cx.background_spawn(async move { keys.iter().try_for_each(|k| ratings::set_rating(&paths, k, stars)) }).await;
             if let Err(err) = res {
                 this.update(cx, |this, cx| this.show_toast(tr!("Could not save the rating: {err}", err = format!("{err:#}")), true, cx))
                     .ok();

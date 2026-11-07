@@ -36,6 +36,8 @@ pub fn init(
     let settings = SysSettings::load(&data_paths);
     // The tray needs the saved theme even when startup opens no window.
     crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&heronite_data::AppPaths::for_data(&data_paths)));
+    // Every window opens at the interface scale.
+    crate::system::ui_scale::init();
     // Points the entry at this executable (a new AppImage may live elsewhere),
     // or removes one left behind while the setting is off.
     let (autostart_paths, autostart_on) = (data_paths.clone(), settings.start_with_system);

@@ -190,6 +190,11 @@ impl CollectionView {
             window.toggle_fullscreen();
             return true;
         }
+        // Ctrl + / Ctrl − / Ctrl 0: the interface scale, in both modes.
+        if let Some(percent) = crate::system::ui_scale::shortcut(ks) {
+            self.set_ui_scale(percent, cx);
+            return true;
+        }
         if crate::console::active() {
             return self.console_key(ks, window, cx);
         }

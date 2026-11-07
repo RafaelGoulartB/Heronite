@@ -79,6 +79,10 @@ pub(super) enum GameAction {
         add: bool,
     },
     Epic(EpicAction),
+    /// Plays (or installs) this copy of the game (a Collection key).
+    PlayCopy(String),
+    /// Takes the game's copies apart.
+    UngroupCopies,
 }
 
 #[derive(Clone, Debug)]
@@ -300,6 +304,7 @@ impl CollectionView {
         }
         v.extend(self.extras_actions(game));
         v.extend(self.steam_copy_actions(game));
+        v.extend(self.copies_actions(game));
         v.extend(self.epic_actions(game, cx));
         v.extend(self.system_actions(game, cx));
 
@@ -348,10 +353,8 @@ impl CollectionView {
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
             A::Category { name, on } => self.set_game_category(key, name, *on, cx),
-            A::Favourite => {
-                self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_favourite(paths, &g.app_name, &g.title))
-            }
-            A::Hide => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_hidden(paths, &g.app_name, &g.title)),
+            A::Favourite => self.toggle_favourite_of(key, cx),
+            A::Hide => self.toggle_hidden_of(key, cx),
             A::RemoveRecent => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::remove_recent(paths, &g.app_name)),
             A::OpenFolder => self.open_install_folder(key, cx),
             A::Settings => {
@@ -380,6 +383,8 @@ impl CollectionView {
             A::Shortcuts { add } => self.run_shortcuts(key, *add, cx),
             A::Steam { add } => self.run_steam_shortcut(key, *add, cx),
             A::Epic(a) => self.run_epic_action(key, *a, cx),
+            A::PlayCopy(copy) => self.play_copy(copy, cx),
+            A::UngroupCopies => self.ungroup_copies(key, cx),
         }
         cx.notify();
     }

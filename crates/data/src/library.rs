@@ -27,7 +27,9 @@ use anyhow::Result;
 use heronite_i18n::tr;
 use serde_json::Value;
 
+use crate::age_rating::{self, AgeRating, RatingSystem};
 use crate::collection::{game_facets, GameFacets};
+use crate::copies::{CopiesFile, CopyGroups, Totals};
 use crate::focus::Details;
 use crate::json_store;
 use crate::models::*;
@@ -87,6 +89,9 @@ pub struct CollectionGame {
     /// [`focus_details`](crate::focus::focus_details) for the full chain.
     pub details: Details,
     pub facets: GameFacets,
+    /// The rating the Collection shows and filters by
+    /// ([`age_rating::shown`] in [`Library::age_order`]); `None` = not rated.
+    pub age_rating: Option<AgeRating>,
 
     // Raw models, shared with the stores they came from.
     pub game: Arc<GameInfo>,
@@ -117,6 +122,8 @@ pub(crate) struct BuildInputs<'a> {
     pub recent: bool,
     pub hidden: bool,
     pub statuses: &'a [CompletionStatus],
+    /// [`Library::age_order`].
+    pub age_order: &'a [RatingSystem],
 }
 
 /// `libraryLabel` of the Focus panel (the `SOURCE_LABELS` table, then the
@@ -154,7 +161,21 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
 
 impl CollectionGame {
     pub(crate) fn build(input: BuildInputs<'_>) -> Self {
-        let BuildInputs { game, steam, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, hidden, statuses } = input;
+        let BuildInputs {
+            game,
+            steam,
+            overrides,
+            meta,
+            metadata,
+            art,
+            timestamp,
+            sessions,
+            favourite,
+            recent,
+            hidden,
+            statuses,
+            age_order,
+        } = input;
         let title = display_title(&game, overrides.as_ref(), metadata.as_deref());
         let status_raw = meta.as_deref().and_then(|m| m.completion_status_id.clone()).filter(|s| !s.is_empty());
         let via_steam = !game.is_installed && steam.as_ref().is_some_and(|s| s.installed);
@@ -174,6 +195,7 @@ impl CollectionGame {
             _ => None,
         };
         let details = Details::compute(&game, meta.as_deref(), metadata.as_deref(), None, None);
+        let age_rating = metadata.as_deref().and_then(|m| age_rating::shown(&m.age_ratings, age_order)).cloned();
         let mut facets = game_facets(&game, metadata.as_deref());
         facets[crate::collection::FacetKind::Store.index()] = crate::collection::store_facet(
             meta.as_deref().map(|m| m.source.as_str()),
@@ -206,6 +228,7 @@ impl CollectionGame {
             via_steam,
             details,
             facets,
+            age_rating,
             game: Arc::new(game),
             overrides,
             meta,
@@ -434,6 +457,7 @@ fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
         paths.timestamps(),
         paths.store_config(),
         paths.steam_owned(),
+        paths.copies(),
     ]
 }
 
@@ -450,6 +474,11 @@ pub struct Library {
     pub statuses: Vec<CompletionStatus>,
     pub settings: EffectiveSettings,
     pub date_locale: DateLocale,
+    /// Games owned in several stores ([`crate::copies`]).
+    pub copies: CopyGroups,
+    /// The boards in the order a game's rating is looked for (Settings →
+    /// Metadata → Age rating, else the interface language's).
+    pub age_order: Vec<RatingSystem>,
     index: HashMap<String, usize>,
     files: Vec<PathBuf>,
     stamp: FileStamp,
@@ -634,6 +663,7 @@ impl Library {
 
         let statuses = sorted_or_default(statuses_file.statuses);
         let settings = EffectiveSettings::for_paths(paths, &settings_file, &config);
+        let age_order = age_rating::board_order(&settings.metadata.age_rating_system, heronite_i18n::current());
 
         let config_games = config.games.unwrap_or_default();
         let hidden: HashSet<&str> = config_games.hidden.iter().map(|g| g.app_name.as_str()).collect();
@@ -688,6 +718,7 @@ impl Library {
                 recent: recent.contains(app.as_str()),
                 hidden: hidden.contains(app.as_str()),
                 statuses: &statuses,
+                age_order: &age_order,
                 game,
             });
             names.apply_facets(&mut built.facets);
@@ -695,12 +726,15 @@ impl Library {
         }
 
         let index = games.iter().enumerate().map(|(i, g)| (g.key.clone(), i)).collect();
+        let copies = crate::copies::groups(&games, &CopiesFile::read(paths));
         Ok(Library {
+            copies,
             paths: paths.clone(),
             date_locale: DateLocale::from_language(&settings.language),
             games,
             statuses,
             settings,
+            age_order,
             index,
             files,
             stamp,
@@ -710,6 +744,27 @@ impl Library {
     /// A game by its `runner_appName` key.
     pub fn get(&self, key: &str) -> Option<&Arc<CollectionGame>> {
         self.index.get(key).map(|i| &self.games[*i])
+    }
+
+    /// The copies of the game `key` in their play order (the default first);
+    /// just the game when it has no other copy.
+    pub fn copies_of(&self, key: &str) -> Vec<&Arc<CollectionGame>> {
+        match self.copies.get(key) {
+            Some(group) => group.members.iter().filter_map(|k| self.get(k)).collect(),
+            None => self.get(key).into_iter().collect(),
+        }
+    }
+
+    /// The copy that Play starts for the game `key`: the first installed copy
+    /// in the play order, else the game itself (whose Play installs it).
+    pub fn launch_copy(&self, key: &str) -> Option<&Arc<CollectionGame>> {
+        let copies = self.copies_of(key);
+        copies.iter().find(|g| g.installed).or_else(|| copies.iter().find(|g| g.key == key)).copied()
+    }
+
+    /// The game's figures with every copy (see [`crate::copies::totals`]).
+    pub fn copy_totals(&self, key: &str) -> Totals {
+        crate::copies::totals(self.copies_of(key).into_iter().map(|g| &**g))
     }
 
     /// True when any file the library was built from changed since [`Library::load`]
@@ -751,6 +806,7 @@ pub(crate) mod tests_support {
             recent: false,
             hidden: false,
             statuses: &statuses,
+            age_order: &crate::age_rating::board_order(crate::age_rating::AUTO, heronite_i18n::Lang::En),
         }))
     }
 
@@ -771,6 +827,8 @@ pub(crate) mod tests_support {
         pub offline: Option<bool>,
         /// The store's own title, when the Collection shows another one.
         pub store_title: Option<String>,
+        /// A Steam entry (`steam-uri`) of this app id.
+        pub steam_launch: Option<String>,
     }
 
     pub fn game(app: &str, title: &str, f: impl FnOnce(&mut Spec)) -> Arc<CollectionGame> {
@@ -800,8 +858,15 @@ pub(crate) mod tests_support {
                 ..Default::default()
             })
         });
-        let meta = spec.status.clone().map(|s| {
-            Arc::new(LocalGameMeta { app_name: app.into(), runner: "sideload".into(), completion_status_id: Some(s), ..Default::default() })
+        let meta = (spec.status.is_some() || spec.steam_launch.is_some()).then(|| {
+            Arc::new(LocalGameMeta {
+                app_name: app.into(),
+                runner: "sideload".into(),
+                completion_status_id: spec.status.clone(),
+                launch_kind: if spec.steam_launch.is_some() { "steam-uri".into() } else { String::new() },
+                steam_app_id: spec.steam_launch.clone(),
+                ..Default::default()
+            })
         });
         let timestamp = TimestampEntry {
             first_played: spec.first_played.clone(),
@@ -823,6 +888,7 @@ pub(crate) mod tests_support {
             recent: false,
             hidden: false,
             statuses: &statuses,
+            age_order: &crate::age_rating::board_order(crate::age_rating::AUTO, heronite_i18n::Lang::En),
         }))
     }
 }

@@ -147,6 +147,12 @@ impl CollectionView {
             .flex_col()
             .gap(px(12.))
             .child(mode)
+            .child(
+                option_row(tr!("Group copies of a game"), toggle("group-copies-sw", self.ui.group_copies, false))
+                    .id("group-copies")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.set_group_copies(!this.ui.group_copies, cx))),
+            )
             .child(separator())
             .child(
                 div()
@@ -734,7 +740,7 @@ impl CollectionView {
                 && self.ui.focus_cover_size == FocusCoverSize::default()
                 && Section::ALL.iter().all(|s| a.sections.shown(*s))
         };
-        covers && background && panels && mode
+        covers && background && panels && mode && self.ui.group_copies
     }
 
     /// "Reset to defaults": the current mode's options, the covers' look,
@@ -753,7 +759,9 @@ impl CollectionView {
             self.ui.focus_list = false;
             self.ui.focus_cover_size = FocusCoverSize::default();
         }
+        self.ui.group_copies = true;
         self.save_ui();
+        self.refresh_groups();
         let bg = BackgroundSettings::default();
         self.stage_enabled = bg.enabled;
         self.blur_px = bg.blur.get() as f32;
@@ -778,6 +786,14 @@ impl CollectionView {
             cx,
         );
         self.relayout_cards(cx);
+    }
+
+    /// "Group copies of a game": one card per game, or one per copy.
+    pub(super) fn set_group_copies(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.ui.group_copies = on;
+        self.save_ui();
+        self.refresh_groups();
+        cx.notify();
     }
 
     fn set_open_on_select(&mut self, on: bool, cx: &mut Context<Self>) {

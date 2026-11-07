@@ -2,8 +2,9 @@
 //! covers, motion and layout.
 //!
 //! - Profiles (`profiles.rs`): built-in and saved looks, export / import.
-//! - Colour, reading, the cover options, the background picture, motion and
-//!   layout (`look.rs`): `appearance.json`, applied at once.
+//! - Colour, zoom, reading, the cover options, the background picture,
+//!   motion and layout (`look.rs`): `appearance.json`, applied at once (zoom:
+//!   `system::ui_scale`).
 //! - Collection background (the selected game's art behind the Collection):
 //!   on/off, blur, darkening, colour intensity, edge shading live in
 //!   `local_library/settings.json` (`background`); its
@@ -21,7 +22,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
     Appearance, InterfaceMode, SolidTint, AUTO_VIEW_WIDTH_RANGE, AUTO_VIEW_WIDTH_STEP, INTERFACE_BLUR_RANGE, INTERFACE_BLUR_STEP,
-    INTERFACE_OPACITY_RANGE,
+    INTERFACE_OPACITY_RANGE, INTERFACE_SCALE_RANGE, INTERFACE_SCALE_STEP,
 };
 use heronite_data::settings::{self, CoverAspect, EffectiveSettings, PartialBackground};
 use heronite_i18n::{n_, tr};
@@ -40,6 +41,7 @@ use heronite_data::appearance::Profile;
 use super::SettingsPage;
 use crate::collection::stage::{scrim_layers, Scrim};
 use crate::pages::PageCtx;
+use crate::system::ui_scale;
 use crate::theme;
 use crate::ui::controls::{button, caption, card, row, tabs, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::{meta_text, select_field};
@@ -58,6 +60,9 @@ enum Field {
     PanelBlur,
     /// Window width of the Focus / Grid switch (px).
     AutoViewWidth,
+    /// Interface scale (%), applied when let go: the slider would move
+    /// under the pointer as the window rescales.
+    InterfaceScale,
 }
 
 pub struct State {
@@ -92,6 +97,8 @@ pub struct State {
     /// The same for the accent.
     accent_picker: Entity<crate::ui::colour_picker::ColourPicker>,
     accent_picker_open: bool,
+    /// The interface scale under the pointer while its slider is dragged, %.
+    scale_drag: Option<f32>,
 }
 
 const ASPECTS: [(CoverAspect, &str); 6] = [
@@ -124,6 +131,13 @@ impl State {
             (Field::PanelOpacity, INTERFACE_OPACITY_RANGE.0, INTERFACE_OPACITY_RANGE.1, 1., ui.interface_opacity as f64),
             (Field::PanelBlur, INTERFACE_BLUR_RANGE.0, INTERFACE_BLUR_RANGE.1, INTERFACE_BLUR_STEP, ui.interface_blur as f64),
             (Field::AutoViewWidth, AUTO_VIEW_WIDTH_RANGE.0, AUTO_VIEW_WIDTH_RANGE.1, AUTO_VIEW_WIDTH_STEP, ui.auto_view.width as f64),
+            (
+                Field::InterfaceScale,
+                INTERFACE_SCALE_RANGE.0,
+                INTERFACE_SCALE_RANGE.1,
+                INTERFACE_SCALE_STEP,
+                ui_scale::percent_of(&ui) as f64,
+            ),
         ] {
             // `max` first: each setter clamps against the other bound, and the default `max` is 100.
             let state = cx.new(|_| SliderState::new().max(max).min(min).step(step).default_value(value as f32));
@@ -133,6 +147,10 @@ impl State {
                     SliderEvent::Release(v) => (v, true),
                 };
                 let SliderValue::Single(v) = *value else { return };
+                if field == Field::InterfaceScale {
+                    scale_slider(d, v, release, cx);
+                    return;
+                }
                 let a = &mut d.appearance;
                 match field {
                     Field::Blur => a.blur = v,
@@ -143,6 +161,7 @@ impl State {
                     Field::PanelOpacity => a.ui.interface_opacity = v,
                     Field::PanelBlur => a.ui.interface_blur = v,
                     Field::AutoViewWidth => a.ui.auto_view.width = v,
+                    Field::InterfaceScale => {}
                 }
                 if matches!(field, Field::Blur | Field::Saturation) {
                     schedule_preview(d, cx);
@@ -185,6 +204,7 @@ impl State {
             tint_picker_open: false,
             accent_picker: look::new_accent_picker(window, cx),
             accent_picker_open: false,
+            scale_drag: None,
         };
         this.preview_task = None;
         follow_file(ctx, window, cx);
@@ -205,6 +225,8 @@ fn follow_file(ctx: &PageCtx, window: &mut Window, cx: &mut Context<SettingsPage
                 if d.appearance.ui != a {
                     d.appearance.ui = a;
                     custom::sync_controls(d, window, cx);
+                    // Ctrl + / Ctrl − save the scale from outside the page.
+                    set_sliders(&d.appearance, &[(Field::InterfaceScale, ui_scale::percent_of(&a))], window, cx);
                     cx.notify();
                 }
             });
@@ -252,6 +274,9 @@ fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 /// Applies the Interface / Collection-opacity values to the running app (every
 /// glass surface reads them) and, when `save`, writes them off the UI thread.
 fn apply_interface(d: &mut SettingsPage, save: bool, cx: &mut Context<SettingsPage>) {
+    // The scale also changes outside the page (Ctrl + / Ctrl −): the one in
+    // use is the one to keep.
+    d.appearance.ui.interface_scale = theme::appearance().interface_scale;
     let ui = d.appearance.ui.normalized();
     theme::set_appearance(ui);
     if save {
@@ -263,6 +288,25 @@ fn apply_interface(d: &mut SettingsPage, save: bool, cx: &mut Context<SettingsPa
         })
         .detach();
     }
+    cx.notify();
+}
+
+/// The interface scale's slider: its value shows while dragged, and applies
+/// (and is saved) when let go.
+fn scale_slider(d: &mut SettingsPage, percent: f32, release: bool, cx: &mut Context<SettingsPage>) {
+    if release {
+        d.appearance.scale_drag = None;
+        set_scale(d, Some(percent), cx);
+    } else {
+        d.appearance.scale_drag = Some(percent);
+        cx.notify();
+    }
+}
+
+/// Picks the interface scale (`None`: the system's) for every window.
+pub(super) fn set_scale(d: &mut SettingsPage, percent: Option<f32>, cx: &mut Context<SettingsPage>) {
+    ui_scale::set(percent, &d.ctx.app, cx);
+    d.appearance.ui.interface_scale = theme::appearance().interface_scale;
     cx.notify();
 }
 
@@ -441,7 +485,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
                     ));
                     continue;
                 }
-                Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth => continue,
+                Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth | Field::InterfaceScale => continue,
             };
             rows.push(row);
         }
@@ -671,6 +715,17 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("accent", tr!("Accent colour"), console_choice(&accents, a.accent)),
         Row::toggle("high-contrast", tr!("High contrast"), a.high_contrast),
         Row::header(tr!("Reading")),
+        Row::number(
+            "ui-scale",
+            tr!("Zoom"),
+            ui_scale::percent_of(&a).round() as i64,
+            INTERFACE_SCALE_RANGE.0 as i64,
+            INTERFACE_SCALE_RANGE.1 as i64,
+            10,
+            "%",
+        )
+        .desc(tr!("Console mode fills the screen by itself: this matters most in desktop mode.")),
+        Row::toggle("ui-scale-system", tr!("Follow the system"), a.interface_scale.is_none()).desc(ui_scale::system().label()),
         choice("font", tr!("Font"), console_choice(&look::font_items(), a.font)),
         choice("density", tr!("Density"), console_choice(&look::density_items(), a.density)),
         Row::header(tr!("Motion")),
@@ -760,6 +815,11 @@ fn console_apply_look(
         ("cover-badges", _, Some(on)) => look::set_look(d, cx, |a| a.cover_badges = on),
         ("bg-slideshow", _, Some(on)) => look::set_look(d, cx, |a| a.background_slideshow = on),
         ("high-contrast", _, Some(on)) => look::set_look(d, cx, |a| a.high_contrast = on),
+        ("ui-scale-system", _, Some(on)) => {
+            let percent = (!on).then(|| ui_scale::percent_of(&theme::appearance()));
+            set_scale(d, percent, cx);
+            set_sliders(&d.appearance, &[(Field::InterfaceScale, ui_scale::percent_of(&theme::appearance()))], window, cx);
+        }
         ("reset-widths", _, _) => cx.emit(crate::pages::PageEvent::ResetPanelWidths),
         _ => return false,
     }
@@ -814,6 +874,11 @@ pub(super) fn console_apply(
                 "ui-blur" => {
                     a.ui.interface_blur = v;
                     Field::PanelBlur
+                }
+                "ui-scale" => {
+                    set_scale(d, Some(v), cx);
+                    set_sliders(&d.appearance, &[(Field::InterfaceScale, v)], window, cx);
+                    return;
                 }
                 _ => return,
             };

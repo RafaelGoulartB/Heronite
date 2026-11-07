@@ -60,7 +60,8 @@ impl CollectionView {
             .child(self.focus_status_row(vm, vh, cx))
             .children(self.left_off_card(&vm.key, cx))
             .child(self.rating_row(&vm.key, cx))
-            .child(self.facts_card(vm, cx));
+            .child(self.facts_card(vm, cx))
+            .children(self.copies_card(&vm.key, cx));
 
         if lay.narrow {
             return div().flex().items_start().gap(px(20.)).child(cover).child(controls.flex_1().max_w(px(380.))).into_any_element();
@@ -370,6 +371,9 @@ impl CollectionView {
                 );
             rows.push(fact_row(tr!("Score"), value).into_any_element());
         }
+        if vm.age_shown {
+            rows.push(self.age_row(vm.age.as_ref(), cx));
+        }
         // Filters the collection by the store the game comes from.
         let key = vm.key.clone();
         rows.push(
@@ -418,7 +422,7 @@ impl CollectionView {
     }
 }
 
-fn fact_row(label: &'static str, value: Div) -> Div {
+pub(super) fn fact_row(label: &'static str, value: Div) -> Div {
     div()
         .flex()
         .items_center()

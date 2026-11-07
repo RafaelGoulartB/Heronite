@@ -138,6 +138,13 @@ impl MetadataHub {
                             0
                         }
                     };
+                    let rated = match service.fill_missing_age_ratings_while(&|| false) {
+                        Ok(n) => n,
+                        Err(err) => {
+                            log::warn!("idle age rating fill: {err:#}");
+                            0
+                        }
+                    };
                     let covers = match service.refresh_missing_local_covers() {
                         Ok(n) => n,
                         Err(err) => {
@@ -145,7 +152,7 @@ impl MetadataHub {
                             0
                         }
                     };
-                    filled + covers
+                    filled + rated + covers
                 })
                 .await;
             if changed > 0 {

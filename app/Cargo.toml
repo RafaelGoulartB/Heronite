@@ -10,6 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 gpui-kit.workspace = true
+# The interface scale every window opens at (Settings → Appearance).
+gpui-zoom = { path = "../vendor/gpui-zoom" }
 anyhow.workspace = true
 log.workspace = true
 rust-embed = "8"

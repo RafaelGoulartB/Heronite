@@ -4,12 +4,12 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::FacetKind;
+use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
 
 use super::vm::{self, GroupVm, ListItem};
 use super::{data, CollectionView, ToastAction};
 use crate::services::launch_blocker::{launch_blocker, Blocker};
-use heronite_i18n::tr;
 
 impl CollectionView {
     pub(super) fn dialog_ctx(&self) -> Option<crate::dialogs::DialogCtx> {
@@ -61,7 +61,11 @@ impl CollectionView {
             categories: Some(&self.categories),
             statuses: &lib.statuses,
         };
-        let is_playing = |key: &str| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name));
+        // A card stands for every copy of its game: it plays while any of them does.
+        let is_playing = |key: &str| {
+            let copies = if self.ui.group_copies { lib.copies_of(key) } else { lib.get(key).into_iter().collect() };
+            copies.iter().any(|g| playing.contains_key(&g.app_name))
+        };
         let step = |key: &str| lib.get(key).and_then(|g| self.preparing.get(&g.app_name)).map(|s| s.label());
         let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
         self.set_groups(groups);
@@ -79,12 +83,31 @@ impl CollectionView {
                 || ui.statuses.contains(&heronite_data::status::resolve_status_id(g.status_raw.as_deref(), statuses)))
     }
 
+    /// The focus panel of `game`, whose Play stands for the copy it starts
+    /// (see [`copy_to_play`](Self::copy_to_play)).
+    fn focus_vm_of(&self, lib: &heronite_data::Library, game: &heronite_data::collection::Game) -> super::vm::FocusVm {
+        let target = self.copy_to_play(lib, &game.key).unwrap_or(game);
+        let mut vm = data::focus_vm(lib, &self.wiki, game, self.playing.contains_key(&target.app_name));
+        vm.installed = target.installed;
+        vm
+    }
+
     fn refresh_focus(&mut self) {
         let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
         if let Some(game) = lib.get(&key) {
-            let playing = self.playing.contains_key(&game.app_name);
-            self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
+            self.focus = Some(self.focus_vm_of(&lib, game));
         }
+    }
+
+    /// Picks the interface scale (`None`: the system's) and says which.
+    pub(super) fn set_ui_scale(&mut self, percent: Option<f32>, cx: &mut Context<Self>) {
+        crate::system::ui_scale::set(percent, &self.app_paths, cx);
+        let now = crate::system::ui_scale::percent_of(&crate::theme::appearance()).round();
+        let text = match percent {
+            Some(_) => tr!("Zoom: {percent}%", percent = now),
+            None => tr!("Zoom: {percent}%, the system's", percent = now),
+        };
+        self.show_toast(text, false, cx);
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
@@ -167,10 +190,30 @@ impl CollectionView {
         cx.notify();
     }
 
+    /// The copy a card's play button acts on: with "Group copies of a game",
+    /// the copy of the group that is starting or running, else an installed
+    /// copy when this one is not (see `Library::launch_copy`).
+    pub(super) fn copy_to_play<'a>(&self, lib: &'a heronite_data::Library, key: &str) -> Option<&'a heronite_data::collection::Game> {
+        let game = lib.get(key)?;
+        if !self.ui.group_copies || lib.copies.get(key).is_none() {
+            return Some(game);
+        }
+        let busy =
+            |g: &&heronite_data::collection::Game| self.playing.contains_key(&g.app_name) || self.preparing.contains_key(&g.app_name);
+        if let Some(running) = lib.copies_of(key).into_iter().find(busy) {
+            return Some(running);
+        }
+        if game.installed {
+            return Some(game);
+        }
+        lib.launch_copy(key)
+    }
+
     /// Card play button / focus primary button.
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
-        let Some(game) = lib.get(key).cloned() else { return };
+        let Some(game) = self.copy_to_play(&lib, key).cloned() else { return };
+        let key = game.key.as_str();
         if self.preparing.contains_key(&game.app_name) {
             return self.cancel_launch(&game.app_name, cx);
         }
@@ -198,11 +241,9 @@ impl CollectionView {
 
     pub(super) fn toggle_favourite(&mut self, cx: &mut Context<Self>) {
         let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
-        let Some(game) = lib.get(&key) else { return };
-        if let Err(err) = heronite_data::config_games::toggle_favourite(&self.data_paths, &game.app_name, &game.title) {
-            self.show_toast(tr!("Could not update favourites: {err}", err = format!("{err:#}")), true, cx);
+        if lib.get(&key).is_some() {
+            self.toggle_favourite_of(&key, cx);
         }
-        self.reload(cx);
     }
 
     pub(super) fn save_ui(&self) {
@@ -310,8 +351,7 @@ impl CollectionView {
     pub(super) fn select(&mut self, key: SharedString, persist: bool) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = lib.get(&key) else { return };
-        let playing = self.playing.contains_key(&game.app_name);
-        self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
+        self.focus = Some(self.focus_vm_of(&lib, game));
         if self.selected.as_ref() != Some(&key) {
             self.focus_scroll.set_offset(point(px(0.), px(0.)));
         }

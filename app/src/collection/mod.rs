@@ -3,11 +3,13 @@
 mod achievements;
 mod actions;
 mod add_game;
+mod age_rows;
 mod backdrop;
 mod card;
 mod clients;
 mod console;
 mod context_menu;
+mod copies;
 mod data;
 mod debug;
 mod dock;
@@ -107,6 +109,8 @@ enum ToastAction {
     ReviewDuplicates,
     /// Opens "Launch problem" with this report.
     LaunchProblem(std::sync::Arc<crate::diagnosis::Report>),
+    /// Shows the age ratings just hidden again.
+    ShowAgeRatings,
 }
 
 pub struct CollectionView {
@@ -243,6 +247,8 @@ impl CollectionView {
         let drawer_closed = !ui.grid_open_on_select;
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
+        // The file may have changed while the app was in the tray.
+        crate::system::ui_scale::sync(cx);
         // The file written from outside (a theme script following the
         // wallpaper): every window redraws in the new look.
         let mut appearance_file = crate::system::appearance_file::watch(&app_paths);
@@ -253,7 +259,11 @@ impl CollectionView {
                     continue;
                 }
                 crate::theme::set_appearance(a);
-                if this.update(cx, |_, cx| cx.refresh_windows()).is_err() {
+                let applied = this.update(cx, |_, cx| {
+                    crate::system::ui_scale::sync(cx);
+                    cx.refresh_windows();
+                });
+                if applied.is_err() {
                     break;
                 }
             }
@@ -450,7 +460,10 @@ impl CollectionView {
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::accent_tint_border()))
                             .child(match &action {
-                                ToastAction::Undo | ToastAction::RestoreNote(..) | ToastAction::RestoreLeftOff(..) => {
+                                ToastAction::Undo
+                                | ToastAction::RestoreNote(..)
+                                | ToastAction::RestoreLeftOff(..)
+                                | ToastAction::ShowAgeRatings => {
                                     heronite_i18n::tr!("Undo")
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
@@ -491,6 +504,7 @@ impl CollectionView {
                                         this.toast = None;
                                         this.journal_restore_left_off(key.clone(), (**left).clone(), cx);
                                     }
+                                    ToastAction::ShowAgeRatings => this.set_age_ratings_shown(true, cx),
                                 }
                                 cx.notify();
                             }))

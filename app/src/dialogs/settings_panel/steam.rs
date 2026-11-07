@@ -109,7 +109,7 @@ impl SettingsPanel {
             this.update(cx, |this, cx| {
                 if let Ok(snap) = &res {
                     let parsed = options::parse(&snap.launch_options);
-                    this.settings = parsed.settings;
+                    this.settings = super::with_reshade_keys(parsed.settings, &this.settings);
                     if let Some(st) = this.steam.as_mut() {
                         st.line = snap.launch_options.clone();
                         st.editable = parsed.editable;
@@ -122,6 +122,7 @@ impl SettingsPanel {
                 }
                 if read {
                     this.apply_debug_settings(cx);
+                    this.sync_steam_reshade(cx);
                 }
                 cx.notify();
             })
@@ -177,7 +178,7 @@ impl SettingsPanel {
             return;
         }
         let parsed = options::parse(&text);
-        self.settings = parsed.settings;
+        self.settings = super::with_reshade_keys(parsed.settings, &self.settings);
         self.steam_mut().editable = parsed.editable;
         self.steam_send_line(text, cx);
     }
@@ -655,6 +656,9 @@ impl SettingsPanel {
         col = col.child(heading(tr!("On screen"))).child(self.overlay_rows(off, cx).card());
         col = self.replay_section(col, cx);
         col = col.child(self.fps_section(off, cx)).child(self.lsfg_section(off, cx));
+        if self.reshade_applies() {
+            col = col.child(self.reshade_section(cx));
+        }
         col = col.child(self.gamescope_section(rows(), off, cx));
         col.child(heading(tr!("System"))).child(self.game_system_rows(off, cx).card())
     }
