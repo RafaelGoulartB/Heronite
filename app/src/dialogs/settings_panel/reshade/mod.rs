@@ -14,6 +14,7 @@
 mod actions;
 mod render;
 mod render_installed;
+mod render_setup;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -66,6 +67,12 @@ pub(super) struct ReshadeUi {
     pub(super) preset: Option<(PathBuf, Vec<String>)>,
     pub(super) confirm: Option<Confirm>,
     pub(super) adding_repo: bool,
+    /// The install card is open (instead of the short card).
+    pub(super) setup: bool,
+    /// The executable and DLL name can be picked in it.
+    pub(super) advanced: bool,
+    /// Scroll the drawer to the install card on its next draw.
+    pub(super) reveal: std::rc::Rc<std::cell::Cell<bool>>,
     debug: VecDeque<String>,
 }
 
@@ -240,7 +247,10 @@ impl SettingsPanel {
             let (name, arg) = step.split_once(':').map_or((step.as_str(), ""), |(a, b)| (a, b));
             let arg = arg.to_string();
             match name {
-                "confirm-anticheat" => self.reshade.confirm = Some(Confirm::AntiCheat { accepted: false, replace: false }),
+                "confirm-anticheat" => {
+                    self.reshade.setup = true;
+                    self.reshade.confirm = Some(Confirm::AntiCheat { accepted: false, replace: false });
+                }
                 "confirm-remove" => self.reshade.confirm = Some(Confirm::Remove),
                 // The first source whose name starts with the argument.
                 "confirm-source" => {
@@ -251,8 +261,11 @@ impl SettingsPanel {
                     }
                 }
                 "add-repo" => self.reshade.adding_repo = true,
+                "setup" => self.open_reshade_setup(cx),
+                "advanced" => self.reshade.advanced = true,
                 "all-packages" => self.reshade.all_packages = true,
                 "installing" => {
+                    self.reshade.setup = true;
                     self.reshade.busy =
                         Some(Busy { line: tr!("Installing shaders: {name}…", name = "SweetFX by CeeJay.dk"), cancel: Arc::default() })
                 }
@@ -270,7 +283,10 @@ impl SettingsPanel {
                 // Reads the file in the background, then goes on.
                 "preset" => return self.choose_reshade_preset(PathBuf::from(arg), cx),
                 // The steps below run in the background and read the section again.
-                "install" => return self.start_reshade_install(false, true, cx),
+                "install" => {
+                    self.reshade.setup = true;
+                    return self.start_reshade_install(false, true, cx);
+                }
                 "replace" => return self.start_reshade_install(true, true, cx),
                 "adopt" => return self.adopt_reshade(cx),
                 "off" | "on" => return self.switch_reshade(name == "on", cx),

@@ -200,6 +200,43 @@ pub struct DrawerProps {
     pub width: f32,
 }
 
+thread_local! {
+    /// The scroll of each drawer's body, by drawer id (see [`reveal_in_drawer`]).
+    static DRAWER_SCROLLS: std::cell::RefCell<std::collections::HashMap<SharedString, ScrollHandle>> = Default::default();
+}
+
+fn drawer_scroll(id: &SharedString) -> ScrollHandle {
+    DRAWER_SCROLLS.with(|s| s.borrow_mut().entry(id.clone()).or_insert_with(ScrollHandle::new).clone())
+}
+
+/// Scrolls the drawer showing `target` (window coordinates, as laid out
+/// now) so all of it is in view, its top first when it is taller than the
+/// drawer. Call it from a prepaint and draw again on the next frame: the
+/// new offset applies then.
+pub fn reveal_in_drawer(target: Bounds<Pixels>) {
+    const MARGIN: f32 = 12.;
+    let handles: Vec<ScrollHandle> = DRAWER_SCROLLS.with(|s| s.borrow().values().cloned().collect());
+    let x = target.center().x;
+    let Some(h) = handles.into_iter().find(|h| {
+        let b = h.bounds();
+        b.size.height > px(0.) && x >= b.left() && x <= b.right()
+    }) else {
+        return;
+    };
+    let view = h.bounds();
+    let (top, bottom) = (view.top() + px(MARGIN), view.bottom() - px(MARGIN));
+    let delta = if target.top() < top {
+        target.top() - top
+    } else if target.bottom() > bottom {
+        (target.bottom() - bottom).min(target.top() - top)
+    } else {
+        return;
+    };
+    let offset = h.offset();
+    let max = h.max_offset().y;
+    h.set_offset(point(offset.x, (offset.y - delta).clamp(-max, px(0.))));
+}
+
 /// Right-hand glass drawer (inset 10px, radius 24) over a dark veil. `header`
 /// and `footer` are fixed slots (build the header with `controls::kicker`,
 /// `dialog_title`, `close_button`...); `body` scrolls and gets padding 16/20.
@@ -233,6 +270,7 @@ pub fn drawer(
                 .flex_1()
                 .min_h_0()
                 .overflow_y_scroll()
+                .track_scroll(&drawer_scroll(&props.id))
                 .px(px(20.))
                 .py(px(16.))
                 // `HERONITE_DEBUG_DIALOG_SCROLL=<px>`: the body starts scrolled (captures).

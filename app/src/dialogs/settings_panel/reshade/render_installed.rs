@@ -11,6 +11,7 @@ use heronite_launch::reshade::manifest::{Manifest, ADOPTED};
 use heronite_launch::reshade::{Overview, SourceRow};
 
 use super::render::{api_label, buttons, warn_line};
+use super::render_setup::title_row;
 use super::{Confirm, SettingsPanel};
 use crate::dialogs::settings_panel::parts::{heading, help, hint, rows, Rows};
 use crate::theme;
@@ -55,7 +56,7 @@ impl SettingsPanel {
         let about = format!("{} · {} · {}. {state}", m.version, api_label(t.as_ref(), api), m.proxy);
         let on = m.enabled;
         let sw = toggle("reshade-on-sw", on, busy);
-        let mut main = row("ReShade", Some(&about), sw).id("reshade-on");
+        let mut main = title_row("ReShade", about, sw).id("reshade-on");
         if !busy {
             main = main.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.switch_reshade(!on, cx)));
         }

@@ -89,6 +89,9 @@ impl SettingsPanel {
                     Ok(p) => {
                         this.reshade.preset = Some(p);
                         this.reshade.picked = None;
+                        // The card grows: keep it in view.
+                        this.reshade.setup = true;
+                        this.reshade.reveal.set(true);
                     }
                     Err(e) => this.reshade.message = Some((e.to_string(), true)),
                 }
@@ -111,6 +114,7 @@ impl SettingsPanel {
         let ack = self.reshade_settings().anticheat_ack;
         if check && !o.risk.unacknowledged(&ack).is_empty() {
             self.reshade.confirm = Some(Confirm::AntiCheat { accepted: false, replace });
+            self.reshade.reveal.set(true);
             return cx.notify();
         }
         let Some(target) = o.target.clone() else { return };
@@ -151,6 +155,8 @@ impl SettingsPanel {
                 this.reshade.preset = None;
                 this.reshade.picked = None;
                 this.reshade.all_packages = false;
+                this.reshade.setup = false;
+                this.reshade.advanced = false;
                 this.set(reshade::KEY_ENABLED, Value::Bool(true), cx);
                 this.reshade.message =
                     Some((tr!("ReShade {version} is installed. Press Home in the game to open its menu.", version = m.version), false));

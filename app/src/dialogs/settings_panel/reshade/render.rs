@@ -14,7 +14,7 @@ use super::{Confirm, SettingsPanel};
 use crate::dialogs::settings_panel::parts::{heading, help, rows, Rows};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, checkbox, row, toggle, ButtonKind};
+use crate::ui::controls::{action_button, checkbox, row, ButtonKind};
 use crate::ui::icon;
 
 /// A line in the accent (warning) colour with its icon.
@@ -61,15 +61,18 @@ impl SettingsPanel {
         };
         col = match &o.state {
             State::Installed => col.child(self.reshade_installed(&o, cx)),
-            State::NotInstalled => col.child(self.reshade_install_form(&o, cx)),
+            State::NotInstalled if self.reshade.setup => col.child(self.reshade_setup(&o, cx)),
+            State::NotInstalled => col.child(self.reshade_intro(&o, cx)),
             _ => col.child(self.reshade_other_state(&o, cx).card()),
         };
-        if let Some(busy) = &self.reshade.busy {
+        // The setup card shows its own progress and errors.
+        let in_setup = o.state == State::NotInstalled && self.reshade.setup;
+        if let Some(busy) = self.reshade.busy.as_ref().filter(|_| !in_setup) {
             let line = if busy.line.is_empty() { tr!("Working…").to_string() } else { busy.line.clone() };
             let cancel = self.outline_button("reshade-cancel", tr!("Cancel"), true, cx, |this, _, cx| this.cancel_reshade(cx));
             col = col.child(rows().child(row(line, None, cancel)).card());
         }
-        if let Some((text, error)) = &self.reshade.message {
+        if let Some((text, error)) = self.reshade.message.as_ref().filter(|_| !in_setup) {
             let color = if *error { theme::danger_text() } else { theme::success() };
             col = col.child(div().px(px(6.)).text_size(px(12.)).line_height(px(16.)).text_color(color).child(text.clone()));
         }
@@ -93,7 +96,9 @@ impl SettingsPanel {
             State::Launcher => {
                 let text = tr!("{exe} does not draw the game (it looks like a launcher). Pick the executable that does.", exe);
                 r = r.child(row("ReShade", Some(&text), div()));
-                r = self.reshade_exe_field(r, o, cx);
+                if let Some(f) = self.reshade_exe_select(o, cx) {
+                    r = r.field(f);
+                }
             }
             State::Unsupported(Api::Vulkan) => {
                 let text = match cfg!(windows) {
@@ -104,7 +109,9 @@ impl SettingsPanel {
                     ),
                 };
                 r = r.child(row("ReShade", Some(&text), div()));
-                r = self.reshade_exe_field(r, o, cx);
+                if let Some(f) = self.reshade_exe_select(o, cx) {
+                    r = r.field(f);
+                }
             }
             State::Unsupported(_) => {
                 let text =
@@ -145,7 +152,7 @@ impl SettingsPanel {
                     true => tr!("ReShade {version} installed by hand ({proxy}, switched off)", version, proxy),
                 };
                 let about = tr!("Adopt it to switch, update and remove it here: nothing is downloaded or changed. Replace installs Heronite's copy and keeps ReShade.ini and the preset.");
-                r = r.child(row(title, Some(about), div()));
+                r = r.child(super::render_setup::title_row(title, about, div()));
                 let adopt = action_button(
                     "reshade-adopt",
                     ButtonKind::Primary,
@@ -162,185 +169,6 @@ impl SettingsPanel {
                 }
             }
             State::NotInstalled | State::Installed => {}
-        }
-        r
-    }
-
-    /// "Executable": the detected one, or one of the programs next to it.
-    fn reshade_exe_field(&self, r: Rows, o: &Arc<Overview>, cx: &mut Context<Self>) -> Rows {
-        let current = o.exe.as_deref().map(file_name).unwrap_or_default();
-        let chosen = !self.reshade_settings().target.is_empty();
-        let mut items: Vec<(SharedString, bool)> = vec![(tr!("The game's executable").into(), !chosen)];
-        let base = o.exe.as_deref().and_then(|e| e.parent()).map(|p| p.to_path_buf());
-        let label = |p: &std::path::Path| -> SharedString {
-            base.as_deref()
-                .and_then(|b| p.strip_prefix(b).ok())
-                .map(|r| r.to_string_lossy().into_owned())
-                .unwrap_or_else(|| file_name(p))
-                .into()
-        };
-        items.extend(o.candidates.iter().map(|c| (label(c), chosen && o.exe.as_deref() == Some(c.as_path()))));
-        // Nothing to pick: the only program is the one shown.
-        if !chosen && o.candidates.iter().all(|c| o.exe.as_deref() == Some(c.as_path())) {
-            return r;
-        }
-        let list = o.candidates.clone();
-        r.field(self.select_row(
-            "reshade-exe",
-            Some(tr!("Executable")),
-            current,
-            items,
-            self.reshade.busy.is_some(),
-            cx,
-            move |this, i, _, cx| this.pick_reshade_exe(if i == 0 { None } else { list.get(i - 1).cloned() }, cx),
-        ))
-    }
-
-    fn reshade_install_form(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
-        let busy = self.reshade.busy.is_some();
-        let t = o.target.as_ref();
-        let mut card = rows();
-        let exe = o.exe.as_deref().map(file_name).unwrap_or_default();
-        let mut about = format!(
-            "{} · {}",
-            api_label(t, t.and_then(|t| t.api)),
-            tr!("ReShade goes in its folder as {dll}", dll = o.proxy.clone().unwrap_or_default())
-        );
-        if t.is_some_and(|t| t.api_from_list) {
-            about.push_str(&format!(" · {}", tr!("API from ReShade's list")));
-        }
-        card = card.child(row(exe, Some(&about), div()));
-        if let Some(l) = &o.launcher {
-            card = card.child(div().py(px(12.)).child(help(&tr!(
-                "{launcher} is a launcher: ReShade goes with the program that draws the game.",
-                launcher = file_name(l)
-            ))));
-        }
-        card = self.reshade_exe_field(card, o, cx);
-        if t.is_some_and(|t| t.small_stack) {
-            card = card.child(div().py(px(12.)).child(warn_line(tr!("This program reserves little stack memory: ReShade may crash it."))));
-        }
-        if t.and_then(|t| t.api) == Some(Api::Dxgi) {
-            let current = o.proxy.clone().unwrap_or_default();
-            let items = ["dxgi.dll", "d3d11.dll"].iter().map(|n| (SharedString::from(*n), current == *n)).collect();
-            card = card.field_help(
-                self.select_row("reshade-dll", Some(tr!("Installed as")), current, items, busy, cx, |this, i, _, cx| {
-                    this.pick_reshade_api(["dxgi", "d3d11"][i], cx)
-                }),
-                vec![help(tr!("dxgi.dll works for DirectX 10 to 12. Pick d3d11.dll when another mod already uses dxgi.dll."))],
-            );
-        }
-        card = self.reshade_preset_row(card, cx);
-        if !o.risk.findings.is_empty() {
-            let names: Vec<String> = o.risk.names().iter().map(|n| heronite_data::anticheat::short_name(n)).collect();
-            card =
-                card.child(div().py(px(12.)).child(warn_line(&tr!(
-                    "Anti-cheat: {names}. You will be asked to confirm before installing.",
-                    names = names.join(", ")
-                ))));
-        }
-        let mut col = div().flex().flex_col().gap(px(6.)).child(card.card());
-        col = col.child(heading(tr!("Shader packages"))).child(self.reshade_packages(o, cx).card());
-        let version = o.latest.clone();
-        if matches!(self.reshade.confirm, Some(Confirm::AntiCheat { .. })) {
-            return col.child(rows().child(self.reshade_anticheat_card(o, cx)).card());
-        }
-        let label = match &version {
-            Some(v) => tr!("Install ReShade {version}", version = v),
-            None => tr!("Install ReShade").into(),
-        };
-        let install = action_button(
-            "reshade-install",
-            ButtonKind::Primary,
-            label,
-            !busy && version.is_some(),
-            cx.listener(|this, _, _, cx| this.start_reshade_install(false, true, cx)),
-        );
-        col.child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(6.))
-                .pt(px(4.))
-                .child(buttons().child(install))
-                .child(help(tr!("Downloads ReShade and the shaders from their official sources into the game's folder."))),
-        )
-    }
-
-    /// The preset to import with the install.
-    fn reshade_preset_row(&mut self, card: Rows, cx: &mut Context<Self>) -> Rows {
-        let busy = self.reshade.busy.is_some();
-        let (about, chosen) = match &self.reshade.preset {
-            Some((path, effects)) => {
-                (format!("{} · {}", file_name(path), heronite_i18n::trn!(effects.len(), "{n} effect", "{n} effects")), true)
-            }
-            None => (tr!("Optional: a preset (.ini) made for this game. It is copied; the original is not changed.").to_string(), false),
-        };
-        let mut control = buttons();
-        let pick = self.outline_button(
-            "reshade-preset",
-            if chosen { tr!("Change…") } else { tr!("Import preset…") },
-            !busy,
-            cx,
-            |this, window, cx| this.pick_reshade_preset(window, cx),
-        );
-        control = control.child(pick);
-        if chosen {
-            control = control.child(self.outline_button("reshade-preset-clear", tr!("Clear"), !busy, cx, |this, _, cx| {
-                this.reshade.preset = None;
-                this.reshade.picked = None;
-                cx.notify();
-            }));
-        }
-        let mut card = card.child(row(tr!("Preset"), Some(&about), control));
-        let missing = self.reshade_preset_needs().missing;
-        if !missing.is_empty() {
-            let text = tr!(
-                "Not in ReShade's packages: {files}. After installing, add them with Add folder or Add repository.",
-                files = missing.join(", ")
-            );
-            card = card.child(div().py(px(12.)).child(warn_line(&text)));
-        }
-        card
-    }
-
-    fn reshade_packages(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Rows {
-        let picked = self.reshade_picked();
-        let needed = self.reshade_preset_needs().packages;
-        let mut r = rows();
-        let shown: Vec<_> =
-            o.packages.iter().filter(|p| self.reshade.all_packages || p.enabled || p.required || picked.contains(&p.name)).collect();
-        for p in &shown {
-            let on = p.required || picked.contains(&p.name);
-            let mut desc = p.description.clone();
-            if p.required {
-                desc = format!("{desc} · {}", tr!("Always installed"));
-            } else if needed.contains(&p.name) {
-                desc = format!("{desc} · {}", tr!("Used by the preset"));
-            }
-            let id = SharedString::from(format!("reshade-pkg-{}", p.name));
-            let sw = toggle(SharedString::from(format!("reshade-pkg-sw-{}", p.name)), on, p.required);
-            let mut el = row(p.name.clone(), Some(&desc), sw).id(id);
-            if !p.required && self.reshade.busy.is_none() {
-                let name = p.name.clone();
-                el = el.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.toggle_reshade_package(&name, cx)));
-            }
-            r = r.child(el);
-        }
-        if o.packages.is_empty() {
-            r = r.child(row(tr!("Shader packages"), Some(tr!("ReShade's package list could not be read. Check the connection.")), div()));
-        } else if !self.reshade.all_packages && shown.len() < o.packages.len() {
-            let more = self.outline_button(
-                "reshade-all-packages",
-                &tr!("Show all {n} packages", n = o.packages.len()),
-                true,
-                cx,
-                |this, _, cx| {
-                    this.reshade.all_packages = true;
-                    cx.notify();
-                },
-            );
-            r = r.field(buttons().child(more));
         }
         r
     }
