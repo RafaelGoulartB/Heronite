@@ -83,7 +83,13 @@ controls already show. Its on/off preference (off by default) belongs to `appear
 device when the last window closes (the app lives on in the tray); see its
 `PATCHES.md`. `vendor/gpui-pre-windows` is GPUI's Windows platform, patched so
 a window the user closes is torn down while its handle is valid (upstream
-leaked it and logged errors); see its `PATCHES.md`.
+leaked it and logged errors); see its `PATCHES.md`. Both open every window
+through `vendor/gpui-zoom` (Heronite's own crate): the interface scale of
+Settings → Appearance → Zoom, on top of the screen's. GPUI sees a screen that
+many times denser and smaller, so the whole interface (all in `px`) resizes and
+stays sharp; `app/src/system/ui_scale.rs` picks the scale (the one chosen, else
+`GDK_DPI_SCALE`, `QT_SCALE_FACTOR`, GNOME's text size on Wayland or Windows'
+text size) and applies it.
 
 - **heronite-data:** the base. `paths` (`DataPaths`, `AppPaths`), `migrate`,
   `json_store` (electron-store read-modify-write: tab indent, atomic write,

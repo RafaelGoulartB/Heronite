@@ -34,6 +34,8 @@ fn groups() -> [(&'static str, Vec<Line>); 5] {
                 line(tr!("Collection, Downloads, Wine Manager, Stores, Emulators, Statistics"), &["Ctrl 1…6"]),
                 line(tr!("Refresh the libraries"), &["F5"]),
                 line(tr!("Fullscreen"), &["F11"]),
+                line(tr!("Zoom in or out"), &["Ctrl +", "Ctrl −"]),
+                line(tr!("Zoom back to the system's"), &["Ctrl 0"]),
                 line(tr!("Close a menu or dialog, then the page"), &["Esc"]),
                 line(tr!("This list"), &["?"]),
             ],

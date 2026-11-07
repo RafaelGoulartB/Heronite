@@ -11,9 +11,10 @@ use heronite_data::appearance::{
 use heronite_i18n::tr;
 
 use super::scheme::colour_dot as dot;
-use super::{apply_interface, slider_of, Field, SettingsPage};
+use super::{apply_interface, set_scale, set_sliders, slider_of, Field, SettingsPage};
 use crate::icons::Icon;
 use crate::pages::PageEvent;
+use crate::system::ui_scale;
 use crate::theme;
 use crate::ui::colour_picker::{ColourPicker, PickerEvent};
 use crate::ui::controls::{button, card, icon_button, row, tabs, toggle, toggle_row, with_sub_rows, ButtonKind};
@@ -221,10 +222,11 @@ pub(super) fn new_accent_picker(window: &mut Window, cx: &mut Context<SettingsPa
     picker
 }
 
-/// Font, density and animations.
+/// The interface's size, font, density and animations.
 pub(super) fn reading_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     card([
+        with_sub_rows(scale_row(d), vec![scale_system_row(d, cx)]),
         row(
             tr!("Font"),
             Some(tr!("Cabin for text and Rubik for titles, Rubik everywhere, or your desktop's font.")),
@@ -244,6 +246,39 @@ pub(super) fn reading_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
         )
         .into_any_element(),
     ])
+}
+
+/// The interface scale: its value (the one under the pointer while dragged)
+/// and its slider.
+fn scale_row(d: &SettingsPage) -> AnyElement {
+    let percent = d.appearance.scale_drag.unwrap_or_else(|| ui_scale::percent_of(&d.appearance.ui));
+    let slider = Slider::new(slider_of(&d.appearance, Field::InterfaceScale)).bg(theme::accent()).text_color(theme::accent());
+    let control = div()
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .child(div().w(px(44.)).text_size(px(13.)).text_color(theme::text_bright()).child(format!("{}%", percent.round())))
+        .child(div().w(px(220.)).child(slider));
+    row(
+        tr!("Zoom"),
+        Some(tr!("Everything on screen, text and pictures, bigger or smaller. Ctrl + and Ctrl − change it anywhere, Ctrl 0 goes back to the system's.")),
+        control,
+    )
+    .into_any_element()
+}
+
+/// Follow the system's scale, or keep the one picked here.
+fn scale_system_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let follows = d.appearance.ui.interface_scale.is_none();
+    let source = ui_scale::system().label();
+    toggle_row("ui-scale-system", tr!("Follow the system"), Some(&source), follows)
+        .on_click(cx.listener(move |d, _, window, cx| {
+            // Off keeps the size in use, now picked here.
+            let percent = follows.then(|| ui_scale::percent_of(&theme::appearance()));
+            set_scale(d, percent, cx);
+            set_sliders(&d.appearance, &[(Field::InterfaceScale, ui_scale::percent_of(&theme::appearance()))], window, cx);
+        }))
+        .into_any_element()
 }
 
 /// Rows of the Covers card after the aspect and the grey switch.

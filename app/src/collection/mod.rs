@@ -247,6 +247,8 @@ impl CollectionView {
         let drawer_closed = !ui.grid_open_on_select;
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
+        // The file may have changed while the app was in the tray.
+        crate::system::ui_scale::sync(cx);
         // The file written from outside (a theme script following the
         // wallpaper): every window redraws in the new look.
         let mut appearance_file = crate::system::appearance_file::watch(&app_paths);
@@ -257,7 +259,11 @@ impl CollectionView {
                     continue;
                 }
                 crate::theme::set_appearance(a);
-                if this.update(cx, |_, cx| cx.refresh_windows()).is_err() {
+                let applied = this.update(cx, |_, cx| {
+                    crate::system::ui_scale::sync(cx);
+                    cx.refresh_windows();
+                });
+                if applied.is_err() {
                     break;
                 }
             }

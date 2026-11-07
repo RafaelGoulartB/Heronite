@@ -16,6 +16,7 @@ pub mod shortcuts;
 pub mod signals;
 pub mod single_instance;
 pub mod tray;
+pub mod ui_scale;
 
 #[cfg(windows)]
 pub use hub::run_on_quit;

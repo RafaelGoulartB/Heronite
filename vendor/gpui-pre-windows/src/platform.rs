@@ -724,11 +724,11 @@ impl Platform for WindowsPlatform {
     }
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
-        WindowsDisplay::displays()
+        gpui_zoom::displays(WindowsDisplay::displays())
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        WindowsDisplay::primary_monitor().map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
+        WindowsDisplay::primary_monitor().map(|display| gpui_zoom::display(Rc::new(display)))
     }
 
     #[cfg(feature = "screen-capture")]
@@ -757,14 +757,16 @@ impl Platform for WindowsPlatform {
         if !self.is_windowed() {
             return Err(anyhow!("cannot open windows while headless"));
         }
-        let window = WindowsWindow::new(handle, options, self.generate_creation_info())?;
-        let handle = window.get_raw_handle();
-        self.raw_window_handles.write().push(TrackedWindow {
-            handle: handle.into(),
-            frame_signal: window.state.frame_signal.clone(),
-        });
-
-        Ok(Box::new(window))
+        // Heronite: the window at the app's interface scale (`gpui-zoom`).
+        gpui_zoom::open(options, |options| {
+            let window = WindowsWindow::new(handle, options, self.generate_creation_info())?;
+            let handle = window.get_raw_handle();
+            self.raw_window_handles.write().push(TrackedWindow {
+                handle: handle.into(),
+                frame_signal: window.state.frame_signal.clone(),
+            });
+            Ok(Box::new(window))
+        })
     }
 
     fn window_appearance(&self) -> WindowAppearance {

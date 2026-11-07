@@ -143,7 +143,10 @@ darkened on the light one until it reads, or "From the desktop"); never write th
 Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**
 (radius 2 / 6 / 12), **Under the cover** (playtime or the sort value, playtime, last played, status with its colour,
 title, nothing; `data::chosen_caption`), **Favourite star**, **Under the pointer** (nothing, lift 4px, glow with an
-accent ring). **Picture** behind the Collection (`look::stage_source`: the game's art, one of its screenshots, its
+accent ring). **Zoom** (50 to 200%, `system::ui_scale`; Ctrl + / Ctrl − anywhere, Ctrl 0 back to the system's): the
+whole interface, on top of the screen's scale; "Follow the system" takes `GDK_DPI_SCALE`, `QT_SCALE_FACTOR`, GNOME's
+text size (Wayland) or Windows' text size. Its slider applies when let go. A window choice like the layout: profiles
+keep it. **Picture** behind the Collection (`look::stage_source`: the game's art, one of its screenshots, its
 cover blurred, the Solid tint, or a picture copied to `AppPaths::custom_background()`), with a slideshow of the
 screenshots every 20 s. **Animations**: Full, Reduced (`theme::fades()` only: the stage cross-fade and covers fading
 in) or Off (`theme::animations()` is false; `HERONITE_NO_ANIMATIONS` forces Off). **Open the Collection in** (last

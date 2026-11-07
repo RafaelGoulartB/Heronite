@@ -704,11 +704,11 @@ impl Platform for LinuxPlatform {
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        self.connection.borrow().primary_display()
+        self.connection.borrow().primary_display().map(gpui_zoom::display)
     }
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
-        self.connection.borrow().displays()
+        gpui_zoom::displays(self.connection.borrow().displays())
     }
 
     #[cfg(feature = "screen-capture")]
@@ -736,7 +736,8 @@ impl Platform for LinuxPlatform {
         handle: AnyWindowHandle,
         options: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
-        self.connection.borrow().open_window(handle, options)
+        // Heronite: the window at the app's interface scale (`gpui-zoom`).
+        gpui_zoom::open(options, |options| self.connection.borrow().open_window(handle, options))
     }
 
     fn open_url(&self, url: &str) {

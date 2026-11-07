@@ -464,5 +464,17 @@
   "Every hour": "Cada hora",
   "Every 2 hours": "Cada 2 horas",
   "Every {n} minutes": "Cada {n} minutos",
-  "Starts with the next game you launch. Ludusavi copies the save files as they are at that moment: a game saving during the copy can leave a mixed backup, so the backup after the game closes is the one to trust. Nothing is restored on its own.": "Empieza con el próximo juego que abras. Ludusavi copia los archivos de guardado tal como están en ese momento: un juego que guarda durante la copia puede dejar una copia mezclada, así que la copia hecha al cerrar el juego es la fiable. Nada se restaura por sí solo."
+  "Starts with the next game you launch. Ludusavi copies the save files as they are at that moment: a game saving during the copy can leave a mixed backup, so the backup after the game closes is the one to trust. Nothing is restored on its own.": "Empieza con el próximo juego que abras. Ludusavi copia los archivos de guardado tal como están en ese momento: un juego que guarda durante la copia puede dejar una copia mezclada, así que la copia hecha al cerrar el juego es la fiable. Nada se restaura por sí solo.",
+  "Zoom": "Zoom",
+  "Everything on screen, text and pictures, bigger or smaller. Ctrl + and Ctrl − change it anywhere, Ctrl 0 goes back to the system's.": "Todo lo que hay en pantalla, textos e imágenes, más grande o más pequeño. Ctrl + y Ctrl − lo cambian en cualquier lugar, Ctrl 0 vuelve al del sistema.",
+  "Follow the system": "Seguir el sistema",
+  "Zoom in or out": "Acercar o alejar el zoom",
+  "Zoom back to the system's": "Zoom de vuelta al del sistema",
+  "Zoom: {percent}%": "Zoom: {percent}%",
+  "Zoom: {percent}%, the system's": "Zoom: {percent}%, el del sistema",
+  "Nothing on this system asks for another size: {percent}%.": "Nada en este sistema pide otro tamaño: {percent}%.",
+  "{percent}%, from GDK_DPI_SCALE.": "{percent}%, de GDK_DPI_SCALE.",
+  "{percent}%, from QT_SCALE_FACTOR.": "{percent}%, de QT_SCALE_FACTOR.",
+  "{percent}%, from the desktop's text size.": "{percent}%, del tamaño de texto del escritorio.",
+  "{percent}%, from Windows' text size.": "{percent}%, del tamaño de texto de Windows."
 }

@@ -4,6 +4,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::FacetKind;
+use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
 
 use super::vm::{self, GroupVm, ListItem};
@@ -96,6 +97,17 @@ impl CollectionView {
         if let Some(game) = lib.get(&key) {
             self.focus = Some(self.focus_vm_of(&lib, game));
         }
+    }
+
+    /// Picks the interface scale (`None`: the system's) and says which.
+    pub(super) fn set_ui_scale(&mut self, percent: Option<f32>, cx: &mut Context<Self>) {
+        crate::system::ui_scale::set(percent, &self.app_paths, cx);
+        let now = crate::system::ui_scale::percent_of(&crate::theme::appearance()).round();
+        let text = match percent {
+            Some(_) => tr!("Zoom: {percent}%", percent = now),
+            None => tr!("Zoom: {percent}%, the system's", percent = now),
+        };
+        self.show_toast(text, false, cx);
     }
 
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {

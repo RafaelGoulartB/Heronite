@@ -52,6 +52,10 @@ version = "=0.3.8"
 default-features = false
 package = "gpui-pre"
 
+# Heronite: the interface scale every window opens at (see PATCHES.md).
+[target.'cfg(target_os = "windows")'.dependencies.gpui-zoom]
+path = "../gpui-zoom"
+
 [target.'cfg(target_os = "windows")'.dependencies.accesskit]
 version = "0.24.0"
 features = ["enumn"]
