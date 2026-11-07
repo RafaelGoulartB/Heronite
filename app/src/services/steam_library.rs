@@ -130,19 +130,36 @@ impl SteamLibrary {
         if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(FIRST_DELAY).await;
+                // Ticks fast so a Steam opened from here is followed at
+                // once even after the library was read; reads only when
+                // something is awaited or the interval passed.
+                let mut last: Option<Instant> = None;
                 loop {
-                    let Ok(read) = this.update(cx, |this, cx| {
-                        this.sync_if_ready(cx);
-                        this.summary.updated_at.is_some()
-                    }) else {
+                    let alive = this.update(cx, |this, cx| {
+                        if this.awaiting() || last.is_none_or(|t| t.elapsed() >= INTERVAL) {
+                            last = Some(Instant::now());
+                            this.sync_if_ready(cx);
+                        }
+                    });
+                    if alive.is_err() {
                         return;
-                    };
-                    cx.background_executor().timer(if read { INTERVAL } else { FAST }).await;
+                    }
+                    cx.background_executor().timer(FAST).await;
                 }
             })
             .detach();
         }
         this
+    }
+
+    /// Whether the checks should follow Steam closely: the library was
+    /// never read, or Steam is opening, restarting or not read yet.
+    fn awaiting(&self) -> bool {
+        self.summary.updated_at.is_none()
+            || matches!(
+                self.state(),
+                SteamState::Checking | SteamState::Opening | SteamState::Restarting | SteamState::NotAnswering | SteamState::NeedsRestart
+            )
     }
 
     pub fn state(&self) -> SteamState {
@@ -237,7 +254,8 @@ impl SteamLibrary {
 
     /// Keeps what a check found: when the client stopped answering, and
     /// the log line when it changed (a check runs every few seconds).
-    fn set_access(&mut self, access: LibraryAccess, detail: Option<String>) {
+    /// Whether it wrote a log line.
+    fn set_access(&mut self, access: LibraryAccess, detail: Option<String>) -> bool {
         if access != LibraryAccess::Starting {
             self.starting_since = None;
         } else if self.starting_since.is_none() {
@@ -251,7 +269,9 @@ impl SteamLibrary {
                 None => log::info!("Steam library access: {access:?}"),
             }
             self.logged = Some(entry);
+            return true;
         }
+        false
     }
 
     /// Checks whether the client can be read now (for the Steam page).
@@ -355,7 +375,8 @@ mod tests {
         s.set_access(LibraryAccess::Starting, Some("steamwebhelper not running".into()));
         assert_eq!(s.state(), SteamState::Opening);
         // Checked again later, still not answering: the clock is not reset.
-        let since = Instant::now() - NOT_ANSWERING;
+        // (No earlier instant right after boot: nothing to check then.)
+        let Some(since) = Instant::now().checked_sub(NOT_ANSWERING) else { return };
         s.starting_since = Some(since);
         s.set_access(LibraryAccess::Starting, Some("client: refused".into()));
         assert_eq!(s.starting_since, Some(since));
@@ -369,13 +390,26 @@ mod tests {
     }
 
     #[test]
-    fn the_log_keeps_the_last_access_and_why() {
+    fn the_log_says_each_change_once() {
         let mut s = library();
-        s.set_access(LibraryAccess::Starting, Some("a".into()));
-        assert_eq!(s.logged, Some((LibraryAccess::Starting, Some("a".into()))));
-        s.set_access(LibraryAccess::Starting, Some("b".into()));
-        assert_eq!(s.logged, Some((LibraryAccess::Starting, Some("b".into()))));
+        assert!(s.set_access(LibraryAccess::Starting, Some("a".into())));
+        assert!(!s.set_access(LibraryAccess::Starting, Some("a".into())));
+        assert!(s.set_access(LibraryAccess::Starting, Some("b".into())));
+        assert!(s.set_access(LibraryAccess::Closed, None));
+        assert!(!s.set_access(LibraryAccess::Closed, None));
+    }
+
+    #[test]
+    fn checks_follow_steam_closely_until_it_is_read() {
+        let mut s = library();
+        assert!(s.awaiting());
+        s.summary.updated_at = Some("2026-11-07T10:00:00Z".into());
         s.set_access(LibraryAccess::Closed, None);
-        assert_eq!(s.logged, Some((LibraryAccess::Closed, None)));
+        assert!(!s.awaiting());
+        // Opened from here after a first read: followed at once again.
+        s.opened_at = Some(Instant::now());
+        assert!(s.awaiting());
+        s.set_access(LibraryAccess::Ready, None);
+        assert!(!s.awaiting());
     }
 }

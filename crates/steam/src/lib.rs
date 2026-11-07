@@ -385,10 +385,15 @@ impl Steam {
 
     /// The account's games, from the running client.
     pub fn read_library(&self) -> Result<Vec<heronite_data::steam_owned::SteamOwnedGame>, String> {
-        match self.library_access() {
+        let (access, why) = self.library_check();
+        match access {
             LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
             LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
-            LibraryAccess::Starting => Err(tr!("Steam is still starting. Your library is read as soon as it is ready.").to_string()),
+            // The why is technical, but it is what tells a stuck client apart.
+            LibraryAccess::Starting => Err(tr!(
+                "Steam is running but does not answer Heronite yet ({why}). If it is updating or asking you to sign in, finish that; otherwise restart Steam once.",
+                why = why.unwrap_or_default()
+            )),
             LibraryAccess::NeedsRestart => Err(tr!("Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.").to_string()),
             LibraryAccess::NotInstalled => Err(tr!("Steam was not found on this PC. Install Steam and sign in, then open it to read your library.").to_string()),
         }

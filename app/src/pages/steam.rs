@@ -64,7 +64,9 @@ impl SteamPage {
     fn status(&self, cx: &App) -> (String, Rgba, bool) {
         match self.svc.read(cx).state() {
             SteamState::Checking => (tr!("Checking Steam\u{2026}").into(), theme::text_muted(), false),
-            SteamState::Connected | SteamState::Reading => (tr!("Steam is running").into(), theme::success(), true),
+            SteamState::Connected => (tr!("Steam is running").into(), theme::success(), true),
+            // A read asked for while Steam does not answer fails at once: not "running".
+            SteamState::Reading => (tr!("Reading\u{2026}").into(), theme::accent(), true),
             SteamState::Closed => (tr!("Steam is closed").into(), theme::text_muted(), false),
             SteamState::Opening => (tr!("Steam is starting").into(), theme::accent(), false),
             SteamState::Restarting => (tr!("Restarting Steam\u{2026}").into(), theme::accent(), false),
@@ -109,9 +111,10 @@ impl SteamPage {
         }
     }
 
-    /// A read next to the restart, when Steam runs but is not read.
+    /// A read next to the restart, when Steam runs but does not answer:
+    /// it shows why.
     fn second_action(&self, cx: &App) -> Option<(&'static str, &'static str)> {
-        matches!(self.svc.read(cx).state(), SteamState::NotAnswering | SteamState::NeedsRestart).then(|| ("read", tr!("Read library now")))
+        (self.svc.read(cx).state() == SteamState::NotAnswering).then(|| ("read", tr!("Read library now")))
     }
 
     fn run_action(&mut self, id: &str, cx: &mut Context<Self>) {

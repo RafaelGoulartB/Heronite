@@ -33,21 +33,6 @@ pub fn debugger_addr() -> String {
     port_of(&running_webhelpers()).map(|p| format!("127.0.0.1:{p}")).unwrap_or_else(|| DEFAULT_ADDR.to_string())
 }
 
-/// Where the running Steam's debugger may be, in the order to try: the port
-/// its `steamwebhelper` names, then [`DEFAULT_ADDR`] (the port is not always
-/// in its command line).
-pub fn debugger_addrs() -> Vec<String> {
-    addrs_for(port_of(&running_webhelpers()))
-}
-
-fn addrs_for(port: Option<u16>) -> Vec<String> {
-    let mut addrs: Vec<String> = port.map(|p| format!("127.0.0.1:{p}")).into_iter().collect();
-    if !addrs.iter().any(|a| a == DEFAULT_ADDR) {
-        addrs.push(DEFAULT_ADDR.to_string());
-    }
-    addrs
-}
-
 /// Titles of the target where `SteamClient` and the stores live: older
 /// clients call it `SharedJSContext`, newer ones the long name (Decky
 /// Loader's `SHARED_CTX_NAMES`). Steam's windows are not it: `appStore` and
@@ -198,40 +183,23 @@ pub struct NewShortcut<'a> {
 /// The debugger of one Steam client.
 #[derive(Debug, Clone)]
 pub struct SteamClient {
-    /// Where it may listen, in the order to try (never empty).
-    addrs: Vec<String>,
+    addr: String,
 }
 
 impl SteamClient {
     /// `addr` is `host:port`; the WebSocket always goes to the same address,
     /// whatever host the target list names.
     pub fn new(addr: impl Into<String>) -> Self {
-        Self { addrs: vec![addr.into()] }
+        Self { addr: addr.into() }
     }
 
-    /// The first of `addrs` that serves the shared context is used
-    /// ([`debugger_addrs`]). Empty: [`DEFAULT_ADDR`].
-    pub fn first_of(addrs: Vec<String>) -> Self {
-        if addrs.is_empty() {
-            return Self::new(DEFAULT_ADDR);
-        }
-        Self { addrs }
-    }
-
-    /// The address and `ws://` path of the shared context target, where
-    /// `SteamClient` lives. The error tells what each address answered.
-    fn socket_path(&self) -> Result<(String, String)> {
-        let mut errors = Vec::new();
-        for addr in &self.addrs {
-            let found = http_get(addr, "/json")
-                .and_then(|body| serde_json::from_str::<Value>(&body).context("the target list is not JSON"))
-                .and_then(|targets| shared_context_path(&targets));
-            match found {
-                Ok(path) => return Ok((addr.clone(), path)),
-                Err(e) => errors.push(format!("{addr}: {e:#}")),
-            }
-        }
-        bail!("{}", errors.join("; "))
+    /// `ws://` path of the shared context target, where `SteamClient`
+    /// lives. The error names the address and what it answered.
+    fn socket_path(&self) -> Result<String> {
+        http_get(&self.addr, "/json")
+            .and_then(|body| serde_json::from_str::<Value>(&body).context("the target list is not JSON"))
+            .and_then(|targets| shared_context_path(&targets))
+            .with_context(|| self.addr.clone())
     }
 
     /// Why the client does not answer, or `Ok` when it does.
@@ -253,8 +221,8 @@ impl SteamClient {
     /// `evalInSteamClient`: `Runtime.evaluate` awaiting the promise and
     /// returning the value.
     pub fn eval(&self, expression: &str) -> Result<Value> {
-        let (addr, path) = self.socket_path().context(tr!("The Steam client debugging interface is not available"))?;
-        let mut ws = WebSocket::connect(&addr, &path, EVAL_TIMEOUT).context(tr!("Connection to the Steam client failed"))?;
+        let path = self.socket_path().context(tr!("The Steam client debugging interface is not available"))?;
+        let mut ws = WebSocket::connect(&self.addr, &path, EVAL_TIMEOUT).context(tr!("Connection to the Steam client failed"))?;
         let request = json!({
             "id": 1,
             "method": "Runtime.evaluate",
@@ -731,14 +699,6 @@ mod tests {
     }
 
     #[test]
-    fn the_port_of_the_webhelper_is_tried_before_the_default() {
-        assert_eq!(addrs_for(Some(53211)), ["127.0.0.1:53211", DEFAULT_ADDR]);
-        assert_eq!(addrs_for(Some(8080)), [DEFAULT_ADDR]);
-        assert_eq!(addrs_for(None), [DEFAULT_ADDR]);
-        assert_eq!(SteamClient::first_of(Vec::new()).addrs, [DEFAULT_ADDR]);
-    }
-
-    #[test]
     fn the_shared_context_is_found_under_its_old_and_new_titles() {
         let target =
             |title: &str, id: &str| json!({"title": title, "webSocketDebuggerUrl": format!("ws://127.0.0.1:8080/devtools/page/{id}")});
@@ -755,15 +715,10 @@ mod tests {
     }
 
     #[test]
-    fn a_client_falls_back_to_the_next_address() {
+    fn a_probe_names_the_address_that_did_not_answer() {
         let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         let dead = format!("127.0.0.1:{port}");
-        let fake = start(Box::new(|_| json!(42)));
-        let client = SteamClient::first_of(vec![dead.clone(), fake.addr.clone()]);
-        assert!(client.is_available());
-        assert_eq!(client.eval("1").unwrap(), json!(42));
-        // When none answers, the error says what each address did.
-        let err = SteamClient::first_of(vec![dead.clone()]).probe().unwrap_err().to_string();
+        let err = format!("{:#}", SteamClient::new(&dead).probe().unwrap_err());
         assert!(err.starts_with(&format!("{dead}: ")), "{err}");
     }
 
