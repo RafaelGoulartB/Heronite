@@ -70,7 +70,7 @@ impl SettingsPanel {
         let missing = s.enabled.then(|| self.lsfg_missing()).flatten();
         let mut card = rows().child(match missing {
             Some(m) => inactive_row(label, about, m, disabled, cx),
-            None => self.toggle_row("lsfg", lsfg::KEY_ENABLED, false, label, Some(about), disabled, cx),
+            None => self.toggle_row_icon("lsfg", lsfg::KEY_ENABLED, Icon::Animation, label, Some(about), disabled, cx),
         });
         if s.enabled && missing.is_none() && self.lsfg.is_some() {
             card = self.lsfg_rows(card, &s, disabled, cx);
@@ -182,6 +182,7 @@ fn inactive_row(label: &str, about: &str, missing: Missing, disabled: bool, cx: 
         .justify_between()
         .gap(px(16.))
         .py(px(11.))
+        .child(crate::ui::controls::icon_badge(Icon::Animation))
         .child(text)
         .child(div().flex_none().child(toggle_inactive("lsfg-sw", true)));
     match disabled {

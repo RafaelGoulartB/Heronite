@@ -29,7 +29,7 @@ pub(super) fn title_row(title: impl Into<SharedString>, about: impl IntoElement,
         .items_center()
         .gap(px(12.))
         .py(px(12.))
-        .child(badge())
+        .child(crate::ui::controls::icon_badge(Icon::Palette))
         .child(
             div()
                 .flex()
@@ -46,15 +46,6 @@ pub(super) fn title_row(title: impl Into<SharedString>, about: impl IntoElement,
 /// The small text under a title.
 pub(super) fn about(text: impl Into<SharedString>) -> Div {
     div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(text.into())
-}
-
-/// The badge of the section: its icon on an accent tile.
-fn badge() -> Div {
-    div().flex_none().size(px(36.)).rounded(px(11.)).bg(theme::accent_tint()).flex().items_center().justify_center().child(icon(
-        Icon::Palette,
-        px(19.),
-        theme::accent(),
-    ))
 }
 
 pub(super) fn separator() -> Div {

@@ -14,9 +14,11 @@ use super::render::{api_label, buttons, warn_line};
 use super::render_setup::{about, link, title_row};
 use super::{Confirm, SettingsPanel};
 use crate::dialogs::settings_panel::parts::{help, hint, rows, Rows};
+use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, row, toggle, ButtonKind};
 use crate::ui::fields::input_box;
+use crate::ui::icon;
 
 /// A small button for a row.
 fn small(
@@ -25,9 +27,11 @@ fn small(
     label: &str,
     enabled: bool,
     cx: &mut Context<SettingsPanel>,
-    on_click: impl Fn(&mut SettingsPanel, &mut Context<SettingsPanel>) + 'static,
+    on_click: impl Fn(&mut SettingsPanel, &mut Window, &mut Context<SettingsPanel>) + 'static,
 ) -> Stateful<Div> {
-    action_button(id, kind, label.to_string(), enabled, cx.listener(move |this, _, _, cx| on_click(this, cx))).h(px(30.)).text_size(px(12.))
+    action_button(id, kind, label.to_string(), enabled, cx.listener(move |this, _, window, cx| on_click(this, window, cx)))
+        .h(px(30.))
+        .text_size(px(12.))
 }
 
 /// `6.10.0` is newer than `6.9.2`.
@@ -112,7 +116,7 @@ impl SettingsPanel {
             card = card.child(notes.into_iter().fold(div().flex().flex_col().gap(px(4.)).py(px(12.)), |d, n| d.child(n)));
         }
         if let Some(latest) = o.latest.as_deref().filter(|l| newer(l, &m.version)) {
-            let update = small("reshade-update", ButtonKind::Primary, tr!("Update"), !busy, cx, |this, cx| this.update_reshade(cx));
+            let update = small("reshade-update", ButtonKind::Primary, tr!("Update"), !busy, cx, |this, _, cx| this.update_reshade(cx));
             card = card.child(row(
                 tr!("Version"),
                 Some(&tr!("{current} installed; {latest} is available", current = m.version, latest)),
@@ -131,16 +135,32 @@ impl SettingsPanel {
                 "The preset uses effects that are not installed: {files}. Add the folder or the repository that has them.",
                 files = missing.join(", ")
             );
-            let add = buttons()
-                .child(
-                    link("reshade-missing-folder", tr!("Add folder…"))
-                        .on_click(cx.listener(|this, _, window, cx| this.pick_reshade_folder(window, cx))),
-                )
-                .child(link("reshade-missing-repo", tr!("Add repository…")).on_click(cx.listener(|this, _, _, cx| {
-                    this.reshade.adding_repo = true;
-                    cx.notify();
-                })));
-            card = card.child(div().flex().flex_col().gap(px(8.)).pb(px(12.)).child(warn_line(&text)).child(add));
+            let folder = small("reshade-missing-folder", ButtonKind::Glass, tr!("Add folder…"), !busy, cx, |this, window, cx| {
+                this.pick_reshade_folder(window, cx)
+            });
+            let repo = small("reshade-missing-repo", ButtonKind::Glass, tr!("Add repository…"), !busy, cx, |this, _, cx| {
+                this.reshade.adding_repo = true;
+                cx.notify();
+            });
+            // A box of its own, so its buttons do not read as links of the rows.
+            let note = div()
+                .flex()
+                .items_start()
+                .gap(px(10.))
+                .child(icon(Icon::Warning, px(16.), theme::warning()).mt(px(1.)))
+                .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(17.)).text_color(theme::text_primary()).child(text));
+            let callout = div()
+                .flex()
+                .flex_col()
+                .gap(px(10.))
+                .p(px(12.))
+                .rounded(px(theme::R_INPUT))
+                .bg(theme::ink_a(0.04))
+                .border_1()
+                .border_color(theme::card_border())
+                .child(note)
+                .child(buttons().pl(px(26.)).child(folder).child(repo));
+            card = card.child(div().pb(px(12.)).child(callout));
             if self.reshade.adding_repo {
                 card = card.field(self.reshade_repo_field(busy, cx));
             }
