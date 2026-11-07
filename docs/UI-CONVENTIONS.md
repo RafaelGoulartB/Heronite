@@ -210,16 +210,20 @@ Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…
 `dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button.
-The spare middle lane also offers quick controls (`collection/toolbar/`), in priority order: Sort with its direction,
-Show (All / Installed / Not installed), Favourites, Group by, then saved Presets. Each is a 32px pill using the
-same labels and actions as the View menu, which always retains the complete controls and preset management.
-Direction and Favourites have tooltips; direction means the selected field's natural order or its reversal, not
-always numeric ascending/descending. Settings → Appearance → Layout → **Quick toolbar controls** turns this on
-or off immediately (on by default; `quickToolbarControls` in `appearance.json`, independent of filters and presets).
-Visibility is a priority prefix of shaped localized control widths within the measured flex lane, after reserving
-the existing filter chips and 48px for dragging. Search, window controls, Focus / Grid and activity pills keep their
-space. Measurement requests one redraw only when the lane changes, never writes settings, and closes a menu whose
-trigger no longer fits. Long preset names truncate with their full name in a tooltip.
+The spare middle lane can also show the quick toolbar (`collection/toolbar/`): one 32px capsule of segments, in
+priority order Sort with its direction, Show (All / Installed / Not installed), Favourites, Group by, then saved
+Presets, using the same labels and actions as the View menu, which always keeps the complete controls and preset
+management. A segment at its default is only its icon; a value in use adds its label, in the accent (with a tint)
+when it hides games and bright otherwise (sort, grouping, preset). Every segment has a tooltip with its name and
+value. While a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
+returns when the toolbar is off or the control does not fit. It is off by default: hovering the View button
+reveals an accent arrow beside it that turns it on (→) or off (←), the same preference as Settings → Appearance →
+Layout → **Quick toolbar controls** (`quickToolbarControls` in `appearance.json`, independent of filters and
+presets). Visibility is a priority prefix of shaped localized segment widths within the measured flex lane, after
+reserving the remaining filter chips and 48px for dragging (`toolbar/layout.rs`, `fit`). Search, window controls,
+Focus / Grid and activity pills keep their space. Measurement requests one redraw only when the lane changes,
+never writes settings, and closes a menu whose trigger no longer fits. Long preset names truncate with their full
+name in a tooltip.
 Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
 metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or

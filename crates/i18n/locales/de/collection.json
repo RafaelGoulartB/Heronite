@@ -522,5 +522,7 @@
   "Title and info": "Titel und Info",
   "Open details on select": "Details bei Auswahl öffnen",
   "More in Appearance": "Mehr unter Darstellung",
-  "Reset to defaults": "Auf Standard zurücksetzen"
+  "Reset to defaults": "Auf Standard zurücksetzen",
+  "Show quick controls": "Schnellzugriff einblenden",
+  "Hide quick controls": "Schnellzugriff ausblenden"
 }

@@ -386,7 +386,7 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
     let toolbar = toggle_row(
         "quick-toolbar-controls",
         tr!("Quick toolbar controls"),
-        Some(tr!("Show sorting, install scope, favourites, grouping and presets in the Collection header when there is room. All controls remain in the View menu.")),
+        Some(tr!("Show sorting, install scope, favourites, grouping and presets in the Collection header when there is room. The arrow beside the View button also turns them on or off; every control stays in the View menu.")),
         a.quick_toolbar_controls,
     )
     .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.quick_toolbar_controls = !a.quick_toolbar_controls)))

@@ -76,8 +76,8 @@ Library crates never depend on GPUI. Their functions are blocking; the app
 calls them from `cx.background_spawn` or worker threads.
 
 The Collection's adaptive quick toolbar (`app/src/collection/toolbar`) measures its spare header lane and shapes
-localized labels, then exposes a priority prefix of the existing View menu actions. Its on/off preference belongs
-to `appearance.json`, not `UiState` or saved view filters; applying an appearance profile also keeps this window choice.
+localized labels, then exposes a priority prefix of the existing View menu actions, hiding the filter chips those
+controls already show. Its on/off preference (off by default) belongs to `appearance.json`, not `UiState` or saved view filters; applying an appearance profile also keeps this window choice.
 
 `vendor/gpui-pre-linux` is GPUI's Linux platform, patched to release the GPU
 device when the last window closes (the app lives on in the tray); see its

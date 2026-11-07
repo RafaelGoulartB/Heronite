@@ -1,6 +1,11 @@
-//! Optional Collection shortcuts. The zero-basis header lane is measured
-//! after layout; text is shaped in the same font as the controls. Resizing
-//! never writes settings, and a vanished trigger cannot keep its menu open.
+//! Optional Collection shortcuts, off by default: one capsule after the
+//! View button. A control at its default shows only its icon; a value in use
+//! adds its label, in the accent when it hides games. While a control is
+//! shown, its filter chip is not (`layout::fit`).
+//!
+//! The zero-basis header lane is measured after layout; text is shaped in the
+//! same font as the controls. Resizing never writes settings, and a vanished
+//! trigger cannot keep its menu open.
 
 mod layout;
 
@@ -9,7 +14,7 @@ use std::rc::Rc;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::{GroupBy, InstallFilter, SortMode};
+use heronite_data::{GroupBy, InstallFilter};
 use heronite_i18n::tr;
 
 use super::header::{install_label, Menu};
@@ -24,12 +29,19 @@ use crate::ui::{icon, tooltip};
 
 pub(super) use layout::GAP;
 
-const HEIGHT: f32 = 32.;
+const SEGMENT_H: f32 = 26.;
 const LABEL: f32 = 12.5;
 const ICON: f32 = 14.;
-const PAD: f32 = 10.;
-const PAIR_GAP: f32 = 2.;
+/// Side padding of a segment with a label, and of an icon-only one.
+const PAD: f32 = 8.;
+const ICON_PAD: f32 = 6.;
+const INNER_GAP: f32 = 5.;
+const CAPSULE_PAD: f32 = 3.;
+/// The capsule's padding and 1px border, both sides.
+const CHROME: f32 = 2. * CAPSULE_PAD + 2.;
 const PRESET_LABEL_MAX: f32 = 160.;
+/// The View button and the arrow that shows or hides the capsule.
+const VIEW_GROUP: &str = "collection-view-button";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::collection) enum QuickMenu {
@@ -50,6 +62,9 @@ impl QuickMenu {
     }
 }
 
+/// Favourites' place in the priority order (it has no menu).
+const FAVOURITES: usize = 2;
+
 #[derive(Default)]
 pub(super) struct State {
     pub width: Rc<Cell<Option<f32>>>,
@@ -59,6 +74,16 @@ pub(super) struct State {
 impl State {
     pub fn shows(&self, menu: QuickMenu) -> bool {
         self.visible > menu.index()
+    }
+}
+
+/// Whether a capsule showing `shown` controls already carries this filter,
+/// so its chip would repeat it.
+pub(super) fn covers(pick: &Pick, shown: usize) -> bool {
+    match pick {
+        Pick::Show(_) => shown > QuickMenu::Install.index(),
+        Pick::Only(Only::Favourites) => shown > FAVOURITES,
+        _ => false,
     }
 }
 
@@ -75,44 +100,142 @@ pub(super) fn text_width(text: &str, window: &Window) -> f32 {
     f32::from(line.width).ceil() + 1.
 }
 
-fn select_width<'a>(labels: impl Iterator<Item = &'a str>, window: &Window) -> f32 {
-    labels.map(|s| text_width(s, window)).fold(0., f32::max) + 2. * PAD + 2. * ICON + 2. * GAP + 2.
+fn segment_width(label: Option<f32>) -> f32 {
+    match label {
+        Some(text) => 2. * PAD + ICON + INNER_GAP + text,
+        None => 2. * ICON_PAD + ICON,
+    }
 }
 
-fn button(id: impl Into<ElementId>, width: f32, active: bool) -> Stateful<Div> {
+/// This render's segment widths, from the labels they show now.
+pub(super) struct Widths {
+    sort: f32,
+    direction: f32,
+    install: f32,
+    favourites: f32,
+    group: f32,
+    preset: f32,
+    presets: bool,
+}
+
+impl Widths {
+    /// Lane cost of each control in priority order. A separator (`GAP`)
+    /// precedes every control after the first; the last control's `GAP`
+    /// is the space before the chips.
+    fn items(&self) -> Vec<f32> {
+        let mut items = vec![CHROME + self.sort + self.direction, self.install, self.favourites, self.group];
+        if self.presets {
+            items.push(self.preset);
+        }
+        items
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Tone {
+    /// At its default.
+    Plain,
+    /// Changed, but hides no game (sort, grouping, preset).
+    Set,
+    /// A filter that hides games.
+    Filter,
+}
+
+impl Tone {
+    fn color(self) -> Hsla {
+        match self {
+            Self::Plain => theme::text_muted().into(),
+            Self::Set => theme::text_bright(),
+            Self::Filter => theme::accent().into(),
+        }
+    }
+}
+
+fn segment(id: impl Into<ElementId>, width: f32, tone: Tone, open: bool) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .gap(px(GAP))
-        .h(px(HEIGHT))
+        .gap(px(INNER_GAP))
+        .h(px(SEGMENT_H))
         .w(px(width))
-        .px(px(PAD))
         .rounded_full()
-        .border_1()
-        .border_color(if active { theme::accent_alpha(0.3).into() } else { theme::ink_a(0.08) })
-        .bg(if active { theme::accent_tint() } else { theme::search_fill() })
         .text_size(px(LABEL))
-        .text_color(if active { theme::text_bright() } else { theme::text_primary().into() })
+        .text_color(tone.color())
         .cursor_pointer()
-        .hover(|s| s.bg(theme::search_fill_hover()).text_color(theme::text_bright()))
+        .when(tone == Tone::Filter, |d| d.bg(theme::accent_tint()))
+        .when(open, |d| d.bg(theme::ink_a(0.08)))
+        .hover(move |s| {
+            let s = s.bg(theme::ink_a(0.08));
+            if tone == Tone::Filter {
+                s
+            } else {
+                s.text_color(theme::text_bright())
+            }
+        })
+}
+
+fn separator() -> Div {
+    div().flex_none().w(px(1.)).h(px(14.)).mx(px((GAP - 1.) / 2.)).bg(theme::ink_a(0.1))
 }
 
 impl CollectionView {
-    pub(super) fn quick_toolbar(&mut self, chips: f32, window: &Window, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+    pub(super) fn quick_widths(&self, window: &Window) -> Widths {
+        let preset = self.current_view().map(|i| text_width(&self.ui.saved_views[i].name, window).min(PRESET_LABEL_MAX));
+        Widths {
+            sort: segment_width(Some(text_width(sort_label(self.ui.sort), window))),
+            direction: segment_width(None),
+            install: segment_width(
+                (self.ui.install_filter != InstallFilter::All).then(|| text_width(install_label(self.ui.install_filter), window)),
+            ),
+            favourites: segment_width(None),
+            group: segment_width((self.ui.group_by != GroupBy::None).then(|| text_width(group_label(self.ui.group_by), window))),
+            preset: segment_width(preset),
+            presets: !self.ui.saved_views.is_empty(),
+        }
+    }
+
+    /// How many controls the capsule shows, given each filter chip's
+    /// `(pick, width)`.
+    pub(super) fn quick_fit(&self, widths: &Widths, chips: &[(Pick, f32)]) -> usize {
+        let lane = self.toolbar.width.get().unwrap_or(0.);
+        let chip_width = |shown: usize| chips.iter().filter(|(pick, _)| !covers(pick, shown)).map(|(_, w)| w + GAP).sum();
+        layout::fit(theme::appearance().quick_toolbar_controls, lane, &widths.items(), chip_width)
+    }
+
+    /// The View button with the arrow that shows or hides the capsule on its
+    /// right; the arrow appears while the pointer is over either.
+    pub(super) fn view_button_group(&self, view: Stateful<Div>, cx: &mut Context<Self>) -> Div {
+        let on = theme::appearance().quick_toolbar_controls;
+        let toggle = div()
+            .id("quick-toolbar-toggle")
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .w(px(16.))
+            .h(theme::TOOL_BTN)
+            .rounded(px(theme::R_ITEM / 2.))
+            .cursor_pointer()
+            .opacity(0.)
+            .group_hover(VIEW_GROUP, |s| s.opacity(1.))
+            .hover(|s| s.bg(theme::ink_a(0.08)))
+            .tooltip(tooltip(if on { tr!("Hide quick controls") } else { tr!("Show quick controls") }))
+            .child(icon(if on { Icon::ChevronLeft } else { Icon::ChevronRight }, px(14.), theme::accent()))
+            .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.quick_toolbar_controls = !a.quick_toolbar_controls, cx)));
+        div().group(VIEW_GROUP).flex().flex_none().items_center().child(view).child(toggle)
+    }
+
+    pub(super) fn quick_toolbar(
+        &mut self,
+        visible: usize,
+        widths: &Widths,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Stateful<Div>> {
         let enabled = theme::appearance().quick_toolbar_controls;
-        let sort_w = select_width(SortMode::ALL.into_iter().map(sort_label), window);
-        let install_w =
-            select_width([InstallFilter::All, InstallFilter::Installed, InstallFilter::Uninstalled].into_iter().map(install_label), window);
-        let group_w = select_width(GroupBy::ALL.into_iter().map(group_label), window);
-        let current = self.current_view();
-        let preset = current.map_or(tr!("Custom"), |i| self.ui.saved_views[i].name.as_str());
-        let preset_w = text_width(preset, window).min(PRESET_LABEL_MAX) + 2. * PAD + 2. * ICON + 2. * GAP + 2.;
-        let widths = [sort_w + PAIR_GAP + HEIGHT, install_w, HEIGHT, group_w, preset_w];
-        let offered = if self.ui.saved_views.is_empty() { &widths[..4] } else { &widths[..] };
-        let visible = layout::visible_count(enabled, self.toolbar.width.get().unwrap_or(0.), chips, offered);
         if visible < self.toolbar.visible {
             self.menu_open = None;
         }
@@ -126,99 +249,110 @@ impl CollectionView {
             return None;
         }
         let max_h = (f32::from(window.viewport_size().height) - 58.).max(80.);
+        let (mode, descending) = (self.ui.sort, self.ui.sort_descending);
         let sort = self.quick_select(
             QuickMenu::Sort,
             "quick-sort",
-            sort_label(self.ui.sort),
-            sort_icon(self.ui.sort),
-            sort_w,
-            tr!("Sort"),
+            Some(sort_label(mode)),
+            sort_icon(mode),
+            widths.sort,
+            Tone::Set,
+            (tr!("Sort"), sort_label(mode)),
             max_h,
             cx,
         );
-        let direction = button("quick-sort-direction", HEIGHT, false)
-            .px(px(0.))
-            .tooltip(tooltip(sort_direction(self.ui.sort, self.ui.sort_descending)))
-            .child(icon(sort_direction_icon(self.ui.sort, self.ui.sort_descending), px(16.), theme::text_primary()))
+        let direction = segment("quick-sort-direction", widths.direction, Tone::Plain, false)
+            .tooltip(tooltip(sort_direction(mode, descending)))
+            .child(icon(sort_direction_icon(mode, descending), px(ICON), Tone::Plain.color()))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
-        let mut row = div()
+        let mut capsule = div()
             .id("collection-quick-toolbar")
             .flex()
             .flex_none()
             .items_center()
-            .gap(px(GAP))
-            .child(div().flex().flex_none().gap(px(PAIR_GAP)).child(sort).child(direction));
-        if visible >= 2 {
-            row = row.child(self.quick_select(
+            .h(theme::TOOL_BTN)
+            .px(px(CAPSULE_PAD))
+            .rounded_full()
+            .border_1()
+            .border_color(theme::ink_a(0.08))
+            .bg(theme::search_fill())
+            .child(sort)
+            .child(direction);
+        if visible > QuickMenu::Install.index() {
+            let filter = self.ui.install_filter;
+            let filtered = filter != InstallFilter::All;
+            capsule = capsule.child(separator()).child(self.quick_select(
                 QuickMenu::Install,
                 "quick-install",
-                install_label(self.ui.install_filter),
+                filtered.then(|| install_label(filter)),
                 Icon::Download,
-                install_w,
-                tr!("Show"),
+                widths.install,
+                if filtered { Tone::Filter } else { Tone::Plain },
+                (tr!("Show"), install_label(filter)),
                 max_h,
                 cx,
             ));
         }
-        if visible >= 3 {
-            row = row.child(
-                button("quick-favourites", HEIGHT, self.ui.only.favourites)
-                    .px(px(0.))
+        if visible > FAVOURITES {
+            let on = self.ui.only.favourites;
+            let tone = if on { Tone::Filter } else { Tone::Plain };
+            capsule = capsule.child(separator()).child(
+                segment("quick-favourites", widths.favourites, tone, false)
                     .tooltip(tooltip(Only::Favourites.label()))
-                    .child(icon(
-                        if self.ui.only.favourites { Icon::Star } else { Icon::StarBorder },
-                        px(16.),
-                        if self.ui.only.favourites { theme::accent() } else { theme::text_primary() },
-                    ))
+                    .child(icon(if on { Icon::Star } else { Icon::StarBorder }, px(ICON), tone.color()))
                     .on_click(cx.listener(|this, _, _, cx| this.apply_pick(&Pick::Only(Only::Favourites), cx))),
             );
         }
-        if visible >= 4 {
-            row = row.child(self.quick_select(
+        if visible > QuickMenu::Group.index() {
+            let by = self.ui.group_by;
+            let grouped = by != GroupBy::None;
+            capsule = capsule.child(separator()).child(self.quick_select(
                 QuickMenu::Group,
                 "quick-group",
-                group_label(self.ui.group_by),
+                grouped.then(|| group_label(by)),
                 Icon::Folder,
-                group_w,
-                tr!("Group by"),
+                widths.group,
+                if grouped { Tone::Set } else { Tone::Plain },
+                (tr!("Group by"), group_label(by)),
                 max_h,
                 cx,
             ));
         }
-        if visible >= 5 {
-            let preset = self.current_view().map_or(tr!("Custom"), |i| self.ui.saved_views[i].name.as_str());
-            row = row.child(self.quick_select(
+        if visible > QuickMenu::Presets.index() {
+            let name = self.current_view().map(|i| self.ui.saved_views[i].name.clone());
+            capsule = capsule.child(separator()).child(self.quick_select(
                 QuickMenu::Presets,
                 "quick-presets",
-                preset,
+                name.as_deref(),
                 Icon::Bookmark,
-                preset_w,
-                tr!("Presets"),
+                widths.preset,
+                if name.is_some() { Tone::Set } else { Tone::Plain },
+                (tr!("Presets"), name.as_deref().unwrap_or(tr!("Custom"))),
                 max_h,
                 cx,
             ));
         }
-        Some(row)
+        Some(capsule)
     }
 
+    /// A segment that opens `menu`; `hint` is the tooltip's `(name, value)`.
     fn quick_select(
         &self,
         menu: QuickMenu,
         id: &'static str,
-        label: &str,
+        label: Option<&str>,
         glyph: Icon,
         width: f32,
-        hint: &'static str,
+        tone: Tone,
+        hint: (&str, &str),
         max_h: f32,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
-        let active =
-            self.open_menu == Some(Menu::Quick(menu)) || matches!(menu, QuickMenu::Install) && self.ui.install_filter != InstallFilter::All;
-        let trigger = button(id, width, active)
-            .tooltip(tooltip(format!("{hint}: {label}")))
-            .child(icon(glyph, px(ICON), theme::text_muted()))
-            .child(div().flex_1().min_w_0().truncate().child(label.to_owned()))
-            .child(icon(Icon::ExpandMore, px(ICON), theme::text_dim()));
+        let open = self.open_menu == Some(Menu::Quick(menu));
+        let trigger = segment(id, width, tone, open)
+            .tooltip(tooltip(format!("{}: {}", hint.0, hint.1)))
+            .child(icon(glyph, px(ICON), tone.color()))
+            .children(label.map(|label| div().flex_1().min_w_0().truncate().child(label.to_owned())));
         self.hover_dropdown(Menu::Quick(menu), trigger, Align::Left, |this, cx| this.quick_menu(menu, max_h, cx), cx)
     }
 
@@ -234,7 +368,7 @@ impl CollectionView {
         let mut rows = div().id("quick-menu-scroll").min_h_0().overflow_y_scroll();
         match which {
             QuickMenu::Sort => {
-                for mode in SortMode::ALL {
+                for mode in heronite_data::SortMode::ALL {
                     rows = rows.child(option(("quick-sort-opt", mode as usize), sort_label(mode), self.ui.sort == mode).on_click(
                         cx.listener(move |this, _, _, cx| {
                             this.set_sort(mode, cx);
@@ -300,4 +434,24 @@ fn option(id: impl Into<ElementId>, label: &str, active: bool) -> Stateful<Div> 
     menu_item(id, active)
         .child(div().flex_1().min_w_0().truncate().child(label.to_owned()))
         .children(active.then(|| icon(Icon::Check, px(14.), theme::accent())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{covers, Only, Pick};
+    use heronite_data::InstallFilter;
+
+    #[test]
+    fn a_shown_control_replaces_only_its_own_chip() {
+        let install = Pick::Show(InstallFilter::Installed);
+        let favourites = Pick::Only(Only::Favourites);
+        assert!(!covers(&install, 0) && !covers(&install, 1));
+        assert!(covers(&install, 2));
+        assert!(!covers(&favourites, 2));
+        assert!(covers(&favourites, 3));
+        for o in Only::ALL.into_iter().filter(|o| *o != Only::Favourites) {
+            assert!(!covers(&Pick::Only(o), 5));
+        }
+        assert!(!covers(&Pick::Hidden, 5));
+    }
 }

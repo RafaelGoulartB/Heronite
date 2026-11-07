@@ -24,6 +24,21 @@ pub(super) fn visible_count(enabled: bool, lane: f32, chips: f32, widths: &[f32]
         .count()
 }
 
+/// The prefix to show when a shown control hides its own filter chip
+/// (`chips(shown)` is the chips' lane width then). Starting from every
+/// control, each pass gives back the chips of the controls that did not fit,
+/// which can only shrink the prefix, so it settles within `widths.len()` passes.
+pub(super) fn fit(enabled: bool, lane: f32, widths: &[f32], chips: impl Fn(usize) -> f32) -> usize {
+    let mut shown = if enabled { widths.len() } else { 0 };
+    loop {
+        let next = visible_count(enabled, lane, chips(shown), widths);
+        if next >= shown {
+            return shown;
+        }
+        shown = next;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,6 +73,21 @@ mod tests {
         assert_eq!(visible_count(true, 4000., 0., &widths), 4);
         // A favourite button must not leapfrog the higher-priority selects.
         assert_eq!(visible_count(true, 100., 0., &widths), 0);
+    }
+
+    #[test]
+    fn a_control_that_fits_takes_its_chips_place_and_gives_it_back_when_it_does_not() {
+        let widths = [100., 80., 26.];
+        // The install chip (40px with its gap) leaves while the install control shows.
+        let chips = |shown: usize| if shown >= 2 { 0. } else { 40. };
+        let two = DRAG_SPACE + (100. + GAP) + (80. + GAP);
+        assert_eq!(fit(true, two, &widths, chips), 2);
+        // Install no longer fits: its chip returns, and sort still fits beside it.
+        assert_eq!(fit(true, two - 1., &widths, chips), 1);
+        // Sort would fit beside no chip, but install does not fit, so its chip returns and sort gives way.
+        assert_eq!(fit(true, DRAG_SPACE + 40. + 100. + GAP - 1., &widths, chips), 0);
+        assert_eq!(fit(false, 4000., &widths, chips), 0);
+        assert_eq!(fit(true, 4000., &widths, chips), 3);
     }
 
     #[test]

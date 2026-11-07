@@ -222,7 +222,7 @@ pub struct Appearance {
     pub motion: Motion,
     pub start_view: StartView,
     pub auto_view: AutoView,
-    /// Show Collection shortcuts when the header has room.
+    /// Show Collection shortcuts when the header has room (off by default).
     pub quick_toolbar_controls: bool,
     pub sections: Sections,
 }
@@ -258,7 +258,7 @@ impl Appearance {
         motion: Motion::DEFAULT,
         start_view: StartView::DEFAULT,
         auto_view: AutoView::DEFAULT,
-        quick_toolbar_controls: true,
+        quick_toolbar_controls: false,
         sections: Sections::DEFAULT,
     };
 }
@@ -490,7 +490,7 @@ mod tests {
             motion: Motion::Reduced,
             start_view: StartView::Grid,
             auto_view: AutoView { on: true, width: 1600. },
-            quick_toolbar_controls: false,
+            quick_toolbar_controls: true,
             sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
         };
         a.save(&p).unwrap();
@@ -512,17 +512,17 @@ mod tests {
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
         assert_eq!(on_disk["autoView"], true);
         assert_eq!(on_disk["autoViewWidth"], 1600.0);
-        assert_eq!(on_disk["quickToolbarControls"], false);
+        assert_eq!(on_disk["quickToolbarControls"], true);
     }
 
     #[test]
-    fn quick_toolbar_defaults_on_and_round_trips_off() {
+    fn quick_toolbar_defaults_off_and_round_trips_on() {
         for value in [json!({}), json!({"quickToolbarControls": "invalid"}), json!({"quickToolbarControls": null})] {
-            assert!(Appearance::from_value(&value).quick_toolbar_controls);
+            assert!(!Appearance::from_value(&value).quick_toolbar_controls);
         }
-        let off = Appearance::from_value(&json!({"quickToolbarControls": false}));
-        assert!(!Appearance::from_value(&off.to_value()).quick_toolbar_controls);
-        assert!(!Appearance::DEFAULT.with_window_choices_of(&off).quick_toolbar_controls);
+        let on = Appearance::from_value(&json!({"quickToolbarControls": true}));
+        assert!(Appearance::from_value(&on.to_value()).quick_toolbar_controls);
+        assert!(Appearance::DEFAULT.with_window_choices_of(&on).quick_toolbar_controls);
     }
 
     #[test]
@@ -530,7 +530,7 @@ mod tests {
         use crate::ui_state::{UiState, ViewFilters};
         let dir = tempfile::tempdir().unwrap();
         let p = paths(dir.path());
-        let appearance = Appearance { quick_toolbar_controls: false, ..Appearance::DEFAULT };
+        let appearance = Appearance { quick_toolbar_controls: true, ..Appearance::DEFAULT };
         appearance.save(&p).unwrap();
         let mut ui = UiState::default();
         let preset = ViewFilters { install_filter: crate::InstallFilter::Installed, sort: crate::SortMode::Playtime, ..Default::default() };
