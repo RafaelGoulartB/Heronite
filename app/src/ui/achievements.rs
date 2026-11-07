@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_achievements::Source;
+use heronite_achievements::{AchievementGroup, Section, Source};
 
 use crate::icons::Icon;
 use crate::theme;
@@ -118,5 +118,28 @@ pub fn synced_label(at: chrono::DateTime<chrono::Utc>) -> String {
         60..=1439 => tr!("Updated {n} h ago", n = mins / 60),
         _ if at.timestamp() <= 0 => tr!("Not updated yet").to_string(),
         _ => tr!("Updated {date}", date = short_day(at.with_timezone(&chrono::Local).date_naive())),
+    }
+}
+
+/// The name of a section of a game's achievements (one of Steam's
+/// Achievement Sets): the developer's name, else "Base game" for Steam's
+/// unnamed base group, else "Other achievements" (no known group).
+pub fn section_label(group: Option<&AchievementGroup>) -> String {
+    match group {
+        Some(g) if !g.name.is_empty() => g.name.clone(),
+        Some(g) if g.dlc_app_id == Some(0) => tr!("Base game").to_string(),
+        _ => tr!("Other achievements").to_string(),
+    }
+}
+
+/// "The Pale Reach · DLC · 3/8": a section's name, whether it needs a DLC
+/// (as far as the source says) and its unlocked/total count.
+pub fn section_line(section: &Section) -> String {
+    let name = section_label(section.group);
+    let count = format!("{}/{}", section.unlocked(), section.total());
+    if section.group.is_some_and(AchievementGroup::is_dlc) {
+        format!("{name} · {} · {count}", tr!("DLC"))
+    } else {
+        format!("{name} · {count}")
     }
 }
