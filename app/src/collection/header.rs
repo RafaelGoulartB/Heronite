@@ -199,6 +199,10 @@ impl CollectionView {
             ));
         let view = self.hover_dropdown(Menu::View, view_btn, Align::Left, |this, cx| this.view_menu(cx), cx);
         let view = self.view_button_group(view, cx);
+        let (nav, search, onboarding) = (self.nav_dropdown(cx), self.search_box(window, cx), self.onboarding_button(cx));
+        // Spans the list column (up to its border) so the search reads as
+        // the list's own.
+        let left = self.header_left((list_w - 24.).max(300.), move |el, t| el.child(nav).child(search).child(view(t)).children(onboarding));
         let widths = self.quick_widths(window);
         let shown = self.quick_fit(&widths, &self.chip_widths(window));
         let chips = self.filter_chips(shown, window, cx);
@@ -227,23 +231,12 @@ impl CollectionView {
             .h(theme::HEADER_H)
             .px(px(12.))
             .gap(px(10.))
+            .child(left)
             .child(
-                // Spans the list column (up to its border) so the search
-                // reads as the list's own.
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(6.))
-                    .w(px((list_w - 24.).max(300.)))
-                    .child(self.nav_dropdown(cx))
-                    .child(self.search_box(window, cx))
-                    .child(view)
-                    .children(self.onboarding_button(cx)),
-            )
-            .child(
+                // 6px after the View button, as between the left controls.
                 div()
                     .id("hdr-middle")
+                    .ml(px(-4.))
                     .relative()
                     .flex()
                     .flex_1()

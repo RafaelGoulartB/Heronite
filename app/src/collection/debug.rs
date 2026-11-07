@@ -130,9 +130,10 @@ impl CollectionView {
 
     /// `HERONITE_DEBUG_TOOLBAR=sort:playtime,direction,install:installed,
     /// favourites,group:status,preset:0,reset,toolbar:off,toolbar:on,
-    /// open:sort`: runs the same actions as the controls, 1.2 seconds apart,
+    /// open:sort,hover:on`: runs the same actions as the controls, 1.2 seconds apart,
     /// without OS input. Presets are zero-based; use a scratch profile as
-    /// these actions persist. `open` accepts sort/install/group/presets.
+    /// these actions persist. `open` accepts sort/install/group/presets;
+    /// `hover` shows or hides the View button's arrow as a pointer would.
     fn debug_toolbar(&mut self, steps: String, cx: &mut Context<Self>) {
         let steps: Vec<String> = steps.split(',').map(str::to_owned).collect();
         cx.spawn(async move |this, cx| {
@@ -170,6 +171,7 @@ impl CollectionView {
                                     log::warn!("unknown toolbar preset index: {value}");
                                 }
                             }
+                            Some(("hover", value @ ("on" | "off"))) => this.toolbar.debug_hover(value == "on"),
                             Some(("toolbar", value @ ("on" | "off"))) => {
                                 this.set_look(|a| a.quick_toolbar_controls = value == "on", cx);
                             }

@@ -49,8 +49,12 @@ const DOT: f32 = 8.;
 /// Between a label's dimmed kind ("by") and its value.
 const KIND_GAP: f32 = 4.;
 const PRESET_LABEL_MAX: f32 = 160.;
-/// The View button and the arrow that shows or hides the toolbar.
-const VIEW_GROUP: &str = "collection-view-button";
+/// The arrow that shows or hides the toolbar, joined to the View button
+/// while the pointer is over either.
+const TOGGLE_W: f32 = 24.;
+const TOGGLE_ICON: f32 = 20.;
+/// About 200ms, without overshoot.
+const REVEAL: SpringConfig = SpringConfig::new(600., 48., 1.);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::collection) enum QuickMenu {
@@ -78,11 +82,20 @@ const FAVOURITES: usize = 2;
 pub(super) struct State {
     pub width: Rc<Cell<Option<f32>>>,
     visible: usize,
+    /// The pointer is over the View button or its arrow.
+    view_hovered: bool,
+    /// How far the arrow is out (0 to 1), as last laid out next to `width`.
+    toggle_out: Rc<Cell<f32>>,
 }
 
 impl State {
     pub fn shows(&self, menu: QuickMenu) -> bool {
         self.visible > menu.index()
+    }
+
+    /// `HERONITE_DEBUG_TOOLBAR=hover:on`: the arrow as if pointed at.
+    pub fn debug_hover(&mut self, on: bool) {
+        self.view_hovered = on;
     }
 }
 
@@ -130,7 +143,11 @@ impl Widths {
     /// `GAP` is the space before the chips.
     fn items(&self) -> Vec<f32> {
         let next = |w: f32| w + SEG_GAP - GAP;
-        let mut items = vec![2. * TRACK_PAD + self.sort + SEG_GAP + ICON_SEG, next(self.install), next(ICON_SEG), next(self.group)];
+        // The arrow takes `TOGGLE_W` from the lane while it shows: kept
+        // free (`quick_fit` measures the lane as if the arrow were out), so
+        // hovering the View button never hides a control.
+        let first = TOGGLE_W + 2. * TRACK_PAD + self.sort + SEG_GAP + ICON_SEG;
+        let mut items = vec![first, next(self.install), next(ICON_SEG), next(self.group)];
         if self.presets {
             items.push(next(self.preset));
         }
@@ -199,14 +216,17 @@ impl CollectionView {
     /// How many controls the toolbar shows, given each filter chip's
     /// `(pick, width)`.
     pub(super) fn quick_fit(&self, widths: &Widths, chips: &[(Pick, f32)]) -> usize {
-        let lane = self.toolbar.width.get().unwrap_or(0.);
+        // The lane as if the arrow were out; it is reserved in `items`.
+        let lane = self.toolbar.width.get().unwrap_or(0.) + TOGGLE_W * self.toolbar.toggle_out.get();
         let chip_width = |shown: usize| chips.iter().filter(|(pick, _)| !covers(pick, shown)).map(|(_, w)| w + GAP).sum();
         layout::fit(theme::appearance().quick_toolbar_controls, lane, &widths.items(), chip_width)
     }
 
-    /// The View button with, on its right, the arrow that shows or hides the
-    /// toolbar; the arrow appears while the pointer is over either.
-    pub(super) fn view_button_group(&self, view: Stateful<Div>, cx: &mut Context<Self>) -> Div {
+    /// The View button and, on its right while the pointer is over either,
+    /// the arrow that shows (→) or hides (←) the toolbar. The pair is drawn
+    /// with `t` (0 to 1) of the arrow out: it grows from the button's edge and
+    /// shares one fill with it, like a split button.
+    pub(super) fn view_button_group(&self, view: Stateful<Div>, cx: &mut Context<Self>) -> impl FnOnce(f32) -> Stateful<Div> + use<> {
         let on = theme::appearance().quick_toolbar_controls;
         let toggle = div()
             .id("quick-toolbar-toggle")
@@ -214,17 +234,64 @@ impl CollectionView {
             .flex_none()
             .items_center()
             .justify_center()
-            .w(px(18.))
-            .h(px(SEG_H))
-            .rounded_full()
+            .h(theme::TOOL_BTN)
+            .overflow_hidden()
+            .rounded(px(theme::R_ITEM))
             .cursor_pointer()
-            .opacity(0.)
-            .group_hover(VIEW_GROUP, |s| s.opacity(1.))
             .hover(|s| s.bg(theme::ink_a(0.08)))
             .tooltip(tooltip(if on { tr!("Hide quick controls") } else { tr!("Show quick controls") }))
-            .child(icon(if on { Icon::ChevronLeft } else { Icon::ChevronRight }, px(16.), theme::tool_icon()))
             .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.quick_toolbar_controls = !a.quick_toolbar_controls, cx)));
-        div().group(VIEW_GROUP).flex().flex_none().items_center().child(view).child(toggle)
+        let weak = cx.entity().downgrade();
+        let hover = move |hovered: &bool, _: &mut Window, cx: &mut App| {
+            let hovered = *hovered;
+            weak.update(cx, |this, cx| {
+                if this.toolbar.view_hovered != hovered {
+                    this.toolbar.view_hovered = hovered;
+                    cx.notify();
+                }
+            })
+            .ok();
+        };
+        let glyph = if on { Icon::ChevronLeft } else { Icon::ChevronRight };
+        move |t| {
+            let t = t.clamp(0., 1.);
+            div()
+                .id("hdr-view-group")
+                .flex()
+                .flex_none()
+                .items_center()
+                .rounded(px(theme::R_ITEM))
+                .when(t > 0., |d| d.bg(theme::ink_a(0.05 * t)))
+                .on_hover(hover)
+                .child(view)
+                .child(
+                    toggle
+                        .w(px(TOGGLE_W * t))
+                        .opacity(t)
+                        // Slides out from under the button as it grows.
+                        .child(icon(glyph, px(TOGGLE_ICON), theme::tool_icon()).ml(px(-6. * (1. - t)))),
+                )
+        }
+    }
+
+    /// The header's left part: `fixed` wide, plus the View button's arrow
+    /// while it shows, so the search never shrinks under the pointer.
+    pub(super) fn header_left(&self, fixed: f32, build: impl FnOnce(Stateful<Div>, f32) -> Stateful<Div> + 'static) -> AnyElement {
+        let shown = self.toolbar.view_hovered;
+        let left = div().id("hdr-left").flex().flex_none().items_center().gap(px(6.));
+        let out = self.toolbar.toggle_out.clone();
+        let place = move |el: Stateful<Div>, t: f32| {
+            out.set(t.clamp(0., 1.));
+            build(el.w(px(fixed + TOGGLE_W * t.clamp(0., 1.))), t)
+        };
+        if theme::animations() {
+            left.with_spring("hdr-quick-toggle", SpringAnimation::new(REVEAL).to(shown).with_epsilon(0.002), move |el, phase| {
+                place(el, phase.0)
+            })
+            .into_any_element()
+        } else {
+            place(left, if shown { 1. } else { 0. }).into_any_element()
+        }
     }
 
     pub(super) fn quick_toolbar(

@@ -221,10 +221,12 @@ chevron (a preset shows its colour dot and name; the grouping, with a stacked-gr
 open; the Sort list has each field's icon, Presets their dots); the direction and Favourites have tooltips. While
 a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
 returns when the toolbar is off or the control does not fit. It is off by default: hovering the View button
-reveals an arrow beside it that turns it on (→) or off (←), the same preference as Settings → Appearance →
+slides out a 24px arrow joined to it like a split button (one faint fill, a spring of about 200ms; the search
+keeps its width, the lane after it moves) that turns it on (→) or off (←), the same preference as Settings → Appearance →
 Layout → **Quick toolbar controls** (`quickToolbarControls` in `appearance.json`, independent of filters and
 presets). Visibility is a priority prefix of shaped localized segment widths within the measured flex lane, after
-reserving the remaining filter chips and 48px for dragging (`toolbar/layout.rs`, `fit`). Search, window controls,
+reserving the remaining filter chips, 48px for dragging and the arrow's 24px, so hovering never hides a control
+(`toolbar/layout.rs`, `fit`). The lane starts 6px after the View button, as between the left controls. Search, window controls,
 Focus / Grid and activity pills keep their space. Measurement requests one redraw only when the lane changes,
 never writes settings, and closes a menu whose trigger no longer fits. Long preset names truncate with their full
 name in a tooltip.
