@@ -480,6 +480,7 @@ mod tests {
             title: None,
             fetched_at: Utc::now(),
             achievements,
+            groups: Vec::new(),
             unknown: Default::default(),
         }
     }

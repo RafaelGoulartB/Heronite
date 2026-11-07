@@ -146,6 +146,7 @@ fn build_set(namespace: &str, defs: Vec<Definition>, mut earned: HashMap<String,
         title: None,
         fetched_at: Utc::now(),
         achievements,
+        groups: Vec::new(),
         unknown: Default::default(),
     }
 }

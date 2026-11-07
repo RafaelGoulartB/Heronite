@@ -180,6 +180,7 @@ pub fn parse_patch(doc: &Value, game_id: u32) -> Option<AchievementSet> {
         title: Some(text(data, "Title")).filter(|t| !t.is_empty()),
         fetched_at: Utc::now(),
         achievements,
+        groups: Vec::new(),
         unknown: Default::default(),
     })
 }

@@ -71,6 +71,7 @@ pub fn parse(product_id: &str, doc: &Value) -> Option<AchievementSet> {
         title: None,
         fetched_at: Utc::now(),
         achievements,
+        groups: Vec::new(),
         unknown: Default::default(),
     })
 }

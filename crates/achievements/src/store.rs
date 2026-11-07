@@ -174,6 +174,7 @@ mod tests {
             external_id: "1".into(),
             title: None,
             fetched_at: Utc::now(),
+            groups: Vec::new(),
             unknown: Default::default(),
             achievements: vec![
                 Achievement { id: "a".into(), unlocked: true, ..Default::default() },
@@ -267,6 +268,7 @@ mod tests {
             external_id: "1".into(),
             title: None,
             fetched_at: Utc::now(),
+            groups: Vec::new(),
             unknown: Default::default(),
             achievements: vec![Achievement { id: "a".into(), unlocked: true, ..Default::default() }],
         };
@@ -291,6 +293,40 @@ mod tests {
         let out = serde_json::to_value(&game).unwrap();
         assert_eq!(out.as_object().unwrap().keys().collect::<Vec<_>>(), ["sets"]);
         assert_eq!(serde_json::to_value(GameAchievements::default()).unwrap(), serde_json::json!({"sets": []}));
+    }
+
+    #[test]
+    fn copies_with_and_without_groups_read_and_write_back_unchanged() {
+        let legacy = serde_json::json!({"sets": [{
+            "source": "steam", "externalId": "620", "fetchedAt": "2026-10-01T10:00:00Z",
+            "achievements": [{"id": "ACH.WAKE_UP", "name": "You Monster", "description": "", "icon": "", "iconLocked": "", "unlocked": true}]
+        }]});
+        let game: GameAchievements = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(game.sets[0].groups.is_empty() && game.sets[0].achievements[0].group.is_none());
+        assert!(game.sets[0].sections().is_empty());
+        assert_eq!(serde_json::to_value(&game).unwrap(), legacy);
+
+        let grouped = serde_json::json!({"sets": [{
+            "source": "steam", "externalId": "620", "fetchedAt": "2026-10-01T10:00:00Z",
+            "achievements": [
+                {"id": "ACH.WAKE_UP", "name": "You Monster", "description": "", "icon": "", "iconLocked": "", "unlocked": true, "group": "2"},
+                {"id": "ACH.TEAM_BUILDING", "name": "Team Building", "description": "", "icon": "", "iconLocked": "", "group": "1"}
+            ],
+            "groups": [
+                {"id": "2", "name": "Single Player", "order": 0, "dlcAppId": 0},
+                {"id": "1", "name": "Cooperative", "order": 1, "archived": true, "futureGroup": "kept"}
+            ]
+        }]});
+        let game: GameAchievements = serde_json::from_value(grouped.clone()).unwrap();
+        let set = &game.sets[0];
+        assert_eq!(set.groups[1].dlc_app_id, None);
+        assert_eq!(set.groups[1].unknown["futureGroup"], "kept");
+        assert_eq!(set.sections().len(), 2);
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        write(&paths, "steam", "620", &game, &[Source::Steam]).unwrap();
+        assert_eq!(read(&paths, "steam", "620"), game);
+        assert_eq!(json_of(&game_file(&paths, "steam", "620")), grouped);
     }
 
     #[test]
