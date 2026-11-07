@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(from_factor(0.5, Source::GdkDpiScale).map(|s| s.percent), Some(50.));
         assert_eq!(from_factor(1.25, Source::GnomeLargeText).map(|s| s.percent), Some(125.));
         assert_eq!(from_factor(0.33, Source::QtScaleFactor).map(|s| s.percent), Some(50.));
-        assert_eq!(from_factor(4., Source::QtScaleFactor).map(|s| s.percent), Some(200.));
+        assert_eq!(from_factor(4., Source::QtScaleFactor).map(|s| s.percent), Some(300.));
         assert_eq!(from_factor(0., Source::GdkDpiScale), None);
         assert_eq!(from_factor(f32::NAN, Source::GdkDpiScale), None);
         assert_eq!(parse_gsettings_double("1.25\n"), Some(1.25));
@@ -206,7 +206,8 @@ mod tests {
         assert_eq!(stepped(100., false), 90.);
         assert_eq!(stepped(75., true), 80.);
         assert_eq!(stepped(75., false), 70.);
-        assert_eq!(stepped(200., true), 200.);
+        assert_eq!(stepped(200., true), 210.);
+        assert_eq!(stepped(300., true), 300.);
         assert_eq!(stepped(50., false), 50.);
     }
 }

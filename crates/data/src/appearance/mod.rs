@@ -39,9 +39,9 @@ pub const INTERFACE_BLUR_STEP: f32 = 5.;
 /// Window widths [`AutoView`] can switch at, logical px.
 pub const AUTO_VIEW_WIDTH_RANGE: (f32, f32) = (800., 2560.);
 pub const AUTO_VIEW_WIDTH_STEP: f32 = 20.;
-/// The interface scale picked by hand, %. Heroic's zoom goes from 60 to 200;
-/// 50 lets a 4K screen at 300% show what a 1080p one does at 150%.
-pub const INTERFACE_SCALE_RANGE: (f32, f32) = (50., 200.);
+/// The interface scale picked by hand, %: 50 lets a 4K screen at 300% show
+/// what a 1080p one does at 150%, 300 makes a 1080p TV read from the couch.
+pub const INTERFACE_SCALE_RANGE: (f32, f32) = (50., 300.);
 pub const INTERFACE_SCALE_STEP: f32 = 5.;
 
 /// The Collection's view picked by the window's width: Grid while the window
@@ -626,7 +626,7 @@ mod tests {
         }
         assert_eq!(Appearance::from_value(&json!({"interfaceScale": 83})).interface_scale, Some(85.));
         assert_eq!(Appearance::from_value(&json!({"interfaceScale": 10})).interface_scale, Some(50.));
-        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 900})).interface_scale, Some(200.));
+        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 900})).interface_scale, Some(300.));
         let picked = Appearance { interface_scale: Some(80.), ..Appearance::DEFAULT };
         assert_eq!(Appearance::from_value(&picked.to_value()), picked);
         assert_eq!(Appearance::DEFAULT.to_value()["interfaceScale"], Value::Null);
