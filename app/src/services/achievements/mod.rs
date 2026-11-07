@@ -297,6 +297,8 @@ impl Achievements {
         }
         entry.refreshing = true;
         cx.notify();
+        // The game runs: its live sources are read as its live check reads them.
+        let session = self.lives.values().find(|l| l.key == key).map(|l| (l.sources.clone(), l.since));
         let (paths, accounts, key) = (self.data_paths.clone(), self.accounts.clone(), key.to_string());
         let lang = heronite_i18n::current().code();
         cx.spawn(async move |this, cx| {
@@ -304,7 +306,14 @@ impl Achievements {
                 .background_spawn(async move {
                     let http = Http::new(Endpoints::default());
                     let ctx = Ctx { paths: &paths, http: &http, accounts: &accounts, lang };
-                    (sync::refresh(&ctx, &known.runner, &known.app_name, &known.targets), known.title)
+                    let out = match &session {
+                        Some((sources, since)) => {
+                            let session = sync::Session { sources, since: *since };
+                            sync::refresh_in_session(&ctx, &known.runner, &known.app_name, &known.targets, session)
+                        }
+                        None => sync::refresh(&ctx, &known.runner, &known.app_name, &known.targets),
+                    };
+                    (out, known.title)
                 })
                 .await;
             this.update(cx, |this, cx| this.refreshed(&key, out, cx)).ok();
@@ -353,11 +362,20 @@ impl Achievements {
         }
     }
 
-    /// The options (or the achievements switch) changed: the live checks
-    /// follow them, for the games that run now too.
-    pub fn restart_live(&mut self, cx: &mut Context<Self>) {
+    /// The options changed: the live checks start again with them (their
+    /// sources may differ), for the games that run now too.
+    fn restart_live(&mut self, cx: &mut Context<Self>) {
         let wanted = enabled() && live::wanted(&self.prefs);
         let changes = self.sessions.restart(wanted);
+        self.apply(changes, cx);
+    }
+
+    /// Achievements may have been switched on or off (any appearance
+    /// change calls this): checks start for the games that run, or all
+    /// stop. Checks already running keep going.
+    pub fn sync_live(&mut self, cx: &mut Context<Self>) {
+        let wanted = enabled() && live::wanted(&self.prefs);
+        let changes = self.sessions.sync(wanted);
         self.apply(changes, cx);
     }
 
@@ -442,7 +460,7 @@ impl Achievements {
                 let go_on = this
                     .update(cx, |this, cx| {
                         if !enabled() {
-                            this.restart_live(cx);
+                            this.sync_live(cx);
                         }
                         this.lives.contains_key(&app_name)
                     })

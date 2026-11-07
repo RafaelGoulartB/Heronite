@@ -205,7 +205,19 @@ impl Sessions {
         self.watched.remove(app_name);
     }
 
-    /// The options changed (or achievements were switched): every check
+    /// Achievements were switched (on or off): with `wanted`, the running
+    /// games without a check start one, and the checks that run go on
+    /// (their files' baseline stays); without, every check stops.
+    pub fn sync(&mut self, wanted: bool) -> Vec<Change> {
+        if !wanted {
+            return std::mem::take(&mut self.watched).into_iter().map(Change::Stop).collect();
+        }
+        let start: Vec<String> = self.running.difference(&self.watched).cloned().collect();
+        self.watched.extend(start.iter().cloned());
+        start.into_iter().map(Change::Start).collect()
+    }
+
+    /// The options changed: every check
     /// stops, and the running games start again when still `wanted`.
     pub fn restart(&mut self, wanted: bool) -> Vec<Change> {
         let mut out: Vec<Change> = std::mem::take(&mut self.watched).into_iter().map(Change::Stop).collect();
@@ -319,6 +331,15 @@ mod tests {
         s.restart(true);
         assert_eq!(s.ended("b"), Some(Change::Stop("b".into())));
         assert!(!s.is_running("b"));
+        // Achievements switched off, then on: checks follow, and a sync
+        // with nothing to change changes nothing.
+        assert_eq!(s.started("d", true), Some(Change::Start("d".into())));
+        assert_eq!(s.started("e", false), None);
+        assert_eq!(s.sync(false), [Change::Stop("d".into())]);
+        assert_eq!(s.sync(true), [Change::Start("d".into()), Change::Start("e".into())]);
+        assert!(s.sync(true).is_empty());
+        s.ended("d");
+        s.ended("e");
         // A game without a live source is not watched until it runs again.
         assert_eq!(s.started("c", true), Some(Change::Start("c".into())));
         s.not_watched("c");

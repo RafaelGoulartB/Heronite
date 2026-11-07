@@ -19,5 +19,5 @@ pub mod sync;
 pub mod target;
 
 pub use model::{Achievement, AchievementGroup, AchievementSet, GameAchievements, Kind, LocalPin, Progress, Section, Source};
-pub use sync::{refresh, refresh_live, Outcome, Problem};
+pub use sync::{refresh, refresh_in_session, refresh_live, Outcome, Problem, Session};
 pub use target::{targets_of, targets_with, LocalTarget, SourceTarget};

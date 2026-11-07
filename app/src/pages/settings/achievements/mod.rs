@@ -149,8 +149,6 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     )
     .on_click(cx.listener(|d, _, _, cx| {
         super::appearance::set_look(d, cx, |a| a.sections = a.sections.toggled(Section::Achievements));
-        // The games that run now start (or stop) their live check.
-        service::get(cx).update(cx, |s, cx| s.restart_live(cx));
         // Turned on: read the focused game and the rest as they show.
         cx.notify();
     }))
