@@ -69,7 +69,19 @@ pub(super) fn row(
                 .child(vm.title.clone()),
         )
         .when(s.look.badges && vm.favourite, |d| d.child(icon(Icon::Star, px(12.), theme::rgb_a(255, 209, 102, 1.))))
-        .when(vm.hidden, |d| d.child(icon(Icon::VisibilityOff, px(12.), theme::ink_a(0.5))));
+        .when(vm.hidden, |d| d.child(icon(Icon::VisibilityOff, px(12.), theme::ink_a(0.5))))
+        .when(vm.copies > 1, |d| {
+            d.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(2.))
+                    .text_size(px(11.))
+                    .text_color(theme::ink_a(0.55))
+                    .child(icon(Icon::ContentCopy, px(11.), theme::ink_a(0.5)))
+                    .child(vm.copies.to_string()),
+            )
+        });
     let status = match &s.epic {
         Some(e) => Some(super::epic::row_status(e)),
         None => {

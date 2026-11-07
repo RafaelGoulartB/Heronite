@@ -60,7 +60,8 @@ impl CollectionView {
             .child(self.focus_status_row(vm, vh, cx))
             .children(self.left_off_card(&vm.key, cx))
             .child(self.rating_row(&vm.key, cx))
-            .child(self.facts_card(vm, cx));
+            .child(self.facts_card(vm, cx))
+            .children(self.copies_card(&vm.key, cx));
 
         if lay.narrow {
             return div().flex().items_start().gap(px(20.)).child(cover).child(controls.flex_1().max_w(px(380.))).into_any_element();

@@ -22,6 +22,7 @@ pub mod collection;
 pub mod config_games;
 pub mod console_art;
 pub mod console_theme;
+pub mod copies;
 pub mod details_url;
 pub mod field_names;
 pub mod focus;
