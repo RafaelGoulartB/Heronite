@@ -22,14 +22,15 @@ impl CollectionView {
     pub(super) fn age_row(&self, age: Option<&AgeVm>, cx: &mut Context<Self>) -> AnyElement {
         let hide = div()
             .id("focus-age-hide")
-            .flex()
+            // Out of the layout until the row is pointed at: the chip keeps the
+            // row's edge.
+            .hidden()
+            .group_hover(ROW_GROUP, |s| s.flex())
             .flex_none()
             .items_center()
             .justify_center()
             .size(px(20.))
             .rounded(px(5.))
-            .invisible()
-            .group_hover(ROW_GROUP, |s| s.visible())
             .cursor_pointer()
             .hover(|s| s.bg(theme::ink_a(0.1)))
             .child(icon(Icon::VisibilityOff, px(14.), theme::ink_a(0.6)))
@@ -48,7 +49,7 @@ impl CollectionView {
                         div()
                             .px(px(7.))
                             .rounded(px(5.))
-                            .bg(Rgba { a: 0.16, ..tone })
+                            .bg(Rgba { a: 0.1, ..tone })
                             .font_weight(theme::W_BOLD)
                             .text_color(theme::readable(tone))
                             .child(age.badge.clone()),
