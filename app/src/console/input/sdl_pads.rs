@@ -6,7 +6,7 @@
 //! closes it (letting go of the controllers) when the last one leaves.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
@@ -57,20 +57,19 @@ impl Drop for Source {
     }
 }
 
-/// The hub, with its thread started on first use (`None` if it could not be).
+/// The hub, with its thread started on first use (`None` if it could not
+/// be; the next call tries again).
 fn hub() -> Option<Arc<Hub>> {
-    static HUB: OnceLock<Option<Arc<Hub>>> = OnceLock::new();
-    HUB.get_or_init(|| {
-        let hub = Arc::new(Hub::default());
-        let worker = hub.clone();
-        std::thread::Builder::new()
-            .name("gamepad".into())
-            .spawn(move || run(&worker))
-            .map_err(|e| log::warn!("gamepad thread: {e}"))
-            .ok()
-            .map(|_| hub)
-    })
-    .clone()
+    static HUB: Mutex<Option<Arc<Hub>>> = Mutex::new(None);
+    let mut slot = HUB.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(hub) = &*slot {
+        return Some(hub.clone());
+    }
+    let hub = Arc::new(Hub::default());
+    let worker = hub.clone();
+    std::thread::Builder::new().name("gamepad".into()).spawn(move || run(&worker)).map_err(|e| log::warn!("gamepad thread: {e}")).ok()?;
+    *slot = Some(hub.clone());
+    Some(hub)
 }
 
 pub(super) fn start() -> Option<(Source, UnboundedReceiver<PadMsg>)> {
@@ -90,7 +89,13 @@ fn run(hub: &Hub) {
         {
             let mut listeners = hub.lock();
             if listeners.is_empty() {
-                sdl = None;
+                if let Some(old) = sdl.take() {
+                    // Closing SDL takes a moment (the devices close, its thread
+                    // stops): not while `start` would wait for the lock.
+                    drop(listeners);
+                    drop(old);
+                    listeners = hub.lock();
+                }
                 while listeners.is_empty() {
                     listeners = hub.changed.wait(listeners).unwrap_or_else(|e| e.into_inner());
                 }

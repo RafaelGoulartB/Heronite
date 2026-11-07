@@ -8,11 +8,16 @@
 //! controllers directly (HIDAPI), reads both kinds of report, and uses XInput,
 //! Raw Input and DirectInput for the rest.
 //!
-//! SDL is told not to switch controllers to their full report itself
-//! (`SDL_JOYSTICK_ENHANCED_REPORTS=0`): that change cannot be undone on a
-//! PlayStation controller without turning it off, and it would stop games that
-//! read it through DirectInput from seeing it. Switch controllers go back to
-//! the report mode they had when they are closed.
+//! What SDL changes on a controller is kept to what reading it needs:
+//!
+//! - It does not switch a Bluetooth PlayStation controller to its full report
+//!   (`SDL_JOYSTICK_ENHANCED_REPORTS=0`): that cannot be undone without turning
+//!   the controller off, and games reading it through DirectInput would stop
+//!   seeing it. Switch controllers stay in (or go back to, when closed) the
+//!   report mode they had. Over USB, SDL still sets a PlayStation controller's
+//!   light bar and player LEDs when it opens it, as SDL games do.
+//! - Its Steam Deck and Steam Controller drivers are off: they turn off the
+//!   controller's mouse and keyboard emulation (the trackpads) while SDL runs.
 //!
 //! [`Controllers`] owns SDL's controller subsystem: one may exist at a time in
 //! the process, and it is used from the thread that opened it (it is not
@@ -38,8 +43,8 @@ use sdl3_sys::gamepad::{
     SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_WEST,
 };
 use sdl3_sys::hints::{
-    SDL_SetHint, SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, SDL_HINT_JOYSTICK_ENHANCED_REPORTS, SDL_HINT_NO_SIGNAL_HANDLERS,
-    SDL_HINT_TIMER_RESOLUTION,
+    SDL_SetHint, SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, SDL_HINT_JOYSTICK_ENHANCED_REPORTS, SDL_HINT_JOYSTICK_HIDAPI_STEAM,
+    SDL_HINT_JOYSTICK_HIDAPI_STEAMDECK, SDL_HINT_NO_SIGNAL_HANDLERS, SDL_HINT_TIMER_RESOLUTION,
 };
 use sdl3_sys::init::{SDL_InitSubSystem, SDL_QuitSubSystem, SDL_INIT_GAMEPAD};
 use sdl3_sys::joystick::SDL_JoystickID;
@@ -103,7 +108,8 @@ struct Pad {
 static OPEN: AtomicBool = AtomicBool::new(false);
 
 /// SDL's controller subsystem with every controller it knows open. Dropping
-/// it closes them and shuts the subsystem down.
+/// it closes them and shuts the controller subsystem down (what the rest of
+/// SDL keeps after that is small: hints, a hidden helper window).
 pub struct Controllers {
     pads: Vec<Pad>,
     /// SDL's event queue belongs to the thread that started it.
@@ -121,6 +127,8 @@ impl Controllers {
         // SDL copies; this runs before the subsystem starts.
         unsafe {
             SDL_SetHint(SDL_HINT_JOYSTICK_ENHANCED_REPORTS, c"0".as_ptr());
+            SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAMDECK, c"0".as_ptr());
+            SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_STEAM, c"0".as_ptr());
             // There are no SDL windows: input is not tied to a window's focus
             // (the app checks its own window).
             SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, c"1".as_ptr());
@@ -319,13 +327,18 @@ mod tests {
         assert_eq!(axis_value(Axis::LeftX, 0), 0.0);
     }
 
-    /// Every event within a moment (SDL notices virtual controllers and
-    /// their changes on its next reads).
-    fn drain(pads: &mut Controllers) -> Vec<Event> {
+    /// The events until one matches `want`, reading for at most a few
+    /// seconds (SDL notices virtual controllers and their changes on its next
+    /// reads).
+    fn wait_for(pads: &mut Controllers, want: impl Fn(&Event) -> bool) -> Vec<Event> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let mut out = Vec::new();
-        for _ in 0..20 {
+        while std::time::Instant::now() < deadline {
             while let Some(ev) = pads.poll() {
                 out.push(ev);
+            }
+            if out.iter().any(&want) {
+                break;
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
@@ -345,7 +358,7 @@ mod tests {
         let mut pads = Controllers::open().expect("SDL's controller subsystem starts");
         assert!(Controllers::open().is_err(), "a second owner is refused");
         // The controllers of this machine, if any.
-        drain(&mut pads);
+        while pads.poll().is_some() {}
         let before = pads.pads.len();
 
         let desc = SDL_VirtualJoystickDesc {
@@ -358,7 +371,7 @@ mod tests {
         // SAFETY: `desc` is a valid description that SDL copies.
         let id = unsafe { SDL_AttachVirtualJoystick(&desc) };
         assert_ne!(id.0, 0, "{}", sdl_error("attaching a virtual controller"));
-        let added = drain(&mut pads);
+        let added = wait_for(&mut pads, |e| matches!(e, Event::Added { .. }));
         assert!(added.iter().any(|e| matches!(e, Event::Added { name } if !name.is_empty())), "{added:?}");
         assert_eq!(pads.pads.len(), before + 1);
         assert!(pads.any_open());
@@ -372,19 +385,19 @@ mod tests {
             SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTY.0, i16::MIN);
             SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER.0, i16::MAX);
         }
-        let moved = drain(&mut pads);
+        let moved = wait_for(&mut pads, |e| *e == Event::Axis(Axis::RightTrigger, 1.0));
         assert!(moved.contains(&Event::Button(Button::South, true)), "{moved:?}");
         // Pushed up: positive.
         assert!(moved.contains(&Event::Axis(Axis::LeftY, 1.0)), "{moved:?}");
         assert!(moved.contains(&Event::Axis(Axis::RightTrigger, 1.0)), "{moved:?}");
         // SAFETY: as above.
         unsafe { SDL_SetJoystickVirtualButton(joystick, SDL_GAMEPAD_BUTTON_SOUTH.0, false) };
-        let released = drain(&mut pads);
+        let released = wait_for(&mut pads, |e| *e == Event::Button(Button::South, false));
         assert!(released.contains(&Event::Button(Button::South, false)), "{released:?}");
 
         // SAFETY: `id` is the attached virtual controller.
         assert!(unsafe { SDL_DetachVirtualJoystick(id) });
-        let removed = drain(&mut pads);
+        let removed = wait_for(&mut pads, |e| matches!(e, Event::Removed { .. }));
         assert!(removed.iter().any(|e| matches!(e, Event::Removed { .. })), "{removed:?}");
         assert_eq!(pads.pads.len(), before);
 

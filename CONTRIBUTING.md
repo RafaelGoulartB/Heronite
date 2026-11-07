@@ -21,7 +21,7 @@ cargo test --workspace
 ```
 
 - **Linux:** a stable Rust toolchain, `clang` and `lld` (the linker set in `.cargo/config.toml`), and the development packages for xkbcommon, xcb, Wayland, udev, fontconfig, freetype, GTK 3, and WebKitGTK 4.1. On Ubuntu, [`scripts/ci-deps.sh`](scripts/ci-deps.sh) installs everything CI uses.
-- **Windows:** a stable Rust toolchain for `x86_64-pc-windows-msvc` and the Visual Studio Build Tools with "Desktop development with C++" (MSVC and a Windows SDK). Run the tests from PowerShell or `cmd`, as CI does: Git Bash puts Unix tools (`sh`, `cp`, `sleep`) on the `PATH` that Windows itself does not have, and sets `HOME`.
+- **Windows:** a stable Rust toolchain for `x86_64-pc-windows-msvc` and the Visual Studio Build Tools with "Desktop development with C++" (MSVC and a Windows SDK), and [CMake](https://cmake.org) on the `PATH` (`heronite-platform` builds SDL from source for console mode's controllers; GitHub's Windows runners have it). Run the tests from PowerShell or `cmd`, as CI does: Git Bash puts Unix tools (`sh`, `cp`, `sleep`) on the `PATH` that Windows itself does not have, and sets `HOME`.
 
 A change to code both systems build is checked by both CI jobs; [WINDOWS-MIGRATION.md](docs/WINDOWS-MIGRATION.md) has the rules that keep the code building on both.
 

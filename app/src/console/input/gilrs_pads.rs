@@ -120,7 +120,9 @@ fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>) {
         };
         let Some(raw) = raw else { continue };
         let connection = matches!(raw, RawEvent::Connected { .. } | RawEvent::Disconnected { .. });
-        if let Some(m) = tr.event(raw, Instant::now(), super::swap_ab()) {
+        // The theme is read per press, so a change applies at once.
+        let swap = matches!(raw, RawEvent::Button(..)) && super::swap_ab();
+        if let Some(m) = tr.event(raw, Instant::now(), swap) {
             // A listener that went away ends the thread; connection news are
             // not worth stopping for (the next press finds out).
             if !send(m) && !connection {
