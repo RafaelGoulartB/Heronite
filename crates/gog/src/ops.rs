@@ -117,7 +117,7 @@ impl GogJob {
         let platform = os_name(&p.platform_to_install);
         let language = if p.install_language.is_empty() { DEFAULT_LANGUAGE } else { p.install_language.as_str() };
         let details = info::install_info(&self.paths, &self.gogdl, &p.app_name, platform)?;
-        let folder = if details.folder_name.is_empty() { p.app_name.as_str() } else { details.folder_name.as_str() };
+        let folder = details.install_folder(&p.app_name);
 
         // A manifest left by an earlier install would turn this download into an update.
         let _ = std::fs::remove_file(self.gogdl.manifest_file(&p.app_name));
