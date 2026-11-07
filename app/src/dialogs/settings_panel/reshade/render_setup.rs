@@ -161,6 +161,8 @@ impl SettingsPanel {
         let advanced = self.reshade.advanced;
         let under = div().flex().flex_wrap().items_center().gap(px(6.)).child(about(target)).child(
             link("reshade-advanced", if advanced { tr!("Done") } else { tr!("Change") }).on_click(cx.listener(|this, _, _, cx| {
+                // The row around it is the switch: this click is not one on it.
+                cx.stop_propagation();
                 this.reshade.advanced = !this.reshade.advanced;
                 cx.notify();
             })),
