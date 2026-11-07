@@ -200,13 +200,27 @@ pub fn target(exe: &Path, compat: Option<&Compat>) -> Result<Target, String> {
 /// Subfolders where games keep the real executable next to a launcher.
 const EXE_FOLDERS: [&str; 5] = ["", "Binaries/Win64", "Binaries/Win32", "bin", "x64"];
 
-/// Windows programs of `dir` (and its usual subfolders) that import a
-/// graphics API, biggest first: the choices when the game's executable is
-/// a launcher.
+/// Windows programs of `dir` (and its usual subfolders, Unreal's
+/// `<Project>/Binaries/Win64` among them) that import a graphics API,
+/// biggest first: the choices when the game's executable is a launcher, or
+/// when it is not known (a Steam game).
 pub fn candidates(dir: &Path) -> Vec<PathBuf> {
+    let mut folders: Vec<PathBuf> =
+        EXE_FOLDERS.iter().map(|sub| sub.split('/').filter(|p| !p.is_empty()).fold(dir.to_path_buf(), |d, p| d.join(p))).collect();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut projects: Vec<PathBuf> = entries
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()) && !e.file_name().eq_ignore_ascii_case("Engine"))
+            .map(|e| e.path().join("Binaries"))
+            .filter(|b| b.is_dir())
+            .collect();
+        projects.sort();
+        for b in projects {
+            folders.extend([b.join("Win64"), b.join("Win32")]);
+        }
+    }
     let mut found: Vec<(u64, PathBuf)> = Vec::new();
-    for sub in EXE_FOLDERS {
-        let folder = sub.split('/').filter(|p| !p.is_empty()).fold(dir.to_path_buf(), |d, p| d.join(p));
+    for folder in folders {
         let Ok(entries) = std::fs::read_dir(&folder) else { continue };
         for e in entries.flatten() {
             let path = e.path();
@@ -350,6 +364,20 @@ mod tests {
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(bin.join("small.exe"), pe_with(MACHINE_X64, &["d3d9.dll"], None, 0x10_0000)).unwrap();
         assert_eq!(candidates(dir.path()), [dir.path().join("FL_2027.exe"), bin.join("small.exe")]);
+    }
+
+    #[test]
+    fn unreal_games_keep_theirs_under_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Game.exe"), pe_with(MACHINE_X64, &["kernel32.dll"], None, 0x10_0000)).unwrap();
+        let win64 = dir.path().join("Game").join("Binaries").join("Win64");
+        std::fs::create_dir_all(&win64).unwrap();
+        std::fs::write(win64.join("Game-Win64-Shipping.exe"), pe_with(MACHINE_X64, &["d3d12.dll"], None, 0x10_0000)).unwrap();
+        // The engine's own programs (crash reporter...) are not the game.
+        let engine = dir.path().join("Engine").join("Binaries").join("Win64");
+        std::fs::create_dir_all(&engine).unwrap();
+        std::fs::write(engine.join("CrashReportClient.exe"), pe_with(MACHINE_X64, &["d3d11.dll"], None, 0x10_0000)).unwrap();
+        assert_eq!(candidates(dir.path()), [win64.join("Game-Win64-Shipping.exe")]);
     }
 
     #[test]
