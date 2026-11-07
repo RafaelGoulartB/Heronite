@@ -19,6 +19,8 @@ libc = "0.2"
 regex = "1"
 ureq = "3"
 toml = "0.8"
+sha2 = "0.10"
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [dev-dependencies]
 heronite-data = { path = "../data", features = ["testing"] }

@@ -6,8 +6,9 @@ use gpui_kit::*;
 use heronite_i18n::tr;
 
 use super::SettingsPanel;
+use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, row, toggle, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, icon_badge, row, row_lead, toggle, ButtonKind};
 use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field, select_menu_field, SelectOption};
 
 /// Menus longer than this get a search box.
@@ -180,12 +181,53 @@ impl SettingsPanel {
         on: bool,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        self.switch_row_lead(id, group, None, label, help_text, on, cx)
+    }
+
+    /// [`switch_row`](Self::switch_row) with the icon badge of a section's
+    /// main switch before the label (`lead`).
+    fn switch_row_lead(
+        &self,
+        id: &'static str,
+        group: &str,
+        lead: Option<Icon>,
+        label: &str,
+        help_text: Option<&str>,
+        on: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let control = div().flex().items_center().gap(px(10.)).children(self.reset_button(group, cx)).child(toggle(
             SharedString::from(format!("{id}-sw")),
             on,
             false,
         ));
-        row(label.to_string(), help_text, control).id(id).cursor_pointer()
+        match lead {
+            Some(ic) => row_lead(icon_badge(ic), label.to_string(), help_text, control).id(id).cursor_pointer(),
+            None => row(label.to_string(), help_text, control).id(id).cursor_pointer(),
+        }
+    }
+
+    /// [`toggle_row`](Self::toggle_row) for a section's main switch: its
+    /// icon badge before the label.
+    pub(super) fn toggle_row_icon(
+        &self,
+        id: &'static str,
+        key: &'static str,
+        ic: Icon,
+        label: &str,
+        help_text: Option<&str>,
+        disabled: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let on = self.flag(key, false);
+        let group = if super::changes::group(id).is_some() { id } else { key };
+        let mut row = self.switch_row_lead(id, group, Some(ic), label, help_text, on, cx);
+        if disabled {
+            row = row.opacity(0.4).cursor_not_allowed();
+        } else {
+            row = row.on_click(cx.listener(move |this, _, _, cx| this.toggle(key, false, cx)));
+        }
+        row.into_any_element()
     }
 
     /// Labelled text input bound to input `id`.

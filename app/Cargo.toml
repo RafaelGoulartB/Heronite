@@ -39,6 +39,7 @@ smallvec = "1"
 libc = "0.2"
 signal-hook = "0.3"
 futures = "0.3"
+trash = "5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 heronite-shortcuts = { path = "../crates/shortcuts" }
 heronite-steam = { path = "../crates/steam" }

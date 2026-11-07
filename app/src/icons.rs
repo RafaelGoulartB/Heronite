@@ -83,6 +83,8 @@ pub enum Icon {
     ShoppingBag,
     Lightbulb,
     Palette,
+    /// Overlapping frames: frame generation.
+    Animation,
     PhotoCamera,
     /// A replay (a saved video of the game).
     Videocam,
@@ -204,6 +206,7 @@ impl Icon {
             ShoppingBag => "icons/shopping-bag.svg",
             Lightbulb => "icons/lightbulb.svg",
             Palette => "icons/palette.svg",
+            Animation => "icons/animation.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Videocam => "icons/videocam.svg",
             Inbox => "icons/inbox.svg",
