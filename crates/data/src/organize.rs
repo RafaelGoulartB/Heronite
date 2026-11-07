@@ -28,6 +28,8 @@ pub enum GroupBy {
     Genre,
     Developer,
     Series,
+    /// How the game is played (single player, co-operative...).
+    GameMode,
     /// Release year.
     Year,
     /// Ranges of time played.
@@ -37,7 +39,7 @@ pub enum GroupBy {
 }
 
 impl GroupBy {
-    pub const ALL: [GroupBy; 11] = [
+    pub const ALL: [GroupBy; 12] = [
         GroupBy::None,
         GroupBy::Status,
         GroupBy::Category,
@@ -46,6 +48,7 @@ impl GroupBy {
         GroupBy::Genre,
         GroupBy::Developer,
         GroupBy::Series,
+        GroupBy::GameMode,
         GroupBy::Year,
         GroupBy::Playtime,
         GroupBy::InstallSize,
@@ -61,6 +64,7 @@ impl GroupBy {
             Self::Genre => "genre",
             Self::Developer => "developer",
             Self::Series => "series",
+            Self::GameMode => "gameMode",
             Self::Year => "year",
             Self::Playtime => "playtime",
             Self::InstallSize => "installSize",
@@ -73,7 +77,7 @@ impl GroupBy {
 
     /// A game may sit in several of its sections (one per genre...).
     pub fn many_per_game(self) -> bool {
-        matches!(self, Self::Category | Self::Store | Self::Genre | Self::Developer)
+        matches!(self, Self::Category | Self::Store | Self::Genre | Self::Developer | Self::GameMode)
     }
 }
 
@@ -312,6 +316,7 @@ fn values_of(g: &CollectionGame, by: GroupBy, o: &Organize) -> Vec<(String, Stri
         GroupBy::Store => facet(FacetKind::Store),
         GroupBy::Genre => facet(FacetKind::Genre),
         GroupBy::Developer => facet(FacetKind::Developer),
+        GroupBy::GameMode => facet(FacetKind::GameMode),
         GroupBy::Series => facet(FacetKind::Series).into_iter().take(1).collect(),
         GroupBy::Category => o
             .categories
@@ -349,6 +354,7 @@ fn empty_label(by: GroupBy) -> &'static str {
         GroupBy::Genre => tr!("No genre"),
         GroupBy::Developer => tr!("Unknown developer"),
         GroupBy::Series => tr!("No series"),
+        GroupBy::GameMode => tr!("No game mode"),
         GroupBy::Year => tr!("Unknown year"),
         _ => tr!("Other"),
     }
@@ -501,5 +507,28 @@ mod tests {
         assert_eq!(size[0].id, "installSize:none");
         let all = group_games(&games, GroupBy::None, &o);
         assert_eq!(all[0].games.len(), 3);
+    }
+
+    #[test]
+    fn groups_by_game_mode_with_a_game_in_each_of_its_modes() {
+        let games = vec![
+            game("a", "Alpha", |s| s.game_modes = vec!["Split screen".into(), "Co-operative".into()]),
+            game("b", "Beta", |s| s.game_modes = vec!["co-operative".into(), "Single player".into()]),
+            game("c", "Gamma", |_| {}),
+        ];
+        let groups = group_games(&games, GroupBy::GameMode, &Organize::default());
+        let summary: Vec<_> = groups.iter().map(|g| (g.id.as_str(), g.name.as_str(), g.games.len())).collect();
+        assert_eq!(
+            summary,
+            [
+                ("gameMode:co-operative", "Co-operative", 2),
+                ("gameMode:single player", "Single player", 1),
+                ("gameMode:split screen", "Split screen", 1),
+                ("gameMode:", "No game mode", 1),
+            ]
+        );
+        assert!(GroupBy::GameMode.many_per_game());
+        assert_eq!(GroupBy::parse("gameMode"), Some(GroupBy::GameMode));
+        assert!(GroupBy::ALL.contains(&GroupBy::GameMode));
     }
 }

@@ -49,6 +49,7 @@ pub(super) fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Store => tr!("Store"),
         FacetKind::Theme => tr!("Theme"),
         FacetKind::Feature => tr!("Feature"),
+        FacetKind::GameMode => tr!("Game mode"),
     }
 }
 
