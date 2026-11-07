@@ -200,6 +200,11 @@ A single native process drawn on the GPU, with no bundled browser like Electron-
 
 ## Run from source
 
+<details>
+<summary>Show build instructions</summary>
+
+<br>
+
 You need stable Rust. On Linux, also `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK; on Windows, the Visual Studio Build Tools ("Desktop development with C++") and [CMake](https://cmake.org) on the `PATH` (it builds SDL, which reads the controllers in console mode). Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
 
 ```bash
@@ -212,6 +217,9 @@ scripts/install.sh
 # installer and portable zip in dist\ (Windows, needs Inno Setup 6.3 or later)
 powershell -ExecutionPolicy Bypass -File scripts\windows\package.ps1
 ```
+
+</details>
+
 
 ## Contributors
 
