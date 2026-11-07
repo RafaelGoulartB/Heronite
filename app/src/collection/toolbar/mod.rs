@@ -53,8 +53,8 @@ const PRESET_LABEL_MAX: f32 = 160.;
 /// while the pointer is over either.
 const TOGGLE_W: f32 = 24.;
 const TOGGLE_ICON: f32 = 20.;
-/// About 200ms, without overshoot.
-const REVEAL: SpringConfig = SpringConfig::new(600., 48., 1.);
+/// About 130ms, without overshoot.
+const REVEAL: SpringConfig = SpringConfig::new(1300., 72., 1.);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::collection) enum QuickMenu {
