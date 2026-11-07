@@ -457,17 +457,24 @@ impl CollectionView {
         let step = (self.sel.steps.get(&name).copied().unwrap_or(0) + 1) % cyc.len();
         self.sel.steps.insert(name.clone(), step);
         let to = cyc[step];
-        let writes: Vec<(String, String, bool)> = games
-            .iter()
-            .map(|g| {
-                let on = match to {
-                    Step::All => true,
-                    Step::None => false,
-                    Step::AsWas => orig.contains(g.key.as_str()),
-                };
-                (g.runner.clone(), g.app_name.clone(), on)
-            })
-            .collect();
+        // Every copy of a picked card follows that card (see `with_copies`).
+        let mut seen = HashSet::new();
+        let mut all = Vec::new();
+        let mut writes: Vec<(String, String, bool)> = Vec::new();
+        for g in &games {
+            let on = match to {
+                Step::All => true,
+                Step::None => false,
+                Step::AsWas => orig.contains(g.key.as_str()),
+            };
+            for c in self.with_copies(&g.key) {
+                if seen.insert(c.key.clone()) {
+                    writes.push((c.runner.clone(), c.app_name.clone(), on));
+                    all.push(c);
+                }
+            }
+        }
+        let games = all;
         let on = writes.iter().map(|(_, _, on)| *on).collect();
         let undo = self.snapshot(After::Categories { name: name.clone(), on }, &games);
         let n = games.len();
