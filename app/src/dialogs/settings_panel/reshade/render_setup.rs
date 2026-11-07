@@ -46,7 +46,7 @@ pub(super) fn title_row(title: impl Into<SharedString>, about: impl Into<SharedS
 /// The badge of the section: its icon on an accent tile.
 fn badge(size: f32) -> Div {
     div().flex_none().size(px(size)).rounded(px(size * 0.3)).bg(theme::accent_tint()).flex().items_center().justify_center().child(icon(
-        Icon::AutoAwesome,
+        Icon::Palette,
         px(size * 0.5),
         theme::accent(),
     ))
@@ -131,16 +131,7 @@ impl SettingsPanel {
             self.reshade.busy.is_none(),
             cx.listener(|this, _, _, cx| this.open_reshade_setup(cx)),
         );
-        card_box()
-            .flex_row()
-            .items_center()
-            .gap(px(14.))
-            .py(px(14.))
-            .bg(theme::accent_wash())
-            .border_color(theme::accent_wash_border())
-            .child(badge(40.))
-            .child(text)
-            .child(div().flex_none().child(open))
+        card_box().flex_row().items_center().gap(px(14.)).py(px(14.)).child(badge(40.)).child(text).child(div().flex_none().child(open))
     }
 
     /// The install as one card: the game, a preset, the shaders, then the
