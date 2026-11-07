@@ -329,6 +329,9 @@ device when the last window closes (the app lives on in the tray); see its
   play time for it) becomes "Played" once Steam has play time for it, unless
   the user ever chose its status (the status history has it): the move is an
   inferred default like the status at creation, so it is not recorded there.
+  The rule is `heronite_data::status::promote_played`, which the Epic and GOG
+  play time sync and the recording of a session use too, so any game with
+  play time leaves "Not played".
 - **heronite-xbox:** Windows only (`Feature::XboxStore`). The Microsoft
   Store and PC Game Pass games are Windows packages: `heronite_platform::packages`
   reads the user's packages from the registry the deployment service keeps
