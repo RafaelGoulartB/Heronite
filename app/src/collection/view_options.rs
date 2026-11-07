@@ -442,6 +442,13 @@ impl CollectionView {
                     .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.cover_badges = !a.cover_badges, cx))),
             )
+            // The style is picked in Settings → Appearance (it shows them all).
+            .child(
+                option_row(tr!("Categories on covers"), toggle("cover-categories-sw", a.cover_categories, false))
+                    .id("cover-categories")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.cover_categories = !a.cover_categories, cx))),
+            )
     }
 
     /// The picture behind the Collection: on or off, which one, how much
@@ -721,7 +728,8 @@ impl CollectionView {
             && a.cover_corners == d.cover_corners
             && a.density == d.density
             && a.cover_hover == d.cover_hover
-            && a.cover_badges == d.cover_badges;
+            && a.cover_badges == d.cover_badges
+            && a.cover_categories == d.cover_categories;
         let bg = BackgroundSettings::default();
         let near = |v: f32, d: f64| (v - d as f32).abs() < 0.5;
         let background = self.stage_enabled == bg.enabled
@@ -773,6 +781,7 @@ impl CollectionView {
             |a| {
                 let d = Appearance::DEFAULT;
                 (a.cover_corners, a.density, a.cover_hover, a.cover_badges) = (d.cover_corners, d.density, d.cover_hover, d.cover_badges);
+                a.cover_categories = d.cover_categories;
                 (a.background, a.collection_opacity) = (d.background, d.collection_opacity);
                 (a.interface_mode, a.interface_opacity, a.interface_blur) = (d.interface_mode, d.interface_opacity, d.interface_blur);
                 if !grid {

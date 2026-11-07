@@ -196,13 +196,33 @@ impl CollectionView {
                 grey_uninstalled: self.grey_uninstalled,
                 pick: self.sel.active().then(|| self.sel.contains(&key)),
                 epic: self.epic_card(&key, cx),
+                categories: if look.categories.is_some() { self.card_categories(&key) } else { Vec::new() },
                 look,
+                scale,
             },
             on_select,
             on_hover,
             on_play,
         );
         self.with_context_menu(key, el, cx)
+    }
+
+    /// The categories of the game under `key` (and, while copies are
+    /// grouped, of its other copies), each once, by name.
+    pub(super) fn card_categories(&self, key: &str) -> Vec<super::category_badges::CategoryBadge> {
+        if self.categories.is_empty() {
+            return Vec::new();
+        }
+        let mut found = std::collections::BTreeSet::new();
+        for g in self.with_copies(key) {
+            found.extend(self.categories.of_game(&g.runner, &g.app_name));
+        }
+        self.categories
+            .names()
+            .enumerate()
+            .filter(|(_, n)| found.contains(n))
+            .map(|(i, n)| super::category_badges::CategoryBadge::new(n, i))
+            .collect()
     }
 
     fn render_row(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
@@ -458,6 +478,7 @@ fn card_look() -> card::CardLook {
         hover: a.cover_hover,
         badges: a.cover_badges,
         caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
+        categories: a.cover_categories.then_some(a.category_style),
     }
 }
 

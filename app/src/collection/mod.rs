@@ -6,6 +6,7 @@ mod add_game;
 mod age_rows;
 mod backdrop;
 mod card;
+pub(crate) mod category_badges;
 mod clients;
 mod console;
 mod context_menu;

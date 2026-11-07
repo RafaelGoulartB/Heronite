@@ -224,6 +224,12 @@ pub struct Appearance {
     /// Favourite and "update available" badges on the covers.
     pub cover_badges: bool,
     pub cover_hover: CoverHover,
+    /// The game's categories on its cover (off by default), drawn as
+    /// `category_style`.
+    pub cover_categories: bool,
+    /// Kept while the categories are off, so switching them back on brings
+    /// the same look.
+    pub category_style: CategoryStyle,
     pub background: BackgroundSource,
     /// With [`BackgroundSource::Screenshot`]: a different screenshot every
     /// [`SLIDESHOW_SECS`].
@@ -263,6 +269,8 @@ impl Appearance {
         cover_label: CoverLabel::DEFAULT,
         cover_badges: false,
         cover_hover: CoverHover::DEFAULT,
+        cover_categories: false,
+        category_style: CategoryStyle::DEFAULT,
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
         motion: Motion::DEFAULT,
@@ -356,6 +364,8 @@ impl Appearance {
             cover_label: name("coverLabel").and_then(CoverLabel::parse).unwrap_or_default(),
             cover_badges: flag("coverBadges", d.cover_badges),
             cover_hover: name("coverHover").and_then(CoverHover::parse).unwrap_or_default(),
+            cover_categories: flag("coverCategories", d.cover_categories),
+            category_style: name("categoryStyle").and_then(CategoryStyle::parse).unwrap_or_default(),
             background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
@@ -390,6 +400,8 @@ impl Appearance {
             "coverLabel": self.cover_label.as_str(),
             "coverBadges": self.cover_badges,
             "coverHover": self.cover_hover.as_str(),
+            "coverCategories": self.cover_categories,
+            "categoryStyle": self.category_style.as_str(),
             "background": self.background.as_str(),
             "backgroundSlideshow": self.background_slideshow,
             "motion": self.motion.as_str(),
@@ -505,6 +517,8 @@ mod tests {
             cover_label: CoverLabel::LastPlayed,
             cover_badges: true,
             cover_hover: CoverHover::Glow,
+            cover_categories: true,
+            category_style: CategoryStyle::Bookmarks,
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
             motion: Motion::Reduced,

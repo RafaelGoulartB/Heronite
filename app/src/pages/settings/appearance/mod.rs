@@ -587,6 +587,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .into_iter()
         .chain(cover_rows),
     );
+    let categories = look::categories_group(d, window.scale_factor(), cx);
     let profiles = profiles::profiles_group(d, cx);
     let colour = look::colour_group(d, cx);
     let reading = look::reading_group(d, cx);
@@ -622,6 +623,8 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .child(footer(tr!("The game's art, a screenshot or a picture of your own, and how much of it shows.").into(), reset))
         .child(caption(tr!("Covers")))
         .child(covers)
+        .child(caption(tr!("Categories on covers")))
+        .child(categories)
         .child(caption(tr!("Text and motion")))
         .child(reading)
         .child(caption(tr!("Layout")))
@@ -710,6 +713,7 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
         choice("cover-label", tr!("Under the cover"), console_choice(&look::label_items(), a.cover_label)),
         Row::toggle("cover-badges", tr!("Favourite star"), a.cover_badges),
         choice("cover-hover", tr!("Under the pointer"), console_choice(&look::hover_items(), a.cover_hover)),
+        Row::choice("cover-categories", tr!("Categories on covers"), console_categories().0, console_categories_index(&a)),
         choice("bg-picture", tr!("Picture"), console_choice(&console_pictures(), a.background)),
         Row::toggle("bg-slideshow", tr!("Change the screenshot by itself"), a.background_slideshow),
         Row::header(tr!("Colour")),
@@ -739,6 +743,20 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
     ];
     rows.extend(presets().iter().map(|p| Row::action(SharedString::from(format!("preset:{}", p.id)), profiles::preset_name(p.id))));
     rows
+}
+
+/// The console's "Categories on covers" choices: off, then each style.
+fn console_categories() -> (Vec<SharedString>, Vec<Option<heronite_data::appearance::CategoryStyle>>) {
+    let items = look::category_style_items();
+    let labels = std::iter::once(SharedString::from(tr!("Off"))).chain(items.iter().map(|(_, l)| SharedString::from(*l))).collect();
+    (labels, std::iter::once(None).chain(items.iter().map(|(s, _)| Some(*s))).collect())
+}
+
+/// Where the look's categories are among [`console_categories`].
+fn console_categories_index(a: &Appearance) -> usize {
+    let styles = console_categories().1;
+    let current = a.cover_categories.then_some(a.category_style);
+    styles.iter().position(|s| *s == current).unwrap_or(0)
 }
 
 /// The value at `i` of `items`.
@@ -774,6 +792,16 @@ fn console_apply_look(
         ("cover-hover", i, _) => {
             if let Some(v) = pick(&look::hover_items(), i) {
                 look::set_look(d, cx, |a| a.cover_hover = v)
+            }
+        }
+        ("cover-categories", Some(i), _) => {
+            if let Some(style) = console_categories().1.get(i).copied() {
+                look::set_look(d, cx, |a| {
+                    a.cover_categories = style.is_some();
+                    if let Some(s) = style {
+                        a.category_style = s;
+                    }
+                })
             }
         }
         ("bg-picture", i, _) => {
