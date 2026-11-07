@@ -244,6 +244,53 @@ pub struct AutoScanReport {
     pub errors: Vec<String>,
 }
 
+/// Whether `title` is what the scan used to call a game folder: the file name
+/// of its indicator file, which every such game shared.
+fn is_legacy_indicator_title(title: &str) -> bool {
+    ["eboot", "eboot.bin"].iter().any(|t| title.trim().eq_ignore_ascii_case(t))
+}
+
+/// Games of folder indicator emulators (RPCS3, Vita3K, shadPS4) imported
+/// before the scan named them were all called "EBOOT". The ones still called
+/// that, so never renamed by the user, get the title the scan gives them now.
+/// Their id and ROMs stay; any other title is left alone.
+fn retitle_legacy_folder_games(paths: &DataPaths, games: &[RomScanItem], emulator_id: &str, profile_id: &str) -> Result<()> {
+    let metas: LocalMetaFile = json_store::read(&paths.local_meta())?;
+    let live = live_emulator_ids(paths)?;
+    let renames: Vec<(String, String)> = games
+        .iter()
+        .filter(|g| g.already_imported && !g.title.is_empty())
+        .filter_map(|g| {
+            let meta = find_existing(&metas, emulator_id, profile_id, &live, g)?;
+            (is_legacy_indicator_title(&meta.title) && meta.title != g.title).then(|| (meta.app_name.clone(), g.title.clone()))
+        })
+        .collect();
+    if renames.is_empty() {
+        return Ok(());
+    }
+    // The library first, the meta last: the meta tells which games are still
+    // legacy, so a failure in between is retried by the next scan.
+    json_store::update_value(&paths.sideload_library(), |doc| {
+        let games = doc.get_mut("games").and_then(Value::as_array_mut).into_iter().flatten();
+        for game in games {
+            let new = renames.iter().find(|(app, _)| game["app_name"].as_str() == Some(app.as_str()));
+            if let (Some((_, title)), true) = (new, game["title"].as_str().is_some_and(is_legacy_indicator_title)) {
+                game["title"] = Value::String(title.clone());
+            }
+        }
+        Ok(())
+    })?;
+    json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
+        for (app_name, title) in &renames {
+            if let Some(meta) = file.games.get_mut(app_name).filter(|m| is_legacy_indicator_title(&m.title)) {
+                meta.title = title.clone();
+            }
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+
 /// Scans one saved folder and imports the games not imported yet.
 pub fn scan_saved_folder(paths: &DataPaths, scanner: &crate::types::RomScanner) -> Result<(usize, Vec<String>)> {
     let preview = preview_rom_scan(
@@ -257,6 +304,9 @@ pub fn scan_saved_folder(paths: &DataPaths, scanner: &crate::types::RomScanner) 
         },
     )?;
     let mut errors = preview.errors.clone();
+    if let Err(e) = retitle_legacy_folder_games(paths, &preview.games, &scanner.emulator_id, &scanner.profile_id) {
+        log::warn!("Could not rename games imported as EBOOT: {e:#}");
+    }
     let newcomers: Vec<RomScanItem> = preview
         .games
         .into_iter()
@@ -544,6 +594,65 @@ mod tests {
         .unwrap();
         write(roms.path().join("Delta.iso"), "x").unwrap();
         assert_eq!(run_auto_rom_scanners(&paths).unwrap(), 0);
+    }
+
+    #[test]
+    fn games_imported_as_eboot_are_renamed_by_the_next_scan_but_user_titles_stay() {
+        let (_h, paths, roms, _e, _p) = setup();
+        let emulator = store::upsert_user_emulator(
+            &paths,
+            UpsertUserEmulatorArgs {
+                definition_id: "rpcs3".into(),
+                name: "RPCS3".into(),
+                executable: "/opt/rpcs3".into(),
+                launch_kind: "native".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let (e, p) = (emulator.id, emulator.profiles[0].id.clone());
+        let games = roms.path().join("ps3");
+        for name in ["Journey", "Flower", "Demon's Souls"] {
+            create_dir_all(games.join(name).join("PS3_GAME/USRDIR")).unwrap();
+            write(games.join(name).join("PS3_GAME/USRDIR/EBOOT.BIN"), "x").unwrap();
+        }
+        let dir = games.to_str().unwrap();
+        // How the first version imported them.
+        let mut legacy = scan(&paths, &e, &p, dir);
+        for g in &mut legacy {
+            g.title = if g.title == "Demon's Souls" { "My own name".into() } else { "EBOOT".into() };
+        }
+        let args =
+            |games| RomScanImportArgs { emulator_id: e.clone(), profile_id: p.clone(), directory: dir.into(), games, ..Default::default() };
+        import_scanned_roms(&paths, &args(legacy)).unwrap();
+        let ids = |paths: &DataPaths| -> Vec<(String, String)> {
+            let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+            let mut all: Vec<_> = metas.games.values().map(|m| (m.title.clone(), m.app_name.clone())).collect();
+            all.sort();
+            all
+        };
+        let before = ids(&paths);
+        assert_eq!(before.iter().filter(|(t, _)| t == "EBOOT").count(), 2);
+
+        store::upsert_rom_scanner(
+            &paths,
+            UpsertRomScannerArgs { emulator_id: e.clone(), profile_id: p.clone(), directory: dir.into(), ..Default::default() },
+        )
+        .unwrap();
+        assert_eq!(run_auto_rom_scanners(&paths).unwrap(), 0);
+        let after = ids(&paths);
+        let titles: Vec<&str> = after.iter().map(|(t, _)| t.as_str()).collect();
+        assert_eq!(titles, ["Flower", "Journey", "My own name"]);
+        // Same games: the ids did not change.
+        let mut old: Vec<&str> = before.iter().map(|(_, a)| a.as_str()).collect();
+        let mut new: Vec<&str> = after.iter().map(|(_, a)| a.as_str()).collect();
+        old.sort();
+        new.sort();
+        assert_eq!(old, new);
+        let library: Value = json_store::read(&paths.sideload_library()).unwrap();
+        let mut shown: Vec<&str> = library["games"].as_array().unwrap().iter().filter_map(|g| g["title"].as_str()).collect();
+        shown.sort();
+        assert_eq!(shown, ["Flower", "Journey", "My own name"]);
     }
 
     #[test]

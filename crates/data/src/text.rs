@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 use chrono::{DateTime, Datelike, Local, NaiveDate};
 use icu_collator::options::{CollatorOptions, Strength};
 use icu_collator::{Collator, CollatorBorrowed};
+use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
 
 thread_local! {
@@ -37,6 +38,64 @@ pub fn facet_key(value: &str) -> String {
     let stripped: String = value.nfd().filter(|c| !('\u{0300}'..='\u{036f}').contains(c)).collect();
     let collapsed = stripped.split_whitespace().collect::<Vec<_>>().join(" ");
     collapsed.to_lowercase()
+}
+
+/// Latin and Greek letters: the scripts whose accents `title_key` folds
+/// (Cyrillic `й` and `ё` are letters of their own, not accented `и` and `е`).
+fn is_latin_or_greek(c: char) -> bool {
+    matches!(c, 'a'..='z' | '\u{00c0}'..='\u{024f}' | '\u{0370}'..='\u{03ff}' | '\u{1e00}'..='\u{1eff}' | '\u{1f00}'..='\u{1fff}')
+}
+
+/// Whether `c` is part of a word of a title: a letter or digit of any script,
+/// or a mark on one (`é` as `e` and U+0301).
+pub fn is_word_char(c: char) -> bool {
+    c.is_alphanumeric() || is_combining_mark(c)
+}
+
+/// The words of a game title in a form two spellings of it share: lower case,
+/// accents of Latin and Greek letters folded (`Pokémon` = `Pokemon`, `Straße`
+/// = `Strasse`), width and compatibility forms unified (`Ⅱ` = `II`), and every
+/// run of characters that are not letters or digits (in any script) one space.
+/// Titles with no letter or digit give `""`, which callers must not match
+/// against anything.
+pub fn title_key(value: &str) -> String {
+    // NFKD would turn the trade mark signs into letters (`™` = `TM`).
+    let lower = value.to_lowercase().replace(['™', '℠'], " ");
+    let mut out = String::with_capacity(lower.len());
+    let mut gap = false;
+    let mut folds = false;
+    // Lower case again: NFKD brings capitals (`№` = `No`, `ℂ` = `C`).
+    for c in lower.nfkd().flat_map(char::to_lowercase) {
+        if matches!(c, '\u{fe00}'..='\u{fe0f}' | '\u{e0100}'..='\u{e01ef}') {
+            continue;
+        }
+        if is_combining_mark(c) {
+            // A mark belongs to the letter before it: after a gap it is dropped;
+            // accents of Latin and Greek letters are folded.
+            if !gap && !out.is_empty() && !(folds && matches!(c, '\u{0300}'..='\u{036f}')) {
+                out.push(c);
+            }
+        } else if c.is_alphanumeric() {
+            if gap && !out.is_empty() {
+                out.push(' ');
+            }
+            gap = false;
+            folds = is_latin_or_greek(c);
+            match c {
+                'ß' => out.push_str("ss"),
+                'æ' => out.push_str("ae"),
+                'œ' => out.push_str("oe"),
+                'ø' => out.push('o'),
+                'ł' => out.push('l'),
+                'đ' => out.push('d'),
+                c => out.push(c),
+            }
+        } else {
+            gap = true;
+        }
+    }
+    // NFC joins what NFKD took apart and was kept: kana voicing, Hangul, `й`.
+    out.nfc().collect()
 }
 
 /// `splitNames`: comma separated list, trimmed, empty items dropped.
@@ -228,6 +287,36 @@ mod tests {
         assert_eq!(v, ["10 Dead", "2 Dead", "A b", "Ab", "alpha", "Alpha", "Ao", "okami", "Ōkami", "zeta"]);
         assert_eq!(locale_cmp_base("Alpha", "alpha"), Ordering::Equal);
         assert_eq!(locale_cmp_base("Ōkami", "okami"), Ordering::Equal);
+    }
+
+    #[test]
+    fn title_key_folds_accents_and_keeps_any_script() {
+        assert_eq!(title_key("Pokémon Red"), "pokemon red");
+        assert_eq!(title_key("Pokemon  RED"), title_key("Pokémon Red"));
+        assert_eq!(title_key("Ünïcode — dash"), "unicode dash");
+        assert_eq!(title_key("Straße"), "strasse");
+        assert_eq!(title_key("HADES™ 2℠"), "hades 2");
+        assert_eq!(title_key("Baldur’s Gate 3"), "baldur s gate 3");
+        assert_eq!(title_key("Final Fantasy Ⅶ"), "final fantasy vii");
+        assert_eq!(title_key("ファイナルファンタジーVII"), "ファイナルファンタジーvii");
+        assert_eq!(title_key("ゲーム: ガ"), "ゲーム ガ");
+        assert_eq!(title_key("Ведьмак 3: Дикая Охота"), "ведьмак 3 дикая охота");
+        assert_eq!(title_key("한글 게임"), "한글 게임");
+        assert_eq!(title_key("เกม: ภาค 2"), "เกม ภาค 2");
+        // Marks follow their letter: none after a gap, no variation selectors.
+        assert_eq!(title_key("Hades ❤\u{fe0f}"), "hades");
+        assert_eq!(title_key("HADES™\u{fe0f}"), "hades");
+        // Capitals that only appear when NFKD expands a sign or a styled letter.
+        assert_eq!(title_key("№5 ℂ𝐇𝐀𝐎𝐒"), "no5 chaos");
+        assert_eq!(title_key("ＨＡＤＥＳ"), "hades");
+        assert_eq!(title_key("Hades\u{fe0f} 2"), "hades 2");
+        assert_eq!(title_key("\u{0301}Hades"), "hades");
+        // Only Latin and Greek accents fold.
+        assert_eq!(title_key("Чёрный Ёж: Йод"), "чёрный ёж йод");
+        assert_ne!(title_key("Йод"), title_key("Иод"));
+        assert_eq!(title_key("Όμως ά"), "ομως α");
+        assert_eq!(title_key(" ... "), "");
+        assert_eq!(title_key(""), "");
     }
 
     #[test]
