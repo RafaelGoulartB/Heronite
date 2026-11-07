@@ -53,8 +53,9 @@ const PRESET_LABEL_MAX: f32 = 160.;
 /// while the pointer is over either.
 const TOGGLE_W: f32 = 24.;
 const TOGGLE_ICON: f32 = 20.;
-/// About 130ms, without overshoot.
+/// Out in about 130ms, back in about 300ms, without overshoot.
 const REVEAL: SpringConfig = SpringConfig::new(1300., 72., 1.);
+const CONCEAL: SpringConfig = SpringConfig::new(350., 37., 1.);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::collection) enum QuickMenu {
@@ -275,9 +276,10 @@ impl CollectionView {
     }
 
     /// The header's left part: `fixed` wide, plus the View button's arrow
-    /// while it shows, so the search never shrinks under the pointer.
+    /// while it shows (the pointer is over the button or the arrow, or the
+    /// View menu is open), so the search never shrinks under the pointer.
     pub(super) fn header_left(&self, fixed: f32, build: impl FnOnce(Stateful<Div>, f32) -> Stateful<Div> + 'static) -> AnyElement {
-        let shown = self.toolbar.view_hovered;
+        let shown = self.toolbar.view_hovered || self.open_menu == Some(Menu::View);
         let left = div().id("hdr-left").flex().flex_none().items_center().gap(px(6.));
         let out = self.toolbar.toggle_out.clone();
         let place = move |el: Stateful<Div>, t: f32| {
@@ -285,9 +287,11 @@ impl CollectionView {
             build(el.w(px(fixed + TOGGLE_W * t.clamp(0., 1.))), t)
         };
         if theme::animations() {
-            left.with_spring("hdr-quick-toggle", SpringAnimation::new(REVEAL).to(shown).with_epsilon(0.002), move |el, phase| {
-                place(el, phase.0)
-            })
+            left.with_spring(
+                "hdr-quick-toggle",
+                SpringAnimation::new(if shown { REVEAL } else { CONCEAL }).to(shown).with_epsilon(0.002),
+                move |el, phase| place(el, phase.0),
+            )
             .into_any_element()
         } else {
             place(left, if shown { 1. } else { 0. }).into_any_element()
