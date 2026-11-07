@@ -3529,6 +3529,7 @@ dependencies = [
  "ksni",
  "libc",
  "log",
+ "notify",
  "notify-rust",
  "raw-window-handle",
  "rust-embed",
