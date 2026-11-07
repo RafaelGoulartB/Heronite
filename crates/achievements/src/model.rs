@@ -222,8 +222,11 @@ impl AchievementSet {
     }
 
     /// The achievements by group, in the groups' order, the ones in no
-    /// known group last; empty (a flat list) unless at least two of them
-    /// have achievements.
+    /// known group last; empty (a flat list) unless at least two known
+    /// groups have achievements. The ones in no group never make a split
+    /// on their own: a game without sets keeps Steam's single unnamed group
+    /// from the Community page, and a later read without groups (the
+    /// client's schema) leaves its new achievements in none.
     pub fn sections(&self) -> Vec<Section<'_>> {
         let mut sections: Vec<Section> = self.groups.iter().map(|g| Section { group: Some(g), achievements: Vec::new() }).collect();
         let mut other = Section { group: None, achievements: Vec::new() };
@@ -233,10 +236,12 @@ impl AchievementSet {
                 None => other.achievements.push(a),
             }
         }
-        sections.push(other);
         sections.retain(|s| !s.achievements.is_empty());
         if sections.len() < 2 {
-            sections.clear();
+            return Vec::new();
+        }
+        if !other.achievements.is_empty() {
+            sections.push(other);
         }
         sections
     }
@@ -559,6 +564,18 @@ mod tests {
         let mut s = set(vec![grouped("a", None, Some("0")), grouped("b", Some(1), Some("0"))]);
         assert!(s.sections().is_empty());
         s.groups = vec![g("0", "", Some(0)), g("1", "Unused", None)];
+        assert!(s.sections().is_empty());
+    }
+
+    #[test]
+    fn one_group_plus_ungrouped_ones_is_still_a_flat_list() {
+        // Portal (no sets) read from the Community page, then from a client
+        // schema without groups that lists one more achievement.
+        let mut s = set(vec![grouped("x", Some(1), Some("0")), grouped("y", None, Some("0")), grouped("new", None, None)]);
+        s.groups = vec![g("0", "", Some(0))];
+        assert!(s.sections().is_empty());
+        // Ungrouped ones alone are a flat list too.
+        s.achievements.iter_mut().for_each(|a| a.group = None);
         assert!(s.sections().is_empty());
     }
 

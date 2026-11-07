@@ -123,11 +123,12 @@ pub fn synced_label(at: chrono::DateTime<chrono::Utc>) -> String {
 
 /// The name of a section of a game's achievements (one of Steam's
 /// Achievement Sets): the developer's name, else "Base game" for Steam's
-/// unnamed base group, else "Other achievements" (no known group).
+/// unnamed base group (DLC id 0, or id `0` when the source gives no DLC id,
+/// as the client's schema), else "Other achievements" (no known group).
 pub fn section_label(group: Option<&AchievementGroup>) -> String {
     match group {
         Some(g) if !g.name.is_empty() => g.name.clone(),
-        Some(g) if g.dlc_app_id == Some(0) => tr!("Base game").to_string(),
+        Some(g) if g.dlc_app_id == Some(0) || (g.dlc_app_id.is_none() && g.id == "0") => tr!("Base game").to_string(),
         _ => tr!("Other achievements").to_string(),
     }
 }
@@ -141,5 +142,25 @@ pub fn section_line(section: &Section) -> String {
         format!("{name} · {} · {count}", tr!("DLC"))
     } else {
         format!("{name} · {count}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{section_label, AchievementGroup};
+
+    fn group(id: &str, name: &str, dlc: Option<u32>) -> AchievementGroup {
+        AchievementGroup { id: id.into(), name: name.into(), dlc_app_id: dlc, ..Default::default() }
+    }
+
+    #[test]
+    fn unnamed_base_groups_read_as_the_base_game() {
+        assert_eq!(section_label(Some(&group("2", "Single Player", Some(0)))), "Single Player");
+        // The Community page says DLC 0; the client's schema gives no DLC id.
+        assert_eq!(section_label(Some(&group("0", "", Some(0)))), "Base game");
+        assert_eq!(section_label(Some(&group("0", "", None))), "Base game");
+        assert_eq!(section_label(Some(&group("3", "", None))), "Other achievements");
+        assert_eq!(section_label(Some(&group("0", "", Some(7)))), "Other achievements");
+        assert_eq!(section_label(None), "Other achievements");
     }
 }

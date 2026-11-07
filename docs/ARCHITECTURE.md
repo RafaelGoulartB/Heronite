@@ -473,7 +473,7 @@ device when the last window closes (the app lives on in the tray); see its
   with `dlcappid`) as optional `groups` on the set and a `group` id on each
   achievement (`AchievementGroup`: a developer's collection inside one game,
   unlike `AchievementSet`, one game at one source); `sections()` splits a
-  game by them (a flat list for fewer than two); `gog` `gameplay.gog.com` with gogdl's token;
+  game by them (a flat list unless two known groups have achievements); `gog` `gameplay.gog.com` with gogdl's token;
   `epic` the store's GraphQL
   (`launcher.store.epicgames.com`, legendary's token, the namespace as
   sandbox, the launcher's User-Agent); `retro` RetroAchievements: the user

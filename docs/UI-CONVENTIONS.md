@@ -746,8 +746,8 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   "View all" (`dialogs/achievements.rs`) and "Updated … ago" with a refresh. A game at 100% turns the panel
   gold (`theme::achievement_gold`). For a ROM it asks for the RetroAchievements account or says the file
   matches no set ("Pick the game…" opens the dialog's search).
-- A game with Steam Achievement Sets (`AchievementSet::sections`, two or more) gets a row of its sets in the
-  dialog (All first, each "name · DLC · unlocked/total"; the filters count within the set shown; in All each
+- A game with Steam Achievement Sets (`AchievementSet::sections`: two or more groups with achievements; the
+  ones in no group never split a game alone) gets a row of its sets in the dialog (All first, each "name · DLC · unlocked/total"; the filters count within the set shown; in All each
   achievement carries its set's name) and a "Sets" section in the overlay's Achievements tab (bar and count per
   set). Steam's unnamed base group reads "Base game", achievements in no known group "Other achievements".
   Counts are Heronite's unlocked/total, never Steam's "set complete"; with DLC sets the dialog says the counts
