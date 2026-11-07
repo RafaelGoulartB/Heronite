@@ -215,10 +215,11 @@ impl CollectionView {
     }
 
     /// How many controls the toolbar shows, given each filter chip's
-    /// `(pick, width)`.
-    pub(super) fn quick_fit(&self, widths: &Widths, chips: &[(Pick, f32)]) -> usize {
+    /// `(pick, width)`. `reserved`: the lane's width taken by what follows the
+    /// controls (the "Getting started" button).
+    pub(super) fn quick_fit(&self, widths: &Widths, chips: &[(Pick, f32)], reserved: f32) -> usize {
         // The lane as if the arrow were out; it is reserved in `items`.
-        let lane = self.toolbar.width.get().unwrap_or(0.) + TOGGLE_W * self.toolbar.toggle_out.get();
+        let lane = (self.toolbar.width.get().unwrap_or(0.) + TOGGLE_W * self.toolbar.toggle_out.get() - reserved).max(0.);
         let chip_width = |shown: usize| chips.iter().filter(|(pick, _)| !covers(pick, shown)).map(|(_, w)| w + GAP).sum();
         layout::fit(theme::appearance().quick_toolbar_controls, lane, &widths.items(), chip_width)
     }

@@ -118,10 +118,14 @@ pub enum FacetKind {
     Store,
     Theme,
     Feature,
+    /// How the game is played (single player, co-operative, split screen...),
+    /// from the metadata's game modes.
+    #[serde(rename = "gameMode")]
+    GameMode,
 }
 
 /// `FACET_KINDS`, in the order the filter menu lists them.
-pub const FACET_KINDS: [FacetKind; 8] = [
+pub const FACET_KINDS: [FacetKind; 9] = [
     FacetKind::Store,
     FacetKind::Series,
     FacetKind::Developer,
@@ -129,6 +133,7 @@ pub const FACET_KINDS: [FacetKind; 8] = [
     FacetKind::Genre,
     FacetKind::Theme,
     FacetKind::Feature,
+    FacetKind::GameMode,
     FacetKind::Platform,
 ];
 
@@ -147,6 +152,7 @@ impl FacetKind {
             Self::Store => "store",
             Self::Theme => "theme",
             Self::Feature => "feature",
+            Self::GameMode => "gameMode",
         }
     }
 
@@ -168,6 +174,8 @@ pub struct FacetFilters {
     pub store: Vec<String>,
     pub theme: Vec<String>,
     pub feature: Vec<String>,
+    #[serde(rename = "gameMode")]
+    pub game_mode: Vec<String>,
 }
 
 impl FacetFilters {
@@ -181,6 +189,7 @@ impl FacetFilters {
             FacetKind::Store => &self.store,
             FacetKind::Theme => &self.theme,
             FacetKind::Feature => &self.feature,
+            FacetKind::GameMode => &self.game_mode,
         }
     }
 
@@ -194,6 +203,7 @@ impl FacetFilters {
             FacetKind::Store => &mut self.store,
             FacetKind::Theme => &mut self.theme,
             FacetKind::Feature => &mut self.feature,
+            FacetKind::GameMode => &mut self.game_mode,
         }
     }
 
@@ -268,7 +278,7 @@ pub struct FacetItem {
 }
 
 /// Facet values of a game, indexed by [`FacetKind::index`].
-pub type GameFacets = [Vec<FacetItem>; 8];
+pub type GameFacets = [Vec<FacetItem>; 9];
 
 fn items(values: Vec<String>) -> Vec<FacetItem> {
     values.into_iter().map(|value| FacetItem { key: facet_key(&value), value }).collect()
@@ -310,6 +320,7 @@ pub fn game_facets(game: &GameInfo, metadata: Option<&CollectionGameMetadata>) -
         Vec::new(),
         items(listed(|m| &m.themes)),
         items(listed(|m| &m.features)),
+        items(listed(|m| &m.game_modes)),
     ]
 }
 
@@ -378,6 +389,7 @@ pub struct FacetOptions {
     pub store: Vec<FacetOption>,
     pub theme: Vec<FacetOption>,
     pub feature: Vec<FacetOption>,
+    pub game_mode: Vec<FacetOption>,
 }
 
 impl FacetOptions {
@@ -391,13 +403,14 @@ impl FacetOptions {
             FacetKind::Store => &self.store,
             FacetKind::Theme => &self.theme,
             FacetKind::Feature => &self.feature,
+            FacetKind::GameMode => &self.game_mode,
         }
     }
 }
 
 /// `collectFacetOptions`: first spelling wins, sorted with `localeCompare`.
 pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
-    let mut buckets: [HashMap<&str, (usize, &str)>; 8] = Default::default();
+    let mut buckets: [HashMap<&str, (usize, &str)>; 9] = Default::default();
     // Preserve first-seen order only for the spelling; the output is sorted.
     for game in games {
         for kind in FACET_KINDS {
@@ -423,6 +436,7 @@ pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
         store: finish(&buckets[5]),
         theme: finish(&buckets[6]),
         feature: finish(&buckets[7]),
+        game_mode: finish(&buckets[8]),
     }
 }
 
@@ -764,6 +778,32 @@ mod tests {
         assert_eq!(titles(SortMode::Playtime), ["Beta", "alpha", "Zelda", "Delta"]);
         // recent first, never played last by title
         assert_eq!(titles(SortMode::LastPlayed), ["Beta", "Zelda", "alpha", "Delta"]);
+    }
+
+    #[test]
+    fn game_modes_are_a_facet_with_counts() {
+        let games = vec![
+            g("a", "It Takes Two", |s| s.game_modes = vec!["Co-operative".into(), "Split screen".into()]),
+            g("b", "Portal 2", |s| s.game_modes = vec!["Single player".into(), "co-operative ".into()]),
+            g("c", "Celeste", |s| s.game_modes = vec!["Single player".into()]),
+            g("d", "No metadata", |_| {}),
+        ];
+        let run = |q: ViewQuery| filter_games(&games, &q).iter().map(|g| g.app_name.clone()).collect::<Vec<_>>();
+        let coop = FacetFilters::default().toggled(FacetKind::GameMode, "co-operative");
+        assert_eq!(run(ViewQuery { facets: coop.clone(), ..Default::default() }), ["a", "b"]);
+        let coop_or_split = coop.toggled(FacetKind::GameMode, "Split Screen");
+        assert_eq!(run(ViewQuery { facets: coop_or_split, ..Default::default() }), ["a", "b"]);
+        let single = FacetFilters::default().toggled(FacetKind::GameMode, "Single player");
+        assert_eq!(run(ViewQuery { facets: single, ..Default::default() }), ["c", "b"], "by title");
+        // ANDs with the other kinds
+        let coop_by_nobody = coop.toggled(FacetKind::Developer, "Valve");
+        assert!(run(ViewQuery { facets: coop_by_nobody, ..Default::default() }).is_empty());
+
+        let options = collect_facet_options(&games);
+        let counts: Vec<(&str, usize)> = options.get(FacetKind::GameMode).iter().map(|o| (o.value.as_str(), o.count)).collect();
+        assert_eq!(counts, [("Co-operative", 2), ("Single player", 2), ("Split screen", 1)]);
+        assert_eq!(FacetKind::parse("gameMode"), Some(FacetKind::GameMode));
+        assert_eq!(serde_json::to_value(FacetKind::GameMode).unwrap(), "gameMode");
     }
 
     #[test]

@@ -36,7 +36,7 @@ pub(in crate::collection) enum Kind {
 
 impl Kind {
     /// In the order the results list them.
-    pub const ALL: [Kind; 11] = [
+    pub const ALL: [Kind; 12] = [
         Kind::Only,
         Kind::Status,
         Kind::Category,
@@ -47,6 +47,7 @@ impl Kind {
         Kind::Facet(FacetKind::Series),
         Kind::Facet(FacetKind::Theme),
         Kind::Facet(FacetKind::Feature),
+        Kind::Facet(FacetKind::GameMode),
         Kind::Facet(FacetKind::Platform),
     ];
 
@@ -82,6 +83,7 @@ impl Kind {
             Kind::Facet(FacetKind::Platform) => Icon::SportsEsports,
             Kind::Facet(FacetKind::Theme) => Icon::Lightbulb,
             Kind::Facet(FacetKind::Feature) => Icon::Tune,
+            Kind::Facet(FacetKind::GameMode) => Icon::AccountCircle,
         }
     }
 }
@@ -125,7 +127,7 @@ const PER_KIND: usize = 4;
 pub(in crate::collection) fn parse_query(raw: &str) -> (Option<Kind>, String) {
     if let Some((head, rest)) = raw.split_once(':') {
         let head = fold(head.trim());
-        if let Some(kind) = Kind::ALL.into_iter().find(|k| k.key() == head || fold(k.label()) == head) {
+        if let Some(kind) = Kind::ALL.into_iter().find(|k| fold(k.key()) == head || fold(k.label()) == head) {
             return (Some(kind), fold(rest.trim()));
         }
     }
@@ -215,6 +217,10 @@ mod tests {
         assert_eq!(parse_query("Genre: rpg"), (Some(Kind::Facet(FacetKind::Genre)), "rpg".into()));
         assert_eq!(parse_query("status:"), (Some(Kind::Status), String::new()));
         assert_eq!(parse_query("re: zero"), (None, "re: zero".into()));
+        let game_mode = Some(Kind::Facet(FacetKind::GameMode));
+        assert_eq!(parse_query("gameMode: co"), (game_mode, "co".into()));
+        assert_eq!(parse_query("gamemode: co"), (game_mode, "co".into()));
+        assert_eq!(parse_query("game mode: co"), (game_mode, "co".into()));
     }
 
     #[test]

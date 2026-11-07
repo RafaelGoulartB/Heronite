@@ -1,0 +1,52 @@
+{
+  "appid": 620,
+  "language": "brazilian",
+  "groups": [
+    {
+      "id": 2,
+      "name": "Um jogador",
+      "archived": false,
+      "ispublic": true,
+      "developeronly": false,
+      "dlcappid": 0,
+      "order": 0,
+      "achievements": [
+        {
+          "internal_key": 1,
+          "api_name": "ACH.SURVIVE_CONTAINER_RIDE",
+          "name": "Bom Dia, Flor do Dia",
+          "description": "Sobreviva ao controle manual",
+          "hidden": false,
+          "archived": false,
+          "icon_achieved": "SURVIVE_CONTAINER_RIDE.jpg",
+          "icon_unachieved": "SURVIVE_CONTAINER_RIDE_BW.jpg",
+          "groupid": 2
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "Cooperativo",
+      "archived": false,
+      "ispublic": true,
+      "developeronly": false,
+      "dlcappid": 0,
+      "order": 1,
+      "achievements": [
+        {
+          "internal_key": 30,
+          "api_name": "ACH.HI_FIVE_YOUR_PARTNER",
+          "name": "Toca Aqui",
+          "description": "Celebre seu sucesso na calibração cooperativa",
+          "hidden": false,
+          "archived": false,
+          "icon_achieved": "HI_FIVE_YOUR_PARTNER.jpg",
+          "icon_unachieved": "HI_FIVE_YOUR_PARTNER_BW.jpg",
+          "groupid": 1
+        }
+      ]
+    }
+  ],
+  "schema_hash": 3207947195,
+  "schema_version": 1108170007
+}

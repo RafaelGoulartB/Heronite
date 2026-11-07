@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode, FACET_KINDS};
 use crate::console_theme::{AutoConsole, OpenIn};
@@ -21,6 +21,8 @@ use crate::paths::AppPaths;
 pub struct UiState {
     pub install_filter: InstallFilter,
     pub facet_filters: FacetFilters,
+    /// Facet kinds of `facetFilters` this version does not know, kept as read.
+    pub unknown_facets: Map<String, Value>,
     pub sort: SortMode,
     /// The sort turned around (View menu's arrow).
     pub sort_descending: bool,
@@ -156,6 +158,7 @@ impl Default for UiState {
         Self {
             install_filter: InstallFilter::All,
             facet_filters: FacetFilters::default(),
+            unknown_facets: Map::new(),
             sort: SortMode::Title,
             sort_descending: false,
             only: OnlyFilters::default(),
@@ -195,7 +198,7 @@ impl UiState {
                 .iter()
                 .filter_map(|v| {
                     let name = v.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())?;
-                    Some(SavedView { name: name.to_owned(), filters: ViewFilters::from_value(v) })
+                    Some(SavedView { name: name.to_owned(), filters: ViewFilters::from_value(v), extra: SavedView::extra_of(v) })
                 })
                 .collect();
         }
@@ -359,6 +362,7 @@ impl UiState {
     /// `handleClearFacets`.
     pub fn clear_facets(&mut self) {
         self.facet_filters = FacetFilters::default();
+        self.unknown_facets.clear();
     }
 
     /// Selects or clears one category of the filter.
@@ -384,6 +388,7 @@ impl UiState {
             sort_descending: self.sort_descending,
             only: self.only,
             facet_filters: self.facet_filters.clone(),
+            unknown_facets: self.unknown_facets.clone(),
             categories: self.categories.clone(),
             statuses: self.statuses.clone(),
             group_by: Some(self.group_by),
@@ -399,6 +404,7 @@ impl UiState {
         self.sort_descending = view.sort_descending;
         self.only = view.only;
         self.facet_filters = view.facet_filters.clone();
+        self.unknown_facets = view.unknown_facets.clone();
         self.categories = view.categories.clone();
         self.statuses = view.statuses.clone();
         if let Some(by) = view.group_by {
@@ -439,6 +445,7 @@ impl UiState {
         self.install_filter = InstallFilter::All;
         self.only = OnlyFilters::default();
         self.facet_filters = FacetFilters::default();
+        self.unknown_facets.clear();
         self.categories.clear();
         self.statuses.clear();
     }
@@ -452,6 +459,9 @@ pub struct ViewFilters {
     pub sort_descending: bool,
     pub only: OnlyFilters,
     pub facet_filters: FacetFilters,
+    /// Facet kinds of `facetFilters` this version does not know (saved by a
+    /// newer one), written back unchanged.
+    pub unknown_facets: Map<String, Value>,
     pub categories: BTreeSet<String>,
     pub statuses: BTreeSet<String>,
     /// `None`: the view leaves it as it is.
@@ -472,6 +482,7 @@ impl ViewFilters {
             v.sort = sort;
         }
         if let Some(obj) = value.get("facetFilters").and_then(Value::as_object) {
+            v.unknown_facets = obj.iter().filter(|(k, _)| FacetKind::parse(k).is_none()).map(|(k, v)| (k.clone(), v.clone())).collect();
             for kind in FACET_KINDS {
                 let values: Vec<&str> = match obj.get(kind.as_str()) {
                     Some(Value::String(s)) => vec![s.as_str()],
@@ -509,8 +520,8 @@ impl ViewFilters {
 
     pub fn to_value(&self) -> Value {
         // Every kind, as `from_value` reads them, so a new one cannot be forgotten here.
-        let facets: serde_json::Map<String, Value> =
-            FACET_KINDS.iter().map(|kind| (kind.as_str().to_owned(), json!(self.facet_filters.get(*kind)))).collect();
+        let mut facets = self.unknown_facets.clone();
+        facets.extend(FACET_KINDS.iter().map(|kind| (kind.as_str().to_owned(), json!(self.facet_filters.get(*kind)))));
         json!({
             "installFilter": self.install_filter,
             "facetFilters": facets,
@@ -532,15 +543,46 @@ impl ViewFilters {
 pub struct SavedView {
     pub name: String,
     pub filters: ViewFilters,
+    /// Keys of the stored view this version does not read (saved by a newer
+    /// one), written back unchanged.
+    pub extra: Map<String, Value>,
 }
 
+/// Keys of a stored view that [`ViewFilters::from_value`] and the name cover;
+/// `groupByStatus` is replaced by `groupBy` when written.
+const VIEW_KEYS: [&str; 13] = [
+    "name",
+    "installFilter",
+    "facetFilters",
+    "sort",
+    "sortDescending",
+    "onlyFavourites",
+    "onlyUpdates",
+    "onlyOffline",
+    "categories",
+    "statuses",
+    "groupBy",
+    "groupByStatus",
+    "showHidden",
+];
+
 impl SavedView {
+    pub fn new(name: impl Into<String>, filters: ViewFilters) -> Self {
+        Self { name: name.into(), filters, extra: Map::new() }
+    }
+
+    fn extra_of(value: &Value) -> Map<String, Value> {
+        let Some(obj) = value.as_object() else { return Map::new() };
+        obj.iter().filter(|(k, _)| !VIEW_KEYS.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()
+    }
+
     fn to_value(&self) -> Value {
-        let mut v = self.filters.to_value();
-        if let Value::Object(obj) = &mut v {
-            obj.insert("name".into(), Value::String(self.name.clone()));
+        let mut obj = self.extra.clone();
+        if let Value::Object(known) = self.filters.to_value() {
+            obj.extend(known);
         }
-        v
+        obj.insert("name".into(), Value::String(self.name.clone()));
+        Value::Object(obj)
     }
 }
 
@@ -632,7 +674,7 @@ mod tests {
             statuses: statuses.iter().map(|s| s.to_string()).collect(),
             ..Default::default()
         };
-        SavedView { name: name.into(), filters }
+        SavedView::new(name, filters)
     }
 
     #[test]
@@ -791,7 +833,7 @@ mod tests {
         }
         state.toggle_facet(FacetKind::Theme, "Horror");
         state.toggle_facet(FacetKind::Feature, "Co-op");
-        state.saved_views.push(SavedView { name: "All".into(), filters: state.view_filters() });
+        state.saved_views.push(SavedView::new("All", state.view_filters()));
         state.save(&paths).unwrap();
 
         let loaded = UiState::load(&paths);
@@ -817,7 +859,7 @@ mod tests {
         state.only.favourites = true;
         state.sort = SortMode::Playtime;
         assert_eq!(state.active_filters(), 4);
-        state.saved_views.push(SavedView { name: "Done RPGs".into(), filters: state.view_filters() });
+        state.saved_views.push(SavedView::new("Done RPGs", state.view_filters()));
         state.save(&paths).unwrap();
         let mut loaded = UiState::load(&paths);
         assert_eq!(loaded, state);
@@ -855,6 +897,138 @@ mod tests {
         assert_eq!(state.grid_cover_w, GRID_COVER_W.1);
         let state = UiState::from_value(&json!({ "gridCoverWidth": "big" }));
         assert_eq!(state.grid_cover_w, GRID_COVER_W.2);
+    }
+
+    #[test]
+    fn game_mode_filter_and_grouping_survive_a_restart_and_a_saved_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        let mut state = UiState { group_by: GroupBy::GameMode, ..Default::default() };
+        state.toggle_facet(FacetKind::GameMode, "Co-operative");
+        state.toggle_facet(FacetKind::GameMode, "Split screen");
+        state.saved_views.push(SavedView::new("Couch co-op", state.view_filters()));
+        state.save(&paths).unwrap();
+
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert_eq!(on_disk["facetFilters"]["gameMode"], json!(["Co-operative", "Split screen"]));
+        assert_eq!(on_disk["groupBy"], "gameMode");
+        assert_eq!(on_disk["savedViews"][0]["facetFilters"]["gameMode"], json!(["Co-operative", "Split screen"]));
+        assert_eq!(on_disk["savedViews"][0]["groupBy"], "gameMode");
+
+        let mut loaded = UiState::load(&paths);
+        assert_eq!(loaded.facet_filters.game_mode, ["Co-operative", "Split screen"]);
+        assert_eq!(loaded.group_by, GroupBy::GameMode);
+        loaded.clear_filters();
+        loaded.group_by = GroupBy::Status;
+        let view = loaded.saved_views[0].filters.clone();
+        loaded.apply_view(&view);
+        assert_eq!(loaded.facet_filters.game_mode, ["Co-operative", "Split screen"]);
+        assert_eq!(loaded.group_by, GroupBy::GameMode);
+        assert!(loaded.shows_view(&view));
+    }
+
+    /// A file written by v1.2.0, before the Game mode facet: every filter and
+    /// view reads as it was, and writing it back changes none of its values.
+    #[test]
+    fn presets_from_before_game_modes_load_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        std::fs::create_dir_all(&paths.config).unwrap();
+        let facets = json!({
+            "series": [], "developer": ["Valve"], "publisher": [], "genre": ["Puzzle", "Shooter"],
+            "platform": [], "store": ["Steam"], "theme": ["Sci-fi"], "feature": ["Co-op"]
+        });
+        let old = json!({
+            "installFilter": "installed",
+            "facetFilters": facets,
+            "sort": "playtime",
+            "groupBy": "genre",
+            "savedViews": [{ "name": "Valve", "installFilter": "all", "facetFilters": facets, "sort": "title", "groupBy": "developer", "showHidden": false }],
+        });
+        std::fs::write(paths.ui_state(), serde_json::to_string(&old).unwrap()).unwrap();
+
+        let state = UiState::load(&paths);
+        assert_eq!(state.facet_filters.developer, ["Valve"]);
+        assert_eq!(state.facet_filters.genre, ["Puzzle", "Shooter"]);
+        assert_eq!(state.facet_filters.feature, ["Co-op"]);
+        assert!(state.facet_filters.game_mode.is_empty());
+        assert!(state.unknown_facets.is_empty(), "no old kind is mistaken for an unknown one");
+        assert_eq!(state.group_by, GroupBy::Genre);
+        let view = &state.saved_views[0];
+        assert_eq!(view.filters.facet_filters, state.facet_filters);
+        assert_eq!(view.filters.group_by, Some(GroupBy::Developer));
+        assert!(view.extra.is_empty());
+
+        state.save(&paths).unwrap();
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        for (kind, values) in facets.as_object().unwrap() {
+            assert_eq!(&on_disk["facetFilters"][kind], values, "{kind}");
+            assert_eq!(&on_disk["savedViews"][0]["facetFilters"][kind], values, "{kind}");
+        }
+        assert_eq!(on_disk["facetFilters"]["gameMode"], json!([]));
+        assert_eq!(on_disk["groupBy"], "genre");
+        assert_eq!(on_disk["savedViews"][0]["groupBy"], "developer");
+        assert_eq!(UiState::load(&paths), state);
+    }
+
+    /// Facet kinds and view keys written by a newer version survive a save.
+    #[test]
+    fn unknown_facet_kinds_and_view_keys_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        std::fs::create_dir_all(&paths.config).unwrap();
+        let newer = json!({
+            "facetFilters": { "gameMode": ["Co-operative"], "perspective": ["First person"] },
+            "savedViews": [{
+                "name": "Future",
+                "facetFilters": { "genre": ["RPG"], "perspective": ["Isometric"] },
+                "thenSortBy": "rating",
+            }],
+        });
+        std::fs::write(paths.ui_state(), serde_json::to_string(&newer).unwrap()).unwrap();
+
+        let mut state = UiState::load(&paths);
+        assert_eq!(state.facet_filters.game_mode, ["Co-operative"]);
+        state.toggle_facet(FacetKind::GameMode, "Split screen");
+        state.saved_views[0].name = "Renamed".into();
+        state.save(&paths).unwrap();
+
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert_eq!(on_disk["facetFilters"]["perspective"], json!(["First person"]));
+        assert_eq!(on_disk["facetFilters"]["gameMode"], json!(["Co-operative", "Split screen"]));
+        let view = &on_disk["savedViews"][0];
+        assert_eq!(view["name"], "Renamed");
+        assert_eq!(view["facetFilters"]["perspective"], json!(["Isometric"]));
+        assert_eq!(view["facetFilters"]["genre"], json!(["RPG"]));
+        assert_eq!(view["thenSortBy"], "rating");
+    }
+
+    #[test]
+    fn clearing_resets_game_modes_and_unknown_kinds() {
+        let state = UiState::from_value(&json!({
+            "facetFilters": { "gameMode": ["Co-operative"], "genre": ["RPG"], "perspective": ["First person"] },
+        }));
+        assert_eq!(state.active_filters(), 2);
+
+        let mut cleared = state.clone();
+        cleared.clear_facets();
+        assert!(cleared.facet_filters.game_mode.is_empty() && !cleared.facet_filters.is_active());
+        assert!(cleared.unknown_facets.is_empty());
+        assert_eq!(cleared.active_filters(), 0);
+
+        let mut cleared = state.clone();
+        cleared.clear_filters();
+        assert!(cleared.facet_filters.game_mode.is_empty() && cleared.unknown_facets.is_empty());
+        assert_eq!(
+            cleared.to_value()["facetFilters"],
+            json!({
+                "store": [], "series": [], "developer": [], "publisher": [], "genre": [], "theme": [], "feature": [], "gameMode": [], "platform": []
+            })
+        );
+
+        let mut toggled = state;
+        toggled.toggle_facet(FacetKind::GameMode, " co-operative ");
+        assert!(toggled.facet_filters.game_mode.is_empty(), "toggling the selected value clears it");
     }
 
     #[test]

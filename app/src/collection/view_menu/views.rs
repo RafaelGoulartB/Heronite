@@ -31,7 +31,7 @@ fn default_views(statuses: &[CompletionStatus]) -> Vec<SavedView> {
     let ids = |slugs: &[&str]| -> BTreeSet<String> {
         slugs.iter().filter_map(|slug| statuses.iter().find(|s| s.slug == *slug)).map(|s| s.id.clone()).collect()
     };
-    let view = |name: &str, f: ViewFilters| SavedView { name: name.into(), filters: f };
+    let view = |name: &str, f: ViewFilters| SavedView::new(name, f);
     let base = |sort, group: bool| ViewFilters {
         sort,
         group_by: Some(if group { GroupBy::Status } else { GroupBy::None }),
@@ -181,7 +181,7 @@ impl CollectionView {
             cx.notify();
             return;
         }
-        let view = SavedView { name, filters: self.ui.view_filters() };
+        let view = SavedView::new(name, self.ui.view_filters());
         match taken {
             Some(i) => {
                 let name = view.name.clone();

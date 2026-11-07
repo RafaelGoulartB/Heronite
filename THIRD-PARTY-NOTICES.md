@@ -15,6 +15,7 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 |---|---|---|---|
 | [Cabin](https://github.com/impallari/Cabin) | `app/assets/fonts/Cabin-400.ttf`, `Cabin-600.ttf` | Copyright 2018 The Cabin Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
 | [Rubik](https://github.com/googlefonts/rubik) | `app/assets/fonts/Rubik-400.ttf`, `Rubik-600.ttf` | Copyright 2015 The Rubik Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
+| [Noto Sans Mono](https://github.com/notofonts/latin-greek-cyrillic) | `app/assets/fonts/NotoSansMono-400.ttf`, `NotoSansMono-600.ttf` (subset to Latin, Greek, Cyrillic and common symbols) | Copyright 2022 The Noto Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
 
 ## Icons
 
@@ -34,6 +35,15 @@ The AppImage carries these libraries in `usr/lib` because not every system has t
 | [libxcb](https://xcb.freedesktop.org) | `libxcb-xkb.so.1` | Copyright (C) 2001-2006 Bart Massey, Jamey Sharp, and Josh Triplett | MIT ([`licenses/MIT-libxcb.txt`](licenses/MIT-libxcb.txt)) |
 | libudev, from [systemd](https://github.com/systemd/systemd) | `libudev.so.1` | the systemd contributors | LGPL-2.1-or-later ([`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt)); source: the [`systemd` package of Ubuntu 22.04](https://launchpad.net/ubuntu/jammy/+source/systemd) |
 
+## Libraries in the Windows build
+
+The Windows build links this library statically into `heronite.exe`; it reads game controllers in console mode (`crates/platform/src/controllers.rs`). It is built unchanged from the source in the [`sdl3-src`](https://crates.io/crates/sdl3-src) crate, with only the joystick and HIDAPI parts enabled.
+
+| Library | Copyright | License |
+|---|---|---|
+| [SDL](https://libsdl.org) 3.4.18 | Copyright (C) 1997-2026 Sam Lantinga | zlib ([`licenses/Zlib-SDL.txt`](licenses/Zlib-SDL.txt)) |
+| [HIDAPI](https://github.com/libusb/hidapi), as included in SDL (`src/hidapi`) | Copyright (c) 2010, Alan Ott, Signal 11 Software | used under the GPL-3.0 ([`LICENSE`](LICENSE)), one of its three licenses |
+
 ## Vendored C code
 
 | Project | Files | Copyright | License |
@@ -45,6 +55,8 @@ The AppImage carries these libraries in `usr/lib` because not every system has t
 The Rust crates Heronite depends on are listed in [`Cargo.lock`](Cargo.lock). Each one is distributed under its own license, mostly MIT and/or Apache-2.0. To list them all with their license texts, run [`cargo about`](https://github.com/EmbarkStudios/cargo-about) or [`cargo license`](https://github.com/onur/cargo-license).
 
 `vendor/gpui-pre-linux/` is a copy of the [`gpui-pre-linux`](https://crates.io/crates/gpui-pre-linux) 0.3.8 crate (GPUI's Linux platform from [Zed](https://github.com/zed-industries/zed), Copyright Zed Industries, Inc.), under the Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt), also in the folder). It is modified: `vendor/gpui-pre-linux/PATCHES.md` lists the changes.
+
+`vendor/gpui-pre-windows/` is a copy of the [`gpui-pre-windows`](https://crates.io/crates/gpui-pre-windows) 0.3.8 crate (GPUI's Windows platform from [Zed](https://github.com/zed-industries/zed), Copyright Zed Industries, Inc.), under the Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt), also in the folder). It is modified: `vendor/gpui-pre-windows/PATCHES.md` lists the changes.
 
 ## External tools
 

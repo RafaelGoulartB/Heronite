@@ -25,7 +25,8 @@ use std::time::{Duration, SystemTime};
 
 use heronite_i18n::tr;
 use heronite_launch::steam::{desktop_protocol_env, flatpak_steam_root, SteamLocator};
-use heronite_shortcuts::steam::{enable_client_api_on_next_start, is_steam_running};
+pub use heronite_shortcuts::steam::ClientApiFlag;
+use heronite_shortcuts::steam::{client_api_flag, enable_client_api_on_next_start, is_steam_running};
 use heronite_shortcuts::steam_client::{webhelper, SteamClient};
 
 /// A compatibility tool as Steam names it: `name` is what it stores
@@ -139,6 +140,10 @@ pub struct Steam {
     pub client: SteamClient,
 }
 
+/// The end of [`Steam::library_check`]'s why when the client answers but
+/// has not loaded the library yet.
+const STILL_LOADING: &str = "it answers but is still loading the library";
+
 /// Whether the library can be read from the client now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryAccess {
@@ -146,7 +151,7 @@ pub enum LibraryAccess {
     /// Steam is not running.
     Closed,
     /// Steam runs and its client will answer: it is still starting,
-    /// updating or waiting for the user to sign in.
+    /// updating, waiting for the user to sign in, or loading the library.
     Starting,
     /// Steam runs without its debugging interface: it started before the
     /// flag file was there (it is now, for its next start).
@@ -164,6 +169,13 @@ pub fn can_restart() -> bool {
 /// Shown when Steam runs without its debugging interface.
 pub fn read_only_message() -> &'static str {
     tr!("Steam is running without the access Heronite needs to change its settings. It is turned on for Steam's next start: restart Steam once, or close it, to change these settings.")
+}
+
+/// Shown when Steam runs without its debugging interface and another tool
+/// holds the place of the flag file ([`ClientApiFlag::Blocked`]): a restart
+/// does not open it.
+pub fn blocked_message() -> &'static str {
+    tr!("Another tool on this PC (Millennium, for example) keeps closed the access Heronite needs, so restarting Steam does not help. Let that tool open Steam's debugging interface or, if you no longer use it, remove .cef-enable-remote-debugging from the Steam folder; then restart Steam.")
 }
 
 impl Steam {
@@ -204,6 +216,12 @@ impl Steam {
         for root in self.locator.installs().into_iter().chain(running) {
             enable_client_api_on_next_start(&root);
         }
+    }
+
+    /// Whether Steam's folder has the flag that opens its debugging
+    /// interface, or another tool holds its place. Cheap (one file check).
+    pub fn access_flag(&self) -> ClientApiFlag {
+        client_api_flag(self.root())
     }
 
     fn access(&self) -> Access {
@@ -350,31 +368,57 @@ impl Steam {
     /// Whether [`read_library`](Self::read_library) can work now. Blocking
     /// (asks the client, a few milliseconds).
     pub fn library_access(&self) -> LibraryAccess {
+        self.library_check().0
+    }
+
+    /// [`library_access`](Self::library_access), with why the client does
+    /// not answer when Steam runs (for the log): whether its interface
+    /// process runs with debugging, and what the client's addresses said.
+    pub fn library_check(&self) -> (LibraryAccess, Option<String>) {
         let running = self.running();
         if !self.root().join("config").is_dir() && !running {
-            return LibraryAccess::NotInstalled;
+            return (LibraryAccess::NotInstalled, None);
         }
         self.prepare_access();
         if !running {
-            return LibraryAccess::Closed;
+            return (LibraryAccess::Closed, None);
         }
-        if self.client.is_available() {
-            return LibraryAccess::Ready;
-        }
+        // An answer is not enough: until the client has the library loaded,
+        // a read finds it empty. Still starting, so the checks follow closely.
+        let probe = match self.client.probe().and_then(|()| library::library_loaded(&self.client)) {
+            Ok(true) => return (LibraryAccess::Ready, None),
+            Ok(false) => STILL_LOADING.to_string(),
+            Err(e) => format!("{e:#}"),
+        };
         // Until its interface process starts, Steam is updating or starting;
         // once it has, its command line says whether the client will answer.
-        match webhelper() {
+        let helper = webhelper();
+        let access = match &helper {
             Some(w) if !w.debugging => LibraryAccess::NeedsRestart,
             _ => LibraryAccess::Starting,
-        }
+        };
+        let helper = match helper {
+            None => "not running".to_string(),
+            Some(w) => format!("running, debugging {}", if w.debugging { "on" } else { "off" }),
+        };
+        (access, Some(format!("steamwebhelper {helper}; client: {probe}")))
     }
 
     /// The account's games, from the running client.
     pub fn read_library(&self) -> Result<Vec<heronite_data::steam_owned::SteamOwnedGame>, String> {
-        match self.library_access() {
+        let (access, why) = self.library_check();
+        match access {
             LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
             LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
-            LibraryAccess::Starting => Err(tr!("Steam is still starting. Your library is read as soon as it is ready.").to_string()),
+            LibraryAccess::Starting if why.as_deref().is_some_and(|w| w.ends_with(STILL_LOADING)) => {
+                Err(tr!("Steam is still loading your library. It is read by itself as soon as Steam has it.").to_string())
+            }
+            // The why is technical, but it is what tells a stuck client apart.
+            LibraryAccess::Starting => Err(tr!(
+                "Steam is running but does not answer Heronite yet ({why}). If it is updating or asking you to sign in, finish that; otherwise restart Steam once.",
+                why = why.unwrap_or_default()
+            )),
+            LibraryAccess::NeedsRestart if self.access_flag() == ClientApiFlag::Blocked => Err(blocked_message().to_string()),
             LibraryAccess::NeedsRestart => Err(tr!("Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.").to_string()),
             LibraryAccess::NotInstalled => Err(tr!("Steam was not found on this PC. Install Steam and sign in, then open it to read your library.").to_string()),
         }

@@ -538,6 +538,28 @@ pub fn remove_game(steam: &Path, game: &GameId) -> Result<Report> {
     Ok(report)
 }
 
+/// What sits where [`enable_client_api_on_next_start`] puts its flag file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientApiFlag {
+    /// The flag file: Steam opens its debugging interface when it starts.
+    On,
+    /// Something else, left alone: a tool that keeps the interface under
+    /// its control (Millennium puts a dangling link there). Steam opens it
+    /// only if that tool does.
+    Blocked,
+    /// Nothing: it could not be created.
+    Missing,
+}
+
+/// What is in `steam`'s folder in place of the flag file.
+pub fn client_api_flag(steam: &Path) -> ClientApiFlag {
+    match fs::symlink_metadata(steam.join(crate::steam_client::FLAG_FILE)) {
+        Ok(m) if m.is_file() => ClientApiFlag::On,
+        Ok(_) => ClientApiFlag::Blocked,
+        Err(_) => ClientApiFlag::Missing,
+    }
+}
+
 /// `enableSteamClientApiOnNextStart`: creates the flag file that makes the
 /// next Steam start open its debugging interface.
 pub fn enable_client_api_on_next_start(steam: &Path) {
@@ -888,6 +910,26 @@ mod tests {
             enable_client_api_on_next_start(dir.path());
             assert!(fs::symlink_metadata(&flag).unwrap().file_type().is_symlink());
             assert!(!target.exists());
+        }
+    }
+
+    #[test]
+    fn the_flag_tells_its_file_from_another_tool_s_stand_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let flag = dir.path().join(crate::steam_client::FLAG_FILE);
+        assert_eq!(client_api_flag(dir.path()), ClientApiFlag::Missing);
+        enable_client_api_on_next_start(dir.path());
+        assert_eq!(client_api_flag(dir.path()), ClientApiFlag::On);
+        // Not a file: something else holds the place (a folder here; a
+        // dangling link with Millennium, which needs no privilege on Unix).
+        fs::remove_file(&flag).unwrap();
+        fs::create_dir(&flag).unwrap();
+        assert_eq!(client_api_flag(dir.path()), ClientApiFlag::Blocked);
+        #[cfg(unix)]
+        {
+            fs::remove_dir(&flag).unwrap();
+            std::os::unix::fs::symlink(dir.path().join("missing/folder"), &flag).unwrap();
+            assert_eq!(client_api_flag(dir.path()), ClientApiFlag::Blocked);
         }
     }
 }

@@ -34,11 +34,19 @@ use url::Url;
 /// itself exits with 1 when it loses the display).
 const CLOSED: i32 = 4;
 
-/// legendary's own login (what `legendary.gl/epiclogin` redirects to): after
-/// signing in, Epic shows the code for legendary's client as JSON on
-/// `/id/api/redirect`. A code for any other client is refused by `legendary
-/// auth`.
-const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode";
+/// Epic's login with no client named: for the launcher's user agent
+/// ([`EPIC_USER_AGENT`]) Epic picks legendary's client
+/// (`34a02cf8f4414e29b15921876da36f9a`) and, once signed in, sends the page to
+/// that client's own redirect, `https://localhost/launcher/authorized?code=...`,
+/// where the code is taken. A code for any other client is refused by
+/// `legendary auth`.
+///
+/// Not legendary's `redirectUrl=https://www.epicgames.com/id/api/redirect?...`
+/// (what `legendary.gl/epiclogin` opens): Epic no longer knows that redirect
+/// for the client and the page stops on "Invalid Client - Redirect URL is not
+/// known to the client" after signing in. Not `clientId=` either: the page then
+/// takes the window for the launcher and waits for its JS bridge.
+const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?responseType=code";
 const EPIC_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EpicGamesLauncher";
 const GOG_LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
 /// A desktop browser: the GOG and Amazon pages refuse unknown web views.

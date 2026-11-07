@@ -762,6 +762,7 @@ pub(crate) mod tests_support {
         pub first_played: Option<String>,
         pub developers: Vec<String>,
         pub genres: Vec<String>,
+        pub game_modes: Vec<String>,
         pub series: Option<String>,
         pub status: Option<String>,
         pub runner: Option<String>,
@@ -787,12 +788,14 @@ pub(crate) mod tests_support {
         }
         // The Collection title wins over the store's, as metadata would.
         let overrides = spec.store_title.is_some().then(|| GameOverride { title: Some(title.into()), ..Default::default() });
-        let metadata = (!spec.developers.is_empty() || !spec.genres.is_empty() || spec.series.is_some()).then(|| {
+        let has_metadata = !spec.developers.is_empty() || !spec.genres.is_empty() || !spec.game_modes.is_empty() || spec.series.is_some();
+        let metadata = has_metadata.then(|| {
             Arc::new(CollectionGameMetadata {
                 app_name: app.into(),
                 runner: "sideload".into(),
                 developers: spec.developers.clone(),
                 genres: spec.genres.clone(),
+                game_modes: spec.game_modes.clone(),
                 series: spec.series.clone(),
                 ..Default::default()
             })

@@ -13,7 +13,7 @@
 %undefine _auto_set_build_flags
 
 Name:           heronite
-Version:        1.2.0
+Version:        1.3.0
 Release:        1%{?dist}
 Summary:        Fast native game launcher for Steam, Epic, GOG, emulators and more
 
@@ -112,6 +112,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/app.heronite.H
 %{_bindir}/heronite-epic-login
 
 %changelog
+* Sat Nov 07 2026 RafaGoulartB <rafagoulartb@gmail.com> - 1.3.0-1
+- Update to 1.3.0
+
 * Sat Nov 07 2026 RafaGoulartB <rafagoulartb@gmail.com> - 1.2.0-1
 - Update to 1.2.0
 
