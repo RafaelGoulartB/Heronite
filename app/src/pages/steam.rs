@@ -68,6 +68,7 @@ impl SteamPage {
             SteamState::Closed => (tr!("Steam is closed").into(), theme::text_muted(), false),
             SteamState::Opening => (tr!("Steam is starting").into(), theme::accent(), false),
             SteamState::Restarting => (tr!("Restarting Steam\u{2026}").into(), theme::accent(), false),
+            SteamState::NotAnswering => (tr!("Steam is not answering").into(), theme::warning(), false),
             SteamState::NeedsRestart => (tr!("Restart Steam once").into(), theme::warning(), false),
             SteamState::Failed => (tr!("Could not connect").into(), theme::danger_text(), false),
             SteamState::NotInstalled => (tr!("Steam not found").into(), theme::text_muted(), false),
@@ -78,6 +79,9 @@ impl SteamPage {
         match self.svc.read(cx).state() {
             SteamState::Closed => Some(tr!("Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.")),
             SteamState::Opening => Some(tr!("Steam is starting. If it asks, sign in: your library is read as soon as Steam is ready.")),
+            SteamState::NotAnswering => Some(tr!(
+                "Steam is open but does not let Heronite read its library yet. If it is updating or asking you to sign in, finish that: the library is read by itself. Otherwise restart Steam once. Read library now shows what went wrong."
+            )),
             SteamState::NeedsRestart => Some(tr!(
                 "Steam was open before Heronite could turn on the access it needs. Restart it once (games running from Steam close), or wait: your library comes in the next time Steam opens."
             )),
@@ -92,15 +96,22 @@ impl SteamPage {
     }
 
     /// The button the status calls for: open Steam, restart it, or read.
+    /// Reading is offered whenever Steam may be running, so a client that
+    /// does not answer says why instead of keeping the button off.
     fn main_action(&self, cx: &App) -> (&'static str, &'static str, bool) {
         let s = self.svc.read(cx);
         match s.state() {
             SteamState::Closed => ("open", tr!("Open Steam"), true),
-            SteamState::NeedsRestart => ("restart", tr!("Restart Steam"), heronite_steam::can_restart()),
+            SteamState::NeedsRestart | SteamState::NotAnswering => ("restart", tr!("Restart Steam"), heronite_steam::can_restart()),
             SteamState::Restarting => ("restart", tr!("Restarting\u{2026}"), false),
             SteamState::Reading => ("read", tr!("Reading\u{2026}"), false),
-            state => ("read", tr!("Read library now"), state == SteamState::Connected),
+            state => ("read", tr!("Read library now"), matches!(state, SteamState::Connected | SteamState::Opening)),
         }
+    }
+
+    /// A read next to the restart, when Steam runs but is not read.
+    fn second_action(&self, cx: &App) -> Option<(&'static str, &'static str)> {
+        matches!(self.svc.read(cx).state(), SteamState::NotAnswering | SteamState::NeedsRestart).then(|| ("read", tr!("Read library now")))
     }
 
     fn run_action(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -164,6 +175,15 @@ impl SteamPage {
                     )
                     .child(div().flex().child(status_pill(status, color))),
             )
+            .when_some(self.second_action(cx), |row, (second, second_label)| {
+                row.child(action_button(
+                    SharedString::from(format!("steam-{second}")),
+                    ButtonKind::Glass,
+                    second_label,
+                    true,
+                    cx.listener(move |this, _, _, cx| this.run_action(second, cx)),
+                ))
+            })
             .child(action_button(
                 SharedString::from(format!("steam-{action}")),
                 ButtonKind::Primary,
@@ -211,6 +231,9 @@ impl SteamPage {
             Row::info("status", "Steam", status).icon(Icon::SportsEsports),
             Row::action(action, label).desc(self.summary_line(cx)).icon(Icon::Refresh).enabled(enabled),
         ];
+        if let Some((second, second_label)) = self.second_action(cx) {
+            rows.push(Row::action(second, second_label).icon(Icon::Refresh));
+        }
         if let Some(text) = self.explanation(cx) {
             rows.push(Row::info("why", "Steam", text));
         }

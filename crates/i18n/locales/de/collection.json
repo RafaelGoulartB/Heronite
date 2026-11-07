@@ -450,6 +450,8 @@
   "Reading your library": "Bibliothek wird gelesen",
   "Ready to play. Add the folder with your ROMs and they come in.": "Spielbereit. Füge den Ordner mit deinen ROMs hinzu, und sie werden übernommen.",
   "Restart once": "Einmal neu starten",
+  "Not answering": "Antwortet nicht",
+  "Steam is open but does not let Heronite read its library. Finish signing in, or restart Steam once.": "Steam ist offen, lässt Heronite deine Bibliothek aber nicht lesen. Melde dich fertig an oder starte Steam einmal neu.",
   "Restarting": "Starte neu",
   "Steam is connected, but its library has no games yet.": "Steam ist verbunden, aber die Bibliothek enthält noch keine Spiele.",
   "Steam is not on this PC. Install it and sign in: Heronite notices by itself.": "Steam ist nicht auf diesem PC. Installiere es und melde dich an: Heronite erkennt das automatisch.",

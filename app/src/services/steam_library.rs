@@ -29,6 +29,11 @@ const OPENING: Duration = Duration::from_secs(90);
 /// After Heronite started Steam, how long an old Steam process may linger.
 const SETTLE: Duration = Duration::from_secs(20);
 
+/// How long Steam may run with its client not answering before the page
+/// stops saying it is starting and offers a restart (its updater and the
+/// sign-in take a while; past this, something keeps the client closed).
+const NOT_ANSWERING: Duration = Duration::from_secs(120);
+
 /// The `steam` command: `HERONITE_STEAM_BIN` (tests), else the one found.
 pub fn steam_bin() -> String {
     crate::env::value("HERONITE_STEAM_BIN").or_else(|| find_steam_binary(&SystemProbe)).unwrap_or_else(|| "steam".into())
@@ -67,6 +72,10 @@ pub enum SteamState {
     /// Starting, updating or waiting for the sign-in.
     Opening,
     Restarting,
+    /// Steam runs with the access on, but its client has not answered for
+    /// [`NOT_ANSWERING`]: still waiting for the sign-in, or something keeps
+    /// it closed. Checked again all the time.
+    NotAnswering,
     /// Steam was open before Heronite could turn the access on.
     NeedsRestart,
     /// Restarted from here and still without the access: not asked again.
@@ -92,6 +101,11 @@ pub struct SteamLibrary {
     restarted: bool,
     /// The last open or restart failed.
     pub error: Option<String>,
+    /// Since when Steam runs with its client not answering ([`LibraryAccess::Starting`]).
+    starting_since: Option<Instant>,
+    /// The last access written to the log, with why the client did not
+    /// answer: logged again only when it changes.
+    logged: Option<(LibraryAccess, Option<String>)>,
 }
 
 impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
@@ -108,6 +122,8 @@ impl SteamLibrary {
             restarting: false,
             restarted: false,
             error: None,
+            starting_since: None,
+            logged: None,
         };
         this.load_summary(cx);
         // Off for tests against real data, like the other idle jobs.
@@ -140,6 +156,7 @@ impl SteamLibrary {
         match self.access {
             None => SteamState::Checking,
             Some(LibraryAccess::Ready) => SteamState::Connected,
+            Some(LibraryAccess::Starting) if self.starting_since.is_some_and(|t| t.elapsed() >= NOT_ANSWERING) => SteamState::NotAnswering,
             Some(LibraryAccess::Starting) => SteamState::Opening,
             Some(LibraryAccess::Closed) if opening => SteamState::Opening,
             Some(LibraryAccess::Closed) => SteamState::Closed,
@@ -188,7 +205,7 @@ impl SteamLibrary {
                         this.restarted = true;
                         this.opened_at = Some(Instant::now());
                         // Not the old "needs a restart" until the new Steam is checked.
-                        this.access = Some(LibraryAccess::Closed);
+                        this.set_access(LibraryAccess::Closed, None);
                     }
                     Err(e) => this.error = Some(e),
                 }
@@ -218,13 +235,32 @@ impl SteamLibrary {
         .detach();
     }
 
+    /// Keeps what a check found: when the client stopped answering, and
+    /// the log line when it changed (a check runs every few seconds).
+    fn set_access(&mut self, access: LibraryAccess, detail: Option<String>) {
+        if access != LibraryAccess::Starting {
+            self.starting_since = None;
+        } else if self.starting_since.is_none() {
+            self.starting_since = Some(Instant::now());
+        }
+        self.access = Some(access);
+        let entry = (access, detail);
+        if self.logged.as_ref() != Some(&entry) {
+            match &entry.1 {
+                Some(why) => log::info!("Steam library access: {access:?} ({why})"),
+                None => log::info!("Steam library access: {access:?}"),
+            }
+            self.logged = Some(entry);
+        }
+    }
+
     /// Checks whether the client can be read now (for the Steam page).
     pub fn check(&mut self, cx: &mut Context<Self>) {
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let access = cx.background_spawn(async move { steam(&paths).library_access() }).await;
+            let (access, detail) = cx.background_spawn(async move { steam(&paths).library_check() }).await;
             this.update(cx, |this, cx| {
-                this.access = Some(access);
+                this.set_access(access, detail);
                 cx.notify();
             })
             .ok();
@@ -239,9 +275,9 @@ impl SteamLibrary {
         }
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let access = cx.background_spawn(async move { steam(&paths).library_access() }).await;
+            let (access, detail) = cx.background_spawn(async move { steam(&paths).library_check() }).await;
             this.update(cx, |this, cx| {
-                this.access = Some(access);
+                this.set_access(access, detail);
                 if access == LibraryAccess::Ready {
                     this.run(false, cx);
                 }
@@ -270,7 +306,7 @@ impl SteamLibrary {
                 this.syncing = false;
                 match &res {
                     Ok(report) => {
-                        this.access = Some(LibraryAccess::Ready);
+                        this.set_access(LibraryAccess::Ready, None);
                         cx.emit(SteamLibraryEvent::Imported(*report));
                     }
                     Err(e) => log::warn!("Steam library: {e}"),
@@ -285,5 +321,61 @@ impl SteamLibrary {
         })
         .detach();
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use heronite_data::DataPaths;
+    use heronite_steam::LibraryAccess;
+
+    use super::{SteamLibrary, SteamState, Summary, NOT_ANSWERING};
+
+    fn library() -> SteamLibrary {
+        SteamLibrary {
+            paths: DataPaths::at("/nonexistent"),
+            syncing: false,
+            last: None,
+            access: None,
+            summary: Summary::default(),
+            opened_at: None,
+            restarting: false,
+            restarted: false,
+            error: None,
+            starting_since: None,
+            logged: None,
+        }
+    }
+
+    #[test]
+    fn a_client_that_never_answers_stops_showing_as_starting() {
+        let mut s = library();
+        s.set_access(LibraryAccess::Starting, Some("steamwebhelper not running".into()));
+        assert_eq!(s.state(), SteamState::Opening);
+        // Checked again later, still not answering: the clock is not reset.
+        let since = Instant::now() - NOT_ANSWERING;
+        s.starting_since = Some(since);
+        s.set_access(LibraryAccess::Starting, Some("client: refused".into()));
+        assert_eq!(s.starting_since, Some(since));
+        assert_eq!(s.state(), SteamState::NotAnswering);
+        // Answering, or closed, starts over.
+        s.set_access(LibraryAccess::Ready, None);
+        assert_eq!(s.state(), SteamState::Connected);
+        assert_eq!(s.starting_since, None);
+        s.set_access(LibraryAccess::Starting, None);
+        assert_eq!(s.state(), SteamState::Opening);
+    }
+
+    #[test]
+    fn the_log_keeps_the_last_access_and_why() {
+        let mut s = library();
+        s.set_access(LibraryAccess::Starting, Some("a".into()));
+        assert_eq!(s.logged, Some((LibraryAccess::Starting, Some("a".into()))));
+        s.set_access(LibraryAccess::Starting, Some("b".into()));
+        assert_eq!(s.logged, Some((LibraryAccess::Starting, Some("b".into()))));
+        s.set_access(LibraryAccess::Closed, None);
+        assert_eq!(s.logged, Some((LibraryAccess::Closed, None)));
     }
 }

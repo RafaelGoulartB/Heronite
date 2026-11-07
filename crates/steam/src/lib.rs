@@ -350,23 +350,37 @@ impl Steam {
     /// Whether [`read_library`](Self::read_library) can work now. Blocking
     /// (asks the client, a few milliseconds).
     pub fn library_access(&self) -> LibraryAccess {
+        self.library_check().0
+    }
+
+    /// [`library_access`](Self::library_access), with why the client does
+    /// not answer when Steam runs (for the log): whether its interface
+    /// process runs with debugging, and what the client's addresses said.
+    pub fn library_check(&self) -> (LibraryAccess, Option<String>) {
         let running = self.running();
         if !self.root().join("config").is_dir() && !running {
-            return LibraryAccess::NotInstalled;
+            return (LibraryAccess::NotInstalled, None);
         }
         self.prepare_access();
         if !running {
-            return LibraryAccess::Closed;
+            return (LibraryAccess::Closed, None);
         }
-        if self.client.is_available() {
-            return LibraryAccess::Ready;
-        }
+        let probe = match self.client.probe() {
+            Ok(()) => return (LibraryAccess::Ready, None),
+            Err(e) => format!("{e:#}"),
+        };
         // Until its interface process starts, Steam is updating or starting;
         // once it has, its command line says whether the client will answer.
-        match webhelper() {
+        let helper = webhelper();
+        let access = match &helper {
             Some(w) if !w.debugging => LibraryAccess::NeedsRestart,
             _ => LibraryAccess::Starting,
-        }
+        };
+        let helper = match helper {
+            None => "not running".to_string(),
+            Some(w) => format!("running, debugging {}", if w.debugging { "on" } else { "off" }),
+        };
+        (access, Some(format!("steamwebhelper {helper}; client: {probe}")))
     }
 
     /// The account's games, from the running client.

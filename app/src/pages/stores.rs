@@ -83,6 +83,7 @@ fn steam_glance(state: SteamState, summary: &Summary) -> Glance {
         SteamState::Checking => glance(Dot::Off, tr!("Checking")),
         SteamState::NotInstalled => glance(Dot::Off, tr!("Not found")),
         SteamState::NeedsRestart => glance(Dot::Attention, tr!("Restart once")),
+        SteamState::NotAnswering => glance(Dot::Attention, tr!("Not answering")),
         SteamState::Failed => glance(Dot::Attention, tr!("Could not connect")),
         SteamState::Opening | SteamState::Restarting | SteamState::Reading => glance(Dot::Busy, library()),
         SteamState::Closed if summary.games == 0 => glance(Dot::Off, tr!("Closed")),
@@ -302,6 +303,7 @@ mod tests {
         assert_eq!(steam_glance(SteamState::Closed, &Summary::default()).dot, Dot::Off);
         assert_eq!(steam_glance(SteamState::NotInstalled, &Summary::default()).dot, Dot::Off);
         assert_eq!(steam_glance(SteamState::NeedsRestart, &read).dot, Dot::Attention);
+        assert_eq!(steam_glance(SteamState::NotAnswering, &read).dot, Dot::Attention);
         assert_eq!(steam_glance(SteamState::Reading, &read).dot, Dot::Busy);
     }
 

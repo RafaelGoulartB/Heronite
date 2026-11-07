@@ -55,6 +55,8 @@
   "Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself.": "No se encontró Steam en este PC. Instala Steam, inicia sesión y ábrelo: Heronite lee tu biblioteca por sí solo.",
   "Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.": "Abre Steam y Heronite lee tu biblioteca por sí solo. El acceso que necesita ya está activado: sin reiniciar.",
   "Steam is starting": "Steam se está iniciando",
+  "Steam is not answering": "Steam no responde",
+  "Steam is open but does not let Heronite read its library yet. If it is updating or asking you to sign in, finish that: the library is read by itself. Otherwise restart Steam once. Read library now shows what went wrong.": "Steam está abierto, pero todavía no deja que Heronite lea tu biblioteca. Si se está actualizando o te pide iniciar sesión, termina eso: la biblioteca se lee sola. Si no, reinicia Steam una vez. Leer biblioteca ahora muestra qué salió mal.",
   "Steam is starting. If it asks, sign in: your library is read as soon as Steam is ready.": "Steam se está iniciando. Si te lo pide, inicia sesión: tu biblioteca se lee en cuanto Steam esté listo.",
   "Steam is still starting. Your library is read as soon as it is ready.": "Steam aún se está iniciando. Tu biblioteca se lee en cuanto esté listo.",
   "Steam restarted but did not turn on the access Heronite needs, so it is not asked again. Your installed Steam games still show in the Collection.": "Steam se reinició pero no activó el acceso que Heronite necesita, así que no se vuelve a pedir. Tus juegos instalados de Steam siguen apareciendo en la Colección.",
