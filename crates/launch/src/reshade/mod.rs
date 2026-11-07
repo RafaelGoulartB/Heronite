@@ -12,11 +12,15 @@
 //! Under Wine and Proton the game must also prefer the DLL in its folder
 //! over Wine's own: [`apply`] adds `<proxy>=n,b` to `WINEDLLOVERRIDES` at
 //! launch, so removing ReShade leaves nothing behind in the settings. On
-//! Windows the file alone is enough.
+//! Windows the file alone is enough. A Steam game Steam starts under Proton
+//! gets the override in its launch options instead, written by the game
+//! settings while ReShade is on and taken out once it is off or removed
+//! ([`steam`] finds its folder and which build Steam installed).
 //!
 //! Not supported: Vulkan games (ReShade is a registered layer there),
-//! Direct3D 8 (needs `d3d8to9`), Steam games started by Steam (their
-//! launch options would carry the override), Linux games.
+//! Direct3D 8 (needs `d3d8to9`), Linux games (a Steam game's Linux build
+//! among them), emulated games (ReShade would go next to the emulator, into
+//! every game it runs).
 
 mod anticheat;
 mod archive;
@@ -29,6 +33,7 @@ pub mod manage;
 pub mod manifest;
 mod overview;
 pub mod preset;
+pub mod steam;
 
 use heronite_data::DataPaths;
 use serde_json::{Map, Value};

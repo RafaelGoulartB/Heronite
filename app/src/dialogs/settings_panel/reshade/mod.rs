@@ -24,9 +24,14 @@ use std::sync::Arc;
 use futures::StreamExt;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::DataPaths;
 use heronite_i18n::tr;
 use heronite_launch::reshade::install::{Ops, Step};
+use heronite_launch::reshade::steam::SteamInstall;
 use heronite_launch::reshade::{self, Overview};
+use heronite_launch::settings::GlobalSettings;
+use heronite_launch::steam::SteamLocator;
+use heronite_launch::SystemProbe;
 
 use super::logic::RunKind;
 use super::{SettingsPanel, Target};
@@ -82,6 +87,8 @@ pub(super) struct ReshadeUi {
     pub(super) reveal: std::rc::Rc<std::cell::Cell<bool>>,
     /// Scroll the drawer to the whole section, its top first.
     pub(super) reveal_section: std::rc::Rc<std::cell::Cell<bool>>,
+    /// Steam installed the game's Linux build: no ReShade to install.
+    pub(super) linux_build: bool,
     debug: VecDeque<String>,
 }
 
@@ -106,18 +113,106 @@ struct GameRef {
     id: String,
     title: String,
     steam_app_id: Option<String>,
+    /// Steam starts the game: its app id there.
+    steam_launch: Option<String>,
     install_path: Option<String>,
     executable: Option<String>,
     wine: bool,
 }
 
+/// Where ReShade goes for a game.
+pub(crate) struct Place {
+    pub(crate) install_path: Option<String>,
+    pub(crate) executable: Option<String>,
+    /// Wine or Proton runs it.
+    pub(crate) wine: bool,
+}
+
+impl Place {
+    /// `steam`: the app id when Steam starts the game, whose folder Steam
+    /// knows (the Collection keeps Steam's program as its executable).
+    /// `None`: Steam installed the game's Linux build, a Linux game. Blocking.
+    pub(crate) fn find(
+        paths: &DataPaths,
+        steam: Option<&str>,
+        install_path: Option<String>,
+        executable: Option<String>,
+        wine: bool,
+    ) -> Option<Self> {
+        let Some(app) = steam else { return Some(Self { install_path, executable, wine }) };
+        let locator = SteamLocator::detect(&GlobalSettings::load(paths), &SystemProbe);
+        match reshade::steam::install(&locator, app) {
+            SteamInstall::Windows { dir, wine } => {
+                Some(Self { install_path: Some(dir.to_string_lossy().into_owned()), executable: None, wine })
+            }
+            SteamInstall::Linux => None,
+            SteamInstall::Missing => Some(Self { install_path: None, executable: None, wine }),
+        }
+    }
+}
+
 impl SettingsPanel {
     /// Whether this game gets the section: a Windows game Heronite starts
-    /// (through Wine/Proton, or as it is on Windows).
+    /// (through Wine/Proton, or as it is on Windows) or Steam starts.
     pub(super) fn reshade_applies(&self) -> bool {
+        self.reshade_wine().is_some()
+    }
+
+    /// Steam starts the game (its folder and programs come from Steam).
+    pub(super) fn reshade_steam(&self) -> bool {
+        self.facts().is_some_and(|f| matches!(f.run_kind, RunKind::Steam | RunKind::SteamDirect))
+    }
+
+    /// [`RunKind::reshade`] of the game.
+    pub(super) fn reshade_wine(&self) -> Option<bool> {
         match &self.target {
-            Target::Game(f) => f.run_kind == RunKind::Wine || (cfg!(windows) && f.run_kind == RunKind::Native),
-            Target::Defaults => false,
+            Target::Game(f) => f.run_kind.reshade(),
+            Target::Defaults => None,
+        }
+    }
+
+    /// A Steam game under Proton: Steam starts it, so ReShade's DLL
+    /// overrides live in its launch options' `WINEDLLOVERRIDES` while it is
+    /// on (put back if the line lost them), and leave once it is off.
+    pub(super) fn sync_steam_reshade(&mut self, cx: &mut Context<Self>) {
+        if !self.is_steam() || self.reshade_wine() != Some(true) || !self.steam_fields_editable() {
+            return;
+        }
+        let Some(m) = self.reshade.overview.as_ref().and_then(|o| o.manifest.clone()) else { return };
+        let dlls = reshade_dlls(&m);
+        self.steam_reshade_overrides(&dlls, m.enabled, cx);
+    }
+
+    /// Adds (`on`) or takes out `dlls` from the Steam line's `WINEDLLOVERRIDES`.
+    pub(super) fn steam_reshade_overrides(&mut self, dlls: &[String], on: bool, cx: &mut Context<Self>) {
+        if !self.is_steam() || !self.steam_fields_editable() || dlls.is_empty() {
+            return;
+        }
+        let dlls: Vec<&str> = dlls.iter().map(String::as_str).collect();
+        let list = self.settings.get("enviromentOptions").and_then(serde_json::Value::as_array).cloned().unwrap_or_default();
+        let mut found = false;
+        let mut out = Vec::with_capacity(list.len() + 1);
+        for mut e in list.iter().cloned() {
+            if !e.get("key").and_then(serde_json::Value::as_str).is_some_and(|k| k.eq_ignore_ascii_case("WINEDLLOVERRIDES")) {
+                out.push(e);
+                continue;
+            }
+            found = true;
+            let current = e.get("value").and_then(serde_json::Value::as_str).unwrap_or("");
+            let value = match on {
+                true => reshade::merge_overrides(current, &dlls).0,
+                false => reshade::strip_overrides(current, &dlls),
+            };
+            if !value.is_empty() {
+                e["value"] = serde_json::Value::String(value);
+                out.push(e);
+            }
+        }
+        if on && !found {
+            out.push(serde_json::json!({"key": "WINEDLLOVERRIDES", "value": reshade::merge_overrides("", &dlls).0}));
+        }
+        if out != list {
+            self.set("enviromentOptions", serde_json::Value::Array(out), cx);
         }
     }
 
@@ -128,9 +223,10 @@ impl SettingsPanel {
             id: f.app_name.clone(),
             title: f.title.clone(),
             steam_app_id: f.protondb_id.clone(),
+            steam_launch: g.and_then(|g| g.steam_launch_id.clone()).filter(|_| matches!(f.run_kind, RunKind::Steam | RunKind::SteamDirect)),
             install_path: g.and_then(|g| g.game.install.install_path.clone()),
             executable: g.and_then(|g| g.game.install.executable.clone()),
-            wine: f.run_kind == RunKind::Wine,
+            wine: f.run_kind.reshade() == Some(true),
         })
     }
 
@@ -154,27 +250,36 @@ impl SettingsPanel {
         let paths = self.paths.clone();
         let settings = self.reshade_settings();
         let target_exe = self.text("targetExe");
-        let env = heronite_launch::settings::GameSettings::from_map(&self.settings, &self.home).env_options;
+        // A Steam line's WINEDLLOVERRIDES carries ReShade's own overrides:
+        // they are not the user's.
+        let env = match self.is_steam() {
+            true => Vec::new(),
+            false => heronite_launch::settings::GameSettings::from_map(&self.settings, &self.home).env_options,
+        };
         cx.spawn(async move |this, cx| {
             let found = cx
                 .background_spawn(async move {
+                    let place = Place::find(&paths, game.steam_launch.as_deref(), game.install_path, game.executable, game.wine)?;
                     let facts = reshade::Facts {
                         game_id: &game.id,
                         title: &game.title,
                         steam_app_id: game.steam_app_id.as_deref(),
-                        install_path: game.install_path.as_deref(),
-                        executable: game.executable.as_deref(),
+                        install_path: place.install_path.as_deref(),
+                        executable: place.executable.as_deref(),
                         target_exe: &target_exe,
                         settings: &settings,
                         env_options: &env,
-                        wine: game.wine,
+                        wine: place.wine,
                     };
-                    reshade::overview(&paths, &heronite_launch::net::SystemNet, &facts, refresh)
+                    Some(reshade::overview(&paths, &heronite_launch::net::SystemNet, &facts, refresh))
                 })
                 .await;
             this.update(cx, |this, cx| {
                 this.reshade.loading = false;
-                this.reshade_loaded(found, cx);
+                match found {
+                    Some(o) => this.reshade_loaded(o, cx),
+                    None => this.reshade.linux_build = true,
+                }
                 cx.notify();
             })
             .ok();
@@ -190,6 +295,7 @@ impl SettingsPanel {
             self.set(reshade::KEY_ENABLED, serde_json::Value::Bool(on), cx);
         }
         self.reshade.overview = Some(Arc::new(o));
+        self.sync_steam_reshade(cx);
         self.next_reshade_debug(cx);
     }
 
@@ -343,4 +449,10 @@ fn step_line(step: &Step) -> String {
         Step::Shaders(name) => tr!("Installing shaders: {name}…", name),
         Step::Config => tr!("Writing ReShade.ini…").to_string(),
     }
+}
+
+/// The DLLs Wine must take from the game's folder for `m`.
+fn reshade_dlls(m: &reshade::manifest::Manifest) -> Vec<String> {
+    let compiler = m.compiler.is_some().then(|| reshade::install::COMPILER.to_string());
+    std::iter::once(m.proxy.clone()).chain(compiler).collect()
 }

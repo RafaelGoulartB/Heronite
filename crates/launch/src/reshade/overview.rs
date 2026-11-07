@@ -124,7 +124,15 @@ fn inspect(paths: &DataPaths, f: &Facts, compat_text: Option<&str>) -> Inspectio
     let mut exe = chosen.or(game_exe);
     let compat = |e: &Path| -> Option<Compat> { compat_text.and_then(|t| catalog::compat(t, &file_name(e))) };
     let mut candidates = Vec::new();
-    if let Some(dir) = exe.as_deref().and_then(Path::parent) {
+    // No executable known (a Steam game): the biggest program of its folder
+    // that draws.
+    if exe.is_none() {
+        if let Some(install) = f.install_path.map(Path::new).filter(|p| p.is_dir()) {
+            candidates = detect::candidates(install);
+            exe = candidates.first().cloned();
+        }
+    }
+    if let Some(dir) = exe.as_deref().and_then(Path::parent).filter(|_| candidates.is_empty()) {
         candidates = detect::candidates(dir);
         if let Some(install) = f.install_path.map(Path::new).filter(|p| *p != dir) {
             for c in detect::candidates(install) {
