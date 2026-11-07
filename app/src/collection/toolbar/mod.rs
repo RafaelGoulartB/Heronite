@@ -17,7 +17,7 @@ use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::{GroupBy, InstallFilter};
-use heronite_i18n::tr;
+use heronite_i18n::{tr, trc};
 
 use super::header::{install_label, Menu};
 use super::view_filters::Only;
@@ -46,6 +46,8 @@ const CARET: f32 = 12.;
 const CARET_SLOT: f32 = 4. + CARET + 8.;
 /// A preset's colour dot.
 const DOT: f32 = 8.;
+/// Between a label's dimmed kind ("by") and its value.
+const KIND_GAP: f32 = 4.;
 const PRESET_LABEL_MAX: f32 = 160.;
 /// The View button and the arrow that shows or hides the toolbar.
 const VIEW_GROUP: &str = "collection-view-button";
@@ -136,6 +138,11 @@ impl Widths {
     }
 }
 
+/// The dimmed word before the grouping ("by Status").
+fn group_kind() -> &'static str {
+    trc!("grouped", "by")
+}
+
 fn idle() -> Hsla {
     theme::ink_a(0.68)
 }
@@ -180,7 +187,10 @@ impl CollectionView {
             install: segment_width(
                 (self.ui.install_filter != InstallFilter::All).then(|| text_width(install_label(self.ui.install_filter), window)),
             ),
-            group: segment_width(if self.ui.group_by == GroupBy::None { None } else { label(group_label(self.ui.group_by)) }),
+            group: segment_width(
+                (self.ui.group_by != GroupBy::None)
+                    .then(|| text_width(group_kind(), window) + KIND_GAP + text_width(group_label(self.ui.group_by), window)),
+            ),
             preset: segment_width(preset),
             presets: !self.ui.saved_views.is_empty(),
         }
@@ -253,6 +263,7 @@ impl CollectionView {
                 "quick-sort",
                 Lead::Icon(sort_icon(mode)),
                 Some(sort_label(mode)),
+                None,
                 widths.sort,
                 false,
                 max_h,
@@ -271,6 +282,7 @@ impl CollectionView {
                 "quick-install",
                 Lead::Icon(Icon::Download),
                 filtered.then(|| install_label(filter)),
+                None,
                 widths.install,
                 filtered,
                 max_h,
@@ -290,8 +302,9 @@ impl CollectionView {
             track = track.child(self.quick_select(
                 QuickMenu::Group,
                 "quick-group",
-                Lead::Icon(Icon::Folder),
+                Lead::Icon(Icon::ViewAgenda),
                 (by != GroupBy::None).then(|| group_label(by)),
+                Some(group_kind()),
                 widths.group,
                 false,
                 max_h,
@@ -304,19 +317,22 @@ impl CollectionView {
                 Some(card) => (Lead::Dot(card.color), Some(card.name.as_str())),
                 None => (Lead::Icon(Icon::BookmarkBorder), None),
             };
-            track = track.child(self.quick_select(QuickMenu::Presets, "quick-presets", lead, label, widths.preset, false, max_h, cx));
+            track = track.child(self.quick_select(QuickMenu::Presets, "quick-presets", lead, label, None, widths.preset, false, max_h, cx));
         }
         Some(track)
     }
 
     /// A segment that opens `menu` on hover, like the header's other menus.
-    /// Without a label it is only its icon.
+    /// Without a label it is only its icon; `kind` goes dimmed before the
+    /// label ("by Status": a grouping, not a filter).
+    #[allow(clippy::too_many_arguments)]
     fn quick_select(
         &self,
         menu: QuickMenu,
         id: &'static str,
         lead: Lead,
         label: Option<&str>,
+        kind: Option<&'static str>,
         width: f32,
         filter: bool,
         max_h: f32,
@@ -333,7 +349,8 @@ impl CollectionView {
             Some(label) => segment(id, width, filter, open)
                 .pl(px(SEG_PAD))
                 .child(lead)
-                .child(div().flex_1().min_w_0().ml(px(ICON_GAP)).truncate().child(label.to_owned()))
+                .children(kind.map(|kind| div().flex_none().ml(px(ICON_GAP)).text_color(theme::ink_a(0.42)).child(kind)))
+                .child(div().flex_1().min_w_0().ml(px(if kind.is_some() { KIND_GAP } else { ICON_GAP })).truncate().child(label.to_owned()))
                 .child(
                     icon(Icon::ExpandMore, px(CARET), tint)
                         .ml(px(4.))

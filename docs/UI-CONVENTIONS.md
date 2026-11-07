@@ -215,7 +215,8 @@ switch (`ink_a(.06)` pill, 3px padding, 26px segments 2px apart, 12.5px labels a
 brighter on hover), in priority order Sort with its direction, Show (All / Installed / Not installed), Favourites,
 Group by, then saved Presets, using the same labels and actions as the View menu, which always keeps the complete
 controls and preset management. A control at its default is a 30px icon; a value in use adds its label and a
-chevron (a preset shows its colour dot and name), and a filter in use (Show, Favourites) is the accent pill
+chevron (a preset shows its colour dot and name; the grouping, with a stacked-groups icon, reads "by Status" with
+"by" dimmed, so it is not taken for a filter), and a filter in use (Show, Favourites) is the accent pill
 (`accent_tint`). The selects open on hover like the header's other menus (no tooltip, the chevron turns while
 open; the Sort list has each field's icon, Presets their dots); the direction and Favourites have tooltips. While
 a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
