@@ -296,7 +296,7 @@ impl CollectionView {
     /// presets…". The name box goes under it.
     fn vm_views_select(&self, d: Density, cx: &mut Context<Self>) -> Div {
         let cards = self.view_cards();
-        let current = cards.iter().position(|v| self.ui.shows_view(&v.filters));
+        let current = self.current_view();
         let open = self.view_menu.select_open;
         let trigger = div()
             .id("vm-views-select")
@@ -499,9 +499,9 @@ impl CollectionView {
     fn vm_show(&self, cx: &mut Context<Self>) -> Div {
         let (all, installed) = self.show_counts();
         let items = [
-            (InstallFilter::All, tr!("All"), all),
-            (InstallFilter::Installed, tr!("Installed"), installed),
-            (InstallFilter::Uninstalled, tr!("Not installed"), all - installed),
+            (InstallFilter::All, super::super::header::install_label(InstallFilter::All), all),
+            (InstallFilter::Installed, super::super::header::install_label(InstallFilter::Installed), installed),
+            (InstallFilter::Uninstalled, super::super::header::install_label(InstallFilter::Uninstalled), all - installed),
         ];
         let d = self.vm_density();
         let segments = items.into_iter().map(|(f, label, n)| {

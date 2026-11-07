@@ -805,7 +805,7 @@ impl CollectionView {
 
     /// Changes Settings → Appearance at once and saves it off the UI thread,
     /// like the Appearance page.
-    fn set_look(&mut self, edit: impl FnOnce(&mut Appearance), cx: &mut Context<Self>) {
+    pub(super) fn set_look(&mut self, edit: impl FnOnce(&mut Appearance), cx: &mut Context<Self>) {
         self.apply_look(edit, true, cx);
     }
 

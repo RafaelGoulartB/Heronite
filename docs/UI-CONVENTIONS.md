@@ -209,7 +209,28 @@ with move, store current state, rename and delete, plus "Restore default presets
 Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…" and "Library fields…", the fields manager
 `dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
-a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
+a click outside. Each active filter also appears as a removable `filter_chip` after the button.
+The spare middle lane can also show the quick toolbar (`collection/toolbar/`): a track drawn like the Focus / Grid
+switch (`ink_a(.06)` pill, 3px padding, 26px segments 2px apart, 12.5px labels and 15px icons at `ink_a(.68)`,
+brighter on hover), in priority order Sort with its direction, Show (All / Installed / Not installed), Favourites,
+Group by, then saved Presets, using the same labels and actions as the View menu, which always keeps the complete
+controls and preset management. A control at its default is a 30px icon; a value in use adds its label and a
+chevron (a preset shows its colour dot and name; the grouping, with a stacked-groups icon, reads "by Status" with
+"by" dimmed, so it is not taken for a filter), and a filter in use (Show, Favourites) is the accent pill
+(`accent_tint`). The selects open on hover like the header's other menus (no tooltip, the chevron turns while
+open; the Sort list has each field's icon, Presets their dots); the direction and Favourites have tooltips. While
+a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
+returns when the toolbar is off or the control does not fit. It is off by default: hovering the View button
+slides out a 24px arrow joined to it like a split button (one faint fill, out in about 130ms, back in about 300ms; it stays out while the View menu is open; the search
+keeps its width, the lane after it moves) that turns it on (→) or off (←), the same preference as Settings → Appearance →
+Layout → **Quick toolbar controls** (`quickToolbarControls` in `appearance.json`, independent of filters and
+presets). Visibility is a priority prefix of shaped localized segment widths within the measured flex lane, after
+reserving the remaining filter chips, 48px for dragging and the arrow's 24px, so hovering never hides a control
+(`toolbar/layout.rs`, `fit`). The lane starts 6px after the View button, as between the left controls. Search, window controls,
+Focus / Grid and activity pills keep their space. Measurement requests one redraw only when the lane changes,
+never writes settings, and closes a menu whose trigger no longer fits. Long preset names truncate with their full
+name in a tooltip.
+Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
 metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or
 rows, the covers' size (Small fits one more per row, Large one less; `focusCoverSize`) and the game sections shown;

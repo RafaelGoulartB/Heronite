@@ -57,6 +57,7 @@ mod steam_copy;
 mod system_glue;
 mod timeline;
 mod timeline_achievements;
+mod toolbar;
 mod update_pill;
 mod user_actions;
 mod view_filters;
@@ -136,6 +137,7 @@ pub struct CollectionView {
     menu_close: Option<Task<()>>,
     /// Hovered parts of the open header menu (`ui::dropdown::PART_*`).
     menu_parts: u8,
+    toolbar: toolbar::State,
     /// Smooth mouse-wheel scrolling of the game list.
     wheel: WheelScroll,
     /// The View menu's search box, typed text and saved-view name box.
@@ -314,6 +316,7 @@ impl CollectionView {
             search: String::new(),
             search_input,
             open_menu: None,
+            toolbar: toolbar::State::default(),
             menu_open: None,
             menu_close: None,
             menu_parts: 0,

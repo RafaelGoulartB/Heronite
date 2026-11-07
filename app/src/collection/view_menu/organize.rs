@@ -88,6 +88,15 @@ pub(in crate::collection) fn sort_direction(mode: SortMode, descending: bool) ->
     }
 }
 
+pub(in crate::collection) fn sort_direction_icon(mode: SortMode, descending: bool) -> Icon {
+    // Up for A → Z, down for "most / newest first", as the words say.
+    if (mode == SortMode::Title) == descending {
+        Icon::ArrowDownward
+    } else {
+        Icon::ArrowUpward
+    }
+}
+
 fn sort_section(mode: SortMode) -> &'static str {
     match mode {
         SortMode::DateAdded | SortMode::TimesPlayed | SortMode::InstallSize => tr!("Library"),
@@ -233,12 +242,7 @@ impl CollectionView {
             .map(control)
             .cursor_pointer()
             .hover(|s| s.bg(control_hover()))
-            // Up for A → Z, down for "most / newest first", as the words say.
-            .child(icon(
-                if (current == SortMode::Title) == descending { Icon::ArrowDownward } else { Icon::ArrowUpward },
-                px(16.),
-                theme::text_primary(),
-            ))
+            .child(icon(sort_direction_icon(current, descending), px(16.), theme::text_primary()))
             .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
         let head = section_head(tr!("Sort")).child(div().text_size(px(12.)).child(sort_direction(current, descending)));
         div().flex().flex_col().gap(px(d.head_gap)).child(head).child(
@@ -346,5 +350,25 @@ fn seg_color(on: bool) -> Hsla {
         theme::text_bright()
     } else {
         theme::seg_text().into()
+    }
+}
+
+#[cfg(test)]
+mod direction_tests {
+    use super::{sort_direction, sort_direction_icon, Icon, SortMode};
+    use heronite_i18n::tr;
+
+    #[test]
+    fn direction_follows_each_fields_natural_order() {
+        assert_eq!(sort_direction(SortMode::Title, false), tr!("A → Z"));
+        assert_eq!(sort_direction(SortMode::Playtime, false), tr!("Most first"));
+        assert_eq!(sort_direction(SortMode::Playtime, true), tr!("Least first"));
+        assert_eq!(sort_direction(SortMode::InstallSize, false), tr!("Largest first"));
+        assert_eq!(sort_direction(SortMode::DateAdded, false), tr!("Newest first"));
+        for mode in SortMode::ALL {
+            let natural = if mode == SortMode::Title { Icon::ArrowUpward } else { Icon::ArrowDownward };
+            assert_eq!(sort_direction_icon(mode, false), natural);
+            assert_ne!(sort_direction_icon(mode, true), natural);
+        }
     }
 }

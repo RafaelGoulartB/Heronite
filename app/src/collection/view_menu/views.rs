@@ -18,7 +18,7 @@ use crate::theme;
 /// Longest view name (one pill of the menu).
 const NAME_MAX: usize = 32;
 
-pub(super) struct ViewCard {
+pub(in crate::collection) struct ViewCard {
     pub name: String,
     /// Dot before the name: the view's first status, else purple for
     /// favourites, else the accent.
@@ -60,7 +60,11 @@ fn default_views(statuses: &[CompletionStatus]) -> Vec<SavedView> {
 }
 
 impl CollectionView {
-    pub(super) fn view_cards(&self) -> Vec<ViewCard> {
+    pub(in crate::collection) fn current_view(&self) -> Option<usize> {
+        self.ui.saved_views.iter().position(|v| self.ui.shows_view(&v.filters))
+    }
+
+    pub(in crate::collection) fn view_cards(&self) -> Vec<ViewCard> {
         self.ui
             .saved_views
             .iter()
@@ -106,7 +110,7 @@ impl CollectionView {
 
     /// Applies everything the view stores ("Show hidden games" reloads the
     /// library when it changes).
-    pub(super) fn apply_view_filters(&mut self, filters: &ViewFilters, cx: &mut Context<Self>) {
+    pub(in crate::collection) fn apply_view_filters(&mut self, filters: &ViewFilters, cx: &mut Context<Self>) {
         let hidden = self.ui.show_hidden;
         self.ui.apply_view(filters);
         let want_hidden = std::mem::replace(&mut self.ui.show_hidden, hidden);
