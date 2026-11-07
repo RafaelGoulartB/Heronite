@@ -275,8 +275,8 @@ impl XboxLibrary {
                 let outcome = match res {
                     Ok(s) => {
                         let a = s.applied;
-                        if a.added + a.updated > 0 {
-                            cx.emit(XboxLibraryEvent::Synced(Report { added: a.added, updated: a.updated }));
+                        if a.any() {
+                            cx.emit(XboxLibraryEvent::Synced(Report { added: a.added, updated: a.updated + a.promoted }));
                         }
                         Ok(trn!(s.titles, "Read {n} title from the account.", "Read {n} titles from the account."))
                     }

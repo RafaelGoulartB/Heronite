@@ -10,7 +10,10 @@
 //!   [`ACHIEVEMENTS_KEY`]);
 //! * the title's image, when the entry has no art;
 //! * the PC games played on the account that are not installed here, as
-//!   entries not installed (never one the user took out).
+//!   entries not installed (never one the user took out);
+//! * "Played" for the games with play time still in the automatic "Not
+//!   played", as Epic's and GOG's play time does
+//!   ([`heronite_data::status::promote_played`]).
 //!
 //! Titles are matched to entries by package family name, else by title id
 //! (`xboxTitleId`), else by Store product id (`xboxStoreId`).
@@ -19,6 +22,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use anyhow::Result;
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
+use heronite_data::status::{PlayedGame, SetStatusExtras};
 use heronite_data::xbox::{XboxPrefs, ACHIEVEMENTS_KEY, LAST_PLAYED_KEY, LAUNCH_KIND, MINUTES_KEY, SOURCE, STORE_ID_KEY, TITLE_ID_KEY};
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Map, Value};
@@ -33,6 +37,15 @@ pub struct Applied {
     pub updated: usize,
     /// Games of the account added as not installed.
     pub added: usize,
+    /// Games moved from the automatic "Not played" to "Played".
+    pub promoted: usize,
+}
+
+impl Applied {
+    /// Whether the Collection has anything new to show.
+    pub fn any(&self) -> bool {
+        self.updated + self.added + self.promoted > 0
+    }
 }
 
 /// One Collection entry of the Xbox app, as matching needs it.
@@ -221,7 +234,26 @@ pub fn apply(paths: &DataPaths, titles: &[Title]) -> Result<Applied> {
         })?;
     }
     applied.updated = changed.len();
+    applied.promoted = promote_played(paths)?;
     Ok(applied)
+}
+
+/// The Xbox games with play time (Heronite's or Xbox's, whichever is
+/// larger) move from the automatic "Not played" to "Played"; a status the
+/// user chose stays.
+fn promote_played(paths: &DataPaths) -> Result<usize> {
+    let library = heronite_data::Library::load_with(paths, true)?;
+    let games: Vec<PlayedGame> = library
+        .games
+        .iter()
+        .filter(|g| g.is_xbox() && g.playtime_minutes > 0)
+        .map(|g| PlayedGame {
+            app_name: g.app_name.clone(),
+            minutes: g.playtime_minutes,
+            extras: SetStatusExtras { runner: Some(g.runner.clone()), title: Some(g.title.clone()), playnite_id: None },
+        })
+        .collect();
+    heronite_data::status::promote_played(paths, &games)
 }
 
 /// Sets `key` to what the account says now; a value it did not send this
@@ -282,7 +314,7 @@ mod tests {
         json_store::write(&paths.timestamps(), &ts).unwrap();
 
         let applied = apply(&paths, &titles()).unwrap();
-        assert_eq!(applied, Applied { updated: 3, added: 1 }, "Cloud Harbor added; the console title and the app are not");
+        assert_eq!(applied, Applied { updated: 3, added: 1, promoted: 2 }, "Cloud Harbor added; the console title and the app are not");
 
         let lib = Library::load(&paths).unwrap();
         let sky = lib.get("sideload_xbox_fable_skywardlantern_abc123").unwrap();
@@ -292,6 +324,10 @@ mod tests {
         assert_eq!(m.extra[ACHIEVEMENTS_KEY], json!({"unlocked": 12, "total": 40, "gamerscore": 210, "totalGamerscore": 1000}));
         assert_eq!(m.extra[TITLE_ID_KEY], json!("6A63F4E1"), "learnt from the account");
         assert_eq!(sky.game.art_square.as_deref(), Some("https://store-images.s-microsoft.com/image/apps.1.skyward"));
+
+        let status = |key: &str| lib.get(key).unwrap().meta.as_ref().unwrap().completion_status_id.clone();
+        assert_eq!(status("sideload_xbox_fable_skywardlantern_abc123").as_deref(), Some("played"), "played on Xbox: no longer Not played");
+        assert_eq!(status("sideload_xbox_fable_tidepool_abc123").as_deref(), Some("played"));
 
         let tide = lib.get("sideload_xbox_fable_tidepool_abc123").unwrap();
         assert_eq!(tide.playtime_minutes, 45, "Heronite counted more");
@@ -312,6 +348,7 @@ mod tests {
         assert_eq!(hm.extra[STORE_ID_KEY], json!("9CLOUDHARBOR"));
         assert_eq!(hm.launcher_args, None, "nothing to start until it is installed");
         assert_eq!(harbor.last_played.as_deref(), Some("2026-09-12T18:00:00Z"));
+        assert_ne!(status("sideload_xbox_fable_cloudharbor_abc123").as_deref(), Some("played"), "no minutes known yet");
         assert!(lib.games.iter().all(|g| !g.title.contains("Console") && g.title != "Music Player"));
 
         // Again: nothing written.
