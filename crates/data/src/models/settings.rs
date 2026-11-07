@@ -191,6 +191,12 @@ pub struct MetadataSettings {
     /// menu's "Ages up to" works either way.
     #[serde(default = "default_true")]
     pub show_age_ratings: bool,
+    /// Steam store tags for games with a Steam app id (the Tag facet).
+    #[serde(default = "default_true")]
+    pub steam_tags: bool,
+    /// Steam tags per game; 0 = [`crate::steam_tags::DEFAULT_LIMIT`].
+    #[serde(default)]
+    pub steam_tag_limit: u32,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
     #[serde(flatten)]

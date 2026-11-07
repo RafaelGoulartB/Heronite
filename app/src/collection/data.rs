@@ -168,6 +168,14 @@ pub(super) fn build_groups(
         .collect()
 }
 
+/// The game's Steam tags for its Details, without the ones its genres,
+/// themes, features or game modes already show.
+fn steam_tags_shown(g: &CollectionGame, d: &heronite_data::focus::Details) -> Vec<String> {
+    let shown: std::collections::HashSet<String> =
+        [&d.genres, &d.themes, &d.features, &d.game_modes].into_iter().flatten().map(|v| heronite_data::text::facet_key(v)).collect();
+    g.facets[FacetKind::Tag.index()].iter().filter(|t| !shown.contains(&t.key)).map(|t| t.value.clone()).collect()
+}
+
 pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bool) -> FocusVm {
     let fd = focus_data(lib, g, wiki);
     let d = &fd.details;
@@ -216,6 +224,10 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     }
     if !d.genres.is_empty() {
         rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
+    }
+    let steam_tags = steam_tags_shown(g, d);
+    if !steam_tags.is_empty() {
+        rows.push(DetailRow { label: tr!("Steam tags").into(), value: chips(&steam_tags, Some("tag")), split: true });
     }
     // Every board that rated it, in the order they are looked for.
     let age_shown = lib.settings.metadata.show_age_ratings;
