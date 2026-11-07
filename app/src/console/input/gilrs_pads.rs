@@ -73,7 +73,11 @@ fn axis(a: gilrs::Axis) -> Option<StickAxis> {
 }
 
 fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>) {
-    let mut gilrs = match gilrs::Gilrs::new() {
+    // No force feedback (nothing here rumbles): gilrs runs it on a thread that
+    // never ends. It outlived each console mode session holding the
+    // controllers open, and once a controller was unplugged it logged
+    // "Failed to modify effect ... ENODEV" every 50 ms until the app quit.
+    let mut gilrs = match gilrs::GilrsBuilder::new().with_force_feedback(false).build() {
         Ok(g) => g,
         Err(err) => {
             log::warn!("controllers unavailable: {err}");
