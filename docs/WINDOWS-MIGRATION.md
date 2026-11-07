@@ -9,6 +9,10 @@ What works on Windows, what is left, and what Windows does not need.
 - App: window and its controls, tray, single instance, start with Windows, `heronite://` links, keep awake
 - Collection: Steam (installed games and the whole library), games added by hand, play time
 - Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite
+- Epic Games, GOG and Amazon Games through the Windows builds of legendary, gogdl and nile: login (WebView2 window), library, downloads, installs and moves, first launch, cloud saves, and the games of the official launchers (Epic Games Launcher, GOG Galaxy). Epic has one EOS Overlay switch instead of one per Wine prefix; Amazon's `.msi` installers run through `msiexec`
+- Battle.net, the EA app, Ubisoft Connect and the Rockstar Games Launcher as they are (no Wine): set up with the official installer or found already installed, sign-in and games read from this PC (`heronite_clients::place`), opened and closed by Heronite (`heronite_clients::native`), games started through the client; the session follows the programs running from the game's folder
+- Xbox (Windows only, `Feature::XboxStore`): Microsoft Store and PC Game Pass games the Xbox app installed, found among the user's packages (`heronite_platform::packages`, `heronite-xbox`) and started by their AUMID through `explorer.exe shell:AppsFolder\...`
+- Settings → Storage: drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
 - Emulators and ROM folders
 - RetroAchievements sign-in for RetroArch, including registered installed and portable copies
 - Save backups (Ludusavi)
@@ -16,17 +20,11 @@ What works on Windows, what is left, and what Windows does not need.
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
 - Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
-- Native launch extras: before/after scripts and delayed companions; real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
+- Native launch extras: before/after scripts (`.bat`, `.cmd`, `.ps1`, programs), delayed companions and presets (variables and arguments); for Steam games they run around `steam://rungameid` (`heronite_launch::steam_extras`); real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
 - Steam tests: library and session fixtures run on Windows without reading the host's registry, Steam folders or process list; achievement fixtures are isolated too
 - Tray menus follow the app's light/dark theme (including System and Custom) on Windows 10 1903+ and Windows 11. High contrast keeps Windows' native colours. Older Windows versions, or missing uxtheme exports, fall back to the native menu with a warning
 
-## 🚧 ReShade per game
-
-The same files go into the game's folder as on Linux (Settings → Performance
-→ ReShade), without the Wine overrides and without `d3dcompiler_47` (Windows
-has it). Covered by the tests on both systems; a DirectX 11 game still needs a
-check on a real Windows machine.
 
 ## ⬜ To do
 
@@ -36,7 +34,7 @@ check on a real Windows machine.
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
-- Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` and `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`). Until then SmartScreen warns on the first run, and the release notes say so
+- Appearance → "From the desktop" (accent and panel colour) reads only Linux desktops (`app/src/system/desktop_colours.rs`); on Windows it gets no colour and falls back. It should read Windows' accent colour and light/dark app mode
 
 ## 🚧 In-game overlay
 
@@ -89,6 +87,7 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 - Sandbox (bubblewrap)
 - Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup (Windows imports Playnite instead)
 - GameMode, MangoHud, gamescope, wrapper commands and the Steam runtime (`Feature::Wrappers`)
+- Lossless Scaling through lsfg-vk (a Linux Vulkan layer; on Windows the Lossless Scaling app does it itself)
 - The "On Linux" row (ProtonDB)
 - Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
 - Troubleshoot (its checks are about Wine, Proton and Linux drivers)
