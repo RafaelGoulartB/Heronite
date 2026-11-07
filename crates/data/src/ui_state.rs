@@ -508,17 +508,12 @@ impl ViewFilters {
     }
 
     pub fn to_value(&self) -> Value {
-        let facets = &self.facet_filters;
+        // Every kind, as `from_value` reads them, so a new one cannot be forgotten here.
+        let facets: serde_json::Map<String, Value> =
+            FACET_KINDS.iter().map(|kind| (kind.as_str().to_owned(), json!(self.facet_filters.get(*kind)))).collect();
         json!({
             "installFilter": self.install_filter,
-            "facetFilters": {
-                "series": facets.series,
-                "developer": facets.developer,
-                "publisher": facets.publisher,
-                "genre": facets.genre,
-                "platform": facets.platform,
-                "store": facets.store,
-            },
+            "facetFilters": facets,
             "sort": self.sort,
             "sortDescending": self.sort_descending,
             "onlyFavourites": self.only.favourites,
@@ -783,6 +778,32 @@ mod tests {
         assert_eq!(state.facet_filters.genre, ["RPG"]);
         assert_eq!(state.facet_filters.developer, ["Valve", "Remedy"]);
         assert_eq!(state.to_value()["facetFilters"]["genre"], json!(["RPG"]));
+    }
+
+    #[test]
+    fn every_facet_kind_survives_a_restart_and_a_saved_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        let mut state = UiState::default();
+        for kind in FACET_KINDS {
+            state.toggle_facet(kind, &format!("{} one", kind.as_str()));
+            state.toggle_facet(kind, &format!("{} two", kind.as_str()));
+        }
+        state.toggle_facet(FacetKind::Theme, "Horror");
+        state.toggle_facet(FacetKind::Feature, "Co-op");
+        state.saved_views.push(SavedView { name: "All".into(), filters: state.view_filters() });
+        state.save(&paths).unwrap();
+
+        let loaded = UiState::load(&paths);
+        assert_eq!(loaded.facet_filters, state.facet_filters);
+        assert_eq!(loaded.facet_filters.theme, ["theme one", "theme two", "Horror"]);
+        assert_eq!(loaded.facet_filters.feature, ["feature one", "feature two", "Co-op"]);
+        assert_eq!(loaded.saved_views[0].filters.facet_filters, state.facet_filters);
+        for kind in FACET_KINDS {
+            assert_eq!(loaded.facet_filters.get(kind).len(), state.facet_filters.get(kind).len(), "{}", kind.as_str());
+        }
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert_eq!(on_disk["facetFilters"].as_object().unwrap().len(), FACET_KINDS.len());
     }
 
     #[test]
