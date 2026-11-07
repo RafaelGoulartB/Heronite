@@ -44,6 +44,7 @@ use std::time::{Duration, Instant};
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
+use heronite_achievements::prefs::NoticeFields;
 use heronite_data::overlay_prefs::OverlayPrefs;
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
@@ -54,6 +55,7 @@ use heronite_overlay::input::{Controller, Event, Options, Watcher};
 
 use self::panel::OverlayPanel;
 use self::toast::Notice;
+pub use self::toast::{made_up_unlocks, Unlock};
 use crate::icons::Icon;
 use crate::runtime::{GameRuntime, SessionInfo};
 
@@ -590,11 +592,12 @@ impl OverlayService {
     }
 
     /// Shows a new achievement over the game, after the ones already
-    /// waiting. Its icon (a URL or a file; may be empty) is loaded first,
-    /// for at most a moment: the notice never waits long for it. `false`
-    /// when the overlay is off, cannot draw here or the game is in exclusive
-    /// fullscreen (Windows), for the caller to notify the desktop instead.
-    pub fn show_achievement(&mut self, name: String, rarity: Option<f32>, icon_url: String, cx: &mut Context<Self>) -> bool {
+    /// waiting, with the lines of `fields` its source gives. Its icon (a URL
+    /// or a file; may be empty) is loaded first, for at most a moment: the
+    /// notice never waits long for it. `false` when the overlay is off,
+    /// cannot draw here or the game is in exclusive fullscreen (Windows),
+    /// for the caller to notify the desktop instead.
+    pub fn show_achievement(&mut self, unlock: Unlock, fields: NoticeFields, cx: &mut Context<Self>) -> bool {
         // The debug window shows it whatever the saved options say.
         if !(self.prefs.enabled || self.debug_window) || !self.can_notify() {
             return false;
@@ -606,6 +609,7 @@ impl OverlayService {
         let opts = heronite_images::Opts::new(self.data_paths.images_cache_dir(), Some(AppPaths::for_data(&self.data_paths).thumbs_dir()));
         let side = (ICON_PX * window::Display::current(cx).scale()).round() as u32;
         let ticket = self.achievement_queue.ticket();
+        let icon_url = unlock.achievement.icon.clone();
         cx.spawn(async move |this, cx| {
             let image = if icon_url.is_empty() {
                 None
@@ -627,7 +631,7 @@ impl OverlayService {
                     futures::future::Either::Right(_) => None,
                 }
             };
-            this.update(cx, |this, cx| this.queue_achievement(ticket, Notice::achievement(name, rarity, image), layer, cx)).ok();
+            this.update(cx, |this, cx| this.queue_achievement(ticket, Notice::achievement(&unlock, fields, image), layer, cx)).ok();
         })
         .detach();
         true

@@ -9,7 +9,7 @@ mod retro;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_achievements::prefs::Prefs;
+use heronite_achievements::prefs::{NoticeFields, Prefs};
 use heronite_data::appearance::Section;
 use heronite_i18n::tr;
 use heronite_platform::{supported, Feature};
@@ -59,12 +59,18 @@ pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     service::get(cx).update(cx, |s, cx| s.check_emulators(cx));
 }
 
-/// "Over the game": a made-up achievement's notice in the overlay, or a
-/// desktop notification saying why it cannot show (the overlay is off, or
+/// "Over the game": two made-up achievements' notices in the overlay (one
+/// from Steam, one from RetroAchievements) with the lines chosen below, or a
+/// desktop notification saying why they cannot show (the overlay is off, or
 /// this desktop cannot draw it).
 fn overlay_test(d: &SettingsPage, cx: &mut App) {
+    let fields = service::get(cx).read(cx).prefs().notice;
     let shown = crate::overlay::get(cx)
-        .map(|o| o.update(cx, |s, cx| s.show_achievement(tr!("Treasure Hunter").into(), Some(9.7), String::new(), cx)))
+        .map(|o| {
+            o.update(cx, |s, cx| {
+                crate::overlay::made_up_unlocks("").into_iter().take(2).fold(true, |shown, u| shown & s.show_achievement(u, fields, cx))
+            })
+        })
         .unwrap_or(false);
     if !shown {
         let why = if d.overlay_enabled() {
@@ -81,6 +87,49 @@ pub(super) fn set_prefs(cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut
     let mut prefs = svc.read(cx).prefs();
     change(&mut prefs);
     svc.update(cx, |s, cx| s.set_prefs(prefs, cx));
+}
+
+/// What a notice over the game shows besides the name: one switch per line,
+/// each shown only when the achievement's source gives it.
+fn notice_rows(prefs: &Prefs, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
+    let n = prefs.notice;
+    let rows: [(&'static str, &str, &str, bool, fn(&mut NoticeFields)); 6] = [
+        ("ach-notice-description", tr!("Show the description"), tr!("On one line, cut when it is long."), n.description, |f| {
+            f.description ^= true
+        }),
+        (
+            "ach-notice-rarity",
+            tr!("Show how rare it is"),
+            tr!("The share of players who have it, in its colour when it is rare."),
+            n.rarity,
+            |f| f.rarity ^= true,
+        ),
+        ("ach-notice-points", tr!("Show points or XP"), tr!("RetroAchievements points, Epic Games XP."), n.points, |f| f.points ^= true),
+        (
+            "ach-notice-group",
+            tr!("Show the achievement set"),
+            tr!("Base game or DLC, for Steam games whose achievements come in more than one set."),
+            n.group,
+            |f| f.group ^= true,
+        ),
+        ("ach-notice-kind", tr!("Show the RetroAchievements type"), tr!("Progression, Win condition or Missable."), n.kind, |f| {
+            f.kind ^= true
+        }),
+        (
+            "ach-notice-hardcore",
+            tr!("Show hardcore unlocks"),
+            tr!("A badge when RetroAchievements counts it in hardcore mode."),
+            n.hardcore,
+            |f| f.hardcore ^= true,
+        ),
+    ];
+    rows.into_iter()
+        .map(|(id, label, sub, on, flip)| {
+            toggle_row(id, label, Some(sub), on)
+                .on_click(cx.listener(move |_, _, _, cx| set_prefs(cx, |p| flip(&mut p.notice))))
+                .into_any_element()
+        })
+        .collect()
 }
 
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
@@ -154,16 +203,19 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .into_any_element()]))
         .child(caption(tr!("How they show")))
         .child(card([
-            toggle_row(
-                "ach-overlay-notices",
-                tr!("Show new achievements over the game"),
-                Some(tr!(
-                    "While a game runs, its game files are checked every few seconds and what it unlocks shows over it. Needs the overlay (Settings → Overlay)."
-                )),
-                prefs.overlay_notices,
-            )
-            .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.overlay_notices = !p.overlay_notices)))
-            .into_any_element(),
+            with_sub_rows(
+                toggle_row(
+                    "ach-overlay-notices",
+                    tr!("Show new achievements over the game"),
+                    Some(tr!(
+                        "While a game runs, its game files are checked every few seconds and what it unlocks shows over it. Needs the overlay (Settings → Overlay)."
+                    )),
+                    prefs.overlay_notices,
+                )
+                .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.overlay_notices = !p.overlay_notices)))
+                .into_any_element(),
+                notice_rows(&prefs, cx),
+            ),
             with_sub_rows(
                 toggle_row(
                     "ach-notify",

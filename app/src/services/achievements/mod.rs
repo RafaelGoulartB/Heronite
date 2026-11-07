@@ -29,6 +29,8 @@ use heronite_i18n::{tr, trn};
 use heronite_launch::LaunchEvent;
 use heronite_metadata::{Endpoints, Http};
 
+use crate::overlay::Unlock;
+
 /// A copy read this long ago is refreshed when the game is focused.
 const STALE: chrono::Duration = chrono::Duration::hours(6);
 /// A source that said "no achievements" is asked again after this long.
@@ -321,7 +323,7 @@ impl Achievements {
         // find the session's unlocks before its live check does.
         let session = self.lives.values().find(|l| l.key == key).map(|l| (l.since, l.sources.clone()));
         let over_game = match session {
-            Some((since, sources)) => in_session(&out.new_unlocks, since, &sources),
+            Some((since, sources)) => over_game(&entry.game, in_session(&out.new_unlocks, since, &sources)),
             None => Vec::new(),
         };
         self.announce(&title, &out.new_unlocks, &over_game, cx);
@@ -497,7 +499,8 @@ impl Achievements {
                 log::warn!("achievements of {key} from {} while it runs: {e}", source.label());
             }
             again = std::mem::take(&mut l.pending);
-            over_game = in_session(&out.new_unlocks, l.since, &l.sources);
+            let game = self.games.get(key).map(|e| e.game.clone()).unwrap_or_default();
+            over_game = self::over_game(&game, in_session(&out.new_unlocks, l.since, &l.sources));
         }
         self.announce(&title, &out.new_unlocks, &over_game, cx);
         cx.notify();
@@ -509,7 +512,7 @@ impl Achievements {
 
     /// New unlocks: a desktop notification of all of them (when asked),
     /// and the ones of a running game's session over it (when asked).
-    fn announce(&self, title: &str, unlocks: &[(Source, Achievement)], over_game: &[Achievement], cx: &mut Context<Self>) {
+    fn announce(&self, title: &str, unlocks: &[(Source, Achievement)], over_game: &[Unlock], cx: &mut Context<Self>) {
         if !unlocks.is_empty() && self.prefs.notify {
             notify_unlocks(title, unlocks);
         }
@@ -517,9 +520,8 @@ impl Achievements {
             return;
         }
         let Some(overlay) = crate::overlay::get(cx) else { return };
-        let shown = overlay.update(cx, |o, cx| {
-            over_game.iter().fold(true, |shown, a| shown & o.show_achievement(a.name.clone(), a.rarity, a.icon.clone(), cx))
-        });
+        let shown = overlay
+            .update(cx, |o, cx| over_game.iter().fold(true, |shown, u| shown & o.show_achievement(u.clone(), self.prefs.notice, cx)));
         if !shown {
             log::info!(
                 "{} new achievements in {title}: the overlay cannot show them (off, or the game is in exclusive fullscreen)",
@@ -805,12 +807,30 @@ fn notify_unlocks(title: &str, unlocks: &[(Source, Achievement)]) {
 
 /// The unlocks of a running game's session, from its live sources, oldest
 /// first: the ones to show over the game.
-fn in_session(unlocks: &[(Source, Achievement)], since: DateTime<Utc>, sources: &[Source]) -> Vec<Achievement> {
+fn in_session(unlocks: &[(Source, Achievement)], since: DateTime<Utc>, sources: &[Source]) -> Vec<(Source, Achievement)> {
     let cutoff = since - heronite_achievements::merge::SESSION_SLACK;
-    let mut out: Vec<Achievement> =
-        unlocks.iter().filter(|(s, a)| sources.contains(s) && a.unlocked_at.is_some_and(|t| t >= cutoff)).map(|(_, a)| a.clone()).collect();
-    out.sort_by_key(|a| a.unlocked_at);
+    let mut out: Vec<(Source, Achievement)> =
+        unlocks.iter().filter(|(s, a)| sources.contains(s) && a.unlocked_at.is_some_and(|t| t >= cutoff)).cloned().collect();
+    out.sort_by_key(|(_, a)| a.unlocked_at);
     out
+}
+
+/// The notices of a game's new unlocks, each with the name of its Steam
+/// Achievement Set when the game has more than one ("Base game" for the
+/// unnamed one). The set comes from the merged copy: a live read (game
+/// files) has no groups, and its unlocks get the stored memberships only
+/// there.
+fn over_game(game: &GameAchievements, unlocks: Vec<(Source, Achievement)>) -> Vec<Unlock> {
+    unlocks
+        .into_iter()
+        .map(|(source, achievement)| {
+            let set = game.sets.iter().find(|s| s.source == source).filter(|s| !s.sections().is_empty());
+            let group = set
+                .and_then(|s| s.group_of(s.achievements.iter().find(|a| a.id == achievement.id).unwrap_or(&achievement)))
+                .map(|g| crate::ui::achievements::section_label(Some(g)));
+            Unlock { achievement, source, group }
+        })
+        .collect()
 }
 
 /// A game of the Collection by its app name, with its sources.
@@ -843,9 +863,9 @@ fn every_game(paths: &DataPaths, prefs: &Prefs) -> Vec<Known> {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: gpui's own `test` macro would shadow `#[test]`.
-    use super::in_session;
+    use super::{in_session, over_game};
     use chrono::{TimeZone, Utc};
-    use heronite_achievements::{Achievement, Source};
+    use heronite_achievements::{Achievement, AchievementGroup, AchievementSet, GameAchievements, Source};
 
     fn unlock(id: &str, minute: u32) -> Achievement {
         let at = Utc.with_ymd_and_hms(2026, 9, 19, 12, minute, 0).unwrap();
@@ -861,7 +881,51 @@ mod tests {
             (Source::Steam, unlock("steam", 45)),
             (Source::Local, unlock("first", 40)),
         ];
-        let shown: Vec<String> = in_session(&unlocks, since, &[Source::Local]).into_iter().map(|a| a.id).collect();
+        let shown: Vec<String> = in_session(&unlocks, since, &[Source::Local]).into_iter().map(|(_, a)| a.id).collect();
         assert_eq!(shown, ["first", "second"]);
+    }
+
+    fn group(id: &str, name: &str, dlc: u32) -> AchievementGroup {
+        AchievementGroup { id: id.into(), name: name.into(), dlc_app_id: Some(dlc), ..Default::default() }
+    }
+
+    fn in_group(id: &str, group: &str) -> Achievement {
+        Achievement { group: Some(group.into()), ..unlock(id, 40) }
+    }
+
+    fn set(source: Source, achievements: Vec<Achievement>, groups: Vec<AchievementGroup>) -> AchievementSet {
+        AchievementSet {
+            source,
+            external_id: "1".into(),
+            title: None,
+            fetched_at: Utc::now(),
+            achievements,
+            groups,
+            unknown: Default::default(),
+        }
+    }
+
+    #[test]
+    fn the_set_shows_only_when_the_game_has_more_than_one() {
+        let two =
+            set(Source::Local, vec![in_group("a", "0"), in_group("b", "7")], vec![group("0", "", 0), group("7", "The Pale Reach", 7)]);
+        let game = GameAchievements { sets: vec![two], ..Default::default() };
+        let unlocks = vec![(Source::Local, in_group("b", "7")), (Source::Local, in_group("a", "0"))];
+        let groups: Vec<Option<String>> = over_game(&game, unlocks).into_iter().map(|u| u.group).collect();
+        assert_eq!(groups, [Some("The Pale Reach".to_string()), Some("Base game".to_string())]);
+        // A live read's unlock has no group of its own: the copy's membership counts.
+        let u = over_game(&game, vec![(Source::Local, unlock("b", 40))]);
+        assert_eq!(u[0].group.as_deref(), Some("The Pale Reach"));
+
+        // One group (Steam's unnamed base one): nothing to tell apart.
+        let one = set(Source::Local, vec![in_group("a", "0"), in_group("b", "0")], vec![group("0", "", 0)]);
+        let game = GameAchievements { sets: vec![one], ..Default::default() };
+        let u = over_game(&game, vec![(Source::Local, in_group("a", "0"))]);
+        assert_eq!(u[0].group, None);
+        assert_eq!(u[0].source, Source::Local);
+
+        // Another source's sets say nothing about this one.
+        let u = over_game(&GameAchievements::default(), vec![(Source::Steam, in_group("b", "7"))]);
+        assert_eq!(u[0].group, None);
     }
 }
