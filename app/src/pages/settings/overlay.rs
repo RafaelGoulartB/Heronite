@@ -1,4 +1,4 @@
-//! Settings → Overlay: the in-game overlay (beta, off by default), its
+//! Settings → Overlay: the in-game overlay (off by default), its
 //! keyboard shortcut, the controller shortcuts and side, and whether this
 //! desktop and the controllers can use it. The options live in
 //! `overlay.json` (`heronite_data::overlay_prefs`) and reach the running
@@ -15,7 +15,7 @@ use heronite_platform::{supported, Feature};
 
 use super::SettingsPage;
 use crate::overlay::{labels, HotkeyState};
-use crate::pages::{status_pill, PageCtx};
+use crate::pages::PageCtx;
 use crate::theme;
 use crate::ui::controls::{caption, card, row, tabs, toggle_row, with_sub_rows};
 use crate::ui::fields::{accelerator_from_key, hotkey_box, labeled, meta_text, select_field};
@@ -285,17 +285,6 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     };
     let found = d.overlay.controllers.as_ref().is_some_and(|l| !l.is_empty()) || d.overlay.controllers.is_none();
 
-    let beta = div()
-        .flex()
-        .items_start()
-        .gap(px(10.))
-        .mx(px(6.))
-        .mb(px(4.))
-        .child(status_pill(tr!("Beta"), theme::console_btn_y()))
-        .child(div().flex_1().min_w_0().child(meta_text(tr!(
-            "The overlay is new and still being tested: it may not work with every controller, game or desktop. It stays off until you turn it on here."
-        ))));
-
     let main = card([with_sub_rows(
         toggle_row("overlay-enabled", tr!("Turn on the overlay"), Some(labels::turn_on_desc()), p.enabled)
             .on_click(cx.listener(|d, _, _, cx| update(d, cx, |p| p.enabled = !p.enabled)))
@@ -392,7 +381,6 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     div()
         .flex()
         .flex_col()
-        .child(beta)
         .child(caption(tr!("Overlay")))
         .child(main)
         .child(caption(tr!("Keyboard")))
@@ -484,7 +472,6 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Some(l) => trn!(l.len(), "{n} controller found", "{n} controllers found"),
     };
     let mut rows = vec![
-        Row::info("beta", tr!("Beta"), tr!("Being tested")).desc(tr!("New and still being tested; off until you turn it on.")),
         Row::toggle("enabled", tr!("Turn on the overlay"), p.enabled).desc(labels::turn_on_short()),
         Row::toggle("without-game", tr!("Open it without a game too"), p.without_game).desc(labels::without_game_short()),
         Row::header(tr!("Keyboard")),

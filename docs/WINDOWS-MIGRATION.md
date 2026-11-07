@@ -38,7 +38,7 @@ check on a real Windows machine.
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
 - Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` and `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`). Until then SmartScreen warns on the first run, and the release notes say so
 
-## 🚧 In-game overlay (beta)
+## 🚧 In-game overlay
 
 Off by default, enabled in Settings → Overlay. It uses native topmost tool
 windows over windowed and borderless-fullscreen games, on the foreground

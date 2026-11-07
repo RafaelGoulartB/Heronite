@@ -381,6 +381,23 @@ fn no_provider_answers_stores_a_fetch_error_and_idle_fill_retries_later() {
     assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
 }
 
+#[test]
+fn the_idle_fill_leaves_the_entries_that_only_hold_a_status() {
+    use heronite_data::status::{promote_played, PlayedGame, SetStatusExtras};
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    // A played Epic game that had no overlay entry gets one for its status.
+    let extras = SetStatusExtras { runner: Some("legendary".into()), title: Some("Control".into()), playnite_id: None };
+    assert_eq!(promote_played(&paths, &[PlayedGame { app_name: "ctl".into(), minutes: 60, extras }]).unwrap(), 1);
+
+    let (server, _) = mock();
+    let svc = MetadataService::with_endpoints(paths, server.endpoints());
+    // The two games of the fixture are filled, the status-only entry is not looked up.
+    assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 2);
+    assert!(svc.get_game_metadata("legendary", "ctl").unwrap().is_none());
+    assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
+}
+
 /// Endpoints of a host that takes connections and drops them: every request
 /// fails without an answer, like a machine with no network. Counts them.
 fn dead_endpoints() -> (Endpoints, Arc<AtomicUsize>) {

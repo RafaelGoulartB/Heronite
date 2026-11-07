@@ -70,7 +70,8 @@ pub fn install_args(app_name: &str, platform: &str, base_path: &str, sdl_tags: &
         "--platform".into(),
         platform.into(),
         "--base-path".into(),
-        base_path.replace('\'', ""),
+        // Only the quotes wrapping the path: legendary runs without a shell, so an apostrophe inside the folder name is part of it.
+        base_path.trim_matches('\'').to_owned(),
         "--skip-dlcs".into(),
         "-y".into(),
     ]);
@@ -459,9 +460,22 @@ mod tests {
     }
 
     #[test]
+    fn an_apostrophe_in_the_install_folder_is_kept() {
+        let base_path = |path: &str| {
+            let args = install_args("A", "Windows", path, &[], &dl());
+            args[args.iter().position(|a| a == "--base-path").unwrap() + 1].clone()
+        };
+        // Legendary runs without a shell: the folder is what the user picked.
+        assert_eq!(base_path("/mnt/Rafa's SSD/Games"), "/mnt/Rafa's SSD/Games");
+        // The quotes wrapping a path (old configs) are not part of it.
+        assert_eq!(base_path("'/g/Control'"), "/g/Control");
+        assert_eq!(base_path("'/mnt/Rafa's SSD'"), "/mnt/Rafa's SSD");
+    }
+
+    #[test]
     fn install_arguments_follow_heroics_order() {
         assert_eq!(
-            install_args("Calluna", "Windows", "/g/Con'trol", &[], &dl()),
+            install_args("Calluna", "Windows", "/g/Control", &[], &dl()),
             ["install", "Calluna", "--platform", "Windows", "--base-path", "/g/Control", "--skip-dlcs", "-y", "--skip-sdl"]
         );
         let tags = vec!["".to_string(), "voices".to_string()];

@@ -98,7 +98,7 @@ impl WineConfig {
         };
         if let Some(Value::Object(m)) = doc {
             if let Some(s) = m.get("defaultSteamPath").and_then(Value::as_str) {
-                cfg.default_steam_path = s.replace('\'', "");
+                cfg.default_steam_path = s.trim_matches('\'').to_owned();
             }
             if let Some(a) = m.get("customWinePaths").and_then(Value::as_array) {
                 cfg.custom_wine_paths = a.iter().filter_map(Value::as_str).map(str::to_owned).collect();
@@ -157,6 +157,19 @@ impl WineConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_quotes_around_the_steam_path_are_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data_paths = DataPaths::at(tmp.path());
+        for (stored, expected) in
+            [("'/s/steam'", "/s/steam"), ("/home/o'neil/steam", "/home/o'neil/steam"), ("'/home/o'neil/steam'", "/home/o'neil/steam")]
+        {
+            let doc = serde_json::json!({"defaultSettings": {"defaultSteamPath": stored}});
+            std::fs::write(tmp.path().join("config.json"), doc.to_string()).unwrap();
+            assert_eq!(WineConfig::load(&data_paths).default_steam_path, expected, "{stored}");
+        }
+    }
 
     #[test]
     fn config_roundtrip_and_download_to_steam_write() {

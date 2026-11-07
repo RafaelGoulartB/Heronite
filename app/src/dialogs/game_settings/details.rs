@@ -11,7 +11,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::collect_tag_options;
 use heronite_data::models::{CollectionGameMetadata, LocalGameMeta};
-use heronite_data::playtime::{clamp_number, set_playtime_minutes, split_minutes};
+use heronite_data::playtime::{clamp_number, promote_after_edit, set_playtime_minutes, split_minutes};
 use heronite_i18n::{n_, tr};
 use heronite_metadata::{DetailsPatch, DetailsResult};
 
@@ -305,12 +305,14 @@ impl GameSettingsDialog {
         let service = self.service.clone();
         let title = self.title.clone();
         let (paths, app_name) = (self.ctx.data_paths.clone(), self.game.app_name.clone());
+        let (runner, status_title) = (self.game.runner.clone(), self.game.title.clone());
         cx.spawn(async move |this, cx| {
             let res: anyhow::Result<(Option<DetailsResult>, bool)> = cx
                 .background_spawn(async move {
                     let details = if details_changed { Some(service.update_game_details(&patch)?) } else { None };
                     if playtime_changed {
                         set_playtime_minutes(&paths, &app_name, playtime as f64)?;
+                        promote_after_edit(&paths, &app_name, &runner, &status_title, playtime);
                     }
                     Ok((details, playtime_changed))
                 })

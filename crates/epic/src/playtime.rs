@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::json_store;
-use heronite_data::playtime::{import_store_playtime, unplayed_games, StorePlaytime};
+use heronite_data::playtime::{import_store_playtime, promote_played_of, unplayed_games, StorePlaytime};
 use heronite_data::DataPaths;
 use serde_json::Value;
 
@@ -54,13 +54,20 @@ fn fetch(base: &str, account_id: &str, token: &str) -> Result<Vec<StorePlaytime>
 }
 
 /// Gives the Epic games never played here the time Epic counted for them.
-/// Logged out, an expired token or no such game: nothing is asked. Blocking,
+/// Logged out, an expired token or no such game: nothing is asked. Then every
+/// Epic game with play time leaves "Not played", asked or not. Blocking,
 /// network. Returns how many games got a time.
 pub fn import(data_paths: &DataPaths) -> Result<usize> {
     import_from(data_paths, PLAYTIME_BASE)
 }
 
 fn import_from(data_paths: &DataPaths, base: &str) -> Result<usize> {
+    let filled = fill_from(data_paths, base);
+    promote_played_of(data_paths, "legendary");
+    filled
+}
+
+fn fill_from(data_paths: &DataPaths, base: &str) -> Result<usize> {
     let Some((account_id, token)) = session(data_paths) else { return Ok(0) };
     let wanted = unplayed_games(data_paths, "legendary")?;
     if wanted.is_empty() {
@@ -153,6 +160,12 @@ mod tests {
         assert_eq!(ts["Fresh"]["totalPlayed"], 60);
         assert_eq!(ts["Played"]["totalPlayed"], 2);
         assert!(ts.get("FreshDlc").is_none() && ts.get("NotOwned").is_none());
+        // The games with time leave "Not played", the one filled in now and the one played here.
+        let metas = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!(metas["games"]["Fresh"]["completionStatusId"], "played");
+        assert_eq!(metas["games"]["Fresh"]["runner"], "legendary");
+        assert_eq!(metas["games"]["Played"]["completionStatusId"], "played");
+        assert_eq!(metas["games"].as_object().unwrap().len(), 2);
     }
 
     #[test]
@@ -161,6 +174,9 @@ mod tests {
         let unreachable = "http://127.0.0.1:9";
         let (_d, paths) = setup("2000-01-01T00:00:00.000Z");
         assert_eq!(import_from(&paths, unreachable).unwrap(), 0, "expired token");
+        // Nothing is asked, yet the game played here leaves "Not played".
+        let metas = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!(metas["games"]["Played"]["completionStatusId"], "played");
 
         let (_d, paths) = setup("2999-01-01T00:00:00.000Z");
         write(paths.legendary_config_dir().join("user.json"), r#"{"account_id": "acc1", "displayName": "P"}"#);

@@ -148,6 +148,37 @@ fn a_linux_game_started_by_a_command_runs_it_in_its_folder() {
     assert!(p.command.program.ends_with("other"));
 }
 
+// A Windows program reads its arguments the Windows way (a backslash is a
+// path separator), a Linux one the shell's way, and neither is cut at a quote
+// that is never closed.
+#[cfg(unix)]
+#[test]
+fn the_games_arguments_follow_the_syntax_of_its_program() {
+    let line = r#"-userdir C:\Users\me\saves -name Rafa's -x "a b""#;
+    let args = |game: GameInfo, probe: FakeProbe, s: GameSettings| match build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &game,
+        Some(&meta("executable")),
+        &s,
+        &Default::default(),
+    ) {
+        LaunchPlan::Wine { process, .. } | LaunchPlan::Native(process) => process.command.args,
+        plan => panic!("{plan:?}"),
+    };
+    let windows = settings(json!({
+        "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"}, "winePrefix": "/pfx", "launcherArgs": line
+    }));
+    assert_eq!(
+        args(sideload("g", "/games/win/game.exe", "Windows"), proton_probe(), windows)[1..],
+        ["-userdir", r"C:\Users\me\saves", "-name", "Rafa's", "-x", "a b"]
+    );
+
+    let probe = FakeProbe::new("/home/u").with_file("/g/run.sh", b"#!/bin/sh\n");
+    let native = settings(json!({"launcherArgs": r#"-name Rafa's -x "a b""#}));
+    assert_eq!(args(sideload("g", "/g/run.sh", "linux"), probe, native)[..], ["-name", "Rafa's", "-x", "a b"]);
+}
+
 // Wine and Proton: Linux only (Windows runs a Windows game as it is).
 #[cfg(unix)]
 #[test]

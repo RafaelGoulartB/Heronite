@@ -615,7 +615,7 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
-**In-game overlay** (`app/src/overlay/`, Settings → Overlay; beta, off by default, options in `overlay.json` of the app
+**In-game overlay** (`app/src/overlay/`, Settings → Overlay; off by default, options in `overlay.json` of the app
 state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
 proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so
 the game keeps it), 440 design px wide along the left or right edge, in console mode's look scaled to the display

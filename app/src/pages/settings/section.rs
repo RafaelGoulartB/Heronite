@@ -181,7 +181,7 @@ impl Section {
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
             Section::Launchers => "other launchers import heroic lutris bottles faugus playnite sync bring in outros launchers importar sincronizar trazer",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
-            Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
+            Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
             Section::Achievements => "achievements trophies retroachievements retro emulator rom steam gog epic unlocked rare points hardcore web api key conquistas trofeus emulador desbloqueadas raras pontos chave",
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",

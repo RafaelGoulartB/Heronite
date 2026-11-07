@@ -66,9 +66,10 @@ impl GridIds {
     }
 }
 
-/// `defaultSteamPath` with the quotes Heroic strips.
+/// `defaultSteamPath` without the quotes wrapping it (old configs). An
+/// apostrophe inside a folder name is part of it.
 pub fn clean_steam_path(raw: &str) -> PathBuf {
-    PathBuf::from(raw.replace('\'', ""))
+    PathBuf::from(raw.trim_matches('\''))
 }
 
 /// The Steam folder to use for the `defaultSteamPath` setting `configured`
@@ -581,6 +582,13 @@ pub fn is_added(steam: &Path, game: &GameId) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_quotes_around_the_steam_path_are_dropped() {
+        assert_eq!(clean_steam_path("'/s/steam'"), PathBuf::from("/s/steam"));
+        assert_eq!(clean_steam_path("/home/o'neil/steam"), PathBuf::from("/home/o'neil/steam"));
+        assert_eq!(clean_steam_path("'/home/o'neil/steam'"), PathBuf::from("/home/o'neil/steam"));
+    }
 
     fn game() -> GameId {
         GameId { runner: "legendary".into(), app_name: "Quail".into(), title: "Cool Game".into() }

@@ -123,7 +123,8 @@ static TABLE: &[D] = &[
         id: "dolphin",
         name: "Dolphin",
         website: Some("https://dolphin-emu.org/"),
-        binaries: &["dolphin-emu", "dolphin"],
+        // Not `dolphin`: on Linux that is KDE's file manager.
+        binaries: &["dolphin-emu"],
         win_binaries: &["Dolphin.exe"],
         win_folders: &["Dolphin", "Dolphin-x64", "Dolphin Emulator"],
         core_dir_hints: None,

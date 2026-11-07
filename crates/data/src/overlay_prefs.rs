@@ -3,7 +3,7 @@
 //! library.
 //! On Windows, Back + Start acts as Guide; controller input is not exclusive.
 //!
-//! - `enabled`: the overlay is off until the user turns it on (beta).
+//! - `enabled`: the overlay is off until the user turns it on.
 //! - `screenshotShortcut`: Guide + `screenshotButton` (RB unless changed)
 //!   takes a screenshot without opening it.
 //! - `volumeShortcut`: Guide + ↑ / ↓ changes the volume without opening it.

@@ -511,6 +511,23 @@ mod tests {
         );
     }
 
+    // KDE's file manager is `dolphin` on Linux.
+    #[cfg(unix)]
+    #[test]
+    fn kdes_file_manager_is_not_the_dolphin_emulator() {
+        let mut env = Fake::default();
+        env.bins.insert("dolphin".into(), "/usr/bin/dolphin".into());
+        assert!(detect_emulators(&env, &[]).is_empty());
+
+        // The emulator's own binary and its Flatpak are still found, with the file manager around.
+        env.flatpaks.insert("org.DolphinEmu.dolphin-emu".into());
+        let found = detect_emulators(&env, &[]);
+        assert_eq!((found[0].definition_id.as_str(), found[0].launch_kind.as_str()), ("dolphin", "flatpak"));
+        env.bins.insert("dolphin-emu".into(), "/usr/bin/dolphin-emu".into());
+        let found = detect_emulators(&env, &[]);
+        assert_eq!((found[0].executable.as_str(), found[0].launch_kind.as_str()), ("/usr/bin/dolphin-emu", "native"));
+    }
+
     #[test]
     fn the_standalone_n64_ps1_and_ds_emulators_are_detected_by_their_binary() {
         let mut env = Fake::default();

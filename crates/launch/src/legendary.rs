@@ -89,7 +89,7 @@ fn launch_args(app: &str, s: &GameSettings, opts: &LaunchOptions) -> (String, Ve
         .collect::<Vec<_>>()
         .join(" ");
     if !extra.is_empty() {
-        args.extend(shlex::split(&extra).unwrap_or_else(|| extra.split_whitespace().map(str::to_string).collect()));
+        args.extend(crate::args::split_windows_args(&extra));
     }
     (launched.to_string(), args)
 }
@@ -355,6 +355,15 @@ mod tests {
             base[k] = v.clone();
         }
         GameSettings::from_map(base.as_object().unwrap(), "/home/u")
+    }
+
+    #[test]
+    fn the_games_arguments_reach_legendary_the_windows_way() {
+        // A backslash is a path separator, single quotes still group.
+        let s = settings(json!({"launcherArgs": r"-userdir C:\Users\me\saves -x 'a b' -name Rafa's"}));
+        let (launched, args) = launch_args("Calluna", &s, &LaunchOptions { extra_args: vec!["--go".into()], ..Default::default() });
+        assert_eq!(launched, "Calluna");
+        assert_eq!(args, ["launch", "Calluna", "--go", "-userdir", r"C:\Users\me\saves", "-x", "a b", "-name", "Rafa's"]);
     }
 
     #[test]

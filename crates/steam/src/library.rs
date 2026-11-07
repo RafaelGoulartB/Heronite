@@ -17,9 +17,10 @@ use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, Result};
-use heronite_data::models::{CompletionStatus, LocalMetaFile, TimestampFile};
+use heronite_data::models::{LocalMetaFile, TimestampFile};
+use heronite_data::status::PlayedGame;
 use heronite_data::steam_owned::{unix_to_iso, SteamOwnedFile, SteamOwnedGame};
-use heronite_data::{json_store, status_history, DataPaths, Library};
+use heronite_data::{json_store, DataPaths, Library};
 use heronite_launch::install_state::steam_sideload_entry;
 use heronite_launch::steam::{is_non_game_steam_app, SteamInstalledGame};
 use heronite_shortcuts::steam_client::SteamClient;
@@ -161,7 +162,7 @@ pub fn import(paths: &DataPaths, owned: Vec<SteamOwnedGame>, steam_bin: Option<&
         .filter_map(|m| Some((m.app_name.clone(), owned.iter().find(|g| Some(&g.app_id) == m.steam_app_id.as_ref())?)))
         .collect();
     report.playtime = sync_playtime(paths, &entries)?;
-    report.promoted = promote_played(paths, &entries, &statuses)?;
+    report.promoted = promote_played(paths, &entries)?;
     if report.promoted > 0 {
         log::info!("Marked {} Steam game(s) as Played: Steam has play time for them", report.promoted);
     }
@@ -215,42 +216,14 @@ fn sync_playtime(paths: &DataPaths, entries: &[(String, &SteamOwnedGame)]) -> Re
 
 /// Moves the entries that are still "Not played" to "Played" when Steam has
 /// play time for them: the status they would have got had this library been
-/// read before the scan of the installed games added them. Only that
-/// automatic status moves; a game whose status the user ever changed (the
-/// status history has it) or that is in any other status is left as it is.
-/// How many entries changed.
-fn promote_played(paths: &DataPaths, entries: &[(String, &SteamOwnedGame)], statuses: &[CompletionStatus]) -> Result<usize> {
-    // Only between the list's own two: without one of them the inference
-    // falls back to the first status of the list, a status the user chose.
-    let own =
-        |slug: &str| statuses.iter().find(|s| s.slug == slug).or_else(|| statuses.iter().find(|s| s.id == slug)).map(|s| s.id.clone());
-    let (Some(not_played), Some(played)) = (own("not-played"), own("played")) else {
-        return Ok(0);
-    };
-    if played == not_played {
-        return Ok(0);
-    }
-    let chosen = status_history::load(paths);
-    let candidates: Vec<&str> = entries
+/// read before the scan of the installed games added them (the rule is
+/// [`heronite_data::status::promote_played`]). How many entries changed.
+fn promote_played(paths: &DataPaths, entries: &[(String, &SteamOwnedGame)]) -> Result<usize> {
+    let games: Vec<PlayedGame> = entries
         .iter()
-        .filter(|(app, g)| g.playtime_minutes > 0 && chosen.get(app).is_none_or(Vec::is_empty))
-        .map(|(app, _)| app.as_str())
+        .map(|(app, g)| PlayedGame { app_name: app.clone(), minutes: g.playtime_minutes, extras: Default::default() })
         .collect();
-    if candidates.is_empty() {
-        return Ok(0);
-    }
-    // The status is read again under the lock: the user may have just chosen one.
-    json_store::update_if_changed::<LocalMetaFile, _>(&paths.local_meta(), |file| {
-        let mut promoted = 0;
-        for app in candidates {
-            let Some(meta) = file.games.get_mut(app) else { continue };
-            if meta.completion_status_id.as_deref().is_none_or(|s| s.is_empty() || s == not_played) {
-                meta.completion_status_id = Some(played.clone());
-                promoted += 1;
-            }
-        }
-        Ok(promoted)
-    })
+    heronite_data::status::promote_played(paths, &games)
 }
 
 #[cfg(test)]
