@@ -46,6 +46,8 @@ The Rust crates Heronite depends on are listed in [`Cargo.lock`](Cargo.lock). Ea
 
 `vendor/gpui-pre-linux/` is a copy of the [`gpui-pre-linux`](https://crates.io/crates/gpui-pre-linux) 0.3.8 crate (GPUI's Linux platform from [Zed](https://github.com/zed-industries/zed), Copyright Zed Industries, Inc.), under the Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt), also in the folder). It is modified: `vendor/gpui-pre-linux/PATCHES.md` lists the changes.
 
+`vendor/gpui-pre-windows/` is a copy of the [`gpui-pre-windows`](https://crates.io/crates/gpui-pre-windows) 0.3.8 crate (GPUI's Windows platform from [Zed](https://github.com/zed-industries/zed), Copyright Zed Industries, Inc.), under the Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt), also in the folder).
+
 ## External tools
 
 Heronite runs these programs if they are installed. It does not include them:

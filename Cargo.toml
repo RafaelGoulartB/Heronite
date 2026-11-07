@@ -99,5 +99,7 @@ too_many_arguments = "allow"
 
 # GPUI's Linux platform with one change: the GPU device is released when the
 # last window closes (see vendor/gpui-pre-linux/PATCHES.md).
+# GPUI's Windows platform, vendored to be patched like the Linux one.
 [patch.crates-io]
 gpui-pre-linux = { path = "vendor/gpui-pre-linux" }
+gpui-pre-windows = { path = "vendor/gpui-pre-windows" }
