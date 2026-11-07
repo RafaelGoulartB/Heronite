@@ -141,6 +141,8 @@ impl SettingsPanel {
             compat: o.compat.clone(),
         };
         let replacing = replace && manual.is_some();
+        // ReShade, the compiler, each package, the settings file.
+        let total = 2 + usize::from(req.compiler) + req.packages.len();
         self.reshade_op(
             tr!("Downloading ReShade {version}…", version).to_string(),
             cx,
@@ -162,6 +164,9 @@ impl SettingsPanel {
                     Some((tr!("ReShade {version} is installed. Press Home in the game to open its menu.", version = m.version), false));
             },
         );
+        if let Some(b) = &mut self.reshade.busy {
+            b.total = total;
+        }
     }
 
     /// The anti-cheat question was answered with "Install anyway".

@@ -175,7 +175,7 @@ impl SettingsPanel {
                     true => tr!("ReShade {version} installed by hand ({proxy}, switched off)", version, proxy),
                 };
                 let about = tr!("Adopt it to switch, update and remove it here: nothing is downloaded or changed. Replace installs Heronite's copy and keeps ReShade.ini and the preset.");
-                r = r.child(super::render_setup::title_row(title, about, div()));
+                r = r.child(super::render_setup::title_row(title, super::render_setup::about(about), div()));
                 let adopt = action_button(
                     "reshade-adopt",
                     ButtonKind::Primary,

@@ -1,8 +1,8 @@
-//! Before ReShade is installed: a short card that says what it is with one
-//! button, and, once opened, the whole install as one card in three steps
-//! (the game, a preset, the shaders) ending with the install button. The
-//! drawer scrolls to the card when it opens or grows, so it is never opened
-//! out of sight.
+//! Before ReShade is installed: a switch like the other settings of the
+//! tab. Turning it on opens, in the same card, what the install needs (an
+//! optional preset, the shader packages as chips) and the install button;
+//! the install shows its progress there. The drawer scrolls to the card
+//! when it opens or grows, so nothing opens out of sight.
 
 use std::sync::Arc;
 
@@ -13,23 +13,23 @@ use heronite_launch::reshade::detect::Api;
 use heronite_launch::reshade::Overview;
 
 use super::actions::file_name;
-use super::render::{api_label, buttons, warn_line};
+use super::render::{api_label, warn_line};
 use super::{Confirm, SettingsPanel};
 use crate::dialogs::settings_panel::parts::help;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, card_box, icon_button_sm, row, toggle, ButtonKind};
+use crate::ui::controls::{action_button, card_box, row, toggle, ButtonKind};
 use crate::ui::icon;
 
-/// The section's title row: its badge, a title, a line under it and a
-/// control on the right.
-pub(super) fn title_row(title: impl Into<SharedString>, about: impl Into<SharedString>, control: impl IntoElement) -> Div {
+/// The section's title row: its badge, a title, what is under it (a line of
+/// text, or text with a link) and a control on the right.
+pub(super) fn title_row(title: impl Into<SharedString>, about: impl IntoElement, control: impl IntoElement) -> Div {
     div()
         .flex()
         .items_center()
         .gap(px(12.))
         .py(px(12.))
-        .child(badge(34.))
+        .child(badge())
         .child(
             div()
                 .flex()
@@ -37,55 +37,46 @@ pub(super) fn title_row(title: impl Into<SharedString>, about: impl Into<SharedS
                 .flex_1()
                 .min_w_0()
                 .gap(px(1.))
-                .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(title.into()))
-                .child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(about.into())),
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(title.into()))
+                .child(about),
         )
         .child(div().flex_none().child(control))
 }
 
+/// The small text under a title.
+pub(super) fn about(text: impl Into<SharedString>) -> Div {
+    div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(text.into())
+}
+
 /// The badge of the section: its icon on an accent tile.
-fn badge(size: f32) -> Div {
-    div().flex_none().size(px(size)).rounded(px(size * 0.3)).bg(theme::accent_tint()).flex().items_center().justify_center().child(icon(
+fn badge() -> Div {
+    div().flex_none().size(px(36.)).rounded(px(11.)).bg(theme::accent_tint()).flex().items_center().justify_center().child(icon(
         Icon::Palette,
-        px(size * 0.5),
+        px(19.),
         theme::accent(),
     ))
 }
 
-/// A numbered step title with an optional note after it.
-fn step(n: u8, title: &str, note: Option<String>) -> Div {
-    let number = div()
-        .flex_none()
-        .size(px(20.))
-        .rounded_full()
-        .bg(theme::accent_tint())
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_size(px(11.))
-        .font_weight(theme::W_BOLD)
-        .text_color(theme::accent())
-        .child(n.to_string());
-    div()
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .child(number)
-        .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(title.to_string()))
-        .children(note.map(|n| div().text_size(px(12.)).text_color(theme::text_dim()).child(n)))
-}
-
-fn separator() -> Div {
+pub(super) fn separator() -> Div {
     div().h(px(1.)).w_full().bg(theme::row_separator())
 }
 
-/// A part of the setup card: its step title and what it holds, padded.
-fn part(title: Div, body: Vec<AnyElement>) -> Div {
-    div().flex().flex_col().gap(px(10.)).py(px(14.)).child(title).children(body)
+/// A part of the card under a separator: a small label, then its content.
+fn part(label: Option<Div>, body: Vec<AnyElement>) -> Div {
+    div().flex().flex_col().gap(px(8.)).py(px(12.)).children(label).children(body)
+}
+
+fn label(text: &str, note: Option<&str>) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(6.))
+        .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(text.to_string()))
+        .children(note.map(|n| div().text_size(px(12.)).text_color(theme::text_dim()).child(format!("({n})"))))
 }
 
 /// A clickable text in the accent colour.
-fn link(id: &'static str, label: &str) -> Stateful<Div> {
+pub(super) fn link(id: impl Into<ElementId>, text: &str) -> Stateful<Div> {
     div()
         .id(id)
         .flex_none()
@@ -93,78 +84,50 @@ fn link(id: &'static str, label: &str) -> Stateful<Div> {
         .text_color(theme::accent())
         .cursor_pointer()
         .hover(|s| s.text_color(theme::accent_overlay()))
-        .child(label.to_string())
+        .child(text.to_string())
+}
+
+fn chip(text: String) -> Div {
+    div()
+        .flex_none()
+        .px(px(9.))
+        .py(px(3.))
+        .rounded_full()
+        .bg(theme::ink_a(0.07))
+        .text_size(px(12.))
+        .text_color(theme::text_primary())
+        .child(text)
+}
+
+/// A bar of `done` out of `total` steps.
+pub(super) fn progress(done: usize, total: usize) -> Div {
+    let frac = if total == 0 { 0. } else { (done as f32 / total as f32).clamp(0.05, 1.) };
+    div().h(px(6.)).w_full().rounded_full().bg(theme::ink_a(0.1)).child(div().h_full().w(relative(frac)).rounded_full().bg(theme::accent()))
 }
 
 impl SettingsPanel {
-    /// "DirectX 11 · 64-bit" of the target, or nothing while unknown.
-    fn reshade_target_line(o: &Overview) -> String {
-        let t = o.target.as_ref();
-        format!("{} · {}", o.exe.as_deref().map(file_name).unwrap_or_default(), api_label(t, t.and_then(|t| t.api)))
-    }
-
-    /// The card shown while nothing is installed and the setup is closed.
+    /// The switch, off: nothing installed and the install not opened.
     pub(super) fn reshade_intro(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
-        let mut text = div()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .gap(px(3.))
-            .child(div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child("ReShade"))
-            .child(
-                div()
-                    .text_size(px(12.))
-                    .line_height(px(17.))
-                    .text_color(theme::text_dim())
-                    .child(tr!("Effects on the game's image: sharpness, colours, lighting, and presets shared by other players.")),
-            )
-            .child(div().text_size(px(12.)).text_color(theme::text_muted()).child(Self::reshade_target_line(o)));
+        let busy = self.reshade.busy.is_some();
+        let mut sw_row = title_row(
+            "ReShade",
+            about(tr!("Filters on the game's image: sharpness, colours and lighting.")),
+            toggle("reshade-enable-sw", false, busy),
+        )
+        .id("reshade-enable");
+        if !busy {
+            sw_row = sw_row.cursor_pointer().on_click(cx.listener(|this, _, _, cx| this.open_reshade_setup(cx)));
+        }
+        let mut card = card_box().child(sw_row);
         if !o.risk.findings.is_empty() {
             let names: Vec<String> = o.risk.names().iter().map(|n| heronite_data::anticheat::short_name(n)).collect();
-            text = text.child(div().pt(px(4.)).child(warn_line(&tr!("Anti-cheat: {names}", names = names.join(", ")))));
+            card = card.child(div().pb(px(12.)).child(warn_line(&tr!("Anti-cheat: {names}", names = names.join(", ")))));
         }
-        let open = action_button(
-            "reshade-setup",
-            ButtonKind::Primary,
-            tr!("Set up"),
-            self.reshade.busy.is_none(),
-            cx.listener(|this, _, _, cx| this.open_reshade_setup(cx)),
-        );
-        card_box().flex_row().items_center().gap(px(14.)).py(px(14.)).child(badge(40.)).child(text).child(div().flex_none().child(open))
+        card
     }
 
-    /// The install as one card: the game, a preset, the shaders, then the
-    /// install button (or its progress, or the anti-cheat question).
+    /// The switch, on: what the install needs and its button, or its progress.
     pub(super) fn reshade_setup(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
-        let busy = self.reshade.busy.is_some();
-        let close = icon_button_sm(
-            "reshade-setup-close",
-            ButtonKind::Ghost,
-            Icon::Close,
-            tr!("Close"),
-            !busy,
-            cx.listener(|this, _, _, cx| this.close_reshade_setup(cx)),
-        );
-        let header = div()
-            .flex()
-            .items_center()
-            .gap(px(12.))
-            .pt(px(14.))
-            .pb(px(12.))
-            .child(badge(34.))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div().text_size(px(15.)).font_weight(theme::W_BOLD).text_color(theme::text_primary()).child(tr!("Set up ReShade")),
-                    )
-                    .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(tr!("Three steps; only the first one is needed."))),
-            )
-            .child(close);
         let reveal = self.reshade.reveal.clone();
         // Measures the card once laid out, to scroll the drawer to it.
         let probe = canvas(
@@ -179,86 +142,80 @@ impl SettingsPanel {
         )
         .absolute()
         .inset_0();
-        card_box()
-            .relative()
-            .border_color(theme::accent_tint_border())
-            .child(header)
-            .child(separator())
-            .child(self.reshade_step_game(o, cx))
-            .child(separator())
-            .child(self.reshade_step_preset(cx))
-            .child(separator())
-            .child(self.reshade_step_shaders(o, cx))
-            .child(separator())
-            .child(self.reshade_setup_footer(o, cx))
-            .child(probe)
-    }
-
-    fn reshade_step_game(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
-        let busy = self.reshade.busy.is_some();
-        let t = o.target.as_ref();
-        let exe = o.exe.as_deref().map(file_name).unwrap_or_default();
-        let mut about = format!("{} · {}", api_label(t, t.and_then(|t| t.api)), tr!("as {dll}", dll = o.proxy.clone().unwrap_or_default()));
-        if t.is_some_and(|t| t.api_from_list) {
-            about.push_str(&format!(" · {}", tr!("API from ReShade's list")));
+        let card = card_box().relative();
+        if let Some(b) = &self.reshade.busy {
+            let line = if b.line.is_empty() { tr!("Working…").to_string() } else { b.line.clone() };
+            let cancel = self.outline_button("reshade-cancel", tr!("Cancel"), true, cx, |this, _, cx| this.cancel_reshade(cx));
+            return card
+                .child(title_row("ReShade", about(line), cancel))
+                .child(div().pb(px(14.)).child(progress(b.done, b.total)))
+                .child(probe);
         }
+        let t = o.target.as_ref();
+        let target = format!("{} · {}", o.exe.as_deref().map(file_name).unwrap_or_default(), api_label(t, t.and_then(|t| t.api)));
         let advanced = self.reshade.advanced;
-        let change =
+        let under = div().flex().flex_wrap().items_center().gap(px(6.)).child(about(target)).child(
             link("reshade-advanced", if advanced { tr!("Done") } else { tr!("Change") }).on_click(cx.listener(|this, _, _, cx| {
                 this.reshade.advanced = !this.reshade.advanced;
                 cx.notify();
-            }));
-        let summary = div()
-            .flex()
-            .items_start()
-            .gap(px(12.))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(2.))
-                    .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(exe))
-                    .child(div().text_size(px(12.)).text_color(theme::text_dim()).child(about)),
-            )
-            .child(change);
-        let mut body: Vec<AnyElement> = vec![summary.into_any_element()];
+            })),
+        );
+        let sw_row = title_row("ReShade", under, toggle("reshade-enable-sw", true, false))
+            .id("reshade-enable")
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| this.close_reshade_setup(cx)));
+        let mut card = card.child(sw_row);
+        let mut notes: Vec<AnyElement> = Vec::new();
         if let Some(l) = &o.launcher {
-            body.push(
+            notes.push(
                 help(&tr!("{launcher} is a launcher: ReShade goes with the program that draws the game.", launcher = file_name(l)))
                     .into_any_element(),
             );
         }
         if t.is_some_and(|t| t.small_stack) {
-            body.push(warn_line(tr!("This program reserves little stack memory: ReShade may crash it.")).into_any_element());
+            notes.push(warn_line(tr!("This program reserves little stack memory: ReShade may crash it.")).into_any_element());
         }
         if advanced {
-            if let Some(f) = self.reshade_exe_select(o, cx) {
-                body.push(f.into_any_element());
-            }
-            if t.and_then(|t| t.api) == Some(Api::Dxgi) {
-                let current = o.proxy.clone().unwrap_or_default();
-                let items = ["dxgi.dll", "d3d11.dll"].iter().map(|n| (SharedString::from(*n), current == *n)).collect();
-                let select = self.select_row("reshade-dll", Some(tr!("Installed as")), current, items, busy, cx, |this, i, _, cx| {
-                    this.pick_reshade_api(["dxgi", "d3d11"][i], cx)
-                });
-                body.push(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(5.))
-                        .child(select)
-                        .child(help(tr!("dxgi.dll works for DirectX 10 to 12. Pick d3d11.dll when another mod already uses dxgi.dll.")))
-                        .into_any_element(),
-                );
-            }
+            notes.extend(self.reshade_target_fields(o, cx));
         }
-        part(step(1, tr!("Game"), None), body)
+        if !notes.is_empty() {
+            card = card.child(div().flex().flex_col().gap(px(10.)).pb(px(12.)).children(notes));
+        }
+        card.child(separator())
+            .child(self.reshade_preset_part(cx))
+            .child(separator())
+            .child(self.reshade_shaders_part(o, cx))
+            .child(separator())
+            .child(self.reshade_install_part(o, cx))
+            .child(probe)
     }
 
-    fn reshade_step_preset(&mut self, cx: &mut Context<Self>) -> Div {
-        let busy = self.reshade.busy.is_some();
+    /// "Change": the executable and the DLL name.
+    fn reshade_target_fields(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let mut out: Vec<AnyElement> = Vec::new();
+        if let Some(f) = self.reshade_exe_select(o, cx) {
+            out.push(f.into_any_element());
+        }
+        if o.target.as_ref().and_then(|t| t.api) == Some(Api::Dxgi) {
+            let current = o.proxy.clone().unwrap_or_default();
+            let items = ["dxgi.dll", "d3d11.dll"].iter().map(|n| (SharedString::from(*n), current == *n)).collect();
+            let select = self.select_row("reshade-dll", Some(tr!("Installed as")), current, items, false, cx, |this, i, _, cx| {
+                this.pick_reshade_api(["dxgi", "d3d11"][i], cx)
+            });
+            out.push(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(5.))
+                    .child(select)
+                    .child(help(tr!("dxgi.dll works for DirectX 10 to 12. Pick d3d11.dll when another mod already uses dxgi.dll.")))
+                    .into_any_element(),
+            );
+        }
+        out
+    }
+
+    fn reshade_preset_part(&mut self, cx: &mut Context<Self>) -> Div {
         let mut body: Vec<AnyElement> = Vec::new();
         match &self.reshade.preset {
             None => {
@@ -268,7 +225,7 @@ impl SettingsPanel {
                     .items_center()
                     .gap(px(12.))
                     .px(px(14.))
-                    .py(px(12.))
+                    .py(px(11.))
                     .rounded(px(theme::R_INPUT))
                     .border_1()
                     .border_dashed()
@@ -284,17 +241,15 @@ impl SettingsPanel {
                             .min_w_0()
                             .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(tr!("Choose a preset (.ini)…")))
                             .child(help(tr!("A preset made for this game. It is copied; the original is not changed."))),
-                    );
-                let pick = match busy {
-                    true => pick.opacity(0.45),
-                    false => pick.on_click(cx.listener(|this, _, window, cx| this.pick_reshade_preset(window, cx))),
-                };
+                    )
+                    .on_click(cx.listener(|this, _, window, cx| this.pick_reshade_preset(window, cx)));
                 body.push(pick.into_any_element());
             }
             Some((path, effects)) => {
-                let name = file_name(path);
-                let count = trn!(effects.len(), "{n} effect", "{n} effects");
-                let chip = div()
+                let needs = self.reshade_preset_needs();
+                let found = effects.len().saturating_sub(needs.missing.len());
+                let count = format!("{} · {}", trn!(effects.len(), "{n} effect", "{n} effects"), trn!(found, "{n} found", "{n} found"));
+                let file = div()
                     .flex()
                     .items_center()
                     .gap(px(12.))
@@ -311,47 +266,66 @@ impl SettingsPanel {
                             .flex_col()
                             .flex_1()
                             .min_w_0()
-                            .child(div().text_size(px(13.)).text_color(theme::text_primary()).truncate().child(name))
+                            .child(div().text_size(px(13.)).text_color(theme::text_primary()).truncate().child(file_name(path)))
                             .child(help(&count)),
                     )
-                    .child(link("reshade-preset-change", tr!("Change")).on_click(cx.listener(|this, _, window, cx| {
-                        if this.reshade.busy.is_none() {
-                            this.pick_reshade_preset(window, cx)
-                        }
-                    })))
-                    .child(icon_button_sm(
-                        "reshade-preset-clear",
-                        ButtonKind::Ghost,
-                        Icon::Close,
-                        tr!("Remove"),
-                        !busy,
-                        cx.listener(|this, _, _, cx| {
-                            this.reshade.preset = None;
-                            this.reshade.picked = None;
-                            cx.notify();
-                        }),
-                    ));
-                body.push(chip.into_any_element());
-                let missing = self.reshade_preset_needs().missing;
-                if !missing.is_empty() {
-                    let text = tr!(
-                        "Not in ReShade's packages: {files}. After installing, add them with Add folder or Add repository.",
-                        files = missing.join(", ")
+                    .child(
+                        link("reshade-preset-change", tr!("Change"))
+                            .on_click(cx.listener(|this, _, window, cx| this.pick_reshade_preset(window, cx))),
+                    )
+                    .child(
+                        div()
+                            .id("reshade-preset-clear")
+                            .flex_none()
+                            .cursor_pointer()
+                            .child(icon(Icon::Close, px(16.), theme::text_dim()))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.reshade.preset = None;
+                                this.reshade.picked = None;
+                                cx.notify();
+                            })),
                     );
+                body.push(file.into_any_element());
+                if !needs.missing.is_empty() {
+                    let text =
+                        tr!("{files} is not in ReShade's packages; it can be added after installing.", files = needs.missing.join(", "));
                     body.push(warn_line(&text).into_any_element());
                 }
             }
         }
-        part(step(2, tr!("Preset"), Some(tr!("optional").to_string())), body)
+        part(Some(label(tr!("Preset"), Some(tr!("optional")))), body)
     }
 
-    fn reshade_step_shaders(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
+    fn reshade_shaders_part(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
+        let picked = self.reshade_picked();
+        let open = self.reshade.packages_open;
+        let mut chips = div().flex().flex_wrap().items_center().gap(px(6.));
+        for name in o.packages.iter().filter(|p| picked.contains(&p.name)).map(|p| p.name.clone()) {
+            chips = chips.child(chip(name));
+        }
+        chips = chips.child(link("reshade-packages", if open { tr!("Done") } else { tr!("Choose packages…") }).on_click(cx.listener(
+            |this, _, _, cx| {
+                this.reshade.packages_open = !this.reshade.packages_open;
+                cx.notify();
+            },
+        )));
+        let mut body: Vec<AnyElement> = vec![chips.into_any_element()];
+        if o.packages.is_empty() {
+            body.push(help(tr!("ReShade's package list could not be read. Check the connection.")).into_any_element());
+        }
+        if open {
+            body.push(self.reshade_package_list(o, cx).into_any_element());
+        }
+        part(Some(label(tr!("Shaders"), None)), body)
+    }
+
+    /// Every package with its switch (the catalog's usual ones first).
+    fn reshade_package_list(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
         let picked = self.reshade_picked();
         let needed = self.reshade_preset_needs().packages;
-        let note = trn!(picked.len(), "{n} package", "{n} packages");
-        let mut list = div().flex().flex_col();
         let shown: Vec<_> =
             o.packages.iter().filter(|p| self.reshade.all_packages || p.enabled || p.required || picked.contains(&p.name)).collect();
+        let mut list = div().flex().flex_col().px(px(14.)).rounded(px(theme::R_INPUT)).border_1().border_color(theme::card_border());
         for (i, p) in shown.iter().enumerate() {
             let on = p.required || picked.contains(&p.name);
             let mut desc = p.description.clone();
@@ -362,7 +336,7 @@ impl SettingsPanel {
             }
             let sw = toggle(SharedString::from(format!("reshade-pkg-sw-{}", p.name)), on, p.required);
             let mut el = row(p.name.clone(), Some(&desc), sw).py(px(8.)).id(SharedString::from(format!("reshade-pkg-{}", p.name)));
-            if !p.required && self.reshade.busy.is_none() {
+            if !p.required {
                 let name = p.name.clone();
                 el = el.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.toggle_reshade_package(&name, cx)));
             }
@@ -371,46 +345,32 @@ impl SettingsPanel {
             }
             list = list.child(el);
         }
-        let mut body: Vec<AnyElement> = vec![list.into_any_element()];
-        if o.packages.is_empty() {
-            body.push(help(tr!("ReShade's package list could not be read. Check the connection.")).into_any_element());
-        } else if !self.reshade.all_packages && shown.len() < o.packages.len() {
-            body.push(
-                link("reshade-all-packages", &tr!("Show all {n} packages", n = o.packages.len()))
-                    .on_click(cx.listener(|this, _, _, cx| {
+        if !self.reshade.all_packages && shown.len() < o.packages.len() {
+            list = list.child(separator()).child(div().py(px(10.)).child(
+                link("reshade-all-packages", &tr!("Show all {n} packages", n = o.packages.len())).on_click(cx.listener(
+                    |this, _, _, cx| {
                         this.reshade.all_packages = true;
                         cx.notify();
-                    }))
-                    .into_any_element(),
-            );
+                    },
+                )),
+            ));
         }
-        part(step(3, tr!("Shaders"), Some(note)), body)
+        list
     }
 
-    /// The install button with what it does, or the work in progress, or
-    /// the anti-cheat question; the outcome of a failed try under it.
-    fn reshade_setup_footer(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
-        let mut footer = div().flex().flex_col().gap(px(10.)).py(px(14.));
+    /// The install button with what it does, or the anti-cheat question; a
+    /// failed try's error under it.
+    fn reshade_install_part(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
         if matches!(self.reshade.confirm, Some(Confirm::AntiCheat { .. })) {
-            return footer.child(self.reshade_anticheat_card(o, cx));
+            return part(None, vec![self.reshade_anticheat_card(o, cx).into_any_element()]);
         }
-        if let Some(b) = &self.reshade.busy {
-            let line = if b.line.is_empty() { tr!("Working…").to_string() } else { b.line.clone() };
-            let cancel = self.outline_button("reshade-cancel", tr!("Cancel"), true, cx, |this, _, cx| this.cancel_reshade(cx));
-            return footer.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(12.))
-                    .child(icon(Icon::Downloading, px(18.), theme::accent()))
-                    .child(div().flex_1().min_w_0().text_size(px(13.)).text_color(theme::text_primary()).child(line))
-                    .child(cancel),
-            );
-        }
+        let mut body: Vec<AnyElement> = Vec::new();
         if !o.risk.findings.is_empty() {
             let names: Vec<String> = o.risk.names().iter().map(|n| heronite_data::anticheat::short_name(n)).collect();
-            footer = footer
-                .child(warn_line(&tr!("Anti-cheat: {names}. You will be asked to confirm before installing.", names = names.join(", "))));
+            body.push(
+                warn_line(&tr!("Anti-cheat: {names}. You will be asked to confirm before installing.", names = names.join(", ")))
+                    .into_any_element(),
+            );
         }
         let label = match &o.latest {
             Some(v) => tr!("Install ReShade {version}", version = v),
@@ -423,13 +383,22 @@ impl SettingsPanel {
             o.latest.is_some(),
             cx.listener(|this, _, _, cx| this.start_reshade_install(false, true, cx)),
         );
-        footer = footer
-            .child(buttons().child(install))
-            .child(help(tr!("Downloads ReShade and the shaders from their official sources into the game's folder.")));
+        body.push(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(12.))
+                .child(install)
+                .child(help(tr!("Downloads from the official sources into the game's folder.")))
+                .into_any_element(),
+        );
         if let Some((text, true)) = &self.reshade.message {
-            footer = footer.child(div().text_size(px(12.)).line_height(px(16.)).text_color(theme::danger_text()).child(text.clone()));
+            body.push(
+                div().text_size(px(12.)).line_height(px(16.)).text_color(theme::danger_text()).child(text.clone()).into_any_element(),
+            );
         }
-        footer
+        part(None, body)
     }
 
     /// The executable select, when there is another program to pick.
@@ -468,9 +437,11 @@ impl SettingsPanel {
         cx.notify();
     }
 
+    /// The switch turned off before installing: back to the short card.
     fn close_reshade_setup(&mut self, cx: &mut Context<Self>) {
         self.reshade.setup = false;
         self.reshade.advanced = false;
+        self.reshade.packages_open = false;
         self.reshade.preset = None;
         self.reshade.picked = None;
         self.reshade.all_packages = false;

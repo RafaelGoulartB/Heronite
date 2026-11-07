@@ -50,6 +50,9 @@ pub(super) enum Confirm {
 /// A long operation running in the background.
 pub(super) struct Busy {
     pub(super) line: String,
+    /// Steps done and expected (`0` expected: unknown, no bar).
+    pub(super) done: usize,
+    pub(super) total: usize,
     cancel: Arc<AtomicBool>,
 }
 
@@ -71,6 +74,10 @@ pub(super) struct ReshadeUi {
     pub(super) setup: bool,
     /// The executable and DLL name can be picked in it.
     pub(super) advanced: bool,
+    /// The full package list is open in it ("Choose packages…").
+    pub(super) packages_open: bool,
+    /// The installed shaders are listed ("Manage").
+    pub(super) manage_shaders: bool,
     /// Scroll the drawer to the install card on its next draw.
     pub(super) reveal: std::rc::Rc<std::cell::Cell<bool>>,
     /// Scroll the drawer to the whole section, its top first.
@@ -199,7 +206,7 @@ impl SettingsPanel {
             return;
         }
         let cancel = Arc::new(AtomicBool::new(false));
-        self.reshade.busy = Some(Busy { line: first, cancel: cancel.clone() });
+        self.reshade.busy = Some(Busy { line: first, done: 0, total: 0, cancel: cancel.clone() });
         self.reshade.message = None;
         self.reshade.confirm = None;
         let (tx, mut rx) = futures::channel::mpsc::unbounded::<Step>();
@@ -217,6 +224,7 @@ impl SettingsPanel {
                 let ok = this.update(cx, |this, cx| {
                     if let Some(b) = &mut this.reshade.busy {
                         b.line = step_line(&step);
+                        b.done += 1;
                     }
                     cx.notify();
                 });
@@ -281,11 +289,20 @@ impl SettingsPanel {
                 "add-repo" => self.reshade.adding_repo = true,
                 "setup" => self.open_reshade_setup(cx),
                 "advanced" => self.reshade.advanced = true,
+                "packages" => {
+                    self.reshade.setup = true;
+                    self.reshade.packages_open = true;
+                }
+                "manage" => self.reshade.manage_shaders = true,
                 "all-packages" => self.reshade.all_packages = true,
                 "installing" => {
                     self.reshade.setup = true;
-                    self.reshade.busy =
-                        Some(Busy { line: tr!("Installing shaders: {name}…", name = "SweetFX by CeeJay.dk"), cancel: Arc::default() })
+                    self.reshade.busy = Some(Busy {
+                        line: tr!("Installing shaders: {name}…", name = "SweetFX by CeeJay.dk"),
+                        done: 2,
+                        total: 5,
+                        cancel: Arc::default(),
+                    })
                 }
                 "tick" => {
                     if let Some(Confirm::AntiCheat { accepted, .. }) = &mut self.reshade.confirm {

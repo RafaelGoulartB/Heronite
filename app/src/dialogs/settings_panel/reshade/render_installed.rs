@@ -11,12 +11,24 @@ use heronite_launch::reshade::manifest::{Manifest, ADOPTED};
 use heronite_launch::reshade::{Overview, SourceRow};
 
 use super::render::{api_label, buttons, warn_line};
-use super::render_setup::title_row;
+use super::render_setup::{about, link, title_row};
 use super::{Confirm, SettingsPanel};
-use crate::dialogs::settings_panel::parts::{heading, help, hint, rows, Rows};
+use crate::dialogs::settings_panel::parts::{help, hint, rows, Rows};
 use crate::theme;
 use crate::ui::controls::{action_button, row, toggle, ButtonKind};
 use crate::ui::fields::input_box;
+
+/// A small button for a row.
+fn small(
+    id: &'static str,
+    kind: ButtonKind,
+    label: &str,
+    enabled: bool,
+    cx: &mut Context<SettingsPanel>,
+    on_click: impl Fn(&mut SettingsPanel, &mut Context<SettingsPanel>) + 'static,
+) -> Stateful<Div> {
+    action_button(id, kind, label.to_string(), enabled, cx.listener(move |this, _, _, cx| on_click(this, cx))).h(px(30.)).text_size(px(12.))
+}
 
 /// `6.10.0` is newer than `6.9.2`.
 fn newer(latest: &str, current: &str) -> bool {
@@ -34,11 +46,25 @@ fn source_label(name: &str) -> String {
 }
 
 impl SettingsPanel {
+    /// One card: the switch, then the version, the preset and the shaders
+    /// as rows (the shaders listed under "Manage"), then the links.
     pub(super) fn reshade_installed(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
         let Some(m) = o.manifest.clone() else { return div() };
-        let col = div().flex().flex_col().gap(px(6.)).child(self.reshade_main_card(o, &m, cx).card());
-        let shaders = self.reshade_sources(o, &m, cx);
-        col.child(heading(tr!("Shaders"))).child(shaders.card())
+        let mut card = self.reshade_main_card(o, &m, cx).card();
+        let reveal = self.reshade.reveal.clone();
+        let probe = canvas(
+            move |bounds, window, _| {
+                if reveal.replace(false) {
+                    crate::ui::dialog::reveal_in_drawer(bounds, false);
+                    window.on_next_frame(|window, _| window.refresh());
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .inset_0();
+        card = card.relative().child(probe);
+        card
     }
 
     fn reshade_main_card(&mut self, o: &Arc<Overview>, m: &Manifest, cx: &mut Context<Self>) -> Rows {
@@ -53,10 +79,10 @@ impl SettingsPanel {
             true => tr!("Home opens its menu in the game."),
             false => tr!("Off: the game starts without it."),
         };
-        let about = format!("{} · {} · {}. {state}", m.version, api_label(t.as_ref(), api), m.proxy);
+        let line = format!("{} · {} · {}", m.version, api_label(t.as_ref(), api), state);
         let on = m.enabled;
         let sw = toggle("reshade-on-sw", on, busy);
-        let mut main = title_row("ReShade", about, sw).id("reshade-on");
+        let mut main = title_row("ReShade", about(line), sw).id("reshade-on");
         if !busy {
             main = main.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| this.switch_reshade(!on, cx)));
         }
@@ -86,40 +112,51 @@ impl SettingsPanel {
             card = card.child(notes.into_iter().fold(div().flex().flex_col().gap(px(4.)).py(px(12.)), |d, n| d.child(n)));
         }
         if let Some(latest) = o.latest.as_deref().filter(|l| newer(l, &m.version)) {
-            let update = action_button(
-                "reshade-update",
-                ButtonKind::Primary,
-                tr!("Update"),
-                !busy,
-                cx.listener(|this, _, _, cx| this.update_reshade(cx)),
-            );
+            let update = small("reshade-update", ButtonKind::Primary, tr!("Update"), !busy, cx, |this, cx| this.update_reshade(cx));
             card = card.child(row(
                 tr!("Version"),
                 Some(&tr!("{current} installed; {latest} is available", current = m.version, latest)),
                 update,
             ));
         }
-        let preset = m.preset.clone().unwrap_or_else(|| tr!("None: ReShade's default").to_string());
-        let import = self
-            .outline_button("reshade-import", tr!("Import preset…"), !busy, cx, |this, window, cx| this.pick_reshade_preset(window, cx));
-        card = card.child(row(tr!("Preset"), Some(&preset), import));
+        let (preset, change) = match &m.preset {
+            Some(p) => (p.clone(), tr!("Change")),
+            None => (tr!("None: ReShade's default").to_string(), tr!("Choose…")),
+        };
+        let import =
+            self.outline_button_dyn("reshade-import".into(), change, !busy, cx, |this, window, cx| this.pick_reshade_preset(window, cx));
+        card = card.child(row(tr!("Preset"), Some(&preset), import.h(px(30.)).text_size(px(12.))));
         if let Some(missing) = o.preset_needs.as_ref().map(|n| n.missing.clone()).filter(|m| !m.is_empty()) {
             let text = tr!(
                 "The preset uses effects that are not installed: {files}. Add the folder or the repository that has them.",
                 files = missing.join(", ")
             );
             let add = buttons()
-                .child(self.outline_button("reshade-missing-folder", tr!("Add folder…"), !busy, cx, |this, window, cx| {
-                    this.pick_reshade_folder(window, cx)
-                }))
-                .child(self.outline_button("reshade-missing-repo", tr!("Add repository…"), !busy, cx, |this, _, cx| {
+                .child(
+                    link("reshade-missing-folder", tr!("Add folder…"))
+                        .on_click(cx.listener(|this, _, window, cx| this.pick_reshade_folder(window, cx))),
+                )
+                .child(link("reshade-missing-repo", tr!("Add repository…")).on_click(cx.listener(|this, _, _, cx| {
                     this.reshade.adding_repo = true;
                     cx.notify();
-                }));
-            card = card.child(div().flex().flex_col().gap(px(8.)).py(px(12.)).child(warn_line(&text)).child(add));
+                })));
+            card = card.child(div().flex().flex_col().gap(px(8.)).pb(px(12.)).child(warn_line(&text)).child(add));
             if self.reshade.adding_repo {
                 card = card.field(self.reshade_repo_field(busy, cx));
             }
+        }
+        let names: Vec<String> = o.sources.iter().map(|s| source_label(&s.name)).collect();
+        let summary = if names.is_empty() { tr!("No shaders").to_string() } else { names.join(", ") };
+        let manage = self.reshade.manage_shaders;
+        let toggle_list =
+            self.outline_button_dyn("reshade-manage".into(), if manage { tr!("Done") } else { tr!("Manage") }, true, cx, |this, _, cx| {
+                this.reshade.manage_shaders = !this.reshade.manage_shaders;
+                this.reshade.reveal.set(this.reshade.manage_shaders);
+                cx.notify();
+            });
+        card = card.child(row(tr!("Shaders"), Some(&summary), toggle_list.h(px(30.)).text_size(px(12.))));
+        if manage {
+            card = card.child(div().pb(px(12.)).child(self.reshade_sources(o, m, cx).card()));
         }
         if !o.user_overrides.is_empty() {
             let text = tr!(
@@ -131,23 +168,28 @@ impl SettingsPanel {
             });
             card = card.child(div().flex().flex_col().gap(px(8.)).py(px(12.)).child(hint(&text)).child(buttons().child(clean)));
         }
-        let actions =
-            buttons()
-                .child(self.outline_button("reshade-update-shaders", tr!("Update shaders"), !busy, cx, |this, _, cx| {
+        let links = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(16.))
+            .py(px(12.))
+            .child(link("reshade-open", tr!("Open folder")).on_click(cx.listener(|this, _, _, _| this.open_reshade_folder())))
+            .child(link("reshade-update-shaders", tr!("Update shaders")).on_click(cx.listener(|this, _, _, cx| {
+                if this.reshade.busy.is_none() {
                     this.update_reshade_shaders(cx)
-                }))
-                .child(self.outline_button("reshade-open", tr!("Open folder"), true, cx, |this, _, _| this.open_reshade_folder()))
-                .child(action_button(
-                    "reshade-remove",
-                    ButtonKind::Danger,
-                    tr!("Remove ReShade"),
-                    !busy,
-                    cx.listener(|this, _, _, cx| {
+                }
+            })))
+            .child(div().flex_1())
+            .child(link("reshade-remove", tr!("Remove ReShade")).text_color(theme::danger_text()).on_click(cx.listener(
+                |this, _, _, cx| {
+                    if this.reshade.busy.is_none() {
                         this.reshade.confirm = Some(Confirm::Remove);
                         cx.notify();
-                    }),
-                ));
-        card = card.field(actions);
+                    }
+                },
+            )));
+        card = card.child(links);
         if self.reshade.confirm == Some(Confirm::Remove) {
             card = card.child(self.reshade_confirm_card(
                 tr!("Remove ReShade from this game?"),
