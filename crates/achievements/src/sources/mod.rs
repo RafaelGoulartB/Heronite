@@ -4,6 +4,7 @@
 
 pub mod epic;
 pub mod gog;
+pub mod local;
 pub mod retro;
 pub mod steam;
 
@@ -49,5 +50,6 @@ pub fn fetch(ctx: &Ctx, target: &SourceTarget) -> Fetch {
         SourceTarget::Gog { product_id } => gog::fetch(ctx, product_id),
         SourceTarget::Epic { app_name } => epic::fetch(ctx, app_name),
         SourceTarget::Retro(t) => retro::fetch(ctx, t),
+        SourceTarget::Local(t) => local::fetch(ctx, t),
     }
 }

@@ -4,7 +4,7 @@
 use chrono::Utc;
 
 use crate::merge::merge;
-use crate::model::{Achievement, GameAchievements, Source};
+use crate::model::{Achievement, GameAchievements, LocalPin, Source};
 use crate::sources::{self, Ctx, Fetch};
 use crate::store;
 use crate::target::{order_of, SourceTarget};
@@ -34,6 +34,9 @@ pub fn refresh(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget]
         let mut target = target.clone();
         if let SourceTarget::Retro(t) = &mut target {
             t.pinned_game_id = game.retro_game_id;
+        }
+        if let SourceTarget::Local(t) = &mut target {
+            t.pin = game.local.clone();
         }
         let source = target.source();
         match sources::fetch(ctx, &target) {
@@ -78,5 +81,21 @@ pub fn pin_retro_game(ctx: &Ctx, runner: &str, app_name: &str, game_id: Option<u
     game.retro_game_id = game_id;
     // The set of the other game no longer applies.
     game.sets.retain(|s| s.source != Source::RetroAchievements);
+    store::write(ctx.paths, runner, app_name, &game, order)
+}
+
+/// Sets (or clears) the game-files choice of a game: a folder, an app id,
+/// or off. Its set and its "none" mark go with the old choice, so the next
+/// refresh reads the files again; `forget` drops the set even when the
+/// choice stays (a fresh start).
+pub fn pin_local(ctx: &Ctx, runner: &str, app_name: &str, pin: Option<LocalPin>, forget: bool, order: &[Source]) -> anyhow::Result<()> {
+    let mut game = store::read(ctx.paths, runner, app_name);
+    let pin = pin.filter(|p| *p != LocalPin::default());
+    if game.local == pin && !forget {
+        return Ok(());
+    }
+    game.local = pin;
+    game.sets.retain(|s| s.source != Source::Local);
+    game.empty_at.remove(&Source::Local);
     store::write(ctx.paths, runner, app_name, &game, order)
 }

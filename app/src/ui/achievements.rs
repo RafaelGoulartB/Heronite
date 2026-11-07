@@ -66,12 +66,22 @@ pub fn percent_label(percent: f32) -> String {
     format!("{}%", heronite_i18n::decimal(percent as f64, 1))
 }
 
+/// A source's name in the UI: its brand, or "Game files" (translated).
+pub fn source_name(source: Source) -> SharedString {
+    match source {
+        Source::Local => tr!("Game files").into(),
+        other => other.label().into(),
+    }
+}
+
 pub fn source_chip(source: Source) -> Div {
     let dot = match source {
         Source::Steam => theme::rgb_a(102, 192, 244, 1.),
         Source::Gog => theme::rgb_a(164, 107, 220, 1.),
         Source::Epic => theme::rgb_a(217, 217, 217, 1.),
         Source::RetroAchievements => theme::rgb_a(240, 180, 41, 1.),
+        // No brand: a neutral dot.
+        Source::Local => theme::rgb_a(150, 160, 175, 1.),
     };
     div()
         .flex()
@@ -85,7 +95,7 @@ pub fn source_chip(source: Source) -> Div {
         .text_size(px(11.))
         .text_color(theme::ink_a(0.78))
         .child(div().size(px(6.)).rounded_full().bg(dot))
-        .child(source.label())
+        .child(source_name(source))
 }
 
 pub fn gold_a(a: f32) -> Hsla {
