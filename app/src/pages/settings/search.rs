@@ -6,6 +6,7 @@
 //!
 //! The labels are the English texts the sections draw (`tr!` keys): a renamed
 //! label must be renamed here too (`every_indexed_label_is_still_drawn`).
+//! The overlay's chord labels are this system's (`overlay::labels`).
 //! `HERONITE_DEBUG_FIND_LABELS=1` logs what a section draws.
 
 use heronite_data::fuzzy;
@@ -13,6 +14,7 @@ use heronite_i18n::tr;
 
 use super::Section;
 use crate::dialogs::settings_panel::logic::Section as Tab;
+use crate::overlay::labels;
 
 /// Settings listed under a section in the results, at most.
 const SHOWN: usize = 3;
@@ -137,10 +139,10 @@ const INDEX: &[(Section, &[&str])] = &[
             "Open it with a keyboard shortcut",
             "Keyboard shortcut",
             "Shortcuts without opening it",
-            "Button held with Guide",
-            "Guide + ↑ / ↓: change the volume",
+            labels::BUTTON_HELD,
+            labels::VOLUME,
             "Volume step",
-            "Guide + Y: mark a moment",
+            labels::MOMENT,
             "Guide + X: save the replay",
             "Position",
             "Side of the screen",
@@ -159,7 +161,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Capture screenshots while a game is running",
             "Screenshot shortcut",
             "With the controller",
-            "Button held with Guide",
+            labels::BUTTON_HELD,
             "Lossless compression",
             "Compress screenshots without quality loss",
             "Preview cache",
@@ -397,7 +399,13 @@ fn settings_of(section: Section) -> Vec<Setting> {
     if section == Section::GameDefaults {
         return DEFAULTS_INDEX.iter().flat_map(|(tab, labels)| labels.iter().map(|&label| Setting { label, tab: Some(*tab) })).collect();
     }
-    INDEX.iter().filter(|(s, _)| *s == section).flat_map(|(_, labels)| labels.iter().map(|&label| Setting { label, tab: None })).collect()
+    INDEX
+        .iter()
+        .filter(|(s, _)| *s == section)
+        .flat_map(|(_, labels)| labels.iter().copied())
+        .filter(|label| *label != "Guide + X: save the replay" || Section::Replay.available())
+        .map(|label| Setting { label, tab: None })
+        .collect()
 }
 
 /// How well `section` itself matches.
@@ -450,7 +458,25 @@ pub fn search(query: &str) -> Vec<Hit> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{search, settings_of, Section, DEFAULTS_INDEX, INDEX};
+    #[cfg(target_os = "linux")]
+    use super::{Pick, Setting, Tab, SHOWN};
+
+    #[test]
+    fn replay_search_follows_its_own_capability() {
+        let replay = Section::Replay.available();
+        assert_eq!(search("replay").iter().any(|hit| hit.section == Section::Replay), replay);
+        assert_eq!(settings_of(Section::Overlay).iter().any(|setting| setting.label == "Guide + X: save the replay"), replay);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_controller_settings_use_back_start() {
+        let settings = settings_of(Section::Overlay);
+        assert!(settings.iter().any(|s| s.label == "Back + Start + Y: mark a moment"));
+        assert!(settings.iter().all(|s| !s.label.contains("Guide")));
+        assert!(search("Back Start").iter().any(|hit| hit.section == Section::Overlay));
+    }
 
     #[cfg(target_os = "linux")]
     fn sections(query: &str) -> Vec<Section> {

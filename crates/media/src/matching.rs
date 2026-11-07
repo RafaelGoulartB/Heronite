@@ -38,11 +38,6 @@ fn ws_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"\s+").expect("ws regex"))
 }
 
-fn non_alnum_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"[^a-z0-9]+").expect("non-alnum regex"))
-}
-
 /// JS `String.prototype.trim()` strips Unicode whitespace; Rust's `trim` the
 /// same `White_Space` set (plus BOM in JS, irrelevant after normalization).
 fn trim(s: &str) -> &str {
@@ -50,7 +45,9 @@ fn trim(s: &str) -> &str {
 }
 
 /// `normalizeScreenshotName`: lowercase, `&` -> `and`, Greek delta -> `delta`,
-/// quotes and marks dropped, everything outside `a-z0-9` is a separator.
+/// quotes and marks dropped, accents folded, and everything that is not a letter
+/// or digit of some script a separator (`Pokémon` = `pokemon`, as in
+/// [`heronite_data::text::title_key`]).
 pub fn normalize_screenshot_name(value: &str) -> String {
     let lower = value.to_lowercase();
     let mut s = String::with_capacity(lower.len() + 8);
@@ -65,9 +62,7 @@ pub fn normalize_screenshot_name(value: &str) -> String {
             c => s.push(c),
         }
     }
-    let s = non_alnum_re().replace_all(&s, " ");
-    let s = ws_re().replace_all(&s, " ");
-    trim(&s).to_owned()
+    heronite_data::text::title_key(&s)
 }
 
 fn compact(value: &str) -> String {
@@ -194,7 +189,8 @@ pub fn score_screenshot_folder(query: &str, folder: &str) -> i32 {
     let q_compact = compact(q_src);
     let f_compact = compact(f_src);
     if !q_compact.is_empty() && !f_compact.is_empty() && (f_compact.starts_with(&q_compact) || q_compact.starts_with(&f_compact)) {
-        let (a, b) = (q_compact.len().min(f_compact.len()), q_compact.len().max(f_compact.len()));
+        let (q_len, f_len) = (q_compact.chars().count(), f_compact.chars().count());
+        let (a, b) = (q_len.min(f_len), q_len.max(f_len));
         let ratio = a as f64 / b as f64;
         score = score.max(js_round(70.0 * ratio + 20.0));
     }
@@ -269,8 +265,10 @@ mod tests {
         assert_eq!(normalize_screenshot_name("Metal Gear Solid Δ"), "metal gear solid delta");
         assert_eq!(normalize_screenshot_name("Baldur’s Gate"), "baldur s gate");
         assert_eq!(normalize_screenshot_name("Game™ 2®"), "game 2");
-        // Non a-z0-9 letters are separators, as in the original.
-        assert_eq!(normalize_screenshot_name("Pokémon"), "pok mon");
+        // Accents fold and other scripts stay (the original turned them into separators).
+        assert_eq!(normalize_screenshot_name("Pokémon"), "pokemon");
+        assert_eq!(normalize_screenshot_name("ゼルダの伝説: 夢をみる島"), "ゼルダの伝説 夢をみる島");
+        assert_eq!(normalize_screenshot_name("「」"), "");
         assert_eq!(normalize_screenshot_name("A: B - C"), "a b c");
         assert_eq!(normalize_screenshot_name(""), "");
     }

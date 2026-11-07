@@ -2,8 +2,11 @@
 //! focus panel, the Timeline and the "All achievements" dialog draw, and
 //! what the local copy (`store`) keeps.
 
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::{Map, Value};
 
 /// Where a set of achievements comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -193,19 +196,128 @@ impl AchievementSet {
 
 /// Everything kept about one game: one set per source it has achievements
 /// on (a game owned on GOG and on Steam has two).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct GameAchievements {
-    #[serde(default)]
     pub sets: Vec<AchievementSet>,
     /// The RetroAchievements game picked by hand for a ROM whose hash
     /// matches no set.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retro_game_id: Option<u32>,
     /// When a source last said the game has no achievements there (so it is
     /// not asked again at every start).
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub empty_at: std::collections::BTreeMap<Source, DateTime<Utc>>,
+    pub empty_at: BTreeMap<Source, DateTime<Utc>>,
+    /// What a newer Heronite wrote that this one does not know.
+    pub unknown: Unknown,
+}
+
+/// Parts of a game's copy written by a newer Heronite (a set from a source
+/// this version does not know, a new field). They are kept as they are and
+/// written back, so going back to an older version loses nothing.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Unknown {
+    sets: Vec<Value>,
+    empty_at: Map<String, Value>,
+    fields: Map<String, Value>,
+}
+
+impl Unknown {
+    pub fn is_empty(&self) -> bool {
+        self.sets.is_empty() && self.empty_at.is_empty() && self.fields.is_empty()
+    }
+}
+
+/// A source this version knows, from its stored name.
+fn known_source(name: &Value) -> Option<Source> {
+    Source::deserialize(name).ok()
+}
+
+/// The file as stored, before the sources are told apart.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredGame {
+    #[serde(default)]
+    sets: Vec<Value>,
+    #[serde(default)]
+    retro_game_id: Option<u32>,
+    #[serde(default)]
+    empty_at: Map<String, Value>,
+    #[serde(flatten)]
+    fields: Map<String, Value>,
+}
+
+impl<'de> Deserialize<'de> for GameAchievements {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let stored = StoredGame::deserialize(deserializer)?;
+        let mut game = GameAchievements { retro_game_id: stored.retro_game_id, ..Default::default() };
+        game.unknown.fields = stored.fields;
+        for set in stored.sets {
+            if set.get("source").and_then(known_source).is_some() {
+                game.sets.push(AchievementSet::deserialize(set).map_err(de::Error::custom)?);
+            } else {
+                game.unknown.sets.push(set);
+            }
+        }
+        for (name, at) in stored.empty_at {
+            match known_source(&Value::String(name.clone())) {
+                Some(source) => {
+                    game.empty_at.insert(source, DateTime::deserialize(at).map_err(de::Error::custom)?);
+                }
+                None => {
+                    game.unknown.empty_at.insert(name, at);
+                }
+            }
+        }
+        Ok(game)
+    }
+}
+
+impl Serialize for GameAchievements {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        #[serde(untagged)]
+        enum Either<'a, K, U> {
+            Known(&'a K),
+            Unknown(&'a U),
+        }
+
+        struct Sets<'a>(&'a GameAchievements);
+        impl Serialize for Sets<'_> {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let g = self.0;
+                serializer.collect_seq(g.sets.iter().map(Either::<_, Value>::Known).chain(g.unknown.sets.iter().map(Either::Unknown)))
+            }
+        }
+
+        struct EmptyAt<'a>(&'a GameAchievements);
+        impl Serialize for EmptyAt<'_> {
+            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                let g = self.0;
+                let known = g.empty_at.iter().map(|(k, v)| (Either::<_, String>::Known(k), Either::<_, Value>::Known(v)));
+                let unknown = g.unknown.empty_at.iter().map(|(k, v)| (Either::Unknown(k), Either::Unknown(v)));
+                serializer.collect_map(known.chain(unknown))
+            }
+        }
+
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Out<'a> {
+            sets: Sets<'a>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            retro_game_id: Option<u32>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            empty_at: Option<EmptyAt<'a>>,
+            #[serde(flatten)]
+            fields: &'a Map<String, Value>,
+        }
+
+        let empty = self.empty_at.is_empty() && self.unknown.empty_at.is_empty();
+        Out {
+            sets: Sets(self),
+            retro_game_id: self.retro_game_id,
+            empty_at: (!empty).then_some(EmptyAt(self)),
+            fields: &self.unknown.fields,
+        }
+        .serialize(serializer)
+    }
 }
 
 impl GameAchievements {

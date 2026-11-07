@@ -79,17 +79,6 @@ fn framed(picture: Div) -> Div {
     div().absolute().top(px(10.)).left_0().right_0().flex().justify_center().child(picture)
 }
 
-fn beta() -> Div {
-    div()
-        .px(px(7.))
-        .py(px(1.))
-        .rounded_full()
-        .bg(theme::accent_alpha(0.16))
-        .text_size(px(10.))
-        .text_color(theme::accent())
-        .child(tr!("Beta").to_uppercase())
-}
-
 impl OnboardingDialog {
     pub(super) fn render_hub(&self, art: &Art, cx: &mut Context<Self>) -> Div {
         div()
@@ -278,7 +267,7 @@ impl OnboardingDialog {
                     .text_size(px(12.))
                     .line_height(px(16.))
                     .text_color(theme::text_dim())
-                    .when(f.overlay_ok, |d| d.child(beta()).child(tr!("The overlay: Guide opens it, Guide + Y marks a moment")))
+                    .when(f.overlay_ok, |d| d.child(crate::overlay::labels::onboarding_line()))
                     .when(!f.overlay_ok, |d| d.child(f.overlay_why.clone())),
             )
         })

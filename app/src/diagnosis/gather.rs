@@ -108,12 +108,7 @@ fn fallback_kind(game: &CollectionGame, settings: &GameSettings) -> Option<RunKi
 /// store's or the sideload entry's (relative to the install folder).
 fn executable(game: &CollectionGame, settings: &GameSettings) -> Option<PathBuf> {
     let install = &game.game.install;
-    let exe = Some(settings.target_exe.trim()).filter(|t| !t.is_empty()).or(install.executable.as_deref())?;
-    let path = match Path::new(exe).is_absolute() {
-        true => PathBuf::from(exe),
-        false => Path::new(install.install_path.as_deref()?).join(exe.replace('\\', "/")),
-    };
-    (heronite_launch::wine_tools::is_windows_program(&path.to_string_lossy()) && path.is_file()).then_some(path)
+    heronite_launch::reshade::detect::game_exe(install.install_path.as_deref(), install.executable.as_deref(), &settings.target_exe)
 }
 
 /// The Protons on this computer that can run games.

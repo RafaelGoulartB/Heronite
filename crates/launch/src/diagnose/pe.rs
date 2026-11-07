@@ -65,7 +65,45 @@ fn c_string<R: Read + Seek>(f: &mut R, img: &Image, rva: u32) -> Option<String> 
     (!name.is_empty() && name.is_ascii()).then(|| name.to_ascii_lowercase())
 }
 
-pub(crate) fn imports_of<R: Read + Seek>(f: &mut R) -> io::Result<Vec<String>> {
+/// What a Windows program's headers say, besides its imports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Info {
+    /// `IMAGE_FILE_HEADER.Machine`: [`MACHINE_X86`], [`MACHINE_X64`] or another.
+    pub machine: u16,
+    /// DLL names, as [`imports`] gives them.
+    pub imports: Vec<String>,
+    /// `SizeOfStackReserve`, in bytes.
+    pub stack_reserve: u64,
+    /// `ProductName` and `ProductVersion` of the version resource.
+    pub product_name: Option<String>,
+    pub product_version: Option<String>,
+}
+
+pub const MACHINE_X86: u16 = 0x14c;
+pub const MACHINE_X64: u16 = 0x8664;
+
+/// [`Info`] of `path`. Not a PE file: an error.
+pub fn info(path: &Path) -> io::Result<Info> {
+    let mut f = File::open(path)?;
+    info_of(&mut f)
+}
+
+/// The headers and data directories the readers below need.
+struct Headers {
+    img: Image,
+    machine: u16,
+    stack_reserve: u64,
+    /// `(rva, size)` of each data directory.
+    dirs: Vec<(u32, u32)>,
+}
+
+impl Headers {
+    fn dir(&self, i: usize) -> (u32, u32) {
+        self.dirs.get(i).copied().unwrap_or((0, 0))
+    }
+}
+
+fn headers<R: Read + Seek>(f: &mut R) -> io::Result<Headers> {
     let mut dos = [0u8; 64];
     if read_at(f, 0, &mut dos)? < 64 || &dos[..2] != b"MZ" {
         return Err(bad("no MZ header"));
@@ -77,27 +115,22 @@ pub(crate) fn imports_of<R: Read + Seek>(f: &mut R) -> io::Result<Vec<String>> {
     if head.get(..4) != Some(b"PE\0\0".as_slice()) {
         return Err(bad("no PE signature"));
     }
+    let machine = u16_at(&head, 4)?;
     let sections = usize::from(u16_at(&head, 6)?);
     let opt_size = usize::from(u16_at(&head, 20)?);
     let opt = 24;
-    let (dirs, count_at, image_base) = match u16_at(&head, opt)? {
-        0x10b => (opt + 96, opt + 92, u64::from(u32_at(&head, opt + 28)?)),
+    let (dirs, count_at, image_base, stack_reserve) = match u16_at(&head, opt)? {
+        0x10b => (opt + 96, opt + 92, u64::from(u32_at(&head, opt + 28)?), u64::from(u32_at(&head, opt + 72)?)),
         0x20b => {
             let lo = u64::from(u32_at(&head, opt + 24)?);
             let hi = u64::from(u32_at(&head, opt + 28)?);
-            (opt + 112, opt + 108, lo | hi << 32)
+            let stack = u64::from(u32_at(&head, opt + 72)?) | u64::from(u32_at(&head, opt + 76)?) << 32;
+            (opt + 112, opt + 108, lo | hi << 32, stack)
         }
         _ => return Err(bad("unknown optional header")),
     };
-    let dir_count = u32_at(&head, count_at)? as usize;
-    let dir = |i: usize| -> io::Result<u32> {
-        if i < dir_count {
-            u32_at(&head, dirs + i * 8)
-        } else {
-            Ok(0)
-        }
-    };
-    let (import_rva, delay_rva) = (dir(1)?, dir(13)?);
+    let dir_count = (u32_at(&head, count_at)? as usize).min(16);
+    let dirs = (0..dir_count).map(|i| Ok((u32_at(&head, dirs + i * 8)?, u32_at(&head, dirs + i * 8 + 4)?))).collect::<io::Result<_>>()?;
     let table = opt + opt_size;
     let mut img = Image { sections: Vec::with_capacity(sections), image_base };
     for i in 0..sections.min(96) {
@@ -105,6 +138,31 @@ pub(crate) fn imports_of<R: Read + Seek>(f: &mut R) -> io::Result<Vec<String>> {
         let (vsize, va, raw_size, raw) = (u32_at(&head, s + 8)?, u32_at(&head, s + 12)?, u32_at(&head, s + 16)?, u32_at(&head, s + 20)?);
         img.sections.push(Section { va, size: vsize.max(raw_size), raw });
     }
+    Ok(Headers { img, machine, stack_reserve, dirs })
+}
+
+pub(crate) fn imports_of<R: Read + Seek>(f: &mut R) -> io::Result<Vec<String>> {
+    let h = headers(f)?;
+    imports_with(f, &h)
+}
+
+pub(crate) fn info_of<R: Read + Seek>(f: &mut R) -> io::Result<Info> {
+    let h = headers(f)?;
+    let imports = imports_with(f, &h)?;
+    // A damaged resource section only loses the version strings.
+    let blob = version_blob(f, &h).ok().flatten().unwrap_or_default();
+    Ok(Info {
+        machine: h.machine,
+        imports,
+        stack_reserve: h.stack_reserve,
+        product_name: version_string(&blob, "ProductName"),
+        product_version: version_string(&blob, "ProductVersion"),
+    })
+}
+
+fn imports_with<R: Read + Seek>(f: &mut R, h: &Headers) -> io::Result<Vec<String>> {
+    let img = &h.img;
+    let (import_rva, delay_rva) = (h.dir(1).0, h.dir(13).0);
     let mut names: Vec<String> = Vec::new();
     let mut add = |name: Option<String>| {
         if let Some(n) = name.filter(|n| !names.contains(n)) {
@@ -118,7 +176,7 @@ pub(crate) fn imports_of<R: Read + Seek>(f: &mut R) -> io::Result<Vec<String>> {
             if read_at(f, at + (i * 20) as u64, &mut d)? < 20 || d.iter().all(|b| *b == 0) {
                 break;
             }
-            add(c_string(f, &img, u32_at(&d, 12)?));
+            add(c_string(f, img, u32_at(&d, 12)?));
         }
     }
     // IMAGE_DELAYLOAD_DESCRIPTOR: 32 bytes, attributes at 0 (bit 0: RVAs,
@@ -134,10 +192,71 @@ pub(crate) fn imports_of<R: Read + Seek>(f: &mut R) -> io::Result<Vec<String>> {
                 1 => Some(name),
                 _ => u64::from(name).checked_sub(img.image_base).and_then(|r| u32::try_from(r).ok()),
             };
-            add(rva.and_then(|r| c_string(f, &img, r)));
+            add(rva.and_then(|r| c_string(f, img, r)));
         }
     }
     Ok(names)
+}
+
+/// `RT_VERSION`, the resource type of `VS_VERSIONINFO`.
+const RT_VERSION: u32 = 16;
+/// Version resources are a few KB; anything bigger is not one.
+const MAX_VERSION_SIZE: u32 = 64 * 1024;
+
+/// The first version resource: resource directory, type `RT_VERSION`, its
+/// first name, its first language.
+fn version_blob<R: Read + Seek>(f: &mut R, h: &Headers) -> io::Result<Option<Vec<u8>>> {
+    let (rsrc, _) = h.dir(2);
+    let Some(base) = (rsrc != 0).then(|| h.img.offset(rsrc)).flatten() else { return Ok(None) };
+    let Some(names) = resource_entry(f, base, 0, Some(RT_VERSION))? else { return Ok(None) };
+    let Some(langs) = resource_entry(f, base, names & 0x7fff_ffff, None)? else { return Ok(None) };
+    let Some(data) = resource_entry(f, base, langs & 0x7fff_ffff, None)? else { return Ok(None) };
+    if data & 0x8000_0000 != 0 {
+        return Ok(None);
+    }
+    // IMAGE_RESOURCE_DATA_ENTRY: RVA, size.
+    let mut entry = [0u8; 8];
+    read_at(f, base + u64::from(data), &mut entry)?;
+    let (rva, size) = (u32_at(&entry, 0)?, u32_at(&entry, 4)?.min(MAX_VERSION_SIZE));
+    let Some(at) = h.img.offset(rva) else { return Ok(None) };
+    let mut blob = vec![0u8; size as usize];
+    let n = read_at(f, at, &mut blob)?;
+    blob.truncate(n);
+    Ok(Some(blob))
+}
+
+/// The `OffsetToData` of an entry of the resource directory at `dir`
+/// (relative to the section): the one with id `id`, or the first one.
+fn resource_entry<R: Read + Seek>(f: &mut R, base: u64, dir: u32, id: Option<u32>) -> io::Result<Option<u32>> {
+    let mut head = [0u8; 16];
+    if read_at(f, base + u64::from(dir), &mut head)? < 16 {
+        return Ok(None);
+    }
+    let count = usize::from(u16_at(&head, 12)?) + usize::from(u16_at(&head, 14)?);
+    for i in 0..count.min(256) {
+        let mut e = [0u8; 8];
+        if read_at(f, base + u64::from(dir) + 16 + (i * 8) as u64, &mut e)? < 8 {
+            break;
+        }
+        let (name, offset) = (u32_at(&e, 0)?, u32_at(&e, 4)?);
+        if id.is_none_or(|id| name == id) {
+            return Ok(Some(offset));
+        }
+    }
+    Ok(None)
+}
+
+/// The value of `key` in the string tables of a `VS_VERSIONINFO` blob. Each
+/// `String` holds its UTF-16 key, padding to 32 bits, then the value.
+fn version_string(blob: &[u8], key: &str) -> Option<String> {
+    let mut needle: Vec<u8> = key.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    needle.extend([0, 0]);
+    let at = blob.windows(needle.len()).position(|w| w == needle.as_slice())?;
+    let start = (at + needle.len()).next_multiple_of(4);
+    let units: Vec<u16> =
+        blob.get(start..)?.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).take_while(|u| *u != 0).take(256).collect();
+    let value = String::from_utf16_lossy(&units).trim().to_string();
+    (!value.is_empty()).then_some(value)
 }
 
 #[cfg(test)]
@@ -191,6 +310,70 @@ pub(crate) mod tests {
         f[s + 20..s + 24].copy_from_slice(&0x400u32.to_le_bytes());
         f.extend(sec);
         f
+    }
+
+    /// `tiny_pe` with a machine, a stack size and, with `product`, a
+    /// second section holding a version resource.
+    pub(crate) fn pe_with(machine: u16, dlls: &[&str], product: Option<&str>, stack: u64) -> Vec<u8> {
+        let mut f = tiny_pe(dlls, &[]);
+        f[0x84..0x86].copy_from_slice(&machine.to_le_bytes());
+        let opt = 0x80 + 24;
+        f[opt + 72..opt + 80].copy_from_slice(&stack.to_le_bytes());
+        let Some(product) = product else { return f };
+        // .rsrc at RVA 0x2000, file 0x600.
+        let mut rsrc = vec![0u8; 0x400];
+        let dir = |r: &mut Vec<u8>, at: usize, id: u32, to: u32| {
+            r[at + 14..at + 16].copy_from_slice(&1u16.to_le_bytes());
+            r[at + 16..at + 20].copy_from_slice(&id.to_le_bytes());
+            r[at + 20..at + 24].copy_from_slice(&to.to_le_bytes());
+        };
+        dir(&mut rsrc, 0, 16, 0x8000_0000 | 0x18);
+        dir(&mut rsrc, 0x18, 1, 0x8000_0000 | 0x30);
+        dir(&mut rsrc, 0x30, 0x409, 0x48);
+        // VS_VERSIONINFO: just the String entry the reader looks for.
+        let mut blob = vec![0u8; 6];
+        blob.extend("ProductName\0".encode_utf16().flat_map(u16::to_le_bytes));
+        while !blob.len().is_multiple_of(4) {
+            blob.push(0);
+        }
+        blob.extend(format!("{product}\0").encode_utf16().flat_map(u16::to_le_bytes));
+        rsrc[0x48..0x4c].copy_from_slice(&(0x2000u32 + 0x60).to_le_bytes());
+        rsrc[0x4c..0x50].copy_from_slice(&(blob.len() as u32).to_le_bytes());
+        rsrc[0x60..0x60 + blob.len()].copy_from_slice(&blob);
+        let pe = 0x80;
+        f[pe + 6..pe + 8].copy_from_slice(&2u16.to_le_bytes());
+        let dirs = opt + 112;
+        f[dirs + 16..dirs + 20].copy_from_slice(&0x2000u32.to_le_bytes());
+        f[dirs + 20..dirs + 24].copy_from_slice(&0x400u32.to_le_bytes());
+        let s = opt + 240 + 40;
+        f[s..s + 5].copy_from_slice(b".rsrc");
+        f[s + 8..s + 12].copy_from_slice(&0x400u32.to_le_bytes());
+        f[s + 12..s + 16].copy_from_slice(&0x2000u32.to_le_bytes());
+        f[s + 16..s + 20].copy_from_slice(&0x400u32.to_le_bytes());
+        f[s + 20..s + 24].copy_from_slice(&0x600u32.to_le_bytes());
+        f.extend(rsrc);
+        f
+    }
+
+    #[test]
+    fn reads_the_machine_the_stack_and_the_product_name() {
+        let x64 = info_of(&mut Cursor::new(pe_with(MACHINE_X64, &["dxgi.dll"], Some("ReShade"), 0x10_0000))).unwrap();
+        assert_eq!(x64.machine, MACHINE_X64);
+        assert_eq!(x64.imports, ["dxgi.dll"]);
+        assert_eq!(x64.stack_reserve, 0x10_0000);
+        assert_eq!(x64.product_name.as_deref(), Some("ReShade"));
+        let x86 = info_of(&mut Cursor::new(pe_with(MACHINE_X86, &[], None, 0x4000))).unwrap();
+        assert_eq!((x86.machine, x86.product_name), (MACHINE_X86, None));
+    }
+
+    #[test]
+    fn version_strings_are_aligned_after_the_key() {
+        let mut blob = vec![0u8; 2];
+        blob.extend("ProductName\0".encode_utf16().flat_map(u16::to_le_bytes));
+        blob.extend([0, 0]);
+        blob.extend("DXVK\0".encode_utf16().flat_map(u16::to_le_bytes));
+        assert_eq!(version_string(&blob, "ProductName").as_deref(), Some("DXVK"));
+        assert_eq!(version_string(&blob, "CompanyName"), None);
     }
 
     #[test]

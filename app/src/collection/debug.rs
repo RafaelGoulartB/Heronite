@@ -307,6 +307,12 @@ impl CollectionView {
                     self.troubleshoot_launch(&key, log, cx);
                 }
             }
+            // What the game menu's "ReShade" opens, for the selected game.
+            "reshade" => {
+                if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
+                    self.open_reshade(&key, window, cx);
+                }
+            }
             "viewlog" => {
                 if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
                     self.open_game_log(&key, cx);

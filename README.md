@@ -53,6 +53,17 @@ Coming from Heroic, Lutris, Bottles, Faugus, or Playnite? Heronite imports your 
 | Windows 10 and 11 (**recommended**) | `Heronite-Setup-x86_64.exe` | Run it: it installs for your user, no administrator rights needed |
 | Windows 10 and 11, portable | `Heronite-Portable-x86_64.zip` | Extract it anywhere and run `Heronite\heronite.exe`; the library, settings, and screenshots stay in that folder |
 
+#### 🪟 Windows
+
+With [Scoop](https://scoop.sh), from the [`scoop-heronite`](https://github.com/RafaelGoulartB/scoop-heronite) bucket:
+
+```powershell
+scoop bucket add heronite https://github.com/RafaelGoulartB/scoop-heronite
+scoop install heronite/heronite
+```
+
+`scoop update heronite` installs new versions.
+
 </details>
 
 The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
@@ -91,7 +102,7 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 - **Launching:** scripts before and after, programs alongside (like trainers), and presets to reuse.
 - **Sandbox (Linux):** run untrusted games without network or access to your home folder.
 - **Emulators:** detected by themselves or added with RetroArch cores, with ROM scanning and save states.
-- **In-game overlay (beta, Linux):** the Guide button opens volume, FPS limit, screenshots, and notes over the game.
+- **In-game overlay:** volume, screenshots and notes over the game; Linux also has live FPS limits. Windows supports windowed/borderless games, with Ctrl+Shift+G or an XInput controller's Back+Start ([limits](docs/WINDOWS-MIGRATION.md#-in-game-overlay)).
 - **Replay (Linux):** save the last seconds of play with Guide + X, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/).
 
 <table>
@@ -171,7 +182,7 @@ cargo build --profile quick -p heronite-epic-login && cargo run --profile quick 
 # release build, installed for the current user (Linux)
 scripts/install.sh
 
-# installer and portable zip in dist\ (Windows, needs Inno Setup 6)
+# installer and portable zip in dist\ (Windows, needs Inno Setup 6.3 or later)
 powershell -ExecutionPolicy Bypass -File scripts\windows\package.ps1
 ```
 

@@ -39,6 +39,7 @@ smallvec = "1"
 libc = "0.2"
 signal-hook = "0.3"
 futures = "0.3"
+trash = "5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 heronite-shortcuts = { path = "../crates/shortcuts" }
 heronite-steam = { path = "../crates/steam" }
@@ -52,6 +53,9 @@ shlex = "1"
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }
+
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6"
 
 [dev-dependencies]
 tempfile = "3"

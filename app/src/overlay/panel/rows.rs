@@ -24,6 +24,7 @@ impl OverlayPanel {
             Tab::Notes => self.notes_rows(),
             Tab::Audio => self.audio_rows(),
             Tab::Controller => self.controller_rows(),
+            Tab::Achievements => self.achievement_rows(),
         }
     }
 
@@ -62,6 +63,7 @@ impl OverlayPanel {
             let index = self.data.statuses.iter().position(|s| &s.id == id).unwrap_or(0);
             rows.push(Row::choice("status", tr!("Status"), options, index).icon(Icon::Flag));
         }
+        rows.extend(self.achievements_home_row());
         rows.push(Row::action("launcher", tr!("Back to Heronite")).icon(Icon::Home).desc(tr!("The game keeps running")));
         rows.push(Row::action("quit", tr!("Quit game")).icon(Icon::PowerSettingsNew).danger());
         rows
@@ -93,20 +95,33 @@ impl OverlayPanel {
         let a = match &self.data.audio {
             None => return mixer::rows(&audio::AudioState::default(), self.game.is_some(), 0),
             Some(None) => {
-                return vec![Row::info("none", tr!("Volume control is not available"), "")
-                    .desc(tr!("It needs pactl (PipeWire or PulseAudio)."))
-                    .enabled(false)]
+                let why = if cfg!(windows) {
+                    tr!("Windows audio devices are not available.")
+                } else {
+                    tr!("It needs pactl (PipeWire or PulseAudio).")
+                };
+                return vec![Row::info("none", tr!("Volume control is not available"), "").desc(why).enabled(false)];
             }
             Some(Some(a)) => a,
         };
         let mut rows = mixer::rows(a, self.game.is_some(), mixer::AUDIO_APPS);
-        if !a.outputs.is_empty() {
-            let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
-            rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
-        }
-        if !a.inputs.is_empty() {
-            let options: Vec<SharedString> = a.inputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
-            rows.push(Row::choice("input", tr!("Microphone"), options, a.default_input.unwrap_or(0)).icon(Icon::Mic));
+        if audio::device_switching_supported() {
+            if !a.outputs.is_empty() {
+                let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
+                rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
+            }
+            if !a.inputs.is_empty() {
+                let options: Vec<SharedString> = a.inputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
+                rows.push(Row::choice("input", tr!("Microphone"), options, a.default_input.unwrap_or(0)).icon(Icon::Mic));
+            }
+        } else {
+            // The devices are only shown: they are switched in the system's settings.
+            if let Some(output) = a.default_output.and_then(|i| a.outputs.get(i)) {
+                rows.push(Row::info("output", tr!("Output"), mixer::short_row(&output.description)).icon(Icon::Headphones));
+            }
+            if let Some(input) = a.default_input.and_then(|i| a.inputs.get(i)) {
+                rows.push(Row::info("input", tr!("Microphone"), mixer::short_row(&input.description)).icon(Icon::Mic));
+            }
         }
         if let Some(muted) = a.mic_muted {
             rows.push(Row::toggle("mic", tr!("Microphone on"), !muted).icon(if muted { Icon::MicOff } else { Icon::Mic }));
@@ -127,7 +142,14 @@ impl OverlayPanel {
                 None => tr!("Not reported").to_string(),
             };
             rows.push(Row::info(SharedString::from(format!("battery-{i}")), tr!("Battery"), level).icon(Icon::BatteryFull));
-            let link = if c.bluetooth.is_some() { tr!("Bluetooth") } else { tr!("Wired or dongle") }.to_string();
+            let link = if cfg!(windows) {
+                tr!("Not reported by XInput")
+            } else if c.bluetooth.is_some() {
+                tr!("Bluetooth")
+            } else {
+                tr!("Wired or dongle")
+            }
+            .to_string();
             rows.push(Row::info(SharedString::from(format!("link-{i}")), tr!("Connection"), link).icon(Icon::SportsEsports));
             if c.bluetooth.is_some() {
                 rows.push(
@@ -159,6 +181,7 @@ impl OverlayPanel {
             "launcher" => self.with_service(cx, |s, cx| s.show_launcher(cx)),
             "quit" => self.ask(Confirm::Quit),
             id if self.notes_activate(id, cx) => {}
+            id if self.achievements_activate(id, cx) => {}
             _ => {
                 let Some(i) = id.strip_prefix("disconnect-").and_then(|n| n.parse::<usize>().ok()) else { return };
                 if let Some((c, _)) = self.data.controllers.get(i) {

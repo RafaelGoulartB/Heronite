@@ -1,5 +1,7 @@
 //! Differential tests against values produced by the original `match.ts`
-//! (run with Node over the same inputs; see `tests/golden/*.tsv`).
+//! (run with Node over the same inputs; see `tests/golden/*.tsv`). The one
+//! deliberate difference: accents fold and non-Latin letters stay (`Pokémon`
+//! is `pokemon`, not `pok mon`), so those rows of `norm_golden.tsv` are edited.
 
 use heronite_media::matching::{
     core_screenshot_name, normalize_screenshot_name, pick_screenshot_folder, score_screenshot_folder, MIN_SCORE,

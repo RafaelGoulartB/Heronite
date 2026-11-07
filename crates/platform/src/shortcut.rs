@@ -19,12 +19,13 @@ use std::os::windows::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
 
 use windows::core::{Interface, HSTRING};
-use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistStream, IStream, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
-    COINIT_DISABLE_OLE1DDE, STREAM_SEEK_END, STREAM_SEEK_SET,
+    CoCreateInstance, IPersistStream, IStream, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, STREAM_SEEK_END,
+    STREAM_SEEK_SET,
 };
 use windows::Win32::UI::Shell::{IShellLinkW, SHCreateMemStream, ShellLink, SLGP_RAWPATH};
+
+use crate::com::Com;
 
 /// What a shortcut starts and how it looks.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -49,7 +50,9 @@ const BUFFER: usize = 32 * 1024;
 
 /// The bytes of a `.lnk` file for `link`.
 pub fn encode(link: &Link) -> io::Result<Vec<u8>> {
-    let _com = Com::init();
+    // A thread already in COM (in another apartment) keeps its own: the shell
+    // link object works in both.
+    let _com = Com::init(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     // SAFETY: COM is initialized on this thread for the whole block; every
     // string passed lives through its call.
     unsafe {
@@ -77,7 +80,7 @@ pub fn encode(link: &Link) -> io::Result<Vec<u8>> {
 
 /// What the `.lnk` file `bytes` holds.
 pub fn decode(bytes: &[u8]) -> io::Result<Link> {
-    let _com = Com::init();
+    let _com = Com::init(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     // SAFETY: as in `encode`; the buffers outlive the calls that fill them.
     unsafe {
         let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).map_err(err)?;
@@ -193,30 +196,6 @@ pub fn split_args(line: &str) -> Vec<String> {
     }
 }
 
-/// COM for the current thread while it lives. A thread already in COM (in
-/// another apartment) keeps its own: the shell link object works in both.
-struct Com(bool);
-
-impl Com {
-    fn init() -> Self {
-        // SAFETY: balanced by `CoUninitialize` in `drop` when it succeeded.
-        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
-        if hr.is_err() && hr != RPC_E_CHANGED_MODE {
-            log::warn!("CoInitializeEx: {hr:?}");
-        }
-        Com(hr.is_ok())
-    }
-}
-
-impl Drop for Com {
-    fn drop(&mut self) {
-        if self.0 {
-            // SAFETY: this thread's successful `CoInitializeEx`.
-            unsafe { CoUninitialize() };
-        }
-    }
-}
-
 fn err(e: windows::core::Error) -> io::Error {
     io::Error::other(e)
 }
@@ -296,7 +275,7 @@ mod tests {
     #[test]
     fn works_on_a_thread_already_in_the_multithreaded_apartment() {
         std::thread::spawn(|| {
-            use windows::Win32::System::Com::COINIT_MULTITHREADED;
+            use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
             // SAFETY: balanced below.
             unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).ok().unwrap() };
             let dir = tempfile::tempdir().unwrap();

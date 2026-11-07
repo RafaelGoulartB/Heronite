@@ -114,7 +114,7 @@ impl OverlayPanel {
                 }
                 true
             }
-            Pad::Y => {
+            Pad::Y if audio::device_switching_supported() => {
                 self.next_output(cx);
                 true
             }
@@ -238,7 +238,7 @@ impl OverlayPanel {
                     .text_color(muted_color)
                     .child(icon(Icon::Headphones, u(15.), muted_color))
                     .child(div().truncate().child(o))
-                    .when(focused && a.outputs.len() > 1, |d| {
+                    .when(focused && a.outputs.len() > 1 && audio::device_switching_supported(), |d| {
                         d.child(
                             div()
                                 .ml_auto()

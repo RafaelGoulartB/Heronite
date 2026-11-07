@@ -55,9 +55,11 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
  │                      lossless PNG → WebP compression              → data, images
  ├─ heronite-overlay    in-game overlay backend: controller input
- │                      (evdev, Guide button, grabs), pactl audio,
- │                      controller battery / Bluetooth, replay
- │                      buffer (gpu-screen-recorder)                 → data
+ │                      (evdev, Guide button, grabs; XInput with
+ │                      Back + Start on Windows), audio (pactl; Core
+ │                      Audio on Windows), controller battery /
+ │                      Bluetooth, replay buffer
+ │                      (gpu-screen-recorder)                        → data, platform
  ├─ heronite-wine       Wine/Proton manager                          → data
  ├─ heronite-storage    disk space of games, prefixes, Proton builds,
  │                      Steam leftovers, caches; cleaning them up    → data, launch, wine
@@ -135,7 +137,15 @@ device when the last window closes (the app lives on in the tray); see its
   around a launch (cloud saves, runtimes); `first_launch` sets up a game the
   first time it runs in a Wine prefix. `lsfg` finds lsfg-vk (Lossless
   Scaling frame generation), the Lossless Scaling DLL and lsfg-vk's profiles,
-  and adds the frame generation variables to a launch. `fps_limit` holds a
+  and adds the frame generation variables to a launch. `reshade` installs
+  ReShade into a Windows game's folder like ReShade's installer (the
+  executable, its API and the DLL name from its PE headers and
+  `Compatibility.ini`; the DLL, `d3dcompiler_47` and shader packages
+  downloaded into `<data>/tools/reshade`), keeps what it wrote in
+  `<data>/reshade/<game>.json` so switching, updating, removing and adopting a
+  manual install only touch Heronite's files, and adds `<dll>=n,b` to
+  `WINEDLLOVERRIDES` at launch while it is on (never failing the launch). It
+  warns about anti-cheats and refuses games ReShade's list bans. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
   a fallback). `live_fps` makes that limit changeable while the game runs when MangoHud or gamescope applies it
@@ -317,7 +327,15 @@ device when the last window closes (the app lives on in the tray); see its
   reads the account's library from the client (games only: no tools,
   soundtracks, demos, test servers or games hidden in Steam), caches it and
   adds the games the Collection does not have yet; Steam's play time moves
-  the Steam entries up when it is ahead.
+  the Steam entries up when it is ahead. A Steam entry still "Not played"
+  (the status the scan of the installed games gave it before the library was
+  read; the scan now starts a game as "Played" when the cached library has
+  play time for it) becomes "Played" once Steam has play time for it, unless
+  the user ever chose its status (the status history has it): the move is an
+  inferred default like the status at creation, so it is not recorded there.
+  The rule is `heronite_data::status::promote_played`, which the Epic and GOG
+  play time sync and the recording of a session use too, so any game with
+  play time leaves "Not played".
 - **heronite-xbox:** Windows only (`Feature::XboxStore`). The Microsoft
   Store and PC Game Pass games are Windows packages: `heronite_platform::packages`
   reads the user's packages from the registry the deployment service keeps
@@ -349,7 +367,17 @@ device when the last window closes (the app lives on in the tray); see its
   the prefix's wineserver) and `finish` adds a local game: `wine`, `linux`,
   `dosbox`, `scummvm`, `libretro` and `web` runners, `system.env` and DLL
   overrides as environment variables, `launch_configs` as the game's actions.
-- **heronite-overlay:** the backend of the in-game overlay. `input` reads
+- **heronite-overlay:** the GPUI-free backend of the in-game overlay. On Windows,
+  `input::windows` polls documented XInput through `heronite-platform::gamepad`,
+  feeding the shared `input::core` state machine: Back+Start substitutes for Guide,
+  with no exclusive grab (games can still see the buttons). A controller is
+  named by `input::ControllerId`: its XInput slot there, its evdev node on
+  Linux. Controller battery is XInput's coarse estimate; Bluetooth disconnect
+  is not offered.
+  `audio::windows` adapts Core Audio (`heronite-platform::audio`): endpoint
+  volume/mute, microphone mute and active per-app/game sessions, identified by
+  stable session IDs rather than enumeration order. Default device switching
+  stays in Windows settings. On Linux, `input` reads
   the controllers from `/dev/input/event*` on its own thread (only while a
   game launched by the app runs and the overlay is on) and grabs them
   (`EVIOCGRAB`) while Guide is held or the panel is open, so the game gets
@@ -367,6 +395,9 @@ device when the last window closes (the app lives on in the tray); see its
   buffer saves nothing on exit), `ipc` saves through its `-ipc` socket, `target` finds the game's
   monitor (Hyprland) and `trim` cuts the panel's time off the end of a save (ffmpeg stream copy, idle
   priority).
+  `Feature::Overlay` supports Linux and Windows; `Feature::Replay` is Linux-only.
+  The replay service and every replay control use the latter independently,
+  including when preferences were copied from Linux.
 - **heronite-storage:** Settings → Storage. `inventory` lists the installed games (store size, Steam's
   `SizeOnDisk`, ROM files, else a walk), the Wine prefixes (in use while an installed game or the defaults
   use them; one inside a game's folder goes with the game), the Wine Manager builds (in use when the default,
@@ -478,7 +509,7 @@ device when the last window closes (the app lives on in the tray); see its
 | `services/` | long-lived entities shared by every screen: `downloads/` (the store service: Epic, GOG, Amazon Games), `session` (post-game work), `compression` (background lossless compression of the captures), `script_install` (the install from a script: worker thread, questions, progress), `update/` (app updates: checks, download, restart), `replay` (the replay buffer, Settings → Replay, off by default, on or off per game in Game settings → Performance: starts gpu-screen-recorder a few seconds after a game is running, again when the options change (one recorder at a time, never during a save) and ends it with the last game, a game that has it off, or when the overlay turns it off for the session; it owns `replay.json` and writes it in order; a save moves the file from the hidden `.heronite-replay` folder of the captures root into `<game folder>/replays/`, named like the captures), `proton_setup` (the newest GE-Proton downloaded on its own when an install dialog finds no Wine or Proton, through the app's one `WineManager`, which the Wine Manager page shares; it becomes the default Wine; it also keeps the installed `-latest` builds up to date (`autoUpdateLatestProton`, on by default): three minutes after the start and then every six hours it checks only the sources that have one, through `heronite_wine::checks` (the release feed first, an API call only when something was published), and downloads a new release in the background, never while a game runs. `HERONITE_WINE_ONLY_TOOLS=1` makes the detection see only the data folder's builds, to try it with a copy), `launcher_imports` (the games of Heroic, Lutris, Bottles and Faugus: which are on this PC, turning an import on or off, keeping the ones on in sync every quarter of an hour and on the refresh button of the ☰ menu), `clients/` (the store clients, `heronite_clients`, under Wine on Linux and as they are on Windows: their setup, opening, closing and sign-in; it starts with the app and costs nothing while none is set up: it looks at them ten seconds after the start and every quarter of an hour, syncing the installed ones' games into the Collection; whether a client runs is asked every 3 s while its page is on screen and every 15 s while a client opened from here runs, and one that closes, or whose game ended, is synced; `HERONITE_DEBUG_CLIENT=<id>:<state>` shows a state without Wine, see `debug.rs`), `achievements` (each game's local copy read when the Collection shows it and refreshed when older than six hours, 20 s after a session ends, from the focus panel, the dialog and Settings → "Update now", one game at a time; new unlocks become a desktop notification (off by default); it also signs the emulators in to RetroAchievements: at start, on sign-in, when the options change and after a game for one that was open, and on sign-out clears only the emulators holding this account), `sync` (the cloud account, `heronite_sync`: the library sync 20 s after start, 5 s after each game and every ten minutes, never during a game, plus "Sync now"; it connects the account on a thread of its own while the browser sign-in waits, and a sync that changed the Collection makes it reload; `uploads` is one queue for the rest: a backup as it is made (`upkeep`), the saves after each game, the screenshots when the compression has nothing left, one upload at a time on a thread of its own, stopped by a game launch and resumed after it, tried again after 2, 5, 15 then 30 minutes when the account refuses requests, stopped when the app quits and resumed at the next start; `cloud_backups` lists, brings and restores the backups in the account), `steam_library` (reads the Steam library while Steam runs: every few seconds until the first read, then every ten minutes; opens and restarts Steam for the welcome, and tells "starting" from "needs a restart" by the `steamwebhelper` command line), `widgets` |
 | `runtime.rs` | bridge between `heronite-launch` and the UI |
 | `diagnosis/` | the launch diagnosis for the UI: `gather` reads what `heronite_launch::diagnose` needs for a game, `apply` applies a fix (winetricks components, game settings, the best Proton, ending a wineserver, `vm.max_map_count` through `pkexec`), `text` says it; the fixes applied this run are remembered so one that did not help is not offered as the answer again. The Collection runs it when a game ends within `FAILED_LAUNCH_WINDOW` and opens `dialogs/launch_problem`; without a window the cause goes into the notification |
-| `overlay/` | the in-game overlay (beta, off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard) and notices (`toast.rs`) as layer-shell windows (`window.rs`); `moment.rs` marks a moment in the game's journal (a capture and an empty note); `replay.rs` saves the replay (Guide + X, the panel's "Save replay", the keyboard shortcut of `services::replay`) and marks it as a moment (`clip` in the journal entry) |
+| `overlay/` | the in-game overlay (off by default): `OverlayService` follows the launch events like `services::session`, runs `heronite_overlay::input` while a game runs, and opens the panel (`panel/`, its Notes tab in `notes.rs` with the compact on-screen keyboard, its Achievements tab in `achievements.rs` from `services::achievements` when the game has a set) and notices (`toast.rs`; achievement notices queue) through `window.rs`: Wayland layer-shell on Linux, native topmost tool windows on Windows (`window/windows.rs`, HWND placement/focus in `heronite-platform::overlay_window`). Windows notices do not activate and pass pointer input through; a keyboard panel returns focus only while it still owns foreground. The keyboard shortcut uses the existing capture `GlobalHotkey` (Windows: `RegisterHotKey`, Ctrl+Shift+G default). `labels.rs` has every text that names the controller chord (Guide on Linux, Back + Start on Windows), for Settings, its search, the palette, "Getting started" and the panel. `moment.rs` marks a moment in the game's journal (a capture and an empty note); Linux-only `Feature::Replay` gates `services::replay` and its controls independently of the overlay; `replay.rs` saves the replay and marks it as a moment (`clip` in the journal entry) |
 | `collection/` | the main screen (`CollectionView`): list, header and its View menu (`view_menu`: filter search, views, sort, grouping), the Focus / Grid switch (`view_mode`) and its options menu (`view_options`), focus panel, grid view (`grid`, `grid_drawer`), wider list and drawer by dragging their edge (`resize`), Settings → Appearance on the Collection (`look`: background picture and slideshow, accent from the game, start view, Focus or Grid by the window's width), selecting several games (`selection`: Ctrl / Shift click, Ctrl A, the batch changes and their undo; `dock`: the bar that shows them), stage, context menu, command palette, screenshots, the game's Journal (`journal/`: the Timeline's other view, notes written in place), and the glue to dialogs and services; `welcome/` is the empty Collection of a new setup: what Heronite found on this PC and brings in by itself (Steam's library, with "Open Steam" or "Restart Steam" when that is what is missing; emulators and the usual ROM folders, set up once with `heronite_emulation::setup`), the other sources, the other launchers found with games (a click turns their import on), the stores, and a shelf of empty covers (`HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state); `launchers` reloads the Collection when another launcher's games come in; `onboarding` hosts "Getting started" (`dialogs/onboarding`: three cards, your games, your look and while you play, that open inside it or switch things on in place, plus tips; `art` draws its pictures without needing games: empty covers, a preview of the Collection in the current look and chosen view (the bare layout until there are games) and the overlay panel; the look view puts Focus and Grid first, over the preview), which opens by itself once per setup (on a new setup, once the first games arrive) and from the bulb in the header (`onboarding.json` in the app state) |
 | `dialogs/` | one view per dialog; they talk back through `DialogEvent` |
 | `pages/` | ☰ pages (Settings, Downloads, Epic, GOG, Amazon Games, Steam, the store clients' `clients/`: Battle.net, EA app, Ubisoft Connect, Rockstar Games, Wine Manager, Emulators); they talk back through `PageEvent` |

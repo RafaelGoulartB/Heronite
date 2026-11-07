@@ -45,6 +45,7 @@ pub(crate) mod organize;
 mod palette;
 mod pumps;
 mod render_focus;
+mod reshade_menu;
 mod resize;
 mod screenshot_viewer;
 mod screenshots;

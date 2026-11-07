@@ -1,9 +1,11 @@
 //! The overlay panel: the game and the session on top, tabs switched with
-//! LB / RB (Home, Screenshots, Notes, Audio, Controller), rows in console mode's
-//! look and the button hints at the bottom. It only takes controller presses
+//! LB / RB (Home, Screenshots, Notes, Audio, Controller, and Achievements
+//! when the game has them), rows in console mode's look and the button hints
+//! at the bottom. It only takes controller presses
 //! (the service forwards them: the window never has the keyboard, so the
 //! game keeps it).
 
+mod achievements;
 mod data;
 mod mixer;
 mod notes;
@@ -36,6 +38,7 @@ pub enum Tab {
     Notes,
     Audio,
     Controller,
+    Achievements,
 }
 
 const TABS: [Tab; 5] = [Tab::Home, Tab::Shots, Tab::Notes, Tab::Audio, Tab::Controller];
@@ -50,6 +53,7 @@ impl Tab {
             Tab::Notes => tr!("Notes").into(),
             Tab::Audio => tr!("Audio").into(),
             Tab::Controller => tr!("Controller").into(),
+            Tab::Achievements => tr!("Achievements").into(),
         }
     }
 
@@ -60,6 +64,7 @@ impl Tab {
             Tab::Notes => Icon::Notes,
             Tab::Audio => Icon::VolumeUp,
             Tab::Controller => Icon::SportsEsports,
+            Tab::Achievements => Icon::Trophy,
         }
     }
 }
@@ -103,6 +108,11 @@ pub struct OverlayPanel {
     writing: Option<notes::Writing>,
     /// The replay of the game running, when it applies to it.
     replay: Option<crate::services::replay::PanelState>,
+    /// The game's achievements, as the achievements service has them.
+    achievements: Option<achievements::Shown>,
+    _achievements_sub: Option<Subscription>,
+    /// Their icons (made when the tab is first drawn).
+    icons: Option<achievements::Icons>,
 }
 
 /// Controller button to console mode's press.
@@ -133,6 +143,7 @@ impl OverlayPanel {
         game: Option<GameNow>,
         controllers: Vec<Controller>,
         keyboard: bool,
+        scale: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -147,7 +158,7 @@ impl OverlayPanel {
             volume_step: i64::from(volume_step),
             game,
             controllers,
-            scale: super::window::scale(cx),
+            scale,
             tab: 0,
             nav: ListNav::default(),
             data: Data::default(),
@@ -162,8 +173,12 @@ impl OverlayPanel {
             osk: None,
             writing: None,
             replay,
+            achievements: None,
+            _achievements_sub: None,
+            icons: None,
         };
         this.load_all(paths, cx);
+        this.watch_achievements(cx);
         // The clock and the session time.
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(20)).await;
@@ -180,16 +195,34 @@ impl OverlayPanel {
         self.load_batteries(cx);
     }
 
-    fn tabs(&self) -> &'static [Tab] {
-        if self.game.is_some() {
-            &TABS
-        } else {
-            &TABS_NO_GAME
+    fn tabs(&self) -> Vec<Tab> {
+        let mut tabs = if self.game.is_some() { TABS.to_vec() } else { TABS_NO_GAME.to_vec() };
+        // Last, so the others keep their place when it shows up.
+        if self.achievements.is_some() {
+            tabs.push(Tab::Achievements);
         }
+        tabs
     }
 
     fn tab(&self) -> Tab {
-        self.tabs()[self.tab]
+        self.tabs().get(self.tab).copied().unwrap_or(Tab::Home)
+    }
+
+    /// Shows `tab` (a row of Home leads to it).
+    fn show_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
+        if let Some(i) = self.tabs().iter().position(|t| *t == tab) {
+            self.tab = i;
+            self.nav.reset();
+            self.grid = None;
+            self.error = None;
+            self.tab_shown(cx);
+        }
+    }
+
+    fn tab_shown(&mut self, cx: &mut Context<Self>) {
+        if self.tab() == Tab::Achievements {
+            self.refresh_achievements(cx);
+        }
     }
 
     fn with_service(&self, cx: &mut Context<Self>, f: impl FnOnce(&mut OverlayService, &mut Context<OverlayService>) + 'static) {
@@ -229,6 +262,7 @@ impl OverlayPanel {
                 self.nav.reset();
                 self.grid = None;
                 self.error = None;
+                self.tab_shown(cx);
                 return true;
             }
             Pad::B => {
@@ -309,7 +343,7 @@ impl OverlayPanel {
         if self.grid.is_none() && self.nav.focused(&rows).is_some_and(|r| mixer::is_mixer(&r.id)) {
             let outputs = self.data.audio.as_ref().and_then(|a| a.as_ref()).map_or(0, |a| a.outputs.len());
             let mut h = vec![hint(Btn::LeftRight, tr!("Adjust")), hint(Btn::A, tr!("Mute"))];
-            if outputs > 1 {
+            if outputs > 1 && heronite_overlay::audio::device_switching_supported() {
                 h.push(hint(Btn::Y, tr!("Output")));
             }
             h.push(hint(Btn::B, tr!("Close")));
@@ -453,7 +487,7 @@ impl OverlayPanel {
             }))
     }
 
-    fn render_body(&mut self) -> Div {
+    fn render_body(&mut self, window: &Window, cx: &mut Context<Self>) -> Div {
         let rows = self.rows();
         let list_active = self.grid.is_none() && self.confirm.is_none();
         let placeholder = AudioState::default();
@@ -487,6 +521,9 @@ impl OverlayPanel {
             None if self.tab() == Tab::Controller => {
                 self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_1().min_h_0().into_any_element()
             }
+            None if self.tab() == Tab::Achievements => {
+                self.render_achievements(list_active, window, cx).flex_1().min_h_0().into_any_element()
+            }
             None => self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_none().into_any_element(),
         };
         let mut body = div().flex().flex_col().flex_1().min_h_0().overflow_hidden().px(u(12.)).pt(u(10.)).pb(u(6.)).gap(u(8.)).child(list);
@@ -499,7 +536,7 @@ impl OverlayPanel {
             Tab::Home if !self.apps_playing() => body.child(self.render_recent()),
             Tab::Home => body,
             Tab::Shots => body.child(self.render_grid()),
-            Tab::Notes | Tab::Audio | Tab::Controller => body,
+            Tab::Notes | Tab::Audio | Tab::Controller | Tab::Achievements => body,
         }
     }
 }
@@ -523,7 +560,8 @@ fn duration_label(minutes: u64) -> String {
 }
 
 impl Render for OverlayPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.icons_frame(window);
         // Over the game, whatever the theme.
         theme::set_dark_only(true);
         kit::set_scale_value(self.scale);
@@ -543,7 +581,7 @@ impl Render for OverlayPanel {
             .overflow_hidden()
             .child(self.render_tabs())
             .child(self.render_header())
-            .child(self.render_body())
+            .child(self.render_body(window, cx))
             .child(self.render_hints())
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key));

@@ -26,6 +26,7 @@ mod prefix_menu;
 mod presets;
 mod protondb;
 mod replay;
+mod reshade;
 mod sandbox;
 mod saves;
 mod shared_folders;
@@ -50,6 +51,7 @@ use crate::ui::fields::new_input;
 
 pub use general::GlobalView;
 pub use logic::{GameFacts, Section};
+pub use reshade::focus_reshade;
 
 /// What the settings are bound to.
 #[derive(Clone, Debug)]
@@ -109,6 +111,7 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("steamLine", Bind::SteamLine, n_!("Empty: Steam's defaults")),
     ("select.filter", Bind::Scratch, n_!("Search\u{2026}")),
     ("wt.search", Bind::Scratch, n_!("Search components\u{2026}")),
+    ("reshade.repo", Bind::Scratch, "https://github.com/…"),
 ];
 
 /// Outcome line shown under a tab (tool started, sync result, errors).
@@ -185,6 +188,8 @@ pub struct SettingsPanel {
     pub(super) lsfg: Option<heronite_launch::lsfg::Install>,
     /// `lsfg-vk-ui`, when installed.
     pub(super) lsfg_ui: Option<String>,
+    /// The ReShade section (read when the Performance tab opens).
+    reshade: reshade::ReshadeUi,
     /// The umu database, for the Game fixes section (`None` while read).
     pub(super) umu: Option<fixes::UmuData>,
     /// Why the sandbox cannot run here (`None` while looked at; `Some(None)`: it can).
@@ -311,6 +316,7 @@ impl SettingsPanel {
             runtimes,
             lsfg: None,
             lsfg_ui: None,
+            reshade: Default::default(),
             umu: None,
             sandbox_host: None,
             presets: Vec::new(),
@@ -338,6 +344,9 @@ impl SettingsPanel {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
         this.load_lsfg(cx);
+        if this.section == Section::Performance {
+            this.load_reshade(false, cx);
+        }
         this.load_gpu(cx);
         this.load_presets(cx);
         if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
@@ -407,6 +416,9 @@ impl SettingsPanel {
             self.confirm_reset = false;
             self.env_error.clear();
             self.maybe_detect_saves(window, cx);
+            if section == Section::Performance && self.reshade.overview.is_none() {
+                self.load_reshade(false, cx);
+            }
             cx.notify();
         }
     }

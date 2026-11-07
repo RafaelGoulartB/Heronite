@@ -1025,6 +1025,10 @@ mod tests {
         let mut third = base.clone();
         third.params.path = "thirdParty".into();
         assert_eq!(third.partial_folder(), None);
+        // No known folder (a store that did not fill it in): never the base path itself.
+        let mut unknown = base.clone();
+        unknown.params.game_info = json!({"title": "u", "folder_name": ""});
+        assert_eq!(unknown.partial_folder(), None);
     }
 
     #[test]

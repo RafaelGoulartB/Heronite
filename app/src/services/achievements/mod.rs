@@ -89,6 +89,9 @@ pub struct Achievements {
     /// What each emulator's RetroAchievements login looks like, at the last
     /// write or check.
     emulators: Vec<heronite_achievements::emulators::Status>,
+    /// The user signed out while an emulator was open: their login is
+    /// cleared from it once it closes (`retry_running_emulators`).
+    emulator_sign_out: Option<String>,
     /// The user's home (where the emulators keep their settings).
     home: std::path::PathBuf,
 }
@@ -145,6 +148,7 @@ impl Achievements {
             queue: VecDeque::new(),
             bulk: Bulk::default(),
             emulators: Vec::new(),
+            emulator_sign_out: None,
             home: dirs::home_dir().unwrap_or_default(),
         }
     }
@@ -173,13 +177,58 @@ impl Achievements {
         let key = key_of(&game.runner, &game.app_name);
         self.known.insert(
             game.app_name.clone(),
-            Known { runner: game.runner.clone(), app_name: game.app_name.clone(), title: game.title.clone(), targets: targets.clone() },
+            Known { runner: game.runner.clone(), app_name: game.app_name.clone(), title: game.title.clone(), targets },
         );
         if self.games.contains_key(&key) {
             return;
         }
-        self.games.insert(key.clone(), GameEntry { order: order_of(&targets), ..Default::default() });
-        let (paths, runner, app_name) = (self.data_paths.clone(), game.runner.clone(), game.app_name.clone());
+        self.read_copy(key, false, cx);
+    }
+
+    /// The entry of a game by its app name (how the overlay knows the game
+    /// that runs).
+    pub fn entry_of_app(&self, app_name: &str) -> Option<&GameEntry> {
+        let k = self.known.get(app_name)?;
+        self.games.get(&key_of(&k.runner, &k.app_name))
+    }
+
+    /// The overlay is open over `app_name`: read its copy (the Collection
+    /// may never have shown it), and with `refresh` read its sources again
+    /// (at most once a minute, like every refresh).
+    pub fn want_playing(&mut self, app_name: &str, refresh: bool, cx: &mut Context<Self>) {
+        if !enabled() {
+            return;
+        }
+        if let Some(known) = self.known.get(app_name) {
+            let key = key_of(&known.runner, &known.app_name);
+            if !self.games.contains_key(&key) {
+                self.read_copy(key, refresh, cx);
+            } else if refresh {
+                self.refresh(&key, cx);
+            }
+            return;
+        }
+        let (paths, name) = (self.data_paths.clone(), app_name.to_string());
+        cx.spawn(async move |this, cx| {
+            let Some(known) = cx.background_spawn(async move { find_game(&paths, &name) }).await else { return };
+            this.update(cx, |this, cx| {
+                let key = key_of(&known.runner, &known.app_name);
+                this.known.insert(known.app_name.clone(), known);
+                if !this.games.contains_key(&key) {
+                    this.read_copy(key, refresh, cx);
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Reads the copy of a known game, then refreshes it when it is old (or
+    /// with `refresh`).
+    fn read_copy(&mut self, key: String, refresh: bool, cx: &mut Context<Self>) {
+        let Some(known) = self.known.values().find(|k| key_of(&k.runner, &k.app_name) == key) else { return };
+        let (paths, runner, app_name) = (self.data_paths.clone(), known.runner.clone(), known.app_name.clone());
+        self.games.insert(key.clone(), GameEntry { order: order_of(&known.targets), ..Default::default() });
         cx.spawn(async move |this, cx| {
             let copy = cx.background_spawn(async move { store::read(&paths, &runner, &app_name) }).await;
             this.update(cx, |this, cx| {
@@ -193,7 +242,7 @@ impl Achievements {
                 entry.game = Arc::new(copy);
                 entry.loaded = true;
                 cx.notify();
-                if stale {
+                if stale || refresh {
                     this.refresh(&key, cx);
                 }
             })

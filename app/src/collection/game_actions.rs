@@ -45,6 +45,8 @@ pub(super) enum GameAction {
     Favourite,
     OpenFolder,
     Settings,
+    /// The game settings on the ReShade section.
+    Reshade,
     EditGame,
     /// An emulated game played as a PC game from now on (a native port).
     PlayAsPc,
@@ -218,6 +220,15 @@ impl CollectionView {
                 Icon::Tune,
                 "config configure options wine proton launch configuracoes opcoes ajustes",
             ));
+            if self.reshade_fits(&game.key, cx) {
+                v.push(item(
+                    A::Reshade,
+                    "reshade",
+                    "ReShade",
+                    Icon::Palette,
+                    "reshade shaders preset filters effects sharpen filtros efeitos nitidez",
+                ));
+            }
         }
         // Sideloaded programs and browser games; not Steam/emulated entries,
         // nor the ones another launcher or a store client starts.
@@ -349,6 +360,7 @@ impl CollectionView {
                 let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
                 self.open_dialog(view, cx);
             }
+            A::Reshade => self.open_reshade(key, window, cx),
             A::EditGame => {
                 self.open_edit_game(key, window, cx);
             }

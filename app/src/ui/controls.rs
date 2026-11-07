@@ -107,6 +107,22 @@ pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: i
     row_with(label.into(), description, None, control)
 }
 
+/// A [`row`] with `lead` (an [`icon_badge`]) before its label.
+pub fn row_lead(lead: impl IntoElement, label: impl Into<SharedString>, description: Option<&str>, control: impl IntoElement) -> Div {
+    let r = row_with(label.into(), description, None, control);
+    // The badge goes first; the label column keeps growing.
+    div().flex().items_center().gap(px(12.)).child(div().flex_none().child(lead)).child(r.flex_1().min_w_0())
+}
+
+/// The badge of a section's main switch: its icon on an accent tile (36px).
+pub fn icon_badge(ic: Icon) -> Div {
+    div().flex_none().size(px(36.)).rounded(px(11.)).bg(theme::accent_tint()).flex().items_center().justify_center().child(icon(
+        ic,
+        px(19.),
+        theme::accent(),
+    ))
+}
+
 fn row_with(label: SharedString, description: Option<&str>, after_label: Option<AnyElement>, control: impl IntoElement) -> Div {
     div()
         .relative()

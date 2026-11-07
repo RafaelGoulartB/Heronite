@@ -10,23 +10,76 @@ What works on Windows, what is left, and what Windows does not need.
 - Collection: Steam (installed games and the whole library), games added by hand, play time
 - Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite
 - Emulators and ROM folders
+- RetroAchievements sign-in for RetroArch, including registered installed and portable copies
 - Save backups (Ludusavi)
 - Screenshots
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
+- Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
+- Native launch extras: before/after scripts and delayed companions; real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
+- Steam tests: library and session fixtures run on Windows without reading the host's registry, Steam folders or process list; achievement fixtures are isolated too
+- Tray menus follow the app's light/dark theme (including System and Custom) on Windows 10 1903+ and Windows 11. High contrast keeps Windows' native colours. Older Windows versions, or missing uxtheme exports, fall back to the native menu with a warning
+
+## 🚧 ReShade per game
+
+The same files go into the game's folder as on Linux (Settings → Performance
+→ ReShade), without the Wine overrides and without `d3dcompiler_47` (Windows
+has it). Covered by the tests on both systems; a DirectX 11 game still needs a
+check on a real Windows machine.
 
 ## ⬜ To do
 
-- In-game overlay and replay buffer
+- Replay buffer (separate from the overlay; hidden on Windows)
 - GOG Galaxy services (`comet`)
-- RetroAchievements sign-in of the emulators: `heronite_achievements::emulators` only knows their Linux config files (`~/.config`, Flatpak), not where they keep them on Windows (`%APPDATA%`, portable folders)
+- RetroAchievements sign-in for the remaining emulators (DuckStation, PCSX2, PPSSPP, Dolphin and Flycast): their Windows config locations and, where needed, token encryption still need support
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
-- Dark tray menus: the tray menu stays light in dark mode, because the fix needs an undocumented uxtheme call. A new tray icon also starts in Windows 11's hidden-icons flyout until the user pins it
+- A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
 - Authenticode signing: ready but off until there is a certificate (secrets `WINDOWS_SIGN_PFX_BASE64` and `WINDOWS_SIGN_PASSWORD`, or `WINDOWS_SIGN_COMMAND`). Until then SmartScreen warns on the first run, and the release notes say so
-- Installer languages: the Inno Setup installer is English only, while the app also speaks pt-BR, es and de
-- Steam tests: the Steam library and session tests (`TODO(windows)` in `heronite-launch`) only run on Linux. `SteamLocator` reads this machine's real Steam from the registry, so the fake Steam of a test is not seen. It first needs a way to leave the registry out
+
+## 🚧 In-game overlay
+
+Off by default, enabled in Settings → Overlay. It uses native topmost tool
+windows over windowed and borderless-fullscreen games, on the foreground
+window's monitor. Legacy exclusive fullscreen is not supported: Heronite
+does not inject code into games.
+
+- **Keyboard:** Ctrl+Shift+G by default (saved shortcuts are kept), registered
+  only while a game runs, or while "Open it without a game too" is on. The
+  existing `RegisterHotKey` backend reports conflicts in Settings. Win+G is
+  normally owned by Xbox Game Bar. A keyboard-opened panel requests focus;
+  closing it returns focus only if the panel still owns it. Windows can
+  refuse foreground requests made without user input; Heronite does not
+  simulate input to bypass that restriction.
+- **Controller:** an XInput controller's Back+Start acts as Guide when both
+  go down within 300 ms (a Back held for a game's map stays Back). Tap the
+  combination to open/close; hold it with the configured screenshot button,
+  a direction for volume, or Y to mark a moment. Real Guide is not exposed
+  by documented XInput and can be claimed by Game Bar or Steam. There is no
+  controller grab on Windows: games can still receive these buttons and
+  navigation. Non-XInput controllers need an XInput mapping. Battery levels
+  are coarse estimates; transport and Bluetooth disconnect are unavailable.
+- **Panel:** Home, Screenshots, Notes (including the on-screen keyboard),
+  Audio and Controller reuse the Linux views. Screenshot capture uses the
+  existing Windows backend.
+- **Audio:** Core Audio supplies system volume/mute, microphone mute and
+  active app/game audio sessions. Choose default devices in Windows sound
+  settings; Heronite does not use undocumented device-switching APIs.
+- **Notices:** non-activating, pointer-transparent windows; they do not
+  request foreground. Native placement accounts for monitor origin and DPI.
+- **Unavailable:** replay recording, gamescope/MangoHud live FPS controls
+  and Bluetooth controller disconnect. Replay has its own Linux-only
+  `Feature::Replay`, so copied Linux settings cannot start a recorder.
+
+Real-game, physical shortcut/controller, mixed-DPI/HDR and elevated-game
+checks are still needed. Background debug hooks cannot prove keyboard
+focus handoff because Windows can refuse it without a real hotkey event.
+The debug hooks also support native Windows windows:
+`HERONITE_DEBUG_OVERLAY=layer[:<app_name>]`; `window` keeps the normal
+debug window, and `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` targets the
+monitor holding that desktop point. Never simulate keyboard, mouse or controller input on the
+machine: use `HERONITE_DEBUG_OVERLAY_PAD` for in-app navigation.
 
 ## ➖ Not planned
 
@@ -40,6 +93,30 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 - Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
 - Troubleshoot (its checks are about Wine, Proton and Linux drivers)
 - AppImage and Linux packages
+
+## RetroArch sign-in
+
+Add the native or portable executable on the Emulators page and open RetroArch
+once so it creates its config. Enable emulator sign-in in Settings → Achievements.
+Heronite follows RetroArch's Windows search order: `retroarch.cfg` beside each
+executable, then `%APPDATA%\retroarch.cfg`. Executables found on `PATH` and the
+APPDATA fallback also work without a registered installation; a Scoop shim is
+followed to the app's folder, and a Chocolatey shim (whose target cannot be
+read) is skipped. Unopened configs are never created, and a running RetroArch
+(including a renamed registered executable) is left alone; after a sign-out it
+is cleared once the game ends.
+
+Profile `-c` / `--config` paths are written as well as the default config (the
+Emulators page opens RetroArch without arguments). Absolute paths, paths
+relative to the emulator's working folder and `{EmulatorDir}` are supported;
+RetroArch opens the `-c` value as given, so its `:\` prefix does not apply
+there. A relative config with a ROM working folder, a drive-relative path
+(`C:x.cfg`, often an unquoted `C:\x.cfg`) or a game-dependent config template
+is reported in Settings and skipped, rather than editing a guessed file; the
+other configs are still written. Signing out clears only configs that still
+hold Heronite's account.
+DuckStation and the other emulators are intentionally not enabled on Windows by
+this change. Real account authentication still needs a check inside RetroArch.
 
 ## Rules for code on both systems
 

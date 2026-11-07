@@ -11,7 +11,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use super::core::{Core, Grab, Output};
-use super::{Button, Controller, Event, Options};
+use super::{Button, Controller, ControllerId, Event, Options};
 
 /// How often the thread looks for new controllers while idle.
 const RESCAN: Duration = Duration::from_secs(2);
@@ -92,7 +92,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
             last_scan = Instant::now();
             if scan(&mut pads, &mut seen, &mut next_id, &core) {
                 let mut list: Vec<Controller> = pads.values().map(|p| p.info.clone()).collect();
-                list.sort_by(|a, b| a.node.cmp(&b.node));
+                list.sort_by(|a, b| a.id.cmp(&b.id));
                 on_event(Event::Controllers(list));
             }
         }
@@ -142,7 +142,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
                         let out = core.removed(id, pads.len());
                         apply(out, &mut pads, &mut on_event);
                         let mut list: Vec<Controller> = pads.values().map(|p| p.info.clone()).collect();
-                        list.sort_by(|a, b| a.node.cmp(&b.node));
+                        list.sort_by(|a, b| a.id.cmp(&b.id));
                         on_event(Event::Controllers(list));
                     }
                 }
@@ -293,7 +293,7 @@ pub fn list_controllers() -> Vec<Controller> {
         .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("event")))
         .filter_map(|p| open_pad(&p).ok().flatten().map(|pad| pad.info))
         .collect();
-    out.sort_by(|a, b| a.node.cmp(&b.node));
+    out.sort_by(|a, b| a.id.cmp(&b.id));
     out
 }
 
@@ -327,7 +327,7 @@ fn open_pad(path: &Path) -> io::Result<Option<Pad>> {
     }
     let id = dev.input_id();
     let bluetooth = (id.bus_type().0 == BUS_BLUETOOTH).then(|| dev.unique_name().unwrap_or_default().to_uppercase()).filter(|m| is_mac(m));
-    let info = Controller { name: dev.name().unwrap_or("Controller").to_string(), node: path.to_path_buf(), bluetooth };
+    let info = Controller { name: dev.name().unwrap_or("Controller").to_string(), id: ControllerId::Evdev(path.to_path_buf()), bluetooth };
     Ok(Some(Pad { dev, info, x, y, sx: 0., sy: 0. }))
 }
 

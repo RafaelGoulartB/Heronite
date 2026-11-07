@@ -83,6 +83,8 @@ pub enum Icon {
     ShoppingBag,
     Lightbulb,
     Palette,
+    /// Overlapping frames: frame generation.
+    Animation,
     PhotoCamera,
     /// A replay (a saved video of the game).
     Videocam,
@@ -150,6 +152,11 @@ pub enum Icon {
     EmuMame,
     EmuScummVm,
     EmuAzahar,
+    EmuMupen64Plus,
+    EmuM64Py,
+    EmuGopher64,
+    EmuEpsxe,
+    EmuDesmume,
 }
 
 impl Icon {
@@ -199,6 +206,7 @@ impl Icon {
             ShoppingBag => "icons/shopping-bag.svg",
             Lightbulb => "icons/lightbulb.svg",
             Palette => "icons/palette.svg",
+            Animation => "icons/animation.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Videocam => "icons/videocam.svg",
             Inbox => "icons/inbox.svg",
@@ -287,6 +295,11 @@ impl Icon {
             EmuMame => "icons/emu-mame.svg",
             EmuScummVm => "icons/emu-scummvm.svg",
             EmuAzahar => "icons/emu-azahar.svg",
+            EmuMupen64Plus => "icons/emu-mupen64plus.svg",
+            EmuM64Py => "icons/emu-m64py.svg",
+            EmuGopher64 => "icons/emu-gopher64.svg",
+            EmuEpsxe => "icons/emu-epsxe.svg",
+            EmuDesmume => "icons/emu-desmume.svg",
         }
     }
 }

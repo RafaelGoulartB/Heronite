@@ -8,13 +8,17 @@
 //!   Steam twin (`heronite_data::steam_owned`) instead of a new entry;
 //! * the others are added as Steam entries, installed or not;
 //! * Steam's play time and last played date go to the Steam entries when
-//!   they are ahead (Steam counts the sessions started here too).
+//!   they are ahead (Steam counts the sessions started here too);
+//! * a Steam entry that is still "Not played", the status the scan of the
+//!   installed games gave it before this library was read, becomes "Played"
+//!   once Steam has play time for it, unless the user ever chose its status.
 
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use anyhow::{anyhow, Result};
 use heronite_data::models::{LocalMetaFile, TimestampFile};
+use heronite_data::status::PlayedGame;
 use heronite_data::steam_owned::{unix_to_iso, SteamOwnedFile, SteamOwnedGame};
 use heronite_data::{json_store, DataPaths, Library};
 use heronite_launch::install_state::steam_sideload_entry;
@@ -32,6 +36,15 @@ pub struct ImportReport {
     pub added: usize,
     /// Steam entries whose play time or last played date moved up.
     pub playtime: usize,
+    /// Steam entries that went from "Not played" to "Played".
+    pub promoted: usize,
+}
+
+impl ImportReport {
+    /// Whether the Collection has to be read again.
+    pub fn changed(&self) -> bool {
+        self.added > 0 || self.playtime > 0 || self.promoted > 0
+    }
 }
 
 /// Steam names of things that are not games to play: test servers,
@@ -149,6 +162,10 @@ pub fn import(paths: &DataPaths, owned: Vec<SteamOwnedGame>, steam_bin: Option<&
         .filter_map(|m| Some((m.app_name.clone(), owned.iter().find(|g| Some(&g.app_id) == m.steam_app_id.as_ref())?)))
         .collect();
     report.playtime = sync_playtime(paths, &entries)?;
+    report.promoted = promote_played(paths, &entries)?;
+    if report.promoted > 0 {
+        log::info!("Marked {} Steam game(s) as Played: Steam has play time for them", report.promoted);
+    }
     Ok(report)
 }
 
@@ -197,11 +214,24 @@ fn sync_playtime(paths: &DataPaths, entries: &[(String, &SteamOwnedGame)]) -> Re
     Ok(changed.len())
 }
 
+/// Moves the entries that are still "Not played" to "Played" when Steam has
+/// play time for them: the status they would have got had this library been
+/// read before the scan of the installed games added them (the rule is
+/// [`heronite_data::status::promote_played`]). How many entries changed.
+fn promote_played(paths: &DataPaths, entries: &[(String, &SteamOwnedGame)]) -> Result<usize> {
+    let games: Vec<PlayedGame> = entries
+        .iter()
+        .map(|(app, g)| PlayedGame { app_name: app.clone(), minutes: g.playtime_minutes, extras: Default::default() })
+        .collect();
+    heronite_data::status::promote_played(paths, &games)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+    use std::time::{Duration, SystemTime};
 
     fn owned(id: &str, name: &str, installed: bool, minutes: u64, last: Option<i64>) -> SteamOwnedGame {
         SteamOwnedGame {
@@ -255,7 +285,7 @@ mod tests {
             owned("10", "Counter-Strike", true, 0, None),
         ];
         let report = import(&paths, games.clone(), Some("/usr/bin/steam")).unwrap();
-        assert_eq!(report, ImportReport { owned: 4, added: 2, playtime: 2 });
+        assert_eq!(report, ImportReport { owned: 4, added: 2, playtime: 2, promoted: 1 });
 
         let lib = Library::load(&paths).unwrap();
         let keys: Vec<_> = lib.games.iter().map(|g| g.key.as_str()).collect();
@@ -275,6 +305,140 @@ mod tests {
         assert_eq!(t["steam_620"]["x"], 1);
 
         // Again: nothing new.
-        assert_eq!(import(&paths, games, Some("/usr/bin/steam")).unwrap(), ImportReport { owned: 4, added: 0, playtime: 0 });
+        assert_eq!(import(&paths, games, Some("/usr/bin/steam")).unwrap(), ImportReport { owned: 4, added: 0, playtime: 0, promoted: 0 });
+    }
+
+    /// Steam entries as the scan of the installed games left them: `(app id,
+    /// stored status)`.
+    fn steam_entries(paths: &DataPaths, entries: &[(&str, Option<&str>)]) {
+        let games: Map<String, Value> = entries
+            .iter()
+            .map(|(id, status)| {
+                let app = format!("steam_{id}");
+                let mut meta =
+                    json!({"appName": app, "runner": "sideload", "launchKind": "steam-uri", "steamAppId": id, "title": app, "zz": 1});
+                if let Some(status) = status {
+                    meta["completionStatusId"] = json!(status);
+                }
+                (app, meta)
+            })
+            .collect();
+        w(paths.local_meta(), &json!({ "games": games }).to_string());
+    }
+
+    fn status_of(paths: &DataPaths, app_id: &str) -> Option<String> {
+        let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        metas.games[&format!("steam_{app_id}")].completion_status_id.clone()
+    }
+
+    #[test]
+    fn an_entry_still_not_played_becomes_played_once_steam_has_play_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        steam_entries(&paths, &[("1", Some("not-played")), ("2", None), ("3", Some("")), ("4", Some("not-played"))]);
+        let games = vec![
+            owned("1", "A", true, 3748, None),
+            owned("2", "B", true, 10, None),
+            owned("3", "C", false, 1, None),
+            owned("4", "D", true, 0, None),
+        ];
+
+        let report = import(&paths, games, None).unwrap();
+        assert_eq!((report.added, report.promoted), (0, 3));
+        assert!(report.changed());
+        for id in ["1", "2", "3"] {
+            assert_eq!(status_of(&paths, id).as_deref(), Some("played"), "{id}");
+        }
+        assert_eq!(status_of(&paths, "4").as_deref(), Some("not-played"), "no play time on Steam either");
+        // The rest of the entry stays as it was, and no status change is recorded.
+        let doc = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!(doc["games"]["steam_1"]["zz"], 1);
+        assert_eq!(doc["games"]["steam_1"]["title"], "steam_1");
+        assert!(heronite_data::status_history::load(&paths).is_empty());
+    }
+
+    #[test]
+    fn a_status_the_user_chose_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let custom = heronite_data::status::new_custom_status("Backlog", &heronite_data::status::default_statuses());
+        heronite_data::status::upsert_status(&paths, custom.clone()).unwrap();
+        steam_entries(&paths, &[("1", Some("beaten")), ("2", Some(custom.id.as_str())), ("3", Some("played"))]);
+        // Back to Not played by hand: the status history remembers the change.
+        heronite_data::status::set_game_status(&paths, "steam_3", "not-played", &Default::default()).unwrap();
+        let games = vec![owned("1", "A", true, 600, None), owned("2", "B", true, 600, None), owned("3", "C", true, 600, None)];
+
+        let report = import(&paths, games, None).unwrap();
+        assert_eq!(report.promoted, 0);
+        assert_eq!(status_of(&paths, "1").as_deref(), Some("beaten"));
+        assert_eq!(status_of(&paths, "2"), Some(custom.id));
+        assert_eq!(status_of(&paths, "3").as_deref(), Some("not-played"));
+    }
+
+    #[test]
+    fn the_played_and_not_played_statuses_are_the_ones_of_the_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        w(
+            paths.statuses(),
+            r#"{"statuses":[{"id":"s1","name":"Never","slug":"not-played","sortOrder":10},{"id":"s2","name":"Tried","slug":"played","sortOrder":20}]}"#,
+        );
+        steam_entries(&paths, &[("1", Some("s1"))]);
+        assert_eq!(import(&paths, vec![owned("1", "A", true, 90, None)], None).unwrap().promoted, 1);
+        assert_eq!(status_of(&paths, "1").as_deref(), Some("s2"));
+    }
+
+    #[test]
+    fn nothing_moves_to_a_played_the_user_does_not_have() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        // The inference would fall back to the first status, Beaten.
+        w(
+            paths.statuses(),
+            r#"{"statuses":[{"id":"beaten","name":"Beaten","slug":"beaten","sortOrder":10},{"id":"not-played","name":"Not Played","slug":"not-played","sortOrder":20}]}"#,
+        );
+        steam_entries(&paths, &[("1", Some("not-played"))]);
+        let report = import(&paths, vec![owned("1", "A", true, 90, None)], None).unwrap();
+        assert_eq!(report.promoted, 0);
+        assert_eq!(status_of(&paths, "1").as_deref(), Some("not-played"));
+    }
+
+    #[test]
+    fn nothing_moves_without_a_not_played_in_the_list() {
+        // Deleting "Not played" moves its games to the first status left,
+        // which the inference would then take for the automatic one.
+        for (first, second) in [("beaten", "played"), ("played", "beaten")] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = DataPaths::at(dir.path());
+            let statuses = json!({"statuses": [
+                {"id": first, "name": first, "slug": first, "sortOrder": 10},
+                {"id": second, "name": second, "slug": second, "sortOrder": 20},
+            ]});
+            w(paths.statuses(), &statuses.to_string());
+            steam_entries(&paths, &[("1", Some("beaten")), ("2", None)]);
+            let report = import(&paths, vec![owned("1", "A", true, 90, None), owned("2", "B", true, 90, None)], None).unwrap();
+            assert_eq!(report.promoted, 0, "{first} first");
+            assert_eq!(status_of(&paths, "1").as_deref(), Some("beaten"), "{first} first");
+            assert_eq!(status_of(&paths, "2"), None, "{first} first");
+        }
+    }
+
+    #[test]
+    fn importing_again_does_not_rewrite_the_entries_or_their_play_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        steam_entries(&paths, &[("1", Some("not-played"))]);
+        let games = vec![owned("1", "A", true, 90, Some(1_499_373_907))];
+        assert_eq!(import(&paths, games.clone(), None).unwrap().promoted, 1);
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(86_400);
+        let files = [paths.local_meta(), paths.timestamps()];
+        for file in &files {
+            fs::File::options().write(true).open(file).unwrap().set_modified(old).unwrap();
+        }
+        assert!(!import(&paths, games, None).unwrap().changed());
+        for file in &files {
+            assert_eq!(json_store::mtime(file), Some(old), "{}", file.display());
+        }
     }
 }

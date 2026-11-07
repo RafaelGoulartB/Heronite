@@ -9,6 +9,10 @@
 //! [`Options::on_close`]. [`Tray::remove`], or dropping the [`Tray`], takes the
 //! icon away and ends the thread. The callbacks run on that thread.
 
+mod theme;
+
+pub use theme::MenuTheme;
+
 use std::cell::RefCell;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -105,6 +109,8 @@ pub struct Options {
     /// the menu key on the focused icon). The picked row's action runs once
     /// the menu has closed.
     pub menu: Box<dyn FnMut() -> Vec<MenuItem> + Send>,
+    /// Asked for each popup, independently of the tray icon's colours.
+    pub menu_theme: Box<dyn FnMut() -> MenuTheme + Send>,
     /// The window got `WM_CLOSE`: `taskkill` without `/F`, or any program
     /// asking the process to close. Without it the message is ignored and the
     /// icon stays.
@@ -202,6 +208,7 @@ struct State {
     last_click: Option<Instant>,
     on_click: Box<dyn FnMut() + Send>,
     menu: Box<dyn FnMut() -> Vec<MenuItem> + Send>,
+    menu_theme: Box<dyn FnMut() -> MenuTheme + Send>,
     on_close: Option<Box<dyn FnMut() + Send>>,
     cmds: Receiver<Cmd>,
 }
@@ -232,6 +239,7 @@ fn run(options: Options, cmds: Receiver<Cmd>, ready: SyncSender<io::Result<isize
         last_click: None,
         on_click: options.on_click,
         menu: options.menu,
+        menu_theme: options.menu_theme,
         on_close: options.on_close,
         cmds,
     };
@@ -469,6 +477,9 @@ fn show_menu(m: Msg) {
     let hwnd = m.0;
     let (x, y) = anchor(m.2);
     let Some(Some(items)) = with_state(m, |s| guard("menu", &mut s.menu)) else { return };
+    // A panicking theme callback falls back to the Windows menu theme.
+    let Some(theme) = with_state(m, |s| guard("menu theme", &mut s.menu_theme).unwrap_or_default()) else { return };
+    let theme = theme::Scope::enter(hwnd, theme);
     // SAFETY: a plain call; a null menu is a failure.
     let menu = unsafe { CreatePopupMenu() };
     if menu.is_null() {
@@ -491,6 +502,7 @@ fn show_menu(m: Msg) {
         DestroyMenu(menu);
         picked
     };
+    drop(theme);
     let item = (picked as usize).checked_sub(1).and_then(|i| items.into_iter().nth(i));
     if let Some(MenuItem::Entry { action, .. }) = item {
         guard("menu action", action);
@@ -700,6 +712,7 @@ mod tests {
             icons: vec![Icon::from_rgba(16, 16, vec![0; 16 * 16 * 4]).unwrap()],
             on_click: Box::new(|| {}),
             menu: Box::new(Vec::new),
+            menu_theme: Box::new(|| MenuTheme::System),
             on_close,
         };
         Tray::spawn(options).inspect_err(|e| eprintln!("no tray to test with: {e}")).ok()
@@ -749,5 +762,43 @@ mod tests {
         assert_eq!(anchor(0x0020_0010), (16, 32));
         // x = -10 on a screen left of the main one.
         assert_eq!(anchor(0x0005_fff6), (-10, 5));
+    }
+
+    #[test]
+    #[ignore = "opens native menus; run on an interactive Windows desktop for visual verification"]
+    fn preview_menu_theme_changes() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+        use windows_sys::Win32::UI::WindowsAndMessaging::WM_CANCELMODE;
+
+        let dark = Arc::new(AtomicBool::new(true));
+        let current = dark.clone();
+        let tray = Tray::spawn(Options {
+            tooltip: "Heronite menu preview".into(),
+            icons: vec![square(16)],
+            on_click: Box::new(|| {}),
+            menu: Box::new(|| {
+                vec![
+                    MenuItem::entry("Recent game", || {}),
+                    MenuItem::Separator,
+                    MenuItem::entry("Show", || {}),
+                    MenuItem::entry("Quit", || {}),
+                ]
+            }),
+            menu_theme: Box::new(move || if current.load(Ordering::Relaxed) { MenuTheme::Dark } else { MenuTheme::Light }),
+            on_close: None,
+        })
+        .expect("an interactive desktop with Explorer is required");
+        for is_dark in [true, false, true] {
+            dark.store(is_dark, Ordering::Relaxed);
+            eprintln!("preview dark={is_dark}");
+            // SAFETY: only our hidden window receives these messages, never another app's input.
+            assert_ne!(unsafe { PostMessageW(tray.hwnd as HWND, WM_TRAY, 128 | (128 << 16), WM_CONTEXTMENU as isize) }, 0);
+            std::thread::sleep(Duration::from_secs(5));
+            // SAFETY: cancel only our menu's modal loop.
+            assert_ne!(unsafe { PostMessageW(tray.hwnd as HWND, WM_CANCELMODE, 0, 0) }, 0);
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        tray.remove();
     }
 }
