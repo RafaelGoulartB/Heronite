@@ -8,6 +8,7 @@ use std::sync::Arc;
 use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
+use crate::age_rating::AgeFilter;
 use crate::library::CollectionGame;
 use crate::models::{CollectionGameMetadata, CompletionStatus, GameInfo};
 use crate::organize::{compare_keyed, Keyed, Organize};
@@ -488,6 +489,8 @@ pub struct ViewQuery {
     pub favourites_only: bool,
     /// Games that run without a connection ([`runs_offline`]).
     pub offline_only: bool,
+    /// "Ages up to", by [`CollectionGame::age_rating`].
+    pub age: AgeFilter,
 }
 
 /// Whether the game plays without a connection: the library's
@@ -542,6 +545,7 @@ pub fn filter_games_organized(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&
             query.install.matches(g.installed)
                 && (!query.favourites_only || g.favourite)
                 && (!query.offline_only || runs_offline(g))
+                && query.age.allows(g.age_rating.as_ref().and_then(|r| r.min_age()))
                 && matches_facets(g, &query.facets)
                 && keep(g)
         })
@@ -914,6 +918,28 @@ mod tests {
         assert_eq!(run(ViewQuery { offline_only: true, ..Default::default() }), ["off"]);
         let kept = filter_games_where(&games, &ViewQuery::default(), &|g| g.app_name != "off");
         assert_eq!(kept.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["fav", "plain"]);
+    }
+
+    #[test]
+    fn ages_up_to_hides_older_games_and_maybe_the_unrated() {
+        use crate::age_rating::{AgeRating, RatingSystem};
+        use crate::library::tests_support::game_with;
+        let rated = |app: &str, system, code: &str| {
+            let r = AgeRating::new(system, code, Vec::new()).unwrap();
+            game_with(app, "sideload", move |_, _, md, _, _| md.age_ratings = vec![r])
+        };
+        let games = vec![
+            rated("teen", RatingSystem::Esrb, "T"),
+            rated("pegi7", RatingSystem::Pegi, "7"),
+            game_with("none", "sideload", |_, _, _, _, _| {}),
+        ];
+        let run = |age: AgeFilter| {
+            filter_games(&games, &ViewQuery { age, ..Default::default() }).iter().map(|g| g.app_name.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(run(AgeFilter::default()), ["none", "pegi7", "teen"]);
+        assert_eq!(run(AgeFilter { max: Some(12), unrated: false }), ["pegi7"]);
+        assert_eq!(run(AgeFilter { max: Some(12), unrated: true }), ["none", "pegi7"]);
+        assert_eq!(run(AgeFilter { max: Some(16), unrated: false }), ["pegi7", "teen"]);
     }
 
     #[test]

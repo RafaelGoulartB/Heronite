@@ -4,6 +4,7 @@
 //! The panel is drawn in `render.rs`, what the box finds is `choices.rs`
 //! and the presets (saved views) are `views.rs`.
 
+mod age;
 mod choices;
 pub(super) mod organize;
 mod render;
@@ -233,6 +234,10 @@ impl CollectionView {
             let label = st.map_or_else(|| id.clone(), |s| status_label(&s.name).to_string());
             out.push((Some(tr!("Status")), token(Pick::Status(id.clone()), label, st.map(|s| theme::status_color(&s.slug)))));
         }
+        if let Some(max) = ui.age.max {
+            let label = if ui.age.unrated { tr!("Up to {max}, and unrated", max) } else { tr!("Up to {max}", max) };
+            out.push((Some(tr!("Ages")), token(Pick::Age(ui.age), label, None)));
+        }
         for name in &ui.categories {
             out.push((Some(tr!("Category")), token(Pick::Category(name.clone()), category_label(name), None)));
         }
@@ -260,6 +265,11 @@ impl CollectionView {
             }
             Pick::Category(name) => self.toggle_category_filter(name, cx),
             Pick::Facet(kind, value) => self.toggle_facet(kind.as_str(), value),
+            Pick::Age(age) => {
+                self.ui.age = if self.ui.age == *age && age.is_active() { Default::default() } else { *age };
+                self.save_ui();
+                self.refresh_groups();
+            }
         }
         cx.notify();
     }

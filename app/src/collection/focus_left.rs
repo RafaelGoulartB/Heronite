@@ -370,6 +370,9 @@ impl CollectionView {
                 );
             rows.push(fact_row(tr!("Score"), value).into_any_element());
         }
+        if vm.age_shown {
+            rows.push(self.age_row(vm.age.as_ref(), cx));
+        }
         // Filters the collection by the store the game comes from.
         let key = vm.key.clone();
         rows.push(
@@ -418,7 +421,7 @@ impl CollectionView {
     }
 }
 
-fn fact_row(label: &'static str, value: Div) -> Div {
+pub(super) fn fact_row(label: &'static str, value: Div) -> Div {
     div()
         .flex()
         .items_center()

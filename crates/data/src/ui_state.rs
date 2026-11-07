@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use anyhow::Result;
 use serde_json::{json, Map, Value};
 
+use crate::age_rating::AgeFilter;
 use crate::collection::{FacetFilters, FacetKind, InstallFilter, SortMode, FACET_KINDS};
 use crate::console_theme::{AutoConsole, OpenIn};
 use crate::json_store;
@@ -28,6 +29,8 @@ pub struct UiState {
     pub sort_descending: bool,
     /// The View menu's "Only" switches.
     pub only: OnlyFilters,
+    /// The View menu's "Ages up to".
+    pub age: AgeFilter,
     /// Selected custom categories (`heronite_data::categories`;
     /// `categories::UNCATEGORIZED` for the games in none). Empty: all games.
     pub categories: BTreeSet<String>,
@@ -162,6 +165,7 @@ impl Default for UiState {
             sort: SortMode::Title,
             sort_descending: false,
             only: OnlyFilters::default(),
+            age: AgeFilter::default(),
             categories: BTreeSet::new(),
             statuses: BTreeSet::new(),
             saved_views: Vec::new(),
@@ -387,6 +391,7 @@ impl UiState {
             sort: self.sort,
             sort_descending: self.sort_descending,
             only: self.only,
+            age: self.age,
             facet_filters: self.facet_filters.clone(),
             unknown_facets: self.unknown_facets.clone(),
             categories: self.categories.clone(),
@@ -403,6 +408,7 @@ impl UiState {
         self.sort = view.sort;
         self.sort_descending = view.sort_descending;
         self.only = view.only;
+        self.age = view.age;
         self.facet_filters = view.facet_filters.clone();
         self.unknown_facets = view.unknown_facets.clone();
         self.categories = view.categories.clone();
@@ -421,6 +427,7 @@ impl UiState {
             && self.sort == view.sort
             && self.sort_descending == view.sort_descending
             && self.only == view.only
+            && self.age == view.age
             && self.categories == view.categories
             && self.statuses == view.statuses
             && self.facet_filters.same_as(&view.facet_filters)
@@ -435,6 +442,7 @@ impl UiState {
             + usize::from(self.only.favourites)
             + usize::from(self.only.updates)
             + usize::from(self.only.offline)
+            + usize::from(self.age.is_active())
             + self.categories.len()
             + self.statuses.len()
             + self.facet_filters.len()
@@ -444,6 +452,7 @@ impl UiState {
     pub fn clear_filters(&mut self) {
         self.install_filter = InstallFilter::All;
         self.only = OnlyFilters::default();
+        self.age = AgeFilter::default();
         self.facet_filters = FacetFilters::default();
         self.unknown_facets.clear();
         self.categories.clear();
@@ -458,6 +467,7 @@ pub struct ViewFilters {
     pub sort: SortMode,
     pub sort_descending: bool,
     pub only: OnlyFilters,
+    pub age: AgeFilter,
     pub facet_filters: FacetFilters,
     /// Facet kinds of `facetFilters` this version does not know (saved by a
     /// newer one), written back unchanged.
@@ -499,6 +509,8 @@ impl ViewFilters {
         let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
         v.sort_descending = flag("sortDescending");
         v.only = OnlyFilters { favourites: flag("onlyFavourites"), updates: flag("onlyUpdates"), offline: flag("onlyOffline") };
+        v.age =
+            AgeFilter { max: value.get("ageUpTo").and_then(Value::as_u64).and_then(|a| u8::try_from(a).ok()), unrated: flag("ageUnrated") };
         let names = |key: &str| -> BTreeSet<String> {
             value
                 .get(key)
@@ -530,6 +542,8 @@ impl ViewFilters {
             "onlyFavourites": self.only.favourites,
             "onlyUpdates": self.only.updates,
             "onlyOffline": self.only.offline,
+            "ageUpTo": self.age.max,
+            "ageUnrated": self.age.unrated,
             "categories": self.categories,
             "statuses": self.statuses,
             "groupBy": self.group_by.map(GroupBy::as_str),
@@ -550,7 +564,7 @@ pub struct SavedView {
 
 /// Keys of a stored view that [`ViewFilters::from_value`] and the name cover;
 /// `groupByStatus` is replaced by `groupBy` when written.
-const VIEW_KEYS: [&str; 13] = [
+const VIEW_KEYS: [&str; 15] = [
     "name",
     "installFilter",
     "facetFilters",
@@ -559,6 +573,8 @@ const VIEW_KEYS: [&str; 13] = [
     "onlyFavourites",
     "onlyUpdates",
     "onlyOffline",
+    "ageUpTo",
+    "ageUnrated",
     "categories",
     "statuses",
     "groupBy",
@@ -756,6 +772,7 @@ mod tests {
             palette_recent: vec!["go:downloads".into(), "game:sideload_steam_400:primary".into()],
             sort_descending: true,
             only: OnlyFilters { favourites: true, updates: false, offline: true },
+            age: AgeFilter { max: Some(12), unrated: true },
             grid_view: false,
             grid_cover_w: 180.,
             grid_label: GridLabel::Title,
@@ -780,6 +797,7 @@ mod tests {
         assert_eq!(loaded.collapsed_groups.iter().collect::<Vec<_>>(), ["ungrouped"]);
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
         assert_eq!(on_disk["sort"], "releaseDate");
+        assert_eq!((on_disk["ageUpTo"].as_u64(), on_disk["ageUnrated"].as_bool()), (Some(12), Some(true)));
         assert_eq!(on_disk["groupBy"], "year");
         assert_eq!(on_disk["installFilter"], "installed");
         assert_eq!(on_disk["showHidden"], true);
