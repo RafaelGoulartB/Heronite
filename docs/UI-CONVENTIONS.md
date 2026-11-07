@@ -515,8 +515,10 @@ entered from ☰ › Console mode or the palette,
 remembered across restarts (`ui-state.json` `consoleMode`). The desktop look must not change: every page and dialog
 keeps its desktop render and, when `crate::console::active()`, returns its console layout instead
 (`render_console`, usually in a child module `console.rs`) and implements `console::PadTarget` (`on_pad` + `hints`).
-- Input: `console::input` reads controllers with gilrs on a thread that only runs in console mode (presses only count
-  while the window is focused); the keyboard maps to the same `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
+- Input: `console::input` reads controllers on a thread that only runs in console mode (presses only count while the
+  window is focused): gilrs on Linux, SDL on Windows (`heronite_platform::controllers`, one thread shared by every
+  listener); both feed the same `Translator` (repeats, stick and trigger thresholds). The keyboard maps to the same
+  `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
 - Hosting: pages register their hook in `nav.rs` (`pages.hooks`); dialogs are found by `console::registry::hook_for`
   (add new console-capable dialogs there). Overlays owned by a view use `console::Layer` (drawn by the owner; for a
   view embedded in a smaller area wrap it with `kit::window_layer`).

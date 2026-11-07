@@ -41,6 +41,17 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# Controllers of every kind for console mode (`controllers`): SDL's own
+# drivers read PlayStation and Nintendo controllers, which XInput does not
+# know and Windows.Gaming.Input loses once Steam switches their report mode.
+# Built from source and linked statically with only the joystick parts (no
+# video, audio or GPU), so there is no SDL3.dll to ship.
+sdl3-sys = { version = "=0.7.2", default-features = false, features = [
+    "build-from-source-static",
+    "no-default-subsystems",
+    "sdl-joystick",
+    "sdl-hidapi",
+] }
 # COM interfaces (`.lnk` shortcuts through the shell's ShellLink).
 windows = { version = "0.62", features = [
     "Win32_Devices_FunctionDiscovery",
