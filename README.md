@@ -66,6 +66,23 @@ scoop install heronite/heronite
 
 </details>
 
+
+<details>
+<summary><b>Windows - Scoop</b></summary>
+
+#### 🪟 Windows
+
+With [Scoop](https://scoop.sh), from the [`scoop-heronite`](https://github.com/RafaelGoulartB/scoop-heronite) bucket:
+
+```powershell
+scoop bucket add heronite https://github.com/RafaelGoulartB/scoop-heronite
+scoop install heronite/heronite
+```
+
+`scoop update heronite` installs new versions.
+
+</details>
+
 The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
 
 ---
