@@ -10,6 +10,10 @@
 //! * `--store gog`: GOG (the code comes back in the `on_login_success` page URL);
 //! * `--store amazon --url <sign-in URL>`: Amazon Games (the URL is made by
 //!   nile for this login; the code comes back in the return URL).
+//! * `--store xbox --url <sign-in URL>`: a Microsoft account, for Xbox (the
+//!   URL is made by the app for this sign-in). What it prints is the whole
+//!   address the sign-in ends on (`login.live.com/oauth20_desktop.srf?code=…&state=…`,
+//!   or `?error=…` when the user said no): the app checks it is its sign-in.
 //!
 //! The main app spawns this helper and reads stdout; it lives in its own
 //! binary so the GPUI app does not carry a web engine.
@@ -59,6 +63,7 @@ enum Store {
     Epic,
     Gog,
     Amazon,
+    Xbox,
 }
 
 impl Store {
@@ -67,6 +72,7 @@ impl Store {
             "epic" => Some(Self::Epic),
             "gog" => Some(Self::Gog),
             "amazon" => Some(Self::Amazon),
+            "xbox" => Some(Self::Xbox),
             _ => None,
         }
     }
@@ -76,6 +82,7 @@ impl Store {
             Self::Epic => "Epic Games login",
             Self::Gog => "GOG login",
             Self::Amazon => "Amazon Games login",
+            Self::Xbox => "Xbox sign-in",
         }
     }
 
@@ -83,13 +90,21 @@ impl Store {
     fn user_agent(self) -> &'static str {
         match self {
             Self::Epic => EPIC_USER_AGENT,
-            Self::Gog | Self::Amazon => BROWSER_USER_AGENT,
+            Self::Gog | Self::Amazon | Self::Xbox => BROWSER_USER_AGENT,
         }
     }
 
     /// The authorization code in a URL the store navigates to.
     fn code_from_url(self, url: &str) -> Option<String> {
+        let address = url;
         let url = Url::parse(url).ok()?;
+        // Microsoft's desktop redirect: the whole address, for the app to check.
+        if self == Self::Xbox {
+            let done = url.host_str() == Some("login.live.com")
+                && url.path() == "/oauth20_desktop.srf"
+                && url.query_pairs().any(|(k, v)| (k == "code" || k == "error") && !v.is_empty());
+            return done.then(|| address.to_string());
+        }
         let (host_ok, param) = match self {
             // Epic redirects to https://localhost/launcher/authorized?code=...
             Self::Epic => (url.host_str() == Some("localhost"), "code"),
@@ -98,6 +113,7 @@ impl Store {
             Self::Amazon => {
                 (url.host_str().is_some_and(|h| h == "amazon.com" || h.ends_with(".amazon.com")), "openid.oa2.authorization_code")
             }
+            Self::Xbox => return None,
         };
         if !host_ok {
             return None;
@@ -127,6 +143,7 @@ fn parse_args(args: &[String]) -> Result<(Store, String), String> {
         (Store::Epic, None) => EPIC_LOGIN_URL.to_string(),
         (Store::Gog, None) => GOG_LOGIN_URL.to_string(),
         (Store::Amazon, None) => return Err("--store amazon needs --url".into()),
+        (Store::Xbox, None) => return Err("--store xbox needs --url".into()),
     };
     Ok((store, url))
 }
@@ -367,12 +384,29 @@ mod tests {
     }
 
     #[test]
+    fn the_xbox_sign_in_hands_back_its_whole_end_address() {
+        let xbox = Store::Xbox;
+        let end = "https://login.live.com/oauth20_desktop.srf?code=M.C5_BAY.2.abc&state=st";
+        assert_eq!(xbox.code_from_url(end).as_deref(), Some(end));
+        let denied = "https://login.live.com/oauth20_desktop.srf?error=access_denied&state=st";
+        assert_eq!(xbox.code_from_url(denied).as_deref(), Some(denied));
+        assert_eq!(xbox.code_from_url("https://login.live.com/oauth20_desktop.srf?lc=1033"), None, "the blank page before");
+        assert_eq!(xbox.code_from_url("https://login.live.com/oauth20_authorize.srf?code=x"), None);
+        assert_eq!(xbox.code_from_url("https://evil.example/oauth20_desktop.srf?code=x"), None);
+    }
+
+    #[test]
     fn arguments_pick_the_store_and_page() {
         assert_eq!(parse_args(&[]).unwrap(), (Store::Epic, EPIC_LOGIN_URL.to_string()));
         assert_eq!(parse_args(&args(&["--smoke"])).unwrap().0, Store::Epic);
         assert_eq!(parse_args(&args(&["--store", "gog"])).unwrap(), (Store::Gog, GOG_LOGIN_URL.to_string()));
         assert_eq!(parse_args(&args(&["--store", "amazon", "--url", "https://amazon.com/ap/signin?x"])).unwrap().0, Store::Amazon);
         assert!(parse_args(&args(&["--store", "amazon"])).is_err());
+        assert!(parse_args(&args(&["--store", "xbox"])).is_err());
+        assert_eq!(
+            parse_args(&args(&["--store", "xbox", "--url", "https://login.live.com/oauth20_authorize.srf?x"])).unwrap().0,
+            Store::Xbox
+        );
         assert!(parse_args(&args(&["--store", "steam"])).is_err());
         assert!(parse_args(&args(&["--bogus"])).is_err());
     }

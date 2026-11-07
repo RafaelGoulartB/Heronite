@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use anyhow::Result;
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
-use heronite_data::xbox::{LastSync, XboxPrefs, LAUNCH_KIND, SOURCE, TITLE_ID_KEY};
+use heronite_data::xbox::{LastSync, XboxPrefs, LAUNCH_KIND, SOURCE, STORE_ID_KEY, TITLE_ID_KEY};
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Map, Value};
 
@@ -63,18 +63,21 @@ fn meta(app: &str, game: &XboxGame, status: &str) -> LocalGameMeta {
     meta
 }
 
-/// Writes the game's title id into its metadata (or takes out one its files
-/// no longer name). Whether that changed anything.
+/// Writes the game's title id and Store product id into its metadata (or
+/// takes out one its files no longer name). Whether that changed anything.
 fn set_title_id(meta: &mut LocalGameMeta, game: &XboxGame) -> bool {
-    let current = meta.extra.get(TITLE_ID_KEY).and_then(Value::as_str);
-    if current == game.title_id.as_deref() {
-        return false;
+    let mut changed = false;
+    for (key, value) in [(TITLE_ID_KEY, &game.title_id), (STORE_ID_KEY, &game.store_id)] {
+        if meta.extra.get(key).and_then(Value::as_str) == value.as_deref() {
+            continue;
+        }
+        match value {
+            Some(id) => meta.extra.insert(key.into(), json!(id)),
+            None => meta.extra.remove(key),
+        };
+        changed = true;
     }
-    match &game.title_id {
-        Some(id) => meta.extra.insert(TITLE_ID_KEY.into(), json!(id)),
-        None => meta.extra.remove(TITLE_ID_KEY),
-    };
-    true
+    changed
 }
 
 /// Sets on an existing sideload entry what an update may have changed.
@@ -178,6 +181,12 @@ pub fn sync(paths: &DataPaths, games: &[XboxGame]) -> Result<Report> {
     let touched = report != Report::default();
     json_store::update_if_changed::<XboxPrefs, _>(&paths.xbox(), |prefs| {
         prefs.removed.retain(|a| present.contains(a));
+        // Installed again and kept: the account may list it again later.
+        let kept: Vec<String> =
+            prefs.removed_titles.iter().filter(|a| present.contains(*a) && !prefs.removed.contains(*a)).cloned().collect();
+        for a in kept {
+            prefs.removed_titles.remove(&a);
+        }
         if touched || prefs.last.as_ref().map(|l| l.games) != Some(games.len()) {
             prefs.last = Some(LastSync { at: now(), games: games.len() });
         }
@@ -201,10 +210,12 @@ pub fn count(paths: &DataPaths) -> usize {
 }
 
 /// The user took `app_name` (an Xbox entry) out of the Collection: the sync
-/// leaves it out from now on (`XboxPrefs::removed`).
+/// leaves it out from now on (`XboxPrefs::removed`), and the Xbox account
+/// does not bring it back as not installed (`XboxPrefs::removed_titles`).
 pub fn mark_removed(paths: &DataPaths, app_name: &str) -> Result<()> {
     json_store::update_if_changed::<XboxPrefs, _>(&paths.xbox(), |prefs| {
         prefs.removed.insert(app_name.to_string());
+        prefs.removed_titles.insert(app_name.to_string());
         Ok(())
     })
 }

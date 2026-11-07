@@ -1,9 +1,14 @@
 //! The Xbox page of the Stores (Windows): the Microsoft Store and PC Game
 //! Pass games the Xbox app installed on this PC (`services::xbox_library`).
-//! No login: Heronite reads which of the user's packages are games and adds
-//! them to the Collection; the Xbox app keeps installing, updating and
-//! signing in to them.
+//! No login needed: Heronite reads which of the user's packages are games
+//! and adds them to the Collection; the Xbox app keeps installing, updating
+//! and signing in to them. An Xbox account may be added (when this build
+//! has Heronite's app registration): the play time Xbox counted, the last
+//! play, achievements, art and the games not installed here come with it.
 
+use std::process::{Command, Stdio};
+
+use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{tr, trn};
@@ -17,7 +22,8 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::services::xbox_library::{open_xbox_app, XboxLibrary, XboxLibraryEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button_sm, caption, card, icon_button_sm, ButtonKind};
+use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, ButtonKind};
+use crate::ui::fields::{input_box, new_input};
 use crate::ui::icon;
 
 pub struct XboxPage {
@@ -25,6 +31,12 @@ pub struct XboxPage {
     console_list: crate::console::list::ListNav,
     /// Opening the Xbox app failed.
     error: Option<String>,
+    /// The address the account's sign-in ended on, pasted.
+    code: Entity<InputState>,
+    /// The login window is open.
+    window_open: bool,
+    /// A notice about the sign-in window.
+    notice: Option<String>,
     _subs: Vec<Subscription>,
 }
 
@@ -44,7 +56,7 @@ fn paragraph(text: impl Into<SharedString>) -> AnyElement {
 }
 
 impl XboxPage {
-    pub fn new(_ctx: PageCtx, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(_ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = crate::services::xbox_library(cx);
         stores::watch(cx);
         let subs = vec![
@@ -57,7 +69,8 @@ impl XboxPage {
             }),
         ];
         svc.update(cx, |s, cx| s.sync_quietly(cx));
-        Self { svc, console_list: Default::default(), error: None, _subs: subs }
+        let code = new_input(window, cx, "", tr!("Paste the address of the page you land on"));
+        Self { svc, console_list: Default::default(), error: None, code, window_open: false, notice: None, _subs: subs }
     }
 
     /// Reads the games again (the page was shown again).
@@ -72,6 +85,9 @@ impl XboxPage {
     fn run_action(&mut self, id: &str, cx: &mut Context<Self>) {
         match id {
             "read" => self.svc.update(cx, |s, cx| s.sync(cx)),
+            "account-read" => self.svc.update(cx, |s, cx| s.sync_account(true, cx)),
+            "sign-in" => self.start_window_sign_in(cx),
+            "sign-out" => self.svc.update(cx, |s, cx| s.sign_out(cx)),
             "open" => {
                 let installed = self.xbox_app(cx).unwrap_or(true);
                 self.error = open_xbox_app(installed).err().map(|e| tr!("Could not open the Xbox app: {error}", error = e));
@@ -194,6 +210,188 @@ impl XboxPage {
         column.child(self.render_games(cx))
     }
 
+    /// Signs in in the login window (`heronite-epic-login --store xbox`),
+    /// which prints the address the sign-in ends on.
+    fn start_window_sign_in(&mut self, cx: &mut Context<Self>) {
+        let Some(helper) = super::store::login_helper() else {
+            self.notice =
+                Some(tr!("The login window (heronite-epic-login) was not found next to the app. Use the browser method below.").into());
+            cx.notify();
+            return;
+        };
+        let Some(url) = self.svc.update(cx, |s, cx| s.begin_sign_in(cx)) else { return };
+        self.window_open = true;
+        self.notice = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let out = cx
+                .background_spawn(async move {
+                    let mut cmd = Command::new(helper);
+                    cmd.arg("--store").arg("xbox").arg("--url").arg(url).stdin(Stdio::null());
+                    heronite_data::proc::guard(&mut cmd).output()
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.window_open = false;
+                match out {
+                    Ok(o) if o.status.success() => {
+                        let address = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        this.svc.update(cx, |s, cx| s.finish_sign_in(address, cx));
+                    }
+                    Ok(o) if o.status.code() == Some(super::store::LOGIN_NO_WEBVIEW) => {
+                        this.notice = Some(super::store::no_webview_notice().to_string());
+                    }
+                    // The user closed the window.
+                    Ok(o) if o.status.code() == Some(4) => {}
+                    Ok(o) => {
+                        log::warn!("the Xbox sign-in window stopped ({}): {}", o.status, String::from_utf8_lossy(&o.stderr).trim());
+                        this.notice = Some(tr!("The login window stopped unexpectedly. Use the browser method below.").into());
+                    }
+                    Err(err) => this.notice = Some(tr!("Could not open the login window: {err}", err)),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn open_sign_in_in_browser(&mut self, cx: &mut Context<Self>) {
+        let Some(url) = self.svc.update(cx, |s, cx| s.begin_sign_in(cx)) else { return };
+        if let Err(err) = heronite_platform::shell::open(&url) {
+            self.notice = Some(tr!("Could not open the browser: {err}", err));
+        }
+        cx.notify();
+    }
+
+    fn submit_address(&mut self, cx: &mut Context<Self>) {
+        let text = self.code.read(cx).value().trim().to_string();
+        if !text.is_empty() {
+            self.notice = None;
+            self.svc.update(cx, |s, cx| s.finish_sign_in(text, cx));
+        }
+    }
+
+    /// The Xbox account card; `None` when this build offers no account.
+    fn render_account(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+        let s = self.svc.read(cx);
+        if !s.account.available() {
+            return None;
+        }
+        let (gamertag, syncing, signing_in, last) =
+            (s.account.gamertag.clone(), s.account.syncing, s.account.signing_in, s.account.last.clone());
+        let mut column = div();
+        if let Some(name) = gamertag {
+            let name = if name.is_empty() { tr!("Xbox account").to_string() } else { name };
+            let rows = vec![div()
+                .flex()
+                .items_center()
+                .gap(px(14.))
+                .py(px(14.))
+                .child(icon(Icon::AccountCircle, px(44.), theme::accent()))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(4.))
+                        .child(
+                            div()
+                                .font_family(theme::font_heading())
+                                .text_size(px(20.))
+                                .font_weight(theme::W_BOLD)
+                                .text_color(theme::text_primary())
+                                .truncate()
+                                .child(name),
+                        )
+                        .child(div().flex().child(status_pill(tr!("Signed in to Xbox"), theme::success()))),
+                )
+                .child(
+                    button("xbox-sign-out", ButtonKind::Glass, tr!("Sign out"))
+                        .on_click(cx.listener(|this, _, _, cx| this.run_action("sign-out", cx))),
+                )
+                .into_any_element()];
+            let read = icon_button_sm(
+                "xbox-account-read",
+                ButtonKind::Ghost,
+                Icon::Refresh,
+                if syncing { tr!("Reading\u{2026}") } else { tr!("Read account now") },
+                !syncing,
+                cx.listener(|this, _, _, cx| this.run_action("account-read", cx)),
+            );
+            column = column.child(caption_with(tr!("Xbox account"), read)).child(card(rows));
+        } else {
+            let busy = self.window_open || signing_in;
+            let window = row(
+                tr!("Sign in with your Microsoft account"),
+                Some(tr!("Opens Microsoft's sign-in page. Heronite never sees your password.")),
+                action_button(
+                    "xbox-sign-in",
+                    ButtonKind::Primary,
+                    if self.window_open {
+                        tr!("Waiting for the login window...")
+                    } else if signing_in {
+                        tr!("Signing in\u{2026}")
+                    } else {
+                        tr!("Sign in")
+                    },
+                    !busy,
+                    cx.listener(|this, _, _, cx| this.run_action("sign-in", cx)),
+                ),
+            );
+            let step1 = row(
+                tr!("1. Open the sign-in page"),
+                Some(tr!("Sign in, then copy the address of the blank page you land on (it contains code=...).")),
+                action_button(
+                    "xbox-sign-in-browser",
+                    ButtonKind::Glass,
+                    tr!("Open in browser"),
+                    !busy,
+                    cx.listener(|this, _, _, cx| this.open_sign_in_in_browser(cx)),
+                ),
+            );
+            let can_submit = !busy && !self.code.read(cx).value().trim().is_empty();
+            let step2 =
+                div().flex().flex_col().gap(px(10.)).py(px(12.)).child(div().text_size(px(14.)).child(tr!("2. Paste the address"))).child(
+                    div().flex().items_center().gap(px(10.)).child(div().flex_1().min_w_0().child(input_box(&self.code, false))).child(
+                        action_button(
+                            "xbox-sign-in-code",
+                            ButtonKind::Primary,
+                            tr!("Sign in"),
+                            can_submit,
+                            cx.listener(|this, _, _, cx| this.submit_address(cx)),
+                        ),
+                    ),
+                );
+            column = column
+                .child(caption(tr!("Xbox account")))
+                .child(card([
+                    paragraph(tr!(
+                        "Optional. With your Xbox account, your Xbox games show the play time Xbox counted (also outside Heronite and on console), when you last played, your achievements, and the games you played that are not installed here."
+                    )),
+                    window.into_any_element(),
+                ]))
+                .child(caption(tr!("Or sign in with your browser")))
+                .child(card([step1.into_any_element(), step2.into_any_element()]));
+        }
+        let message = self.notice.clone().map(|n| (n, true)).or(last.map(|l| match l {
+            Ok(text) => (text, false),
+            Err(text) => (text, true),
+        }));
+        if let Some((text, error)) = message {
+            column = column.child(
+                div()
+                    .mt(px(14.))
+                    .mx(px(6.))
+                    .text_size(px(13.))
+                    .text_color(if error { theme::danger_text() } else { theme::text_primary() })
+                    .child(text),
+            );
+        }
+        Some(column.mb(px(24.)))
+    }
+
     fn render_game(&self, game: &XboxGame, cx: &mut Context<Self>) -> AnyElement {
         let content = div()
             .flex()
@@ -250,6 +448,22 @@ impl XboxPage {
         if let Some((text, _)) = self.result_line(cx) {
             rows.push(Row::info("result", text, ""));
         }
+        let account = &self.svc.read(cx).account;
+        if account.available() {
+            rows.push(Row::header(tr!("Xbox account")));
+            match &account.gamertag {
+                Some(name) => {
+                    rows.push(Row::info("account", tr!("Signed in to Xbox"), name.clone()).icon(Icon::AccountCircle));
+                    rows.push(
+                        Row::action("account-read", if account.syncing { tr!("Reading\u{2026}") } else { tr!("Read account now") })
+                            .icon(Icon::Refresh)
+                            .enabled(!account.syncing),
+                    );
+                    rows.push(Row::action("sign-out", tr!("Sign out")).icon(Icon::Logout));
+                }
+                None => rows.push(Row::action("sign-in", tr!("Sign in")).icon(Icon::AccountCircle).enabled(!self.window_open)),
+            }
+        }
         rows
     }
 
@@ -294,7 +508,8 @@ impl Render for XboxPage {
             return self.render_console(cx);
         }
         let wide = stores::content_width(window) >= 1000.;
-        let body = columns(wide, [self.render_library(cx), self.render_about()]);
+        let side = div().flex().flex_col().children(self.render_account(cx)).child(self.render_about());
+        let body = columns(wide, [self.render_library(cx), side]);
         div()
             .size_full()
             .relative()

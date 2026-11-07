@@ -47,6 +47,7 @@ pub mod fs;
 pub mod packages;
 pub mod process;
 pub mod scoop;
+pub mod secret;
 pub mod shell;
 
 #[cfg(windows)]

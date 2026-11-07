@@ -14,9 +14,13 @@
 //! * [`files`]: what `MicrosoftGame.config`, `AppxManifest.xml` and
 //!   `xboxservices.config` say.
 //! * [`size`]: how much room each game takes, as the Xbox app counts it.
+//! * [`live`]: the user's Xbox account, optional; [`details`]: what it says
+//!   about the games (play time, achievements, art, games not installed).
 
 pub mod collection;
+pub mod details;
 pub mod files;
+pub mod live;
 pub mod size;
 
 use std::collections::HashMap;
