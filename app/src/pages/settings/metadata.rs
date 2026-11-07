@@ -146,7 +146,7 @@ fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let m = &d.settings.metadata;
-    let (auto_fill, download) = (m.auto_fill_missing, m.download_images);
+    let (auto_fill, download, show_age) = (m.auto_fill_missing, m.download_images, m.show_age_ratings);
     let testing = d.metadata.testing;
 
     let creds = card_box()
@@ -195,7 +195,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
             "Shown in a game's facts and used by the View menu's \u{201c}Ages up to\u{201d}. When this board did not rate a game, the next one that did is shown."
         ))))
-        .child(card_box().py(px(12.)).child(board_select(d, cx)));
+        .child(card([
+            toggle_row("md-age-show", tr!("Show age ratings"), Some(tr!("In a game's facts and Details.")), show_age)
+                .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.show_age_ratings = !show_age)))
+                .into_any_element(),
+            div().py(px(12.)).child(board_select(d, cx)).into_any_element(),
+        ]));
 
     // Field priority (advanced), collapsible.
     let open = d.metadata.advanced_open;
@@ -305,6 +310,7 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Row::toggle("autofill", tr!("Fill missing metadata in the background"), m.auto_fill_missing),
         Row::toggle("download", tr!("Copy covers to disk"), m.download_images).desc(tr!("Off keeps the CDN addresses instead")),
         Row::header(tr!("Age ratings")),
+        Row::toggle("age-show", tr!("Show age ratings"), m.show_age_ratings),
         Row::choice(
             "age-board",
             tr!("Rating board shown first"),
@@ -359,6 +365,7 @@ pub(super) fn console_apply(
         Outcome::Changed(id, Value::Toggle(on)) => match id.as_ref() {
             "autofill" => persist(d, cx, |m| m.auto_fill_missing = on),
             "download" => persist(d, cx, |m| m.download_images = on),
+            "age-show" => persist(d, cx, |m| m.show_age_ratings = on),
             _ => {}
         },
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "age-board" => set_board(d, index, cx),

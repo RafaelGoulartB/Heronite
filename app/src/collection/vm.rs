@@ -207,6 +207,8 @@ pub(super) struct FocusVm {
     pub details: Vec<DetailRow>,
     /// `None`: no board rated the game.
     pub age: Option<AgeVm>,
+    /// Settings → Metadata → "Show age ratings": the facts card has its row.
+    pub age_shown: bool,
     pub hltb: Option<HltbVm>,
     /// Current status (left column selector), `None` when the stored id is unknown.
     pub status: Option<StatusVm>,

@@ -212,7 +212,8 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
     }
     // Every board that rated it, in the order they are looked for.
-    let boards = age_boards(lib, g);
+    let age_shown = lib.settings.metadata.show_age_ratings;
+    let boards = if age_shown { age_boards(lib, g) } else { Vec::new() };
     if !boards.is_empty() {
         rows.push(DetailRow { label: tr!("Age rating").into(), value: chips(&boards, None), split: true });
     }
@@ -246,6 +247,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         related,
         details: rows,
         age: age_vm(g),
+        age_shown,
         hltb: fd.hltb.as_ref().filter(|h| h.main_story > 0. || h.main_extra > 0.).map(|h| HltbVm {
             main: Some(h.main_story as f32),
             extra: Some(h.main_extra as f32),

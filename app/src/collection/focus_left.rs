@@ -370,7 +370,9 @@ impl CollectionView {
                 );
             rows.push(fact_row(tr!("Score"), value).into_any_element());
         }
-        rows.push(age_row(vm.age.as_ref()));
+        if vm.age_shown {
+            rows.push(age_row(vm.age.as_ref()));
+        }
         // Filters the collection by the store the game comes from.
         let key = vm.key.clone();
         rows.push(

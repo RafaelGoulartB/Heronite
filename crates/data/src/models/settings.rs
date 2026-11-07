@@ -177,6 +177,10 @@ pub struct MetadataSettings {
     /// language) or a [`crate::age_rating::RatingSystem::id`].
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub age_rating_system: String,
+    /// The age rating rows of a game (facts card and Details); the View
+    /// menu's "Ages up to" works either way.
+    #[serde(default = "default_true")]
+    pub show_age_ratings: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
     #[serde(flatten)]

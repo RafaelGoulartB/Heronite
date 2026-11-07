@@ -320,6 +320,7 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         cover_aspect: CoverAspect::parse(value.map(|v| v.cover_aspect.as_str()).unwrap_or("")).as_str().to_owned(),
         download_images: value.is_some_and(|v| v.download_images),
         auto_fill_missing: value.map(|v| v.auto_fill_missing).unwrap_or(true),
+        show_age_ratings: value.map(|v| v.show_age_ratings).unwrap_or(true),
         age_rating_system: value
             .map(|v| v.age_rating_system.as_str())
             .filter(|s| crate::age_rating::RatingSystem::parse(s).is_some())
