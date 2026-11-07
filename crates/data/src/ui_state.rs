@@ -53,6 +53,9 @@ pub struct UiState {
     /// `show_hidden`, so it cannot be shared): hidden games stay in the
     /// Collection, flagged.
     pub show_hidden: bool,
+    /// Copies of one game from several stores show as one card
+    /// ([`crate::copies`]); off, every copy has its own.
+    pub group_copies: bool,
     /// The app was left in console mode (it reopens in it).
     pub console_mode: bool,
     /// Ids of the command palette items run lately, most recent first.
@@ -175,6 +178,7 @@ impl Default for UiState {
             focused_game: None,
             group_by: GroupBy::Status,
             show_hidden: false,
+            group_copies: true,
             console_mode: false,
             palette_recent: Vec::new(),
             grid_view: true,
@@ -214,6 +218,7 @@ impl UiState {
         }
         state.focused_game = value.get("focusedGame").and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_owned);
         state.show_hidden = value.get("showHidden").and_then(Value::as_bool).unwrap_or(false);
+        state.group_copies = value.get("groupCopies").and_then(Value::as_bool).unwrap_or(true);
         state.console_mode = value.get("consoleMode").and_then(Value::as_bool).unwrap_or(false);
         if let Some(list) = value.get("paletteRecent").and_then(Value::as_array) {
             state.palette_recent = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
@@ -249,6 +254,7 @@ impl UiState {
             "collapsedGroups": self.collapsed_groups,
             "focusedGame": self.focused_game,
             "showHidden": self.show_hidden,
+            "groupCopies": self.group_copies,
             "consoleMode": self.console_mode,
             "paletteRecent": self.palette_recent,
             "gridView": self.grid_view,

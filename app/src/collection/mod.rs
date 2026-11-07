@@ -9,6 +9,7 @@ mod card;
 mod clients;
 mod console;
 mod context_menu;
+mod copies;
 mod data;
 mod debug;
 mod dock;

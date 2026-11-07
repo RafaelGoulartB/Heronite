@@ -49,6 +49,7 @@ impl CollectionView {
         let numbers = self.drawer_numbers(&vm);
         let rating = self.rating_row(&vm.key, cx);
         let facts = self.facts_card(&vm, cx);
+        let copies = self.copies_card(&vm.key, cx);
 
         let covers = self.focus_covers(&vm, scale);
         let html_images = self.focus_html_images(&vm, inner_w, scale);
@@ -113,6 +114,7 @@ impl CollectionView {
                             .child(numbers)
                             .child(rating)
                             .child(facts)
+                            .children(copies)
                             .child(div().mt(px(14.)).child(details))
                             .child(div().mt(px(10.)).flex().justify_center().child(open_page)),
                     ),

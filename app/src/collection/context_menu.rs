@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::status::{set_game_status, SetStatusExtras};
+use heronite_data::status::SetStatusExtras;
 use heronite_data::{CollectionGame, Library};
 
 use super::game_actions::{GameAction, GameActionItem};
@@ -80,7 +80,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
     use GameAction as A;
     match action {
         A::Primary | A::PlayWith(_) | A::User(_) | A::OpenClient | A::EditActions | A::InstallWay(_) => (0, 0),
-        A::SteamPlay => (0, 1),
+        A::SteamPlay | A::PlayCopy(_) => (0, 1),
         A::SteamInstall => (0, 2),
         A::Epic(E::Update) => (0, 3),
         A::Epic(E::ShowInDownloads) => (0, 4),
@@ -89,6 +89,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Status(_) | A::Category { .. } => (1, 0),
         A::Favourite => (1, 1),
         A::Hide => (1, 2),
+        A::UngroupCopies => (1, 3),
 
         A::Settings => (2, 0),
         A::EditGame => (2, 1),
@@ -178,15 +179,24 @@ impl CollectionView {
         }
     }
 
+    /// Sets the status of the game under `key` (of every copy while they are grouped).
     pub(super) fn set_status(&mut self, key: &str, status_id: String, cx: &mut Context<Self>) {
-        let Some(lib) = self.lib.clone() else { return };
-        let Some(game) = lib.get(key) else { return };
-        let extras = SetStatusExtras {
-            runner: Some(game.runner.clone()),
-            title: Some(game.title.clone()),
-            playnite_id: game.meta.as_ref().map(|m| m.playnite_id.clone()),
-        };
-        if let Err(err) = set_game_status(&self.data_paths, &game.app_name, &status_id, &extras) {
+        let games = self.with_copies(key);
+        if games.is_empty() {
+            return;
+        }
+        let writes: Vec<_> = games
+            .iter()
+            .map(|g| {
+                let extras = SetStatusExtras {
+                    runner: Some(g.runner.clone()),
+                    title: Some(g.title.clone()),
+                    playnite_id: g.meta.as_ref().map(|m| m.playnite_id.clone()),
+                };
+                (g.app_name.clone(), status_id.clone(), extras)
+            })
+            .collect();
+        if let Err(err) = heronite_data::status::set_games_status(&self.data_paths, &writes) {
             self.show_toast(tr!("Could not change status: {err}", err = format!("{err:#}")), true, cx);
         } else {
             self.mark_onboarding(crate::dialogs::onboarding::Step::Statuses);
@@ -350,6 +360,13 @@ impl CollectionView {
                     .on_hover(fold(None))
                     .on_click(cx.listener(|this, _, window, cx| this.open_batch_edit(window, cx))),
             )
+            .when(n > 1, |d| {
+                d.child(
+                    plain("cm-b-copies", Icon::CallMerge, tr!("Link as copies of one game"))
+                        .on_hover(fold(None))
+                        .on_click(cx.listener(|this, _, _, cx| this.link_selected_copies(cx))),
+                )
+            })
             .child(crate::ui::dropdown::menu_separator())
             .child(
                 plain("cm-b-all", Icon::SelectAll, tr!("Select all"))
