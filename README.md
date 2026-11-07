@@ -53,17 +53,6 @@ Coming from Heroic, Lutris, Bottles, Faugus, or Playnite? Heronite imports your 
 | Windows 10 and 11 (**recommended**) | `Heronite-Setup-x86_64.exe` | Run it: it installs for your user, no administrator rights needed |
 | Windows 10 and 11, portable | `Heronite-Portable-x86_64.zip` | Extract it anywhere and run `Heronite\heronite.exe`; the library, settings, and screenshots stay in that folder |
 
-#### 🪟 Windows
-
-With [Scoop](https://scoop.sh), from the [`scoop-heronite`](https://github.com/RafaelGoulartB/scoop-heronite) bucket:
-
-```powershell
-scoop bucket add heronite https://github.com/RafaelGoulartB/scoop-heronite
-scoop install heronite/heronite
-```
-
-`scoop update heronite` installs new versions.
-
 </details>
 
 
@@ -82,6 +71,26 @@ scoop install heronite/heronite
 `scoop update heronite` installs new versions.
 
 </details>
+
+<details>
+<summary><b>Fedora - COPR</b></summary>
+
+#### 🐧 Fedora, Nobara, Ultramarine, Bazzite
+
+From the [`rafaelgoulart/heronite`](https://copr.fedorainfracloud.org/coprs/rafaelgoulart/heronite/) COPR:
+
+```bash
+sudo dnf copr enable rafaelgoulart/heronite
+sudo dnf install heronite
+```
+
+`sudo dnf upgrade` installs new versions.
+
+On atomic desktops (Bazzite, Silverblue, Kinoite), add the [COPR repo file](https://copr.fedorainfracloud.org/coprs/rafaelgoulart/heronite/) to `/etc/yum.repos.d/`, then run `rpm-ostree install heronite`.
+
+</details>
+
+
 
 The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
 
