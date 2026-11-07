@@ -99,9 +99,10 @@ impl OnboardingDialog {
     fn games_card(&self, art: &Art, cx: &mut Context<Self>) -> Stateful<Div> {
         let f = &self.facts;
         let source = |step: Step, hint: &'static str| {
-            let right = match f.count_line(step) {
-                Some(n) => done_label(n).into_any_element(),
-                None => dim(hint).into_any_element(),
+            let right = match (f.count_line(step), f.found_line(step)) {
+                (Some(n), _) => done_label(n).into_any_element(),
+                (None, Some(found)) => dim(format!("{found}  \u{b7}  {hint}")).into_any_element(),
+                (None, None) => dim(hint).into_any_element(),
             };
             line(step.icon(), step.title(), right).into_any_element()
         };
