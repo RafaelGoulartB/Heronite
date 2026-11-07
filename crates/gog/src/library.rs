@@ -125,10 +125,26 @@ fn get_with_retry(url: &str, headers: &[(&str, &str)], has_cache: bool) -> Optio
     None
 }
 
-/// One game's result: its entry (`None` = not shown) and a fresh cache record.
+/// One game's result: its entry and a fresh cache record.
 struct Loaded {
+    id: String,
+    /// `None`: not shown (GOG says it is not a game, or it is hidden), or
+    /// `unavailable`.
     info: Option<Value>,
+    /// No answer to build an entry from (network or API trouble, nothing saved):
+    /// the game is still owned, so its previous entry stays.
+    unavailable: bool,
     cache: Option<(String, Value)>,
+}
+
+impl Loaded {
+    fn new(id: &str, info: Option<Value>) -> Self {
+        Self { id: id.to_string(), info, unavailable: false, cache: None }
+    }
+
+    fn unavailable(id: &str) -> Self {
+        Self { unavailable: true, ..Self::new(id, None) }
+    }
 }
 
 fn cache_key(external_id: &str) -> String {
@@ -150,7 +166,7 @@ fn load_one(creds: &Credentials, release: &Release, cached: Option<&Value>, fold
             Ok(doc) => {
                 let info = gamesdb::from_gamesdb(id, &doc, folder_name);
                 let entry = json!({"etag": resp.etag.unwrap_or_default(), "data": doc});
-                Loaded { info, cache: Some((cache_key(id), entry)) }
+                Loaded { cache: Some((cache_key(id), entry)), ..Loaded::new(id, info) }
             }
             Err(err) => {
                 log::warn!("GOG game {id}: bad metadata: {err}");
@@ -158,7 +174,7 @@ fn load_one(creds: &Credentials, release: &Release, cached: Option<&Value>, fold
             }
         },
         Some((Verdict::Cached, _)) => from_cache_or_nothing(id, cached_data, folder_name),
-        Some((_, _)) => Loaded { info: fallback_product(creds, id, folder_name), cache: None },
+        Some((_, _)) => fallback_product(creds, id, folder_name),
         None => {
             log::warn!("GOG game {id}: metadata unavailable, using the saved copy");
             from_cache_or_nothing(id, cached_data, folder_name)
@@ -167,17 +183,34 @@ fn load_one(creds: &Credentials, release: &Release, cached: Option<&Value>, fold
 }
 
 fn from_cache_or_nothing(id: &str, cached_data: Option<&Value>, folder_name: &str) -> Loaded {
-    Loaded { info: cached_data.and_then(|d| gamesdb::from_gamesdb(id, d, folder_name)), cache: None }
+    match cached_data {
+        Some(d) => Loaded::new(id, gamesdb::from_gamesdb(id, d, folder_name)),
+        None => Loaded::unavailable(id),
+    }
 }
 
 /// `products` answer for a game `gamesdb` does not know.
-fn fallback_product(creds: &Credentials, id: &str, folder_name: &str) -> Option<Value> {
+fn fallback_product(creds: &Credentials, id: &str, folder_name: &str) -> Loaded {
     let auth = bearer(&creds.access_token);
-    let (verdict, resp) = get_with_retry(&product_url(id), &[("Authorization", auth.as_str())], false)?;
-    if verdict != Verdict::Fresh {
-        return None;
+    let answer = get_with_retry(&product_url(id), &[("Authorization", auth.as_str())], false);
+    product_loaded(id, answer.as_ref().map(|(verdict, resp)| (*verdict, resp.body.as_str())), folder_name)
+}
+
+/// What a `products` answer (`None`: no answer after the retries) makes of
+/// the game. GOG saying it has no such product (404, 410) is definitive: the
+/// game is dropped. Only a missing or unreadable answer keeps the saved entry.
+fn product_loaded(id: &str, answer: Option<(Verdict, &str)>, folder_name: &str) -> Loaded {
+    match answer {
+        Some((Verdict::Fresh, body)) => match serde_json::from_str::<Value>(body) {
+            Ok(doc) => Loaded::new(id, gamesdb::from_product(id, &doc, folder_name)),
+            Err(err) => {
+                log::warn!("GOG game {id}: bad product answer: {err}");
+                Loaded::unavailable(id)
+            }
+        },
+        Some((Verdict::NoData, _)) => Loaded::new(id, None),
+        Some(_) | None => Loaded::unavailable(id),
     }
-    gamesdb::from_product(id, &serde_json::from_str(&resp.body).ok()?, folder_name)
 }
 
 /// The saved `gamesdb` answers, by cache key.
@@ -240,31 +273,58 @@ fn app_name_of(game: &Value) -> &str {
     game.get("app_name").and_then(Value::as_str).unwrap_or_default()
 }
 
+/// The library file's games and the cache records of a refresh. A game with
+/// no answer this time (`unavailable`) keeps the entry saved by an earlier
+/// refresh instead of dropping out of the library.
+fn assemble(loaded: Vec<Loaded>, saved: &[Value], installed: &[Installed]) -> (Vec<Value>, Vec<(String, Value)>) {
+    let mut games = Vec::new();
+    let mut records = Vec::new();
+    let (mut kept, mut lost) = (0, Vec::new());
+    for item in loaded {
+        records.extend(item.cache);
+        let info = match item.info {
+            Some(info) => Some(info),
+            None if item.unavailable => {
+                let previous = saved.iter().find(|g| app_name_of(g) == item.id).cloned();
+                match previous {
+                    Some(_) => kept += 1,
+                    None => lost.push(item.id),
+                }
+                previous
+            }
+            None => None,
+        };
+        if let Some(mut game) = info {
+            let name = app_name_of(&game).to_string();
+            apply_install(&mut game, installed.iter().find(|i| i.app_name == name));
+            games.push(game);
+        }
+    }
+    if kept > 0 {
+        log::warn!("GOG library: no metadata for {kept} games, kept their saved entries");
+    }
+    if !lost.is_empty() {
+        log::warn!("GOG library: no metadata and no saved entry for {} games, left out: {}", lost.len(), lost.join(", "));
+    }
+    (games, records)
+}
+
 /// Fetches the library and rewrites `store_cache/gog_library.json`. Network.
 /// Returns the number of games.
 pub fn refresh(paths: &DataPaths, gogdl: &Gogdl) -> Result<usize> {
     let creds = user::credentials(paths, gogdl)?;
     let releases = fetch_releases(&creds)?;
     let cache = read_api_cache(paths);
+    let saved = saved_games(paths);
     let folders: HashMap<String, String> =
-        saved_games(paths).iter().filter_map(|g| Some((app_name_of(g).to_string(), g.get("folder_name")?.as_str()?.to_string()))).collect();
+        saved.iter().filter_map(|g| Some((app_name_of(g).to_string(), g.get("folder_name")?.as_str()?.to_string()))).collect();
 
     let loaded = parallel_map(&releases, WORKERS, |rel| {
         let folder = folders.get(&rel.external_id).map_or("", String::as_str);
         load_one(&creds, rel, cache.get(&cache_key(&rel.external_id)), folder)
     });
 
-    let installed = installed::load(paths);
-    let mut games = Vec::new();
-    let mut records = Vec::new();
-    for item in loaded {
-        records.extend(item.cache);
-        if let Some(mut game) = item.info {
-            let name = app_name_of(&game).to_string();
-            apply_install(&mut game, installed.iter().find(|i| i.app_name == name));
-            games.push(game);
-        }
-    }
+    let (games, records) = assemble(loaded, &saved, &installed::load(paths));
     if let Err(err) = write_api_cache(paths, records) {
         log::warn!("saving GOG metadata: {err:#}");
     }
@@ -351,6 +411,70 @@ mod tests {
         );
         assert_eq!(next.as_deref(), Some("tok"));
         assert_eq!(parse_release_page(&json!({"items": []})), (vec![], None));
+    }
+
+    fn app_names(games: &[Value]) -> Vec<&str> {
+        games.iter().map(app_name_of).collect()
+    }
+
+    #[test]
+    fn the_saved_copy_of_the_metadata_decides_when_gamesdb_cannot_be_reached() {
+        // Nothing saved: no answer at all.
+        let none = from_cache_or_nothing("1207658924", None, "The Witcher");
+        assert!(none.unavailable && none.info.is_none());
+        // Saved and shown.
+        let shown = from_cache_or_nothing("1207658924", Some(&sample_release()), "The Witcher");
+        assert!(!shown.unavailable);
+        assert_eq!(shown.info.unwrap()["folder_name"], "The Witcher");
+        // Saved and hidden (a DLC): GOG's own answer, so it goes.
+        let mut hidden = sample_release();
+        hidden["game"]["visible_in_library"] = json!(false);
+        let gone = from_cache_or_nothing("1207658924", Some(&hidden), "");
+        assert!(!gone.unavailable && gone.info.is_none());
+    }
+
+    #[test]
+    fn a_missing_product_is_definitive_but_a_missing_answer_is_not() {
+        let product = r#"{"title": "Old Game", "game_type": "game"}"#;
+        let ok = product_loaded("9", Some((Verdict::Fresh, product)), "");
+        assert!(!ok.unavailable);
+        assert_eq!(ok.info.unwrap()["title"], "Old Game");
+        // 404 and 410: GOG has no such product.
+        let gone = product_loaded("9", Some((Verdict::NoData, "")), "");
+        assert!(!gone.unavailable && gone.info.is_none());
+        // A DLC product is not shown, and that is an answer too.
+        let dlc = product_loaded("9", Some((Verdict::Fresh, r#"{"title": "Pack", "game_type": "dlc"}"#)), "");
+        assert!(!dlc.unavailable && dlc.info.is_none());
+        // Retries used up, or garbage in the body.
+        assert!(product_loaded("9", None, "").unavailable);
+        assert!(product_loaded("9", Some((Verdict::Fresh, "<html>")), "").unavailable);
+    }
+
+    #[test]
+    fn a_game_without_an_answer_keeps_its_saved_entry() {
+        let mut witcher = gamesdb::from_gamesdb("1207658924", &sample_release(), "The Witcher").unwrap();
+        // Something only the saved copy has, so the test cannot pass on a rebuilt entry.
+        witcher["title"] = json!("Saved title");
+        let other = gamesdb::from_gamesdb("55", &sample_release(), "").unwrap();
+        let removed = gamesdb::from_gamesdb("66", &sample_release(), "").unwrap();
+        let saved = [witcher.clone(), other, removed];
+
+        let loaded = vec![
+            Loaded::new("88", Some(json!({"app_name": "88", "title": "New"}))),
+            Loaded::unavailable("1207658924"),
+            // GOG answered that this one is not shown: it goes, saved copy or not.
+            Loaded::new("55", None),
+            // Never saved and no answer: nothing to keep.
+            Loaded::unavailable("77"),
+        ];
+        // "66" is no longer in the release list: it is not in `loaded`.
+        let (games, _) = assemble(loaded, &saved, &[installed_entry()]);
+        assert_eq!(app_names(&games), ["88", "1207658924"]);
+        assert_eq!(games[1]["title"], "Saved title");
+        assert_eq!(games[1]["folder_name"], "The Witcher");
+        // The install state is the current one, not the saved one.
+        assert_eq!(games[1]["is_installed"], true);
+        assert_eq!(games[0]["is_installed"], false);
     }
 
     #[test]
