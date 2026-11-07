@@ -830,6 +830,8 @@ impl CollectionView {
         let mut look = theme::appearance();
         edit(&mut look);
         theme::set_appearance(look);
+        // Achievements may have been switched: running games' live checks follow.
+        crate::services::achievements::get(cx).update(cx, |s, cx| s.sync_live(cx));
         if save {
             let look = theme::appearance();
             let app = self.app_paths.clone();

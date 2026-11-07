@@ -25,9 +25,30 @@ pub struct Outcome {
     pub problems: Vec<(Source, Problem)>,
 }
 
+/// A running game's session, for a read made during it.
+#[derive(Debug, Clone, Copy)]
+pub struct Session<'a> {
+    /// The sources its live check reads: their reads use `merge_live`.
+    pub sources: &'a [Source],
+    pub since: DateTime<Utc>,
+}
+
+impl Session<'_> {
+    fn covers(&self, source: Source) -> bool {
+        self.sources.contains(&source)
+    }
+}
+
 /// Reads every target of a game and updates its copy. Blocking.
 pub fn refresh(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget]) -> Outcome {
-    read_sources(ctx, runner, app_name, targets, None)
+    read_sources(ctx, runner, app_name, targets, None, false)
+}
+
+/// [`refresh`] of a game that runs (the overlay's panel asks): its live
+/// sources are read as its live check reads them, so what the session
+/// unlocked is new even on their first read.
+pub fn refresh_in_session(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget], session: Session) -> Outcome {
+    read_sources(ctx, runner, app_name, targets, Some(session), false)
 }
 
 /// The live check of a game that runs since `since`: reads only the
@@ -43,15 +64,18 @@ pub fn refresh_live(
     sources: &[Source],
     since: DateTime<Utc>,
 ) -> Outcome {
-    read_sources(ctx, runner, app_name, targets, Some((sources, since)))
+    read_sources(ctx, runner, app_name, targets, Some(Session { sources, since }), true)
 }
 
-fn read_sources(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget], live: Option<(&[Source], DateTime<Utc>)>) -> Outcome {
+/// `only_live`: read the session's sources alone (and say nothing of their
+/// failures: the live check does).
+fn read_sources(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget], session: Option<Session>, only_live: bool) -> Outcome {
     let mut game = store::read(ctx.paths, runner, app_name);
     let mut out = Outcome::default();
     let mut changed = false;
     for target in targets {
-        if live.is_some_and(|(sources, _)| !sources.contains(&target.source())) {
+        let live = session.filter(|s| s.covers(target.source()));
+        if only_live && live.is_none() {
             continue;
         }
         let mut target = target.clone();
@@ -67,7 +91,7 @@ fn read_sources(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget
                 let old = game.sets.iter().position(|s| s.source == source);
                 let old_set = old.map(|i| &game.sets[i]);
                 let (merged, new) = match live {
-                    Some((_, since)) => merge_live(old_set, fresh, Utc::now(), since),
+                    Some(s) => merge_live(old_set, fresh, Utc::now(), s.since),
                     None => merge(old_set, fresh, Utc::now()),
                 };
                 out.new_unlocks.extend(new.into_iter().map(|a| (source, a)));
@@ -85,7 +109,7 @@ fn read_sources(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget
             Fetch::NeedsAccount => out.problems.push((source, Problem::NeedsAccount)),
             Fetch::Unmatched { hash, file } => out.problems.push((source, Problem::Unmatched { hash, file })),
             Fetch::Failed(e) => {
-                if live.is_none() {
+                if !only_live {
                     log::warn!("achievements of {runner}_{app_name} from {}: {e}", source.label());
                 }
                 out.problems.push((source, Problem::Failed(e)));
@@ -127,4 +151,71 @@ pub fn pin_local(ctx: &Ctx, runner: &str, app_name: &str, pin: Option<LocalPin>,
     game.sets.retain(|s| s.source != Source::Local);
     game.empty_at.remove(&Source::Local);
     store::write(ctx.paths, runner, app_name, &game, order)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::accounts::Accounts;
+    use crate::target::LocalTarget;
+    use heronite_data::paths::DataPaths;
+    use heronite_metadata::Http;
+
+    /// A game with an emulator's files (an app id no real saves folder has)
+    /// whose saves say `A` was unlocked at `at`.
+    fn game_with_unlock(dir: &std::path::Path, at: DateTime<Utc>) -> Vec<SourceTarget> {
+        let game = dir.join("Game");
+        let settings = game.join("steam_settings");
+        std::fs::create_dir_all(game.join("saves/3999991")).unwrap();
+        std::fs::create_dir_all(&settings).unwrap();
+        std::fs::write(settings.join("steam_appid.txt"), "3999991").unwrap();
+        std::fs::write(settings.join("configs.user.ini"), "[user::saves]\nlocal_save_path=saves\n").unwrap();
+        std::fs::write(
+            settings.join("achievements.json"),
+            br#"[{"name":"A","displayName":"Alpha","unlock_percentage":50},{"name":"B","displayName":"Beta","unlock_percentage":5}]"#,
+        )
+        .unwrap();
+        let state = format!(r#"{{"A":{{"earned":true,"earned_time":{}}}}}"#, at.timestamp());
+        std::fs::write(game.join("saves/3999991/achievements.json"), state).unwrap();
+        vec![SourceTarget::Local(LocalTarget { app_name: "g".into(), folders: vec![game], ..Default::default() })]
+    }
+
+    fn run(dir: &std::path::Path, targets: &[SourceTarget], session: Option<Session>) -> Outcome {
+        let paths = DataPaths::at(dir.join("data"));
+        let (http, accounts) = (Http::default(), Accounts::default());
+        let ctx = Ctx { paths: &paths, http: &http, accounts: &accounts, lang: "en" };
+        match session {
+            Some(s) => refresh_in_session(&ctx, "sideload", "g", targets, s),
+            None => refresh(&ctx, "sideload", "g", targets),
+        }
+    }
+
+    #[test]
+    fn a_first_read_during_the_session_announces_its_unlock() {
+        let now = Utc::now();
+        let since = now - chrono::Duration::minutes(10);
+        // Outside a session the first read is history.
+        let dir = tempfile::tempdir().unwrap();
+        let targets = game_with_unlock(dir.path(), now);
+        assert!(run(dir.path(), &targets, None).new_unlocks.is_empty());
+        // During one (the overlay's panel asked), what it unlocked is new...
+        let dir = tempfile::tempdir().unwrap();
+        let targets = game_with_unlock(dir.path(), now);
+        let session = Session { sources: &[Source::Local], since };
+        let out = run(dir.path(), &targets, Some(session));
+        assert_eq!(out.new_unlocks.iter().map(|(_, a)| a.id.as_str()).collect::<Vec<_>>(), ["A"]);
+        // ...once: the live check and the refresh after exit find nothing.
+        assert!(run(dir.path(), &targets, Some(session)).new_unlocks.is_empty());
+        assert!(run(dir.path(), &targets, None).new_unlocks.is_empty());
+    }
+
+    #[test]
+    fn an_unlock_from_before_the_session_stays_history() {
+        let now = Utc::now();
+        let dir = tempfile::tempdir().unwrap();
+        let targets = game_with_unlock(dir.path(), now - chrono::Duration::days(30));
+        let out = run(dir.path(), &targets, Some(Session { sources: &[Source::Local], since: now }));
+        assert!(out.new_unlocks.is_empty());
+        assert!(out.game.sets[0].achievements.iter().any(|a| a.id == "A" && a.unlocked && a.noticed_at.is_none()));
+    }
 }
