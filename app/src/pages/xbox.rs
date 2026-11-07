@@ -2,9 +2,9 @@
 //! Pass games the Xbox app installed on this PC (`services::xbox_library`).
 //! No login needed: Heronite reads which of the user's packages are games
 //! and adds them to the Collection; the Xbox app keeps installing, updating
-//! and signing in to them. An Xbox account may be added (when this build
-//! has Heronite's app registration): the play time Xbox counted, the last
-//! play, achievements, art and the games not installed here come with it.
+//! and signing in to them. An Xbox account may be added (Windows): the play
+//! time Xbox counted, the last play, achievements, art and the games not
+//! installed here come with it.
 
 use std::process::{Command, Stdio};
 

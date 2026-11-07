@@ -9,8 +9,7 @@
 //! * [`titlehub`]: the account's titles and their minutes;
 //! * [`http`]: the requests, which the tests answer from fixtures.
 //!
-//! Heronite signs in as its own app registration ([`client_id`]). Without
-//! one, nothing here is offered.
+//! Heronite signs in as its own app registration ([`client_id`]).
 
 pub mod account;
 pub mod auth;
@@ -25,18 +24,29 @@ use heronite_data::DataPaths;
 use crate::details::{self, Applied};
 use http::Http;
 
-/// Set at build time (`HERONITE_XBOX_CLIENT_ID=<id> cargo build`) or at run
-/// time (the same variable): the application (client) id of Heronite's
-/// registration with Microsoft (personal accounts, public client, redirect
-/// `https://login.live.com/oauth20_desktop.srf`). It must be Heronite's own:
-/// another program's registration is not to be borrowed.
+/// The application (client) id of Heronite's own registration with
+/// Microsoft (personal accounts, public client, redirect
+/// `https://login.live.com/oauth20_desktop.srf`), registered by the
+/// maintainer (issue #173). Another program's registration is not to be
+/// borrowed.
+pub const DEFAULT_CLIENT_ID: &str = "c8d70a4c-7469-4f4a-8dea-f98a3d12fe0c";
+
+/// Overrides [`DEFAULT_CLIENT_ID`] at build time
+/// (`HERONITE_XBOX_CLIENT_ID=<id> cargo build`) or at run time (the same
+/// variable), for a fork with its own registration.
 pub const CLIENT_ID_VAR: &str = "HERONITE_XBOX_CLIENT_ID";
 
-/// Heronite's client id, when one is set and looks like one (a GUID).
+/// Heronite's client id: the override when it looks like one (a GUID), else
+/// the default.
 pub fn client_id() -> Option<String> {
     let run = std::env::var(CLIENT_ID_VAR).ok();
     let built = option_env!("HERONITE_XBOX_CLIENT_ID").map(str::to_string);
-    run.or(built).map(|id| id.trim().to_ascii_lowercase()).filter(|id| guid(id))
+    [run, built]
+        .into_iter()
+        .flatten()
+        .map(|id| id.trim().to_ascii_lowercase())
+        .find(|id| guid(id))
+        .or_else(|| Some(DEFAULT_CLIENT_ID.to_string()))
 }
 
 /// `8-4-4-4-12` hexadecimal digits.
@@ -158,6 +168,7 @@ mod tests {
 
     #[test]
     fn client_ids_must_look_like_one() {
+        assert!(guid(DEFAULT_CLIENT_ID));
         assert!(guid("0b9f6e5a-1c2d-4e3f-8a9b-0c1d2e3f4a5b"));
         assert!(!guid("0b9f6e5a1c2d4e3f8a9b0c1d2e3f4a5b"));
         assert!(!guid("0b9f6e5a-1c2d-4e3f-8a9b-0c1d2e3f4a5"));

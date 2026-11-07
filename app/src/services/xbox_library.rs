@@ -7,8 +7,8 @@
 //! in the background (`heronite_xbox::size`), one at a time.
 //! The Collection reloads on [`XboxLibraryEvent::Synced`].
 //!
-//! With an Xbox account signed in (optional, and only offered when Heronite
-//! has its own app registration, `heronite_xbox::live::client_id`), the
+//! With an Xbox account signed in (optional, Windows; Heronite signs in as
+//! its own app registration, `heronite_xbox::live::client_id`), the
 //! account is read after a package read, at most once an hour (or when
 //! asked): play time, last play, achievements, art, and the PC games played
 //! on it that are not installed here.
