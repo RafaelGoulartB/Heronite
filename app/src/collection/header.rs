@@ -203,9 +203,11 @@ impl CollectionView {
         let (nav, search, onboarding) = (self.nav_dropdown(cx), self.search_box(window, cx), self.onboarding_button(cx));
         // Spans the list column (up to its border) so the search reads as
         // the list's own.
-        let left = self.header_left((list_w - 24.).max(300.), move |el, t| el.child(nav).child(search).child(view(t)).children(onboarding));
+        let left = self.header_left((list_w - 24.).max(300.), move |el, t| el.child(nav).child(search).child(view(t)));
         let widths = self.quick_widths(window);
-        let shown = self.quick_fit(&widths, &self.chip_widths(window));
+        // "Getting started" follows the quick controls in their lane.
+        let reserved = if onboarding.is_some() { f32::from(theme::TOOL_BTN) + super::toolbar::GAP } else { 0. };
+        let shown = self.quick_fit(&widths, &self.chip_widths(window), reserved);
         let chips = self.filter_chips(shown, window, cx);
         let quick = self.quick_toolbar(shown, &widths, window, cx);
         let measured = self.toolbar.width.clone();
@@ -248,6 +250,7 @@ impl CollectionView {
                     .overflow_hidden()
                     .child(watch)
                     .children(quick)
+                    .children(onboarding)
                     .child(
                         window_controls::drag_area(
                             div().id("hdr-drag").flex().flex_1().h_full().min_w_0().items_center().gap(px(6.)).overflow_hidden(),
