@@ -149,6 +149,13 @@ fn newest(files: &[PathBuf]) -> Option<PathBuf> {
 
 /// The game's emulator, app id and unlock state; `None` without an app id.
 pub fn locate(target: &LocalTarget, places: &Places) -> Option<Located> {
+    locate_watching(target, places).map(|(found, _)| found)
+}
+
+/// [`locate`], with every place the unlock state can be (also those that
+/// do not exist yet: the emulator writes it at the first unlock), for a
+/// running game's live check to look at.
+pub fn locate_watching(target: &LocalTarget, places: &Places) -> Option<(Located, Vec<PathBuf>)> {
     let emulator = target.folders.iter().find_map(|f| emulator_dir(f));
     let settings = emulator.as_ref().map(|e| e.join("steam_settings")).filter(|s| s.is_dir());
     let pinned = target.pin.as_ref().and_then(|p| p.app_id.clone()).map(|id| (id, AppIdFrom::Pin));
@@ -169,11 +176,11 @@ pub fn locate(target: &LocalTarget, places: &Places) -> Option<Located> {
             (schema || saves).then_some((id, AppIdFrom::Collection))
         })?;
     let candidates = state_files(target, places, emulator.as_deref(), &app_id);
-    let found: Vec<PathBuf> = candidates.into_iter().filter(|f| f.is_file()).collect();
+    let found: Vec<PathBuf> = candidates.iter().filter(|f| f.is_file()).cloned().collect();
     if found.len() > 1 {
         log::debug!("game files of {}: {} state files, the newest is read", target.app_name, found.len());
     }
-    Some(Located { app_id, from, settings, state: newest(&found) })
+    Some((Located { app_id, from, settings, state: newest(&found) }, candidates))
 }
 
 /// The users' `AppData/Roaming` folders of a Wine prefix.

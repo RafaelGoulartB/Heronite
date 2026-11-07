@@ -2,7 +2,6 @@
   " and {n} more": " und {n} weitere",
   "100% · Completed": "100% · Abgeschlossen",
   "100% · Completed {date}": "100% · Abgeschlossen am {date}",
-  "A desktop notification when a game unlocks something.": "Eine Desktop-Benachrichtigung, wenn ein Spiel etwas freischaltet.",
   "Achievement unlocked": "Erfolg freigeschaltet",
   "Achievement unlocked · {percent}": "Erfolg freigeschaltet · {percent}",
   "Achievements from Steam, GOG, Epic Games and RetroAchievements. Heronite keeps its own copy of them, so your history stays even if a store or an account goes away.": "Erfolge von Steam, GOG, Epic Games und RetroAchievements. Heronite behält eine eigene Kopie, sodass dein Verlauf erhalten bleibt, auch wenn ein Store oder ein Konto wegfällt.",
@@ -139,5 +138,10 @@
   "{n} rare": "{n} selten",
   "{n} secret achievement": "{n} geheimer Erfolg",
   "{n} secret achievements": "{n} geheime Erfolge",
-  "{signed} of {total} signed in": "{signed} von {total} angemeldet"
+  "{signed} of {total} signed in": "{signed} von {total} angemeldet",
+  "A desktop notification when a game unlocks something, while it runs and after it ends.": "Eine Desktop-Benachrichtigung, wenn ein Spiel etwas freischaltet, während es läuft und nachdem es beendet ist.",
+  "Check Steam games while they run": "Steam-Spiele prüfen, während sie laufen",
+  "Their new achievements show while you play, from Steam's stats files, when Steam writes them. Off by default: Steam's own overlay already shows them.": "Ihre neuen Erfolge erscheinen während des Spielens, aus Steams Statistikdateien, sobald Steam sie schreibt. Standardmäßig aus: Steams eigenes Overlay zeigt sie bereits an.",
+  "Show new achievements over the game": "Neue Erfolge über dem Spiel anzeigen",
+  "While a game runs, its game files are checked every few seconds and what it unlocks shows over it. Needs the overlay (Settings → Overlay).": "Während ein Spiel läuft, werden seine Spieldateien alle paar Sekunden geprüft, und was es freischaltet, erscheint darüber. Benötigt das Overlay (Einstellungen → Overlay)."
 }

@@ -1,9 +1,9 @@
 //! A refresh of one game: read every source, fold each answer into the
 //! local copy, write it, and say what is new.
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
-use crate::merge::merge;
+use crate::merge::{merge, merge_live};
 use crate::model::{Achievement, GameAchievements, LocalPin, Source};
 use crate::sources::{self, Ctx, Fetch};
 use crate::store;
@@ -27,10 +27,33 @@ pub struct Outcome {
 
 /// Reads every target of a game and updates its copy. Blocking.
 pub fn refresh(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget]) -> Outcome {
+    read_sources(ctx, runner, app_name, targets, None)
+}
+
+/// The live check of a game that runs since `since`: reads only the
+/// `sources` of its targets (the cheap, local ones), and reports as new
+/// only what was unlocked in the session (`merge_live`). Failures are not
+/// logged here: the caller decides when a source failing is worth saying
+/// (a file read while the game writes it fails once, then reads).
+pub fn refresh_live(
+    ctx: &Ctx,
+    runner: &str,
+    app_name: &str,
+    targets: &[SourceTarget],
+    sources: &[Source],
+    since: DateTime<Utc>,
+) -> Outcome {
+    read_sources(ctx, runner, app_name, targets, Some((sources, since)))
+}
+
+fn read_sources(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget], live: Option<(&[Source], DateTime<Utc>)>) -> Outcome {
     let mut game = store::read(ctx.paths, runner, app_name);
     let mut out = Outcome::default();
     let mut changed = false;
     for target in targets {
+        if live.is_some_and(|(sources, _)| !sources.contains(&target.source())) {
+            continue;
+        }
         let mut target = target.clone();
         if let SourceTarget::Retro(t) = &mut target {
             t.pinned_game_id = game.retro_game_id;
@@ -42,7 +65,11 @@ pub fn refresh(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget]
         match sources::fetch(ctx, &target) {
             Fetch::Set(fresh) => {
                 let old = game.sets.iter().position(|s| s.source == source);
-                let (merged, new) = merge(old.map(|i| &game.sets[i]), fresh, Utc::now());
+                let old_set = old.map(|i| &game.sets[i]);
+                let (merged, new) = match live {
+                    Some((_, since)) => merge_live(old_set, fresh, Utc::now(), since),
+                    None => merge(old_set, fresh, Utc::now()),
+                };
                 out.new_unlocks.extend(new.into_iter().map(|a| (source, a)));
                 match old {
                     Some(i) => game.sets[i] = merged,
@@ -58,7 +85,9 @@ pub fn refresh(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget]
             Fetch::NeedsAccount => out.problems.push((source, Problem::NeedsAccount)),
             Fetch::Unmatched { hash, file } => out.problems.push((source, Problem::Unmatched { hash, file })),
             Fetch::Failed(e) => {
-                log::warn!("achievements of {runner}_{app_name} from {}: {e}", source.label());
+                if live.is_none() {
+                    log::warn!("achievements of {runner}_{app_name} from {}: {e}", source.label());
+                }
                 out.problems.push((source, Problem::Failed(e)));
             }
         }
