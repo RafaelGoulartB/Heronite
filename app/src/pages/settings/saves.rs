@@ -1,4 +1,8 @@
-//! Settings → Saves, first card: Ludusavi after-play save backups.
+//! Settings → Saves, first card: Ludusavi save backups after play and,
+//! when set, every interval while a game runs.
+//!
+//! Debug: `HERONITE_DEBUG_PAGE=settings:saves`; `HERONITE_DEBUG_SAVES_INTERVAL_OPEN=1`
+//! opens the "Also back up while playing" choice.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -20,6 +24,23 @@ use crate::ui::icon;
 
 const FORMATS: [(&str, &str); 2] = [("zip", "Zip"), ("simple", n_!("Simple folder"))];
 const COMPRESSIONS: [(&str, &str); 4] = [("none", n_!("None")), ("deflate", "Deflate"), ("bzip2", "Bzip2"), ("zstd", "Zstd")];
+/// `ludusavi.intervalMinutes` choices; `None` = only after play.
+const INTERVALS: [(Option<u32>, &str); 5] = [
+    (None, n_!("Off")),
+    (Some(15), n_!("Every 15 minutes")),
+    (Some(30), n_!("Every 30 minutes")),
+    (Some(60), n_!("Every hour")),
+    (Some(120), n_!("Every 2 hours")),
+];
+
+/// The label of an interval, also of one typed into `settings.json`.
+fn interval_label(minutes: Option<u32>) -> String {
+    match INTERVALS.iter().find(|(m, _)| *m == minutes) {
+        Some((_, l)) => tr(l).to_string(),
+        // At least 5 (`LUDUSAVI_INTERVAL_RANGE`): never singular.
+        None => tr!("Every {n} minutes", n = minutes.unwrap_or_default()),
+    }
+}
 
 pub struct State {
     /// `None` while detecting, `Some(None)` when Ludusavi was not found.
@@ -30,6 +51,7 @@ pub struct State {
     details_open: Option<bool>,
     format_open: bool,
     compression_open: bool,
+    interval_open: bool,
 }
 
 impl State {
@@ -47,7 +69,16 @@ impl State {
                 save(d, LudusaviSettingsPatch { backup_path: Some(v), ..Default::default() }, cx);
             }
         });
-        Self { detected: None, detecting: false, binary, folder, details_open: None, format_open: false, compression_open: false }
+        Self {
+            detected: None,
+            detecting: false,
+            binary,
+            folder,
+            details_open: None,
+            format_open: false,
+            compression_open: false,
+            interval_open: crate::env::flag("HERONITE_DEBUG_SAVES_INTERVAL_OPEN"),
+        }
     }
 
     /// Detection finished without finding Ludusavi.
@@ -285,6 +316,28 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             .into_any_element(),
     ]);
 
+    let interval = card_box()
+        .py(px(12.))
+        .gap(px(8.))
+        .child(select_field(
+            "ludusavi-interval",
+            Some(tr!("Also back up while playing")),
+            interval_label(l.interval_minutes),
+            !l.enabled,
+            d.saves.interval_open && l.enabled,
+            INTERVALS.iter().map(|(m, lbl)| (tr(lbl).into(), *m == l.interval_minutes)).collect(),
+            cx,
+            |d: &mut SettingsPage, _, cx| {
+                d.saves.interval_open = !d.saves.interval_open;
+                cx.notify();
+            },
+            |d: &mut SettingsPage, i, _, cx| {
+                d.saves.interval_open = false;
+                save(d, LudusaviSettingsPatch { interval_minutes: Some(INTERVALS[i].0), ..Default::default() }, cx);
+            },
+        ))
+        .child(help_text(tr(INTERVAL_HELP)));
+
     div()
         .flex()
         .flex_col()
@@ -293,6 +346,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             tr!("When enabled, Heronite backs up the game save with Ludusavi after you close a game. Right-click a Collection card to back up that game now."),
         )))
         .child(enable)
+        .child(div().mt(px(10.)).child(interval))
         .child(div().mt(px(10.)).child(callout))
         .child(summary)
         .children(details_open.then(|| {
@@ -302,6 +356,9 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .children(l.last_error.clone().map(|e| div().mt(px(8.)).mx(px(6.)).text_color(theme::danger_text()).text_size(px(13.)).child(e)))
         .into_any_element()
 }
+
+/// What a backup while playing is and is not.
+const INTERVAL_HELP: &str = n_!("Starts with the next game you launch. Ludusavi copies the save files as they are at that moment: a game saving during the copy can leave a mixed backup, so the backup after the game closes is the one to trust. Nothing is restored on its own.");
 
 /// Console mode rows of Saves: Ludusavi, then restoring.
 pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
@@ -319,6 +376,14 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     let mut rows = vec![
         Row::header(tr!("Save backups (Ludusavi)")),
         Row::toggle("lu-enabled", tr!("Back up saves when a game closes"), l.enabled).enabled(!d.saves.missing() || l.enabled).desc(found),
+        Row::choice(
+            "lu-interval",
+            tr!("Also back up while playing"),
+            INTERVALS.iter().map(|(_, x)| SharedString::from(tr(x))).collect(),
+            INTERVALS.iter().position(|(m, _)| *m == l.interval_minutes).unwrap_or(0),
+        )
+        .enabled(l.enabled)
+        .desc(tr(INTERVAL_HELP)),
         Row::toggle("lu-config", tr!("Use Ludusavi's own settings"), l.use_installed_config)
             .enabled(config_known)
             .desc(tr!("Path, zip and compression come from Ludusavi's configuration")),
@@ -362,6 +427,9 @@ pub(super) fn console_apply(
             "lu-config" => save(d, LudusaviSettingsPatch { use_installed_config: Some(*on), ..Default::default() }, cx),
             _ => {}
         },
+        Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "lu-interval" => {
+            save(d, LudusaviSettingsPatch { interval_minutes: Some(INTERVALS[*index].0), ..Default::default() }, cx)
+        }
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "lu-format" => {
             save(d, LudusaviSettingsPatch { format: Some(FORMATS[*index].0.into()), ..Default::default() }, cx)
         }
