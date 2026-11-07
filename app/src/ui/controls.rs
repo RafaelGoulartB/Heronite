@@ -259,7 +259,10 @@ pub fn kicker(text: impl Into<SharedString>) -> Div {
 /// Keyboard hint chip (`Ctrl K`): 11px mono, radius 5.
 pub fn kbd(text: impl Into<SharedString>) -> Div {
     div()
+        .flex()
         .flex_none()
+        .items_center()
+        .justify_center()
         .px(px(6.))
         .py(px(1.))
         .rounded(px(5.))
@@ -268,6 +271,8 @@ pub fn kbd(text: impl Into<SharedString>) -> Div {
         .border_color(theme::ink_a(0.12))
         .font_family(theme::FONT_MONO)
         .text_size(px(11.))
+        // Fixed, so the chip is the same height wherever it sits.
+        .line_height(px(16.))
         .text_color(theme::text_muted())
         .child(text.into())
 }

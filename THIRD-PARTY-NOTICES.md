@@ -15,6 +15,7 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 |---|---|---|---|
 | [Cabin](https://github.com/impallari/Cabin) | `app/assets/fonts/Cabin-400.ttf`, `Cabin-600.ttf` | Copyright 2018 The Cabin Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
 | [Rubik](https://github.com/googlefonts/rubik) | `app/assets/fonts/Rubik-400.ttf`, `Rubik-600.ttf` | Copyright 2015 The Rubik Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
+| [Noto Sans Mono](https://github.com/notofonts/latin-greek-cyrillic) | `app/assets/fonts/NotoSansMono-400.ttf`, `NotoSansMono-600.ttf` (subset to Latin, Greek, Cyrillic and common symbols) | Copyright 2022 The Noto Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
 
 ## Icons
 
