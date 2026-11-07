@@ -16,11 +16,12 @@
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use heronite_data::models::{LocalMetaFile, TimestampFile};
 use heronite_data::status::PlayedGame;
 use heronite_data::steam_owned::{unix_to_iso, SteamOwnedFile, SteamOwnedGame};
 use heronite_data::{json_store, DataPaths, Library};
+use heronite_i18n::tr;
 use heronite_launch::install_state::steam_sideload_entry;
 use heronite_launch::steam::{is_non_game_steam_app, SteamInstalledGame};
 use heronite_shortcuts::steam_client::SteamClient;
@@ -55,11 +56,23 @@ fn not_a_game(name: &str, app_id: &str) -> bool {
     is_non_game_steam_app(name, app_id) || re.is_match(name)
 }
 
+/// Whether the client has loaded the account's library. Its shared context
+/// answers a few seconds before that (right after Steam starts, and while
+/// it signs in), with `appStore.allApps` still empty: a read then takes the
+/// library for empty. Clients without the flag count as loaded once they
+/// list an app.
+const LOADED: &str = "(typeof appStore.m_bIsInitialized === 'boolean' ? appStore.m_bIsInitialized : appStore.allApps.length > 0)";
+
+/// Whether the client has loaded the account's library yet ([`LOADED`]).
+pub fn library_loaded(client: &SteamClient) -> Result<bool> {
+    client.eval(LOADED)?.as_bool().ok_or_else(|| anyhow!("the Steam client did not say whether its library is loaded"))
+}
+
 /// The games of the client's library (`appStore.allApps`, the list the
-/// Steam library shows).
+/// Steam library shows). Fails while the client is still loading it.
 pub fn read_owned(client: &SteamClient) -> Result<Vec<SteamOwnedGame>> {
-    let value = client.eval(
-        r#"(async () => {
+    let script = r#"(async () => {
+      if (!LOADED) return null
       const hidden = (id) => { try { return collectionStore.BIsHidden(id) } catch (e) { return false } }
       return appStore.allApps
         .filter((a) => a.app_type === 1 && !a.BIsShortcut() && (a.BIsOwned() || a.BIsBorrowed()) && !a.BIsDemo() && !hidden(a.appid))
@@ -70,8 +83,11 @@ pub fn read_owned(client: &SteamClient) -> Result<Vec<SteamOwnedGame>> {
           minutes: a.minutes_playtime_forever ?? 0,
           lastPlayed: a.rt_last_time_played ?? 0,
         }))
-    })()"#,
-    )?;
+    })()"#;
+    let value = client.eval(&script.replacen("LOADED", LOADED, 1))?;
+    if value.is_null() {
+        bail!("{}", tr!("Steam is still loading your library. It is read by itself as soon as Steam has it."));
+    }
     let list = value.as_array().ok_or_else(|| anyhow!("the Steam client did not return its library"))?;
     Ok(list
         .iter()
@@ -440,5 +456,41 @@ mod tests {
         for file in &files {
             assert_eq!(json_store::mtime(file), Some(old), "{}", file.display());
         }
+    }
+
+    /// A fake client whose library is loaded or not: what a real one
+    /// answers right after its shared context comes up, and seconds later.
+    fn client(loaded: bool) -> (heronite_shortcuts::steam_client::testing::FakeSteam, SteamClient) {
+        let fake = heronite_shortcuts::steam_client::testing::start(Box::new(move |expr: &str| {
+            if expr == LOADED {
+                json!(loaded)
+            } else if !loaded {
+                Value::Null
+            } else {
+                json!([{"appId": "620", "name": "Portal 2", "installed": true, "minutes": 125, "lastPlayed": 1_499_373_907}])
+            }
+        }));
+        let client = SteamClient::new(fake.addr.clone());
+        (fake, client)
+    }
+
+    #[test]
+    fn a_library_still_loading_is_not_read_as_empty() {
+        let (fake, client) = client(false);
+        assert!(!library_loaded(&client).unwrap());
+        let err = read_owned(&client).unwrap_err().to_string();
+        assert!(err.contains("still loading"), "{err}");
+        // The read itself checks too: the client may restart between the two.
+        let exprs = fake.expressions.lock().unwrap();
+        assert!(exprs.last().unwrap().contains(&format!("if (!{LOADED}) return null")), "{}", exprs.last().unwrap());
+    }
+
+    #[test]
+    fn a_loaded_library_is_read() {
+        let (_fake, client) = client(true);
+        assert!(library_loaded(&client).unwrap());
+        let games = read_owned(&client).unwrap();
+        assert_eq!(games.len(), 1);
+        assert_eq!((games[0].app_id.as_str(), games[0].playtime_minutes, games[0].installed), ("620", 125, true));
     }
 }

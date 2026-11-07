@@ -6,6 +6,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{tr, trn};
+use heronite_steam::ClientApiFlag;
 
 use super::commands::{CommandCtx, PageCommand, PaletteCommands};
 use super::{columns, status_pill, stores, Page, PageCtx, PageEvent};
@@ -72,14 +73,26 @@ impl SteamPage {
             SteamState::Restarting => (tr!("Restarting Steam\u{2026}").into(), theme::accent(), false),
             SteamState::NotAnswering => (tr!("Steam is not answering").into(), theme::warning(), false),
             SteamState::NeedsRestart => (tr!("Restart Steam once").into(), theme::warning(), false),
+            SteamState::Blocked => (tr!("Blocked by another tool").into(), theme::warning(), false),
             SteamState::Failed => (tr!("Could not connect").into(), theme::danger_text(), false),
             SteamState::NotInstalled => (tr!("Steam not found").into(), theme::text_muted(), false),
         }
     }
 
     fn explanation(&self, cx: &App) -> Option<&'static str> {
-        match self.svc.read(cx).state() {
-            SteamState::Closed => Some(tr!("Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.")),
+        let s = self.svc.read(cx);
+        match s.state() {
+            // Said only when the flag file is there: another tool may hold its place.
+            SteamState::Closed => Some(match s.flag {
+                Some(ClientApiFlag::On) => {
+                    tr!("Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.")
+                }
+                Some(ClientApiFlag::Blocked) => tr!(
+                    "Open Steam and Heronite reads your library by itself, if Steam lets it: another tool on this PC (Millennium, for example) decides whether Steam opens the access Heronite needs."
+                ),
+                _ => tr!("Open Steam and Heronite reads your library by itself."),
+            }),
+            SteamState::Blocked => Some(heronite_steam::blocked_message()),
             SteamState::Opening => Some(tr!("Steam is starting. If it asks, sign in: your library is read as soon as Steam is ready.")),
             SteamState::NotAnswering => Some(tr!(
                 "Steam is open but does not let Heronite read its library yet. If it is updating or asking you to sign in, finish that: the library is read by itself. Otherwise restart Steam once. Read library now shows what went wrong."
@@ -104,7 +117,10 @@ impl SteamPage {
         let s = self.svc.read(cx);
         match s.state() {
             SteamState::Closed => ("open", tr!("Open Steam"), true),
-            SteamState::NeedsRestart | SteamState::NotAnswering => ("restart", tr!("Restart Steam"), heronite_steam::can_restart()),
+            // Blocked: once the other tool lets the access open, a restart brings it.
+            SteamState::NeedsRestart | SteamState::NotAnswering | SteamState::Blocked => {
+                ("restart", tr!("Restart Steam"), heronite_steam::can_restart())
+            }
             SteamState::Restarting => ("restart", tr!("Restarting\u{2026}"), false),
             SteamState::Reading => ("read", tr!("Reading\u{2026}"), false),
             state => ("read", tr!("Read library now"), matches!(state, SteamState::Connected | SteamState::Opening)),

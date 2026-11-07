@@ -8,8 +8,8 @@
 //!
 //! `HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state for
 //! screenshots (with `HERONITE_DISABLE_IDLE_JOBS`): `checking`, `missing`,
-//! `closed`, `opening`, `restarting`, `restart`, `failed`, `reading` or
-//! `connected`; `looking`, `none`, `ready` or `unplayable`.
+//! `closed`, `opening`, `restarting`, `restart`, `blocked`, `failed`,
+//! `reading` or `connected`; `looking`, `none`, `ready` or `unplayable`.
 
 use heronite_platform::Feature;
 use std::time::Duration;
@@ -62,6 +62,7 @@ fn debug_steam(name: &str) -> SteamState {
         "opening" => SteamState::Opening,
         "restarting" => SteamState::Restarting,
         "restart" => SteamState::NeedsRestart,
+        "blocked" => SteamState::Blocked,
         "notanswering" => SteamState::NotAnswering,
         "failed" => SteamState::Failed,
         "reading" => SteamState::Reading,
@@ -204,6 +205,11 @@ impl CollectionView {
                 theme::warning(),
                 tr!("Steam was open before Heronite could prepare it. Restart it once to bring in your whole library."),
             ),
+            SteamState::Blocked => status(
+                tr!("Blocked by another tool"),
+                theme::warning(),
+                tr!("Another tool on this PC (Millennium, for example) keeps Steam closed to Heronite. Its installed games still come in."),
+            ),
             SteamState::Failed => status(
                 tr!("Could not connect"),
                 theme::danger_text(),
@@ -230,7 +236,8 @@ impl CollectionView {
                 button("welcome-steam-restart", ButtonKind::Primary, tr!("Restart Steam"))
                     .on_click(cx.listener(|_, _, _, cx| crate::services::steam_library(cx).update(cx, |s, cx| s.restart(cx)))),
             ),
-            SteamState::Failed | SteamState::NotAnswering => Some(
+            // The Steam page says what to change in the other tool.
+            SteamState::Failed | SteamState::NotAnswering | SteamState::Blocked => Some(
                 button_sm("welcome-steam-page", ButtonKind::Ghost, tr!("Steam page"))
                     .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Steam, window, cx))),
             ),

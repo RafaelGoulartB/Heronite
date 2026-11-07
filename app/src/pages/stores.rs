@@ -84,6 +84,7 @@ fn steam_glance(state: SteamState, summary: &Summary) -> Glance {
         SteamState::NotInstalled => glance(Dot::Off, tr!("Not found")),
         SteamState::NeedsRestart => glance(Dot::Attention, tr!("Restart once")),
         SteamState::NotAnswering => glance(Dot::Attention, tr!("Not answering")),
+        SteamState::Blocked => glance(Dot::Attention, tr!("Blocked")),
         SteamState::Failed => glance(Dot::Attention, tr!("Could not connect")),
         SteamState::Opening | SteamState::Restarting | SteamState::Reading => glance(Dot::Busy, library()),
         SteamState::Closed if summary.games == 0 => glance(Dot::Off, tr!("Closed")),

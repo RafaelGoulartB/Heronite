@@ -82,9 +82,10 @@ impl OnboardingDialog {
             let sub = match f.count_line(step) {
                 Some(n) => done_label(n),
                 None => div().text_size(px(12.5)).text_color(theme::text_dim()).child(match step {
-                    Step::Steam => tr!("No login, no key"),
-                    Step::Stores => tr!("Epic Games, GOG and Amazon Games"),
-                    _ => tr!("RetroArch, PCSX2, Dolphin and more"),
+                    // The installed games, without the check: the library is not read yet.
+                    Step::Steam => f.found_line(step).unwrap_or_else(|| tr!("No login, no key").into()),
+                    Step::Stores => tr!("Epic Games, GOG and Amazon Games").into(),
+                    _ => tr!("RetroArch, PCSX2, Dolphin and more").into(),
                 }),
             };
             let kind = if primary && !done { ButtonKind::Primary } else { ButtonKind::Glass };

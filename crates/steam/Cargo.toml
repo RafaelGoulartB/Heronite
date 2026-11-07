@@ -19,6 +19,7 @@ regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
+heronite-shortcuts = { path = "../shortcuts", features = ["test-support"] }
 tempfile = "3"
 
 [lints]

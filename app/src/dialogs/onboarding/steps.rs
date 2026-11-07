@@ -211,6 +211,9 @@ impl Step {
 #[derive(Clone, Debug, Default)]
 pub struct Facts {
     pub steam_games: usize,
+    /// Steam's library was read from the client once. Until then the Steam
+    /// games are only the installed ones the scan found: not done yet.
+    pub steam_read: bool,
     pub store_games: usize,
     pub emulated_games: usize,
     /// The default Wine/Proton, when it can run games.
@@ -238,6 +241,7 @@ impl Facts {
         let (overlay_why, overlay_ok) = crate::overlay::desktop_status();
         Self {
             steam_games: count(&|g| g.steam_app_id.is_some()),
+            steam_read: heronite_data::steam_owned::SteamOwnedFile::read(data_paths).known(),
             store_games: count(&|g| matches!(g.runner.as_str(), "legendary" | "gog" | "nile")),
             emulated_games: count(&|g| g.launch_kind.as_deref() == Some("emulator")),
             proton: heronite_wine::default::current(data_paths).map(|w| w.name),
@@ -261,7 +265,7 @@ impl Facts {
     pub fn is_done(&self, step: Step) -> bool {
         self.done.contains(step.id())
             || match step {
-                Step::Steam => self.steam_games > 0,
+                Step::Steam => self.steam_read,
                 Step::Stores => self.store_games > 0,
                 Step::Emulators => self.emulated_games > 0,
                 Step::Overlay => self.overlay.enabled,
@@ -273,15 +277,22 @@ impl Facts {
             }
     }
 
-    /// The games a source brought in, as "{n} games".
+    /// The games a source brought in, as "{n} games" (Steam's once its
+    /// library was read).
     pub fn count_line(&self, step: Step) -> Option<String> {
         let n = match step {
-            Step::Steam => self.steam_games,
+            Step::Steam if self.steam_read => self.steam_games,
             Step::Stores => self.store_games,
             Step::Emulators => self.emulated_games,
             _ => 0,
         };
         (n > 0).then(|| trn!(n, "{n} game", "{n} games"))
+    }
+
+    /// What a source found before it was connected, as "{n} installed":
+    /// Steam's installed games, before its library was read.
+    pub fn found_line(&self, step: Step) -> Option<String> {
+        (step == Step::Steam && !self.steam_read && self.steam_games > 0).then(|| crate::pages::store::installed_count(self.steam_games))
     }
 
     /// The steps the progress counts: the three cards (the overlay only
@@ -297,5 +308,29 @@ impl Facts {
 
     pub fn done_count(&self) -> usize {
         self.counted().into_iter().filter(|s| self.is_done(*s)).count()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn steam_is_done_once_its_library_is_read_not_for_its_installed_games() {
+        // A new setup: the scan found one installed Steam game.
+        let mut f = Facts { steam_games: 1, ..Default::default() };
+        assert!(!f.is_done(Step::Steam));
+        assert_eq!(f.count_line(Step::Steam), None);
+        assert_eq!(f.found_line(Step::Steam).as_deref(), Some("1 installed"));
+        // Read from the client: the whole library, with the check.
+        f.steam_read = true;
+        f.steam_games = 36;
+        assert!(f.is_done(Step::Steam));
+        assert_eq!(f.count_line(Step::Steam).as_deref(), Some("36 games"));
+        assert_eq!(f.found_line(Step::Steam), None);
+        // Nothing installed and nothing read: neither line.
+        let none = Facts::default();
+        assert_eq!((none.count_line(Step::Steam), none.found_line(Step::Steam)), (None, None));
+        assert_eq!(none.found_line(Step::Stores), None);
     }
 }
