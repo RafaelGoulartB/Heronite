@@ -2,6 +2,7 @@
 //! URLs, single instance), shortcuts, tray icon and window lifecycle.
 
 pub mod app_icon;
+pub mod appearance_file;
 pub mod autostart;
 pub mod cli;
 pub mod desktop_colours;

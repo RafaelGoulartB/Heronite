@@ -350,31 +350,50 @@ impl Steam {
     /// Whether [`read_library`](Self::read_library) can work now. Blocking
     /// (asks the client, a few milliseconds).
     pub fn library_access(&self) -> LibraryAccess {
+        self.library_check().0
+    }
+
+    /// [`library_access`](Self::library_access), with why the client does
+    /// not answer when Steam runs (for the log): whether its interface
+    /// process runs with debugging, and what the client's addresses said.
+    pub fn library_check(&self) -> (LibraryAccess, Option<String>) {
         let running = self.running();
         if !self.root().join("config").is_dir() && !running {
-            return LibraryAccess::NotInstalled;
+            return (LibraryAccess::NotInstalled, None);
         }
         self.prepare_access();
         if !running {
-            return LibraryAccess::Closed;
+            return (LibraryAccess::Closed, None);
         }
-        if self.client.is_available() {
-            return LibraryAccess::Ready;
-        }
+        let probe = match self.client.probe() {
+            Ok(()) => return (LibraryAccess::Ready, None),
+            Err(e) => format!("{e:#}"),
+        };
         // Until its interface process starts, Steam is updating or starting;
         // once it has, its command line says whether the client will answer.
-        match webhelper() {
+        let helper = webhelper();
+        let access = match &helper {
             Some(w) if !w.debugging => LibraryAccess::NeedsRestart,
             _ => LibraryAccess::Starting,
-        }
+        };
+        let helper = match helper {
+            None => "not running".to_string(),
+            Some(w) => format!("running, debugging {}", if w.debugging { "on" } else { "off" }),
+        };
+        (access, Some(format!("steamwebhelper {helper}; client: {probe}")))
     }
 
     /// The account's games, from the running client.
     pub fn read_library(&self) -> Result<Vec<heronite_data::steam_owned::SteamOwnedGame>, String> {
-        match self.library_access() {
+        let (access, why) = self.library_check();
+        match access {
             LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
             LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
-            LibraryAccess::Starting => Err(tr!("Steam is still starting. Your library is read as soon as it is ready.").to_string()),
+            // The why is technical, but it is what tells a stuck client apart.
+            LibraryAccess::Starting => Err(tr!(
+                "Steam is running but does not answer Heronite yet ({why}). If it is updating or asking you to sign in, finish that; otherwise restart Steam once.",
+                why = why.unwrap_or_default()
+            )),
             LibraryAccess::NeedsRestart => Err(tr!("Steam is running without the access Heronite needs to read your library. It is turned on for Steam's next start: restart Steam once.").to_string()),
             LibraryAccess::NotInstalled => Err(tr!("Steam was not found on this PC. Install Steam and sign in, then open it to read your library.").to_string()),
         }

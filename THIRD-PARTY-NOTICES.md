@@ -34,6 +34,15 @@ The AppImage carries these libraries in `usr/lib` because not every system has t
 | [libxcb](https://xcb.freedesktop.org) | `libxcb-xkb.so.1` | Copyright (C) 2001-2006 Bart Massey, Jamey Sharp, and Josh Triplett | MIT ([`licenses/MIT-libxcb.txt`](licenses/MIT-libxcb.txt)) |
 | libudev, from [systemd](https://github.com/systemd/systemd) | `libudev.so.1` | the systemd contributors | LGPL-2.1-or-later ([`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt)); source: the [`systemd` package of Ubuntu 22.04](https://launchpad.net/ubuntu/jammy/+source/systemd) |
 
+## Libraries in the Windows build
+
+The Windows build links this library statically into `heronite.exe`; it reads game controllers in console mode (`crates/platform/src/controllers.rs`). It is built unchanged from the source in the [`sdl3-src`](https://crates.io/crates/sdl3-src) crate, with only the joystick and HIDAPI parts enabled.
+
+| Library | Copyright | License |
+|---|---|---|
+| [SDL](https://libsdl.org) 3.4.18 | Copyright (C) 1997-2026 Sam Lantinga | zlib ([`licenses/Zlib-SDL.txt`](licenses/Zlib-SDL.txt)) |
+| [HIDAPI](https://github.com/libusb/hidapi), as included in SDL (`src/hidapi`) | Copyright (c) 2010, Alan Ott, Signal 11 Software | used under the GPL-3.0 ([`LICENSE`](LICENSE)), one of its three licenses |
+
 ## Vendored C code
 
 | Project | Files | Copyright | License |

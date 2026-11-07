@@ -114,6 +114,7 @@ pub(in crate::collection) fn group_label(by: GroupBy) -> &'static str {
         GroupBy::Genre => tr!("Genre"),
         GroupBy::Developer => tr!("Developer"),
         GroupBy::Series => tr!("Series"),
+        GroupBy::GameMode => tr!("Game mode"),
         GroupBy::Year => tr!("Release year"),
         GroupBy::Playtime => tr!("Playtime"),
         GroupBy::InstallSize => tr!("Install size"),

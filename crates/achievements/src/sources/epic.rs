@@ -140,7 +140,15 @@ fn build_set(namespace: &str, defs: Vec<Definition>, mut earned: HashMap<String,
             }
         })
         .collect();
-    AchievementSet { source: Source::Epic, external_id: namespace.into(), title: None, fetched_at: Utc::now(), achievements }
+    AchievementSet {
+        source: Source::Epic,
+        external_id: namespace.into(),
+        title: None,
+        fetched_at: Utc::now(),
+        achievements,
+        groups: Vec::new(),
+        unknown: Default::default(),
+    }
 }
 
 /// `en-US`, `pt-BR`, `es-ES` or `de-DE` for the interface language.

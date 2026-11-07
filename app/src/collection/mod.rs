@@ -243,6 +243,22 @@ impl CollectionView {
         let drawer_closed = !ui.grid_open_on_select;
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
+        // The file written from outside (a theme script following the
+        // wallpaper): every window redraws in the new look.
+        let mut appearance_file = crate::system::appearance_file::watch(&app_paths);
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt;
+            while let Some(a) = appearance_file.next().await {
+                if a == crate::theme::appearance() {
+                    continue;
+                }
+                crate::theme::set_appearance(a);
+                if this.update(cx, |_, cx| cx.refresh_windows()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         // Theme "System": the desktop's light or dark style, now and when it changes.
         crate::theme::set_system_appearance(window.appearance());
         cx.observe_window_appearance(window, |_, window, cx| {

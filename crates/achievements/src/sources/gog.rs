@@ -65,7 +65,15 @@ pub fn parse(product_id: &str, doc: &Value) -> Option<AchievementSet> {
             }
         })
         .collect();
-    Some(AchievementSet { source: Source::Gog, external_id: product_id.into(), title: None, fetched_at: Utc::now(), achievements })
+    Some(AchievementSet {
+        source: Source::Gog,
+        external_id: product_id.into(),
+        title: None,
+        fetched_at: Utc::now(),
+        achievements,
+        groups: Vec::new(),
+        unknown: Default::default(),
+    })
 }
 
 /// `X-Gog-Lc` for the interface language.

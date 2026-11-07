@@ -27,6 +27,8 @@
 //! - `system` (Windows): what the computer is (processor, memory, graphics
 //!   cards, Windows version), for the logs.
 //! - `gamepad` (Windows): XInput controllers, for the overlay.
+//! - `controllers` (Windows): every kind of controller through SDL, for
+//!   console mode.
 //! - `audio` (Windows): Core Audio volumes, mutes and per-app sessions, for
 //!   the overlay.
 //! - `overlay_window` (Windows): placing the overlay's windows over the game
@@ -51,6 +53,8 @@ pub mod shell;
 pub mod audio;
 #[cfg(windows)]
 mod com;
+#[cfg(windows)]
+pub mod controllers;
 #[cfg(windows)]
 pub mod gamepad;
 #[cfg(windows)]

@@ -36,6 +36,19 @@ What works on Windows, what is left, and what Windows does not need.
 - A new tray icon starts in Windows 11's hidden-icons flyout until the user pins it
 - Appearance → "From the desktop" (accent and panel colour) reads only Linux desktops (`app/src/system/desktop_colours.rs`); on Windows it gets no colour and falls back. It should read Windows' accent colour and light/dark app mode
 
+## 🚧 Console mode controllers
+
+Console mode reads controllers through SDL 3, linked statically
+(`heronite_platform::controllers`): Xbox, PlayStation (DualShock 4,
+DualSense), Nintendo (Switch Pro, Joy-Con) and every controller with an SDL
+mapping, over USB or Bluetooth, also after Steam switched a PlayStation or
+Nintendo controller to its full report (Windows.Gaming.Input, used before,
+then saw a controller that never moved). SDL is told not to switch
+controllers to their full report itself (`SDL_JOYSTICK_ENHANCED_REPORTS=0`),
+so games reading them through DirectInput keep working. Checks with each
+controller over USB and Bluetooth, with Steam open and closed, are still
+needed.
+
 ## 🚧 In-game overlay
 
 Off by default, enabled in Settings → Overlay. It uses native topmost tool
@@ -56,7 +69,8 @@ does not inject code into games.
   a direction for volume, or Y to mark a moment. Real Guide is not exposed
   by documented XInput and can be claimed by Game Bar or Steam. There is no
   controller grab on Windows: games can still receive these buttons and
-  navigation. Non-XInput controllers need an XInput mapping. Battery levels
+  navigation. Non-XInput controllers need an XInput mapping here (console
+  mode reads them through SDL). Battery levels
   are coarse estimates; transport and Bluetooth disconnect are unavailable.
 - **Panel:** Home, Screenshots, Notes (including the on-screen keyboard),
   Audio and Controller reuse the Linux views. Screenshot capture uses the

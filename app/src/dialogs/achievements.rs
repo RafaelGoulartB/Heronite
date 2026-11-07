@@ -3,6 +3,13 @@
 //! unlock or the rarest first, with the date, rarity, points and progress of
 //! each. Secret ones keep their text hidden until revealed one by one. It
 //! follows `services::achievements`, so a refresh shows at once.
+//!
+//! A game with Steam Achievement Sets gets a row of its sets (All first),
+//! each with its unlocked/total count; in All every achievement carries its
+//! set's name. Counts are Heronite's own: Steam leaves out the DLC sets a
+//! player doesn't own, which no source tells.
+
+mod listing;
 
 use std::collections::HashSet;
 
@@ -10,15 +17,16 @@ use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_achievements::sources::retro::GameHit;
-use heronite_achievements::{Achievement, AchievementSet, Kind, Problem, Source};
+use heronite_achievements::{Achievement, AchievementSet, Kind, Problem, Section, Source};
 use heronite_i18n::tr;
 
+use self::listing::{listed, Filter, Pick, Sort};
 use super::art_images::DialogImages;
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
 use crate::services::achievements as service;
 use crate::theme;
-use crate::ui::achievements::{badge, bar, long_day, rarity_pill, source_chip, synced_label};
+use crate::ui::achievements::{badge, bar, long_day, rarity_pill, section_label, section_line, source_chip, synced_label};
 use crate::ui::controls::{button_sm, tabs, ButtonKind};
 use crate::ui::dialog::{dialog_scrolled, DialogProps};
 use crate::ui::fields::{new_input, search_box};
@@ -26,26 +34,14 @@ use crate::ui::icon;
 
 const ICON: f32 = 44.;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Filter {
-    All,
-    Unlocked,
-    Locked,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Sort {
-    /// Unlocked ones by date (latest first), then the closest locked ones.
-    Recent,
-    Rarest,
-}
-
 pub struct AchievementsDialog {
     /// `runner_appName`.
     key: String,
     title: String,
     images: Entity<DialogImages>,
     search: Entity<InputState>,
+    /// The set shown (Steam's Achievement Sets).
+    pick: Pick,
     filter: Filter,
     sort: Sort,
     /// Secret achievements revealed by hand (their ids).
@@ -77,6 +73,12 @@ impl AchievementsDialog {
             title,
             images,
             search,
+            // `HERONITE_DEBUG_ACH_SET=<group id>|other` opens on that set.
+            pick: match crate::env::value("HERONITE_DEBUG_ACH_SET").as_deref() {
+                None => Pick::All,
+                Some("other") => Pick::Ungrouped,
+                Some(id) => Pick::Group(id.to_string()),
+            },
             filter: Filter::All,
             sort: Sort::Recent,
             revealed: HashSet::new(),
@@ -160,38 +162,10 @@ impl AchievementsDialog {
         col
     }
 
-    /// The achievements to list, in order.
-    fn listed<'a>(&self, set: &'a AchievementSet, query: &str) -> Vec<&'a Achievement> {
-        let query = query.trim().to_lowercase();
-        let matches = |a: &Achievement| {
-            query.is_empty() || {
-                let secret = a.is_secret() && !self.revealed.contains(&a.id);
-                a.name.to_lowercase().contains(&query) || (!secret && a.description.to_lowercase().contains(&query))
-            }
-        };
-        let mut list: Vec<&Achievement> = match self.sort {
-            Sort::Recent => {
-                set.recent().into_iter().chain(set.up_next()).chain(set.achievements.iter().filter(|a| !a.unlocked && a.hidden)).collect()
-            }
-            Sort::Rarest => {
-                let mut v: Vec<&Achievement> = set.achievements.iter().collect();
-                v.sort_by(|a, b| a.rarity.unwrap_or(101.).total_cmp(&b.rarity.unwrap_or(101.)));
-                v
-            }
-        };
-        list.retain(|a| match self.filter {
-            Filter::All => true,
-            Filter::Unlocked => a.unlocked,
-            Filter::Locked => !a.unlocked,
-        });
-        list.retain(|a| matches(a));
-        list
-    }
-
-    fn row(&mut self, a: &Achievement, hide_secrets: bool, cx: &mut Context<Self>) -> Div {
+    fn row(&mut self, a: &Achievement, set_name: Option<String>, hide_secrets: bool, cx: &mut Context<Self>) -> Div {
         let secret = hide_secrets && a.is_secret() && !self.revealed.contains(&a.id);
         let url = a.icon_now().to_string();
-        let image = (!url.is_empty()).then(|| {
+        let image = (!secret && !url.is_empty()).then(|| {
             let chain = if url.starts_with("http") {
                 vec![heronite_images::ImageRef::Url(url.clone())]
             } else {
@@ -236,6 +210,9 @@ impl AchievementsDialog {
         if let Some(k) = a.kind {
             meta = meta.child(pill(kind_label(k).to_string()));
         }
+        if let Some(name) = set_name {
+            meta = meta.child(pill(name));
+        }
         meta = meta.child(div().flex_1());
         if a.unlocked {
             if let Some(t) = a.unlocked_at {
@@ -263,8 +240,41 @@ impl AchievementsDialog {
             )
     }
 
-    fn header(&self, set: &AchievementSet, refreshing: bool, cx: &mut Context<Self>) -> Div {
+    /// The sets row: All, then each set with its count; a note when some
+    /// are DLC sets.
+    fn sets_row(&self, set: &AchievementSet, sections: &[Section], cx: &mut Context<Self>) -> Div {
+        let mut picks = vec![Pick::All];
+        let mut items = vec![(0usize, tr!("All · {got}/{all}", got = set.unlocked(), all = set.total()))];
+        for (i, section) in sections.iter().enumerate() {
+            picks.push(Pick::of(section));
+            items.push((i + 1, section_line(section)));
+        }
+        let active = picks.iter().position(|p| *p == self.pick).unwrap_or(0);
+        let weak = cx.entity().downgrade();
+        let mut col = div().flex().flex_col().gap(px(6.)).child(tabs("ach-sets", &items, active, move |i, _, cx| {
+            let pick = picks[i].clone();
+            weak.update(cx, |this, cx| {
+                this.pick = pick;
+                cx.notify();
+            })
+            .ok();
+        }));
+        if sections.iter().any(|s| s.group.is_some_and(|g| g.is_dlc())) {
+            col = col.child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(theme::ink_a(0.5))
+                    .child(tr!("Counts include DLC sets whether or not you own the DLC; Steam counts only the DLC you own.")),
+            );
+        }
+        col
+    }
+
+    fn header(&self, set: &AchievementSet, sections: &[Section], refreshing: bool, cx: &mut Context<Self>) -> Div {
         let (unlocked, total) = (set.unlocked(), set.total());
+        // The filters count within the set shown.
+        let (shown_unlocked, shown_total) =
+            sections.iter().find(|s| Pick::of(s) == self.pick).map_or((unlocked, total), |s| (s.unlocked(), s.total()));
         let pct = (unlocked * 100).checked_div(total).unwrap_or(0);
         let mut counts = format!("{unlocked}/{total} · {pct}%");
         if let Some((got, all)) = set.points() {
@@ -298,6 +308,7 @@ impl AchievementsDialog {
                     .child(div().flex_1().child(bar(pct as f32 / 100., set.is_complete(), 6.)))
                     .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).child(counts)),
             )
+            .when(!sections.is_empty(), |d| d.child(self.sets_row(set, sections, cx)))
             .child(
                 div()
                     .flex()
@@ -306,9 +317,9 @@ impl AchievementsDialog {
                     .child(tabs(
                         "ach-filter",
                         &[
-                            (Filter::All, tr!("All {n}", n = total)),
-                            (Filter::Unlocked, tr!("Unlocked {n}", n = unlocked)),
-                            (Filter::Locked, tr!("Locked {n}", n = total - unlocked)),
+                            (Filter::All, tr!("All {n}", n = shown_total)),
+                            (Filter::Unlocked, tr!("Unlocked {n}", n = shown_unlocked)),
+                            (Filter::Locked, tr!("Locked {n}", n = shown_total - shown_unlocked)),
                         ],
                         self.filter,
                         {
@@ -377,16 +388,22 @@ impl Render for AchievementsDialog {
         match &set {
             Some(set) => {
                 let query = self.search.read(cx).value().to_string();
-                body = body.child(self.header(set, refreshing, cx));
-                let list = self.listed(set, &query);
+                let sections = set.sections();
+                self.pick = std::mem::replace(&mut self.pick, Pick::All).valid_in(&sections);
+                body = body.child(self.header(set, &sections, refreshing, cx));
+                let list = listed(set, &self.pick, self.filter, self.sort, &self.revealed, hide_secrets, &query);
+                // In All, each achievement says which set it is in.
+                let name_sets = !sections.is_empty() && self.pick == Pick::All;
                 let mut rows = div().flex().flex_col();
                 if list.is_empty() {
                     rows = rows.child(
                         div().py(px(24.)).flex().justify_center().text_color(theme::ink_a(0.5)).child(tr!("No achievements match.")),
                     );
                 }
-                for a in list.into_iter().cloned().collect::<Vec<_>>() {
-                    rows = rows.child(self.row(&a, hide_secrets, cx));
+                let list: Vec<(Achievement, Option<String>)> =
+                    list.into_iter().map(|a| (a.clone(), name_sets.then(|| section_label(set.group_of(a))))).collect();
+                for (a, set_name) in list {
+                    rows = rows.child(self.row(&a, set_name, hide_secrets, cx));
                 }
                 body = body.child(rows);
             }

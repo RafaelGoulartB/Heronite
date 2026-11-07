@@ -411,6 +411,7 @@ fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Store => tr!("Store"),
         FacetKind::Theme => tr!("Theme"),
         FacetKind::Feature => tr!("Feature"),
+        FacetKind::GameMode => tr!("Game mode"),
     }
 }
 
@@ -425,6 +426,7 @@ fn facet_keywords(k: FacetKind) -> &'static str {
         FacetKind::Store => "store source manual loja origem manualmente",
         FacetKind::Theme => "theme tema",
         FacetKind::Feature => "feature mode recurso modo",
+        FacetKind::GameMode => "game mode modes co-op coop multiplayer split screen modo jogo multijogador cooperativo",
     }
 }
 
@@ -553,6 +555,7 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         (GroupBy::Genre, tr!("Group by genre")),
         (GroupBy::Developer, tr!("Group by developer")),
         (GroupBy::Series, tr!("Group by series")),
+        (GroupBy::GameMode, tr!("Group by game mode")),
         (GroupBy::Year, tr!("Group by release year")),
         (GroupBy::Playtime, tr!("Group by playtime")),
         (GroupBy::InstallSize, tr!("Group by install size")),

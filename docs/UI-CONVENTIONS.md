@@ -515,8 +515,10 @@ entered from ☰ › Console mode or the palette,
 remembered across restarts (`ui-state.json` `consoleMode`). The desktop look must not change: every page and dialog
 keeps its desktop render and, when `crate::console::active()`, returns its console layout instead
 (`render_console`, usually in a child module `console.rs`) and implements `console::PadTarget` (`on_pad` + `hints`).
-- Input: `console::input` reads controllers with gilrs on a thread that only runs in console mode (presses only count
-  while the window is focused); the keyboard maps to the same `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
+- Input: `console::input` reads controllers on a thread that only runs in console mode (presses only count while the
+  window is focused): gilrs on Linux, SDL on Windows (`heronite_platform::controllers`, one thread shared by every
+  listener); both feed the same `Translator` (repeats, stick and trigger thresholds). The keyboard maps to the same
+  `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
 - Hosting: pages register their hook in `nav.rs` (`pages.hooks`); dialogs are found by `console::registry::hook_for`
   (add new console-capable dialogs there). Overlays owned by a view use `console::Layer` (drawn by the owner; for a
   view embedded in a smaller area wrap it with `kit::window_layer`).
@@ -746,6 +748,13 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   "View all" (`dialogs/achievements.rs`) and "Updated … ago" with a refresh. A game at 100% turns the panel
   gold (`theme::achievement_gold`). For a ROM it asks for the RetroAchievements account or says the file
   matches no set ("Pick the game…" opens the dialog's search).
+- A game with Steam Achievement Sets (`AchievementSet::sections`: two or more groups with achievements; the
+  ones in no group never split a game alone) gets a row of its sets in the dialog (All first, each "name · DLC · unlocked/total"; the filters count within the set shown; in All each
+  achievement carries its set's name) and a "Sets" section in the overlay's Achievements tab (bar and count per
+  set). Steam's unnamed base group reads "Base game", achievements in no known group "Other achievements".
+  Counts are Heronite's unlocked/total, never Steam's "set complete"; with DLC sets the dialog says the counts
+  include them whether or not the DLC is owned (no source says which). `HERONITE_DEBUG_DIALOG=achievements`
+  opens the dialog of the selected game, `HERONITE_DEBUG_ACH_SET=<group id>|other` on that set.
 - The Timeline puts each unlock on its day by the screenshots' rule: a chip ("3 achievements") and the icons
   under the day (`collection/timeline_achievements.rs`); it never adds days.
 - Settings → Achievements → RetroAchievements signs in with the username and password (`pages/settings/achievements/retro.rs`;

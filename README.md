@@ -98,7 +98,7 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 
 ## Your library, organized
 
-- **Collection:** a list with details or a grid of covers, grouped by status, store, genre, series, or year. Details show screenshots, How Long To Beat, achievements, and a play timeline.
+- **Collection:** a list with details or a grid of covers, grouped by status, store, genre, series, game mode (co-op, split screen...), or year. Details show screenshots, How Long To Beat, achievements, and a play timeline.
 - **Journal:** notes on your play days and screenshots.
 - **Views:** filter, sort, and save presets like Playing now or Backlog. Search forgives typos.
 - **Bulk edits:** change many games at once, with undo.
@@ -199,7 +199,7 @@ A single native process drawn on the GPU, with no bundled browser like Electron-
 
 ## Run from source
 
-You need stable Rust. On Linux, also `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK; on Windows, the Visual Studio Build Tools ("Desktop development with C++"). Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
+You need stable Rust. On Linux, also `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK; on Windows, the Visual Studio Build Tools ("Desktop development with C++") and [CMake](https://cmake.org) on the `PATH` (it builds SDL, which reads the controllers in console mode). Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
 
 ```bash
 # quick build (the login window is its own binary, so build it too)

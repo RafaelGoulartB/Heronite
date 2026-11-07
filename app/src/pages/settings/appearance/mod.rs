@@ -187,8 +187,33 @@ impl State {
             accent_picker_open: false,
         };
         this.preview_task = None;
+        follow_file(ctx, window, cx);
         this
     }
+}
+
+/// `appearance.json` rewritten from outside while the page is open (a theme
+/// script following the wallpaper): the page takes the new look, so its
+/// controls show it and its next change does not write the old one back.
+fn follow_file(ctx: &PageCtx, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    let mut changes = crate::system::appearance_file::watch(&ctx.app);
+    cx.spawn_in(window, async move |this, cx| {
+        use futures::StreamExt;
+        while let Some(a) = changes.next().await {
+            let open = this.update_in(cx, |d, window, cx| {
+                // The page's own saves come back as the look it holds.
+                if d.appearance.ui != a {
+                    d.appearance.ui = a;
+                    custom::sync_controls(d, window, cx);
+                    cx.notify();
+                }
+            });
+            if open.is_err() {
+                break;
+            }
+        }
+    })
+    .detach();
 }
 
 impl State {

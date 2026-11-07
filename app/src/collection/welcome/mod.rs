@@ -62,6 +62,7 @@ fn debug_steam(name: &str) -> SteamState {
         "opening" => SteamState::Opening,
         "restarting" => SteamState::Restarting,
         "restart" => SteamState::NeedsRestart,
+        "notanswering" => SteamState::NotAnswering,
         "failed" => SteamState::Failed,
         "reading" => SteamState::Reading,
         "connected" => SteamState::Connected,
@@ -193,6 +194,11 @@ impl CollectionView {
             SteamState::Restarting => {
                 status(tr!("Restarting"), busy, tr!("Steam is restarting. Your library comes in as soon as it is back."))
             }
+            SteamState::NotAnswering => status(
+                tr!("Not answering"),
+                theme::warning(),
+                tr!("Steam is open but does not let Heronite read its library. Finish signing in, or restart Steam once."),
+            ),
             SteamState::NeedsRestart => status(
                 tr!("Restart once"),
                 theme::warning(),
@@ -220,11 +226,11 @@ impl CollectionView {
                 button("welcome-steam-open", ButtonKind::Primary, tr!("Open Steam"))
                     .on_click(cx.listener(|_, _, _, cx| crate::services::steam_library(cx).update(cx, |s, cx| s.open(cx)))),
             ),
-            SteamState::NeedsRestart if heronite_steam::can_restart() => Some(
+            SteamState::NeedsRestart | SteamState::NotAnswering if heronite_steam::can_restart() => Some(
                 button("welcome-steam-restart", ButtonKind::Primary, tr!("Restart Steam"))
                     .on_click(cx.listener(|_, _, _, cx| crate::services::steam_library(cx).update(cx, |s, cx| s.restart(cx)))),
             ),
-            SteamState::Failed => Some(
+            SteamState::Failed | SteamState::NotAnswering => Some(
                 button_sm("welcome-steam-page", ButtonKind::Ghost, tr!("Steam page"))
                     .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Steam, window, cx))),
             ),
