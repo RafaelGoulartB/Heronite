@@ -3,7 +3,6 @@
 mod achievements;
 mod actions;
 mod add_game;
-mod age_badge;
 mod backdrop;
 mod card;
 mod clients;

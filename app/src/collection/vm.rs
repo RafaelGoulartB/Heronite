@@ -180,7 +180,7 @@ pub(super) struct StatusVm {
     pub color: Rgba,
 }
 
-/// The age rating above Play (`heronite_data::age_rating`).
+/// The age rating of the facts card (`heronite_data::age_rating`).
 #[derive(Clone)]
 pub(super) struct AgeVm {
     /// "ESRB".
@@ -191,8 +191,6 @@ pub(super) struct AgeVm {
     pub title: SharedString,
     /// The reasons, joined ("Blood, Mild Violence"); empty when none came.
     pub reasons: SharedString,
-    /// Every board's rating, one per line, for the tooltip.
-    pub all: SharedString,
     pub min_age: Option<u8>,
 }
 

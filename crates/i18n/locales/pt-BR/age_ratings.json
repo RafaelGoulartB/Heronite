@@ -1,4 +1,5 @@
 {
+  "Age rating": "Classificação",
   "Age ratings": "Classificação etária",
   "Ages": "Idade",
   "Ages up to": "Idade até",
@@ -9,18 +10,18 @@
   "Australia": "Austrália",
   "Automatic ({board})": "Automático ({board})",
   "Brazil": "Brasil",
+  "by {board}": "padrão {board}",
   "Europe": "Europa",
   "Germany": "Alemanha",
   "Japan": "Japão",
-  "No age rating": "Sem classificação etária",
   "No age rating was found for this game.": "Nenhuma classificação etária foi encontrada para este jogo.",
   "Rating board shown first": "Classificação mostrada primeiro",
   "Rating pending": "Classificação pendente",
-  "Shown above Play and used by the View menu's “Ages up to”. When this board did not rate a game, the next one that did is shown.": "Aparece acima de Jogar e vale para “Idade até” no menu Exibir. Quando este órgão não classificou um jogo, aparece o próximo que classificou.",
+  "Shown in a game's facts and used by the View menu's “Ages up to”. When this board did not rate a game, the next one that did is shown.": "Aparece nas informações do jogo e vale para “Idade até” no menu Exibir. Quando este órgão não classificou um jogo, aparece o próximo que classificou.",
   "South Korea": "Coreia do Sul",
   "Steam store": "Loja Steam",
   "United States and Canada": "Estados Unidos e Canadá",
+  "Unrated": "Sem classificação",
   "Up to {max}": "Até {max}",
-  "Up to {max}, and unrated": "Até {max}, e sem classificação",
-  "by {board}": "padrão {board}"
+  "Up to {max}, and unrated": "Até {max}, e sem classificação"
 }

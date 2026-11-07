@@ -1,4 +1,5 @@
 {
+  "Age rating": "Altersfreigabe",
   "Age ratings": "Altersfreigaben",
   "Ages": "Alter",
   "Ages up to": "Alter bis",
@@ -9,18 +10,18 @@
   "Australia": "Australien",
   "Automatic ({board})": "Automatisch ({board})",
   "Brazil": "Brasilien",
+  "by {board}": "nach {board}",
   "Europe": "Europa",
   "Germany": "Deutschland",
   "Japan": "Japan",
-  "No age rating": "Keine Altersfreigabe",
   "No age rating was found for this game.": "Für dieses Spiel wurde keine Altersfreigabe gefunden.",
   "Rating board shown first": "Zuerst gezeigte Freigabe",
   "Rating pending": "Freigabe ausstehend",
-  "Shown above Play and used by the View menu's “Ages up to”. When this board did not rate a game, the next one that did is shown.": "Erscheint über „Spielen“ und gilt für „Alter bis“ im Menü Ansicht. Hat diese Stelle ein Spiel nicht eingestuft, erscheint die nächste, die es eingestuft hat.",
+  "Shown in a game's facts and used by the View menu's “Ages up to”. When this board did not rate a game, the next one that did is shown.": "Erscheint in den Angaben zum Spiel und gilt für „Alter bis“ im Menü Ansicht. Hat diese Stelle ein Spiel nicht eingestuft, erscheint die nächste, die es eingestuft hat.",
   "South Korea": "Südkorea",
   "Steam store": "Steam-Shop",
   "United States and Canada": "USA und Kanada",
+  "Unrated": "Ohne Freigabe",
   "Up to {max}": "Bis {max}",
-  "Up to {max}, and unrated": "Bis {max}, und ohne Freigabe",
-  "by {board}": "nach {board}"
+  "Up to {max}, and unrated": "Bis {max}, und ohne Freigabe"
 }

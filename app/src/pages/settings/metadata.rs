@@ -193,7 +193,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .child(images)
         .child(caption(tr!("Age ratings")))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
-            "Shown above Play and used by the View menu's \u{201c}Ages up to\u{201d}. When this board did not rate a game, the next one that did is shown."
+            "Shown in a game's facts and used by the View menu's \u{201c}Ages up to\u{201d}. When this board did not rate a game, the next one that did is shown."
         ))))
         .child(card_box().py(px(12.)).child(board_select(d, cx)));
 
