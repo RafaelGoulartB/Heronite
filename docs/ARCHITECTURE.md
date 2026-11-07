@@ -87,7 +87,8 @@ leaked it and logged errors); see its `PATCHES.md`. Both open every window
 through `vendor/gpui-zoom` (Heronite's own crate): the interface scale of
 Settings → Appearance → Zoom, on top of the screen's. GPUI sees a screen that
 many times denser and smaller, so the whole interface (all in `px`) resizes and
-stays sharp; `app/src/system/ui_scale.rs` picks the scale (the one chosen, else
+stays sharp (not the in-game overlay: pop-ups and layer-shell surfaces keep the
+system's scale); `app/src/system/ui_scale.rs` picks the scale (the one chosen, else
 `GDK_DPI_SCALE`, `QT_SCALE_FACTOR`, GNOME's text size on Wayland or Windows'
 text size) and applies it.
 

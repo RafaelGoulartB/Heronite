@@ -151,9 +151,11 @@ pub fn set(percent: Option<f32>, app: &AppPaths, cx: &mut App) {
     look.interface_scale = percent;
     crate::theme::set_appearance(look);
     sync(cx);
-    let (look, app) = (crate::theme::appearance(), app.clone());
+    let app = app.clone();
     cx.background_spawn(async move {
-        if let Err(err) = look.save(&app) {
+        // The look of when the save runs: saves started by quick presses
+        // (a held Ctrl +) may run out of order, and all write the latest.
+        if let Err(err) = crate::theme::appearance().save(&app) {
             log::warn!("saving appearance.json: {err:#}");
         }
     })
@@ -171,11 +173,15 @@ pub fn stepped(percent: f32, up: bool) -> f32 {
 /// system's): the scale it asks for, `Some(None)` for the system's; `None`
 /// when `ks` is not one of them.
 pub fn shortcut(ks: &Keystroke) -> Option<Option<f32>> {
+    shortcut_from(ks, percent_of(&crate::theme::appearance()))
+}
+
+/// [`shortcut`] from the scale `current`, %.
+fn shortcut_from(ks: &Keystroke, current: f32) -> Option<Option<f32>> {
     let m = &ks.modifiers;
     if !(m.control || m.platform) || m.alt {
         return None;
     }
-    let current = percent_of(&crate::theme::appearance());
     // `+` is Shift + `=` on most layouts, and a key of its own on the keypad.
     match (ks.key.as_str(), ks.key_char.as_deref()) {
         ("=" | "+", _) | (_, Some("+")) => Some(Some(stepped(current, true))),
@@ -188,7 +194,25 @@ pub fn shortcut(ks: &Keystroke) -> Option<Option<f32>> {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's own `test` macro would shadow `#[test]`.
-    use super::{from_factor, parse_gsettings_double, stepped, Source};
+    use super::{from_factor, parse_gsettings_double, shortcut_from, stepped, Source};
+    use gpui_kit::Keystroke;
+
+    fn keys(k: &str) -> Option<Option<f32>> {
+        shortcut_from(&Keystroke::parse(k).unwrap(), 100.)
+    }
+
+    #[test]
+    fn ctrl_plus_minus_and_zero() {
+        assert_eq!(keys("ctrl-="), Some(Some(110.)));
+        assert_eq!(keys("ctrl-shift-="), Some(Some(110.)));
+        assert_eq!(keys("ctrl-+"), Some(Some(110.)));
+        assert_eq!(keys("ctrl--"), Some(Some(90.)));
+        assert_eq!(keys("ctrl-0"), Some(None));
+        // Not Alt Gr (Ctrl + Alt), not without Ctrl, not other keys.
+        assert_eq!(keys("ctrl-alt-0"), None);
+        assert_eq!(keys("="), None);
+        assert_eq!(keys("ctrl-9"), None);
+    }
 
     #[test]
     fn factors_become_steps_of_the_setting() {

@@ -476,5 +476,6 @@
   "{percent}%, from GDK_DPI_SCALE.": "{percent}%, de GDK_DPI_SCALE.",
   "{percent}%, from QT_SCALE_FACTOR.": "{percent}%, de QT_SCALE_FACTOR.",
   "{percent}%, from the desktop's text size.": "{percent}%, del tamaño de texto del escritorio.",
-  "{percent}%, from Windows' text size.": "{percent}%, del tamaño de texto de Windows."
+  "{percent}%, from Windows' text size.": "{percent}%, del tamaño de texto de Windows.",
+  "Console mode fills the screen by itself: this matters most in desktop mode.": "El modo consola llena la pantalla por sí solo: esto importa sobre todo en el modo escritorio."
 }

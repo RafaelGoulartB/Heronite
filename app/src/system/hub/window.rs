@@ -22,12 +22,13 @@ fn screen(cx: &App) -> Option<Size<Pixels>> {
         .or_else(|| cx.displays().iter().map(|d| d.visible_bounds().size).min_by(|a, b| area(a).total_cmp(&area(b))))
 }
 
-/// [`OPEN_SIZE`] and [`MIN_SIZE`], within 90% of `screen` (GPUI px, so the
-/// interface scale counts): a 4K TV at 300% is 1280 × 720.
+/// [`OPEN_SIZE`] and [`MIN_SIZE`], within 95% of `screen` (GPUI px, so the
+/// interface scale counts): a 4K TV at 300% is 1280 × 720. A 1080p screen
+/// keeps the full size.
 fn fitted_sizes(screen: Option<Size<Pixels>>) -> (Size<Pixels>, Size<Pixels>) {
     let (open, min) = (size(px(OPEN_SIZE.0), px(OPEN_SIZE.1)), size(px(MIN_SIZE.0), px(MIN_SIZE.1)));
     let Some(screen) = screen.filter(|s| f32::from(s.width) > 0. && f32::from(s.height) > 0.) else { return (open, min) };
-    let room = size(px((f32::from(screen.width) * 0.9).floor()), px((f32::from(screen.height) * 0.9).floor()));
+    let room = size(px((f32::from(screen.width) * 0.95).floor()), px((f32::from(screen.height) * 0.95).floor()));
     (open.min(&room), min.min(&room))
 }
 
@@ -203,11 +204,12 @@ mod tests {
         let open = size(px(OPEN_SIZE.0), px(OPEN_SIZE.1));
         assert_eq!(fitted_sizes(None).0, open);
         assert_eq!(fitted_sizes(Some(size(px(2560.), px(1440.)))).0, open);
+        assert_eq!(fitted_sizes(Some(size(px(1920.), px(1080.)))).0, open);
         // A 4K TV at 300%.
         let (o, m) = fitted_sizes(Some(size(px(1280.), px(720.))));
-        assert_eq!((o, m), (size(px(1152.), px(648.)), size(px(640.), px(480.))));
+        assert_eq!((o, m), (size(px(1216.), px(684.)), size(px(640.), px(480.))));
         // At 200% on top of that: the smallest size fits too.
         let (o, m) = fitted_sizes(Some(size(px(640.), px(360.))));
-        assert_eq!((o, m), (size(px(576.), px(324.)), size(px(576.), px(324.))));
+        assert_eq!((o, m), (size(px(608.), px(342.)), size(px(608.), px(342.))));
     }
 }

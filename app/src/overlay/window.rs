@@ -52,7 +52,10 @@ impl Display {
                 Ok(screen) => return screen.logical_height(),
                 Err(e) => log::warn!("overlay: cannot read the foreground monitor: {e}"),
             }
-            cx.displays().iter().map(|d| f32::from(d.bounds().size.height)).fold(0., f32::max).max(720.)
+            // GPUI lists the displays at the interface zoom; the overlay's
+            // windows are not zoomed (`gpui-zoom`), so it takes their own size.
+            let zoom = gpui_zoom::zoom();
+            cx.displays().iter().map(|d| f32::from(d.bounds().size.height) * zoom).fold(0., f32::max).max(720.)
         });
         Self {
             height,

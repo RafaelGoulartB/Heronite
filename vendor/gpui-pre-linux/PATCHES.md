@@ -24,6 +24,8 @@ through `[patch.crates-io]` in the workspace `Cargo.toml`. Changes, in
   Heronite's own crate, a dependency added to `Cargo.toml` with its
   `wayland` feature): every window opens at the interface scale the app
   picked (Settings → Appearance → Zoom) and GPUI sees the displays at it.
+  `get_ime_area` (`src/linux/wayland/window.rs`, `src/linux/x11/window.rs`)
+  multiplies the text field's box by `gpui_zoom::factor`.
 
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.

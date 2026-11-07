@@ -758,7 +758,7 @@ impl Platform for WindowsPlatform {
             return Err(anyhow!("cannot open windows while headless"));
         }
         // Heronite: the window at the app's interface scale (`gpui-zoom`).
-        gpui_zoom::open(options, |options| {
+        gpui_zoom::open(handle, options, |options| {
             let window = WindowsWindow::new(handle, options, self.generate_creation_info())?;
             let handle = window.get_raw_handle();
             self.raw_window_handles.write().push(TrackedWindow {

@@ -737,7 +737,7 @@ impl Platform for LinuxPlatform {
         options: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
         // Heronite: the window at the app's interface scale (`gpui-zoom`).
-        gpui_zoom::open(options, |options| self.connection.borrow().open_window(handle, options))
+        gpui_zoom::open(handle, options, |options| self.connection.borrow().open_window(handle, options))
     }
 
     fn open_url(&self, url: &str) {

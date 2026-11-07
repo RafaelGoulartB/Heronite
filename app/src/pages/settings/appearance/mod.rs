@@ -723,7 +723,8 @@ fn console_look_rows(d: &SettingsPage) -> Vec<crate::console::list::Row> {
             INTERFACE_SCALE_RANGE.1 as i64,
             10,
             "%",
-        ),
+        )
+        .desc(tr!("Console mode fills the screen by itself: this matters most in desktop mode.")),
         Row::toggle("ui-scale-system", tr!("Follow the system"), a.interface_scale.is_none()).desc(ui_scale::system().label()),
         choice("font", tr!("Font"), console_choice(&look::font_items(), a.font)),
         choice("density", tr!("Density"), console_choice(&look::density_items(), a.density)),

@@ -10,23 +10,27 @@
 //! when the zoom does.
 //!
 //! Every coordinate crossing this layer is converted: into GPUI,
-//! `GPUI px = system px / zoom`; out of it, `system px = GPUI px × zoom`.
+//! `GPUI px = system px / zoom`; out of it, `system px = GPUI px × zoom`. The
+//! text-input candidate box the backends ask the focused field for on their
+//! own is not: they multiply it by [`factor`]. Mobile insets (always zero on
+//! desktop) are not converted either.
 //!
-//! Not converted: the text-input candidate rectangle the backends ask the
-//! focused field for on their own (an IME's popup shows off by the zoom), and
-//! mobile insets (always zero on desktop).
+//! Pop-ups and layer-shell surfaces (the in-game overlay) are not zoomed: they
+//! size themselves to the screen.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use futures::channel::oneshot;
 use gpui::{
-    px, A11yCallbacks, Bounds, Capslock, Decorations, DispatchEventResult, DisplayId, ExternalDragPayload, FileDropEvent, GpuSpecs,
-    Modifiers, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PromptButton,
+    px, A11yCallbacks, AnyWindowHandle, Bounds, Capslock, Decorations, DispatchEventResult, DisplayId, ExternalDragPayload, FileDropEvent,
+    GpuSpecs, Modifiers, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PromptButton,
     PromptLevel, RequestFrameOptions, ResizeEdge, Scene, ScrollDelta, Size, SystemWindowTab, TextInputConfiguration, TextInputStateChange,
-    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowControls, WindowDecorations, WindowInsets,
-    WindowKind, WindowParams, WindowVisibility,
+    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowControls, WindowDecorations, WindowId,
+    WindowInsets, WindowKind, WindowParams, WindowVisibility,
 };
 use raw_window_handle as rwh;
 
@@ -35,6 +39,21 @@ pub const RANGE: (f32, f32) = (0.5, 3.0);
 
 /// `f32` bits; 1.0 until the app sets it.
 static ZOOM: AtomicU32 = AtomicU32::new(0x3f80_0000);
+
+thread_local! {
+    /// The windows open through a [`ZoomedWindow`] (windows live on the main thread).
+    static ZOOMED: RefCell<HashSet<WindowId>> = RefCell::new(HashSet::new());
+}
+
+/// What a backend multiplies GPUI px it reads by itself with (the text
+/// input's candidate box): the zoom for a zoomed window, 1 for the others.
+pub fn factor(handle: AnyWindowHandle) -> f32 {
+    if ZOOMED.with(|z| z.borrow().contains(&handle.window_id())) {
+        zoom()
+    } else {
+        1.
+    }
+}
 
 /// The interface scale in use (1.0 = 100%).
 pub fn zoom() -> f32 {
@@ -141,28 +160,37 @@ fn event_to_gpui(event: PlatformInput, z: f32) -> PlatformInput {
     }
 }
 
-/// Opens a window at the current zoom: `params` are GPUI px, `open` is the
-/// backend's own `open_window`.
+/// Whether windows of `kind` are zoomed: not pop-ups or layer-shell surfaces.
+fn zoomed_kind(kind: &WindowKind) -> bool {
+    match kind {
+        WindowKind::PopUp => false,
+        #[cfg(all(target_os = "linux", feature = "wayland"))]
+        WindowKind::LayerShell(_) => false,
+        _ => true,
+    }
+}
+
+/// Opens window `handle` at the current zoom: `params` are GPUI px, `open` is
+/// the backend's own `open_window`.
 pub fn open(
+    handle: AnyWindowHandle,
     mut params: WindowParams,
     open: impl FnOnce(WindowParams) -> gpui::Result<Box<dyn PlatformWindow>>,
 ) -> gpui::Result<Box<dyn PlatformWindow>> {
+    if !zoomed_kind(&params.kind) {
+        return open(params);
+    }
     let z = zoom();
     params.bounds = bounds_by(params.bounds, z);
     params.window_min_size = params.window_min_size.map(|s| size_by(s, z));
-    match &mut params.kind {
-        WindowKind::AnchoredPopup(popup) => {
-            popup.anchor_rect = bounds_by(popup.anchor_rect, z);
-            popup.offset = point_by(popup.offset, z);
-        }
-        #[cfg(all(target_os = "linux", feature = "wayland"))]
-        WindowKind::LayerShell(layer) => {
-            layer.exclusive_zone = layer.exclusive_zone.map(|v| mul(v, z));
-            layer.margin = layer.margin.map(|(a, b, c, d)| (mul(a, z), mul(b, z), mul(c, z), mul(d, z)));
-        }
-        _ => {}
+    if let WindowKind::AnchoredPopup(popup) = &mut params.kind {
+        popup.anchor_rect = bounds_by(popup.anchor_rect, z);
+        popup.offset = point_by(popup.offset, z);
     }
-    Ok(Box::new(ZoomedWindow(open(params)?)))
+    let window = open(params)?;
+    let id = handle.window_id();
+    ZOOMED.with(|z| z.borrow_mut().insert(id));
+    Ok(Box::new(ZoomedWindow(window, id)))
 }
 
 /// The displays in GPUI px.
@@ -197,7 +225,13 @@ impl PlatformDisplay for ZoomedDisplay {
 }
 
 /// A backend's window seen by GPUI at the current zoom.
-struct ZoomedWindow(Box<dyn PlatformWindow>);
+struct ZoomedWindow(Box<dyn PlatformWindow>, WindowId);
+
+impl Drop for ZoomedWindow {
+    fn drop(&mut self) {
+        ZOOMED.with(|z| z.borrow_mut().remove(&self.1));
+    }
+}
 
 impl rwh::HasWindowHandle for ZoomedWindow {
     fn window_handle(&self) -> Result<rwh::WindowHandle<'_>, rwh::HandleError> {
