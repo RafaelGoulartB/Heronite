@@ -210,14 +210,17 @@ Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…
 `dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button.
-The spare middle lane can also show the quick toolbar (`collection/toolbar/`): one 32px capsule of segments, in
-priority order Sort with its direction, Show (All / Installed / Not installed), Favourites, Group by, then saved
-Presets, using the same labels and actions as the View menu, which always keeps the complete controls and preset
-management. A segment at its default is only its icon; a value in use adds its label, in the accent (with a tint)
-when it hides games and bright otherwise (sort, grouping, preset). Every segment has a tooltip with its name and
-value. While a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
+The spare middle lane can also show the quick toolbar (`collection/toolbar/`): a track drawn like the Focus / Grid
+switch (`ink_a(.06)` pill, 3px padding, 26px segments 2px apart, 12.5px labels and 15px icons at `ink_a(.68)`,
+brighter on hover), in priority order Sort with its direction, Show (All / Installed / Not installed), Favourites,
+Group by, then saved Presets, using the same labels and actions as the View menu, which always keeps the complete
+controls and preset management. A control at its default is a 30px icon; a value in use adds its label and a
+chevron (a preset shows its colour dot and name), and a filter in use (Show, Favourites) is the accent pill
+(`accent_tint`). The selects open on hover like the header's other menus (no tooltip, the chevron turns while
+open; the Sort list has each field's icon, Presets their dots); the direction and Favourites have tooltips. While
+a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
 returns when the toolbar is off or the control does not fit. It is off by default: hovering the View button
-reveals an accent arrow beside it that turns it on (→) or off (←), the same preference as Settings → Appearance →
+reveals an arrow beside it that turns it on (→) or off (←), the same preference as Settings → Appearance →
 Layout → **Quick toolbar controls** (`quickToolbarControls` in `appearance.json`, independent of filters and
 presets). Visibility is a priority prefix of shaped localized segment widths within the measured flex lane, after
 reserving the remaining filter chips and 48px for dragging (`toolbar/layout.rs`, `fit`). Search, window controls,

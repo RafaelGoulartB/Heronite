@@ -18,7 +18,7 @@ use crate::theme;
 /// Longest view name (one pill of the menu).
 const NAME_MAX: usize = 32;
 
-pub(super) struct ViewCard {
+pub(in crate::collection) struct ViewCard {
     pub name: String,
     /// Dot before the name: the view's first status, else purple for
     /// favourites, else the accent.
@@ -64,7 +64,7 @@ impl CollectionView {
         self.ui.saved_views.iter().position(|v| self.ui.shows_view(&v.filters))
     }
 
-    pub(super) fn view_cards(&self) -> Vec<ViewCard> {
+    pub(in crate::collection) fn view_cards(&self) -> Vec<ViewCard> {
         self.ui
             .saved_views
             .iter()

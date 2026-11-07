@@ -1,7 +1,8 @@
-//! Optional Collection shortcuts, off by default: one capsule after the
-//! View button. A control at its default shows only its icon; a value in use
-//! adds its label, in the accent when it hides games. While a control is
-//! shown, its filter chip is not (`layout::fit`).
+//! Optional Collection shortcuts, off by default: a track like the Focus /
+//! Grid switch (`view_mode.rs`) after the View button. A control at its
+//! default is only its icon; a value in use adds its label and a chevron
+//! (the accent pill when it hides games). While a control is shown, its
+//! filter chip is not (`layout::fit`).
 //!
 //! The zero-basis header lane is measured after layout; text is shaped in the
 //! same font as the controls. Resizing never writes settings, and a vanished
@@ -10,6 +11,7 @@
 mod layout;
 
 use std::cell::Cell;
+use std::f32::consts::PI;
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -29,18 +31,23 @@ use crate::ui::{icon, tooltip};
 
 pub(super) use layout::GAP;
 
-const SEGMENT_H: f32 = 26.;
+/// The track and its segments, as in the Focus / Grid switch.
+const TRACK_PAD: f32 = 3.;
+const SEG_GAP: f32 = 2.;
+const SEG_H: f32 = 26.;
+const SEG_PAD: f32 = 11.;
+const ICON: f32 = 15.;
+const ICON_GAP: f32 = 6.;
 const LABEL: f32 = 12.5;
-const ICON: f32 = 14.;
-/// Side padding of a segment with a label, and of an icon-only one.
-const PAD: f32 = 8.;
-const ICON_PAD: f32 = 6.;
-const INNER_GAP: f32 = 5.;
-const CAPSULE_PAD: f32 = 3.;
-/// The capsule's padding and 1px border, both sides.
-const CHROME: f32 = 2. * CAPSULE_PAD + 2.;
+/// An icon-only segment.
+const ICON_SEG: f32 = 30.;
+/// The chevron after a label, 4px before it and 8px after it.
+const CARET: f32 = 12.;
+const CARET_SLOT: f32 = 4. + CARET + 8.;
+/// A preset's colour dot.
+const DOT: f32 = 8.;
 const PRESET_LABEL_MAX: f32 = 160.;
-/// The View button and the arrow that shows or hides the capsule.
+/// The View button and the arrow that shows or hides the toolbar.
 const VIEW_GROUP: &str = "collection-view-button";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,7 +84,7 @@ impl State {
     }
 }
 
-/// Whether a capsule showing `shown` controls already carries this filter,
+/// Whether a toolbar showing `shown` controls already carries this filter,
 /// so its chip would repeat it.
 pub(super) fn covers(pick: &Pick, shown: usize) -> bool {
     match pick {
@@ -100,104 +107,86 @@ pub(super) fn text_width(text: &str, window: &Window) -> f32 {
     f32::from(line.width).ceil() + 1.
 }
 
+/// An icon-only segment, or one with a label of this width and a chevron.
 fn segment_width(label: Option<f32>) -> f32 {
-    match label {
-        Some(text) => 2. * PAD + ICON + INNER_GAP + text,
-        None => 2. * ICON_PAD + ICON,
-    }
+    label.map_or(ICON_SEG, |text| SEG_PAD + ICON + ICON_GAP + text + CARET_SLOT)
 }
 
-/// This render's segment widths, from the labels they show now.
+/// This render's segment widths, from what they show now.
 pub(super) struct Widths {
     sort: f32,
-    direction: f32,
     install: f32,
-    favourites: f32,
     group: f32,
     preset: f32,
     presets: bool,
 }
 
 impl Widths {
-    /// Lane cost of each control in priority order. A separator (`GAP`)
-    /// precedes every control after the first; the last control's `GAP`
-    /// is the space before the chips.
+    /// Lane cost of each control in priority order, so that each plus `GAP`
+    /// is what it adds to the lane: the first carries the track's padding
+    /// and the direction button, the others their `SEG_GAP`, and the last
+    /// `GAP` is the space before the chips.
     fn items(&self) -> Vec<f32> {
-        let mut items = vec![CHROME + self.sort + self.direction, self.install, self.favourites, self.group];
+        let next = |w: f32| w + SEG_GAP - GAP;
+        let mut items = vec![2. * TRACK_PAD + self.sort + SEG_GAP + ICON_SEG, next(self.install), next(ICON_SEG), next(self.group)];
         if self.presets {
-            items.push(self.preset);
+            items.push(next(self.preset));
         }
         items
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Tone {
-    /// At its default.
-    Plain,
-    /// Changed, but hides no game (sort, grouping, preset).
-    Set,
-    /// A filter that hides games.
-    Filter,
+fn idle() -> Hsla {
+    theme::ink_a(0.68)
 }
 
-impl Tone {
-    fn color(self) -> Hsla {
-        match self {
-            Self::Plain => theme::text_muted().into(),
-            Self::Set => theme::text_bright(),
-            Self::Filter => theme::accent().into(),
-        }
-    }
-}
-
-fn segment(id: impl Into<ElementId>, width: f32, tone: Tone, open: bool) -> Stateful<Div> {
+/// A segment of the track. `filter`: the accent pill of a filter in use.
+fn segment(id: impl Into<ElementId>, width: f32, filter: bool, open: bool) -> Stateful<Div> {
+    let hover = if filter { theme::accent_alpha(0.24).into() } else { theme::ink_a(0.08) };
     div()
         .id(id)
         .flex()
         .flex_none()
         .items_center()
-        .justify_center()
-        .gap(px(INNER_GAP))
-        .h(px(SEGMENT_H))
         .w(px(width))
+        .h(px(SEG_H))
         .rounded_full()
-        .text_size(px(LABEL))
-        .text_color(tone.color())
+        .overflow_hidden()
         .cursor_pointer()
-        .when(tone == Tone::Filter, |d| d.bg(theme::accent_tint()))
-        .when(open, |d| d.bg(theme::ink_a(0.08)))
-        .hover(move |s| {
-            let s = s.bg(theme::ink_a(0.08));
-            if tone == Tone::Filter {
-                s
-            } else {
-                s.text_color(theme::text_bright())
-            }
-        })
+        .text_size(px(LABEL))
+        .whitespace_nowrap()
+        .text_color(if filter { theme::accent().into() } else { idle() })
+        .when(filter, |d| d.bg(theme::accent_tint()))
+        .when(open && !filter, |d| d.bg(theme::ink_a(0.08)).text_color(theme::text_bright()))
+        .hover(move |s| if filter { s.bg(hover) } else { s.bg(hover).text_color(theme::text_bright()) })
 }
 
-fn separator() -> Div {
-    div().flex_none().w(px(1.)).h(px(14.)).mx(px((GAP - 1.) / 2.)).bg(theme::ink_a(0.1))
+fn icon_segment(id: impl Into<ElementId>, glyph: Icon, filter: bool, open: bool) -> Stateful<Div> {
+    segment(id, ICON_SEG, filter, open).justify_center().child(icon(glyph, px(ICON), if filter { theme::accent().into() } else { idle() }))
+}
+
+/// What a select segment shows before its label.
+enum Lead {
+    Icon(Icon),
+    Dot(Rgba),
 }
 
 impl CollectionView {
     pub(super) fn quick_widths(&self, window: &Window) -> Widths {
-        let preset = self.current_view().map(|i| text_width(&self.ui.saved_views[i].name, window).min(PRESET_LABEL_MAX));
+        let label = |text: &str| Some(text_width(text, window));
+        let preset = self.current_view().map(|i| text_width(&self.ui.saved_views[i].name, window).min(PRESET_LABEL_MAX) + DOT - ICON);
         Widths {
-            sort: segment_width(Some(text_width(sort_label(self.ui.sort), window))),
-            direction: segment_width(None),
+            sort: segment_width(label(sort_label(self.ui.sort))),
             install: segment_width(
                 (self.ui.install_filter != InstallFilter::All).then(|| text_width(install_label(self.ui.install_filter), window)),
             ),
-            favourites: segment_width(None),
-            group: segment_width((self.ui.group_by != GroupBy::None).then(|| text_width(group_label(self.ui.group_by), window))),
+            group: segment_width(if self.ui.group_by == GroupBy::None { None } else { label(group_label(self.ui.group_by)) }),
             preset: segment_width(preset),
             presets: !self.ui.saved_views.is_empty(),
         }
     }
 
-    /// How many controls the capsule shows, given each filter chip's
+    /// How many controls the toolbar shows, given each filter chip's
     /// `(pick, width)`.
     pub(super) fn quick_fit(&self, widths: &Widths, chips: &[(Pick, f32)]) -> usize {
         let lane = self.toolbar.width.get().unwrap_or(0.);
@@ -205,8 +194,8 @@ impl CollectionView {
         layout::fit(theme::appearance().quick_toolbar_controls, lane, &widths.items(), chip_width)
     }
 
-    /// The View button with the arrow that shows or hides the capsule on its
-    /// right; the arrow appears while the pointer is over either.
+    /// The View button with, on its right, the arrow that shows or hides the
+    /// toolbar; the arrow appears while the pointer is over either.
     pub(super) fn view_button_group(&self, view: Stateful<Div>, cx: &mut Context<Self>) -> Div {
         let on = theme::appearance().quick_toolbar_controls;
         let toggle = div()
@@ -215,15 +204,15 @@ impl CollectionView {
             .flex_none()
             .items_center()
             .justify_center()
-            .w(px(16.))
-            .h(theme::TOOL_BTN)
-            .rounded(px(theme::R_ITEM / 2.))
+            .w(px(18.))
+            .h(px(SEG_H))
+            .rounded_full()
             .cursor_pointer()
             .opacity(0.)
             .group_hover(VIEW_GROUP, |s| s.opacity(1.))
             .hover(|s| s.bg(theme::ink_a(0.08)))
             .tooltip(tooltip(if on { tr!("Hide quick controls") } else { tr!("Show quick controls") }))
-            .child(icon(if on { Icon::ChevronLeft } else { Icon::ChevronRight }, px(14.), theme::accent()))
+            .child(icon(if on { Icon::ChevronLeft } else { Icon::ChevronRight }, px(16.), theme::tool_icon()))
             .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.quick_toolbar_controls = !a.quick_toolbar_controls, cx)));
         div().group(VIEW_GROUP).flex().flex_none().items_center().child(view).child(toggle)
     }
@@ -250,109 +239,108 @@ impl CollectionView {
         }
         let max_h = (f32::from(window.viewport_size().height) - 58.).max(80.);
         let (mode, descending) = (self.ui.sort, self.ui.sort_descending);
-        let sort = self.quick_select(
-            QuickMenu::Sort,
-            "quick-sort",
-            Some(sort_label(mode)),
-            sort_icon(mode),
-            widths.sort,
-            Tone::Set,
-            (tr!("Sort"), sort_label(mode)),
-            max_h,
-            cx,
-        );
-        let direction = segment("quick-sort-direction", widths.direction, Tone::Plain, false)
-            .tooltip(tooltip(sort_direction(mode, descending)))
-            .child(icon(sort_direction_icon(mode, descending), px(ICON), Tone::Plain.color()))
-            .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx)));
-        let mut capsule = div()
+        let mut track = div()
             .id("collection-quick-toolbar")
             .flex()
             .flex_none()
             .items_center()
-            .h(theme::TOOL_BTN)
-            .px(px(CAPSULE_PAD))
+            .gap(px(SEG_GAP))
+            .p(px(TRACK_PAD))
             .rounded_full()
-            .border_1()
-            .border_color(theme::ink_a(0.08))
-            .bg(theme::search_fill())
-            .child(sort)
-            .child(direction);
+            .bg(theme::ink_a(0.06))
+            .child(self.quick_select(
+                QuickMenu::Sort,
+                "quick-sort",
+                Lead::Icon(sort_icon(mode)),
+                Some(sort_label(mode)),
+                widths.sort,
+                false,
+                max_h,
+                cx,
+            ))
+            .child(
+                icon_segment("quick-sort-direction", sort_direction_icon(mode, descending), false, false)
+                    .tooltip(tooltip(sort_direction(mode, descending)))
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_sort_direction(cx))),
+            );
         if visible > QuickMenu::Install.index() {
             let filter = self.ui.install_filter;
             let filtered = filter != InstallFilter::All;
-            capsule = capsule.child(separator()).child(self.quick_select(
+            track = track.child(self.quick_select(
                 QuickMenu::Install,
                 "quick-install",
+                Lead::Icon(Icon::Download),
                 filtered.then(|| install_label(filter)),
-                Icon::Download,
                 widths.install,
-                if filtered { Tone::Filter } else { Tone::Plain },
-                (tr!("Show"), install_label(filter)),
+                filtered,
                 max_h,
                 cx,
             ));
         }
         if visible > FAVOURITES {
             let on = self.ui.only.favourites;
-            let tone = if on { Tone::Filter } else { Tone::Plain };
-            capsule = capsule.child(separator()).child(
-                segment("quick-favourites", widths.favourites, tone, false)
+            track = track.child(
+                icon_segment("quick-favourites", if on { Icon::Star } else { Icon::StarBorder }, on, false)
                     .tooltip(tooltip(Only::Favourites.label()))
-                    .child(icon(if on { Icon::Star } else { Icon::StarBorder }, px(ICON), tone.color()))
                     .on_click(cx.listener(|this, _, _, cx| this.apply_pick(&Pick::Only(Only::Favourites), cx))),
             );
         }
         if visible > QuickMenu::Group.index() {
             let by = self.ui.group_by;
-            let grouped = by != GroupBy::None;
-            capsule = capsule.child(separator()).child(self.quick_select(
+            track = track.child(self.quick_select(
                 QuickMenu::Group,
                 "quick-group",
-                grouped.then(|| group_label(by)),
-                Icon::Folder,
+                Lead::Icon(Icon::Folder),
+                (by != GroupBy::None).then(|| group_label(by)),
                 widths.group,
-                if grouped { Tone::Set } else { Tone::Plain },
-                (tr!("Group by"), group_label(by)),
+                false,
                 max_h,
                 cx,
             ));
         }
         if visible > QuickMenu::Presets.index() {
-            let name = self.current_view().map(|i| self.ui.saved_views[i].name.clone());
-            capsule = capsule.child(separator()).child(self.quick_select(
-                QuickMenu::Presets,
-                "quick-presets",
-                name.as_deref(),
-                Icon::Bookmark,
-                widths.preset,
-                if name.is_some() { Tone::Set } else { Tone::Plain },
-                (tr!("Presets"), name.as_deref().unwrap_or(tr!("Custom"))),
-                max_h,
-                cx,
-            ));
+            let current = self.current_view().map(|i| self.view_cards().swap_remove(i));
+            let (lead, label) = match &current {
+                Some(card) => (Lead::Dot(card.color), Some(card.name.as_str())),
+                None => (Lead::Icon(Icon::BookmarkBorder), None),
+            };
+            track = track.child(self.quick_select(QuickMenu::Presets, "quick-presets", lead, label, widths.preset, false, max_h, cx));
         }
-        Some(capsule)
+        Some(track)
     }
 
-    /// A segment that opens `menu`; `hint` is the tooltip's `(name, value)`.
+    /// A segment that opens `menu` on hover, like the header's other menus.
+    /// Without a label it is only its icon.
     fn quick_select(
         &self,
         menu: QuickMenu,
         id: &'static str,
+        lead: Lead,
         label: Option<&str>,
-        glyph: Icon,
         width: f32,
-        tone: Tone,
-        hint: (&str, &str),
+        filter: bool,
         max_h: f32,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let open = self.open_menu == Some(Menu::Quick(menu));
-        let trigger = segment(id, width, tone, open)
-            .tooltip(tooltip(format!("{}: {}", hint.0, hint.1)))
-            .child(icon(glyph, px(ICON), tone.color()))
-            .children(label.map(|label| div().flex_1().min_w_0().truncate().child(label.to_owned())));
+        let tint: Hsla = if filter { theme::accent().into() } else { idle() };
+        let lead = match lead {
+            Lead::Icon(glyph) => icon(glyph, px(ICON), tint).into_any_element(),
+            Lead::Dot(color) => div().flex_none().size(px(DOT)).rounded_full().bg(color).into_any_element(),
+        };
+        let trigger = match label {
+            None => segment(id, width, filter, open).justify_center().child(lead),
+            Some(label) => segment(id, width, filter, open)
+                .pl(px(SEG_PAD))
+                .child(lead)
+                .child(div().flex_1().min_w_0().ml(px(ICON_GAP)).truncate().child(label.to_owned()))
+                .child(
+                    icon(Icon::ExpandMore, px(CARET), tint)
+                        .ml(px(4.))
+                        .mr(px(8.))
+                        .with_transformation(Transformation::rotate(radians(if open { PI } else { 0. }))),
+                ),
+        };
         self.hover_dropdown(Menu::Quick(menu), trigger, Align::Left, |this, cx| this.quick_menu(menu, max_h, cx), cx)
     }
 
@@ -369,48 +357,46 @@ impl CollectionView {
         match which {
             QuickMenu::Sort => {
                 for mode in heronite_data::SortMode::ALL {
-                    rows = rows.child(option(("quick-sort-opt", mode as usize), sort_label(mode), self.ui.sort == mode).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.set_sort(mode, cx);
-                            this.close_quick_menu(cx);
-                        }),
-                    ));
+                    let row = option(
+                        ("quick-sort-opt", mode as usize),
+                        Some(Lead::Icon(sort_icon(mode))),
+                        sort_label(mode),
+                        self.ui.sort == mode,
+                    );
+                    rows = rows.child(row.on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_sort(mode, cx);
+                        this.close_quick_menu(cx);
+                    })));
                 }
             }
             QuickMenu::Install => {
                 for filter in [InstallFilter::All, InstallFilter::Installed, InstallFilter::Uninstalled] {
-                    rows = rows.child(
-                        option(("quick-install-opt", filter as usize), install_label(filter), self.ui.install_filter == filter).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                this.set_install_filter(filter, cx);
-                                this.close_quick_menu(cx);
-                            }),
-                        ),
-                    );
+                    let row = option(("quick-install-opt", filter as usize), None, install_label(filter), self.ui.install_filter == filter);
+                    rows = rows.child(row.on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_install_filter(filter, cx);
+                        this.close_quick_menu(cx);
+                    })));
                 }
             }
             QuickMenu::Group => {
                 for by in GroupBy::ALL {
-                    rows = rows.child(option(("quick-group-opt", by as usize), group_label(by), self.ui.group_by == by).on_click(
-                        cx.listener(move |this, _, _, cx| {
-                            this.set_group_by(by, cx);
-                            this.close_quick_menu(cx);
-                        }),
-                    ));
+                    let row = option(("quick-group-opt", by as usize), None, group_label(by), self.ui.group_by == by);
+                    rows = rows.child(row.on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_group_by(by, cx);
+                        this.close_quick_menu(cx);
+                    })));
                 }
             }
             QuickMenu::Presets => {
                 let current = self.current_view();
-                for (i, view) in self.ui.saved_views.iter().enumerate() {
-                    let filters = view.filters.clone();
-                    rows = rows.child(
-                        option(("quick-preset-opt", i), &view.name, current == Some(i)).tooltip(tooltip(view.name.clone())).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                this.apply_view_filters(&filters, cx);
-                                this.close_quick_menu(cx);
-                            }),
-                        ),
-                    );
+                for (i, card) in self.view_cards().into_iter().enumerate() {
+                    let filters = card.filters;
+                    let row = option(("quick-preset-opt", i), Some(Lead::Dot(card.color)), &card.name, current == Some(i))
+                        .tooltip(tooltip(card.name.clone()));
+                    rows = rows.child(row.on_click(cx.listener(move |this, _, _, cx| {
+                        this.apply_view_filters(&filters, cx);
+                        this.close_quick_menu(cx);
+                    })));
                 }
             }
         }
@@ -430,8 +416,13 @@ impl CollectionView {
     }
 }
 
-fn option(id: impl Into<ElementId>, label: &str, active: bool) -> Stateful<Div> {
+fn option(id: impl Into<ElementId>, lead: Option<Lead>, label: &str, active: bool) -> Stateful<Div> {
+    let lead = lead.map(|lead| match lead {
+        Lead::Icon(glyph) => icon(glyph, px(15.), if active { theme::accent() } else { theme::text_muted() }).into_any_element(),
+        Lead::Dot(color) => div().flex_none().size(px(DOT)).mx(px(3.5)).rounded_full().bg(color).into_any_element(),
+    });
     menu_item(id, active)
+        .children(lead)
         .child(div().flex_1().min_w_0().truncate().child(label.to_owned()))
         .children(active.then(|| icon(Icon::Check, px(14.), theme::accent())))
 }

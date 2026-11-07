@@ -110,6 +110,7 @@ pub enum Icon {
     Notes,
     /// "Where I left off" in the journal.
     Bookmark,
+    BookmarkBorder,
     /// "Find art": looks up the art by itself.
     AutoAwesome,
     Image,
@@ -180,6 +181,7 @@ impl Icon {
             Edit => "icons/edit.svg",
             Notes => "icons/notes.svg",
             Bookmark => "icons/bookmark.svg",
+            BookmarkBorder => "icons/bookmark-border.svg",
             AutoAwesome => "icons/auto-awesome.svg",
             Image => "icons/image.svg",
             InfoOutlined => "icons/info-outlined.svg",
