@@ -1,4 +1,4 @@
-//! The in-game overlay (beta, off by default; Settings → Overlay): a panel
+//! The in-game overlay (off by default; Settings → Overlay): a panel
 //! the controller's Guide button (or a keyboard shortcut, Super + G unless
 //! changed) opens over a game launched by the app, plus two shortcuts that
 //! work without opening it (Guide + RB, or the button chosen: screenshot;

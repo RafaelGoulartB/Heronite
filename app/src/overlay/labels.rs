@@ -125,9 +125,9 @@ pub fn section_blurb() -> &'static str {
 /// Settings → Overlay in the command palette.
 pub fn palette_help() -> &'static str {
     if cfg!(windows) {
-        tr!("Back + Start panel over games (beta)")
+        tr!("Back + Start panel over games")
     } else {
-        tr!("Guide button panel over games (beta)")
+        tr!("Guide button panel over games")
     }
 }
 
