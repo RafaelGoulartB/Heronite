@@ -81,6 +81,10 @@ pub struct LudusaviSettings {
     /// backup; a backup by hand still runs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub auto_backup_off: Vec<String>,
+    /// Minutes between backups while a game runs, on top of the after-play
+    /// one; `None` = only after play.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_minutes: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_backup_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -136,6 +140,12 @@ impl LudusaviSettings {
     /// Whether a session of this game ends with a backup.
     pub fn auto_backup_for(&self, runner: &str, app_name: &str) -> bool {
         self.enabled && !self.auto_backup_off.contains(&super::game_key(runner, app_name))
+    }
+
+    /// Time between backups while this game runs, when it gets any.
+    pub fn periodic_interval_for(&self, runner: &str, app_name: &str) -> Option<std::time::Duration> {
+        let minutes = self.interval_minutes.filter(|m| *m > 0)?;
+        self.auto_backup_for(runner, app_name).then(|| std::time::Duration::from_secs(u64::from(minutes) * 60))
     }
 }
 

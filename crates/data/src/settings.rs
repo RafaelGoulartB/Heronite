@@ -176,6 +176,7 @@ impl EffectiveSettings {
                 full_limit: ludusavi.full_limit.filter(|n| *n >= 1),
                 differential_limit: ludusavi.differential_limit,
                 auto_backup_off: ludusavi.auto_backup_off,
+                interval_minutes: as_ludusavi_interval(ludusavi.interval_minutes),
                 last_backup_at: ludusavi.last_backup_at,
                 last_backup_game: ludusavi.last_backup_game,
                 last_backup_path: ludusavi.last_backup_path,
@@ -222,6 +223,15 @@ pub const BACKUP_OPTIONAL_PARTS: [&str; 3] = ["settings", "art", "logins"];
 /// Cap of the image caches when unset: about 4x what a library of a few
 /// hundred games uses, so it only trims a cache that grew without bound.
 pub const DEFAULT_IMAGE_CACHE_LIMIT_MB: u32 = 1024;
+
+/// Shortest and longest time between save backups while a game runs, in
+/// minutes: a hand-edited value is clamped into this range.
+pub const LUDUSAVI_INTERVAL_RANGE: std::ops::RangeInclusive<u32> = 5..=24 * 60;
+
+/// `ludusavi.intervalMinutes`: 0 or unset = off.
+pub fn as_ludusavi_interval(minutes: Option<u32>) -> Option<u32> {
+    minutes.filter(|m| *m > 0).map(|m| m.clamp(*LUDUSAVI_INTERVAL_RANGE.start(), *LUDUSAVI_INTERVAL_RANGE.end()))
+}
 
 fn fallback_backup() -> BackupSettings {
     BackupSettings { folder: String::new(), interval: "weekly".into(), ..Default::default() }
@@ -490,9 +500,28 @@ mod tests {
         assert_eq!(s.ludusavi.format, "zip");
         assert_eq!(s.ludusavi.compression, "deflate");
         assert!(s.ludusavi.use_installed_config);
+        assert_eq!(s.ludusavi.interval_minutes, None, "no backups during play unless asked for");
         assert_eq!(s.theme, "midnightMirage");
         assert_eq!(s.language, "en");
         assert!(!s.all_tiles_in_color);
+    }
+
+    #[test]
+    fn ludusavi_interval_is_off_unless_set_and_clamped() {
+        let read = |json: &str| {
+            let file: CollectionSettingsFile = serde_json::from_str(json).unwrap();
+            EffectiveSettings::from_files(&file, &StoreConfigFile::default()).ludusavi
+        };
+        assert_eq!(read(r#"{"ludusavi":{"enabled":true}}"#).interval_minutes, None);
+        assert_eq!(read(r#"{"ludusavi":{"enabled":true,"intervalMinutes":0}}"#).interval_minutes, None);
+        assert_eq!(read(r#"{"ludusavi":{"enabled":true,"intervalMinutes":30}}"#).interval_minutes, Some(30));
+        assert_eq!(read(r#"{"ludusavi":{"enabled":true,"intervalMinutes":1}}"#).interval_minutes, Some(5));
+        assert_eq!(read(r#"{"ludusavi":{"enabled":true,"intervalMinutes":99999}}"#).interval_minutes, Some(1440));
+        let l = read(r#"{"ludusavi":{"enabled":true,"intervalMinutes":30,"autoBackupOff":["sideload:g"]}}"#);
+        assert_eq!(l.periodic_interval_for("sideload", "h"), Some(std::time::Duration::from_secs(30 * 60)));
+        assert_eq!(l.periodic_interval_for("sideload", "g"), None, "a game left out of the after-play backup is left out too");
+        assert_eq!(read(r#"{"ludusavi":{"enabled":false,"intervalMinutes":30}}"#).periodic_interval_for("sideload", "h"), None);
+        assert_eq!(read(r#"{"ludusavi":{"enabled":true}}"#).periodic_interval_for("sideload", "h"), None);
     }
 
     #[test]

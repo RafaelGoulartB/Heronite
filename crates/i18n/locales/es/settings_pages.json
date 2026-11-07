@@ -457,5 +457,12 @@
   "Get help with a setup, or talk with other players.": "Pide ayuda con una configuración o habla con otros jugadores.",
   "Like Heronite?": "¿Te gusta Heronite?",
   "It is free and open source. A star on GitHub helps more people find it.": "Es gratuito y de código abierto. Una estrella en GitHub ayuda a que más gente lo encuentre.",
-  "Star on GitHub": "Dar una estrella en GitHub"
+  "Star on GitHub": "Dar una estrella en GitHub",
+  "Also back up while playing": "Hacer copia también mientras juegas",
+  "Every 15 minutes": "Cada 15 minutos",
+  "Every 30 minutes": "Cada 30 minutos",
+  "Every hour": "Cada hora",
+  "Every 2 hours": "Cada 2 horas",
+  "Every {n} minutes": "Cada {n} minutos",
+  "Starts with the next game you launch. Ludusavi copies the save files as they are at that moment: a game saving during the copy can leave a mixed backup, so the backup after the game closes is the one to trust. Nothing is restored on its own.": "Empieza con el próximo juego que abras. Ludusavi copia los archivos de guardado tal como están en ese momento: un juego que guarda durante la copia puede dejar una copia mezclada, así que la copia hecha al cerrar el juego es la fiable. Nada se restaura por sí solo."
 }
