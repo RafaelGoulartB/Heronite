@@ -1,4 +1,4 @@
-//! Left column of the focus panel: the cover, Play (or the Epic progress),
+//! Left column of the focus panel: the cover, the age rating, Play (or the Epic progress),
 //! the status selector with favourite / settings, the user's star
 //! rating and a facts card (score, library, save backup, Linux). When the
 //! panel is narrow the same pieces sit in a row under the title.
@@ -56,6 +56,7 @@ impl CollectionView {
             .flex_col()
             .gap(px(10.))
             .min_w_0()
+            .child(super::age_badge::age_badge(vm.age.as_ref()))
             .child(self.play_area(vm, epic, cx))
             .child(self.focus_status_row(vm, vh, cx))
             .children(self.left_off_card(&vm.key, cx))

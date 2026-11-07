@@ -5,6 +5,7 @@
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
+use heronite_data::age_rating::{self, AgeRating, RatingSystem};
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::num::JsNum;
 use heronite_i18n::tr;
@@ -19,6 +20,8 @@ use crate::util::{blank_metadata, clip, pick_best_match, title_queries, unique_n
 const STEAM_EXTERNAL: i64 = 1;
 const TOKEN_SKEW: Duration = Duration::from_secs(60);
 const MIN_GAP: Duration = Duration::from_millis(280);
+/// Games per [`Igdb::age_ratings_by_id`] request (IGDB's `limit` maximum).
+pub const RATINGS_BATCH: usize = 500;
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct Named {
@@ -53,6 +56,28 @@ pub struct External {
     pub category: Option<i64>,
     #[serde(default)]
     pub external_game_source: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RatingCategory {
+    #[serde(default)]
+    pub rating: Option<String>,
+}
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RatingDescription {
+    #[serde(default)]
+    pub description: Option<String>,
+}
+/// An `age_ratings` row (IGDB's 2025 shape: board and category are
+/// references; the old `category` / `rating` enums are gone).
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct IgdbAgeRating {
+    #[serde(default)]
+    pub organization: Option<Named>,
+    #[serde(default)]
+    pub rating_category: Option<RatingCategory>,
+    #[serde(default)]
+    pub rating_content_descriptions: Vec<RatingDescription>,
 }
 
 /// One `games` row of the v4 API.
@@ -102,9 +127,59 @@ pub struct IgdbGame {
     pub websites: Vec<Website>,
     #[serde(default)]
     pub external_games: Vec<External>,
+    #[serde(default)]
+    pub age_ratings: Vec<IgdbAgeRating>,
+    /// The game an edition ("Deluxe Edition", "GOTY") is of: IGDB rates
+    /// only that one.
+    #[serde(default)]
+    pub version_parent: Option<RatedGame>,
 }
 
-const GAME_FIELDS: &str = "name,slug,summary,storyline,first_release_date,aggregated_rating,total_rating,url,cover.image_id,screenshots.image_id,artworks.image_id,genres.name,themes.name,game_modes.name,platforms.name,collection.name,collections.name,franchises.name,involved_companies.developer,involved_companies.publisher,involved_companies.company.name,websites.url,websites.category,external_games.uid,external_games.category,external_games.external_game_source";
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RatedGame {
+    #[serde(default)]
+    pub age_ratings: Vec<IgdbAgeRating>,
+}
+
+/// The `age_ratings` fields, also of the game an edition belongs to (a
+/// macro: `concat!` takes only literals).
+macro_rules! age_fields {
+    () => {
+        concat!(
+            "age_ratings.organization.name,age_ratings.rating_category.rating,age_ratings.rating_content_descriptions.description,",
+            "version_parent.age_ratings.organization.name,version_parent.age_ratings.rating_category.rating,",
+            "version_parent.age_ratings.rating_content_descriptions.description"
+        )
+    };
+}
+
+const GAME_FIELDS: &str = concat!(
+    "name,slug,summary,storyline,first_release_date,aggregated_rating,total_rating,url,cover.image_id,screenshots.image_id,artworks.image_id,genres.name,themes.name,game_modes.name,platforms.name,collection.name,collections.name,franchises.name,involved_companies.developer,involved_companies.publisher,involved_companies.company.name,websites.url,websites.category,external_games.uid,external_games.category,external_games.external_game_source,",
+    age_fields!()
+);
+
+const AGE_FIELDS: &str = age_fields!();
+
+/// The boards' ratings of an IGDB row, else of the game it is an edition of.
+pub fn age_ratings(game: &IgdbGame) -> Vec<AgeRating> {
+    let own = rated(&game.age_ratings);
+    match &game.version_parent {
+        Some(parent) if own.is_empty() => rated(&parent.age_ratings),
+        _ => own,
+    }
+}
+
+fn rated(rows: &[IgdbAgeRating]) -> Vec<AgeRating> {
+    let found: Vec<AgeRating> = rows
+        .iter()
+        .filter_map(|a| {
+            let system = RatingSystem::from_igdb(a.organization.as_ref()?.name.as_deref()?)?;
+            let descriptors = a.rating_content_descriptions.iter().filter_map(|d| d.description.clone()).collect();
+            AgeRating::new(system, a.rating_category.as_ref()?.rating.as_deref()?, descriptors)
+        })
+        .collect();
+    age_rating::merge([found.as_slice()])
+}
 
 /// `igdbImageUrl`.
 pub fn igdb_image_url(image_id: Option<&str>, size: &str) -> Option<String> {
@@ -173,6 +248,7 @@ pub fn map_game(app_name: &str, runner: &str, game: &IgdbGame) -> CollectionGame
     md.platforms = names(&game.platforms, 10);
     md.series = series;
     md.critic_score = score;
+    md.age_ratings = age_ratings(game);
     md.websites = websites;
     md.cover_url = cover;
     md.hero_url = hero;
@@ -367,6 +443,17 @@ impl Igdb {
         Ok(self.query_games(http, creds, &body)?.into_iter().next())
     }
 
+    /// The age ratings of up to [`RATINGS_BATCH`] games at once, by IGDB id
+    /// (games IGDB rated for no board are left out).
+    pub fn age_ratings_by_id(&self, http: &Http, creds: &IgdbCredentials, ids: &[i64]) -> Result<Vec<(i64, Vec<AgeRating>)>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let list = ids.iter().take(RATINGS_BATCH).map(i64::to_string).collect::<Vec<_>>().join(",");
+        let body = format!("fields {AGE_FIELDS}; where id = ({list}); limit {RATINGS_BATCH};");
+        Ok(self.query_games(http, creds, &body)?.iter().map(|g| (g.id, age_ratings(g))).filter(|(_, r)| !r.is_empty()).collect())
+    }
+
     /// `gameBySteamId`. IGDB stopped returning `external_games.category`, so
     /// the query uses `external_game_source` first and the old `category`
     /// filter as a fallback.
@@ -461,6 +548,44 @@ mod tests {
         assert!(md.hero_url.unwrap().contains("/t_720p/"));
         assert!(md.description.is_some_and(|d| !d.contains('\n')));
         assert!(md.websites.len() <= 4 && !md.websites.is_empty());
+    }
+
+    #[test]
+    fn maps_age_ratings_of_igdb_2025_shape() {
+        // Recorded from `games` with the `age_ratings` fields (Portal).
+        let game: IgdbGame = serde_json::from_str(
+            r#"{"id":71,"age_ratings":[
+                {"organization":{"name":"PEGI"},"rating_category":{"rating":"12"}},
+                {"organization":{"name":"ESRB"},"rating_category":{"rating":"T"},
+                 "rating_content_descriptions":[{"description":"Mild Violence"},{"description":"Blood"}]},
+                {"organization":{"name":"CLASS_IND"},"rating_category":{"rating":"10"}},
+                {"organization":{"name":"GRAC"},"rating_category":{"rating":"15+"}},
+                {"organization":{"name":"GRAC"},"rating_category":{"rating":"TESTING"}},
+                {"organization":{"name":"SOMEONE"},"rating_category":{"rating":"9"}},
+                {"rating_category":{"rating":"M"}}]}"#,
+        )
+        .unwrap();
+        let md = map_game("a", "sideload", &game);
+        let got: Vec<(&str, &str)> = md.age_ratings.iter().map(|r| (r.system.as_str(), r.rating.as_str())).collect();
+        assert_eq!(got, [("pegi", "12"), ("esrb", "T"), ("classind", "10"), ("grac", "15")]);
+        assert_eq!(md.age_ratings[1].descriptors, ["Mild Violence", "Blood"]);
+        assert!(GAME_FIELDS.ends_with(AGE_FIELDS) && GAME_FIELDS.contains("source,age_ratings."));
+    }
+
+    #[test]
+    fn an_edition_takes_the_ratings_of_its_game() {
+        let edition: IgdbGame = serde_json::from_str(
+            r#"{"id":279660,"name":"Baldur's Gate 3: Deluxe Edition",
+                "version_parent":{"age_ratings":[{"organization":{"name":"ESRB"},"rating_category":{"rating":"M"}}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(age_ratings(&edition)[0].rating, "M");
+        let own: IgdbGame = serde_json::from_str(
+            r#"{"id":1,"age_ratings":[{"organization":{"name":"PEGI"},"rating_category":{"rating":"7"}}],
+                "version_parent":{"age_ratings":[{"organization":{"name":"ESRB"},"rating_category":{"rating":"M"}}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(age_ratings(&own).iter().map(|r| r.system.as_str()).collect::<Vec<_>>(), ["pegi"]);
     }
 
     #[test]

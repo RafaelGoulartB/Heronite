@@ -127,6 +127,7 @@ pub(super) fn view_query(ui: &UiState, search: &str) -> ViewQuery {
         descending: ui.sort_descending,
         favourites_only: ui.only.favourites,
         offline_only: ui.only.offline,
+        age: ui.age,
     }
 }
 
@@ -239,6 +240,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         overview_html,
         related,
         details: rows,
+        age: age_vm(lib, g),
         hltb: fd.hltb.as_ref().filter(|h| h.main_story > 0. || h.main_extra > 0.).map(|h| HltbVm {
             main: Some(h.main_story as f32),
             extra: Some(h.main_extra as f32),
@@ -264,6 +266,27 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         playtime: fd.playtime.clone().into(),
         last_played: last_played.map(Into::into),
     }
+}
+
+fn age_vm(lib: &Library, g: &CollectionGame) -> Option<AgeVm> {
+    let shown = g.age_rating.as_ref()?;
+    let ratings = g.metadata.as_ref().map(|m| m.age_ratings.as_slice()).unwrap_or_default();
+    // The tooltip lists the boards in the order they are looked for.
+    let all = lib
+        .age_order
+        .iter()
+        .filter_map(|b| ratings.iter().find(|r| r.board() == Some(*b)).map(|r| (b, r)))
+        .map(|(b, r)| format!("{} {} · {}", b.name(), r.badge(), r.title()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(AgeVm {
+        board: shown.board().map_or("", |b| b.name()).into(),
+        badge: shown.badge().into(),
+        title: shown.title().into(),
+        reasons: shown.descriptors.join(", ").into(),
+        all: all.into(),
+        min_age: shown.min_age(),
+    })
 }
 
 fn is_pc_platform(name: &str) -> bool {

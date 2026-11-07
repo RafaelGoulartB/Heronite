@@ -173,6 +173,10 @@ pub struct MetadataSettings {
     pub download_images: bool,
     #[serde(default = "default_true")]
     pub auto_fill_missing: bool,
+    /// The board the Collection shows first: `auto` (from the interface
+    /// language) or a [`crate::age_rating::RatingSystem::id`].
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub age_rating_system: String,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
     #[serde(flatten)]

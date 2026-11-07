@@ -3,6 +3,7 @@
 //! (the kind's name, in English or translated) narrows it to one kind.
 
 use gpui_kit::Rgba;
+use heronite_data::age_rating::AgeFilter;
 use heronite_data::fuzzy::fold;
 use heronite_data::{FacetKind, InstallFilter};
 use heronite_i18n::tr;
@@ -23,6 +24,8 @@ pub(in crate::collection) enum Pick {
     /// A category name (`categories::UNCATEGORIZED` included).
     Category(String),
     Facet(FacetKind, String),
+    /// Sets "Ages up to" to this; picking the filter already on clears it.
+    Age(AgeFilter),
 }
 
 /// A group of values: the "Only" switches, statuses, categories or a facet.

@@ -364,6 +364,20 @@ pub fn rarity_colour(tier: RarityTier) -> Rgba {
     }
 }
 
+/// An age rating badge's colour by the youngest age it is for (`None` =
+/// pending): green for young children, then yellow, orange and red (darker
+/// on the light theme).
+pub fn age_tone(min_age: Option<u8>) -> Rgba {
+    let light = super::scheme::is_light();
+    match min_age {
+        None => text_muted(),
+        Some(0..=7) => rgb(if light { 0x1e8a4f } else { 0x3ecf8e }),
+        Some(8..=12) => rgb(if light { 0x8a6d00 } else { 0xf4d35e }),
+        Some(13..=16) => rgb(if light { 0xb85400 } else { 0xf59e42 }),
+        Some(_) => rgb(if light { 0xc0392b } else { 0xff6b6b }),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RarityTier {
     UltraRare,

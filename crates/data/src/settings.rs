@@ -24,7 +24,7 @@ const MAX_SCREENSHOT_CACHE_LIMIT_MB: f64 = 10_000.0;
 pub const DEFAULT_THEME: &str = "midnightMirage";
 pub const DEFAULT_CAPTURE_ACCELERATOR: &str = "F10";
 
-pub const METADATA_FIELDS: [&str; 13] = [
+pub const METADATA_FIELDS: [&str; 14] = [
     "description",
     "releaseDate",
     "developers",
@@ -36,6 +36,7 @@ pub const METADATA_FIELDS: [&str; 13] = [
     "series",
     "features",
     "criticScore",
+    "ageRatings",
     "cover",
     "hero",
 ];
@@ -53,6 +54,8 @@ pub fn default_field_priority(field: &str) -> Vec<String> {
         "platforms" => &["igdb", "store", "playnite", "lutris"],
         "features" => &["igdb", "steam", "playnite"],
         "criticScore" => &["igdb", "steam"],
+        // Both are read: the first fills the boards it has, the next the rest.
+        "ageRatings" => &["igdb", "steam"],
         "cover" => &["igdb", "steam", "lutris", "playnite", "store"],
         "hero" => &["igdb", "steam", "lutris", "playnite"],
         _ => &[],
@@ -317,6 +320,11 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         cover_aspect: CoverAspect::parse(value.map(|v| v.cover_aspect.as_str()).unwrap_or("")).as_str().to_owned(),
         download_images: value.is_some_and(|v| v.download_images),
         auto_fill_missing: value.map(|v| v.auto_fill_missing).unwrap_or(true),
+        age_rating_system: value
+            .map(|v| v.age_rating_system.as_str())
+            .filter(|s| crate::age_rating::RatingSystem::parse(s).is_some())
+            .unwrap_or(crate::age_rating::AUTO)
+            .to_owned(),
         field_priority,
         extra: Default::default(),
     }

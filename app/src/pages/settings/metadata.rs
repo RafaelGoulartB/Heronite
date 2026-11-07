@@ -1,9 +1,10 @@
 //! Settings → Metadata: IGDB credentials, SteamGridDB key, background fill,
-//! image copy, per-field source priority, bulk download.
+//! image copy, the age rating board, per-field source priority, bulk download.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::age_rating::{self, RatingSystem};
 use heronite_data::game_config;
 use heronite_data::models::MetadataSettings;
 use heronite_data::settings::{self, default_field_priority, EffectiveSettings, METADATA_FIELDS};
@@ -92,6 +93,24 @@ fn preferred_source(d: &SettingsPage, field: &str) -> String {
     }
 }
 
+/// The age rating boards the setting offers: Automatic (the interface
+/// language's), then each board with where it rates.
+fn board_options() -> Vec<(&'static str, String)> {
+    let auto = age_rating::board_order(age_rating::AUTO, heronite_i18n::current())[0];
+    std::iter::once((age_rating::AUTO, tr!("Automatic ({board})", board = auto.name())))
+        .chain(RatingSystem::BOARDS.into_iter().map(|b| (b.id(), format!("{} \u{2014} {}", b.name(), b.region()))))
+        .collect()
+}
+
+fn board_index(d: &SettingsPage) -> usize {
+    board_options().iter().position(|(id, _)| *id == d.settings.metadata.age_rating_system).unwrap_or(0)
+}
+
+fn set_board(d: &mut SettingsPage, index: usize, cx: &mut Context<SettingsPage>) {
+    let Some((id, _)) = board_options().into_iter().nth(index) else { return };
+    persist(d, cx, |m| m.age_rating_system = id.to_owned());
+}
+
 fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     if d.metadata.testing {
         return;
@@ -171,7 +190,12 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         ))))
         .child(card_box().py(px(12.)).child(labeled(tr!("SteamGridDB API key"), input_box(&d.metadata.sgdb_key, false))))
         .child(caption(tr!("Images & fields")))
-        .child(images);
+        .child(images)
+        .child(caption(tr!("Age ratings")))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
+            "Shown above Play and used by the View menu's \u{201c}Ages up to\u{201d}. When this board did not rate a game, the next one that did is shown."
+        ))))
+        .child(card_box().py(px(12.)).child(board_select(d, cx)));
 
     // Field priority (advanced), collapsible.
     let open = d.metadata.advanced_open;
@@ -234,6 +258,32 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
     col.into_any_element()
 }
 
+fn board_select(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let options = board_options();
+    let current = board_index(d);
+    select_field(
+        "md-age-board",
+        Some(tr!("Rating board shown first")),
+        options[current].1.clone(),
+        false,
+        d.metadata.open_select == Some(AGE_SELECT),
+        options.iter().enumerate().map(|(i, (_, label))| (SharedString::from(label.clone()), i == current)).collect(),
+        cx,
+        |d: &mut SettingsPage, _, cx| {
+            d.metadata.open_select = if d.metadata.open_select == Some(AGE_SELECT) { None } else { Some(AGE_SELECT) };
+            cx.notify();
+        },
+        |d: &mut SettingsPage, i, _, cx| {
+            d.metadata.open_select = None;
+            set_board(d, i, cx);
+        },
+    )
+    .into_any_element()
+}
+
+/// [`State::open_select`] of the age rating board.
+const AGE_SELECT: &str = "age-board";
+
 /// Console mode rows.
 pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::list::Row> {
     use crate::console::list::Row;
@@ -254,6 +304,13 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Row::header(tr!("Images and fields")),
         Row::toggle("autofill", tr!("Fill missing metadata in the background"), m.auto_fill_missing),
         Row::toggle("download", tr!("Copy covers to disk"), m.download_images).desc(tr!("Off keeps the CDN addresses instead")),
+        Row::header(tr!("Age ratings")),
+        Row::choice(
+            "age-board",
+            tr!("Rating board shown first"),
+            board_options().into_iter().map(|(_, label)| SharedString::from(label)).collect(),
+            board_index(d),
+        ),
         Row::header(tr!("Preferred source per field")),
     ];
     for field in METADATA_FIELDS {
@@ -304,6 +361,7 @@ pub(super) fn console_apply(
             "download" => persist(d, cx, |m| m.download_images = on),
             _ => {}
         },
+        Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "age-board" => set_board(d, index, cx),
         Outcome::Changed(id, Value::Choice { index, .. }) => {
             if let Some(field) = id.strip_prefix("prio:").and_then(|f| METADATA_FIELDS.iter().find(|x| **x == f)).copied() {
                 let value = SOURCES[index].0;

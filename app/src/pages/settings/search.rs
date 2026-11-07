@@ -107,6 +107,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Images & fields",
             "Fill missing metadata in the background",
             "Copy covers to disk",
+            "Age ratings",
+            "Rating board shown first",
             "SteamGridDB",
             "SteamGridDB API key",
         ],

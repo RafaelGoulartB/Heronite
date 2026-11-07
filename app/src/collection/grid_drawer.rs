@@ -43,6 +43,7 @@ impl CollectionView {
         let head = self.drawer_head(&vm, width, hero_h, scale, cx);
 
         let epic = self.epic_focus(&vm.key, vm.installed, cx);
+        let age = super::age_badge::age_badge(vm.age.as_ref());
         let play = self.play_area(&vm, epic, cx);
         let status = self.focus_status_row(&vm, vh, cx);
         let left_off = self.left_off_card(&vm.key, cx);
@@ -107,6 +108,7 @@ impl CollectionView {
                             .flex()
                             .flex_col()
                             .gap(px(12.))
+                            .child(age)
                             .child(play)
                             .child(status)
                             .children(left_off)
