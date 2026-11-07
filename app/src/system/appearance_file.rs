@@ -82,10 +82,40 @@ fn run(paths: &AppPaths) {
             continue;
         }
         while events.recv_timeout(SETTLE).is_ok() {}
-        let now = Appearance::load(paths);
+        let Some(now) = read(paths) else { continue };
         if now != last {
             last = now;
             publish(now);
         }
+    }
+}
+
+/// The file now, or `None` while it is empty, gone, half written or broken:
+/// the look in use stays until the next good write, where
+/// [`Appearance::load`] would fall back to the defaults.
+fn read(paths: &AppPaths) -> Option<Appearance> {
+    match heronite_data::json_store::read_value(&paths.appearance()) {
+        Ok(value) if value.is_object() => Some(Appearance::from_value(&value)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_whole_file_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths { config: dir.path().to_path_buf(), cache: dir.path().join("cache") };
+        assert_eq!(read(&paths), None, "no file yet");
+        let file = paths.appearance();
+        for broken in ["", "  \n", "{\"theme\": \"cus", "[1, 2]", "null"] {
+            std::fs::write(&file, broken).unwrap();
+            assert_eq!(read(&paths), None, "{broken:?}");
+        }
+        let json = serde_json::json!({ "theme": "custom", "density": "compact" });
+        std::fs::write(&file, json.to_string()).unwrap();
+        assert_eq!(read(&paths), Some(Appearance::from_value(&json)));
     }
 }
