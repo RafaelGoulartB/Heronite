@@ -22,6 +22,7 @@ use heronite_images::{Variant, REFLECTION_PART};
 use super::super::super::CollectionView;
 use super::super::hero::{fitted_title, HeroSize};
 use super::super::sources::{by_title, keys};
+use super::super::tile;
 use super::grid::{jump_letter, letter_of};
 use crate::console::kit::{self, u};
 use crate::console::look;
@@ -326,6 +327,7 @@ impl CollectionView {
             let ring = i == index && !pills_focus;
             let grey = grey && !g.installed;
             let title = g.title.clone();
+            let categories = self.console_categories(&key);
             let d = i as f32 - index as f32;
             let cover = turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute(), d, move |el, d| {
                 let p = pose(d);
@@ -352,6 +354,9 @@ impl CollectionView {
                             .child(title)
                             .into_any_element(),
                     })
+                    .children(categories.as_ref().and_then(|(style, list)| {
+                        crate::collection::category_badges::overlay(*style, list, tile::category_area(cw, k * p.scale, dpr), false)
+                    }))
                     .when(p.shade > 0.005, |f| f.child(div().absolute().inset_0().bg(kit::dim(p.shade))));
                 // A thin ring a little way out from the cover.
                 let gap = 6. * k;

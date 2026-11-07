@@ -401,6 +401,16 @@ impl CollectionView {
         let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
         let art = self.dash_art(key, w, h, on, window);
         let r = u(look::tile_radius());
+        let categories = self.console_categories(key);
+        let lift = super::super::tile::category_lift(categories.as_ref().map(|(s, _)| *s));
+        let badges = categories.and_then(|(style, list)| {
+            crate::collection::category_badges::overlay(
+                style,
+                &list,
+                super::super::tile::category_area(w, kit::scale(), window.scale_factor()),
+                false,
+            )
+        });
         div()
             .child(art)
             .child(div().absolute().inset_0().rounded(r).bg(linear_gradient(
@@ -408,12 +418,13 @@ impl CollectionView {
                 linear_color_stop(kit::veil(0.8), 0.),
                 linear_color_stop(kit::veil(0.), 0.62),
             )))
+            .children(badges)
             .children(game.map(|g| {
                 div()
                     .absolute()
                     .left(u(12.))
                     .right(u(12.))
-                    .bottom(u(10.))
+                    .bottom(u(10. + lift))
                     .flex()
                     .flex_col()
                     .child(div().truncate().text_size(u(15.)).font_weight(theme::W_BOLD).text_color(kit::strong()).child(g.title.clone()))
