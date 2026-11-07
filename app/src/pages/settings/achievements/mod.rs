@@ -128,6 +128,16 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                     "For games never played on this PC. Get one at steamcommunity.com/dev/apikey; your Steam profile's game details must be public."
                 )))
                 .into_any_element(),
+            toggle_row(
+                "ach-live-steam",
+                tr!("Check Steam games while they run"),
+                Some(tr!(
+                    "Their new achievements show while you play, from Steam's stats files, when Steam writes them. Off by default: Steam's own overlay already shows them."
+                )),
+                prefs.live_steam,
+            )
+            .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.live_steam = !p.live_steam)))
+            .into_any_element(),
         ]))
         .child(caption(tr!("Game files")))
         .child(card([toggle_row(
@@ -142,11 +152,21 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .into_any_element()]))
         .child(caption(tr!("How they show")))
         .child(card([
+            toggle_row(
+                "ach-overlay-notices",
+                tr!("Show new achievements over the game"),
+                Some(tr!(
+                    "While a game runs, its game files are checked every few seconds and what it unlocks shows over it. Needs the overlay (Settings → Overlay)."
+                )),
+                prefs.overlay_notices,
+            )
+            .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.overlay_notices = !p.overlay_notices)))
+            .into_any_element(),
             with_sub_rows(
                 toggle_row(
                     "ach-notify",
                     tr!("Notify new achievements"),
-                    Some(tr!("A desktop notification when a game unlocks something.")),
+                    Some(tr!("A desktop notification when a game unlocks something, while it runs and after it ends.")),
                     prefs.notify,
                 )
                 .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.notify = !p.notify)))

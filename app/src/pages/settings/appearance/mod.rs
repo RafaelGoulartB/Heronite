@@ -279,6 +279,8 @@ fn apply_interface(d: &mut SettingsPage, save: bool, cx: &mut Context<SettingsPa
     d.appearance.ui.interface_scale = theme::appearance().interface_scale;
     let ui = d.appearance.ui.normalized();
     theme::set_appearance(ui);
+    // Achievements may have been switched: running games' live checks follow.
+    crate::services::achievements::get(cx).update(cx, |s, cx| s.sync_live(cx));
     if save {
         let app = d.ctx.app.clone();
         cx.background_spawn(async move {

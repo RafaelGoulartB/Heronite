@@ -66,7 +66,8 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     if let Some(replay) = crate::services::replay::get(cx) {
         replay.update(cx, |r, cx| r.on_launch_event(&ev, cx));
     }
-    if matches!(ev, LaunchEvent::Exited { .. }) {
+    // A game that runs is checked live; one that ended is read again.
+    if matches!(ev, LaunchEvent::Running { .. } | LaunchEvent::Exited { .. } | LaunchEvent::Error { .. }) {
         let achievements = crate::services::achievements::get(cx);
         achievements.update(cx, |a, cx| a.on_launch_event(&ev, cx));
     }

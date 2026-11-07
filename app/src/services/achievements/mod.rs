@@ -4,6 +4,11 @@
 //! dialog, and for every game from Settings. The Collection, the dialog and
 //! Settings observe it (`cx.notify`); new unlocks become a desktop
 //! notification.
+//!
+//! While a game runs, its local achievement files are checked every few
+//! seconds (`heronite_achievements::live`): what the session unlocks shows
+//! over the game (the overlay's achievement notices) and, when asked, as a
+//! desktop notification. The check stops when the game ends.
 
 mod emulators;
 
@@ -11,9 +16,10 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use gpui_kit::*;
 use heronite_achievements::accounts::{self, Accounts};
+use heronite_achievements::live;
 use heronite_achievements::prefs::{self, Prefs};
 use heronite_achievements::sources::{retro, Ctx};
 use heronite_achievements::target::order_of;
@@ -44,6 +50,9 @@ pub struct GameEntry {
     pub loaded: bool,
     pub refreshing: bool,
     refreshed_at: Option<Instant>,
+    /// The refresh after the game ended came while it was being read: it
+    /// runs once that read is done.
+    refresh_after: bool,
 }
 
 impl GameEntry {
@@ -67,6 +76,20 @@ struct Known {
     app_name: String,
     title: String,
     targets: Vec<SourceTarget>,
+}
+
+/// The live check of a running game.
+struct Live {
+    key: String,
+    /// When the session started: what was unlocked before is history.
+    since: DateTime<Utc>,
+    /// The sources it reads (local ones the options allow).
+    sources: Vec<Source>,
+    /// A check was asked while the game was being read: run it after.
+    pending: bool,
+    failures: live::Failures,
+    /// Drops (and so stops) with the session.
+    _task: Task<()>,
 }
 
 /// "Update now" of Settings: how far it got.
@@ -94,6 +117,13 @@ pub struct Achievements {
     emulator_sign_out: Option<String>,
     /// The user's home (where the emulators keep their settings).
     home: std::path::PathBuf,
+    /// The games that run, and which of them are checked live.
+    sessions: live::Sessions,
+    /// The live checks, by app name.
+    lives: HashMap<String, Live>,
+    /// When each running game started (its live check counts from there,
+    /// even one that starts later, when the options change mid-session).
+    started_at: HashMap<String, DateTime<Utc>>,
 }
 
 struct AchievementsGlobal(Entity<Achievements>);
@@ -150,6 +180,9 @@ impl Achievements {
             emulators: Vec::new(),
             emulator_sign_out: None,
             home: dirs::home_dir().unwrap_or_default(),
+            sessions: live::Sessions::default(),
+            lives: HashMap::new(),
+            started_at: HashMap::new(),
         }
     }
 
@@ -265,6 +298,8 @@ impl Achievements {
         }
         entry.refreshing = true;
         cx.notify();
+        // The game runs: its live sources are read as its live check reads them.
+        let session = self.lives.values().find(|l| l.key == key).map(|l| (l.sources.clone(), l.since));
         let (paths, accounts, key) = (self.data_paths.clone(), self.accounts.clone(), key.to_string());
         let lang = heronite_i18n::current().code();
         cx.spawn(async move |this, cx| {
@@ -272,7 +307,14 @@ impl Achievements {
                 .background_spawn(async move {
                     let http = Http::new(Endpoints::default());
                     let ctx = Ctx { paths: &paths, http: &http, accounts: &accounts, lang };
-                    (sync::refresh(&ctx, &known.runner, &known.app_name, &known.targets), known.title)
+                    let out = match &session {
+                        Some((sources, since)) => {
+                            let session = sync::Session { sources, since: *since };
+                            sync::refresh_in_session(&ctx, &known.runner, &known.app_name, &known.targets, session)
+                        }
+                        None => sync::refresh(&ctx, &known.runner, &known.app_name, &known.targets),
+                    };
+                    (out, known.title)
                 })
                 .await;
             this.update(cx, |this, cx| this.refreshed(&key, out, cx)).ok();
@@ -287,16 +329,266 @@ impl Achievements {
         entry.loaded = true;
         entry.refreshing = false;
         entry.refreshed_at = Some(Instant::now());
-        if !out.new_unlocks.is_empty() && self.prefs.notify {
-            notify_unlocks(&title, &out.new_unlocks);
-        }
+        // A refresh while the game runs (the overlay's panel asked) may
+        // find the session's unlocks before its live check does.
+        let session = self.lives.values().find(|l| l.key == key).map(|l| (l.since, l.sources.clone()));
+        let over_game = match session {
+            Some((since, sources)) => in_session(&out.new_unlocks, since, &sources),
+            None => Vec::new(),
+        };
+        self.announce(&title, &out.new_unlocks, &over_game, cx);
         cx.notify();
+        self.run_waiting_refresh(key, cx);
+        self.next_in_queue(cx);
+        // A live check that waited for this refresh.
+        let waiting = self.lives.iter_mut().find(|(_, l)| l.key == key && l.pending).map(|(app, l)| {
+            l.pending = false;
+            app.clone()
+        });
+        if let Some(app) = waiting {
+            self.live_check(&app, cx);
+        }
+    }
+
+    /// The refresh after the game ended waited for the read that just
+    /// ended: it runs now.
+    fn run_waiting_refresh(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(entry) = self.games.get_mut(key) else { return };
+        if !std::mem::take(&mut entry.refresh_after) {
+            return;
+        }
+        entry.refreshed_at = None;
+        self.refresh(key, cx);
+    }
+
+    /// Starts and stops live checks.
+    fn apply(&mut self, changes: Vec<live::Change>, cx: &mut Context<Self>) {
+        for change in changes {
+            match change {
+                live::Change::Start(app_name) => self.start_live(app_name, cx),
+                live::Change::Stop(app_name) => {
+                    if let Some(l) = self.lives.remove(&app_name) {
+                        log::info!("achievements: stopped the live check of {}", l.key);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The options changed: the live checks start again with them (their
+    /// sources may differ), for the games that run now too.
+    fn restart_live(&mut self, cx: &mut Context<Self>) {
+        let wanted = enabled() && live::wanted(&self.prefs);
+        let changes = self.sessions.restart(wanted);
+        self.apply(changes, cx);
+    }
+
+    /// Achievements may have been switched on or off (any appearance
+    /// change calls this): checks start for the games that run, or all
+    /// stop. Checks already running keep going.
+    pub fn sync_live(&mut self, cx: &mut Context<Self>) {
+        let wanted = enabled() && live::wanted(&self.prefs);
+        let changes = self.sessions.sync(wanted);
+        self.apply(changes, cx);
+    }
+
+    /// Finds the running game (the Collection may never have shown it),
+    /// then starts its check.
+    fn start_live(&mut self, app_name: String, cx: &mut Context<Self>) {
+        let known = self.known.get(&app_name).cloned();
+        let (paths, prefs) = (self.data_paths.clone(), self.prefs);
+        cx.spawn(async move |this, cx| {
+            let known = match known {
+                Some(k) => Some(k),
+                None => {
+                    let name = app_name.clone();
+                    cx.background_spawn(async move { find_game(&paths, &name, &prefs) }).await
+                }
+            };
+            this.update(cx, |this, cx| this.begin_live(app_name, known, cx)).ok();
+        })
+        .detach();
+    }
+
+    fn begin_live(&mut self, app_name: String, known: Option<Known>, cx: &mut Context<Self>) {
+        // The game ended, or the options changed, while it was found.
+        if !self.sessions.is_watched(&app_name) || self.lives.contains_key(&app_name) {
+            return;
+        }
+        let sources = known.as_ref().map(|k| live::sources_of(&self.prefs, &k.targets)).unwrap_or_default();
+        let Some(known) = known.filter(|_| !sources.is_empty()) else {
+            log::debug!("achievements: {app_name} has no source to check while it runs");
+            self.sessions.not_watched(&app_name);
+            return;
+        };
+        let key = key_of(&known.runner, &known.app_name);
+        let since = self.started_at.get(&app_name).copied().unwrap_or_else(Utc::now);
+        let labels: Vec<&str> = sources.iter().map(|s| s.label()).collect();
+        log::info!("achievements: checking {key} while it runs ({})", labels.join(", "));
+        self.known.insert(app_name.clone(), known.clone());
+        let targets: Vec<SourceTarget> = known.targets.iter().filter(|t| sources.contains(&t.source())).cloned().collect();
+        let task = self.poll_files(app_name.clone(), known, targets, cx);
+        self.lives.insert(app_name, Live { key, since, sources, pending: false, failures: live::Failures::default(), _task: task });
+    }
+
+    /// Looks at the game's files every few seconds; a change that settles
+    /// asks for a check.
+    fn poll_files(&self, app_name: String, known: Known, targets: Vec<SourceTarget>, cx: &mut Context<Self>) -> Task<()> {
+        let (paths, accounts) = (self.data_paths.clone(), self.accounts.clone());
+        cx.spawn(async move |this, cx| {
+            let mut poll = live::Poll::default();
+            let mut files: Arc<Vec<std::path::PathBuf>> = Arc::default();
+            let mut n = 0u32;
+            loop {
+                if n.is_multiple_of(live::RELOCATE_EVERY) {
+                    let (paths, accounts, targets) = (paths.clone(), accounts.clone(), targets.clone());
+                    let (runner, app) = (known.runner.clone(), known.app_name.clone());
+                    files = Arc::new(
+                        cx.background_spawn(async move {
+                            let http = Http::new(Endpoints::default());
+                            let ctx = Ctx { paths: &paths, http: &http, accounts: &accounts, lang: "en" };
+                            let pin = store::read(&paths, &runner, &app).local;
+                            targets.iter().flat_map(|t| live::watched_files(&ctx, t, pin.as_ref())).collect::<Vec<_>>()
+                        })
+                        .await,
+                    );
+                }
+                n = n.wrapping_add(1);
+                let look = |files: &Arc<Vec<std::path::PathBuf>>| {
+                    let files = files.clone();
+                    cx.background_spawn(async move { live::stamp(&files) })
+                };
+                if poll.see(look(&files).await) == live::Seen::Changed {
+                    for _ in 0..live::SETTLE_TRIES {
+                        cx.background_executor().timer(live::SETTLE).await;
+                        if poll.see(look(&files).await) == live::Seen::Same {
+                            break;
+                        }
+                    }
+                    if this.update(cx, |this, cx| this.live_check(&app_name, cx)).is_err() {
+                        return;
+                    }
+                }
+                cx.background_executor().timer(live::POLL).await;
+                let go_on = this
+                    .update(cx, |this, cx| {
+                        if !enabled() {
+                            this.sync_live(cx);
+                        }
+                        this.lives.contains_key(&app_name)
+                    })
+                    .unwrap_or(false);
+                if !go_on {
+                    return;
+                }
+            }
+        })
+    }
+
+    /// Reads the running game's local sources again.
+    fn live_check(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        let (Some(live), Some(known)) = (self.lives.get_mut(app_name), self.known.get(app_name).cloned()) else { return };
+        let key = live.key.clone();
+        let entry = self.games.entry(key.clone()).or_insert_with(|| GameEntry { order: order_of(&known.targets), ..Default::default() });
+        if entry.refreshing {
+            live.pending = true;
+            return;
+        }
+        entry.refreshing = true;
+        cx.notify();
+        let (sources, since) = (live.sources.clone(), live.since);
+        // What this read covers, kept for when it ends: the check may have
+        // stopped by then (the game ended, the options changed).
+        let read = sources.clone();
+        let (paths, accounts, app_name) = (self.data_paths.clone(), self.accounts.clone(), app_name.to_string());
+        let lang = heronite_i18n::current().code();
+        cx.spawn(async move |this, cx| {
+            let out = cx
+                .background_spawn(async move {
+                    let http = Http::new(Endpoints::default());
+                    let ctx = Ctx { paths: &paths, http: &http, accounts: &accounts, lang };
+                    let out = sync::refresh_live(&ctx, &known.runner, &known.app_name, &known.targets, &sources, since);
+                    (out, known.title)
+                })
+                .await;
+            this.update(cx, |this, cx| this.live_checked(&app_name, &key, &read, out, cx)).ok();
+        })
+        .detach();
+    }
+
+    fn live_checked(&mut self, app_name: &str, key: &str, read: &[Source], (out, title): (sync::Outcome, String), cx: &mut Context<Self>) {
+        if let Some(entry) = self.games.get_mut(key) {
+            entry.game = Arc::new(out.game);
+            // The other sources' problems stay: they were not read.
+            entry.problems.retain(|(s, _)| !read.contains(s));
+            entry.problems.extend(out.problems.iter().cloned());
+            entry.loaded = true;
+            entry.refreshing = false;
+        }
+        let mut again = false;
+        let mut over_game = Vec::new();
+        if let Some(l) = self.lives.get_mut(app_name) {
+            for (source, e) in l.failures.after_read(read, &out.problems) {
+                log::warn!("achievements of {key} from {} while it runs: {e}", source.label());
+            }
+            again = std::mem::take(&mut l.pending);
+            over_game = in_session(&out.new_unlocks, l.since, &l.sources);
+        }
+        self.announce(&title, &out.new_unlocks, &over_game, cx);
+        cx.notify();
+        // Before the live check asked again: that one then waits for it.
+        self.run_waiting_refresh(key, cx);
+        if again {
+            self.live_check(app_name, cx);
+        }
         self.next_in_queue(cx);
     }
 
-    /// Every launch event, from the hub: a game that ended is read again a
-    /// little later.
+    /// New unlocks: a desktop notification of all of them (when asked),
+    /// and the ones of a running game's session over it (when asked).
+    fn announce(&self, title: &str, unlocks: &[(Source, Achievement)], over_game: &[Achievement], cx: &mut Context<Self>) {
+        if !unlocks.is_empty() && self.prefs.notify {
+            notify_unlocks(title, unlocks);
+        }
+        if over_game.is_empty() || !self.prefs.overlay_notices {
+            return;
+        }
+        let Some(overlay) = crate::overlay::get(cx) else { return };
+        let shown = overlay.update(cx, |o, cx| {
+            over_game.iter().fold(true, |shown, a| shown & o.show_achievement(a.name.clone(), a.rarity, a.icon.clone(), cx))
+        });
+        if !shown {
+            log::info!(
+                "{} new achievements in {title}: the overlay cannot show them (off, or the game is in exclusive fullscreen)",
+                over_game.len()
+            );
+        }
+    }
+
+    /// Every launch event, from the hub: a game that runs is checked live,
+    /// and one that ended is read again a little later.
     pub fn on_launch_event(&mut self, ev: &LaunchEvent, cx: &mut Context<Self>) {
+        match ev {
+            LaunchEvent::Running { app_name, .. } => {
+                self.started_at.entry(app_name.clone()).or_insert_with(Utc::now);
+                let wanted = enabled() && live::wanted(&self.prefs);
+                let change = self.sessions.started(app_name, wanted);
+                self.apply(change.into_iter().collect(), cx);
+                return;
+            }
+            LaunchEvent::Error { app_name, .. } => {
+                self.started_at.remove(app_name);
+                let change = self.sessions.ended(app_name);
+                self.apply(change.into_iter().collect(), cx);
+                return;
+            }
+            LaunchEvent::Exited { app_name, .. } => {
+                self.started_at.remove(app_name);
+                let change = self.sessions.ended(app_name);
+                self.apply(change.into_iter().collect(), cx);
+            }
+            _ => return,
+        }
         let LaunchEvent::Exited { app_name, .. } = ev else { return };
         self.retry_running_emulators(cx);
         if !enabled() {
@@ -322,6 +614,12 @@ impl Achievements {
                 this.known.insert(known.app_name.clone(), known);
                 if let Some(e) = this.games.get_mut(&key) {
                     e.refreshed_at = None;
+                    // A read still runs (a last live check): this one
+                    // follows it instead of being dropped.
+                    if e.refreshing {
+                        e.refresh_after = true;
+                        return;
+                    }
                 }
                 this.refresh(&key, cx);
             })
@@ -427,6 +725,8 @@ impl Achievements {
     pub fn set_prefs(&mut self, prefs: Prefs, cx: &mut Context<Self>) {
         let emulators_changed = (prefs.emulators, prefs.hardcore) != (self.prefs.emulators, self.prefs.hardcore);
         let game_files_changed = prefs.game_files != self.prefs.game_files;
+        let live_changed = (prefs.overlay_notices, prefs.notify, prefs.live_steam, prefs.game_files)
+            != (self.prefs.overlay_notices, self.prefs.notify, self.prefs.live_steam, self.prefs.game_files);
         let user = self.signed_in_user();
         self.prefs = prefs;
         if emulators_changed {
@@ -436,6 +736,9 @@ impl Achievements {
             // Every game's sources change: the Collection asks for them again.
             self.known.clear();
             self.games.clear();
+        }
+        if live_changed {
+            self.restart_live(cx);
         }
         let app = self.app_paths.clone();
         cx.background_spawn(async move {
@@ -543,6 +846,16 @@ fn notify_unlocks(title: &str, unlocks: &[(Source, Achievement)]) {
     crate::system::notify::send(trn!(n, "{n} new achievement in {title}", "{n} new achievements in {title}", title), body);
 }
 
+/// The unlocks of a running game's session, from its live sources, oldest
+/// first: the ones to show over the game.
+fn in_session(unlocks: &[(Source, Achievement)], since: DateTime<Utc>, sources: &[Source]) -> Vec<Achievement> {
+    let cutoff = since - heronite_achievements::merge::SESSION_SLACK;
+    let mut out: Vec<Achievement> =
+        unlocks.iter().filter(|(s, a)| sources.contains(s) && a.unlocked_at.is_some_and(|t| t >= cutoff)).map(|(_, a)| a.clone()).collect();
+    out.sort_by_key(|a| a.unlocked_at);
+    out
+}
+
 /// A game of the Collection by its app name, with its sources.
 fn find_game(paths: &DataPaths, app_name: &str, prefs: &Prefs) -> Option<Known> {
     let lib = heronite_data::Library::load(paths).ok()?;
@@ -567,5 +880,31 @@ fn every_game(paths: &DataPaths, prefs: &Prefs) -> Vec<Known> {
             log::warn!("reading the Collection for the achievements: {e:#}");
             Vec::new()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: gpui's own `test` macro would shadow `#[test]`.
+    use super::in_session;
+    use chrono::{TimeZone, Utc};
+    use heronite_achievements::{Achievement, Source};
+
+    fn unlock(id: &str, minute: u32) -> Achievement {
+        let at = Utc.with_ymd_and_hms(2026, 9, 19, 12, minute, 0).unwrap();
+        Achievement { id: id.into(), name: id.into(), unlocked: true, unlocked_at: Some(at), ..Default::default() }
+    }
+
+    #[test]
+    fn only_the_sessions_unlocks_of_live_sources_show_over_the_game() {
+        let since = Utc.with_ymd_and_hms(2026, 9, 19, 12, 30, 0).unwrap();
+        let unlocks = vec![
+            (Source::Local, unlock("second", 50)),
+            (Source::Local, unlock("before", 0)),
+            (Source::Steam, unlock("steam", 45)),
+            (Source::Local, unlock("first", 40)),
+        ];
+        let shown: Vec<String> = in_session(&unlocks, since, &[Source::Local]).into_iter().map(|a| a.id).collect();
+        assert_eq!(shown, ["first", "second"]);
     }
 }

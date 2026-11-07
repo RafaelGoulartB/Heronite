@@ -261,6 +261,7 @@ impl CollectionView {
                 crate::theme::set_appearance(a);
                 let applied = this.update(cx, |_, cx| {
                     crate::system::ui_scale::sync(cx);
+                    crate::services::achievements::get(cx).update(cx, |s, cx| s.sync_live(cx));
                     cx.refresh_windows();
                 });
                 if applied.is_err() {
