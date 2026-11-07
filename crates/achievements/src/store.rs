@@ -174,6 +174,7 @@ mod tests {
             external_id: "1".into(),
             title: None,
             fetched_at: Utc::now(),
+            unknown: Default::default(),
             achievements: vec![
                 Achievement { id: "a".into(), unlocked: true, ..Default::default() },
                 Achievement { id: "b".into(), ..Default::default() },
@@ -266,6 +267,7 @@ mod tests {
             external_id: "1".into(),
             title: None,
             fetched_at: Utc::now(),
+            unknown: Default::default(),
             achievements: vec![Achievement { id: "a".into(), unlocked: true, ..Default::default() }],
         };
         let game = GameAchievements { sets: vec![set], ..Default::default() };
@@ -289,6 +291,28 @@ mod tests {
         let out = serde_json::to_value(&game).unwrap();
         assert_eq!(out.as_object().unwrap().keys().collect::<Vec<_>>(), ["sets"]);
         assert_eq!(serde_json::to_value(GameAchievements::default()).unwrap(), serde_json::json!({"sets": []}));
+    }
+
+    #[test]
+    fn known_sources_keep_unknown_nested_fields() {
+        let doc = serde_json::json!({
+            "sets": [{
+                "source": "steam", "externalId": "1", "fetchedAt": "2026-10-01T10:00:00Z",
+                "futureSet": {"version": 2},
+                "achievements": [{
+                    "id": "a", "name": "A", "description": "", "icon": "", "iconLocked": "",
+                    "unlocked": true, "unlockedAt": "2026-09-01T10:00:00Z",
+                    "futureAchievement": ["kept"]
+                }]
+            }],
+            "futureGame": true
+        });
+        let game: GameAchievements = serde_json::from_value(doc.clone()).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        write(&paths, "steam", "1", &game, &[Source::Steam]).unwrap();
+        assert_eq!(read(&paths, "steam", "1"), game);
+        assert_eq!(json_of(&game_file(&paths, "steam", "1")), doc);
     }
 
     #[test]

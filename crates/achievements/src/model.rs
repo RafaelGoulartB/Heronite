@@ -103,6 +103,9 @@ pub struct Achievement {
     /// first read of the game: history, not news).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub noticed_at: Option<DateTime<Utc>>,
+    /// Fields written by a newer Heronite, kept through refreshes.
+    #[serde(flatten)]
+    pub unknown: Map<String, Value>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -140,6 +143,9 @@ pub struct AchievementSet {
     pub fetched_at: DateTime<Utc>,
     /// In the source's order.
     pub achievements: Vec<Achievement>,
+    /// Fields written by a newer Heronite, kept through refreshes.
+    #[serde(flatten)]
+    pub unknown: Map<String, Value>,
 }
 
 impl AchievementSet {
@@ -355,7 +361,14 @@ mod tests {
     }
 
     fn set(items: Vec<Achievement>) -> AchievementSet {
-        AchievementSet { source: Source::Steam, external_id: "1".into(), title: None, fetched_at: Utc::now(), achievements: items }
+        AchievementSet {
+            source: Source::Steam,
+            external_id: "1".into(),
+            title: None,
+            fetched_at: Utc::now(),
+            achievements: items,
+            unknown: Map::new(),
+        }
     }
 
     #[test]

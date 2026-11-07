@@ -474,7 +474,14 @@ mod tests {
     }
 
     fn set(achievements: Vec<Achievement>) -> AchievementSet {
-        AchievementSet { source: Source::Steam, external_id: "1".into(), title: None, fetched_at: Utc::now(), achievements }
+        AchievementSet {
+            source: Source::Steam,
+            external_id: "1".into(),
+            title: None,
+            fetched_at: Utc::now(),
+            achievements,
+            unknown: Default::default(),
+        }
     }
 
     fn labels(items: &[(Row, Item)]) -> Vec<String> {

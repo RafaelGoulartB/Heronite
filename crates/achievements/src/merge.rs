@@ -17,6 +17,11 @@ pub fn merge(old: Option<&AchievementSet>, mut fresh: AchievementSet, now: DateT
     let mut new_unlocks = Vec::new();
     for a in &mut fresh.achievements {
         let before = old.achievements.iter().find(|o| o.id == a.id);
+        if let Some(o) = before {
+            for (key, value) in &o.unknown {
+                a.unknown.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+        }
         match before {
             Some(o) if o.unlocked => {
                 a.unlocked = true;
@@ -40,6 +45,9 @@ pub fn merge(old: Option<&AchievementSet>, mut fresh: AchievementSet, now: DateT
     fresh.achievements.extend(gone);
     if fresh.title.is_none() {
         fresh.title.clone_from(&old.title);
+    }
+    for (key, value) in &old.unknown {
+        fresh.unknown.entry(key.clone()).or_insert_with(|| value.clone());
     }
     (fresh, new_unlocks)
 }
@@ -66,7 +74,14 @@ mod tests {
     }
 
     fn set(items: Vec<Achievement>) -> AchievementSet {
-        AchievementSet { source: Source::Gog, external_id: "1".into(), title: None, fetched_at: at(1), achievements: items }
+        AchievementSet {
+            source: Source::Gog,
+            external_id: "1".into(),
+            title: None,
+            fetched_at: at(1),
+            achievements: items,
+            unknown: Default::default(),
+        }
     }
 
     #[test]
@@ -126,5 +141,22 @@ mod tests {
         old.title = Some("Super Metroid".into());
         let (merged, _) = merge(Some(&old), set(vec![]), at(20));
         assert_eq!(merged.title.as_deref(), Some("Super Metroid"));
+    }
+
+    #[test]
+    fn unknown_fields_survive_refresh_for_locked_and_unlocked_achievements() {
+        let mut old = set(vec![a("locked", None), a("unlocked", Some(3)), a("gone", Some(4))]);
+        old.unknown.insert("futureSet".into(), serde_json::json!({"version": 2}));
+        for item in &mut old.achievements {
+            item.unknown.insert("futureAchievement".into(), serde_json::json!([item.id]));
+        }
+        let mut fresh = set(vec![a("locked", None), a("unlocked", None)]);
+        fresh.achievements[0].unknown.insert("futureAchievement".into(), serde_json::json!("updated"));
+        let (merged, new) = merge(Some(&old), fresh, at(20));
+        assert!(new.is_empty());
+        assert_eq!(merged.unknown, old.unknown);
+        assert_eq!(merged.achievements[0].unknown["futureAchievement"], "updated");
+        assert_eq!(merged.achievements[1].unknown, old.achievements[1].unknown);
+        assert_eq!(merged.achievements[2], old.achievements[2]);
     }
 }

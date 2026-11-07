@@ -4,6 +4,8 @@
 //! each. Secret ones keep their text hidden until revealed one by one. It
 //! follows `services::achievements`, so a refresh shows at once.
 
+mod listing;
+
 use std::collections::HashSet;
 
 use gpui_kit::component::input::{InputEvent, InputState};
@@ -13,6 +15,7 @@ use heronite_achievements::sources::retro::GameHit;
 use heronite_achievements::{Achievement, AchievementSet, Kind, Problem, Source};
 use heronite_i18n::tr;
 
+use self::listing::{listed, Filter, Sort};
 use super::art_images::DialogImages;
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
@@ -25,20 +28,6 @@ use crate::ui::fields::{new_input, search_box};
 use crate::ui::icon;
 
 const ICON: f32 = 44.;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Filter {
-    All,
-    Unlocked,
-    Locked,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Sort {
-    /// Unlocked ones by date (latest first), then the closest locked ones.
-    Recent,
-    Rarest,
-}
 
 pub struct AchievementsDialog {
     /// `runner_appName`.
@@ -160,38 +149,10 @@ impl AchievementsDialog {
         col
     }
 
-    /// The achievements to list, in order.
-    fn listed<'a>(&self, set: &'a AchievementSet, query: &str) -> Vec<&'a Achievement> {
-        let query = query.trim().to_lowercase();
-        let matches = |a: &Achievement| {
-            query.is_empty() || {
-                let secret = a.is_secret() && !self.revealed.contains(&a.id);
-                a.name.to_lowercase().contains(&query) || (!secret && a.description.to_lowercase().contains(&query))
-            }
-        };
-        let mut list: Vec<&Achievement> = match self.sort {
-            Sort::Recent => {
-                set.recent().into_iter().chain(set.up_next()).chain(set.achievements.iter().filter(|a| !a.unlocked && a.hidden)).collect()
-            }
-            Sort::Rarest => {
-                let mut v: Vec<&Achievement> = set.achievements.iter().collect();
-                v.sort_by(|a, b| a.rarity.unwrap_or(101.).total_cmp(&b.rarity.unwrap_or(101.)));
-                v
-            }
-        };
-        list.retain(|a| match self.filter {
-            Filter::All => true,
-            Filter::Unlocked => a.unlocked,
-            Filter::Locked => !a.unlocked,
-        });
-        list.retain(|a| matches(a));
-        list
-    }
-
     fn row(&mut self, a: &Achievement, hide_secrets: bool, cx: &mut Context<Self>) -> Div {
         let secret = hide_secrets && a.is_secret() && !self.revealed.contains(&a.id);
         let url = a.icon_now().to_string();
-        let image = (!url.is_empty()).then(|| {
+        let image = (!secret && !url.is_empty()).then(|| {
             let chain = if url.starts_with("http") {
                 vec![heronite_images::ImageRef::Url(url.clone())]
             } else {
@@ -378,7 +339,7 @@ impl Render for AchievementsDialog {
             Some(set) => {
                 let query = self.search.read(cx).value().to_string();
                 body = body.child(self.header(set, refreshing, cx));
-                let list = self.listed(set, &query);
+                let list = listed(set, self.filter, self.sort, &self.revealed, hide_secrets, &query);
                 let mut rows = div().flex().flex_col();
                 if list.is_empty() {
                     rows = rows.child(

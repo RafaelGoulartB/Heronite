@@ -487,7 +487,10 @@ device when the last window closes (the app lives on in the tray); see its
   `merge` folds a read into the local copy so it only
   grows (an unlock is never taken back, the earliest time wins);
   `store` keeps it in `local_library/achievements/<runner>/<app>.json` plus
-  `index.json` (in backups, so a new PC starts with the history);
+  `index.json` (in backups, so a new PC starts with the history). Unknown
+  fields in games, provider sets and achievements survive a read/write;
+  refreshes retain unknown fields on matching sets and achievement IDs,
+  with fresh values taking precedence;
   `accounts` the RetroAchievements account and Steam key
   (`local_library/achievement-accounts.json`, 0600, a backup's sign-ins);
   `prefs` Settings → Achievements (`achievements.json` in the app state);

@@ -154,7 +154,14 @@ fn achievement(entry: &Entry, app_id: &str, unlocks: Option<&Unlocks>, rarity: &
 
 fn build(app_id: &str, schema: &Schema, unlocks: Option<&Unlocks>, rarity: &HashMap<String, f32>, cdn: &str) -> AchievementSet {
     let achievements = schema.entries.iter().map(|e| achievement(e, app_id, unlocks, rarity, cdn)).collect();
-    AchievementSet { source: Source::Steam, external_id: app_id.into(), title: None, fetched_at: Utc::now(), achievements }
+    AchievementSet {
+        source: Source::Steam,
+        external_id: app_id.into(),
+        title: None,
+        fetched_at: Utc::now(),
+        achievements,
+        unknown: Default::default(),
+    }
 }
 
 #[cfg(test)]
