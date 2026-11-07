@@ -36,6 +36,7 @@ pub(super) fn finish(shared: &Shared, log: &GameLog, req: &LaunchRequest, contro
         let rec = PlayRecord {
             app_name: req.app_name.clone(),
             title: req.title.clone(),
+            runner: req.runner.clone(),
             started_at,
             ended_at: started_at + chrono::Duration::milliseconds(elapsed.as_millis() as i64),
         };

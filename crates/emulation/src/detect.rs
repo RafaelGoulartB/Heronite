@@ -165,7 +165,11 @@ pub fn retroarch_core_dirs(env: &dyn DetectEnv, install_dir: Option<&str>) -> Ve
         Some("/usr/lib64/libretro".into()),
         Some("/usr/lib/x86_64-linux-gnu/libretro".into()),
         Some("/usr/share/libretro/cores".into()),
+        // Flatpak RetroArch: the cores it ships (system or `--user` install) and
+        // the ones its updater downloads, in the app's own config.
         Some("/var/lib/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro".into()),
+        Some(join(&home, ".local/share/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro")),
+        Some(join(&home, ".var/app/org.libretro.RetroArch/config/retroarch/cores")),
     ])
 }
 
@@ -511,6 +515,23 @@ mod tests {
         );
     }
 
+    // KDE's file manager is `dolphin` on Linux.
+    #[cfg(unix)]
+    #[test]
+    fn kdes_file_manager_is_not_the_dolphin_emulator() {
+        let mut env = Fake::default();
+        env.bins.insert("dolphin".into(), "/usr/bin/dolphin".into());
+        assert!(detect_emulators(&env, &[]).is_empty());
+
+        // The emulator's own binary and its Flatpak are still found, with the file manager around.
+        env.flatpaks.insert("org.DolphinEmu.dolphin-emu".into());
+        let found = detect_emulators(&env, &[]);
+        assert_eq!((found[0].definition_id.as_str(), found[0].launch_kind.as_str()), ("dolphin", "flatpak"));
+        env.bins.insert("dolphin-emu".into(), "/usr/bin/dolphin-emu".into());
+        let found = detect_emulators(&env, &[]);
+        assert_eq!((found[0].executable.as_str(), found[0].launch_kind.as_str()), ("/usr/bin/dolphin-emu", "native"));
+    }
+
     #[test]
     fn the_standalone_n64_ps1_and_ds_emulators_are_detected_by_their_binary() {
         let mut env = Fake::default();
@@ -609,6 +630,27 @@ mod tests {
         let found = detect_emulators(&env, &[]);
         assert_eq!(found[0].profiles[0].id, "nes");
         assert_eq!((found[0].launch_kind.as_str(), found[0].source.as_str()), ("native", "PATH"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn flatpak_retroarch_cores_of_a_user_install_and_the_updater_are_found() {
+        let shipped = "/home/u/.local/share/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro";
+        let updated = "/home/u/.var/app/org.libretro.RetroArch/config/retroarch/cores";
+        let dirs = retroarch_core_dirs(&Fake::default(), None);
+        assert!(dirs.iter().any(|d| d == shipped) && dirs.iter().any(|d| d == updated), "{dirs:?}");
+
+        for dir in [shipped, updated] {
+            let mut env = Fake::default();
+            env.flatpaks.insert("org.libretro.RetroArch".into());
+            assert!(detect_emulators(&env, &[]).is_empty(), "no core, no RetroArch");
+            let file = format!("{dir}/{}", core("nestopia"));
+            env.files.insert(file.clone());
+            let found = detect_emulators(&env, &[]);
+            assert_eq!(found.len(), 1, "{dir}");
+            assert_eq!((found[0].definition_id.as_str(), found[0].launch_kind.as_str()), ("retroarch", "flatpak"));
+            assert_eq!(found[0].profiles[0].core_path.as_deref(), Some(file.as_str()));
+        }
     }
 
     #[test]

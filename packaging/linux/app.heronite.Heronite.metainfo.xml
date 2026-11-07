@@ -80,6 +80,9 @@
   </supports>
   <!-- scripts/bump-version.py adds each new version on top. -->
   <releases>
+    <release version="1.2.0" date="2026-11-07">
+      <url type="details">https://github.com/RafaelGoulartB/Heronite/releases/tag/v1.2.0</url>
+    </release>
     <release version="1.1.1" date="2026-11-05">
       <url type="details">https://github.com/RafaelGoulartB/Heronite/releases/tag/v1.1.1</url>
     </release>

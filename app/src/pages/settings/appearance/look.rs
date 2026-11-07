@@ -383,6 +383,14 @@ fn pick_picture(cx: &mut Context<SettingsPage>) {
 pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     let auto = a.auto_view;
+    let toolbar = toggle_row(
+        "quick-toolbar-controls",
+        tr!("Quick toolbar controls"),
+        Some(tr!("Show sorting, install scope, favourites, grouping and presets in the Collection header when there is room. The arrow beside the View button also turns them on or off; every control stays in the View menu.")),
+        a.quick_toolbar_controls,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.quick_toolbar_controls = !a.quick_toolbar_controls)))
+    .into_any_element();
     let start = row(tr!("Open the Collection in"), None, choice("start-view", &start_items(), a.start_view, cx, |a, v| a.start_view = v))
         .into_any_element();
     let switch = toggle_row(
@@ -451,5 +459,5 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 .into_any_element(),
         );
     }
-    card([start, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
+    card([toolbar, start, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
 }

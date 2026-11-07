@@ -41,9 +41,9 @@ pub(super) enum Flyout {
 }
 
 /// Groups of a game's context menu, in order: play, organize (status,
-/// categories, favourite, hidden), the game, its installation, shortcuts,
+/// categories, favourite, hidden), the game, its installation, ReShade, shortcuts,
 /// removing it, the log, then "Select multiple".
-const GROUPS: usize = 8;
+const GROUPS: usize = 9;
 
 /// The store's install actions (verify, modify, move...): one "Manage
 /// installation" row with a flyout.
@@ -101,15 +101,17 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Epic(E::Relocate) => (3, 3),
         A::Epic(E::Eos) => (3, 4),
         A::Epic(E::Forget) => (3, 5),
-        A::Shortcuts { .. } => (4, 0),
-        A::Steam { .. } => (4, 1),
-        A::RemoveRecent => (4, 2),
-        A::Epic(E::Uninstall) => (5, 0),
-        A::SteamUninstall => (5, 1),
-        A::LocalUninstall => (5, 2),
-        A::RemoveFromCollection => (5, 3),
-        A::Log => (6, 0),
-        A::Troubleshoot => (6, 1),
+        // A group of its own, above the shortcuts.
+        A::Reshade => (4, 0),
+        A::Shortcuts { .. } => (5, 0),
+        A::Steam { .. } => (5, 1),
+        A::RemoveRecent => (5, 2),
+        A::Epic(E::Uninstall) => (6, 0),
+        A::SteamUninstall => (6, 1),
+        A::LocalUninstall => (6, 2),
+        A::RemoveFromCollection => (6, 3),
+        A::Log => (7, 0),
+        A::Troubleshoot => (7, 1),
     }
 }
 

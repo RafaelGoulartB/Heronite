@@ -156,7 +156,7 @@ impl StoreInstallDialog {
             .get("defaultInstallPath")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
-            .map(|s| s.replace('\'', ""))
+            .map(|s| s.trim_matches('\'').to_string())
             .unwrap_or_else(|| game_config::default_install_dir(&home));
         let prefix_dir = global
             .get("defaultWinePrefixDir")
@@ -405,9 +405,9 @@ impl StoreInstallDialog {
         }
         let mut game_info = self.game.clone();
         if let Some(Loaded::Gog(i)) = &self.info {
-            if !i.folder_name.is_empty() {
-                game_info["folder_name"] = Value::String(i.folder_name.clone());
-            }
+            // A game never installed has none: the queue needs the folder gogdl
+            // will create to delete a cancelled download.
+            game_info["folder_name"] = Value::String(i.install_folder(&self.app_name).to_string());
         }
         let (wine_prefix, wine_version) = self.wine_selection(cx);
         let req = InstallRequest {

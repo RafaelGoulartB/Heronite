@@ -191,6 +191,8 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
             if v.more > 0 {
                 list = list.child(div().text_size(px(12.)).text_color(theme::text_dim()).child(tr!("and {count} more", count = v.more)));
             }
+            // Hides the pill until the next start (or a check asked for).
+            let ignore = button_sm("upd-ignore", ButtonKind::Ghost, tr!("Ignore")).on_click(act(Updater::dismiss));
             let notes = button_sm("upd-notes", ButtonKind::Glass, tr!("All notes")).on_click({
                 let view = cx.entity().downgrade();
                 move |_, window, cx| {
@@ -212,7 +214,7 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
                     div().pt(px(6.)).text_size(px(11.)).font_weight(theme::W_BOLD).text_color(theme::text_dim()).child(tr!("What's new")),
                 )
                 .child(list)
-                .child(footer.child(notes).children(main))
+                .child(footer.child(ignore).child(div().flex_1()).child(notes).children(main))
         }
         (Banner::Downloading, Phase::Downloading(p)) => panel
             .child(title(tr!("Downloading Heronite {version}", version = v.version)))

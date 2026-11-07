@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
-use heronite_data::text::remove_special_characters;
+use heronite_data::text::{is_word_char, remove_special_characters, title_key};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -83,12 +83,12 @@ pub fn seconds_to_hours(seconds: Option<f64>) -> f64 {
 
 /// `normalizeHowLongToBeatTitle`.
 pub fn normalize_hltb_title(value: &str) -> String {
-    value.to_lowercase().chars().filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit()).collect()
+    title_key(value).replace(' ', "")
 }
 
 /// `howLongToBeatSearchTerms`.
 pub fn search_terms(title: &str) -> Vec<String> {
-    title.split(|c: char| !c.is_ascii_alphanumeric()).map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned).collect()
+    title.split(|c: char| !is_word_char(c)).map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned).collect()
 }
 
 /// `pickHowLongToBeatSearchMatch`.
@@ -99,20 +99,15 @@ pub fn pick_search_match<'a>(title: &str, results: &'a [SearchHit]) -> Option<&'
     let games: Vec<&SearchHit> = results.iter().filter(|i| i.game_type.as_deref().is_none_or(|t| t.is_empty() || t == "game")).collect();
     let pool: Vec<&SearchHit> = if games.is_empty() { results.iter().collect() } else { games };
     let needle = normalize_hltb_title(title);
+    // A name with no letter or digit would be a prefix of everything.
+    let same = |i: &&&SearchHit, f: fn(&str, &str) -> bool| {
+        let n = normalize_hltb_title(&i.game_name);
+        !needle.is_empty() && !n.is_empty() && f(&n, &needle)
+    };
     pool.iter()
-        .find(|i| normalize_hltb_title(&i.game_name) == needle)
-        .or_else(|| {
-            pool.iter().find(|i| {
-                let n = normalize_hltb_title(&i.game_name);
-                n.starts_with(&needle) || needle.starts_with(&n)
-            })
-        })
-        .or_else(|| {
-            pool.iter().find(|i| {
-                let n = normalize_hltb_title(&i.game_name);
-                n.contains(&needle) || needle.contains(&n)
-            })
-        })
+        .find(|i| same(i, |n, w| n == w))
+        .or_else(|| pool.iter().find(|i| same(i, |n, w| n.starts_with(w) || w.starts_with(n))))
+        .or_else(|| pool.iter().find(|i| same(i, |n, w| n.contains(w) || w.contains(n))))
         .or_else(|| pool.first())
         .copied()
 }
@@ -497,6 +492,25 @@ mod tests {
         let best = pick_search_match("Sixense Perceptual", &hits).unwrap();
         assert_eq!(best.game_name, "Portal 2: Sixense Perceptual Pack");
         assert!(pick_search_match("x", &[]).is_none());
+    }
+
+    #[test]
+    fn accents_and_other_scripts_match_and_empty_names_never_do() {
+        let hit = |id: u64, name: &str| SearchHit { game_id: id, game_name: name.into(), ..Default::default() };
+        assert_eq!(normalize_hltb_title("Pokémon Red"), "pokemonred");
+        assert_eq!(search_terms("Pokémon Red"), ["Pokémon", "Red"]);
+        // Decomposed (e + U+0301) the accent stays on its word.
+        assert_eq!(search_terms("Poke\u{301}mon Red"), ["Poke\u{301}mon", "Red"]);
+        assert_eq!(search_terms("ゼルダの伝説"), ["ゼルダの伝説"]);
+        let hits = [hit(1, "Pokemon Blue"), hit(2, "Pokémon Red Version"), hit(3, "Pokemon Red")];
+        assert_eq!(pick_search_match("Pokémon Red", &hits).unwrap().game_id, 3);
+        let hits = [hit(1, "ゼルダの伝説"), hit(2, "ゼルダの伝説 夢をみる島")];
+        assert_eq!(pick_search_match("ゼルダの伝説 夢をみる島", &hits).unwrap().game_id, 2);
+        // A name that normalizes to nothing is not a prefix of the title, nor the title of it.
+        let hits = [hit(1, "!!!"), hit(2, "Portal 2")];
+        assert_eq!(pick_search_match("Portal 2: Sixense", &hits).unwrap().game_id, 2);
+        let hits = [hit(1, "Portal"), hit(2, "Portal 2")];
+        assert_eq!(pick_search_match("「」", &hits).unwrap().game_id, 1, "falls back to the first result");
     }
 
     #[test]

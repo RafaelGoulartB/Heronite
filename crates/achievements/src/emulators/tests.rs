@@ -14,15 +14,15 @@ fn machine() -> Option<String> {
 }
 
 fn sign_in(home: &Path, only: &[Emulator], hardcore: bool) -> Vec<Status> {
-    run(home, only, Some(&login(hardcore)), &|_| false, NOW, &machine)
+    run(&ConfigPaths::linux(home), only, Some(&login(hardcore)), &|_| false, NOW, &machine, None)
 }
 
 fn sign_out(home: &Path, only: &[Emulator]) -> Vec<Status> {
-    run(home, only, None, &|_| false, NOW, &machine)
+    run(&ConfigPaths::linux(home), only, None, &|_| false, NOW, &machine, None)
 }
 
 fn held(home: &Path, name: &str) -> Vec<Status> {
-    check(home, Some(name), &machine)
+    check(&ConfigPaths::linux(home), Some(name), &machine)
 }
 
 fn state_of(statuses: &[Status], emulator: Emulator) -> State {
@@ -133,7 +133,7 @@ fn every_emulator_round_trips_and_keeps_the_other_lines() {
         assert_others_kept(case.sample, &text, others);
         assert_eq!(state_of(&held(home.path(), "rafa"), case.emulator), State::SignedIn, "{:?}", case.emulator);
         assert_eq!(state_of(&held(home.path(), "someone"), case.emulator), State::SignedOut);
-        assert_eq!(state_of(&check(home.path(), None, &machine), case.emulator), State::SignedOut);
+        assert_eq!(state_of(&check(&ConfigPaths::linux(home.path()), None, &machine), case.emulator), State::SignedOut);
 
         let statuses = sign_out(home.path(), &[case.emulator]);
         assert_eq!(statuses[0].state, State::SignedOut);
@@ -191,12 +191,12 @@ fn a_running_emulator_is_left_alone() {
     let native = put(home.path(), ".config/dolphin-emu/RetroAchievements.ini", DOLPHIN);
     let flatpak = put(home.path(), ".var/app/org.DolphinEmu.dolphin-emu/config/dolphin-emu/RetroAchievements.ini", DOLPHIN);
     let running = |e: Emulator| e == Emulator::Dolphin;
-    let statuses = run(home.path(), &Emulator::ALL, Some(&login(true)), &running, NOW, &machine);
+    let statuses = run(&ConfigPaths::linux(home.path()), &Emulator::ALL, Some(&login(true)), &running, NOW, &machine, None);
     assert_eq!(state_of(&statuses, Emulator::Dolphin), State::Running);
     assert_eq!(statuses.iter().filter(|s| s.emulator == Emulator::Dolphin).count(), 2);
     assert_eq!(fs::read_to_string(native).unwrap(), DOLPHIN);
     assert_eq!(fs::read_to_string(flatpak).unwrap(), DOLPHIN);
-    let out = run(home.path(), &Emulator::ALL, None, &running, NOW, &machine);
+    let out = run(&ConfigPaths::linux(home.path()), &Emulator::ALL, None, &running, NOW, &machine, None);
     assert_eq!(state_of(&out, Emulator::Dolphin), State::Running);
 }
 
@@ -227,10 +227,10 @@ fn duckstation_keeps_the_token_encrypted_for_this_pc() {
     let stored = Ini::parse(&text).get("Cheevos", "Token").unwrap();
     assert_eq!(secret::decrypt(&stored, "Rafa", MACHINE).as_deref(), Some(TOKEN));
     // Another PC's login is not ours.
-    let other = check(home.path(), Some("Rafa"), &|| Some("another pc".to_string()));
+    let other = check(&ConfigPaths::linux(home.path()), Some("Rafa"), &|| Some("another pc".to_string()));
     assert_eq!(state_of(&other, Emulator::DuckStation), State::SignedOut);
     // Without a machine id there is nothing to encrypt with.
-    let statuses = run(home.path(), &[Emulator::DuckStation], Some(&login(true)), &|_| false, NOW, &|| None);
+    let statuses = run(&ConfigPaths::linux(home.path()), &[Emulator::DuckStation], Some(&login(true)), &|_| false, NOW, &|| None, None);
     assert!(matches!(statuses[0].state, State::Failed(_)));
 }
 
@@ -330,12 +330,25 @@ fn a_symlinked_config_stays_a_symlink() {
     assert!(fs::read_to_string(&real).unwrap().contains("UserName = Rafa"));
 }
 
+// Scoop persists RetroArch's config as a hard link; the same holds anywhere.
+#[test]
+fn a_hard_linked_config_keeps_its_other_name() {
+    let home = tempfile::tempdir().unwrap();
+    let config = put(home.path(), ".config/flycast/emu.cfg", FLYCAST);
+    let persisted = home.path().join("persisted.cfg");
+    fs::hard_link(&config, &persisted).unwrap();
+    sign_in(home.path(), &[Emulator::Flycast], true);
+    assert!(fs::read_to_string(&persisted).unwrap().contains("UserName = Rafa"), "the other name sees the login");
+    assert_eq!(heronite_platform::fs::hard_links(&config), Some(2));
+}
+
 #[test]
 fn the_public_functions_find_nothing_in_an_empty_home() {
     let home = tempfile::tempdir().unwrap();
-    assert!(apply(home.path(), Some(&login(true))).iter().all(|s| s.state == State::NotSetUp));
-    assert!(apply_to(home.path(), &[Emulator::Pcsx2], None).iter().all(|s| s.state == State::NotSetUp));
-    assert!(status(home.path(), Some("Rafa")).iter().all(|s| s.state == State::NotSetUp));
+    let configs = ConfigPaths::linux(home.path());
+    assert!(apply(&configs, Some(&login(true))).iter().all(|s| s.state == State::NotSetUp));
+    assert!(apply_to(&configs, &[Emulator::Pcsx2], None).iter().all(|s| s.state == State::NotSetUp));
+    assert!(status(&configs, Some("Rafa")).iter().all(|s| s.state == State::NotSetUp));
 }
 
 #[test]

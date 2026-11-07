@@ -18,11 +18,26 @@ fn read_ini(path: &Path) -> Result<Ini, String> {
 }
 
 /// Replaces `path` atomically, keeping its permissions (`mode` for a new file).
-/// A symlink (a dotfiles manager) is followed, so the link stays.
+/// A symlink (a dotfiles manager) is followed, so the link stays. A file with
+/// other names (hard links: Scoop's persisted `retroarch.cfg`) is rewritten in
+/// place instead, the way the emulator itself saves it: replacing it would
+/// leave the persisted copy behind, and the next update would bring that one
+/// back.
 fn write_file(path: &Path, bytes: &[u8], mode: u32) -> Result<(), String> {
     let real = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let failed = |e: std::io::Error| format!("{}: {e}", path.display());
+    if heronite_platform::fs::hard_links(&real).is_some_and(|n| n > 1) {
+        return write_in_place(&real, bytes).map_err(failed);
+    }
     let mode = fs::metadata(&real).ok().and_then(|m| heronite_platform::fs::mode(&m)).unwrap_or(mode);
-    heronite_data::temps::write_atomic(&real, bytes, Some(mode)).map_err(|e| format!("{}: {e}", path.display()))
+    heronite_data::temps::write_atomic(&real, bytes, Some(mode)).map_err(failed)
+}
+
+fn write_in_place(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new().write(true).truncate(true).open(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
 }
 
 fn save_ini(path: &Path, ini: &Ini) -> Result<(), String> {

@@ -209,7 +209,28 @@ with move, store current state, rename and delete, plus "Restore default presets
 Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…" and "Library fields…", the fields manager
 `dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
-a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
+a click outside. Each active filter also appears as a removable `filter_chip` after the button.
+The spare middle lane can also show the quick toolbar (`collection/toolbar/`): a track drawn like the Focus / Grid
+switch (`ink_a(.06)` pill, 3px padding, 26px segments 2px apart, 12.5px labels and 15px icons at `ink_a(.68)`,
+brighter on hover), in priority order Sort with its direction, Show (All / Installed / Not installed), Favourites,
+Group by, then saved Presets, using the same labels and actions as the View menu, which always keeps the complete
+controls and preset management. A control at its default is a 30px icon; a value in use adds its label and a
+chevron (a preset shows its colour dot and name; the grouping, with a stacked-groups icon, reads "by Status" with
+"by" dimmed, so it is not taken for a filter), and a filter in use (Show, Favourites) is the accent pill
+(`accent_tint`). The selects open on hover like the header's other menus (no tooltip, the chevron turns while
+open; the Sort list has each field's icon, Presets their dots); the direction and Favourites have tooltips. While
+a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
+returns when the toolbar is off or the control does not fit. It is off by default: hovering the View button
+slides out a 24px arrow joined to it like a split button (one faint fill, out in about 130ms, back in about 300ms; it stays out while the View menu is open; the search
+keeps its width, the lane after it moves) that turns it on (→) or off (←), the same preference as Settings → Appearance →
+Layout → **Quick toolbar controls** (`quickToolbarControls` in `appearance.json`, independent of filters and
+presets). Visibility is a priority prefix of shaped localized segment widths within the measured flex lane, after
+reserving the remaining filter chips, 48px for dragging and the arrow's 24px, so hovering never hides a control
+(`toolbar/layout.rs`, `fit`). The lane starts 6px after the View button, as between the left controls. Search, window controls,
+Focus / Grid and activity pills keep their space. Measurement requests one redraw only when the lane changes,
+never writes settings, and closes a menu whose trigger no longer fits. Long preset names truncate with their full
+name in a tooltip.
+Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
 metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or
 rows, the covers' size (Small fits one more per row, Large one less; `focusCoverSize`) and the game sections shown;
@@ -615,7 +636,7 @@ the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
-**In-game overlay** (`app/src/overlay/`, Settings → Overlay; beta, off by default, options in `overlay.json` of the app
+**In-game overlay** (`app/src/overlay/`, Settings → Overlay; off by default, options in `overlay.json` of the app
 state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
 proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so
 the game keeps it), 440 design px wide along the left or right edge, in console mode's look scaled to the display
@@ -632,10 +653,21 @@ microphone (the default source; the outputs' monitors are left out) and its mute
 (`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
-user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
+user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
+their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,
+whatever the source: a progress card (count, bar, gold at 100%, source, points, rare unlocks), what this session
+unlocked (a gold ring and the time), "Up next" and "Recently unlocked", 5 each, every achievement with its icon (a small
+`ImageStore` the tab makes when first drawn; a trophy or a lock when there is none), its rarity in its tier's colour,
+its description (in full, up to 3 lines, when focused) and a bar when the source counts its progress, then how many are
+secret (never their names); showing it reads the sources again (at most once a minute), and Home
+gets an "Achievements" row that leads to it. Quitting the game asks
 first (focus on Cancel). Guide + RB, Guide + ↑ / ↓ and Guide + X (the replay, Settings → Replay; Home and Screenshots
 show "Save replay" while it records, and Screenshots a switch that turns it off until the game ends) show a notice in
-the top corner opposite the panel. The
+the top corner opposite the panel. Achievement notices (`OverlayService::show_achievement`, Settings → Achievements →
+"Over the game" tries one) queue instead of replacing: 5 s each with the achievement's icon (loaded first, 1.5 s at
+most) or a gold trophy, "Achievement unlocked · 9.7%" in the rarity's colour when rare, up to 4 waiting, then one
+"N more achievements" (a single extra one shows as itself), in the order of the unlocks even when their icons load out
+of order; a volume or screenshot notice cuts in and the achievement shows again after it. The
 screenshot's button is a choice (RB unless changed; not ↑ / ↓ nor the triggers, which many controllers report as axes),
 shown in Settings → Overlay and in Settings → Screenshots ("With the controller"). A keyboard shortcut (Super + G unless
 changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland bind that sends SIGUSR1, else the
@@ -650,7 +682,7 @@ The panel takes controller presses from the service (`OverlayPanel::on_pad`); it
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
-plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`);
+plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
 `HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and

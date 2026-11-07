@@ -5,6 +5,7 @@ use heronite_i18n::tr;
 
 use super::emulator::{emulator_plan, EmulatorOutcome};
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec};
+use crate::args::{split_args, split_args_for};
 use crate::emulators::{node_basename, node_dirname};
 use crate::env::{build_wrappers_in, setup_env_vars, setup_wrapper_env_vars};
 use crate::host::{run_mode, unavailable_reason, RunMode};
@@ -168,10 +169,6 @@ fn first_existing<'a>(probe: &dyn Probe, paths: &[Option<&'a str>]) -> Option<&'
     paths.iter().flatten().copied().find(|p| !p.is_empty() && probe.exists(p))
 }
 
-pub(crate) fn split_args(s: &str) -> Vec<String> {
-    shlex::split(s).unwrap_or_else(|| s.split_whitespace().map(str::to_string).collect())
-}
-
 fn executable_plan(
     ctx: &PlanContext,
     probe: &dyn Probe,
@@ -199,10 +196,11 @@ fn executable_plan(
     if executable.is_empty() {
         return LaunchPlan::Unavailable(tr!("No executable is configured for this game").into());
     }
-    let mut extra = split_args(&settings.launcher_args);
+    let platform = effective_platform(game, meta, &executable, probe);
+    // A Windows program (under Wine, or on Windows) reads its arguments the Windows way.
+    let mut extra = split_args_for(platform == Platform::Windows, &settings.launcher_args);
     extra.extend(opts.extra_args.iter().cloned());
 
-    let platform = effective_platform(game, meta, &executable, probe);
     match (run_mode(platform.into()), platform) {
         (RunMode::Native, Platform::Windows) => windows_plan(probe, game, settings, &executable, extra, "sideload"),
         (RunMode::Native, Platform::Linux) => native_plan(ctx, probe, game, settings, &executable, extra, "sideload"),
@@ -339,6 +337,8 @@ pub(crate) fn native_plan(
     if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
+    // Windows runs Windows games directly: the DLL alone loads ReShade.
+    notes.extend(crate::reshade::apply(&mut env, &ctx.paths, &game.app_name, &settings.reshade, false));
     let sandbox = match native_sandbox(ctx, probe, game, settings, &crate::wine::game_folder(game, executable), &env) {
         Ok(p) => p,
         Err(e) => return LaunchPlan::Unavailable(e),

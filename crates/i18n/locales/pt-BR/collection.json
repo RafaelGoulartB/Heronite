@@ -18,6 +18,7 @@
   "You have {current}{size}": "Você tem a versão {current}{size}",
   "What's new": "Novidades",
   "Later": "Depois",
+  "Ignore": "Ignorar",
   "Copy terminal command": "Copiar comando do terminal",
   "Add a game": "Adicionar um jogo",
   "Download Proton": "Baixar o Proton",
@@ -522,5 +523,8 @@
   "Title and info": "Título e info",
   "Open details on select": "Abrir detalhes ao selecionar",
   "More in Appearance": "Mais em Aparência",
-  "Reset to defaults": "Restaurar padrões"
+  "Reset to defaults": "Restaurar padrões",
+  "Show quick controls": "Mostrar controles rápidos",
+  "Hide quick controls": "Ocultar controles rápidos",
+  "grouped|by": "por"
 }

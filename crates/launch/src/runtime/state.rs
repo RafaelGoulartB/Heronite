@@ -30,6 +30,7 @@ pub(super) struct Control {
     pub(super) stop: StopSpec,
     pub(super) steam_pids: Arc<Mutex<BTreeSet<u32>>>,
     pub(super) title: String,
+    pub(super) runner: String,
     /// When the game really started; preparing the prefix, cloud saves, scripts
     /// or Steam's start-up is not playtime.
     pub(super) clock: OnceLock<(chrono::DateTime<Utc>, Instant)>,
@@ -125,6 +126,7 @@ impl Shared {
         let rec = PlayRecord {
             app_name: app_name.to_string(),
             title: control.title.clone(),
+            runner: control.runner.clone(),
             started_at,
             ended_at: started_at + chrono::Duration::milliseconds(control.played().as_millis() as i64),
         };

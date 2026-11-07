@@ -10,6 +10,7 @@
 
 pub mod actions;
 pub mod anticheat_data;
+mod args;
 mod clients;
 pub mod companions;
 pub mod diagnose;
@@ -44,6 +45,7 @@ pub mod prepare;
 pub mod probe;
 pub mod procs;
 pub mod record;
+pub mod reshade;
 pub mod runtime;
 pub mod runtimes;
 pub mod sandbox;

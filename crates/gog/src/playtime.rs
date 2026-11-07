@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
 use anyhow::Result;
-use heronite_data::playtime::{import_store_playtime, unplayed_games, StorePlaytime};
+use heronite_data::playtime::{import_store_playtime, promote_played_of, unplayed_games, StorePlaytime};
 use heronite_data::DataPaths;
 use heronite_epic::cache_store::CacheStore;
 use serde_json::Value;
@@ -74,7 +74,10 @@ fn import_from(paths: &DataPaths, creds: &Credentials, base: &str) -> Result<usi
         return Ok(0);
     }
     let _running = Running(key);
-    import_once(paths, creds, base)
+    let filled = import_once(paths, creds, base);
+    // Whether asked today or not: the games with play time leave "Not played".
+    promote_played_of(paths, "gog");
+    filled
 }
 
 fn import_once(paths: &DataPaths, creds: &Credentials, base: &str) -> Result<usize> {
@@ -190,10 +193,17 @@ mod tests {
         assert_eq!(ts["fresh"]["totalPlayed"], 125);
         assert_eq!(ts["played"]["totalPlayed"], 3);
         assert!(ts.get("zero").is_none());
+        // The games with time leave "Not played", the one filled in now and the one played here.
+        let metas = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!(metas["games"]["fresh"]["completionStatusId"], "played");
+        assert_eq!(metas["games"]["fresh"]["runner"], "gog");
+        assert_eq!(metas["games"]["played"]["completionStatusId"], "played");
+        assert_eq!(metas["games"].as_object().unwrap().len(), 2);
 
-        // Checked today: no request until tomorrow.
+        // Checked today: no request until tomorrow, and nothing to promote again.
         assert_eq!(import_from(&paths, &creds("tok"), &base).unwrap(), 0);
         assert_eq!(asked.lock().unwrap().len(), 2);
+        assert_eq!(heronite_data::playtime::promote_played_of(&paths, "gog"), 0);
     }
 
     #[test]

@@ -7,6 +7,7 @@ use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{CollectionGameMetadata, LocalMetaFile};
+use heronite_data::status::STATUS_ONLY_KEY;
 
 use super::{is_offline, MetadataService};
 use crate::store::{as_runner, get_all_game_metadata};
@@ -220,6 +221,10 @@ impl MetadataService {
         let known = get_all_game_metadata(&self.paths)?;
         let mut missing = Vec::new();
         for meta in overlay.games.values() {
+            // An entry that only holds a status was never a game to search for.
+            if meta.extra.get(STATUS_ONLY_KEY) == Some(&serde_json::Value::Bool(true)) {
+                continue;
+            }
             let needs = match known.get(&metadata_key(&meta.runner, &meta.app_name)) {
                 None => true,
                 Some(c) if c.fetch_error.is_some() => match c.fetched_at.as_deref() {

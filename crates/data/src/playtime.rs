@@ -13,6 +13,7 @@ use crate::json_store;
 use crate::library::Library;
 use crate::models::SessionsFile;
 use crate::paths::DataPaths;
+use crate::status::{promote_played, PlayedGame, SetStatusExtras};
 
 /// `Math.floor(minutes / 60)`, `minutes % 60`: what the dialog's two fields
 /// start with.
@@ -143,6 +144,46 @@ pub fn import_store_playtime(paths: &DataPaths, items: &[StorePlaytime]) -> Resu
         }
         Ok(filled)
     })
+}
+
+/// Moves every game of `runner` with play time (the ones a store just gave
+/// time and the ones played here or filled in before) from the automatic
+/// "Not played" to "Played" (see [`promote_played`](crate::status::promote_played)).
+/// Run after a store's play time sync, so a game that already had time is
+/// repaired too. Nothing is written when nothing changes. Logged, never fatal:
+/// the play time is in already. How many games changed.
+pub fn promote_played_of(paths: &DataPaths, runner: &str) -> usize {
+    let promoted = Library::load_with(paths, true).and_then(|library| {
+        let games: Vec<PlayedGame> = library
+            .games
+            .iter()
+            .filter(|g| g.runner == runner && g.playtime_minutes > 0)
+            .map(|g| PlayedGame {
+                app_name: g.app_name.clone(),
+                minutes: g.playtime_minutes,
+                extras: SetStatusExtras { runner: Some(runner.to_owned()), title: Some(g.title.clone()), playnite_id: None },
+            })
+            .collect();
+        promote_played(paths, &games)
+    });
+    promoted.unwrap_or_else(|err| {
+        log::warn!("{runner}: marking the games with play time as Played: {err:#}");
+        0
+    })
+}
+
+/// After the user typed a game's play time: moves it to "Played" like a
+/// session or a store sync would (see [`promote_played`]). Not fatal: a
+/// failure is only logged.
+pub fn promote_after_edit(paths: &DataPaths, app_name: &str, runner: &str, title: &str, minutes: u64) {
+    let game = PlayedGame {
+        app_name: app_name.to_owned(),
+        minutes,
+        extras: SetStatusExtras { runner: Some(runner.to_owned()), title: Some(title.to_owned()), playnite_id: None },
+    };
+    if let Err(err) = promote_played(paths, &[game]) {
+        log::warn!("{app_name}: marking the game as Played after its play time was set: {err:#}");
+    }
 }
 
 #[cfg(test)]
@@ -282,5 +323,40 @@ mod tests {
         set_playtime_minutes(&paths, "n", -4.0).unwrap();
         assert_eq!(get_playtime_minutes(&paths, "n"), 0);
         assert_eq!(get_playtime_minutes(&paths, "missing"), 0);
+    }
+
+    #[test]
+    fn every_game_of_a_runner_with_play_time_leaves_not_played() {
+        let (_d, paths) = setup(Some(r#"{"ctl": {"totalPlayed": 90}, "zero": {"totalPlayed": 0}, "gone": {"totalPlayed": 9}}"#));
+        write(
+            paths.legendary_library(),
+            r#"{"library":[{"runner":"legendary","app_name":"ctl","title":"Control","install":{}},
+              {"runner":"legendary","app_name":"zero","title":"Zero","install":{}}],"__timestamp":{"library":"x"}}"#,
+        );
+        assert_eq!(promote_played_of(&paths, "legendary"), 1);
+        let v = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!(v["games"]["ctl"]["completionStatusId"], "played");
+        assert_eq!(v["games"]["ctl"]["title"], "Control");
+        assert_eq!(v["games"]["ctl"]["runner"], "legendary");
+        assert_eq!(v["games"].as_object().unwrap().len(), 1, "no play time, or not in the library: nothing");
+        // Again, or for another runner: nothing changes and nothing is written.
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400);
+        fs::File::options().write(true).open(paths.local_meta()).unwrap().set_modified(old).unwrap();
+        assert_eq!(promote_played_of(&paths, "legendary"), 0);
+        assert_eq!(promote_played_of(&paths, "gog"), 0);
+        assert_eq!(json_store::mtime(&paths.local_meta()), Some(old));
+    }
+
+    #[test]
+    fn typing_a_play_time_leaves_not_played() {
+        let (_d, paths) = setup(None);
+        set_playtime_minutes(&paths, "ctl", 1200.0).unwrap();
+        promote_after_edit(&paths, "ctl", "gog", "Control", 1200);
+        let v = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!(v["games"]["ctl"]["completionStatusId"], "played");
+        assert_eq!(v["games"]["ctl"]["source"], "gog");
+        // No play time: nothing moves.
+        promote_after_edit(&paths, "zero", "gog", "Zero", 0);
+        assert!(json_store::read_value(&paths.local_meta()).unwrap()["games"].get("zero").is_none());
     }
 }

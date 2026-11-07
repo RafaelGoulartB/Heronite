@@ -66,6 +66,7 @@ pub enum Icon {
     Build,
     Logout,
     Tune,
+    ViewAgenda,
     Warning,
     CloudSync,
     Update,
@@ -83,6 +84,8 @@ pub enum Icon {
     ShoppingBag,
     Lightbulb,
     Palette,
+    /// Overlapping frames: frame generation.
+    Animation,
     PhotoCamera,
     /// A replay (a saved video of the game).
     Videocam,
@@ -108,6 +111,7 @@ pub enum Icon {
     Notes,
     /// "Where I left off" in the journal.
     Bookmark,
+    BookmarkBorder,
     /// "Find art": looks up the art by itself.
     AutoAwesome,
     Image,
@@ -178,6 +182,7 @@ impl Icon {
             Edit => "icons/edit.svg",
             Notes => "icons/notes.svg",
             Bookmark => "icons/bookmark.svg",
+            BookmarkBorder => "icons/bookmark-border.svg",
             AutoAwesome => "icons/auto-awesome.svg",
             Image => "icons/image.svg",
             InfoOutlined => "icons/info-outlined.svg",
@@ -204,6 +209,7 @@ impl Icon {
             ShoppingBag => "icons/shopping-bag.svg",
             Lightbulb => "icons/lightbulb.svg",
             Palette => "icons/palette.svg",
+            Animation => "icons/animation.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Videocam => "icons/videocam.svg",
             Inbox => "icons/inbox.svg",
@@ -256,6 +262,7 @@ impl Icon {
             Build => "icons/build.svg",
             Logout => "icons/logout.svg",
             Tune => "icons/tune.svg",
+            ViewAgenda => "icons/view-agenda.svg",
             Warning => "icons/warning.svg",
             CloudSync => "icons/cloud-sync.svg",
             Update => "icons/update.svg",

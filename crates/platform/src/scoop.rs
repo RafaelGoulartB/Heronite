@@ -53,6 +53,17 @@ pub fn current(exe: &Path) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
+/// The program a shim in `<root>\shims` starts, from the `.shim` file Scoop
+/// writes beside it (`path = "C:\...\retroarch.exe"`, then maybe `args = ...`;
+/// older versions leave the path unquoted). `None` when it names none.
+pub fn shim_target(shim_file: &str) -> Option<PathBuf> {
+    shim_file.trim_start_matches('\u{feff}').lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        let value = value.trim().trim_matches('"');
+        (key.trim().eq_ignore_ascii_case("path") && !value.is_empty()).then(|| PathBuf::from(value))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +101,15 @@ mod tests {
         assert!(!installed(&exe), "the setup's copy");
         std::fs::write(exe.with_file_name(MARKER), "scoop\r\n").unwrap();
         assert!(installed(&exe));
+    }
+
+    #[test]
+    fn shims_name_their_program() {
+        let quoted = "\u{feff}path = \"C:\\Users\\a b\\scoop\\apps\\retroarch\\current\\retroarch.exe\"\r\nargs = --verbose\r\n";
+        assert_eq!(shim_target(quoted), Some(PathBuf::from(r"C:\Users\a b\scoop\apps\retroarch\current\retroarch.exe")));
+        assert_eq!(shim_target("path = C:\\scoop\\apps\\x\\current\\x.exe\n"), Some(PathBuf::from(r"C:\scoop\apps\x\current\x.exe")));
+        assert_eq!(shim_target("args = -v\npath = \"\"\n"), None);
+        assert_eq!(shim_target(""), None);
     }
 
     #[test]
