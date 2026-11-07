@@ -59,6 +59,17 @@ impl SettingsPanel {
         let Some(o) = self.reshade.overview.clone() else {
             return col.child(rows().child(row("ReShade", Some(tr!("Looking at the game…")), div())).card());
         };
+        // Opened from the game menu: show the section and flash its title,
+        // once its content is known (its height with it).
+        if super::take_focus() {
+            crate::ui::find::set_target("ReShade");
+            self.reshade.reveal_section.set(true);
+            cx.spawn(async move |_, cx| {
+                cx.background_executor().timer(crate::ui::find::FLASH).await;
+                crate::ui::find::clear();
+            })
+            .detach();
+        }
         col = match &o.state {
             State::Installed => col.child(self.reshade_installed(&o, cx)),
             State::NotInstalled if self.reshade.setup => col.child(self.reshade_setup(&o, cx)),
@@ -79,7 +90,19 @@ impl SettingsPanel {
         if o.offline {
             col = col.child(div().px(px(6.)).child(help(tr!("Offline: the package list and versions are the ones saved earlier."))));
         }
-        col
+        let reveal = self.reshade.reveal_section.clone();
+        let probe = canvas(
+            move |bounds, window, _| {
+                if reveal.replace(false) {
+                    crate::ui::dialog::reveal_in_drawer(bounds, true);
+                    window.on_next_frame(|window, _| window.refresh());
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .inset_0();
+        col.relative().child(probe)
     }
 
     fn reshade_other_state(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Rows {

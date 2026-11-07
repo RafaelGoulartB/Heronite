@@ -73,7 +73,25 @@ pub(super) struct ReshadeUi {
     pub(super) advanced: bool,
     /// Scroll the drawer to the install card on its next draw.
     pub(super) reveal: std::rc::Rc<std::cell::Cell<bool>>,
+    /// Scroll the drawer to the whole section, its top first.
+    pub(super) reveal_section: std::rc::Rc<std::cell::Cell<bool>>,
     debug: VecDeque<String>,
+}
+
+thread_local! {
+    /// The next settings opened go to the ReShade section ([`focus_reshade`]).
+    static FOCUS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Makes the next game settings scroll to the ReShade section and flash its
+/// title (the game menu's "ReShade").
+pub fn focus_reshade() {
+    FOCUS.with(|f| f.set(true));
+}
+
+/// Takes the request of [`focus_reshade`].
+pub(super) fn take_focus() -> bool {
+    FOCUS.with(|f| f.replace(false))
 }
 
 /// The game, owned, for the background read.

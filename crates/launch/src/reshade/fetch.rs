@@ -155,6 +155,13 @@ impl Cache {
         std::fs::read_to_string(&file).ok()
     }
 
+    /// The cached `EffectPackages.ini` (`packages`) or `Compatibility.ini`,
+    /// without asking the network.
+    pub fn cached_catalog(&self, packages: bool) -> Option<String> {
+        let name = if packages { "EffectPackages.ini" } else { "Compatibility.ini" };
+        std::fs::read_to_string(self.root.join("catalog").join(name)).ok()
+    }
+
     /// The DLL of `version` for `arch`, downloaded and checked once.
     pub fn dll(&self, net: &dyn Net, version: &str, arch: Arch, cancel: Cancel) -> Result<PathBuf, String> {
         let dir = self.root.join(version);

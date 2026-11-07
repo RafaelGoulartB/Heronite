@@ -170,7 +170,7 @@ impl SettingsPanel {
         let probe = canvas(
             move |bounds, window, _| {
                 if reveal.replace(false) {
-                    crate::ui::dialog::reveal_in_drawer(bounds);
+                    crate::ui::dialog::reveal_in_drawer(bounds, false);
                     // A refresh asked while drawing is dropped: draw again next frame.
                     window.on_next_frame(|window, _| window.refresh());
                 }

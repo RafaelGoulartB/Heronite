@@ -51,6 +51,7 @@ use crate::ui::fields::new_input;
 
 pub use general::GlobalView;
 pub use logic::{GameFacts, Section};
+pub use reshade::focus_reshade;
 
 /// What the settings are bound to.
 #[derive(Clone, Debug)]

@@ -211,9 +211,9 @@ fn drawer_scroll(id: &SharedString) -> ScrollHandle {
 
 /// Scrolls the drawer showing `target` (window coordinates, as laid out
 /// now) so all of it is in view, its top first when it is taller than the
-/// drawer. Call it from a prepaint and draw again on the next frame: the
-/// new offset applies then.
-pub fn reveal_in_drawer(target: Bounds<Pixels>) {
+/// drawer, or (`top`) with its top near the drawer's. Call it from a
+/// prepaint and draw again on the next frame: the new offset applies then.
+pub fn reveal_in_drawer(target: Bounds<Pixels>, top_first: bool) {
     const MARGIN: f32 = 12.;
     let handles: Vec<ScrollHandle> = DRAWER_SCROLLS.with(|s| s.borrow().values().cloned().collect());
     let x = target.center().x;
@@ -225,7 +225,7 @@ pub fn reveal_in_drawer(target: Bounds<Pixels>) {
     };
     let view = h.bounds();
     let (top, bottom) = (view.top() + px(MARGIN), view.bottom() - px(MARGIN));
-    let delta = if target.top() < top {
+    let delta = if top_first || target.top() < top {
         target.top() - top
     } else if target.bottom() > bottom {
         (target.bottom() - bottom).min(target.top() - top)

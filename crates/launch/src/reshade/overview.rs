@@ -101,19 +101,28 @@ fn file_name(p: &Path) -> String {
     p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-/// `refresh`: ask for the lists and the newest version even within a day.
-pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> Overview {
-    let cache = Cache::new(paths);
-    let offline = !net.is_online();
-    let packages = cache.catalog(net, true, refresh).map(|t| catalog::packages(&t)).unwrap_or_default();
-    let compat_text = cache.catalog(net, false, refresh);
-    let latest = cache.latest_version(net, refresh);
+/// What the files on disk say about the game and ReShade.
+struct Inspection {
+    manifest: Option<Manifest>,
+    exe: Option<PathBuf>,
+    launcher: Option<PathBuf>,
+    target: Option<Target>,
+    compat: Option<Compat>,
+    candidates: Vec<PathBuf>,
+    risk: Risk,
+    proxy: Option<String>,
+    state: State,
+}
+
+/// Reads the game's programs and folders (no network). `compat_text`:
+/// ReShade's `Compatibility.ini`, when there is one.
+fn inspect(paths: &DataPaths, f: &Facts, compat_text: Option<&str>) -> Inspection {
     let manifest = manifest::load(paths, f.game_id);
     let game_exe = detect::game_exe(f.install_path, f.executable, f.target_exe);
     let chosen = Some(PathBuf::from(&f.settings.target)).filter(|p| !f.settings.target.is_empty() && p.is_file());
     let picked = chosen.is_some();
     let mut exe = chosen.or(game_exe);
-    let compat = |e: &Path| -> Option<Compat> { compat_text.as_deref().and_then(|t| catalog::compat(t, &file_name(e))) };
+    let compat = |e: &Path| -> Option<Compat> { compat_text.and_then(|t| catalog::compat(t, &file_name(e))) };
     let mut candidates = Vec::new();
     if let Some(dir) = exe.as_deref().and_then(Path::parent) {
         candidates = detect::candidates(dir);
@@ -170,6 +179,34 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
             },
         },
     };
+    Inspection { manifest, exe, launcher, target, compat: compat_of_exe, candidates, risk, proxy, state }
+}
+
+/// Whether ReShade fits the game with no known problem, from what is on
+/// disk only (fast enough for a menu, off the UI thread): installed by
+/// Heronite, or ready to install or adopt with no anti-cheat known, nothing
+/// banning it and nothing in its place.
+pub fn fits(paths: &DataPaths, f: &Facts) -> bool {
+    if !f.wine && !cfg!(windows) {
+        return false;
+    }
+    let compat_text = Cache::new(paths).cached_catalog(false);
+    let i = inspect(paths, f, compat_text.as_deref());
+    match i.state {
+        State::Installed => true,
+        State::NotInstalled | State::Manual { .. } => !i.risk.banned && i.risk.findings.is_empty(),
+        _ => false,
+    }
+}
+
+/// `refresh`: ask for the lists and the newest version even within a day.
+pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> Overview {
+    let cache = Cache::new(paths);
+    let offline = !net.is_online();
+    let packages = cache.catalog(net, true, refresh).map(|t| catalog::packages(&t)).unwrap_or_default();
+    let compat_text = cache.catalog(net, false, refresh);
+    let latest = cache.latest_version(net, refresh);
+    let Inspection { manifest, exe, launcher, target, compat, candidates, risk, proxy, state } = inspect(paths, f, compat_text.as_deref());
     let preset_needs = manifest.as_ref().and_then(|m| {
         let text = std::fs::read_to_string(m.dir().join(m.preset.as_deref()?)).ok()?;
         let effects = preset::active_effects(&text);
@@ -198,7 +235,7 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
         exe,
         launcher,
         target,
-        compat: compat_of_exe,
+        compat,
         candidates,
         proxy,
         manifest,

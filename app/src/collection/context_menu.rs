@@ -90,7 +90,8 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Favourite => (1, 1),
         A::Hide => (1, 2),
 
-        A::Settings => (2, 0),
+        // ReShade right under Settings (the sort keeps their order).
+        A::Settings | A::Reshade => (2, 0),
         A::EditGame => (2, 1),
         A::OpenFolder => (2, 2),
         A::Ludusavi | A::AutoBackup { .. } => (2, 3),

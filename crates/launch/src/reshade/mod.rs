@@ -34,7 +34,7 @@ use heronite_data::DataPaths;
 use serde_json::{Map, Value};
 
 pub use anticheat::{Finding, Risk, Source};
-pub use overview::{overview, Facts, Overview, SourceRow, State};
+pub use overview::{fits, overview, Facts, Overview, SourceRow, State};
 
 use crate::env::Env;
 

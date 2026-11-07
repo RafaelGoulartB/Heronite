@@ -231,3 +231,39 @@ fn the_overrides_offered_for_cleanup_are_the_ones_the_launch_adds() {
     let o = crate::reshade::overview(&g.paths, &crate::net::FakeNet::offline(), &facts, false);
     assert_eq!(o.user_overrides, ["dxgi"]);
 }
+
+#[test]
+fn the_menu_offers_reshade_only_where_it_fits() {
+    use crate::reshade::{fits, Facts, ReShade};
+    let settings = ReShade { api: "auto".into(), ..Default::default() };
+    let check = |g: &Game, wine: bool| {
+        let exe = g.dir.path().join("FL_2027.exe").to_string_lossy().into_owned();
+        let facts = Facts {
+            game_id: "sp",
+            title: "SP",
+            steam_app_id: None,
+            install_path: None,
+            executable: Some(&exe),
+            target_exe: "",
+            settings: &settings,
+            env_options: &[],
+            wine,
+        };
+        fits(&g.paths, &facts)
+    };
+    let fresh = game();
+    assert!(check(&fresh, true));
+    assert_eq!(check(&fresh, false), cfg!(windows));
+    std::fs::create_dir_all(fresh.dir.path().join("EasyAntiCheat")).unwrap();
+    assert!(!check(&fresh, true));
+    let banned = game();
+    let catalog = banned.paths.tools_dir().join("reshade").join("catalog");
+    std::fs::create_dir_all(&catalog).unwrap();
+    std::fs::write(catalog.join("Compatibility.ini"), "[FL_2027.exe]\nBanned=1\n").unwrap();
+    assert!(!check(&banned, true));
+    let (installed, _) = installed(None);
+    assert!(check(&installed, true));
+    let vulkan = game();
+    std::fs::write(vulkan.dir.path().join("FL_2027.exe"), pe_with(MACHINE_X64, &["vulkan-1.dll"], None, 0x10_0000)).unwrap();
+    assert!(!check(&vulkan, true));
+}
