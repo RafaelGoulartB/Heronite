@@ -190,12 +190,13 @@ A controller-first layout for the couch or a TV. Turn it on from the ☰ menu, t
 
 A single native process drawn on the GPU, with no bundled browser like Electron-based launchers carry. The idle numbers come from [`scripts/idle-cost.sh`](scripts/idle-cost.sh), so you can check them on your own PC.
 
-| | Heronite on Linux |
+| | Heronite Usage |
 |---|---|
 | Memory while idle | **~190 MB** in a single process, **~95 MB** closed to the tray |
 | CPU while idle | **~0.1%** (0.05 s of CPU time over 60 s) |
 | Install size | **64 MB** (app + store login helper) |
 | Start to library on screen | **~215 ms** median |
+
 
 ## Run from source
 
@@ -211,6 +212,16 @@ scripts/install.sh
 # installer and portable zip in dist\ (Windows, needs Inno Setup 6.3 or later)
 powershell -ExecutionPolicy Bypass -File scripts\windows\package.ps1
 ```
+
+## Contributors
+
+Heronite is better because of the people who gave their time to it. Thank you! 💜
+
+<a href="https://github.com/RafaelGoulartB/Heronite/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=RafaelGoulartB/Heronite" alt="Heronite contributors" />
+</a>
+
+Feel free to contribute too: every [pull request](https://github.com/RafaelGoulartB/Heronite/pulls) and [issue](https://github.com/RafaelGoulartB/Heronite/issues) is welcome!
 
 ## License
 
