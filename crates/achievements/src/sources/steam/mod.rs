@@ -148,13 +148,22 @@ fn achievement(entry: &Entry, app_id: &str, unlocks: Option<&Unlocks>, rarity: &
         unlocked_at: done.copied().flatten(),
         rarity: rarity.get(&entry.api).copied(),
         progress,
+        group: entry.group.clone(),
         ..Default::default()
     }
 }
 
 fn build(app_id: &str, schema: &Schema, unlocks: Option<&Unlocks>, rarity: &HashMap<String, f32>, cdn: &str) -> AchievementSet {
     let achievements = schema.entries.iter().map(|e| achievement(e, app_id, unlocks, rarity, cdn)).collect();
-    AchievementSet { source: Source::Steam, external_id: app_id.into(), title: None, fetched_at: Utc::now(), achievements }
+    AchievementSet {
+        source: Source::Steam,
+        external_id: app_id.into(),
+        title: None,
+        fetched_at: Utc::now(),
+        achievements,
+        groups: schema.groups.clone(),
+        unknown: Default::default(),
+    }
 }
 
 #[cfg(test)]
@@ -221,6 +230,20 @@ mod tests {
         let http = Http::default();
         let accounts = Accounts { steam_web_api_key: key.map(str::to_string), ..Default::default() };
         fetch_from(&Ctx { paths: &paths, http: &http, accounts: &accounts, lang: "en" }, &OFFLINE, locator, app_id)
+    }
+
+    #[test]
+    fn build_keeps_the_groups_and_membership_of_the_schema() {
+        let mut schema = Schema::from_entries(vec![
+            Entry { api: "A".into(), icon: "on.jpg".into(), group: Some("2".into()), ..Default::default() },
+            Entry { api: "B".into(), group: None, ..Default::default() },
+        ]);
+        schema.groups = vec![crate::model::AchievementGroup { id: "2".into(), name: "Single Player".into(), ..Default::default() }];
+        let set = build("620", &schema, None, &HashMap::new(), "https://cdn.test");
+        assert_eq!(set.groups, schema.groups);
+        assert_eq!(set.achievements[0].group.as_deref(), Some("2"));
+        assert_eq!(set.achievements[0].icon, "https://cdn.test/steamcommunity/public/images/apps/620/on.jpg");
+        assert_eq!(set.achievements[1].group, None);
     }
 
     #[test]

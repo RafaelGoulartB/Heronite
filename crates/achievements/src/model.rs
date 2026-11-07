@@ -103,6 +103,13 @@ pub struct Achievement {
     /// first read of the game: history, not news).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub noticed_at: Option<DateTime<Utc>>,
+    /// The [`AchievementGroup::id`] it belongs to; `None` when the source
+    /// gives no groups (or none for it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Fields written by a newer Heronite, kept through refreshes.
+    #[serde(flatten)]
+    pub unknown: Map<String, Value>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -125,6 +132,64 @@ impl Achievement {
     }
 }
 
+/// A collection the game's developer put some of its achievements in:
+/// Steam's Achievement Sets (base game or DLC). Not to be confused with
+/// [`AchievementSet`], which is the whole game at one source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct AchievementGroup {
+    /// The source's id of the group (Steam's group id): stable across
+    /// renames and languages, what membership and refreshes match on.
+    pub id: String,
+    /// In the interface language; empty when the source names it not
+    /// (Steam's default group).
+    #[serde(default)]
+    pub name: String,
+    /// The source's order key; ties keep the source's order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order: Option<i64>,
+    /// Steam: the DLC the group's achievements need, `Some(0)` for the base
+    /// game, `None` when the source does not say. Whether the player owns
+    /// the DLC is never known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dlc_app_id: Option<u32>,
+    /// Retired by the developer (seasonal achievements).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub archived: bool,
+    /// Fields written by a newer Heronite, kept through refreshes.
+    #[serde(flatten)]
+    pub unknown: Map<String, Value>,
+}
+
+impl AchievementGroup {
+    /// A DLC group, as far as the source says.
+    pub fn is_dlc(&self) -> bool {
+        self.dlc_app_id.is_some_and(|id| id != 0)
+    }
+}
+
+/// The achievements of a group (or of none, `group: None`) and its counts:
+/// unlocked out of listed, not Steam's own "set complete" status.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Section<'a> {
+    pub group: Option<&'a AchievementGroup>,
+    pub achievements: Vec<&'a Achievement>,
+}
+
+impl Section<'_> {
+    pub fn total(&self) -> usize {
+        self.achievements.len()
+    }
+
+    pub fn unlocked(&self) -> usize {
+        self.achievements.iter().filter(|a| a.unlocked).count()
+    }
+
+    pub fn group_id(&self) -> Option<&str> {
+        self.group.map(|g| g.id.as_str())
+    }
+}
+
 /// The achievements of one game from one source.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,9 +205,47 @@ pub struct AchievementSet {
     pub fetched_at: DateTime<Utc>,
     /// In the source's order.
     pub achievements: Vec<Achievement>,
+    /// The developer's groups, in display order; empty when the source has
+    /// none or gives none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<AchievementGroup>,
+    /// Fields written by a newer Heronite, kept through refreshes.
+    #[serde(flatten)]
+    pub unknown: Map<String, Value>,
 }
 
 impl AchievementSet {
+    /// The known group the achievement is in.
+    pub fn group_of(&self, a: &Achievement) -> Option<&AchievementGroup> {
+        let id = a.group.as_deref()?;
+        self.groups.iter().find(|g| g.id == id)
+    }
+
+    /// The achievements by group, in the groups' order, the ones in no
+    /// known group last; empty (a flat list) unless at least two known
+    /// groups have achievements. The ones in no group never make a split
+    /// on their own: a game without sets keeps Steam's single unnamed group
+    /// from the Community page, and a later read without groups (the
+    /// client's schema) leaves its new achievements in none.
+    pub fn sections(&self) -> Vec<Section<'_>> {
+        let mut sections: Vec<Section> = self.groups.iter().map(|g| Section { group: Some(g), achievements: Vec::new() }).collect();
+        let mut other = Section { group: None, achievements: Vec::new() };
+        for a in &self.achievements {
+            match self.group_of(a).and_then(|g| sections.iter_mut().find(|s| s.group_id() == Some(g.id.as_str()))) {
+                Some(section) => section.achievements.push(a),
+                None => other.achievements.push(a),
+            }
+        }
+        sections.retain(|s| !s.achievements.is_empty());
+        if sections.len() < 2 {
+            return Vec::new();
+        }
+        if !other.achievements.is_empty() {
+            sections.push(other);
+        }
+        sections
+    }
+
     pub fn total(&self) -> usize {
         self.achievements.len()
     }
@@ -355,7 +458,15 @@ mod tests {
     }
 
     fn set(items: Vec<Achievement>) -> AchievementSet {
-        AchievementSet { source: Source::Steam, external_id: "1".into(), title: None, fetched_at: Utc::now(), achievements: items }
+        AchievementSet {
+            source: Source::Steam,
+            external_id: "1".into(),
+            title: None,
+            fetched_at: Utc::now(),
+            achievements: items,
+            groups: Vec::new(),
+            unknown: Map::new(),
+        }
     }
 
     #[test]
@@ -411,5 +522,67 @@ mod tests {
         let back: GameAchievements = serde_json::from_str(&serde_json::to_string(&g).unwrap()).unwrap();
         assert_eq!(back, g);
         assert_eq!(serde_json::to_value(Source::RetroAchievements).unwrap(), "retroachievements");
+    }
+    fn grouped(id: &str, unlocked_day: Option<u32>, group: Option<&str>) -> Achievement {
+        Achievement { group: group.map(str::to_string), ..a(id, unlocked_day, 10.) }
+    }
+
+    fn g(id: &str, name: &str, dlc: Option<u32>) -> AchievementGroup {
+        AchievementGroup { id: id.into(), name: name.into(), dlc_app_id: dlc, ..Default::default() }
+    }
+
+    fn view<'a>(sections: &'a [Section<'a>]) -> Vec<(Option<&'a str>, Vec<&'a str>, usize, usize)> {
+        sections.iter().map(|s| (s.group_id(), s.achievements.iter().map(|a| a.id.as_str()).collect(), s.unlocked(), s.total())).collect()
+    }
+
+    #[test]
+    fn sections_follow_the_groups_with_the_ungrouped_last() {
+        let mut s = set(vec![
+            grouped("dlc1", Some(2), Some("1")),
+            grouped("base1", Some(1), Some("0")),
+            grouped("base2", None, Some("0")),
+            grouped("dlc2", None, Some("1")),
+            // In a group the source no longer lists, or in none.
+            grouped("old", Some(3), Some("9")),
+            grouped("loose", None, None),
+        ]);
+        s.groups = vec![g("0", "", Some(0)), g("1", "The Pale Reach", Some(2561440)), g("5", "Empty", None)];
+        let sections = s.sections();
+        assert_eq!(
+            view(&sections),
+            [(Some("0"), vec!["base1", "base2"], 1, 2), (Some("1"), vec!["dlc1", "dlc2"], 1, 2), (None, vec!["old", "loose"], 1, 2),]
+        );
+        // Per-group counts add up to the game's.
+        assert_eq!(sections.iter().map(Section::total).sum::<usize>(), s.total());
+        assert_eq!(sections.iter().map(Section::unlocked).sum::<usize>(), s.unlocked());
+        assert!(sections[1].group.unwrap().is_dlc() && !sections[0].group.unwrap().is_dlc());
+        assert_eq!(s.group_of(&s.achievements[4]), None);
+    }
+
+    #[test]
+    fn one_group_or_none_is_a_flat_list() {
+        let mut s = set(vec![grouped("a", None, Some("0")), grouped("b", Some(1), Some("0"))]);
+        assert!(s.sections().is_empty());
+        s.groups = vec![g("0", "", Some(0)), g("1", "Unused", None)];
+        assert!(s.sections().is_empty());
+    }
+
+    #[test]
+    fn one_group_plus_ungrouped_ones_is_still_a_flat_list() {
+        // Portal (no sets) read from the Community page, then from a client
+        // schema without groups that lists one more achievement.
+        let mut s = set(vec![grouped("x", Some(1), Some("0")), grouped("y", None, Some("0")), grouped("new", None, None)]);
+        s.groups = vec![g("0", "", Some(0))];
+        assert!(s.sections().is_empty());
+        // Ungrouped ones alone are a flat list too.
+        s.achievements.iter_mut().for_each(|a| a.group = None);
+        assert!(s.sections().is_empty());
+    }
+
+    #[test]
+    fn unknown_dlc_is_not_dlc() {
+        assert!(!g("1", "Set", None).is_dlc());
+        assert!(!g("0", "", Some(0)).is_dlc());
+        assert!(g("1", "Set", Some(7)).is_dlc());
     }
 }

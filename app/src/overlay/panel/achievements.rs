@@ -8,6 +8,10 @@
 //! small image store the tab creates when first shown), its description,
 //! its rarity and its progress when the source counts it. Secret ones stay
 //! hidden: they are only counted.
+//!
+//! A game with Steam Achievement Sets also lists its sets, each with its
+//! unlocked/total count and bar (Heronite's count, not Steam's "set
+//! complete", which leaves out DLC the player doesn't own).
 
 use std::sync::Arc;
 
@@ -28,7 +32,7 @@ use crate::icons::Icon;
 use crate::images::ImageStore;
 use crate::services::achievements;
 use crate::theme;
-use crate::ui::achievements::{badge, bar, percent_label, short_day};
+use crate::ui::achievements::{badge, bar, percent_label, section_label, short_day};
 use crate::ui::icon;
 
 /// Rows per group.
@@ -66,9 +70,17 @@ pub(super) enum Item {
     Summary,
     /// A caption, or the line saying there is nothing yet.
     Plain,
-    Achievement(Achievement, Group),
+    Achievement(Box<Achievement>, Group),
     /// How many secret ones are still locked.
     Secret(usize),
+    /// One of the game's sets: its name, whether it needs a DLC, unlocked
+    /// and total.
+    Set {
+        name: String,
+        dlc: bool,
+        unlocked: usize,
+        total: usize,
+    },
 }
 
 impl OverlayPanel {
@@ -194,6 +206,7 @@ impl OverlayPanel {
             (Item::Summary, Some(set)) => summary_card(set, focused).into_any_element(),
             (Item::Achievement(a, group), _) => achievement_row(a, *group, images[i].clone(), focused).into_any_element(),
             (Item::Secret(n), _) => secret_row(*n, focused).into_any_element(),
+            (Item::Set { name, dlc, unlocked, total }, _) => set_row(name, *dlc, *unlocked, *total, focused).into_any_element(),
             _ => list::render_row(row, focused).into_any_element(),
         })
     }
@@ -237,7 +250,7 @@ pub(super) fn items(set: &AchievementSet, session_start: Option<DateTime<Utc>>) 
         items.push((Row::header(title), Item::Plain));
         for (i, a) in list.into_iter().enumerate() {
             let row = Row::info(SharedString::from(format!("{prefix}-{i}")), a.name.clone(), value_of(a, g)).desc(a.description.clone());
-            items.push((row, Item::Achievement(a.clone(), g)));
+            items.push((row, Item::Achievement(Box::new(a.clone()), g)));
         }
     };
     let session: Vec<&Achievement> = set.recent().into_iter().filter(this_session).take(PER_GROUP).collect();
@@ -246,6 +259,21 @@ pub(super) fn items(set: &AchievementSet, session_start: Option<DateTime<Utc>>) 
     group(&mut items, tr!("Up next").into(), next, Group::Next, "next");
     let recent: Vec<&Achievement> = set.recent().into_iter().filter(|a| !this_session(a)).take(PER_GROUP).collect();
     group(&mut items, tr!("Recently unlocked").into(), recent, Group::Recent, "recent");
+
+    let sections = set.sections();
+    if !sections.is_empty() {
+        items.push((Row::header(tr!("Sets")), Item::Plain));
+        for (i, section) in sections.iter().enumerate() {
+            let name = section_label(section.group);
+            let (unlocked, total) = (section.unlocked(), section.total());
+            let dlc = section.group.is_some_and(|g| g.is_dlc());
+            let mut row = Row::info(SharedString::from(format!("set-{i}")), name.clone(), format!("{unlocked}/{total}"));
+            if dlc {
+                row = row.desc(tr!("DLC"));
+            }
+            items.push((row, Item::Set { name, dlc, unlocked, total }));
+        }
+    }
 
     let secret = set.achievements.iter().filter(|a| a.is_secret()).count();
     if secret > 0 {
@@ -382,6 +410,38 @@ fn achievement_row(a: &Achievement, group: Group, image: Option<ImageSource>, fo
     kit::row_base(focused).min_h(u(72.)).gap(u(14.)).child(achievement_badge(image, a, group == Group::Session)).child(text)
 }
 
+/// A set's name (with a DLC tag when the source says it needs one), its
+/// bar (gold when every listed achievement is unlocked) and count.
+fn set_row(name: &str, dlc: bool, unlocked: usize, total: usize, focused: bool) -> Div {
+    let complete = total > 0 && unlocked == total;
+    let muted = ink(focused, theme::text_muted());
+    let tag = dlc.then(|| {
+        div()
+            .flex_none()
+            .px(u(8.))
+            .py(u(2.))
+            .rounded_full()
+            .bg(if focused { theme::black_a(0.1) } else { kit::ink(0.1) })
+            .text_size(u(12.))
+            .font_weight(theme::W_BOLD)
+            .text_color(muted)
+            .child(tr!("DLC"))
+    });
+    let top = div()
+        .flex()
+        .items_center()
+        .gap(u(10.))
+        .child(
+            div().flex_1().min_w_0().truncate().text_size(u(17.)).text_color(ink(focused, theme::text_primary())).child(name.to_string()),
+        )
+        .children(tag)
+        .child(div().flex_none().text_size(u(13.)).text_color(muted).child(format!("{unlocked}/{total}")));
+    let fraction = if total == 0 { 0. } else { unlocked as f32 / total as f32 };
+    kit::row_base(focused).min_h(u(60.)).child(
+        div().flex().flex_col().flex_1().min_w_0().gap(u(8.)).py(u(10.)).child(top).child(progress_bar(fraction, complete, 5., focused)),
+    )
+}
+
 fn secret_row(n: usize, focused: bool) -> Div {
     let lock_colour = if focused { theme::black_a(0.45) } else { kit::ink(0.55) };
     let lock = badge(None, false, true, BADGE * kit::scale()).child(badge_icon(Icon::Lock, lock_colour));
@@ -474,7 +534,15 @@ mod tests {
     }
 
     fn set(achievements: Vec<Achievement>) -> AchievementSet {
-        AchievementSet { source: Source::Steam, external_id: "1".into(), title: None, fetched_at: Utc::now(), achievements }
+        AchievementSet {
+            source: Source::Steam,
+            external_id: "1".into(),
+            title: None,
+            fetched_at: Utc::now(),
+            achievements,
+            groups: Vec::new(),
+            unknown: Default::default(),
+        }
     }
 
     fn labels(items: &[(Row, Item)]) -> Vec<String> {
@@ -527,5 +595,53 @@ mod tests {
         assert_eq!(value_of(&y, Group::Recent), "");
         let items = items(&set(vec![x, y]), None);
         assert!(items.iter().all(|(r, _)| r.desc.is_none()));
+    }
+
+    #[test]
+    fn sets_get_their_own_counted_rows_and_secrets_stay_counted() {
+        use heronite_achievements::AchievementGroup;
+        let in_set = |id: &str, unlocked: bool, hidden: bool, group: &str| Achievement {
+            id: id.into(),
+            name: format!("Name of {id}"),
+            unlocked,
+            hidden,
+            group: Some(group.into()),
+            ..Default::default()
+        };
+        // The shape of DREDGE's sets (https://steamcommunity.com/stats/1562430/achievements/).
+        let mut s = set(vec![
+            in_set("base", true, false, "0"),
+            in_set("spoiler", false, true, "0"),
+            in_set("dlc", false, false, "1"),
+            in_set("dlc_secret", false, true, "1"),
+        ]);
+        s.groups = vec![
+            AchievementGroup { id: "0".into(), dlc_app_id: Some(0), ..Default::default() },
+            AchievementGroup { id: "1".into(), name: "The Pale Reach".into(), dlc_app_id: Some(2561440), ..Default::default() },
+        ];
+        let items = items(&s, None);
+        let sets: Vec<_> = items
+            .iter()
+            .filter_map(|(r, i)| match i {
+                Item::Set { name, dlc, unlocked, total } => Some((r.label.to_string(), name.clone(), *dlc, *unlocked, *total)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sets,
+            [("Base game".into(), "Base game".into(), false, 1, 2), ("The Pale Reach".into(), "The Pale Reach".into(), true, 0, 2)]
+        );
+        assert!(labels(&items).contains(&"Sets".to_string()));
+        assert!(matches!(items.last().unwrap().1, Item::Secret(2)));
+        assert!(!items.iter().any(|(r, _)| r.label.contains("spoiler") || r.label.contains("dlc_secret")));
+    }
+
+    #[test]
+    fn a_flat_game_has_no_sets_rows() {
+        let mut x = a("x", None);
+        x.group = Some("0".into());
+        let mut s = set(vec![x]);
+        s.groups = vec![heronite_achievements::AchievementGroup { id: "0".into(), dlc_app_id: Some(0), ..Default::default() }];
+        assert!(!items(&s, None).iter().any(|(_, i)| matches!(i, Item::Set { .. })));
     }
 }

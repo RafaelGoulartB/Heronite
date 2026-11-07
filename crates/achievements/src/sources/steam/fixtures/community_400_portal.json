@@ -1,0 +1,41 @@
+{
+  "appid": 400,
+  "language": "english",
+  "groups": [
+    {
+      "id": 0,
+      "name": "",
+      "archived": false,
+      "ispublic": true,
+      "developeronly": false,
+      "dlcappid": 0,
+      "order": 0,
+      "achievements": [
+        {
+          "internal_key": 0,
+          "api_name": "PORTAL_GET_PORTALGUNS",
+          "name": "Lab Rat",
+          "description": "Acquire the fully powered Aperture Science Handheld Portal Device.",
+          "hidden": false,
+          "archived": false,
+          "icon_achieved": "portal_getportalguns.jpg",
+          "icon_unachieved": "portal_getportalguns_bw.jpg",
+          "groupid": 0
+        },
+        {
+          "internal_key": 1,
+          "api_name": "PORTAL_KILL_COMPANIONCUBE",
+          "name": "Fratricide",
+          "description": "Do whatever it takes to survive.",
+          "hidden": false,
+          "archived": false,
+          "icon_achieved": "portal_kill_companioncube.jpg",
+          "icon_unachieved": "portal_kill_companioncube_bw.jpg",
+          "groupid": 0
+        }
+      ]
+    }
+  ],
+  "schema_hash": 324021597,
+  "schema_version": 34
+}

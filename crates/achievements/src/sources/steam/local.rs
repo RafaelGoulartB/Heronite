@@ -5,6 +5,10 @@
 //! In the schema, every stat under `stats` that has `bits` holds up to 32
 //! achievements, one per bit. The user file has the same stat ids; its `data`
 //! is the bitmask and `AchievementTimes/<bit>` the unlock time.
+//!
+//! A game with Achievement Sets also has `groups/<id>` (`name` per
+//! language, `order`) and a `groupid` on each achievement. A schema the
+//! client cached before the developer added sets has neither.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -12,6 +16,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 
 use super::kv::{self, Value};
+use crate::model::AchievementGroup;
 
 /// One achievement of the schema.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -28,19 +33,29 @@ pub struct Entry {
     pub slot: Option<(String, u32)>,
     /// The stat that counts towards it and the value that unlocks it.
     pub progress: Option<(String, u32)>,
+    /// The id of its group, when the schema has groups.
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Schema {
     pub entries: Vec<Entry>,
+    /// The developer's groups in display order; empty when the schema says
+    /// nothing of them.
+    pub groups: Vec<AchievementGroup>,
     /// Stat id → stat name, for the stats the achievements count.
     stat_names: HashMap<String, String>,
 }
 
 impl Schema {
     pub fn from_entries(entries: Vec<Entry>) -> Self {
-        Self { entries, stat_names: HashMap::new() }
+        Self { entries, groups: Vec::new(), stat_names: HashMap::new() }
     }
+}
+
+/// Sorts groups by their order key, keeping the source's order on ties.
+pub fn sort_groups(groups: &mut [AchievementGroup]) {
+    groups.sort_by_key(|g| g.order.unwrap_or(0));
 }
 
 /// What an account has done in a game.
@@ -109,8 +124,23 @@ fn text_of(value: Option<&Value>) -> String {
 pub fn parse_schema(bytes: &[u8], lang: &str) -> Result<Schema, String> {
     let doc = kv::parse(bytes)?;
     let keys = language_keys(lang);
-    let stats = doc.children().first().and_then(|(_, game)| game.get("stats")).ok_or("no stats in the schema")?;
+    let game = doc.children().first().map(|(_, game)| game).ok_or("no stats in the schema")?;
+    let stats = game.get("stats").ok_or("no stats in the schema")?;
     let mut schema = Schema::default();
+    if let Some(groups) = game.get("groups") {
+        schema.groups = groups
+            .children()
+            .iter()
+            .filter(|(id, _)| id.parse::<u32>().is_ok())
+            .map(|(id, g)| AchievementGroup {
+                id: id.clone(),
+                name: localized(g.get("name"), &keys),
+                order: g.get("order").and_then(Value::as_i64),
+                ..Default::default()
+            })
+            .collect();
+        sort_groups(&mut schema.groups);
+    }
     for (stat_id, stat) in stats.children() {
         if let (Some(name), None) = (stat.get("name").and_then(Value::as_str), stat.get("bits")) {
             schema.stat_names.insert(stat_id.clone(), name.to_string());
@@ -134,6 +164,7 @@ pub fn parse_schema(bytes: &[u8], lang: &str) -> Result<Schema, String> {
                 icon_gray: text_of(display.and_then(|d| d.get("icon_gray"))),
                 slot: Some((stat_id.clone(), bit)),
                 progress,
+                group: item.get("groupid").and_then(Value::as_i64).map(|id| id.to_string()),
             });
         }
     }
@@ -262,6 +293,58 @@ mod tests {
         assert_eq!(unlocks.done["ACH.COUNT"].unwrap().timestamp(), 1_700_000_000);
         assert_eq!(unlocks.done["ACH.FIRST"], None);
         assert_eq!(unlocks.stats["runs"], 4);
+    }
+
+    /// The shape of Portal 2's `UserGameStatsSchema_620.bin` (version
+    /// 1108170007): `groups/<id>` with localized names and `order`, and a
+    /// `groupid` on each achievement.
+    fn grouped_schema_bytes() -> Vec<u8> {
+        let bits = group(
+            "bits",
+            &[group_kv("1", "ACH.SURVIVE_CONTAINER_RIDE", "Wake Up Call", 2), group_kv("30", "ACH.HI_FIVE_YOUR_PARTNER", "High Five", 1)],
+        );
+        let groups = group(
+            "groups",
+            &[
+                group(
+                    "1",
+                    &[names(&[("english", "Cooperative"), ("token", "GROUP_1_NAME"), ("brazilian", "Cooperativo")]), int("order", 1)],
+                ),
+                group(
+                    "2",
+                    &[names(&[("english", "Single Player"), ("token", "GROUP_2_NAME"), ("brazilian", "Um jogador")]), int("order", 0)],
+                ),
+            ],
+        );
+        let stats = group("stats", &[group("0", &[string("type", "ACHIEVEMENTS"), bits])]);
+        file(group("620", &[string("gamename", "Portal 2"), int("version", 1108170007), stats, groups]))
+    }
+
+    fn group_kv(bit: &str, api: &str, name: &str, group_id: i32) -> Vec<u8> {
+        group(
+            bit,
+            &[
+                string("name", api),
+                group("display", &[names(&[("english", name)]), int("hidden", 0), string("icon", "x.jpg")]),
+                int("groupid", group_id),
+            ],
+        )
+    }
+
+    #[test]
+    fn schema_with_sets_gives_groups_in_order_and_membership() {
+        let schema = parse_schema(&grouped_schema_bytes(), "pt-BR").unwrap();
+        let groups: Vec<_> = schema.groups.iter().map(|g| (g.id.as_str(), g.name.as_str(), g.order, g.dlc_app_id)).collect();
+        assert_eq!(groups, [("2", "Um jogador", Some(0), None), ("1", "Cooperativo", Some(1), None)]);
+        let membership: Vec<_> = schema.entries.iter().map(|e| (e.api.as_str(), e.group.as_deref())).collect();
+        assert_eq!(membership, [("ACH.SURVIVE_CONTAINER_RIDE", Some("2")), ("ACH.HI_FIVE_YOUR_PARTNER", Some("1"))]);
+    }
+
+    #[test]
+    fn schema_cached_before_sets_has_no_groups() {
+        let schema = parse_schema(&schema_bytes(), "en").unwrap();
+        assert!(schema.groups.is_empty());
+        assert!(schema.entries.iter().all(|e| e.group.is_none()));
     }
 
     #[test]

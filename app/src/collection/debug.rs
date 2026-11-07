@@ -315,6 +315,12 @@ impl CollectionView {
                     self.open_reshade(&key, window, cx);
                 }
             }
+            // "All achievements" of the selected game (`HERONITE_DEBUG_ACH_SET` picks a set).
+            "achievements" => {
+                if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
+                    self.open_achievements(&key, window, cx);
+                }
+            }
             "viewlog" => {
                 if let Some(key) = self.selected.as_ref().map(|k| k.to_string()) {
                     self.open_game_log(&key, cx);

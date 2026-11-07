@@ -467,7 +467,13 @@ device when the last window closes (the app lives on in the tray); see its
   client's `appcache/stats` files (binary KeyValues, offline, any Steam
   root) plus the public global percentages; for games never played on this
   PC the Web API with an optional key, else the game's public list on Steam
-  Community (`community`: the page's `valve-ssr-data` JSON, all locked); `gog` `gameplay.gog.com` with gogdl's token;
+  Community (`community`: the page's `valve-ssr-data` JSON, its
+  `schema_v2` query, all locked). Steam's Achievement Sets come with the
+  client's schema (`groups`, `groupid`) and the Community page (`groups`
+  with `dlcappid`) as optional `groups` on the set and a `group` id on each
+  achievement (`AchievementGroup`: a developer's collection inside one game,
+  unlike `AchievementSet`, one game at one source); `sections()` splits a
+  game by them (a flat list unless two known groups have achievements); `gog` `gameplay.gog.com` with gogdl's token;
   `epic` the store's GraphQL
   (`launcher.store.epicgames.com`, legendary's token, the namespace as
   sandbox, the launcher's User-Agent); `retro` RetroAchievements: the user
@@ -485,9 +491,15 @@ device when the last window closes (the app lives on in the tray); see its
   and Flatpak; only files that exist, never while the emulator runs, other
   lines untouched), so they unlock achievements without signing in there.
   `merge` folds a read into the local copy so it only
-  grows (an unlock is never taken back, the earliest time wins);
+  grows (an unlock is never taken back, the earliest time wins); a read
+  with groups replaces them (renames, reorders and moved achievements keep
+  ids and history), a read without them keeps the known ones, and a DLC id
+  the read does not give stays known;
   `store` keeps it in `local_library/achievements/<runner>/<app>.json` plus
-  `index.json` (in backups, so a new PC starts with the history);
+  `index.json` (in backups, so a new PC starts with the history). Unknown
+  fields in games, provider sets and achievements survive a read/write;
+  refreshes retain unknown fields on matching sets and achievement IDs,
+  with fresh values taking precedence;
   `accounts` the RetroAchievements account and Steam key
   (`local_library/achievement-accounts.json`, 0600, a backup's sign-ins);
   `prefs` Settings → Achievements (`achievements.json` in the app state);
