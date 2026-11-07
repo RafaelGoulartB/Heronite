@@ -11,7 +11,7 @@ use gpui_kit::*;
 use super::epic::FocusEpic;
 use super::focus::{panel, Layout};
 use super::game_facts::{Backup, Linux};
-use super::vm::{AgeVm, FocusVm};
+use super::vm::FocusVm;
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
@@ -371,7 +371,7 @@ impl CollectionView {
             rows.push(fact_row(tr!("Score"), value).into_any_element());
         }
         if vm.age_shown {
-            rows.push(age_row(vm.age.as_ref()));
+            rows.push(self.age_row(vm.age.as_ref(), cx));
         }
         // Filters the collection by the store the game comes from.
         let key = vm.key.clone();
@@ -421,7 +421,7 @@ impl CollectionView {
     }
 }
 
-fn fact_row(label: &'static str, value: Div) -> Div {
+pub(super) fn fact_row(label: &'static str, value: Div) -> Div {
     div()
         .flex()
         .items_center()
@@ -431,35 +431,6 @@ fn fact_row(label: &'static str, value: Div) -> Div {
         .text_size(px(13.))
         .child(div().flex_none().text_color(theme::ink_a(0.66)).child(label))
         .child(value.min_w_0().truncate().text_color(theme::ink_a(0.94)))
-}
-
-/// "Age rating": the board and its code on a chip coloured by age; what it
-/// means and why in the tooltip.
-fn age_row(age: Option<&AgeVm>) -> AnyElement {
-    let Some(age) = age else {
-        return fact_row(tr!("Age rating"), div().text_color(theme::ink_a(0.66)).child(tr!("Unrated")))
-            .id("focus-age")
-            .tooltip(tooltip(tr!("No age rating was found for this game.")))
-            .into_any_element();
-    };
-    let tone = theme::age_tone(age.min_age);
-    let value = div()
-        .flex()
-        .items_center()
-        .justify_end()
-        .gap(px(8.))
-        .child(div().text_size(px(12.)).text_color(theme::ink_a(0.6)).child(age.board.clone()))
-        .child(
-            div()
-                .px(px(7.))
-                .rounded(px(5.))
-                .bg(Rgba { a: 0.16, ..tone })
-                .font_weight(theme::W_BOLD)
-                .text_color(theme::readable(tone))
-                .child(age.badge.clone()),
-        );
-    let tip = if age.reasons.is_empty() { age.title.to_string() } else { format!("{}\n{}", age.title, age.reasons) };
-    fact_row(tr!("Age rating"), value).id("focus-age").tooltip(tooltip(tip)).into_any_element()
 }
 
 /// A facts row that does something on click: pointer and a faint highlight

@@ -1,6 +1,7 @@
 {
   "Age rating": "Altersfreigabe",
   "Age ratings": "Altersfreigaben",
+  "Age ratings hidden. Turn them back on in Settings → Metadata.": "Altersfreigaben ausgeblendet. In Einstellungen → Metadaten wieder einschalten.",
   "Ages": "Alter",
   "Ages up to": "Alter bis",
   "Ages {age} and up": "Ab {age} Jahren",
@@ -11,8 +12,10 @@
   "Automatic ({board})": "Automatisch ({board})",
   "Brazil": "Brasilien",
   "by {board}": "nach {board}",
+  "Could not save the setting: {err}": "Die Einstellung konnte nicht gespeichert werden: {err}",
   "Europe": "Europa",
   "Germany": "Deutschland",
+  "Hide age ratings": "Altersfreigaben ausblenden",
   "In a game's facts and Details.": "In den Angaben und Details jedes Spiels.",
   "Japan": "Japan",
   "No age rating was found for this game.": "Für dieses Spiel wurde keine Altersfreigabe gefunden.",

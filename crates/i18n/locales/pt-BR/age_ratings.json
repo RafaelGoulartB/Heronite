@@ -1,6 +1,7 @@
 {
   "Age rating": "Classificação",
   "Age ratings": "Classificação etária",
+  "Age ratings hidden. Turn them back on in Settings → Metadata.": "Classificação etária oculta. Reative em Configurações → Metadados.",
   "Ages": "Idade",
   "Ages up to": "Idade até",
   "Ages {age} and up": "A partir de {age} anos",
@@ -11,8 +12,10 @@
   "Automatic ({board})": "Automático ({board})",
   "Brazil": "Brasil",
   "by {board}": "padrão {board}",
+  "Could not save the setting: {err}": "Não foi possível salvar o ajuste: {err}",
   "Europe": "Europa",
   "Germany": "Alemanha",
+  "Hide age ratings": "Ocultar classificação etária",
   "In a game's facts and Details.": "Nas informações e em Detalhes de cada jogo.",
   "Japan": "Japão",
   "No age rating was found for this game.": "Nenhuma classificação etária foi encontrada para este jogo.",
