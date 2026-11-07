@@ -76,6 +76,8 @@ pub(super) struct Facts {
     ratings_loading: bool,
     /// Star under the pointer (preview of a new rating).
     pub rating_hover: Option<u8>,
+    /// The "Age rating" row is pointed at: its hide button shows.
+    pub age_hovered: bool,
     pub status_open: bool,
     /// The other ways to install, under the Install button.
     pub install_menu_open: bool,

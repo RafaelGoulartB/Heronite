@@ -2,6 +2,8 @@
 //! an eye on the row's right while pointed at turns Settings → Metadata →
 //! "Show age ratings" off, with a toast that says where it comes back.
 
+use std::time::Duration;
+
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::settings;
@@ -14,28 +16,38 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::{icon, tooltip};
 
-const ROW_GROUP: &str = "focus-age-row";
-
 impl CollectionView {
     /// The board and its code on a chip coloured by age (what it means and
     /// why in the tooltip), or "Unrated".
     pub(super) fn age_row(&self, age: Option<&AgeVm>, cx: &mut Context<Self>) -> AnyElement {
-        let hide = div()
-            .id("focus-age-hide")
-            // Out of the layout until the row is pointed at: the chip keeps the
-            // row's edge.
-            .hidden()
-            .group_hover(ROW_GROUP, |s| s.flex())
-            .flex_none()
-            .items_center()
-            .justify_center()
-            .size(px(20.))
-            .rounded(px(5.))
-            .cursor_pointer()
-            .hover(|s| s.bg(theme::ink_a(0.1)))
-            .child(icon(Icon::VisibilityOff, px(14.), theme::ink_a(0.6)))
-            .tooltip(tooltip(tr!("Hide age ratings")))
-            .on_click(cx.listener(|this, _, _, cx| this.set_age_ratings_shown(false, cx)));
+        // Only while the row is pointed at, sliding in from the right so the
+        // chip makes room for it smoothly.
+        let hide = self.facts.age_hovered.then(|| {
+            let button = div()
+                .id("focus-age-hide")
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(20.))
+                .rounded(px(5.))
+                .cursor_pointer()
+                .hover(|s| s.bg(theme::ink_a(0.1)))
+                .child(icon(Icon::VisibilityOff, px(14.), theme::ink_a(0.6)))
+                .tooltip(tooltip(tr!("Hide age ratings")))
+                .on_click(cx.listener(|this, _, _, cx| this.set_age_ratings_shown(false, cx)));
+            let slot = div().flex().flex_none().justify_end().overflow_hidden().child(button);
+            if theme::animations() {
+                slot.with_animation(
+                    "focus-age-hide-in",
+                    Animation::new(Duration::from_millis(160)).with_easing(ease_out_quint()),
+                    |el, t| el.w(px(26. * t)).opacity(t),
+                )
+                .into_any_element()
+            } else {
+                slot.w(px(26.)).into_any_element()
+            }
+        });
         let (value, tip): (Div, SharedString) = match age {
             None => (div().text_color(theme::ink_a(0.66)).child(tr!("Unrated")), tr!("No age rating was found for this game.").into()),
             Some(age) => {
@@ -58,8 +70,17 @@ impl CollectionView {
                 (value, tip)
             }
         };
-        let value = div().flex().items_center().justify_end().gap(px(6.)).child(value).child(hide);
-        fact_row(tr!("Age rating"), value).id("focus-age").group(ROW_GROUP).tooltip(tooltip(tip)).into_any_element()
+        let value = div().flex().items_center().justify_end().child(value).children(hide);
+        fact_row(tr!("Age rating"), value)
+            .id("focus-age")
+            .on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                if this.facts.age_hovered != *hovered {
+                    this.facts.age_hovered = *hovered;
+                    cx.notify();
+                }
+            }))
+            .tooltip(tooltip(tip))
+            .into_any_element()
     }
 
     /// Settings → Metadata → "Show age ratings", saved at once. Hiding says
@@ -75,6 +96,8 @@ impl CollectionView {
             self.show_toast(tr!("Could not save the setting: {err}", err = format!("{err:#}")), true, cx);
             return;
         }
+        // The row goes away under the pointer: no leave event comes.
+        self.facts.age_hovered = false;
         self.reload(cx);
         if on {
             self.toast = None;
