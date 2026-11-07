@@ -15,7 +15,7 @@ use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::{find_steam_binary, SteamLocator};
 use heronite_launch::SystemProbe;
 use heronite_steam::library::ImportReport;
-use heronite_steam::{LibraryAccess, Steam};
+use heronite_steam::{ClientApiFlag, LibraryAccess, Steam};
 
 const FIRST_DELAY: Duration = Duration::from_secs(6);
 /// Until the library was read once: cheap local checks (a pid file, the
@@ -43,6 +43,14 @@ pub fn steam_bin() -> String {
 pub fn steam(paths: &DataPaths) -> Steam {
     let locator = SteamLocator::detect(&GlobalSettings::load(paths), &SystemProbe);
     Steam::new(locator, crate::system::shortcuts::steam_client())
+}
+
+/// Whether the client can be read, why not, and what holds the place of
+/// the flag file (after the check, which creates it when it can). Blocking.
+fn library_check(paths: &DataPaths) -> (LibraryAccess, Option<String>, ClientApiFlag) {
+    let steam = steam(paths);
+    let (access, detail) = steam.library_check();
+    (access, detail, steam.access_flag())
 }
 
 /// Reads the library and joins it. Blocking.
@@ -78,6 +86,9 @@ pub enum SteamState {
     NotAnswering,
     /// Steam was open before Heronite could turn the access on.
     NeedsRestart,
+    /// Steam runs without the access and another tool (Millennium) holds
+    /// the place of its flag file: a restart does not open it.
+    Blocked,
     /// Restarted from here and still without the access: not asked again.
     Failed,
     Reading,
@@ -92,6 +103,9 @@ pub struct SteamLibrary {
     pub last: Option<Result<ImportReport, String>>,
     /// `None` until checked.
     pub access: Option<LibraryAccess>,
+    /// What holds the place of the flag file that opens the access, as of
+    /// the last check (`None` until checked).
+    pub flag: Option<ClientApiFlag>,
     pub summary: Summary,
     /// When Heronite last started Steam.
     opened_at: Option<Instant>,
@@ -117,6 +131,7 @@ impl SteamLibrary {
             syncing: false,
             last: None,
             access: None,
+            flag: None,
             summary: Summary::default(),
             opened_at: None,
             restarting: false,
@@ -158,7 +173,12 @@ impl SteamLibrary {
         self.summary.updated_at.is_none()
             || matches!(
                 self.state(),
-                SteamState::Checking | SteamState::Opening | SteamState::Restarting | SteamState::NotAnswering | SteamState::NeedsRestart
+                SteamState::Checking
+                    | SteamState::Opening
+                    | SteamState::Restarting
+                    | SteamState::NotAnswering
+                    | SteamState::NeedsRestart
+                    | SteamState::Blocked
             )
     }
 
@@ -179,6 +199,7 @@ impl SteamLibrary {
             Some(LibraryAccess::Closed) => SteamState::Closed,
             // Right after the restart, what is left of the old Steam may still show.
             Some(LibraryAccess::NeedsRestart) if self.opened_at.is_some_and(|t| t.elapsed() < SETTLE) => SteamState::Opening,
+            Some(LibraryAccess::NeedsRestart) if self.flag == Some(ClientApiFlag::Blocked) => SteamState::Blocked,
             Some(LibraryAccess::NeedsRestart) if self.restarted => SteamState::Failed,
             Some(LibraryAccess::NeedsRestart) => SteamState::NeedsRestart,
             Some(LibraryAccess::NotInstalled) => SteamState::NotInstalled,
@@ -278,8 +299,9 @@ impl SteamLibrary {
     pub fn check(&mut self, cx: &mut Context<Self>) {
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let (access, detail) = cx.background_spawn(async move { steam(&paths).library_check() }).await;
+            let (access, detail, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
             this.update(cx, |this, cx| {
+                this.flag = Some(flag);
                 this.set_access(access, detail);
                 cx.notify();
             })
@@ -295,8 +317,9 @@ impl SteamLibrary {
         }
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let (access, detail) = cx.background_spawn(async move { steam(&paths).library_check() }).await;
+            let (access, detail, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
             this.update(cx, |this, cx| {
+                this.flag = Some(flag);
                 this.set_access(access, detail);
                 if access == LibraryAccess::Ready {
                     this.run(false, cx);
@@ -349,7 +372,7 @@ mod tests {
     use std::time::Instant;
 
     use heronite_data::DataPaths;
-    use heronite_steam::LibraryAccess;
+    use heronite_steam::{ClientApiFlag, LibraryAccess};
 
     use super::{SteamLibrary, SteamState, Summary, NOT_ANSWERING};
 
@@ -359,6 +382,7 @@ mod tests {
             syncing: false,
             last: None,
             access: None,
+            flag: None,
             summary: Summary::default(),
             opened_at: None,
             restarting: false,
@@ -397,6 +421,27 @@ mod tests {
         assert!(s.set_access(LibraryAccess::Starting, Some("b".into())));
         assert!(s.set_access(LibraryAccess::Closed, None));
         assert!(!s.set_access(LibraryAccess::Closed, None));
+    }
+
+    #[test]
+    fn another_tool_s_stand_in_for_the_flag_is_not_a_restart_away() {
+        let mut s = library();
+        s.set_access(LibraryAccess::NeedsRestart, None);
+        s.flag = Some(ClientApiFlag::On);
+        assert_eq!(s.state(), SteamState::NeedsRestart);
+        s.restarted = true;
+        assert_eq!(s.state(), SteamState::Failed);
+        // Millennium's link: restarting Steam would not open the access.
+        s.flag = Some(ClientApiFlag::Blocked);
+        assert_eq!(s.state(), SteamState::Blocked);
+        s.restarted = false;
+        assert_eq!(s.state(), SteamState::Blocked);
+        // Followed closely, so the access is noticed once the tool lets it open.
+        s.summary.updated_at = Some("2026-11-07T10:00:00Z".into());
+        assert!(s.awaiting());
+        // Steam closed or answering: the flag changes nothing.
+        s.set_access(LibraryAccess::Ready, None);
+        assert_eq!(s.state(), SteamState::Connected);
     }
 
     #[test]
