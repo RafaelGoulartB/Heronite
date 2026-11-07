@@ -46,6 +46,7 @@ heronite-steam = { path = "../crates/steam" }
 heronite-xbox = { path = "../crates/xbox" }
 heronite-storage = { path = "../crates/storage" }
 dirs = "6"
+notify = "8"
 notify-rust = "4"
 gilrs = "0.11"
 shlex = "1"
