@@ -29,6 +29,8 @@ pub enum Source {
     Default,
     GdkDpiScale,
     QtScaleFactor,
+    // Read on Linux only; the label is shared.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     GnomeLargeText,
     // Read on Windows only; the label is shared.
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -71,6 +73,7 @@ fn env_factor(name: &str, source: Source) -> Option<SystemScale> {
 }
 
 /// `gsettings`' `1.25` (GNOME writes doubles as plain numbers).
+#[cfg(any(test, target_os = "linux"))]
 fn parse_gsettings_double(out: &str) -> Option<f32> {
     out.trim().trim_start_matches("double ").parse().ok()
 }
