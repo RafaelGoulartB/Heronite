@@ -180,8 +180,10 @@ impl CollectionView {
                     ),
             );
             let launch = lib.launch_copy(key).map(|g| g.key.clone());
-            for (i, g) in copies.iter().enumerate() {
-                card = card.child(self.copy_row(g, i == 0, group.chosen, launch.as_deref() == Some(g.key.as_str()), cx));
+            let details = copies::copy_details(&copies.iter().map(|g| &***g).collect::<Vec<_>>());
+            for (i, (g, detail)) in copies.iter().zip(details).enumerate() {
+                let plays = launch.as_deref() == Some(g.key.as_str());
+                card = card.child(self.copy_row(g, detail, i == 0, group.chosen, plays, cx));
             }
             let key = key.clone();
             card = card.child(
@@ -214,9 +216,11 @@ impl CollectionView {
                     .child(tr!("Possible copies")),
             );
             for g in suggested {
+                // Told apart from the game it is offered for.
+                let detail = lib.get(key).and_then(|own| copies::copy_details(&[&**own, &*g]).pop().flatten());
                 let (key, other) = (key.to_string(), g.key.clone());
                 card = card.child(
-                    row_base(&g).id(SharedString::from(format!("copy-link-{}", g.key))).child(
+                    row_base(&g, detail).id(SharedString::from(format!("copy-link-{}", g.key))).child(
                         div()
                             .id(SharedString::from(format!("copy-link-btn-{}", g.key)))
                             .flex()
@@ -241,7 +245,15 @@ impl CollectionView {
 
     /// One copy: its store, its title when it differs, its own playtime, and
     /// Play / "Make default".
-    fn copy_row(&self, g: &CollectionGame, first: bool, chosen: bool, plays: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn copy_row(
+        &self,
+        g: &CollectionGame,
+        detail: Option<String>,
+        first: bool,
+        chosen: bool,
+        plays: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let key = g.key.clone();
         let default_tip = if first && chosen {
             tr!("The default copy")
@@ -293,14 +305,15 @@ impl CollectionView {
                     this.play_copy(&key, cx);
                 }
             }));
-        row_base(g).id(SharedString::from(format!("copy-{}", g.key))).child(star).child(play)
+        row_base(g, detail).id(SharedString::from(format!("copy-{}", g.key))).child(star).child(play)
     }
 }
 
-/// A copy's store, title (when it is not the Collection's own) and playtime.
-fn row_base(g: &CollectionGame) -> Div {
-    let store_title = g.game.title.trim();
-    let edition = (!store_title.is_empty() && store_title != g.title).then(|| store_title.to_string());
+/// A copy's store (its emulator for a ROM), what tells it apart from the
+/// other copies (`copies::copy_details`: an edition, a region, a ROM's
+/// file) and its playtime.
+fn row_base(g: &CollectionGame, detail: Option<String>) -> Div {
+    let store = copies::store_label(g).to_string();
     div().flex().items_center().gap(px(8.)).py(px(4.)).text_size(px(13.)).child(
         div()
             .flex_1()
@@ -312,10 +325,10 @@ fn row_base(g: &CollectionGame) -> Div {
                     .flex()
                     .items_center()
                     .gap(px(6.))
-                    .child(div().text_color(theme::ink_a(0.94)).child(g.source_label))
+                    .child(div().text_color(theme::ink_a(0.94)).child(store))
                     .when(g.installed, |d| d.child(div().size(px(6.)).rounded_full().bg(theme::success()))),
             )
-            .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.55)).child(match edition {
+            .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.55)).child(match detail {
                 Some(t) => format!("{t} · {}", g.playtime_label()),
                 None => g.playtime_label(),
             })),

@@ -372,6 +372,52 @@ fn play_order(a: &CollectionGame, b: &CollectionGame, preferred: &HashSet<&str>)
         .then_with(|| a.key.cmp(&b.key))
 }
 
+/// The name a copy's store goes by in the Copies list: the emulator's for a
+/// ROM ("mGBA"), else the library's ("GOG", "Epic").
+pub fn store_label(game: &CollectionGame) -> &str {
+    game.meta
+        .as_deref()
+        .filter(|m| m.launch_kind == "emulator")
+        .and_then(|m| m.emulator_name.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(game.source_label)
+}
+
+/// The title a copy goes by in its store (the Collection's when the store has none).
+fn own_title(game: &CollectionGame) -> &str {
+    Some(game.game.title.trim()).filter(|t| !t.is_empty()).unwrap_or(&game.title)
+}
+
+/// The file of a ROM entry (the chosen ROM, else its first).
+fn rom_file(game: &CollectionGame) -> Option<String> {
+    let meta = game.meta.as_deref().filter(|m| m.launch_kind == "emulator")?;
+    let path = meta.selected_rom_path.as_deref().or_else(|| meta.roms.as_ref()?.first().map(|r| r.path.as_str()))?;
+    let name = std::path::Path::new(path.trim()).file_name()?.to_string_lossy().into_owned();
+    Some(name).filter(|n| !n.is_empty())
+}
+
+/// What tells each of `copies` (one game's) apart besides its store, in the
+/// same order: every copy's own title when the titles are not all the same
+/// (case, punctuation and ™/® aside), so an edition or a ROM's region shows;
+/// the file of a ROM whose title another copy shares; `None` when the store
+/// is enough ("HADES" on Epic and "Hades" on GOG).
+pub fn copy_details(copies: &[&CollectionGame]) -> Vec<Option<String>> {
+    let keys: Vec<String> = copies.iter().map(|g| title_key(own_title(g))).collect();
+    let titles_differ = keys.iter().any(|k| *k != keys[0]);
+    copies
+        .iter()
+        .enumerate()
+        .map(|(i, g)| {
+            let shared = keys.iter().enumerate().any(|(j, k)| j != i && *k == keys[i]);
+            match rom_file(g).filter(|_| shared) {
+                Some(file) => Some(file),
+                None => titles_differ.then(|| own_title(g).to_string()),
+            }
+        })
+        .collect()
+}
+
 /// The figures of a group as one game.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Totals {

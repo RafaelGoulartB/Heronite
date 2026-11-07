@@ -287,3 +287,54 @@ fn groups_survive_reloads_and_refreshes_and_every_record_stays() {
     // No other file was written.
     assert_eq!(std::fs::read_to_string(paths.sessions()).unwrap(), sessions);
 }
+
+/// A ROM entry of `emulator` from `file`.
+fn rom(app: &str, title: &str, emulator: &str, file: &str) -> Arc<CollectionGame> {
+    game_with(app, "sideload", |info, _, _, meta, _| {
+        info.title = title.into();
+        meta.source = "emulator".into();
+        meta.launch_kind = "emulator".into();
+        meta.emulator_name = Some(emulator.into());
+        meta.roms = Some(vec![crate::models::LocalGameRom { name: None, path: file.into(), extra: Default::default() }]);
+    })
+}
+
+fn details(copies: &[&Arc<CollectionGame>]) -> Vec<Option<String>> {
+    let copies: Vec<&CollectionGame> = copies.iter().map(|g| &***g).collect();
+    copy_details(&copies)
+}
+
+#[test]
+fn copies_of_one_title_need_only_their_store() {
+    let (gog, epic) = (copy("gog", "1", "Hades", None, None), copy("legendary", "h", "HADES™", None, None));
+    assert_eq!(details(&[&gog, &epic]), [None, None]);
+    assert_eq!(store_label(&gog), "GOG");
+}
+
+#[test]
+fn an_edition_or_a_region_shows_on_every_copy() {
+    let (gog, epic) =
+        (copy("gog", "1", "Fallout 3", None, None), copy("legendary", "f", "Fallout 3: Game of the Year Edition", None, None));
+    assert_eq!(details(&[&gog, &epic]), [Some("Fallout 3".into()), Some("Fallout 3: Game of the Year Edition".into())]);
+
+    let usa = rom("usa", "Advance Wars (USA)", "mGBA", "/roms/gba/Advance Wars (USA).gba");
+    let eur = rom("eur", "Advance Wars (Europe)", "mGBA", "/roms/gba/Advance Wars (Europe).gba");
+    assert_eq!(details(&[&usa, &eur]), [Some("Advance Wars (USA)".into()), Some("Advance Wars (Europe)".into())]);
+    assert_eq!(store_label(&usa), "mGBA");
+}
+
+#[test]
+fn roms_of_one_title_show_their_files() {
+    let a = rom("a", "Advance Wars", "mGBA", "/roms/Advance Wars (USA).gba");
+    let b = rom("b", "Advance Wars", "mGBA", "/roms/Advance Wars (PT-BR patch).gba");
+    let gog = copy("gog", "1", "Advance Wars", None, None);
+    assert_eq!(details(&[&a, &b, &gog]), [Some("Advance Wars (USA).gba".into()), Some("Advance Wars (PT-BR patch).gba".into()), None]);
+    // The ROM the user picked wins over the first one.
+    let picked = game_with("p", "sideload", |info, _, _, meta, _| {
+        info.title = "Advance Wars".into();
+        meta.launch_kind = "emulator".into();
+        meta.roms = Some(vec![crate::models::LocalGameRom { name: None, path: "/roms/disc1.cue".into(), extra: Default::default() }]);
+        meta.selected_rom_path = Some("/roms/disc2.cue".into());
+    });
+    assert_eq!(details(&[&a, &picked])[1].as_deref(), Some("disc2.cue"));
+}
