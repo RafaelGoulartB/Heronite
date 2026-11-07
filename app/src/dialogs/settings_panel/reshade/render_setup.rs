@@ -4,6 +4,7 @@
 //! the install shows its progress there. The drawer scrolls to the card
 //! when it opens or grows, so nothing opens out of sight.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gpui_kit::prelude::*;
@@ -44,6 +45,19 @@ pub(super) fn title_row(title: impl Into<SharedString>, about: impl IntoElement,
 }
 
 /// The small text under a title.
+/// The deepest folder holding every one of `paths`.
+fn common_dir<'a>(paths: impl Iterator<Item = &'a Path>) -> Option<PathBuf> {
+    let mut base: Option<PathBuf> = None;
+    for p in paths {
+        let dir = p.parent()?;
+        base = Some(match base {
+            None => dir.to_path_buf(),
+            Some(b) => b.ancestors().find(|a| dir.starts_with(a))?.to_path_buf(),
+        });
+    }
+    base
+}
+
 pub(super) fn about(text: impl Into<SharedString>) -> Div {
     div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(text.into())
 }
@@ -184,9 +198,7 @@ impl SettingsPanel {
     /// "Change": the executable and the DLL name.
     fn reshade_target_fields(&mut self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let mut out: Vec<AnyElement> = Vec::new();
-        if let Some(f) = self.reshade_exe_select(o, cx) {
-            out.push(f.into_any_element());
-        }
+        out.push(self.reshade_exe_select(o, cx).into_any_element());
         if o.target.as_ref().and_then(|t| t.api) == Some(Api::Dxgi) {
             let current = o.proxy.clone().unwrap_or_default();
             let items = ["dxgi.dll", "d3d11.dll"].iter().map(|n| (SharedString::from(*n), current == *n)).collect();
@@ -393,32 +405,42 @@ impl SettingsPanel {
     }
 
     /// The executable select, when there is another program to pick.
-    pub(super) fn reshade_exe_select(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Option<Div> {
-        let current = o.exe.as_deref().map(file_name).unwrap_or_default();
+    /// The executable ReShade goes with: found (the first entry), one of the
+    /// programs that draw, or any other picked by hand (the last entry). Paths
+    /// read from the folder they share (`platform/steam/PBZ.exe`).
+    pub(super) fn reshade_exe_select(&self, o: &Arc<Overview>, cx: &mut Context<Self>) -> Div {
         let chosen = !self.reshade_settings().target.is_empty();
-        if !chosen && o.candidates.iter().all(|c| o.exe.as_deref() == Some(c.as_path())) {
-            return None;
-        }
-        let mut items: Vec<(SharedString, bool)> = vec![(tr!("The game's executable").into(), !chosen)];
-        let base = o.exe.as_deref().and_then(|e| e.parent()).map(|p| p.to_path_buf());
-        let label = |p: &std::path::Path| -> SharedString {
+        let base = common_dir(o.candidates.iter().map(|c| c.as_path()).chain(o.exe.as_deref()).chain(o.launcher.as_deref()));
+        let label = |p: &Path| -> String {
             base.as_deref()
                 .and_then(|b| p.strip_prefix(b).ok())
                 .map(|r| r.to_string_lossy().into_owned())
+                .filter(|r| !r.is_empty())
                 .unwrap_or_else(|| file_name(p))
-                .into()
         };
-        items.extend(o.candidates.iter().map(|c| (label(c), chosen && o.exe.as_deref() == Some(c.as_path()))));
+        let current = o.exe.as_deref().map(label).unwrap_or_default();
+        let found = match self.reshade_steam() {
+            true => tr!("Found automatically"),
+            false => tr!("The game's executable"),
+        };
+        let mut items: Vec<(SharedString, bool)> = vec![(found.into(), !chosen)];
+        items.extend(o.candidates.iter().map(|c| (label(c).into(), chosen && o.exe.as_deref() == Some(c.as_path()))));
+        let other = chosen && o.exe.as_deref().is_some_and(|e| !o.candidates.iter().any(|c| c == e));
+        items.push((tr!("Other program…").into(), other));
         let list = o.candidates.clone();
-        Some(self.select_row(
+        self.select_row(
             "reshade-exe",
             Some(tr!("Executable")),
             current,
             items,
             self.reshade.busy.is_some(),
             cx,
-            move |this, i, _, cx| this.pick_reshade_exe(if i == 0 { None } else { list.get(i - 1).cloned() }, cx),
-        ))
+            move |this, i, window, cx| match i {
+                0 => this.pick_reshade_exe(None, cx),
+                i if i <= list.len() => this.pick_reshade_exe(list.get(i - 1).cloned(), cx),
+                _ => this.browse_reshade_exe(window, cx),
+            },
+        )
     }
 
     pub(super) fn open_reshade_setup(&mut self, cx: &mut Context<Self>) {

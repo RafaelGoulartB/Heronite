@@ -158,6 +158,11 @@ impl SettingsPanel {
         self.reshade_wine().is_some()
     }
 
+    /// Steam starts the game (its folder and programs come from Steam).
+    pub(super) fn reshade_steam(&self) -> bool {
+        self.facts().is_some_and(|f| matches!(f.run_kind, RunKind::Steam | RunKind::SteamDirect))
+    }
+
     /// [`RunKind::reshade`] of the game.
     pub(super) fn reshade_wine(&self) -> Option<bool> {
         match &self.target {

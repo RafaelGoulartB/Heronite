@@ -109,7 +109,7 @@ impl SettingsPanel {
             this.update(cx, |this, cx| {
                 if let Ok(snap) = &res {
                     let parsed = options::parse(&snap.launch_options);
-                    this.settings = parsed.settings;
+                    this.settings = super::with_reshade_keys(parsed.settings, &this.settings);
                     if let Some(st) = this.steam.as_mut() {
                         st.line = snap.launch_options.clone();
                         st.editable = parsed.editable;
@@ -178,7 +178,7 @@ impl SettingsPanel {
             return;
         }
         let parsed = options::parse(&text);
-        self.settings = parsed.settings;
+        self.settings = super::with_reshade_keys(parsed.settings, &self.settings);
         self.steam_mut().editable = parsed.editable;
         self.steam_send_line(text, cx);
     }

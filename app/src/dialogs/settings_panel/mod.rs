@@ -79,6 +79,13 @@ enum Bind {
 /// Prefix of the ReShade settings keys (`heronite_launch::reshade::KEY_*`).
 const RESHADE_KEYS: &str = heronite_launch::reshade::KEY_ENABLED;
 
+/// `parsed` (a Steam game's launch options as settings) with the ReShade
+/// keys of `current`, which the line does not hold.
+fn with_reshade_keys(mut parsed: Settings, current: &Settings) -> Settings {
+    parsed.extend(current.iter().filter(|(k, _)| k.starts_with(RESHADE_KEYS)).map(|(k, v)| (k.clone(), v.clone())));
+    parsed
+}
+
 const fn s(key: &'static str) -> Bind {
     Bind::Str { key, trim: true }
 }
@@ -229,8 +236,12 @@ impl SettingsPanel {
             Target::Defaults => None,
         };
         let settings = match &target {
-            // Filled from Steam once it is read.
-            _ if steam_app.is_some() => heronite_steam::options::defaults(),
+            // Filled from Steam once it is read; ReShade's keys are ours.
+            Target::Game(f) if steam_app.is_some() => {
+                let mut s = heronite_steam::options::defaults();
+                s.extend(game_config::load_game(&paths, &f.app_name, &home).into_iter().filter(|(k, _)| k.starts_with(RESHADE_KEYS)));
+                s
+            }
             Target::Game(f) => game_config::load_game(&paths, &f.app_name, &home),
             Target::Defaults => game_config::load_global(&paths, &home),
         };
@@ -505,10 +516,12 @@ impl SettingsPanel {
             return;
         }
         if self.is_steam() {
-            // Not in Steam's line: ReShade's own files say what it is, and
-            // its overrides are written into the line on their own.
+            // Not in Steam's line but in the game's config here: its
+            // overrides are written into the line on their own.
             if key.starts_with(RESHADE_KEYS) {
-                self.settings.insert(key.to_string(), value);
+                self.settings.insert(key.to_string(), value.clone());
+                self.queue.push((key.to_string(), value));
+                self.flush(cx);
                 return cx.notify();
             }
             return self.steam_set(key, value, cx);
@@ -537,11 +550,13 @@ impl SettingsPanel {
     pub(super) fn set_all(&mut self, values: Vec<(&str, Value)>, cx: &mut Context<Self>) {
         let mut changed: Vec<(&str, Value)> = values.into_iter().filter(|(k, v)| self.settings.get(*k) != Some(v)).collect();
         if self.is_steam() {
-            // As in `set`: not in Steam's line.
+            // As in `set`: not in Steam's line but in the game's config.
             for (k, v) in changed.extract_if(.., |(k, _)| k.starts_with(RESHADE_KEYS)) {
-                self.settings.insert(k.to_string(), v);
-                cx.notify();
+                self.settings.insert(k.to_string(), v.clone());
+                self.queue.push((k.to_string(), v));
             }
+            self.flush(cx);
+            cx.notify();
         }
         let Some((last_key, last)) = changed.pop() else { return };
         if self.is_steam() {

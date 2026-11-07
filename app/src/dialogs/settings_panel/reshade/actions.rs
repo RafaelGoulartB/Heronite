@@ -375,6 +375,20 @@ impl SettingsPanel {
         self.load_reshade(false, cx);
     }
 
+    /// "Choose…" / "Other program…": any program of the game, picked in a
+    /// file dialog.
+    pub(super) fn browse_reshade_exe(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        choose_path(window, cx, false, tr!("Choose the program that draws the game (.exe)"), |this: &mut Self, path, _, cx| {
+            let path = PathBuf::from(path);
+            if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) {
+                this.reshade.message = Some((tr!("ReShade goes next to a Windows program: choose the game's .exe.").into(), true));
+                return cx.notify();
+            }
+            this.reshade.message = None;
+            this.pick_reshade_exe(Some(path), cx);
+        });
+    }
+
     /// "Change…": the executable ReShade is for.
     pub(super) fn pick_reshade_exe(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) {
         let v = path.map(|p| Value::String(p.to_string_lossy().into_owned())).unwrap_or(Value::String(String::new()));

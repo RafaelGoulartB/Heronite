@@ -109,19 +109,28 @@ impl SettingsPanel {
         let exe = o.exe.as_deref().map(file_name).unwrap_or_default();
         let mut r = rows();
         match &o.state {
+            // Never a dead end: the program can always be picked by hand.
             State::NoExecutable => {
-                r = r.child(row(
-                    "ReShade",
-                    Some(tr!("Choose the game's executable in the Launch tab first: ReShade goes next to it.")),
-                    div(),
-                ));
+                let picked = self.reshade_settings().target;
+                let text = match picked.is_empty() {
+                    true => tr!("Heronite did not find the program that draws the game in its folder. Choose it: ReShade goes next to it.")
+                        .to_string(),
+                    false => tr!(
+                        "{file} is not a Windows program Heronite can read. Choose the game's .exe.",
+                        file = file_name(std::path::Path::new(&picked))
+                    )
+                    .to_string(),
+                };
+                let busy = self.reshade.busy.is_some();
+                let choose = self.outline_button("reshade-choose-exe", tr!("Choose…"), !busy, cx, |this, window, cx| {
+                    this.browse_reshade_exe(window, cx)
+                });
+                r = r.child(row("ReShade", Some(&text), choose));
             }
             State::Launcher => {
                 let text = tr!("{exe} does not draw the game (it looks like a launcher). Pick the executable that does.", exe);
                 r = r.child(row("ReShade", Some(&text), div()));
-                if let Some(f) = self.reshade_exe_select(o, cx) {
-                    r = r.field(f);
-                }
+                r = r.field(self.reshade_exe_select(o, cx));
             }
             State::Unsupported(Api::Vulkan) => {
                 let text = match cfg!(windows) {
@@ -132,9 +141,7 @@ impl SettingsPanel {
                     ),
                 };
                 r = r.child(row("ReShade", Some(&text), div()));
-                if let Some(f) = self.reshade_exe_select(o, cx) {
-                    r = r.field(f);
-                }
+                r = r.field(self.reshade_exe_select(o, cx));
             }
             State::Unsupported(_) => {
                 let text =
