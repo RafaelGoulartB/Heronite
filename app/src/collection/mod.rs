@@ -3,6 +3,7 @@
 mod achievements;
 mod actions;
 mod add_game;
+mod age_rows;
 mod backdrop;
 mod card;
 mod clients;
@@ -108,6 +109,8 @@ enum ToastAction {
     ReviewDuplicates,
     /// Opens "Launch problem" with this report.
     LaunchProblem(std::sync::Arc<crate::diagnosis::Report>),
+    /// Shows the age ratings just hidden again.
+    ShowAgeRatings,
 }
 
 pub struct CollectionView {
@@ -451,7 +454,10 @@ impl CollectionView {
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::accent_tint_border()))
                             .child(match &action {
-                                ToastAction::Undo | ToastAction::RestoreNote(..) | ToastAction::RestoreLeftOff(..) => {
+                                ToastAction::Undo
+                                | ToastAction::RestoreNote(..)
+                                | ToastAction::RestoreLeftOff(..)
+                                | ToastAction::ShowAgeRatings => {
                                     heronite_i18n::tr!("Undo")
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
@@ -492,6 +498,7 @@ impl CollectionView {
                                         this.toast = None;
                                         this.journal_restore_left_off(key.clone(), (**left).clone(), cx);
                                     }
+                                    ToastAction::ShowAgeRatings => this.set_age_ratings_shown(true, cx),
                                 }
                                 cx.notify();
                             }))

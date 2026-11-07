@@ -13,7 +13,7 @@ use heronite_launch::reshade::{self, Facts};
 
 use super::CollectionView;
 use crate::dialogs::settings_panel::logic::RunKind;
-use crate::dialogs::settings_panel::GameFacts;
+use crate::dialogs::settings_panel::{GameFacts, ReshadePlace as Place};
 
 /// How long an answer stays good (a game installed or changed meanwhile is
 /// seen again after it).
@@ -27,25 +27,25 @@ thread_local! {
 /// Whether ReShade fits `game` (blocking: reads its files).
 fn check(paths: &DataPaths, game: &Game) -> bool {
     let facts = GameFacts::of(game);
-    let wine = facts.run_kind == RunKind::Wine;
-    if !wine && !(cfg!(windows) && facts.run_kind == RunKind::Native) {
-        return false;
-    }
+    let Some(wine) = facts.run_kind.reshade() else { return false };
+    let install = &game.game.install;
+    let steam = game.steam_launch_id.as_deref().filter(|_| matches!(facts.run_kind, RunKind::Steam | RunKind::SteamDirect));
+    // A Steam game's Linux build is a Linux game: no ReShade.
+    let Some(place) = Place::find(paths, steam, install.install_path.clone(), install.executable.clone(), wine) else { return false };
     let home = std::env::var("HOME").unwrap_or_default();
     let settings = heronite_data::game_config::load_game(paths, &game.app_name, &home);
     let rs = reshade::ReShade::from_map(&settings);
     let target_exe = settings.get("targetExe").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let install = &game.game.install;
     let f = Facts {
         game_id: &game.app_name,
         title: &game.title,
         steam_app_id: facts.protondb_id.as_deref(),
-        install_path: install.install_path.as_deref(),
-        executable: install.executable.as_deref(),
+        install_path: place.install_path.as_deref(),
+        executable: place.executable.as_deref(),
         target_exe: &target_exe,
         settings: &rs,
         env_options: &[],
-        wine,
+        wine: place.wine,
     };
     reshade::fits(paths, &f)
 }

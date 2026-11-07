@@ -129,6 +129,7 @@ pub(super) fn view_query(ui: &UiState, search: &str) -> ViewQuery {
         descending: ui.sort_descending,
         favourites_only: ui.only.favourites,
         offline_only: ui.only.offline,
+        age: ui.age,
     }
 }
 
@@ -216,6 +217,12 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     if !d.genres.is_empty() {
         rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
     }
+    // Every board that rated it, in the order they are looked for.
+    let age_shown = lib.settings.metadata.show_age_ratings;
+    let boards = if age_shown { age_boards(lib, g) } else { Vec::new() };
+    if !boards.is_empty() {
+        rows.push(DetailRow { label: tr!("Age rating").into(), value: chips(&boards, None), split: true });
+    }
     if let Some(notes) = d.notes.as_ref().filter(|n| !n.is_empty()) {
         rows.push(DetailRow { label: tr!("Notes").into(), value: text(notes), split: true });
     }
@@ -245,6 +252,8 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         overview_html,
         related,
         details: rows,
+        age: age_vm(g),
+        age_shown,
         hltb: fd.hltb.as_ref().filter(|h| h.main_story > 0. || h.main_extra > 0.).map(|h| HltbVm {
             main: Some(h.main_story as f32),
             extra: Some(h.main_extra as f32),
@@ -270,6 +279,27 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         playtime: fd.playtime.clone().into(),
         last_played: last_played.map(Into::into),
     }
+}
+
+/// "ESRB T", "PEGI 12"... of every board that rated `g`, in
+/// [`Library::age_order`].
+fn age_boards(lib: &Library, g: &CollectionGame) -> Vec<String> {
+    let ratings = g.metadata.as_ref().map(|m| m.age_ratings.as_slice()).unwrap_or_default();
+    lib.age_order
+        .iter()
+        .filter_map(|b| ratings.iter().find(|r| r.board() == Some(*b)).map(|r| format!("{} {}", b.name(), r.badge())))
+        .collect()
+}
+
+fn age_vm(g: &CollectionGame) -> Option<AgeVm> {
+    let shown = g.age_rating.as_ref()?;
+    Some(AgeVm {
+        board: shown.board().map_or("", |b| b.name()).into(),
+        badge: shown.badge().into(),
+        title: shown.title().into(),
+        reasons: shown.descriptors.join(", ").into(),
+        min_age: shown.min_age(),
+    })
 }
 
 fn is_pc_platform(name: &str) -> bool {

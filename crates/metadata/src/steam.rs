@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use heronite_data::age_rating::{self, AgeRating, RatingSystem};
 use heronite_data::art::{steam_hero_download_urls, steam_library_cover, steam_library_hero};
 use heronite_data::focus::steam_language;
 use heronite_data::models::CollectionGameMetadata;
@@ -54,6 +55,10 @@ pub struct SteamAppDetails {
     /// that only this field gives (the plain CDN paths are 404).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub header_image: Option<String>,
+    /// `ratings` and `required_age`; `None` in a file written before they
+    /// were read, which is then fetched again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub age_ratings: Option<Vec<AgeRating>>,
     /// Milliseconds since the epoch (`Date.now()`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fetched_at: Option<i64>,
@@ -128,8 +133,36 @@ pub fn map_details(steam_app_id: &str, language: &str, data: &Value) -> Option<S
         website: non_empty(js_str(data, "website")),
         store_url: format!("https://store.steampowered.com/app/{steam_app_id}"),
         header_image: non_empty(js_str(data, "header_image")),
+        age_ratings: Some(age_ratings(data)),
         fetched_at: None,
     })
+}
+
+/// The boards in `ratings` (`{"esrb": {"rating": "t", "descriptors":
+/// "Blood\r\nViolence"}, ...}`), Steam's own stand-ins after them, then the
+/// age the store page asks for.
+fn age_ratings(data: &Value) -> Vec<AgeRating> {
+    let text = |v: Option<&Value>| match v {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Number(n)) => n.to_string(),
+        _ => String::new(),
+    };
+    let mut found = Vec::new();
+    if let Some(boards) = data.get("ratings").and_then(Value::as_object) {
+        let mut keys: Vec<&String> = boards.keys().collect();
+        keys.sort_by_key(|k| k.starts_with("steam_"));
+        for key in keys {
+            let (Some(system), entry) = (RatingSystem::from_steam(key), &boards[key.as_str()]) else { continue };
+            let descriptors = entry
+                .get("descriptors")
+                .and_then(Value::as_str)
+                .map(|d| d.split(['\r', '\n']).map(str::to_owned).collect())
+                .unwrap_or_default();
+            found.extend(AgeRating::new(system, &text(entry.get("rating")), descriptors));
+        }
+    }
+    found.extend(AgeRating::new(RatingSystem::Steam, &text(data.get("required_age")), Vec::new()));
+    age_rating::merge([found.as_slice()])
 }
 
 fn read_cache(path: &Path) -> Option<SteamAppDetails> {
@@ -192,7 +225,7 @@ pub fn get_steam_app_details(
 
 /// [`get_steam_app_details`] that also says when Steam could not be reached.
 /// An unreachable Steam is not remembered as missing: the next call asks again.
-fn lookup_steam_app_details(
+pub(crate) fn lookup_steam_app_details(
     paths: &DataPaths,
     http: &Http,
     state: &SteamState,
@@ -207,7 +240,7 @@ fn lookup_steam_app_details(
     let language = steam_language(language.unwrap_or(heronite_i18n::current().code()));
     let key = format!("{steam_app_id}:{language}");
     let file = paths.steam_details(steam_app_id, language);
-    let fresh = |c: &SteamAppDetails| c.fetched_at.is_some_and(|t| now_ms() - t < CACHE_MS);
+    let fresh = |c: &SteamAppDetails| c.age_ratings.is_some() && c.fetched_at.is_some_and(|t| now_ms() - t < CACHE_MS);
     // A stale cache still beats a failed fetch.
     let stale_or = |cached: Option<SteamAppDetails>, miss: Lookup<SteamAppDetails>| match cached {
         Some(c) => Lookup::Found(strip_fetched(c)),
@@ -278,6 +311,7 @@ pub fn metadata_from_details(app_name: &str, runner: &str, steam_app_id: &str, d
     md.websites = unique_names([d.website.as_deref(), Some(d.store_url.as_str())], 3);
     md.cover_url = steam_cdn_cover(Some(steam_app_id));
     md.hero_url = steam_cdn_hero(Some(steam_app_id));
+    md.age_ratings = d.age_ratings.clone().unwrap_or_default();
     if let Some(header) = &d.header_image {
         md.extra.insert(HEADER_URL.into(), Value::String(header.clone()));
     }
@@ -420,6 +454,35 @@ mod tests {
         // The store header is kept for cards whose CDN art is missing.
         let header = d.header_image.as_deref().expect("fixture has header_image");
         assert_eq!(md.extra.get(HEADER_URL).and_then(Value::as_str), Some(header));
+        // USK from the board itself (Steam's German 6 is a stand-in), DEJUS
+        // as ClassInd, no age check (`required_age` 0), unknown boards left out.
+        let mut ratings: Vec<(String, String)> = md.age_ratings.iter().map(|r| (r.system.clone(), r.rating.clone())).collect();
+        ratings.sort();
+        assert_eq!(ratings, [("classind".to_string(), "10".to_string()), ("usk".to_string(), "12".to_string())]);
+        assert_eq!(md.age_ratings.iter().find(|r| r.system == "classind").unwrap().descriptors, ["Violência"]);
+    }
+
+    #[test]
+    fn age_check_and_descriptors_of_a_mature_game() {
+        let data = serde_json::json!({
+            "name": "x", "short_description": "y", "required_age": "17",
+            "ratings": {"esrb": {"rating": "m", "descriptors": "Blood and Gore\r\nIntense Violence", "required_age": "17"},
+                        "oflc": {"rating": "r18"}, "steam_australia": {"rating": "MA15"}, "igrs": {"rating": "BANNED"}},
+        });
+        let d = map_details("1", "english", &data).unwrap();
+        let ratings = d.age_ratings.unwrap();
+        let esrb = ratings.iter().find(|r| r.system == "esrb").unwrap();
+        assert_eq!((esrb.rating.as_str(), esrb.descriptors.len()), ("M", 2));
+        assert_eq!(ratings.iter().find(|r| r.system == "acb").unwrap().rating, "R18+", "the board before Steam's stand-in");
+        assert_eq!(ratings.iter().find(|r| r.system == "steam").unwrap().rating, "17");
+        assert_eq!(ratings.len(), 3);
+    }
+
+    #[test]
+    fn a_cache_without_ratings_is_fetched_again() {
+        let old = r#"{"steamAppId":"400","language":"english","name":"Portal","storeUrl":"u","fetchedAt":99999999999999}"#;
+        let d: SteamAppDetails = serde_json::from_str(old).unwrap();
+        assert!(d.age_ratings.is_none());
     }
 
     #[test]

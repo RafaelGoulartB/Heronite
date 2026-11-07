@@ -20,11 +20,14 @@ pub struct Prefs {
     /// The emulators play in hardcore mode (no save states, rewind or
     /// cheats; hardcore points).
     pub hardcore: bool,
+    /// Achievements that games keep in their own files (the open-source
+    /// Steam API emulators' saves), for DRM-free and offline copies.
+    pub game_files: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { notify: false, timeline: true, hide_secrets: true, emulators: true, hardcore: false }
+        Self { notify: false, timeline: true, hide_secrets: true, emulators: true, hardcore: false, game_files: false }
     }
 }
 

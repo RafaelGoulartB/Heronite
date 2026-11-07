@@ -146,7 +146,10 @@ leaked it and logged errors); see its `PATCHES.md`.
   downloaded into `<data>/tools/reshade`), keeps what it wrote in
   `<data>/reshade/<game>.json` so switching, updating, removing and adopting a
   manual install only touch Heronite's files, and adds `<dll>=n,b` to
-  `WINEDLLOVERRIDES` at launch while it is on (never failing the launch). It
+  `WINEDLLOVERRIDES` at launch while it is on (never failing the launch; a
+  Steam game under Proton has it in its Steam launch options instead, and
+  `reshade::steam` finds a Steam game's folder and tells its Windows build
+  from its Linux one, which gets no ReShade). It
   warns about anti-cheats and refuses games ReShade's list bans. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as

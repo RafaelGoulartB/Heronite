@@ -284,6 +284,29 @@ mod tests {
     }
 
     #[test]
+    fn the_game_files_choice_and_set_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let set = AchievementSet {
+            source: Source::Local,
+            external_id: "480".into(),
+            title: None,
+            fetched_at: Utc::now(),
+            achievements: vec![Achievement { id: "a".into(), unlocked: true, ..Default::default() }],
+            groups: Vec::new(),
+            unknown: Default::default(),
+        };
+        let pin = crate::model::LocalPin { folder: Some("/games/x".into()), app_id: Some("480".into()), off: false };
+        let game = GameAchievements { sets: vec![set], local: Some(pin), ..Default::default() };
+        write(&paths, "sideload", "x", &game, &[Source::Local]).unwrap();
+        assert_eq!(read(&paths, "sideload", "x"), game);
+        let doc = json_of(&game_file(&paths, "sideload", "x"));
+        assert_eq!(doc["sets"][0]["source"], "local");
+        assert_eq!(doc["local"], serde_json::json!({"folder": "/games/x", "appId": "480"}));
+        assert_eq!(read_index(&paths).games["sideload_x"].source, Source::Local);
+    }
+
+    #[test]
     fn a_copy_with_nothing_unknown_is_written_as_before() {
         let game: GameAchievements = serde_json::from_str(
             r#"{"sets": [{"source": "steam", "externalId": "1", "fetchedAt": "2026-10-01T10:00:00Z", "achievements": []}]}"#,

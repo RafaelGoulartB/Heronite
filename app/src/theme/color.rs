@@ -364,6 +364,20 @@ pub fn rarity_colour(tier: RarityTier) -> Rgba {
     }
 }
 
+/// An age rating chip's colour by the youngest age it is for (`None` =
+/// pending): green for young children, then yellow, orange and red, muted so
+/// the facts card does not shout (darker on the light theme).
+pub fn age_tone(min_age: Option<u8>) -> Rgba {
+    let light = super::scheme::is_light();
+    match min_age {
+        None => text_muted(),
+        Some(0..=7) => rgb(if light { 0x3d7558 } else { 0x9cc7ae }),
+        Some(8..=12) => rgb(if light { 0x766634 } else { 0xd3c48f }),
+        Some(13..=16) => rgb(if light { 0x85593a } else { 0xd6ab89 }),
+        Some(_) => rgb(if light { 0x8c4b4b } else { 0xd69a9a }),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RarityTier {
     UltraRare,

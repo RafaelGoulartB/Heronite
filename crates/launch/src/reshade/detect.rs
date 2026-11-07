@@ -197,19 +197,59 @@ pub fn target(exe: &Path, compat: Option<&Compat>) -> Result<Target, String> {
     })
 }
 
-/// Subfolders where games keep the real executable next to a launcher.
-const EXE_FOLDERS: [&str; 5] = ["", "Binaries/Win64", "Binaries/Win32", "bin", "x64"];
+/// How deep below the game's folder its programs are looked for: Unreal's
+/// `<Project>/Binaries/Win64` is three folders down.
+const EXE_DEPTH: usize = 3;
+/// Folders read at most while looking (a game's data can hold thousands).
+const MAX_FOLDERS: usize = 400;
 
-/// Windows programs of `dir` (and its usual subfolders) that import a
-/// graphics API, biggest first: the choices when the game's executable is
-/// a launcher.
+/// Folders whose programs are not the game: redistributables, anti-cheats,
+/// installers, crash reporters and Unreal's engine tools.
+fn not_the_game(folder: &str) -> bool {
+    const NAMES: [&str; 14] = [
+        "engine",
+        "_commonredist",
+        "commonredist",
+        "redist",
+        "redistributables",
+        "directx",
+        "vcredist",
+        "dotnet",
+        "easyanticheat",
+        "battleye",
+        "__installer",
+        "installer",
+        "support",
+        "prerequisites",
+    ];
+    let f = folder.to_ascii_lowercase();
+    NAMES.contains(&f.as_str()) || f.starts_with("crashreport") || f.starts_with("crashpad")
+}
+
+/// Windows programs of `dir` and its subfolders (down to [`EXE_DEPTH`],
+/// past what is [`not_the_game`]) that import a graphics API, biggest
+/// first: the choices when the game's executable is a launcher, or when it
+/// is not known (a Steam game, where the real program may sit in
+/// `<Project>/Binaries/Win64` or `platform/steam`).
 pub fn candidates(dir: &Path) -> Vec<PathBuf> {
     let mut found: Vec<(u64, PathBuf)> = Vec::new();
-    for sub in EXE_FOLDERS {
-        let folder = sub.split('/').filter(|p| !p.is_empty()).fold(dir.to_path_buf(), |d, p| d.join(p));
+    let mut queue: std::collections::VecDeque<(PathBuf, usize)> = [(dir.to_path_buf(), 0)].into();
+    let mut read = 0;
+    while let Some((folder, depth)) = queue.pop_front() {
+        read += 1;
+        if read > MAX_FOLDERS {
+            break;
+        }
         let Ok(entries) = std::fs::read_dir(&folder) else { continue };
+        let mut subfolders = Vec::new();
         for e in entries.flatten() {
             let path = e.path();
+            if e.file_type().is_ok_and(|t| t.is_dir()) {
+                if depth < EXE_DEPTH && !not_the_game(&e.file_name().to_string_lossy()) {
+                    subfolders.push(path);
+                }
+                continue;
+            }
             if !path.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe")) {
                 continue;
             }
@@ -220,6 +260,8 @@ pub fn candidates(dir: &Path) -> Vec<PathBuf> {
                 found.push((meta.len(), path));
             }
         }
+        subfolders.sort();
+        queue.extend(subfolders.into_iter().map(|p| (p, depth + 1)));
     }
     found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     found.into_iter().map(|(_, p)| p).collect()
@@ -350,6 +392,40 @@ mod tests {
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(bin.join("small.exe"), pe_with(MACHINE_X64, &["d3d9.dll"], None, 0x10_0000)).unwrap();
         assert_eq!(candidates(dir.path()), [dir.path().join("FL_2027.exe"), bin.join("small.exe")]);
+    }
+
+    #[test]
+    fn unreal_games_keep_theirs_under_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Game.exe"), pe_with(MACHINE_X64, &["kernel32.dll"], None, 0x10_0000)).unwrap();
+        let win64 = dir.path().join("Game").join("Binaries").join("Win64");
+        std::fs::create_dir_all(&win64).unwrap();
+        std::fs::write(win64.join("Game-Win64-Shipping.exe"), pe_with(MACHINE_X64, &["d3d12.dll"], None, 0x10_0000)).unwrap();
+        // The engine's own programs (crash reporter...) are not the game.
+        let engine = dir.path().join("Engine").join("Binaries").join("Win64");
+        std::fs::create_dir_all(&engine).unwrap();
+        std::fs::write(engine.join("CrashReportClient.exe"), pe_with(MACHINE_X64, &["d3d11.dll"], None, 0x10_0000)).unwrap();
+        assert_eq!(candidates(dir.path()), [win64.join("Game-Win64-Shipping.exe")]);
+    }
+
+    #[test]
+    fn a_program_deeper_in_the_folder_is_found() {
+        // Phantom Blade Zero: steam/PBZ.exe starts platform/steam/PBZ.exe.
+        let dir = tempfile::tempdir().unwrap();
+        let launcher = dir.path().join("steam");
+        let game = dir.path().join("platform").join("steam");
+        std::fs::create_dir_all(&launcher).unwrap();
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::write(launcher.join("PBZ.exe"), pe_with(MACHINE_X64, &["kernel32.dll"], None, 0x10_0000)).unwrap();
+        std::fs::write(game.join("PBZ.exe"), pe_with(MACHINE_X64, &["dxgi.dll"], None, 0x10_0000)).unwrap();
+        let redist = dir.path().join("_CommonRedist").join("DirectX");
+        std::fs::create_dir_all(&redist).unwrap();
+        std::fs::write(redist.join("DXSETUP.exe"), pe_with(MACHINE_X86, &["d3d9.dll"], None, 0x10_0000)).unwrap();
+        // Too deep: a game's data, not its program.
+        let deep = dir.path().join("a").join("b").join("c").join("d");
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(deep.join("tool.exe"), pe_with(MACHINE_X64, &["d3d11.dll"], None, 0x10_0000)).unwrap();
+        assert_eq!(candidates(dir.path()), [game.join("PBZ.exe")]);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 //! The View menu's panel: search box with tokens, then either the results
-//! or Presets / Sort / Group by / Show / Only / Browse / Manage, and a footer
+//! or Presets / Sort / Group by / Show / Only / Ages up to / Browse / Manage, and a footer
 //! with the count and "Reset all".
 
 use gpui_kit::component::input::Input;
@@ -77,7 +77,7 @@ enum ViewAction {
 }
 
 impl CollectionView {
-    fn vm_density(&self) -> Density {
+    pub(super) fn vm_density(&self) -> Density {
         if self.view_menu.compact {
             Density::COMPACT
         } else {
@@ -103,6 +103,7 @@ impl CollectionView {
                     .child(self.vm_group(d, cx))
                     .child(self.vm_sort(d, cx))
                     .child(self.vm_only(cx))
+                    .child(self.vm_age(cx))
                     .child(self.vm_browse(cx))
                     .child(self.vm_manage(cx))
             });
@@ -700,7 +701,7 @@ fn plain_row(id: impl Into<ElementId>, lit: bool) -> Stateful<Div> {
 }
 
 /// Square checkbox of a results row (the row takes the click).
-fn check(on: bool) -> Div {
+pub(super) fn check(on: bool) -> Div {
     div()
         .flex()
         .flex_none()
@@ -713,7 +714,7 @@ fn check(on: bool) -> Div {
         .when(!on, |d| d.border_color(theme::ink_a(0.28)))
 }
 
-fn count_label(n: usize) -> Div {
+pub(super) fn count_label(n: usize) -> Div {
     div().flex_none().text_size(px(12.)).text_color(theme::text_dim()).child(n.to_string())
 }
 

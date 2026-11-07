@@ -6,8 +6,8 @@
 
 mod community;
 mod kv;
-mod local;
-mod web;
+pub(crate) mod local;
+pub(crate) mod web;
 
 use std::collections::HashMap;
 use std::fs;
@@ -68,7 +68,9 @@ fn fetch_from(ctx: &Ctx, bases: &Bases, locator: &SteamLocator, app_id: &str) ->
             let (Some(key), Some(account)) = (key, account) else {
                 return match community::schema(ctx.http, bases.community, app_id, web_lang) {
                     Ok(schema) if schema.entries.is_empty() => Fetch::None,
-                    Ok(schema) => Fetch::Set(build(app_id, &schema, None, &web::rarity(ctx.http, bases.api, app_id), bases.cdn)),
+                    Ok(schema) => {
+                        Fetch::Set(build(Source::Steam, app_id, &schema, None, &web::rarity(ctx.http, bases.api, app_id), bases.cdn))
+                    }
                     Err(e) => Fetch::Failed(format!("Steam Community: {e}")),
                 };
             };
@@ -87,7 +89,30 @@ fn fetch_from(ctx: &Ctx, bases: &Bases, locator: &SteamLocator, app_id: &str) ->
         return Fetch::None;
     }
     let rarity = web::rarity(ctx.http, bases.api, app_id);
-    Fetch::Set(build(app_id, &schema, unlocks.as_ref(), &rarity, bases.cdn))
+    Fetch::Set(build(Source::Steam, app_id, &schema, unlocks.as_ref(), &rarity, bases.cdn))
+}
+
+/// The list of a game's achievements wherever Steam has it, for a source
+/// that knows the unlocks but not the names: the client's files on this
+/// PC, else the Web API with the user's key, else the game's public page on
+/// Steam Community. `Ok(None)` when the game has none.
+pub(crate) fn schema_of(ctx: &Ctx, app_id: &str) -> Result<Option<Schema>, String> {
+    let locator = SteamLocator::detect(&GlobalSettings::load(ctx.paths), &SystemProbe);
+    let bases = Bases { api: API_BASE, cdn: CDN_BASE, community: community::COMMUNITY_BASE };
+    schema_from(ctx, &bases, &locator, app_id)
+}
+
+fn schema_from(ctx: &Ctx, bases: &Bases, locator: &SteamLocator, app_id: &str) -> Result<Option<Schema>, String> {
+    let installs: Vec<Install> = locator.installs().into_iter().map(|root| Install { root, account: None }).collect();
+    let web_lang = local::web_language(ctx.lang);
+    let schema = match read_schema(&installs, app_id, ctx.lang) {
+        Some(schema) => schema,
+        None => match ctx.accounts.steam_web_api_key.as_deref().filter(|k| !k.is_empty()) {
+            Some(key) => web::schema(ctx.http, bases.api, key, app_id, web_lang).map_err(|e| format!("Steam: {e}"))?,
+            None => community::schema(ctx.http, bases.community, app_id, web_lang).map_err(|e| format!("Steam Community: {e}"))?,
+        },
+    };
+    Ok((!schema.entries.is_empty()).then_some(schema))
 }
 
 /// The first readable schema of the game among the installs.
@@ -122,8 +147,9 @@ fn read_unlocks(installs: &[Install], schema: &Schema, app_id: &str) -> Option<U
 
 /// An icon file name of the client's schema becomes its CDN URL; the Web API
 /// already gives URLs.
-fn icon_url(cdn: &str, app_id: &str, icon: &str) -> String {
-    if icon.is_empty() || icon.starts_with("http") {
+pub(crate) fn icon_url(cdn: &str, app_id: &str, icon: &str) -> String {
+    // A file of the game's own (game files) stays a file.
+    if icon.is_empty() || icon.starts_with("http") || std::path::Path::new(icon).is_absolute() {
         icon.to_string()
     } else {
         format!("{cdn}/steamcommunity/public/images/apps/{app_id}/{icon}")
@@ -153,10 +179,18 @@ fn achievement(entry: &Entry, app_id: &str, unlocks: Option<&Unlocks>, rarity: &
     }
 }
 
-fn build(app_id: &str, schema: &Schema, unlocks: Option<&Unlocks>, rarity: &HashMap<String, f32>, cdn: &str) -> AchievementSet {
+/// A set of `source` from a Steam schema and what is unlocked.
+pub(crate) fn build(
+    source: Source,
+    app_id: &str,
+    schema: &Schema,
+    unlocks: Option<&Unlocks>,
+    rarity: &HashMap<String, f32>,
+    cdn: &str,
+) -> AchievementSet {
     let achievements = schema.entries.iter().map(|e| achievement(e, app_id, unlocks, rarity, cdn)).collect();
     AchievementSet {
-        source: Source::Steam,
+        source,
         external_id: app_id.into(),
         title: None,
         fetched_at: Utc::now(),
@@ -239,7 +273,7 @@ mod tests {
             Entry { api: "B".into(), group: None, ..Default::default() },
         ]);
         schema.groups = vec![crate::model::AchievementGroup { id: "2".into(), name: "Single Player".into(), ..Default::default() }];
-        let set = build("620", &schema, None, &HashMap::new(), "https://cdn.test");
+        let set = build(Source::Steam, "620", &schema, None, &HashMap::new(), "https://cdn.test");
         assert_eq!(set.groups, schema.groups);
         assert_eq!(set.achievements[0].group.as_deref(), Some("2"));
         assert_eq!(set.achievements[0].icon, "https://cdn.test/steamcommunity/public/images/apps/620/on.jpg");

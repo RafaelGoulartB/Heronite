@@ -12,6 +12,7 @@ pub mod testing;
 pub mod text;
 
 pub mod added;
+pub mod age_rating;
 pub mod anticheat;
 pub mod appearance;
 pub mod art;

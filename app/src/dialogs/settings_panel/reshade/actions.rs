@@ -129,7 +129,7 @@ impl SettingsPanel {
             _ => None,
         };
         let Some(proxy) = manual.clone().or_else(|| o.proxy.clone()) else { return };
-        let wine = self.facts().is_some_and(|f| f.run_kind == super::super::logic::RunKind::Wine);
+        let wine = self.reshade_wine() == Some(true);
         let req = Request {
             game_id: self.reshade_id(),
             compiler: wine && target.api.is_some_and(|a| a.uses_d3dcompiler()),
@@ -304,11 +304,16 @@ impl SettingsPanel {
 
     pub(super) fn remove_reshade(&mut self, cx: &mut Context<Self>) {
         let id = self.reshade_id();
+        // Gone from the next read: a Steam line's overrides go now.
+        let dlls = self.reshade.overview.as_ref().and_then(|o| o.manifest.as_ref()).map(super::reshade_dlls).unwrap_or_default();
         self.reshade_op(
             tr!("Removing ReShade…").to_string(),
             cx,
             move |ops| manage::remove(ops.paths, &id, &|p: &Path| trash::delete(p).map_err(|e| format!("{}: {e}", p.display()))),
-            |this, removal, cx| {
+            move |this, removal, cx| {
+                if this.reshade_wine() == Some(true) {
+                    this.steam_reshade_overrides(&dlls, false, cx);
+                }
                 this.set_all(
                     vec![
                         (reshade::KEY_ENABLED, Value::Null),
@@ -368,6 +373,20 @@ impl SettingsPanel {
             .collect();
         self.set("enviromentOptions", Value::Array(list), cx);
         self.load_reshade(false, cx);
+    }
+
+    /// "Choose…" / "Other program…": any program of the game, picked in a
+    /// file dialog.
+    pub(super) fn browse_reshade_exe(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        choose_path(window, cx, false, tr!("Choose the program that draws the game (.exe)"), |this: &mut Self, path, _, cx| {
+            let path = PathBuf::from(path);
+            if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("exe")) {
+                this.reshade.message = Some((tr!("ReShade goes next to a Windows program: choose the game's .exe.").into(), true));
+                return cx.notify();
+            }
+            this.reshade.message = None;
+            this.pick_reshade_exe(Some(path), cx);
+        });
     }
 
     /// "Change…": the executable ReShade is for.
