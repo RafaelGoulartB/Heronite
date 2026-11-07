@@ -106,10 +106,15 @@ impl CollectionView {
         }
     }
 
-    /// Puts the game under `key` in `name`, or takes it out.
+    /// Puts the game under `key` in `name`, or takes it out (every copy
+    /// while they are grouped).
     pub(super) fn set_game_category(&mut self, key: &str, name: &str, on: bool, cx: &mut Context<Self>) {
-        let Some(g) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
-        if let Err(err) = categories::set_in_category(&self.data_paths, name, &g.runner, &g.app_name, on) {
+        let games = self.with_copies(key);
+        if games.is_empty() {
+            return;
+        }
+        let writes: Vec<_> = games.iter().map(|g| (g.runner.clone(), g.app_name.clone(), on)).collect();
+        if let Err(err) = categories::set_many_in_category(&self.data_paths, name, &writes) {
             self.show_toast(tr!("Could not change the categories: {err}", err = format!("{err:#}")), true, cx);
         }
         self.reload_categories(cx);

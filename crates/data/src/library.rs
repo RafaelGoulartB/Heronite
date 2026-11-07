@@ -29,6 +29,7 @@ use serde_json::Value;
 
 use crate::age_rating::{self, AgeRating, RatingSystem};
 use crate::collection::{game_facets, GameFacets};
+use crate::copies::{CopiesFile, CopyGroups, Totals};
 use crate::focus::Details;
 use crate::json_store;
 use crate::models::*;
@@ -456,6 +457,7 @@ fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
         paths.timestamps(),
         paths.store_config(),
         paths.steam_owned(),
+        paths.copies(),
     ]
 }
 
@@ -472,6 +474,8 @@ pub struct Library {
     pub statuses: Vec<CompletionStatus>,
     pub settings: EffectiveSettings,
     pub date_locale: DateLocale,
+    /// Games owned in several stores ([`crate::copies`]).
+    pub copies: CopyGroups,
     /// The boards in the order a game's rating is looked for (Settings →
     /// Metadata → Age rating, else the interface language's).
     pub age_order: Vec<RatingSystem>,
@@ -722,7 +726,9 @@ impl Library {
         }
 
         let index = games.iter().enumerate().map(|(i, g)| (g.key.clone(), i)).collect();
+        let copies = crate::copies::groups(&games, &CopiesFile::read(paths));
         Ok(Library {
+            copies,
             paths: paths.clone(),
             date_locale: DateLocale::from_language(&settings.language),
             games,
@@ -738,6 +744,27 @@ impl Library {
     /// A game by its `runner_appName` key.
     pub fn get(&self, key: &str) -> Option<&Arc<CollectionGame>> {
         self.index.get(key).map(|i| &self.games[*i])
+    }
+
+    /// The copies of the game `key` in their play order (the default first);
+    /// just the game when it has no other copy.
+    pub fn copies_of(&self, key: &str) -> Vec<&Arc<CollectionGame>> {
+        match self.copies.get(key) {
+            Some(group) => group.members.iter().filter_map(|k| self.get(k)).collect(),
+            None => self.get(key).into_iter().collect(),
+        }
+    }
+
+    /// The copy that Play starts for the game `key`: the first installed copy
+    /// in the play order, else the game itself (whose Play installs it).
+    pub fn launch_copy(&self, key: &str) -> Option<&Arc<CollectionGame>> {
+        let copies = self.copies_of(key);
+        copies.iter().find(|g| g.installed).or_else(|| copies.iter().find(|g| g.key == key)).copied()
+    }
+
+    /// The game's figures with every copy (see [`crate::copies::totals`]).
+    pub fn copy_totals(&self, key: &str) -> Totals {
+        crate::copies::totals(self.copies_of(key).into_iter().map(|g| &**g))
     }
 
     /// True when any file the library was built from changed since [`Library::load`]
@@ -800,6 +827,8 @@ pub(crate) mod tests_support {
         pub offline: Option<bool>,
         /// The store's own title, when the Collection shows another one.
         pub store_title: Option<String>,
+        /// A Steam entry (`steam-uri`) of this app id.
+        pub steam_launch: Option<String>,
     }
 
     pub fn game(app: &str, title: &str, f: impl FnOnce(&mut Spec)) -> Arc<CollectionGame> {
@@ -829,8 +858,15 @@ pub(crate) mod tests_support {
                 ..Default::default()
             })
         });
-        let meta = spec.status.clone().map(|s| {
-            Arc::new(LocalGameMeta { app_name: app.into(), runner: "sideload".into(), completion_status_id: Some(s), ..Default::default() })
+        let meta = (spec.status.is_some() || spec.steam_launch.is_some()).then(|| {
+            Arc::new(LocalGameMeta {
+                app_name: app.into(),
+                runner: "sideload".into(),
+                completion_status_id: spec.status.clone(),
+                launch_kind: if spec.steam_launch.is_some() { "steam-uri".into() } else { String::new() },
+                steam_app_id: spec.steam_launch.clone(),
+                ..Default::default()
+            })
         });
         let timestamp = TimestampEntry {
             first_played: spec.first_played.clone(),

@@ -103,7 +103,10 @@ impl CollectionView {
     /// "Install" of the focus panel, the context menu and console mode: the
     /// store's install, or the manual one when the store has none.
     pub(super) fn install_or_play(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
+        let lib = self.lib.clone();
+        let game = lib.as_deref().and_then(|l| self.copy_to_play(l, key)).cloned();
+        let key = game.as_ref().map_or(key, |g| g.key.as_str()).to_owned();
+        let key = key.as_str();
         if let Some(g) = game.filter(|g| !self.playing.contains_key(&g.app_name)) {
             if store_install_label(&g).is_none() && can_install_manually(&g) {
                 self.open_manual_install(key, window, cx);

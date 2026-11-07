@@ -212,6 +212,7 @@ pub fn card(
                 .when(glow, |d| d.child(div().absolute().inset_0().rounded(px(r)).bg(theme::white_a(0.07))))
                 .children(s.epic.as_ref().map(|e| super::epic::card_overlay(e, r)))
                 .children((vm.hidden || look.badges && vm.favourite).then(|| top_badges(vm.hidden, look.badges && vm.favourite)))
+                .children((vm.copies > 1 && s.pick.is_none()).then(|| copies_badge(vm.copies)))
                 .children(ring.map(|color| {
                     div()
                         .absolute()
@@ -294,6 +295,27 @@ fn top_badges(hidden: bool, favourite: bool) -> Div {
         .text_color(theme::white_a(0.9))
         .when(hidden, |d| d.child(tag().child(icon(Icon::VisibilityOff, px(11.), theme::white_a(0.9))).child(tr!("Hidden"))))
         .when(favourite, |d| d.child(tag().px(px(4.)).child(icon(Icon::Star, px(12.), theme::rgb_a(255, 209, 102, 1.)))))
+}
+
+/// The number of copies on the top-right of the cover of a game owned in
+/// several stores (the selection's tick takes that corner while picking).
+fn copies_badge(copies: usize) -> Div {
+    div()
+        .absolute()
+        .top(px(6.))
+        .right(px(6.))
+        .flex()
+        .items_center()
+        .gap(px(3.))
+        .px(px(5.))
+        .py(px(2.))
+        .rounded(px(4.))
+        .bg(theme::black_a(0.62))
+        .text_size(px(10.5))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::white_a(0.9))
+        .child(icon(Icon::ContentCopy, px(11.), theme::white_a(0.9)))
+        .child(copies.to_string())
 }
 
 /// The playtime, or the value the list is sorted by (`CardVm::caption`).

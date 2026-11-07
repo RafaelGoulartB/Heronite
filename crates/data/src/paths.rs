@@ -137,6 +137,10 @@ impl DataPaths {
     pub fn status_history(&self) -> PathBuf {
         self.j("local_library/status-history.json")
     }
+    /// Copies of one game from several stores ([`crate::copies`]).
+    pub fn copies(&self) -> PathBuf {
+        self.j("local_library/copies.json")
+    }
     /// The actions users add to their games ([`crate::game_actions`]).
     pub fn game_actions(&self) -> PathBuf {
         self.j("local_library/actions.json")

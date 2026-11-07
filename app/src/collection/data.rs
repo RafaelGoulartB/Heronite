@@ -25,7 +25,8 @@ fn parse_hex(hex: &str) -> Rgba {
 }
 
 /// A card whose caption is `caption` instead of the playtime.
-fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> Arc<CardVm> {
+/// `copies`: the game's copies when the card stands for all of them (none otherwise).
+fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>, copies: &[&Game]) -> Arc<CardVm> {
     Arc::new(CardVm {
         key: g.key.clone().into(),
         title: g.title.clone().into(),
@@ -36,11 +37,12 @@ fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> 
             stars: None,
             tint: None,
         }),
-        installed: g.installed,
+        installed: g.installed || copies.iter().any(|c| c.installed),
         playing,
         hidden: g.hidden,
         favourite: g.favourite,
         cover_key: g.key.clone().into(),
+        copies: copies.len(),
     })
 }
 
@@ -141,11 +143,15 @@ pub(super) fn build_groups(
     launch_step: &dyn Fn(&str) -> Option<SharedString>,
     organize: &Organize,
 ) -> Vec<GroupVm> {
-    let filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
+    let mut filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
+    if ui.group_copies {
+        filtered = lib.copies.collapse(filtered);
+    }
+    let copies = |g: &Game| if ui.group_copies && lib.copies.get(&g.key).is_some() { lib.copies_of(&g.key) } else { Vec::new() };
     let card = |g: &Game| {
         // A launch that is preparing says its step under the cover.
         let step = launch_step(&g.key).map(|text| Caption { icon: Icon::Refresh, text, muted: false, stars: None, tint: None });
-        card_vm_with(g, is_playing(&g.key), step.or_else(|| chosen_caption(g, lib, ui, organize)))
+        card_vm_with(g, is_playing(&g.key), step.or_else(|| chosen_caption(g, lib, ui, organize)), &copies(g))
     };
     let icon = group_icon(ui.group_by);
     organize::group_games(&filtered, ui.group_by, organize)

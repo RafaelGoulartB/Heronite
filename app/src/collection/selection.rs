@@ -191,6 +191,13 @@ impl CollectionView {
         self.sel.keys.iter().filter_map(|k| lib.get(k).cloned()).collect()
     }
 
+    /// The selected games and, while copies are grouped, their other copies:
+    /// what a batch change writes to.
+    pub(super) fn selected_with_copies(&self) -> Vec<Arc<CollectionGame>> {
+        let mut seen = HashSet::new();
+        self.selected_games().iter().flat_map(|g| self.with_copies(&g.key)).filter(|g| seen.insert(g.key.clone())).collect()
+    }
+
     /// Replaces the selection (unknown and repeated keys dropped).
     pub(super) fn set_selection(&mut self, keys: Vec<SharedString>) {
         let Some(lib) = self.lib.clone() else { return };
@@ -419,7 +426,7 @@ impl CollectionView {
     }
 
     pub(super) fn batch_status(&mut self, status_id: String, cx: &mut Context<Self>) {
-        let games = self.selected_games();
+        let games = self.selected_with_copies();
         if games.is_empty() {
             return;
         }
@@ -450,17 +457,24 @@ impl CollectionView {
         let step = (self.sel.steps.get(&name).copied().unwrap_or(0) + 1) % cyc.len();
         self.sel.steps.insert(name.clone(), step);
         let to = cyc[step];
-        let writes: Vec<(String, String, bool)> = games
-            .iter()
-            .map(|g| {
-                let on = match to {
-                    Step::All => true,
-                    Step::None => false,
-                    Step::AsWas => orig.contains(g.key.as_str()),
-                };
-                (g.runner.clone(), g.app_name.clone(), on)
-            })
-            .collect();
+        // Every copy of a picked card follows that card (see `with_copies`).
+        let mut seen = HashSet::new();
+        let mut all = Vec::new();
+        let mut writes: Vec<(String, String, bool)> = Vec::new();
+        for g in &games {
+            let on = match to {
+                Step::All => true,
+                Step::None => false,
+                Step::AsWas => orig.contains(g.key.as_str()),
+            };
+            for c in self.with_copies(&g.key) {
+                if seen.insert(c.key.clone()) {
+                    writes.push((c.runner.clone(), c.app_name.clone(), on));
+                    all.push(c);
+                }
+            }
+        }
+        let games = all;
         let on = writes.iter().map(|(_, _, on)| *on).collect();
         let undo = self.snapshot(After::Categories { name: name.clone(), on }, &games);
         let n = games.len();
@@ -475,7 +489,7 @@ impl CollectionView {
     /// Adds every selected game to the favourites, or takes them all out when
     /// they all are.
     pub(super) fn batch_favourite(&mut self, cx: &mut Context<Self>) {
-        let games = self.selected_games();
+        let games = self.selected_with_copies();
         if games.is_empty() {
             return;
         }
@@ -495,7 +509,7 @@ impl CollectionView {
     /// Hides every selected game (they leave the list unless hidden games
     /// are shown), or shows them again when they all are hidden.
     pub(super) fn batch_hide(&mut self, cx: &mut Context<Self>) {
-        let games = self.selected_games();
+        let games = self.selected_with_copies();
         if games.is_empty() {
             return;
         }

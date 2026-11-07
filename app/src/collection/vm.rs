@@ -33,6 +33,9 @@ pub(super) struct CardVm {
     pub favourite: bool,
     /// Index into the images the view keeps (cover chain id).
     pub cover_key: SharedString,
+    /// How many copies of the game (from several stores) this card stands
+    /// for; `0` when it is the only one.
+    pub copies: usize,
 }
 
 #[derive(Clone)]
@@ -248,6 +251,7 @@ mod tests {
                 hidden: false,
                 favourite: false,
                 cover_key: "".into(),
+                copies: 0,
             })
         };
         GroupVm {
