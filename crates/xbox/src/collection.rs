@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use anyhow::Result;
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
-use heronite_data::xbox::{LastSync, XboxPrefs, LAUNCH_KIND, SOURCE};
+use heronite_data::xbox::{LastSync, XboxPrefs, LAUNCH_KIND, SOURCE, TITLE_ID_KEY};
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Map, Value};
 
@@ -48,7 +48,7 @@ fn entry(app: &str, game: &XboxGame) -> GameInfo {
 }
 
 fn meta(app: &str, game: &XboxGame, status: &str) -> LocalGameMeta {
-    LocalGameMeta {
+    let mut meta = LocalGameMeta {
         app_name: app.to_string(),
         runner: "sideload".into(),
         source: SOURCE.into(),
@@ -58,7 +58,23 @@ fn meta(app: &str, game: &XboxGame, status: &str) -> LocalGameMeta {
         launcher_args: Some(game.aumid()),
         completion_status_id: Some(status.to_string()),
         ..Default::default()
+    };
+    set_title_id(&mut meta, game);
+    meta
+}
+
+/// Writes the game's title id into its metadata (or takes out one its files
+/// no longer name). Whether that changed anything.
+fn set_title_id(meta: &mut LocalGameMeta, game: &XboxGame) -> bool {
+    let current = meta.extra.get(TITLE_ID_KEY).and_then(Value::as_str);
+    if current == game.title_id.as_deref() {
+        return false;
     }
+    match &game.title_id {
+        Some(id) => meta.extra.insert(TITLE_ID_KEY.into(), json!(id)),
+        None => meta.extra.remove(TITLE_ID_KEY),
+    };
+    true
 }
 
 /// Sets on an existing sideload entry what an update may have changed.
@@ -105,6 +121,9 @@ pub fn sync(paths: &DataPaths, games: &[XboxGame]) -> Result<Report> {
                     let aumid = game.aumid();
                     if m.launcher_args.as_deref() != Some(aumid.as_str()) {
                         m.launcher_args = Some(aumid);
+                        changed.insert(info.app_name.clone());
+                    }
+                    if set_title_id(m, game) {
                         changed.insert(info.app_name.clone());
                     }
                 }
@@ -202,6 +221,8 @@ mod tests {
             title: title.into(),
             folder: std::env::temp_dir().join("XboxGames").join(title).join("Content"),
             store_id: None,
+            title_id: None,
+            package: format!("{family}_1.0.0.0_x64__"),
         }
     }
 
@@ -247,6 +268,16 @@ mod tests {
         assert!(!lib.get("sideload_xbox_studio_sea_abc").unwrap().installed, "stays, not installed");
         let m = lib.get("sideload_xbox_studio_forza_abc").unwrap().meta.clone().unwrap();
         assert_eq!(m.launcher_args.as_deref(), Some("Studio.Forza_abc!Launcher"));
+        assert!(!m.extra.contains_key(TITLE_ID_KEY));
+
+        // Its files now name its title id.
+        let mut forza = game("Studio.Forza_abc", "Forza Horizon 5");
+        forza.app_id = "Launcher".into();
+        forza.title_id = Some("79FC11E1".into());
+        assert_eq!(sync(&paths, std::slice::from_ref(&forza)).unwrap(), Report { added: 0, updated: 1 });
+        let m = Library::load(&paths).unwrap().get("sideload_xbox_studio_forza_abc").unwrap().meta.clone().unwrap();
+        assert_eq!(m.extra.get(TITLE_ID_KEY), Some(&json!("79FC11E1")));
+        assert_eq!(sync(&paths, &[forza]).unwrap(), Report::default());
     }
 
     #[test]

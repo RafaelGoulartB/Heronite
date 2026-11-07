@@ -3,10 +3,14 @@
 //! Collection. The service reads them a few seconds after the start, then
 //! every few minutes, and when asked (the Xbox page, the refresh button).
 //! A read walks the registry and a few small files; nothing is started.
+//! After a read, the games with no size yet (or updated since) are measured
+//! in the background (`heronite_xbox::size`), one at a time.
 //! The Collection reloads on [`XboxLibraryEvent::Synced`].
 //!
 //! `HERONITE_DISABLE_IDLE_JOBS` turns the timer off.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_kit::*;
@@ -33,6 +37,10 @@ pub struct Found {
 pub struct XboxLibrary {
     paths: DataPaths,
     pub syncing: bool,
+    /// A measure of the games' sizes runs.
+    measuring: bool,
+    /// Set when the service goes away: a measure stops.
+    stop: Arc<AtomicBool>,
     /// `None` until the first read.
     pub found: Option<Found>,
     /// The last read the user asked for (automatic ones are quiet).
@@ -51,7 +59,7 @@ fn sync_blocking(paths: &DataPaths) -> Result<(Report, Found), String> {
 
 impl XboxLibrary {
     pub fn new(paths: DataPaths, cx: &mut Context<Self>) -> Self {
-        let this = Self { paths, syncing: false, found: None, last: None };
+        let this = Self { paths, syncing: false, measuring: false, stop: Arc::new(AtomicBool::new(false)), found: None, last: None };
         if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::supported(heronite_platform::Feature::XboxStore) {
             cx.spawn(async move |this, cx| {
                 cx.background_executor().timer(FIRST_DELAY).await;
@@ -89,6 +97,7 @@ impl XboxLibrary {
                 this.syncing = false;
                 let outcome = match res {
                     Ok((report, found)) => {
+                        this.measure(found.games.clone(), cx);
                         this.found = Some(found);
                         cx.emit(XboxLibraryEvent::Synced(report));
                         Ok(report)
@@ -109,6 +118,34 @@ impl XboxLibrary {
         cx.notify();
     }
 
+    /// Measures the games with no size yet, or updated since, and has the
+    /// Collection reload when one got a size.
+    fn measure(&mut self, games: Vec<XboxGame>, cx: &mut Context<Self>) {
+        if self.measuring || games.is_empty() {
+            return;
+        }
+        self.measuring = true;
+        let (paths, stop) = (self.paths.clone(), self.stop.clone());
+        cx.spawn(async move |this, cx| {
+            let res = cx
+                .background_spawn(async move {
+                    let format = |bytes: u64| heronite_epic::util::file_size(bytes as f64);
+                    heronite_xbox::size::measure(&paths, &games, &format, &|| stop.load(Ordering::Relaxed))
+                })
+                .await;
+            this.update(cx, |this, cx| {
+                this.measuring = false;
+                match res {
+                    Ok(0) => {}
+                    Ok(n) => cx.emit(XboxLibraryEvent::Synced(Report { added: 0, updated: n })),
+                    Err(e) => log::warn!("Xbox games: measuring their size: {e:#}"),
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// The user took one of the Xbox app's games out of the Collection.
     pub fn note_removed(&mut self, app_name: &str, cx: &mut Context<Self>) {
         let (paths, app_name) = (self.paths.clone(), app_name.to_string());
@@ -118,6 +155,12 @@ impl XboxLibrary {
             }
         })
         .detach();
+    }
+}
+
+impl Drop for XboxLibrary {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
     }
 }
 
