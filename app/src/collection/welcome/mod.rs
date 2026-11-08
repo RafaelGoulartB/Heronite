@@ -262,7 +262,12 @@ impl CollectionView {
 
     fn welcome_left(&self, cx: &mut Context<Self>) -> Div {
         let (steam_button, steam_note) = self.steam_action(cx);
-        let steam = source_row(Icon::CloudSync, "Steam".into(), self.steam_status(cx), steam_button, steam_note, true);
+        // A click opens the Steam page of the Stores.
+        let steam = source_row(Icon::CloudSync, "Steam".into(), self.steam_status(cx), steam_button, steam_note, true)
+            .id("welcome-steam")
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::accent_alpha(0.11)).border_color(theme::accent_alpha(0.4)))
+            .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Steam, window, cx)));
         let store = |id: &'static str, page: Page, name: &'static str, tint: (u8, u8, u8)| {
             tile(id, Icon::Storefront, name, tr!("Log in").into(), tint)
                 .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
