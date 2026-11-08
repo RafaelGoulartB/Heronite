@@ -59,8 +59,3 @@ pub struct AudioState {
     /// Other apps playing, in backend enumeration order.
     pub apps: Vec<AppAudio>,
 }
-
-/// Windows exposes no documented API for changing the default endpoint.
-pub const fn device_switching_supported() -> bool {
-    !cfg!(windows)
-}

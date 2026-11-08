@@ -21,5 +21,5 @@
   "Supported over windowed and borderless games. Exclusive fullscreen is not supported.": "Compatível com jogos em janela ou sem bordas. Tela cheia exclusiva não é compatível.",
   "The same shortcut closes it. The panel takes keyboard focus: arrows, Enter, Esc and Q / E for the tabs. Games using raw input may still receive keys.": "O mesmo atalho fecha o painel. Ele recebe o foco do teclado: setas, Enter, Esc e Q / E para as abas. Jogos que leem a entrada diretamente ainda podem receber as teclas.",
   "Windows audio devices are not available.": "Os dispositivos de áudio do Windows não estão disponíveis.",
-  "Windows does not block controller input: the game also receives Back + Start and the buttons used in the overlay.": "O Windows não bloqueia os comandos do controle: o jogo também recebe Back + Start e os botões usados no overlay."
+  "Windows cannot block the controller: the game also receives Back + Start. The open panel takes the focus, which keeps its buttons out of most games; games that read the controller in the background still receive them.": "O Windows não consegue bloquear o controle: o jogo também recebe Back + Start. O painel aberto fica com o foco, o que mantém seus botões fora da maioria dos jogos; jogos que leem o controle em segundo plano ainda os recebem."
 }

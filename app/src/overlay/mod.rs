@@ -8,8 +8,9 @@
 //! work), so it works with the main window closed to the tray. While a game
 //! runs and the overlay is on, `heronite_overlay::input` reads the
 //! controllers on its own thread. Linux grabs them while the panel is open
-//! or Guide is held. Windows uses Back+Start as Guide through XInput and
-//! cannot prevent the game from receiving the same buttons.
+//! or Guide is held. Windows uses Back+Start as Guide through XInput, which
+//! has no grab: the open panel takes the foreground instead, and most games
+//! stop reading the controller in the background.
 //!
 //! Settings can let it open with no game running too ("without a game"):
 //! then the input thread and the shortcut run while the app does, and the
@@ -25,8 +26,8 @@
 //! the keyboard until it closes, so it can be driven without a controller.
 //!
 //! Windows uses native topmost tool windows over borderless/windowed games,
-//! not exclusive fullscreen. Its keyboard default is Ctrl+Shift+G; notices
-//! never activate. Linux uses Wayland layer-shell surfaces ([`window`]);
+//! not exclusive fullscreen. Its keyboard default is Ctrl+Shift+G; the panel
+//! takes the foreground however it opened, notices never activate. Linux uses Wayland layer-shell surfaces ([`window`]);
 //! desktops without layer-shell (GNOME, X11) cannot show them.
 
 mod debug;
@@ -65,6 +66,10 @@ const HIDE_BEFORE_CAPTURE: Duration = Duration::from_millis(300);
 const ICON_PX: f32 = 44.;
 /// An achievement's notice waits this long at most for its icon.
 const ICON_WAIT: Duration = Duration::from_millis(1500);
+/// Windows: how long after the panel opens it checks that it still has the
+/// foreground ([`heronite_platform::overlay_window::FocusReturn::hold`]).
+#[cfg(windows)]
+const FOREGROUND_CHECK: Duration = Duration::from_millis(250);
 
 /// A game launched by the app that is running.
 #[derive(Clone, Debug)]
@@ -472,13 +477,28 @@ impl OverlayService {
                     let handle = opened.handle;
                     cx.spawn(async move |this, cx| match shown.await {
                         Ok(mut focus) => {
-                            this.update(cx, |s, _| {
-                                if s.panel == Some(handle) {
+                            let kept = this
+                                .update(cx, |s, _| {
+                                    if s.panel != Some(handle) {
+                                        return false;
+                                    }
                                     s.focus_return = focus.take();
-                                }
-                            })
-                            .ok();
+                                    s.focus_return.is_some()
+                                })
+                                .unwrap_or(false);
                             drop(focus);
+                            // Something can take the foreground back right after
+                            // (the main window, when the shortcut was pressed
+                            // in it): once more, the keys then reach the panel.
+                            if kept {
+                                cx.background_executor().timer(FOREGROUND_CHECK).await;
+                                this.update(cx, |s, _| {
+                                    if let Some(focus) = s.focus_return.as_ref().filter(|_| s.panel == Some(handle)) {
+                                        focus.hold();
+                                    }
+                                })
+                                .ok();
+                            }
                         }
                         Err(error) => {
                             log::warn!("overlay: cannot show the native panel: {error:#}");

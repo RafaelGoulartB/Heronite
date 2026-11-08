@@ -105,23 +105,13 @@ impl OverlayPanel {
             Some(Some(a)) => a,
         };
         let mut rows = mixer::rows(a, self.game.is_some(), mixer::AUDIO_APPS);
-        if audio::device_switching_supported() {
-            if !a.outputs.is_empty() {
-                let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
-                rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
-            }
-            if !a.inputs.is_empty() {
-                let options: Vec<SharedString> = a.inputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
-                rows.push(Row::choice("input", tr!("Microphone"), options, a.default_input.unwrap_or(0)).icon(Icon::Mic));
-            }
-        } else {
-            // The devices are only shown: they are switched in the system's settings.
-            if let Some(output) = a.default_output.and_then(|i| a.outputs.get(i)) {
-                rows.push(Row::info("output", tr!("Output"), mixer::short_row(&output.description)).icon(Icon::Headphones));
-            }
-            if let Some(input) = a.default_input.and_then(|i| a.inputs.get(i)) {
-                rows.push(Row::info("input", tr!("Microphone"), mixer::short_row(&input.description)).icon(Icon::Mic));
-            }
+        if !a.outputs.is_empty() {
+            let options: Vec<SharedString> = a.outputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
+            rows.push(Row::choice("output", tr!("Output"), options, a.default_output.unwrap_or(0)).icon(Icon::Headphones));
+        }
+        if !a.inputs.is_empty() {
+            let options: Vec<SharedString> = a.inputs.iter().map(|o| mixer::short_row(&o.description).into()).collect();
+            rows.push(Row::choice("input", tr!("Microphone"), options, a.default_input.unwrap_or(0)).icon(Icon::Mic));
         }
         if let Some(muted) = a.mic_muted {
             rows.push(Row::toggle("mic", tr!("Microphone on"), !muted).icon(if muted { Icon::MicOff } else { Icon::Mic }));
