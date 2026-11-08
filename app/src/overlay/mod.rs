@@ -8,8 +8,9 @@
 //! work), so it works with the main window closed to the tray. While a game
 //! runs and the overlay is on, `heronite_overlay::input` reads the
 //! controllers on its own thread. Linux grabs them while the panel is open
-//! or Guide is held. Windows uses Back+Start as Guide through XInput and
-//! cannot prevent the game from receiving the same buttons.
+//! or Guide is held. Windows uses Back+Start as Guide through XInput, which
+//! has no grab: the open panel takes the foreground instead, and most games
+//! stop reading the controller in the background.
 //!
 //! Settings can let it open with no game running too ("without a game"):
 //! then the input thread and the shortcut run while the app does, and the
@@ -25,8 +26,8 @@
 //! the keyboard until it closes, so it can be driven without a controller.
 //!
 //! Windows uses native topmost tool windows over borderless/windowed games,
-//! not exclusive fullscreen. Its keyboard default is Ctrl+Shift+G; notices
-//! never activate. Linux uses Wayland layer-shell surfaces ([`window`]);
+//! not exclusive fullscreen. Its keyboard default is Ctrl+Shift+G; the panel
+//! takes the foreground however it opened, notices never activate. Linux uses Wayland layer-shell surfaces ([`window`]);
 //! desktops without layer-shell (GNOME, X11) cannot show them.
 
 mod debug;

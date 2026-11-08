@@ -59,17 +59,21 @@ does not inject code into games.
 - **Keyboard:** Ctrl+Shift+G by default (saved shortcuts are kept), registered
   only while a game runs, or while "Open it without a game too" is on. The
   existing `RegisterHotKey` backend reports conflicts in Settings. Win+G is
-  normally owned by Xbox Game Bar. A keyboard-opened panel requests focus;
-  closing it returns focus only if the panel still owns it. Windows can
-  refuse foreground requests made without user input; Heronite does not
-  simulate input to bypass that restriction.
+  normally owned by Xbox Game Bar. The panel requests focus however it was
+  opened; closing it returns focus only if the panel still owns it. Windows
+  refuses foreground requests made without user input (a controller read
+  through XInput is none): the request is then repeated with the panel's
+  thread input attached to the foreground window's thread for that call
+  (`AttachThreadInput`). No input is simulated or sent to the game.
 - **Controller:** an XInput controller's Back+Start acts as Guide when both
   go down within 300 ms (a Back held for a game's map stays Back). Tap the
   combination to open/close; hold it with the configured screenshot button,
   a direction for volume, or Y to mark a moment. Real Guide is not exposed
   by documented XInput and can be claimed by Game Bar or Steam. There is no
-  controller grab on Windows: games can still receive these buttons and
-  navigation. Non-XInput controllers need an XInput mapping here (console
+  controller grab on Windows: games still receive Back+Start. While the
+  panel is open it owns the foreground, so games that ignore the controller
+  in the background (SDL's default, Unity, Unreal: most of them) do not see
+  the navigation; games that poll XInput regardless still do. Non-XInput controllers need an XInput mapping here (console
   mode reads them through SDL). Battery levels
   are coarse estimates; transport and Bluetooth disconnect are unavailable.
 - **Panel:** Home, Screenshots, Notes (including the on-screen keyboard),

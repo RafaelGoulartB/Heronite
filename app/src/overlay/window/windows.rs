@@ -10,12 +10,11 @@ pub(super) fn open<V: Render>(
     size: Size<Pixels>,
     side: Side,
     margin: f32,
-    keyboard: bool,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<(WindowHandle<V>, Task<anyhow::Result<Option<FocusReturn>>>)> {
     let screen = screen?;
     let notice = namespace == "overlay-notice";
-    let handle = cx.open_window(super::options(namespace, size, side, px(margin), true, keyboard), |window, cx| {
+    let handle = cx.open_window(super::options(namespace, size, side, px(margin), true, false), |window, cx| {
         window.set_window_title(if notice { "Heronite overlay notice" } else { "Heronite overlay" });
         build(window, cx)
     })?;
@@ -36,7 +35,7 @@ pub(super) fn open<V: Render>(
     // Native placement sends synchronous size/DPI messages into GPUI. Its
     // foreground executor runs this after all App/Window borrows unwind.
     let shown = cx.foreground_executor().spawn(async move {
-        Ok(overlay_window::show(hwnd, screen, (size.width.into(), size.height.into()), side == Side::Right, margin, notice, keyboard)?)
+        Ok(overlay_window::show(hwnd, screen, (size.width.into(), size.height.into()), side == Side::Right, margin, notice)?)
     });
     Ok((handle, shown))
 }

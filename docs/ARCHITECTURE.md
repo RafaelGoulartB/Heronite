@@ -383,7 +383,8 @@ text size) and applies it.
 - **heronite-overlay:** the GPUI-free backend of the in-game overlay. On Windows,
   `input::windows` polls documented XInput through `heronite-platform::gamepad`,
   feeding the shared `input::core` state machine: Back+Start substitutes for Guide,
-  with no exclusive grab (games can still see the buttons). A controller is
+  with no exclusive grab (games can still see the buttons; the open panel takes
+  the foreground, which most games respect). A controller is
   named by `input::ControllerId`: its XInput slot there, its evdev node on
   Linux. Controller battery is XInput's coarse estimate; Bluetooth disconnect
   is not offered.
