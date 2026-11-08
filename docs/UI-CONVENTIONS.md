@@ -257,8 +257,11 @@ stores in console mode, whose pages keep their tabs). The list reads the service
 changes (`stores::watch`); the row (and the console sidebar's) opens the store shown last. A client's page
 (`pages/clients/`, one `ClientPage<K>` for the four) is a card with the client's state and its main action (Set up, the
 setup's step with Cancel, Open, Close), its prefix and Wine with "Wine settings" (`dialogs/client_settings`: the game
-settings panel bound to the client's own settings), the sign-in the client's files show, the games it installed (Show
-selects one in the Collection) and an About card with the anti-cheats that keep some of its games off Linux.
+settings panel bound to the client's own settings), the sign-in the client's files show, on Linux its Shortcuts (a
+switch for the Desktop and one for the application menu: `heronite-client-<id>.desktop` running `--open-client <id>`,
+with the icon read from the client's `.exe`; `services/clients/shortcuts.rs`, `HERONITE_DEBUG_CLIENT=<id>:shortcuts`),
+the games it installed (Show selects one in the Collection) and an About card with the anti-cheats that keep some of
+its games off Linux.
 The ☰ Emulators page (`pages/emulators/`) has the same layout (`side_nav`): the list holds "All emulators" (counts, what
 needs attention with its fix, every ROM folder, "Scan all folders now"), then each emulator with its icon
 (`emulators::icon`: Dolphin's and RetroArch's logos, an icon drawn for each other emulator of the catalog, a gamepad

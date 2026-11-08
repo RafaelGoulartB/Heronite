@@ -215,6 +215,10 @@ impl<K: ClientKind> ClientPage<K> {
                 self.confirm_forget = false;
                 self.svc.update(cx, |s, cx| s.forget(client, cx));
             }
+            "shortcut-desktop" | "shortcut-menu" | "shortcuts-add" | "shortcuts-remove" => {
+                let (desktop, menu) = logic::shortcut_change(id, &self.svc.read(cx).state(client).shortcuts);
+                self.svc.update(cx, |s, cx| s.set_shortcuts(client, desktop, menu, cx));
+            }
             _ => {}
         }
         cx.notify();

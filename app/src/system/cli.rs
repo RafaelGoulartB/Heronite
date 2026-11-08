@@ -10,8 +10,14 @@
 //!   The old `heronite-rs://` scheme is still read: Steam shortcuts made
 //!   before the rename keep it.
 //!
+//! `--open-client <id>` opens a store client (`battlenet`, `ea`, `ubisoft`,
+//! `rockstar`; the shortcuts of the clients under Wine) and never shows the
+//! window.
+//!
 //! `--no-gui` means "do not show the window". `--console` and `--fullscreen`
 //! show it in console mode and/or fullscreen.
+
+use heronite_data::clients::Client;
 
 /// Runners Heroic's protocol accepts; we also know `zoom`.
 pub const RUNNERS: [&str; 5] = ["legendary", "gog", "nile", "sideload", "zoom"];
@@ -46,6 +52,8 @@ pub enum UrlAction {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Cli {
     pub launch: Option<LaunchRequest>,
+    /// `--open-client <id>`.
+    pub open_client: Option<Client>,
     /// `--no-gui`.
     pub no_gui: bool,
     /// `--console`: switch to console mode.
@@ -67,12 +75,15 @@ Usage:
   heronite-rs                         open the Collection
   heronite-rs --launch <runner>_<app> launch a game (also: --launch <runner> <app>, --launch <app>)
   heronite-rs [--no-gui] <url>        launch from heronite://launch?appName=..&runner=..
+  heronite-rs --open-client <client>  open battlenet, ea, ubisoft or rockstar (no window)
   --no-gui                            do not show the window (the process exits when the game ends)
   --console                           open in console mode (it stays on until you leave it)
   --fullscreen                        open the window fullscreen (F11 switches back)
   --autostart                         started with the system (\"Start minimized\" applies)
   -h, --help                          this text
 ";
+
+const OPEN_CLIENT_USAGE: &str = "--open-client needs a store client: battlenet, ea, ubisoft or rockstar";
 
 fn is_runner(s: &str) -> bool {
     RUNNERS.contains(&s)
@@ -183,6 +194,20 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
                     }
                 }
             }
+            "--open-client" => {
+                let id = args.get(i + 1).filter(|s| !s.starts_with("--"));
+                match id.and_then(|id| Client::from_id(id)) {
+                    Some(client) => cli.open_client = Some(client),
+                    None => cli.errors.push(OPEN_CLIENT_USAGE.into()),
+                }
+                if id.is_some() {
+                    i += 1;
+                }
+            }
+            _ if a.starts_with("--open-client=") => match Client::from_id(&a["--open-client=".len()..]) {
+                Some(client) => cli.open_client = Some(client),
+                None => cli.errors.push(OPEN_CLIENT_USAGE.into()),
+            },
             _ if a.starts_with("--launch=") => {
                 let (runner, app_name) = split_key(&a["--launch=".len()..]);
                 if app_name.is_empty() {
@@ -207,8 +232,12 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
 
 impl Cli {
     /// Should this launch keep the window hidden? (`--no-gui`, `gui=false`, or
-    /// the `hideWindowOnProtocolLaunch` setting.)
+    /// the `hideWindowOnProtocolLaunch` setting.) Opening a store client
+    /// never shows it.
     pub fn hide_window(&self, hide_setting: bool) -> bool {
+        if self.open_client.is_some() {
+            return true;
+        }
         match &self.launch {
             Some(req) => self.no_gui || req.gui_false || hide_setting,
             None => self.no_gui,
@@ -349,5 +378,21 @@ mod tests {
         // Electron-style leftovers are ignored
         let c = p(&["--no-sandbox", "heronite://launch/gog/1"]);
         assert_eq!(c.launch, Some(req(Some("gog"), "1")));
+    }
+
+    #[test]
+    fn open_client_forms() {
+        assert_eq!(p(&["--open-client", "battlenet"]).open_client, Some(Client::BattleNet));
+        assert_eq!(p(&["--open-client=ea"]).open_client, Some(Client::Ea));
+        let cli = p(&["--open-client", "rockstar", "--console"]);
+        assert_eq!((cli.open_client, cli.console), (Some(Client::Rockstar), true));
+        // It never shows the window, whatever the setting says.
+        assert!(cli.hide_window(false));
+        for bad in [&["--open-client"][..], &["--open-client", "steam"], &["--open-client", "--console"], &["--open-client="]] {
+            let cli = p(bad);
+            assert_eq!(cli.open_client, None, "{bad:?}");
+            assert_eq!(cli.errors.len(), 1, "{bad:?}");
+        }
+        assert!(p(&["--open-client", "--console"]).console, "the next flag is not eaten");
     }
 }

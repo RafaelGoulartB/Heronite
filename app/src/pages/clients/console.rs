@@ -67,6 +67,16 @@ impl<K: ClientKind> ClientPage<K> {
             let (title, hint) = logic::account_lines(client, &st.account());
             rows.push(Row::header(tr!("Account")));
             rows.push(Row::info("account", title, "").desc(hint.unwrap_or_default()).icon(Icon::AccountCircle));
+        }
+        if logic::shows_shortcuts(st) {
+            let sc = st.shortcuts;
+            let (desktop_on, menu_on) = logic::shortcut_switches(st);
+            let (desktop_line, menu_line) = logic::shortcut_lines(client, &sc);
+            rows.push(Row::header(tr!("Shortcuts")));
+            rows.push(Row::toggle("shortcut-desktop", tr!("Desktop shortcut"), sc.desktop).desc(desktop_line).enabled(desktop_on));
+            rows.push(Row::toggle("shortcut-menu", tr!("Application menu shortcut"), sc.menu).desc(menu_line).enabled(menu_on));
+        }
+        if st.installed() {
             rows.push(Row::header(tr!("Installed games")));
             let games = st.status.as_ref().map(|s| s.games.as_slice()).unwrap_or(&[]);
             if games.is_empty() {
@@ -202,6 +212,11 @@ impl<K: ClientKind> PadTarget for ClientPage<K> {
         let used = match self.console_list.on_pad(pad, &rows) {
             Outcome::Activate(id) => {
                 self.console_activate(&id, window, cx);
+                true
+            }
+            // The shortcut switches: the action flips what is there now.
+            Outcome::Changed(id, _) => {
+                self.run_action(&id, window, cx);
                 true
             }
             Outcome::Ignored => false,

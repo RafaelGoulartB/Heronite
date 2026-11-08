@@ -4,7 +4,7 @@ use gpui_kit::*;
 use heronite_launch::LaunchEvent;
 
 use super::hub;
-use super::launch::launch;
+use super::launch::{launch, open_client};
 use super::quit::{maybe_exit_idle, request_quit};
 use super::window::{apply_window_flags, close_window_keep_alive, has_window, show_window};
 use crate::system::cli::{Cli, LaunchRequest};
@@ -196,12 +196,17 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
     }
     log::info!("request from another invocation: {msg:?}");
     let hide_setting = hub(cx).0.borrow_mut().settings().hide_window_on_protocol_launch;
-    let cli = Cli { launch: msg.launch.clone(), no_gui: msg.no_gui, ..Default::default() };
+    let cli = Cli { launch: msg.launch.clone(), open_client: msg.open_client, no_gui: msg.no_gui, ..Default::default() };
     let hide = cli.hide_window(hide_setting);
     if !hide {
         apply_window_flags(cx, msg.console, msg.fullscreen, false);
     }
+    if let Some(client) = msg.open_client {
+        open_client(cx, client, false);
+    }
     match msg.launch {
+        // A shortcut of a store client asks for the client only.
+        None if msg.open_client.is_some() => {}
         // Heroic's `second-instance`: show the window unless the launch hides it.
         None => {
             show_window(cx);

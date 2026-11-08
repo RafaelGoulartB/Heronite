@@ -64,7 +64,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-wine       Wine/Proton manager                          → data
  ├─ heronite-storage    disk space of games, prefixes, Proton builds,
  │                      Steam leftovers, caches; cleaning them up    → data, launch, wine
- ├─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf       → data
+ ├─ heronite-shortcuts  .desktop files and Steam shortcuts.vdf,
+ │                      icons of Windows programs                    → data
  ├─ heronite-steam      settings of Steam games (launch options,
  │                      Proton) via the client or its files         → data, launch, shortcuts
  └─ heronite-update     app updates: release check, signed download,

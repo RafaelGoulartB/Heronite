@@ -12,7 +12,7 @@ use crate::pages::{caption_with, columns, empty_row, list_item, status_pill, sto
 use crate::services::clients::{Activity, ClientState};
 use crate::services::widgets::{busy_bar, progress_bar};
 use crate::theme;
-use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, ButtonKind};
+use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, toggle, ButtonKind};
 use crate::ui::icon;
 
 fn home() -> String {
@@ -183,7 +183,7 @@ impl<K: ClientKind> ClientPage<K> {
                 .ml(px(-12.))
                 .child(
                     button_sm(self.id("forget"), ButtonKind::Ghost, tr!("Remove from Heronite"))
-                        .when(!st.busy(), |b| b.on_click(act!(cx, "forget"))),
+                        .when(!st.busy() && !st.shortcut_busy, |b| b.on_click(act!(cx, "forget"))),
                 )
                 .into_any_element();
         }
@@ -232,6 +232,27 @@ impl<K: ClientKind> ClientPage<K> {
                     .children(hint.map(|h| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(h))),
             );
         div().child(caption(tr!("Account"))).child(card([line.into_any_element()]))
+    }
+
+    /// The client's shortcuts on the Desktop and in the application menu
+    /// (Linux: on Windows the client's installer makes its own; see
+    /// [`logic::shows_shortcuts`]).
+    fn render_shortcuts(&self, st: &ClientState, cx: &mut Context<Self>) -> Div {
+        let sc = st.shortcuts;
+        let switch = |name: &'static str, label: &str, desc: String, on: bool, enabled: bool, cx: &mut Context<Self>| {
+            let id = self.id(name);
+            row(label.to_string(), Some(&desc), toggle(SharedString::from(format!("{id}-sw")), on, !enabled))
+                .id(id)
+                .when(enabled, |r| r.cursor_pointer().on_click(act!(cx, name)))
+                .into_any_element()
+        };
+        let (desktop_on, menu_on) = logic::shortcut_switches(st);
+        let (desktop_line, menu_line) = logic::shortcut_lines(K::CLIENT, &sc);
+        let rows = [
+            switch("shortcut-desktop", tr!("Desktop shortcut"), desktop_line, sc.desktop, desktop_on, cx),
+            switch("shortcut-menu", tr!("Application menu shortcut"), menu_line, sc.menu, menu_on, cx),
+        ];
+        div().child(caption(tr!("Shortcuts"))).child(card(rows))
     }
 
     fn render_game(&self, st: &ClientState, game: &ClientGame, cx: &mut Context<Self>) -> AnyElement {
@@ -314,6 +335,9 @@ impl<K: ClientKind> Render for ClientPage<K> {
         if st.installed() {
             left = left.child(self.render_account(&st));
             right = right.child(self.render_games(&st, cx));
+        }
+        if logic::shows_shortcuts(&st) {
+            left = left.child(self.render_shortcuts(&st, cx));
         }
         right = right.child(self.render_about());
         let wide = stores::content_width(window) >= 1000.;

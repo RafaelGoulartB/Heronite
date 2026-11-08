@@ -232,7 +232,8 @@ impl Clients {
     /// Forgets the client: its prefix and games stay on disk, its entries
     /// leave the Collection.
     pub fn forget(&mut self, client: Client, cx: &mut Context<Self>) {
-        if self.frozen == Some(client) || self.state(client).busy() {
+        // A shortcut being written meanwhile would outlive the removal.
+        if self.frozen == Some(client) || self.state(client).busy() || self.state(client).shortcut_busy {
             return;
         }
         let st = self.state_mut(client);
@@ -243,6 +244,7 @@ impl Clients {
             let res = cx
                 .background_spawn(async move {
                     heronite_clients::setup::forget(&paths, client).map_err(|e| format!("{e:#}"))?;
+                    super::shortcuts::remove_all(&paths, client);
                     collection::remove(&paths, client).map_err(|e| format!("{e:#}"))
                 })
                 .await;
@@ -259,6 +261,7 @@ impl Clients {
                         st.last = None;
                         st.in_collection = 0;
                         st.removed.clear();
+                        st.shortcuts = Default::default();
                         cx.emit(ClientsEvent::Removed(removed));
                         this.refresh(&[client], false, cx);
                     }
