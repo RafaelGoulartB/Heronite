@@ -7,6 +7,9 @@
 //! * `heronite://launch/<appName>`, `heronite://launch/<runner>/<appName>`,
 //!   `heronite://launch?appName=..&runner=..[&arg=..][&altExe=..][&gui=false]`
 //!   (Heroic's URL forms under this app's own scheme; `heroic://` stays Heroic's).
+//! * `heronite://stop?appName=..&runner=..` (and the path forms) closes the
+//!   game if the running instance has it running; with no instance it does
+//!   nothing (Sunshine runs it when a stream's application ends).
 //!   The old `heronite-rs://` scheme is still read: Steam shortcuts made
 //!   before the rename keep it.
 //!
@@ -45,6 +48,8 @@ pub struct LaunchRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UrlAction {
     Launch(LaunchRequest),
+    /// Close this game if it runs (only `app_name` and `runner` are read).
+    Stop(LaunchRequest),
     Ping,
 }
 
@@ -54,6 +59,8 @@ pub struct Cli {
     pub launch: Option<LaunchRequest>,
     /// `--open-client <id>`.
     pub open_client: Option<Client>,
+    /// `heronite://stop?..`: the game to close in the running instance.
+    pub stop: Option<LaunchRequest>,
     /// `--no-gui`.
     pub no_gui: bool,
     /// `--console`: switch to console mode.
@@ -138,7 +145,7 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
 
     match host.to_ascii_lowercase().as_str() {
         "ping" => Some(UrlAction::Ping),
-        "launch" => {
+        host @ ("launch" | "stop") => {
             let mut req = LaunchRequest { gui_false: param("gui").is_some_and(|g| gui_false(&g)), ..Default::default() };
             let (app_name, runner);
             // Windows adds a trailing / to shortcuts: "/" means "no path".
@@ -154,7 +161,7 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
             }
             req.app_name = app_name.filter(|a| !a.is_empty())?;
             req.runner = runner.filter(|r| is_runner(r));
-            Some(UrlAction::Launch(req))
+            Some(if host == "stop" { UrlAction::Stop(req) } else { UrlAction::Launch(req) })
         }
         _ => None,
     }
@@ -217,11 +224,11 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
                 }
             }
             _ => {
-                if let Some(UrlAction::Launch(req)) = parse_url(a) {
+                match parse_url(a) {
                     // `--launch X` already seen wins over nothing; a URL fills in when absent.
-                    if cli.launch.is_none() {
-                        cli.launch = Some(req);
-                    }
+                    Some(UrlAction::Launch(req)) if cli.launch.is_none() => cli.launch = Some(req),
+                    Some(UrlAction::Stop(req)) => cli.stop = Some(req),
+                    _ => {}
                 }
             }
         }
@@ -355,12 +362,22 @@ mod tests {
     }
 
     #[test]
+    fn stop_urls() {
+        assert_eq!(parse_url("heronite://stop?appName=Quail&runner=legendary"), Some(UrlAction::Stop(req(Some("legendary"), "Quail"))));
+        assert_eq!(parse_url("heronite://stop/gog/1"), Some(UrlAction::Stop(req(Some("gog"), "1"))));
+        let c = p(&["heronite://stop?appName=My%20Game&runner=sideload"]);
+        assert_eq!(c.stop, Some(req(Some("sideload"), "My Game")));
+        assert!(c.launch.is_none());
+    }
+
+    #[test]
     fn url_rejections() {
         assert_eq!(parse_url("heronite://ping"), Some(UrlAction::Ping));
         assert_eq!(parse_url("heronite://ping?x=1"), Some(UrlAction::Ping));
         assert_eq!(parse_url("heronite://launch"), None, "no appName");
         assert_eq!(parse_url("heronite://launch?runner=gog"), None);
         assert_eq!(parse_url("heronite://other/thing"), None);
+        assert_eq!(parse_url("heronite://stop"), None, "no appName");
         assert_eq!(parse_url("https://launch/x"), None);
         assert_eq!(parse_url("heroic://launch/Quail"), None, "Heroic's own links are not ours");
         assert_eq!(parse_url("heronitex://launch/Quail"), None);

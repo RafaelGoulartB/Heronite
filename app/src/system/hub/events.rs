@@ -188,6 +188,24 @@ fn show_from_tray(cx: &mut App) {
     }
 }
 
+/// `heronite://stop`: closes the game when it runs here (a Sunshine stream
+/// of it ended); anything else running is left alone.
+fn stop_game(cx: &mut App, req: &crate::system::cli::LaunchRequest) {
+    let hub = hub(cx);
+    let (running, runtime) = {
+        let s = hub.0.borrow();
+        (s.running.contains_key(&req.app_name), s.runtime.clone())
+    };
+    if !running {
+        log::info!("stop request for {}: not running", req.app_name);
+        return;
+    }
+    log::info!("stop request: closing {}", req.app_name);
+    if !runtime.stop(&req.app_name) {
+        runtime.force_clear(&req.app_name);
+    }
+}
+
 /// A second invocation reached this instance.
 pub(super) fn on_message(cx: &mut App, msg: Message) {
     if hub(cx).0.borrow().quitting {
@@ -195,6 +213,12 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
         return;
     }
     log::info!("request from another invocation: {msg:?}");
+    if let Some(req) = &msg.stop {
+        stop_game(cx, req);
+        if msg.launch.is_none() {
+            return;
+        }
+    }
     let hide_setting = hub(cx).0.borrow_mut().settings().hide_window_on_protocol_launch;
     let cli = Cli { launch: msg.launch.clone(), open_client: msg.open_client, no_gui: msg.no_gui, ..Default::default() };
     let hide = cli.hide_window(hide_setting);

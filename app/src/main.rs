@@ -85,6 +85,11 @@ fn main() {
             system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(3));
             std::process::exit(1);
         }
+        // `heronite://stop` with no instance running: no game to close.
+        SingleInstance::Primary { .. } if cli.stop.is_some() && cli.launch.is_none() => {
+            log::info!("stop request: Heronite is not running, nothing to close");
+            return;
+        }
         SingleInstance::Primary { server, messages } => (server, messages),
     };
     // SIGTERM / SIGINT / SIGHUP are a quit (see `system::signals`).
@@ -161,6 +166,7 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
     let msg = Message {
         launch: cli.launch.clone(),
         open_client: cli.open_client,
+        stop: cli.stop.clone(),
         no_gui: cli.no_gui,
         console: cli.console,
         fullscreen: cli.fullscreen,
