@@ -21,5 +21,5 @@
   "Supported over windowed and borderless games. Exclusive fullscreen is not supported.": "Über Spielen im Fenster- und randlosen Modus unterstützt. Exklusives Vollbild wird nicht unterstützt.",
   "The same shortcut closes it. The panel takes keyboard focus: arrows, Enter, Esc and Q / E for the tabs. Games using raw input may still receive keys.": "Dasselbe Kürzel schließt es. Das Panel erhält den Tastaturfokus: Pfeile, Enter, Esc und Q / E für die Tabs. Spiele mit direkter Eingabe können Tasten weiterhin empfangen.",
   "Windows audio devices are not available.": "Windows-Audiogeräte sind nicht verfügbar.",
-  "Windows does not block controller input: the game also receives Back + Start and the buttons used in the overlay.": "Windows blockiert keine Controller-Eingaben: Das Spiel erhält Back + Start und die im Overlay verwendeten Tasten ebenfalls."
+  "Windows cannot block the controller: the game also receives Back + Start. The open panel takes the focus, which keeps its buttons out of most games; games that read the controller in the background still receive them.": "Windows kann den Controller nicht sperren: Das Spiel erhält Back + Start ebenfalls. Das geöffnete Panel übernimmt den Fokus, sodass die meisten Spiele seine Tasten nicht erhalten; Spiele, die den Controller im Hintergrund lesen, erhalten sie weiterhin."
 }

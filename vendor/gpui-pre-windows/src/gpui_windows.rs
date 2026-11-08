@@ -38,6 +38,6 @@ pub(crate) use vsync::*;
 pub(crate) use window::*;
 pub(crate) use wrapper::*;
 
-pub use platform::WindowsPlatform;
+pub use platform::{WindowsPlatform, hide_cursor_until_mouse_moves, show_cursor};
 
 pub(crate) use windows::Win32::Foundation::HWND;

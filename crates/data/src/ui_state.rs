@@ -91,6 +91,10 @@ pub struct UiState {
     /// `autoConsole` of `console.json`, mirrored like
     /// [`console_open_in`](Self::console_open_in) ([`set_console_auto`]).
     pub console_auto: AutoConsole,
+    /// `fullscreen` of `console.json`, mirrored like
+    /// [`console_open_in`](Self::console_open_in) ([`set_console_fullscreen`]):
+    /// a window that opens in console mode opens fullscreen.
+    pub console_fullscreen: bool,
 }
 
 /// Range and default of [`UiState::grid_cover_w`].
@@ -192,6 +196,7 @@ impl Default for UiState {
             grid_drawer_w: None,
             console_open_in: OpenIn::default(),
             console_auto: AutoConsole::default(),
+            console_fullscreen: true,
         }
     }
 }
@@ -243,6 +248,7 @@ impl UiState {
         state.grid_drawer_w = width("gridDrawerWidth");
         state.console_open_in = value.get(CONSOLE_OPEN_IN).and_then(Value::as_str).and_then(OpenIn::parse).unwrap_or_default();
         state.console_auto = value.get(CONSOLE_AUTO).and_then(Value::as_str).and_then(AutoConsole::parse).unwrap_or_default();
+        state.console_fullscreen = value.get(CONSOLE_FULLSCREEN).and_then(Value::as_bool).unwrap_or(true);
         state
     }
 
@@ -627,16 +633,17 @@ impl OnlyFilters {
 /// Keys of the mirrors of `console.json` (see [`UiState::console_open_in`]).
 const CONSOLE_OPEN_IN: &str = "consoleOpenIn";
 const CONSOLE_AUTO: &str = "consoleAuto";
+const CONSOLE_FULLSCREEN: &str = "consoleFullscreen";
 
 /// Stores `value` under `key`, or removes the key for the default (`None`).
-fn set_mirror(paths: &AppPaths, key: &str, value: Option<&str>) -> Result<()> {
+fn set_mirror(paths: &AppPaths, key: &str, value: Option<Value>) -> Result<()> {
     json_store::update_value(&paths.ui_state(), |doc| {
         if !doc.is_object() {
             *doc = Value::Object(Default::default());
         }
         let obj = doc.as_object_mut().expect("object");
         match value {
-            Some(v) => obj.insert(key.to_owned(), Value::String(v.to_owned())),
+            Some(v) => obj.insert(key.to_owned(), v),
             None => obj.remove(key),
         };
         Ok(())
@@ -646,12 +653,17 @@ fn set_mirror(paths: &AppPaths, key: &str, value: Option<&str>) -> Result<()> {
 /// Mirrors console.json's `openIn` into the UI state (the file is only
 /// touched when the value differs from the default or is being reset).
 pub fn set_console_open_in(paths: &AppPaths, value: OpenIn) -> Result<()> {
-    set_mirror(paths, CONSOLE_OPEN_IN, (value != OpenIn::default()).then_some(value.as_str()))
+    set_mirror(paths, CONSOLE_OPEN_IN, (value != OpenIn::default()).then(|| value.as_str().into()))
 }
 
 /// Mirrors console.json's `autoConsole` into the UI state.
 pub fn set_console_auto(paths: &AppPaths, value: AutoConsole) -> Result<()> {
-    set_mirror(paths, CONSOLE_AUTO, (value != AutoConsole::default()).then_some(value.as_str()))
+    set_mirror(paths, CONSOLE_AUTO, (value != AutoConsole::default()).then(|| value.as_str().into()))
+}
+
+/// Mirrors console.json's `fullscreen` into the UI state (stored only when off).
+pub fn set_console_fullscreen(paths: &AppPaths, value: bool) -> Result<()> {
+    set_mirror(paths, CONSOLE_FULLSCREEN, (!value).then_some(Value::Bool(false)))
 }
 
 /// Key of a notice the user dismissed with "Got it" ("Add game"'s store note).
@@ -882,18 +894,23 @@ mod tests {
         let paths = app_paths(dir.path());
         assert_eq!(UiState::load(&paths).console_open_in, OpenIn::Last);
         assert_eq!(UiState::load(&paths).console_auto, AutoConsole::Off);
+        assert!(UiState::load(&paths).console_fullscreen);
         set_console_open_in(&paths, OpenIn::Console).unwrap();
         set_console_auto(&paths, AutoConsole::Ask).unwrap();
+        set_console_fullscreen(&paths, false).unwrap();
         let stale = UiState::default();
         let loaded = UiState::load(&paths);
         assert_eq!((loaded.console_open_in, loaded.console_auto), (OpenIn::Console, AutoConsole::Ask));
+        assert!(!loaded.console_fullscreen);
         // A copy loaded before the change saves without undoing it.
         stale.save(&paths).unwrap();
         assert_eq!(UiState::load(&paths).console_open_in, OpenIn::Console);
         set_console_open_in(&paths, OpenIn::Last).unwrap();
         set_console_auto(&paths, AutoConsole::Off).unwrap();
+        set_console_fullscreen(&paths, true).unwrap();
         let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
         assert!(on_disk.get(CONSOLE_OPEN_IN).is_none() && on_disk.get(CONSOLE_AUTO).is_none());
+        assert!(on_disk.get(CONSOLE_FULLSCREEN).is_none());
     }
 
     #[test]
@@ -1104,7 +1121,7 @@ mod tests {
         assert_eq!(
             cleared.to_value()["facetFilters"],
             json!({
-                "store": [], "series": [], "developer": [], "publisher": [], "genre": [], "theme": [], "feature": [], "gameMode": [], "platform": []
+                "store": [], "series": [], "developer": [], "publisher": [], "genre": [], "theme": [], "feature": [], "gameMode": [], "tag": [], "platform": []
             })
         );
 

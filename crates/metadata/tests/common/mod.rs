@@ -104,6 +104,7 @@ impl Server {
             twitch_token: format!("{b}/twitch/oauth2/token"),
             igdb: format!("{b}/igdb/v4"),
             steam_store: format!("{b}/steam"),
+            steam_api: format!("{b}/steamapi"),
             steam_community: format!("{b}/community"),
             lutris: format!("{b}/lutris"),
             steamgriddb: format!("{b}/sgdb/api/v2"),

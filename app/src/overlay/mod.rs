@@ -8,8 +8,9 @@
 //! work), so it works with the main window closed to the tray. While a game
 //! runs and the overlay is on, `heronite_overlay::input` reads the
 //! controllers on its own thread. Linux grabs them while the panel is open
-//! or Guide is held. Windows uses Back+Start as Guide through XInput and
-//! cannot prevent the game from receiving the same buttons.
+//! or Guide is held. Windows uses Back+Start as Guide through XInput, which
+//! has no grab: the open panel takes the foreground instead, and most games
+//! stop reading the controller in the background.
 //!
 //! Settings can let it open with no game running too ("without a game"):
 //! then the input thread and the shortcut run while the app does, and the
@@ -25,8 +26,8 @@
 //! the keyboard until it closes, so it can be driven without a controller.
 //!
 //! Windows uses native topmost tool windows over borderless/windowed games,
-//! not exclusive fullscreen. Its keyboard default is Ctrl+Shift+G; notices
-//! never activate. Linux uses Wayland layer-shell surfaces ([`window`]);
+//! not exclusive fullscreen. Its keyboard default is Ctrl+Shift+G; the panel
+//! takes the foreground however it opened, notices never activate. Linux uses Wayland layer-shell surfaces ([`window`]);
 //! desktops without layer-shell (GNOME, X11) cannot show them.
 
 mod debug;
@@ -44,6 +45,7 @@ use std::time::{Duration, Instant};
 use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
+use heronite_achievements::prefs::NoticeFields;
 use heronite_data::overlay_prefs::OverlayPrefs;
 use heronite_data::{AppPaths, DataPaths};
 use heronite_i18n::tr;
@@ -54,6 +56,7 @@ use heronite_overlay::input::{Controller, Event, Options, Watcher};
 
 use self::panel::OverlayPanel;
 use self::toast::Notice;
+pub use self::toast::{made_up_unlocks, Unlock};
 use crate::icons::Icon;
 use crate::runtime::{GameRuntime, SessionInfo};
 
@@ -63,6 +66,10 @@ const HIDE_BEFORE_CAPTURE: Duration = Duration::from_millis(300);
 const ICON_PX: f32 = 44.;
 /// An achievement's notice waits this long at most for its icon.
 const ICON_WAIT: Duration = Duration::from_millis(1500);
+/// Windows: how long after the panel opens it checks that it still has the
+/// foreground ([`heronite_platform::overlay_window::FocusReturn::hold`]).
+#[cfg(windows)]
+const FOREGROUND_CHECK: Duration = Duration::from_millis(250);
 
 /// A game launched by the app that is running.
 #[derive(Clone, Debug)]
@@ -404,6 +411,8 @@ impl OverlayService {
             Event::Press(b) => {
                 if let Some(panel) = self.panel {
                     let pad = panel::pad_of(b);
+                    // The controller is in use: the cursor steps aside until the mouse moves.
+                    crate::console::pointer::hide_cursor();
                     // The compositor may have closed the surface: let go of the controllers.
                     if panel.update(cx, |p, window, cx| p.on_pad(pad, window, cx)).is_err() {
                         self.close_panel(cx);
@@ -470,13 +479,28 @@ impl OverlayService {
                     let handle = opened.handle;
                     cx.spawn(async move |this, cx| match shown.await {
                         Ok(mut focus) => {
-                            this.update(cx, |s, _| {
-                                if s.panel == Some(handle) {
+                            let kept = this
+                                .update(cx, |s, _| {
+                                    if s.panel != Some(handle) {
+                                        return false;
+                                    }
                                     s.focus_return = focus.take();
-                                }
-                            })
-                            .ok();
+                                    s.focus_return.is_some()
+                                })
+                                .unwrap_or(false);
                             drop(focus);
+                            // Something can take the foreground back right after
+                            // (the main window, when the shortcut was pressed
+                            // in it): once more, the keys then reach the panel.
+                            if kept {
+                                cx.background_executor().timer(FOREGROUND_CHECK).await;
+                                this.update(cx, |s, _| {
+                                    if let Some(focus) = s.focus_return.as_ref().filter(|_| s.panel == Some(handle)) {
+                                        focus.hold();
+                                    }
+                                })
+                                .ok();
+                            }
                         }
                         Err(error) => {
                             log::warn!("overlay: cannot show the native panel: {error:#}");
@@ -590,11 +614,12 @@ impl OverlayService {
     }
 
     /// Shows a new achievement over the game, after the ones already
-    /// waiting. Its icon (a URL or a file; may be empty) is loaded first,
-    /// for at most a moment: the notice never waits long for it. `false`
-    /// when the overlay is off, cannot draw here or the game is in exclusive
-    /// fullscreen (Windows), for the caller to notify the desktop instead.
-    pub fn show_achievement(&mut self, name: String, rarity: Option<f32>, icon_url: String, cx: &mut Context<Self>) -> bool {
+    /// waiting, with the lines of `fields` its source gives. Its icon (a URL
+    /// or a file; may be empty) is loaded first, for at most a moment: the
+    /// notice never waits long for it. `false` when the overlay is off,
+    /// cannot draw here or the game is in exclusive fullscreen (Windows),
+    /// for the caller to notify the desktop instead.
+    pub fn show_achievement(&mut self, unlock: Unlock, fields: NoticeFields, cx: &mut Context<Self>) -> bool {
         // The debug window shows it whatever the saved options say.
         if !(self.prefs.enabled || self.debug_window) || !self.can_notify() {
             return false;
@@ -606,6 +631,7 @@ impl OverlayService {
         let opts = heronite_images::Opts::new(self.data_paths.images_cache_dir(), Some(AppPaths::for_data(&self.data_paths).thumbs_dir()));
         let side = (ICON_PX * window::Display::current(cx).scale()).round() as u32;
         let ticket = self.achievement_queue.ticket();
+        let icon_url = unlock.achievement.icon.clone();
         cx.spawn(async move |this, cx| {
             let image = if icon_url.is_empty() {
                 None
@@ -627,7 +653,7 @@ impl OverlayService {
                     futures::future::Either::Right(_) => None,
                 }
             };
-            this.update(cx, |this, cx| this.queue_achievement(ticket, Notice::achievement(name, rarity, image), layer, cx)).ok();
+            this.update(cx, |this, cx| this.queue_achievement(ticket, Notice::achievement(&unlock, fields, image), layer, cx)).ok();
         })
         .detach();
         true

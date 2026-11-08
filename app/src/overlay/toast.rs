@@ -4,7 +4,11 @@
 //!
 //! Achievement notices wait their turn instead: they queue (a few, then one
 //! "N more achievements"), each stays longer, and one that another notice
-//! interrupts shows again after it.
+//! interrupts shows again after it. Besides the name, an achievement's
+//! notice shows what Settings → Achievements asks for and the source gives
+//! ([`Details`]): its description, then badges for its rarity, points,
+//! set, type and hardcore mode, on a taller card. "Achievement unlocked"
+//! sits above its name.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
@@ -12,6 +16,8 @@ use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_achievements::prefs::NoticeFields;
+use heronite_achievements::{Achievement, Source};
 use heronite_i18n::{tr, trn};
 
 use super::{window, OverlayService};
@@ -26,6 +32,10 @@ const SHOWN_FOR: Duration = Duration::from_millis(1800);
 const ACHIEVEMENT_FOR: Duration = Duration::from_secs(5);
 /// Achievement notices waiting at most; more are summed up in one.
 const QUEUE_MAX: usize = 4;
+/// What a description line adds to the card's height (design px).
+const DESCRIPTION_H: f32 = 20.;
+/// What the line of badges adds.
+const CHIPS_H: f32 = 28.;
 
 #[derive(Clone)]
 pub struct Notice {
@@ -42,6 +52,79 @@ pub struct Notice {
     pub duration: Duration,
     /// An achievement: it queues instead of replacing.
     pub achievement: bool,
+    /// An achievement's description, on a line of its own.
+    pub description: Option<String>,
+    /// An achievement's badges (points, type, hardcore, set), on the last line.
+    pub chips: Vec<Chip>,
+}
+
+/// A new unlock to show over the game.
+#[derive(Debug, Clone)]
+pub struct Unlock {
+    pub achievement: Achievement,
+    pub source: Source,
+    /// The name of its Steam Achievement Set, when the game has more than one.
+    pub group: Option<String>,
+}
+
+/// A badge on an achievement's notice.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Chip {
+    /// The share of players that have it, in its tier's colour when rare.
+    Rarity(f32),
+    /// "10 points", "250 XP".
+    Points(String),
+    /// RetroAchievements' type.
+    Kind(String),
+    Hardcore,
+    /// The Achievement Set's name.
+    Group(String),
+}
+
+impl Chip {
+    pub fn text(&self) -> String {
+        match self {
+            Chip::Points(t) | Chip::Kind(t) | Chip::Group(t) => t.clone(),
+            Chip::Hardcore => tr!("Hardcore").to_string(),
+            Chip::Rarity(r) => crate::ui::achievements::percent_label(*r),
+        }
+    }
+}
+
+/// What an achievement's notice shows under its name: the lines `fields`
+/// ask for that `unlock`'s source gives.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Details {
+    /// The rarity shown (its badge comes first), which colours a rare one.
+    pub rarity: Option<f32>,
+    pub description: Option<String>,
+    pub chips: Vec<Chip>,
+}
+
+impl Details {
+    pub fn of(unlock: &Unlock, fields: NoticeFields) -> Self {
+        let a = &unlock.achievement;
+        let retro = unlock.source == Source::RetroAchievements;
+        let rarity = a.rarity.filter(|_| fields.rarity);
+        let description = Some(a.description.trim()).filter(|d| fields.description && !d.is_empty()).map(str::to_string);
+        let mut chips: Vec<Chip> = rarity.map(Chip::Rarity).into_iter().collect();
+        // Only RetroAchievements (points) and Epic Games (XP) give them.
+        match (a.points.filter(|_| fields.points), unlock.source) {
+            (Some(n), Source::RetroAchievements) => chips.push(Chip::Points(trn!(n, "{n} point", "{n} points"))),
+            (Some(n), Source::Epic) => chips.push(Chip::Points(tr!("{n} XP", n = n))),
+            _ => {}
+        }
+        if let Some(kind) = a.kind.filter(|_| fields.kind && retro) {
+            chips.push(Chip::Kind(crate::dialogs::achievements::kind_label(kind).to_string()));
+        }
+        if fields.hardcore && retro && a.hardcore {
+            chips.push(Chip::Hardcore);
+        }
+        if let Some(group) = unlock.group.as_ref().filter(|g| fields.group && !g.is_empty()) {
+            chips.push(Chip::Group(group.clone()));
+        }
+        Self { rarity, description, chips }
+    }
 }
 
 impl std::fmt::Debug for Notice {
@@ -62,7 +145,14 @@ impl Notice {
             accent: None,
             duration: SHOWN_FOR,
             achievement: false,
+            description: None,
+            chips: Vec::new(),
         }
+    }
+
+    /// Height of the card, in design px: an achievement's grows with its lines.
+    pub fn height(&self) -> f32 {
+        window::NOTICE_H + if self.description.is_some() { DESCRIPTION_H } else { 0. } + if self.chips.is_empty() { 0. } else { CHIPS_H }
     }
 
     pub fn sub(mut self, sub: impl Into<String>) -> Self {
@@ -76,17 +166,25 @@ impl Notice {
         Self { volume: Some(level), ..Self::text(icon, tr!("Volume"), false) }
     }
 
-    /// "Achievement unlocked · 2.1%" under the achievement's name, the
-    /// rarity's colour when it is rare.
-    pub fn achievement(name: impl Into<String>, rarity: Option<f32>, image: Option<Arc<RenderImage>>) -> Self {
-        let sub = match rarity {
-            Some(r) => tr!("Achievement unlocked · {percent}", percent = crate::ui::achievements::percent_label(r)),
-            None => tr!("Achievement unlocked").to_string(),
-        };
-        let accent = rarity
+    /// An unlock's notice: "Achievement unlocked" above its name, then the
+    /// lines of [`Details`]; the border takes the rarity's colour when it is
+    /// rare.
+    pub fn achievement(unlock: &Unlock, fields: NoticeFields, image: Option<Arc<RenderImage>>) -> Self {
+        let d = Details::of(unlock, fields);
+        let accent = d
+            .rarity
             .filter(|r| *r < heronite_achievements::AchievementSet::RARE_BELOW)
             .map(|r| Hsla::from(theme::rarity_colour(theme::rarity_tier(r))));
-        Self { image, accent, duration: ACHIEVEMENT_FOR, achievement: true, ..Self::text(Icon::Trophy, name, false) }.sub(sub)
+        Self {
+            image,
+            accent,
+            duration: ACHIEVEMENT_FOR,
+            achievement: true,
+            description: d.description,
+            chips: d.chips,
+            ..Self::text(Icon::Trophy, unlock.achievement.name.clone(), false)
+        }
+        .sub(tr!("Achievement unlocked"))
     }
 
     /// The last of a long run of unlocks.
@@ -97,6 +195,39 @@ impl Notice {
             ..Self::text(Icon::Trophy, trn!(n, "{n} more achievement", "{n} more achievements"), false)
         }
     }
+}
+
+/// Made-up unlocks for the previews (Settings’ "Over the game" shows the
+/// first two, the debug notice one or all): from Steam with a set, from
+/// RetroAchievements in hardcore, from Epic Games, then plainer ones.
+pub fn made_up_unlocks(icon: &str) -> Vec<Unlock> {
+    let one = |source, name: &str, description: &str, rarity, points, group: Option<&str>| Unlock {
+        achievement: Achievement {
+            id: name.into(),
+            name: name.into(),
+            description: description.into(),
+            icon: icon.into(),
+            unlocked: true,
+            unlocked_at: Some(chrono::Utc::now()),
+            rarity,
+            points,
+            ..Default::default()
+        },
+        source,
+        group: group.map(str::to_string),
+    };
+    let mut retro =
+        one(Source::RetroAchievements, tr!("Untouchable"), tr!("Beat the first boss without taking a hit."), Some(1.2), Some(25), None);
+    retro.achievement.kind = Some(heronite_achievements::Kind::Missable);
+    retro.achievement.hardcore = true;
+    vec![
+        one(Source::Steam, tr!("Treasure Hunter"), tr!("Open every chest in the old harbour."), Some(9.7), None, Some("The Pale Reach")),
+        retro,
+        one(Source::Epic, tr!("First Steps"), tr!("Finish the tutorial."), Some(68.4), Some(250), None),
+        one(Source::Steam, tr!("Speed Demon"), "", None, None, None),
+        one(Source::Steam, tr!("First Steps"), "", Some(40.), None, None),
+        one(Source::Steam, tr!("Treasure Hunter"), "", Some(30.), None, None),
+    ]
 }
 
 pub struct NoticeWindow {
@@ -217,6 +348,12 @@ impl OverlayService {
                 let _ = old.handle.update(cx, |_, window, _| window.remove_window());
             }
         }
+        // A card of another height needs a window of its own.
+        if self.notice.as_ref().is_some_and(|n| n.shown.height() != notice.height()) {
+            if let Some(old) = self.notice.take() {
+                let _ = old.handle.update(cx, |_, window, _| window.remove_window());
+            }
+        }
         let duration = notice.duration;
         let reused = self.notice.as_ref().is_some_and(|n| {
             let notice = notice.clone();
@@ -237,7 +374,9 @@ impl OverlayService {
             let view = notice.clone();
             #[cfg(windows)]
             let screen = display.screen();
-            match window::open_notice(cx, display, self.prefs.side, layer, |_, cx| cx.new(|_| NoticeView { notice: view, scale })) {
+            match window::open_notice(cx, display, self.prefs.side, layer, notice.height(), |_, cx| {
+                cx.new(|_| NoticeView { notice: view, scale })
+            }) {
                 Ok(handle) => {
                     self.notice = Some(NoticeWindow {
                         handle,
@@ -294,14 +433,21 @@ impl Render for NoticeView {
         let n = &self.notice;
         let accent: Hsla = if n.error { theme::danger_text().into() } else { theme::text_primary().into() };
         let sub_colour: Hsla = n.accent.unwrap_or_else(|| theme::text_muted().into());
+        let gold: Hsla = theme::achievement_gold().into();
         let text = div()
             .flex()
             .flex_col()
             .flex_1()
             .min_w_0()
             .gap(u(6.))
+            // An achievement's "Achievement unlocked" goes above its name.
+            .when(n.achievement, |d| {
+                d.children(n.sub.clone().map(|s| div().text_size(u(12.)).font_weight(theme::W_BOLD).text_color(gold).truncate().child(s)))
+            })
             .child(div().text_size(u(16.)).font_weight(theme::W_BOLD).text_color(accent).truncate().child(n.title.clone()))
-            .children(n.sub.clone().map(|s| div().text_size(u(13.)).text_color(sub_colour).truncate().child(s)))
+            .when(!n.achievement, |d| d.children(n.sub.clone().map(|s| div().text_size(u(13.)).text_color(sub_colour).truncate().child(s))))
+            .children(n.description.clone().map(|d| div().text_size(u(13.)).text_color(theme::white_a(0.78)).truncate().child(d)))
+            .when(!n.chips.is_empty(), |d| d.child(chips(&n.chips)))
             .children(n.volume.map(|v| {
                 let fill = (f32::from(v.min(100)) / 100.).clamp(0., 1.);
                 div()
@@ -318,7 +464,6 @@ impl Render for NoticeView {
                     )
                     .child(div().w(u(40.)).text_size(u(13.)).text_color(theme::text_muted()).child(format!("{v}%")))
             }));
-        let gold: Hsla = theme::achievement_gold().into();
         let lead = match (&n.image, n.achievement) {
             (Some(image), _) => div()
                 .flex_none()
@@ -356,16 +501,65 @@ impl Render for NoticeView {
     }
 }
 
+/// The line of badges: the rarity in its tier's colour when rare, points in
+/// gold, hardcore in the danger colour, the rest muted; the set's name is
+/// cut when the line is full.
+fn chips(chips: &[Chip]) -> Div {
+    let gold: Hsla = theme::achievement_gold().into();
+    let danger: Hsla = theme::danger_text().into();
+    let mut line = div().flex().items_center().gap(u(6.)).overflow_hidden();
+    for c in chips {
+        let (fg, bg): (Hsla, Hsla) = match c {
+            Chip::Rarity(r) if *r < heronite_achievements::AchievementSet::RARE_BELOW => {
+                let tier: Hsla = theme::rarity_colour(theme::rarity_tier(*r)).into();
+                (tier, tier.opacity(0.16))
+            }
+            Chip::Points(_) => (gold, gold.opacity(0.16)),
+            Chip::Hardcore => (danger, danger.opacity(0.16)),
+            Chip::Rarity(_) | Chip::Kind(_) | Chip::Group(_) => (theme::white_a(0.78), theme::white_a(0.1)),
+        };
+        let chip = div().px(u(8.)).py(u(2.)).rounded_full().bg(bg).text_size(u(12.)).text_color(fg).font_weight(theme::W_BOLD).truncate();
+        let chip = if matches!(c, Chip::Group(_)) { chip.min_w_0() } else { chip.flex_none() };
+        line = line.child(chip.child(c.text()));
+    }
+    line
+}
+
 #[cfg(test)]
 mod tests {
     // Explicit imports: `use super::*` would bring in gpui's `test` macro and shadow `#[test]`.
-    use super::{Notice, Queue, QUEUE_MAX};
+    use super::{Chip, Details, Notice, Queue, Unlock, QUEUE_MAX};
+    use heronite_achievements::prefs::NoticeFields;
+    use heronite_achievements::{Achievement, Kind, Source};
+
+    fn unlock(source: Source, name: &str, rarity: Option<f32>) -> Unlock {
+        Unlock { achievement: Achievement { name: name.into(), rarity, unlocked: true, ..Default::default() }, source, group: None }
+    }
+
+    fn ach(name: impl AsRef<str>) -> Notice {
+        Notice::achievement(&unlock(Source::Local, name.as_ref(), None), NoticeFields::default(), None)
+    }
+
+    /// Everything a source could give.
+    fn full(source: Source) -> Unlock {
+        let mut u = unlock(source, "Untouchable", Some(1.2));
+        u.achievement.description = "  Beat the first boss without taking a hit. ".into();
+        u.achievement.points = Some(25);
+        u.achievement.kind = Some(Kind::WinCondition);
+        u.achievement.hardcore = true;
+        u.group = Some("The Pale Reach".into());
+        u
+    }
+
+    fn chips(d: &Details) -> Vec<String> {
+        d.chips.iter().map(Chip::text).collect()
+    }
 
     #[test]
     fn the_queue_keeps_a_few_and_sums_up_the_rest() {
         let mut q = Queue::default();
         for i in 0..7 {
-            q.push(Notice::achievement(format!("a{i}"), None, None));
+            q.push(ach(format!("a{i}")));
         }
         let titles: Vec<String> = std::iter::from_fn(|| q.next()).map(|n| n.title).collect();
         assert_eq!(titles.len(), QUEUE_MAX + 1);
@@ -378,21 +572,21 @@ mod tests {
     fn notices_keep_the_order_of_the_unlocks() {
         let mut q = Queue::default();
         let (a, b, c) = (q.ticket(), q.ticket(), q.ticket());
-        q.arrive(c, Notice::achievement("c", None, None));
-        q.arrive(a, Notice::achievement("a", None, None));
+        q.arrive(c, ach("c"));
+        q.arrive(a, ach("a"));
         assert_eq!(q.next().map(|n| n.title).as_deref(), Some("a"));
         // "c" waits for "b", whose icon is still loading.
         assert!(q.next().is_none());
-        q.arrive(b, Notice::achievement("b", None, None));
+        q.arrive(b, ach("b"));
         let titles: Vec<String> = std::iter::from_fn(|| q.next()).map(|n| n.title).collect();
         assert_eq!(titles, ["b", "c"]);
         // One made before a clear is dropped when it arrives.
         let late = q.ticket();
         q.clear();
-        q.arrive(late, Notice::achievement("late", None, None));
+        q.arrive(late, ach("late"));
         assert!(q.next().is_none());
         let after = q.ticket();
-        q.arrive(after, Notice::achievement("after", None, None));
+        q.arrive(after, ach("after"));
         assert_eq!(q.next().map(|n| n.title).as_deref(), Some("after"));
     }
 
@@ -400,7 +594,7 @@ mod tests {
     fn a_single_one_past_the_queue_shows_as_itself() {
         let mut q = Queue::default();
         for i in 0..=QUEUE_MAX {
-            q.push(Notice::achievement(format!("a{i}"), None, None));
+            q.push(ach(format!("a{i}")));
         }
         let titles: Vec<String> = std::iter::from_fn(|| q.next()).map(|n| n.title).collect();
         assert_eq!(titles, ["a0", "a1", "a2", "a3", "a4"]);
@@ -408,11 +602,98 @@ mod tests {
 
     #[test]
     fn a_rare_achievement_takes_its_tier_colour() {
-        let rare = Notice::achievement("x", Some(2.), None);
+        let all = NoticeFields::default();
+        let rare = Notice::achievement(&unlock(Source::Steam, "x", Some(2.)), all, None);
         assert!(rare.accent.is_some());
-        assert_eq!(rare.sub.as_deref(), Some("Achievement unlocked · 2.0%"));
-        let common = Notice::achievement("y", Some(60.), None);
+        assert_eq!(rare.sub.as_deref(), Some("Achievement unlocked"));
+        assert_eq!(rare.chips, [Chip::Rarity(2.)]);
+        assert_eq!(rare.chips[0].text(), "2.0%");
+        let common = Notice::achievement(&unlock(Source::Steam, "y", Some(60.)), all, None);
         assert!(common.accent.is_none());
-        assert_eq!(Notice::achievement("z", None, None).sub.as_deref(), Some("Achievement unlocked"));
+        assert_eq!(ach("z").sub.as_deref(), Some("Achievement unlocked"));
+        // The rarity turned off takes its colour with it.
+        let hidden = Notice::achievement(&unlock(Source::Steam, "x", Some(2.)), NoticeFields { rarity: false, ..all }, None);
+        assert!(hidden.accent.is_none());
+        assert!(hidden.chips.is_empty());
+    }
+
+    #[test]
+    fn each_source_shows_what_it_gives() {
+        let all = NoticeFields::default();
+        // RetroAchievements: points, type and hardcore (and a set, were it given).
+        let retro = Details::of(&full(Source::RetroAchievements), all);
+        assert_eq!(retro.description.as_deref(), Some("Beat the first boss without taking a hit."));
+        assert_eq!(chips(&retro), ["1.2%", "25 points", "Win condition", "Hardcore", "The Pale Reach"]);
+        // Epic Games: its points are XP; types and hardcore are RetroAchievements'.
+        assert_eq!(chips(&Details::of(&full(Source::Epic), all)), ["1.2%", "25 XP", "The Pale Reach"]);
+        // Steam and game files: the set only.
+        assert_eq!(chips(&Details::of(&full(Source::Steam), all)), ["1.2%", "The Pale Reach"]);
+        assert_eq!(chips(&Details::of(&full(Source::Local), all)), ["1.2%", "The Pale Reach"]);
+        // GOG: description and rarity.
+        let mut gog = full(Source::Gog);
+        gog.group = None;
+        let gog = Details::of(&gog, all);
+        assert_eq!(chips(&gog), ["1.2%"]);
+        assert_eq!(gog.rarity, Some(1.2));
+        assert!(gog.description.is_some());
+        // One point is singular; hardcore shows only for a hardcore unlock.
+        let mut one = full(Source::RetroAchievements);
+        one.achievement.points = Some(1);
+        one.achievement.hardcore = false;
+        one.group = None;
+        assert_eq!(chips(&Details::of(&one, all)), ["1.2%", "1 point", "Win condition"]);
+    }
+
+    #[test]
+    fn each_switch_hides_its_line() {
+        let all = NoticeFields::default();
+        let u = full(Source::RetroAchievements);
+        let off = |change: fn(&mut NoticeFields)| {
+            let mut f = all;
+            change(&mut f);
+            Details::of(&u, f)
+        };
+        assert_eq!(off(|f| f.description = false).description, None);
+        assert_eq!(off(|f| f.rarity = false).rarity, None);
+        assert_eq!(chips(&off(|f| f.rarity = false)), ["25 points", "Win condition", "Hardcore", "The Pale Reach"]);
+        assert_eq!(chips(&off(|f| f.points = false)), ["1.2%", "Win condition", "Hardcore", "The Pale Reach"]);
+        assert_eq!(chips(&off(|f| f.kind = false)), ["1.2%", "25 points", "Hardcore", "The Pale Reach"]);
+        assert_eq!(chips(&off(|f| f.hardcore = false)), ["1.2%", "25 points", "Win condition", "The Pale Reach"]);
+        assert_eq!(chips(&off(|f| f.group = false)), ["1.2%", "25 points", "Win condition", "Hardcore"]);
+        let none = NoticeFields { description: false, rarity: false, points: false, group: false, kind: false, hardcore: false };
+        let bare = Details::of(&u, none);
+        assert_eq!((bare.description, bare.rarity, bare.chips), (None, None, Vec::new()));
+        assert_eq!(Notice::achievement(&u, none, None).sub.as_deref(), Some("Achievement unlocked"));
+    }
+
+    #[test]
+    fn the_card_grows_with_its_lines() {
+        let all = NoticeFields::default();
+        let plain = ach("a");
+        assert_eq!(plain.height(), super::window::NOTICE_H);
+        let rich = Notice::achievement(&full(Source::RetroAchievements), all, None);
+        assert!(rich.height() > plain.height());
+        let no_badges = NoticeFields { rarity: false, points: false, group: false, kind: false, hardcore: false, ..all };
+        let middle = Notice::achievement(&full(Source::RetroAchievements), no_badges, None);
+        assert!(plain.height() < middle.height() && middle.height() < rich.height());
+        // An empty description takes no line, nor does an unknown rarity.
+        let mut blank = full(Source::Gog);
+        blank.achievement.description = "   ".into();
+        blank.achievement.rarity = None;
+        blank.group = None;
+        assert_eq!(Notice::achievement(&blank, all, None).height(), plain.height());
+        // The summing-up card stays as it was.
+        assert_eq!(Notice::more_achievements(3).height(), plain.height());
+    }
+
+    #[test]
+    fn the_previews_cover_every_line() {
+        let made_up = super::made_up_unlocks("");
+        assert_eq!(made_up.len(), 6);
+        let all = NoticeFields::default();
+        let first_two: Vec<Details> = made_up.iter().take(2).map(|u| Details::of(u, all)).collect();
+        assert!(first_two.iter().all(|d| d.description.is_some() && d.rarity.is_some()));
+        let badges: Vec<String> = first_two.iter().flat_map(chips).collect();
+        assert_eq!(badges, ["9.7%", "The Pale Reach", "1.2%", "25 points", "Missable", "Hardcore"]);
     }
 }

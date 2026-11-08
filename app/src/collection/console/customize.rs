@@ -17,6 +17,7 @@ use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row};
 use crate::console::motion;
 use crate::console::osk::{Osk, OskEvent};
+use crate::console::pointer::{self, Clickable};
 use crate::console::sheet::{Sheet, SheetEvent};
 use crate::console::theme_rows::{self, Extra, Facts, Host, ThemeState, PANEL};
 use crate::console::{hint, Btn, Hint, Pad};
@@ -117,11 +118,12 @@ impl CollectionView {
         let nav = self.console.customize.as_mut().filter(|n| !n.peek)?;
         let rows = theme_rows::group_rows(nav.group, &nav.state.ctx());
         let groups: Vec<SharedString> = PANEL.iter().map(|(g, _)| SharedString::from(tr(g))).collect();
-        let mut strip = div().flex().items_center().gap(u(14.)).child(kit::glyph(Btn::LB));
+        let mut strip = div().flex().items_center().gap(u(14.)).child(kit::glyph(Btn::LB).on_pads([Pad::LB]));
         for (i, g) in groups.iter().enumerate() {
             let on = i == nav.group;
             strip = strip.child(
                 div()
+                    .on_pads(pointer::along(nav.group, i, Pad::LB, Pad::RB))
                     .flex()
                     .flex_col()
                     .items_center()
@@ -137,7 +139,7 @@ impl CollectionView {
                     .child(div().h(u(2.)).w(u(if on { 22. } else { 0. })).rounded_full().bg(theme::console_focus())),
             );
         }
-        strip = strip.child(kit::glyph(Btn::RB));
+        strip = strip.child(kit::glyph(Btn::RB).on_pads([Pad::RB]));
         let notice = nav
             .state
             .notice
@@ -160,11 +162,13 @@ impl CollectionView {
             .border_l_1()
             .border_color(kit::ink(0.08))
             .shadow(kit::shadow(0.5, 0., 40.))
+            .eats_clicks()
             .child(div().px(u(8.)).child(kit::title(tr!("Customize"), 30.)))
             .child(div().px(u(8.)).child(strip))
             .child(list)
             .children(notice);
-        Some(motion::enter("console-customize", panel, 280, 40., 0.))
+        // The screen beside it shows the changes; it takes no clicks.
+        Some(div().absolute().inset_0().occlude().child(motion::enter("console-customize", panel, 280, 40., 0.)).into_any_element())
     }
 
     /// `false` lets the shell close it on B.

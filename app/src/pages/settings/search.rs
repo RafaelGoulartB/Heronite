@@ -86,7 +86,10 @@ const INDEX: &[(Section, &[&str])] = &[
             "Game sections",
         ],
     ),
-    (Section::ConsoleMode, &["The theme in use", "Startup", "Open the app", "When a controller connects"]),
+    (
+        Section::ConsoleMode,
+        &["The theme in use", "Startup", "Open the app", "Open console mode in fullscreen", "When a controller connects"],
+    ),
     (
         Section::Downloads,
         &[
@@ -114,6 +117,9 @@ const INDEX: &[(Section, &[&str])] = &[
             "Age ratings",
             "Show age ratings",
             "Rating board shown first",
+            "Steam tags",
+            "Show Steam tags",
+            "Steam tags per game",
             "HowLongToBeat",
             "Look up HowLongToBeat times",
             "PCGamingWiki",
@@ -136,6 +142,12 @@ const INDEX: &[(Section, &[&str])] = &[
             "Check Steam games while they run",
             "How they show",
             "Show new achievements over the game",
+            "Show the description",
+            "Show how rare it is",
+            "Show points or XP",
+            "Show the achievement set",
+            "Show the RetroAchievements type",
+            "Show hardcore unlocks",
             "Notify new achievements",
             "Try the notification",
             "Show achievements in the Timeline",
@@ -544,6 +556,8 @@ mod tests {
         let hits = search("achievements over the game");
         let hit = hits.iter().find(|h| h.section == Section::Achievements).expect("Achievements is found");
         assert!(hit.settings.iter().any(|s| s.label == "Show new achievements over the game"));
+        let points = search("points or xp");
+        assert!(points.iter().any(|h| h.section == Section::Achievements && h.settings.iter().any(|s| s.label == "Show points or XP")));
         let steam = search("steam games while they run");
         assert!(steam
             .iter()

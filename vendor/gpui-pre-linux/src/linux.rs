@@ -48,5 +48,29 @@ pub fn current_platform(headless: bool) -> Rc<dyn gpui::Platform> {
 /// It starts windowed in the process's own environment, or headless if that names no allowed
 /// display server. Set another initial mode with [`gpui::Application::with_windowing`].
 pub fn linux_platform(allowed_modes: WindowingModes) -> Rc<dyn gpui::Platform> {
-    Rc::new(LinuxPlatform::new(allowed_modes))
+    let platform = Rc::new(LinuxPlatform::new(allowed_modes));
+    PLATFORM.with(|p| *p.borrow_mut() = Rc::downgrade(&platform));
+    platform
+}
+
+thread_local! {
+    /// Heronite: the platform made last, for [`show_cursor`] and
+    /// [`hide_cursor_until_mouse_moves`] (GPUI has no API for them).
+    static PLATFORM: std::cell::RefCell<std::rc::Weak<LinuxPlatform>> = std::cell::RefCell::new(std::rc::Weak::new());
+}
+
+/// Heronite: hides the mouse cursor over the app's windows until the mouse
+/// moves, as typing does (a game controller is in use).
+pub fn hide_cursor_until_mouse_moves() {
+    if let Some(platform) = PLATFORM.with(|p| p.borrow().upgrade()) {
+        platform.hide_cursor_now();
+    }
+}
+
+/// Heronite: shows the cursor a hide took away, without waiting for the
+/// mouse to move (a key was pressed).
+pub fn show_cursor() {
+    if let Some(platform) = PLATFORM.with(|p| p.borrow().upgrade()) {
+        platform.show_cursor_now();
+    }
 }

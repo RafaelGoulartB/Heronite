@@ -26,6 +26,7 @@ pub mod providers;
 pub mod remove;
 pub mod service;
 pub mod steam;
+pub mod steam_tags;
 pub mod store;
 pub mod types;
 pub mod util;

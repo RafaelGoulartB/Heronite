@@ -1,0 +1,8 @@
+{
+  "Asks Steam for the tags of your games now and then.": "Pede à Steam os marcadores dos seus jogos de vez em quando.",
+  "Show Steam tags": "Mostrar marcadores da Steam",
+  "Steam tag": "Marcador da Steam",
+  "Steam tags": "Marcadores da Steam",
+  "Steam tags per game": "Marcadores da Steam por jogo",
+  "The tags Steam players voted for, for games on Steam (other stores' games too, once their metadata found them on Steam). Filter by them in the View menu; rename or remove one in Library fields. From the Steam Web API; Heronite is not affiliated with Valve.": "Os marcadores que os jogadores da Steam votaram, para jogos na Steam (também os de outras lojas, quando os metadados deles os encontraram na Steam). Filtre por eles no menu Exibir; renomeie ou remova um em Campos da biblioteca. Da API web da Steam; o Heronite não é afiliado à Valve."
+}

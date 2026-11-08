@@ -331,6 +331,8 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         download_images: value.is_some_and(|v| v.download_images),
         auto_fill_missing: value.map(|v| v.auto_fill_missing).unwrap_or(true),
         show_age_ratings: value.map(|v| v.show_age_ratings).unwrap_or(true),
+        steam_tags: value.map(|v| v.steam_tags).unwrap_or(true),
+        steam_tag_limit: crate::steam_tags::normalize_limit(value.map(|v| v.steam_tag_limit).unwrap_or(0)),
         how_long_to_beat: value.map(|v| v.how_long_to_beat).unwrap_or(true),
         pc_gaming_wiki: value.map(|v| v.pc_gaming_wiki).unwrap_or(true),
         age_rating_system: value

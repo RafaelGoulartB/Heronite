@@ -1,0 +1,151 @@
+{
+ "response": {
+  "version_hash": "711684454",
+  "tags": [
+   {
+    "tagid": 19,
+    "name": "Action"
+   },
+   {
+    "tagid": 122,
+    "name": "RPG"
+   },
+   {
+    "tagid": 492,
+    "name": "Indie"
+   },
+   {
+    "tagid": 1625,
+    "name": "Platformer"
+   },
+   {
+    "tagid": 1646,
+    "name": "Hack and Slash"
+   },
+   {
+    "tagid": 1663,
+    "name": "FPS"
+   },
+   {
+    "tagid": 1664,
+    "name": "Puzzle"
+   },
+   {
+    "tagid": 1685,
+    "name": "Co-op"
+   },
+   {
+    "tagid": 1716,
+    "name": "Roguelike"
+   },
+   {
+    "tagid": 1719,
+    "name": "Comedy"
+   },
+   {
+    "tagid": 1720,
+    "name": "Dungeon Crawler"
+   },
+   {
+    "tagid": 1742,
+    "name": "Story Rich"
+   },
+   {
+    "tagid": 1756,
+    "name": "Great Soundtrack"
+   },
+   {
+    "tagid": 1759,
+    "name": "Perma Death"
+   },
+   {
+    "tagid": 3839,
+    "name": "First-Person"
+   },
+   {
+    "tagid": 3942,
+    "name": "Sci-fi"
+   },
+   {
+    "tagid": 3959,
+    "name": "Roguelite"
+   },
+   {
+    "tagid": 3968,
+    "name": "Physics"
+   },
+   {
+    "tagid": 4026,
+    "name": "Difficult"
+   },
+   {
+    "tagid": 4106,
+    "name": "Action-Adventure"
+   },
+   {
+    "tagid": 4136,
+    "name": "Funny"
+   },
+   {
+    "tagid": 4166,
+    "name": "Atmospheric"
+   },
+   {
+    "tagid": 4182,
+    "name": "Singleplayer"
+   },
+   {
+    "tagid": 4231,
+    "name": "Action RPG"
+   },
+   {
+    "tagid": 4711,
+    "name": "Replay Value"
+   },
+   {
+    "tagid": 5395,
+    "name": "3D Platformer"
+   },
+   {
+    "tagid": 5537,
+    "name": "Puzzle Platformer"
+   },
+   {
+    "tagid": 5794,
+    "name": "Science"
+   },
+   {
+    "tagid": 5851,
+    "name": "Isometric"
+   },
+   {
+    "tagid": 5923,
+    "name": "Dark Humor"
+   },
+   {
+    "tagid": 6815,
+    "name": "Hand-drawn"
+   },
+   {
+    "tagid": 7208,
+    "name": "Female Protagonist"
+   },
+   {
+    "tagid": 8122,
+    "name": "Level Editor"
+   },
+   {
+    "tagid": 16094,
+    "name": "Mythology"
+   },
+   {
+    "tagid": 42804,
+    "name": "Action Roguelike"
+   },
+   {
+    "tagid": 44868,
+    "name": "LGBTQ+"
+   }
+  ]
+ }
+}

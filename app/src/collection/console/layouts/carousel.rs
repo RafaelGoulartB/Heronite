@@ -27,6 +27,7 @@ use super::grid::{jump_letter, letter_of};
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion;
+use crate::console::pointer::{self, Clickable};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -162,7 +163,11 @@ fn turn<E: IntoElement + 'static>(id: impl Into<ElementId>, el: E, target: f32, 
 fn filter_pills(tab: usize, filter: usize, focused: bool) -> AnyElement {
     let row = div().flex_none().flex().justify_center().gap(u(6.)).pt(u(6.)).children(FILTERS.iter().enumerate().map(|(j, label)| {
         let (on, current) = (focused && j == filter, j == filter);
+        // A click: ↑ to the pills, then ← → to this one.
+        let mut pads = if focused { Vec::new() } else { vec![Pad::Up] };
+        pads.extend(pointer::along(filter, j, Pad::Left, Pad::Right));
         kit::row_base(on)
+            .on_pads(pads)
             .min_h(u(36.))
             .px(u(18.))
             .when(!on && current, |d| d.bg(kit::ink(0.14)).text_color(kit::strong()))
@@ -329,7 +334,11 @@ impl CollectionView {
             let title = g.title.clone();
             let categories = self.console_categories(&key);
             let d = i as f32 - index as f32;
-            let cover = turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute(), d, move |el, d| {
+            // A click: ↓ from the pills, ← → to the cover; A on the focused one.
+            let mut pads = if pills_focus { vec![Pad::Down] } else { Vec::new() };
+            pads.extend(pointer::along(index, i, Pad::Left, Pad::Right));
+            let pads = if pills_focus { pads } else { pointer::focus_or_activate(pads) };
+            let cover = turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute().on_pads(pads), d, move |el, d| {
                 let p = pose(d);
                 let (w, h) = (cwp * p.scale, chp * p.scale);
                 let top = (chp - h) * ANCHOR;

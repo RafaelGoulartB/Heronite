@@ -1,7 +1,9 @@
 //! The overlay's surfaces: Wayland layer-shell or Windows topmost tool windows,
 //! drawn over everything (fullscreen games included) without keyboard focus,
 //! so the game keeps it; only a panel opened from the keyboard takes it
-//! (until it closes). Sizes follow the display's height, like console
+//! (until it closes). On Windows every panel takes the foreground, so the
+//! games that ignore the controller in the background ignore the overlay's
+//! navigation (XInput has no grab). Sizes follow the display's height, like console
 //! mode, smaller since the panel floats over a game (1440 px tall → 1.16).
 
 #[cfg(windows)]
@@ -183,7 +185,7 @@ fn layer_shell(_namespace: &str, _side: Side, _margin: Pixels, _keyboard: bool) 
 pub struct OpenedPanel<V: 'static> {
     pub handle: WindowHandle<V>,
     /// Windows: places and shows the native window, then gives what hands the
-    /// foreground back to the game when a keyboard panel closes. `None` for a
+    /// foreground back to the game when the panel closes. `None` for a
     /// normal window.
     #[cfg(windows)]
     pub shown: Option<Task<anyhow::Result<Option<heronite_platform::overlay_window::FocusReturn>>>>,
@@ -204,7 +206,7 @@ pub fn open_panel<V: Render>(
     let size = size(px(PANEL_W * s), px(height));
     #[cfg(windows)]
     if layer {
-        let (handle, shown) = windows::open(cx, display.screen, "overlay", size, side, EDGE * s, keyboard, build)?;
+        let (handle, shown) = windows::open(cx, display.screen, "overlay", size, side, EDGE * s, build)?;
         return Ok(OpenedPanel { handle, shown: Some(shown) });
     }
     let handle = cx.open_window(options("overlay", size, side, px(EDGE * s), layer, keyboard), build)?;
@@ -215,16 +217,17 @@ pub fn open_panel<V: Render>(
     })
 }
 
-/// Opens a notice in the top corner of `side`.
+/// Opens a notice `height` design px tall in the top corner away from `side`.
 pub fn open_notice<V: Render>(
     cx: &mut App,
     display: Display,
     side: Side,
     layer: bool,
+    height: f32,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<WindowHandle<V>> {
     let s = display.scale();
-    let size = size(px(NOTICE_W * s), px(NOTICE_H * s));
+    let size = size(px(NOTICE_W * s), px(height * s));
     // Away from the panel's side, so both can show.
     let corner = match side {
         Side::Left => Side::Right,
@@ -232,7 +235,7 @@ pub fn open_notice<V: Render>(
     };
     #[cfg(windows)]
     if layer {
-        let (handle, shown) = windows::open(cx, display.screen, "overlay-notice", size, corner, 24. * s, false, build)?;
+        let (handle, shown) = windows::open(cx, display.screen, "overlay-notice", size, corner, 24. * s, build)?;
         cx.spawn(async move |cx| {
             if let Err(error) = shown.await {
                 log::warn!("overlay: cannot show the native notice: {error:#}");

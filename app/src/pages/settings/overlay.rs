@@ -146,7 +146,7 @@ fn reserved_note() -> &'static str {
 }
 
 fn controller_limits() -> &'static str {
-    tr!("Windows does not block controller input: the game also receives Back + Start and the buttons used in the overlay.")
+    tr!("Windows cannot block the controller: the game also receives Back + Start. The open panel takes the focus, which keeps its buttons out of most games; games that read the controller in the background still receive them.")
 }
 
 fn controller_support() -> &'static str {

@@ -8,6 +8,7 @@
 
 mod age_fill;
 mod bulk;
+mod tag_fill;
 
 pub use bulk::AUTO_FILL_BATCH;
 

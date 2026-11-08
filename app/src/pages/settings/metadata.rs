@@ -1,5 +1,6 @@
 //! Settings → Metadata: IGDB credentials, SteamGridDB key, background fill,
-//! image copy, the age rating board, per-field source priority, bulk download.
+//! image copy, the age rating board, Steam tags, per-field source priority,
+//! bulk download.
 
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
@@ -111,6 +112,53 @@ fn set_board(d: &mut SettingsPage, index: usize, cx: &mut Context<SettingsPage>)
     persist(d, cx, |m| m.age_rating_system = id.to_owned());
 }
 
+/// The "Steam tags per game" choices.
+const TAG_LIMITS: [u32; 4] = [5, 10, 15, 20];
+
+fn tag_limit_index(d: &SettingsPage) -> usize {
+    let limit = d.settings.metadata.steam_tag_limit;
+    TAG_LIMITS.iter().position(|l| *l >= limit).unwrap_or(TAG_LIMITS.len() - 1)
+}
+
+/// Turns Steam tags on or off; on, the tags the Collection lacks are fetched
+/// right away.
+fn set_steam_tags(d: &mut SettingsPage, on: bool, cx: &mut Context<SettingsPage>) {
+    persist(d, cx, |m| m.steam_tags = on);
+    if on {
+        hub(cx).update(cx, |h, cx| h.refresh_steam_tags(cx));
+    }
+}
+
+fn set_tag_limit(d: &mut SettingsPage, index: usize, cx: &mut Context<SettingsPage>) {
+    let Some(limit) = TAG_LIMITS.get(index).copied() else { return };
+    persist(d, cx, |m| m.steam_tag_limit = limit);
+}
+
+fn tag_limit_select(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let current = tag_limit_index(d);
+    select_field(
+        "md-tag-limit",
+        Some(tr!("Steam tags per game")),
+        TAG_LIMITS[current].to_string(),
+        !d.settings.metadata.steam_tags,
+        d.metadata.open_select == Some(TAG_SELECT),
+        TAG_LIMITS.iter().enumerate().map(|(i, l)| (SharedString::from(l.to_string()), i == current)).collect(),
+        cx,
+        |d: &mut SettingsPage, _, cx| {
+            d.metadata.open_select = if d.metadata.open_select == Some(TAG_SELECT) { None } else { Some(TAG_SELECT) };
+            cx.notify();
+        },
+        |d: &mut SettingsPage, i, _, cx| {
+            d.metadata.open_select = None;
+            set_tag_limit(d, i, cx);
+        },
+    )
+    .into_any_element()
+}
+
+/// [`State::open_select`] of the Steam tags count.
+const TAG_SELECT: &str = "tag-limit";
+
 fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     if d.metadata.testing {
         return;
@@ -146,7 +194,8 @@ fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let m = &d.settings.metadata;
-    let (auto_fill, download, show_age, hltb) = (m.auto_fill_missing, m.download_images, m.show_age_ratings, m.how_long_to_beat);
+    let (auto_fill, download, show_age, steam_tags, hltb) =
+        (m.auto_fill_missing, m.download_images, m.show_age_ratings, m.steam_tags, m.how_long_to_beat);
     let pcgw = m.pc_gaming_wiki;
     let testing = d.metadata.testing;
 
@@ -201,6 +250,16 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.show_age_ratings = !show_age)))
                 .into_any_element(),
             div().py(px(12.)).child(board_select(d, cx)).into_any_element(),
+        ]))
+        .child(caption(tr!("Steam tags")))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
+            "The tags Steam players voted for, for games on Steam (other stores' games too, once their metadata found them on Steam). Filter by them in the View menu; rename or remove one in Library fields. From the Steam Web API; Heronite is not affiliated with Valve."
+        ))))
+        .child(card([
+            toggle_row("md-steam-tags", tr!("Show Steam tags"), Some(tr!("Asks Steam for the tags of your games now and then.")), steam_tags)
+                .on_click(cx.listener(move |d, _, _, cx| set_steam_tags(d, !steam_tags, cx)))
+                .into_any_element(),
+            div().py(px(12.)).child(tag_limit_select(d, cx)).into_any_element(),
         ]))
         .child(caption("HowLongToBeat"))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
@@ -342,6 +401,14 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
             board_options().into_iter().map(|(_, label)| SharedString::from(label)).collect(),
             board_index(d),
         ),
+        Row::header(tr!("Steam tags")),
+        Row::toggle("steam-tags", tr!("Show Steam tags"), m.steam_tags).desc(tr!("Asks Steam for the tags of your games now and then.")),
+        Row::choice(
+            "tag-limit",
+            tr!("Steam tags per game"),
+            TAG_LIMITS.iter().map(|l| SharedString::from(l.to_string())).collect(),
+            tag_limit_index(d),
+        ),
         Row::header("HowLongToBeat"),
         Row::toggle("hltb", tr!("Look up HowLongToBeat times"), m.how_long_to_beat),
         Row::header("PCGamingWiki"),
@@ -395,11 +462,13 @@ pub(super) fn console_apply(
             "autofill" => persist(d, cx, |m| m.auto_fill_missing = on),
             "download" => persist(d, cx, |m| m.download_images = on),
             "age-show" => persist(d, cx, |m| m.show_age_ratings = on),
+            "steam-tags" => set_steam_tags(d, on, cx),
             "hltb" => persist(d, cx, |m| m.how_long_to_beat = on),
             "pcgw" => persist(d, cx, |m| m.pc_gaming_wiki = on),
             _ => {}
         },
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "age-board" => set_board(d, index, cx),
+        Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "tag-limit" => set_tag_limit(d, index, cx),
         Outcome::Changed(id, Value::Choice { index, .. }) => {
             if let Some(field) = id.strip_prefix("prio:").and_then(|f| METADATA_FIELDS.iter().find(|x| **x == f)).copied() {
                 let value = SOURCES[index].0;

@@ -27,6 +27,7 @@ use crate::collection::focus_left::STAR;
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Follow, FrameClock};
+use crate::console::pointer::{self, Clickable};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -212,10 +213,19 @@ impl CollectionView {
     fn spotlight_actions(&self, g: &CollectionGame, zone: Zone, at: usize) -> Div {
         let wide = look::theme().layouts.spotlight_actions == SpotActions::Play;
         let (label, play_icon) = self.primary_state(g);
+        // A click: to the buttons (↓ from the row, ↑ from the cards), ← → to this one, A.
+        let (lead, start) = match zone {
+            Zone::Row => (vec![Pad::Down], 0),
+            Zone::Actions => (Vec::new(), at),
+            Zone::Cards => (vec![Pad::Up], at),
+        };
         let buttons = actions().iter().enumerate().map(|(i, act)| {
             let on = zone == Zone::Actions && at == i;
             let id = ("spot-act", i);
-            match act {
+            let mut pads = lead.clone();
+            pads.extend(pointer::along(start, i, Pad::Left, Pad::Right));
+            pads.push(Pad::A);
+            let button = match act {
                 SpotAct::Play => button(id, on, play_icon, Some(label.into()), None, wide),
                 SpotAct::Status => {
                     let name = self.console_status(g).map_or_else(|| tr!("Status").to_string(), |(name, _)| name);
@@ -223,7 +233,8 @@ impl CollectionView {
                 }
                 SpotAct::Favourite => button(id, on, Icon::Favorite, None, g.favourite.then(|| rgb(STAR)), false),
                 SpotAct::More => button(id, on, Icon::MoreHoriz, None, None, false),
-            }
+            };
+            div().flex_none().on_pads(pads).child(button)
         });
         let when = div().ml(u(10.)).text_size(u(15.)).text_color(theme::text_muted()).whitespace_nowrap().child(played_line(g, true));
         div().flex().items_center().gap(u(14.)).mt(u(18.)).h(u(BUTTON_H)).children(buttons).child(when)
@@ -292,7 +303,13 @@ impl CollectionView {
         let cards = game.as_ref().filter(|_| room.cards).map(|g| self.spotlight_cards(g)).unwrap_or_default();
         let card_at = self.tab_nav(tab).spotlight.card.min(cards.len().saturating_sub(1));
 
-        let row = self.spotlight_row(&found, index, &look, window);
+        // The presses that bring the focus back up to the row (for its clicks).
+        let to_row = match zone {
+            Zone::Row => Vec::new(),
+            Zone::Actions => vec![Pad::Up],
+            Zone::Cards => vec![Pad::Up, Pad::Up],
+        };
+        let row = self.spotlight_row(&found, index, &look, &to_row, window);
         let main_h = room.body - room.row - if cards.is_empty() { 0. } else { PEEK };
         let pad = MAIN_PAD.max(main_h * MAIN_LIFT);
         let main = self.spotlight_main(game.as_deref(), (zone, action, from), main_h - pad, window);
@@ -308,7 +325,16 @@ impl CollectionView {
                 .h(u(cards_h))
                 .px(u(SIDE))
                 .opacity((0.55 + 0.45 * depth) * (1. - 0.8 * look.veil * (1. - depth)))
-                .children(cards.iter().enumerate().map(|(i, c)| card(i, zone == Zone::Cards && i == card_at, c)))
+                .children(cards.iter().enumerate().map(|(i, c)| {
+                    // A click: ↓ to the cards, ← → to this one; A on the focused one.
+                    let mut pads = match zone {
+                        Zone::Row => vec![Pad::Down, Pad::Down],
+                        Zone::Actions => vec![Pad::Down],
+                        Zone::Cards => Vec::new(),
+                    };
+                    pads.extend(pointer::along(card_at, i, Pad::Left, Pad::Right));
+                    div().flex_none().on_pads(pointer::focus_or_activate(pads)).child(card(i, zone == Zone::Cards && i == card_at, c))
+                }))
         });
         // The art darkens from the bottom as the cards come up.
         let dim = (depth > 0.005).then(|| {

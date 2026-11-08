@@ -5,7 +5,10 @@
 //! is not affected by the grab; it also sees the initial Guide press.
 //!
 //! Windows polls documented XInput. Back+Start acts as Guide; neither that
-//! combination nor navigation is exclusive: the game can receive both.
+//! combination nor navigation is exclusive: the game can receive both. The
+//! open panel takes the foreground (`heronite_platform::overlay_window`),
+//! which keeps navigation out of the games that ignore the controller in the
+//! background (SDL, Unity and Unreal ones, most of them).
 
 // Unsupported systems use only the public input types.
 #[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
