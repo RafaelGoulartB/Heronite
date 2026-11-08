@@ -2,7 +2,7 @@
 //! games, your look, while you play), the tips to discover later, what each
 //! one leads to, and whether it is done (read from the library and the
 //! settings when the dialog opens; the ones without a setting count once
-//! done here).
+//! done here) or marked "Not used".
 
 use std::collections::BTreeSet;
 
@@ -68,10 +68,14 @@ pub enum Action {
     /// The appearance changed here: the Collection repaints and applies
     /// "Open the Collection in".
     LookChanged,
-    /// A tip read here ("Got it").
+    /// A tip read here ("Got it"), or the look kept as it is.
     Done(Step),
-    /// "Don't show again".
-    Hide,
+    /// "Not used": the step counts as settled without being set up.
+    Skip(Step),
+    /// "Undo" on a step marked "Not used".
+    Unskip(Step),
+    /// Every step is done or not used: the bulb leaves the header.
+    Finished,
 }
 
 impl Step {
@@ -232,11 +236,19 @@ pub struct Facts {
     pub grid_view: bool,
     /// `onboarding.json`'s `done`.
     pub done: BTreeSet<String>,
+    /// `onboarding.json`'s `skipped`.
+    pub skipped: BTreeSet<String>,
 }
 
 impl Facts {
     /// Reads the library and the settings (small files).
-    pub fn read(lib: &Library, data_paths: &heronite_data::DataPaths, app: &AppPaths, done: BTreeSet<String>) -> Self {
+    pub fn read(
+        lib: &Library,
+        data_paths: &heronite_data::DataPaths,
+        app: &AppPaths,
+        done: BTreeSet<String>,
+        skipped: BTreeSet<String>,
+    ) -> Self {
         let count = |f: &dyn Fn(&heronite_data::CollectionGame) -> bool| lib.games.iter().filter(|g| f(g)).count();
         let (overlay_why, overlay_ok) = crate::overlay::desktop_status();
         Self {
@@ -255,6 +267,7 @@ impl Facts {
             tray: crate::system::settings::SysSettings::load(data_paths).exit_to_tray,
             grid_view: heronite_data::ui_state::UiState::load(app).grid_view,
             done,
+            skipped,
         }
     }
 
@@ -306,8 +319,14 @@ impl Facts {
             .collect()
     }
 
-    pub fn done_count(&self) -> usize {
-        self.counted().into_iter().filter(|s| self.is_done(*s)).count()
+    /// Marked "Not used" and not done since.
+    pub fn is_skipped(&self, step: Step) -> bool {
+        !self.is_done(step) && self.skipped.contains(step.id())
+    }
+
+    /// The counted steps neither done nor marked "Not used", in order.
+    pub fn left(&self) -> Vec<Step> {
+        self.counted().into_iter().filter(|s| !self.is_done(*s) && !self.is_skipped(*s)).collect()
     }
 }
 
@@ -332,5 +351,29 @@ mod tests {
         let none = Facts::default();
         assert_eq!((none.count_line(Step::Steam), none.found_line(Step::Steam)), (None, None));
         assert_eq!(none.found_line(Step::Stores), None);
+    }
+
+    #[test]
+    fn a_step_marked_not_used_is_settled_until_done() {
+        let mut f = Facts { overlay_ok: true, ..Default::default() };
+        assert!(f.left().contains(&Step::Saves));
+        f.skipped.insert(Step::Saves.id().to_owned());
+        assert!(f.is_skipped(Step::Saves));
+        assert!(!f.left().contains(&Step::Saves));
+        // Turned on later: done, no longer "Not used".
+        f.saves = true;
+        assert!(!f.is_skipped(Step::Saves));
+        assert!(!f.left().contains(&Step::Saves));
+    }
+
+    #[test]
+    fn nothing_left_once_every_counted_step_is_done_or_not_used() {
+        let mut f = Facts::default();
+        let counted = f.counted();
+        assert_eq!(f.left(), counted);
+        for step in &counted {
+            f.skipped.insert(step.id().to_owned());
+        }
+        assert!(f.left().is_empty());
     }
 }

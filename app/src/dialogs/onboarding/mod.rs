@@ -1,9 +1,10 @@
 //! "Getting started": three cards (your games, your look, while you play)
 //! with what is left to set up, and tips to discover later. The first two
 //! cards open inside the dialog (the sources, the look picker with a live
-//! preview); the third switches things on in place. It opens by itself once
-//! per setup and from the bulb in the header (`collection::onboarding`),
-//! which "Don't show again" removes.
+//! preview); the third switches things on in place. A step the user does not
+//! want is marked "Not used" and counts as settled. It opens by itself once
+//! per setup, from the bulb in the header until every step is settled
+//! (`collection::onboarding`), and from the command palette.
 
 mod art;
 mod games;
@@ -32,7 +33,7 @@ use super::art_images::DialogImages;
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{button, close_button, kicker, ButtonKind};
+use crate::ui::controls::{button, close_button, kbd, kicker, ButtonKind};
 use crate::ui::{glass, icon};
 
 const CARD_W: f32 = 1180.;
@@ -61,21 +62,24 @@ pub struct OnboardingDialog {
     images: Entity<DialogImages>,
     error: Option<String>,
     on_action: Rc<dyn Fn(Step, Action, &mut App)>,
+    /// `Action::Finished` went out (once per opening).
+    finished: bool,
 }
 
 impl EventEmitter<DialogEvent> for OnboardingDialog {}
 
 impl OnboardingDialog {
-    /// `done`: the steps already done here (`onboarding.json`). `on_action`
-    /// runs what needs the Collection (pages, palette, console mode, saving
-    /// the dialog's own state).
+    /// `done` and `skipped`: the steps already done here or marked "Not
+    /// used" (`onboarding.json`). `on_action` runs what needs the Collection
+    /// (pages, palette, console mode, saving the dialog's own state).
     pub fn new(
         ctx: DialogCtx,
         done: BTreeSet<String>,
+        skipped: BTreeSet<String>,
         on_action: impl Fn(Step, Action, &mut App) + 'static,
         cx: &mut Context<Self>,
     ) -> Self {
-        let facts = Facts::read(&ctx.lib, &ctx.data_paths, &ctx.app, done);
+        let facts = Facts::read(&ctx.lib, &ctx.data_paths, &ctx.app, done, skipped);
         let images = cx.new(|cx| DialogImages::new(&ctx, cx));
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
         // The other launchers found on this PC, offered in "Your games".
@@ -100,7 +104,13 @@ impl OnboardingDialog {
             .ok();
         })
         .detach();
-        Self { ctx, facts, view: View::Hub, games, images, error: None, on_action: Rc::new(on_action) }
+        // Steps set up elsewhere may have settled the last one: tell the
+        // Collection once it is done opening this.
+        let this = cx.weak_entity();
+        cx.defer(move |cx| {
+            this.update(cx, |this, cx| this.settle(cx)).ok();
+        });
+        Self { ctx, facts, view: View::Hub, games, images, error: None, on_action: Rc::new(on_action), finished: false }
     }
 
     /// Opens the part of the dialog with `step` (`HERONITE_DEBUG_DIALOG=onboarding:<id>`,
@@ -127,10 +137,41 @@ impl OnboardingDialog {
         match action {
             Action::Done(step) => {
                 self.facts.done.insert(step.id().to_owned());
+                self.settle(cx);
                 cx.notify();
             }
-            Action::LookChanged => cx.notify(),
+            Action::LookChanged => {
+                self.settle(cx);
+                cx.notify();
+            }
             _ => cx.emit(DialogEvent::Close),
+        }
+    }
+
+    /// Marks `step` "Not used" (`on`) or takes that back.
+    fn skip(&mut self, step: Step, on: bool, cx: &mut Context<Self>) {
+        if on {
+            self.facts.skipped.insert(step.id().to_owned());
+        } else {
+            self.facts.skipped.remove(step.id());
+        }
+        (self.on_action)(step, if on { Action::Skip(step) } else { Action::Unskip(step) }, cx);
+        self.settle(cx);
+        cx.notify();
+    }
+
+    /// "Skip the rest": every step left is marked "Not used".
+    fn skip_rest(&mut self, cx: &mut Context<Self>) {
+        for step in self.facts.left() {
+            self.skip(step, true, cx);
+        }
+    }
+
+    /// Tells the Collection once nothing is left, so the bulb leaves the header.
+    fn settle(&mut self, cx: &mut Context<Self>) {
+        if !self.finished && self.facts.left().is_empty() {
+            self.finished = true;
+            (self.on_action)(Step::Palette, Action::Finished, cx);
         }
     }
 
@@ -176,6 +217,7 @@ impl OnboardingDialog {
             }
             Err(e) => self.error = Some(tr!("Could not save the setting: {error}", error = format!("{e:#}"))),
         }
+        self.settle(cx);
         cx.notify();
     }
 
@@ -230,29 +272,23 @@ impl OnboardingDialog {
         };
         match self.view {
             View::Hub => {
-                let (done, total) = (self.facts.done_count(), self.facts.counted().len());
-                let lead = if self.facts.games() > 0 {
-                    tr!("Your games are in. A few more things and you are set.")
+                let left = self.facts.left();
+                let (title, lead) = if left.is_empty() {
+                    (tr!("You are all set"), tr!("Everything is set up or marked as not used."))
+                } else if self.facts.games() > 0 {
+                    (tr!("Get Heronite ready for you"), tr!("Your games are in. A few more things and you are set."))
                 } else {
-                    tr!("Three things, in any order. Start with your games.")
+                    (tr!("Get Heronite ready for you"), tr!("Three things, in any order. Start with your games."))
                 };
                 div()
                     .flex()
-                    .items_center()
-                    .gap(px(24.))
+                    .flex_col()
+                    .gap(px(6.))
                     .pr(px(52.))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .gap(px(6.))
-                            .child(kicker(tr!("Getting started")))
-                            .child(heading(tr!("Get Heronite ready for you").into()))
-                            .child(div().text_size(px(14.5)).text_color(theme::text_muted()).child(lead)),
-                    )
-                    .child(art::ring(done as f32 / total.max(1) as f32, 64., format!("{done}/{total}")))
+                    .child(kicker(tr!("Getting started")))
+                    .child(heading(title.into()))
+                    .child(div().text_size(px(14.5)).text_color(theme::text_muted()).child(lead))
+                    .when(!left.is_empty(), |d| d.child(self.render_left(&left, cx)))
             }
             View::Games | View::Look => div()
                 .flex()
@@ -277,16 +313,52 @@ impl OnboardingDialog {
         }
     }
 
+    /// "Left:" and a chip per step not settled yet; the ones that live in the
+    /// games or look view open it.
+    fn render_left(&self, left: &[Step], cx: &mut Context<Self>) -> Div {
+        let chip = |step: Step| {
+            let opens = matches!(step, Step::Steam | Step::Stores | Step::Emulators | Step::Appearance);
+            div()
+                .id(SharedString::from(format!("onb-left-{}", step.id())))
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .px(px(10.))
+                .py(px(3.))
+                .rounded_full()
+                .bg(theme::ink_a(0.05))
+                .border_1()
+                .border_color(theme::ink_a(0.12))
+                .text_size(px(12.5))
+                .child(icon(step.icon(), px(14.), theme::text_muted()))
+                .child(step.title())
+                .when(opens, |d| {
+                    d.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.1))).on_click(cx.listener(move |this, _, _, cx| this.show(step, cx)))
+                })
+        };
+        div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap(px(6.))
+            .mt(px(6.))
+            .child(div().text_size(px(12.5)).text_color(theme::text_dim()).child(tr!("Left:")))
+            .children(left.iter().map(|s| chip(*s)))
+    }
+
     fn render_footer(&self, cx: &mut Context<Self>) -> Div {
+        let left = self.view == View::Hub && !self.facts.left().is_empty();
         div()
             .flex()
             .items_center()
             .gap(px(10.))
             .pt(px(18.))
-            .child(
-                button("onb-hide", ButtonKind::Ghost, tr!("Don't show again"))
-                    .on_click(cx.listener(|this, _, _, cx| this.go(Step::Palette, Action::Hide, cx))),
-            )
+            .when(left, |d| {
+                d.child(
+                    button("onb-skip-rest", ButtonKind::Ghost, tr!("Skip the rest"))
+                        .on_click(cx.listener(|this, _, _, cx| this.skip_rest(cx))),
+                )
+            })
             .child(div().flex_1())
             .child(
                 div()
@@ -296,8 +368,8 @@ impl OnboardingDialog {
                     .mr(px(6.))
                     .text_size(px(12.5))
                     .text_color(theme::text_dim())
-                    .child(icon(Icon::Lightbulb, px(14.), theme::text_dim()))
-                    .child(tr!("It stays under the bulb at the top")),
+                    .child(tr!("Open it again anytime with"))
+                    .child(kbd("Ctrl K")),
             )
             .child(button("onb-close", ButtonKind::Glass, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))))
     }
