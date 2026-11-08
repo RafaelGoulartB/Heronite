@@ -144,13 +144,17 @@ impl SteamPage {
 
     fn summary_line(&self, cx: &App) -> String {
         let s = &self.svc.read(cx).summary;
+        if s.updated_at.is_none() {
+            return tr!("Not read yet: only your installed Steam games are in the Collection.").to_string();
+        }
         let mut parts =
             vec![trn!(s.games, "{n} game in your library", "{n} games in your library"), super::store::installed_count(s.installed)];
+        let missing = s.games.saturating_sub(s.installed);
+        if missing > 0 {
+            parts.push(super::store::not_installed_count(missing));
+        }
         if let Some(at) = s.updated_at.as_deref().and_then(read_at) {
             parts.push(at);
-        }
-        if s.updated_at.is_none() {
-            return tr!("Not read yet").to_string();
         }
         parts.join("  \u{b7}  ")
     }
