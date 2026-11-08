@@ -331,13 +331,19 @@ pub(super) struct FocusVm {
     pub last_played: Option<SharedString>,
 }
 
+/// A group of `cards` for tests elsewhere in the Collection.
+#[cfg(test)]
+pub(super) fn test_group(id: &str, cards: &[&str], collapsed: bool) -> GroupVm {
+    tests::group(id, cards, collapsed)
+}
+
 #[cfg(test)]
 mod tests {
     use gpui_kit::px;
 
     use super::*;
 
-    fn group(id: &str, cards: &[&str], collapsed: bool) -> GroupVm {
+    pub(super) fn group(id: &str, cards: &[&str], collapsed: bool) -> GroupVm {
         let card = |key: &str| {
             Arc::new(CardVm {
                 key: key.to_string().into(),

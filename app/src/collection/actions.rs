@@ -319,7 +319,7 @@ impl CollectionView {
     /// anchored card or header is scrolled back to.
     fn rebuild_with(&mut self, anchor: Option<vm::ScrollAnchor>) {
         self.items = vm::build_items(&self.groups, self.columns);
-        self.list_state.reset(self.items.len());
+        self.reset_list();
         let place = anchor.and_then(|a| vm::resolve_anchor(&self.items, &self.groups, self.columns, &a));
         if let Some((item_ix, offset_in_item)) = place {
             self.list_state.scroll_to(ListOffset { item_ix, offset_in_item });

@@ -127,13 +127,13 @@ impl CollectionView {
             }
             ListItem::Row { group, start } if self.focus_rows() => {
                 let c = self.groups[group].cards[start].clone();
-                let last_row = start + 1 == self.groups[group].cards.len();
+                let (pt, pb) = self.row_padding(group, start);
                 let m = self.list_metrics();
                 div()
                     .pl(px(m.pad_l - ROW_INSET))
                     .pr(px(m.pad_r - ROW_INSET))
-                    .pt(px(if start == 0 { 2. } else { 0. }))
-                    .pb(px(if last_row { 12. } else { 2. }))
+                    .pt(px(pt))
+                    .pb(px(pb))
                     .child(self.render_row(c, window.scale_factor(), cx))
                     .into_any_element()
             }
@@ -142,22 +142,16 @@ impl CollectionView {
                     let g = &self.groups[group];
                     g.cards[start..(start + self.columns).min(g.cards.len())].to_vec()
                 };
-                let last_row = start + cards.len() == self.groups[group].cards.len();
+                let (pt, pb) = self.row_padding(group, start);
                 let m = self.list_metrics();
-                let mut row = div()
-                    .flex()
-                    .pl(px(m.pad_l))
-                    .pr(px(m.pad_r))
-                    .gap(px(m.gap_x))
-                    .pt(px(if start == 0 { 7.2 } else { 0. }))
-                    .pb(px(if last_row { 5.6 + 13.6 } else { m.gap_y }));
+                let mut row = div().flex().pl(px(m.pad_l)).pr(px(m.pad_r)).gap(px(m.gap_x)).pt(px(pt)).pb(px(pb));
                 let scale = window.scale_factor();
                 for c in cards {
                     row = row.child(self.render_card(c, scale, cx));
                 }
                 row.into_any_element()
             }
-            ListItem::End => div().h(px(32.)).into_any_element(),
+            ListItem::End => div().h(px(super::list_heights::END_H)).into_any_element(),
         }
     }
 
