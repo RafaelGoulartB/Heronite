@@ -282,7 +282,7 @@ impl Appearance {
         category_style: CategoryStyle::DEFAULT,
         cover_stores: false,
         cover_stores_all: true,
-        cover_stores_hide_grouped: true,
+        cover_stores_hide_grouped: false,
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
         motion: Motion::DEFAULT,
@@ -539,7 +539,7 @@ mod tests {
             category_style: CategoryStyle::Bookmarks,
             cover_stores: true,
             cover_stores_all: false,
-            cover_stores_hide_grouped: false,
+            cover_stores_hide_grouped: true,
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
             motion: Motion::Reduced,
@@ -565,7 +565,7 @@ mod tests {
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["coverStores"], true);
         assert_eq!(on_disk["coverStoresAll"], false);
-        assert_eq!(on_disk["coverStoresHideGrouped"], false);
+        assert_eq!(on_disk["coverStoresHideGrouped"], true);
         assert_eq!(on_disk["sections"][0], "related");
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
         assert_eq!(on_disk["autoView"], true);

@@ -145,7 +145,7 @@ Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`
 title, nothing; `data::chosen_caption`), **Favourite star**, **Store icon** (`coverStores`: the logos of the
 game's stores in a dark chip at the bottom-left (a ROM's emulator icon instead, `emulators::icon`), first in the row of the category tags, above the strip; each store
 once, `+N` past three; with it on, two sub-toggles: "Show every store a game is in" (`coverStoresAll`, the copies'
-stores too) and "Hide while grouped by store" (`coverStoresHideGrouped`); `store_badges`), **Under the pointer** (nothing, lift 4px, glow with an
+stores too) and "Hide while grouped by store" (`coverStoresHideGrouped`, off by default); `store_badges`), **Under the pointer** (nothing, lift 4px, glow with an
 accent ring). **Zoom** (50 to 300%, `system::ui_scale`; Ctrl + / Ctrl − anywhere, Ctrl 0 back to the system's): the
 whole interface, on top of the screen's scale; "Follow the system" takes `GDK_DPI_SCALE`, `QT_SCALE_FACTOR`, GNOME's
 text size (Wayland) or Windows' text size. Its slider applies when let go. A window choice like the layout: profiles
