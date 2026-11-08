@@ -23,6 +23,14 @@ pub const LAUNCH_KIND: &str = "xbox";
 /// (`xbox_microsoft_624f8b84b80_8wekyb3d8bbwe`).
 pub const SOURCE: &str = "xbox";
 
+/// In a game's Collection metadata (`local_library/library.json`): its id on
+/// Xbox network as its files write it (`79FC11E1`), when they name it.
+pub const TITLE_ID_KEY: &str = "xboxTitleId";
+
+/// In a game's sideload entry: the package full name its `install_size` was
+/// measured for (an update changes it, and the size is measured again).
+pub const PACKAGE_KEY: &str = "heroniteXboxPackage";
+
 /// The brand (not translated): the "Library" of a game's details.
 pub const NAME: &str = "Xbox";
 
