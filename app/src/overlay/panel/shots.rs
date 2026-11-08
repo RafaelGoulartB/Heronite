@@ -14,7 +14,7 @@ use crate::ui::icon;
 
 /// Captures on Home.
 const RECENT: usize = 3;
-const COLS: usize = 2;
+pub(super) const COLS: usize = 2;
 
 impl OverlayPanel {
     fn tile(&self, i: usize, focused: bool) -> Div {

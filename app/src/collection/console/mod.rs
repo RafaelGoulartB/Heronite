@@ -118,7 +118,8 @@ fn floating_hints(hints: &[Hint], shown: bool) -> AnyElement {
     let (mut top, mut bottom) = (theme::console_bg(), theme::console_bg());
     top.a = 0.;
     bottom.a = 0.9;
-    let bar = kit::hint_bar(hints).border_color(transparent_black()).bg(linear_gradient(
+    // Hidden, it is only faded out: it must not take clicks meant for what is under it.
+    let bar = kit::hint_bar_with(hints, shown).border_color(transparent_black()).bg(linear_gradient(
         0.,
         linear_color_stop(bottom, 0.),
         linear_color_stop(top, 1.),
@@ -562,10 +563,14 @@ impl CollectionView {
 
     /// The wheel moves along the row of covers of the layouts that are one
     /// row (Carousel, Spotlight), else up and down.
+    /// On a game page with long text, the wheel scrolls it.
     fn wheel_axis(&self) -> WheelAxis {
         let row = matches!(self.console_shown_tab().1.layout, Layout::Carousel | Layout::Spotlight);
+        let game_page = self.page == Page::Collection && matches!(self.console.screen, Screen::Game(_)) && self.body_in_focus();
         if row && self.tabs_in_focus() {
             WheelAxis::Horizontal
+        } else if game_page && self.game_page_scrolls_text() {
+            WheelAxis::Text
         } else {
             WheelAxis::Vertical
         }

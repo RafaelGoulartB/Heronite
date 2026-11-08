@@ -442,34 +442,32 @@ pub fn clickable_glyph(btn: Btn, keys: bool) -> Div {
 
 /// One hint: its glyph and label; a click presses the button.
 pub fn hint_item(h: &Hint, keys: bool, size: f32, gap: f32) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(u(gap))
-        .text_size(u(size))
-        .text_color(theme::text_muted())
-        .child(clickable_glyph(h.btn, keys))
-        .child(h.label.clone())
-        .on_pads([btn_pad(h.btn)])
+    hint_row(h, keys, size, gap, true)
+}
+
+/// [`hint_item`]; `live` false draws it without taking clicks.
+fn hint_row(h: &Hint, keys: bool, size: f32, gap: f32, live: bool) -> Div {
+    let row = div().flex().items_center().gap(u(gap)).text_size(u(size)).text_color(theme::text_muted());
+    if !live {
+        return row.child(if keys { key_glyph(h.btn) } else { glyph(h.btn) }).child(h.label.clone());
+    }
+    row.child(clickable_glyph(h.btn, keys)).child(h.label.clone()).on_pads([btn_pad(h.btn)])
 }
 
 /// Footer with the button hints of the current screen (a click on one
 /// presses its button). It takes the clicks it gets, so nothing under it
 /// sees them.
 pub fn hint_bar(hints: &[Hint]) -> Div {
+    hint_bar_with(hints, true)
+}
+
+/// [`hint_bar`]; `live` false draws it without taking any click (a bar
+/// faded out over the screen).
+pub fn hint_bar_with(hints: &[Hint], live: bool) -> Div {
     let keys = look::glyphs() == Glyphs::Keyboard;
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(u(26.))
-        .h(u(60.))
-        .px(u(46.))
-        .border_t_1()
-        .border_color(ink(0.08))
-        .bg(shade(0.35))
-        .eats_clicks()
-        .children(hints.iter().map(|h| hint_item(h, keys, 14., 8.)))
+    let bar = div().flex().flex_none().items_center().gap(u(26.)).h(u(60.)).px(u(46.)).border_t_1().border_color(ink(0.08)).bg(shade(0.35));
+    let bar = if live { bar.eats_clicks() } else { bar };
+    bar.children(hints.iter().map(|h| hint_row(h, keys, 14., 8., live)))
 }
 
 /// The light focus pill behind a row. It pops in (grows from a little

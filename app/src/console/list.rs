@@ -11,7 +11,6 @@ use gpui_kit::*;
 
 use super::kit::{self, u};
 use super::motion::{Axis, Glide, Goal};
-use super::pointer::Clickable;
 use super::Pad;
 use crate::icons::Icon;
 use crate::theme;
@@ -300,13 +299,12 @@ impl ListNav {
     /// on one of its rows sends `entry` first.
     pub fn render_entered(&mut self, id: impl Into<ElementId>, rows: &[Row], active: bool, entry: Option<&[Pad]>) -> Stateful<Div> {
         self.clamp(rows);
-        let lead: Option<&[Pad]> = if active { Some(&[]) } else { entry };
-        let with_lead = |pads: Vec<Pad>| -> Vec<Pad> { lead.map(|l| l.iter().copied().chain(pads).collect()).unwrap_or_default() };
-        let routes: Vec<Vec<Pad>> = (0..rows.len()).map(|i| with_lead(self.route(rows, i))).collect();
-        let clicks: Vec<Vec<Pad>> = (0..rows.len()).map(|i| with_lead(self.click(rows, i))).collect();
-        let reachable = lead.is_some();
-        self.render_clicks(id, rows, active, clicks, |i, r, focused| {
-            render_row_at(r, focused, reachable.then(|| routes[i].as_slice())).into_any_element()
+        let lead: Option<Vec<Pad>> = if active { Some(Vec::new()) } else { entry.map(<[Pad]>::to_vec) };
+        let focus = self.focus;
+        self.render_clicks(id, rows, active, lead.clone(), |i, r, focused| {
+            // The ‹ › of the row the focus is on (or comes back to).
+            let arrows = lead.as_deref().filter(|_| i == focus);
+            render_row_at(r, focused, arrows).into_any_element()
         })
     }
 
@@ -321,17 +319,17 @@ impl ListNav {
     ) -> Stateful<Div> {
         self.clamp(rows);
         // A click goes to a row of the list that has the focus.
-        let clicks = (0..rows.len()).map(|i| if active { self.click(rows, i) } else { Vec::new() }).collect();
-        self.render_clicks(id, rows, active, clicks, draw)
+        self.render_clicks(id, rows, active, active.then(Vec::new), draw)
     }
 
-    /// The rows, each sending `clicks[i]` when clicked.
+    /// The rows; with `lead` (the presses that give the list the focus),
+    /// each takes clicks ([`Self::click`]).
     fn render_clicks(
         &mut self,
         id: impl Into<ElementId>,
         rows: &[Row],
         active: bool,
-        clicks: Vec<Vec<Pad>>,
+        lead: Option<Vec<Pad>>,
         mut draw: impl FnMut(usize, &Row, bool) -> AnyElement,
     ) -> Stateful<Div> {
         if self.reveal && active {
@@ -345,11 +343,66 @@ impl ListNav {
             }
         }
         self.shown = true;
+        let clicks = lead.map(|lead| Clicks::new(rows, self.focus, lead));
         let mut list = div().id(id).flex().flex_col().gap(u(4.)).overflow_y_scroll().track_scroll(self.glide.handle());
-        for ((i, r), pads) in rows.iter().enumerate().zip(clicks) {
-            list = list.child(div().on_pads(pads).child(draw(i, r, active && i == self.focus)));
+        for (i, r) in rows.iter().enumerate() {
+            let mut row = div().child(draw(i, r, active && i == self.focus));
+            if let Some(click) = clicks.as_ref().and_then(|c| c.at(rows, i)) {
+                row = row.on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    cx.stop_propagation();
+                    super::pointer::press(click.pads(), window, cx);
+                });
+            }
+            list = list.child(row);
         }
         list.child(self.glide.driver())
+    }
+}
+
+/// The clicks of a list's rows, worked out in one pass (a long list, like a
+/// folder, has thousands of rows): how many focusable rows lie before each.
+struct Clicks {
+    lead: std::rc::Rc<[Pad]>,
+    focus: usize,
+    before: Vec<usize>,
+}
+
+/// One row's click, small until it is used: `lead`, `n` × `step`, then `then`.
+struct Click {
+    lead: std::rc::Rc<[Pad]>,
+    step: Pad,
+    n: usize,
+    then: Option<Pad>,
+}
+
+impl Click {
+    fn pads(&self) -> Vec<Pad> {
+        self.lead.iter().copied().chain(std::iter::repeat_n(self.step, self.n)).chain(self.then).collect()
+    }
+}
+
+impl Clicks {
+    fn new(rows: &[Row], focus: usize, lead: Vec<Pad>) -> Self {
+        let mut before = Vec::with_capacity(rows.len() + 1);
+        let mut n = 0;
+        before.push(0);
+        for r in rows {
+            n += usize::from(r.focusable());
+            before.push(n);
+        }
+        Self { lead: lead.into(), focus, before }
+    }
+
+    /// The click of row `to` (as [`ListNav::click`]); `None` for a header.
+    fn at(&self, rows: &[Row], to: usize) -> Option<Click> {
+        let row = rows.get(to).filter(|r| r.focusable())?;
+        let (step, n) = if to > self.focus {
+            (Pad::Down, self.before[to + 1] - self.before[(self.focus + 1).min(rows.len())])
+        } else {
+            (Pad::Up, self.before[self.focus.min(rows.len())] - self.before[to])
+        };
+        let then = (row.enabled && !matches!(row.value, Value::Number { .. })).then_some(Pad::A);
+        Some(Click { lead: self.lead.clone(), step, n, then })
     }
 }
 
@@ -507,6 +560,25 @@ mod tests {
         let nav = ListNav { focus: 5, ..Default::default() };
         // The header is skipped going up.
         assert_eq!(nav.route(&r, 1), [Pad::Up; 4]);
+    }
+
+    #[test]
+    fn the_clicks_of_a_render_match_one_click_at_a_time() {
+        use super::Clicks;
+        let r = rows();
+        for focus in 0..r.len() {
+            let nav = ListNav { focus, ..Default::default() };
+            let clicks = Clicks::new(&r, focus, vec![Pad::Right]);
+            for to in 0..r.len() {
+                let mut want = nav.click(&r, to);
+                if !r[to].focusable() {
+                    assert!(clicks.at(&r, to).is_none());
+                    continue;
+                }
+                want.insert(0, Pad::Right);
+                assert_eq!(clicks.at(&r, to).map(|c| c.pads()), Some(want), "{focus} -> {to}");
+            }
+        }
     }
 
     #[test]

@@ -516,6 +516,9 @@ impl OverlayPanel {
     fn render_body(&mut self, window: &Window, cx: &mut Context<Self>) -> Div {
         let rows = self.rows();
         let list_active = self.grid.is_none() && self.confirm.is_none();
+        // From the Screenshots grid, ↑ to above its first row gives the rows the focus back.
+        let to_rows: Option<Vec<Pad>> =
+            self.grid.filter(|_| self.confirm.is_none()).map(|i| pointer::repeat(Pad::Up, i / shots::COLS + 1).collect());
         let placeholder = AudioState::default();
         let has_mixer = rows.iter().any(|r| r.id.as_ref() == mixer::SYSTEM);
         // While the audio is read, the mixer shows empty at its full size.
@@ -556,13 +559,18 @@ impl OverlayPanel {
                 list.into_any_element()
             }
             // Long lists (several controllers) scroll inside the panel.
-            None if self.tab() == Tab::Controller => {
-                self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_1().min_h_0().into_any_element()
-            }
+            None if self.tab() == Tab::Controller => self
+                .nav
+                .render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref())
+                .flex_1()
+                .min_h_0()
+                .into_any_element(),
             None if self.tab() == Tab::Achievements => {
                 self.render_achievements(list_active, window, cx).flex_1().min_h_0().into_any_element()
             }
-            None => self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_none().into_any_element(),
+            None => {
+                self.nav.render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref()).flex_none().into_any_element()
+            }
         };
         let mut body = div().flex().flex_col().flex_1().min_h_0().overflow_hidden().px(u(12.)).pt(u(10.)).pb(u(6.)).gap(u(8.)).child(list);
         if let Some(e) = &self.error {

@@ -140,6 +140,8 @@ impl<E: InteractiveElement> Clickable for E {}
 pub enum WheelAxis {
     Vertical,
     Horizontal,
+    /// Up and down scroll long text (the right stick's presses): a game page.
+    Text,
 }
 
 #[derive(Clone, Copy)]
@@ -188,7 +190,12 @@ fn wheel_presses(dx: f32, dy: f32, axis: WheelAxis, now: Instant) -> Vec<Pad> {
         w.set(wheel);
         n
     });
-    let (back, fwd) = if sideways || axis == WheelAxis::Horizontal { (Pad::Left, Pad::Right) } else { (Pad::Up, Pad::Down) };
+    let (back, fwd) = match axis {
+        _ if sideways => (Pad::Left, Pad::Right),
+        WheelAxis::Horizontal => (Pad::Left, Pad::Right),
+        WheelAxis::Text => (Pad::ScrollUp, Pad::ScrollDown),
+        WheelAxis::Vertical => (Pad::Up, Pad::Down),
+    };
     repeat(if n > 0 { back } else { fwd }, n.unsigned_abs() as usize).collect()
 }
 
