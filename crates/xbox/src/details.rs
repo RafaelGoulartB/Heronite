@@ -5,7 +5,10 @@
 //!   (the game's metadata, [`MINUTES_KEY`] and [`LAST_PLAYED_KEY`]).
 //!   Heronite's own `totalPlayed` / `lastPlayed` (`store/timestamp.json`)
 //!   stay as they are: the Collection shows the larger total and the later
-//!   date, since Xbox's count already holds the sessions started here;
+//!   date, since Xbox's count already holds the sessions started here. (A
+//!   sync between PCs shares the total the Collection shows, as for any
+//!   game, so it may come back into `totalPlayed`.) A play time set by hand
+//!   holds against Xbox's count ([`heronite_data::xbox::note_playtime_edit`]);
 //! * achievements unlocked and gamerscore (the game's metadata,
 //!   [`ACHIEVEMENTS_KEY`]);
 //! * the title's image, when the entry has no art;

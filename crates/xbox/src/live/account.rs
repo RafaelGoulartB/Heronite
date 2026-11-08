@@ -78,10 +78,22 @@ pub fn finish(paths: &DataPaths, http: &dyn Http, client_id: &str, sign_in: &Sig
 /// refresh token (saved with the new refresh token). [`crate::live::SignedOut`]
 /// when Microsoft no longer takes the refresh token: the file is deleted.
 pub fn xsts(paths: &DataPaths, http: &dyn Http, client_id: &str) -> Result<Xsts> {
-    let Some(mut account) = load(paths) else { return Err(crate::live::SignedOut.into()) };
+    let Some(account) = load(paths) else { return Err(crate::live::SignedOut.into()) };
     if account.xsts.fresh(Utc::now()) {
         return Ok(account.xsts);
     }
+    renew_account(paths, http, client_id, account)
+}
+
+/// A new XSTS token from the refresh token, even when the saved one looks
+/// good (Xbox network refused it). As [`xsts`] when Microsoft no longer
+/// takes the refresh token.
+pub fn renew(paths: &DataPaths, http: &dyn Http, client_id: &str) -> Result<Xsts> {
+    let Some(account) = load(paths) else { return Err(crate::live::SignedOut.into()) };
+    renew_account(paths, http, client_id, account)
+}
+
+fn renew_account(paths: &DataPaths, http: &dyn Http, client_id: &str, mut account: Account) -> Result<Xsts> {
     let renewed = auth::refresh(http, client_id, &account.refresh_token)
         .and_then(|Live { access_token, refresh_token }| Ok(Account { xsts: auth::xsts(http, &access_token)?, refresh_token }));
     match renewed {

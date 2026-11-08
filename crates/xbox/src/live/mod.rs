@@ -80,34 +80,64 @@ pub struct Synced {
 /// the Collection's Xbox games. `installed` are the package family names of
 /// the games installed here: those the history does not have (never played
 /// on the account) are asked for by name. Blocking, network.
+///
+/// When Xbox network refuses the saved token (it may be revoked before its
+/// end), a new one is made from the refresh token and the account read
+/// again; refused again, the sign-in is forgotten ([`SignedOut`]).
 pub fn sync(paths: &DataPaths, http: &dyn Http, client_id: &str, installed: &[String]) -> Result<Synced> {
     let xsts = account::xsts(paths, http, client_id)?;
-    let mut titles = titlehub::history(http, &xsts)?;
+    let titles = match read_titles(http, &xsts, installed) {
+        Err(e) if e.is::<SignedOut>() => {
+            log::info!("xbox: the account's token was refused; renewing it");
+            let xsts = account::renew(paths, http, client_id)?;
+            match read_titles(http, &xsts, installed) {
+                Err(e) if e.is::<SignedOut>() => {
+                    account::sign_out(paths)?;
+                    return Err(e);
+                }
+                other => other?,
+            }
+        }
+        other => other?,
+    };
+    let applied = details::apply(paths, &titles)?;
+    Ok(Synced { titles: titles.len(), applied })
+}
+
+/// The account's titles, with the minutes Xbox network counted. A refused
+/// token is [`SignedOut`]; other failures of the extra requests only leave
+/// out what they would have brought.
+fn read_titles(http: &dyn Http, xsts: &auth::Xsts, installed: &[String]) -> Result<Vec<titlehub::Title>> {
+    let mut titles = titlehub::history(http, xsts)?;
     let missing: Vec<String> = installed
         .iter()
         .filter(|pfn| !titles.iter().any(|t| t.pfn.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(pfn))))
         .cloned()
         .collect();
     // Never played: nothing more than what the title is.
-    match titlehub::by_package(http, &xsts, &missing) {
+    match titlehub::by_package(http, xsts, &missing) {
         Ok(more) => titles.extend(more.into_iter().filter(|t| !titles.iter().any(|h| h.title_id == t.title_id)).collect::<Vec<_>>()),
+        Err(e) if e.is::<SignedOut>() => return Err(e),
         Err(e) => log::warn!("xbox: titles of the packages never played: {e:#}"),
     }
     // Minutes only for what can show them: PC games with an entry, or
     // about to get one.
     let played: Vec<usize> = (0..titles.len()).filter(|i| titles[*i].is_pc_game() || titles[*i].pfn.is_some()).collect();
     let mut asked: Vec<titlehub::Title> = played.iter().map(|i| titles[*i].clone()).collect();
-    match titlehub::add_minutes(http, &xsts, &mut asked) {
-        Ok(()) => {
-            for (i, t) in played.iter().zip(asked) {
-                titles[*i].minutes = t.minutes;
-            }
+    let minutes = titlehub::add_minutes(http, xsts, &mut asked);
+    // The batches read before a failure still count; the others keep the
+    // last minutes known.
+    for (i, t) in played.iter().zip(asked) {
+        if t.minutes.is_some() {
+            titles[*i].minutes = t.minutes;
         }
-        // The rest still helps; the last minutes known stay.
-        Err(e) => log::warn!("xbox: play time: {e:#}"),
     }
-    let applied = details::apply(paths, &titles)?;
-    Ok(Synced { titles: titles.len(), applied })
+    match minutes {
+        Err(e) if e.is::<SignedOut>() => return Err(e),
+        Err(e) => log::warn!("xbox: play time: {e:#}"),
+        Ok(()) => {}
+    }
+    Ok(titles)
 }
 
 #[cfg(test)]
@@ -163,6 +193,40 @@ mod tests {
         expire(&paths);
         let revoked = Fake::new(&[(400, r#"{"error":"invalid_grant"}"#)]);
         assert!(sync(&paths, &revoked, CLIENT, &[]).unwrap_err().is::<SignedOut>());
+        assert!(account::load(&paths).is_none());
+    }
+
+    /// Xbox network refuses a saved token that has not ended: it is renewed
+    /// once; refused again, the sign-in is forgotten.
+    #[cfg(windows)]
+    #[test]
+    fn a_refused_token_is_renewed_once_then_the_sign_in_is_forgotten() {
+        use crate::live::auth::tests::{CLIENT, LIVE_OK, USER_OK, XSTS_OK};
+        use crate::live::http::Fake;
+
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        crate::collection::sync(&paths, &[]).unwrap();
+        let sign_in = auth::SignIn::new(CLIENT).unwrap();
+        account::finish(&paths, &Fake::new(&[(200, LIVE_OK), (200, USER_OK), (200, XSTS_OK)]), CLIENT, &sign_in, "code").unwrap();
+        let still_good = |paths: &DataPaths| {
+            let mut a = account::load(paths).unwrap();
+            a.xsts.not_after = chrono::Utc::now() + chrono::Duration::hours(5);
+            account::save(paths, &a).unwrap();
+        };
+        let none = r#"{"titles": []}"#;
+
+        // Refused, renewed, read.
+        still_good(&paths);
+        let fake = Fake::new(&[(401, ""), (200, LIVE_OK), (200, USER_OK), (200, XSTS_OK), (200, none)]);
+        assert_eq!(sync(&paths, &fake, CLIENT, &[]).unwrap().titles, 0);
+        assert_eq!(fake.sent().len(), 5);
+        assert!(account::load(&paths).is_some(), "still signed in");
+
+        // Refused again after renewing: the sign-in is forgotten.
+        still_good(&paths);
+        let fake = Fake::new(&[(401, ""), (200, LIVE_OK), (200, USER_OK), (200, XSTS_OK), (401, "")]);
+        assert!(sync(&paths, &fake, CLIENT, &[]).unwrap_err().is::<SignedOut>());
         assert!(account::load(&paths).is_none());
     }
 

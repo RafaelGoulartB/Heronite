@@ -305,7 +305,11 @@ impl XboxLibrary {
         match account::sign_out(&self.paths) {
             Ok(()) => {
                 self.account.gamertag = None;
-                self.account.last = None;
+                // Microsoft still lets Heronite in until the user says no there.
+                self.account.last = Some(Ok(tr!(
+                    "Signed out. To also take away Heronite's access to your account, go to account.live.com/consent/Manage."
+                )
+                .to_string()));
             }
             Err(e) => self.account.last = Some(Err(format!("{e:#}"))),
         }

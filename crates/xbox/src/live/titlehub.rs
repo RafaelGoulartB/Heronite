@@ -125,7 +125,9 @@ fn headers(xsts: &Xsts) -> Vec<(&'static str, String)> {
 fn ok_json(status: u16, body: &str, what: &str) -> Result<Value> {
     match status {
         200..=299 => serde_json::from_str(body).with_context(|| format!("{what}: unreadable answer")),
-        401 | 403 => Err(crate::live::SignedOut.into()),
+        401 => Err(crate::live::SignedOut.into()),
+        // Not the token: what the account (or its privacy) lets be read.
+        403 => bail!("{what}: Xbox network refused (HTTP 403)"),
         429 => bail!("{what}: Xbox network asks to wait (HTTP 429)"),
         s => bail!("{what}: HTTP {s}"),
     }
@@ -247,6 +249,9 @@ pub(crate) mod tests {
         assert!(history(&refused, &xsts()).unwrap_err().is::<crate::live::SignedOut>());
         let busy = Fake::new(&[(429, "")]);
         assert!(history(&busy, &xsts()).unwrap_err().to_string().contains("429"));
+        let forbidden = history(&Fake::new(&[(403, "")]), &xsts()).unwrap_err();
+        assert!(!forbidden.is::<crate::live::SignedOut>(), "a refusal that is not about the token");
+        assert!(forbidden.to_string().contains("403"));
     }
 
     #[test]

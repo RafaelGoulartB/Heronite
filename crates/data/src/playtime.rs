@@ -72,7 +72,9 @@ pub fn set_playtime_minutes(paths: &DataPaths, app_name: &str, minutes: f64) -> 
         }
         map.insert(app_name.to_string(), Value::Object(entry));
         Ok(())
-    })
+    })?;
+    // An Xbox game: the edit holds against what the Xbox account counted.
+    crate::xbox::note_playtime_edit(paths, app_name, total as u64)
 }
 
 /// The play time a store counted for one of its games.
