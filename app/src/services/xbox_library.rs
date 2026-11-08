@@ -71,6 +71,8 @@ pub struct AccountState {
     pub syncing: bool,
     /// The last account read or sign-in, when the user is to see it.
     pub last: Option<Result<String, String>>,
+    /// `HERONITE_DEBUG_XBOX_ACCOUNT`: nothing is read or signed in.
+    debug: bool,
 }
 
 impl AccountState {
@@ -94,7 +96,14 @@ impl XboxLibrary {
         // Windows only: the sign-in is sealed with DPAPI.
         let client_id = live::client_id().filter(|_| cfg!(windows));
         let gamertag = client_id.as_ref().and_then(|_| account::load(&paths)).map(|a| a.gamertag().to_string());
-        let account = AccountState { client_id, gamertag, ..Default::default() };
+        let mut account = AccountState { client_id, gamertag, ..Default::default() };
+        // `HERONITE_DEBUG_XBOX_ACCOUNT=signed|out` shows the account card in
+        // that state on any system, without Microsoft (for screenshots).
+        if let Some(debug) = crate::env::value("HERONITE_DEBUG_XBOX_ACCOUNT") {
+            account.client_id = Some("debug".into());
+            account.gamertag = (debug == "signed").then(|| "Heronite Player".into());
+            account.debug = true;
+        }
         let this =
             Self { paths, syncing: false, measuring: false, stop: Arc::new(AtomicBool::new(false)), found: None, last: None, account };
         if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::supported(heronite_platform::Feature::XboxStore) {
@@ -186,7 +195,7 @@ impl XboxLibrary {
 
     /// Starts a sign-in: its page, to open in the login window or a browser.
     pub fn begin_sign_in(&mut self, cx: &mut Context<Self>) -> Option<String> {
-        let client = self.account.client_id.clone()?;
+        let client = self.account.client_id.clone().filter(|_| !self.account.debug)?;
         match SignIn::new(&client) {
             Ok(s) => {
                 let url = s.url.clone();
@@ -246,7 +255,7 @@ impl XboxLibrary {
     /// Reads the account (`asked`: now, else at most once an hour).
     pub fn sync_account(&mut self, asked: bool, cx: &mut Context<Self>) {
         let Some(client) = self.account.client_id.clone() else { return };
-        if self.account.gamertag.is_none() || self.account.syncing {
+        if self.account.gamertag.is_none() || self.account.syncing || self.account.debug {
             return;
         }
         let paths = self.paths.clone();

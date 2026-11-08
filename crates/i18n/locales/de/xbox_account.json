@@ -1,19 +1,14 @@
 {
-  "1. Open the sign-in page": "1. Anmeldeseite öffnen",
-  "2. Paste the address": "2. Adresse einfügen",
   "Could not open the Microsoft Store: {error}": "Der Microsoft Store konnte nicht geöffnet werden: {error}",
   "Open the sign-in page first": "Öffne zuerst die Anmeldeseite",
   "Opens Microsoft's sign-in page. Heronite never sees your password.": "Öffnet die Anmeldeseite von Microsoft. Heronite sieht dein Passwort nie.",
-  "Optional. With your Xbox account, your Xbox games show the play time Xbox counted (also outside Heronite and on console), when you last played, your achievements, and the games you played that are not installed here.": "Optional. Mit deinem Xbox-Konto zeigen deine Xbox-Spiele die Spielzeit, die Xbox gezählt hat (auch außerhalb von Heronite und auf der Konsole), wann du zuletzt gespielt hast, deine Erfolge und die gespielten Spiele, die hier nicht installiert sind.",
   "Or sign in with your browser": "Oder mit deinem Browser anmelden",
   "Paste the address of the page you land on": "Füge die Adresse der Seite ein, auf der du landest",
   "Read account now": "Konto jetzt lesen",
   "Read {n} title from the account.": "{n} Titel aus dem Konto gelesen.",
   "Read {n} titles from the account.": "{n} Titel aus dem Konto gelesen.",
-  "Sign in with your Microsoft account": "Mit deinem Microsoft-Konto anmelden",
   "Sign in, then copy the address of the blank page you land on (it contains code=...).": "Melde dich an und kopiere dann die Adresse der leeren Seite, auf der du landest (sie enthält code=...).",
   "Signed in to Xbox": "Bei Xbox angemeldet",
   "Signed out. To also take away Heronite's access to your account, go to account.live.com/consent/Manage.": "Abgemeldet. Um Heronite auch den Zugriff auf dein Konto zu entziehen, gehe zu account.live.com/consent/Manage.",
-  "Xbox account": "Xbox-Konto",
   "Xbox signed you out. Sign in again to keep the play time up to date.": "Xbox hat dich abgemeldet. Melde dich erneut an, damit die Spielzeit aktuell bleibt."
 }

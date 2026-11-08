@@ -118,6 +118,7 @@ pub enum Icon {
     InfoOutlined,
     Link,
     QrCode,
+    Computer,
     /// An achievement.
     Trophy,
     /// A locked achievement.
@@ -189,6 +190,7 @@ impl Icon {
             InfoOutlined => "icons/info-outlined.svg",
             Link => "icons/link.svg",
             QrCode => "icons/qr-code.svg",
+            Computer => "icons/computer.svg",
             ExpandMore => "icons/expand-more.svg",
             MoreHoriz => "icons/more-horiz.svg",
             Favorite => "icons/favorite.svg",

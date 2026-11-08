@@ -12,6 +12,7 @@ pub mod commands;
 pub mod downloads;
 pub mod emulators;
 pub mod epic;
+pub mod methods;
 pub mod settings;
 pub mod side_nav;
 pub mod stats;
