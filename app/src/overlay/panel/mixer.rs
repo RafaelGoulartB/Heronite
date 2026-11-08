@@ -13,6 +13,7 @@ use heronite_overlay::audio::{self, AudioState};
 use super::OverlayPanel;
 use crate::console::kit::{self, u};
 use crate::console::list::Row;
+use crate::console::pointer::{self, Clickable};
 use crate::console::Pad;
 use crate::icons::Icon;
 use crate::theme;
@@ -154,10 +155,64 @@ impl OverlayPanel {
 
     /// The block, with up to `apps` other apps; `focus` is the focused mixer
     /// row, if one is.
-    pub(super) fn render_mixer(&self, a: &AudioState, focus: Option<&str>, loading: bool, apps: usize) -> Div {
+    /// A click on the bar of `id` at `k` (0..=1 of its width): the focus
+    /// goes to it and its level to there (in whole percents, unmuted).
+    fn mixer_click(&mut self, id: &str, k: f32, cx: &mut Context<Self>) {
+        let rows = self.rows();
+        let Some(i) = rows.iter().position(|r| r.id.as_ref() == id) else { return };
+        self.nav.focus = i;
+        self.grid = None;
+        self.error = None;
+        let to = (k * 100.).round().clamp(0., 100.) as u16;
+        if id == SYSTEM {
+            let changed = self.set_audio(|a| {
+                let changed = a.volume != to || a.muted;
+                (a.volume, a.muted) = (to, false);
+                changed
+            });
+            if changed == Some(true) {
+                self.run_audio(move || audio::set_volume(to), cx);
+            }
+        } else if id == GAME {
+            let Some(pid) = self.game.as_ref().and_then(|g| g.game.pid) else { return };
+            let changed = self.set_audio(|a| {
+                let changed = a.game_volume.is_some_and(|v| v != to) || a.game_muted;
+                if a.game_volume.is_some() {
+                    (a.game_volume, a.game_muted) = (Some(to), false);
+                }
+                changed
+            });
+            if changed == Some(true) {
+                self.run_audio(move || audio::set_game_volume(pid, to), cx);
+            }
+        } else if let Some(i) = app_index(id) {
+            let change = self.set_audio(|a| {
+                a.apps.get_mut(i).filter(|app| app.volume != to || app.muted).map(|app| {
+                    (app.volume, app.muted) = (to, false);
+                    app.streams.clone()
+                })
+            });
+            if let Some(Some(streams)) = change {
+                self.run_audio(move || audio::set_streams_volume(&streams, to), cx);
+            }
+        }
+    }
+
+    /// `routes`: the presses that bring the focus to each line (by id); a
+    /// click on a line's icon then mutes it (A), one on its bar sets the level.
+    pub(super) fn render_mixer(
+        &self,
+        a: &AudioState,
+        focus: Option<&str>,
+        loading: bool,
+        apps: usize,
+        routes: &std::collections::HashMap<String, Vec<Pad>>,
+    ) -> Div {
         let focused = focus.is_some();
         let line = |id: &str, ic: Icon, label: SharedString, level: Option<u16>, muted: bool| {
             let on = focus == Some(id);
+            let route = routes.get(id).cloned();
+            let mute: Vec<Pad> = route.clone().map(|r| r.into_iter().chain([Pad::A]).collect()).unwrap_or_default();
             let fg: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
             let fill = match (muted, focused) {
                 (true, _) => theme::overlay_bar_muted(),
@@ -171,6 +226,30 @@ impl OverlayPanel {
                 Some(v) => format!("{v}%"),
             };
             let frac = if loading { 0. } else { level.map_or(0., |v| (f32::from(v.min(100)) / 100.).clamp(0., 1.)) };
+            let bar = div()
+                .h(u(8.))
+                .rounded_full()
+                .bg(if focused { theme::black_a(0.14) } else { theme::white_a(0.14) })
+                .child(div().h_full().w(relative(frac)).rounded_full().bg(fill));
+            // Taller than the bar, so it is easy to hit; the level follows the click.
+            let bar = div().relative().flex_1().py(u(8.)).my(u(-8.)).child(bar);
+            let bar = match (&route, level) {
+                (Some(_), Some(_)) if !loading => {
+                    let (id, me) = (id.to_string(), self.me.clone());
+                    pointer::on_click_at(bar, move |k, window, cx| {
+                        let (me, id) = (me.clone(), id.clone());
+                        window.defer(cx, move |_, cx| {
+                            me.update(cx, |p, cx| {
+                                crate::console::motion::press();
+                                p.mixer_click(&id, k, cx);
+                                cx.notify();
+                            })
+                            .ok();
+                        });
+                    })
+                }
+                _ => bar,
+            };
             div()
                 .flex()
                 .items_center()
@@ -179,16 +258,10 @@ impl OverlayPanel {
                 .py(u(10.))
                 .rounded(u(12.))
                 .when(on, |d| d.bg(theme::black_a(0.08)))
-                .child(icon(if muted { Icon::VolumeOff } else { ic }, u(20.), fg))
+                .on_pads(route.unwrap_or_default())
+                .child(div().child(icon(if muted { Icon::VolumeOff } else { ic }, u(20.), fg)).on_pads(mute))
                 .child(div().w(u(108.)).flex_none().min_w_0().truncate().text_size(u(16.)).text_color(fg).child(label))
-                .child(
-                    div()
-                        .flex_1()
-                        .h(u(8.))
-                        .rounded_full()
-                        .bg(if focused { theme::black_a(0.14) } else { theme::white_a(0.14) })
-                        .child(div().h_full().w(relative(frac)).rounded_full().bg(fill)),
-                )
+                .child(bar)
                 .child(
                     div()
                         .w(u(84.))
