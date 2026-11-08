@@ -1,0 +1,18 @@
+{
+  "Asks HowLongToBeat about the game you select, then again after a month.": "Consulta HowLongToBeat sobre el juego que selecciones y de nuevo al cabo de un mes.",
+  "Change match…": "Cambiar coincidencia…",
+  "Couldn't reach HowLongToBeat. Try again later.": "No se pudo conectar con HowLongToBeat. Inténtalo más tarde.",
+  "How long a game takes to beat, from howlongtobeat.com. Heronite is not affiliated with HowLongToBeat.": "Cuánto se tarda en terminar un juego, de howlongtobeat.com. Heronite no está afiliado a HowLongToBeat.",
+  "HowLongToBeat has no times for this game.": "HowLongToBeat no tiene tiempos para este juego.",
+  "HowLongToBeat match": "Coincidencia en HowLongToBeat",
+  "HowLongToBeat times updated.": "Tiempos de HowLongToBeat actualizados.",
+  "Look up HowLongToBeat times": "Buscar tiempos en HowLongToBeat",
+  "Match automatically": "Emparejar automáticamente",
+  "Match picked by you": "Coincidencia elegida por ti",
+  "Matched by a similar name": "Encontrado por un nombre parecido",
+  "Matched by a similar name: {name}": "Encontrado por un nombre parecido: {name}",
+  "No games found. Try another name.": "No se encontraron juegos. Prueba con otro nombre.",
+  "Not on HowLongToBeat": "No está en HowLongToBeat",
+  "Pick the game the times are of. Your pick is kept when the times are refreshed.": "Elige el juego al que corresponden los tiempos. Tu elección se mantiene al actualizar los tiempos.",
+  "Search HowLongToBeat": "Buscar en HowLongToBeat"
+}

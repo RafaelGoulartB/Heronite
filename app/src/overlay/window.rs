@@ -215,16 +215,17 @@ pub fn open_panel<V: Render>(
     })
 }
 
-/// Opens a notice in the top corner of `side`.
+/// Opens a notice `height` design px tall in the top corner away from `side`.
 pub fn open_notice<V: Render>(
     cx: &mut App,
     display: Display,
     side: Side,
     layer: bool,
+    height: f32,
     build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
 ) -> anyhow::Result<WindowHandle<V>> {
     let s = display.scale();
-    let size = size(px(NOTICE_W * s), px(NOTICE_H * s));
+    let size = size(px(NOTICE_W * s), px(height * s));
     // Away from the panel's side, so both can show.
     let corner = match side {
         Side::Left => Side::Right,

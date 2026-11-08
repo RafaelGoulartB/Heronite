@@ -54,7 +54,7 @@ use parking_lot::{Mutex, RwLock};
 
 use crate::art;
 use crate::edit;
-use crate::hltb::{self, HltbClient, HltbLookup};
+use crate::hltb::{self, HltbClient, HltbLookup, HltbQuery, HowLongToBeat, SearchHit};
 use crate::http::{Endpoints, Http};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::images::materialize_metadata_image;
@@ -452,5 +452,36 @@ impl MetadataService {
     /// HowLongToBeat for a game (cache first; see [`hltb::get_or_fetch_hltb`]).
     pub fn how_long_to_beat(&self, title: &str, store_title: Option<&str>) -> Result<HltbLookup> {
         hltb::get_or_fetch_hltb(&self.paths, &self.http, &self.hltb, title, store_title)
+    }
+
+    /// [`how_long_to_beat`](Self::how_long_to_beat) with the release year.
+    pub fn how_long_to_beat_for(&self, query: &HltbQuery) -> Result<HltbLookup> {
+        hltb::get_or_fetch_hltb_for(&self.paths, &self.http, &self.hltb, query)
+    }
+
+    /// Asks HowLongToBeat again now (see [`hltb::refresh_hltb`]).
+    pub fn refresh_how_long_to_beat(&self, query: &HltbQuery) -> Result<HltbLookup> {
+        hltb::refresh_hltb(&self.paths, &self.http, &self.hltb, query)
+    }
+
+    /// HowLongToBeat search results, for "Change match".
+    pub fn search_how_long_to_beat(&self, title: &str) -> Result<Vec<SearchHit>> {
+        self.hltb.search(&self.http, title)
+    }
+
+    /// Saves the user's HowLongToBeat match for `title` (`None`: not on
+    /// HowLongToBeat).
+    pub fn set_how_long_to_beat_match(&self, title: &str, hit: Option<&SearchHit>) -> Result<Option<HowLongToBeat>> {
+        hltb::set_hltb_match(&self.paths, &self.http, title, hit)
+    }
+
+    /// The HowLongToBeat match the user picked for `title`, if any.
+    pub fn how_long_to_beat_choice(&self, title: &str) -> Option<hltb::HltbOverride> {
+        hltb::override_for(&self.paths, title)
+    }
+
+    /// Back to the automatic HowLongToBeat match for `title`.
+    pub fn clear_how_long_to_beat_match(&self, title: &str) -> Result<()> {
+        hltb::clear_hltb_match(&self.paths, title)
     }
 }

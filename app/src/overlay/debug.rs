@@ -8,7 +8,8 @@
 //! - `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a,wait:800,b` plays presses on it
 //!   (the names of `HERONITE_DEBUG_PAD`).
 //! - `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` shows a notice too;
-//!   `achievement` a made-up achievement's, `achievement-queue` six in a row
+//!   `achievement` a made-up achievement's (with the lines Settings →
+//!   Achievements asks for), `achievement-queue` six in a row
 //!   (one on screen, four waiting, then the sixth: one past the queue shows
 //!   as itself, more as "N more achievements"), with the icon of
 //!   `HERONITE_DEBUG_OVERLAY_NOTICE_ICON` (a URL or a file) when set.
@@ -91,18 +92,13 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
             if kind.starts_with("achievement") {
                 // Made-up unlocks; the icon is `HERONITE_DEBUG_OVERLAY_NOTICE_ICON` (a URL or a file).
                 let icon = crate::env::value("HERONITE_DEBUG_OVERLAY_NOTICE_ICON").unwrap_or_default();
-                let made_up: &[(String, Option<f32>)] = &[
-                    (tr!("First Steps").into(), Some(68.4)),
-                    (tr!("Treasure Hunter").into(), Some(9.7)),
-                    (tr!("Untouchable").into(), Some(1.2)),
-                    (tr!("Speed Demon").into(), None),
-                    (tr!("First Steps").into(), Some(40.)),
-                    (tr!("Treasure Hunter").into(), Some(30.)),
-                ];
-                let n = if kind == "achievement-queue" { made_up.len() } else { 1 };
+                let mut made_up = super::toast::made_up_unlocks(&icon);
+                made_up.truncate(if kind == "achievement-queue" { made_up.len() } else { 1 });
                 entity.update(cx, |s, cx| {
-                    for (name, rarity) in made_up.iter().take(n) {
-                        s.show_achievement(name.clone(), *rarity, icon.clone(), cx);
+                    // The lines Settings → Achievements asks for.
+                    let fields = crate::services::achievements::get(cx).read(cx).prefs().notice;
+                    for unlock in made_up {
+                        s.show_achievement(unlock, fields, cx);
                     }
                 });
                 play_script(panel, cx).await;

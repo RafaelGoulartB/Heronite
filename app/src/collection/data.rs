@@ -176,6 +176,19 @@ fn steam_tags_shown(g: &CollectionGame, d: &heronite_data::focus::Details) -> Ve
     g.facets[FacetKind::Tag.index()].iter().filter(|t| !shown.contains(&t.key)).map(|t| t.value.clone()).collect()
 }
 
+/// The first plausible 4-digit year in a date as shown ("Oct 10, 2007",
+/// "2011-04-19").
+pub(super) fn year_in(date: &str) -> Option<i32> {
+    let bytes = date.as_bytes();
+    (0..bytes.len().saturating_sub(3)).find_map(|i| {
+        let w = &bytes[i..i + 4];
+        let edge = |j: Option<&u8>| j.is_none_or(|b| !b.is_ascii_digit());
+        let alone = edge(i.checked_sub(1).and_then(|j| bytes.get(j))) && edge(bytes.get(i + 4));
+        let y: i32 = std::str::from_utf8(w).ok().filter(|_| alone && w.iter().all(u8::is_ascii_digit))?.parse().ok()?;
+        (1950..=2200).contains(&y).then_some(y)
+    })
+}
+
 pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bool) -> FocusVm {
     let fd = focus_data(lib, g, wiki);
     let d = &fd.details;
@@ -271,7 +284,18 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             extra: Some(h.main_extra as f32),
             complete: Some(h.completionist as f32),
             played_hours: g.playtime_minutes as f32 / 60.,
+            link: h.game_web_link.clone().filter(|l| l.starts_with("https://")).map(Into::into),
+            name: h
+                .game_name
+                .clone()
+                .filter(|n| heronite_data::text::title_key(n) != heronite_data::text::title_key(&g.title))
+                .map(Into::into),
+            close: h.is_close_match(),
+            manual: h.is_manual_match(),
         }),
+        hltb_checked: fd.hltb_checked,
+        hltb_game_id: fd.hltb.as_ref().and_then(|h| h.game_id),
+        release_year: d.release_date.as_deref().and_then(year_in),
         status: display_status(g.status_raw.as_deref(), &lib.statuses).map(|st| StatusVm {
             id: st.id.clone().into(),
             name: heronite_data::status::status_label(&st.name).to_string().into(),
@@ -361,4 +385,19 @@ pub(super) fn parse_day(text: &str) -> Option<chrono::NaiveDate> {
 pub(super) fn played_ago(last_played: &str) -> Option<String> {
     let days = days_since(last_played).or_else(|| Some((chrono::Local::now().date_naive() - parse_day(last_played)?).num_days().max(0)))?;
     Some(days_ago(days))
+}
+
+#[cfg(test)]
+mod hltb_year_tests {
+    use super::year_in;
+
+    #[test]
+    fn the_year_of_a_shown_date() {
+        assert_eq!(year_in("Oct 10, 2007"), Some(2007));
+        assert_eq!(year_in("2011-04-19"), Some(2011));
+        assert_eq!(year_in("19 abr. 2011"), Some(2011));
+        assert_eq!(year_in("TBA"), None);
+        assert_eq!(year_in("12345"), None, "not part of a longer number");
+        assert_eq!(year_in("1234"), None, "not a plausible year");
+    }
 }

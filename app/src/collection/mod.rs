@@ -26,6 +26,7 @@ mod game_facts;
 mod grid;
 mod grid_drawer;
 mod header;
+mod hltb_ui;
 mod html;
 mod install_options;
 mod journal;
@@ -123,6 +124,8 @@ pub struct CollectionView {
     app_paths: AppPaths,
     lib: Option<Arc<Library>>,
     wiki: Arc<WikiCache>,
+    /// Games whose HowLongToBeat times were looked up this session.
+    hltb_tried: std::collections::HashSet<String>,
     ui: UiState,
     /// The focused game changed and is not saved yet; `ui_save` writes it a
     /// moment later (holding an arrow key selects many games a second).
@@ -336,6 +339,7 @@ impl CollectionView {
             app_paths,
             lib: None,
             wiki: Arc::new(WikiCache::default()),
+            hltb_tried: Default::default(),
             ui,
             ui_focus_dirty: false,
             ui_save: None,
@@ -569,6 +573,7 @@ impl CollectionView {
 impl Render for CollectionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.schedule_ui_save(cx);
+        self.ensure_hltb_for_focus(cx);
         self.render_desktop(window, cx)
     }
 }

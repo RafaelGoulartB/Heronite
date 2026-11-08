@@ -197,6 +197,9 @@ pub struct MetadataSettings {
     /// Steam tags per game; 0 = [`crate::steam_tags::DEFAULT_LIMIT`].
     #[serde(default)]
     pub steam_tag_limit: u32,
+    /// Ask HowLongToBeat for the times of the selected game.
+    #[serde(default = "default_true")]
+    pub how_long_to_beat: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
     #[serde(flatten)]

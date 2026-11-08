@@ -292,6 +292,9 @@ pub struct FocusData {
     pub playtime: String,
     /// The HowLongToBeat card (only when it has times).
     pub hltb: Option<HltbEntry>,
+    /// HowLongToBeat was asked about the game; with no `hltb`, it has no
+    /// times for it (or no match).
+    pub hltb_checked: bool,
 }
 
 /// Merges Steam details (read from the cache, only when Heronite would show
@@ -304,6 +307,7 @@ pub fn focus_data(library: &Library, game: &CollectionGame, wiki: &WikiCache) ->
         meta_line: details.meta_line(locale),
         last_played: game.last_played.as_deref().map(|v| format_timestamp(v, locale)).filter(|v| !v.is_empty()),
         playtime: format_playtime_minutes(game.playtime_minutes),
+        hltb_checked: entry.as_ref().is_some_and(|e| e.hltb_checked),
         hltb: entry.and_then(|e| e.hltb).filter(HltbEntry::is_displayable),
         details,
     }

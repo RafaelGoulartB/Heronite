@@ -30,6 +30,34 @@ pub struct Prefs {
     /// Achievements that games keep in their own files (the open-source
     /// Steam API emulators' saves), for DRM-free and offline copies.
     pub game_files: bool,
+    /// What the notices over the game show besides the name.
+    pub notice: NoticeFields,
+}
+
+/// The optional lines of an achievement's notice over the game; each one
+/// shows only when the source gives it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NoticeFields {
+    /// The description, on one line.
+    pub description: bool,
+    /// The share of players that have it (and its tier's colour).
+    pub rarity: bool,
+    /// RetroAchievements points, Epic Games XP.
+    pub points: bool,
+    /// Steam's Achievement Set (base game or a DLC's), for a game with more
+    /// than one.
+    pub group: bool,
+    /// RetroAchievements' type (Progression, Win condition, Missable).
+    pub kind: bool,
+    /// A RetroAchievements unlock in hardcore mode.
+    pub hardcore: bool,
+}
+
+impl Default for NoticeFields {
+    fn default() -> Self {
+        Self { description: true, rarity: true, points: true, group: true, kind: true, hardcore: true }
+    }
 }
 
 impl Default for Prefs {
@@ -43,6 +71,7 @@ impl Default for Prefs {
             emulators: true,
             hardcore: false,
             game_files: false,
+            notice: NoticeFields::default(),
         }
     }
 }
@@ -78,5 +107,29 @@ mod tests {
         let prefs = Prefs { overlay_notices: false, live_steam: true, notify: true, ..Prefs::default() };
         write(&app, &prefs).unwrap();
         assert_eq!(read(&app), prefs);
+    }
+
+    #[test]
+    fn every_notice_line_is_on_by_default() {
+        assert_eq!(Prefs::default().notice, NoticeFields::default());
+        let n = NoticeFields::default();
+        assert!(n.description && n.rarity && n.points && n.group && n.kind && n.hardcore);
+        // An older file without them, or with only some.
+        let p: Prefs = serde_json::from_str(r#"{"overlayNotices":true}"#).unwrap();
+        assert_eq!(p.notice, NoticeFields::default());
+        let p: Prefs = serde_json::from_str(r#"{"notice":{"rarity":false}}"#).unwrap();
+        assert_eq!(p.notice, NoticeFields { rarity: false, ..NoticeFields::default() });
+    }
+
+    #[test]
+    fn notice_lines_survive_a_write_and_a_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = AppPaths { config: dir.path().join("config"), cache: dir.path().join("cache") };
+        let notice = NoticeFields { description: false, points: false, hardcore: false, ..NoticeFields::default() };
+        let prefs = Prefs { notice, ..Prefs::default() };
+        write(&app, &prefs).unwrap();
+        assert_eq!(read(&app).notice, notice);
+        let raw = std::fs::read_to_string(app.achievement_prefs()).unwrap();
+        assert!(raw.contains("\"description\": false") || raw.contains("\"description\":false"), "{raw}");
     }
 }
