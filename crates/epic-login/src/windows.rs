@@ -89,7 +89,7 @@ const SMOKE_PAGE: &str = "<html><body style='font-family:\"Segoe UI\",sans-serif
 fn user_agent(store: Store) -> Option<&'static str> {
     match store {
         Store::Epic => Some(EPIC_USER_AGENT),
-        Store::Gog | Store::Amazon => None,
+        Store::Gog | Store::Amazon | Store::Xbox => None,
     }
 }
 

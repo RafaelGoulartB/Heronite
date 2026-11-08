@@ -252,5 +252,37 @@ fn write_playtime(paths: &DataPaths, playtime: &BTreeMap<String, Playtime>) -> R
             entry.insert("totalPlayed".into(), json!(p.minutes));
         }
         Ok(())
-    })
+    })?;
+    // A total made smaller by hand on another PC holds here too against
+    // what the Xbox account counted (only Xbox games carry that count).
+    let lowered = playtime.iter().filter(|(_, p)| p.lowered.is_some()).map(|(app, p)| (app.as_str(), p.minutes));
+    heronite_data::xbox::note_playtime_edits(paths, lowered)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::format::Stamp;
+    use heronite_data::models::LocalGameMeta;
+    use heronite_data::xbox::{played, MINUTES_KEY, SOURCE};
+
+    #[test]
+    fn a_total_lowered_on_another_pc_holds_against_the_xbox_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let mut file = LocalMetaFile::default();
+        let mut meta = LocalGameMeta { app_name: "xbox_a".into(), source: SOURCE.into(), ..Default::default() };
+        meta.extra.insert(MINUTES_KEY.into(), json!(754));
+        file.games.insert("xbox_a".into(), meta);
+        json_store::write(&paths.local_meta(), &file).unwrap();
+
+        let stamp = Stamp { clock: 1, at: "2026-11-07T10:00:00Z".into(), device: "other".into() };
+        let changes = Changes {
+            playtime: BTreeMap::from([("xbox_a".to_string(), Playtime { minutes: 100, lowered: Some(stamp), ..Default::default() })]),
+            ..Default::default()
+        };
+        write(&paths, &changes).unwrap();
+        let file: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        assert_eq!(played(file.games.get("xbox_a")).0, 100, "not raised back to Xbox's 754");
+    }
 }

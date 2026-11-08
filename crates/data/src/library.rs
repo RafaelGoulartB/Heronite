@@ -205,6 +205,11 @@ impl CollectionGame {
         );
         let minutes = timestamp.map(|t| t.total_played.get()).filter(|m| *m > 0.0).unwrap_or(0.0);
         let non_empty = |s: &Option<String>| s.clone().filter(|v| !v.is_empty());
+        // What Xbox network counted (every device, Heronite's sessions
+        // included): the larger total and the later play win.
+        let (store_minutes, store_last) = crate::xbox::played(meta.as_deref());
+        let minutes = minutes.max(store_minutes as f64);
+        let last_played = crate::xbox::later(timestamp.and_then(|t| non_empty(&t.last_played)), store_last);
         Self {
             key: format!("{}_{}", game.runner, game.app_name),
             runner: game.runner.clone(),
@@ -217,7 +222,7 @@ impl CollectionGame {
             status_raw,
             playtime_minutes: minutes.round() as u64,
             first_played: timestamp.and_then(|t| non_empty(&t.first_played)),
-            last_played: timestamp.and_then(|t| non_empty(&t.last_played)),
+            last_played,
             favourite,
             recent,
             hidden,

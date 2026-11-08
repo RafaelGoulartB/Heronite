@@ -1,0 +1,60 @@
+{
+  "xuid": "2533274800000001",
+  "titles": [
+    {
+      "titleId": "1784935649",
+      "pfn": "Fable.SkywardLantern_abc123",
+      "bingId": null,
+      "windowsPhoneProductId": null,
+      "name": "Skyward Lantern",
+      "type": "Game",
+      "devices": ["PC", "XboxSeries"],
+      "displayImage": "https://store-images.s-microsoft.com/image/apps.1.skyward",
+      "mediaItemType": "Application",
+      "modernTitleId": "6A63F4E1",
+      "isBundle": false,
+      "achievement": {"currentAchievements": 12, "totalAchievements": 40, "currentGamerscore": 210, "totalGamerscore": 1000, "progressPercentage": 21.0, "sourceVersion": 2},
+      "titleHistory": {"lastTimePlayed": "2026-11-05T21:14:03.1200000Z", "visible": true, "canHide": false},
+      "detail": {"publisherName": "Fable Works", "developerName": "Fable Works | Lantern Team", "releaseDate": "2025-04-01T00:00:00Z", "shortDescription": "Float a lantern across the sky."},
+      "productId": "9ABCDEF12345"
+    },
+    {
+      "titleId": "448139855",
+      "pfn": null,
+      "name": "Tide Pool",
+      "type": "Game",
+      "devices": ["PC"],
+      "images": [{"url": "//store-images.s-microsoft.com/image/apps.2.tidebox", "type": "BoxArt"}, {"url": "https://store-images.s-microsoft.com/image/apps.2.tidehero", "type": "SuperHeroArt"}],
+      "achievement": {"currentAchievements": 0, "totalAchievements": 0, "currentGamerscore": 0, "totalGamerscore": 0, "progressPercentage": 0, "sourceVersion": 2},
+      "titleHistory": {"lastTimePlayed": "2026-10-01T10:00:00Z", "visible": true, "canHide": true},
+      "productId": "9TIDEPOOL001"
+    },
+    {
+      "titleId": "1234567890",
+      "pfn": "Fable.CloudHarbor_abc123",
+      "name": "Cloud Harbor (PC)",
+      "type": "Game",
+      "devices": ["PC", "XboxOne"],
+      "displayImage": "http://insecure.example/harbor.png",
+      "titleHistory": {"lastTimePlayed": "2026-09-12T18:00:00Z"},
+      "productId": "9CLOUDHARBOR"
+    },
+    {
+      "titleId": "987654321",
+      "pfn": null,
+      "name": "Console Only Racer",
+      "type": "Game",
+      "devices": ["XboxSeries"],
+      "titleHistory": {"lastTimePlayed": "2026-08-01T12:00:00Z"}
+    },
+    {
+      "titleId": "555",
+      "pfn": "Fable.MusicPlayer_abc123",
+      "name": "Music Player",
+      "type": "App",
+      "devices": ["PC"]
+    },
+    {"titleId": "not a number", "name": "Broken"},
+    {"name": "No id"}
+  ]
+}

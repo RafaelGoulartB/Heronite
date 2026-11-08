@@ -233,6 +233,14 @@ impl CollectionView {
         if !game.installed && game.client().is_some() {
             return self.open_client_of(key, cx);
         }
+        // An Xbox game played on the account: the Store installs it.
+        if !game.installed && game.is_xbox() {
+            let product = game.meta.as_deref().and_then(|m| m.extra.get(heronite_data::xbox::STORE_ID_KEY)).and_then(|v| v.as_str());
+            if let Err(e) = crate::services::xbox_library::open_store_page(product) {
+                self.show_toast(tr!("Could not open the Microsoft Store: {error}", error = e.to_string()), true, cx);
+            }
+            return;
+        }
         let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
         if let Err(err) = result {
             self.report_launch_error(err, cx);
