@@ -294,13 +294,8 @@ impl CollectionView {
             .hover(|s| s.bg(theme::ink_a(0.1)))
             .child(icon(play_icon, px(15.), theme::ink_a(0.85)))
             .tooltip(tooltip(play_tip))
-            .on_click(cx.listener(move |this, _, window, cx| {
-                if this.playing.contains_key(this.lib.as_ref().and_then(|l| l.get(&key)).map_or("", |g| g.app_name.as_str())) {
-                    this.primary_action(&key, cx);
-                } else {
-                    this.play_copy(&key, window, cx);
-                }
-            }));
+            // Stops this copy when it runs, even if another copy runs too.
+            .on_click(cx.listener(move |this, _, window, cx| this.play_copy(&key, window, cx)));
         row_base(g, detail).id(SharedString::from(format!("copy-{}", g.key))).child(star).child(play)
     }
 }
