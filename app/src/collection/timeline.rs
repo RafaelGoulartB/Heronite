@@ -48,12 +48,13 @@ const SPARK_MIN_W: f32 = 620.;
 const PAUSE_MIN_DAYS: i64 = 3;
 
 impl CollectionView {
-    /// The section (none when the game was never played and has no screenshots).
+    /// The section: the Timeline, or the Journal when picked. A game never
+    /// played and without screenshots has no Timeline, only its Journal (the
+    /// place to write a note or where to pick it up, before playing it).
     pub(super) fn timeline_section(&mut self, key: &SharedString, main_w: f32, scale: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
         let days = self.timeline_days(key)?;
         let current = self.journal.is_for(key);
-        let has_notes = current && self.journal.data.as_ref().is_some_and(|d| !d.entries.is_empty() || d.left_off.is_some());
-        if current && (self.ui.journal_view || (days.is_empty() && has_notes)) {
+        if current && (self.ui.journal_view || days.is_empty()) {
             return self.journal_section(key, main_w, cx);
         }
         if days.is_empty() {
@@ -153,9 +154,10 @@ impl CollectionView {
     }
 
     /// The section's title: "Timeline" or "Journal", what it holds, and the
-    /// switch between the two.
+    /// switch between the two (none without a Timeline to switch to).
     pub(super) fn timeline_header(&mut self, key: &SharedString, main_w: f32, cx: &mut Context<Self>) -> Div {
-        let journal = self.ui.journal_view && self.journal.is_for(key);
+        let no_timeline = self.timeline_days(key).is_none_or(|days| days.is_empty());
+        let journal = self.journal.is_for(key) && (self.ui.journal_view || no_timeline);
         let this_year = chrono::Local::now().year();
         let spark = if journal || main_w < SPARK_MIN_W { None } else { self.activity_bars(key, cx) };
         let hovered = spark.as_ref().and(self.facts.timeline_hover);
@@ -187,7 +189,7 @@ impl CollectionView {
                 (n, Some(s)) => tr!("{n} sessions since {since}", n, since = s),
             }
         };
-        let switch = self.view_switch(journal, cx);
+        let switch = (!no_timeline).then(|| self.view_switch(journal, cx));
         h3(if journal { tr!("Journal") } else { tr!("Timeline") }).flex().justify_between().items_center().gap(px(12.)).child(
             div()
                 .flex()
@@ -201,7 +203,7 @@ impl CollectionView {
                 // hovered day's (wider or narrower) text never moves them.
                 .child(meta)
                 .children(spark)
-                .child(switch),
+                .children(switch),
         )
     }
 
