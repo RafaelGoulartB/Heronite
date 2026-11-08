@@ -86,7 +86,10 @@ const INDEX: &[(Section, &[&str])] = &[
             "Game sections",
         ],
     ),
-    (Section::ConsoleMode, &["The theme in use", "Startup", "Open the app", "Fullscreen in console mode", "When a controller connects"]),
+    (
+        Section::ConsoleMode,
+        &["The theme in use", "Startup", "Open the app", "Open console mode in fullscreen", "When a controller connects"],
+    ),
     (
         Section::Downloads,
         &[
