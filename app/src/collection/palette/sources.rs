@@ -185,6 +185,7 @@ fn section_help(s: Section) -> &'static str {
         Section::Library => tr!("Hidden games, favourites, recent games"),
         Section::Launchers if cfg!(windows) => tr!("Bring in games from Playnite"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
+        Section::Integrations => tr!("Sunshine, so Moonlight can start your games"),
         Section::Storage if !heronite_platform::supported(heronite_platform::Feature::Wine) => {
             tr!("Disk space of games, store tools, caches")
         }

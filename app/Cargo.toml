@@ -49,6 +49,7 @@ heronite-steam = { path = "../crates/steam" }
 qrcodegen = "1.8"
 heronite-xbox = { path = "../crates/xbox" }
 heronite-storage = { path = "../crates/storage" }
+heronite-sunshine = { path = "../crates/sunshine" }
 dirs = "6"
 notify = "8"
 notify-rust = "4"

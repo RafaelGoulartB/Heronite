@@ -104,6 +104,16 @@ const INDEX: &[(Section, &[&str])] = &[
         ],
     ),
     (Section::Launchers, if cfg!(windows) { &["Playnite"] } else { &["Heroic", "Lutris", "Bottles", "Faugus"] }),
+    (
+        Section::Integrations,
+        &[
+            "Keep my games in Sunshine",
+            "Address of Sunshine's web page",
+            "Games in Sunshine",
+            "Quitting in Moonlight closes the game",
+            "Add Heronite console mode",
+        ],
+    ),
     (Section::Library, &["Show hidden games", "Recent games", "Recent games to show", "Clear recent games"]),
     (
         Section::Metadata,

@@ -408,6 +408,16 @@ impl AppPaths {
     pub fn replay_prefs(&self) -> PathBuf {
         self.config.join("replay.json")
     }
+    /// Settings → Integrations → Sunshine (see `heronite_sunshine::prefs`).
+    pub fn sunshine_prefs(&self) -> PathBuf {
+        self.config.join("sunshine.json")
+    }
+    /// The covers Sunshine shows for Heronite's entries: Sunshine reads them
+    /// from here, so they must outlive a cache clean-up (rendered again
+    /// when missing).
+    pub fn sunshine_covers_dir(&self) -> PathBuf {
+        self.config.join("sunshine-covers")
+    }
     /// Update switches and the last update check (see `heronite_update::prefs`).
     pub fn update_state(&self) -> PathBuf {
         self.config.join("update.json")
