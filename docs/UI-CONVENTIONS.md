@@ -143,7 +143,7 @@ darkened on the light one until it reads, or "From the desktop"); never write th
 Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**
 (radius 2 / 6 / 12), **Under the cover** (playtime or the sort value, playtime, last played, status with its colour,
 title, nothing; `data::chosen_caption`), **Favourite star**, **Store icon** (`coverStores`: the logos of the
-game's stores in a dark chip at the bottom-left, first in the row of the category tags, above the strip; each store
+game's stores in a dark chip at the bottom-left (a ROM's emulator icon instead, `emulators::icon`), first in the row of the category tags, above the strip; each store
 once, `+N` past three; with it on, two sub-toggles: "Show every store a game is in" (`coverStoresAll`, the copies'
 stores too) and "Hide while grouped by store" (`coverStoresHideGrouped`); `store_badges`), **Under the pointer** (nothing, lift 4px, glow with an
 accent ring). **Zoom** (50 to 300%, `system::ui_scale`; Ctrl + / Ctrl − anywhere, Ctrl 0 back to the system's): the

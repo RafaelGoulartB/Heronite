@@ -220,7 +220,8 @@ impl CollectionView {
             .collect()
     }
 
-    /// The logos of the stores of the game under `key` (and, with "Show
+    /// The logos of the stores of the game under `key`, its emulator's for
+    /// a ROM (and, with "Show
     /// every store a game is in" while copies are grouped, of its other
     /// copies), its own first. None while the Collection is grouped by store
     /// and "Hide while grouped by store" is on: the section's header names it.
@@ -233,8 +234,7 @@ impl CollectionView {
         if let Some(i) = games.iter().position(|g| g.key == key) {
             games[..=i].rotate_right(1);
         }
-        let store = heronite_data::collection::FacetKind::Store.index();
-        let mut icons = super::store_badges::store_icons(games.iter().flat_map(|g| g.facets[store].iter().map(|f| f.value.as_str())));
+        let mut icons = super::store_badges::game_icons(&games);
         if !a.cover_stores_all {
             icons.truncate(1);
         }

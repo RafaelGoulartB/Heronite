@@ -1,9 +1,13 @@
 //! The stores a game comes from on its cover (Settings → Appearance →
 //! Covers → Store icon): their logos in one small dark chip at the
-//! bottom-left, the look of the "Hidden" and copies badges.
+//! bottom-left, the look of the "Hidden" and copies badges. A ROM shows its
+//! emulator's icon instead.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::collection::FacetKind;
+use heronite_data::CollectionGame;
+use heronite_emulation::catalog::guess_definition_id;
 
 use crate::icons::Icon;
 use crate::theme;
@@ -29,16 +33,42 @@ pub fn store_icon(store: &str) -> Option<Icon> {
     })
 }
 
-/// The logos of `stores` (Store facet values, the game's own first), each
-/// once and in order.
-pub fn store_icons<'a>(stores: impl IntoIterator<Item = &'a str>) -> Vec<Icon> {
-    let mut icons = Vec::new();
-    for i in stores.into_iter().filter_map(store_icon) {
-        if !icons.contains(&i) {
-            icons.push(i);
+/// The icons of `games` (one game's copies, the card's own first): each
+/// ROM's emulator, each other copy's stores; each icon once, in order.
+pub fn game_icons(games: &[impl std::ops::Deref<Target = CollectionGame>]) -> Vec<Icon> {
+    let store = FacetKind::Store.index();
+    once_each(games.iter().flat_map(|g| match emulator_icon(g) {
+        Some(i) => vec![i],
+        None => g.facets[store].iter().filter_map(|f| store_icon(&f.value)).collect(),
+    }))
+}
+
+/// The icon of the emulator a ROM plays in (by its name, else its catalog
+/// id; a gamepad when neither is known), `None` for a game that is not one.
+fn emulator_icon(g: &CollectionGame) -> Option<Icon> {
+    let meta = g.meta.as_deref().filter(|m| m.launch_kind == "emulator" || m.source == "emulator")?;
+    Some(crate::pages::emulators::icon::of_definition(&emulator_definition(meta.emulator_name.as_deref(), meta.emulator_id.as_deref())))
+}
+
+/// The catalog emulator a ROM's `name` points at ("PCSX2 Nightly" is
+/// PCSX2), else its `id` (a catalog id, or one that matches nothing).
+fn emulator_definition(name: Option<&str>, id: Option<&str>) -> String {
+    let by_name = guess_definition_id(name);
+    match id {
+        Some(id) if by_name == "custom" => id.to_string(),
+        _ => by_name,
+    }
+}
+
+/// `icons` without the repeats, in order.
+fn once_each(icons: impl Iterator<Item = Icon>) -> Vec<Icon> {
+    let mut out = Vec::new();
+    for i in icons {
+        if !out.contains(&i) {
+            out.push(i);
         }
     }
-    icons
+    out
 }
 
 /// The logos and the "+N" a chip shows for `stores`: all of them up to
@@ -63,15 +93,15 @@ pub fn chip(stores: &[Icon]) -> Option<Div> {
             .flex_none()
             .flex()
             .items_center()
-            .gap(px(5.5))
-            .h(px(20.))
-            .px(px(5.5))
-            .rounded(px(4.5))
+            .gap(px(5.8))
+            .h(px(21.))
+            .px(px(5.8))
+            .rounded(px(4.7))
             .bg(theme::black_a(0.62))
-            .children(logos.iter().map(|i| icon(*i, px(13.2), theme::white_a(0.92))))
+            .children(logos.iter().map(|i| icon(*i, px(13.9), theme::white_a(0.92))))
             .children(more.map(|n| {
                 div()
-                    .text_size(px(11.))
+                    .text_size(px(11.5))
                     .line_height(px(15.))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::white_a(0.7))
@@ -82,7 +112,7 @@ pub fn chip(stores: &[Icon]) -> Option<Div> {
 
 #[cfg(test)]
 mod tests {
-    use super::{shown, store_icon, store_icons};
+    use super::{emulator_definition, once_each, shown, store_icon};
     use crate::icons::Icon;
 
     #[test]
@@ -96,8 +126,15 @@ mod tests {
 
     #[test]
     fn each_store_shows_once_in_order() {
-        let icons = store_icons(["GOG", "Steam", "Lutris", "Steam", "Epic Games"]);
+        let icons = once_each(["GOG", "Steam", "Lutris", "Steam", "Epic Games"].into_iter().filter_map(store_icon));
         assert_eq!(icons, vec![Icon::BrandGog, Icon::BrandSteam, Icon::BrandEpicGames]);
+    }
+
+    #[test]
+    fn a_rom_takes_its_emulator_from_the_name_then_the_id() {
+        assert_eq!(emulator_definition(Some("PCSX2 Nightly"), Some("0b1c-uuid")), "pcsx2");
+        assert_eq!(emulator_definition(None, Some("duckstation")), "duckstation");
+        assert_eq!(emulator_definition(Some("My emulator"), None), "custom");
     }
 
     #[test]
