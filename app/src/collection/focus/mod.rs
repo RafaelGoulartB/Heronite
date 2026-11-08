@@ -3,6 +3,9 @@
 
 mod description;
 mod panels;
+mod section_title;
+
+pub(super) use section_title::{OnTitle, TitleAction, TitleMenu, TitleState};
 
 pub use description::html_image_size;
 pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
@@ -15,7 +18,9 @@ use heronite_data::appearance::Section;
 
 use self::description::render_html;
 use self::panels::{details_panel, details_value_width, hltb_missing_panel, hltb_panel, related_panel};
+use self::section_title::{section_title, MenuEntry};
 use super::vm::FocusVm;
+use crate::icons::Icon;
 use crate::theme;
 use heronite_i18n::tr;
 
@@ -29,6 +34,8 @@ pub(super) struct DetailsUi {
     /// Labels of the chip rows showing every value (their "+N" was clicked).
     pub open: Vec<SharedString>,
     pub measure: MeasureChip,
+    /// The section pointed at and the open title menu.
+    pub titles: TitleState,
 }
 
 /// Widths of the focus panel's columns, in logical px.
@@ -126,8 +133,10 @@ pub(super) struct FocusActions {
     pub on_expand_detail: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// Picks the group of "Related games".
     pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
-    /// The buttons of "How Long To Beat".
-    pub on_hltb: Rc<dyn Fn(HltbAction, &mut Window, &mut App)>,
+    /// The items of "How Long To Beat"'s menu.
+    pub on_hltb: OnHltb,
+    /// The titles that are menus (pointed at, opened).
+    pub on_title: OnTitle,
 }
 
 /// A button of the "How Long To Beat" section.
@@ -141,14 +150,36 @@ pub(super) enum HltbAction {
     Refresh,
 }
 
+type OnHltb = Rc<dyn Fn(HltbAction, &mut Window, &mut App)>;
+
 /// "How Long To Beat": the times, or a note when HowLongToBeat has none.
-fn hltb_section(vm: &FocusVm, on: &Rc<dyn Fn(HltbAction, &mut Window, &mut App)>) -> Option<Div> {
-    let body = match &vm.hltb {
-        Some(h) => hltb_panel(h, on),
-        None if vm.hltb_checked => hltb_missing_panel(on),
+/// Its title opens the page, "Change match…" and "Refresh".
+fn hltb_section(vm: &FocusVm, titles: TitleState, on: &OnHltb, on_title: &OnTitle) -> Option<Div> {
+    let panel = match &vm.hltb {
+        Some(h) => hltb_panel(h),
+        None if vm.hltb_checked => hltb_missing_panel(),
         None => return None,
     };
-    Some(div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(body))
+    let entry = |id, icon, label: &'static str, action: HltbAction, separated| {
+        let on = on.clone();
+        MenuEntry { id, icon, label: label.into(), run: Rc::new(move |w: &mut Window, cx: &mut App| on(action.clone(), w, cx)), separated }
+    };
+    let mut entries = Vec::new();
+    if let Some(link) = vm.hltb.as_ref().and_then(|h| h.link.clone()) {
+        entries.push(entry("open", Icon::OpenInNew, tr!("Open on HowLongToBeat"), HltbAction::Open(link), false));
+    }
+    entries.push(entry("match", Icon::Edit, tr!("Change match…"), HltbAction::ChangeMatch, false));
+    if vm.hltb.is_some() {
+        entries.push(entry("refresh", Icon::Refresh, tr!("Refresh"), HltbAction::Refresh, true));
+    }
+    let title = section_title(TitleMenu::Hltb, tr!("How Long To Beat"), titles, entries, on_title);
+    Some(div().flex().flex_col().child(hover_section("focus-hltb", TitleMenu::Hltb, on_title).child(title).child(panel)))
+}
+
+/// A section that reports the pointer over it (its title shows the chevron).
+fn hover_section(id: &'static str, menu: TitleMenu, on_title: &OnTitle) -> Stateful<Div> {
+    let on = on_title.clone();
+    div().id(id).flex().flex_col().on_hover(move |hovered: &bool, window, cx| on(TitleAction::Hovered(menu, *hovered), window, cx))
 }
 
 /// What "Related games" shows of the focused game.
@@ -267,7 +298,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
             .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
         achievements: extras.achievements,
         details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
-        hltb: hltb_section(&vm, &actions.on_hltb),
+        hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
     };
     let body = body(&lay, sections);
     // Wide: the title sits above a fixed left column and the scrolling
@@ -383,7 +414,7 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
                 .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
             achievements: extras.achievements,
             details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
-            hltb: hltb_section(&vm, &actions.on_hltb),
+            hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
         },
     )
 }

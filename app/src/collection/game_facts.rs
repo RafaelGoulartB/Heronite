@@ -78,6 +78,8 @@ pub(super) struct Facts {
     pub rating_hover: Option<u8>,
     /// The "Age rating" row is pointed at: its hide button shows.
     pub age_hovered: bool,
+    /// The section whose title shows its chevron, and the title menu open.
+    pub titles: super::focus::TitleState,
     pub status_open: bool,
     /// The other ways to install, under the Install button.
     pub install_menu_open: bool,
@@ -162,6 +164,8 @@ impl CollectionView {
         };
         self.facts.timeline_hover = None;
         self.facts.details_open.clear();
+        // The sections are built again for the new game: no leave event comes.
+        self.facts.titles = Default::default();
         let (Some(lib), Some(key)) = (self.lib.clone(), target) else { return };
         let Some(game) = lib.get(&key).cloned() else { return };
         self.load_facts(key, game, cx);
