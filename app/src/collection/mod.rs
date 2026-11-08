@@ -56,6 +56,7 @@ mod screenshot_viewer;
 mod screenshots;
 mod script_install;
 mod scroll;
+mod section_menus;
 mod selection;
 mod sideload_uninstall;
 mod steam_copy;

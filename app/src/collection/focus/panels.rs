@@ -5,7 +5,7 @@ use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::{h3, panel, small_tabs, CoverFor, HltbAction, MeasureChip, RelatedUi};
+use super::{h3, panel, small_tabs, CoverFor, MeasureChip, RelatedUi};
 use crate::collection::vm::{DetailRow, DetailValue, HltbVm, RelatedGroupVm};
 use crate::icons::Icon;
 use crate::theme;
@@ -156,62 +156,24 @@ fn format_hours(v: Option<f32>) -> SharedString {
     }
 }
 
-type OnHltb = Rc<dyn Fn(HltbAction, &mut Window, &mut App)>;
-
-/// A small text button under the HowLongToBeat times.
-fn hltb_link(id: &'static str, ic: Icon, label: &'static str, action: HltbAction, on: &OnHltb) -> Stateful<Div> {
-    let on = on.clone();
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .gap(px(5.))
-        .px(px(7.))
-        .py(px(3.))
-        .rounded(px(6.))
-        .text_size(px(12.))
-        .text_color(theme::ink_a(0.7))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::ink_a(0.08)).text_color(theme::ink_a(0.94)))
-        .on_click(move |_, window, cx| on(action.clone(), window, cx))
-        .child(icon(ic, px(13.), theme::ink_a(0.6)))
-        .child(label)
-}
-
-/// The actions under the times: HowLongToBeat's page, "Change match…",
-/// "Refresh"; and how the game was matched when it is worth a look.
-fn hltb_footer(h: Option<&HltbVm>, on: &OnHltb) -> Div {
-    let note = h.and_then(|h| match (&h.name, h.close, h.manual) {
-        (_, _, true) => Some(tr!("Match picked by you").to_string()),
-        (Some(name), true, _) => Some(tr!("Matched by a similar name: {name}", name = name.as_ref())),
-        (None, true, _) => Some(tr!("Matched by a similar name").to_string()),
-        _ => None,
-    });
-    let mut links = div().flex().flex_wrap().gap(px(4.)).ml(px(-7.));
-    if let Some(link) = h.and_then(|h| h.link.clone()) {
-        links = links.child(hltb_link("hltb-open", Icon::OpenInNew, "HowLongToBeat", HltbAction::Open(link), on));
-    }
-    links = links.child(hltb_link("hltb-match", Icon::Edit, tr!("Change match…"), HltbAction::ChangeMatch, on));
-    if h.is_some() {
-        links = links.child(hltb_link("hltb-refresh", Icon::Refresh, tr!("Refresh"), HltbAction::Refresh, on));
-    }
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(4.))
-        .mt(px(12.))
-        .children(note.map(|n| div().text_size(px(12.)).text_color(theme::ink_a(0.52)).child(n)))
-        .child(links)
+/// How the game was matched, under the times, when it is worth a look (the
+/// actions are in the title's menu).
+fn hltb_note(h: &HltbVm) -> Option<Div> {
+    let note = match (&h.name, h.close, h.manual) {
+        (_, _, true) => tr!("Match picked by you").to_string(),
+        (Some(name), true, _) => tr!("Matched by a similar name: {name}", name = name.as_ref()),
+        (None, true, _) => tr!("Matched by a similar name").to_string(),
+        _ => return None,
+    };
+    Some(div().mt(px(12.)).text_size(px(12.)).text_color(theme::ink_a(0.52)).child(note))
 }
 
 /// The game was looked up and HowLongToBeat has no times for it.
-pub(super) fn hltb_missing_panel(on: &OnHltb) -> Div {
-    panel(true)
-        .child(div().text_size(px(13.)).text_color(theme::ink_a(0.7)).child(tr!("HowLongToBeat has no times for this game.")))
-        .child(hltb_footer(None, on))
+pub(super) fn hltb_missing_panel() -> Div {
+    panel(true).child(div().text_size(px(13.)).text_color(theme::ink_a(0.7)).child(tr!("HowLongToBeat has no times for this game.")))
 }
 
-pub(super) fn hltb_panel(h: &HltbVm, on: &OnHltb) -> Div {
+pub(super) fn hltb_panel(h: &HltbVm) -> Div {
     let max = h.complete.unwrap_or(0.).max(h.extra.unwrap_or(0.)).max(h.main.unwrap_or(0.));
     let marker = (max > 0. && h.played_hours > 0.).then(|| (h.played_hours / max).min(1.));
     let seg = |c: u32| div().flex_1().min_w_0().h_full().rounded_full().bg(rgb(c));
@@ -271,7 +233,7 @@ pub(super) fn hltb_panel(h: &HltbVm, on: &OnHltb) -> Div {
                 .child(stat(tr!("Main + Extras"), h.extra))
                 .child(stat(tr!("Completionist"), h.complete)),
         )
-        .child(hltb_footer(Some(h), on))
+        .children(hltb_note(h))
 }
 
 /// Cover size of "Related games", in logical px.

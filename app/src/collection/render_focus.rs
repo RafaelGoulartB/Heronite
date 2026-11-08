@@ -65,7 +65,12 @@ impl CollectionView {
             // Rounding of the laid-out text.
             w + 1.
         });
-        focus::DetailsUi { open: self.facts.details_open.clone(), measure }
+        focus::DetailsUi {
+            open: self.facts.details_open.clone(),
+            measure,
+            titles: self.facts.titles,
+            hidden: self.ui.detail_rows_hidden.clone(),
+        }
     }
 
     /// The filters set by facet, for the Details chips.
@@ -74,6 +79,14 @@ impl CollectionView {
             .iter()
             .flat_map(|k| self.ui.facet_filters.get(*k).iter().map(|v| (k.as_str(), SharedString::from(v.clone()))))
             .collect()
+    }
+
+    /// The section titles that are menus, into the view.
+    pub(super) fn on_title(&self, cx: &mut Context<Self>) -> focus::OnTitle {
+        let weak = cx.entity().downgrade();
+        Rc::new(move |action, _, cx| {
+            weak.update(cx, |this, cx| this.on_title_action(action, cx)).ok();
+        })
     }
 
     /// Callbacks of the details into the view (focus panel and grid drawer).
@@ -117,6 +130,7 @@ impl CollectionView {
             on_hltb: Rc::new(move |action, window, cx| {
                 w6.update(cx, |this, cx| this.on_hltb_action(action, window, cx)).ok();
             }),
+            on_title: self.on_title(cx),
         }
     }
 
@@ -127,6 +141,7 @@ impl CollectionView {
             self.facts.folder_size.as_ref().filter(|(k, _)| *k == kind).map(|(_, size)| SharedString::from(size.clone()))
         };
         let rows = self.facts.folders.iter().enumerate().map(|(i, (kind, path))| super::vm::DetailRow {
+            field: super::vm::DetailField::Folders,
             label: kind.label().into(),
             value: super::vm::DetailValue::Folder {
                 path: path.to_string_lossy().into_owned().into(),
