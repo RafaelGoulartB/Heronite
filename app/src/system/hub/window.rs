@@ -51,10 +51,10 @@ pub(super) struct PlacementSave {
 }
 
 /// Where a remembered window reopens (GPUI px; `zoom` is the interface's):
-/// on the screen it overlaps most, at least `min` big, shrunk and moved to
-/// fit that screen. `None` when it is on no screen any more (a monitor that
-/// was unplugged).
-fn restored_bounds(saved: &WindowPlacement, zoom: f32, min: Size<Pixels>, screens: &[Bounds<Pixels>]) -> Option<Bounds<Pixels>> {
+/// on the screen it overlaps most (its index in `screens`), at least `min`
+/// big, shrunk and moved to fit that screen. `None` when it is on no screen
+/// any more (a monitor that was unplugged).
+fn restored_bounds(saved: &WindowPlacement, zoom: f32, min: Size<Pixels>, screens: &[Bounds<Pixels>]) -> Option<(usize, Bounds<Pixels>)> {
     let (x, y, w, h) = (saved.x / zoom, saved.y / zoom, saved.width / zoom, saved.height / zoom);
     let edges = |s: &Bounds<Pixels>| {
         let (sx, sy) = (f32::from(s.origin.x), f32::from(s.origin.y));
@@ -65,39 +65,54 @@ fn restored_bounds(saved: &WindowPlacement, zoom: f32, min: Size<Pixels>, screen
         let (ow, oh) = ((x + w).min(right) - x.max(left), (y + h).min(bottom) - y.max(top));
         (ow >= ON_SCREEN && oh >= ON_SCREEN).then_some(ow * oh)
     };
-    let screen = screens.iter().filter_map(|s| Some((s, overlap(s)?))).max_by(|a, b| a.1.total_cmp(&b.1))?.0;
+    let (i, screen) = screens
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| Some((i, s, overlap(s)?)))
+        .max_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(i, s, _)| (i, s))?;
     let (left, top, right, bottom) = edges(screen);
     let w = w.max(f32::from(min.width)).min(right - left);
     let h = h.max(f32::from(min.height)).min(bottom - top);
     let (x, y) = (x.min(right - w).max(left), y.min(bottom - h).max(top));
-    Some(Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) })
+    Some((i, Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) }))
 }
 
-/// The window's bounds when it opens and whether it opens maximized: as it
-/// was left, else centered at [`OPEN_SIZE`].
-fn opening_bounds(saved: Option<&WindowPlacement>, open_size: Size<Pixels>, min_size: Size<Pixels>, cx: &App) -> (Bounds<Pixels>, bool) {
-    let screens: Vec<_> = cx.displays().iter().map(|d| d.visible_bounds()).collect();
+/// The window's bounds when it opens, the screen they are on (Windows opens a
+/// window on the primary screen unless told another) and whether it opens
+/// maximized: as it was left, else centered at [`OPEN_SIZE`].
+fn opening_bounds(
+    saved: Option<&WindowPlacement>,
+    open_size: Size<Pixels>,
+    min_size: Size<Pixels>,
+    cx: &App,
+) -> (Bounds<Pixels>, Option<DisplayId>, bool) {
+    let displays = cx.displays();
+    let screens: Vec<_> = displays.iter().map(|d| d.visible_bounds()).collect();
     match saved {
         Some(p) => match restored_bounds(p, gpui_zoom::zoom(), min_size, &screens) {
-            Some(bounds) => (bounds, p.maximized),
-            None => (Bounds::centered(None, open_size, cx), p.maximized),
+            Some((i, bounds)) => (bounds, Some(displays[i].id()), p.maximized),
+            None => (Bounds::centered(None, open_size, cx), None, p.maximized),
         },
-        None => (Bounds::centered(None, open_size, cx), false),
+        None => (Bounds::centered(None, open_size, cx), None, false),
     }
 }
 
 /// Notes the window's placement after a move or resize; it is written once
 /// it rests ([`PLACEMENT_SAVE_DELAY`]) or the window closes.
 fn remember_placement(window: &Window, cx: &mut App) {
+    // Fullscreen (F11, `--fullscreen`) is not remembered: the window reopens
+    // as it was before. (X11 reports it as windowed or maximized.)
+    if window.is_fullscreen() {
+        return;
+    }
     let (bounds, maximized) = match window.window_bounds() {
         WindowBounds::Windowed(b) => (b, false),
         WindowBounds::Maximized(b) => (b, true),
-        // Fullscreen (F11, `--fullscreen`) is not remembered: the window
-        // reopens as it was before.
         WindowBounds::Fullscreen(_) => return,
     };
     let zoom = gpui_zoom::zoom();
-    let placement = WindowPlacement {
+    let mut placement = WindowPlacement {
         x: f32::from(bounds.origin.x) * zoom,
         y: f32::from(bounds.origin.y) * zoom,
         width: f32::from(bounds.size.width) * zoom,
@@ -105,7 +120,15 @@ fn remember_placement(window: &Window, cx: &mut App) {
         maximized,
     };
     let hub = hub(cx);
-    if hub.0.borrow().placement.latest == Some(placement) {
+    let latest = hub.0.borrow().placement.latest;
+    // Maximized keeps the bounds it restores to. Windows reports those; X11
+    // reports the maximized ones, so on Linux the last known ones are kept.
+    if cfg!(target_os = "linux") && maximized {
+        if let Some(l) = latest {
+            placement = WindowPlacement { maximized, ..l };
+        }
+    }
+    if latest == Some(placement) {
         return;
     }
     let timer = cx.spawn(async move |cx| {
@@ -120,7 +143,7 @@ fn remember_placement(window: &Window, cx: &mut App) {
 }
 
 /// Writes the window's placement if it changed since the last write.
-fn save_placement(cx: &mut App) {
+pub(super) fn save_placement(cx: &mut App) {
     let hub = hub(cx);
     let (placement, paths) = {
         let mut s = hub.0.borrow_mut();
@@ -146,8 +169,9 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<
         }
         s.placement.latest
     };
-    let (bounds, maximized) = opening_bounds(saved.as_ref(), open_size, min_size, cx);
+    let (bounds, display_id, maximized) = opening_bounds(saved.as_ref(), open_size, min_size, cx);
     let options = WindowOptions {
+        display_id,
         // Fullscreen keeps `bounds` for when F11 switches back.
         window_bounds: Some(if fullscreen {
             WindowBounds::Fullscreen(bounds)
@@ -338,16 +362,17 @@ mod tests {
         // Two 1080p screens side by side (the taskbar takes 48 px).
         let screens = [rect(0., 0., 1920., 1032.), rect(1920., 0., 1920., 1032.)];
         let at = |x, y, width, height| WindowPlacement { x, y, width, height, maximized: false };
-        assert_eq!(restored_bounds(&at(100., 50., 1200., 800.), 1., min, &screens), Some(rect(100., 50., 1200., 800.)));
-        assert_eq!(restored_bounds(&at(2000., 50., 1200., 800.), 1., min, &screens), Some(rect(2000., 50., 1200., 800.)));
+        assert_eq!(restored_bounds(&at(100., 50., 1200., 800.), 1., min, &screens), Some((0, rect(100., 50., 1200., 800.))));
+        // On the second screen: opened there.
+        assert_eq!(restored_bounds(&at(2000., 50., 1200., 800.), 1., min, &screens), Some((1, rect(2000., 50., 1200., 800.))));
         // The interface zoom does not change the size on screen.
-        assert_eq!(restored_bounds(&at(200., 100., 1600., 1000.), 2., min, &screens), Some(rect(100., 50., 800., 500.)));
+        assert_eq!(restored_bounds(&at(200., 100., 1600., 1000.), 2., min, &screens), Some((0, rect(100., 50., 800., 500.))));
         // Hanging off the screen it is mostly on: moved and shrunk onto it.
-        assert_eq!(restored_bounds(&at(-300., 600., 2400., 900.), 1., min, &screens), Some(rect(0., 132., 1920., 900.)));
+        assert_eq!(restored_bounds(&at(-300., 600., 2400., 900.), 1., min, &screens), Some((0, rect(0., 132., 1920., 900.))));
         // The second screen was unplugged: nowhere to reopen.
         assert_eq!(restored_bounds(&at(2000., 50., 1200., 800.), 1., min, &screens[..1]), None);
         // Too small (an older size limit): grown to the smallest.
-        assert_eq!(restored_bounds(&at(10., 10., 200., 100.), 1., min, &screens), Some(rect(10., 10., 640., 480.)));
+        assert_eq!(restored_bounds(&at(10., 10., 200., 100.), 1., min, &screens), Some((0, rect(10., 10., 640., 480.))));
     }
 
     #[test]
