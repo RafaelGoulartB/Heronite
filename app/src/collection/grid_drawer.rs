@@ -42,7 +42,8 @@ impl CollectionView {
         let hero_h = (vh * 0.22).clamp(150., 220.);
         let head = self.drawer_head(&vm, width, hero_h, scale, cx);
 
-        let epic = self.epic_focus(&vm.key, vm.installed, cx);
+        // The store's progress and Update of the copy Play acts on (`vm.installed` is its).
+        let epic = self.epic_focus(&self.acting_key(&vm.key), vm.installed, cx);
         let play = self.play_area(&vm, epic, cx);
         let status = self.focus_status_row(&vm, vh, cx);
         let left_off = self.left_off_card(&vm.key, cx);

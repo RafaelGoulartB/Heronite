@@ -63,7 +63,8 @@ impl CollectionView {
 
     pub(super) fn open_game_settings_tab(&mut self, tab: GameTab, window: &mut Window, cx: &mut Context<Self>) {
         let Some(key) = self.selected.clone() else { return };
-        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
+        // The settings of the copy Play starts (the installed one of a card of copies).
+        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.acting_copy(&key)) else { return };
         let view = cx.new(|cx| GameSettingsDialog::new(ctx, game, tab, window, cx));
         self.open_dialog(view, cx);
     }

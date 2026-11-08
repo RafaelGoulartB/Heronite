@@ -227,7 +227,10 @@ impl CollectionView {
     }
 
     /// The game page in the theme's style.
+    /// A card of several copies shows the copy it acts on (the one Play
+    /// starts): its Play, Uninstall, Settings... (`acting_copy`).
     pub(super) fn render_console_game(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Classic => self.render_game_classic(key, window, cx),
             GamePage::Hero => self.render_game_hero(key, window, cx),
@@ -243,6 +246,7 @@ impl CollectionView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Sheet => self.render_game_sheet_layer(key, window, cx),
             _ => None,
@@ -251,6 +255,7 @@ impl CollectionView {
 
     /// `false` lets the shell use the press (B goes back).
     pub(super) fn game_pad(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Classic => self.game_pad_classic(key, pad, window, cx),
             GamePage::Hero => self.game_pad_hero(key, pad, window, cx),
@@ -260,6 +265,7 @@ impl CollectionView {
     }
 
     pub(super) fn game_hints(&self, key: &SharedString) -> Vec<Hint> {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Classic => self.game_hints_classic(key),
             GamePage::Hero => self.game_hints_hero(key),
@@ -494,18 +500,9 @@ impl CollectionView {
                         self.set_status(key, st.id, cx);
                     }
                 }
-                ("favourite", _) => {
-                    if let Err(err) = heronite_data::config_games::toggle_favourite(&self.data_paths, &g.app_name, &g.title) {
-                        self.show_toast(format!("{err:#}"), true, cx);
-                    }
-                    self.reload(cx);
-                }
-                ("hidden", _) => {
-                    if let Err(err) = heronite_data::config_games::toggle_hidden(&self.data_paths, &g.app_name, &g.title) {
-                        self.show_toast(format!("{err:#}"), true, cx);
-                    }
-                    self.reload(cx);
-                }
+                // Every copy, as on the desktop (the card may show another copy).
+                ("favourite", _) => self.toggle_favourite_of(key, cx),
+                ("hidden", _) => self.toggle_hidden_of(key, cx),
                 (id, Value::Toggle(on)) if id.starts_with("cat:") => self.set_game_category(key, &id["cat:".len()..], on, cx),
                 _ => {}
             },

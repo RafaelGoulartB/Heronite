@@ -208,7 +208,12 @@ impl CollectionView {
         self.facts.install_menu_open = false;
         self.context_menu = None;
         match kind {
-            WayKind::Store => self.primary_action(key, cx),
+            // This game's store, as the other ways: never another copy's Play.
+            WayKind::Store => {
+                if let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() {
+                    self.primary_action_on(&game, cx);
+                }
+            }
             WayKind::EpicImport => self.epic.pending = Some(Request::Install { key: key.to_string(), import: true }),
             WayKind::Steam => self.install_with_steam(key, cx),
             WayKind::Manual => self.open_manual_install(key, window, cx),
