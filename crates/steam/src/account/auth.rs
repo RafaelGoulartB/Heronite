@@ -22,6 +22,8 @@ pub const API: &str = "https://api.steampowered.com";
 const PLATFORM_MOBILE_APP: &str = "3";
 /// `ETokenRenewalType::Allow`: a renewal may also give a new refresh token.
 const RENEWAL_ALLOW: &str = "1";
+/// `ETokenRenewalType::None`: the refresh token stays as it is.
+const RENEWAL_NONE: &str = "0";
 /// `EAuthTokenRevokeAction::Permanent`: the refresh token stops working for
 /// good, and the sign-in leaves the account's authorized devices.
 const REVOKE_PERMANENT: &str = "1";
@@ -35,6 +37,8 @@ const SESSION_GONE: [i32; 4] = [9, 15, 26, 27];
 /// Busy, ServiceUnavailable, RateLimitExceeded...) is worth trying again
 /// later, not a sign-out.
 const TOKEN_DEAD: [i32; 5] = [8, 5, 15, 26, 27];
+/// The `EResult`s that say a token was already ended: Revoked, Expired.
+const TOKEN_ENDED: [i32; 2] = [26, 27];
 
 /// Steam no longer takes the saved refresh token (it expired, or the user
 /// took the access away in the Steam app): sign in again.
@@ -168,11 +172,21 @@ pub fn poll(http: &dyn Http, session: &mut QrSession) -> Result<Poll> {
     Ok(Poll::Waiting { scanned })
 }
 
-/// A new access token from the refresh token. [`SignedOut`] when Steam no
-/// longer takes the refresh token.
+/// A new access token from the refresh token, and a new refresh token when
+/// Steam gives one. [`SignedOut`] when Steam no longer takes the refresh
+/// token.
 pub fn renew(http: &dyn Http, refresh_token: &str, steam_id: &str) -> Result<Renewed> {
-    let form =
-        vec![("refresh_token", refresh_token.to_string()), ("steamid", steam_id.to_string()), ("renewal_type", RENEWAL_ALLOW.to_string())];
+    renew_as(http, refresh_token, steam_id, RENEWAL_ALLOW)
+}
+
+/// A new access token only, the refresh token kept: to end the sign-in
+/// ([`revoke`]) without Steam handing out a new refresh token first.
+pub fn renew_access(http: &dyn Http, refresh_token: &str, steam_id: &str) -> Result<Renewed> {
+    renew_as(http, refresh_token, steam_id, RENEWAL_NONE)
+}
+
+fn renew_as(http: &dyn Http, refresh_token: &str, steam_id: &str, renewal: &str) -> Result<Renewed> {
+    let form = vec![("refresh_token", refresh_token.to_string()), ("steamid", steam_id.to_string()), ("renewal_type", renewal.to_string())];
     let r = http.send(Request::post(url("GenerateAccessTokenForApp"), form))?;
     if matches!(r.status, 401 | 403) || r.eresult.is_some_and(|e| TOKEN_DEAD.contains(&e)) {
         return Err(SignedOut.into());
@@ -185,9 +199,14 @@ pub fn renew(http: &dyn Http, refresh_token: &str, steam_id: &str) -> Result<Ren
 /// Ends the sign-in on Steam: `refresh_token` stops working and the sign-in
 /// leaves the account's authorized devices. `access_token`: a working one of
 /// the same sign-in (it goes in the address, the refresh token in the form).
+/// `Ok` too when Steam says the token was already ended (the user removed the
+/// device on Steam's site).
 pub fn revoke(http: &dyn Http, access_token: &str, refresh_token: &str) -> Result<()> {
     let form = vec![("token", refresh_token.to_string()), ("revoke_action", REVOKE_PERMANENT.to_string())];
     let r = http.send(Request::post(format!("{}?access_token={access_token}", url("RevokeToken")), form))?;
+    if r.eresult.is_some_and(|e| TOKEN_ENDED.contains(&e)) {
+        return Ok(());
+    }
     if r.status != 200 {
         bail!("ending the Steam sign-in: HTTP {}", r.status);
     }
@@ -299,6 +318,10 @@ pub(super) mod tests {
         assert!(renew(&fake, "R", "7656").unwrap_err().is::<SignedOut>());
         assert!(renew(&fake, "R", "7656").unwrap_err().is::<SignedOut>());
         assert!(fake.sent()[0].form.contains(&("steamid", "7656".into())));
+        assert!(fake.sent()[0].form.contains(&("renewal_type", "1".into())));
+        let fake = Fake::new(&[(200, 1, r#"{"response":{"access_token":"A2"}}"#)]);
+        assert_eq!(renew_access(&fake, "R", "7656").unwrap(), Renewed { access_token: "A2".into(), refresh_token: None });
+        assert!(fake.sent()[0].form.contains(&("renewal_type", "0".into())));
         // A hiccup (ServiceUnavailable, RateLimitExceeded) keeps the sign-in.
         for eresult in [20, 84, 2] {
             let fake = Fake::new(&[(503, eresult, "")]);
@@ -318,6 +341,9 @@ pub(super) mod tests {
         assert_eq!(sent.method, "POST");
         assert_eq!(sent.url, "https://api.steampowered.com/IAuthenticationService/RevokeToken/v1/?access_token=A");
         assert_eq!(sent.form, [("token", "R".to_string()), ("revoke_action", "1".to_string())]);
+        // Already ended (removed on Steam's site): nothing left to do.
+        revoke(&Fake::new(&[(200, 26, "")]), "A", "R").unwrap();
+        revoke(&Fake::new(&[(200, 27, "")]), "A", "R").unwrap();
         // Refused or out of reach: an error, the caller says so.
         assert!(revoke(&Fake::new(&[(200, 15, "")]), "A", "R").is_err());
         assert!(revoke(&Fake::new(&[(401, 1, "")]), "A", "R").is_err());

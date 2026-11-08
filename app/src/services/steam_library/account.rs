@@ -22,7 +22,7 @@ pub struct AccountState {
     pub name: Option<String>,
     /// A sign-in under way.
     pub qr: Option<QrState>,
-    /// A sign-in is being started or finished.
+    /// A sign-in is being started or finished, or a sign-out is under way.
     pub busy: bool,
     /// The last sign-in or sign-out, when the user is to see it.
     pub last: Option<Result<String, String>>,
@@ -256,12 +256,15 @@ impl SteamLibrary {
                         this.account.last = Some(Ok(if ended {
                             tr!("Signed out. Steam no longer accepts this sign-in, and Heronite left your account's authorized devices.")
                         } else {
-                            // Steam out of reach: it still lists the sign-in.
+                            // Steam out of reach or refusing: it still lists the sign-in.
                             tr!("Signed out. To also remove Heronite from your account, go to store.steampowered.com/account/authorizeddevices.")
                         }
                         .to_string()));
                     }
-                    Err(e) => this.account.last = Some(Err(format!("{e:#}"))),
+                    Err(e) => {
+                        log::warn!("Steam sign-out: {e:#}");
+                        this.account.last = Some(Err(format!("{e:#}")));
+                    }
                 }
                 cx.notify();
             })
