@@ -364,7 +364,8 @@ mod tests {
         st.status = Some(Status::default());
         assert!(!shows_shortcuts(&st), "not installed, nothing to remove");
         st.shortcuts = Shortcuts { menu: true, has_desktop: true, ..Default::default() };
-        assert!(shows_shortcuts(&st));
+        // On Windows the clients are the PC's: Heronite makes no shortcuts.
+        assert_eq!(shows_shortcuts(&st), !heronite_clients::native());
         assert_eq!(shortcut_switches(&st), (false, true), "the menu one goes, no Desktop one is added");
         st.shortcut_busy = true;
         assert_eq!(shortcut_switches(&st), (false, false));
