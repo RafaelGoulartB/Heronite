@@ -29,6 +29,21 @@ pub fn set_auto_console(app: &AppPaths, v: AutoConsole) {
     }
 }
 
+pub fn set_fullscreen(app: &AppPaths, v: bool) {
+    super::themes::update(app, |p| p.fullscreen = v);
+    if let Err(e) = ui_state::set_console_fullscreen(app, v) {
+        log::warn!("mirroring fullscreen: {e:#}");
+    }
+}
+
+/// Whether a window opening now opens fullscreen for console mode: the
+/// option is on and the app opens in console mode (`console`: it was asked
+/// to). Reads the values mirrored in ui-state.json.
+pub fn opens_fullscreen(app: &AppPaths, console: bool) -> bool {
+    let ui = ui_state::UiState::load(app);
+    ui.console_fullscreen && (console || opens_in_console(ui.console_open_in, ui.console_mode))
+}
+
 /// The last `autoConsole` set in this run.
 static LATEST_AUTO: Mutex<Option<AutoConsole>> = Mutex::new(None);
 
@@ -128,6 +143,18 @@ mod tests {
         assert!(!opens_in_console(OpenIn::Last, false));
         assert!(opens_in_console(OpenIn::Console, false));
         assert!(!opens_in_console(OpenIn::Desktop, true));
+    }
+
+    #[test]
+    fn a_window_opens_fullscreen_only_for_console_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") };
+        assert!(!opens_fullscreen(&app, false), "opens in desktop mode");
+        assert!(opens_fullscreen(&app, true), "on by default");
+        ui_state::set_console_open_in(&app, OpenIn::Console).unwrap();
+        assert!(opens_fullscreen(&app, false));
+        ui_state::set_console_fullscreen(&app, false).unwrap();
+        assert!(!opens_fullscreen(&app, false) && !opens_fullscreen(&app, true));
     }
 
     #[test]
