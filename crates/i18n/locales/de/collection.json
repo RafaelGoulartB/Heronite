@@ -530,5 +530,9 @@
   "Reset to defaults": "Auf Standard zurücksetzen",
   "Show quick controls": "Schnellzugriff einblenden",
   "Hide quick controls": "Schnellzugriff ausblenden",
-  "grouped|by": "nach"
+  "grouped|by": "nach",
+  "Restarting Steam": "Steam wird neu gestartet",
+  "Only your installed Steam games are in the Collection for now. Restart Steam once and the rest of your Steam library comes in by itself.": "Bisher sind nur deine installierten Steam-Spiele in der Sammlung. Starte Steam einmal neu, dann kommt der Rest deiner Steam-Bibliothek von selbst dazu.",
+  "Games running from Steam close.": "Über Steam laufende Spiele werden geschlossen.",
+  "Your Steam library comes in as soon as Steam is back. If Steam asks you to sign in, do so.": "Deine Steam-Bibliothek kommt dazu, sobald Steam wieder läuft. Wenn Steam dich bittet, dich anzumelden, tu das."
 }

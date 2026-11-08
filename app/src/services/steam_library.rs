@@ -3,14 +3,15 @@
 //! It runs a few seconds after start, then every few seconds until the
 //! library was read once (so a Steam opened later is read at once), then
 //! every few minutes, and when asked (the refresh button, the Steam page).
-//! It also opens and restarts Steam for the welcome. The Collection reloads
-//! on [`SteamLibraryEvent::Imported`].
+//! It also opens and restarts Steam for the welcome and the Collection's
+//! Steam pill ([`SteamLibrary::notice`]). The Collection reloads on
+//! [`SteamLibraryEvent::Imported`].
 
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 use heronite_data::steam_owned::SteamOwnedFile;
-use heronite_data::DataPaths;
+use heronite_data::{AppPaths, DataPaths};
 use heronite_launch::settings::GlobalSettings;
 use heronite_launch::steam::{find_steam_binary, SteamLocator};
 use heronite_launch::SystemProbe;
@@ -33,6 +34,10 @@ const SETTLE: Duration = Duration::from_secs(20);
 /// stops saying it is starting and offers a restart (its updater and the
 /// sign-in take a while; past this, something keeps the client closed).
 const NOT_ANSWERING: Duration = Duration::from_secs(120);
+
+/// The id under which "Ignore" on the Collection's Steam pill is remembered
+/// (`heronite_data::ui_state::dismiss_note`).
+const NOTICE_NOTE: &str = "steam-restart";
 
 /// The `steam` command: `HERONITE_STEAM_BIN` (tests), else the one found.
 pub fn steam_bin() -> String {
@@ -65,6 +70,16 @@ pub struct Summary {
     pub games: usize,
     pub installed: usize,
     pub updated_at: Option<String>,
+}
+
+/// What the Collection's Steam pill shows ([`SteamLibrary::notice`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SteamNotice {
+    /// The library was never read and Steam runs without the access: a
+    /// restart brings in the whole library.
+    Restart,
+    /// Steam was restarted for it and the library is not read yet.
+    Restarting,
 }
 
 pub enum SteamLibraryEvent {
@@ -107,6 +122,11 @@ pub struct SteamLibrary {
     /// the last check (`None` until checked).
     pub flag: Option<ClientApiFlag>,
     pub summary: Summary,
+    /// The cached library was looked at: until then nothing tells whether
+    /// it was ever read.
+    summary_loaded: bool,
+    /// "Ignore" on the Collection's Steam pill, remembered for good.
+    notice_ignored: bool,
     /// When Heronite last started Steam.
     opened_at: Option<Instant>,
     restarting: bool,
@@ -133,6 +153,8 @@ impl SteamLibrary {
             access: None,
             flag: None,
             summary: Summary::default(),
+            summary_loaded: false,
+            notice_ignored: false,
             opened_at: None,
             restarting: false,
             restarted: false,
@@ -206,6 +228,40 @@ impl SteamLibrary {
         }
     }
 
+    /// What the Collection's Steam pill shows. Only before the library was
+    /// ever read (afterwards the Steam page tells what is wrong), only while
+    /// a restart is what helps (not while Steam is closed, starting or
+    /// loading, and not once a restart from here did not help), and never
+    /// after "Ignore". `HERONITE_DEBUG_STEAM_NOTICE=restart|restarting`
+    /// shows one (for screenshots).
+    pub fn notice(&self) -> Option<SteamNotice> {
+        if let Some(debug) = crate::env::value("HERONITE_DEBUG_STEAM_NOTICE") {
+            return Some(if debug == "restarting" { SteamNotice::Restarting } else { SteamNotice::Restart });
+        }
+        if !self.summary_loaded || self.summary.updated_at.is_some() || self.notice_ignored {
+            return None;
+        }
+        match self.state() {
+            SteamState::NeedsRestart if heronite_steam::can_restart() => Some(SteamNotice::Restart),
+            SteamState::Restarting => Some(SteamNotice::Restarting),
+            SteamState::Opening | SteamState::Reading if self.restarted => Some(SteamNotice::Restarting),
+            _ => None,
+        }
+    }
+
+    /// "Ignore" on the Collection's Steam pill: it does not show again.
+    pub fn ignore_notice(&mut self, cx: &mut Context<Self>) {
+        self.notice_ignored = true;
+        let app = AppPaths::for_data(&self.paths);
+        cx.background_spawn(async move {
+            if let Err(e) = heronite_data::ui_state::dismiss_note(&app, NOTICE_NOTE) {
+                log::warn!("Remembering the ignored Steam notice: {e:#}");
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
     /// Starts Steam (with the access on); the checks read it once it answers.
     pub fn open(&mut self, cx: &mut Context<Self>) {
         self.opened_at = Some(Instant::now());
@@ -258,14 +314,21 @@ impl SteamLibrary {
     fn load_summary(&mut self, cx: &mut Context<Self>) {
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let summary = cx
+            let (summary, ignored) = cx
                 .background_spawn(async move {
                     let f = SteamOwnedFile::read(&paths);
-                    Summary { games: f.games.len(), installed: f.games.iter().filter(|g| g.installed).count(), updated_at: f.updated_at }
+                    let summary = Summary {
+                        games: f.games.len(),
+                        installed: f.games.iter().filter(|g| g.installed).count(),
+                        updated_at: f.updated_at,
+                    };
+                    (summary, heronite_data::ui_state::note_dismissed(&AppPaths::for_data(&paths), NOTICE_NOTE))
                 })
                 .await;
             this.update(cx, |this, cx| {
                 this.summary = summary;
+                this.summary_loaded = true;
+                this.notice_ignored |= ignored;
                 cx.notify();
             })
             .ok();
@@ -374,7 +437,7 @@ mod tests {
     use heronite_data::DataPaths;
     use heronite_steam::{ClientApiFlag, LibraryAccess};
 
-    use super::{SteamLibrary, SteamState, Summary, NOT_ANSWERING};
+    use super::{SteamLibrary, SteamNotice, SteamState, Summary, NOT_ANSWERING};
 
     fn library() -> SteamLibrary {
         SteamLibrary {
@@ -384,6 +447,8 @@ mod tests {
             access: None,
             flag: None,
             summary: Summary::default(),
+            summary_loaded: true,
+            notice_ignored: false,
             opened_at: None,
             restarting: false,
             restarted: false,
@@ -391,6 +456,56 @@ mod tests {
             starting_since: None,
             logged: None,
         }
+    }
+
+    #[test]
+    fn the_pill_asks_for_a_restart_only_until_the_library_was_read() {
+        let mut s = library();
+        s.set_access(LibraryAccess::NeedsRestart, None);
+        if heronite_steam::can_restart() {
+            assert_eq!(s.notice(), Some(SteamNotice::Restart));
+        }
+        // Read once: the Steam page says what is wrong from then on.
+        s.summary.updated_at = Some("2026-11-07T10:00:00Z".into());
+        assert_eq!(s.notice(), None);
+        // Before the cache was looked at, nothing tells it was never read.
+        let mut s = library();
+        s.summary_loaded = false;
+        s.set_access(LibraryAccess::NeedsRestart, None);
+        assert_eq!(s.notice(), None);
+    }
+
+    #[test]
+    fn the_pill_shows_only_while_a_restart_helps() {
+        let mut s = library();
+        for access in [LibraryAccess::Closed, LibraryAccess::Starting, LibraryAccess::NotInstalled, LibraryAccess::Ready] {
+            s.set_access(access, None);
+            assert_eq!(s.notice(), None, "{access:?}");
+        }
+        // Another tool keeps the access closed: a restart does not open it.
+        s.set_access(LibraryAccess::NeedsRestart, None);
+        s.flag = Some(ClientApiFlag::Blocked);
+        assert_eq!(s.notice(), None);
+        // Restarted from here and still without the access: not asked again.
+        s.flag = Some(ClientApiFlag::On);
+        s.restarted = true;
+        assert_eq!(s.state(), SteamState::Failed);
+        assert_eq!(s.notice(), None);
+    }
+
+    #[test]
+    fn the_pill_follows_the_restart_and_ignore_is_for_good() {
+        let mut s = library();
+        s.restarting = true;
+        assert_eq!(s.notice(), Some(SteamNotice::Restarting));
+        s.restarting = false;
+        s.restarted = true;
+        s.opened_at = Some(Instant::now());
+        s.set_access(LibraryAccess::Closed, None);
+        assert_eq!(s.state(), SteamState::Opening);
+        assert_eq!(s.notice(), Some(SteamNotice::Restarting));
+        s.notice_ignored = true;
+        assert_eq!(s.notice(), None);
     }
 
     #[test]

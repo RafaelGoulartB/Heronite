@@ -29,6 +29,8 @@ pub(super) enum Menu {
     Downloads,
     /// The update pill's release and actions.
     Update,
+    /// The Steam pill's restart (`steam_pill.rs`).
+    Steam,
     /// The active view mode's options (`view_mode.rs`); opens on click only.
     Display,
     /// Space-dependent Collection shortcuts (`toolbar`).
@@ -260,6 +262,7 @@ impl CollectionView {
                         .children(chips.into_iter().map(|chip| chip.occlude())),
                     ),
             )
+            .children(self.steam_pill(cx))
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
             .child(self.view_mode_controls(window, cx))
