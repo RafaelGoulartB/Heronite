@@ -119,6 +119,7 @@ impl CollectionView {
                 "nav" => Some(Menu::Nav),
                 "downloads" => Some(Menu::Downloads),
                 "update" => Some(Menu::Update),
+                "steam" => Some(Menu::Steam),
                 "display" => Some(Menu::Display),
                 m if m.starts_with("quick-") => quick_menu(&m[6..]).map(Menu::Quick),
                 _ if query.is_some() => Some(Menu::View),

@@ -111,6 +111,15 @@ pub(crate) fn installed_count(n: usize) -> String {
     }
 }
 
+/// "1 not installed" / "3 not installed" (Portuguese inflects it).
+pub(crate) fn not_installed_count(n: usize) -> String {
+    if n == 1 {
+        trc!("one", "{n} not installed", n)
+    } else {
+        trc!("other", "{n} not installed", n)
+    }
+}
+
 impl<K: StoreKind> StorePage<K> {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
