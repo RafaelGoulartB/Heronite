@@ -253,6 +253,13 @@ pub struct WebImage {
     pub height: u32,
 }
 
+/// The art picker's search results, by where they come from.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ArtImages {
+    pub steamgrid: Vec<WebImage>,
+    pub web: Vec<WebImage>,
+}
+
 /// `SteamHeroCacheResult`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

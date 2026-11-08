@@ -1,5 +1,6 @@
-//! `CollectionWebImageDialog`: search images on the web (DuckDuckGo, Bing,
-//! Google) and use one as the game's cover or background.
+//! `CollectionWebImageDialog`: search images (SteamGridDB with an API key,
+//! then the web: DuckDuckGo, Bing, Google) and use one as the game's cover or
+//! background.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,19 +12,38 @@ use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameArt;
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
-use heronite_metadata::{ArtKind, MetadataService, WebImage};
+use heronite_metadata::{ArtImages, ArtKind, MetadataService, WebImage};
 
 use super::art_images::{picture, DialogImages};
 use super::metadata_wizard::hub;
 use super::DialogCtx;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, button, checkbox, help_text, ButtonKind};
+use crate::ui::controls::{action_button, button, caption, checkbox, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{new_input, search_box};
 use crate::ui::icon;
 
 const PAGE_SIZE: usize = 20;
+/// SteamGridDB's images listed before its "Load more": a row, so the web's
+/// results show under them without scrolling.
+const STEAMGRID_PAGE: usize = 6;
+
+/// Where a result comes from: its section of the dialog.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Source {
+    SteamGrid,
+    Web,
+}
+
+impl Source {
+    fn id(self) -> &'static str {
+        match self {
+            Source::SteamGrid => "sgdb",
+            Source::Web => "web",
+        }
+    }
+}
 
 /// Events of the nested art pickers (web / screenshot) toward Game settings.
 pub enum ArtEvent {
@@ -39,9 +59,11 @@ pub struct WebImageDialog {
     kind: ArtKind,
     query: Entity<InputState>,
     transparent: bool,
-    results: Vec<WebImage>,
-    visible: usize,
-    selected: Option<usize>,
+    results: ArtImages,
+    /// Images listed in each section before its "Load more".
+    visible_steamgrid: usize,
+    visible_web: usize,
+    selected: Option<(Source, usize)>,
     loading: bool,
     saving: bool,
     error: String,
@@ -81,8 +103,9 @@ impl WebImageDialog {
             kind,
             query,
             transparent: false,
-            results: Vec::new(),
-            visible: PAGE_SIZE,
+            results: ArtImages::default(),
+            visible_steamgrid: STEAMGRID_PAGE,
+            visible_web: PAGE_SIZE,
             selected: None,
             loading: false,
             saving: false,
@@ -103,11 +126,12 @@ impl WebImageDialog {
         self.loading = true;
         self.error.clear();
         self.selected = None;
-        self.results.clear();
-        self.visible = PAGE_SIZE;
-        let (service, transparent) = (self.service.clone(), self.transparent);
+        self.results = ArtImages::default();
+        self.visible_steamgrid = STEAMGRID_PAGE;
+        self.visible_web = PAGE_SIZE;
+        let (service, kind, transparent) = (self.service.clone(), self.kind, self.transparent);
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { service.search_web_images(&term, transparent) }).await;
+            let res = cx.background_spawn(async move { service.search_art_images(&term, kind, transparent) }).await;
             this.update(cx, |this, cx| {
                 if this.request != id {
                     return;
@@ -115,7 +139,7 @@ impl WebImageDialog {
                 this.loading = false;
                 match res {
                     Ok(list) => {
-                        if list.is_empty() {
+                        if list.steamgrid.is_empty() && list.web.is_empty() {
                             this.error = tr!("No images found. Try another search.").into();
                         }
                         this.results = list;
@@ -130,8 +154,15 @@ impl WebImageDialog {
         cx.notify();
     }
 
-    fn confirm(&mut self, index: Option<usize>, cx: &mut Context<Self>) {
-        let Some(image) = index.or(self.selected).and_then(|i| self.results.get(i)).cloned() else { return };
+    fn images(&self, from: Source) -> &[WebImage] {
+        match from {
+            Source::SteamGrid => &self.results.steamgrid,
+            Source::Web => &self.results.web,
+        }
+    }
+
+    fn confirm(&mut self, pick: Option<(Source, usize)>, cx: &mut Context<Self>) {
+        let Some(image) = pick.or(self.selected).and_then(|(from, i)| self.images(from).get(i)).cloned() else { return };
         if self.saving {
             return;
         }
@@ -157,6 +188,69 @@ impl WebImageDialog {
         })
         .detach();
         cx.notify();
+    }
+}
+
+impl WebImageDialog {
+    /// A source's results: its title (when `titled`), its images, and its
+    /// "Load more". `None` when it found nothing.
+    fn section(&mut self, from: Source, titled: bool, (tw, th): (f32, f32), cx: &mut Context<Self>) -> Option<Div> {
+        let total = self.images(from).len();
+        if total == 0 {
+            return None;
+        }
+        let (visible, title) = match from {
+            Source::SteamGrid => (self.visible_steamgrid, "SteamGridDB"),
+            Source::Web => (self.visible_web, tr!("From the web")),
+        };
+        let mut tiles = div().flex().flex_wrap().gap(px(9.6));
+        for i in 0..total.min(visible) {
+            tiles = tiles.child(self.tile(from, i, tw, th, cx));
+        }
+        let more = (visible < total).then(|| {
+            div().flex().justify_center().pt(px(10.)).child(
+                button(SharedString::from(format!("wi-more-{}", from.id())), ButtonKind::Glass, tr!("Load more")).min_w(px(192.)).on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        match from {
+                            Source::SteamGrid => this.visible_steamgrid += PAGE_SIZE,
+                            Source::Web => this.visible_web += PAGE_SIZE,
+                        }
+                        cx.notify();
+                    }),
+                ),
+            )
+        });
+        Some(div().flex().flex_col().pb(px(8.)).when(titled, |d| d.child(caption(title).mt(px(4.)))).child(tiles).children(more))
+    }
+
+    fn tile(&mut self, from: Source, i: usize, tw: f32, th: f32, cx: &mut Context<Self>) -> Stateful<Div> {
+        let image = self.images(from)[i].clone();
+        let selected = self.selected == Some((from, i));
+        let chain = vec![ImageRef::Url(image.thumb_url.clone())];
+        let src = self.images.update(cx, |im, _| im.get(&format!("wi:{}", image.thumb_url), chain, tw, th));
+        let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}px", image.width, image.height));
+        div()
+            .id(SharedString::from(format!("wi-item-{}-{i}", from.id())))
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(4.8))
+            .p(px(6.4))
+            .rounded(px(12.))
+            .border_2()
+            .border_color(if selected { theme::accent().into() } else { gpui_kit::transparent_black() })
+            .bg(if selected { theme::ink_a(0.06) } else { theme::recess_a(0.28) })
+            .hover(|s| s.border_color(theme::accent()))
+            .cursor_pointer()
+            .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
+                this.selected = Some((from, i));
+                if matches!(ev, ClickEvent::Mouse(m) if m.up.click_count >= 2) {
+                    this.confirm(Some((from, i)), cx);
+                }
+                cx.notify();
+            }))
+            .child(picture(src).w(px(tw)).h(px(th)))
+            .children(size.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).child(s)))
     }
 }
 
@@ -186,7 +280,7 @@ impl Render for WebImageDialog {
                 }
             })));
 
-        let mut grid = div().id("wi-grid").flex().flex_wrap().gap(px(9.6)).min_h(px(288.)).max_h(px(380.)).overflow_y_scroll().p(px(3.));
+        let mut grid = div().id("wi-grid").flex().flex_col().min_h(px(288.)).max_h(px(420.)).overflow_y_scroll().p(px(3.));
         if self.loading {
             grid = grid.child(
                 div()
@@ -205,37 +299,10 @@ impl Render for WebImageDialog {
                     .child(tr!("Searching…")),
             );
         } else {
-            let shown = self.results.len().min(self.visible);
-            for i in 0..shown {
-                let image = self.results[i].clone();
-                let selected = self.selected == Some(i);
-                let chain = vec![ImageRef::Url(image.thumb_url.clone())];
-                let src = self.images.update(cx, |im, _| im.get(&format!("wi:{}", image.thumb_url), chain, tw, th));
-                let size = (image.width > 0 && image.height > 0).then(|| format!("{}\u{d7}{}px", image.width, image.height));
-                grid = grid.child(
-                    div()
-                        .id(SharedString::from(format!("wi-item-{i}")))
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap(px(4.8))
-                        .p(px(6.4))
-                        .rounded(px(12.))
-                        .border_2()
-                        .border_color(if selected { theme::accent().into() } else { gpui_kit::transparent_black() })
-                        .bg(if selected { theme::ink_a(0.06) } else { theme::recess_a(0.28) })
-                        .hover(|s| s.border_color(theme::accent()))
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, ev: &ClickEvent, _, cx| {
-                            this.selected = Some(i);
-                            if matches!(ev, ClickEvent::Mouse(m) if m.up.click_count >= 2) {
-                                this.confirm(Some(i), cx);
-                            }
-                            cx.notify();
-                        }))
-                        .child(picture(src).w(px(tw)).h(px(th)))
-                        .children(size.map(|s| div().text_size(px(12.)).text_color(theme::text_dim()).child(s))),
-                );
+            // Without SteamGridDB's results the web's need no title.
+            let titled = !self.results.steamgrid.is_empty();
+            for from in [Source::SteamGrid, Source::Web] {
+                grid = grid.children(self.section(from, titled, (tw, th), cx));
             }
         }
 
@@ -249,14 +316,6 @@ impl Render for WebImageDialog {
             )))
             .child(toolbar)
             .child(grid);
-        if !self.loading && self.visible < self.results.len() {
-            body = body.child(div().flex().justify_center().child(
-                button("wi-more", ButtonKind::Glass, tr!("Load more")).min_w(px(192.)).on_click(cx.listener(|this, _, _, cx| {
-                    this.visible += PAGE_SIZE;
-                    cx.notify();
-                })),
-            ));
-        }
         if !self.error.is_empty() {
             body = body.child(
                 div()

@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::http::Http;
+use crate::types::{ArtKind, WebImage};
 use crate::util::{encode_uri_component, normalize_title, re};
 
 const SGDB_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Heronite/0.1";
@@ -280,6 +281,35 @@ pub fn covers_from_steamgrid(http: &Http, api_key: &str, sgdb_id: i64) -> Result
     });
     let (grid, hero) = (grid?, hero?);
     Ok(Covers { art_square: grid.clone(), art_cover: hero.or(grid) })
+}
+
+/// SteamGridDB's art of the first game matching `title`, for the image
+/// search: portrait grids for a cover, heroes for a background, in the order
+/// SteamGridDB ranks them.
+pub fn steamgrid_images(http: &Http, api_key: &str, title: &str, kind: ArtKind) -> Result<Vec<WebImage>> {
+    let Some(game_id) = sgdb_search_first_id(http, api_key, title)? else { return Ok(Vec::new()) };
+    let (path, dimensions) = match kind {
+        ArtKind::Cover => ("grids", "600x900,342x482,660x930"),
+        ArtKind::Hero => ("heroes", ""),
+    };
+    let params: &[(&str, &str)] = if dimensions.is_empty() { &[] } else { &[("dimensions", dimensions)] };
+    let body = sgdb_get(http, api_key, &format!("/{path}/game/{game_id}"), params)?;
+    Ok(parse_steamgrid_images(&body))
+}
+
+/// The `data` of a grids/heroes answer: `url`, `thumb`, `width`, `height`.
+fn parse_steamgrid_images(body: &Value) -> Vec<WebImage> {
+    let size = |v: &Value, key: &str| v.get(key).and_then(Value::as_u64).map_or(0, |n| n.min(u32::MAX as u64) as u32);
+    body.get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|img| {
+            let image_url = img.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http"))?.to_owned();
+            let thumb_url = img.get("thumb").and_then(Value::as_str).filter(|u| u.starts_with("http")).unwrap_or(&image_url).to_owned();
+            Some(WebImage { image_url, thumb_url, width: size(img, "width"), height: size(img, "height") })
+        })
+        .collect()
 }
 
 /// `steamGridIdFromSteamApp`.

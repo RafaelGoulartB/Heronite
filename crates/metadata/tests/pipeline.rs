@@ -608,6 +608,58 @@ fn web_image_search_uses_ddg_then_falls_back_to_bing() {
     assert!(svc.search_web_images("   ", false).unwrap().is_empty());
 }
 
+#[test]
+fn art_image_search_adds_steamgriddb_apart_when_a_key_is_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let server = Server::start(move |req| match req.path() {
+        "/sgdb/api/v2/search/autocomplete/007%20First%20Light" | "/sgdb/api/v2/search/autocomplete/007 First Light" => {
+            assert_eq!(req.header("authorization"), Some("Bearer K"));
+            Resp::json(json!({"success": true, "data": [{"id": 77, "name": "007 First Light"}]}))
+        }
+        "/sgdb/api/v2/grids/game/77" => {
+            assert_eq!(req.query("dimensions").as_deref(), Some("600x900,342x482,660x930"));
+            Resp::json(json!({"success": true, "data": [
+                {"url": "https://cdn2.steamgriddb.com/grid/a.png", "thumb": "https://cdn2.steamgriddb.com/thumb/a.png", "width": 600, "height": 900},
+                {"url": "https://cdn2.steamgriddb.com/grid/b.png", "width": 342, "height": 482}
+            ]}))
+        }
+        "/sgdb/api/v2/heroes/game/77" => Resp::json(json!({"success": true, "data": [
+            {"url": "https://cdn2.steamgriddb.com/hero/h.png", "thumb": "https://cdn2.steamgriddb.com/thumb/h.png", "width": 1920, "height": 620}
+        ]})),
+        "/ddg/" => Resp::html(r#"<script>nrje('/d.js?q=x&vqd="4-77"&p=1')</script>"#),
+        "/ddg/i.js" => Resp::raw_json(fixture("ddg_images_portal2_cover.json")),
+        _ => Resp::status(404),
+    });
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    let q = web_images_query("007 First Light");
+
+    // No key: the web only.
+    let images = svc.search_art_images(&q, ArtKind::Cover, false).unwrap();
+    assert!(images.steamgrid.is_empty());
+    assert_eq!(images.web.len(), 6);
+    assert_eq!(server.count(|r| r.path().starts_with("/sgdb/")), 0);
+
+    fs::create_dir_all(paths.global_config().parent().unwrap()).unwrap();
+    fs::write(paths.global_config(), r#"{"defaultSettings":{"steamGridDbApiKey":"K"},"version":"v0"}"#).unwrap();
+    let images = svc.search_art_images(&q, ArtKind::Cover, false).unwrap();
+    assert_eq!((images.steamgrid.len(), images.web.len()), (2, 6));
+    let grid = &images.steamgrid;
+    assert_eq!(grid[0].image_url, "https://cdn2.steamgriddb.com/grid/a.png");
+    assert_eq!(grid[0].thumb_url, "https://cdn2.steamgriddb.com/thumb/a.png");
+    assert_eq!((grid[0].width, grid[0].height), (600, 900));
+    assert_eq!(grid[1].thumb_url, grid[1].image_url, "no thumb: the image itself");
+
+    let heroes = svc.search_art_images(&q, ArtKind::Hero, false).unwrap();
+    assert_eq!(heroes.steamgrid[0].image_url, "https://cdn2.steamgriddb.com/hero/h.png");
+
+    // Transparent images: SteamGridDB has none.
+    let before = server.count(|r| r.path().starts_with("/sgdb/"));
+    let transparent = svc.search_art_images(&q, ArtKind::Cover, true).unwrap();
+    assert_eq!((transparent.steamgrid.len(), transparent.web.len()), (0, 6));
+    assert_eq!(server.count(|r| r.path().starts_with("/sgdb/")), before);
+}
+
 fn web_images_query(title: &str) -> String {
     heronite_metadata::web_images::cover_query(title)
 }
