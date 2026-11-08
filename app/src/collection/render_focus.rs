@@ -65,7 +65,12 @@ impl CollectionView {
             // Rounding of the laid-out text.
             w + 1.
         });
-        focus::DetailsUi { open: self.facts.details_open.clone(), measure, titles: self.facts.titles }
+        focus::DetailsUi {
+            open: self.facts.details_open.clone(),
+            measure,
+            titles: self.facts.titles,
+            hidden: self.ui.detail_rows_hidden.clone(),
+        }
     }
 
     /// The filters set by facet, for the Details chips.
@@ -130,6 +135,7 @@ impl CollectionView {
             self.facts.folder_size.as_ref().filter(|(k, _)| *k == kind).map(|(_, size)| SharedString::from(size.clone()))
         };
         let rows = self.facts.folders.iter().enumerate().map(|(i, (kind, path))| super::vm::DetailRow {
+            field: super::vm::DetailField::Folders,
             label: kind.label().into(),
             value: super::vm::DetailValue::Folder {
                 path: path.to_string_lossy().into_owned().into(),

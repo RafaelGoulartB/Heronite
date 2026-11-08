@@ -1,7 +1,8 @@
 //! A section title that is also its menu: while the section is pointed at, a
 //! chevron fades and slides in after the title; a click on the title opens
 //! the section's menu under it ("How Long To Beat": its page, "Change
-//! match…", "Refresh"). Nothing takes room until it is wanted.
+//! match…", "Refresh"; "Details": "Edit rows…"). Nothing takes room until
+//! it is wanted.
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -18,12 +19,14 @@ use crate::ui::icon;
 /// The sections whose title is a menu.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::collection) enum TitleMenu {
+    Details,
     Hltb,
 }
 
 impl TitleMenu {
     fn id(self) -> &'static str {
         match self {
+            Self::Details => "details",
             Self::Hltb => "hltb",
         }
     }
@@ -37,6 +40,8 @@ pub(in crate::collection) enum TitleAction {
     Toggle(TitleMenu),
     /// A click outside the menu, or an item was picked.
     Close,
+    /// Details → "Edit rows…".
+    EditDetails,
 }
 
 pub(in crate::collection) type OnTitle = Rc<dyn Fn(TitleAction, &mut Window, &mut App)>;

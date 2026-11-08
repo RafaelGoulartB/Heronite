@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use gpui_kit::{Hsla, Pixels, Rgba, SharedString};
 
+use heronite_i18n::tr;
+
 use crate::icons::Icon;
 
 /// The line under a card's cover (`data::caption`).
@@ -142,8 +144,89 @@ pub(super) enum DetailValue {
     },
 }
 
+/// A kind of "Details" row, which the user can turn off (Details → Edit
+/// rows…). The key is what `UiState::detail_rows_hidden` stores.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DetailField {
+    Developer,
+    Publisher,
+    Series,
+    LastPlayed,
+    Playtime,
+    Folders,
+    Features,
+    Themes,
+    GameModes,
+    Platforms,
+    Tags,
+    SteamTags,
+    AgeRating,
+    Notes,
+}
+
+impl DetailField {
+    /// In the order Details shows them.
+    pub const ALL: [DetailField; 14] = [
+        Self::Developer,
+        Self::Publisher,
+        Self::Series,
+        Self::LastPlayed,
+        Self::Playtime,
+        Self::Folders,
+        Self::Features,
+        Self::Themes,
+        Self::GameModes,
+        Self::Platforms,
+        Self::Tags,
+        Self::SteamTags,
+        Self::AgeRating,
+        Self::Notes,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Developer => "developer",
+            Self::Publisher => "publisher",
+            Self::Series => "series",
+            Self::LastPlayed => "lastPlayed",
+            Self::Playtime => "playtime",
+            Self::Folders => "folders",
+            Self::Features => "features",
+            Self::Themes => "themes",
+            Self::GameModes => "gameModes",
+            Self::Platforms => "platforms",
+            Self::Tags => "tags",
+            Self::SteamTags => "steamTags",
+            Self::AgeRating => "ageRating",
+            Self::Notes => "notes",
+        }
+    }
+
+    /// The name in the Edit rows dialog (the rows' own labels; the folders
+    /// are one switch).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Developer => tr!("Developer"),
+            Self::Publisher => tr!("Publisher"),
+            Self::Series => tr!("Series"),
+            Self::LastPlayed => tr!("Last Played"),
+            Self::Playtime => tr!("Playtime"),
+            Self::Folders => tr!("Folders"),
+            Self::Features => tr!("Features"),
+            Self::Themes => tr!("Themes"),
+            Self::GameModes => tr!("Game modes"),
+            Self::Platforms => tr!("Platforms"),
+            Self::Tags => tr!("Tags"),
+            Self::SteamTags => tr!("Steam tags"),
+            Self::AgeRating => tr!("Age rating"),
+            Self::Notes => tr!("Notes"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct DetailRow {
+    pub field: DetailField,
     pub label: SharedString,
     pub value: DetailValue,
     /// Border-top separator (`.is-split`).

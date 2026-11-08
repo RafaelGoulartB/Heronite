@@ -201,22 +201,43 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     };
 
     if !d.developers.is_empty() {
-        rows.push(DetailRow { label: tr!("Developer").into(), value: chips(&d.developers, Some("developer")), split: false });
+        rows.push(DetailRow {
+            field: DetailField::Developer,
+            label: tr!("Developer").into(),
+            value: chips(&d.developers, Some("developer")),
+            split: false,
+        });
     }
     if !d.publishers.is_empty() {
-        rows.push(DetailRow { label: tr!("Publisher").into(), value: chips(&d.publishers, Some("publisher")), split: false });
+        rows.push(DetailRow {
+            field: DetailField::Publisher,
+            label: tr!("Publisher").into(),
+            value: chips(&d.publishers, Some("publisher")),
+            split: false,
+        });
     }
     if let Some(series) = &d.series {
-        rows.push(DetailRow { label: tr!("Series").into(), value: chips(std::slice::from_ref(series), Some("series")), split: false });
+        rows.push(DetailRow {
+            field: DetailField::Series,
+            label: tr!("Series").into(),
+            value: chips(std::slice::from_ref(series), Some("series")),
+            split: false,
+        });
     }
     let last_played = match g.last_played.as_deref().and_then(days_since) {
         Some(days) if days < 60 => Some(days_ago(days)),
         _ => fd.last_played.clone(),
     };
-    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(last_played.as_deref().unwrap_or(tr!("Never"))), split: false });
-    rows.push(DetailRow { label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
+    rows.push(DetailRow {
+        field: DetailField::LastPlayed,
+        label: tr!("Last Played").into(),
+        value: text(last_played.as_deref().unwrap_or(tr!("Never"))),
+        split: false,
+    });
+    rows.push(DetailRow { field: DetailField::Playtime, label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
     if !d.features.is_empty() {
         rows.push(DetailRow {
+            field: DetailField::Features,
             label: tr!("Features").into(),
             // Steam's features (no metadata) are not a filter.
             value: chips(&d.features, (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature")),
@@ -224,32 +245,52 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         });
     }
     if !d.themes.is_empty() {
-        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes, Some("theme")), split: true });
+        rows.push(DetailRow {
+            field: DetailField::Themes,
+            label: tr!("Themes").into(),
+            value: chips(&d.themes, Some("theme")),
+            split: true,
+        });
     }
     if !d.game_modes.is_empty() {
-        rows.push(DetailRow { label: tr!("Game modes").into(), value: chips(&d.game_modes, Some("gameMode")), split: true });
+        rows.push(DetailRow {
+            field: DetailField::GameModes,
+            label: tr!("Game modes").into(),
+            value: chips(&d.game_modes, Some("gameMode")),
+            split: true,
+        });
     }
     if d.platforms.len() > 1 {
         // The PC ones first: this is a PC launcher.
         let mut platforms = d.platforms.clone();
         platforms.sort_by_key(|p| !is_pc_platform(p));
-        rows.push(DetailRow { label: tr!("Platforms").into(), value: chips(&platforms, Some("platform")), split: true });
+        rows.push(DetailRow {
+            field: DetailField::Platforms,
+            label: tr!("Platforms").into(),
+            value: chips(&platforms, Some("platform")),
+            split: true,
+        });
     }
     if !d.genres.is_empty() {
-        rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
+        rows.push(DetailRow { field: DetailField::Tags, label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
     }
     let steam_tags = steam_tags_shown(g, d);
     if !steam_tags.is_empty() {
-        rows.push(DetailRow { label: tr!("Steam tags").into(), value: chips(&steam_tags, Some("tag")), split: true });
+        rows.push(DetailRow {
+            field: DetailField::SteamTags,
+            label: tr!("Steam tags").into(),
+            value: chips(&steam_tags, Some("tag")),
+            split: true,
+        });
     }
     // Every board that rated it, in the order they are looked for.
     let age_shown = lib.settings.metadata.show_age_ratings;
     let boards = if age_shown { age_boards(lib, g) } else { Vec::new() };
     if !boards.is_empty() {
-        rows.push(DetailRow { label: tr!("Age rating").into(), value: chips(&boards, None), split: true });
+        rows.push(DetailRow { field: DetailField::AgeRating, label: tr!("Age rating").into(), value: chips(&boards, None), split: true });
     }
     if let Some(notes) = d.notes.as_ref().filter(|n| !n.is_empty()) {
-        rows.push(DetailRow { label: tr!("Notes").into(), value: text(notes), split: true });
+        rows.push(DetailRow { field: DetailField::Notes, label: tr!("Notes").into(), value: text(notes), split: true });
     }
 
     let related = collection::related_games_for(g, &lib.games)

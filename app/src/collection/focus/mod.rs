@@ -10,6 +10,7 @@ pub(super) use section_title::{OnTitle, TitleAction, TitleMenu, TitleState};
 pub use description::html_image_size;
 pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
 
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -19,7 +20,7 @@ use heronite_data::appearance::Section;
 use self::description::render_html;
 use self::panels::{details_panel, details_value_width, hltb_missing_panel, hltb_panel, related_panel};
 use self::section_title::{section_title, MenuEntry};
-use super::vm::FocusVm;
+use super::vm::{DetailRow, FocusVm};
 use crate::icons::Icon;
 use crate::theme;
 use heronite_i18n::tr;
@@ -36,6 +37,8 @@ pub(super) struct DetailsUi {
     pub measure: MeasureChip,
     /// The section pointed at and the open title menu.
     pub titles: TitleState,
+    /// Keys of the rows the user turned off (`UiState::detail_rows_hidden`).
+    pub hidden: BTreeSet<String>,
 }
 
 /// Widths of the focus panel's columns, in logical px.
@@ -135,7 +138,7 @@ pub(super) struct FocusActions {
     pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
     /// The items of "How Long To Beat"'s menu.
     pub on_hltb: OnHltb,
-    /// The titles that are menus (pointed at, opened).
+    /// The titles that are menus (pointed at, opened, "Edit rows…").
     pub on_title: OnTitle,
 }
 
@@ -176,10 +179,34 @@ fn hltb_section(vm: &FocusVm, titles: TitleState, on: &OnHltb, on_title: &OnTitl
     Some(div().flex().flex_col().child(hover_section("focus-hltb", TitleMenu::Hltb, on_title).child(title).child(panel)))
 }
 
+/// "Details": the rows the user keeps on; its title opens "Edit rows…".
+fn details_section(details: Div, titles: TitleState, on_title: &OnTitle) -> Div {
+    let edit = on_title.clone();
+    let entries = vec![MenuEntry {
+        id: "edit",
+        icon: Icon::Edit,
+        label: tr!("Edit rows…").into(),
+        run: Rc::new(move |w: &mut Window, cx: &mut App| edit(TitleAction::EditDetails, w, cx)),
+        separated: false,
+    }];
+    let title = section_title(TitleMenu::Details, tr!("Details"), titles, entries, on_title);
+    div().flex().flex_col().child(hover_section("focus-details", TitleMenu::Details, on_title).child(title).child(details))
+}
+
 /// A section that reports the pointer over it (its title shows the chevron).
 fn hover_section(id: &'static str, menu: TitleMenu, on_title: &OnTitle) -> Stateful<Div> {
     let on = on_title.clone();
     div().id(id).flex().flex_col().on_hover(move |hovered: &bool, window, cx| on(TitleAction::Hovered(menu, *hovered), window, cx))
+}
+
+/// The Details rows the user did not turn off. The first one shown draws no
+/// separator above it.
+fn shown_rows(rows: &[DetailRow], hidden: &BTreeSet<String>) -> Vec<DetailRow> {
+    let mut shown: Vec<DetailRow> = rows.iter().filter(|r| !hidden.contains(r.field.key())).cloned().collect();
+    if let Some(first) = shown.first_mut() {
+        first.split = false;
+    }
+    shown
 }
 
 /// What "Related games" shows of the focused game.
@@ -280,8 +307,9 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
 
     let header = header(&vm, title_size);
     let details_w = if lay.stacked { lay.main_w } else { lay.side_w };
+    let rows = shown_rows(&vm.details, &details_ui.hidden);
     let details = details_panel(
-        &vm.details,
+        &rows,
         &active_facets,
         details_value_width(details_w),
         &details_ui.open,
@@ -297,7 +325,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         related: (!vm.related.is_empty())
             .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
         achievements: extras.achievements,
-        details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
+        details: details_section(details, details_ui.titles, &actions.on_title),
         hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
     };
     let body = body(&lay, sections);
@@ -394,8 +422,9 @@ pub(super) struct StackedProps {
 pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div {
     let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras, related_ui, details_ui } = props;
     let lay = Layout { narrow: true, left_w: 0., stacked: true, main_w: width, side_w: width, offset: 0. };
+    let rows = shown_rows(&vm.details, &details_ui.hidden);
     let details = details_panel(
-        &vm.details,
+        &rows,
         &active_facets,
         details_value_width(width),
         &details_ui.open,
@@ -413,7 +442,7 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
             related: (!vm.related.is_empty())
                 .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
             achievements: extras.achievements,
-            details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
+            details: details_section(details, details_ui.titles, &actions.on_title),
             hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
         },
     )
