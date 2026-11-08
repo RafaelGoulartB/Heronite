@@ -34,8 +34,10 @@ type Router = Rc<dyn Fn(Pad, &mut Window, &mut App)>;
 
 thread_local! {
     static ROUTERS: RefCell<HashMap<WindowId, Router>> = RefCell::new(HashMap::new());
-    /// Windows a hover moved the focus in since they were last drawn.
-    static HOVERED: RefCell<Vec<WindowId>> = const { RefCell::new(Vec::new()) };
+    /// Where the pointer is in each window, and whether a hover may move the focus.
+    static HOVER: RefCell<HashMap<WindowId, Hover>> = RefCell::new(HashMap::new());
+    /// Presses of a hover are being routed (lists then keep their scroll).
+    static HOVERING: Cell<bool> = const { Cell::new(false) };
     static WHEEL: Cell<Wheel> = const { Cell::new(Wheel { sum: 0., last: None }) };
 }
 
@@ -47,6 +49,7 @@ pub fn set_router(window: &Window, cx: &App, route: impl Fn(Pad, &mut Window, &m
     ROUTERS.with(|r| {
         let mut r = r.borrow_mut();
         r.retain(|w, _| open.contains(w));
+        HOVER.with(|h| h.borrow_mut().retain(|w, _| open.contains(w)));
         r.insert(id, Rc::new(route));
     });
 }
@@ -93,18 +96,53 @@ pub fn press(pads: impl Into<Rc<[Pad]>>, window: &mut Window, cx: &mut App) {
     });
 }
 
-/// Whether a hover may move the focus in `window` now: once a frame, so a
-/// route worked out for the last frame is never sent twice.
+/// The pointer in a window, for hovers.
+#[derive(Default)]
+struct Hover {
+    /// Where the last move was.
+    at: Option<Point<Pixels>>,
+    /// The last move went somewhere: the system also sends moves without
+    /// motion (the pointer entering a window that appeared or came back under
+    /// it), which must not move the focus.
+    moved: bool,
+    /// A hover moved the focus since the window was last drawn.
+    taken: bool,
+}
+
+/// Whether a hover may move the focus in `window` now: the mouse really
+/// moved, and only once a frame, so a route worked out for the last frame is
+/// never sent twice.
 pub fn take_hover(window: &Window) -> bool {
     let id = window.window_handle().window_id();
-    HOVERED.with(|h| {
+    HOVER.with(|h| {
         let mut h = h.borrow_mut();
-        if h.contains(&id) {
+        let hover = h.entry(id).or_default();
+        if !hover.moved || hover.taken {
             return false;
         }
-        h.push(id);
+        hover.taken = true;
         true
     })
+}
+
+/// Sends a hover's `pads` (see [`press`]); while they are routed, lists
+/// move their focus without scrolling ([`hovering`]), so nothing moves under
+/// the pointer.
+pub fn press_hover(pads: impl Into<Rc<[Pad]>>, window: &mut Window, cx: &mut App) {
+    let pads = pads.into();
+    let Some(route) = router(window) else { return };
+    window.defer(cx, move |window, cx| {
+        HOVERING.set(true);
+        for &pad in pads.iter() {
+            route(pad, window, cx);
+        }
+        HOVERING.set(false);
+    });
+}
+
+/// Whether the presses being routed come from a hover.
+pub fn hovering() -> bool {
+    HOVERING.get()
 }
 
 /// Hides the mouse cursor over the app until the mouse moves (a controller
@@ -173,7 +211,7 @@ pub trait Clickable: InteractiveElement + Sized {
         }
         self.on_mouse_move(move |_, window, cx| {
             if take_hover(window) {
-                press(pads.clone(), window, cx);
+                press_hover(pads.clone(), window, cx);
             }
         })
     }
@@ -259,9 +297,22 @@ pub fn layer(axis: WheelAxis) -> impl IntoElement {
         // A new frame: hovers may move the focus again.
         |_, window, _| {
             let id = window.window_handle().window_id();
-            HOVERED.with(|h| h.borrow_mut().retain(|w| *w != id));
+            HOVER.with(|h| h.borrow_mut().entry(id).or_default().taken = false);
         },
         move |_, _, window, _| {
+            // Before any hover sees a move: did the pointer go anywhere?
+            window.on_mouse_event(|ev: &MouseMoveEvent, phase, window, _| {
+                if phase != DispatchPhase::Capture {
+                    return;
+                }
+                let id = window.window_handle().window_id();
+                HOVER.with(|h| {
+                    let mut h = h.borrow_mut();
+                    let hover = h.entry(id).or_default();
+                    hover.moved = hover.at.is_some_and(|at| at != ev.position);
+                    hover.at = Some(ev.position);
+                });
+            });
             window.on_mouse_event(move |ev: &ScrollWheelEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture || router(window).is_none() {
                     return;

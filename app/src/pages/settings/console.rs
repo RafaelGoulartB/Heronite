@@ -219,8 +219,9 @@ impl SettingsPage {
             // focused one, → into it.
             let mut pads = if self.console.content { vec![Pad::B] } else { Vec::new() };
             pads.extend(crate::console::pointer::along(self.console.nav, i, Pad::Up, Pad::Down));
-            // The mouse over a section shows it.
-            let hover = pads.clone();
+            // The mouse over a section shows it, while the sections have the
+            // focus (passing over them never takes it from the content).
+            let hover = if self.console.content { Vec::new() } else { pads.clone() };
             if pads.is_empty() {
                 pads.push(Pad::Right);
             }

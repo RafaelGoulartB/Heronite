@@ -402,10 +402,11 @@ impl CollectionView {
                     let tile = if on {
                         tile
                     } else {
+                        // No reveal: the grid does not scroll under the pointer.
                         tile.on_mouse_move(self.cover_hover(move |this| {
                             let nav = &mut this.tab_nav(tab).grid;
                             let moved = nav.toolbar.is_some() || nav.index != j;
-                            (nav.toolbar, nav.index, nav.reveal) = (None, j, true);
+                            (nav.toolbar, nav.index) = (None, j);
                             moved
                         }))
                     };

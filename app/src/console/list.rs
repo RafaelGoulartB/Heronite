@@ -203,7 +203,8 @@ impl ListNav {
                 }
             }
         }
-        if moved > 0 {
+        // A hover moves the focus without scrolling the rows under the pointer.
+        if moved > 0 && !super::pointer::hovering() {
             self.reveal = true;
         }
         moved > 0
@@ -353,7 +354,7 @@ impl ListNav {
                     let route = click.route();
                     row = row.on_mouse_move(move |_, window, cx| {
                         if super::pointer::take_hover(window) {
-                            super::pointer::press(route.clone(), window, cx);
+                            super::pointer::press_hover(route.clone(), window, cx);
                         }
                     });
                 }
