@@ -33,6 +33,9 @@ pub(super) struct CardLook {
     pub categories: Option<CategoryStyle>,
     /// The logos of the game's stores at the bottom-left of the cover.
     pub stores: bool,
+    /// How far their chip sits from the cover's left and bottom edges, px:
+    /// closer on the Focus view's small covers.
+    pub stores_inset: f32,
 }
 
 pub(super) struct CardState<'a> {
@@ -126,7 +129,10 @@ pub fn card(
                 style
                     .filter(|st| *st != CategoryStyle::Circles && !(s.pick.is_some() && cats::takes_top_right(*st)))
                     .and_then(|st| cats::overlay(st, &s.categories, area, show_bar_now(&s))),
-                chip.map(|c| div().absolute().left(px(6.)).bottom(px(if over_band { 26. } else { 6. })).child(c)),
+                chip.map(|c| {
+                    let inset = look.stores_inset;
+                    div().absolute().left(px(inset)).bottom(px(if over_band { 20. + inset } else { inset })).child(c)
+                }),
             )
         }
     };

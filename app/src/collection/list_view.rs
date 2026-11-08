@@ -173,6 +173,7 @@ impl CollectionView {
             look.caption = self.ui.grid_label.info();
             self.ui.grid_label.title()
         } else {
+            look.stores_inset = FOCUS_STORES_INSET;
             a.cover_label == CoverLabel::Title
         };
         let (on_select, on_hover, on_play) = self.card_listeners(&key, cx);
@@ -486,6 +487,10 @@ impl CollectionView {
     }
 }
 
+/// How far the stores' chip sits from the corner of a Focus view cover, px
+/// (6 in the grid).
+const FOCUS_STORES_INSET: f32 = 3.;
+
 /// How every card looks, from Settings → Appearance → Covers.
 fn card_look() -> card::CardLook {
     let a = theme::appearance();
@@ -496,6 +501,7 @@ fn card_look() -> card::CardLook {
         caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
         categories: a.cover_categories.then_some(a.category_style),
         stores: a.cover_stores,
+        stores_inset: 6.,
     }
 }
 
