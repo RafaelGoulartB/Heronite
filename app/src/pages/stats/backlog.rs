@@ -94,7 +94,7 @@ impl StatsPage {
         let abandoned = self.facts.abandoned_in(&p);
         let all = p.span == Span::All;
         let period = if all { tr!("all time").to_string() } else { p.label() };
-        let total = self.lib.as_ref().map_or(0, |l| l.games.len());
+        let total = self.facts.owned;
         let number = div()
             .flex()
             .items_baseline()
@@ -594,7 +594,8 @@ impl StatsPage {
     /// Every game by status, and how far games get.
     fn backlog_collection(&self) -> Div {
         let Some(lib) = self.lib.clone() else { return panel() };
-        let total = lib.games.len().max(1);
+        // The user's own games: the Steam Family's are only counted apart.
+        let total = self.facts.owned.max(1);
         let mut counts: Vec<(String, String, usize)> = lib
             .statuses
             .iter()
@@ -618,7 +619,7 @@ impl StatsPage {
                 }),
             );
         let (opened, five) = (self.facts.opened, self.facts.played_5h);
-        let beaten = self.facts.count(&BEATEN);
+        let beaten = self.facts.count_owned(&BEATEN);
         let steps = [
             (tr!("In the Collection").to_string(), total, None),
             (tr!("Opened").to_string(), opened, Some(tr!("{pct}% of the Collection", pct = opened * 100 / total))),
@@ -652,7 +653,7 @@ impl StatsPage {
             }),
         );
         panel()
-            .child(panel_head(tr!("The whole Collection"), hint(trn!(total, "{n} game", "{n} games"))))
+            .child(panel_head(tr!("The whole Collection"), hint(collection_hint(self.facts.owned, self.facts.shared()))))
             .child(bar)
             .child(legend)
             .child(funnel)
@@ -964,4 +965,14 @@ fn paint_lines(bounds: Bounds<Pixels>, lines: &[(Hsla, Vec<f32>)], window: &mut 
             window.paint_path(path, *color);
         }
     }
+}
+
+/// "120 games", and the games the Steam Family shares apart: "120 games ·
+/// 8 Family games".
+fn collection_hint(owned: usize, shared: usize) -> String {
+    let games = trn!(owned, "{n} game", "{n} games").to_string();
+    if shared == 0 {
+        return games;
+    }
+    format!("{games} · {}", trn!(shared, "{n} Family game", "{n} Family games"))
 }

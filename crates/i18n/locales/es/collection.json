@@ -534,5 +534,16 @@
   "Restarting Steam": "Reiniciando Steam",
   "Only your installed Steam games are in the Collection for now. Restart Steam once and the rest of your Steam library comes in by itself.": "Por ahora, solo tus juegos instalados de Steam están en la Colección. Reinicia Steam una vez y el resto de tu biblioteca de Steam llega por sí solo.",
   "Games running from Steam close.": "Los juegos abiertos desde Steam se cierran.",
-  "Your Steam library comes in as soon as Steam is back. If Steam asks you to sign in, do so.": "Tu biblioteca de Steam llega en cuanto Steam vuelva. Si Steam te pide iniciar sesión, hazlo."
+  "Your Steam library comes in as soon as Steam is back. If Steam asks you to sign in, do so.": "Tu biblioteca de Steam llega en cuanto Steam vuelva. Si Steam te pide iniciar sesión, hazlo.",
+  "Added {n} game your Steam Family shares": "Se añadió {n} juego que comparte tu Familia de Steam",
+  "Added {n} games your Steam Family shares": "Se añadieron {n} juegos que comparte tu Familia de Steam",
+  "Family": "Familia",
+  "Family · {owner}": "Familia · {owner}",
+  "Removed {n} game your Steam Family no longer shares": "Se quitó {n} juego que tu Familia de Steam ya no comparte",
+  "Removed {n} games your Steam Family no longer shares": "Se quitaron {n} juegos que tu Familia de Steam ya no comparte",
+  "{library} (in use by another member)": "{library} (en uso por otro miembro)",
+  "{library}, shared by {owner}": "{library}, compartido por {owner}",
+  "{library}, shared by {owner} (in use by another member)": "{library}, compartido por {owner} (en uso por otro miembro)",
+  "{n} Family game": "{n} juego de la Familia",
+  "{n} Family games": "{n} juegos de la Familia"
 }

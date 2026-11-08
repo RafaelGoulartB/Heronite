@@ -229,6 +229,7 @@ fn parse_owned(body: &str, installed: &HashSet<String>) -> Result<Vec<SteamOwned
                 last_played: g.get("rtime_last_played").and_then(Value::as_i64).filter(|t| *t > 0),
                 app_id,
                 name,
+                share: None,
                 extra: Default::default(),
             })
         })

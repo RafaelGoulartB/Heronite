@@ -258,11 +258,13 @@ pub fn card(
                 )
                 .when(glow, |d| d.child(div().absolute().inset_0().rounded(px(r)).bg(theme::white_a(0.07))))
                 .children(s.epic.as_ref().map(|e| super::epic::card_overlay(e, r)))
-                .children((vm.hidden || look.badges && vm.favourite || copies_left || !circles.is_empty()).then(|| {
-                    top_badges(vm.hidden, look.badges && vm.favourite)
-                        .when(copies_left, |d| d.child(copies_badge(vm.copies).relative().top_0().right_0()))
-                        .children(circles)
-                }))
+                .children((vm.hidden || look.badges && vm.favourite || vm.family.is_some() || copies_left || !circles.is_empty()).then(
+                    || {
+                        top_badges(vm.hidden, look.badges && vm.favourite, vm.family.is_some())
+                            .when(copies_left, |d| d.child(copies_badge(vm.copies).relative().top_0().right_0()))
+                            .children(circles)
+                    },
+                ))
                 .children((copies && !copies_left).then(|| copies_badge(vm.copies)))
                 .children(ring.map(|color| {
                     div()
@@ -340,8 +342,9 @@ fn tick_circle(ticked: bool) -> Div {
 }
 
 /// Tags on the top-left of the cover: "Hidden" on a hidden game shown by
-/// "Show hidden games", a star on a favourite (when badges are on).
-fn top_badges(hidden: bool, favourite: bool) -> Div {
+/// "Show hidden games", a star on a favourite (when badges are on),
+/// "Family" on a game the Steam Family shares.
+fn top_badges(hidden: bool, favourite: bool, family: bool) -> Div {
     let tag = || div().flex().items_center().gap(px(3.)).px(px(6.)).py(px(2.)).rounded(px(4.)).bg(theme::black_a(0.62));
     div()
         .absolute()
@@ -354,6 +357,7 @@ fn top_badges(hidden: bool, favourite: bool) -> Div {
         .text_color(theme::white_a(0.9))
         .when(hidden, |d| d.child(tag().child(icon(Icon::VisibilityOff, px(11.), theme::white_a(0.9))).child(tr!("Hidden"))))
         .when(favourite, |d| d.child(tag().px(px(4.)).child(icon(Icon::Star, px(12.), theme::rgb_a(255, 209, 102, 1.)))))
+        .when(family, |d| d.child(tag().child(icon(Icon::AccountCircle, px(11.), theme::white_a(0.9))).child(tr!("Family"))))
 }
 
 /// The number of copies on the top-right of the cover of a game owned in

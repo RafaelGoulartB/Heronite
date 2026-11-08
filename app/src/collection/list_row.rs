@@ -13,6 +13,7 @@ use super::vm::CardVm;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
+use heronite_i18n::tr;
 
 pub(super) const ROW_H: f32 = 44.;
 pub(super) const THUMB_W: f32 = 26.;
@@ -70,6 +71,21 @@ pub(super) fn row(
         )
         .when(s.look.badges && vm.favourite, |d| d.child(icon(Icon::Star, px(12.), theme::rgb_a(255, 209, 102, 1.))))
         .when(vm.hidden, |d| d.child(icon(Icon::VisibilityOff, px(12.), theme::ink_a(0.5))))
+        .when_some(vm.family.as_ref(), |d, owner| {
+            let text =
+                if owner.is_empty() { tr!("Family").to_string() } else { tr!("Family · {owner}", owner = owner.as_ref()).to_string() };
+            d.child(
+                div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(3.))
+                    .text_size(px(11.))
+                    .text_color(theme::ink_a(0.55))
+                    .child(icon(Icon::AccountCircle, px(11.), theme::ink_a(0.5)))
+                    .child(text),
+            )
+        })
         .when(vm.copies > 1, |d| {
             d.child(
                 div()
