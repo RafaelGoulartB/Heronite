@@ -160,7 +160,10 @@ mod tests {
         write(&game.join("Content").join("Avowed.exe"), 10);
         write(&game.join("Shaders").join("cache.bin"), 5);
         write(&game.join("A069FE95.xvs"), 1);
-        assert_eq!(measure_dir(&game.join("Content")), game);
+        // The game's folder comes back as its real path: Windows may give the
+        // temporary folder a short name (`RUNNER~1`) that it then spells out.
+        let real = |p: &Path| std::fs::canonicalize(p).unwrap();
+        assert_eq!(real(&measure_dir(&game.join("Content"))), real(&game));
 
         // Another folder next to Content: not one game's folder.
         std::fs::create_dir_all(game.join("Other Game")).unwrap();
