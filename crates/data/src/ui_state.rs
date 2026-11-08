@@ -686,6 +686,64 @@ pub fn dismiss_note(paths: &AppPaths, id: &str) -> Result<()> {
     })
 }
 
+/// Key of the main window's last placement ([`WindowPlacement`]).
+pub const WINDOW: &str = "window";
+
+/// Where the main window was and whether it was maximized, so it reopens the
+/// same way. In the system's px (the interface zoom left out), so changing
+/// the zoom does not resize the window it reopens. The position and size are
+/// the window's own while maximized (the ones restoring it goes back to).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowPlacement {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub maximized: bool,
+}
+
+impl WindowPlacement {
+    fn from_value(value: &Value) -> Option<Self> {
+        let num = |k: &str| value.get(k)?.as_f64().map(|n| n as f32).filter(|n| n.is_finite());
+        let p = Self {
+            x: num("x")?,
+            y: num("y")?,
+            width: num("width")?,
+            height: num("height")?,
+            maximized: value.get("maximized").and_then(Value::as_bool).unwrap_or(false),
+        };
+        (p.width >= 1. && p.height >= 1.).then_some(p)
+    }
+
+    fn to_value(self) -> Value {
+        json!({
+            "x": self.x.round(),
+            "y": self.y.round(),
+            "width": self.width.round(),
+            "height": self.height.round(),
+            "maximized": self.maximized,
+        })
+    }
+}
+
+/// The main window's last placement, if one was saved and is readable. Kept
+/// outside [`UiState`] like [`DISMISSED_NOTES`], so a copy of the state held
+/// elsewhere does not write an old one back.
+pub fn window_placement(paths: &AppPaths) -> Option<WindowPlacement> {
+    WindowPlacement::from_value(json_store::read_value(&paths.ui_state()).ok()?.get(WINDOW)?)
+}
+
+/// Remembers the main window's placement.
+pub fn set_window_placement(paths: &AppPaths, placement: WindowPlacement) -> Result<()> {
+    json_store::update_value(&paths.ui_state(), |doc| {
+        if !doc.is_object() {
+            *doc = Value::Object(Default::default());
+        }
+        doc.as_object_mut().expect("object").insert(WINDOW.to_owned(), placement.to_value());
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1082,5 +1140,21 @@ mod tests {
         assert!(note_dismissed(&paths, "add-game-stores"));
         assert!(!note_dismissed(&paths, "other"));
         assert_eq!(json_store::read_value(&paths.ui_state()).unwrap()[DISMISSED_NOTES], json!(["add-game-stores"]));
+    }
+
+    #[test]
+    fn the_window_placement_round_trips_and_survives_a_save_of_the_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        assert_eq!(window_placement(&paths), None);
+        let p = WindowPlacement { x: -1920., y: 40., width: 1600., height: 1000., maximized: true };
+        set_window_placement(&paths, p).unwrap();
+        UiState::default().save(&paths).unwrap();
+        assert_eq!(window_placement(&paths), Some(p));
+        // Unusable sizes or missing fields are no placement.
+        std::fs::write(paths.ui_state(), r#"{"window":{"x":0,"y":0,"width":0,"height":600}}"#).unwrap();
+        assert_eq!(window_placement(&paths), None);
+        std::fs::write(paths.ui_state(), r#"{"window":{"x":0,"width":800,"height":600}}"#).unwrap();
+        assert_eq!(window_placement(&paths), None);
     }
 }

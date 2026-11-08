@@ -1,7 +1,8 @@
 //! What a game package says about itself: `MicrosoftGame.config` (the games
 //! built with Microsoft's Game Development Kit, which the Xbox app installs
-//! under `XboxGames`) and `AppxManifest.xml` (every package). Both are read
-//! leniently: a file that is missing or broken says nothing.
+//! under `XboxGames`), `AppxManifest.xml` (every package) and
+//! `xboxservices.config` (Store games that sign in to Xbox). All are read
+//! leniently: a file that is missing, broken or locked says nothing.
 
 use std::path::Path;
 
@@ -22,6 +23,8 @@ pub struct GameConfig {
     pub apps: Vec<String>,
     /// `StoreId`: the game's product id in the Store (`9NKX70BBCDRN`).
     pub store_id: Option<String>,
+    /// `TitleId`: the game's id on Xbox network, as [`title_id`] writes it.
+    pub title_id: Option<String>,
 }
 
 /// What `AppxManifest.xml` names.
@@ -86,7 +89,31 @@ fn parse_game_config(text: &str) -> Option<GameConfig> {
         }
     }
     let store_id = named(root, "StoreId").find_map(|n| n.text()).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-    Some(GameConfig { title, apps, store_id })
+    let title_id = named(root, "TitleId").find_map(|n| n.text()).and_then(title_id);
+    Some(GameConfig { title, apps, store_id, title_id })
+}
+
+/// A title id as the files write it (`79FC11E1`, `0x79fc11e1`): eight
+/// hexadecimal digits at most, not zero. Written in capitals without `0x`;
+/// Xbox network's services name the same title by its decimal value.
+pub fn title_id(text: &str) -> Option<String> {
+    let text = text.trim();
+    let hex = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")).unwrap_or(text);
+    let ok = (1..=8).contains(&hex.len()) && hex.chars().all(|c| c.is_ascii_hexdigit());
+    let value = if ok { u32::from_str_radix(hex, 16).ok()? } else { return None };
+    (value != 0).then(|| format!("{value:08X}"))
+}
+
+/// `TitleId` of `xboxservices.config` (JSON) in `root`. The Store keeps many
+/// packages' files unreadable: then `None`.
+pub fn services_title_id(root: &Path) -> Option<String> {
+    parse_services_title_id(&read(&root.join(XBOX_SERVICES))?)
+}
+
+fn parse_services_title_id(text: &str) -> Option<String> {
+    let doc: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
+    let obj = doc.as_object()?;
+    obj.iter().find(|(k, _)| k.eq_ignore_ascii_case("TitleId")).and_then(|(_, v)| v.as_str()).and_then(title_id)
 }
 
 /// `AppxManifest.xml` in `root`, when it is there and reads as XML.
@@ -129,6 +156,7 @@ mod tests {
   </ExecutableList>
   <ShellVisuals DefaultDisplayName="Forza Horizon 5" PublisherDisplayName="Xbox Game Studios" StoreLogo="StoreLogo.png" />
   <StoreId> 9NKX70BBCDRN </StoreId>
+  <TitleId>2b6e6b0e</TitleId>
 </Game>"#;
 
     #[test]
@@ -137,6 +165,28 @@ mod tests {
         assert_eq!(c.title.as_deref(), Some("Forza Horizon 5"));
         assert_eq!(c.apps, ["Game", "Tool", "Console"]);
         assert_eq!(c.store_id.as_deref(), Some("9NKX70BBCDRN"));
+        assert_eq!(c.title_id.as_deref(), Some("2B6E6B0E"));
+    }
+
+    #[test]
+    fn title_ids_are_hexadecimal_and_not_zero() {
+        assert_eq!(title_id(" 0x79fc11e1 ").as_deref(), Some("79FC11E1"));
+        assert_eq!(title_id("1A2B").as_deref(), Some("00001A2B"));
+        for bad in ["", "0", "00000000", "123456789", "79FC11EG", "0x", "-1"] {
+            assert_eq!(title_id(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_services_file_names_its_title_id() {
+        assert_eq!(parse_services_title_id(r#"{"TitleId": "6B8A1B5F", "PrimaryServiceConfigId": "x"}"#).as_deref(), Some("6B8A1B5F"));
+        assert_eq!(parse_services_title_id(r#"{"titleid": "0x1"}"#).as_deref(), Some("00000001"));
+        assert_eq!(parse_services_title_id(r#"{"TitleId": 5}"#), None);
+        assert_eq!(parse_services_title_id("not json"), None);
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(services_title_id(dir.path()), None);
+        std::fs::write(dir.path().join(XBOX_SERVICES), r#"{"TitleId":"ABCDEF01"}"#).unwrap();
+        assert_eq!(services_title_id(dir.path()).as_deref(), Some("ABCDEF01"));
     }
 
     #[test]

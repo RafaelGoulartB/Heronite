@@ -530,5 +530,9 @@
   "Reset to defaults": "Restaurar padrões",
   "Show quick controls": "Mostrar controles rápidos",
   "Hide quick controls": "Ocultar controles rápidos",
-  "grouped|by": "por"
+  "grouped|by": "por",
+  "Restarting Steam": "Reiniciando a Steam",
+  "Only your installed Steam games are in the Collection for now. Restart Steam once and the rest of your Steam library comes in by itself.": "Por enquanto, só os seus jogos instalados da Steam estão na Coleção. Reinicie a Steam uma vez e o resto da sua biblioteca da Steam entra sozinho.",
+  "Games running from Steam close.": "Os jogos abertos pela Steam serão fechados.",
+  "Your Steam library comes in as soon as Steam is back. If Steam asks you to sign in, do so.": "Sua biblioteca da Steam entra assim que a Steam voltar. Se a Steam pedir para você entrar na sua conta, entre."
 }

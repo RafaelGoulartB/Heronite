@@ -91,6 +91,7 @@ pub fn init(
         fullscreen: cli.fullscreen && !hide,
         settings,
         settings_stamp: data_paths.global_config().metadata().and_then(|m| m.modified()).ok(),
+        placement: Default::default(),
     }))));
     STARTED.with(|s| s.set(Some(started)));
 

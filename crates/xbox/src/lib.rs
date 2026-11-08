@@ -11,10 +11,17 @@
 //! Xbox). Owned and Game Pass games are the same packages: what tells them
 //! apart is the user's licence, which only Microsoft's services know.
 //!
-//! * [`files`]: what `MicrosoftGame.config` and `AppxManifest.xml` say.
+//! * [`files`]: what `MicrosoftGame.config`, `AppxManifest.xml` and
+//!   `xboxservices.config` say.
+//! * [`size`]: how much room each game takes, as the Xbox app counts it.
+//! * [`live`]: the user's Xbox account, optional; [`details`]: what it says
+//!   about the games (play time, achievements, art, games not installed).
 
 pub mod collection;
+pub mod details;
 pub mod files;
+pub mod live;
+pub mod size;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -54,6 +61,12 @@ pub struct XboxGame {
     pub folder: PathBuf,
     /// The game's product id in the Store, when the package names it.
     pub store_id: Option<String>,
+    /// The game's id on Xbox network (`79FC11E1`), when its files name it
+    /// ([`files::title_id`]).
+    pub title_id: Option<String>,
+    /// The package's full name (`Microsoft.624F8B84B80_3.0.0.0_x64__8wekyb3d8bbwe`):
+    /// it changes with each update, so a size measured for it is redone then.
+    pub package: String,
 }
 
 impl XboxGame {
@@ -120,7 +133,8 @@ fn game(family: String, p: &Package, resolve: &dyn Fn(&str, &str) -> Option<Stri
         .or(config.title)
         .or(manifest.title)
         .unwrap_or_else(|| p.name().rsplit('.').next().unwrap_or(p.name()).to_string());
-    Some(XboxGame { family, app_id, title, folder: p.root.clone(), store_id: config.store_id })
+    let title_id = config.title_id.or_else(|| files::services_title_id(&p.root));
+    Some(XboxGame { family, app_id, title, folder: p.root.clone(), store_id: config.store_id, title_id, package: p.full_name.clone() })
 }
 
 /// The application to start: the game's own program (`MicrosoftGame.config`),
@@ -156,7 +170,7 @@ mod tests {
     }
 
     const GDK: &str = r#"<Game><ExecutableList><Executable Name="FH5.exe" Id="Game"/></ExecutableList>
-        <ShellVisuals DefaultDisplayName="Forza Horizon 5"/><StoreId>9NKX70BBCDRN</StoreId></Game>"#;
+        <ShellVisuals DefaultDisplayName="Forza Horizon 5"/><StoreId>9NKX70BBCDRN</StoreId><TitleId>2B6E6B0E</TitleId></Game>"#;
     const UWP: &str = r#"<Package><Properties><DisplayName>ms-resource:Name</DisplayName></Properties>
         <Applications><Application Id="App"><VisualElements DisplayName="Sea of Thieves"/></Application></Applications></Package>"#;
 
@@ -176,7 +190,7 @@ mod tests {
                 "Microsoft.SeaofThieves_2.0.0.0_x64__8wekyb3d8bbwe",
                 "ms-resource:Name",
                 &[],
-                &[(files::XBOX_SERVICES, "{}"), (files::MANIFEST, UWP)],
+                &[(files::XBOX_SERVICES, r#"{"TitleId": "6B8A1B5F"}"#), (files::MANIFEST, UWP)],
             ),
             package(
                 dir.path(),
@@ -194,15 +208,16 @@ mod tests {
             ),
         ];
         let games = games_in(&list, &no_lookup);
-        let got: Vec<_> = games.iter().map(|g| (g.title.as_str(), g.aumid(), g.store_id.as_deref())).collect();
+        let got: Vec<_> = games.iter().map(|g| (g.title.as_str(), g.aumid(), g.store_id.as_deref(), g.title_id.as_deref())).collect();
         assert_eq!(
             got,
             [
-                ("Forza Horizon 5", "Microsoft.624F8B84B80_8wekyb3d8bbwe!Game".to_string(), Some("9NKX70BBCDRN")),
-                ("Sea of Thieves", "Microsoft.SeaofThieves_8wekyb3d8bbwe!App".to_string(), None),
+                ("Forza Horizon 5", "Microsoft.624F8B84B80_8wekyb3d8bbwe!Game".to_string(), Some("9NKX70BBCDRN"), Some("2B6E6B0E")),
+                ("Sea of Thieves", "Microsoft.SeaofThieves_8wekyb3d8bbwe!App".to_string(), None, Some("6B8A1B5F")),
             ]
         );
         assert_eq!(games[0].folder, list[0].root);
+        assert_eq!(games[0].package, "Microsoft.624F8B84B80_3.0.0.0_x64__8wekyb3d8bbwe");
     }
 
     #[test]

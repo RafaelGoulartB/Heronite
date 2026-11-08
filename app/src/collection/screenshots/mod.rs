@@ -2,6 +2,10 @@
 //! cache (here), background listing and workers (`background`), and the
 //! focus-panel strip and gallery modal (`gallery`). The fullscreen viewer
 //! lives in `screenshot_viewer.rs`. Port of `CollectionScreenshots.tsx`.
+//!
+//! The posters of replays (Timeline, Journal) share the texture cache, on a
+//! queue of their own with one worker: an ffmpeg run costs more than a
+//! decode, so they never hold up the screenshots.
 
 mod background;
 mod gallery;
@@ -17,7 +21,7 @@ use futures::channel::mpsc::UnboundedSender;
 use gpui_kit::*;
 use heronite_images::Decoded;
 use heronite_media::capture::{CaptureEvent, CaptureService};
-use heronite_media::{Screenshot, ThumbnailCache};
+use heronite_media::{Poster, Screenshot, ThumbnailCache};
 
 pub(super) const PREVIEW_SLOTS: usize = 4;
 pub(super) const GALLERY_PAGE: usize = 50;
@@ -37,6 +41,7 @@ impl Global for MediaGlobal {}
 
 pub(super) enum Msg {
     Thumb(PathBuf, Result<Decoded, String>),
+    Poster(PathBuf, Result<Poster, String>),
     Full { req: u64, path: PathBuf, res: Result<((u32, u32), Decoded), String> },
     Capture(CaptureEvent),
 }
@@ -84,8 +89,11 @@ pub(super) struct Shots {
     started: bool,
     tx: Option<UnboundedSender<Msg>>,
     queue: Option<Arc<Queue>>,
+    posters: Option<Arc<Queue>>,
     pub cache: Option<ThumbnailCache>,
     tex: Textures,
+    /// Length of the replays whose poster is made, in seconds.
+    seconds: HashMap<PathBuf, f64>,
     evicted: Vec<Arc<RenderImage>>,
     // gallery
     pub gallery: bool,
@@ -116,7 +124,7 @@ pub(super) struct Shots {
 /// this its workers would stay parked forever, three more every time.
 impl Drop for Shots {
     fn drop(&mut self) {
-        if let Some(queue) = &self.queue {
+        for queue in self.queue.iter().chain(&self.posters) {
             let _items = queue.items.lock().unwrap();
             queue.closed.store(true, Ordering::SeqCst);
             queue.cv.notify_all();
@@ -135,8 +143,10 @@ impl Default for Shots {
             started: false,
             tx: None,
             queue: None,
+            posters: None,
             cache: None,
             tex: Textures::default(),
+            seconds: HashMap::new(),
             evicted: Vec::new(),
             gallery: false,
             gallery_count: GALLERY_PAGE,
@@ -171,7 +181,8 @@ impl Shots {
         self.gallery || self.view.is_some()
     }
 
-    /// Texture of a thumbnail, queueing its generation once.
+    /// Texture of a thumbnail (a replay's poster for a video), queueing its
+    /// generation once.
     pub fn thumb(&mut self, path: &Path) -> Option<ImageSource> {
         if !self.tex.wanted.contains(path) {
             self.tex.wanted.insert(path.to_path_buf());
@@ -187,7 +198,8 @@ impl Shots {
             }
             return Some(ImageSource::Render(img));
         }
-        if let Some(queue) = &self.queue {
+        let queue = if heronite_media::is_video(path) { &self.posters } else { &self.queue };
+        if let Some(queue) = queue {
             if !self.tex.pending.contains(path) && !self.tex.failed.contains(path) {
                 self.tex.pending.insert(path.to_path_buf());
                 queue.items.lock().unwrap().push_back(path.to_path_buf());
@@ -197,20 +209,26 @@ impl Shots {
         None
     }
 
+    /// Length of a replay in seconds, once its poster is made.
+    pub fn clip_seconds(&self, path: &Path) -> Option<f64> {
+        self.seconds.get(path).copied()
+    }
+
     /// Called before each render: queued thumbnails the last render did not
     /// ask for (scrolled away, gallery closed) are dropped, so the visible
     /// ones do not wait behind them. They are queued again when shown.
     pub(super) fn prune_queue(&mut self) {
         let wanted = std::mem::take(&mut self.tex.wanted);
-        let Some(q) = &self.queue else { return };
-        let mut items = q.items.lock().unwrap();
-        items.retain(|p| {
-            let keep = wanted.contains(p);
-            if !keep {
-                self.tex.pending.remove(p);
-            }
-            keep
-        });
+        for q in self.queue.iter().chain(&self.posters) {
+            let mut items = q.items.lock().unwrap();
+            items.retain(|p| {
+                let keep = wanted.contains(p);
+                if !keep {
+                    self.tex.pending.remove(p);
+                }
+                keep
+            });
+        }
     }
 
     pub fn drop_evicted(&mut self, window: &mut Window) {
@@ -249,7 +267,7 @@ impl Shots {
         self.controls_task = None;
         self.reset_transform();
         self.discard_full();
-        if let Some(q) = &self.queue {
+        for q in self.queue.iter().chain(&self.posters) {
             let mut items = q.items.lock().unwrap();
             for p in items.drain(..) {
                 self.tex.pending.remove(&p);
@@ -320,6 +338,16 @@ impl Shots {
             }
         }
         changed
+    }
+
+    fn on_poster(&mut self, path: PathBuf, res: Result<Poster, String>) {
+        let res = res.map(|p| {
+            if let Some(s) = p.seconds {
+                self.seconds.insert(path.clone(), s);
+            }
+            p.image
+        });
+        self.on_thumb(path, res);
     }
 
     fn on_thumb(&mut self, path: PathBuf, res: Result<Decoded, String>) {

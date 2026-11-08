@@ -231,7 +231,11 @@ impl WindowsWindowState {
                 &self.border_offset,
                 self.scale_factor.get(),
             ),
-            placement.showCmd == SW_SHOWMAXIMIZED.0 as u32,
+            // A maximized window that is minimized restores to maximized
+            // (Heronite: it reopens maximized; upstream said windowed).
+            placement.showCmd == SW_SHOWMAXIMIZED.0 as u32
+                || (placement.showCmd == SW_SHOWMINIMIZED.0 as u32
+                    && placement.flags.0 & WPF_RESTORETOMAXIMIZED.0 != 0),
         )
     }
 

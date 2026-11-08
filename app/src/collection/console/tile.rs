@@ -1,14 +1,17 @@
 //! The cover tile every console layout draws, styled by the theme's
 //! `tiles` options: shape (portrait cover, wide art, square crop), corners,
 //! how the focus shows (ring, glow, lift, underline), badges, the name under
-//! it and greyed uninstalled games.
+//! it and greyed uninstalled games. The game's categories show as on the
+//! desktop's covers (Settings → Appearance → Categories on covers).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::appearance::CategoryStyle;
 use heronite_data::console_theme::{Badges, FocusStyle, TileShape, TileTitles};
 use heronite_i18n::tr;
 use heronite_images::Variant;
 
+use super::super::category_badges::{self as cats, CategoryBadge};
 use super::super::data::parse_day;
 use super::super::focus_left::STAR;
 use super::super::CollectionView;
@@ -55,7 +58,34 @@ fn round<E: Styled>(e: E, top: bool, bottom: bool, r: Pixels) -> E {
     }
 }
 
+/// How far the name or logo at the bottom of a cover rises (design px) for
+/// the categories drawn there.
+pub(super) fn category_lift(style: Option<CategoryStyle>) -> f32 {
+    if matches!(style, Some(CategoryStyle::Tags | CategoryStyle::Band)) {
+        26.
+    } else {
+        0.
+    }
+}
+
+/// The space of a console cover `w` design px wide for its categories,
+/// drawn `unit` times bigger (the console's scale, times a layout's zoom).
+pub(super) fn category_area(w: f32, unit: f32, window_scale: f32) -> cats::Area {
+    cats::Area { w, radius: look::tile_radius(), scale: window_scale, unit, play_room: false }
+}
+
 impl CollectionView {
+    /// The look's style for the categories and those of `key`, when they
+    /// show and the game has any.
+    pub(super) fn console_categories(&self, key: &str) -> Option<(CategoryStyle, Vec<CategoryBadge>)> {
+        let a = theme::appearance();
+        if !a.cover_categories {
+            return None;
+        }
+        let list = self.card_categories(key);
+        (!list.is_empty()).then_some((a.category_style, list))
+    }
+
     /// Design size of a cover tile with the theme's shape and size.
     pub(super) fn console_tile_size(&self) -> (f32, f32) {
         let t = look::theme();
@@ -119,6 +149,7 @@ impl CollectionView {
             }
         });
         let all_badges = theme.tiles.badges == Badges::All;
+        let (category_style, categories) = self.console_categories(key).map_or((None, Vec::new()), |(s, c)| (Some(s), c));
         let style = theme.tiles.focus;
         let (wpx, hpx) = (u(w), u(h));
         let art = TileArt {
@@ -135,6 +166,10 @@ impl CollectionView {
             bottom_r: !has_bar,
             width: wpx,
             art_h,
+            design_w: w,
+            categories,
+            category_style,
+            scale: window.scale_factor(),
         };
         let store = has_header.then(|| game.as_ref().map_or(String::new(), |g| g.source_label.to_uppercase()));
         let name_under = match theme.tiles.titles {
@@ -205,12 +240,64 @@ struct TileArt {
     width: Pixels,
     /// Design px.
     art_h: f32,
+    design_w: f32,
+    /// The game's categories and how they show (`None`: off, or none).
+    categories: Vec<CategoryBadge>,
+    category_style: Option<CategoryStyle>,
+    /// The window's scale factor.
+    scale: f32,
 }
 
 impl TileArt {
     /// The art with its badges, its corners `inner` rounded.
     fn view(&self, inner: Pixels) -> Div {
         let (top_r, bottom_r) = (self.top_r, self.bottom_r);
+        let style = self.category_style;
+        // The corner styles take the top-right: "New" and the heart move to
+        // the top-left, under "Playing".
+        let corner_taken = style.is_some_and(cats::takes_top_right);
+        // The tags and the strip sit at the bottom: the logo and the name rise.
+        let bottom_lift = category_lift(style);
+        let inner_design = f32::from(inner) / kit::scale();
+        let area = |round_it: bool| cats::Area {
+            w: self.design_w,
+            radius: if round_it { inner_design } else { 0. },
+            scale: self.scale,
+            unit: kit::scale(),
+            play_room: false,
+        };
+        let overlay = style.filter(|s| *s != CategoryStyle::Circles).and_then(|s| {
+            let round_it = match s {
+                CategoryStyle::Band => bottom_r,
+                _ => top_r,
+            };
+            cats::overlay(s, &self.categories, area(round_it), false)
+        });
+        let circles = if style == Some(CategoryStyle::Circles) { cats::circles(&self.categories, area(false)) } else { Vec::new() };
+        let moved_new = corner_taken && self.new;
+        let moved_heart = corner_taken && self.favourite;
+        let stack = (self.badge.is_some() || moved_new || moved_heart || !circles.is_empty()).then(|| {
+            div()
+                .absolute()
+                .top(u(8.))
+                .left(u(8.))
+                .flex()
+                .flex_col()
+                .items_start()
+                .gap(u(6.))
+                .children(self.badge.map(|b| kit::badge(b, theme::console_btn_a())))
+                .when(moved_new || moved_heart, |d| {
+                    d.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(u(6.))
+                            .when(moved_new, |d| d.child(new_pill()))
+                            .when(moved_heart, |d| d.child(heart())),
+                    )
+                })
+                .when(!circles.is_empty(), |d| d.child(div().flex().gap(u(4.)).children(circles)))
+        });
         let picture = match self.src.clone() {
             Some(s) => {
                 round(img(s).size_full().object_fit(ObjectFit::Cover).grayscale(self.grey), top_r, bottom_r, inner).into_any_element()
@@ -252,7 +339,7 @@ impl TileArt {
                 div()
                     .absolute()
                     .left(u(12.))
-                    .bottom(u(10.))
+                    .bottom(u(10. + bottom_lift))
                     .w(self.width * 0.62)
                     .h(u(self.art_h * 0.36))
                     .child(img(l).size_full().object_fit(ObjectFit::Contain))
@@ -266,15 +353,17 @@ impl TileArt {
                         .flex()
                         .items_end()
                         .p(u(10.))
+                        .pb(u(10. + bottom_lift))
                         .child(div().w_full().truncate().text_size(u(14.)).font_weight(theme::W_BOLD).text_color(white()).child(name)),
                     top_r,
                     bottom_r,
                     inner,
                 )
             }))
-            .when_some(self.badge, |d, b| d.child(div().absolute().top(u(8.)).left(u(8.)).child(kit::badge(b, theme::console_btn_a()))))
-            .when(self.new, |d| d.child(new_badge(if top_r { inner } else { px(0.) })))
-            .when(self.favourite, |d| d.child(favourite_badge(self.new)))
+            .children(overlay)
+            .children(stack)
+            .when(self.new && !corner_taken, |d| d.child(new_badge(if top_r { inner } else { px(0.) })))
+            .when(self.favourite && !corner_taken, |d| d.child(favourite_badge(self.new)))
     }
 }
 
@@ -295,19 +384,31 @@ fn new_badge(corner: Pixels) -> Div {
         .child(tr!("New"))
 }
 
+/// "New" as a pill, for the top-left stack (a corner style took its corner).
+fn new_pill() -> Div {
+    div()
+        .px(u(8.))
+        .py(u(3.))
+        .rounded(u(6.))
+        .bg(rgb(0xd6249f))
+        .text_size(u(11.))
+        .font_weight(theme::W_BOLD)
+        .text_color(white())
+        .child(tr!("New"))
+}
+
 /// The heart on a favourite, under the "New" badge when there is one.
 fn favourite_badge(under_new: bool) -> Div {
-    div()
-        .absolute()
-        .top(u(if under_new { 30. } else { 8. }))
-        .right(u(8.))
-        .size(u(24.))
-        .rounded_full()
-        .bg(theme::black_a(0.7))
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(crate::ui::icon(Icon::Favorite, u(14.), rgb(STAR)))
+    heart().absolute().top(u(if under_new { 30. } else { 8. })).right(u(8.))
+}
+
+/// The heart's round badge.
+fn heart() -> Div {
+    div().size(u(24.)).rounded_full().bg(theme::black_a(0.7)).flex().items_center().justify_center().child(crate::ui::icon(
+        Icon::Favorite,
+        u(14.),
+        rgb(STAR),
+    ))
 }
 
 /// A strip across the tile `h` design px high (before it grows by `scale`).

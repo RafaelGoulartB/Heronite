@@ -70,5 +70,8 @@
   "Steam was open before Heronite could turn on the access it needs. Restart it once (games running from Steam close), or wait: your library comes in the next time Steam opens.": "Steam ya estaba abierto antes de que Heronite pudiera activar el acceso que necesita. Reinícialo una vez (los juegos abiertos desde Steam se cierran) o espera: tu biblioteca entra la próxima vez que se abra Steam.",
   "Could not connect": "No se pudo conectar",
   "Open Steam": "Abrir Steam",
-  "Store apps": "Apps de las tiendas"
+  "Store apps": "Apps de las tiendas",
+  "Not read yet: only your installed Steam games are in the Collection.": "Aún sin leer: solo tus juegos instalados de Steam están en la Colección.",
+  "one|{n} not installed": "{n} sin instalar",
+  "other|{n} not installed": "{n} sin instalar"
 }

@@ -7,7 +7,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use anyhow::Result;
 use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
-use heronite_data::xbox::{LastSync, XboxPrefs, LAUNCH_KIND, SOURCE};
+use heronite_data::xbox::{LastSync, XboxPrefs, LAUNCH_KIND, SOURCE, STORE_ID_KEY, TITLE_ID_KEY};
 use heronite_data::{json_store, DataPaths};
 use serde_json::{json, Map, Value};
 
@@ -48,7 +48,7 @@ fn entry(app: &str, game: &XboxGame) -> GameInfo {
 }
 
 fn meta(app: &str, game: &XboxGame, status: &str) -> LocalGameMeta {
-    LocalGameMeta {
+    let mut meta = LocalGameMeta {
         app_name: app.to_string(),
         runner: "sideload".into(),
         source: SOURCE.into(),
@@ -58,7 +58,24 @@ fn meta(app: &str, game: &XboxGame, status: &str) -> LocalGameMeta {
         launcher_args: Some(game.aumid()),
         completion_status_id: Some(status.to_string()),
         ..Default::default()
+    };
+    set_title_id(&mut meta, game);
+    meta
+}
+
+/// Writes the game's title id and Store product id into its metadata, when
+/// its files name them. One they do not name stays: the Xbox account may
+/// have given it (a game's ids do not change). Whether that changed anything.
+fn set_title_id(meta: &mut LocalGameMeta, game: &XboxGame) -> bool {
+    let mut changed = false;
+    for (key, value) in [(TITLE_ID_KEY, &game.title_id), (STORE_ID_KEY, &game.store_id)] {
+        let Some(id) = value else { continue };
+        if meta.extra.get(key).and_then(Value::as_str) != Some(id.as_str()) {
+            meta.extra.insert(key.into(), json!(id));
+            changed = true;
+        }
     }
+    changed
 }
 
 /// Sets on an existing sideload entry what an update may have changed.
@@ -105,6 +122,9 @@ pub fn sync(paths: &DataPaths, games: &[XboxGame]) -> Result<Report> {
                     let aumid = game.aumid();
                     if m.launcher_args.as_deref() != Some(aumid.as_str()) {
                         m.launcher_args = Some(aumid);
+                        changed.insert(info.app_name.clone());
+                    }
+                    if set_title_id(m, game) {
                         changed.insert(info.app_name.clone());
                     }
                 }
@@ -158,7 +178,16 @@ pub fn sync(paths: &DataPaths, games: &[XboxGame]) -> Result<Report> {
 
     let touched = report != Report::default();
     json_store::update_if_changed::<XboxPrefs, _>(&paths.xbox(), |prefs| {
+        // Every game taken out stays out of what the account brings, also
+        // those taken out before `removed_titles` was kept.
+        prefs.removed_titles.extend(prefs.removed.iter().cloned());
         prefs.removed.retain(|a| present.contains(a));
+        // Installed again and kept: the account may list it again later.
+        let kept: Vec<String> =
+            prefs.removed_titles.iter().filter(|a| present.contains(*a) && !prefs.removed.contains(*a)).cloned().collect();
+        for a in kept {
+            prefs.removed_titles.remove(&a);
+        }
         if touched || prefs.last.as_ref().map(|l| l.games) != Some(games.len()) {
             prefs.last = Some(LastSync { at: now(), games: games.len() });
         }
@@ -182,10 +211,12 @@ pub fn count(paths: &DataPaths) -> usize {
 }
 
 /// The user took `app_name` (an Xbox entry) out of the Collection: the sync
-/// leaves it out from now on (`XboxPrefs::removed`).
+/// leaves it out from now on (`XboxPrefs::removed`), and the Xbox account
+/// does not bring it back as not installed (`XboxPrefs::removed_titles`).
 pub fn mark_removed(paths: &DataPaths, app_name: &str) -> Result<()> {
     json_store::update_if_changed::<XboxPrefs, _>(&paths.xbox(), |prefs| {
         prefs.removed.insert(app_name.to_string());
+        prefs.removed_titles.insert(app_name.to_string());
         Ok(())
     })
 }
@@ -202,6 +233,8 @@ mod tests {
             title: title.into(),
             folder: std::env::temp_dir().join("XboxGames").join(title).join("Content"),
             store_id: None,
+            title_id: None,
+            package: format!("{family}_1.0.0.0_x64__"),
         }
     }
 
@@ -247,6 +280,22 @@ mod tests {
         assert!(!lib.get("sideload_xbox_studio_sea_abc").unwrap().installed, "stays, not installed");
         let m = lib.get("sideload_xbox_studio_forza_abc").unwrap().meta.clone().unwrap();
         assert_eq!(m.launcher_args.as_deref(), Some("Studio.Forza_abc!Launcher"));
+        assert!(!m.extra.contains_key(TITLE_ID_KEY));
+
+        // Its files now name its title id.
+        let mut forza = game("Studio.Forza_abc", "Forza Horizon 5");
+        forza.app_id = "Launcher".into();
+        forza.title_id = Some("79FC11E1".into());
+        assert_eq!(sync(&paths, std::slice::from_ref(&forza)).unwrap(), Report { added: 0, updated: 1 });
+        let m = Library::load(&paths).unwrap().get("sideload_xbox_studio_forza_abc").unwrap().meta.clone().unwrap();
+        assert_eq!(m.extra.get(TITLE_ID_KEY), Some(&json!("79FC11E1")));
+        assert_eq!(sync(&paths, std::slice::from_ref(&forza)).unwrap(), Report::default());
+
+        // Files that no longer name it (the account may have given it): kept, nothing written.
+        forza.title_id = None;
+        assert_eq!(sync(&paths, &[forza]).unwrap(), Report::default());
+        let m = Library::load(&paths).unwrap().get("sideload_xbox_studio_forza_abc").unwrap().meta.clone().unwrap();
+        assert_eq!(m.extra.get(TITLE_ID_KEY), Some(&json!("79FC11E1")));
     }
 
     #[test]

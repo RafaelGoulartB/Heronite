@@ -96,6 +96,9 @@ struct State {
     fullscreen: bool,
     settings: SysSettings,
     settings_stamp: Option<SystemTime>,
+    /// The main window's placement, written so the next window opens as this
+    /// one was left.
+    placement: window::PlacementSave,
 }
 
 impl State {

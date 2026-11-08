@@ -167,6 +167,14 @@ impl CollectionView {
                         }
                     });
                     let title = g.map_or(String::new(), |g| g.title.clone());
+                    let categories = self.console_categories(key).and_then(|(style, list)| {
+                        crate::collection::category_badges::overlay(
+                            style,
+                            &list,
+                            super::super::super::tile::category_area(p.w, k, dpr),
+                            false,
+                        )
+                    });
                     // The picture carries its own corners: a clip is square.
                     div()
                         .relative()
@@ -191,6 +199,7 @@ impl CollectionView {
                                 .child(div().line_clamp(4).child(title))
                                 .into_any_element(),
                         })
+                        .children(categories)
                         .when_some(running.filter(|_| theme.tiles.badges != Badges::Off), |d, b| {
                             d.child(div().absolute().top(u(6.)).left(u(6.)).child(kit::badge(b, theme::console_btn_a())))
                         })

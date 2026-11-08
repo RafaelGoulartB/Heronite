@@ -52,6 +52,9 @@ pub struct GameEntry {
     pub loaded: bool,
     pub refreshing: bool,
     refreshed_at: Option<Instant>,
+    /// The refresh after the game ended came while it was being read: it
+    /// runs once that read is done.
+    refresh_after: bool,
 }
 
 impl GameEntry {
@@ -337,6 +340,7 @@ impl Achievements {
         };
         self.announce(&title, &out.new_unlocks, &over_game, cx);
         cx.notify();
+        self.run_waiting_refresh(key, cx);
         self.next_in_queue(cx);
         // A live check that waited for this refresh.
         let waiting = self.lives.iter_mut().find(|(_, l)| l.key == key && l.pending).map(|(app, l)| {
@@ -346,6 +350,17 @@ impl Achievements {
         if let Some(app) = waiting {
             self.live_check(&app, cx);
         }
+    }
+
+    /// The refresh after the game ended waited for the read that just
+    /// ended: it runs now.
+    fn run_waiting_refresh(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(entry) = self.games.get_mut(key) else { return };
+        if !std::mem::take(&mut entry.refresh_after) {
+            return;
+        }
+        entry.refreshed_at = None;
+        self.refresh(key, cx);
     }
 
     /// Starts and stops live checks.
@@ -484,6 +499,9 @@ impl Achievements {
         entry.refreshing = true;
         cx.notify();
         let (sources, since) = (live.sources.clone(), live.since);
+        // What this read covers, kept for when it ends: the check may have
+        // stopped by then (the game ended, the options changed).
+        let read = sources.clone();
         let (paths, accounts, app_name) = (self.data_paths.clone(), self.accounts.clone(), app_name.to_string());
         let lang = heronite_i18n::current().code();
         cx.spawn(async move |this, cx| {
@@ -495,13 +513,12 @@ impl Achievements {
                     (out, known.title)
                 })
                 .await;
-            this.update(cx, |this, cx| this.live_checked(&app_name, &key, out, cx)).ok();
+            this.update(cx, |this, cx| this.live_checked(&app_name, &key, &read, out, cx)).ok();
         })
         .detach();
     }
 
-    fn live_checked(&mut self, app_name: &str, key: &str, (out, title): (sync::Outcome, String), cx: &mut Context<Self>) {
-        let read: Vec<Source> = self.lives.get(app_name).map(|l| l.sources.clone()).unwrap_or_default();
+    fn live_checked(&mut self, app_name: &str, key: &str, read: &[Source], (out, title): (sync::Outcome, String), cx: &mut Context<Self>) {
         if let Some(entry) = self.games.get_mut(key) {
             entry.game = Arc::new(out.game);
             // The other sources' problems stay: they were not read.
@@ -513,7 +530,7 @@ impl Achievements {
         let mut again = false;
         let mut over_game = Vec::new();
         if let Some(l) = self.lives.get_mut(app_name) {
-            for (source, e) in l.failures.after_read(&read, &out.problems) {
+            for (source, e) in l.failures.after_read(read, &out.problems) {
                 log::warn!("achievements of {key} from {} while it runs: {e}", source.label());
             }
             again = std::mem::take(&mut l.pending);
@@ -522,6 +539,8 @@ impl Achievements {
         }
         self.announce(&title, &out.new_unlocks, &over_game, cx);
         cx.notify();
+        // Before the live check asked again: that one then waits for it.
+        self.run_waiting_refresh(key, cx);
         if again {
             self.live_check(app_name, cx);
         }
@@ -597,6 +616,12 @@ impl Achievements {
                 this.known.insert(known.app_name.clone(), known);
                 if let Some(e) = this.games.get_mut(&key) {
                     e.refreshed_at = None;
+                    // A read still runs (a last live check): this one
+                    // follows it instead of being dropped.
+                    if e.refreshing {
+                        e.refresh_after = true;
+                        return;
+                    }
                 }
                 this.refresh(&key, cx);
             })

@@ -289,6 +289,15 @@ pub fn console_btn_x() -> Rgba {
 pub fn console_btn_y() -> Rgba {
     rgb(0xf5cd5b)
 }
+/// Replays and moments marked in-game: the yellow of the Y button that marks
+/// them. Text and icons take it through [`readable`].
+pub fn replay() -> Rgba {
+    console_btn_y()
+}
+/// [`replay`] at alpha `a` (rings, tints).
+pub fn replay_alpha(a: f32) -> Rgba {
+    Rgba { a, ..replay() }
+}
 
 /// Statistics charts: one colour per top game (most played first); the rest
 /// share [`chart_other`]. Order and steps checked for colour-blind

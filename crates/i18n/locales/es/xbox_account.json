@@ -1,0 +1,19 @@
+{
+  "1. Open the sign-in page": "1. Abre la página de inicio de sesión",
+  "2. Paste the address": "2. Pega la dirección",
+  "Could not open the Microsoft Store: {error}": "No se pudo abrir Microsoft Store: {error}",
+  "Open the sign-in page first": "Abre primero la página de inicio de sesión",
+  "Opens Microsoft's sign-in page. Heronite never sees your password.": "Abre la página de inicio de sesión de Microsoft. Heronite nunca ve tu contraseña.",
+  "Optional. With your Xbox account, your Xbox games show the play time Xbox counted (also outside Heronite and on console), when you last played, your achievements, and the games you played that are not installed here.": "Opcional. Con tu cuenta de Xbox, tus juegos de Xbox muestran el tiempo de juego que contó Xbox (también fuera de Heronite y en consola), cuándo jugaste por última vez, tus logros y los juegos que jugaste que no están instalados aquí.",
+  "Or sign in with your browser": "O inicia sesión con tu navegador",
+  "Paste the address of the page you land on": "Pega la dirección de la página a la que llegues",
+  "Read account now": "Leer la cuenta ahora",
+  "Read {n} title from the account.": "Se leyó {n} título de la cuenta.",
+  "Read {n} titles from the account.": "Se leyeron {n} títulos de la cuenta.",
+  "Sign in with your Microsoft account": "Inicia sesión con tu cuenta de Microsoft",
+  "Sign in, then copy the address of the blank page you land on (it contains code=...).": "Inicia sesión y copia la dirección de la página en blanco a la que llegues (contiene code=...).",
+  "Signed in to Xbox": "Sesión iniciada en Xbox",
+  "Signed out. To also take away Heronite's access to your account, go to account.live.com/consent/Manage.": "Has cerrado sesión. Para quitar también el acceso de Heronite a tu cuenta, ve a account.live.com/consent/Manage.",
+  "Xbox account": "Cuenta de Xbox",
+  "Xbox signed you out. Sign in again to keep the play time up to date.": "Xbox cerró tu sesión. Vuelve a iniciar sesión para mantener el tiempo de juego al día."
+}
