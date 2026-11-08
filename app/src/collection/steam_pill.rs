@@ -12,7 +12,6 @@ use heronite_i18n::tr;
 
 use super::downloads_pill::{pill_base, ring};
 use super::header::Menu;
-use super::update_pill::tinted_pill;
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::pages::Page;
@@ -33,9 +32,12 @@ impl CollectionView {
             div().flex_none().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(color).child(text.to_string())
         };
         let pill = match notice {
-            SteamNotice::Restart => tinted_pill("hdr-steam", theme::warning(), open)
+            // Neutral like the downloads pill: only the Steam mark is tinted,
+            // so it is seen without shouting over the header.
+            SteamNotice::Restart => pill_base("hdr-steam", open)
+                .pl(px(10.))
                 .child(icon(Icon::BrandSteam, px(16.), theme::warning()))
-                .child(label(tr!("Restart Steam"), theme::readable(theme::warning()))),
+                .child(label(tr!("Restart Steam"), theme::text_primary().into())),
             SteamNotice::Restarting => pill_base("hdr-steam", open)
                 .child(ring(100., theme::accent().into(), Some(Icon::BrandSteam)))
                 .child(label(tr!("Restarting Steam"), theme::text_primary().into())),

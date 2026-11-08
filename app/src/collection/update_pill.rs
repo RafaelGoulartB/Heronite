@@ -99,10 +99,10 @@ impl CollectionView {
         let pill = match (kind, &v.phase) {
             // Tinted with the accent: it asks for something, without
             // shouting over the header.
-            (Banner::Available, _) => tinted_pill("hdr-update", theme::accent(), open)
+            (Banner::Available, _) => tinted_pill(theme::accent(), open)
                 .child(icon(Icon::Update, px(16.), theme::accent()))
                 .child(label(tr!("Update to {version}", version = v.version), theme::readable(theme::accent()))),
-            (Banner::Ready, _) => tinted_pill("hdr-update", theme::success(), open)
+            (Banner::Ready, _) => tinted_pill(theme::success(), open)
                 .child(icon(Icon::Refresh, px(16.), theme::success()))
                 .child(label(tr!("Restart to update").into(), theme::readable(theme::success()))),
             (Banner::Downloading, Phase::Downloading(p)) => {
@@ -128,10 +128,10 @@ impl CollectionView {
 }
 
 /// A pill tinted with `color`: a light wash of it, its border and text.
-pub(super) fn tinted_pill(id: &'static str, color: Rgba, open: bool) -> Stateful<Div> {
+fn tinted_pill(color: Rgba, open: bool) -> Stateful<Div> {
     let tint = |a: f32| Hsla { a, ..color.into() };
     div()
-        .id(id)
+        .id("hdr-update")
         .flex()
         .flex_none()
         .items_center()
