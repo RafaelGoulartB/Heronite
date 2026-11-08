@@ -21,6 +21,7 @@ use crate::collection::focus_left::STAR;
 use crate::collection::vm::FocusVm;
 use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row, Value};
+use crate::console::pointer::{self, Clickable};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -340,11 +341,13 @@ impl CollectionView {
 
         let name = self.console_name(&g, HeroSize { title: 58., logo: (520., 128.), ..HeroSize::default() }, window);
         let facts = self.console_fact_line(&g, Self::console_facts(&g), 16.);
-        let buttons_row = div()
-            .flex()
-            .gap(u(12.))
-            .mt(u(8.))
-            .children(btns.iter().enumerate().map(|(i, b)| hero_button(*b, &rows, &g, on_buttons && i == button)));
+        let buttons_row = div().flex().gap(u(12.)).mt(u(8.)).children(btns.iter().enumerate().map(|(i, b)| {
+            // A click: up from the screenshots, ← → to the button, A.
+            let mut pads = if in_content { vec![Pad::Up] } else { Vec::new() };
+            pads.extend(pointer::along(button, i, Pad::Left, Pad::Right));
+            pads.push(Pad::A);
+            hero_button(*b, &rows, &g, on_buttons && i == button).on_pads(pads)
+        }));
         let names: Vec<SharedString> = tabs.iter().map(|t| SharedString::from(t.label())).collect();
         let active = tabs.iter().position(|t| *t == tab).unwrap_or(0);
         let tab_strip = div().flex().mt(u(14.)).child(kit::tabs(&names, active));
@@ -368,7 +371,10 @@ impl CollectionView {
             Tab::Screenshots => {
                 let mut row = div().flex().gap(u(14.));
                 for i in shot_start..(shot_start + SHOTS).min(shots) {
-                    row = row.child(self.shot_thumb(i, 236., 133., in_content && i == shot));
+                    let mut pads = if in_content { Vec::new() } else { vec![Pad::Down] };
+                    pads.extend(pointer::along(shot, i, Pad::Left, Pad::Right));
+                    let pads = if in_content { pointer::focus_or_activate(pads) } else { pads };
+                    row = row.child(self.shot_thumb(i, 236., 133., in_content && i == shot).on_pads(pads));
                 }
                 row.into_any_element()
             }
@@ -404,7 +410,9 @@ impl CollectionView {
                 .child(div().flex_1().min_h_0().px(u(12.)).pb(u(10.)).child(list.render("console-game-more", &more, true)));
             side_sheet("console-game-more-panel", body)
         });
-        div().relative().size_full().child(page).children(more).children(self.shot_viewer()).into_any_element()
+        // Over the page: nothing under them takes clicks.
+        let over = |el: AnyElement| div().absolute().inset_0().occlude().child(el);
+        div().relative().size_full().child(page).children(more.map(over)).children(self.shot_viewer().map(over)).into_any_element()
     }
 
     /// Playtime, last played and time to beat over the start of the overview.

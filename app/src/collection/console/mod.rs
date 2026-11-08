@@ -35,6 +35,7 @@ use super::CollectionView;
 use crate::console::input::{self, PadMsg};
 use crate::console::kit::{self, u};
 use crate::console::osk::{Osk, OskEvent};
+use crate::console::pointer::{self, WheelAxis};
 use crate::console::{self, hint, look, motion, Btn, Hint, Overlay, Pad};
 use crate::pages::Page;
 use crate::theme;
@@ -107,6 +108,8 @@ pub(super) struct ConsoleUi {
     logos: art::LogoCache,
     controls: controls::ControlsState,
     customize: Option<customize::CustomizeNav>,
+    /// This view, for the clicks of what it draws (`console_click`).
+    me: Option<WeakEntity<CollectionView>>,
 }
 
 /// The hint bar over the bottom of the screen, on a fade of the background
@@ -173,6 +176,7 @@ impl CollectionView {
             self.enter_console(window, cx);
         } else {
             console::set_active(false);
+            pointer::clear_router(window);
             look::clear();
             console::themes::forget();
             self.console = ConsoleUi::default();
@@ -224,6 +228,17 @@ impl CollectionView {
             self.console.thread = Some(thread);
             Self::spawn_pad_pump(rx, window, cx);
         }
+        // The mouse presses like the controller (`console::pointer`).
+        let this = cx.entity().downgrade();
+        self.console.me = Some(this.clone());
+        pointer::set_router(window, cx, move |pad, window, cx| {
+            this.update(cx, |this, cx| {
+                if console::active() {
+                    this.console_pad(pad, window, cx);
+                }
+            })
+            .ok();
+        });
         // The clock in the top bar (nothing to redraw while the theme hides it).
         self.console.ticker = Some(cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(20)).await;
@@ -288,6 +303,20 @@ impl CollectionView {
             return;
         }
         self.console.script_started = true;
+        // `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,...`: mouse events, the same way.
+        if let Some(text) = crate::env::value("HERONITE_DEBUG_MOUSE") {
+            let steps = pointer::parse_script(&text);
+            cx.spawn_in(window, async move |_, cx| {
+                cx.background_executor().timer(Duration::from_millis(1200)).await;
+                for (wait, step) in steps {
+                    cx.background_executor().timer(wait).await;
+                    if cx.update(|window, cx| pointer::play(step, window, cx)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .detach();
+        }
         let Some(text) = crate::env::value("HERONITE_DEBUG_PAD") else { return };
         let steps = input::parse_script(&text);
         cx.spawn_in(window, async move |this, cx| {
@@ -322,6 +351,46 @@ impl CollectionView {
             // Ctrl K, Ctrl , ... stay desktop shortcuts: swallow them.
             None => ks.modifiers.control,
         }
+    }
+
+    /// A left click that runs `f` on this view once the event is over (for
+    /// a focus kept outside the presses' reach: the menu's items, a cover).
+    pub(super) fn console_click(
+        &self,
+        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        let this = self.console.me.clone();
+        let f = std::rc::Rc::new(f);
+        move |_, window, cx| {
+            cx.stop_propagation();
+            let (Some(this), f) = (this.clone(), f.clone()) else { return };
+            window.defer(cx, move |window, cx| {
+                this.update(cx, |v, cx| {
+                    if console::active() {
+                        f(v, window, cx);
+                        cx.notify();
+                    }
+                })
+                .ok();
+            });
+        }
+    }
+
+    /// A click on something of a layout: `focus` moves the focus to it
+    /// (`true` when it moved; it then shows like after a press), or when it
+    /// had the focus already, A uses it.
+    pub(super) fn cover_click(
+        &self,
+        focus: impl Fn(&mut Self) -> bool + 'static,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        self.console_click(move |this, window, cx| {
+            if !focus(this) {
+                this.console_pad(Pad::A, window, cx);
+            } else if !this.console_controls_press(Pad::Right, cx) {
+                motion::press();
+                this.show_console_hints(cx);
+            }
+        })
     }
 
     /// Hosts `view` over the current screen until it closes itself through
@@ -472,14 +541,34 @@ impl CollectionView {
     /// Cinema keeps the whole screen to itself: no hint bar while its covers
     /// have the focus (a dialog, menu or page over it still shows its own).
     fn cinema_in_focus(&self) -> bool {
-        self.page == Page::Collection
-            && matches!(self.console.screen, Screen::Tabs)
-            && self.dialog.is_none()
+        self.tabs_in_focus() && self.console_shown_tab().1.layout == Layout::Cinema
+    }
+
+    /// The tab's layout takes the presses: no page, game page, dialog, menu
+    /// or panel over it.
+    fn tabs_in_focus(&self) -> bool {
+        self.page == Page::Collection && matches!(self.console.screen, Screen::Tabs) && self.body_in_focus()
+    }
+
+    /// The screen under the layers (tab, page or game page) takes the
+    /// presses: no dialog, keyboard, menu or panel over it.
+    fn body_in_focus(&self) -> bool {
+        self.dialog.is_none()
             && self.console.overlay.is_none()
             && self.console.customize.is_none()
             && self.console.filters.is_none()
             && self.console.sidebar.is_none()
-            && self.console_shown_tab().1.layout == Layout::Cinema
+    }
+
+    /// The wheel moves along the row of covers of the layouts that are one
+    /// row (Carousel, Spotlight), else up and down.
+    fn wheel_axis(&self) -> WheelAxis {
+        let row = matches!(self.console_shown_tab().1.layout, Layout::Carousel | Layout::Spotlight);
+        if row && self.tabs_in_focus() {
+            WheelAxis::Horizontal
+        } else {
+            WheelAxis::Vertical
+        }
     }
 
     fn open_sidebar(&mut self) {
@@ -728,8 +817,11 @@ impl CollectionView {
         };
         self.sync_console_colour();
         let keeps_tabs = !on_page && (game_key.is_none() || self.game_page_keeps_tabs());
-        let top_bar = keeps_tabs.then(|| self.console_top_bar());
-        let bottom_tabs = if keeps_tabs { self.console_bottom_tabs() } else { None };
+        // The tabs take clicks only while LB / RB switch them.
+        let tabs_input = self.tabs_in_focus() && !self.console.results;
+        let blocked = |d: Div| if tabs_input { d } else { d.child(div().absolute().inset_0().occlude()) };
+        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar()));
+        let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
             Scrim::Page
         } else if game_key.is_some() {
@@ -750,6 +842,8 @@ impl CollectionView {
             .and_then(|k| self.render_console_game_layer(k, window, cx))
             .map(|layer| div().absolute().top_0().left_0().right_0().bottom(if hints_on { u(60.) } else { px(0.) }).child(layer));
         let (_, body_font) = look::fonts();
+        // A layer over the screen: nothing under it takes clicks.
+        let over = |el: AnyElement| div().absolute().inset_0().occlude().child(el);
         div()
             .id("console")
             .relative()
@@ -758,6 +852,7 @@ impl CollectionView {
             .bg(theme::console_bg())
             .font_family(body_font)
             .text_color(theme::text_primary())
+            .child(pointer::layer(self.wheel_axis()))
             .child(backdrop)
             .child(
                 div()
@@ -774,7 +869,16 @@ impl CollectionView {
                     .flex()
                     .flex_col()
                     .children(top_bar)
-                    .child(div().flex_1().min_h_0().child(body))
+                    // Clicks only reach the screen while it takes the presses
+                    // (Customize lets it show without its panel).
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .child(body)
+                            .when(!self.body_in_focus(), |d| d.child(div().absolute().inset_0().occlude())),
+                    )
                     .children(bottom_tabs)
                     .when(hints_on && !float, |d| d.child(div().flex_none().h(u(60.)))),
             )
@@ -782,10 +886,10 @@ impl CollectionView {
             .children(self.render_sidebar(cx))
             .children(customize)
             .children(filters)
-            .children(self.console.overlay.as_ref().map(|o| o.view.clone()))
+            .children(self.console.overlay.as_ref().map(|o| over(o.view.clone().into_any_element())))
             .children(self.dialog.clone().map(|d| {
                 let id = SharedString::from(format!("console-dialog-{}", d.entity_id()));
-                motion::layer_in(id, d, 240, 12.)
+                over(motion::layer_in(id, d, 240, 12.))
             }))
             .children(self.render_toast(cx))
             // Above the overlays: the hints of whatever has the focus.

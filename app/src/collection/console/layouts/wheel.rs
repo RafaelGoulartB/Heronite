@@ -21,6 +21,7 @@ use super::grid::fact_cell;
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Axis, Glide, Goal};
+use crate::console::pointer::{self, Clickable};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -148,9 +149,9 @@ impl CollectionView {
             .gap(u(12.))
             .h(u(HEAD))
             .px(u(SIDE))
-            .child(crate::ui::icon(Icon::ChevronLeft, u(22.), theme::text_muted()))
+            .child(div().child(crate::ui::icon(Icon::ChevronLeft, u(22.), theme::text_muted())).on_pads([Pad::Left]))
             .child(kit::title(label.clone(), 22.))
-            .child(crate::ui::icon(Icon::ChevronRight, u(22.), theme::text_muted()))
+            .child(div().child(crate::ui::icon(Icon::ChevronRight, u(22.), theme::text_muted())).on_pads([Pad::Right]))
             .child(div().text_size(u(15.)).text_color(theme::text_muted()).child(trn!(*count, "{n} game", "{n} games")));
 
         let handle = glide.handle().clone();
@@ -167,7 +168,9 @@ impl CollectionView {
         // Tall enough to scroll the last game to the middle.
         let mut rows = div().relative().w_full().h(px(n as f32 * row_px + view_px));
         for i in first..=last {
-            rows = rows.children(self.wheel_row(&data.keys[i], i, i as f32 - pos, i == index, list_w, mid, window));
+            let pads = pointer::focus_or_activate(pointer::along(index, i, Pad::Up, Pad::Down));
+            rows =
+                rows.children(self.wheel_row(&data.keys[i], i, i as f32 - pos, i == index, list_w, mid, window).map(|r| r.on_pads(pads)));
         }
         let list =
             div().id(("console-wheel", tab)).flex_1().min_h_0().overflow_y_scroll().track_scroll(&handle).child(rows).child(glide.driver());

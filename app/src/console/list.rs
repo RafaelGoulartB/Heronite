@@ -11,6 +11,7 @@ use gpui_kit::*;
 
 use super::kit::{self, u};
 use super::motion::{Axis, Glide, Goal};
+use super::pointer::Clickable;
 use super::Pad;
 use crate::icons::Icon;
 use crate::theme;
@@ -262,10 +263,51 @@ impl ListNav {
         }
     }
 
+    /// The presses that move the focus to row `to` (↑ ↓ over the focusable
+    /// rows between; nothing when it has it or cannot take it).
+    pub fn route(&self, rows: &[Row], to: usize) -> Vec<Pad> {
+        if !rows.get(to).is_some_and(Row::focusable) || self.focus >= rows.len() {
+            return Vec::new();
+        }
+        let between = |r: &[Row]| r.iter().filter(|r| r.focusable()).count();
+        if to > self.focus {
+            super::pointer::repeat(Pad::Down, between(&rows[self.focus + 1..=to])).collect()
+        } else {
+            super::pointer::repeat(Pad::Up, between(&rows[to..self.focus])).collect()
+        }
+    }
+
+    /// The presses a click on row `to` makes: the focus goes there, and the
+    /// row is used as A uses it (an action runs, a switch flips, a choice
+    /// takes its next value; a number only takes the focus: its arrows change it).
+    pub fn click(&self, rows: &[Row], to: usize) -> Vec<Pad> {
+        let Some(row) = rows.get(to).filter(|r| r.focusable()) else { return Vec::new() };
+        let mut pads = self.route(rows, to);
+        if row.enabled && !matches!(row.value, Value::Number { .. }) {
+            pads.push(Pad::A);
+        }
+        pads
+    }
+
     /// The rows in a vertical scroll area (`id` must be unique on screen).
     /// `active` = the list has the focus (else no pill is drawn).
     pub fn render(&mut self, id: impl Into<ElementId>, rows: &[Row], active: bool) -> Stateful<Div> {
-        self.render_with(id, rows, active, |_, r, focused| render_row(r, focused).into_any_element())
+        self.render_entered(id, rows, active, None)
+    }
+
+    /// [`render`](Self::render) for a list that `entry` gives the focus to
+    /// while it does not have it (a column beside the owner's own): a click
+    /// on one of its rows sends `entry` first.
+    pub fn render_entered(&mut self, id: impl Into<ElementId>, rows: &[Row], active: bool, entry: Option<&[Pad]>) -> Stateful<Div> {
+        self.clamp(rows);
+        let lead: Option<&[Pad]> = if active { Some(&[]) } else { entry };
+        let with_lead = |pads: Vec<Pad>| -> Vec<Pad> { lead.map(|l| l.iter().copied().chain(pads).collect()).unwrap_or_default() };
+        let routes: Vec<Vec<Pad>> = (0..rows.len()).map(|i| with_lead(self.route(rows, i))).collect();
+        let clicks: Vec<Vec<Pad>> = (0..rows.len()).map(|i| with_lead(self.click(rows, i))).collect();
+        let reachable = lead.is_some();
+        self.render_clicks(id, rows, active, clicks, |i, r, focused| {
+            render_row_at(r, focused, reachable.then(|| routes[i].as_slice())).into_any_element()
+        })
     }
 
     /// [`render`](Self::render) with rows drawn by `draw(index, row, focused)`
@@ -275,9 +317,23 @@ impl ListNav {
         id: impl Into<ElementId>,
         rows: &[Row],
         active: bool,
-        mut draw: impl FnMut(usize, &Row, bool) -> AnyElement,
+        draw: impl FnMut(usize, &Row, bool) -> AnyElement,
     ) -> Stateful<Div> {
         self.clamp(rows);
+        // A click goes to a row of the list that has the focus.
+        let clicks = (0..rows.len()).map(|i| if active { self.click(rows, i) } else { Vec::new() }).collect();
+        self.render_clicks(id, rows, active, clicks, draw)
+    }
+
+    /// The rows, each sending `clicks[i]` when clicked.
+    fn render_clicks(
+        &mut self,
+        id: impl Into<ElementId>,
+        rows: &[Row],
+        active: bool,
+        clicks: Vec<Vec<Pad>>,
+        mut draw: impl FnMut(usize, &Row, bool) -> AnyElement,
+    ) -> Stateful<Div> {
         if self.reveal && active {
             self.reveal = false;
             // A little of the rows around the focus stays in sight.
@@ -290,8 +346,8 @@ impl ListNav {
         }
         self.shown = true;
         let mut list = div().id(id).flex().flex_col().gap(u(4.)).overflow_y_scroll().track_scroll(self.glide.handle());
-        for (i, r) in rows.iter().enumerate() {
-            list = list.child(draw(i, r, active && i == self.focus));
+        for ((i, r), pads) in rows.iter().enumerate().zip(clicks) {
+            list = list.child(div().on_pads(pads).child(draw(i, r, active && i == self.focus)));
         }
         list.child(self.glide.driver())
     }
@@ -299,6 +355,18 @@ impl ListNav {
 
 /// One row (also used outside lists).
 pub fn render_row(r: &Row, focused: bool) -> Div {
+    render_row_at(r, focused, None)
+}
+
+/// [`render_row`] for a row the focus gets to with `route`: the ‹ › of its
+/// value take clicks (the route, then ◀ or ▶).
+pub fn render_row_at(r: &Row, focused: bool, route: Option<&[Pad]>) -> Div {
+    let arrow = |pad: Pad| -> Vec<Pad> {
+        match route {
+            Some(route) if r.enabled => route.iter().copied().chain([pad]).collect(),
+            _ => Vec::new(),
+        }
+    };
     if r.value == Value::Header {
         return kit::caption(r.label.clone());
     }
@@ -315,10 +383,12 @@ pub fn render_row(r: &Row, focused: bool) -> Div {
         Value::Choice { options, index } => {
             let text = options.get(*index).cloned().unwrap_or_default();
             let min_w = if r.compact { 84. } else { 150. };
-            kit::choice_sized(text, focused, *index > 0, index + 1 < options.len(), min_w).into_any_element()
+            kit::choice_clickable(text, focused, *index > 0, index + 1 < options.len(), min_w, arrow(Pad::Left), arrow(Pad::Right))
+                .into_any_element()
         }
         Value::Number { value, min, max, suffix, .. } => {
-            kit::choice(format!("{value}{suffix}"), focused, value > min, value < max).into_any_element()
+            kit::choice_clickable(format!("{value}{suffix}"), focused, value > min, value < max, 150., arrow(Pad::Left), arrow(Pad::Right))
+                .into_any_element()
         }
         Value::Text(t) | Value::Info(t) => div()
             .max_w(u(420.))
@@ -423,6 +493,20 @@ mod tests {
         assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Activate("about".into()));
         nav.focus = 4;
         assert_eq!(nav.on_pad(Pad::A, &r), Outcome::Ignored, "disabled");
+    }
+
+    #[test]
+    fn a_click_moves_over_the_focusable_rows_then_uses_the_row() {
+        let r = rows();
+        let nav = ListNav { focus: 1, ..Default::default() };
+        assert_eq!(nav.click(&r, 1), [Pad::A], "the focused row");
+        assert_eq!(nav.click(&r, 5), [Pad::Down, Pad::Down, Pad::Down, Pad::Down, Pad::A]);
+        assert_eq!(nav.click(&r, 3), [Pad::Down, Pad::Down], "a number only takes the focus");
+        assert_eq!(nav.click(&r, 4), [Pad::Down, Pad::Down, Pad::Down], "disabled");
+        assert!(nav.click(&r, 0).is_empty(), "a header");
+        let nav = ListNav { focus: 5, ..Default::default() };
+        // The header is skipped going up.
+        assert_eq!(nav.route(&r, 1), [Pad::Up; 4]);
     }
 
     #[test]

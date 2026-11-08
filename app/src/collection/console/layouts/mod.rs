@@ -30,6 +30,7 @@ use super::backdrop::Scrim;
 use super::sources::Shelf;
 use crate::console::kit::{self, u};
 use crate::console::motion::{Axis, Glide, Goal};
+use crate::console::pointer;
 use crate::console::{look, Hint, Pad};
 use crate::icons::Icon;
 
@@ -133,6 +134,15 @@ impl CollectionView {
             Layout::Xbox => self.xbox_hints(tab, spec),
         }
     }
+}
+
+/// The presses a click on the cover at column `c` of shelf `i` makes, the
+/// focus being on shelf `si` (each shelf keeps its column, `cols`): ↑ ↓ to
+/// the shelf, ← → along it; A when it has the focus already.
+fn shelf_click(si: usize, cols: &[usize], i: usize, c: usize) -> Vec<Pad> {
+    let mut pads = pointer::along(si, i, Pad::Up, Pad::Down);
+    pads.extend(pointer::along(cols.get(i).copied().unwrap_or(0), c, Pad::Left, Pad::Right));
+    pointer::focus_or_activate(pads)
 }
 
 /// What a layout shows when the tab has no games.
@@ -367,6 +377,18 @@ mod tests {
         assert_eq!(lines.cols[0], 20);
         lines.sync_with(&[shelf(20, 20)], true);
         assert_eq!(lines.cols[0], 19);
+    }
+
+    #[test]
+    fn a_click_on_a_shelf_goes_there_then_opens() {
+        use super::shelf_click;
+        use crate::console::Pad;
+        let cols = [2, 0, 5];
+        assert_eq!(shelf_click(0, &cols, 0, 2), [Pad::A]);
+        assert_eq!(shelf_click(0, &cols, 0, 4), [Pad::Right, Pad::Right]);
+        // Down to shelf 2, which keeps its column 5, then left to 3.
+        assert_eq!(shelf_click(0, &cols, 2, 3), [Pad::Down, Pad::Down, Pad::Left, Pad::Left]);
+        assert_eq!(shelf_click(2, &cols, 1, 0), [Pad::Up]);
     }
 
     #[test]

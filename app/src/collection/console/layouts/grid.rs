@@ -292,7 +292,13 @@ impl CollectionView {
         let bar =
             div().flex().items_center().gap(u(12.)).px(u(SIDE)).pb(u(16.)).children(chips.iter().enumerate().map(|(i, (label, value))| {
                 let on = toolbar == Some(i);
+                // A click changes the chip (A).
+                let click = self.console_click(move |this, window, cx| {
+                    this.tab_nav(tab).grid.toolbar = Some(i);
+                    this.console_pad(Pad::A, window, cx);
+                });
                 kit::row_base(on)
+                    .on_mouse_down(MouseButton::Left, click)
                     .min_h(u(46.))
                     .px(u(18.))
                     .when(!on, |d| d.bg(kit::ink(0.07)))
@@ -383,7 +389,15 @@ impl CollectionView {
             let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
             if near || r.abs_diff(index / cols) <= 1 {
                 for (c, key) in chunk.iter().enumerate() {
-                    line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
+                    let j = r * cols + c;
+                    let click = self.cover_click(move |this| {
+                        let nav = &mut this.tab_nav(tab).grid;
+                        let moved = nav.toolbar.is_some() || nav.index != j;
+                        (nav.toolbar, nav.index, nav.reveal) = (None, j, true);
+                        moved
+                    });
+                    let tile = self.console_tile(key, tw, th, grid_focus && j == index, visible, window);
+                    line = line.child(tile.on_mouse_down(MouseButton::Left, click));
                 }
             }
             grid = grid.child(line);

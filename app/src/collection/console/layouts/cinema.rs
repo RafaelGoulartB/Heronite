@@ -16,6 +16,7 @@ use super::super::tile::label_room;
 use crate::console::kit::u;
 use crate::console::look;
 use crate::console::motion;
+use crate::console::pointer::Clickable;
 use crate::theme;
 
 const GAP: f32 = 18.;
@@ -98,7 +99,8 @@ impl CollectionView {
                 let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, window.viewport_size().width);
                 for (c, key) in shelf.keys.iter().enumerate() {
                     let visible = super::loads(&seen, c, cols[i]);
-                    row = row.child(self.console_tile(key, tw, th, i == si && c == cols[i], visible, window));
+                    let tile = self.console_tile(key, tw, th, i == si && c == cols[i], visible, window);
+                    row = row.child(tile.on_pads(super::shelf_click(si, &cols, i, c)));
                 }
             }
             row = row.child(rows[i].driver());
