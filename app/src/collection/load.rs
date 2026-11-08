@@ -198,20 +198,22 @@ impl CollectionView {
         {
             self.context_menu = None;
         }
-        let focused = if first {
-            crate::env::value("HERONITE_DEBUG_SELECT").or_else(|| self.ui.focused_game.clone())
-        } else {
-            self.selected.as_ref().map(|s| s.to_string())
-        };
+        let debug_select = first.then(|| crate::env::value("HERONITE_DEBUG_SELECT")).flatten();
+        // `HERONITE_DEBUG_SELECT` shows its game (captures need it in sight).
+        let reveal = debug_select.is_some();
+        let focused =
+            if first { debug_select.or_else(|| self.ui.focused_game.clone()) } else { self.selected.as_ref().map(|s| s.to_string()) };
         // The remembered game, else (first start, a removed game) the first
         // card, so the panel on the right is never empty when there are games.
         let exists = |k: &String| self.lib.as_ref().is_some_and(|lib| lib.get(k).is_some());
         let focused = focused.filter(exists).or_else(|| {
             (first || was_empty).then(|| self.groups.iter().flat_map(|g| g.cards.iter()).next().map(|c| c.key.to_string())).flatten()
         });
+        // The list opens at its top (#195): the remembered game stays
+        // selected, and the first move from it scrolls it back into sight.
         if let Some(key) = focused {
             self.select(key.into(), false);
-            if first {
+            if reveal {
                 self.reveal_selected();
             }
         }
