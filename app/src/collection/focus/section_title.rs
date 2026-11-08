@@ -2,7 +2,7 @@
 //! chevron fades and slides in after the title; a click on the title opens
 //! the section's menu under it ("How Long To Beat": its page, "Change
 //! match…", "Refresh"; "Details": "Edit rows…"). Nothing takes room until
-//! it is wanted.
+//! it is wanted, and the title keeps its look.
 
 use std::rc::Rc;
 use std::time::Duration;
@@ -115,13 +115,7 @@ pub(in crate::collection) fn section_title(
         .flex_none()
         .items_center()
         .gap(px(2.))
-        .ml(px(-6.))
-        .pl(px(6.))
-        .pr(px(4.))
-        .rounded(px(7.))
         .cursor_pointer()
-        .when(open, |d| d.bg(theme::ink_a(0.08)))
-        .hover(|s| s.bg(theme::ink_a(0.08)))
         .on_click(move |_, window, cx| toggle(TitleAction::Toggle(menu), window, cx))
         .children(chevron);
     div().relative().flex().child(title).children(open.then(|| title_menu(menu, entries, on)))
@@ -165,7 +159,7 @@ fn title_menu(menu: TitleMenu, entries: Vec<MenuEntry>, on: &OnTitle) -> AnyElem
             .with_priority(20),
         )
         .child(
-            div().absolute().top(px(28.)).left(px(-6.)).child(
+            div().absolute().top(px(28.)).left_0().child(
                 deferred(
                     anchored()
                         .snap_to_window_with_margin(px(8.))
