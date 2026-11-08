@@ -220,11 +220,13 @@ impl CollectionView {
             .collect()
     }
 
-    /// The logos of the stores of the game under `key` (and, while copies
-    /// are grouped, of its other copies), its own first. None while the
-    /// Collection is grouped by store: the section's header names it.
+    /// The logos of the stores of the game under `key` (and, with "Show
+    /// every store a game is in" while copies are grouped, of its other
+    /// copies), its own first. None while the Collection is grouped by store
+    /// and "Hide while grouped by store" is on: the section's header names it.
     fn card_stores(&self, key: &str) -> Vec<Icon> {
-        if self.ui.group_by == heronite_data::GroupBy::Store {
+        let a = theme::appearance();
+        if a.cover_stores_hide_grouped && self.ui.group_by == heronite_data::GroupBy::Store {
             return Vec::new();
         }
         let mut games = self.with_copies(key);
@@ -232,7 +234,11 @@ impl CollectionView {
             games[..=i].rotate_right(1);
         }
         let store = heronite_data::collection::FacetKind::Store.index();
-        super::store_badges::store_icons(games.iter().flat_map(|g| g.facets[store].iter().map(|f| f.value.as_str())))
+        let mut icons = super::store_badges::store_icons(games.iter().flat_map(|g| g.facets[store].iter().map(|f| f.value.as_str())));
+        if !a.cover_stores_all {
+            icons.truncate(1);
+        }
+        icons
     }
 
     fn render_row(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {

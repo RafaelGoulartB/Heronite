@@ -70,6 +70,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Under the cover",
             "Favourite star",
             "Store icon",
+            "Show every store a game is in",
+            "Hide while grouped by store",
             "Under the pointer",
             "Categories on covers",
             "Show categories on covers",

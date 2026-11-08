@@ -233,6 +233,12 @@ pub struct Appearance {
     /// The icon of the store each game comes from on its cover (off by
     /// default): every store when the card stands for several copies.
     pub cover_stores: bool,
+    /// With `cover_stores`: a card standing for several copies shows each
+    /// copy's store (else only its own).
+    pub cover_stores_all: bool,
+    /// With `cover_stores`: no icons while the Collection is grouped by
+    /// store (the section's header names it).
+    pub cover_stores_hide_grouped: bool,
     pub background: BackgroundSource,
     /// With [`BackgroundSource::Screenshot`]: a different screenshot every
     /// [`SLIDESHOW_SECS`].
@@ -275,6 +281,8 @@ impl Appearance {
         cover_categories: false,
         category_style: CategoryStyle::DEFAULT,
         cover_stores: false,
+        cover_stores_all: true,
+        cover_stores_hide_grouped: true,
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
         motion: Motion::DEFAULT,
@@ -371,6 +379,8 @@ impl Appearance {
             cover_categories: flag("coverCategories", d.cover_categories),
             category_style: name("categoryStyle").and_then(CategoryStyle::parse).unwrap_or_default(),
             cover_stores: flag("coverStores", d.cover_stores),
+            cover_stores_all: flag("coverStoresAll", d.cover_stores_all),
+            cover_stores_hide_grouped: flag("coverStoresHideGrouped", d.cover_stores_hide_grouped),
             background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
@@ -408,6 +418,8 @@ impl Appearance {
             "coverCategories": self.cover_categories,
             "categoryStyle": self.category_style.as_str(),
             "coverStores": self.cover_stores,
+            "coverStoresAll": self.cover_stores_all,
+            "coverStoresHideGrouped": self.cover_stores_hide_grouped,
             "background": self.background.as_str(),
             "backgroundSlideshow": self.background_slideshow,
             "motion": self.motion.as_str(),
@@ -526,6 +538,8 @@ mod tests {
             cover_categories: true,
             category_style: CategoryStyle::Bookmarks,
             cover_stores: true,
+            cover_stores_all: false,
+            cover_stores_hide_grouped: false,
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
             motion: Motion::Reduced,
@@ -550,6 +564,8 @@ mod tests {
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
         assert_eq!(on_disk["coverStores"], true);
+        assert_eq!(on_disk["coverStoresAll"], false);
+        assert_eq!(on_disk["coverStoresHideGrouped"], false);
         assert_eq!(on_disk["sections"][0], "related");
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
         assert_eq!(on_disk["autoView"], true);

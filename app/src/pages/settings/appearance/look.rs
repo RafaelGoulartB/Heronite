@@ -308,6 +308,30 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
     );
     let badges = a.cover_badges;
     let stores = a.cover_stores;
+    let (stores_all, hide_grouped) = (a.cover_stores_all, a.cover_stores_hide_grouped);
+    // Its options show while it is on.
+    let store_options = if stores {
+        vec![
+            toggle_row(
+                "cover-stores-all",
+                tr!("Show every store a game is in"),
+                Some(tr!("A game you own in several stores shows each store's icon.")),
+                stores_all,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores_all = !stores_all)))
+            .into_any_element(),
+            toggle_row(
+                "cover-stores-grouped",
+                tr!("Hide while grouped by store"),
+                Some(tr!("The section's header already names the store.")),
+                hide_grouped,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores_hide_grouped = !hide_grouped)))
+            .into_any_element(),
+        ]
+    } else {
+        Vec::new()
+    };
     vec![
         row(tr!("Corners"), None, choice("corners", &corner_items(), a.cover_corners, cx, |a, v| a.cover_corners = v)).into_any_element(),
         row(
@@ -319,14 +343,17 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
         toggle_row("cover-badges", tr!("Favourite star"), Some(tr!("A star on the covers of your favourites.")), badges)
             .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_badges = !badges)))
             .into_any_element(),
-        toggle_row(
-            "cover-stores",
-            tr!("Store icon"),
-            Some(tr!("The logo of the store each game comes from, at the bottom-left of its cover.")),
-            stores,
-        )
-        .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores = !stores)))
-        .into_any_element(),
+        with_sub_rows(
+            toggle_row(
+                "cover-stores",
+                tr!("Store icon"),
+                Some(tr!("The logo of the store each game comes from, at the bottom-left of its cover.")),
+                stores,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores = !stores)))
+            .into_any_element(),
+            store_options,
+        ),
         row(
             tr!("Under the pointer"),
             Some(tr!("What a cover does when the pointer is over it.")),
