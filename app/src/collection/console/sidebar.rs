@@ -11,6 +11,7 @@ use gpui_kit::*;
 use super::super::CollectionView;
 use super::Screen;
 use crate::console::kit::{self, u};
+use crate::console::pointer::Clickable;
 use crate::console::Pad;
 use crate::console::{look, motion};
 use crate::icons::Icon;
@@ -250,6 +251,26 @@ impl CollectionView {
         })
     }
 
+    /// A click on item `i`: it is used as A uses it (the Rail's icons too,
+    /// while the menu is closed).
+    fn menu_click(&self, i: usize) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        self.console_click(move |this, window, cx| {
+            this.console.sidebar = Some(i);
+            this.console_pad(Pad::A, window, cx);
+        })
+    }
+
+    /// The mouse over item `i` of the open menu: it takes the focus.
+    fn console_menu_hover(&self, i: usize) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static {
+        self.cover_hover(move |this| {
+            let moved = this.console.sidebar.is_some_and(|f| f != i);
+            if moved {
+                this.console.sidebar = Some(i);
+            }
+            moved
+        })
+    }
+
     /// Whether `item` is the page shown (drawn bold).
     fn menu_current(&self, item: Item) -> bool {
         item.page() == Some(self.page) || (item == Item::Stores && crate::pages::stores::is_store_page(self.page))
@@ -292,7 +313,9 @@ impl CollectionView {
                 row = row.h(u(54.));
             }
             list = list.child(
-                row.child(icon(item.icon(), u(26.), ic))
+                row.on_mouse_down(MouseButton::Left, self.menu_click(i))
+                    .when(focused.is_some_and(|f| f != i), |d| d.on_mouse_move(self.console_menu_hover(i)))
+                    .child(icon(item.icon(), u(26.), ic))
                     .child(
                         div()
                             .flex_1()
@@ -332,11 +355,15 @@ impl CollectionView {
             .bg(theme::console_sidebar())
             .border_color(kit::ink(0.08))
             .shadow(kit::shadow(0.5, 0., 40.))
+            .eats_clicks()
             .child(list);
         let panel = if right { panel.right_0().border_l_1() } else { panel.left_0().border_r_1() };
+        // A click on the dimmed screen closes the menu.
         div()
             .absolute()
             .inset_0()
+            .occlude()
+            .on_pads([Pad::B])
             .child(kit::scrim())
             .child(motion::enter("console-sidebar", panel, 280, if right { 40. } else { -40. }, 0.))
             .into_any_element()
@@ -351,7 +378,8 @@ impl CollectionView {
         let right = side == Side::Right;
         let list = self.menu_list(items, focused, true, &downloads).w(u(PANEL_W - 32.)).flex_none();
         let edge = if right { 270. } else { 90. };
-        let panel = div().absolute().top_0().bottom_0().flex().flex_col().pt(u(28.)).overflow_hidden().border_color(kit::ink(0.08));
+        let panel =
+            div().absolute().top_0().bottom_0().flex().flex_col().pt(u(28.)).overflow_hidden().border_color(kit::ink(0.08)).eats_clicks();
         let panel = if right { panel.right_0().border_l_1() } else { panel.left_0().border_r_1() };
         let panel = motion::spring("console-rail", panel, motion::SOFT, open, move |d, t| {
             let fade = |c: Hsla, a: f32| Hsla { a: c.a * a, ..c };
@@ -365,7 +393,9 @@ impl CollectionView {
             let shade = linear_gradient(edge, linear_color_stop(kit::dim(0.4 * (1. - t)), 0.), linear_color_stop(kit::dim(0.), 1.));
             d.child(div().absolute().inset_0().bg(shade)).child(div().relative().opacity(0.55 + 0.45 * t).child(list))
         });
-        let scrim = motion::spring("console-rail-scrim", div().absolute().inset_0(), motion::SOFT, open, |d, t| d.bg(kit::dim(0.62 * t)));
+        // Open, a click on the dimmed screen closes it; closed, the screen keeps its clicks.
+        let scrim = div().absolute().inset_0().when(open, |d| d.occlude().on_pads([Pad::B]));
+        let scrim = motion::spring("console-rail-scrim", scrim, motion::SOFT, open, |d, t| d.bg(kit::dim(0.62 * t)));
         div().absolute().inset_0().child(scrim).child(panel).into_any_element()
     }
 
@@ -393,6 +423,8 @@ impl CollectionView {
                     // Solid: the screen behind must not show through the tiles.
                     .bg(theme::console_sidebar())
                     .text_color(fg);
+                let tile = tile.on_mouse_down(MouseButton::Left, self.menu_click(*i));
+                let tile = if on { tile } else { tile.on_mouse_move(self.console_menu_hover(*i)) };
                 let tile = if on { tile.child(kit::focus_pill(18.)) } else { tile };
                 tile.child(icon(item.icon(), u(38.), if on { fg } else { theme::text_muted().into() }))
                     .child(
@@ -404,6 +436,8 @@ impl CollectionView {
         div()
             .absolute()
             .inset_0()
+            .occlude()
+            .on_pads([Pad::B])
             .child(motion::fade_in("console-menu-dim", div().absolute().inset_0().bg(kit::veil(0.9)), 180))
             .child(div().absolute().inset_0().flex().items_center().justify_center().child(motion::enter(
                 "console-menu-grid",
@@ -441,7 +475,9 @@ impl CollectionView {
                     .w(u(size))
                     .h(u(size))
                     .rounded_full()
-                    .bg(kit::ink(0.08));
+                    .bg(kit::ink(0.08))
+                    .on_mouse_down(MouseButton::Left, self.menu_click(i));
+                let round = if on { round } else { round.on_mouse_move(self.console_menu_hover(i)) };
                 let round = if on { round.child(kit::focus_pill(size / 2.)) } else { round };
                 // The focused one sits a little higher than its neighbours.
                 div().flex().items_center().h(u(92.)).pb(u(if on { 14. } else { 0. })).child(
@@ -454,6 +490,8 @@ impl CollectionView {
         div()
             .absolute()
             .inset_0()
+            .occlude()
+            .on_pads([Pad::B])
             .child(motion::fade_in(
                 "console-menu-dim",
                 div().absolute().inset_0().bg(linear_gradient(

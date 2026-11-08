@@ -12,8 +12,9 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use super::pointer::Clickable;
 use super::{look, motion};
-use super::{Btn, Hint};
+use super::{Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
@@ -409,20 +410,64 @@ fn arrow_cap(ic: Icon) -> Div {
     ))
 }
 
-/// Footer with the button hints of the current screen.
+/// The press a click on a hint for `btn` makes (a pair: the second one).
+pub fn btn_pad(btn: Btn) -> Pad {
+    match btn {
+        Btn::A => Pad::A,
+        Btn::B => Pad::B,
+        Btn::X => Pad::X,
+        Btn::Y => Pad::Y,
+        Btn::LB => Pad::LB,
+        Btn::RB | Btn::Bumpers => Pad::RB,
+        Btn::LT => Pad::LT,
+        Btn::Start => Pad::Start,
+        Btn::LeftRight => Pad::Right,
+    }
+}
+
+/// [`glyph`] (or [`key_glyph`] with `keys`) that presses its button when
+/// clicked; each half of a pair (LB RB, ◀ ▶) presses its own.
+pub fn clickable_glyph(btn: Btn, keys: bool) -> Div {
+    let one = |b: Btn| if keys { key_glyph(b) } else { glyph(b) };
+    match btn {
+        Btn::Bumpers => div().flex().gap(u(4.)).child(one(Btn::LB).on_pads([Pad::LB])).child(one(Btn::RB).on_pads([Pad::RB])),
+        Btn::LeftRight => div()
+            .flex()
+            .gap(u(4.))
+            .child(arrow_cap(Icon::ChevronLeft).on_pads([Pad::Left]))
+            .child(arrow_cap(Icon::ChevronRight).on_pads([Pad::Right])),
+        b => one(b),
+    }
+}
+
+/// One hint: its glyph and label; a click presses the button.
+pub fn hint_item(h: &Hint, keys: bool, size: f32, gap: f32) -> Div {
+    hint_row(h, keys, size, gap, true)
+}
+
+/// [`hint_item`]; `live` false draws it without taking clicks.
+fn hint_row(h: &Hint, keys: bool, size: f32, gap: f32, live: bool) -> Div {
+    let row = div().flex().items_center().gap(u(gap)).text_size(u(size)).text_color(theme::text_muted());
+    if !live {
+        return row.child(if keys { key_glyph(h.btn) } else { glyph(h.btn) }).child(h.label.clone());
+    }
+    row.child(clickable_glyph(h.btn, keys)).child(h.label.clone()).on_pads([btn_pad(h.btn)])
+}
+
+/// Footer with the button hints of the current screen (a click on one
+/// presses its button). It takes the clicks it gets, so nothing under it
+/// sees them.
 pub fn hint_bar(hints: &[Hint]) -> Div {
-    div().flex().flex_none().items_center().gap(u(26.)).h(u(60.)).px(u(46.)).border_t_1().border_color(ink(0.08)).bg(shade(0.35)).children(
-        hints.iter().map(|h| {
-            div()
-                .flex()
-                .items_center()
-                .gap(u(8.))
-                .text_size(u(14.))
-                .text_color(theme::text_muted())
-                .child(glyph(h.btn))
-                .child(h.label.clone())
-        }),
-    )
+    hint_bar_with(hints, true)
+}
+
+/// [`hint_bar`]; `live` false draws it without taking any click (a bar
+/// faded out over the screen).
+pub fn hint_bar_with(hints: &[Hint], live: bool) -> Div {
+    let keys = look::glyphs() == Glyphs::Keyboard;
+    let bar = div().flex().flex_none().items_center().gap(u(26.)).h(u(60.)).px(u(46.)).border_t_1().border_color(ink(0.08)).bg(shade(0.35));
+    let bar = if live { bar.eats_clicks() } else { bar };
+    bar.children(hints.iter().map(|h| hint_row(h, keys, 14., 8., live)))
 }
 
 /// The light focus pill behind a row. It pops in (grows from a little
@@ -517,14 +562,31 @@ pub fn choice(value: impl Into<SharedString>, focused: bool, can_left: bool, can
 /// [`choice`] whose value takes at least `min_w` design px (narrow for short
 /// values, so the label keeps its room).
 pub fn choice_sized(value: impl Into<SharedString>, focused: bool, can_left: bool, can_right: bool, min_w: f32) -> Div {
+    choice_clickable(value, focused, can_left, can_right, min_w, Vec::new(), Vec::new())
+}
+
+/// [`choice_sized`] whose arrows send `left` / `right` when clicked
+/// ([`pointer`](super::pointer); nothing when empty).
+pub fn choice_clickable(
+    value: impl Into<SharedString>,
+    focused: bool,
+    can_left: bool,
+    can_right: bool,
+    min_w: f32,
+    left: Vec<Pad>,
+    right: Vec<Pad>,
+) -> Div {
     let color: Hsla = if focused { theme::console_on_focus().into() } else { theme::text_primary().into() };
-    let arrow = |ic: Icon, on: bool| icon(ic, u(18.), if on { color } else { Hsla { a: 0.25, ..color } });
+    let arrow = |ic: Icon, on: bool, pads: Vec<Pad>| {
+        // A little room around the glyph, so it is easy to hit.
+        div().p(u(4.)).m(u(-4.)).child(icon(ic, u(18.), if on { color } else { Hsla { a: 0.25, ..color } })).on_pads(pads)
+    };
     div()
         .flex()
         .flex_none()
         .items_center()
         .gap(u(14.))
-        .child(arrow(Icon::ChevronLeft, can_left))
+        .child(arrow(Icon::ChevronLeft, can_left, left))
         .child(
             div()
                 .min_w(u(min_w))
@@ -537,7 +599,7 @@ pub fn choice_sized(value: impl Into<SharedString>, focused: bool, can_left: boo
                 .text_color(color)
                 .child(value.into()),
         )
-        .child(arrow(Icon::ChevronRight, can_right))
+        .child(arrow(Icon::ChevronRight, can_right, right))
 }
 
 /// The name of a tab, `color` and bold or regular.
@@ -562,18 +624,24 @@ pub fn tabs(items: &[SharedString], active: usize) -> Div {
         .flex()
         .items_center()
         .gap(u(26.))
-        .child(glyph(Btn::LB))
+        .child(glyph(Btn::LB).on_pads([Pad::LB]))
         .children(items.iter().enumerate().map(|(i, t)| {
             let on = i == active;
             let label = t.clone();
             let id = SharedString::from(format!("tab-{label}"));
-            motion::spring(id, div().flex().flex_col().items_center().gap(u(4.)), motion::SOFT, on, move |d, k| {
+            let tab = div().flex().flex_col().items_center().gap(u(4.)).on_pads(tab_route(active, i));
+            motion::spring(id, tab, motion::SOFT, on, move |d, k| {
                 let k = k.clamp(0., 1.);
                 d.child(tab_label_at(label, 17., k, on))
                     .child(div().h(u(3.)).w(u(28. * k)).rounded_full().bg(theme::console_focus()).opacity(k))
             })
         }))
-        .child(glyph(Btn::RB))
+        .child(glyph(Btn::RB).on_pads([Pad::RB]))
+}
+
+/// The presses a click on tab `to` makes from tab `from` (LB / RB).
+fn tab_route(from: usize, to: usize) -> Vec<Pad> {
+    super::pointer::along(from, to, Pad::LB, Pad::RB)
 }
 
 /// The tabs as names alone, larger, without LB / RB (`tab_bar: names`).
@@ -582,7 +650,7 @@ pub fn tab_names(items: &[SharedString], active: usize) -> Div {
         let on = i == active;
         let label = t.clone();
         let id = SharedString::from(format!("tab-name-{label}"));
-        motion::spring(id, div(), motion::SOFT, on, move |d, k| d.child(tab_label_at(label, 22., k, on)))
+        motion::spring(id, div().on_pads(tab_route(active, i)), motion::SOFT, on, move |d, k| d.child(tab_label_at(label, 22., k, on)))
     }))
 }
 
@@ -639,12 +707,13 @@ pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
         .px(u(46.))
         .border_t_1()
         .border_color(ink(0.08))
-        .child(glyph(Btn::LB))
+        .child(glyph(Btn::LB).on_pads([Pad::LB]))
         .children(items.iter().enumerate().map(|(i, (name, ic))| {
             let on = i == active;
             let (name, ic) = (name.clone(), *ic);
             let id = SharedString::from(format!("tab-bottom-{name}"));
-            motion::spring(id, div().flex().items_center().gap(u(9.)), motion::SOFT, on, move |d, k| {
+            let tab = div().flex().items_center().gap(u(9.)).on_pads(tab_route(active, i));
+            motion::spring(id, tab, motion::SOFT, on, move |d, k| {
                 let k = k.clamp(0., 1.);
                 d.opacity(0.4 + 0.6 * k).child(icon(ic, u(20.), theme::text_primary())).child(tab_label(
                     name,
@@ -654,7 +723,7 @@ pub fn tabs_bottom(items: &[(SharedString, Icon)], active: usize) -> Div {
                 ))
             })
         }))
-        .child(glyph(Btn::RB))
+        .child(glyph(Btn::RB).on_pads([Pad::RB]))
 }
 
 /// The current tab alone, big and centred, with LB / RB at its sides when
@@ -665,7 +734,7 @@ pub fn tab_title(name: &str, ic: Icon, more: bool) -> Div {
         .flex()
         .items_center()
         .gap(u(18.))
-        .when(more, |d| d.child(glyph(Btn::LB)))
+        .when(more, |d| d.child(glyph(Btn::LB).on_pads([Pad::LB])))
         .child(
             div()
                 .flex()
@@ -674,7 +743,7 @@ pub fn tab_title(name: &str, ic: Icon, more: bool) -> Div {
                 .child(icon(ic, u(20.), theme::text_primary()))
                 .child(tab_label(text, 20., theme::text_primary(), true).font_family(heading_font())),
         )
-        .when(more, |d| d.child(glyph(Btn::RB)))
+        .when(more, |d| d.child(glyph(Btn::RB).on_pads([Pad::RB])))
 }
 
 /// "21:04" (or 12 h, with the date, or nothing: the console theme says).
@@ -737,7 +806,8 @@ pub fn empty(ic: Icon, title_text: impl Into<SharedString>, body: impl Into<Shar
 
 /// Centred modal panel over a dim (sheets, console dialogs).
 pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElement) -> Div {
-    div().absolute().inset_0().child(scrim()).child(
+    // Nothing under the dim takes clicks; a click on the dim goes back.
+    div().absolute().inset_0().occlude().on_pads([Pad::B]).child(scrim()).child(
         div().absolute().inset_0().flex().items_center().justify_center().pb(u(60.)).child(panel_in(
             "modal-panel",
             div()
@@ -753,6 +823,7 @@ pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElemen
                 .border_1()
                 .border_color(ink(0.1))
                 .shadow(shadow(0.5, 18., 48.))
+                .eats_clicks()
                 .child(title(heading, 26.))
                 .child(div().flex().flex_col().flex_1().min_h_0().gap(u(14.)).child(body)),
         )),
@@ -763,7 +834,7 @@ pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElemen
 /// overlays of views embedded in a smaller area, like a settings panel).
 pub fn window_layer(window: &Window, child: impl IntoElement) -> AnyElement {
     let size = window.viewport_size();
-    deferred(anchored().position(point(px(0.), px(0.))).child(div().relative().w(size.width).h(size.height).child(child)))
+    deferred(anchored().position(point(px(0.), px(0.))).child(div().relative().w(size.width).h(size.height).occlude().child(child)))
         .with_priority(5)
         .into_any_element()
 }

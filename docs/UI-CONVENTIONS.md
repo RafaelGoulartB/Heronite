@@ -527,6 +527,23 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   window is focused): gilrs on Linux, SDL on Windows (`heronite_platform::controllers`, one thread shared by every
   listener); both feed the same `Translator` (repeats, stick and trigger thresholds). The keyboard maps to the same
   `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
+- Mouse (`console::pointer`): it presses too, so no screen handles it apart. Each window that takes presses registers a
+  router (`pointer::set_router`: the shell's `console_pad`, the overlay panel's `on_pad`); a click sends the presses that
+  bring the focus to what was clicked, then A: a row of a `console::list` is used at once (`ListNav::click`; the ‹ › of
+  a value press ◀ ▶), a cover takes the focus on the first click and opens on the second (`pointer::focus_or_activate`).
+  Hints, tabs and LB / RB glyphs press their button (`kit::hint_item`, `kit::tabs`). The wheel moves the focus one
+  press per notch (← → on Carousel and Spotlight; on a game page with long text it scrolls the text, as the right
+  stick does), the right and back buttons are B (`pointer::layer`, before the scroll areas). A hint bar faded out
+  (`Hints::Auto`) takes no clicks (`kit::hint_bar_with`). Row clicks are worked out when clicked, from one pass over
+  the rows (`list::Clicks`), so long lists stay cheap. Focus a press cannot reach in a few steps is set directly (`console_click`, `cover_click`: the menu's items,
+  the Grid and Dashboard tiles). Anything drawn over a screen (dialogs, `Layer`s, menus, panels, keyboards) occludes
+  it, so a click never reaches a screen that does not take the presses; a click on the dim around a modal, menu or
+  sheet is B. A list beside the owner's own focus (Settings' content) takes clicks through `render_entered` (→ first).
+  Hovering moves the focus (once a frame, `pointer::take_hover`) where nothing moves under the pointer: list rows,
+  the ☰ menu, the Filters panel, Settings' sections, Grid and Dashboard tiles, the overlay's rows (not the covers of
+  rows that glide). A controller press hides the cursor until the mouse moves or a key is pressed
+  (`pointer::hide_cursor` / `show_cursor`, patched into `vendor/gpui-pre-linux` and `vendor/gpui-pre-windows`). In
+  the overlay, a click on the output under the mixer switches to the next one (Y).
 - Hosting: pages register their hook in `nav.rs` (`pages.hooks`); dialogs are found by `console::registry::hook_for`
   (add new console-capable dialogs there). Overlays owned by a view use `console::Layer` (drawn by the owner; for a
   view embedded in a smaller area wrap it with `kit::window_layer`).
@@ -632,7 +649,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
 - Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
   without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
   that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
-  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`).
+  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`); `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,right` plays mouse events (points as fractions of the window; on a
+  hidden workspace keep capturing it with `grim -T`, or the clicks hit the last frame it presented).
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
@@ -687,12 +705,14 @@ until it closes), console mode's keys drive it (`console::input::pad_from_key`) 
 (`kit::key_glyph`: Enter, Esc, Q / E). "Open it without a game too" (`withoutGame`, off by default) keeps the input thread and the
 shortcut running while the app runs; the panel then has no Screenshots tab, the header says "No game running", the mixer
 has only System, and Home ends with "Open Heronite".
-The panel takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
+The panel takes controller presses from the service (`OverlayPanel::on_pad`) and the mouse as console mode does
+(`console::pointer`: tabs, rows, hints; a click on a volume bar sets that level, on its icon mutes it; a capture
+opens on a click); it never reads `OverlayService`
 (which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
-plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
+plays presses, then `HERONITE_DEBUG_OVERLAY_MOUSE` mouse events (as `HERONITE_DEBUG_MOUSE`); `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
 `HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and

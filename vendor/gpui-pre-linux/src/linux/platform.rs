@@ -305,6 +305,16 @@ struct StartupEnvironment {
 }
 
 impl LinuxPlatform {
+    /// Heronite: see [`crate::hide_cursor_until_mouse_moves`].
+    pub(crate) fn hide_cursor_now(&self) {
+        self.connection.borrow().hide_cursor_until_mouse_moves()
+    }
+
+    /// Heronite: see [`crate::show_cursor`].
+    pub(crate) fn show_cursor_now(&self) {
+        self.connection.borrow().show_cursor()
+    }
+
     /// Creates the platform, headless until `run` connects it in its initial mode.
     pub(crate) fn new(allowed_modes: WindowingModes) -> Self {
         let startup = StartupEnvironment {

@@ -58,10 +58,13 @@ shlex = "1"
 gilrs = "0.11"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Hiding and showing the cursor (console mode), which GPUI has no API for.
+gpui-pre-linux = "=0.3.8"
 ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"] }
 ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }
 
 [target.'cfg(windows)'.dependencies]
+gpui-pre-windows = "=0.3.8"
 raw-window-handle = "0.6"
 
 [dev-dependencies]

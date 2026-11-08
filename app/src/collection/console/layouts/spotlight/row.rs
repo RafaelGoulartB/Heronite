@@ -15,6 +15,8 @@ use super::super::super::super::CollectionView;
 use super::{Look, SIDE};
 use crate::console::kit::{self, u};
 use crate::console::look;
+use crate::console::pointer::{self, Clickable};
+use crate::console::Pad;
 use crate::icons::Icon;
 use crate::theme;
 
@@ -128,7 +130,9 @@ fn all_games(w: f32, h: f32, k: f32) -> Div {
 impl CollectionView {
     /// The row: `found`'s icons and "All games" after them, at `look`'s
     /// position, the name of the focused one (`index`) beside it.
-    pub(super) fn spotlight_row(&mut self, found: &[SharedString], index: usize, look: &Look, window: &Window) -> Div {
+    /// `to_row`: the presses that bring the focus to the row (a click on an
+    /// icon sends them, then ← → to it).
+    pub(super) fn spotlight_row(&mut self, found: &[SharedString], index: usize, look: &Look, to_row: &[Pad], window: &Window) -> Div {
         let k = kit::scale();
         let dpr = window.scale_factor();
         let (off, on) = (look.off, look.on);
@@ -215,7 +219,11 @@ impl CollectionView {
                 names.push(name_label(name, width, clip, p, d, off, look));
             }
             let ring = near * look.ring;
+            let mut pads = to_row.to_vec();
+            pads.extend(pointer::along(index, i, Pad::Left, Pad::Right));
+            let pads = if to_row.is_empty() { pointer::focus_or_activate(pads) } else { pads };
             let tile = div()
+                .on_pads(pads)
                 .absolute()
                 .left(u(x))
                 .top(u(PAD))

@@ -278,6 +278,12 @@ impl CollectionView {
         }
     }
 
+    /// Whether the page has long text the wheel scrolls (its lists take clicks);
+    /// the Sheet is a list alone.
+    pub(super) fn game_page_scrolls_text(&self) -> bool {
+        look::theme().game_page != GamePage::Sheet || self.console.game.sheet.full()
+    }
+
     /// The Sheet opens over the tab: its top bar stays.
     pub(super) fn game_page_keeps_tabs(&self) -> bool {
         look::theme().game_page == GamePage::Sheet && !self.console.game.sheet.full()

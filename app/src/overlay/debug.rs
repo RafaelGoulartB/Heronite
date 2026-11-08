@@ -119,13 +119,22 @@ pub(super) fn start(entity: &Entity<OverlayService>, cx: &mut App) {
     .detach();
 }
 
-/// `HERONITE_DEBUG_OVERLAY_PAD` on the panel.
+/// `HERONITE_DEBUG_OVERLAY_PAD` on the panel, then `HERONITE_DEBUG_OVERLAY_MOUSE`
+/// (`console::pointer::parse_script`).
 async fn play_script(panel: WindowHandle<super::panel::OverlayPanel>, cx: &mut AsyncApp) {
     let script = crate::env::value("HERONITE_DEBUG_OVERLAY_PAD").unwrap_or_default();
     for (wait, pad) in crate::console::input::parse_script(&script) {
         cx.background_executor().timer(wait).await;
         if panel.update(cx, |p, window, cx| p.on_pad(pad, window, cx)).is_err() {
-            break;
+            return;
+        }
+    }
+    let script = crate::env::value("HERONITE_DEBUG_OVERLAY_MOUSE").unwrap_or_default();
+    for (wait, step) in crate::console::pointer::parse_script(&script) {
+        cx.background_executor().timer(wait).await;
+        // The window alone: a click updates the panel itself.
+        if cx.update_window(panel.into(), |_, window, cx| crate::console::pointer::play(step, window, cx)).is_err() {
+            return;
         }
     }
 }

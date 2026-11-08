@@ -3521,6 +3521,8 @@ dependencies = [
  "futures",
  "gilrs",
  "gpui-kit",
+ "gpui-pre-linux",
+ "gpui-pre-windows",
  "gpui-zoom",
  "heronite-achievements",
  "heronite-amazon",

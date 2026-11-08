@@ -15,6 +15,7 @@ use super::{
 };
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
+use crate::console::pointer::Clickable;
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::dialogs::settings_panel::logic::Section as HSection;
 use crate::dialogs::settings_panel::{GlobalView, SettingsPanel, Target};
@@ -210,11 +211,23 @@ impl SettingsPage {
         let groups: Vec<SharedString> = GROUPS.iter().map(|(g, _)| SharedString::from(tr(g))).collect();
         let content_focus = self.console.content && !self.console.layer.is_open();
         let mut nav = div().flex().flex_col().gap(u(4.)).w(u(320.)).flex_none();
+        let layer_open = self.console.layer.is_open();
         for (i, s) in secs.iter().enumerate() {
             let on = i == self.console.nav;
             let focused = on && !self.console.content;
+            // A click: back from the content (B), ↑ ↓ to the section; on the
+            // focused one, → into it.
+            let mut pads = if self.console.content { vec![Pad::B] } else { Vec::new() };
+            pads.extend(crate::console::pointer::along(self.console.nav, i, Pad::Up, Pad::Down));
+            // The mouse over a section shows it, while the sections have the
+            // focus (passing over them never takes it from the content).
+            let hover = if self.console.content { Vec::new() } else { pads.clone() };
+            if pads.is_empty() {
+                pads.push(Pad::Right);
+            }
             nav = nav.child(
                 kit::row_base(focused)
+                    .when(!layer_open, |d| d.on_hover_pads(hover).on_pads(pads))
                     .min_h(u(50.))
                     .when(on && !focused, |d| d.bg(theme::white_a(0.08)))
                     .child(crate::ui::icon(s.icon(), u(20.), if focused { theme::console_on_focus() } else { theme::text_muted() }))
@@ -232,7 +245,8 @@ impl SettingsPage {
             }
             None => {
                 let rows = self.console_rows(sec, cx);
-                self.console.list.render("console-settings-rows", &rows, content_focus).size_full().into_any_element()
+                let entry = (!layer_open).then_some(&[Pad::Right][..]);
+                self.console.list.render_entered("console-settings-rows", &rows, content_focus, entry).size_full().into_any_element()
             }
         };
         let error = self.error.clone().map(|e| kit::body_text(e).text_color(theme::danger_text()));
