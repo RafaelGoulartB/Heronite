@@ -291,6 +291,9 @@ impl XboxLibrary {
                 };
                 if asked || outcome.is_err() {
                     this.account.last = Some(outcome);
+                } else if matches!(this.account.last, Some(Err(_))) {
+                    // A quiet read that worked: an earlier failure is over.
+                    this.account.last = None;
                 }
                 cx.notify();
             })
@@ -302,6 +305,10 @@ impl XboxLibrary {
 
     /// Forgets the account. What it brought stays in the Collection.
     pub fn sign_out(&mut self, cx: &mut Context<Self>) {
+        // A read under way may renew the tokens and save them again.
+        if self.account.syncing || self.account.signing_in {
+            return;
+        }
         match account::sign_out(&self.paths) {
             Ok(()) => {
                 self.account.gamertag = None;

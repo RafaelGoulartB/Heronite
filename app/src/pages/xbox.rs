@@ -22,7 +22,7 @@ use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::services::xbox_library::{open_xbox_app, XboxLibrary, XboxLibraryEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, ButtonKind};
+use crate::ui::controls::{action_button, button_sm, caption, card, icon_button_sm, row, ButtonKind};
 use crate::ui::fields::{input_box, new_input};
 use crate::ui::icon;
 
@@ -264,10 +264,12 @@ impl XboxPage {
         cx.notify();
     }
 
-    fn submit_address(&mut self, cx: &mut Context<Self>) {
+    fn submit_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.code.read(cx).value().trim().to_string();
         if !text.is_empty() {
             self.notice = None;
+            // The code inside is used once: it does not stay on screen.
+            self.code.update(cx, |s, cx| s.set_value("", window, cx));
             self.svc.update(cx, |s, cx| s.finish_sign_in(text, cx));
         }
     }
@@ -307,10 +309,14 @@ impl XboxPage {
                         )
                         .child(div().flex().child(status_pill(tr!("Signed in to Xbox"), theme::success()))),
                 )
-                .child(
-                    button("xbox-sign-out", ButtonKind::Glass, tr!("Sign out"))
-                        .on_click(cx.listener(|this, _, _, cx| this.run_action("sign-out", cx))),
-                )
+                // Not while the account is read: a renewal under way would save it again.
+                .child(action_button(
+                    "xbox-sign-out",
+                    ButtonKind::Glass,
+                    tr!("Sign out"),
+                    !syncing,
+                    cx.listener(|this, _, _, cx| this.run_action("sign-out", cx)),
+                ))
                 .into_any_element()];
             let read = icon_button_sm(
                 "xbox-account-read",
@@ -360,7 +366,7 @@ impl XboxPage {
                             ButtonKind::Primary,
                             tr!("Sign in"),
                             can_submit,
-                            cx.listener(|this, _, _, cx| this.submit_address(cx)),
+                            cx.listener(|this, _, window, cx| this.submit_address(window, cx)),
                         ),
                     ),
                 );
@@ -459,7 +465,7 @@ impl XboxPage {
                             .icon(Icon::Refresh)
                             .enabled(!account.syncing),
                     );
-                    rows.push(Row::action("sign-out", tr!("Sign out")).icon(Icon::Logout));
+                    rows.push(Row::action("sign-out", tr!("Sign out")).icon(Icon::Logout).enabled(!account.syncing));
                 }
                 None => rows.push(Row::action("sign-in", tr!("Sign in")).icon(Icon::AccountCircle).enabled(!self.window_open)),
             }

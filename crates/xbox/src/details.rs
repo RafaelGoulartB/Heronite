@@ -135,6 +135,9 @@ pub fn apply(paths: &DataPaths, titles: &[Title]) -> Result<Applied> {
     let mut new: Vec<(String, &Title)> = Vec::new();
     for title in titles.iter().filter(|t| t.is_pc_game()) {
         let Some(pfn) = title.pfn.as_deref().filter(|p| p.contains('_')) else { continue };
+        if clean_name(&title.name).is_empty() {
+            continue;
+        }
         if matched(title, &known).is_some() || new.iter().any(|(_, t)| t.pfn.as_deref() == Some(pfn)) {
             continue;
         }
@@ -146,6 +149,26 @@ pub fn apply(paths: &DataPaths, titles: &[Title]) -> Result<Applied> {
     }
     if !new.is_empty() {
         let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
+        // The entry first: metadata without one would match the title and
+        // keep it from ever being added.
+        json_store::update_value_if_changed(&paths.sideload_library(), |doc| {
+            if !doc.is_object() {
+                *doc = json!({});
+            }
+            let games = doc.as_object_mut().expect("object").entry("games").or_insert_with(|| json!([]));
+            if !games.is_array() {
+                *games = json!([]);
+            }
+            let list = games.as_array_mut().expect("array");
+            for (app, title) in &new {
+                if list.iter().any(|g| g.get("app_name").and_then(Value::as_str) == Some(app)) {
+                    continue;
+                }
+                list.push(serde_json::to_value(not_installed_entry(app, title))?);
+                applied.added += 1;
+            }
+            Ok(())
+        })?;
         json_store::update_if_changed::<LocalMetaFile, _>(&paths.local_meta(), |file| {
             for (app, title) in &new {
                 if file.games.contains_key(app) {
@@ -169,24 +192,6 @@ pub fn apply(paths: &DataPaths, titles: &[Title]) -> Result<Applied> {
                     meta.extra.insert(STORE_ID_KEY.into(), json!(p));
                 }
                 file.games.insert(app.clone(), meta);
-            }
-            Ok(())
-        })?;
-        json_store::update_value_if_changed(&paths.sideload_library(), |doc| {
-            if !doc.is_object() {
-                *doc = json!({});
-            }
-            let games = doc.as_object_mut().expect("object").entry("games").or_insert_with(|| json!([]));
-            if !games.is_array() {
-                *games = json!([]);
-            }
-            let list = games.as_array_mut().expect("array");
-            for (app, title) in &new {
-                if list.iter().any(|g| g.get("app_name").and_then(Value::as_str) == Some(app)) {
-                    continue;
-                }
-                list.push(serde_json::to_value(not_installed_entry(app, title))?);
-                applied.added += 1;
             }
             Ok(())
         })?;
@@ -391,6 +396,18 @@ mod tests {
         // Installed again and kept: the account may list it later.
         sync(&paths, &[installed("Fable.CloudHarbor_abc123", "Cloud Harbor", None)]).unwrap();
         assert!(XboxPrefs::load(&paths).removed_titles.is_empty());
+    }
+
+    #[test]
+    fn a_game_taken_out_before_the_account_stays_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        // Taken out by a version that only kept `removed`.
+        let prefs = XboxPrefs { removed: ["xbox_fable_cloudharbor_abc123".to_string()].into(), ..Default::default() };
+        json_store::write(&paths.xbox(), &prefs).unwrap();
+        sync(&paths, &[]).unwrap();
+        assert_eq!(apply(&paths, &titles()).unwrap().added, 1, "Skyward Lantern only");
+        assert!(Library::load(&paths).unwrap().get("sideload_xbox_fable_cloudharbor_abc123").is_none());
     }
 
     #[test]

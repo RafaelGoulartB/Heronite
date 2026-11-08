@@ -82,12 +82,23 @@ fn whole_minutes(v: &serde_json::Value) -> Option<u64> {
 /// ([`PLAYTIME_EDIT_KEY`]). Nothing for other games, or before the Xbox
 /// account counted anything for it.
 pub fn note_playtime_edit(paths: &DataPaths, app_name: &str, minutes: u64) -> Result<()> {
+    note_playtime_edits(paths, [(app_name, minutes)])
+}
+
+/// [`note_playtime_edit`] for several games, in one write.
+pub fn note_playtime_edits<'a>(paths: &DataPaths, edits: impl IntoIterator<Item = (&'a str, u64)>) -> Result<()> {
+    let edits: Vec<(&str, u64)> = edits.into_iter().collect();
+    if edits.is_empty() {
+        return Ok(());
+    }
     json_store::update_if_changed::<LocalMetaFile, _>(&paths.local_meta(), |file| {
-        let Some(meta) = file.games.get_mut(app_name).filter(|m| m.source == SOURCE) else { return Ok(()) };
-        match meta.extra.get(MINUTES_KEY).and_then(whole_minutes) {
-            Some(xbox) => meta.extra.insert(PLAYTIME_EDIT_KEY.into(), serde_json::json!({"minutes": minutes, "xboxMinutes": xbox})),
-            None => meta.extra.remove(PLAYTIME_EDIT_KEY),
-        };
+        for (app_name, minutes) in edits {
+            let Some(meta) = file.games.get_mut(app_name).filter(|m| m.source == SOURCE) else { continue };
+            match meta.extra.get(MINUTES_KEY).and_then(whole_minutes) {
+                Some(xbox) => meta.extra.insert(PLAYTIME_EDIT_KEY.into(), serde_json::json!({"minutes": minutes, "xboxMinutes": xbox})),
+                None => meta.extra.remove(PLAYTIME_EDIT_KEY),
+            };
+        }
         Ok(())
     })
 }

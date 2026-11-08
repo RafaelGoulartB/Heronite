@@ -97,6 +97,8 @@ fn renew_account(paths: &DataPaths, http: &dyn Http, client_id: &str, mut accoun
     let renewed = auth::refresh(http, client_id, &account.refresh_token)
         .and_then(|Live { access_token, refresh_token }| Ok(Account { xsts: auth::xsts(http, &access_token)?, refresh_token }));
     match renewed {
+        // Signed out while the tokens were renewed: they are not kept.
+        Ok(_) if !path(paths).exists() => Err(crate::live::SignedOut.into()),
         Ok(fresh) => {
             account = fresh;
             save(paths, &account)?;

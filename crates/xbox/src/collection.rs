@@ -63,19 +63,17 @@ fn meta(app: &str, game: &XboxGame, status: &str) -> LocalGameMeta {
     meta
 }
 
-/// Writes the game's title id and Store product id into its metadata (or
-/// takes out one its files no longer name). Whether that changed anything.
+/// Writes the game's title id and Store product id into its metadata, when
+/// its files name them. One they do not name stays: the Xbox account may
+/// have given it (a game's ids do not change). Whether that changed anything.
 fn set_title_id(meta: &mut LocalGameMeta, game: &XboxGame) -> bool {
     let mut changed = false;
     for (key, value) in [(TITLE_ID_KEY, &game.title_id), (STORE_ID_KEY, &game.store_id)] {
-        if meta.extra.get(key).and_then(Value::as_str) == value.as_deref() {
-            continue;
+        let Some(id) = value else { continue };
+        if meta.extra.get(key).and_then(Value::as_str) != Some(id.as_str()) {
+            meta.extra.insert(key.into(), json!(id));
+            changed = true;
         }
-        match value {
-            Some(id) => meta.extra.insert(key.into(), json!(id)),
-            None => meta.extra.remove(key),
-        };
-        changed = true;
     }
     changed
 }
@@ -180,6 +178,9 @@ pub fn sync(paths: &DataPaths, games: &[XboxGame]) -> Result<Report> {
 
     let touched = report != Report::default();
     json_store::update_if_changed::<XboxPrefs, _>(&paths.xbox(), |prefs| {
+        // Every game taken out stays out of what the account brings, also
+        // those taken out before `removed_titles` was kept.
+        prefs.removed_titles.extend(prefs.removed.iter().cloned());
         prefs.removed.retain(|a| present.contains(a));
         // Installed again and kept: the account may list it again later.
         let kept: Vec<String> =
@@ -288,7 +289,13 @@ mod tests {
         assert_eq!(sync(&paths, std::slice::from_ref(&forza)).unwrap(), Report { added: 0, updated: 1 });
         let m = Library::load(&paths).unwrap().get("sideload_xbox_studio_forza_abc").unwrap().meta.clone().unwrap();
         assert_eq!(m.extra.get(TITLE_ID_KEY), Some(&json!("79FC11E1")));
+        assert_eq!(sync(&paths, std::slice::from_ref(&forza)).unwrap(), Report::default());
+
+        // Files that no longer name it (the account may have given it): kept, nothing written.
+        forza.title_id = None;
         assert_eq!(sync(&paths, &[forza]).unwrap(), Report::default());
+        let m = Library::load(&paths).unwrap().get("sideload_xbox_studio_forza_abc").unwrap().meta.clone().unwrap();
+        assert_eq!(m.extra.get(TITLE_ID_KEY), Some(&json!("79FC11E1")));
     }
 
     #[test]

@@ -83,7 +83,8 @@ pub struct Synced {
 ///
 /// When Xbox network refuses the saved token (it may be revoked before its
 /// end), a new one is made from the refresh token and the account read
-/// again; refused again, the sign-in is forgotten ([`SignedOut`]).
+/// again. Only Microsoft refusing the refresh token forgets the sign-in
+/// ([`SignedOut`]); a new token refused too is an error, the sign-in kept.
 pub fn sync(paths: &DataPaths, http: &dyn Http, client_id: &str, installed: &[String]) -> Result<Synced> {
     let xsts = account::xsts(paths, http, client_id)?;
     let titles = match read_titles(http, &xsts, installed) {
@@ -91,10 +92,10 @@ pub fn sync(paths: &DataPaths, http: &dyn Http, client_id: &str, installed: &[St
             log::info!("xbox: the account's token was refused; renewing it");
             let xsts = account::renew(paths, http, client_id)?;
             match read_titles(http, &xsts, installed) {
-                Err(e) if e.is::<SignedOut>() => {
-                    account::sign_out(paths)?;
-                    return Err(e);
-                }
+                // Microsoft just took the refresh token: the sign-in is good
+                // and is kept; Xbox network refusing a new token is its
+                // trouble, tried again at the next read.
+                Err(e) if e.is::<SignedOut>() => anyhow::bail!("Xbox network refused a new sign-in token (HTTP 401)"),
                 other => other?,
             }
         }
@@ -197,10 +198,11 @@ mod tests {
     }
 
     /// Xbox network refuses a saved token that has not ended: it is renewed
-    /// once; refused again, the sign-in is forgotten.
+    /// once. A new token refused too keeps the sign-in; Microsoft refusing
+    /// the refresh token forgets it.
     #[cfg(windows)]
     #[test]
-    fn a_refused_token_is_renewed_once_then_the_sign_in_is_forgotten() {
+    fn a_refused_token_is_renewed_once() {
         use crate::live::auth::tests::{CLIENT, LIVE_OK, USER_OK, XSTS_OK};
         use crate::live::http::Fake;
 
@@ -223,9 +225,16 @@ mod tests {
         assert_eq!(fake.sent().len(), 5);
         assert!(account::load(&paths).is_some(), "still signed in");
 
-        // Refused again after renewing: the sign-in is forgotten.
+        // The new token refused too: an error, the sign-in kept.
         still_good(&paths);
         let fake = Fake::new(&[(401, ""), (200, LIVE_OK), (200, USER_OK), (200, XSTS_OK), (401, "")]);
+        let err = sync(&paths, &fake, CLIENT, &[]).unwrap_err();
+        assert!(!err.is::<SignedOut>(), "{err:#}");
+        assert!(account::load(&paths).is_some());
+
+        // Microsoft no longer takes the refresh token: forgotten.
+        still_good(&paths);
+        let fake = Fake::new(&[(401, ""), (400, r#"{"error":"invalid_grant"}"#)]);
         assert!(sync(&paths, &fake, CLIENT, &[]).unwrap_err().is::<SignedOut>());
         assert!(account::load(&paths).is_none());
     }
