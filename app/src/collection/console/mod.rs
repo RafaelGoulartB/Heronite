@@ -56,6 +56,11 @@ pub(super) enum Screen {
 #[derive(Default)]
 pub(super) struct ConsoleUi {
     thread: Option<input::PadThread>,
+    /// Console mode made the window fullscreen; leaving it switches back.
+    fullscreened: bool,
+    /// Entered behind a game (the window was not active): fullscreen waits
+    /// for the window to come back to the front.
+    fullscreen_later: Option<Subscription>,
     pub screen: Screen,
     /// The tab shown (index in the theme's tabs).
     pub tab: usize,
@@ -141,9 +146,18 @@ impl CollectionView {
         // `=filters` for the Filters panel,
         // `=power` for the Power menu or `=power:reboot|poweroff` for its question.
         let debug = crate::env::value("HERONITE_DEBUG_CONSOLE");
-        self.console_startup(window, cx);
+        // A window closed to the tray in console mode (or for a game) left
+        // the flag and the theme of its view on: this view enters console
+        // mode again on its own, and comes back to it whatever `openIn` says.
+        let reopened = console::active();
+        if reopened {
+            console::set_active(false);
+            look::clear();
+        }
+        self.console_startup(reopened, window, cx);
         if (self.ui.console_mode || debug.is_some()) && !console::active() {
-            self.enter_console(window, cx);
+            // The window opens fullscreen for it (`hub::show_window`).
+            self.enter_console(false, window, cx);
         }
         if let Some(key) = debug.as_deref().and_then(|d| d.strip_prefix("game:")) {
             self.open_game_page(key.to_string().into());
@@ -163,6 +177,13 @@ impl CollectionView {
     }
 
     pub(super) fn set_console(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_console(on, true, window, cx);
+    }
+
+    /// [`set_console`](Self::set_console); `go_fullscreen`: entering switches
+    /// the window to fullscreen when console mode asks for it (`false`: it
+    /// was opened that way).
+    pub(in crate::collection) fn switch_console(&mut self, on: bool, go_fullscreen: bool, window: &mut Window, cx: &mut Context<Self>) {
         if on == console::active() {
             return;
         }
@@ -170,8 +191,13 @@ impl CollectionView {
         self.save_ui();
         if on {
             self.mark_onboarding(crate::dialogs::onboarding::Step::Console);
-            self.enter_console(window, cx);
+            self.enter_console(go_fullscreen, window, cx);
         } else {
+            // Back to a window when console mode made it fullscreen (and F11
+            // has not switched it back already).
+            if self.console.fullscreened && window.is_fullscreen() && !crate::system::fullscreen_asked(cx) {
+                window.toggle_fullscreen();
+            }
             console::set_active(false);
             look::clear();
             console::themes::forget();
@@ -195,7 +221,8 @@ impl CollectionView {
         self.dialog_hook = None;
     }
 
-    fn enter_console(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// `go_fullscreen`: see [`switch_console`](Self::switch_console).
+    fn enter_console(&mut self, go_fullscreen: bool, window: &mut Window, cx: &mut Context<Self>) {
         // The theme first: everything drawn from here on reads it.
         let mut prefs = console::themes::prefs(&self.app_paths);
         // `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>`:
@@ -220,6 +247,23 @@ impl CollectionView {
             self.console.tab = prefs.last_tab.min(prefs.theme.tabs.len().saturating_sub(1));
         }
         self.console.theme_epoch = look::epoch();
+        // Fullscreen (`fullscreen`), unless `--fullscreen` already holds it
+        // for the whole run.
+        if prefs.fullscreen && !crate::system::fullscreen_asked(cx) {
+            if !go_fullscreen {
+                self.console.fullscreened = true;
+            } else if !window.is_window_active() {
+                // A controller connected while a game is in front.
+                self.console.fullscreen_later = Some(cx.observe_window_activation(window, |this, window, _| {
+                    if window.is_window_active() && this.console.fullscreen_later.is_some() && console::active() {
+                        this.console.fullscreen_later = None;
+                        this.go_fullscreen(window);
+                    }
+                }));
+            } else {
+                self.go_fullscreen(window);
+            }
+        }
         if let Some((thread, rx)) = input::start() {
             self.console.thread = Some(thread);
             Self::spawn_pad_pump(rx, window, cx);
@@ -239,6 +283,14 @@ impl CollectionView {
         self.show_console_hints(cx);
         self.console_controls_started(window, cx);
         cx.notify();
+    }
+
+    /// Console mode's fullscreen (once the window is in front).
+    fn go_fullscreen(&mut self, window: &mut Window) {
+        if !window.is_fullscreen() {
+            window.toggle_fullscreen();
+            self.console.fullscreened = true;
+        }
     }
 
     fn spawn_pad_pump(mut rx: futures::channel::mpsc::UnboundedReceiver<PadMsg>, window: &mut Window, cx: &mut Context<Self>) {

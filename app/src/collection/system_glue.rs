@@ -19,9 +19,10 @@ use heronite_i18n::tr;
 
 impl CollectionView {
     /// `--console`: switches to console mode the way the palette's "Console
-    /// mode" does (remembered).
-    pub fn enter_console_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.set_console(true, window, cx);
+    /// mode" does (remembered). `opened`: the window was just opened for it
+    /// (already fullscreen when console mode asks for it).
+    pub fn enter_console_mode(&mut self, opened: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_console(true, !opened, window, cx);
     }
 
     /// Selects the game and presses its primary button (play, or the install

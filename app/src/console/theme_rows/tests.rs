@@ -63,6 +63,9 @@ fn startup_options_live_in_the_prefs_not_the_theme() {
     assert_eq!(p.open_in, heronite_data::console_theme::OpenIn::Console);
     assert!(change(&mut p, "startup.idle", choice(2)));
     assert_eq!(p.idle, heronite_data::console_theme::Idle::Dim);
+    assert!(p.fullscreen, "on by default");
+    assert!(change(&mut p, "startup.fullscreen", Value::Toggle(false)));
+    assert!(!p.fullscreen);
 }
 
 #[test]

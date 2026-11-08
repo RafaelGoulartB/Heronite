@@ -15,7 +15,7 @@ use super::debug::debug_hooks;
 use super::events::{on_event, on_message, on_tray_cmd};
 use super::launch::launch;
 use super::quit::graceful_quit;
-use super::window::{apply_window_flags, on_window_closed, show_window};
+use super::window::{apply_window_flags, on_window_closed, show_window_for};
 use super::{hub, Hub, State};
 use crate::runtime::GameRuntime;
 use crate::system::cli::Cli;
@@ -158,11 +158,11 @@ pub fn init(
     })
     .detach();
 
-    if want_window || unreachable {
-        show_window(cx);
-    }
+    // `--console` opens the window the way console mode wants it (fullscreen)
+    // instead of switching it while it is still being mapped.
+    let opened = (want_window || unreachable) && show_window_for(cx, cli.console && !hide).is_some();
     if !hide {
-        apply_window_flags(cx, cli.console, false);
+        apply_window_flags(cx, cli.console, false, opened);
     }
     if let Some(req) = cli.launch {
         launch(cx, req, hide, false);
