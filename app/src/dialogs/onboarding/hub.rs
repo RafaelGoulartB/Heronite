@@ -1,5 +1,6 @@
 //! The first view: the three cards (your games, your look, while you play)
-//! and the tips to discover later.
+//! and the tips to discover later. Each step not settled yet offers "Not
+//! used"; a step marked so shows it dimmed, with "Undo".
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -74,6 +75,18 @@ fn dim(text: impl Into<SharedString>) -> Div {
     div().text_size(px(12.5)).text_color(theme::text_dim()).child(text.into())
 }
 
+/// A small text that acts ("Not used", "Undo"), dim until hovered.
+fn text_link(id: impl Into<ElementId>, text: &'static str) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .text_size(px(12.))
+        .text_color(theme::text_dim())
+        .cursor_pointer()
+        .hover(|s| s.text_color(theme::text_primary()))
+        .child(text)
+}
+
 /// The picture of a card, cut to its height (wider boards show their top).
 fn framed(picture: Div) -> Div {
     div().absolute().top(px(10.)).left_0().right_0().flex().justify_center().child(picture)
@@ -96,16 +109,50 @@ impl OnboardingDialog {
             .child(self.render_tips(cx))
     }
 
+    /// The right side of a counted step's row: `control` with "Not used"
+    /// beside it (after it with `link_after`) until the step is done, or
+    /// "Not used · Undo" once marked so. A click on a link stays on it (the
+    /// row or the card may have their own).
+    fn settled(&self, step: Step, control: AnyElement, link_after: bool, cx: &mut Context<Self>) -> Div {
+        let f = &self.facts;
+        let id = |what: &str| SharedString::from(format!("onb-{what}-{}", step.id()));
+        if f.is_skipped(step) {
+            return div().flex().items_center().gap(px(10.)).child(dim(tr!("Not used"))).child(
+                text_link(id("undo"), tr!("Undo")).on_click(cx.listener(move |this, _, _, cx| {
+                    cx.stop_propagation();
+                    this.skip(step, false, cx);
+                })),
+            );
+        }
+        let link = (!f.is_done(step) && f.counted().contains(&step)).then(|| {
+            text_link(id("skip"), tr!("Not used")).on_click(cx.listener(move |this, _, _, cx| {
+                cx.stop_propagation();
+                this.skip(step, true, cx);
+            }))
+        });
+        let row = div().flex().items_center().gap(px(10.));
+        if link_after {
+            row.child(control).children(link)
+        } else {
+            row.children(link).child(control)
+        }
+    }
+
+    /// A source of the games card: its games, or a hint until it brings some.
+    fn source_line(&self, step: Step, hint: &'static str, cx: &mut Context<Self>) -> AnyElement {
+        let f = &self.facts;
+        let control = match (f.count_line(step), f.found_line(step)) {
+            (Some(n), _) => done_label(n).into_any_element(),
+            (None, Some(found)) => dim(format!("{found}  \u{b7}  {hint}")).into_any_element(),
+            (None, None) => dim(hint).into_any_element(),
+        };
+        line(step.icon(), step.title(), self.settled(step, control, true, cx))
+            .when(f.is_skipped(step), |d| d.opacity(0.6))
+            .into_any_element()
+    }
+
     fn games_card(&self, art: &Art, cx: &mut Context<Self>) -> Stateful<Div> {
         let f = &self.facts;
-        let source = |step: Step, hint: &'static str| {
-            let right = match (f.count_line(step), f.found_line(step)) {
-                (Some(n), _) => done_label(n).into_any_element(),
-                (None, Some(found)) => dim(format!("{found}  \u{b7}  {hint}")).into_any_element(),
-                (None, None) => dim(hint).into_any_element(),
-            };
-            line(step.icon(), step.title(), right).into_any_element()
-        };
         let total = f.games();
         let launchers = heronite_platform::supported(heronite_platform::Feature::LauncherImports).then(|| self.launchers_line(cx));
         let add_hint = if cfg!(windows) { tr!("Windows, web") } else { tr!("Linux, Windows, web") };
@@ -127,9 +174,9 @@ impl OnboardingDialog {
                     .child(icon(Icon::ChevronRight, px(16.), theme::text_dim())),
             ),
             [
-                Step::Steam.available().then(|| source(Step::Steam, tr!("open Steam"))),
-                Step::Stores.available().then(|| source(Step::Stores, tr!("log in"))),
-                Step::Emulators.available().then(|| source(Step::Emulators, tr!("set up"))),
+                Step::Steam.available().then(|| self.source_line(Step::Steam, tr!("open Steam"), cx)),
+                Step::Stores.available().then(|| self.source_line(Step::Stores, tr!("log in"), cx)),
+                Step::Emulators.available().then(|| self.source_line(Step::Emulators, tr!("set up"), cx)),
                 launchers,
                 Some(line(Icon::Add, tr!("Add a game"), dim(add_hint)).into_any_element()),
             ]
@@ -178,11 +225,25 @@ impl OnboardingDialog {
             StartView::Focus => tr!("Focus"),
             StartView::Grid => tr!("Grid"),
         };
+        // The default look is a fine answer too.
+        let keep = !self.facts.is_done(Step::Appearance) && self.facts.counted().contains(&Step::Appearance);
         card(
             "onb-card-look",
             framed(art::collection_preview(art, VISUAL_W, self.preview_grid())),
             tr!("Your look").into(),
-            Some(div().child(icon(Icon::ChevronRight, px(16.), theme::text_dim()))),
+            Some(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .when(keep, |d| {
+                        d.child(text_link("onb-look-keep", tr!("Keep as it is")).on_click(cx.listener(|this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.go(Step::Appearance, Action::Done(Step::Appearance), cx);
+                        })))
+                    })
+                    .child(icon(Icon::ChevronRight, px(16.), theme::text_dim())),
+            ),
             vec![
                 line(Icon::ViewSidebar, tr!("Open the Collection in"), dim(start)).into_any_element(),
                 line(Icon::Palette, tr!("Profile"), dim(profile)).into_any_element(),
@@ -203,7 +264,9 @@ impl OnboardingDialog {
     /// A row of the third card that a click switches.
     fn switch_line(&self, step: Step, label: impl Into<SharedString>, extra: Option<Div>, cx: &mut Context<Self>) -> AnyElement {
         let on = self.facts.is_done(step);
-        line(step.icon(), label, toggle(SharedString::from(format!("onb-sw-{}", step.id())), on, false))
+        let control = toggle(SharedString::from(format!("onb-sw-{}", step.id())), on, false).into_any_element();
+        line(step.icon(), label, self.settled(step, control, false, cx))
+            .when(self.facts.is_skipped(step), |d| d.opacity(0.6))
             .when_some(extra, |d, e| d.child(e))
             .id(SharedString::from(format!("onb-line-{}", step.id())))
             .cursor_pointer()
@@ -220,24 +283,28 @@ impl OnboardingDialog {
             line(Step::Overlay.icon(), Step::Overlay.title(), dim(tr!("Not on this desktop"))).into_any_element()
         };
         let saves = match f.ludusavi {
-            Some(false) if !f.saves => line(
-                Step::Saves.icon(),
-                Step::Saves.title(),
-                button_sm("onb-saves-setup", ButtonKind::Ghost, tr!("Set up"))
-                    .on_click(cx.listener(|this, _, _, cx| this.go(Step::Saves, Action::Settings(Section::Saves), cx))),
-            )
-            .into_any_element(),
+            Some(false) if !f.saves => {
+                let setup = button_sm("onb-saves-setup", ButtonKind::Ghost, tr!("Set up"))
+                    .on_click(cx.listener(|this, _, _, cx| this.go(Step::Saves, Action::Settings(Section::Saves), cx)));
+                line(Step::Saves.icon(), Step::Saves.title(), self.settled(Step::Saves, setup.into_any_element(), false, cx))
+                    .when(f.is_skipped(Step::Saves), |d| d.opacity(0.6))
+                    .into_any_element()
+            }
             _ => self.switch_line(Step::Saves, Step::Saves.title(), None, cx),
         };
         let proton = match &f.proton {
             Some(name) => line(Step::Proton.icon(), tr!("Proton for Windows games"), done_label(short_proton(name))).into_any_element(),
-            None => line(
-                Step::Proton.icon(),
-                tr!("Proton for Windows games"),
-                button_sm("onb-proton", ButtonKind::Glass, tr!("Download"))
-                    .on_click(cx.listener(|this, _, _, cx| this.go(Step::Proton, Action::Page(Page::WineManager), cx))),
-            )
-            .into_any_element(),
+            None => {
+                let download = button_sm("onb-proton", ButtonKind::Glass, tr!("Download"))
+                    .on_click(cx.listener(|this, _, _, cx| this.go(Step::Proton, Action::Page(Page::WineManager), cx)));
+                line(
+                    Step::Proton.icon(),
+                    tr!("Proton for Windows games"),
+                    self.settled(Step::Proton, download.into_any_element(), false, cx),
+                )
+                .when(f.is_skipped(Step::Proton), |d| d.opacity(0.6))
+                .into_any_element()
+            }
         };
         card(
             "onb-card-play",
