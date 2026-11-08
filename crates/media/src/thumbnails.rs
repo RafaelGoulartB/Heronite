@@ -16,10 +16,14 @@
 //! * least-recently-used eviction (access time, refreshed on every hit) down
 //!   to the limit, and entries whose original vanished are removed.
 //!
+//! Replays get their posters here too ([`ThumbnailCache::poster`], drawn by
+//! [`crate::posters`]), under the same budget.
+//!
 //! All methods are blocking; call them from worker threads. The UI-facing
 //! entry point is [`ThumbnailCache::thumbnail`], which returns a BGRA
 //! [`heronite_images::Decoded`].
 
+use crate::posters::{self, Poster};
 use heronite_images::{Decoded, Filter, ImageRef, Opts};
 use image::codecs::jpeg::JpegEncoder;
 use sha2::{Digest, Sha256};
@@ -34,6 +38,8 @@ pub const THUMB_WIDTH: u32 = 320;
 pub const THUMB_HEIGHT: u32 = 180;
 pub const THUMB_QUALITY: u8 = 60;
 pub const MAX_CONCURRENT_JOBS: usize = 3;
+/// Fields of a preview's sidecar.
+type Meta = serde_json::Map<String, serde_json::Value>;
 /// Quiet period after a generation before the cache is trimmed.
 pub const MAINTENANCE_DELAY: Duration = Duration::from_millis(1500);
 
@@ -245,8 +251,35 @@ impl ThumbnailCache {
     }
 
     fn ensure(&self, source: &Path) -> Result<(PathBuf, Option<Decoded>), ThumbError> {
+        let fresh = self.ensure_with(source, &self.cache_path_for(source), |s| Ok((render_preview(s)?, Meta::new())))?;
+        Ok((fresh.0, fresh.1.map(|(d, _)| d)))
+    }
+
+    /// Poster of a replay (see [`crate::posters`]): a frame of the video as a
+    /// 320x180 preview, and its length.
+    pub fn poster(&self, video: &Path) -> Result<Poster, ThumbError> {
+        let len = fs::metadata(video)?.len();
+        let cache = self.inner.root.join(format!("{}.jpg", posters::key(video, len)));
+        match self.ensure_with(video, &cache, posters::render)? {
+            (_, Some((image, meta))) => Ok(Poster { image, seconds: posters::seconds_in(&meta) }),
+            (path, None) => {
+                let meta = fs::read_to_string(sidecar(&path)).ok().and_then(|t| serde_json::from_str::<Meta>(&t).ok()).unwrap_or_default();
+                Ok(Poster { image: decode_cached(&path)?, seconds: posters::seconds_in(&meta) })
+            }
+        }
+    }
+
+    /// Makes sure `cache` holds the preview of `source` that `render` draws;
+    /// the fields it returns go to the sidecar, next to `sourcePath`. Gives
+    /// back the raster and those fields when it was drawn now.
+    fn ensure_with(
+        &self,
+        source: &Path,
+        cache: &Path,
+        render: impl FnOnce(&Path) -> Result<(Decoded, Meta), ThumbError>,
+    ) -> Result<(PathBuf, Option<(Decoded, Meta)>), ThumbError> {
         let inner = &*self.inner;
-        let cache = self.cache_path_for(source);
+        let cache = cache.to_path_buf();
         if self.current(source, &cache) {
             return Ok((cache, None));
         }
@@ -277,18 +310,21 @@ impl ThumbnailCache {
                 return Ok((cache.clone(), None));
             }
             fs::create_dir_all(&inner.root)?;
-            let raster = render_preview(source)?;
+            let (raster, fields) = render(source)?;
             let jpeg = encode_jpeg(&raster)?;
-            let tmp = inner.root.join(format!(".{}.tmp", cache_key(source)));
+            let stem = cache.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let tmp = inner.root.join(format!(".{stem}.tmp"));
             fs::write(&tmp, &jpeg)?;
             fs::rename(&tmp, &cache)?;
             if generation != inner.generation.load(Ordering::SeqCst) {
                 let _ = fs::remove_file(&cache);
                 return Err(ThumbError::Cancelled);
             }
-            let meta = serde_json::json!({ "sourcePath": source.to_string_lossy() });
-            fs::write(sidecar(&cache), meta.to_string())?;
-            Ok((cache.clone(), Some(raster)))
+            let mut meta = Meta::new();
+            meta.insert("sourcePath".into(), source.to_string_lossy().into());
+            meta.extend(fields.clone());
+            fs::write(sidecar(&cache), serde_json::Value::Object(meta).to_string())?;
+            Ok((cache.clone(), Some((raster, fields))))
         })();
 
         {

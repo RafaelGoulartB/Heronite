@@ -1,6 +1,8 @@
 //! The Journal view of the focus panel: a search box, "where I left off",
 //! then each day as text (a paragraph per note, its time in the margin) over
-//! a mosaic of the day's screenshots. Days without notes take one line.
+//! a mosaic of the day's screenshots. A note about a replay is a card: the
+//! replay's poster beside its words, with Watch and Open folder. Days without
+//! notes take one line.
 
 use chrono::{Datelike, Local, NaiveDate, TimeZone};
 use gpui_kit::component::input::Textarea;
@@ -15,6 +17,7 @@ use heronite_i18n::{tr, trn};
 
 use super::{Edit, Target};
 use crate::collection::focus::panel;
+use crate::collection::replays::{clip_length, replays_badge, ClipTile};
 use crate::collection::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
@@ -31,6 +34,13 @@ const MOSAIC_GAP: f32 = 6.;
 const STRIP: usize = 5;
 /// Width of the notes' column under which a quiet day's button says only "Note".
 const QUIET_NARROW_W: f32 = 520.;
+/// A replay's poster in its card.
+const CLIP_W: f32 = 192.;
+const CLIP_H: f32 = 108.;
+/// Width of the notes' column under which a replay's card puts its poster
+/// above its words, as wide as the card.
+const CLIP_CARD_MIN_W: f32 = 430.;
+const CLIP_CARD_PAD: f32 = 8.;
 const TEXT: f32 = 14.4;
 const LINE: f32 = 22.;
 
@@ -284,6 +294,7 @@ impl CollectionView {
                     .child(long_date(day.date, this_year)),
             )
             .child(div().text_size(px(12.5)).text_color(theme::ink_a(0.5)).child(day_meta(t)))
+            .children(Some(day.entries.iter().filter(|i| entries[**i].clip.is_some()).count()).filter(|n| *n > 0).map(replays_badge))
             .child(div().flex_1())
             .child(
                 add_button(SharedString::from(format!("jday-add-{n}")), tr!("Note"))
@@ -302,7 +313,7 @@ impl CollectionView {
             .border_color(theme::ink_a(if n == 0 { 0. } else { 0.07 }))
             .child(head.mb(px(4.)));
         for i in &day.entries {
-            col = col.child(self.journal_paragraph(&entries[*i], cx));
+            col = col.child(self.journal_paragraph(&entries[*i], content_w, cx));
         }
         let new_here = self.journal.edit.as_ref().filter(|_| self.journal.new_note_date() == Some(day.date));
         if let Some(edit) = new_here {
@@ -319,7 +330,7 @@ impl CollectionView {
         col.into_any_element()
     }
 
-    fn journal_paragraph(&mut self, e: &Entry, cx: &mut Context<Self>) -> Div {
+    fn journal_paragraph(&mut self, e: &Entry, content_w: f32, cx: &mut Context<Self>) -> Div {
         let id = e.id.clone();
         let group: SharedString = format!("jp-{id}").into();
         let time = div()
@@ -332,6 +343,9 @@ impl CollectionView {
                 d.child(icon(if e.clip.is_some() { Icon::Videocam } else { Icon::Flag }, px(11.), theme::readable(theme::console_btn_y())))
             })
             .child(time_of(e));
+        if let Some(clip) = e.clip.clone() {
+            return self.journal_clip(e, clip, time, content_w, cx);
+        }
         let editing = self.journal.edit.as_ref().filter(|ed| ed.target == Target::Entry(id.clone()));
         if let Some(edit) = editing {
             return margin_row(time, editor(edit, TEXT, cx));
@@ -341,9 +355,7 @@ impl CollectionView {
             let path = self.shots.items[i].path.clone();
             self.shots.thumb(&path).map(|src| (i, src))
         });
-        let text = if e.is_moment() && e.clip.is_some() {
-            div().text_color(theme::ink_a(0.38)).child(tr!("A replay saved in-game. Click to write about it."))
-        } else if e.is_moment() {
+        let text = if e.is_moment() {
             div().text_color(theme::ink_a(0.38)).child(tr!("A moment marked in-game. Click to write about it."))
         } else {
             div().text_color(theme::ink_a(0.9)).child(e.text.clone())
@@ -377,45 +389,136 @@ impl CollectionView {
                     .child(img(src).size_full().object_fit(ObjectFit::Cover))
                     .on_click(cx.listener(move |this, _, window, cx| this.shots_open_view(i, window, cx)))
             }))
-            .children(e.clip.clone().map(|clip| replay_tile(&id, clip, cx)))
-            .child(
-                div()
-                    .id(SharedString::from(format!("jp-del-{id}")))
-                    .flex_none()
-                    .size(px(24.))
-                    .mt(px(-1.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(6.))
-                    .cursor_pointer()
-                    .opacity(0.)
-                    .group_hover(group.clone(), |s| s.opacity(1.))
-                    .hover(|s| s.bg(theme::ink_a(0.08)))
-                    .child(icon(Icon::DeleteOutline, px(15.), theme::ink_a(0.6)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.journal_delete(&id, cx))),
-            );
+            .child(delete_button(&id, group.clone(), cx));
         margin_row(time, body).group(group)
+    }
+
+    /// A note about a replay: the poster beside its words (above them when
+    /// the column is narrow), with Watch and Open folder under the words.
+    fn journal_clip(&mut self, e: &Entry, clip: String, time: Div, content_w: f32, cx: &mut Context<Self>) -> Div {
+        let id = e.id.clone();
+        let group: SharedString = format!("jp-{id}").into();
+        let path = std::path::PathBuf::from(&clip);
+        let narrow = content_w < CLIP_CARD_MIN_W;
+        let (w, h) = if narrow {
+            let w = (content_w - 2. * CLIP_CARD_PAD - 2.).max(120.);
+            (w, w * 9. / 16.)
+        } else {
+            (CLIP_W, CLIP_H)
+        };
+        let tile = ClipTile { id: SharedString::from(format!("jp-clip-{id}")), path: path.clone(), w, h, time: None, caption: None };
+        let poster = self.clip_tile(tile, cx);
+        let ink = theme::readable(theme::replay());
+        let kind = tr!("Replay").to_uppercase();
+        let kicker = div()
+            .flex()
+            .items_center()
+            .gap(px(6.))
+            .text_size(px(11.))
+            .line_height(px(16.))
+            .font_weight(theme::W_BOLD)
+            .text_color(ink)
+            .child(icon(Icon::Videocam, px(13.), ink))
+            .child(match self.shots.clip_seconds(&path) {
+                Some(s) => format!("{kind} · {}", clip_length(s)),
+                None => kind,
+            })
+            .child(div().flex_1())
+            .child(delete_button(&id, group.clone(), cx).my(px(-4.)));
+        let editing = self.journal.edit.as_ref().filter(|ed| ed.target == Target::Entry(id.clone()));
+        let words: AnyElement = match editing {
+            Some(edit) => editor(edit, TEXT, cx).into_any_element(),
+            None => {
+                let edit_id = id.clone();
+                let text = if e.is_moment() {
+                    div().text_color(theme::ink_a(0.38)).child(tr!("A replay saved in-game. Click to write about it."))
+                } else {
+                    div().text_color(theme::ink_a(0.9)).child(e.text.clone())
+                };
+                div()
+                    .id(SharedString::from(format!("jp-text-{id}")))
+                    .cursor_text()
+                    .child(text)
+                    .on_click(cx.listener(move |this, _, window, cx| this.journal_edit(Target::Entry(edit_id.clone()), window, cx)))
+                    .into_any_element()
+            }
+        };
+        let folder = path.parent().map(|p| p.to_path_buf());
+        let actions = div()
+            .flex()
+            .flex_wrap()
+            .gap(px(6.))
+            .mt(px(6.))
+            .child(
+                card_button(SharedString::from(format!("jp-watch-{id}")), Icon::PlayArrow, tr!("Watch"), true)
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_replay(path.clone(), cx))),
+            )
+            .children(folder.map(|dir| {
+                card_button(SharedString::from(format!("jp-folder-{id}")), Icon::FolderOpen, tr!("Open folder"), false)
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_folder(dir.clone(), cx)))
+            }));
+        let side = div().flex().flex_col().flex_1().min_w_0().gap(px(4.)).child(kicker).child(words).child(div().flex_1()).child(actions);
+        let card = div()
+            .flex()
+            .when(narrow, |d| d.flex_col())
+            .gap(px(if narrow { 8. } else { 14. }))
+            .p(px(CLIP_CARD_PAD))
+            .rounded(px(10.))
+            .bg(theme::ink_a(0.035))
+            .border_1()
+            .border_color(theme::ink_a(0.07))
+            .child(poster)
+            .child(side);
+        margin_row(time, card).group(group)
     }
 }
 
-/// The replay a note is about: a play button that opens it in the video player.
-fn replay_tile(id: &str, clip: String, cx: &mut Context<CollectionView>) -> Stateful<Div> {
+/// Deletes the note; shown while its row is under the pointer.
+fn delete_button(id: &str, group: SharedString, cx: &mut Context<CollectionView>) -> Stateful<Div> {
+    let id = id.to_string();
     div()
-        .id(SharedString::from(format!("jp-clip-{id}")))
+        .id(SharedString::from(format!("jp-del-{id}")))
         .flex_none()
-        .w(px(56.))
-        .h(px(32.))
-        .mt(px(-4.))
-        .rounded(px(5.))
+        .size(px(24.))
+        .mt(px(-1.))
         .flex()
         .items_center()
         .justify_center()
-        .bg(theme::ink_a(0.08))
-        .hover(|s| s.bg(theme::ink_a(0.16)))
+        .rounded(px(6.))
         .cursor_pointer()
-        .child(icon(Icon::PlayArrow, px(18.), theme::ink_a(0.85)))
-        .on_click(cx.listener(move |this, _, _, cx| this.open_replay(std::path::PathBuf::from(&clip), cx)))
+        .opacity(0.)
+        .group_hover(group, |s| s.opacity(1.))
+        .hover(|s| s.bg(theme::ink_a(0.08)))
+        .child(icon(Icon::DeleteOutline, px(15.), theme::ink_a(0.6)))
+        .on_click(cx.listener(move |this, _, _, cx| this.journal_delete(&id, cx)))
+}
+
+/// A pill under a replay's words; `primary` is the replay yellow (Watch).
+fn card_button(id: SharedString, ic: Icon, label: &'static str, primary: bool) -> Stateful<Div> {
+    let (fill, hover, ink) = if primary {
+        (theme::replay().into(), theme::replay_alpha(0.85).into(), theme::black_a(0.85))
+    } else {
+        (theme::ink_a(0.07), theme::ink_a(0.13), theme::ink_a(0.78))
+    };
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(5.))
+        .h(px(26.))
+        .pl(px(8.))
+        .pr(px(11.))
+        .rounded_full()
+        .cursor_pointer()
+        .bg(fill)
+        .hover(move |s| s.bg(hover))
+        .text_size(px(12.))
+        .line_height(px(16.))
+        .font_weight(if primary { theme::W_BOLD } else { theme::W_REGULAR })
+        .text_color(ink)
+        .child(icon(ic, px(15.), ink))
+        .child(label)
 }
 
 impl CollectionView {

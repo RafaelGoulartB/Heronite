@@ -53,7 +53,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      by the vendored rcheevos), and the local copy
  │                      that keeps them                → data, metadata, gog, epic, steam, launch
  ├─ heronite-media      screenshots: listing, thumbnails, capture,
- │                      lossless PNG → WebP compression              → data, images
+ │                      lossless PNG → WebP compression, posters of
+ │                      replays (ffmpeg)                             → data, images
  ├─ heronite-overlay    in-game overlay backend: controller input
  │                      (evdev, Guide button, grabs; XInput with
  │                      Back + Start on Windows), audio (pactl; Core
