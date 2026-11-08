@@ -104,16 +104,18 @@ impl CollectionView {
     /// store's install, or the manual one when the store has none.
     pub(super) fn install_or_play(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let lib = self.lib.clone();
-        let game = lib.as_deref().and_then(|l| self.copy_to_play(l, key)).cloned();
-        let key = game.as_ref().map_or(key, |g| g.key.as_str()).to_owned();
-        let key = key.as_str();
-        if let Some(g) = game.filter(|g| !self.playing.contains_key(&g.app_name)) {
-            if store_install_label(&g).is_none() && can_install_manually(&g) {
-                self.open_manual_install(key, window, cx);
-                return;
-            }
+        let Some(game) = lib.as_deref().and_then(|l| self.copy_to_play(l, key)).cloned() else { return };
+        self.install_or_play_on(&game, window, cx);
+    }
+
+    /// [`Self::install_or_play`] for `game` itself, never another copy of it
+    /// (the Copies card's buttons, "Install with GOG").
+    pub(super) fn install_or_play_on(&mut self, game: &heronite_data::collection::Game, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.playing.contains_key(&game.app_name) && store_install_label(game).is_none() && can_install_manually(game) {
+            self.open_manual_install(&game.key, window, cx);
+            return;
         }
-        self.primary_action(key, cx);
+        self.primary_action_on(game, cx);
     }
 
     /// An emulated game becomes a PC game (a native port or a PC version):

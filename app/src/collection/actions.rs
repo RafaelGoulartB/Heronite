@@ -213,6 +213,14 @@ impl CollectionView {
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = self.copy_to_play(&lib, key).cloned() else { return };
+        self.primary_action_on(&game, cx);
+    }
+
+    /// What Play / Install does for `game` itself, never another copy of it:
+    /// a store game opens its install dialog (or the Downloads page, or asks
+    /// to update first), an emulated one its pre-launch flow, a store
+    /// client's or an Xbox game opens what installs it.
+    pub(super) fn primary_action_on(&mut self, game: &heronite_data::collection::Game, cx: &mut Context<Self>) {
         let key = game.key.as_str();
         if self.preparing.contains_key(&game.app_name) {
             return self.cancel_launch(&game.app_name, cx);
@@ -223,10 +231,10 @@ impl CollectionView {
             }
             return;
         }
-        if self.epic_primary(&game, cx) {
+        if self.epic_primary(game, cx) {
             return;
         }
-        if game.installed && self.start_emulated(&game, cx) {
+        if game.installed && self.start_emulated(game, cx) {
             return;
         }
         // A store client installs its games: it opens, on its page for them.
@@ -241,7 +249,7 @@ impl CollectionView {
             }
             return;
         }
-        let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
+        let result = if game.installed { self.runtime.play(game) } else { self.runtime.install(game) };
         if let Err(err) = result {
             self.report_launch_error(err, cx);
         }
