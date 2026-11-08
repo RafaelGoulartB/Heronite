@@ -12,6 +12,7 @@ use heronite_data::age_rating::{self, AgeRating, RatingSystem};
 use heronite_data::art::{steam_hero_download_urls, steam_library_cover, steam_library_hero};
 use heronite_data::focus::steam_language;
 use heronite_data::models::CollectionGameMetadata;
+use heronite_data::num::JsNum;
 use heronite_data::paths::DataPaths;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,9 @@ pub struct SteamAppDetails {
     /// were read, which is then fetched again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub age_ratings: Option<Vec<AgeRating>>,
+    /// `metacritic.score` (0..=100); `None` when the store shows none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metacritic: Option<u32>,
     /// Milliseconds since the epoch (`Date.now()`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fetched_at: Option<i64>,
@@ -134,6 +138,7 @@ pub fn map_details(steam_app_id: &str, language: &str, data: &Value) -> Option<S
         store_url: format!("https://store.steampowered.com/app/{steam_app_id}"),
         header_image: non_empty(js_str(data, "header_image")),
         age_ratings: Some(age_ratings(data)),
+        metacritic: data.pointer("/metacritic/score").and_then(Value::as_u64).filter(|s| (1..=100).contains(s)).map(|s| s as u32),
         fetched_at: None,
     })
 }
@@ -312,6 +317,9 @@ pub fn metadata_from_details(app_name: &str, runner: &str, steam_app_id: &str, d
     md.cover_url = steam_cdn_cover(Some(steam_app_id));
     md.hero_url = steam_cdn_hero(Some(steam_app_id));
     md.age_ratings = d.age_ratings.clone().unwrap_or_default();
+    // The Metacritic score the store page shows: the "steam" source of the
+    // critic score. No score stays empty (never 0).
+    md.critic_score = d.metacritic.map(|s| JsNum(f64::from(s)));
     if let Some(header) = &d.header_image {
         md.extra.insert(HEADER_URL.into(), Value::String(header.clone()));
     }
@@ -438,6 +446,9 @@ mod tests {
         assert_eq!(body["400"]["success"], true);
         let d = map_details("400", "english", &body["400"]["data"]).unwrap();
         assert_eq!(d.name, "Portal");
+        assert_eq!(d.metacritic, Some(90));
+        let md = metadata_from_details("400", "sideload", "400", &d);
+        assert_eq!(md.critic_score, Some(JsNum(90.0)), "the store's Metacritic score is the steam critic score");
         assert_eq!(d.store_url, "https://store.steampowered.com/app/400");
         assert_eq!(d.developers, ["Valve"]);
         assert!(d.genres.iter().any(|g| g == "Action"));

@@ -1104,7 +1104,7 @@ mod tests {
         assert_eq!(
             cleared.to_value()["facetFilters"],
             json!({
-                "store": [], "series": [], "developer": [], "publisher": [], "genre": [], "theme": [], "feature": [], "gameMode": [], "platform": []
+                "store": [], "series": [], "developer": [], "publisher": [], "genre": [], "theme": [], "feature": [], "gameMode": [], "tag": [], "platform": []
             })
         );
 

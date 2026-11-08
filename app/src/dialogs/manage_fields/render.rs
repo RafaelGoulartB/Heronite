@@ -27,6 +27,7 @@ pub(super) fn field_label(field: Field) -> &'static str {
         Field::Theme => tr!("Themes"),
         Field::Feature => tr!("Features"),
         Field::Platform => tr!("Platforms"),
+        Field::Tag => tr!("Steam tags"),
     }
 }
 

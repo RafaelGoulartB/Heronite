@@ -412,6 +412,7 @@ fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Theme => tr!("Theme"),
         FacetKind::Feature => tr!("Feature"),
         FacetKind::GameMode => tr!("Game mode"),
+        FacetKind::Tag => tr!("Steam tag"),
     }
 }
 
@@ -427,6 +428,7 @@ fn facet_keywords(k: FacetKind) -> &'static str {
         FacetKind::Theme => "theme tema",
         FacetKind::Feature => "feature mode recurso modo",
         FacetKind::GameMode => "game mode modes co-op coop multiplayer split screen modo jogo multijogador cooperativo",
+        FacetKind::Tag => "steam tag tags user tags popular etiqueta etiquetas marcador marcadores schlagwort",
     }
 }
 

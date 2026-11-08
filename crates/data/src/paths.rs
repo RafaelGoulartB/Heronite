@@ -260,6 +260,11 @@ impl DataPaths {
     pub fn steam_hero(&self, steam_app_id: &str) -> PathBuf {
         self.j("local_library/heroes").join(format!("{steam_app_id}.jpg"))
     }
+    /// Steam store tags per app and tag names per language
+    /// ([`crate::steam_tags`]).
+    pub fn steam_tags(&self) -> PathBuf {
+        self.j("store_cache/steam_tags.json")
+    }
     pub fn wiki_game_info(&self) -> PathBuf {
         self.j("store_cache/wikigameinfo.json")
     }

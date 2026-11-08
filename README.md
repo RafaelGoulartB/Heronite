@@ -98,7 +98,7 @@ The Windows files are not code-signed yet, so SmartScreen may warn about them: c
 
 ## Your library, organized
 
-- **Collection:** a list with details or a grid of covers, grouped by status, store, genre, series, game mode (co-op, split screen...), or year. Details show screenshots, How Long To Beat, achievements, and a play timeline.
+- **Collection:** a list with details or a grid of covers, grouped by status, store, genre, series, game mode (co-op, split screen...), or year, and filtered by any of those or by the tags Steam players gave a game. Details show screenshots, How Long To Beat, achievements, and a play timeline.
 - **Journal:** notes on your play days and screenshots.
 - **Views:** filter, sort, and save presets like Playing now or Backlog. Search forgives typos.
 - **Bulk edits:** change many games at once, with undo.
