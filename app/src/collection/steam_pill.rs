@@ -32,18 +32,38 @@ impl CollectionView {
             div().flex_none().text_size(px(13.)).font_weight(theme::W_BOLD).text_color(color).child(text.to_string())
         };
         let pill = match notice {
-            // Neutral like the downloads pill: only the Steam mark is tinted,
-            // so it is seen without shouting over the header.
-            SteamNotice::Restart => pill_base("hdr-steam", open)
-                .pl(px(10.))
+            // A faint wash of the warning colour: seen without shouting over
+            // the header.
+            SteamNotice::Restart => soft_pill(open)
                 .child(icon(Icon::BrandSteam, px(16.), theme::warning()))
-                .child(label(tr!("Restart Steam"), theme::text_primary().into())),
+                .child(label(tr!("Restart Steam"), theme::readable(theme::warning()))),
             SteamNotice::Restarting => pill_base("hdr-steam", open)
                 .child(ring(100., theme::accent().into(), Some(Icon::BrandSteam)))
                 .child(label(tr!("Restarting Steam"), theme::text_primary().into())),
         };
         Some(self.hover_dropdown(Menu::Steam, pill, Align::Right, move |_, cx| steam_popover(notice, cx), cx))
     }
+}
+
+/// The restart pill: a faint wash of the warning colour (about half the
+/// update pill's), its border and text.
+fn soft_pill(open: bool) -> Stateful<Div> {
+    let tint = |a: f32| Hsla { a, ..theme::warning().into() };
+    div()
+        .id("hdr-steam")
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(7.))
+        .h(theme::TOOL_BTN)
+        .pl(px(10.))
+        .pr(px(12.))
+        .rounded_full()
+        .bg(tint(if open { 0.12 } else { 0.07 }))
+        .border_1()
+        .border_color(tint(0.25))
+        .cursor_pointer()
+        .hover(move |s| s.bg(tint(0.12)))
 }
 
 /// The pill's popover: why, and the restart.
