@@ -10,6 +10,7 @@
 //! - [`dirs`]: where the app keeps its data, settings and caches.
 //! - [`disks`]: the disks things live on (Windows' volumes) and the space
 //!   files take on them, links not followed.
+//! - [`net`]: which process listens on a local TCP port.
 //! - [`shell`]: opening a file, folder or URL with the desktop's handler.
 //! - [`flatpak`]: running inside a Flatpak sandbox, and the host's programs
 //!   from there.
@@ -44,6 +45,7 @@ pub mod disks;
 pub mod features;
 pub mod flatpak;
 pub mod fs;
+pub mod net;
 pub mod packages;
 pub mod process;
 pub mod scoop;

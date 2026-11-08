@@ -31,8 +31,23 @@ pub struct SteamOwnedFile {
     /// When the client was last read (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// Where the last read came from; `None`: the client (files written
+    /// before the account could be read).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<SteamSource>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// Where the Steam library was read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SteamSource {
+    /// The Steam client running on this PC.
+    #[default]
+    Client,
+    /// The account signed in with a QR code, through Steam's Web API.
+    Account,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

@@ -6,8 +6,15 @@
 //!
 //! Steam only opens the interface (HTTP + WebSocket on `127.0.0.1`) when the
 //! flag file [`FLAG_FILE`] exists in its install folder at start. Older
-//! clients listen on port 8080; current ones pick a port at each start, which
-//! [`debugger_addr`] finds.
+//! clients and Steam on Windows ask for port 8080; current Linux ones pick a
+//! port at each start. [`debugger_addr`] finds it from what the
+//! `steamwebhelper` processes listen on, their command line and Chromium's
+//! `DevToolsActivePort` file.
+//!
+//! A fixed port can be taken by another program (a torrent client's web
+//! interface, a development server): Steam's interface then never opens and
+//! that program answers instead. [`NotSteam`] marks that answer, and
+//! [`port_taken`] names the program.
 //!
 //! The HTTP and WebSocket clients are minimal on purpose: plain TCP to a fixed
 //! local address, no TLS, one request per connection.
@@ -27,10 +34,91 @@ pub const FLAG_FILE: &str = ".cef-enable-remote-debugging";
 /// Where older Steam clients serve the debugger.
 pub const DEFAULT_ADDR: &str = "127.0.0.1:8080";
 
-/// Address of the running Steam's debugger: the port its `steamwebhelper`
-/// was started with (`--remote-debugging-port=<n>`), else [`DEFAULT_ADDR`].
+/// Address of the running Steam's debugger ([`debugger_port`]), else
+/// [`DEFAULT_ADDR`].
 pub fn debugger_addr() -> String {
-    port_of(&running_webhelpers()).map(|p| format!("127.0.0.1:{p}")).unwrap_or_else(|| DEFAULT_ADDR.to_string())
+    let helpers = running_webhelpers();
+    let pids: Vec<u32> = helpers.iter().map(|h| h.pid).collect();
+    let listening = if pids.is_empty() { Vec::new() } else { heronite_platform::net::ports_of(&pids) };
+    let active = helpers.iter().find_map(|h| active_port_file(&h.args)).and_then(|f| read_active_port(&f));
+    debugger_port(port_of(&helpers), active, &listening).map(|p| format!("127.0.0.1:{p}")).unwrap_or_else(|| DEFAULT_ADDR.to_string())
+}
+
+/// The debugger's port: the one the `steamwebhelper` was asked for
+/// (`--remote-debugging-port=<n>`) or the one Chromium wrote in
+/// `DevToolsActivePort` (when it was asked for port 0), whichever the
+/// helper listens on; else the asked one, which it is about to open (or
+/// cannot, when another program has it); else any port the helper listens
+/// on; else the file's (still starting).
+fn debugger_port(asked: Option<u16>, active: Option<u16>, listening: &[u16]) -> Option<u16> {
+    let heard = |p: &u16| listening.contains(p);
+    asked.filter(heard).or(active.filter(heard)).or(asked).or(listening.first().copied()).or(active)
+}
+
+/// Where Chromium writes the port it picked: `DevToolsActivePort` in the
+/// helper's profile folder (`--user-data-dir`, or Steam's `-cachedir`).
+fn active_port_file(args: &[String]) -> Option<PathBuf> {
+    args.iter()
+        .find_map(|a| a.strip_prefix("--user-data-dir=").or_else(|| a.strip_prefix("-cachedir=")))
+        .filter(|d| !d.is_empty())
+        .map(|d| Path::new(d.trim_matches('"')).join("DevToolsActivePort"))
+}
+
+/// The first line of a `DevToolsActivePort` file.
+fn read_active_port(file: &Path) -> Option<u16> {
+    std::fs::read_to_string(file).ok()?.lines().next()?.trim().parse().ok().filter(|p| *p != 0)
+}
+
+/// A program other than Steam that holds the debugger's port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PortOwner {
+    pub port: u16,
+    /// `None`: the process is not visible from here (another user's, or
+    /// outside this sandbox); only its answer told it is not Steam.
+    pub pid: Option<u32>,
+    /// Its program (`qbittorrent.exe`), when known.
+    pub name: Option<String>,
+}
+
+/// What answered on the debugger's address is not a Chromium debugger, so
+/// not Steam (a Chromium one has `/json/version`).
+#[derive(Debug, Clone)]
+pub struct NotSteam {
+    /// Its `Server` header, when it sent one.
+    pub server: Option<String>,
+}
+
+impl std::fmt::Display for NotSteam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.server {
+            Some(server) => write!(f, "another program answers there, not Steam (server: {server})"),
+            None => write!(f, "another program answers there, not Steam"),
+        }
+    }
+}
+
+impl std::error::Error for NotSteam {}
+
+/// Whether `err` (from [`SteamClient::probe`] or [`SteamClient::eval`])
+/// says another program answers on the debugger's address.
+pub fn is_not_steam(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<NotSteam>().is_some()
+}
+
+/// The program holding the port of `addr` (`127.0.0.1:8080`), when it is
+/// not one of the running `steamwebhelper`s. `not_steam`: what answered
+/// there is known not to be Steam ([`is_not_steam`]), so an owner this user
+/// cannot see is another program too.
+pub fn port_taken(addr: &str, helper: &Webhelper, not_steam: bool) -> Option<PortOwner> {
+    use heronite_platform::net::{port_use, PortUse};
+    let port = addr.rsplit_once(':')?.1.parse().ok()?;
+    match port_use(port) {
+        PortUse::Owned { pid, .. } if helper.pids.contains(&pid) => None,
+        PortUse::Owned { name: Some(name), .. } if name.to_ascii_lowercase().starts_with("steamwebhelper") => None,
+        PortUse::Owned { pid, name } => Some(PortOwner { port, pid: Some(pid), name }),
+        PortUse::Unknown if not_steam => Some(PortOwner { port, pid: None, name: None }),
+        PortUse::Unknown | PortUse::Free => None,
+    }
 }
 
 /// Titles of the target where `SteamClient` and the stores live: older
@@ -59,22 +147,28 @@ fn shared_context_path(targets: &Value) -> Result<String> {
     Ok(rest.find('/').map(|i| rest[i..].to_string()).unwrap_or_else(|| "/".into()))
 }
 
-/// The command lines of the running `steamwebhelper` processes: read from
-/// `/proc` on Linux (a few hundred small files), from the process list on
-/// Windows.
-fn running_webhelpers() -> Vec<Vec<String>> {
+/// A running `steamwebhelper` process.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Helper {
+    pid: u32,
+    args: Vec<String>,
+}
+
+/// The running `steamwebhelper` processes: read from `/proc` on Linux (a
+/// few hundred small files), from the process list on Windows.
+fn running_webhelpers() -> Vec<Helper> {
     #[cfg(windows)]
     {
         use heronite_platform::process::{command_line, snapshot};
         snapshot()
             .into_iter()
             .filter(|p| p.name.to_ascii_lowercase().starts_with("steamwebhelper"))
-            .filter_map(|p| command_line(p.pid))
+            .filter_map(|p| Some(Helper { pid: p.pid, args: command_line(p.pid)? }))
             .collect()
     }
     #[cfg(not(windows))]
     {
-        webhelper_args(Path::new("/proc")).collect()
+        webhelpers_in(Path::new("/proc")).collect()
     }
 }
 
@@ -88,6 +182,10 @@ pub struct Webhelper {
     pub debugging: bool,
     /// The Steam folder it runs from (`-steampath=<folder>/ubuntu12_32/steam`).
     pub steam_root: Option<PathBuf>,
+    /// The port it was asked to open (`Some(0)`: Chromium picks one).
+    pub asked_port: Option<u16>,
+    /// Its processes (the main one, renderers, GPU...).
+    pub pids: Vec<u32>,
 }
 
 /// The `steamwebhelper` of the running Steam, if it started already.
@@ -95,35 +193,34 @@ pub fn webhelper() -> Option<Webhelper> {
     webhelper_of(running_webhelpers())
 }
 
-/// The command lines of the `steamwebhelper` processes under `proc`.
+/// The `steamwebhelper` processes under `proc`.
 #[cfg(any(test, not(windows)))]
-fn webhelper_args(proc: &Path) -> impl Iterator<Item = Vec<String>> {
+fn webhelpers_in(proc: &Path) -> impl Iterator<Item = Helper> {
     std::fs::read_dir(proc).into_iter().flatten().flatten().filter_map(|entry| {
-        let name = entry.file_name();
-        if !name.to_string_lossy().bytes().all(|b| b.is_ascii_digit()) {
-            return None;
-        }
+        let pid = entry.file_name().to_str()?.parse().ok()?;
         let cmdline = std::fs::read(entry.path().join("cmdline")).ok()?;
         let args: Vec<String> = cmdline.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
-        args.first()?.rsplit('/').next()?.starts_with("steamwebhelper").then_some(args)
+        args.first()?.rsplit('/').next()?.starts_with("steamwebhelper").then_some(Helper { pid, args })
     })
 }
 
 #[cfg(test)]
 fn webhelper_in(proc: &Path) -> Option<Webhelper> {
-    webhelper_of(webhelper_args(proc).collect())
+    webhelper_of(webhelpers_in(proc).collect())
 }
 
 /// What the command lines of the `steamwebhelper` processes tell.
-fn webhelper_of(all: Vec<Vec<String>>) -> Option<Webhelper> {
+fn webhelper_of(all: Vec<Helper>) -> Option<Webhelper> {
     // Its renderer and GPU children share the name; the main process is the
     // one with `-steampath`, but any of them tells whether debugging is on.
     if all.is_empty() {
         return None;
     }
-    let debugging = all.iter().flatten().any(|a| a.starts_with("--remote-debugging-port="));
-    let steam_root = all.iter().flatten().find_map(|a| steam_root_of(Path::new(a.strip_prefix("-steampath=")?)));
-    Some(Webhelper { debugging, steam_root })
+    let args = || all.iter().flat_map(|h| &h.args);
+    let asked_port = args().find_map(|a| a.strip_prefix("--remote-debugging-port=")?.parse().ok());
+    let debugging = args().any(|a| a.starts_with("--remote-debugging-port="));
+    let steam_root = args().find_map(|a| steam_root_of(Path::new(a.strip_prefix("-steampath=")?)));
+    Some(Webhelper { debugging, steam_root, asked_port, pids: all.iter().map(|h| h.pid).collect() })
 }
 
 /// The Steam folder of the `-steampath` a `steamwebhelper` is given: the
@@ -137,14 +234,15 @@ fn steam_root_of(bin: &Path) -> Option<PathBuf> {
 
 /// The debugging port in the command line of a `steamwebhelper` under `proc`.
 #[cfg(test)]
-fn debugger_port(proc: &Path) -> Option<u16> {
-    port_of(&webhelper_args(proc).collect::<Vec<_>>())
+fn asked_port_in(proc: &Path) -> Option<u16> {
+    port_of(&webhelpers_in(proc).collect::<Vec<_>>())
 }
 
-/// The debugging port one of the `steamwebhelper` command lines names.
-fn port_of(all: &[Vec<String>]) -> Option<u16> {
-    all.iter().find_map(|args| {
-        args.iter().find_map(|a| a.strip_prefix("--remote-debugging-port=").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0))
+/// The debugging port one of the `steamwebhelper` command lines names
+/// (not 0, which lets Chromium pick one).
+fn port_of(all: &[Helper]) -> Option<u16> {
+    all.iter().find_map(|h| {
+        h.args.iter().find_map(|a| a.strip_prefix("--remote-debugging-port=").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0))
     })
 }
 
@@ -193,13 +291,40 @@ impl SteamClient {
         Self { addr: addr.into() }
     }
 
+    /// `host:port`.
+    pub fn addr(&self) -> &str {
+        &self.addr
+    }
+
     /// `ws://` path of the shared context target, where `SteamClient`
     /// lives. The error names the address and what it answered.
     fn socket_path(&self) -> Result<String> {
-        http_get(&self.addr, "/json")
-            .and_then(|body| serde_json::from_str::<Value>(&body).context("the target list is not JSON"))
-            .and_then(|targets| shared_context_path(&targets))
-            .with_context(|| self.addr.clone())
+        self.targets().and_then(|targets| shared_context_path(&targets)).with_context(|| self.addr.clone())
+    }
+
+    /// The `/json` target list. When what answers gives none, `/json/version`
+    /// tells whether it is a Chromium debugger at all ([`NotSteam`] if not).
+    fn targets(&self) -> Result<Value> {
+        let reply = http_request(&self.addr, "/json")?;
+        if reply.status == 200 {
+            if let Some(list) = serde_json::from_str::<Value>(&reply.body).ok().filter(Value::is_array) {
+                return Ok(list);
+            }
+        }
+        let what = if reply.status == 200 { "GET /json: not a target list".to_string() } else { format!("GET /json: {}", reply.line) };
+        if self.is_debugger() {
+            bail!("{what}");
+        }
+        Err(anyhow::Error::new(NotSteam { server: reply.server }).context(what))
+    }
+
+    /// Whether a Chromium debugger answers (`/json/version` names its browser).
+    fn is_debugger(&self) -> bool {
+        http_request(&self.addr, "/json/version")
+            .ok()
+            .filter(|r| r.status == 200)
+            .and_then(|r| serde_json::from_str::<Value>(&r.body).ok())
+            .is_some_and(|v| v.get("Browser").is_some() || v.get("webSocketDebuggerUrl").is_some())
     }
 
     /// Why the client does not answer, or `Ok` when it does.
@@ -361,11 +486,20 @@ fn connect(addr: &str, timeout: Duration) -> Result<TcpStream> {
     Ok(stream)
 }
 
-/// Status line + headers; `Content-Length` when there is one.
-fn read_head(reader: &mut impl BufRead) -> Result<(String, Option<usize>)> {
+/// The head of an HTTP answer.
+struct Head {
+    /// `HTTP/1.1 404 Not Found`.
+    status: String,
+    length: Option<usize>,
+    /// The `Server` header: names the program when it is not Steam.
+    server: Option<String>,
+}
+
+/// Status line + headers.
+fn read_head(reader: &mut impl BufRead) -> Result<Head> {
     let mut status = String::new();
     reader.read_line(&mut status)?;
-    let mut length = None;
+    let (mut length, mut server) = (None, None);
     loop {
         let mut line = String::new();
         if reader.read_line(&mut line)? == 0 || line.trim().is_empty() {
@@ -374,32 +508,44 @@ fn read_head(reader: &mut impl BufRead) -> Result<(String, Option<usize>)> {
         if let Some((k, v)) = line.split_once(':') {
             if k.trim().eq_ignore_ascii_case("content-length") {
                 length = v.trim().parse().ok();
+            } else if k.trim().eq_ignore_ascii_case("server") {
+                server = Some(v.trim().chars().take(80).collect()).filter(|s: &String| !s.is_empty());
             }
         }
     }
-    Ok((status.trim().to_string(), length))
+    Ok(Head { status: status.trim().to_string(), length, server })
 }
 
-fn http_get(addr: &str, path: &str) -> Result<String> {
+/// An HTTP answer, whatever its status.
+struct Reply {
+    status: u16,
+    /// The status line.
+    line: String,
+    server: Option<String>,
+    body: String,
+}
+
+/// Bodies of a debugger's lists are small; anything bigger is not one.
+const MAX_BODY: usize = 4 << 20;
+
+fn http_request(addr: &str, path: &str) -> Result<Reply> {
     let mut stream = connect(addr, HTTP_TIMEOUT)?;
     // Current clients drop HTTP/1.0 requests without an answer.
     write!(stream, "GET {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n")?;
     let mut reader = BufReader::new(stream);
-    let (status, length) = read_head(&mut reader)?;
-    if status.split_whitespace().nth(1) != Some("200") {
-        bail!("GET {path}: {status}");
-    }
+    let head = read_head(&mut reader)?;
+    let status = head.status.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
     let mut body = Vec::new();
-    match length {
-        Some(n) => {
+    match head.length {
+        Some(n) if n <= MAX_BODY => {
             body.resize(n, 0);
             reader.read_exact(&mut body)?;
         }
-        None => {
-            reader.read_to_end(&mut body)?;
+        _ => {
+            (&mut reader).take(MAX_BODY as u64).read_to_end(&mut body)?;
         }
     }
-    Ok(String::from_utf8_lossy(&body).into_owned())
+    Ok(Reply { status, line: head.status, server: head.server, body: String::from_utf8_lossy(&body).into_owned() })
 }
 
 /// Random bytes for the WebSocket key and masks (not secret, only unique).
@@ -449,7 +595,7 @@ impl WebSocket {
             "GET {path} HTTP/1.1\r\nHost: {addr}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
         )?;
         let mut reader = BufReader::new(writer.try_clone()?);
-        let (status, _) = read_head(&mut reader)?;
+        let status = read_head(&mut reader)?.status;
         if status.split_whitespace().nth(1) != Some("101") {
             bail!("WebSocket handshake refused: {status}");
         }
@@ -658,9 +804,9 @@ mod tests {
         add("self", &["x"]);
         add("10", &["/usr/bin/bash", "--remote-debugging-port=1"]);
         add("11", &["/s/ubuntu12_64/steamwebhelper", "--type=zygote"]);
-        assert_eq!(debugger_port(proc), None);
+        assert_eq!(asked_port_in(proc), None);
         add("12", &["./steamwebhelper", "-nocrashdialog", "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=39445"]);
-        assert_eq!(debugger_port(proc), Some(39445));
+        assert_eq!(asked_port_in(proc), Some(39445));
     }
 
     #[test]
@@ -676,9 +822,21 @@ mod tests {
         add("11", &["./steamwebhelper", "-nocrashdialog", "-steampath=/home/u/.local/share/Steam/ubuntu12_32/steam"]);
         add("12", &["/s/ubuntu12_64/steamwebhelper", "--type=zygote"]);
         let root = Some(PathBuf::from("/home/u/.local/share/Steam"));
-        assert_eq!(webhelper_in(proc), Some(Webhelper { debugging: false, steam_root: root.clone() }));
+        let pids = |w: Option<Webhelper>| {
+            w.map(|mut w| {
+                w.pids.sort();
+                w
+            })
+        };
+        assert_eq!(
+            pids(webhelper_in(proc)),
+            Some(Webhelper { debugging: false, steam_root: root.clone(), asked_port: None, pids: vec![11, 12] })
+        );
         add("13", &["/s/ubuntu12_64/steamwebhelper", "--type=renderer", "--remote-debugging-port=51605"]);
-        assert_eq!(webhelper_in(proc), Some(Webhelper { debugging: true, steam_root: root }));
+        assert_eq!(
+            pids(webhelper_in(proc)),
+            Some(Webhelper { debugging: true, steam_root: root, asked_port: Some(51605), pids: vec![11, 12, 13] })
+        );
     }
 
     #[cfg(windows)]
@@ -692,8 +850,10 @@ mod tests {
             "--remote-debugging-port=8080",
         ]);
         let crash = args(&[r"C:\Program Files (x86)\Steam\bin\cef\cef.win64\steamwebhelper.exe", "--type=crashpad-handler"]);
+        let (main, crash) = (Helper { pid: 1, args: main }, Helper { pid: 2, args: crash });
         let found = webhelper_of(vec![crash.clone(), main.clone()]).unwrap();
-        assert_eq!(found, Webhelper { debugging: true, steam_root: Some(PathBuf::from(r"C:\Program Files (x86)\Steam")) });
+        let root = Some(PathBuf::from(r"C:\Program Files (x86)\Steam"));
+        assert_eq!(found, Webhelper { debugging: true, steam_root: root, asked_port: Some(8080), pids: vec![2, 1] });
         assert_eq!(port_of(&[crash.clone(), main]), Some(8080));
         assert_eq!(port_of(&[crash]), None);
     }
@@ -720,6 +880,73 @@ mod tests {
         let dead = format!("127.0.0.1:{port}");
         let err = format!("{:#}", SteamClient::new(&dead).probe().unwrap_err());
         assert!(err.starts_with(&format!("{dead}: ")), "{err}");
+    }
+
+    #[test]
+    fn the_port_the_helper_listens_on_wins() {
+        // Asked for 8080 and listening there (Steam on Windows).
+        assert_eq!(debugger_port(Some(8080), None, &[8080]), Some(8080));
+        // Asked for 0: Chromium's file, else what it listens on.
+        assert_eq!(debugger_port(None, Some(41234), &[41234]), Some(41234));
+        assert_eq!(debugger_port(None, None, &[41234]), Some(41234));
+        // Not listening yet (starting), or 8080 is another program's.
+        assert_eq!(debugger_port(Some(8080), None, &[]), Some(8080));
+        // A stale file from an earlier start.
+        assert_eq!(debugger_port(None, Some(1111), &[2222]), Some(2222));
+        assert_eq!(debugger_port(None, None, &[]), None);
+    }
+
+    #[test]
+    fn chromium_writes_the_port_it_picked_in_the_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = vec![format!("--user-data-dir={}", dir.path().display()), "--remote-debugging-port=0".into()];
+        let file = active_port_file(&args).unwrap();
+        assert_eq!(read_active_port(&file), None);
+        std::fs::write(&file, "41234\n/devtools/browser/abc\n").unwrap();
+        assert_eq!(read_active_port(&file), Some(41234));
+        let steam = vec![format!("-cachedir={}", dir.path().display())];
+        assert_eq!(active_port_file(&steam), Some(file));
+        assert_eq!(active_port_file(&["--type=gpu-process".to_string()]), None);
+    }
+
+    /// A web server that is not Steam: 404 for everything.
+    fn other_program(version: bool) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut request = String::new();
+                reader.read_line(&mut request).unwrap();
+                // The rest of the request, so closing does not reset the connection.
+                let mut line = String::new();
+                while reader.read_line(&mut line).is_ok_and(|n| n > 0) && !line.trim().is_empty() {
+                    line.clear();
+                }
+                let mut writer = stream;
+                if version && request.starts_with("GET /json/version ") {
+                    let body = r#"{"Browser":"Chrome/126.0.6478.183"}"#;
+                    write!(writer, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+                } else {
+                    write!(writer, "HTTP/1.1 404 Not Found\r\nServer: qBittorrent\r\nContent-Length: 9\r\n\r\nNot Found").unwrap();
+                }
+            }
+        });
+        addr
+    }
+
+    #[test]
+    fn another_program_on_the_port_is_told_apart_from_a_steam_starting() {
+        let err = SteamClient::new(other_program(false)).probe().unwrap_err();
+        assert!(is_not_steam(&err), "{err:#}");
+        let text = format!("{err:#}");
+        assert!(text.contains("404 Not Found") && text.contains("server: qBittorrent"), "{text}");
+        // A Chromium debugger without the target yet: Steam, still starting.
+        let err = SteamClient::new(other_program(true)).probe().unwrap_err();
+        assert!(!is_not_steam(&err), "{err:#}");
+        // Nothing listening is not another program either.
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        assert!(!is_not_steam(&SteamClient::new(format!("127.0.0.1:{port}")).probe().unwrap_err()));
     }
 
     #[test]

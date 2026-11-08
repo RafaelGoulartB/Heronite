@@ -6,17 +6,28 @@
 //! It also opens and restarts Steam for the welcome and the Collection's
 //! Steam pill ([`SteamLibrary::notice`]). The Collection reloads on
 //! [`SteamLibraryEvent::Imported`].
+//!
+//! With a Steam account signed in ([`account`], optional), the library is
+//! read through Steam's Web API whenever the client cannot be read, at most
+//! every [`ACCOUNT_EVERY`] by itself.
+
+mod account;
 
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
-use heronite_data::steam_owned::SteamOwnedFile;
+use heronite_data::steam_owned::{SteamOwnedFile, SteamSource};
 use heronite_data::{AppPaths, DataPaths};
+use heronite_i18n::tr;
 use heronite_launch::settings::GlobalSettings;
-use heronite_launch::steam::{find_steam_binary, SteamLocator};
+use heronite_launch::steam::{find_steam_binary, installed_app_ids, SteamLocator};
 use heronite_launch::SystemProbe;
+use heronite_steam::account::http::Net;
+use heronite_steam::account::SignedOut;
 use heronite_steam::library::ImportReport;
-use heronite_steam::{ClientApiFlag, LibraryAccess, Steam};
+use heronite_steam::{ClientApiFlag, LibraryAccess, LibraryCheck, PortOwner, Steam};
+
+pub use account::{AccountState, QrState};
 
 const FIRST_DELAY: Duration = Duration::from_secs(6);
 /// Until the library was read once: cheap local checks (a pid file, the
@@ -35,6 +46,9 @@ const SETTLE: Duration = Duration::from_secs(20);
 /// sign-in take a while; past this, something keeps the client closed).
 const NOT_ANSWERING: Duration = Duration::from_secs(120);
 
+/// The library is read from the account at most this often by itself.
+const ACCOUNT_EVERY: Duration = INTERVAL;
+
 /// The id under which "Ignore" on the Collection's Steam pill is remembered
 /// (`heronite_data::ui_state::dismiss_note`).
 const NOTICE_NOTE: &str = "steam-restart";
@@ -52,16 +66,46 @@ pub fn steam(paths: &DataPaths) -> Steam {
 
 /// Whether the client can be read, why not, and what holds the place of
 /// the flag file (after the check, which creates it when it can). Blocking.
-fn library_check(paths: &DataPaths) -> (LibraryAccess, Option<String>, ClientApiFlag) {
+fn library_check(paths: &DataPaths) -> (LibraryCheck, ClientApiFlag) {
     let steam = steam(paths);
-    let (access, detail) = steam.library_check();
-    (access, detail, steam.access_flag())
+    (steam.library_check(), steam.access_flag())
 }
 
-/// Reads the library and joins it. Blocking.
-fn sync_blocking(paths: &DataPaths) -> Result<ImportReport, String> {
-    let owned = steam(paths).read_library()?;
-    heronite_steam::library::import(paths, owned, find_steam_binary(&SystemProbe).as_deref()).map_err(|e| format!("{e:#}"))
+/// How a read failed.
+#[derive(Debug)]
+enum ReadError {
+    /// The client's or the account's message.
+    Failed(String),
+    /// Steam no longer takes the account's sign-in (deleted already).
+    SignedOut,
+}
+
+/// Reads the library and joins it: from the client when it can be read,
+/// else from the account when `account` (one is signed in). Blocking.
+fn sync_blocking(paths: &DataPaths, account: bool) -> Result<(ImportReport, SteamSource), ReadError> {
+    let steam = steam(paths);
+    let bin = find_steam_binary(&SystemProbe);
+    let client_error = match steam.read_library() {
+        Ok(owned) => {
+            let report = heronite_steam::library::import(paths, owned, bin.as_deref()).map_err(|e| ReadError::Failed(format!("{e:#}")))?;
+            return Ok((report, SteamSource::Client));
+        }
+        Err(e) => e,
+    };
+    if !account {
+        return Err(ReadError::Failed(client_error));
+    }
+    let installed = installed_app_ids(&steam.locator);
+    let owned = heronite_steam::account::read_owned(paths, &Net::default(), &installed).map_err(|e| {
+        if e.is::<SignedOut>() {
+            ReadError::SignedOut
+        } else {
+            ReadError::Failed(tr!("Reading your library from your Steam account failed: {error}", error = format!("{e:#}")))
+        }
+    })?;
+    let report = heronite_steam::library::import_from(paths, owned, bin.as_deref(), SteamSource::Account)
+        .map_err(|e| ReadError::Failed(format!("{e:#}")))?;
+    Ok((report, SteamSource::Account))
 }
 
 /// What the cached library holds: games, installed ones, when it was read.
@@ -70,6 +114,7 @@ pub struct Summary {
     pub games: usize,
     pub installed: usize,
     pub updated_at: Option<String>,
+    pub source: SteamSource,
 }
 
 /// What the Collection's Steam pill shows ([`SteamLibrary::notice`]).
@@ -104,6 +149,9 @@ pub enum SteamState {
     /// Steam runs without the access and another tool (Millennium) holds
     /// the place of its flag file: a restart does not open it.
     Blocked,
+    /// Another program holds the port of Steam's access
+    /// ([`SteamLibrary::taken`]): it has to close (or move) first.
+    PortTaken,
     /// Restarted from here and still without the access: not asked again.
     Failed,
     Reading,
@@ -140,12 +188,17 @@ pub struct SteamLibrary {
     /// The last access written to the log, with why the client did not
     /// answer: logged again only when it changes.
     logged: Option<(LibraryAccess, Option<String>)>,
+    /// The program holding the port of Steam's access, as of the last check.
+    pub taken: Option<PortOwner>,
+    /// The Steam account signed in with a QR code (optional).
+    pub account: AccountState,
 }
 
 impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
 
 impl SteamLibrary {
     pub fn new(paths: DataPaths, cx: &mut Context<Self>) -> Self {
+        let paths_for_account = paths.clone();
         let mut this = Self {
             paths,
             syncing: false,
@@ -161,7 +214,10 @@ impl SteamLibrary {
             error: None,
             starting_since: None,
             logged: None,
+            taken: None,
+            account: AccountState::load(&paths_for_account),
         };
+        this.account.debug();
         this.load_summary(cx);
         // Off for tests against real data, like the other idle jobs.
         if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
@@ -201,6 +257,7 @@ impl SteamLibrary {
                     | SteamState::NotAnswering
                     | SteamState::NeedsRestart
                     | SteamState::Blocked
+                    | SteamState::PortTaken
             )
     }
 
@@ -224,8 +281,19 @@ impl SteamLibrary {
             Some(LibraryAccess::NeedsRestart) if self.flag == Some(ClientApiFlag::Blocked) => SteamState::Blocked,
             Some(LibraryAccess::NeedsRestart) if self.restarted => SteamState::Failed,
             Some(LibraryAccess::NeedsRestart) => SteamState::NeedsRestart,
+            Some(LibraryAccess::PortTaken) => SteamState::PortTaken,
             Some(LibraryAccess::NotInstalled) => SteamState::NotInstalled,
         }
+    }
+
+    /// Whether the client cannot be read for a reason the user has to deal
+    /// with (not while Steam is closed, starting or loading): what the
+    /// account's sign-in is offered for.
+    pub fn client_stuck(&self) -> bool {
+        matches!(
+            self.state(),
+            SteamState::NotAnswering | SteamState::NeedsRestart | SteamState::Blocked | SteamState::PortTaken | SteamState::Failed
+        )
     }
 
     /// What the Collection's Steam pill shows. Only before the library was
@@ -321,6 +389,7 @@ impl SteamLibrary {
                         games: f.games.len(),
                         installed: f.games.iter().filter(|g| g.installed).count(),
                         updated_at: f.updated_at,
+                        source: f.source.unwrap_or_default(),
                     };
                     (summary, heronite_data::ui_state::note_dismissed(&AppPaths::for_data(&paths), NOTICE_NOTE))
                 })
@@ -358,14 +427,25 @@ impl SteamLibrary {
         false
     }
 
+    /// Keeps what a check found. `HERONITE_DEBUG_STEAM_PORT=<port>` makes
+    /// every check find that port held by another program (for screenshots).
+    fn take_check(&mut self, mut check: LibraryCheck, flag: ClientApiFlag) {
+        if let Some(port) = crate::env::parse::<u16>("HERONITE_DEBUG_STEAM_PORT") {
+            let owner = PortOwner { port, pid: Some(4242), name: Some("qbittorrent.exe".into()) };
+            check = LibraryCheck { access: LibraryAccess::PortTaken, why: Some("debug".into()), taken: Some(owner) };
+        }
+        self.flag = Some(flag);
+        self.taken = check.taken;
+        self.set_access(check.access, check.why);
+    }
+
     /// Checks whether the client can be read now (for the Steam page).
     pub fn check(&mut self, cx: &mut Context<Self>) {
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let (access, detail, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
+            let (check, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
             this.update(cx, |this, cx| {
-                this.flag = Some(flag);
-                this.set_access(access, detail);
+                this.take_check(check, flag);
                 cx.notify();
             })
             .ok();
@@ -373,18 +453,19 @@ impl SteamLibrary {
         .detach();
     }
 
-    /// A quiet read (the timer, the refresh button): only when the client answers.
+    /// A quiet read (the timer, the refresh button): when the client
+    /// answers, else from the account when one is signed in and it is due.
     pub fn sync_if_ready(&mut self, cx: &mut Context<Self>) {
         if self.syncing {
             return;
         }
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
-            let (access, detail, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
+            let (check, flag) = cx.background_spawn(async move { library_check(&paths) }).await;
             this.update(cx, |this, cx| {
-                this.flag = Some(flag);
-                this.set_access(access, detail);
-                if access == LibraryAccess::Ready {
+                let ready = check.access == LibraryAccess::Ready;
+                this.take_check(check, flag);
+                if ready || this.account.due(ACCOUNT_EVERY) {
                     this.run(false, cx);
                 }
                 cx.notify();
@@ -406,17 +487,35 @@ impl SteamLibrary {
         }
         self.syncing = true;
         let paths = self.paths.clone();
+        let account = self.account.signed_in();
         cx.spawn(async move |this, cx| {
-            let res = cx.background_spawn(async move { sync_blocking(&paths) }).await;
+            let res = cx.background_spawn(async move { sync_blocking(&paths, account) }).await;
             this.update(cx, |this, cx| {
                 this.syncing = false;
-                match &res {
-                    Ok(report) => {
-                        this.set_access(LibraryAccess::Ready, None);
-                        cx.emit(SteamLibraryEvent::Imported(*report));
+                let res = match res {
+                    Ok((report, source)) => {
+                        match source {
+                            SteamSource::Client => {
+                                this.set_access(LibraryAccess::Ready, None);
+                            }
+                            SteamSource::Account => this.account.read_now(),
+                        }
+                        cx.emit(SteamLibraryEvent::Imported(report));
+                        Ok(report)
                     }
-                    Err(e) => log::warn!("Steam library: {e}"),
-                }
+                    Err(ReadError::SignedOut) => {
+                        log::warn!("Steam library: Steam signed the account out");
+                        this.account.signed_out();
+                        Err(tr!("Steam signed you out of your account in Heronite. Sign in again with a QR code to keep reading your library from it.").to_string())
+                    }
+                    Err(ReadError::Failed(e)) => {
+                        log::warn!("Steam library: {e}");
+                        if account {
+                            this.account.read_now();
+                        }
+                        Err(e)
+                    }
+                };
                 if asked || res.is_ok() {
                     this.last = Some(res);
                 }
@@ -455,6 +554,8 @@ mod tests {
             error: None,
             starting_since: None,
             logged: None,
+            taken: None,
+            account: Default::default(),
         }
     }
 

@@ -31,7 +31,6 @@
   "Added {n} games to the Collection.": "{n} Spiele zur Sammlung hinzugefügt.",
   "Add the games of your Steam library": "Spiele deiner Steam-Bibliothek hinzufügen",
   "Checking Steam…": "Steam wird geprüft…",
-  "Heronite reads your library from the Steam client, so there is no login: only games are added (no tools, soundtracks, demos or games you hid in Steam). A game you already have from another store or added yourself is not added twice: it gets Steam's install instead. Steam keeps installing, updating and launching its games.": "Heronite liest deine Bibliothek aus dem Steam-Client, daher ist keine Anmeldung nötig: Es werden nur Spiele hinzugefügt (keine Tools, Soundtracks, Demos oder in Steam ausgeblendete Spiele). Ein Spiel, das du bereits aus einem anderen Store hast oder selbst hinzugefügt hast, wird nicht doppelt hinzugefügt: Es erhält stattdessen die Steam-Installation. Steam installiert, aktualisiert und startet seine Spiele weiterhin selbst.",
   "Last read {when}": "Zuletzt gelesen {when}",
   "Not read yet": "Noch nicht gelesen",
   "Play with Steam": "Mit Steam spielen",

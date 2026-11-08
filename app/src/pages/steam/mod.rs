@@ -2,9 +2,16 @@
 //! (`services::steam_library`). No login: the client is signed in already;
 //! the page says whether it can be read, opens or restarts Steam when that
 //! is what is missing, and reads it on request.
+//!
+//! The Steam account card ([`account`]) offers the optional sign-in with a
+//! QR code, which reads the library from the account whenever the client
+//! cannot be read; the library card points at it when the client is stuck.
+
+mod account;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::steam_owned::SteamSource;
 use heronite_i18n::{tr, trn};
 use heronite_steam::ClientApiFlag;
 
@@ -74,14 +81,18 @@ impl SteamPage {
             SteamState::NotAnswering => (tr!("Steam is not answering").into(), theme::warning(), false),
             SteamState::NeedsRestart => (tr!("Restart Steam once").into(), theme::warning(), false),
             SteamState::Blocked => (tr!("Blocked by another tool").into(), theme::warning(), false),
+            SteamState::PortTaken => (tr!("Port in use").into(), theme::warning(), false),
             SteamState::Failed => (tr!("Could not connect").into(), theme::danger_text(), false),
             SteamState::NotInstalled => (tr!("Steam not found").into(), theme::text_muted(), false),
         }
     }
 
-    fn explanation(&self, cx: &App) -> Option<&'static str> {
+    fn explanation(&self, cx: &App) -> Option<String> {
         let s = self.svc.read(cx);
-        match s.state() {
+        if s.state() == SteamState::PortTaken {
+            return s.taken.as_ref().map(heronite_steam::port_taken_message);
+        }
+        let text = match s.state() {
             // Said only when the flag file is there: another tool may hold its place.
             SteamState::Closed => Some(match s.flag {
                 Some(ClientApiFlag::On) => {
@@ -107,7 +118,8 @@ impl SteamPage {
                 Some(tr!("Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself."))
             }
             _ => None,
-        }
+        };
+        text.map(str::to_string)
     }
 
     /// The button the status calls for: open Steam, restart it, or read.
@@ -118,7 +130,8 @@ impl SteamPage {
         match s.state() {
             SteamState::Closed => ("open", tr!("Open Steam"), true),
             // Blocked: once the other tool lets the access open, a restart brings it.
-            SteamState::NeedsRestart | SteamState::NotAnswering | SteamState::Blocked => {
+            // PortTaken: once the other program let the port go, a restart opens it.
+            SteamState::NeedsRestart | SteamState::NotAnswering | SteamState::Blocked | SteamState::PortTaken => {
                 ("restart", tr!("Restart Steam"), heronite_steam::can_restart())
             }
             SteamState::Restarting => ("restart", tr!("Restarting\u{2026}"), false),
@@ -130,7 +143,7 @@ impl SteamPage {
     /// A read next to the restart, when Steam runs but does not answer:
     /// it shows why.
     fn second_action(&self, cx: &App) -> Option<(&'static str, &'static str)> {
-        (self.svc.read(cx).state() == SteamState::NotAnswering).then(|| ("read", tr!("Read library now")))
+        matches!(self.svc.read(cx).state(), SteamState::NotAnswering | SteamState::PortTaken).then(|| ("read", tr!("Read library now")))
     }
 
     fn run_action(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -138,6 +151,9 @@ impl SteamPage {
             "open" => self.svc.update(cx, |s, cx| s.open(cx)),
             "restart" => self.svc.update(cx, |s, cx| s.restart(cx)),
             "read" => self.read_now(cx),
+            "sign-in" => self.svc.update(cx, |s, cx| s.begin_sign_in(cx)),
+            "cancel-sign-in" => self.svc.update(cx, |s, cx| s.cancel_sign_in(cx)),
+            "sign-out" => self.svc.update(cx, |s, cx| s.sign_out(cx)),
             _ => {}
         }
     }
@@ -155,6 +171,9 @@ impl SteamPage {
         }
         if let Some(at) = s.updated_at.as_deref().and_then(read_at) {
             parts.push(at);
+        }
+        if s.source == SteamSource::Account {
+            parts.push(tr!("From your Steam account").to_string());
         }
         parts.join("  \u{b7}  ")
     }
@@ -219,6 +238,7 @@ impl SteamPage {
         if let Some(text) = self.explanation(cx) {
             rows.push(div().py(px(12.)).text_size(px(13.)).line_height(px(19.)).child(text).into_any_element());
         }
+        rows.extend(self.render_fallback(cx));
         let mut column = div().child(caption(tr!("Library"))).child(card(rows));
         if let Some((text, error)) = self.result_line(cx) {
             column = column.child(
@@ -235,7 +255,7 @@ impl SteamPage {
 
     fn render_about(&self) -> Div {
         let text = tr!(
-            "Heronite reads your library from the Steam client, so there is no login: only games are added (no tools, soundtracks, demos or games you hid in Steam). A game you already have from another store or added yourself is not added twice: it gets Steam's install instead. Steam keeps installing, updating and launching its games."
+            "Heronite reads your library from the Steam client, so there is no login: only games are added (no tools, soundtracks, demos or games you hid in Steam). A game you already have from another store or added yourself is not added twice: it gets Steam's install instead. Steam keeps installing, updating and launching its games. When Steam on this PC cannot be read, signing in to your Steam account with a QR code brings your library in anyway."
         );
         div().child(caption(tr!("About"))).child(card([div()
             .py(px(12.))
@@ -263,6 +283,7 @@ impl SteamPage {
         if let Some((text, _)) = self.result_line(cx) {
             rows.push(Row::info("result", text, ""));
         }
+        rows.extend(self.account_console_rows(cx));
         rows
     }
 
@@ -307,7 +328,8 @@ impl Render for SteamPage {
             return self.render_console(cx);
         }
         let wide = stores::content_width(window) >= 1000.;
-        let body = columns(wide, [self.render_library(cx), self.render_about()]);
+        let side = div().flex().flex_col().child(self.render_account(cx)).child(self.render_about());
+        let body = columns(wide, [self.render_library(cx), side]);
         div()
             .size_full()
             .relative()

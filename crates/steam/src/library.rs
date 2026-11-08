@@ -19,7 +19,7 @@ use std::sync::OnceLock;
 use anyhow::{anyhow, bail, Result};
 use heronite_data::models::{LocalMetaFile, TimestampFile};
 use heronite_data::status::PlayedGame;
-use heronite_data::steam_owned::{unix_to_iso, SteamOwnedFile, SteamOwnedGame};
+use heronite_data::steam_owned::{unix_to_iso, SteamOwnedFile, SteamOwnedGame, SteamSource};
 use heronite_data::{json_store, DataPaths, Library};
 use heronite_i18n::tr;
 use heronite_launch::install_state::steam_sideload_entry;
@@ -50,7 +50,7 @@ impl ImportReport {
 
 /// Steam names of things that are not games to play: test servers,
 /// playtests, benchmarks (plus [`is_non_game_steam_app`]).
-fn not_a_game(name: &str, app_id: &str) -> bool {
+pub(crate) fn not_a_game(name: &str, app_id: &str) -> bool {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"(?i)(\btest server\b|\bplaytest\b|\bbenchmark\b|\bpublic test\b)").unwrap());
     is_non_game_steam_app(name, app_id) || re.is_match(name)
@@ -109,13 +109,20 @@ pub fn read_owned(client: &SteamClient) -> Result<Vec<SteamOwnedGame>> {
         .collect())
 }
 
-/// Saves `owned` as the cached library and joins it to the Collection.
-/// `steam_bin` is the `steam` command installed entries point at. Blocking.
+/// Saves `owned` (read from the client) as the cached library and joins it
+/// to the Collection. `steam_bin` is the `steam` command installed entries
+/// point at. Blocking.
 pub fn import(paths: &DataPaths, owned: Vec<SteamOwnedGame>, steam_bin: Option<&str>) -> Result<ImportReport> {
+    import_from(paths, owned, steam_bin, SteamSource::Client)
+}
+
+/// [`import`] of a library read from `source`.
+pub fn import_from(paths: &DataPaths, owned: Vec<SteamOwnedGame>, steam_bin: Option<&str>, source: SteamSource) -> Result<ImportReport> {
     let mut report = ImportReport { owned: owned.len(), ..Default::default() };
     json_store::update::<SteamOwnedFile, _>(&paths.steam_owned(), |f| {
         f.games = owned.clone();
         f.updated_at = Some(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true));
+        f.source = Some(source);
         Ok(())
     })?;
 
