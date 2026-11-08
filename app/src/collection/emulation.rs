@@ -278,6 +278,17 @@ impl CollectionView {
             }
         })
         .detach();
+        // The header's Steam pill: repainted only when what it shows changes
+        // (the service notifies at each of its checks, every few seconds).
+        let mut shown = steam.read(cx).notice();
+        cx.observe(&steam, move |_, steam, cx| {
+            let now = steam.read(cx).notice();
+            if now != shown {
+                shown = now;
+                cx.notify();
+            }
+        })
+        .detach();
         if heronite_platform::supported(heronite_platform::Feature::XboxStore) {
             let xbox = crate::services::xbox_library(cx);
             cx.subscribe(&xbox, |this, _, ev: &XboxLibraryEvent, cx| {

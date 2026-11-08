@@ -2,7 +2,6 @@
   " and {n} more": " y {n} más",
   "100% · Completed": "100% · Completado",
   "100% · Completed {date}": "100% · Completado el {date}",
-  "A desktop notification when a game unlocks something.": "Una notificación de escritorio cuando un juego desbloquea algo.",
   "Achievement unlocked": "Logro desbloqueado",
   "Achievement unlocked · {percent}": "Logro desbloqueado · {percent}",
   "Achievements from Steam, GOG, Epic Games and RetroAchievements. Heronite keeps its own copy of them, so your history stays even if a store or an account goes away.": "Logros de Steam, GOG, Epic Games y RetroAchievements. Heronite guarda su propia copia, así tu historial se mantiene aunque una tienda o una cuenta desaparezca.",
@@ -139,5 +138,10 @@
   "{n} rare": "{n} raros",
   "{n} secret achievement": "{n} logro secreto",
   "{n} secret achievements": "{n} logros secretos",
-  "{signed} of {total} signed in": "{signed} de {total} conectados"
+  "{signed} of {total} signed in": "{signed} de {total} conectados",
+  "A desktop notification when a game unlocks something, while it runs and after it ends.": "Una notificación de escritorio cuando un juego desbloquea algo, mientras se ejecuta y al terminar.",
+  "Check Steam games while they run": "Comprobar los juegos de Steam mientras se ejecutan",
+  "Their new achievements show while you play, from Steam's stats files, when Steam writes them. Off by default: Steam's own overlay already shows them.": "Sus logros nuevos aparecen mientras juegas, desde los archivos de estadísticas de Steam, cuando Steam los escribe. Desactivado por defecto: el propio overlay de Steam ya los muestra.",
+  "Show new achievements over the game": "Mostrar logros nuevos sobre el juego",
+  "While a game runs, its game files are checked every few seconds and what it unlocks shows over it. Needs the overlay (Settings → Overlay).": "Mientras un juego se ejecuta, sus archivos del juego se comprueban cada pocos segundos y lo que desbloquea aparece sobre él. Necesita el overlay (Ajustes → Overlay)."
 }

@@ -70,6 +70,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Under the cover",
             "Favourite star",
             "Under the pointer",
+            "Categories on covers",
+            "Show categories on covers",
             "Text and motion",
             "Zoom",
             "Follow the system",
@@ -127,7 +129,9 @@ const INDEX: &[(Section, &[&str])] = &[
             "Steam",
             "Read from this PC's Steam",
             "Steam Web API key (optional)",
+            "Check Steam games while they run",
             "How they show",
+            "Show new achievements over the game",
             "Notify new achievements",
             "Try the notification",
             "Show achievements in the Timeline",
@@ -529,6 +533,17 @@ mod tests {
         assert_eq!(search("downloads")[0].pick(), Pick::Section(Section::Downloads));
         // At most a few settings per section.
         assert!(search("a").iter().all(|h| h.settings.len() <= SHOWN));
+    }
+
+    #[test]
+    fn finds_the_live_achievement_options() {
+        let hits = search("achievements over the game");
+        let hit = hits.iter().find(|h| h.section == Section::Achievements).expect("Achievements is found");
+        assert!(hit.settings.iter().any(|s| s.label == "Show new achievements over the game"));
+        let steam = search("steam games while they run");
+        assert!(steam
+            .iter()
+            .any(|h| h.section == Section::Achievements && h.settings.iter().any(|s| s.label == "Check Steam games while they run")));
     }
 
     /// Each label must still be a text the app draws, else the search lists

@@ -1,15 +1,17 @@
 //! `CollectionCard`: cover (125px in the list, the grid's width in the grid),
 //! radius 6 (Settings → Appearance → Corners), soft shadow, playtime label
 //! below (the title above it when the grid shows titles), hover bar with the
-//! play button and the hover effect of [`CardLook`].
+//! play button, the hover effect of [`CardLook`] and the game's categories
+//! (`category_badges`).
 
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use heronite_data::appearance::CoverHover;
+use heronite_data::appearance::{CategoryStyle, CoverHover};
 
+use super::category_badges::{self as cats, CategoryBadge};
 use super::vm::CardVm;
 use crate::icons::Icon;
 use crate::theme;
@@ -26,6 +28,8 @@ pub(super) struct CardLook {
     pub badges: bool,
     /// The line under the cover (playtime, sort value, status...).
     pub caption: bool,
+    /// How the game's categories show; `None` while they are off.
+    pub categories: Option<CategoryStyle>,
 }
 
 pub(super) struct CardState<'a> {
@@ -48,6 +52,10 @@ pub(super) struct CardState<'a> {
     /// Epic install / update progress and update hint.
     pub epic: Option<super::epic::CardEpic>,
     pub look: CardLook,
+    /// The game's categories (empty while [`CardLook::categories`] is off).
+    pub categories: Vec<CategoryBadge>,
+    /// The window's scale factor (the categories' SVG shapes).
+    pub scale: f32,
 }
 
 pub fn card(
@@ -91,6 +99,16 @@ pub fn card(
     };
 
     let grey = (s.grey_uninstalled && !vm.installed || vm.hidden) && !s.hovered;
+    // The categories: the circles join the star's row; the corner styles
+    // give way to the selection's tick and push the copies badge left.
+    let style = look.categories.filter(|_| !s.categories.is_empty());
+    let area = cats::Area { w: s.width, radius: r, scale: s.scale, unit: 1., play_room: true };
+    let circles = if style == Some(CategoryStyle::Circles) { cats::circles(&s.categories, area) } else { Vec::new() };
+    let corner_taken = style.is_some_and(cats::takes_top_right);
+    let category_overlay = style
+        .filter(|st| *st != CategoryStyle::Circles && !(s.pick.is_some() && cats::takes_top_right(*st)))
+        .and_then(|st| cats::overlay(st, &s.categories, area, show_bar_now(&s)));
+    let copies_left = corner_taken && vm.copies > 1 && s.pick.is_none();
     let cover_img = match s.cover {
         Some(src) => {
             // GPUI does not clip images to a parent's rounded corners: round the image itself.
@@ -211,8 +229,12 @@ pub fn card(
                 )
                 .when(glow, |d| d.child(div().absolute().inset_0().rounded(px(r)).bg(theme::white_a(0.07))))
                 .children(s.epic.as_ref().map(|e| super::epic::card_overlay(e, r)))
-                .children((vm.hidden || look.badges && vm.favourite).then(|| top_badges(vm.hidden, look.badges && vm.favourite)))
-                .children((vm.copies > 1 && s.pick.is_none()).then(|| copies_badge(vm.copies)))
+                .children((vm.hidden || look.badges && vm.favourite || copies_left || !circles.is_empty()).then(|| {
+                    top_badges(vm.hidden, look.badges && vm.favourite)
+                        .when(copies_left, |d| d.child(copies_badge(vm.copies).relative().top_0().right_0()))
+                        .children(circles)
+                }))
+                .children((vm.copies > 1 && s.pick.is_none() && !copies_left).then(|| copies_badge(vm.copies)))
                 .children(ring.map(|color| {
                     div()
                         .absolute()
@@ -240,6 +262,7 @@ pub fn card(
                     )
                 })
                 .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(r)).overflow_hidden().child(bar)))
+                .children(category_overlay)
                 .children(s.pick.map(tick_circle)),
         )
         .when(s.title, |d| {
@@ -256,6 +279,12 @@ pub fn card(
         })
         .when(look.caption, |d| d.child(caption_line(vm).mt(px(if s.title { 1. } else { 6. })).px(px(1.))))
         .into_any_element()
+}
+
+/// The play bar is up (or on its way down): the band of categories makes
+/// room for it.
+fn show_bar_now(s: &CardState<'_>) -> bool {
+    s.pick.is_none() && (s.hovered || s.leaving)
 }
 
 /// How far a cover rises under the pointer ([`CoverHover::Lift`]), px.

@@ -6,6 +6,7 @@ mod add_game;
 mod age_rows;
 mod backdrop;
 mod card;
+pub(crate) mod category_badges;
 mod clients;
 mod console;
 mod context_menu;
@@ -56,6 +57,7 @@ mod scroll;
 mod selection;
 mod sideload_uninstall;
 mod steam_copy;
+mod steam_pill;
 mod system_glue;
 mod timeline;
 mod timeline_achievements;
@@ -261,6 +263,7 @@ impl CollectionView {
                 crate::theme::set_appearance(a);
                 let applied = this.update(cx, |_, cx| {
                     crate::system::ui_scale::sync(cx);
+                    crate::services::achievements::get(cx).update(cx, |s, cx| s.sync_live(cx));
                     cx.refresh_windows();
                 });
                 if applied.is_err() {

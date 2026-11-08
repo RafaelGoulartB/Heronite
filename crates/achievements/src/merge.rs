@@ -59,6 +59,37 @@ pub fn merge(old: Option<&AchievementSet>, mut fresh: AchievementSet, now: DateT
     (fresh, new_unlocks)
 }
 
+/// How far before a session's start an unlock still counts as made in it
+/// (a game that writes its files late, a clock a little off).
+pub const SESSION_SLACK: chrono::Duration = chrono::Duration::minutes(2);
+
+/// [`merge`] for a read made while the game runs (the session started at
+/// `since`): only what was unlocked in the session is new. Unlocks from
+/// before (a save copied in, stats synced from the cloud) join the record
+/// quietly. Unlike [`merge`], a first read is not all history: the files
+/// may first appear with the session's first unlock, so what it unlocked
+/// since the session started is new.
+pub fn merge_live(
+    old: Option<&AchievementSet>,
+    mut fresh: AchievementSet,
+    now: DateTime<Utc>,
+    since: DateTime<Utc>,
+) -> (AchievementSet, Vec<Achievement>) {
+    let cutoff = since - SESSION_SLACK;
+    let in_session = |a: &Achievement| a.unlocked_at.is_some_and(|t| t >= cutoff);
+    if old.is_some() {
+        let (merged, new) = merge(old, fresh, now);
+        return (merged, new.into_iter().filter(in_session).collect());
+    }
+    // Without times nothing tells a first read's unlocks apart: history.
+    let mut new = Vec::new();
+    for a in fresh.achievements.iter_mut().filter(|a| a.unlocked && in_session(a)) {
+        a.noticed_at = Some(now);
+        new.push(a.clone());
+    }
+    (fresh, new)
+}
+
 fn merge_groups(old: &AchievementSet, fresh: &mut AchievementSet) {
     if fresh.groups.is_empty() {
         fresh.groups.clone_from(&old.groups);
@@ -233,5 +264,55 @@ mod tests {
         assert_eq!(merged.groups[0].dlc_app_id, Some(1303182));
         assert_eq!(merged.groups[0].unknown["futureGroup"], 1);
         assert_eq!(merged.groups[1].dlc_app_id, None);
+    }
+
+    #[test]
+    fn a_live_read_only_announces_what_the_session_unlocked() {
+        // Session from the 19th; "old" came with stats synced in during it.
+        let old = set(vec![a("old", None), a("y", None), a("kept", Some(2))]);
+        let fresh = set(vec![a("old", Some(5)), a("y", Some(19)), a("kept", Some(2))]);
+        let (merged, new) = merge_live(Some(&old), fresh, at(20), at(19));
+        assert_eq!(new.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["y"]);
+        // Both join the record either way.
+        assert!(merged.achievements.iter().all(|a| a.unlocked));
+    }
+
+    #[test]
+    fn a_live_read_again_announces_nothing() {
+        let old = set(vec![a("y", None)]);
+        let (merged, new) = merge_live(Some(&old), set(vec![a("y", Some(19))]), at(20), at(19));
+        assert_eq!(new.len(), 1);
+        let (_, again) = merge_live(Some(&merged), set(vec![a("y", Some(19))]), at(20), at(19));
+        assert!(again.is_empty());
+        // Nor does the refresh after the game exits.
+        let (_, after) = merge(Some(&merged), set(vec![a("y", Some(19))]), at(21));
+        assert!(after.is_empty());
+    }
+
+    #[test]
+    fn a_first_live_read_announces_only_the_sessions_unlocks() {
+        let fresh =
+            set(vec![a("before", Some(3)), a("now", Some(19)), a("locked", None), Achievement { unlocked: true, ..a("no-time", None) }]);
+        let (merged, new) = merge_live(None, fresh, at(20), at(19));
+        assert_eq!(new.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["now"]);
+        let noticed: Vec<_> = merged.achievements.iter().filter(|a| a.noticed_at.is_some()).map(|a| a.id.as_str()).collect();
+        assert_eq!(noticed, ["now"]);
+        // An unlock without a time stays history, with no made-up time.
+        assert_eq!(merged.achievements[3].unlocked_at, None);
+    }
+
+    #[test]
+    fn an_unlock_without_a_time_noticed_live_counts_as_the_sessions() {
+        let old = set(vec![a("x", None)]);
+        let (_, new) = merge_live(Some(&old), set(vec![Achievement { unlocked: true, ..a("x", None) }]), at(20), at(19));
+        assert_eq!(new.len(), 1);
+    }
+
+    #[test]
+    fn the_slack_covers_an_unlock_just_before_the_session() {
+        let since = at(19);
+        let early = Achievement { unlocked_at: Some(since - chrono::Duration::seconds(30)), unlocked: true, ..a("x", None) };
+        let (_, new) = merge_live(Some(&set(vec![a("x", None)])), set(vec![early]), at(20), since);
+        assert_eq!(new.len(), 1);
     }
 }
