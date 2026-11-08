@@ -240,12 +240,42 @@ pub fn wallpaper_query(title: &str) -> String {
     format!("\"{title}\" wallpaper")
 }
 
+/// The game's title in a query of the picker: the quoted part of
+/// `"Portal 2" cover`, else the query without a last "cover" or "wallpaper".
+pub fn title_of_query(query: &str) -> String {
+    let q = query.trim();
+    if let Some((_, rest)) = q.split_once('"') {
+        if let Some((title, _)) = rest.split_once('"') {
+            if !title.trim().is_empty() {
+                return title.trim().to_owned();
+            }
+        }
+    }
+    for suffix in [" cover", " wallpaper"] {
+        let cut = q.len().saturating_sub(suffix.len());
+        if q.is_char_boundary(cut) && q[cut..].eq_ignore_ascii_case(suffix) {
+            return q[..cut].trim().to_owned();
+        }
+    }
+    q.to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn fixture(name: &str) -> String {
         std::fs::read_to_string(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+    }
+
+    #[test]
+    fn title_of_query_takes_the_quoted_title_or_drops_the_suffix() {
+        assert_eq!(title_of_query(&cover_query("007 First Light")), "007 First Light");
+        assert_eq!(title_of_query(&wallpaper_query("Portal 2")), "Portal 2");
+        assert_eq!(title_of_query("  Hades II Cover "), "Hades II");
+        assert_eq!(title_of_query("Hades II"), "Hades II");
+        assert_eq!(title_of_query("\"\" cover"), "\"\"");
+        assert_eq!(title_of_query("Pokémon wallpaper"), "Pokémon");
     }
 
     #[test]

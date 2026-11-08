@@ -449,6 +449,34 @@ impl MetadataService {
         web_images::search_web_images(&self.http, query, transparent)
     }
 
+    /// The art picker's image search: SteamGridDB's art when an API key is
+    /// set (not for transparent images, which it does not have) and the web's,
+    /// apart. A failing SteamGridDB only leaves its part empty; the web's
+    /// results leave out the images SteamGridDB already gave.
+    pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        let key = if transparent { None } else { covers::steamgrid_api_key(&self.paths) };
+        let title = web_images::title_of_query(query);
+        let (sgdb, web) = std::thread::scope(|s| {
+            let sgdb = s.spawn(|| match key.as_deref() {
+                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, kind).unwrap_or_else(|e| {
+                    log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
+                    Vec::new()
+                }),
+                _ => Vec::new(),
+            });
+            let web = self.search_web_images(query, transparent);
+            (sgdb.join().unwrap_or_default(), web)
+        });
+        let web = match web {
+            Ok(list) => list,
+            Err(e) if sgdb.is_empty() => return Err(e),
+            Err(_) => Vec::new(),
+        };
+        let mut seen: std::collections::HashSet<String> = sgdb.iter().map(|img| img.image_url.clone()).collect();
+        let web = web.into_iter().filter(|img| seen.insert(img.image_url.clone())).collect();
+        Ok(ArtImages { steamgrid: sgdb, web })
+    }
+
     /// HowLongToBeat for a game (cache first; see [`hltb::get_or_fetch_hltb`]).
     pub fn how_long_to_beat(&self, title: &str, store_title: Option<&str>) -> Result<HltbLookup> {
         hltb::get_or_fetch_hltb(&self.paths, &self.http, &self.hltb, title, store_title)
