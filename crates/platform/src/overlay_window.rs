@@ -14,6 +14,7 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentProcessId, GetCurrentThreadId};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{SetActiveWindow, SetFocus};
 use windows_sys::Win32::UI::Shell::{SHQueryUserNotificationState, QUERY_USER_NOTIFICATION_STATE, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, GetWindowThreadProcessId, IsWindow, SetForegroundWindow,
@@ -92,6 +93,32 @@ pub struct FocusReturn {
     previous_pid: u32,
 }
 
+impl FocusReturn {
+    /// Checks, a moment after the panel opened, that it still has the
+    /// foreground, and takes it back from another window of Heronite (the
+    /// main window) that got it. Another program's window keeps it: the user
+    /// may have switched to it. Call on the UI thread, the panel's.
+    pub fn hold(&self) {
+        let panel = self.panel.get() as HWND;
+        // SAFETY: the handles are only passed to Windows, which checks them.
+        unsafe {
+            if IsWindow(panel) == 0 {
+                return;
+            }
+            let front = GetForegroundWindow();
+            if front == panel {
+                return;
+            }
+            if !ours(front) {
+                log::debug!("overlay: {} has the foreground over the panel", describe(front));
+                return;
+            }
+            log::info!("overlay: {} took the foreground back from the panel", describe(front));
+            activate(panel);
+        }
+    }
+}
+
 impl Drop for FocusReturn {
     fn drop(&mut self) {
         let panel = self.panel.get() as HWND;
@@ -147,35 +174,75 @@ pub fn show(
         // Refused, the panel still works (the game may also see the
         // controller), a click activates it, and focus still goes back on
         // close if it then owns the foreground.
-        if !activate(hwnd, previous) {
-            log::info!("overlay: Windows refused the foreground for the panel");
-        }
+        activate(hwnd);
         Ok(NonZeroIsize::new(previous as isize).map(|previous| FocusReturn { panel: handle, previous, previous_pid }))
     }
 }
 
-/// Brings `hwnd` to the foreground in place of `previous`. Windows lets only
-/// the process that got the last input event take it, and a controller read
-/// through XInput is no input event (a keyboard shortcut is). Refused, the
-/// request is made again with this thread's input attached to the foreground
-/// window's thread for that call alone, which Windows accepts; no input is
-/// sent to the game.
-unsafe fn activate(hwnd: HWND, previous: HWND) -> bool {
-    // SAFETY: the caller validated `hwnd`; `previous` is only passed to
-    // Windows, which checks it.
+/// Brings `hwnd`, a window of this thread, to the foreground, and logs what
+/// kept it when that fails. Windows lets only the process that got the last
+/// input event take it, and a controller read through XInput is no input
+/// event (a keyboard shortcut is). Refused, it is asked again:
+/// - Heronite's own window in front (the main window, on this same thread
+///   like every GPUI window): activating a window of the thread that has the
+///   foreground is always allowed;
+/// - another program's window (the game): with this thread's input attached
+///   to that window's thread for the call alone, which Windows accepts. No
+///   input is sent to the game.
+unsafe fn activate(hwnd: HWND) -> bool {
+    // SAFETY: the caller passes a window of this thread; the other handles
+    // are only passed to Windows, which checks them.
     unsafe {
         if SetForegroundWindow(hwnd) != 0 && GetForegroundWindow() == hwnd {
             return true;
         }
-        let ours = GetCurrentThreadId();
-        let theirs = GetWindowThreadProcessId(previous, std::ptr::null_mut());
-        if theirs == 0 || theirs == ours || AttachThreadInput(ours, theirs, 1) == 0 {
-            return false;
+        let front = GetForegroundWindow();
+        let thread = GetCurrentThreadId();
+        let theirs = GetWindowThreadProcessId(front, std::ptr::null_mut());
+        log::info!("overlay: Windows refused the foreground for the panel ({} has it); asking again", describe(front));
+        if theirs == thread {
+            SetActiveWindow(hwnd);
+            SetFocus(hwnd);
+        } else if theirs != 0 && AttachThreadInput(thread, theirs, 1) != 0 {
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            AttachThreadInput(thread, theirs, 0);
         }
-        BringWindowToTop(hwnd);
-        SetForegroundWindow(hwnd);
-        AttachThreadInput(ours, theirs, 0);
-        GetForegroundWindow() == hwnd
+        let front = GetForegroundWindow();
+        if front == hwnd {
+            log::info!("overlay: the panel has the foreground");
+            true
+        } else {
+            log::info!("overlay: the panel did not get the foreground; {} keeps it", describe(front));
+            false
+        }
+    }
+}
+
+/// The process of `hwnd`, 0 for none.
+fn process_of(hwnd: HWND) -> u32 {
+    let mut pid = 0;
+    // SAFETY: Windows checks the handle; the output is a local.
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+    pid
+}
+
+/// Whether `hwnd` is a window of this process.
+fn ours(hwnd: HWND) -> bool {
+    let pid = process_of(hwnd);
+    // SAFETY: no preconditions.
+    pid != 0 && pid == unsafe { GetCurrentProcessId() }
+}
+
+/// A window for the logs: whose it is, never its title (it could be private).
+fn describe(hwnd: HWND) -> String {
+    let pid = process_of(hwnd);
+    if pid == 0 {
+        "no window".into()
+    } else if ours(hwnd) {
+        "another Heronite window".into()
+    } else {
+        format!("a window of process {pid}")
     }
 }
 

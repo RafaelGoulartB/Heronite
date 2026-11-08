@@ -66,6 +66,10 @@ const HIDE_BEFORE_CAPTURE: Duration = Duration::from_millis(300);
 const ICON_PX: f32 = 44.;
 /// An achievement's notice waits this long at most for its icon.
 const ICON_WAIT: Duration = Duration::from_millis(1500);
+/// Windows: how long after the panel opens it checks that it still has the
+/// foreground ([`heronite_platform::overlay_window::FocusReturn::hold`]).
+#[cfg(windows)]
+const FOREGROUND_CHECK: Duration = Duration::from_millis(250);
 
 /// A game launched by the app that is running.
 #[derive(Clone, Debug)]
@@ -473,13 +477,28 @@ impl OverlayService {
                     let handle = opened.handle;
                     cx.spawn(async move |this, cx| match shown.await {
                         Ok(mut focus) => {
-                            this.update(cx, |s, _| {
-                                if s.panel == Some(handle) {
+                            let kept = this
+                                .update(cx, |s, _| {
+                                    if s.panel != Some(handle) {
+                                        return false;
+                                    }
                                     s.focus_return = focus.take();
-                                }
-                            })
-                            .ok();
+                                    s.focus_return.is_some()
+                                })
+                                .unwrap_or(false);
                             drop(focus);
+                            // Something can take the foreground back right after
+                            // (the main window, when the shortcut was pressed
+                            // in it): once more, the keys then reach the panel.
+                            if kept {
+                                cx.background_executor().timer(FOREGROUND_CHECK).await;
+                                this.update(cx, |s, _| {
+                                    if let Some(focus) = s.focus_return.as_ref().filter(|_| s.panel == Some(handle)) {
+                                        focus.hold();
+                                    }
+                                })
+                                .ok();
+                            }
                         }
                         Err(error) => {
                             log::warn!("overlay: cannot show the native panel: {error:#}");

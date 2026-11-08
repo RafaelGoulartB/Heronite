@@ -64,7 +64,10 @@ does not inject code into games.
   refuses foreground requests made without user input (a controller read
   through XInput is none): the request is then repeated with the panel's
   thread input attached to the foreground window's thread for that call
-  (`AttachThreadInput`). No input is simulated or sent to the game.
+  (`AttachThreadInput`). When Heronite's own main window has it (the
+  shortcut pressed there), the panel is activated directly, as windows of
+  the same thread may be, and checked again 250 ms later so the keys (Esc
+  included) reach the panel. No input is simulated or sent to the game.
 - **Controller:** an XInput controller's Back+Start acts as Guide when both
   go down within 300 ms (a Back held for a game's map stays Back). Tap the
   combination to open/close; hold it with the configured screenshot button,
