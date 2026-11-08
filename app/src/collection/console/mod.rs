@@ -269,7 +269,11 @@ impl CollectionView {
                         match msg {
                             // Presses only count while the window has the
                             // focus (not while a game is in front).
-                            PadMsg::Press(pad) if window.is_window_active() => this.console_pad(pad, window, cx),
+                            PadMsg::Press(pad) if window.is_window_active() => {
+                                // The controller is in use: the cursor steps aside until the mouse moves.
+                                pointer::hide_cursor();
+                                this.console_pad(pad, window, cx)
+                            }
                             PadMsg::Press(_) => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
@@ -334,6 +338,8 @@ impl CollectionView {
 
     /// A key in console mode (called before anything else sees it).
     pub(super) fn console_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // A key brings back the cursor a controller hid.
+        pointer::show_cursor();
         if let Some(o) = self.console.overlay.clone() {
             if let Ok(osk) = o.view.downcast::<crate::console::osk::Osk>() {
                 if osk.update(cx, |k, cx| k.type_key(ks, cx)) {
@@ -392,6 +398,32 @@ impl CollectionView {
                 this.show_console_hints(cx);
             }
         })
+    }
+
+    /// The mouse moving over something of a layout: `focus` moves the focus
+    /// to it (`true` when it moved), at most once a frame.
+    pub(super) fn cover_hover(
+        &self,
+        focus: impl Fn(&mut Self) -> bool + 'static,
+    ) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static {
+        let this = self.console.me.clone();
+        let focus = std::rc::Rc::new(focus);
+        move |_, window, cx| {
+            if !pointer::take_hover(window) {
+                return;
+            }
+            let (Some(this), focus) = (this.clone(), focus.clone()) else { return };
+            window.defer(cx, move |_, cx| {
+                this.update(cx, |v, cx| {
+                    if console::active() && focus(v) {
+                        motion::press();
+                    }
+                    // Drawn again either way: the next hover may move the focus.
+                    cx.notify();
+                })
+                .ok();
+            });
+        }
     }
 
     /// Hosts `view` over the current screen until it closes itself through

@@ -10,6 +10,10 @@
 //! - The wheel moves the focus (one press per notch), the right and back
 //!   buttons go back (B). [`layer`] catches them for the whole window, before
 //!   the scroll areas, which follow the focus.
+//! - Moving the mouse over a row, a menu item or a still cover moves the
+//!   focus there ([`Clickable::on_hover_pads`]), at most once a frame.
+//! - A controller press hides the cursor until the mouse moves or a key is
+//!   pressed ([`hide_cursor`], [`show_cursor`]).
 //!
 //! Each window that takes presses registers where they go with
 //! [`set_router`]; elements send them through [`press`] (deferred, so a
@@ -30,6 +34,8 @@ type Router = Rc<dyn Fn(Pad, &mut Window, &mut App)>;
 
 thread_local! {
     static ROUTERS: RefCell<HashMap<WindowId, Router>> = RefCell::new(HashMap::new());
+    /// Windows a hover moved the focus in since they were last drawn.
+    static HOVERED: RefCell<Vec<WindowId>> = const { RefCell::new(Vec::new()) };
     static WHEEL: Cell<Wheel> = const { Cell::new(Wheel { sum: 0., last: None }) };
 }
 
@@ -87,6 +93,37 @@ pub fn press(pads: impl Into<Rc<[Pad]>>, window: &mut Window, cx: &mut App) {
     });
 }
 
+/// Whether a hover may move the focus in `window` now: once a frame, so a
+/// route worked out for the last frame is never sent twice.
+pub fn take_hover(window: &Window) -> bool {
+    let id = window.window_handle().window_id();
+    HOVERED.with(|h| {
+        let mut h = h.borrow_mut();
+        if h.contains(&id) {
+            return false;
+        }
+        h.push(id);
+        true
+    })
+}
+
+/// Hides the mouse cursor over the app until the mouse moves (a controller
+/// is in use).
+pub fn hide_cursor() {
+    #[cfg(target_os = "linux")]
+    gpui_linux::hide_cursor_until_mouse_moves();
+    #[cfg(windows)]
+    gpui_windows::hide_cursor_until_mouse_moves();
+}
+
+/// Shows the cursor [`hide_cursor`] took away (a key was pressed).
+pub fn show_cursor() {
+    #[cfg(target_os = "linux")]
+    gpui_linux::show_cursor();
+    #[cfg(windows)]
+    gpui_windows::show_cursor();
+}
+
 /// `n` presses of `pad`.
 pub fn repeat(pad: Pad, n: usize) -> impl Iterator<Item = Pad> {
     std::iter::repeat_n(pad, n)
@@ -124,6 +161,20 @@ pub trait Clickable: InteractiveElement + Sized {
         self.on_mouse_down(MouseButton::Left, move |_, window, cx| {
             cx.stop_propagation();
             press(pads.clone(), window, cx);
+        })
+    }
+
+    /// Moving the mouse over it sends `pads` (the presses that bring the focus
+    /// there; nothing when empty, as for what has the focus already).
+    fn on_hover_pads(self, pads: impl Into<Rc<[Pad]>>) -> Self {
+        let pads: Rc<[Pad]> = pads.into();
+        if pads.is_empty() {
+            return self;
+        }
+        self.on_mouse_move(move |_, window, cx| {
+            if take_hover(window) {
+                press(pads.clone(), window, cx);
+            }
         })
     }
 
@@ -205,7 +256,11 @@ fn wheel_presses(dx: f32, dy: f32, axis: WheelAxis, now: Instant) -> Vec<Pad> {
 /// first child of the window's root.
 pub fn layer(axis: WheelAxis) -> impl IntoElement {
     canvas(
-        |_, _, _| {},
+        // A new frame: hovers may move the focus again.
+        |_, window, _| {
+            let id = window.window_handle().window_id();
+            HOVERED.with(|h| h.borrow_mut().retain(|w| *w != id));
+        },
         move |_, _, window, _| {
             window.on_mouse_event(move |ev: &ScrollWheelEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture || router(window).is_none() {
@@ -237,6 +292,8 @@ pub fn layer(axis: WheelAxis) -> impl IntoElement {
 pub enum Step {
     /// A left click at a point, in fractions of the window (0..=1).
     Click(f32, f32),
+    /// The mouse moved to a point (a hover).
+    Move(f32, f32),
     /// The wheel turned by lines (positive = up) at the window's middle.
     Wheel(f32),
     /// The right button (back).
@@ -244,7 +301,7 @@ pub enum Step {
 }
 
 /// `HERONITE_DEBUG_MOUSE`: a scripted sequence of mouse events for tests,
-/// e.g. `click:0.5:0.4,wait:800,wheel:-1,right` (points as fractions of the
+/// e.g. `click:0.5:0.4,move:0.2:0.3,wait:800,wheel:-1,right` (points as fractions of the
 /// window). Each step waits 400 ms; `wait:<ms>` waits longer.
 pub fn parse_script(text: &str) -> Vec<(Duration, Step)> {
     let mut out = Vec::new();
@@ -259,6 +316,10 @@ pub fn parse_script(text: &str) -> Vec<(Duration, Step)> {
             }
             "click" => match (num(1), num(2)) {
                 (Some(x), Some(y)) => Step::Click(x, y),
+                _ => continue,
+            },
+            "move" => match (num(1), num(2)) {
+                (Some(x), Some(y)) => Step::Move(x, y),
                 _ => continue,
             },
             "wheel" => Step::Wheel(num(1).unwrap_or(-1.)),
@@ -280,6 +341,11 @@ pub fn play(step: Step, window: &mut Window, cx: &mut App) {
     let at = |x: f32, y: f32| point(size.width * x, size.height * y);
     let (position, button) = match step {
         Step::Click(x, y) => (at(x, y), MouseButton::Left),
+        Step::Move(x, y) => {
+            let ev = MouseMoveEvent { position: at(x, y), pressed_button: None, modifiers: Modifiers::default() };
+            window.dispatch_event(PlatformInput::MouseMove(ev), cx);
+            return;
+        }
         Step::Right => (at(0.5, 0.5), MouseButton::Right),
         Step::Wheel(lines) => {
             let ev = ScrollWheelEvent {
@@ -316,8 +382,9 @@ mod tests {
 
     #[test]
     fn script_steps() {
-        let s = parse_script("click:0.5:0.25, wait:600,wheel:-2,right,bogus,click:1");
-        assert_eq!(s.iter().map(|(_, p)| *p).collect::<Vec<_>>(), [Step::Click(0.5, 0.25), Step::Wheel(-2.), Step::Right]);
+        let s = parse_script("click:0.5:0.25, wait:600,wheel:-2,right,bogus,click:1,move:0.1:0.2");
+        let steps: Vec<Step> = s.iter().map(|(_, p)| *p).collect();
+        assert_eq!(steps, [Step::Click(0.5, 0.25), Step::Wheel(-2.), Step::Right, Step::Move(0.1, 0.2)]);
         assert_eq!(s[1].0, Duration::from_millis(1000));
     }
 

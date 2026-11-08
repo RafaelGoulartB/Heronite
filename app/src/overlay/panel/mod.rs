@@ -486,6 +486,8 @@ impl OverlayPanel {
     }
 
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // A key brings back the cursor a controller hid.
+        pointer::show_cursor();
         if let Some(osk) = self.osk.as_ref().map(|(k, _)| k.clone()) {
             if osk.update(cx, |k, cx| k.type_key(&ev.keystroke, cx)) {
                 cx.stop_propagation();
@@ -552,7 +554,8 @@ impl OverlayPanel {
                             let row =
                                 list::render_row_at(r, list_active && i == self.nav.focus, routes.get(r.id.as_ref()).map(Vec::as_slice));
                             let pads = if list_active { self.nav.click(&rows, i) } else { Vec::new() };
-                            list = list.child(div().on_pads(pads).child(row))
+                            let hover = routes.get(r.id.as_ref()).cloned().unwrap_or_default();
+                            list = list.child(div().on_hover_pads(hover).on_pads(pads).child(row))
                         }
                     }
                 }

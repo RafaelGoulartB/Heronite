@@ -396,8 +396,20 @@ impl CollectionView {
                         (nav.toolbar, nav.index, nav.reveal) = (None, j, true);
                         moved
                     });
-                    let tile = self.console_tile(key, tw, th, grid_focus && j == index, visible, window);
-                    line = line.child(tile.on_mouse_down(MouseButton::Left, click));
+                    let on = grid_focus && j == index;
+                    let tile = self.console_tile(key, tw, th, on, visible, window).on_mouse_down(MouseButton::Left, click);
+                    // The mouse over a cover moves the focus there (the grid stays still).
+                    let tile = if on {
+                        tile
+                    } else {
+                        tile.on_mouse_move(self.cover_hover(move |this| {
+                            let nav = &mut this.tab_nav(tab).grid;
+                            let moved = nav.toolbar.is_some() || nav.index != j;
+                            (nav.toolbar, nav.index, nav.reveal) = (None, j, true);
+                            moved
+                        }))
+                    };
+                    line = line.child(tile);
                 }
             }
             grid = grid.child(line);

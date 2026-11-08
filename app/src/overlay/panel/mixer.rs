@@ -258,6 +258,7 @@ impl OverlayPanel {
                 .py(u(10.))
                 .rounded(u(12.))
                 .when(on, |d| d.bg(theme::black_a(0.08)))
+                .on_hover_pads(route.clone().unwrap_or_default())
                 .on_pads(route.unwrap_or_default())
                 .child(div().child(icon(if muted { Icon::VolumeOff } else { ic }, u(20.), fg)).on_pads(mute))
                 .child(div().w(u(108.)).flex_none().min_w_0().truncate().text_size(u(16.)).text_color(fg).child(label))
@@ -300,7 +301,16 @@ impl OverlayPanel {
                     .map(|(i, app)| line(&app_id(i), app_icon(app), app.name.clone().into(), Some(app.volume), app.muted)),
             )
             .children(output.map(|o| {
+                // A click switches to the next output (Y on the mixer); the mouse over it focuses System.
+                let system = routes.get(SYSTEM).cloned();
+                let switch = system
+                    .clone()
+                    .filter(|_| a.outputs.len() > 1 && audio::device_switching_supported() && !loading)
+                    .map(|r| r.into_iter().chain([Pad::Y]).collect::<Vec<_>>())
+                    .unwrap_or_default();
                 div()
+                    .on_hover_pads(system.unwrap_or_default())
+                    .on_pads(switch)
                     .flex()
                     .items_center()
                     .gap(u(8.))

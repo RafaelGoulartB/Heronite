@@ -348,6 +348,15 @@ impl ListNav {
         for (i, r) in rows.iter().enumerate() {
             let mut row = div().child(draw(i, r, active && i == self.focus));
             if let Some(click) = clicks.as_ref().and_then(|c| c.at(rows, i)) {
+                // The mouse over a row moves the focus there.
+                if click.moves() {
+                    let route = click.route();
+                    row = row.on_mouse_move(move |_, window, cx| {
+                        if super::pointer::take_hover(window) {
+                            super::pointer::press(route.clone(), window, cx);
+                        }
+                    });
+                }
                 row = row.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     cx.stop_propagation();
                     super::pointer::press(click.pads(), window, cx);
@@ -377,7 +386,17 @@ struct Click {
 
 impl Click {
     fn pads(&self) -> Vec<Pad> {
-        self.lead.iter().copied().chain(std::iter::repeat_n(self.step, self.n)).chain(self.then).collect()
+        self.route().into_iter().chain(self.then).collect()
+    }
+
+    /// The presses that bring the focus to the row (a hover).
+    fn route(&self) -> Vec<Pad> {
+        self.lead.iter().copied().chain(std::iter::repeat_n(self.step, self.n)).collect()
+    }
+
+    /// Whether the row needs presses to get the focus.
+    fn moves(&self) -> bool {
+        !self.lead.is_empty() || self.n > 0
     }
 }
 

@@ -38,5 +38,12 @@ maximized: upstream said windowed, so the main window, whose placement is
 remembered (`app/src/system/hub/window.rs`), reopened windowed after being
 minimized while maximized.
 
+- `hide_cursor_until_mouse_moves` and `show_cursor` (`src/platform.rs`, exported from the
+  crate root): GPUI only hides the cursor while typing and shows it again when the mouse
+  moves. Heronite's console mode hides it while a controller is in use and shows it again
+  on a key press. `WindowsPlatform::new` keeps the platform's `cursor_visible` and its
+  windows in a thread-local; the functions do what `Platform::hide_cursor_until_mouse_moves`
+  and the windows' `restore_cursor_after_hide` do.
+
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.

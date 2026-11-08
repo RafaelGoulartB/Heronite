@@ -219,12 +219,14 @@ impl SettingsPage {
             // focused one, → into it.
             let mut pads = if self.console.content { vec![Pad::B] } else { Vec::new() };
             pads.extend(crate::console::pointer::along(self.console.nav, i, Pad::Up, Pad::Down));
+            // The mouse over a section shows it.
+            let hover = pads.clone();
             if pads.is_empty() {
                 pads.push(Pad::Right);
             }
             nav = nav.child(
                 kit::row_base(focused)
-                    .when(!layer_open, |d| d.on_pads(pads))
+                    .when(!layer_open, |d| d.on_hover_pads(hover).on_pads(pads))
                     .min_h(u(50.))
                     .when(on && !focused, |d| d.bg(theme::white_a(0.08)))
                     .child(crate::ui::icon(s.icon(), u(20.), if focused { theme::console_on_focus() } else { theme::text_muted() }))

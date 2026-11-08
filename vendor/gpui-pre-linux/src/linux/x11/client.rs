@@ -1809,6 +1809,11 @@ impl X11Client {
         self.0.borrow_mut().hide_cursor_until_mouse_moves();
     }
 
+    /// Heronite: the cursor back without waiting for the mouse to move.
+    pub(crate) fn show_cursor(&self) {
+        self.0.borrow_mut().restore_cursor_after_hide();
+    }
+
     pub(crate) fn is_cursor_visible(&self) -> bool {
         self.0.borrow().cursor_hidden_window.is_none()
     }

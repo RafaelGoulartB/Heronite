@@ -383,6 +383,17 @@ impl CollectionView {
                 moved
             });
             let place = div().absolute().left(u(l)).top(u(top)).w(u(w)).h(u(h)).on_mouse_down(MouseButton::Left, click);
+            // The mouse over a tile focuses it (the mosaic stays still).
+            let place = if on {
+                place
+            } else {
+                place.on_mouse_move(self.cover_hover(move |this| {
+                    let nav = &mut this.tab_nav(tab).dashboard;
+                    let moved = nav.focus != tile_id;
+                    nav.focus = tile_id;
+                    moved
+                }))
+            };
             root = root.child(place.child(focus_frame(id, on, w, h, body.relative().size_full())));
         }
         root.into_any_element()

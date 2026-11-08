@@ -50,6 +50,59 @@ impl TrackedWindow {
     }
 }
 
+type CursorTarget = (Arc<AtomicBool>, std::sync::Weak<RwLock<SmallVec<[TrackedWindow; 4]>>>);
+
+thread_local! {
+    /// Heronite: what [`hide_cursor_until_mouse_moves`] and [`show_cursor`]
+    /// need of the platform made last (GPUI has no API for them).
+    static CURSOR: RefCell<Option<CursorTarget>> = const { RefCell::new(None) };
+}
+
+/// Heronite: hides the mouse cursor over the app's windows until the mouse
+/// moves, as typing does (a game controller is in use). The same as
+/// `Platform::hide_cursor_until_mouse_moves`.
+pub fn hide_cursor_until_mouse_moves() {
+    CURSOR.with(|c| {
+        let c = c.borrow();
+        let Some((visible, windows)) = c.as_ref() else { return };
+        if !visible.swap(false, Ordering::Relaxed) {
+            return;
+        }
+        let Some(windows) = windows.upgrade() else { return };
+        for handle in windows.read().iter() {
+            let Some(window) = window_from_hwnd(handle.as_raw()) else {
+                continue;
+            };
+            if window.state.hovered.get() {
+                unsafe { SetCursor(None) };
+                break;
+            }
+        }
+    });
+}
+
+/// Heronite: shows the cursor a hide took away, without waiting for the
+/// mouse to move (a key was pressed), as the windows do when it moves.
+pub fn show_cursor() {
+    CURSOR.with(|c| {
+        let c = c.borrow();
+        let Some((visible, windows)) = c.as_ref() else { return };
+        if visible.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        let Some(windows) = windows.upgrade() else { return };
+        for handle in windows.read().iter() {
+            let Some(window) = window_from_hwnd(handle.as_raw()) else {
+                continue;
+            };
+            if window.state.hovered.get() {
+                unsafe { SetCursor(window.state.current_cursor.get()) };
+                break;
+            }
+        }
+    });
+}
+
 pub struct WindowsPlatform {
     inner: Rc<WindowsPlatformInner>,
     raw_window_handles: Arc<RwLock<SmallVec<[TrackedWindow; 4]>>>,
@@ -241,6 +294,9 @@ impl WindowsPlatform {
             .take()
             .context("CreateWindowExW did not run correctly")?;
         let handle = result?;
+        CURSOR.with(|c| {
+            *c.borrow_mut() = Some((inner.state.cursor_visible.clone(), Arc::downgrade(&raw_window_handles)));
+        });
 
         let disable_direct_composition = std::env::var(DISABLE_DIRECT_COMPOSITION)
             .is_ok_and(|value| value == "true" || value == "1");

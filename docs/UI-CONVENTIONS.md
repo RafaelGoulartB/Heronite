@@ -539,6 +539,11 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   the Grid and Dashboard tiles). Anything drawn over a screen (dialogs, `Layer`s, menus, panels, keyboards) occludes
   it, so a click never reaches a screen that does not take the presses; a click on the dim around a modal, menu or
   sheet is B. A list beside the owner's own focus (Settings' content) takes clicks through `render_entered` (→ first).
+  Hovering moves the focus (once a frame, `pointer::take_hover`) where nothing moves under the pointer: list rows,
+  the ☰ menu, the Filters panel, Settings' sections, Grid and Dashboard tiles, the overlay's rows (not the covers of
+  rows that glide). A controller press hides the cursor until the mouse moves or a key is pressed
+  (`pointer::hide_cursor` / `show_cursor`, patched into `vendor/gpui-pre-linux` and `vendor/gpui-pre-windows`). In
+  the overlay, a click on the output under the mixer switches to the next one (Y).
 - Hosting: pages register their hook in `nav.rs` (`pages.hooks`); dialogs are found by `console::registry::hook_for`
   (add new console-capable dialogs there). Overlays owned by a view use `console::Layer` (drawn by the owner; for a
   view embedded in a smaller area wrap it with `kit::window_layer`).

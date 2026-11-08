@@ -222,6 +222,7 @@ impl CollectionView {
         };
         let field =
             kit::row_base(focus == Item::Search)
+                .on_hover_pads(to(Item::Search, &[]))
                 .on_pads(to(Item::Search, &[Pad::A]))
                 .when(focus != Item::Search, |d| d.bg(kit::ink(0.07)))
                 .child(div().relative().child(icon(Icon::FaSearch, u(18.), tint(focus == Item::Search))))
@@ -242,6 +243,7 @@ impl CollectionView {
         let row = |item: Item, label: String, ic: Icon, value: AnyElement| {
             let on = focus == item;
             kit::row_base(on)
+                .on_hover_pads(to(item, &[]))
                 .on_pads(to(item, &[Pad::A]))
                 .child(div().relative().child(icon(ic, u(20.), tint(on))))
                 .child(div().relative().flex_1().min_w_0().truncate().text_size(u(17.)).child(label))
@@ -253,9 +255,15 @@ impl CollectionView {
             .gap(u(6.))
             .child(field)
             .child(kit::caption(tr!("Show")))
-            .child(segments(&show, f.show, focus == Item::Show, |k| to(Item::Show, &pointer::along(f.show, k, Pad::Left, Pad::Right))))
+            .child(
+                segments(&show, f.show, focus == Item::Show, |k| to(Item::Show, &pointer::along(f.show, k, Pad::Left, Pad::Right)))
+                    .on_hover_pads(to(Item::Show, &[])),
+            )
             .child(kit::caption(tr!("Sort")))
-            .child(segments(&sort, f.sort, focus == Item::Sort, |k| to(Item::Sort, &pointer::along(f.sort, k, Pad::Left, Pad::Right))))
+            .child(
+                segments(&sort, f.sort, focus == Item::Sort, |k| to(Item::Sort, &pointer::along(f.sort, k, Pad::Left, Pad::Right)))
+                    .on_hover_pads(to(Item::Sort, &[])),
+            )
             .child(kit::caption(tr!("Only")))
             .child(row(
                 Item::Favourites,

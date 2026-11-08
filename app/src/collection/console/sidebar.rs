@@ -260,6 +260,17 @@ impl CollectionView {
         })
     }
 
+    /// The mouse over item `i` of the open menu: it takes the focus.
+    fn console_menu_hover(&self, i: usize) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static {
+        self.cover_hover(move |this| {
+            let moved = this.console.sidebar.is_some_and(|f| f != i);
+            if moved {
+                this.console.sidebar = Some(i);
+            }
+            moved
+        })
+    }
+
     /// Whether `item` is the page shown (drawn bold).
     fn menu_current(&self, item: Item) -> bool {
         item.page() == Some(self.page) || (item == Item::Stores && crate::pages::stores::is_store_page(self.page))
@@ -303,6 +314,7 @@ impl CollectionView {
             }
             list = list.child(
                 row.on_mouse_down(MouseButton::Left, self.menu_click(i))
+                    .when(focused.is_some_and(|f| f != i), |d| d.on_mouse_move(self.console_menu_hover(i)))
                     .child(icon(item.icon(), u(26.), ic))
                     .child(
                         div()
@@ -412,6 +424,7 @@ impl CollectionView {
                     .bg(theme::console_sidebar())
                     .text_color(fg);
                 let tile = tile.on_mouse_down(MouseButton::Left, self.menu_click(*i));
+                let tile = if on { tile } else { tile.on_mouse_move(self.console_menu_hover(*i)) };
                 let tile = if on { tile.child(kit::focus_pill(18.)) } else { tile };
                 tile.child(icon(item.icon(), u(38.), if on { fg } else { theme::text_muted().into() }))
                     .child(
@@ -464,6 +477,7 @@ impl CollectionView {
                     .rounded_full()
                     .bg(kit::ink(0.08))
                     .on_mouse_down(MouseButton::Left, self.menu_click(i));
+                let round = if on { round } else { round.on_mouse_move(self.console_menu_hover(i)) };
                 let round = if on { round.child(kit::focus_pill(size / 2.)) } else { round };
                 // The focused one sits a little higher than its neighbours.
                 div().flex().items_center().h(u(92.)).pb(u(if on { 14. } else { 0. })).child(

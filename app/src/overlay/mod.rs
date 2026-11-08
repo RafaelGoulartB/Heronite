@@ -406,6 +406,8 @@ impl OverlayService {
             Event::Press(b) => {
                 if let Some(panel) = self.panel {
                     let pad = panel::pad_of(b);
+                    // The controller is in use: the cursor steps aside until the mouse moves.
+                    crate::console::pointer::hide_cursor();
                     // The compositor may have closed the surface: let go of the controllers.
                     if panel.update(cx, |p, window, cx| p.on_pad(pad, window, cx)).is_err() {
                         self.close_panel(cx);
