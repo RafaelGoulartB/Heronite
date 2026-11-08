@@ -423,15 +423,16 @@ impl Steam {
         }
         // An answer is not enough: until the client has the library loaded,
         // a read finds it empty. Still starting, so the checks follow closely.
-        let (probe, not_steam) = match self.client.probe().and_then(|()| library::library_loaded(&self.client)) {
+        // `failed`: the client did not answer (not: answered, still loading).
+        let (probe, failed, not_steam) = match self.client.probe().and_then(|()| library::library_loaded(&self.client)) {
             Ok(true) => return LibraryCheck::new(LibraryAccess::Ready),
-            Ok(false) => (STILL_LOADING.to_string(), false),
-            Err(e) => (format!("{e:#}"), is_not_steam(&e)),
+            Ok(false) => (STILL_LOADING.to_string(), false, false),
+            Err(e) => (format!("{e:#}"), true, is_not_steam(&e)),
         };
         // Until its interface process starts, Steam is updating or starting;
         // once it has, its command line says whether the client will answer.
         let helper = webhelper();
-        let taken = helper.as_ref().filter(|w| w.debugging).and_then(|w| port_taken(self.client.addr(), w, not_steam));
+        let taken = helper.as_ref().filter(|w| failed && w.debugging).and_then(|w| port_taken(self.client.addr(), w, not_steam));
         let access = match &helper {
             _ if taken.is_some() => LibraryAccess::PortTaken,
             Some(w) if !w.debugging => LibraryAccess::NeedsRestart,

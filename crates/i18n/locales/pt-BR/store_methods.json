@@ -2,6 +2,7 @@
   "A game is found when it is made for Xbox on PC, as almost every game of the Xbox app is.": "Um jogo é encontrado quando é feito para Xbox no PC, como quase todo jogo do app Xbox.",
   "Achievements, art and when you last played": "Conquistas, artes e quando você jogou pela última vez",
   "Approve on your phone": "Aprove no celular",
+  "Approved. Signing in…": "Aprovado. Entrando…",
   "Brings play time; private profiles work too": "Traz o tempo de jogo; perfis privados também funcionam",
   "Code expired": "Código expirado",
   "Does not know Family Sharing games or the games you hid in Steam": "Não conhece jogos do Compartilhamento em Família nem os jogos que você ocultou na Steam",
@@ -29,10 +30,10 @@
   "The play time Xbox counted, also outside Heronite and on console": "O tempo de jogo que o Xbox contou, também fora do Heronite e no console",
   "Two ways to bring your Microsoft Store and PC Game Pass games in. Your account is optional.": "Duas formas de trazer seus jogos da Microsoft Store e do PC Game Pass. Sua conta é opcional.",
   "Two ways to bring your Steam library in. Heronite always tries this PC first.": "Duas formas de trazer sua biblioteca Steam. O Heronite sempre tenta este PC primeiro.",
-  "Used whenever method 1 cannot read your library, also while Steam is closed.": "Usada sempre que o método 1 não consegue ler sua biblioteca, inclusive com a Steam fechada.",
+  "Used whenever method 1 cannot read your library. While it can, method 1 stays the source: it knows your hidden and Family Sharing games.": "Usada sempre que o método 1 não consegue ler sua biblioteca. Enquanto ele consegue, o método 1 continua sendo a fonte: ele conhece seus jogos ocultos e os do Compartilhamento em Família.",
   "Waiting for the login window": "Aguardando a janela de login",
   "Waiting for the scan": "Aguardando a leitura",
   "Windows only": "Só no Windows",
-  "Works with Steam closed or blocked on this PC": "Funciona com a Steam fechada ou bloqueada neste PC",
+  "Works when Steam on this PC cannot be read": "Funciona quando a Steam deste PC não pode ser lida",
   "Your library": "Sua biblioteca"
 }

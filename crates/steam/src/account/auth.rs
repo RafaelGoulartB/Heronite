@@ -24,6 +24,14 @@ const PLATFORM_MOBILE_APP: &str = "3";
 const RENEWAL_ALLOW: &str = "1";
 /// `EResult::OK`.
 const OK: i32 = 1;
+/// The `EResult`s that end a sign-in session: FileNotFound (gone),
+/// AccessDenied (refused on the phone), Revoked, Expired.
+const SESSION_GONE: [i32; 4] = [9, 15, 26, 27];
+/// The `EResult`s that say a refresh token is dead: InvalidParam,
+/// InvalidPassword, AccessDenied, Revoked, Expired. Any other one (Fail,
+/// Busy, ServiceUnavailable, RateLimitExceeded...) is worth trying again
+/// later, not a sign-out.
+const TOKEN_DEAD: [i32; 5] = [8, 5, 15, 26, 27];
 
 /// Steam no longer takes the saved refresh token (it expired, or the user
 /// took the access away in the Steam app): sign in again.
@@ -52,12 +60,18 @@ pub struct QrSession {
 }
 
 /// The tokens an approved sign-in gives.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Tokens {
     pub refresh_token: String,
     /// Not always given; [`renew`] gets one from the refresh token.
     pub access_token: Option<String>,
     pub account_name: String,
+}
+
+impl std::fmt::Debug for Tokens {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tokens").field("account_name", &self.account_name).finish_non_exhaustive()
+    }
 }
 
 /// Where a sign-in stands.
@@ -128,9 +142,11 @@ pub fn poll(http: &dyn Http, session: &mut QrSession) -> Result<Poll> {
     if r.status != 200 {
         bail!("checking the Steam sign-in: HTTP {}", r.status);
     }
-    // FileNotFound, Expired...: the session is gone.
-    if r.eresult.is_some_and(|e| e != OK) {
-        return Ok(Poll::Ended);
+    match r.eresult {
+        Some(e) if SESSION_GONE.contains(&e) => return Ok(Poll::Ended),
+        // Busy, rate limited...: the caller asks again and counts it.
+        Some(e) if e != OK => bail!("checking the Steam sign-in: Steam answered with error {e}"),
+        _ => {}
     }
     let doc: Value = serde_json::from_str(&r.body).context("checking the Steam sign-in: not JSON")?;
     let resp = doc.get("response").cloned().unwrap_or(Value::Null);
@@ -155,8 +171,7 @@ pub fn renew(http: &dyn Http, refresh_token: &str, steam_id: &str) -> Result<Ren
     let form =
         vec![("refresh_token", refresh_token.to_string()), ("steamid", steam_id.to_string()), ("renewal_type", RENEWAL_ALLOW.to_string())];
     let r = http.send(Request::post(url("GenerateAccessTokenForApp"), form))?;
-    // AccessDenied, Expired, Revoked...: the sign-in is over.
-    if matches!(r.status, 401 | 403) || r.eresult.is_some_and(|e| e != OK) {
+    if matches!(r.status, 401 | 403) || r.eresult.is_some_and(|e| TOKEN_DEAD.contains(&e)) {
         return Err(SignedOut.into());
     }
     let resp = ok_response(r, "renewing the Steam sign-in")?;
@@ -247,6 +262,10 @@ pub(super) mod tests {
         assert_eq!(poll(&fake, &mut session()).unwrap(), Poll::Ended);
         let fake = Fake::new(&[(500, 2, "")]);
         assert!(poll(&fake, &mut session()).is_err());
+        // Refused on the phone.
+        assert_eq!(poll(&Fake::new(&[(200, 15, r#"{"response":{}}"#)]), &mut session()).unwrap(), Poll::Ended);
+        // Steam busy: an error to count, the code stays.
+        assert!(poll(&Fake::new(&[(200, 20, r#"{"response":{}}"#)]), &mut session()).is_err());
     }
 
     #[test]
@@ -262,6 +281,15 @@ pub(super) mod tests {
         assert!(renew(&fake, "R", "7656").unwrap_err().is::<SignedOut>());
         assert!(renew(&fake, "R", "7656").unwrap_err().is::<SignedOut>());
         assert!(fake.sent()[0].form.contains(&("steamid", "7656".into())));
+        // A hiccup (ServiceUnavailable, RateLimitExceeded) keeps the sign-in.
+        for eresult in [20, 84, 2] {
+            let fake = Fake::new(&[(503, eresult, "")]);
+            let err = renew(&fake, "R", "7656").unwrap_err();
+            assert!(!err.is::<SignedOut>(), "{eresult}: {err:#}");
+        }
+        assert!(
+            !format!("{:?}", Tokens { refresh_token: "secret".into(), access_token: None, account_name: "a".into() }).contains("secret")
+        );
     }
 
     #[test]

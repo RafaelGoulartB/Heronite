@@ -26,9 +26,20 @@ pub fn ports_of(pids: &[u32]) -> Vec<u16> {
     ports
 }
 
-/// Who listens on `port`.
-pub fn port_use(port: u16) -> PortUse {
-    imp::port_use(port)
+/// Who listens on `port`. When several processes do (one on `127.0.0.1`,
+/// another on every address), one of `prefer` is named if it is among them.
+pub fn port_use(port: u16, prefer: &[u32]) -> PortUse {
+    imp::port_use(port, prefer)
+}
+
+/// Whether a local client reaches an IPv6 listener on `addr`: `::`, `::1`
+/// or an IPv4-mapped loopback address. (A dual-stack `::` socket also takes
+/// IPv4 connections, so a program listening "everywhere" often has only
+/// this one.)
+#[cfg_attr(not(windows), allow(dead_code))]
+fn v6_reaches_loopback(addr: [u8; 16]) -> bool {
+    let ip = std::net::Ipv6Addr::from(addr);
+    ip.is_unspecified() || ip.is_loopback() || ip.to_ipv4_mapped().is_some_and(|v4| v4.is_loopback())
 }
 
 #[cfg(target_os = "linux")]
@@ -94,18 +105,27 @@ mod imp {
         listening(proc).into_iter().filter(|(_, inode)| owned.contains(inode)).map(|(port, _)| port).collect()
     }
 
-    pub(super) fn port_use_in(proc: &Path, port: u16) -> PortUse {
+    pub(super) fn port_use_in(proc: &Path, port: u16, prefer: &[u32]) -> PortUse {
         let inodes: HashSet<u64> = listening(proc).into_iter().filter(|(p, _)| *p == port).map(|(_, i)| i).collect();
         if inodes.is_empty() {
             return PortUse::Free;
+        }
+        let owned = |pid: u32| {
+            let name = std::fs::read_to_string(proc.join(pid.to_string()).join("comm"))
+                .ok()
+                .map(|n| n.trim().to_string())
+                .filter(|n| !n.is_empty());
+            PortUse::Owned { pid, name }
+        };
+        if let Some(pid) = prefer.iter().find(|pid| !sockets_of(proc, **pid).is_disjoint(&inodes)) {
+            return owned(*pid);
         }
         // Every process's sockets: only reached when something does listen.
         let Ok(entries) = std::fs::read_dir(proc) else { return PortUse::Unknown };
         for entry in entries.flatten() {
             let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else { continue };
             if !sockets_of(proc, pid).is_disjoint(&inodes) {
-                let name = std::fs::read_to_string(entry.path().join("comm")).ok().map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
-                return PortUse::Owned { pid, name };
+                return owned(pid);
             }
         }
         PortUse::Unknown
@@ -115,70 +135,96 @@ mod imp {
         ports_of_in(Path::new("/proc"), pids)
     }
 
-    pub(super) fn port_use(port: u16) -> PortUse {
-        port_use_in(Path::new("/proc"), port)
+    pub(super) fn port_use(port: u16, prefer: &[u32]) -> PortUse {
+        port_use_in(Path::new("/proc"), port, prefer)
     }
 }
 
 #[cfg(windows)]
 mod imp {
+    use std::mem::{offset_of, size_of};
+
     use windows_sys::Win32::NetworkManagement::IpHelper::{
-        GetExtendedTcpTable, MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_LISTENER,
+        GetExtendedTcpTable, MIB_TCP6ROW_OWNER_PID, MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID,
+        TCP_TABLE_OWNER_PID_LISTENER,
     };
 
     use super::PortUse;
 
-    /// `AF_INET` (WinSock's): only IPv4, which `127.0.0.1` is.
+    /// WinSock's address families.
     const AF_INET: u32 = 2;
+    const AF_INET6: u32 = 23;
     const NO_ERROR: u32 = 0;
     const ERROR_INSUFFICIENT_BUFFER: u32 = 122;
 
-    /// `(port, pid)` of the listening IPv4 sockets local clients reach.
-    fn listening() -> Vec<(u16, u32)> {
-        // u64s: the table starts with a u32 count followed by u32 rows; the
-        // buffer only needs their alignment.
+    /// The listening sockets' table of `family`, as Windows wrote it: a u32
+    /// count, then the rows. u64s: the buffer only needs their alignment.
+    fn table(family: u32) -> Option<Vec<u64>> {
         let mut buf: Vec<u64> = vec![0; 2048];
-        let rows = loop {
+        loop {
             let mut size = (buf.len() * 8) as u32;
             // SAFETY: `buf` holds `size` bytes; the call writes at most that many.
-            let r = unsafe { GetExtendedTcpTable(buf.as_mut_ptr().cast(), &mut size, 0, AF_INET, TCP_TABLE_OWNER_PID_LISTENER, 0) };
+            let r = unsafe { GetExtendedTcpTable(buf.as_mut_ptr().cast(), &mut size, 0, family, TCP_TABLE_OWNER_PID_LISTENER, 0) };
             match r {
-                NO_ERROR => {
-                    // SAFETY: on success the buffer holds a MIB_TCPTABLE_OWNER_PID
-                    // whose `dwNumEntries` rows follow its count, inside `buf`.
-                    let table = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
-                    let rows: &[MIB_TCPROW_OWNER_PID] =
-                        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
-                    break rows.to_vec();
-                }
+                NO_ERROR => return Some(buf),
                 // The table grew between the two calls: ask again with its size.
                 ERROR_INSUFFICIENT_BUFFER if (size as usize) > buf.len() * 8 => buf.resize(size as usize / 8 + 1, 0),
-                _ => return Vec::new(),
+                _ => return None,
             }
-        };
-        rows.iter()
-            .filter(|r| {
+        }
+    }
+
+    /// The rows of `buf` (a table from [`table`] whose rows start at byte
+    /// `offset`), as many as its count says and the buffer holds.
+    fn rows<T: Copy>(buf: &[u64], offset: usize) -> Vec<T> {
+        let bytes = buf.len() * 8;
+        let base = buf.as_ptr().cast::<u8>();
+        // SAFETY: the buffer starts with the u32 count, and is aligned for it.
+        let count = unsafe { base.cast::<u32>().read() } as usize;
+        let count = count.min(bytes.saturating_sub(offset) / size_of::<T>());
+        // SAFETY: `count` rows of `T` (plain u32s and bytes, aligned at 4 like
+        // `offset`) lie inside `buf`, which outlives the copy; built from the
+        // buffer's pointer, not from the one-row array the struct declares.
+        unsafe { std::slice::from_raw_parts(base.add(offset).cast::<T>(), count).to_vec() }
+    }
+
+    /// The port of a row: the low 16 bits, in network order.
+    fn port(raw: u32) -> u16 {
+        u16::from_be(raw as u16)
+    }
+
+    /// `(port, pid)` of the listening sockets local clients reach, IPv4 and IPv6.
+    fn listening() -> Vec<(u16, u32)> {
+        let mut out = Vec::new();
+        if let Some(buf) = table(AF_INET) {
+            for r in rows::<MIB_TCPROW_OWNER_PID>(&buf, offset_of!(MIB_TCPTABLE_OWNER_PID, table)) {
                 // dwLocalAddr is in network order: its bytes are the address.
                 let [a, ..] = r.dwLocalAddr.to_ne_bytes();
-                r.dwLocalAddr == 0 || a == 127
-            })
-            // The port is the low 16 bits, in network order.
-            .map(|r| (u16::from_be(r.dwLocalPort as u16), r.dwOwningPid))
-            .collect()
+                if r.dwLocalAddr == 0 || a == 127 {
+                    out.push((port(r.dwLocalPort), r.dwOwningPid));
+                }
+            }
+        }
+        if let Some(buf) = table(AF_INET6) {
+            for r in rows::<MIB_TCP6ROW_OWNER_PID>(&buf, offset_of!(MIB_TCP6TABLE_OWNER_PID, table)) {
+                if super::v6_reaches_loopback(r.ucLocalAddr) {
+                    out.push((port(r.dwLocalPort), r.dwOwningPid));
+                }
+            }
+        }
+        out
     }
 
     pub(super) fn ports_of(pids: &[u32]) -> Vec<u16> {
         listening().into_iter().filter(|(_, pid)| pids.contains(pid)).map(|(port, _)| port).collect()
     }
 
-    pub(super) fn port_use(port: u16) -> PortUse {
-        match listening().into_iter().find(|(p, _)| *p == port) {
-            None => PortUse::Free,
-            Some((_, pid)) => {
-                let name = crate::process::snapshot().into_iter().find(|p| p.pid == pid).map(|p| p.name);
-                PortUse::Owned { pid, name }
-            }
-        }
+    pub(super) fn port_use(port: u16, prefer: &[u32]) -> PortUse {
+        let owners: Vec<u32> = listening().into_iter().filter(|(p, _)| *p == port).map(|(_, pid)| pid).collect();
+        let Some(pid) = owners.iter().find(|pid| prefer.contains(pid)).or(owners.first()).copied() else { return PortUse::Free };
+        // 0 and 4 are Windows itself (http.sys URL reservations): no program to close.
+        let name = (pid > 4).then(|| crate::process::snapshot().into_iter().find(|p| p.pid == pid).map(|p| p.name)).flatten();
+        PortUse::Owned { pid, name }
     }
 }
 
@@ -190,7 +236,7 @@ mod imp {
         Vec::new()
     }
 
-    pub(super) fn port_use(_: u16) -> PortUse {
+    pub(super) fn port_use(_: u16, _: &[u32]) -> PortUse {
         PortUse::Unknown
     }
 }
@@ -250,9 +296,29 @@ mod tests {
     #[test]
     fn a_port_names_the_process_listening_on_it() {
         let proc = fake_proc();
-        assert_eq!(imp::port_use_in(proc.path(), 8080), PortUse::Owned { pid: 10, name: Some("qbittorrent".into()) });
-        assert_eq!(imp::port_use_in(proc.path(), 1234), PortUse::Free);
+        assert_eq!(imp::port_use_in(proc.path(), 8080, &[]), PortUse::Owned { pid: 10, name: Some("qbittorrent".into()) });
+        assert_eq!(imp::port_use_in(proc.path(), 1234, &[]), PortUse::Free);
         std::fs::remove_dir_all(proc.path().join("10")).unwrap();
-        assert_eq!(imp::port_use_in(proc.path(), 8080), PortUse::Unknown);
+        assert_eq!(imp::port_use_in(proc.path(), 8080, &[]), PortUse::Unknown);
+    }
+
+    #[test]
+    fn a_port_two_processes_listen_on_names_the_preferred_one() {
+        let proc = fake_proc();
+        // Steam's helper on 127.0.0.1:8080 too (the same port, another socket).
+        let tcp = std::fs::read_to_string(proc.path().join("net/tcp")).unwrap()
+            + "   4: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 999 1 0000000000000000 100 0 0 10 0\n";
+        std::fs::write(proc.path().join("net/tcp"), tcp).unwrap();
+        assert_eq!(imp::port_use_in(proc.path(), 8080, &[20]), PortUse::Owned { pid: 20, name: Some("steamwebhelper".into()) });
+    }
+
+    #[test]
+    fn ipv6_listeners_local_clients_reach() {
+        let mut v4_mapped = [0u8; 16];
+        v4_mapped[10..].copy_from_slice(&[0xff, 0xff, 127, 0, 0, 1]);
+        assert!(v6_reaches_loopback([0; 16]));
+        assert!(v6_reaches_loopback(std::net::Ipv6Addr::LOCALHOST.octets()));
+        assert!(v6_reaches_loopback(v4_mapped));
+        assert!(!v6_reaches_loopback("2a01::1".parse::<std::net::Ipv6Addr>().unwrap().octets()));
     }
 }

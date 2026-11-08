@@ -106,17 +106,30 @@ pub fn is_not_steam(err: &anyhow::Error) -> bool {
 }
 
 /// The program holding the port of `addr` (`127.0.0.1:8080`), when it is
-/// not one of the running `steamwebhelper`s. `not_steam`: what answered
-/// there is known not to be Steam ([`is_not_steam`]), so an owner this user
-/// cannot see is another program too.
+/// the port the `steamwebhelper` asked for and another program has it.
+/// `not_steam`: what answered there is known not to be Steam
+/// ([`is_not_steam`]), so an owner this user cannot see is another program
+/// too.
 pub fn port_taken(addr: &str, helper: &Webhelper, not_steam: bool) -> Option<PortOwner> {
-    use heronite_platform::net::{port_use, PortUse};
+    use heronite_platform::net::port_use;
     let port = addr.rsplit_once(':')?.1.parse().ok()?;
-    match port_use(port) {
+    // Another port (a fallback while Chromium's own is not known yet) is
+    // not one Steam waits for.
+    if helper.asked_port != Some(port) {
+        return None;
+    }
+    taken_from(port, port_use(port, &helper.pids), helper, not_steam)
+}
+
+fn taken_from(port: u16, used: heronite_platform::net::PortUse, helper: &Webhelper, not_steam: bool) -> Option<PortOwner> {
+    use heronite_platform::net::PortUse;
+    match used {
         PortUse::Owned { pid, .. } if helper.pids.contains(&pid) => None,
         PortUse::Owned { name: Some(name), .. } if name.to_ascii_lowercase().starts_with("steamwebhelper") => None,
         PortUse::Owned { pid, name } => Some(PortOwner { port, pid: Some(pid), name }),
-        PortUse::Unknown if not_steam => Some(PortOwner { port, pid: None, name: None }),
+        // Something answered that is not Steam, though the table does not
+        // show it (another user's process, outside this sandbox).
+        PortUse::Unknown | PortUse::Free if not_steam => Some(PortOwner { port, pid: None, name: None }),
         PortUse::Unknown | PortUse::Free => None,
     }
 }
@@ -894,6 +907,22 @@ mod tests {
         // A stale file from an earlier start.
         assert_eq!(debugger_port(None, Some(1111), &[2222]), Some(2222));
         assert_eq!(debugger_port(None, None, &[]), None);
+    }
+
+    #[test]
+    fn only_the_asked_port_held_by_another_program_is_taken() {
+        use heronite_platform::net::PortUse;
+        let helper = Webhelper { debugging: true, steam_root: None, asked_port: Some(8080), pids: vec![20] };
+        let qbt = PortUse::Owned { pid: 10, name: Some("qbittorrent.exe".into()) };
+        assert_eq!(
+            taken_from(8080, qbt.clone(), &helper, false),
+            Some(PortOwner { port: 8080, pid: Some(10), name: Some("qbittorrent.exe".into()) })
+        );
+        assert_eq!(taken_from(8080, PortUse::Owned { pid: 20, name: None }, &helper, true), None);
+        assert_eq!(taken_from(8080, PortUse::Free, &helper, false), None);
+        assert_eq!(taken_from(8080, PortUse::Free, &helper, true), Some(PortOwner { port: 8080, pid: None, name: None }));
+        // A fallback port the helper never asked for.
+        assert_eq!(port_taken("127.0.0.1:1", &helper, true), None);
     }
 
     #[test]

@@ -50,6 +50,7 @@ impl SteamPage {
             (s.account.name.clone(), s.account.qr.clone(), s.account.busy, s.syncing, s.account.last.clone(), s.client_stuck());
         let status = match (&name, &qr) {
             (Some(name), _) => (tr!("Signed in as {name}", name = name).into(), Tone::Good),
+            (None, Some(q)) if q.approved => (tr!("Signing in\u{2026}").into(), Tone::Accent),
             (None, Some(q)) if q.ended => (tr!("Code expired").into(), Tone::Warning),
             (None, Some(q)) if q.scanned => (tr!("Approve on your phone").into(), Tone::Accent),
             (None, Some(_)) => (tr!("Waiting for the scan").into(), Tone::Accent),
@@ -64,7 +65,11 @@ impl SteamPage {
                 Some((tr!("Method 1 cannot read your library right now: it comes from your account meanwhile.").to_string(), Tone::Good))
             }
             (true, false) => {
-                Some((tr!("Used whenever method 1 cannot read your library, also while Steam is closed.").to_string(), Tone::Neutral))
+                Some((
+                    tr!("Used whenever method 1 cannot read your library. While it can, method 1 stays the source: it knows your hidden and Family Sharing games.")
+                        .to_string(),
+                    Tone::Neutral,
+                ))
             }
             _ => None,
         };
@@ -125,7 +130,7 @@ impl SteamPage {
             badge: (tr!("Sign in with a QR code").into(), Tone::Accent),
             status: Some(status),
             facts: vec![
-                methods::brings(tr!("Works with Steam closed or blocked on this PC")),
+                methods::brings(tr!("Works when Steam on this PC cannot be read")),
                 methods::brings(tr!("Brings play time; private profiles work too")),
                 methods::needs(tr!("One sign-in with the Steam app on your phone. Heronite never sees your password")),
                 methods::needs(tr!("Does not know Family Sharing games or the games you hid in Steam")),
@@ -143,14 +148,16 @@ impl SteamPage {
 
     /// The QR code and how to scan it.
     fn render_qr(qr: &QrState) -> AnyElement {
-        let (status, color) = if qr.ended {
+        let (status, color) = if qr.approved {
+            (tr!("Approved. Signing in\u{2026}"), theme::accent())
+        } else if qr.ended {
             (tr!("This code expired. Show a new one to try again."), theme::warning())
         } else if qr.scanned {
             (tr!("Scanned. Approve the sign-in in the Steam app."), theme::accent())
         } else {
             (tr!("Waiting for the code to be scanned\u{2026}"), theme::text_muted())
         };
-        let code = qr_code(qr.url(), QR_MODULE).map(|c| c.when(qr.ended || qr.scanned, |c| c.opacity(0.3)));
+        let code = qr_code(qr.url(), QR_MODULE).map(|c| c.when(qr.ended || qr.scanned || qr.approved, |c| c.opacity(0.3)));
         let steps = div()
             .flex()
             .flex_col()

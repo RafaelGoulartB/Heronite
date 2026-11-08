@@ -192,6 +192,8 @@ pub struct SteamLibrary {
     pub taken: Option<PortOwner>,
     /// The Steam account signed in with a QR code (optional).
     pub account: AccountState,
+    /// A read was asked for while another ran: it runs next.
+    pending: bool,
 }
 
 impl EventEmitter<SteamLibraryEvent> for SteamLibrary {}
@@ -216,6 +218,7 @@ impl SteamLibrary {
             logged: None,
             taken: None,
             account: AccountState::load(&paths_for_account),
+            pending: false,
         };
         this.account.debug();
         this.load_summary(cx);
@@ -465,7 +468,7 @@ impl SteamLibrary {
             this.update(cx, |this, cx| {
                 let ready = check.access == LibraryAccess::Ready;
                 this.take_check(check, flag);
-                if ready || this.account.due(ACCOUNT_EVERY) {
+                if ready || (this.account_allowed() && this.account.due(ACCOUNT_EVERY)) {
                     this.run(false, cx);
                 }
                 cx.notify();
@@ -481,13 +484,25 @@ impl SteamLibrary {
         self.run(true, cx);
     }
 
+    /// Whether the library may be read from the account now: one is signed
+    /// in, and the client's richer read (hidden and Family Sharing games)
+    /// is not what the cache holds, or the client is stuck. While Steam is
+    /// only closed, a library the client read stays as it is.
+    fn account_allowed(&self) -> bool {
+        self.account.signed_in()
+            && self.summary_loaded
+            && (self.client_stuck() || self.summary.updated_at.is_none() || self.summary.source == SteamSource::Account)
+    }
+
     fn run(&mut self, asked: bool, cx: &mut Context<Self>) {
         if self.syncing {
+            // A sign-in (or the user) asked while a quiet read ran: next.
+            self.pending |= asked;
             return;
         }
         self.syncing = true;
         let paths = self.paths.clone();
-        let account = self.account.signed_in();
+        let account = self.account_allowed();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { sync_blocking(&paths, account) }).await;
             this.update(cx, |this, cx| {
@@ -520,6 +535,9 @@ impl SteamLibrary {
                     this.last = Some(res);
                 }
                 this.load_summary(cx);
+                if std::mem::take(&mut this.pending) {
+                    this.run(true, cx);
+                }
                 cx.notify();
             })
             .ok();
@@ -556,6 +574,7 @@ mod tests {
             logged: None,
             taken: None,
             account: Default::default(),
+            pending: false,
         }
     }
 
@@ -627,6 +646,29 @@ mod tests {
         assert_eq!(s.starting_since, None);
         s.set_access(LibraryAccess::Starting, None);
         assert_eq!(s.state(), SteamState::Opening);
+    }
+
+    #[test]
+    fn the_account_does_not_replace_a_library_the_client_read() {
+        use heronite_data::steam_owned::SteamSource;
+        let mut s = library();
+        s.account.name = Some("gaben".into());
+        // Never read: the account brings it.
+        assert!(s.account_allowed());
+        // Read from the client, Steam only closed: kept as the client read it.
+        s.summary.updated_at = Some("2026-11-07T10:00:00Z".into());
+        s.set_access(LibraryAccess::Closed, None);
+        assert!(!s.account_allowed());
+        // The client is stuck: the account steps in.
+        s.set_access(LibraryAccess::PortTaken, None);
+        assert!(s.account_allowed());
+        // Read from the account already: it keeps it current.
+        s.set_access(LibraryAccess::Closed, None);
+        s.summary.source = SteamSource::Account;
+        assert!(s.account_allowed());
+        // Signed out: never.
+        s.account.name = None;
+        assert!(!s.account_allowed());
     }
 
     #[test]

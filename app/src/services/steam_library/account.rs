@@ -41,6 +41,8 @@ pub struct QrState {
     pub scanned: bool,
     /// The code expired (or was refused): a new one is needed.
     pub ended: bool,
+    /// Approved on the phone: the sign-in is being saved.
+    pub approved: bool,
     failures: u32,
 }
 
@@ -90,7 +92,8 @@ impl AccountState {
             interval: Duration::from_secs(3600),
         };
         // An id no sign-in uses: nothing polls it.
-        self.qr = Some(QrState { id: u64::MAX, session, scanned: kind == "scanned", ended: kind == "expired", failures: 0 });
+        self.qr =
+            Some(QrState { id: u64::MAX, session, scanned: kind == "scanned", ended: kind == "expired", approved: false, failures: 0 });
     }
 }
 
@@ -116,7 +119,7 @@ impl SteamLibrary {
                     Ok(session) => {
                         this.account.next_id += 1;
                         let id = this.account.next_id;
-                        this.account.qr = Some(QrState { id, session, scanned: false, ended: false, failures: 0 });
+                        this.account.qr = Some(QrState { id, session, scanned: false, ended: false, approved: false, failures: 0 });
                         this.poll_sign_in(id, cx);
                     }
                     Err(e) => {
@@ -140,7 +143,7 @@ impl SteamLibrary {
 
     /// The sign-in `id`, still current: its session and how often to ask.
     fn current(&self, id: u64) -> Option<QrSession> {
-        self.account.qr.as_ref().filter(|q| q.id == id && !q.ended).map(|q| q.session.clone())
+        self.account.qr.as_ref().filter(|q| q.id == id && !q.ended && !q.approved).map(|q| q.session.clone())
     }
 
     /// Asks Steam, every few seconds, whether the sign-in `id` was approved.
@@ -182,8 +185,7 @@ impl SteamLibrary {
                 true
             }
             Ok(Poll::Approved(tokens)) => {
-                // The code is not shown again while the sign-in is saved.
-                qr.ended = true;
+                qr.approved = true;
                 self.finish_sign_in(tokens, cx);
                 return true;
             }

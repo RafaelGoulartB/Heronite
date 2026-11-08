@@ -286,7 +286,7 @@ mod tests {
             Account { steam_id: ID.into(), account_name: String::new(), refresh_token: "R".into(), access_token: jwt(ID, later()) };
         save(&paths, &account).unwrap();
         // The access token was taken away, and the refresh token with it.
-        let fake = Fake::new(&[(401, 1, ""), (200, 88, r#"{"response":{}}"#)]);
+        let fake = Fake::new(&[(401, 1, ""), (200, 15, r#"{"response":{}}"#)]);
         assert!(read_owned(&paths, &fake, &HashSet::new()).unwrap_err().is::<SignedOut>());
         assert_eq!(load(&paths), None);
         assert!(read_owned(&paths, &Fake::new(&[]), &HashSet::new()).unwrap_err().is::<SignedOut>());
