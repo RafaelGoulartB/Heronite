@@ -11,7 +11,8 @@
 //! The sign-in is kept in `local_library/steam-account.json`, readable only
 //! by the user (on Windows `steam-account.bin`, sealed for this Windows user
 //! with `heronite_platform::secret`). It holds the tokens, never a password.
-//! Signing out deletes it.
+//! Signing out ends the sign-in on Steam too ([`sign_out_on_steam`]) and
+//! deletes it.
 
 pub mod auth;
 pub mod http;
@@ -92,12 +93,47 @@ pub fn save(paths: &DataPaths, account: &Account) -> Result<()> {
     heronite_data::temps::write_atomic(&file, &bytes, Some(0o600)).with_context(|| format!("writing {}", file.display()))
 }
 
-/// Forgets the account. (Steam keeps listing the sign-in under the
-/// account's authorized devices until the user removes it there.)
+/// Forgets the account here only. (Steam keeps listing the sign-in under the
+/// account's authorized devices; [`sign_out_on_steam`] also ends it there.)
 pub fn sign_out(paths: &DataPaths) -> Result<()> {
-    match std::fs::remove_file(path(paths)) {
-        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+    let file = path(paths);
+    match std::fs::remove_file(&file) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(anyhow!(e).context(format!("deleting {}", file.display()))),
         _ => Ok(()),
+    }
+}
+
+/// Signs out: ends the sign-in on Steam, so its tokens stop working and it
+/// leaves the account's authorized devices, then forgets it here, whatever
+/// Steam answered. `Ok(true)`: Steam no longer takes it; `Ok(false)`: only
+/// forgotten here (Steam out of reach or refusing, or no saved sign-in this
+/// user can open), the user removes it on Steam's site.
+pub fn sign_out_on_steam(paths: &DataPaths, http: &dyn Http) -> Result<bool> {
+    let ended = match load(paths) {
+        Some(account) => match end_on_steam(http, &account) {
+            Ok(()) => true,
+            Err(e) => {
+                log::warn!("steam: the sign-in could not be ended on Steam ({e:#}); forgotten here only");
+                false
+            }
+        },
+        None => false,
+    };
+    sign_out(paths)?;
+    Ok(ended)
+}
+
+fn end_on_steam(http: &dyn Http, account: &Account) -> Result<()> {
+    if fresh(&account.access_token, chrono::Utc::now().timestamp()) {
+        return auth::revoke(http, &account.access_token, &account.refresh_token);
+    }
+    // Not saved: the sign-in is about to be forgotten.
+    match auth::renew_access(http, &account.refresh_token, &account.steam_id) {
+        // Should Steam still replace the refresh token, the new one is the live one.
+        Ok(r) => auth::revoke(http, &r.access_token, r.refresh_token.as_deref().unwrap_or(&account.refresh_token)),
+        // Steam no longer takes it: nothing left to end.
+        Err(e) if e.is::<SignedOut>() => Ok(()),
+        Err(e) => Err(e),
     }
 }
 
@@ -233,6 +269,83 @@ mod tests {
         sign_out(&paths).unwrap();
         assert_eq!(load(&paths), None);
         sign_out(&paths).unwrap();
+    }
+
+    #[test]
+    fn signing_out_ends_the_sign_in_on_steam() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let access = jwt(ID, later());
+        let account = Account { steam_id: ID.into(), account_name: String::new(), refresh_token: "R".into(), access_token: access.clone() };
+        save(&paths, &account).unwrap();
+        let fake = Fake::new(&[(200, 1, r#"{"response":{}}"#)]);
+        assert!(sign_out_on_steam(&paths, &fake).unwrap());
+        assert_eq!(load(&paths), None);
+        let sent = fake.sent();
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].url.ends_with(&format!("/RevokeToken/v1/?access_token={access}")), "{}", sent[0].url);
+        assert!(sent[0].form.contains(&("token", "R".into())));
+    }
+
+    #[test]
+    fn an_old_access_token_is_renewed_to_sign_out_and_the_new_refresh_token_ended() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let account = Account { steam_id: ID.into(), account_name: String::new(), refresh_token: "R".into(), access_token: jwt(ID, 1) };
+        save(&paths, &account).unwrap();
+        let fake = Fake::new(&[(200, 1, r#"{"response":{"access_token":"A2","refresh_token":"R2"}}"#), (200, 1, r#"{"response":{}}"#)]);
+        assert!(sign_out_on_steam(&paths, &fake).unwrap());
+        let sent = fake.sent();
+        // No new refresh token is asked for.
+        assert!(sent[0].form.contains(&("renewal_type", "0".into())));
+        assert!(sent[1].url.ends_with("?access_token=A2"), "{}", sent[1].url);
+        assert!(sent[1].form.contains(&("token", "R2".into())));
+        // The renewal is not saved: the sign-in is gone.
+        assert_eq!(load(&paths), None);
+
+        // Steam kept the refresh token: that one is ended.
+        save(&paths, &account).unwrap();
+        let fake = Fake::new(&[(200, 1, r#"{"response":{"access_token":"A2"}}"#), (200, 1, r#"{"response":{}}"#)]);
+        assert!(sign_out_on_steam(&paths, &fake).unwrap());
+        assert!(fake.sent()[1].form.contains(&("token", "R".into())));
+    }
+
+    #[test]
+    fn a_sign_out_steam_does_not_take_is_still_a_sign_out_here() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let fresh = Account { steam_id: ID.into(), account_name: String::new(), refresh_token: "R".into(), access_token: jwt(ID, later()) };
+        // Steam out of reach, or refusing: forgotten here, not on Steam.
+        for answers in [vec![], vec![(503, 20, "")], vec![(200, 15, "")]] {
+            save(&paths, &fresh).unwrap();
+            assert!(!sign_out_on_steam(&paths, &Fake::new(&answers)).unwrap());
+            assert_eq!(load(&paths), None);
+        }
+        // The renewal fails for a while (Steam busy): forgotten here only.
+        let old = Account { access_token: jwt(ID, 1), ..fresh.clone() };
+        save(&paths, &old).unwrap();
+        assert!(!sign_out_on_steam(&paths, &Fake::new(&[(503, 20, "")])).unwrap());
+        assert_eq!(load(&paths), None);
+        // A refresh token Steam already dropped, found renewing or ending it:
+        // nothing left to end there.
+        save(&paths, &old).unwrap();
+        assert!(sign_out_on_steam(&paths, &Fake::new(&[(200, 26, "")])).unwrap());
+        assert_eq!(load(&paths), None);
+        save(&paths, &fresh).unwrap();
+        assert!(sign_out_on_steam(&paths, &Fake::new(&[(200, 26, "")])).unwrap());
+        assert_eq!(load(&paths), None);
+        // Nothing saved.
+        assert!(!sign_out_on_steam(&paths, &Fake::new(&[])).unwrap());
+    }
+
+    #[test]
+    fn a_sign_in_that_cannot_be_deleted_is_an_error_naming_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        // A folder where the file goes: neither read nor deleted.
+        std::fs::create_dir_all(path(&paths)).unwrap();
+        let err = sign_out_on_steam(&paths, &Fake::new(&[])).unwrap_err();
+        assert!(format!("{err:#}").contains("deleting"), "{err:#}");
     }
 
     #[test]

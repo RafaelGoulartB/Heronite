@@ -22,7 +22,7 @@ pub struct AccountState {
     pub name: Option<String>,
     /// A sign-in under way.
     pub qr: Option<QrState>,
-    /// A sign-in is being started or finished.
+    /// A sign-in is being started or finished, or a sign-out is under way.
     pub busy: bool,
     /// The last sign-in or sign-out, when the user is to see it.
     pub last: Option<Result<String, String>>,
@@ -235,23 +235,42 @@ impl SteamLibrary {
         cx.notify();
     }
 
-    /// Forgets the account. What it brought stays in the Collection.
+    /// Signs out: ends the sign-in on Steam too, then forgets it here. What
+    /// it brought stays in the Collection.
     pub fn sign_out(&mut self, cx: &mut Context<Self>) {
         // A read under way may renew the tokens and save them again.
         if self.syncing || self.account.busy {
             return;
         }
-        match heronite_steam::account::sign_out(&self.paths) {
-            Ok(()) => {
-                self.account.signed_out();
-                // Steam still lists the sign-in until the user removes it there.
-                self.account.last = Some(Ok(tr!(
-                    "Signed out. To also remove Heronite from your account, go to store.steampowered.com/account/authorizeddevices."
-                )
-                .to_string()));
-            }
-            Err(e) => self.account.last = Some(Err(format!("{e:#}"))),
-        }
+        self.account.busy = true;
+        self.account.last = None;
+        let paths = self.paths.clone();
+        cx.spawn(async move |this, cx| {
+            let res = cx.background_spawn(async move { heronite_steam::account::sign_out_on_steam(&paths, &Net::default()) }).await;
+            this.update(cx, |this, cx| {
+                this.account.busy = false;
+                match res {
+                    Ok(ended) => {
+                        log::info!("Signed out of Steam");
+                        this.account.signed_out();
+                        this.account.last = Some(Ok(if ended {
+                            tr!("Signed out. Steam no longer accepts this sign-in, and Heronite left your account's authorized devices.")
+                        } else {
+                            // Steam out of reach or refusing: it still lists the sign-in.
+                            tr!("Signed out. To also remove Heronite from your account, go to store.steampowered.com/account/authorizeddevices.")
+                        }
+                        .to_string()));
+                    }
+                    Err(e) => {
+                        log::warn!("Steam sign-out: {e:#}");
+                        this.account.last = Some(Err(format!("{e:#}")));
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
         cx.notify();
     }
 }
