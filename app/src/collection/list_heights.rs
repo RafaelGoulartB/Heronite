@@ -16,7 +16,7 @@ use super::{list, list_row, CollectionView};
 pub(super) const END_H: f32 = 32.;
 
 /// How the rows are laid out, for their heights.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub(super) struct RowLayout {
     /// The Focus list's one game per row (`focusList`).
     pub focus_rows: bool,
@@ -65,6 +65,22 @@ fn core_of(l: RowLayout, item: ListItem, groups: &[GroupVm], measured: f32) -> O
     Some(measured - top - bottom)
 }
 
+/// Frames asked for to find a drawn row before giving up (the list may
+/// not be on screen at all).
+const MAX_TRIES: u8 = 4;
+/// Items from the top of the list looked at for a drawn row.
+const LOOKAHEAD: usize = 12;
+
+/// What the rows' height depends on besides the games: the column, the
+/// cards and the spacing.
+#[derive(Clone, Copy, PartialEq)]
+struct Fit {
+    list_w: f32,
+    card_w: f32,
+    card_aspect: f32,
+    layout: RowLayout,
+}
+
 /// What the list knows of its rows' height.
 #[derive(Default)]
 pub(super) struct RowHeights {
@@ -78,9 +94,8 @@ pub(super) struct RowHeights {
     /// The list's width when the hints were given: GPUI drops them all
     /// when the list gets another width (its first layout too).
     hinted_width: Option<f32>,
-    /// The column's width, the cards' width and shape and the kind of list
-    /// the hints were checked for: other cards are another height.
-    checked_for: Option<(f32, f32, f32, bool)>,
+    /// What the hints were made for.
+    fit: Option<Fit>,
 }
 
 impl CollectionView {
@@ -118,34 +133,45 @@ impl CollectionView {
         self.row_heights.tries = 0;
     }
 
-    /// Keeps the hints right, once per frame before the list is laid out:
-    /// gives them back when the list's new width dropped them, and checks
-    /// them against a row on screen; rows of another height (the first
-    /// frame, other cards) reset the list with hints of the drawn height,
+    /// Keeps the hints right, once per frame before the list is laid out
+    /// (what is drawn is the last frame's): new hints for other cards or
+    /// spacing, the hints back when the list's new width dropped them, and a
+    /// check against a row on screen once it is drawn at that size; a row of
+    /// another height resets the list with hints of the drawn height,
     /// keeping its place.
     pub(super) fn sync_row_heights(&mut self, list_w: f32, window: &mut Window) {
+        if self.list_state.is_scrollbar_dragging() {
+            return;
+        }
+        let fit = Some(Fit { list_w, card_w: self.card_w, card_aspect: self.card_aspect, layout: self.row_layout() });
+        if self.row_heights.fit != fit {
+            // The rows on screen are still the old size: they are checked
+            // once drawn at the new one.
+            self.row_heights.fit = fit;
+            self.rebuild_items();
+            window.request_animation_frame();
+            return;
+        }
         let width = self.list_width();
         if width.is_some() && width != self.row_heights.hinted_width {
             self.row_heights.hinted_width = width;
             let hint = self.row_hint();
             if hint > 0. {
-                // Only the rows without a height take it.
+                // Only the rows without a height take it; the rows on screen
+                // are measured again by this frame's layout.
                 self.list_state.clone().with_uniform_item_height(px(hint));
             }
-        }
-        let cards = Some((list_w, self.card_w, self.card_aspect, self.focus_rows()));
-        if self.row_heights.checked_for != cards {
-            // This frame's layout may drop the hints: look again on the next.
-            self.row_heights.checked_for = cards;
             self.row_heights.settled = false;
             self.row_heights.tries = 0;
+            window.request_animation_frame();
+            return;
         }
-        if self.row_heights.settled || self.list_state.is_scrollbar_dragging() {
+        if self.row_heights.settled {
             return;
         }
         let l = self.row_layout();
         let first = self.list_state.logical_scroll_top().item_ix;
-        let drawn = (first..self.items.len()).take(12).find_map(|ix| {
+        let drawn = (first..self.items.len()).take(LOOKAHEAD).find_map(|ix| {
             let bounds = self.list_state.bounds_for_item(ix)?;
             core_of(l, self.items[ix], &self.groups, f32::from(bounds.size.height))
         });
@@ -155,14 +181,12 @@ impl CollectionView {
                 self.rebuild_items();
                 window.request_animation_frame();
             }
-            Some(_) if width == self.row_heights.hinted_width => self.row_heights.settled = true,
-            // Not drawn yet (or just given back): look again on the next
-            // frames, a few times (the list may not be on screen at all).
-            _ if self.row_heights.tries < 4 && self.items.iter().any(|it| matches!(it, ListItem::Row { .. })) => {
+            Some(_) => self.row_heights.settled = true,
+            None if self.row_heights.tries < MAX_TRIES && self.items.iter().any(|it| matches!(it, ListItem::Row { .. })) => {
                 self.row_heights.tries += 1;
                 window.request_animation_frame();
             }
-            _ => self.row_heights.settled = true,
+            None => self.row_heights.settled = true,
         }
     }
 }
