@@ -244,7 +244,8 @@ pub(super) fn source_row(
                 .child(div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(st.line))
                 .when_some(note, |d, (text, color)| d.child(div().text_size(px(12.5)).line_height(px(17.)).text_color(color).child(text))),
         )
-        .when_some(button, |d, b| d.child(div().flex_none().child(b)))
+        // A click on the button is not a click on the row (Steam's row opens its page).
+        .when_some(button, |d, b| d.child(div().flex_none().on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).child(b)))
 }
 
 /// A store to log in to, or a launcher to bring games from: its name over
