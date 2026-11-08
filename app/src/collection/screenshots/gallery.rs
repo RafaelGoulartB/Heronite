@@ -64,7 +64,37 @@ impl CollectionView {
                     })),
             );
         }
-        Some(div().flex().flex_col().child(focus::h3(tr!("Screenshots"))).child(focus::panel(true).child(row)).into_any_element())
+        // The game's folder: the first part of a screenshot's path under the
+        // captures root ("Game/shot.png"), else the root itself.
+        let root = std::path::PathBuf::from(&self.shots.folder);
+        let dir = match self.shots.items[0].id.split_once('/') {
+            Some((game, _)) => root.join(game),
+            None => root,
+        };
+        let weak = cx.entity().downgrade();
+        let entries = vec![focus::MenuEntry {
+            id: "open-folder",
+            icon: Icon::FolderOpen,
+            label: tr!("Open folder").into(),
+            run: std::rc::Rc::new(move |_: &mut Window, cx: &mut App| {
+                let dir = dir.clone();
+                weak.update(cx, |this, cx| this.open_folder(dir, cx)).ok();
+            }),
+            separated: false,
+        }];
+        let on_title = self.on_title(cx);
+        let title = focus::section_title(focus::TitleMenu::Screenshots, tr!("Screenshots"), self.facts.titles, entries, &on_title);
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .child(
+                    focus::hover_section("focus-screenshots", focus::TitleMenu::Screenshots, &on_title)
+                        .child(title)
+                        .child(focus::panel(true).child(row)),
+                )
+                .into_any_element(),
+        )
     }
 
     pub(in crate::collection) fn shots_open_view(&mut self, i: usize, window: &mut Window, cx: &mut Context<Self>) {

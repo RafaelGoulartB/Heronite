@@ -5,7 +5,7 @@ mod description;
 mod panels;
 mod section_title;
 
-pub(super) use section_title::{OnTitle, TitleAction, TitleMenu, TitleState};
+pub(super) use section_title::{section_title, MenuEntry, OnTitle, TitleAction, TitleMenu, TitleState};
 
 pub use description::html_image_size;
 pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
@@ -19,7 +19,6 @@ use heronite_data::appearance::Section;
 
 use self::description::render_html;
 use self::panels::{details_panel, details_value_width, hltb_missing_panel, hltb_panel, related_panel};
-use self::section_title::{section_title, MenuEntry};
 use super::vm::{DetailRow, FocusVm};
 use crate::icons::Icon;
 use crate::theme;
@@ -194,7 +193,7 @@ fn details_section(details: Div, titles: TitleState, on_title: &OnTitle) -> Div 
 }
 
 /// A section that reports the pointer over it (its title shows the chevron).
-fn hover_section(id: &'static str, menu: TitleMenu, on_title: &OnTitle) -> Stateful<Div> {
+pub(super) fn hover_section(id: &'static str, menu: TitleMenu, on_title: &OnTitle) -> Stateful<Div> {
     let on = on_title.clone();
     div().id(id).flex().flex_col().on_hover(move |hovered: &bool, window, cx| on(TitleAction::Hovered(menu, *hovered), window, cx))
 }
