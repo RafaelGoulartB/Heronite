@@ -24,7 +24,7 @@
   "Find them by itself again": "Volver a encontrarlos solo",
   "First Steps": "Primeros Pasos",
   "For DRM-free and offline copies that keep their Steam achievements next to the game, as the open-source Steam API emulators do. Heronite only reads them; names and icons may come from Steam's public pages.": "Para copias sin DRM y sin conexión que guardan sus logros de Steam junto al juego, como hacen los emuladores de código abierto de la API de Steam. Heronite solo los lee; los nombres y los iconos pueden venir de las páginas públicas de Steam.",
-  "For games never played on this PC. Get one at steamcommunity.com/dev/apikey; your Steam profile's game details must be public.": "Para juegos que nunca jugaste en este PC. Obtén una en steamcommunity.com/dev/apikey; los detalles de juegos de tu perfil de Steam deben ser públicos.",
+  "Only for the achievements of games never played on this PC: it does not bring games in. Your whole Steam library comes in from Stores → Steam. Get a key at steamcommunity.com/dev/apikey; your Steam profile's game details must be public.": "Solo para los logros de juegos que nunca jugaste en este PC: no trae juegos. Tu biblioteca de Steam completa llega desde Tiendas → Steam. Consigue una clave en steamcommunity.com/dev/apikey; los detalles de juegos de tu perfil de Steam deben ser públicos.",
   "Forget these achievements": "Olvidar estos logros",
   "From the game's files in {folder} · Steam app id {id}": "De los archivos del juego en {folder} · Steam app id {id}",
   "From the game's files · Steam app id {id}": "De los archivos del juego · Steam app id {id}",

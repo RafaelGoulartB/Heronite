@@ -174,7 +174,7 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 .gap(px(6.))
                 .child(labeled(tr!("Steam Web API key (optional)"), input_box(&d.achievements.steam_key, false)))
                 .child(meta_text(tr!(
-                    "For games never played on this PC. Get one at steamcommunity.com/dev/apikey; your Steam profile's game details must be public."
+                    "Only for the achievements of games never played on this PC: it does not bring games in. Your whole Steam library comes in from Stores \u{2192} Steam. Get a key at steamcommunity.com/dev/apikey; your Steam profile's game details must be public."
                 )))
                 .into_any_element(),
             toggle_row(
