@@ -22,7 +22,8 @@ use super::{Clients, Notice};
 pub struct Shortcuts {
     pub desktop: bool,
     pub menu: bool,
-    /// The system has a Desktop folder (`false`: only the menu is offered).
+    /// The Desktop folder exists (`false`: only the menu is offered; one is
+    /// never made just for this).
     pub has_desktop: bool,
 }
 
@@ -35,11 +36,15 @@ fn icon_path(paths: &DataPaths, client: Client) -> PathBuf {
     paths.icons_dir().join(format!("{}.png", stem(client)))
 }
 
-/// Where the shortcuts of `client` are now. Blocking (two file checks).
-pub fn placed(client: Client) -> Shortcuts {
+/// Where the shortcuts of `client` are now. Blocking (a few file checks).
+pub(super) fn placed(client: Client) -> Shortcuts {
     let roots = Roots::detect();
     let (on_desktop, in_menu) = desktop::files_named(&roots, stem(client));
-    Shortcuts { desktop: on_desktop.as_ref().is_some_and(|f| f.is_file()), menu: in_menu.is_file(), has_desktop: on_desktop.is_some() }
+    Shortcuts {
+        desktop: on_desktop.as_ref().is_some_and(|f| f.is_file()),
+        menu: in_menu.is_file(),
+        has_desktop: on_desktop.as_ref().and_then(|f| f.parent()).is_some_and(Path::is_dir),
+    }
 }
 
 /// The client program's icon as PNG bytes; `None` when it has none.
@@ -87,7 +92,7 @@ fn entry(client: Client, own_exe: &Path, icon: Option<&Path>) -> String {
 /// Adds (`Some(true)`) or removes (`Some(false)`) the shortcut of `client`
 /// on the Desktop and in the menu; `None` leaves that one as it is. `exe` is
 /// the client's program (its icon). Blocking.
-pub fn set(paths: &DataPaths, client: Client, exe: Option<&Path>, desktop: Option<bool>, menu: Option<bool>) -> Result<Shortcuts, String> {
+fn set(paths: &DataPaths, client: Client, exe: Option<&Path>, desktop: Option<bool>, menu: Option<bool>) -> Result<Shortcuts, String> {
     let roots = Roots::detect();
     let (add_desktop, add_menu) = (desktop == Some(true), menu == Some(true));
     if add_desktop || add_menu {
@@ -116,7 +121,7 @@ fn remove_icon(paths: &DataPaths, client: Client) {
 
 /// Removes both shortcuts and the icon (the client was forgotten: they
 /// would open a client that is no longer set up). Blocking.
-pub fn remove_all(paths: &DataPaths, client: Client) {
+pub(super) fn remove_all(paths: &DataPaths, client: Client) {
     if let Err(e) = desktop::remove_named(&Roots::detect(), stem(client), true, true) {
         log::warn!("{}: removing its shortcuts: {e:#}", client.name());
     }
@@ -124,22 +129,25 @@ pub fn remove_all(paths: &DataPaths, client: Client) {
 }
 
 impl Clients {
-    /// Adds or removes the shortcuts of `client` (see [`set`]).
+    /// Adds or removes the shortcuts of `client` (see [`set`]). A client no
+    /// longer installed (its prefix deleted by hand) can only lose them.
     pub fn set_shortcuts(&mut self, client: Client, desktop: Option<bool>, menu: Option<bool>, cx: &mut Context<Self>) {
         let st = self.state(client);
-        if self.frozen == Some(client) || st.shortcut_busy || !st.installed() {
+        let adds = desktop == Some(true) || menu == Some(true);
+        if self.frozen == Some(client) || st.shortcut_busy || st.busy() || (adds && !st.installed()) {
             return;
         }
         let exe = st.status.as_ref().and_then(|s| s.exe.clone());
         let st = self.state_mut(client);
         st.shortcut_busy = true;
-        st.notice = None;
         let paths = self.paths.clone();
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { set(&paths, client, exe.as_deref(), desktop, menu) }).await;
             this.update(cx, |this, cx| {
                 let st = this.state_mut(client);
                 st.shortcut_busy = false;
+                // A look that read the files before this change is stale.
+                st.shortcuts_changes += 1;
                 match res {
                     Ok(now) => st.shortcuts = now,
                     Err(e) => {

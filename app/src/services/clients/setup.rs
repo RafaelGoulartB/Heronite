@@ -232,7 +232,8 @@ impl Clients {
     /// Forgets the client: its prefix and games stay on disk, its entries
     /// leave the Collection.
     pub fn forget(&mut self, client: Client, cx: &mut Context<Self>) {
-        if self.frozen == Some(client) || self.state(client).busy() {
+        // A shortcut being written meanwhile would outlive the removal.
+        if self.frozen == Some(client) || self.state(client).busy() || self.state(client).shortcut_busy {
             return;
         }
         let st = self.state_mut(client);

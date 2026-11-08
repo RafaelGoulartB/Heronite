@@ -86,6 +86,7 @@
   "{client} did not close in time": "{client} no se cerró a tiempo",
   "{client} did not start the game": "{client} no inició el juego",
   "{client} in your app launcher, with your other apps.": "{client} en tu menú de aplicaciones, junto a tus otras apps.",
+  "{client} is busy right now. Try again in a moment.": "{client} está ocupado ahora. Inténtalo de nuevo en un momento.",
   "{client} is not installed in its prefix yet. Set it up in Stores → {client}.": "{client} aún no está instalado en su prefijo. Instálalo en Tiendas → {client}.",
   "{client} is not installed in {prefix}": "{client} no está instalado en {prefix}",
   "{client} is not running": "{client} no está abierto",

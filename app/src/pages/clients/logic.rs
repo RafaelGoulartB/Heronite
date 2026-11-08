@@ -174,6 +174,31 @@ pub(super) fn collection_key(client: Client, game_id: &str) -> String {
     format!("sideload_{}", heronite_clients::collection::app_name(client, game_id))
 }
 
+/// Whether the client's page shows its Shortcuts: a client under Wine that
+/// is installed, or whose shortcuts outlived its prefix (only removing them
+/// is offered then).
+pub(super) fn shows_shortcuts(st: &ClientState) -> bool {
+    !heronite_clients::native() && (st.installed() || st.shortcuts.desktop || st.shortcuts.menu)
+}
+
+/// Whether the Desktop and the menu switches take a click.
+pub(super) fn shortcut_switches(st: &ClientState) -> (bool, bool) {
+    let sc = st.shortcuts;
+    let idle = !st.busy() && !st.shortcut_busy;
+    let can = |on: bool| idle && (st.installed() || on);
+    (can(sc.desktop) && (sc.has_desktop || sc.desktop), can(sc.menu))
+}
+
+/// The lines under the Desktop and the menu switches.
+pub(super) fn shortcut_lines(client: Client, sc: &Shortcuts) -> (String, String) {
+    let desktop = if sc.has_desktop {
+        tr!("An icon on your Desktop that opens {client}.", client = client.name())
+    } else {
+        tr!("This system has no Desktop folder.").to_string()
+    };
+    (desktop, tr!("{client} in your app launcher, with your other apps.", client = client.name()))
+}
+
 /// What a shortcut action asks of the Desktop and the menu (see
 /// `Clients::set_shortcuts`): a switch flips its own, "add" adds the
 /// missing ones (the Desktop only when there is one), "remove" removes both.
@@ -329,5 +354,30 @@ mod tests {
         assert_eq!(shortcut_change("shortcuts-remove", &menu_only), (None, Some(false)));
         // No Desktop folder: only the menu.
         assert_eq!(shortcut_change("shortcuts-add", &Shortcuts::default()), (None, Some(true)));
+    }
+
+    #[test]
+    fn shortcuts_of_a_client_gone_by_hand_can_only_be_removed() {
+        use super::{shortcut_switches, shows_shortcuts};
+        use crate::services::clients::shortcuts::Shortcuts;
+        let mut st = ClientState::default();
+        st.status = Some(Status::default());
+        assert!(!shows_shortcuts(&st), "not installed, nothing to remove");
+        st.shortcuts = Shortcuts { menu: true, has_desktop: true, ..Default::default() };
+        assert!(shows_shortcuts(&st));
+        assert_eq!(shortcut_switches(&st), (false, true), "the menu one goes, no Desktop one is added");
+        st.shortcut_busy = true;
+        assert_eq!(shortcut_switches(&st), (false, false));
+    }
+
+    #[test]
+    fn no_desktop_folder_means_no_desktop_switch() {
+        use super::shortcut_switches;
+        use crate::services::clients::shortcuts::Shortcuts;
+        let mut st = ClientState::default();
+        st.status = Some(Status { prefix: Some("/p".into()), exe: Some("/p/x.exe".into()), ..Default::default() });
+        assert_eq!(shortcut_switches(&st), (false, true));
+        st.shortcuts = Shortcuts { has_desktop: true, ..Default::default() };
+        assert_eq!(shortcut_switches(&st), (true, true));
     }
 }

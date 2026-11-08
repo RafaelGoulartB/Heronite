@@ -121,27 +121,47 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
 }
 
 /// Opens `client` (`--open-client`, from its shortcut), never the window.
-/// The running app opens it through its service, which follows it as if
-/// opened from its page; a start for this alone opens it and exits.
-pub(super) fn open_client(cx: &mut App, client: Client) {
+/// `started_for_it`: this process was started only for this (it exits once
+/// the client is open); otherwise the app's service opens it and follows it
+/// as if opened from its page.
+pub(super) fn open_client(cx: &mut App, client: Client, started_for_it: bool) {
     log::info!("open request: {}", client.name());
     if hub(cx).0.borrow().fake_launch {
         log::info!("[fake-launch] {}", client.name());
         maybe_exit_idle(cx);
         return;
     }
-    if let Some(svc) = crate::services::clients_started(cx) {
-        svc.update(cx, |s, cx| s.open_from_shortcut(client, cx));
+    if !started_for_it || !hub(cx).0.borrow().exit_when_idle {
+        crate::services::clients(cx).update(cx, |s, cx| s.open_from_shortcut(client, cx));
         return;
     }
     let paths = hub(cx).0.borrow().data_paths.clone();
+    // In a Flatpak the client runs in this process's sandbox, which is torn
+    // down when the process exits: wait for the client there. Elsewhere it
+    // outlives the app, which exits at once.
+    let wait = heronite_platform::flatpak::active();
+    if wait {
+        hub(cx).0.borrow_mut().clients_followed += 1;
+    }
     cx.spawn(async move |cx| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
-        // The client outlives the app: its process is not waited for.
-        let opened = cx.background_spawn(async move { heronite_clients::run::open(&paths, client, &home).map(drop) }).await;
-        cx.update(|cx| match opened {
-            Ok(()) => maybe_exit_idle(cx),
-            Err(e) => fail(cx, tr!("Could not open {client}: {error}", client = client.name(), error = e)),
+        let opened = cx
+            .background_spawn(async move {
+                let mut child = heronite_clients::run::open(&paths, client, &home)?;
+                if wait {
+                    let _ = child.wait();
+                }
+                Ok::<(), String>(())
+            })
+            .await;
+        cx.update(|cx| {
+            if wait {
+                hub(cx).0.borrow_mut().clients_followed -= 1;
+            }
+            match opened {
+                Ok(()) => maybe_exit_idle(cx),
+                Err(e) => fail(cx, tr!("Could not open {client}: {error}", client = client.name(), error = e)),
+            }
         });
     })
     .detach();

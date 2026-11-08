@@ -23,6 +23,12 @@ impl Clients {
     fn open_with(&mut self, client: Client, notify: bool, cx: &mut Context<Self>) {
         if self.frozen == Some(client) || self.state(client).busy() {
             log::info!("{}: not opened, it is busy", client.name());
+            // Opening already: a second click of the shortcut. Anything else
+            // would leave the click unanswered, the window may be hidden.
+            if notify && self.state(client).activity != Activity::Opening {
+                let text = tr!("{client} is busy right now. Try again in a moment.", client = client.name());
+                crate::system::notify::send("Heronite", text);
+            }
             return;
         }
         let st = self.state_mut(client);

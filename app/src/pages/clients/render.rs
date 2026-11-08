@@ -183,7 +183,7 @@ impl<K: ClientKind> ClientPage<K> {
                 .ml(px(-12.))
                 .child(
                     button_sm(self.id("forget"), ButtonKind::Ghost, tr!("Remove from Heronite"))
-                        .when(!st.busy(), |b| b.on_click(act!(cx, "forget"))),
+                        .when(!st.busy() && !st.shortcut_busy, |b| b.on_click(act!(cx, "forget"))),
                 )
                 .into_any_element();
         }
@@ -235,9 +235,9 @@ impl<K: ClientKind> ClientPage<K> {
     }
 
     /// The client's shortcuts on the Desktop and in the application menu
-    /// (Linux: on Windows the client's installer makes its own).
+    /// (Linux: on Windows the client's installer makes its own; see
+    /// [`logic::shows_shortcuts`]).
     fn render_shortcuts(&self, st: &ClientState, cx: &mut Context<Self>) -> Div {
-        let client = K::CLIENT;
         let sc = st.shortcuts;
         let switch = |name: &'static str, label: &str, desc: String, on: bool, enabled: bool, cx: &mut Context<Self>| {
             let id = self.id(name);
@@ -246,22 +246,11 @@ impl<K: ClientKind> ClientPage<K> {
                 .when(enabled, |r| r.cursor_pointer().on_click(act!(cx, name)))
                 .into_any_element()
         };
-        let idle = !st.busy() && !st.shortcut_busy;
-        let desktop_line = if sc.has_desktop {
-            tr!("An icon on your Desktop that opens {client}.", client = client.name())
-        } else {
-            tr!("This system has no Desktop folder.").to_string()
-        };
+        let (desktop_on, menu_on) = logic::shortcut_switches(st);
+        let (desktop_line, menu_line) = logic::shortcut_lines(K::CLIENT, &sc);
         let rows = [
-            switch("shortcut-desktop", tr!("Desktop shortcut"), desktop_line, sc.desktop, idle && sc.has_desktop, cx),
-            switch(
-                "shortcut-menu",
-                tr!("Application menu shortcut"),
-                tr!("{client} in your app launcher, with your other apps.", client = client.name()),
-                sc.menu,
-                idle,
-                cx,
-            ),
+            switch("shortcut-desktop", tr!("Desktop shortcut"), desktop_line, sc.desktop, desktop_on, cx),
+            switch("shortcut-menu", tr!("Application menu shortcut"), menu_line, sc.menu, menu_on, cx),
         ];
         div().child(caption(tr!("Shortcuts"))).child(card(rows))
     }
@@ -345,10 +334,10 @@ impl<K: ClientKind> Render for ClientPage<K> {
         let mut right = div();
         if st.installed() {
             left = left.child(self.render_account(&st));
-            if !heronite_clients::native() {
-                left = left.child(self.render_shortcuts(&st, cx));
-            }
             right = right.child(self.render_games(&st, cx));
+        }
+        if logic::shows_shortcuts(&st) {
+            left = left.child(self.render_shortcuts(&st, cx));
         }
         right = right.child(self.render_about());
         let wide = stores::content_width(window) >= 1000.;

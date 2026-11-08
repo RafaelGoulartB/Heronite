@@ -75,7 +75,7 @@ pub(super) fn commands(client: Client, st: Option<&ClientState>) -> Vec<PageComm
     // The clients under Wine only: on Windows the installer makes them.
     if !native {
         let sc = st.shortcuts;
-        let busy = || busy().or_else(|| st.shortcut_busy.then(|| tr!("Working\u{2026}").to_string()));
+        let busy_or_writing = || busy().or_else(|| st.shortcut_busy.then(|| tr!("Working\u{2026}").to_string()));
         let all_there = sc.menu && (sc.desktop || !sc.has_desktop);
         commands.push(
             PageCommand::new(
@@ -85,7 +85,7 @@ pub(super) fn commands(client: Client, st: Option<&ClientState>) -> Vec<PageComm
                 Icon::Add,
             )
             .keywords(keywords(client))
-            .disabled(first().or_else(busy).or_else(|| all_there.then(|| tr!("Already added").to_string())))
+            .disabled(first().or_else(busy_or_writing).or_else(|| all_there.then(|| tr!("Already added").to_string())))
             .stay(),
         );
         commands.push(
@@ -96,7 +96,8 @@ pub(super) fn commands(client: Client, st: Option<&ClientState>) -> Vec<PageComm
                 Icon::DeleteOutline,
             )
             .keywords(keywords(client))
-            .disabled(first().or_else(busy).or_else(|| (!sc.desktop && !sc.menu).then(|| tr!("No shortcuts yet").to_string())))
+            // Shortcuts that outlived the client's prefix can still go.
+            .disabled(busy_or_writing().or_else(|| (!sc.desktop && !sc.menu).then(|| tr!("No shortcuts yet").to_string())))
             .stay(),
         );
     }

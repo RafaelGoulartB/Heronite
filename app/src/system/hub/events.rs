@@ -202,7 +202,7 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
         apply_window_flags(cx, msg.console, msg.fullscreen, false);
     }
     if let Some(client) = msg.open_client {
-        open_client(cx, client);
+        open_client(cx, client, false);
     }
     match msg.launch {
         // A shortcut of a store client asks for the client only.

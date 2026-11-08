@@ -84,6 +84,7 @@ pub fn init(
         tray,
         fake_tray,
         exit_when_idle: one_shot && !want_window && !start_in_tray,
+        clients_followed: 0,
         hiding: false,
         hidden_for_game: false,
         quitting: false,
@@ -169,7 +170,7 @@ pub fn init(
         launch(cx, req, hide, false);
     }
     if let Some(client) = cli.open_client {
-        open_client(cx, client);
+        open_client(cx, client, true);
     }
     debug_hooks(cx, tray_tx);
 }

@@ -84,6 +84,9 @@ struct State {
     /// Quit when the last game ends and no window was shown (started only to
     /// launch a game without UI).
     exit_when_idle: bool,
+    /// Store clients a start for `--open-client` waits for: in a Flatpak
+    /// they live in this process's sandbox, which ends with it.
+    clients_followed: usize,
     /// The next window close is ours (tray / minimize on launch): stay alive.
     hiding: bool,
     /// The window was closed because a game started (minimize on launch):

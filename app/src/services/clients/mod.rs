@@ -117,6 +117,10 @@ pub struct ClientState {
     pub shortcuts: shortcuts::Shortcuts,
     /// A shortcut is being added or removed.
     pub shortcut_busy: bool,
+    /// Shortcut changes done, and how many there were when the running look
+    /// began: a look that began before the last change keeps its result.
+    shortcuts_changes: u64,
+    shortcuts_read_at: u64,
     cancel: Option<Arc<Cancel>>,
     visible: bool,
     /// A client this app opened, set up or started a game through: asked
@@ -201,8 +205,9 @@ fn read(paths: &DataPaths, clients: &[Client], sync: bool) -> Vec<(Client, Read)
             let synced = (sync && status.installed()).then(|| collection::sync(paths, client, &status.games).map_err(|e| format!("{e:#}")));
             // Read after the sync, which records when it ran.
             let prefs = if matches!(synced, Some(Ok(_))) { ClientPrefs::load(paths) } else { prefs.clone() };
-            // Only the clients under Wine get shortcuts from Heronite.
-            let shortcuts = if status.installed() && !heronite_clients::native() { shortcuts::placed(client) } else { Default::default() };
+            // Only the clients under Wine get shortcuts from Heronite; one
+            // whose prefix was deleted by hand may still have them.
+            let shortcuts = if heronite_clients::native() { Default::default() } else { shortcuts::placed(client) };
             let read = Read {
                 shortcuts,
                 last: prefs.last.get(&client).cloned(),
@@ -338,6 +343,7 @@ impl Clients {
                 continue;
             }
             st.reading = true;
+            st.shortcuts_read_at = st.shortcuts_changes;
             st.syncing = sync && st.installed();
             todo.push(client);
         }
@@ -363,7 +369,9 @@ impl Clients {
             st.in_collection = read.in_collection;
             st.removed = read.removed;
             st.last = read.last;
-            st.shortcuts = read.shortcuts;
+            if !st.shortcut_busy && st.shortcuts_read_at == st.shortcuts_changes {
+                st.shortcuts = read.shortcuts;
+            }
             if !read.status.installed() {
                 st.running = false;
                 st.game_running = false;

@@ -67,24 +67,16 @@ impl<K: ClientKind> ClientPage<K> {
             let (title, hint) = logic::account_lines(client, &st.account());
             rows.push(Row::header(tr!("Account")));
             rows.push(Row::info("account", title, "").desc(hint.unwrap_or_default()).icon(Icon::AccountCircle));
-            if !heronite_clients::native() {
-                let sc = st.shortcuts;
-                let idle = !st.busy() && !st.shortcut_busy;
-                rows.push(Row::header(tr!("Shortcuts")));
-                let desktop_line = if sc.has_desktop {
-                    tr!("An icon on your Desktop that opens {client}.", client = client.name())
-                } else {
-                    tr!("This system has no Desktop folder.").to_string()
-                };
-                rows.push(
-                    Row::toggle("shortcut-desktop", tr!("Desktop shortcut"), sc.desktop).desc(desktop_line).enabled(idle && sc.has_desktop),
-                );
-                rows.push(
-                    Row::toggle("shortcut-menu", tr!("Application menu shortcut"), sc.menu)
-                        .desc(tr!("{client} in your app launcher, with your other apps.", client = client.name()))
-                        .enabled(idle),
-                );
-            }
+        }
+        if logic::shows_shortcuts(st) {
+            let sc = st.shortcuts;
+            let (desktop_on, menu_on) = logic::shortcut_switches(st);
+            let (desktop_line, menu_line) = logic::shortcut_lines(client, &sc);
+            rows.push(Row::header(tr!("Shortcuts")));
+            rows.push(Row::toggle("shortcut-desktop", tr!("Desktop shortcut"), sc.desktop).desc(desktop_line).enabled(desktop_on));
+            rows.push(Row::toggle("shortcut-menu", tr!("Application menu shortcut"), sc.menu).desc(menu_line).enabled(menu_on));
+        }
+        if st.installed() {
             rows.push(Row::header(tr!("Installed games")));
             let games = st.status.as_ref().map(|s| s.games.as_slice()).unwrap_or(&[]);
             if games.is_empty() {

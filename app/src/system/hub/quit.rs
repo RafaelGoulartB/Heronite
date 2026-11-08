@@ -276,10 +276,10 @@ pub(super) fn maybe_exit_idle(cx: &mut App) {
     let hub = hub(cx);
     let idle = {
         let s = hub.0.borrow();
-        s.exit_when_idle && s.window.is_none() && s.running.is_empty() && !crate::services::session::busy()
+        s.exit_when_idle && s.window.is_none() && s.running.is_empty() && s.clients_followed == 0 && !crate::services::session::busy()
     };
     if idle {
-        log::info!("game ended and no window was shown: exiting");
+        log::info!("nothing left to follow and no window was shown: exiting");
         graceful_quit(cx);
     }
 }
