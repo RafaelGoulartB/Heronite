@@ -37,6 +37,7 @@ mod launch_progress;
 mod launchers;
 mod library_sync;
 mod list;
+mod list_heights;
 mod list_row;
 mod list_view;
 mod load;
@@ -205,6 +206,8 @@ pub struct CollectionView {
     /// pointer grabbed it (pointer x − edge x).
     resizing: Option<(resize::Panel, f32)>,
     list_state: ListState,
+    /// The heights the list gives the rows it has not drawn (`list_heights.rs`).
+    row_heights: list_heights::RowHeights,
     /// Group whose header row sits under the pinned copy (hidden so the two
     /// don't show at once).
     stuck_group: Option<usize>,
@@ -392,6 +395,7 @@ impl CollectionView {
             look: Default::default(),
             resizing: None,
             list_state,
+            row_heights: Default::default(),
             stuck_group: None,
             selected: None,
             sel: Default::default(),
@@ -631,6 +635,9 @@ impl CollectionView {
 
         let page_el = self.render_page(window, cx);
         let on_page = page_el.is_some();
+        if !on_page {
+            self.sync_row_heights(list_w, window);
+        }
         let stage_el = match self.stage_image(window) {
             Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
             None if self.stage_enabled && theme::appearance().background == heronite_data::appearance::BackgroundSource::Solid => {

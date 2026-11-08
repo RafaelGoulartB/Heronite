@@ -14,7 +14,7 @@ use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-const ROW_H: f32 = 44.;
+pub(super) const ROW_H: f32 = 44.;
 pub(super) const THUMB_W: f32 = 26.;
 /// Narrower rows drop the caption: the title needs the room.
 const CAPTION_MIN_W: f32 = 220.;
