@@ -77,6 +77,9 @@ pub struct UiState {
     pub focus_cover_size: FocusCoverSize,
     /// The focus panel shows the Journal instead of the Timeline.
     pub journal_view: bool,
+    /// Rows of the focus panel's "Details" the user turned off, by key
+    /// (`"ageRating"`, `"notes"`...). The age ratings start off.
+    pub detail_rows_hidden: BTreeSet<String>,
     /// Width the Focus list column was dragged to, in logical px. `None`: the
     /// default for the window, which is also the narrowest it gets.
     pub list_column_w: Option<f32>,
@@ -98,6 +101,9 @@ pub struct UiState {
 }
 
 /// Range and default of [`UiState::grid_cover_w`].
+/// The "Details" rows hidden until the user turns them on.
+pub const DETAIL_ROWS_HIDDEN_DEFAULT: &[&str] = &["ageRating"];
+
 pub const GRID_COVER_W: (f32, f32, f32) = (110., 240., 150.);
 
 /// What the grid shows under each cover: the title, the info line of
@@ -192,6 +198,7 @@ impl Default for UiState {
             focus_list: false,
             focus_cover_size: FocusCoverSize::default(),
             journal_view: false,
+            detail_rows_hidden: DETAIL_ROWS_HIDDEN_DEFAULT.iter().map(|k| (*k).to_owned()).collect(),
             list_column_w: None,
             grid_drawer_w: None,
             console_open_in: OpenIn::default(),
@@ -243,6 +250,9 @@ impl UiState {
         state.focus_list = flag("focusList");
         state.focus_cover_size = value.get("focusCoverSize").and_then(Value::as_str).and_then(FocusCoverSize::parse).unwrap_or_default();
         state.journal_view = flag("journalView");
+        if let Some(list) = value.get("detailRowsHidden").and_then(Value::as_array) {
+            state.detail_rows_hidden = list.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect();
+        }
         let width = |key: &str| value.get(key).and_then(Value::as_f64).filter(|w| w.is_finite() && *w > 0.).map(|w| w as f32);
         state.list_column_w = width("listColumnWidth");
         state.grid_drawer_w = width("gridDrawerWidth");
@@ -270,6 +280,7 @@ impl UiState {
             "focusList": self.focus_list,
             "focusCoverSize": self.focus_cover_size.as_str(),
             "journalView": self.journal_view,
+            "detailRowsHidden": self.detail_rows_hidden,
             "listColumnWidth": self.list_column_w,
             "gridDrawerWidth": self.grid_drawer_w,
         });
@@ -830,6 +841,10 @@ mod tests {
         assert_eq!(UiState::from_value(&json!({"gridTitles": true})).grid_label, GridLabel::TitleInfo);
         assert_eq!(UiState::from_value(&json!({"gridTitles": true, "gridLabel": "none"})).grid_label, GridLabel::Nothing);
         assert!(UiState::from_value(&json!({})).grid_open_on_select);
+        // The age ratings start off; a stored list (even empty) is kept.
+        assert!(UiState::from_value(&json!({})).detail_rows_hidden.contains("ageRating"));
+        assert!(UiState::from_value(&json!({ "detailRowsHidden": [] })).detail_rows_hidden.is_empty());
+        assert_eq!(UiState::from_value(&json!({ "detailRowsHidden": ["notes"] })).detail_rows_hidden.iter().collect::<Vec<_>>(), ["notes"]);
         assert_eq!(UiState::from_value(&json!({"focusCoverSize": "huge"})).focus_cover_size, FocusCoverSize::Medium);
     }
 
