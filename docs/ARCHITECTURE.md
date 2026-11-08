@@ -346,7 +346,9 @@ text size) and applies it.
   reads the account's library from the client (or, through `account`, from
   Steam's Web API after an optional sign-in with a QR code, when the client
   cannot be read; the tokens live in `local_library/steam-account.json`,
-  sealed with DPAPI on Windows) (games only: no tools,
+  sealed with DPAPI on Windows; signing out ends the sign-in on Steam with
+  `RevokeToken`, so it leaves the account's authorized devices, and
+  deletes the file even when Steam cannot be reached) (games only: no tools,
   soundtracks, demos, test servers or games hidden in Steam), caches it and
   adds the games the Collection does not have yet; Steam's play time moves
   the Steam entries up when it is ahead. A Steam entry still "Not played"

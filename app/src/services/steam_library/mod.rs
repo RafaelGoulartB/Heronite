@@ -489,7 +489,9 @@ impl SteamLibrary {
     /// is not what the cache holds, or the client is stuck. While Steam is
     /// only closed, a library the client read stays as it is.
     fn account_allowed(&self) -> bool {
+        // Not while signing out: a renewal would save the tokens again.
         self.account.signed_in()
+            && !self.account.busy
             && self.summary_loaded
             && (self.client_stuck() || self.summary.updated_at.is_none() || self.summary.source == SteamSource::Account)
     }

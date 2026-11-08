@@ -81,7 +81,7 @@ impl SteamPage {
                 action_button(
                     "steam-sign-out",
                     ButtonKind::Glass,
-                    tr!("Sign out"),
+                    if busy { tr!("Signing out\u{2026}") } else { tr!("Sign out") },
                     !syncing && !busy,
                     cx.listener(|this, _, _, cx| this.run_action("sign-out", cx)),
                 )

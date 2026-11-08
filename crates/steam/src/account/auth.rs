@@ -22,6 +22,9 @@ pub const API: &str = "https://api.steampowered.com";
 const PLATFORM_MOBILE_APP: &str = "3";
 /// `ETokenRenewalType::Allow`: a renewal may also give a new refresh token.
 const RENEWAL_ALLOW: &str = "1";
+/// `EAuthTokenRevokeAction::Permanent`: the refresh token stops working for
+/// good, and the sign-in leaves the account's authorized devices.
+const REVOKE_PERMANENT: &str = "1";
 /// `EResult::OK`.
 const OK: i32 = 1;
 /// The `EResult`s that end a sign-in session: FileNotFound (gone),
@@ -179,6 +182,21 @@ pub fn renew(http: &dyn Http, refresh_token: &str, steam_id: &str) -> Result<Ren
     Ok(Renewed { access_token, refresh_token: text(&resp, "refresh_token") })
 }
 
+/// Ends the sign-in on Steam: `refresh_token` stops working and the sign-in
+/// leaves the account's authorized devices. `access_token`: a working one of
+/// the same sign-in (it goes in the address, the refresh token in the form).
+pub fn revoke(http: &dyn Http, access_token: &str, refresh_token: &str) -> Result<()> {
+    let form = vec![("token", refresh_token.to_string()), ("revoke_action", REVOKE_PERMANENT.to_string())];
+    let r = http.send(Request::post(format!("{}?access_token={access_token}", url("RevokeToken")), form))?;
+    if r.status != 200 {
+        bail!("ending the Steam sign-in: HTTP {}", r.status);
+    }
+    if let Some(e) = r.eresult.filter(|e| *e != OK) {
+        bail!("ending the Steam sign-in: Steam answered with error {e}");
+    }
+    Ok(())
+}
+
 /// What a Steam token (a JWT) says about itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claims {
@@ -290,6 +308,20 @@ pub(super) mod tests {
         assert!(
             !format!("{:?}", Tokens { refresh_token: "secret".into(), access_token: None, account_name: "a".into() }).contains("secret")
         );
+    }
+
+    #[test]
+    fn revoking_sends_the_refresh_token_in_the_form() {
+        let fake = Fake::new(&[(200, 1, r#"{"response":{}}"#)]);
+        revoke(&fake, "A", "R").unwrap();
+        let sent = &fake.sent()[0];
+        assert_eq!(sent.method, "POST");
+        assert_eq!(sent.url, "https://api.steampowered.com/IAuthenticationService/RevokeToken/v1/?access_token=A");
+        assert_eq!(sent.form, [("token", "R".to_string()), ("revoke_action", "1".to_string())]);
+        // Refused or out of reach: an error, the caller says so.
+        assert!(revoke(&Fake::new(&[(200, 15, "")]), "A", "R").is_err());
+        assert!(revoke(&Fake::new(&[(401, 1, "")]), "A", "R").is_err());
+        assert!(revoke(&Fake::new(&[]), "A", "R").is_err());
     }
 
     #[test]
