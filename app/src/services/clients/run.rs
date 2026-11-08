@@ -11,7 +11,18 @@ use super::{home, Activity, Clients, Notice};
 impl Clients {
     /// Opens the client's window (starting it when it does not run).
     pub fn open(&mut self, client: Client, cx: &mut Context<Self>) {
+        self.open_with(client, false, cx);
+    }
+
+    /// [`Self::open`] asked by the client's shortcut: Heronite's window may
+    /// not be on screen, so a failure is also a desktop notification.
+    pub fn open_from_shortcut(&mut self, client: Client, cx: &mut Context<Self>) {
+        self.open_with(client, true, cx);
+    }
+
+    fn open_with(&mut self, client: Client, notify: bool, cx: &mut Context<Self>) {
         if self.frozen == Some(client) || self.state(client).busy() {
+            log::info!("{}: not opened, it is busy", client.name());
             return;
         }
         let st = self.state_mut(client);
@@ -28,11 +39,15 @@ impl Clients {
                 match res {
                     Ok(child) => this.reap(client, child, cx),
                     Err(e) => {
+                        let text = tr!("Could not open {client}: {error}", client = client.name(), error = e);
+                        if notify {
+                            crate::system::notify::send("Heronite", text.clone());
+                        }
                         let st = this.state_mut(client);
                         st.activity = Activity::Idle;
                         st.watched = false;
                         st.opened_at = None;
-                        st.notice = Some(Notice::error(tr!("Could not open {client}: {error}", client = client.name(), error = e)));
+                        st.notice = Some(Notice::error(text));
                     }
                 }
                 cx.notify();

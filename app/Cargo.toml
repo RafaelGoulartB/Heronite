@@ -36,7 +36,7 @@ heronite-epic = { path = "../crates/epic" }
 heronite-gog = { path = "../crates/gog" }
 heronite-amazon = { path = "../crates/amazon" }
 heronite-update = { path = "../crates/update" }
-image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "ico"] }
 smallvec = "1"
 libc = "0.2"
 signal-hook = "0.3"

@@ -10,6 +10,7 @@ use heronite_clients::Account;
 use heronite_data::clients::Client;
 use heronite_i18n::tr;
 
+use crate::services::clients::shortcuts::Shortcuts;
 use crate::services::clients::{Activity, ClientState, Progress};
 use crate::services::proton_setup::Setup as WineSetup;
 use crate::theme;
@@ -173,6 +174,19 @@ pub(super) fn collection_key(client: Client, game_id: &str) -> String {
     format!("sideload_{}", heronite_clients::collection::app_name(client, game_id))
 }
 
+/// What a shortcut action asks of the Desktop and the menu (see
+/// `Clients::set_shortcuts`): a switch flips its own, "add" adds the
+/// missing ones (the Desktop only when there is one), "remove" removes both.
+pub(super) fn shortcut_change(id: &str, now: &Shortcuts) -> (Option<bool>, Option<bool>) {
+    match id {
+        "shortcut-desktop" => (Some(!now.desktop), None),
+        "shortcut-menu" => (None, Some(!now.menu)),
+        "shortcuts-add" => ((now.has_desktop && !now.desktop).then_some(true), (!now.menu).then_some(true)),
+        "shortcuts-remove" => (now.desktop.then_some(false), now.menu.then_some(false)),
+        _ => (None, None),
+    }
+}
+
 /// The line about the client's anti-cheat and the like, in the About card.
 pub(super) fn client_note(client: Client) -> &'static str {
     match client {
@@ -300,5 +314,20 @@ mod tests {
         assert_eq!(tilde(Path::new("/home/ana"), "/home/ana"), "~");
         assert_eq!(tilde(Path::new("/mnt/x"), "/home/ana"), "/mnt/x");
         assert_eq!(tilde(Path::new("/mnt/x"), ""), "/mnt/x");
+    }
+
+    #[test]
+    fn shortcut_actions_change_only_what_they_name() {
+        use super::shortcut_change;
+        use crate::services::clients::shortcuts::Shortcuts;
+        let none = Shortcuts { has_desktop: true, ..Default::default() };
+        let menu_only = Shortcuts { menu: true, has_desktop: true, ..Default::default() };
+        assert_eq!(shortcut_change("shortcut-desktop", &menu_only), (Some(true), None));
+        assert_eq!(shortcut_change("shortcut-menu", &menu_only), (None, Some(false)));
+        assert_eq!(shortcut_change("shortcuts-add", &none), (Some(true), Some(true)));
+        assert_eq!(shortcut_change("shortcuts-add", &menu_only), (Some(true), None));
+        assert_eq!(shortcut_change("shortcuts-remove", &menu_only), (None, Some(false)));
+        // No Desktop folder: only the menu.
+        assert_eq!(shortcut_change("shortcuts-add", &Shortcuts::default()), (None, Some(true)));
     }
 }

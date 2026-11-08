@@ -1,9 +1,11 @@
-//! Launch requests (CLI, protocol URLs, tray, other instances), with or without a window.
+//! Launch requests (CLI, protocol URLs, tray, other instances), with or without a window,
+//! and the store clients their shortcuts open (`--open-client`).
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use gpui_kit::*;
+use heronite_data::clients::Client;
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::tr;
 
@@ -116,6 +118,33 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
         }
         Err(e) => fail(cx, tr!("Could not launch {title}: {error}", title = game.title, error = e)),
     }
+}
+
+/// Opens `client` (`--open-client`, from its shortcut), never the window.
+/// The running app opens it through its service, which follows it as if
+/// opened from its page; a start for this alone opens it and exits.
+pub(super) fn open_client(cx: &mut App, client: Client) {
+    log::info!("open request: {}", client.name());
+    if hub(cx).0.borrow().fake_launch {
+        log::info!("[fake-launch] {}", client.name());
+        maybe_exit_idle(cx);
+        return;
+    }
+    if let Some(svc) = crate::services::clients_started(cx) {
+        svc.update(cx, |s, cx| s.open_from_shortcut(client, cx));
+        return;
+    }
+    let paths = hub(cx).0.borrow().data_paths.clone();
+    cx.spawn(async move |cx| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        // The client outlives the app: its process is not waited for.
+        let opened = cx.background_spawn(async move { heronite_clients::run::open(&paths, client, &home).map(drop) }).await;
+        cx.update(|cx| match opened {
+            Ok(()) => maybe_exit_idle(cx),
+            Err(e) => fail(cx, tr!("Could not open {client}: {error}", client = client.name(), error = e)),
+        });
+    })
+    .detach();
 }
 
 #[cfg(test)]

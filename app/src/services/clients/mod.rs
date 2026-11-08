@@ -18,6 +18,7 @@
 mod debug;
 mod run;
 mod setup;
+pub mod shortcuts;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -112,6 +113,10 @@ pub struct ClientState {
     pub in_collection: usize,
     /// App names of its games the user took out of the Collection.
     pub removed: BTreeSet<String>,
+    /// Its shortcuts on the Desktop and in the application menu (Linux).
+    pub shortcuts: shortcuts::Shortcuts,
+    /// A shortcut is being added or removed.
+    pub shortcut_busy: bool,
     cancel: Option<Arc<Cancel>>,
     visible: bool,
     /// A client this app opened, set up or started a game through: asked
@@ -180,6 +185,7 @@ struct Read {
     last: Option<LastSync>,
     in_collection: usize,
     removed: BTreeSet<String>,
+    shortcuts: shortcuts::Shortcuts,
 }
 
 /// Looks at `clients` and, when asked, brings the installed ones' games into
@@ -195,7 +201,10 @@ fn read(paths: &DataPaths, clients: &[Client], sync: bool) -> Vec<(Client, Read)
             let synced = (sync && status.installed()).then(|| collection::sync(paths, client, &status.games).map_err(|e| format!("{e:#}")));
             // Read after the sync, which records when it ran.
             let prefs = if matches!(synced, Some(Ok(_))) { ClientPrefs::load(paths) } else { prefs.clone() };
+            // Only the clients under Wine get shortcuts from Heronite.
+            let shortcuts = if status.installed() && !heronite_clients::native() { shortcuts::placed(client) } else { Default::default() };
             let read = Read {
+                shortcuts,
                 last: prefs.last.get(&client).cloned(),
                 removed: prefs.removed.get(&client).cloned().unwrap_or_default(),
                 in_collection: counts.get(&client).copied().unwrap_or(0),
@@ -354,6 +363,7 @@ impl Clients {
             st.in_collection = read.in_collection;
             st.removed = read.removed;
             st.last = read.last;
+            st.shortcuts = read.shortcuts;
             if !read.status.installed() {
                 st.running = false;
                 st.game_running = false;

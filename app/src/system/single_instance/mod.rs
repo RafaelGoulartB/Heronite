@@ -21,6 +21,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
+use heronite_data::clients::Client;
+
 use super::cli::LaunchRequest;
 
 mod transport;
@@ -29,6 +31,8 @@ mod transport;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Message {
     pub launch: Option<LaunchRequest>,
+    /// `--open-client` on the second invocation.
+    pub open_client: Option<Client>,
     /// `--no-gui` on the second invocation.
     pub no_gui: bool,
     /// `--console` / `--fullscreen` on the second invocation.
@@ -47,7 +51,15 @@ impl Message {
                 "guiFalse": r.gui_false,
             })
         });
-        json!({ "v": 1, "launch": launch, "noGui": self.no_gui, "console": self.console, "fullscreen": self.fullscreen }).to_string()
+        json!({
+            "v": 1,
+            "launch": launch,
+            "openClient": self.open_client.map(Client::id),
+            "noGui": self.no_gui,
+            "console": self.console,
+            "fullscreen": self.fullscreen,
+        })
+        .to_string()
     }
 
     pub fn from_line(line: &str) -> Option<Message> {
@@ -67,7 +79,8 @@ impl Message {
             _ => None,
         };
         let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
-        Some(Message { launch, no_gui: flag("noGui"), console: flag("console"), fullscreen: flag("fullscreen") })
+        let open_client = v.get("openClient").and_then(Value::as_str).and_then(Client::from_id);
+        Some(Message { launch, open_client, no_gui: flag("noGui"), console: flag("console"), fullscreen: flag("fullscreen") })
     }
 }
 
@@ -268,6 +281,7 @@ mod tests {
                 alt_exe: Some("/g/x.exe".into()),
                 gui_false: true,
             }),
+            open_client: Some(Client::Ubisoft),
             no_gui: true,
             console: true,
             fullscreen: true,

@@ -69,7 +69,7 @@ fn main() {
     for err in &cli.errors {
         eprintln!("heronite-rs: {err}");
     }
-    if !cli.errors.is_empty() && cli.launch.is_none() {
+    if !cli.errors.is_empty() && cli.launch.is_none() && cli.open_client.is_none() {
         std::process::exit(2);
     }
 
@@ -158,7 +158,13 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
         return primary(None, None);
     }
     let socket = socket_path(&heronite_data::DataPaths::detect().root);
-    let msg = Message { launch: cli.launch.clone(), no_gui: cli.no_gui, console: cli.console, fullscreen: cli.fullscreen };
+    let msg = Message {
+        launch: cli.launch.clone(),
+        open_client: cli.open_client,
+        no_gui: cli.no_gui,
+        console: cli.console,
+        fullscreen: cli.fullscreen,
+    };
     for _ in 0..2 {
         match forward(&socket, &msg) {
             Ok(Forward::Delivered) => {

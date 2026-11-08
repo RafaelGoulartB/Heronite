@@ -5,6 +5,8 @@
 //!   [`desktop`]'s `.desktop` files on Linux (Desktop and application menu,
 //!   `~/.local/share/applications`) and `lnk`'s `.lnk` files on Windows
 //!   (Desktop and Start menu; [`ico`] makes their icons).
+//! * [`pe_icon`]: the main icon of a Windows program, for the shortcuts of
+//!   the store clients run under Wine.
 //! * [`vdf`] + [`steam`]: the binary `shortcuts.vdf` of every Steam user
 //!   ("Add to Steam" as a non-Steam game) and its `grid/` artwork.
 //! * [`steam_client`] + [`steam_running`]: the same while Steam runs, through
@@ -19,6 +21,7 @@ pub mod ico;
 #[cfg(windows)]
 pub mod lnk;
 pub mod menu;
+pub mod pe_icon;
 pub mod steam;
 pub mod steam_client;
 pub mod steam_running;

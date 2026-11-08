@@ -44,7 +44,7 @@ pub(super) fn commands(client: Client, st: Option<&ClientState>) -> Vec<PageComm
     } else {
         (tr!("Download its installer and install it with Wine"), tr!("Closes it and what runs in its Wine prefix"))
     };
-    vec![
+    let mut commands = vec![
         PageCommand::new("setup", tr!("Set up {client}", client = name), setup_line, Icon::Download).keywords(keywords(client)).disabled(
             busy()
                 .or_else(|| st.installed().then(|| tr!("Already set up").to_string()))
@@ -71,7 +71,36 @@ pub(super) fn commands(client: Client, st: Option<&ClientState>) -> Vec<PageComm
         .keywords(keywords(client))
         .disabled(first().or_else(busy).or_else(|| st.syncing.then(|| tr!("Refreshing\u{2026}").to_string())))
         .stay(),
-    ]
+    ];
+    // The clients under Wine only: on Windows the installer makes them.
+    if !native {
+        let sc = st.shortcuts;
+        let busy = || busy().or_else(|| st.shortcut_busy.then(|| tr!("Working\u{2026}").to_string()));
+        let all_there = sc.menu && (sc.desktop || !sc.has_desktop);
+        commands.push(
+            PageCommand::new(
+                "shortcuts-add",
+                tr!("Add {client} shortcuts", client = name),
+                tr!("On the Desktop and in the application menu"),
+                Icon::Add,
+            )
+            .keywords(keywords(client))
+            .disabled(first().or_else(busy).or_else(|| all_there.then(|| tr!("Already added").to_string())))
+            .stay(),
+        );
+        commands.push(
+            PageCommand::new(
+                "shortcuts-remove",
+                tr!("Remove {client} shortcuts", client = name),
+                tr!("From the Desktop and the application menu"),
+                Icon::DeleteOutline,
+            )
+            .keywords(keywords(client))
+            .disabled(first().or_else(busy).or_else(|| (!sc.desktop && !sc.menu).then(|| tr!("No shortcuts yet").to_string())))
+            .stay(),
+        );
+    }
+    commands
 }
 
 impl<K: ClientKind> PaletteCommands for ClientPage<K> {

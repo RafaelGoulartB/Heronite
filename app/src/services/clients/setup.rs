@@ -243,6 +243,7 @@ impl Clients {
             let res = cx
                 .background_spawn(async move {
                     heronite_clients::setup::forget(&paths, client).map_err(|e| format!("{e:#}"))?;
+                    super::shortcuts::remove_all(&paths, client);
                     collection::remove(&paths, client).map_err(|e| format!("{e:#}"))
                 })
                 .await;
@@ -259,6 +260,7 @@ impl Clients {
                         st.last = None;
                         st.in_collection = 0;
                         st.removed.clear();
+                        st.shortcuts = Default::default();
                         cx.emit(ClientsEvent::Removed(removed));
                         this.refresh(&[client], false, cx);
                     }

@@ -12,7 +12,7 @@ use crate::pages::{caption_with, columns, empty_row, list_item, status_pill, sto
 use crate::services::clients::{Activity, ClientState};
 use crate::services::widgets::{busy_bar, progress_bar};
 use crate::theme;
-use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, ButtonKind};
+use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, toggle, ButtonKind};
 use crate::ui::icon;
 
 fn home() -> String {
@@ -234,6 +234,38 @@ impl<K: ClientKind> ClientPage<K> {
         div().child(caption(tr!("Account"))).child(card([line.into_any_element()]))
     }
 
+    /// The client's shortcuts on the Desktop and in the application menu
+    /// (Linux: on Windows the client's installer makes its own).
+    fn render_shortcuts(&self, st: &ClientState, cx: &mut Context<Self>) -> Div {
+        let client = K::CLIENT;
+        let sc = st.shortcuts;
+        let switch = |name: &'static str, label: &str, desc: String, on: bool, enabled: bool, cx: &mut Context<Self>| {
+            let id = self.id(name);
+            row(label.to_string(), Some(&desc), toggle(SharedString::from(format!("{id}-sw")), on, !enabled))
+                .id(id)
+                .when(enabled, |r| r.cursor_pointer().on_click(act!(cx, name)))
+                .into_any_element()
+        };
+        let idle = !st.busy() && !st.shortcut_busy;
+        let desktop_line = if sc.has_desktop {
+            tr!("An icon on your Desktop that opens {client}.", client = client.name())
+        } else {
+            tr!("This system has no Desktop folder.").to_string()
+        };
+        let rows = [
+            switch("shortcut-desktop", tr!("Desktop shortcut"), desktop_line, sc.desktop, idle && sc.has_desktop, cx),
+            switch(
+                "shortcut-menu",
+                tr!("Application menu shortcut"),
+                tr!("{client} in your app launcher, with your other apps.", client = client.name()),
+                sc.menu,
+                idle,
+                cx,
+            ),
+        ];
+        div().child(caption(tr!("Shortcuts"))).child(card(rows))
+    }
+
     fn render_game(&self, st: &ClientState, game: &ClientGame, cx: &mut Context<Self>) -> AnyElement {
         let in_collection = st.in_collection_game(&heronite_clients::collection::app_name(K::CLIENT, &game.id));
         let folder = game.folder.as_ref().map(|f| logic::tilde(f, &home()));
@@ -313,6 +345,9 @@ impl<K: ClientKind> Render for ClientPage<K> {
         let mut right = div();
         if st.installed() {
             left = left.child(self.render_account(&st));
+            if !heronite_clients::native() {
+                left = left.child(self.render_shortcuts(&st, cx));
+            }
             right = right.child(self.render_games(&st, cx));
         }
         right = right.child(self.render_about());
