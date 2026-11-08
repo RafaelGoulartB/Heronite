@@ -156,6 +156,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn a_library_cached_before_the_source_was_kept_reads_as_the_client_s() {
+        let old = r#"{"games":[{"appId":"620","name":"Portal 2","installed":true,"playtimeMinutes":60}],"updatedAt":"2026-11-01T10:00:00.000Z","other":1}"#;
+        let f: SteamOwnedFile = serde_json::from_str(old).unwrap();
+        assert_eq!((f.games.len(), f.source.unwrap_or_default()), (1, SteamSource::Client));
+        assert!(f.known());
+        // Written back, it stays the same shape (no `source` until a read sets it).
+        let again = serde_json::to_value(&f).unwrap();
+        assert!(again.get("source").is_none());
+        assert_eq!(again["other"], 1);
+    }
+
     fn cand<'a>(key: &'a str, title: &'a str, ids: &[&'a str]) -> Candidate<'a> {
         Candidate { key, title, steam_ids: ids.to_vec(), steam_entry: None, joinable: true }
     }
