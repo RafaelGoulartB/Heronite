@@ -23,6 +23,7 @@ pub struct Endpoints {
     pub steamgriddb: String,
     pub bottles_steamgrid: String,
     pub hltb: String,
+    pub pcgamingwiki: String,
     pub protondb: String,
     pub duckduckgo: String,
     pub bing: String,
@@ -42,6 +43,7 @@ impl Default for Endpoints {
             steamgriddb: "https://www.steamgriddb.com/api/v2".into(),
             bottles_steamgrid: "https://steamgrid.usebottles.com".into(),
             hltb: "https://howlongtobeat.com".into(),
+            pcgamingwiki: "https://www.pcgamingwiki.com".into(),
             protondb: "https://www.protondb.com".into(),
             duckduckgo: "https://duckduckgo.com".into(),
             bing: "https://www.bing.com".into(),
@@ -75,6 +77,9 @@ pub struct Response {
     pub status: u16,
     pub content_type: String,
     pub content_length: Option<u64>,
+    /// The `Location` header (a redirect not followed, see
+    /// [`Request::no_redirects`]).
+    pub location: Option<String>,
     pub body: Vec<u8>,
 }
 
@@ -102,6 +107,8 @@ impl Response {
 #[derive(Clone)]
 pub struct Http {
     agent: ureq::Agent,
+    /// Same, without following redirects.
+    direct: ureq::Agent,
     pub endpoints: Endpoints,
 }
 
@@ -114,6 +121,7 @@ pub struct Request<'a> {
     body: Option<String>,
     timeout: Duration,
     max_bytes: u64,
+    follow: bool,
 }
 
 impl<'a> Request<'a> {
@@ -145,8 +153,15 @@ impl<'a> Request<'a> {
         self
     }
 
+    /// Returns a redirect as it is (its `Location` in
+    /// [`Response::location`]) instead of following it.
+    pub fn no_redirects(mut self) -> Self {
+        self.follow = false;
+        self
+    }
+
     pub fn send(self) -> Result<Response> {
-        let agent = &self.http.agent;
+        let agent = if self.follow { &self.http.agent } else { &self.http.direct };
         let mut resp = if self.post {
             let mut req = agent.post(&self.url).config().timeout_global(Some(self.timeout)).build();
             for (k, v) in &self.headers {
@@ -168,13 +183,14 @@ impl<'a> Request<'a> {
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let content_type = header("content-type").unwrap_or_default();
         let content_length = header("content-length").and_then(|v| v.parse().ok());
+        let location = header("location");
         let body = resp
             .body_mut()
             .with_config()
             .limit(self.max_bytes)
             .read_to_vec()
             .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
-        Ok(Response { status, content_type, content_length, body })
+        Ok(Response { status, content_type, content_length, location, body })
     }
 
     /// `send` that fails on a non-2xx status.
@@ -190,14 +206,16 @@ impl<'a> Request<'a> {
 
 impl Http {
     pub fn new(endpoints: Endpoints) -> Self {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .max_redirects(8)
-            .timeout_connect(Some(Duration::from_secs(10)))
-            .user_agent(BROWSER_UA)
-            .build()
-            .into();
-        Self { agent, endpoints }
+        let agent = |redirects: u32| -> ureq::Agent {
+            ureq::Agent::config_builder()
+                .http_status_as_error(false)
+                .max_redirects(redirects)
+                .timeout_connect(Some(Duration::from_secs(10)))
+                .user_agent(BROWSER_UA)
+                .build()
+                .into()
+        };
+        Self { agent: agent(8), direct: agent(0), endpoints }
     }
 
     pub fn get(&self, url: impl Into<String>) -> Request<'_> {
@@ -209,6 +227,7 @@ impl Http {
             body: None,
             timeout: Duration::from_secs(20),
             max_bytes: 16 * 1024 * 1024,
+            follow: true,
         }
     }
 

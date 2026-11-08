@@ -268,6 +268,10 @@ impl DataPaths {
     pub fn hltb_overrides(&self) -> PathBuf {
         self.j("local_library/hltb_overrides.json")
     }
+    /// PC facts from PCGamingWiki (`heronite_data::pcgw`).
+    pub fn pcgw(&self) -> PathBuf {
+        self.j("store_cache/pcgamingwiki.json")
+    }
     pub fn images_cache_dir(&self) -> PathBuf {
         self.j("images-cache")
     }

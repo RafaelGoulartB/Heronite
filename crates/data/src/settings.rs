@@ -332,6 +332,7 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         auto_fill_missing: value.map(|v| v.auto_fill_missing).unwrap_or(true),
         show_age_ratings: value.map(|v| v.show_age_ratings).unwrap_or(true),
         how_long_to_beat: value.map(|v| v.how_long_to_beat).unwrap_or(true),
+        pc_gaming_wiki: value.map(|v| v.pc_gaming_wiki).unwrap_or(true),
         age_rating_system: value
             .map(|v| v.age_rating_system.as_str())
             .filter(|s| crate::age_rating::RatingSystem::parse(s).is_some())

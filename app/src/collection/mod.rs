@@ -47,6 +47,7 @@ mod onboarding;
 mod open_links;
 pub(crate) mod organize;
 mod palette;
+mod pcgw_ui;
 mod pumps;
 mod render_focus;
 mod replays;
@@ -126,6 +127,10 @@ pub struct CollectionView {
     wiki: Arc<WikiCache>,
     /// Games whose HowLongToBeat times were looked up this session.
     hltb_tried: std::collections::HashSet<String>,
+    /// PC facts from PCGamingWiki (`store_cache/pcgamingwiki.json`).
+    pcgw: Arc<heronite_data::pcgw::PcgwCache>,
+    /// Games looked up on PCGamingWiki this session.
+    pcgw_tried: std::collections::HashSet<String>,
     ui: UiState,
     /// The focused game changed and is not saved yet; `ui_save` writes it a
     /// moment later (holding an arrow key selects many games a second).
@@ -340,6 +345,8 @@ impl CollectionView {
             lib: None,
             wiki: Arc::new(WikiCache::default()),
             hltb_tried: Default::default(),
+            pcgw: Default::default(),
+            pcgw_tried: Default::default(),
             ui,
             ui_focus_dirty: false,
             ui_save: None,
@@ -574,6 +581,7 @@ impl Render for CollectionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.schedule_ui_save(cx);
         self.ensure_hltb_for_focus(cx);
+        self.ensure_pcgw_for_focus(cx);
         self.render_desktop(window, cx)
     }
 }

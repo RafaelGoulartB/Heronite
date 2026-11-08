@@ -36,23 +36,29 @@ pub struct Resp {
     pub status: u16,
     pub content_type: &'static str,
     pub body: Vec<u8>,
+    /// Sent as the `Location` header.
+    pub location: Option<String>,
 }
 
 impl Resp {
     pub fn json(v: impl serde::Serialize) -> Self {
-        Self { status: 200, content_type: "application/json", body: serde_json::to_vec(&v).unwrap() }
+        Self { status: 200, content_type: "application/json", body: serde_json::to_vec(&v).unwrap(), location: None }
     }
     pub fn raw_json(s: String) -> Self {
-        Self { status: 200, content_type: "application/json", body: s.into_bytes() }
+        Self { status: 200, content_type: "application/json", body: s.into_bytes(), location: None }
     }
     pub fn html(s: &str) -> Self {
-        Self { status: 200, content_type: "text/html", body: s.as_bytes().to_vec() }
+        Self { status: 200, content_type: "text/html", body: s.as_bytes().to_vec(), location: None }
     }
     pub fn image(bytes: Vec<u8>) -> Self {
-        Self { status: 200, content_type: "image/png", body: bytes }
+        Self { status: 200, content_type: "image/png", body: bytes, location: None }
+    }
+    /// A redirect to `to`.
+    pub fn redirect(to: &str) -> Self {
+        Self { status: 302, content_type: "text/plain", body: Vec::new(), location: Some(to.to_owned()) }
     }
     pub fn status(code: u16) -> Self {
-        Self { status: code, content_type: "text/plain", body: b"nope".to_vec() }
+        Self { status: code, content_type: "text/plain", body: b"nope".to_vec(), location: None }
     }
 }
 
@@ -103,6 +109,7 @@ impl Server {
             steamgriddb: format!("{b}/sgdb/api/v2"),
             bottles_steamgrid: format!("{b}/bottles"),
             hltb: format!("{b}/hltb"),
+            pcgamingwiki: format!("{b}/pcgw"),
             protondb: format!("{b}/protondb"),
             duckduckgo: format!("{b}/ddg"),
             bing: format!("{b}/bing"),
@@ -151,10 +158,11 @@ fn serve(mut stream: TcpStream, handler: &dyn Fn(&Req) -> Resp, log: &Mutex<Vec<
     log.lock().push(req.clone());
     let resp = handler(&req);
     let head = format!(
-        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
         resp.status,
         resp.content_type,
-        resp.body.len()
+        resp.body.len(),
+        resp.location.as_deref().map(|l| format!("Location: {l}\r\n")).unwrap_or_default()
     );
     stream.write_all(head.as_bytes())?;
     stream.write_all(&resp.body)?;

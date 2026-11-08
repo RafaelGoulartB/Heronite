@@ -166,6 +166,20 @@ pub(super) struct HltbVm {
     pub manual: bool,
 }
 
+/// The "PC" section: facts from PCGamingWiki.
+#[derive(Clone, Default)]
+pub(super) struct PcVm {
+    /// "Ultrawide", "HDR (limited)", "Full controller support"...
+    pub chips: Vec<SharedString>,
+    pub engine: Option<SharedString>,
+    pub anticheat: Option<SharedString>,
+    /// The first save folder (Windows first).
+    pub save: Option<SharedString>,
+    /// The page on PCGamingWiki.
+    pub link: SharedString,
+    pub fixes: u32,
+}
+
 /// A game of "Related games": its cover, title and a line about it.
 #[derive(Clone)]
 pub(super) struct RelatedGameVm {
@@ -227,6 +241,8 @@ pub(super) struct FocusVm {
     pub hltb_game_id: Option<u64>,
     /// Release year, for the HowLongToBeat search.
     pub release_year: Option<i32>,
+    /// Facts from PCGamingWiki.
+    pub pc: Option<PcVm>,
     /// Current status (left column selector), `None` when the stored id is unknown.
     pub status: Option<StatusVm>,
     /// Critic score of the left column's facts card, `0..=100`.

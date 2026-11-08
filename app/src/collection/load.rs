@@ -18,6 +18,7 @@ use crate::images::to_chain;
 struct Loaded {
     lib: Library,
     wiki: WikiCache,
+    pcgw: heronite_data::pcgw::PcgwCache,
     categories: heronite_data::categories::Categories,
     extras: heronite_data::organize::GameExtras,
     actions: HashMap<String, Vec<heronite_data::game_actions::Action>>,
@@ -29,6 +30,7 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
     let t = Instant::now();
     let lib = Library::load_with(data_paths, include_hidden)?;
     let wiki = WikiCache::load(data_paths);
+    let pcgw = heronite_data::pcgw::PcgwCache::load(data_paths);
     let categories = heronite_data::categories::Categories::load(data_paths);
     let extras = super::organize::game_extras(&lib, data_paths, cache);
     let actions = heronite_data::game_actions::load(data_paths);
@@ -42,7 +44,7 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, categories, extras, actions, covers, stages })
+    Ok(Loaded { lib, wiki, pcgw, categories, extras, actions, covers, stages })
 }
 
 /// A first load started just before the window opens, so it runs while the
@@ -159,6 +161,7 @@ impl CollectionView {
         self.cover_chains = l.covers;
         self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
+        self.pcgw = Arc::new(l.pcgw);
         self.categories = l.categories;
         self.game_extras = Arc::new(l.extras);
         self.user_actions = l.actions;

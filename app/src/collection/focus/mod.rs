@@ -3,6 +3,9 @@
 
 mod description;
 mod panels;
+mod pc_panel;
+
+pub(super) use pc_panel::{OnPc, PcAction};
 
 pub use description::html_image_size;
 pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
@@ -128,6 +131,8 @@ pub(super) struct FocusActions {
     pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
     /// The buttons of "How Long To Beat".
     pub on_hltb: Rc<dyn Fn(HltbAction, &mut Window, &mut App)>,
+    /// The buttons of "PC".
+    pub on_pc: OnPc,
 }
 
 /// A button of the "How Long To Beat" section.
@@ -268,6 +273,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         achievements: extras.achievements,
         details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
         hltb: hltb_section(&vm, &actions.on_hltb),
+        pc: vm.pc.as_ref().map(|pc| pc_panel::pc_section(pc, &actions.on_pc)),
     };
     let body = body(&lay, sections);
     // Wide: the title sits above a fixed left column and the scrolling
@@ -384,6 +390,7 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
             achievements: extras.achievements,
             details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
             hltb: hltb_section(&vm, &actions.on_hltb),
+            pc: vm.pc.as_ref().map(|pc| pc_panel::pc_section(pc, &actions.on_pc)),
         },
     )
 }
@@ -417,6 +424,7 @@ struct Sections {
     achievements: Option<AnyElement>,
     details: Div,
     hltb: Option<Div>,
+    pc: Option<Div>,
 }
 
 /// `column_w`: width the description images are sized for.
@@ -439,7 +447,7 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
 /// does not push them out of sight). How Long To Beat travels with
 /// "Details" but stays when it is hidden.
 fn body(lay: &Layout, s: Sections) -> Div {
-    let Sections { screenshots, overview, timeline, related, achievements, details, hltb } = s;
+    let Sections { screenshots, overview, timeline, related, achievements, details, hltb, pc } = s;
     let look = theme::appearance().sections;
     let mut main_parts = [
         (Section::Screenshots, screenshots),
@@ -449,7 +457,14 @@ fn body(lay: &Layout, s: Sections) -> Div {
     ];
     let mut take = |section: Section| main_parts.iter_mut().find(|(s, _)| *s == section).and_then(|(_, el)| el.take());
     let mut details = Some(
-        div().flex().flex_col().gap(px(14.4)).children(look.shown(Section::Details).then_some(details)).children(hltb).into_any_element(),
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(14.4))
+            .children(look.shown(Section::Details).then_some(details))
+            .children(hltb)
+            .children(pc)
+            .into_any_element(),
     );
     let mut achievements = achievements.filter(|_| look.shown(Section::Achievements));
     let mut side_part = |section: Section| match section {

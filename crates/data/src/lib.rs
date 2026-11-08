@@ -43,6 +43,7 @@ pub mod migrate;
 pub mod onboarding;
 pub mod organize;
 pub mod overlay_prefs;
+pub mod pcgw;
 pub mod playtime;
 pub mod ratings;
 pub mod replay_prefs;

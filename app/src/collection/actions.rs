@@ -87,7 +87,7 @@ impl CollectionView {
     /// (see [`copy_to_play`](Self::copy_to_play)).
     fn focus_vm_of(&self, lib: &heronite_data::Library, game: &heronite_data::collection::Game) -> super::vm::FocusVm {
         let target = self.copy_to_play(lib, &game.key).unwrap_or(game);
-        let mut vm = data::focus_vm(lib, &self.wiki, game, self.playing.contains_key(&target.app_name));
+        let mut vm = data::focus_vm(lib, &self.wiki, &self.pcgw, game, self.playing.contains_key(&target.app_name));
         vm.installed = target.installed;
         vm
     }

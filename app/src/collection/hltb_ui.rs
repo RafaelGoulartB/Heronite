@@ -24,6 +24,7 @@ impl CollectionView {
             title: game.title.trim().to_owned(),
             store_title: Some(game.game.title.trim().to_owned()).filter(|t| !t.is_empty() && *t != game.title.trim()),
             year: vm.release_year,
+            hltb_id: self.pcgw.facts(&heronite_data::pcgw::PcgwQuery::for_game(game)).and_then(|f| f.hltb_id.clone()),
         })
     }
 

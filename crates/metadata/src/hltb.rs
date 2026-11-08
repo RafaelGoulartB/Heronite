@@ -489,6 +489,9 @@ pub struct HltbQuery {
     pub store_title: Option<String>,
     /// Release year, to tell apart games of the same name (remakes).
     pub year: Option<i32>,
+    /// The game's HowLongToBeat id when known (PCGamingWiki's), for an
+    /// exact match.
+    pub hltb_id: Option<String>,
 }
 
 impl HltbQuery {
@@ -650,10 +653,12 @@ fn fetch(paths: &DataPaths, http: &Http, client: &HltbClient, query: &HltbQuery,
             // A picked game HLTB removed: keep the times already shown.
             .or_else(|| cached.as_ref().and_then(hltb_of)),
         None => {
-            let hltb_id = cached
-                .as_ref()
-                .and_then(|c| c.pointer("/pcgamingwiki/howLongToBeatID"))
-                .and_then(|v| v.as_str().map(str::to_owned).or_else(|| v.as_u64().map(|n| n.to_string())));
+            let hltb_id = query.hltb_id.clone().filter(|i| !i.is_empty()).or_else(|| {
+                cached
+                    .as_ref()
+                    .and_then(|c| c.pointer("/pcgamingwiki/howLongToBeatID"))
+                    .and_then(|v| v.as_str().map(str::to_owned).or_else(|| v.as_u64().map(|n| n.to_string())))
+            });
             match client.lookup_checked(http, title, query.year, hltb_id.as_deref()) {
                 Ok(found) => found,
                 Err(e) => {

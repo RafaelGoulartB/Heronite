@@ -510,7 +510,7 @@ fn steam_hero_is_cached_where_heronite_reads_it() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
     let server = Server::start(|req| match req.path() {
-        "/cdn/hero.jpg" => Resp { status: 200, content_type: "image/jpeg", body: png() },
+        "/cdn/hero.jpg" => Resp { status: 200, content_type: "image/jpeg", body: png(), location: None },
         _ => Resp::status(404),
     });
     let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());

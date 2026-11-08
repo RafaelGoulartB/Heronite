@@ -74,6 +74,7 @@ pub struct MetadataService {
     igdb: Igdb,
     steam: SteamState,
     hltb: HltbClient,
+    pcgw: crate::pcgw::PcgwClient,
     stores: StoreLibraries,
     playnite: RwLock<Option<Arc<dyn PlayniteSource>>>,
     bulk: Mutex<BulkProgress>,
@@ -96,6 +97,7 @@ impl MetadataService {
             igdb: Igdb::new(),
             steam: SteamState::default(),
             hltb: HltbClient::new(),
+            pcgw: crate::pcgw::PcgwClient::default(),
             stores: StoreLibraries::default(),
             playnite: RwLock::new(None),
             bulk: Mutex::new(BulkProgress::default()),
@@ -477,6 +479,21 @@ impl MetadataService {
     /// The HowLongToBeat match the user picked for `title`, if any.
     pub fn how_long_to_beat_choice(&self, title: &str) -> Option<hltb::HltbOverride> {
         hltb::override_for(&self.paths, title)
+    }
+
+    /// PC facts from PCGamingWiki (cache first; see [`crate::pcgw::get_or_fetch`]).
+    pub fn pc_gaming_wiki(&self, query: &heronite_data::pcgw::PcgwQuery) -> Result<crate::pcgw::PcgwLookup> {
+        crate::pcgw::get_or_fetch(&self.paths, &self.http, &self.pcgw, query, false)
+    }
+
+    /// Asks PCGamingWiki again now.
+    pub fn refresh_pc_gaming_wiki(&self, query: &heronite_data::pcgw::PcgwQuery) -> Result<crate::pcgw::PcgwLookup> {
+        crate::pcgw::get_or_fetch(&self.paths, &self.http, &self.pcgw, query, true)
+    }
+
+    /// The time between two PCGamingWiki requests (tests shorten it).
+    pub fn set_pc_gaming_wiki_gap(&self, gap: std::time::Duration) {
+        self.pcgw.set_gap(gap);
     }
 
     /// Back to the automatic HowLongToBeat match for `title`.

@@ -194,6 +194,9 @@ pub struct MetadataSettings {
     /// Ask HowLongToBeat for the times of the selected game.
     #[serde(default = "default_true")]
     pub how_long_to_beat: bool,
+    /// Ask PCGamingWiki for the PC facts of the selected game.
+    #[serde(default = "default_true")]
+    pub pc_gaming_wiki: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
     #[serde(flatten)]

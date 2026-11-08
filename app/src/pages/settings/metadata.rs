@@ -147,6 +147,7 @@ fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let m = &d.settings.metadata;
     let (auto_fill, download, show_age, hltb) = (m.auto_fill_missing, m.download_images, m.show_age_ratings, m.how_long_to_beat);
+    let pcgw = m.pc_gaming_wiki;
     let testing = d.metadata.testing;
 
     let creds = card_box()
@@ -212,6 +213,18 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             hltb,
         )
         .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.how_long_to_beat = !hltb)))
+        .into_any_element()]))
+        .child(caption("PCGamingWiki"))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
+            "PC facts (ultrawide, HDR, controller, engine, anti-cheat, save folders) from pcgamingwiki.com, under CC BY-NC-SA 3.0. Heronite is not affiliated with PCGamingWiki."
+        ))))
+        .child(card([toggle_row(
+            "md-pcgw",
+            tr!("Look up PC details on PCGamingWiki"),
+            Some(tr!("Asks PCGamingWiki about the game you select, then again after a month.")),
+            pcgw,
+        )
+        .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.pc_gaming_wiki = !pcgw)))
         .into_any_element()]));
 
     // Field priority (advanced), collapsible.
@@ -331,6 +344,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         ),
         Row::header("HowLongToBeat"),
         Row::toggle("hltb", tr!("Look up HowLongToBeat times"), m.how_long_to_beat),
+        Row::header("PCGamingWiki"),
+        Row::toggle("pcgw", tr!("Look up PC details on PCGamingWiki"), m.pc_gaming_wiki),
         Row::header(tr!("Preferred source per field")),
     ];
     for field in METADATA_FIELDS {
@@ -381,6 +396,7 @@ pub(super) fn console_apply(
             "download" => persist(d, cx, |m| m.download_images = on),
             "age-show" => persist(d, cx, |m| m.show_age_ratings = on),
             "hltb" => persist(d, cx, |m| m.how_long_to_beat = on),
+            "pcgw" => persist(d, cx, |m| m.pc_gaming_wiki = on),
             _ => {}
         },
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "age-board" => set_board(d, index, cx),

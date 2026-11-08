@@ -79,7 +79,7 @@ impl CollectionView {
     /// Callbacks of the details into the view (focus panel and grid drawer).
     pub(super) fn focus_actions(&self, cx: &mut Context<Self>) -> focus::FocusActions {
         let weak = cx.entity().downgrade();
-        let (w1, w2, w3, w4, w5, w6) = (weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak);
+        let (w1, w2, w3, w4, w5, w6, w7) = (weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak);
         focus::FocusActions {
             on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
             on_facet: Rc::new(move |f, v, _, cx| {
@@ -116,6 +116,9 @@ impl CollectionView {
             }),
             on_hltb: Rc::new(move |action, window, cx| {
                 w6.update(cx, |this, cx| this.on_hltb_action(action, window, cx)).ok();
+            }),
+            on_pc: Rc::new(move |action, _, cx| {
+                w7.update(cx, |this, cx| this.on_pc_action(action, cx)).ok();
             }),
         }
     }

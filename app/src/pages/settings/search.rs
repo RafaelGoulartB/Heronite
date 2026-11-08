@@ -116,6 +116,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Rating board shown first",
             "HowLongToBeat",
             "Look up HowLongToBeat times",
+            "PCGamingWiki",
+            "Look up PC details on PCGamingWiki",
             "SteamGridDB",
             "SteamGridDB API key",
         ],

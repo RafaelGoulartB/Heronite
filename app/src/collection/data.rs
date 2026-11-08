@@ -181,7 +181,43 @@ pub(super) fn year_in(date: &str) -> Option<i32> {
     })
 }
 
-pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bool) -> FocusVm {
+/// The "PC" section of `facts`.
+pub(super) fn pc_vm(facts: &heronite_data::pcgw::PcgwFacts) -> PcVm {
+    use heronite_data::pcgw::Support;
+    let mut chips: Vec<SharedString> = Vec::new();
+    let mut add = |label: &str, s: Option<Support>| match s {
+        Some(Support::Yes) => chips.push(label.to_string().into()),
+        Some(Support::Limited) => chips.push(tr!("{feature} (limited)", feature = label).into()),
+        Some(Support::Hackable) => chips.push(tr!("{feature} (with a fix)", feature = label).into()),
+        _ => {}
+    };
+    add(tr!("Ultrawide"), facts.ultrawide);
+    add("HDR", facts.hdr);
+    add(tr!("120+ FPS"), facts.fps_120);
+    add("4K", facts.uhd_4k);
+    if facts.full_controller == Some(Support::Yes) {
+        add(tr!("Full controller support"), Some(Support::Yes));
+    } else {
+        add(tr!("Controller support"), facts.controller);
+    }
+    let join = |v: &[String]| (!v.is_empty()).then(|| SharedString::from(v.join(", ")));
+    PcVm {
+        chips,
+        engine: join(&facts.engines),
+        anticheat: join(&facts.anticheat),
+        save: facts.save_paths().and_then(|s| s.paths.first()).map(|p| p.clone().into()),
+        link: facts.url().into(),
+        fixes: facts.fixes,
+    }
+}
+
+pub(super) fn focus_vm(
+    lib: &Library,
+    wiki: &WikiCache,
+    pcgw: &heronite_data::pcgw::PcgwCache,
+    g: &CollectionGame,
+    playing: bool,
+) -> FocusVm {
     let fd = focus_data(lib, g, wiki);
     let d = &fd.details;
     let mut rows = Vec::new();
@@ -284,6 +320,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         hltb_checked: fd.hltb_checked,
         hltb_game_id: fd.hltb.as_ref().and_then(|h| h.game_id),
         release_year: d.release_date.as_deref().and_then(year_in),
+        pc: lib.settings.metadata.pc_gaming_wiki.then(|| pcgw.facts(&heronite_data::pcgw::PcgwQuery::for_game(g)).map(pc_vm)).flatten(),
         status: display_status(g.status_raw.as_deref(), &lib.statuses).map(|st| StatusVm {
             id: st.id.clone().into(),
             name: heronite_data::status::status_label(&st.name).to_string().into(),
@@ -387,5 +424,35 @@ mod hltb_year_tests {
         assert_eq!(year_in("TBA"), None);
         assert_eq!(year_in("12345"), None, "not part of a longer number");
         assert_eq!(year_in("1234"), None, "not a plausible year");
+    }
+}
+
+#[cfg(test)]
+mod pc_vm_tests {
+    use heronite_data::pcgw::{PcgwFacts, SaveLocation, Support};
+
+    #[test]
+    fn chips_show_what_works_and_say_how_well() {
+        let f = PcgwFacts {
+            page: "Example".into(),
+            ultrawide: Some(Support::Hackable),
+            hdr: Some(Support::No),
+            fps_120: Some(Support::Yes),
+            controller: Some(Support::Limited),
+            full_controller: Some(Support::No),
+            engines: vec!["Clockwork".into()],
+            saves: vec![SaveLocation { platform: "Windows".into(), paths: vec![r"%APPDATA%\Example".into()] }],
+            fixes: 2,
+            ..Default::default()
+        };
+        let vm = super::pc_vm(&f);
+        let chips: Vec<&str> = vm.chips.iter().map(|c| c.as_ref()).collect();
+        assert_eq!(chips, ["Ultrawide (with a fix)", "120+ FPS", "Controller support (limited)"], "no HDR chip when it is not supported");
+        assert_eq!(vm.engine.as_deref(), Some("Clockwork"));
+        assert_eq!(vm.anticheat, None);
+        assert_eq!(vm.save.as_deref(), Some(r"%APPDATA%\Example"));
+        assert_eq!(vm.link.as_ref(), "https://www.pcgamingwiki.com/wiki/Example");
+        let full = super::pc_vm(&PcgwFacts { full_controller: Some(Support::Yes), controller: Some(Support::Yes), ..f });
+        assert!(full.chips.iter().any(|c| c.as_ref() == "Full controller support"));
     }
 }

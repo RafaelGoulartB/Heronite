@@ -20,6 +20,7 @@ pub mod igdb;
 pub mod images;
 pub mod lutris;
 pub mod merge;
+pub mod pcgw;
 pub mod protondb;
 pub mod providers;
 pub mod remove;
