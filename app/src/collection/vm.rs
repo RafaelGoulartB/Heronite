@@ -156,6 +156,14 @@ pub(super) struct HltbVm {
     pub extra: Option<f32>,
     pub complete: Option<f32>,
     pub played_hours: f32,
+    /// The game's page on HowLongToBeat.
+    pub link: Option<SharedString>,
+    /// HowLongToBeat's name for it, when not the game's.
+    pub name: Option<SharedString>,
+    /// Matched by a similar name only.
+    pub close: bool,
+    /// Picked by the user.
+    pub manual: bool,
 }
 
 /// A game of "Related games": its cover, title and a line about it.
@@ -213,6 +221,12 @@ pub(super) struct FocusVm {
     /// Settings → Metadata → "Show age ratings": the facts card has its row.
     pub age_shown: bool,
     pub hltb: Option<HltbVm>,
+    /// HowLongToBeat was asked about the game (with no `hltb`: no times).
+    pub hltb_checked: bool,
+    /// The HowLongToBeat game the times are of.
+    pub hltb_game_id: Option<u64>,
+    /// Release year, for the HowLongToBeat search.
+    pub release_year: Option<i32>,
     /// Current status (left column selector), `None` when the stored id is unknown.
     pub status: Option<StatusVm>,
     /// Critic score of the left column's facts card, `0..=100`.

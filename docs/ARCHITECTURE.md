@@ -383,14 +383,16 @@ text size) and applies it.
 - **heronite-overlay:** the GPUI-free backend of the in-game overlay. On Windows,
   `input::windows` polls documented XInput through `heronite-platform::gamepad`,
   feeding the shared `input::core` state machine: Back+Start substitutes for Guide,
-  with no exclusive grab (games can still see the buttons). A controller is
+  with no exclusive grab (games can still see the buttons; the open panel takes
+  the foreground, which most games respect). A controller is
   named by `input::ControllerId`: its XInput slot there, its evdev node on
   Linux. Controller battery is XInput's coarse estimate; Bluetooth disconnect
   is not offered.
   `audio::windows` adapts Core Audio (`heronite-platform::audio`): endpoint
   volume/mute, microphone mute and active per-app/game sessions, identified by
-  stable session IDs rather than enumeration order. Default device switching
-  stays in Windows settings. On Linux, `input` reads
+  stable session IDs rather than enumeration order. The default output and
+  microphone change through the undocumented IPolicyConfig
+  (`heronite-platform::audio::set_default_device`, every role). On Linux, `input` reads
   the controllers from `/dev/input/event*` on its own thread (only while a
   game launched by the app runs and the overlay is on) and grabs them
   (`EVIOCGRAB`) while Guide is held or the panel is open, so the game gets

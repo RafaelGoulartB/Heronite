@@ -243,6 +243,17 @@ impl CollectionGame {
         }
     }
 
+    /// The Steam app id whose store tags the game shows: its own (a Steam
+    /// game, or one joined to its Steam copy), else the one its metadata
+    /// matched (a game from another store that is also on Steam).
+    pub fn tag_steam_id(&self) -> Option<&str> {
+        self.steam_app_id
+            .as_deref()
+            .or_else(|| self.metadata.as_deref().and_then(|m| m.steam_app_id.as_deref()))
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+    }
+
     /// `collectionMetadataKey`: `runner:appName`, with `zoom` stored as
     /// `sideload`.
     pub fn metadata_key(&self) -> String {
@@ -463,6 +474,7 @@ fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
         paths.store_config(),
         paths.steam_owned(),
         paths.copies(),
+        paths.steam_tags(),
     ]
 }
 
@@ -703,6 +715,12 @@ impl Library {
         let joins = steam_joins(&kept, &owned, &metas, &metadatas, &overrides, &timestamps, &sessions, &favourites);
 
         let names = crate::field_names::NameRules::load(paths);
+        let tags = crate::steam_tags::SteamTags::load(
+            paths,
+            settings.metadata.steam_tags,
+            settings.metadata.steam_tag_limit,
+            crate::focus::steam_language(heronite_i18n::current().code()),
+        );
         let mut games: Vec<Arc<CollectionGame>> = Vec::new();
         for game in kept {
             let key = format!("{}_{}", game.runner, game.app_name);
@@ -726,6 +744,7 @@ impl Library {
                 age_order: &age_order,
                 game,
             });
+            tags.apply(&mut built);
             names.apply_facets(&mut built.facets);
             games.push(Arc::new(built));
         }
@@ -901,6 +920,7 @@ pub(crate) mod tests_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::collection::FacetKind;
     use std::fs;
     use std::path::Path;
 
@@ -1040,6 +1060,61 @@ mod tests {
         assert!(!lib.changed_on_disk());
         w(paths.store_config(), r#"{"games":{"hidden":[]}}"#);
         assert!(lib.changed_on_disk());
+    }
+
+    #[test]
+    fn steam_tags_fill_the_tag_facet_by_steam_id_and_follow_the_name_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"steam_620","title":"Portal 2","install":{}},
+              {"runner":"sideload","app_name":"plain","title":"No Steam","install":{}}]}"#,
+        );
+        w(
+            paths.local_meta(),
+            r#"{"games":{"steam_620":{"appName":"steam_620","runner":"sideload","source":"steam","launchKind":"steam-uri","steamAppId":"620"}}}"#,
+        );
+        w(
+            paths.legendary_library(),
+            r#"{"library":[{"runner":"legendary","app_name":"hades","title":"Hades","install":{}}],"__timestamp":{"library":"x"}}"#,
+        );
+        w(paths.metadata(), r#"{"games":{"legendary:hades":{"appName":"hades","runner":"legendary","steamAppId":"1145360"}}}"#);
+        w(
+            paths.steam_tags(),
+            r#"{"apps":{
+                 "620":{"tags":[{"tagid":4182,"weight":604},{"tagid":1664,"weight":586}],"fetchedAt":1},
+                 "1145360":{"tags":[{"tagid":42804,"weight":1051}],"fetchedAt":1}},
+               "names":{"english":{"versionHash":"1","fetchedAt":1,
+                 "names":{"4182":"Singleplayer","1664":"Puzzle","42804":"Action Roguelike"}}}}"#,
+        );
+        let tags = |lib: &Library, key: &str| -> Vec<String> {
+            lib.get(key).unwrap().facets[FacetKind::Tag.index()].iter().map(|i| i.value.clone()).collect()
+        };
+        let lib = Library::load(&paths).unwrap();
+        assert_eq!(tags(&lib, "sideload_steam_620"), ["Singleplayer", "Puzzle"]);
+        assert_eq!(tags(&lib, "legendary_hades"), ["Action Roguelike"], "matched through its metadata");
+        assert!(tags(&lib, "sideload_plain").is_empty());
+        let options = crate::collection::collect_facet_options(&lib.games);
+        assert_eq!(options.get(FacetKind::Tag).len(), 3);
+
+        // A tag removed in Library fields stays out.
+        crate::field_names::remove(&paths, crate::field_names::Field::Tag, &["puzzle".into()]).unwrap();
+        assert!(lib.changed_on_disk(), "names.json is watched");
+        let lib = Library::load(&paths).unwrap();
+        assert_eq!(tags(&lib, "sideload_steam_620"), ["Singleplayer"]);
+        let values = crate::field_names::values(&lib.games, crate::field_names::Field::Tag);
+        assert_eq!(values.iter().map(|v| v.name.as_str()).collect::<Vec<_>>(), ["Action Roguelike", "Singleplayer"]);
+
+        // Turned off in Settings: no tags.
+        w(paths.collection_settings(), r#"{"metadata":{"steamTags":false}}"#);
+        let lib = Library::load(&paths).unwrap();
+        assert!(tags(&lib, "sideload_steam_620").is_empty());
     }
 
     #[test]

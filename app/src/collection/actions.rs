@@ -92,7 +92,7 @@ impl CollectionView {
         vm
     }
 
-    fn refresh_focus(&mut self) {
+    pub(super) fn refresh_focus(&mut self) {
         let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
         if let Some(game) = lib.get(&key) {
             self.focus = Some(self.focus_vm_of(&lib, game));

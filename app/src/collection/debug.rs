@@ -267,6 +267,7 @@ impl CollectionView {
                 self.open_settings_section(section.unwrap_or(crate::pages::settings::Section::Appearance), window, cx);
             }
             "statuses" => self.open_manage_statuses(window, cx),
+            "hltb" => self.open_hltb_match(window, cx),
             "batchedit" => self.open_batch_edit(window, cx),
             "categories" => self.open_manage_categories(window, cx),
             // fields[:genres|companies|series|themes|features|platforms]

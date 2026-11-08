@@ -123,10 +123,13 @@ pub enum FacetKind {
     /// from the metadata's game modes.
     #[serde(rename = "gameMode")]
     GameMode,
+    /// The tags Steam players voted for (the store's "popular tags"), for a
+    /// game with a Steam app id ([`crate::steam_tags`]).
+    Tag,
 }
 
 /// `FACET_KINDS`, in the order the filter menu lists them.
-pub const FACET_KINDS: [FacetKind; 9] = [
+pub const FACET_KINDS: [FacetKind; 10] = [
     FacetKind::Store,
     FacetKind::Series,
     FacetKind::Developer,
@@ -135,6 +138,7 @@ pub const FACET_KINDS: [FacetKind; 9] = [
     FacetKind::Theme,
     FacetKind::Feature,
     FacetKind::GameMode,
+    FacetKind::Tag,
     FacetKind::Platform,
 ];
 
@@ -154,6 +158,7 @@ impl FacetKind {
             Self::Theme => "theme",
             Self::Feature => "feature",
             Self::GameMode => "gameMode",
+            Self::Tag => "tag",
         }
     }
 
@@ -177,6 +182,7 @@ pub struct FacetFilters {
     pub feature: Vec<String>,
     #[serde(rename = "gameMode")]
     pub game_mode: Vec<String>,
+    pub tag: Vec<String>,
 }
 
 impl FacetFilters {
@@ -191,6 +197,7 @@ impl FacetFilters {
             FacetKind::Theme => &self.theme,
             FacetKind::Feature => &self.feature,
             FacetKind::GameMode => &self.game_mode,
+            FacetKind::Tag => &self.tag,
         }
     }
 
@@ -205,6 +212,7 @@ impl FacetFilters {
             FacetKind::Theme => &mut self.theme,
             FacetKind::Feature => &mut self.feature,
             FacetKind::GameMode => &mut self.game_mode,
+            FacetKind::Tag => &mut self.tag,
         }
     }
 
@@ -279,9 +287,9 @@ pub struct FacetItem {
 }
 
 /// Facet values of a game, indexed by [`FacetKind::index`].
-pub type GameFacets = [Vec<FacetItem>; 9];
+pub type GameFacets = [Vec<FacetItem>; 10];
 
-fn items(values: Vec<String>) -> Vec<FacetItem> {
+pub(crate) fn items(values: Vec<String>) -> Vec<FacetItem> {
     values.into_iter().map(|value| FacetItem { key: facet_key(&value), value }).collect()
 }
 
@@ -322,6 +330,8 @@ pub fn game_facets(game: &GameInfo, metadata: Option<&CollectionGameMetadata>) -
         items(listed(|m| &m.themes)),
         items(listed(|m| &m.features)),
         items(listed(|m| &m.game_modes)),
+        // Filled from the Steam tags cache at load (`steam_tags`).
+        Vec::new(),
     ]
 }
 
@@ -391,6 +401,7 @@ pub struct FacetOptions {
     pub theme: Vec<FacetOption>,
     pub feature: Vec<FacetOption>,
     pub game_mode: Vec<FacetOption>,
+    pub tag: Vec<FacetOption>,
 }
 
 impl FacetOptions {
@@ -405,13 +416,14 @@ impl FacetOptions {
             FacetKind::Theme => &self.theme,
             FacetKind::Feature => &self.feature,
             FacetKind::GameMode => &self.game_mode,
+            FacetKind::Tag => &self.tag,
         }
     }
 }
 
 /// `collectFacetOptions`: first spelling wins, sorted with `localeCompare`.
 pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
-    let mut buckets: [HashMap<&str, (usize, &str)>; 9] = Default::default();
+    let mut buckets: [HashMap<&str, (usize, &str)>; 10] = Default::default();
     // Preserve first-seen order only for the spelling; the output is sorted.
     for game in games {
         for kind in FACET_KINDS {
@@ -438,6 +450,7 @@ pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
         theme: finish(&buckets[6]),
         feature: finish(&buckets[7]),
         game_mode: finish(&buckets[8]),
+        tag: finish(&buckets[9]),
     }
 }
 

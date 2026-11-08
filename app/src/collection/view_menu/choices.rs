@@ -39,7 +39,7 @@ pub(in crate::collection) enum Kind {
 
 impl Kind {
     /// In the order the results list them.
-    pub const ALL: [Kind; 12] = [
+    pub const ALL: [Kind; 13] = [
         Kind::Only,
         Kind::Status,
         Kind::Category,
@@ -51,6 +51,7 @@ impl Kind {
         Kind::Facet(FacetKind::Theme),
         Kind::Facet(FacetKind::Feature),
         Kind::Facet(FacetKind::GameMode),
+        Kind::Facet(FacetKind::Tag),
         Kind::Facet(FacetKind::Platform),
     ];
 
@@ -87,6 +88,7 @@ impl Kind {
             Kind::Facet(FacetKind::Theme) => Icon::Lightbulb,
             Kind::Facet(FacetKind::Feature) => Icon::Tune,
             Kind::Facet(FacetKind::GameMode) => Icon::AccountCircle,
+            Kind::Facet(FacetKind::Tag) => Icon::Bookmark,
         }
     }
 }
@@ -224,6 +226,9 @@ mod tests {
         assert_eq!(parse_query("gameMode: co"), (game_mode, "co".into()));
         assert_eq!(parse_query("gamemode: co"), (game_mode, "co".into()));
         assert_eq!(parse_query("game mode: co"), (game_mode, "co".into()));
+        let tag = Some(Kind::Facet(FacetKind::Tag));
+        assert_eq!(parse_query("tag: rogue"), (tag, "rogue".into()));
+        assert_eq!(parse_query("Steam tag: rogue"), (tag, "rogue".into()));
     }
 
     #[test]

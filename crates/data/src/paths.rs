@@ -260,8 +260,18 @@ impl DataPaths {
     pub fn steam_hero(&self, steam_app_id: &str) -> PathBuf {
         self.j("local_library/heroes").join(format!("{steam_app_id}.jpg"))
     }
+    /// Steam store tags per app and tag names per language
+    /// ([`crate::steam_tags`]).
+    pub fn steam_tags(&self) -> PathBuf {
+        self.j("store_cache/steam_tags.json")
+    }
     pub fn wiki_game_info(&self) -> PathBuf {
         self.j("store_cache/wikigameinfo.json")
+    }
+    /// HowLongToBeat matches the user picked (or "not on HowLongToBeat"),
+    /// by cache key; never expires, unlike `wikigameinfo.json`.
+    pub fn hltb_overrides(&self) -> PathBuf {
+        self.j("local_library/hltb_overrides.json")
     }
     pub fn images_cache_dir(&self) -> PathBuf {
         self.j("images-cache")
