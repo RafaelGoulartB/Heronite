@@ -366,7 +366,7 @@ fn tier_label(tier: theme::RarityTier) -> &'static str {
     }
 }
 
-fn kind_label(kind: Kind) -> &'static str {
+pub(crate) fn kind_label(kind: Kind) -> &'static str {
     match kind {
         Kind::Progression => tr!("Progression"),
         Kind::WinCondition => tr!("Win condition"),
