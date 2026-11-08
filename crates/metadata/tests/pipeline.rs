@@ -687,3 +687,72 @@ fn covers_use_steam_cdn_or_title_search() {
     assert_eq!(plain["art_cover"], "https://cdn.cloudflare.steamstatic.com/steam/apps/4242/header.jpg");
     assert_eq!(plain["title"], "Plain Game");
 }
+
+/// A HowLongToBeat game page as `/game/{id}` serves it, made up for the test.
+fn hltb_page(id: u64, name: &str, main: u32) -> String {
+    let data = json!({"props": {"pageProps": {"game": {"data": {"game": [
+        {"game_id": id, "game_name": name, "comp_main": main, "comp_plus": main * 2, "comp_100": main * 3}
+    ]}}}}});
+    format!(r#"<html><script id="__NEXT_DATA__" type="application/json">{data}</script></html>"#)
+}
+
+#[test]
+fn hltb_change_match_refresh_and_failures() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let searches = Arc::new(AtomicUsize::new(0));
+    let fail = Arc::new(AtomicUsize::new(0));
+    let (s, f) = (searches.clone(), fail.clone());
+    let server = Server::start(move |req| match req.path() {
+        "/hltb/api/search/site/init" => Resp::json(json!({"token": "T0K"})),
+        "/hltb/api/search/site" if f.load(Ordering::SeqCst) == 1 => Resp::status(503),
+        "/hltb/api/search/site" => {
+            s.fetch_add(1, Ordering::SeqCst);
+            Resp::raw_json(fixture("hltb_search_portal2.json"))
+        }
+        "/hltb/game/27601" => Resp::html(&hltb_page(27601, "Portal 2: Sixense Perceptual Pack", 7200)),
+        _ => Resp::status(404),
+    });
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+
+    // "Change match" lists games first, then DLCs.
+    let hits = svc.search_how_long_to_beat("Portal 2").unwrap();
+    assert_eq!(hits.iter().map(|h| h.game_id).collect::<Vec<_>>(), [7231, 27601, 7232]);
+    assert_eq!(hits[0].release_world, Some(2011));
+
+    // Picking one stores its times at once and keeps it.
+    let picked = svc.set_how_long_to_beat_match("Portal 2", Some(&hits[1])).unwrap().unwrap();
+    assert_eq!(picked.match_kind, Some(hltb::MatchKind::Manual));
+    let raw = json_store::read_value(&paths.hltb_overrides()).unwrap();
+    assert_eq!(raw["Portal 2"], json!({"gameId": 27601}));
+    // A refresh asks for that game by its id, not by its name.
+    let before = searches.load(Ordering::SeqCst);
+    let got = svc.refresh_how_long_to_beat(&hltb::HltbQuery::new("Portal 2")).unwrap();
+    let e = got.entry.unwrap();
+    assert_eq!((e.game_id, e.main_story, e.match_kind), (Some(27601), 2.0, Some(hltb::MatchKind::Manual)));
+    assert_eq!(searches.load(Ordering::SeqCst), before);
+
+    // Back to automatic: the search picks the exact name again.
+    svc.clear_how_long_to_beat_match("Portal 2").unwrap();
+    let q = hltb::HltbQuery { year: Some(2011), ..hltb::HltbQuery::new("Portal 2") };
+    let e = svc.how_long_to_beat_for(&q).unwrap().entry.unwrap();
+    assert_eq!((e.game_id, e.match_kind), (Some(7231), Some(hltb::MatchKind::Exact)));
+
+    // No close name: "not found" is cached and not asked again for a week.
+    let n = searches.load(Ordering::SeqCst);
+    assert!(svc.how_long_to_beat("Half-Life", None).unwrap().entry.is_none());
+    assert_eq!(searches.load(Ordering::SeqCst), n + 1);
+    let raw = json_store::read_value(&paths.wiki_game_info()).unwrap();
+    assert!(raw["Half-Life"]["howlongtobeat"].is_null());
+    let svc2 = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    assert!(svc2.how_long_to_beat("Half-Life", None).unwrap().from_cache, "a new session does not ask again");
+    assert_eq!(searches.load(Ordering::SeqCst), n + 1);
+
+    // A server error writes nothing, and a refresh reports it.
+    fail.store(1, Ordering::SeqCst);
+    assert!(svc.how_long_to_beat("Hades", None).unwrap().entry.is_none());
+    assert!(json_store::read_value(&paths.wiki_game_info()).unwrap().get("Hades").is_none());
+    assert!(svc.refresh_how_long_to_beat(&q).is_err());
+    let kept = heronite_data::hltb::WikiCache::load(&paths);
+    assert_eq!(kept.hltb("Portal 2", "").unwrap().game_id, Some(7231), "a failed refresh keeps the times");
+}

@@ -14,7 +14,7 @@ use gpui_kit::*;
 use heronite_data::appearance::Section;
 
 use self::description::render_html;
-use self::panels::{details_panel, details_value_width, hltb_panel, related_panel};
+use self::panels::{details_panel, details_value_width, hltb_missing_panel, hltb_panel, related_panel};
 use super::vm::FocusVm;
 use crate::theme;
 use heronite_i18n::tr;
@@ -126,6 +126,29 @@ pub(super) struct FocusActions {
     pub on_expand_detail: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// Picks the group of "Related games".
     pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
+    /// The buttons of "How Long To Beat".
+    pub on_hltb: Rc<dyn Fn(HltbAction, &mut Window, &mut App)>,
+}
+
+/// A button of the "How Long To Beat" section.
+#[derive(Clone)]
+pub(super) enum HltbAction {
+    /// The game's page on HowLongToBeat.
+    Open(SharedString),
+    /// Search HowLongToBeat and pick the game (or "not on HowLongToBeat").
+    ChangeMatch,
+    /// Ask HowLongToBeat again now.
+    Refresh,
+}
+
+/// "How Long To Beat": the times, or a note when HowLongToBeat has none.
+fn hltb_section(vm: &FocusVm, on: &Rc<dyn Fn(HltbAction, &mut Window, &mut App)>) -> Option<Div> {
+    let body = match &vm.hltb {
+        Some(h) => hltb_panel(h, on),
+        None if vm.hltb_checked => hltb_missing_panel(on),
+        None => return None,
+    };
+    Some(div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(body))
 }
 
 /// What "Related games" shows of the focused game.
@@ -244,7 +267,7 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
             .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
         achievements: extras.achievements,
         details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
-        hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
+        hltb: hltb_section(&vm, &actions.on_hltb),
     };
     let body = body(&lay, sections);
     // Wide: the title sits above a fixed left column and the scrolling
@@ -360,7 +383,7 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
                 .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
             achievements: extras.achievements,
             details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
-            hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
+            hltb: hltb_section(&vm, &actions.on_hltb),
         },
     )
 }

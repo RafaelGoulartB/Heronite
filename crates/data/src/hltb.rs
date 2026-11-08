@@ -32,12 +32,26 @@ pub struct HltbEntry {
     pub game_image_url: Option<String>,
     #[serde(default)]
     pub game_web_link: Option<String>,
+    /// `exact`, `id`, `close` or `manual` (see `heronite_metadata::hltb::MatchKind`);
+    /// `None` in entries written before matches were told apart.
+    #[serde(default)]
+    pub match_kind: Option<String>,
 }
 
 impl HltbEntry {
     /// The Focus shows the card only when this holds.
     pub fn is_displayable(&self) -> bool {
         self.main_story > 0.0 || self.main_extra > 0.0
+    }
+
+    /// Matched by a similar name only, worth a look.
+    pub fn is_close_match(&self) -> bool {
+        self.match_kind.as_deref() == Some("close")
+    }
+
+    /// Picked by the user.
+    pub fn is_manual_match(&self) -> bool {
+        self.match_kind.as_deref() == Some("manual")
     }
 
     /// Position (0-100) of the "you are here" marker on the bar.
@@ -70,6 +84,9 @@ pub fn format_hours(value: f64) -> String {
 #[derive(Debug, Clone, Default)]
 pub struct WikiEntry {
     pub hltb: Option<HltbEntry>,
+    /// HowLongToBeat was asked about the game (`howlongtobeat` is set, maybe
+    /// to `null`: not found).
+    pub hltb_checked: bool,
     /// `pcgamingwiki.genres`.
     pub pcgw_genres: Vec<String>,
     /// `pcgamingwiki.releaseDate[0]` without its `Platform:` prefix.
@@ -79,6 +96,7 @@ pub struct WikiEntry {
 impl WikiEntry {
     fn from_value(v: &Value) -> Self {
         let hltb = v.get("howlongtobeat").filter(|h| h.is_object()).and_then(|h| serde_json::from_value(h.clone()).ok());
+        let hltb_checked = v.get("howlongtobeat").is_some();
         let pcgw = v.get("pcgamingwiki").filter(|p| p.is_object());
         let pcgw_genres = pcgw
             .and_then(|p| p.get("genres"))
@@ -91,7 +109,7 @@ impl WikiEntry {
             .and_then(|a| a.first())
             .and_then(Value::as_str)
             .map(strip_platform_prefix);
-        Self { hltb, pcgw_genres, pcgw_release_date }
+        Self { hltb, hltb_checked, pcgw_genres, pcgw_release_date }
     }
 }
 
@@ -215,6 +233,22 @@ mod tests {
         assert!(c.hltb("Empty Game", "Onimusha: Way of the Sword").is_none());
         assert!(c.lookup("Nope", "Nope too").is_none());
         assert!(c.lookup("__timestamp", "").is_none());
+    }
+
+    #[test]
+    fn checked_entries_and_match_kinds() {
+        let entries = json!({
+            "A": {"howlongtobeat": {"mainStory": 2.0, "matchKind": "close"}},
+            "B": {"howlongtobeat": null},
+            "C": {"pcgamingwiki": {}}
+        });
+        let c = WikiCache { entries: entries.as_object().unwrap().clone() };
+        let a = c.lookup("A", "").unwrap();
+        assert!(a.hltb_checked && a.hltb.as_ref().unwrap().is_close_match());
+        assert!(!a.hltb.unwrap().is_manual_match());
+        let b = c.lookup("B", "").unwrap();
+        assert!(b.hltb_checked && b.hltb.is_none(), "asked, not found");
+        assert!(!c.lookup("C", "").unwrap().hltb_checked, "never asked");
     }
 
     #[test]

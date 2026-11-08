@@ -191,6 +191,9 @@ pub struct MetadataSettings {
     /// menu's "Ages up to" works either way.
     #[serde(default = "default_true")]
     pub show_age_ratings: bool,
+    /// Ask HowLongToBeat for the times of the selected game.
+    #[serde(default = "default_true")]
+    pub how_long_to_beat: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
     #[serde(flatten)]

@@ -19,10 +19,29 @@ use serde_json::{json, Map, Value};
 use crate::http::Http;
 use crate::util::re;
 
+// The browser User-Agent and headers are kept from the original port: HLTB's
+// search refuses requests that do not look like its own site.
 const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const TOKEN_TTL: Duration = Duration::from_secs(10 * 60);
 /// `new CacheStore('wikigameinfo', 60 * 24 * 30)`: 30 days.
 const CACHE_LIFESPAN_MINUTES: f64 = 60.0 * 24.0 * 30.0;
+/// A title HowLongToBeat did not have is asked again after a week, not at
+/// every start.
+const NOT_FOUND_RETRY_MINUTES: f64 = 60.0 * 24.0 * 7.0;
+
+/// How the cached entry was matched to the game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MatchKind {
+    /// The same name (or one of HLTB's aliases), ignoring case and symbols.
+    Exact,
+    /// By a HowLongToBeat id (PCGamingWiki's).
+    Id,
+    /// One name starts with or contains the other.
+    Close,
+    /// Picked by the user.
+    Manual,
+}
 
 /// `HeroicHowLongToBeatEntry` (hours).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -39,6 +58,20 @@ pub struct HowLongToBeat {
     pub game_image_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game_web_link: Option<String>,
+    /// Missing in entries written before matches were told apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_kind: Option<MatchKind>,
+}
+
+/// A year, given as a number or a string (`0` and junk: none).
+fn de_year<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Option<i32>, D::Error> {
+    let v = Value::deserialize(d)?;
+    let n = match &v {
+        Value::Number(n) => n.as_i64(),
+        Value::String(s) => s.trim().parse::<i64>().ok(),
+        _ => None,
+    };
+    Ok(n.filter(|y| (1950..=2200).contains(y)).map(|y| y as i32))
 }
 
 /// One search result of the HLTB API.
@@ -58,6 +91,26 @@ pub struct SearchHit {
     pub comp_plus: Option<f64>,
     #[serde(default)]
     pub comp_100: Option<f64>,
+    /// Release year.
+    #[serde(default, deserialize_with = "de_year")]
+    pub release_world: Option<i32>,
+    /// Other names, comma separated.
+    #[serde(default)]
+    pub game_alias: Option<String>,
+}
+
+impl SearchHit {
+    fn names(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.game_name.as_str())
+            .chain(self.game_alias.as_deref().unwrap_or("").split(','))
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+    }
+
+    /// A game, not a DLC or mod.
+    pub fn is_game(&self) -> bool {
+        self.game_type.as_deref().is_none_or(|t| t.is_empty() || t == "game")
+    }
 }
 
 struct SearchToken {
@@ -91,25 +144,37 @@ pub fn search_terms(title: &str) -> Vec<String> {
     title.split(|c: char| !is_word_char(c)).map(str::trim).filter(|t| !t.is_empty()).map(str::to_owned).collect()
 }
 
-/// `pickHowLongToBeatSearchMatch`.
+/// `pickHowLongToBeatSearchMatch`, without its "else the first result": a
+/// title HLTB has no close name for is not matched to something else.
 pub fn pick_search_match<'a>(title: &str, results: &'a [SearchHit]) -> Option<&'a SearchHit> {
-    if results.is_empty() {
-        return None;
-    }
-    let games: Vec<&SearchHit> = results.iter().filter(|i| i.game_type.as_deref().is_none_or(|t| t.is_empty() || t == "game")).collect();
+    pick_match(title, None, results).map(|(hit, _)| hit)
+}
+
+/// The best search result for `title`, and how close it is. Games come
+/// before DLCs and mods; among equally good names, the one released within a
+/// year of `year` wins, and a close (not exact) name released years apart is
+/// not taken at all.
+pub fn pick_match<'a>(title: &str, year: Option<i32>, results: &'a [SearchHit]) -> Option<(&'a SearchHit, MatchKind)> {
+    let games: Vec<&SearchHit> = results.iter().filter(|i| i.is_game()).collect();
     let pool: Vec<&SearchHit> = if games.is_empty() { results.iter().collect() } else { games };
     let needle = normalize_hltb_title(title);
+    if needle.is_empty() {
+        return None;
+    }
     // A name with no letter or digit would be a prefix of everything.
-    let same = |i: &&&SearchHit, f: fn(&str, &str) -> bool| {
-        let n = normalize_hltb_title(&i.game_name);
-        !needle.is_empty() && !n.is_empty() && f(&n, &needle)
+    let any_name = |hit: &SearchHit, f: &dyn Fn(&str) -> bool| hit.names().map(normalize_hltb_title).any(|n| !n.is_empty() && f(&n));
+    let near = |hit: &SearchHit| match (year, hit.release_world) {
+        (Some(y), Some(h)) => (y - h).abs() <= 1,
+        _ => true,
     };
-    pool.iter()
-        .find(|i| same(i, |n, w| n == w))
-        .or_else(|| pool.iter().find(|i| same(i, |n, w| n.starts_with(w) || w.starts_with(n))))
-        .or_else(|| pool.iter().find(|i| same(i, |n, w| n.contains(w) || w.contains(n))))
-        .or_else(|| pool.first())
-        .copied()
+    let exact: Vec<&SearchHit> = pool.iter().copied().filter(|h| any_name(h, &|n| n == needle)).collect();
+    if let Some(hit) = exact.iter().find(|h| near(h)).or(exact.first()) {
+        return Some((hit, MatchKind::Exact));
+    }
+    let close = |f: &dyn Fn(&str) -> bool| pool.iter().copied().find(|h| near(h) && any_name(h, f));
+    close(&|n| n.starts_with(&needle) || needle.starts_with(n))
+        .or_else(|| close(&|n| n.contains(&needle) || needle.contains(n)))
+        .map(|hit| (hit, MatchKind::Close))
 }
 
 fn entry_from_hit(base: &str, hit: &SearchHit) -> HowLongToBeat {
@@ -121,6 +186,7 @@ fn entry_from_hit(base: &str, hit: &SearchHit) -> HowLongToBeat {
         game_name: Some(hit.game_name.clone()).filter(|n| !n.is_empty()),
         game_image_url: hit.game_image.as_deref().filter(|i| !i.is_empty()).map(|i| format!("{base}/games/{i}")),
         game_web_link: (hit.game_id != 0).then(|| format!("{base}/game/{}", hit.game_id)),
+        match_kind: None,
     }
 }
 
@@ -220,26 +286,48 @@ impl HltbClient {
         Ok((resp.status, hits))
     }
 
-    /// `searchHowLongToBeatByTitle`.
-    pub fn search_by_title(&self, http: &Http, title: &str) -> Option<HowLongToBeat> {
+    /// The search results for `title`; `Ok(None)` when HLTB answered with an
+    /// error (refused token, server error), `Err` when it was not reached.
+    fn search_hits(&self, http: &Http, title: &str) -> Result<Option<Vec<SearchHit>>> {
         let terms = search_terms(title);
         if terms.is_empty() {
-            return None;
+            return Ok(Some(Vec::new()));
         }
-        let run = || -> Result<Option<HowLongToBeat>> {
-            let mut result = self.search_once(http, &terms, false)?;
-            if result.0 == 403 || result.0 == 401 {
-                *self.token.lock() = None;
-                result = self.search_once(http, &terms, true)?;
-            }
-            let (status, hits) = result;
-            let Some(hits) = hits.filter(|_| status == 200) else {
-                log::info!("HowLongToBeat search failed for {title} ({status})");
-                return Ok(None);
-            };
-            Ok(pick_search_match(title, &hits).filter(|m| m.game_id != 0).map(|m| entry_from_hit(Self::base(http), m)))
+        let mut result = self.search_once(http, &terms, false)?;
+        if result.0 == 403 || result.0 == 401 {
+            *self.token.lock() = None;
+            result = self.search_once(http, &terms, true)?;
+        }
+        let (status, hits) = result;
+        let hits = hits.filter(|_| status == 200);
+        if hits.is_none() {
+            log::info!("HowLongToBeat search failed for {title} ({status})");
+        }
+        Ok(hits)
+    }
+
+    /// Search results for the "Change match" list: games first, then DLCs
+    /// and the rest, each in HLTB's order.
+    pub fn search(&self, http: &Http, title: &str) -> Result<Vec<SearchHit>> {
+        let Some(mut hits) = self.search_hits(http, title)? else {
+            anyhow::bail!("HowLongToBeat did not answer the search");
         };
-        match run() {
+        hits.retain(|h| h.game_id != 0);
+        hits.sort_by_key(|h| !h.is_game());
+        Ok(hits)
+    }
+
+    /// `searchHowLongToBeatByTitle`: `Err` when HLTB could not be asked.
+    fn search_by_title_checked(&self, http: &Http, title: &str, year: Option<i32>) -> Result<Option<HowLongToBeat>> {
+        let Some(hits) = self.search_hits(http, title)? else { anyhow::bail!("HowLongToBeat search failed") };
+        Ok(pick_match(title, year, &hits)
+            .filter(|(m, _)| m.game_id != 0)
+            .map(|(m, kind)| HowLongToBeat { match_kind: Some(kind), ..entry_from_hit(Self::base(http), m) }))
+    }
+
+    /// `searchHowLongToBeatByTitle`.
+    pub fn search_by_title(&self, http: &Http, title: &str) -> Option<HowLongToBeat> {
+        match self.search_by_title_checked(http, title, None) {
             Ok(entry) => entry,
             Err(e) => {
                 log::error!("Error searching HLTB for {title}: {e}");
@@ -250,11 +338,20 @@ impl HltbClient {
 
     /// `getGameDataById`: scrapes the game page (`/game/{id}`).
     pub fn by_id(&self, http: &Http, game_id: &str) -> Option<HowLongToBeat> {
+        self.by_id_checked(http, game_id).unwrap_or_else(|e| {
+            log::error!("Error fetching HLTB game data for ID {game_id}: {e}");
+            None
+        })
+    }
+
+    /// [`by_id`](Self::by_id); `Err` when HLTB was not reached or failed
+    /// (a missing page is `Ok(None)`).
+    fn by_id_checked(&self, http: &Http, game_id: &str) -> Result<Option<HowLongToBeat>> {
         if game_id.is_empty() || !game_id.chars().all(|c| c.is_ascii_digit()) {
-            return None;
+            return Ok(None);
         }
         let base = Self::base(http);
-        let resp = http
+        let r = http
             .get(format!("{base}/game/{game_id}"))
             .header("User-Agent", USER_AGENT)
             .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
@@ -262,31 +359,37 @@ impl HltbClient {
             .header("Referer", &format!("{base}/"))
             .timeout_secs(10)
             .max_bytes(8 * 1024 * 1024)
-            .send();
-        match resp {
-            Ok(r) if r.status == 200 => parse_game_page(base, &r.text()),
-            Ok(_) => None,
-            Err(e) => {
-                log::error!("Error fetching HLTB game data for ID {game_id}: {e}");
-                None
-            }
+            .send()?;
+        match r.status {
+            200 => Ok(parse_game_page(base, &r.text()).map(|e| HowLongToBeat { match_kind: Some(MatchKind::Id), ..e })),
+            404 => Ok(None),
+            status => anyhow::bail!("HowLongToBeat answered {status}"),
         }
     }
 
     /// `getHowLongToBeat` (without the GOG store-page scrape): by HLTB id when
     /// known, else by title.
     pub fn lookup(&self, http: &Http, title: &str, hltb_id: Option<&str>) -> Option<HowLongToBeat> {
+        self.lookup_checked(http, title, None, hltb_id).unwrap_or_else(|e| {
+            log::error!("Error searching HLTB for {title}: {e}");
+            None
+        })
+    }
+
+    /// [`lookup`](Self::lookup) with the release year; `Err` when HLTB could
+    /// not be asked, so that nothing is cached as "not found".
+    pub fn lookup_checked(&self, http: &Http, title: &str, year: Option<i32>, hltb_id: Option<&str>) -> Result<Option<HowLongToBeat>> {
         if let Some(id) = hltb_id.filter(|i| !i.is_empty()) {
-            if let Some(found) = self.by_id(http, id) {
-                return Some(found);
+            if let Some(found) = self.by_id_checked(http, id)? {
+                return Ok(Some(found));
             }
             log::info!("HLTB ID {id} not found for {title}");
         }
-        let found = self.search_by_title(http, title);
+        let found = self.search_by_title_checked(http, title, year)?;
         if found.is_none() {
             log::info!("No HowLongToBeat data available for {title}");
         }
-        found
+        Ok(found)
     }
 }
 
@@ -377,63 +480,72 @@ pub struct HltbLookup {
     pub from_cache: bool,
 }
 
-/// The HLTB half of `getWikiGameInfo(game, preferredTitle)`.
-///
-/// - an unexpired cached entry with HLTB data is returned as is;
-/// - a cached entry without it is refreshed once per session (the PCGamingWiki
-///   HLTB id of the entry is used when present) and the entry is rewritten
-///   with the new `howlongtobeat` and a new timestamp;
-/// - with no entry, HLTB is searched by `title` and a new entry
-///   (`pcgamingwiki`, `applegamingwiki`, `gamesdb`, `steamInfo`, `umuId` all
-///   `null`: the other sources are not fetched here) is stored.
-///
-/// `title` is the Collection title (`collectionGameTitle`), `store_title` the
-/// Heroic one (second cache key).
-pub fn get_or_fetch_hltb(
-    paths: &DataPaths,
-    http: &Http,
-    client: &HltbClient,
-    title: &str,
-    store_title: Option<&str>,
-) -> Result<HltbLookup> {
-    let title = title.trim();
-    if title.is_empty() {
-        return Ok(HltbLookup { entry: None, from_cache: false });
-    }
-    let key = remove_special_characters(title);
-    let fallback_key = remove_special_characters(store_title.unwrap_or(""));
-    let file = paths.wiki_game_info();
+/// What [`get_or_fetch_hltb_for`] looks a game up by.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HltbQuery {
+    /// The Collection title (`collectionGameTitle`), the cache key.
+    pub title: String,
+    /// The store's own title, the second cache key.
+    pub store_title: Option<String>,
+    /// Release year, to tell apart games of the same name (remakes).
+    pub year: Option<i32>,
+}
 
-    let doc = json_store::read_value(&file).unwrap_or(Value::Null);
-    let cached = cache_get(&doc, &key)
-        .cloned()
-        .or_else(|| (!fallback_key.is_empty() && fallback_key != key).then(|| cache_get(&doc, &fallback_key).cloned()).flatten());
-
-    let hltb_of = |v: &Value| -> Option<HowLongToBeat> {
-        v.get("howlongtobeat").filter(|h| h.is_object()).and_then(|h| serde_json::from_value(h.clone()).ok())
-    };
-
-    if let Some(cached) = &cached {
-        if cached.get("howlongtobeat").is_some_and(|h| h.is_object()) {
-            return Ok(HltbLookup { entry: hltb_of(cached), from_cache: true });
-        }
-        if !client.refresh_tried.lock().insert(key.clone()) {
-            return Ok(HltbLookup { entry: None, from_cache: true });
-        }
-        log::info!("Refreshing HowLongToBeat data for {key}");
+impl HltbQuery {
+    pub fn new(title: &str) -> Self {
+        Self { title: title.trim().to_owned(), ..Self::default() }
     }
 
-    let hltb_id = cached
-        .as_ref()
-        .and_then(|c| c.pointer("/pcgamingwiki/howLongToBeatID"))
-        .and_then(|v| v.as_str().map(str::to_owned).or_else(|| v.as_u64().map(|n| n.to_string())));
-    let found = client.lookup(http, title, hltb_id.as_deref());
-    let found_value = match &found {
+    fn key(&self) -> String {
+        remove_special_characters(&self.title)
+    }
+}
+
+/// The user's choice for one title in `local_library/hltb_overrides.json`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HltbOverride {
+    /// The HowLongToBeat game to use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_id: Option<u64>,
+    /// "Not on HowLongToBeat": never searched again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub none: bool,
+}
+
+/// The override saved for `title`, if any.
+pub fn override_for(paths: &DataPaths, title: &str) -> Option<HltbOverride> {
+    let key = remove_special_characters(title.trim());
+    let doc = json_store::read_value(&paths.hltb_overrides()).ok()?;
+    serde_json::from_value(doc.get(&key)?.clone()).ok()
+}
+
+fn save_override(paths: &DataPaths, key: &str, choice: Option<HltbOverride>) -> Result<()> {
+    json_store::update_value(&paths.hltb_overrides(), |doc| {
+        if !doc.is_object() {
+            *doc = Value::Object(Map::new());
+        }
+        let map = doc.as_object_mut().expect("object");
+        match choice {
+            Some(c) => {
+                map.insert(key.to_owned(), serde_json::to_value(c)?);
+            }
+            None => {
+                map.shift_remove(key);
+            }
+        }
+        Ok(())
+    })
+}
+
+/// Writes the `howlongtobeat` of `key`'s entry (the other sources kept) with
+/// a new timestamp.
+fn store_entry(paths: &DataPaths, key: &str, existing: Option<Value>, found: Option<&HowLongToBeat>) -> Result<()> {
+    let found_value = match found {
         Some(f) => serde_json::to_value(f)?,
         None => Value::Null,
     };
-
-    let new_entry = match cached {
+    let new_entry = match existing {
         Some(Value::Object(mut map)) => {
             map.insert("howlongtobeat".into(), found_value);
             Value::Object(map)
@@ -447,12 +559,143 @@ pub fn get_or_fetch_hltb(
             "umuId": null
         }),
     };
-    json_store::update_value(&file, |doc| {
-        dot_set(doc, &key, new_entry);
+    json_store::update_value(&paths.wiki_game_info(), |doc| {
+        dot_set(doc, key, new_entry);
         dot_set(doc, &format!("__timestamp.{key}"), Value::String(js_date_string()));
         Ok(())
-    })?;
+    })
+}
+
+/// The HLTB half of `getWikiGameInfo(game, preferredTitle)`.
+///
+/// - an unexpired cached entry with HLTB data is returned as is;
+/// - a cached entry without it is asked again once a week (the PCGamingWiki
+///   HLTB id of the entry is used when present) and the entry is rewritten
+///   with the new `howlongtobeat` and a new timestamp;
+/// - with no entry, HLTB is searched by `title` and a new entry
+///   (`pcgamingwiki`, `applegamingwiki`, `gamesdb`, `steamInfo`, `umuId` all
+///   `null`: the other sources are not fetched here) is stored;
+/// - a match the user picked ([`set_hltb_match`]) is fetched by its id, and
+///   a title they marked as not on HowLongToBeat is never searched.
+///
+/// When HowLongToBeat can't be reached nothing is written, so the next call
+/// asks again.
+pub fn get_or_fetch_hltb(
+    paths: &DataPaths,
+    http: &Http,
+    client: &HltbClient,
+    title: &str,
+    store_title: Option<&str>,
+) -> Result<HltbLookup> {
+    let query = HltbQuery { store_title: store_title.map(str::to_owned), ..HltbQuery::new(title) };
+    get_or_fetch_hltb_for(paths, http, client, &query)
+}
+
+/// [`get_or_fetch_hltb`] with the release year.
+pub fn get_or_fetch_hltb_for(paths: &DataPaths, http: &Http, client: &HltbClient, query: &HltbQuery) -> Result<HltbLookup> {
+    fetch(paths, http, client, query, false)
+}
+
+/// Asks HowLongToBeat again for `query` now, whatever the cache holds (a
+/// picked match by its id). `Err` when it could not be reached; the cached
+/// entry is then kept.
+pub fn refresh_hltb(paths: &DataPaths, http: &Http, client: &HltbClient, query: &HltbQuery) -> Result<HltbLookup> {
+    client.refresh_tried.lock().remove(&query.key());
+    fetch(paths, http, client, query, true)
+}
+
+fn fetch(paths: &DataPaths, http: &Http, client: &HltbClient, query: &HltbQuery, force: bool) -> Result<HltbLookup> {
+    let title = query.title.trim();
+    if title.is_empty() {
+        return Ok(HltbLookup { entry: None, from_cache: false });
+    }
+    let key = query.key();
+    let fallback_key = remove_special_characters(query.store_title.as_deref().unwrap_or(""));
+    let file = paths.wiki_game_info();
+
+    let doc = json_store::read_value(&file).unwrap_or(Value::Null);
+    let fresh = |k: &str| cache_get(&doc, k).cloned();
+    let cached = fresh(&key).or_else(|| (!fallback_key.is_empty() && fallback_key != key).then(|| fresh(&fallback_key)).flatten());
+    let choice = override_for(paths, title);
+
+    let hltb_of = |v: &Value| -> Option<HowLongToBeat> {
+        v.get("howlongtobeat").filter(|h| h.is_object()).and_then(|h| serde_json::from_value(h.clone()).ok())
+    };
+
+    if choice.as_ref().is_some_and(|c| c.none) {
+        // "Not on HowLongToBeat": the entry says so, nothing is asked.
+        if cached.as_ref().is_some_and(|c| c.get("howlongtobeat").is_some_and(Value::is_null)) {
+            return Ok(HltbLookup { entry: None, from_cache: true });
+        }
+        store_entry(paths, &key, dot_get(&doc, &key).cloned(), None)?;
+        return Ok(HltbLookup { entry: None, from_cache: false });
+    }
+
+    if let (Some(cached), false) = (&cached, force) {
+        if cached.get("howlongtobeat").is_some_and(|h| h.is_object()) {
+            return Ok(HltbLookup { entry: hltb_of(cached), from_cache: true });
+        }
+        let stamp = dot_get(&doc, &format!("__timestamp.{key}")).and_then(Value::as_str).and_then(minutes_since);
+        let recent = stamp.is_some_and(|m| m < NOT_FOUND_RETRY_MINUTES);
+        if recent || !client.refresh_tried.lock().insert(key.clone()) {
+            return Ok(HltbLookup { entry: None, from_cache: true });
+        }
+        log::info!("Refreshing HowLongToBeat data for {key}");
+    }
+
+    let found = match choice.and_then(|c| c.game_id) {
+        Some(id) => client
+            .by_id_checked(http, &id.to_string())?
+            .map(|e| HowLongToBeat { match_kind: Some(MatchKind::Manual), ..e })
+            // A picked game HLTB removed: keep the times already shown.
+            .or_else(|| cached.as_ref().and_then(hltb_of)),
+        None => {
+            let hltb_id = cached
+                .as_ref()
+                .and_then(|c| c.pointer("/pcgamingwiki/howLongToBeatID"))
+                .and_then(|v| v.as_str().map(str::to_owned).or_else(|| v.as_u64().map(|n| n.to_string())));
+            match client.lookup_checked(http, title, query.year, hltb_id.as_deref()) {
+                Ok(found) => found,
+                Err(e) => {
+                    log::info!("HowLongToBeat not reached for {title}: {e}");
+                    if force {
+                        return Err(e);
+                    }
+                    return Ok(HltbLookup { entry: cached.as_ref().and_then(hltb_of), from_cache: cached.is_some() });
+                }
+            }
+        }
+    };
+    store_entry(paths, &key, cached.or_else(|| dot_get(&doc, &key).cloned()), found.as_ref())?;
     Ok(HltbLookup { entry: found, from_cache: false })
+}
+
+/// "Change match": `Some(hit)` uses that HowLongToBeat game for `title`
+/// from now on (its times are stored right away, from the search result);
+/// `None` marks the title as not on HowLongToBeat. Both stay until
+/// [`clear_hltb_match`].
+pub fn set_hltb_match(paths: &DataPaths, http: &Http, title: &str, hit: Option<&SearchHit>) -> Result<Option<HowLongToBeat>> {
+    let key = remove_special_characters(title.trim());
+    anyhow::ensure!(!key.is_empty(), "no title");
+    let entry = hit
+        .filter(|h| h.game_id != 0)
+        .map(|h| HowLongToBeat { match_kind: Some(MatchKind::Manual), ..entry_from_hit(HltbClient::base(http), h) });
+    let choice = match &entry {
+        Some(e) => HltbOverride { game_id: e.game_id, none: false },
+        None => HltbOverride { game_id: None, none: true },
+    };
+    save_override(paths, &key, Some(choice))?;
+    let doc = json_store::read_value(&paths.wiki_game_info()).unwrap_or(Value::Null);
+    store_entry(paths, &key, dot_get(&doc, &key).cloned(), entry.as_ref())?;
+    Ok(entry)
+}
+
+/// Back to the automatic match for `title`: the choice and the cached entry
+/// are dropped, the next lookup searches again.
+pub fn clear_hltb_match(paths: &DataPaths, title: &str) -> Result<()> {
+    let key = remove_special_characters(title.trim());
+    save_override(paths, &key, None)?;
+    forget_cached_title(paths, title)
 }
 
 /// `wikiGameInfoStore.delete(key)`: drops a cached title (forces a refetch).
@@ -510,7 +753,8 @@ mod tests {
         let hits = [hit(1, "!!!"), hit(2, "Portal 2")];
         assert_eq!(pick_search_match("Portal 2: Sixense", &hits).unwrap().game_id, 2);
         let hits = [hit(1, "Portal"), hit(2, "Portal 2")];
-        assert_eq!(pick_search_match("「」", &hits).unwrap().game_id, 1, "falls back to the first result");
+        assert!(pick_search_match("「」", &hits).is_none(), "a title with no letters matches nothing");
+        assert!(pick_search_match("Half-Life", &hits).is_none(), "no close name: no match, never the first result");
     }
 
     #[test]
@@ -585,5 +829,77 @@ mod tests {
         // The data crate reads what this crate wrote or kept.
         let wiki = WikiCache::load(&paths);
         assert!(wiki.hltb("Onimusha: Way of the Sword", "").is_some());
+    }
+
+    #[test]
+    fn release_year_and_aliases_pick_the_right_game() {
+        let hit = |id: u64, name: &str, year: Option<i32>| SearchHit {
+            game_id: id,
+            game_name: name.into(),
+            release_world: year,
+            ..Default::default()
+        };
+        // Two games of one name: the one released near the game's year.
+        let hits = [hit(1, "Prey", Some(2006)), hit(2, "Prey", Some(2017))];
+        assert_eq!(pick_match("Prey", Some(2017), &hits).map(|(h, k)| (h.game_id, k)), Some((2, MatchKind::Exact)));
+        assert_eq!(pick_match("Prey", Some(2006), &hits).unwrap().0.game_id, 1);
+        assert_eq!(pick_match("Prey", None, &hits).unwrap().0.game_id, 1, "no year: HLTB's order");
+        // An exact name released years apart is still that name.
+        assert_eq!(pick_match("Prey", Some(1990), &hits).unwrap().0.game_id, 1);
+        // A close name released years apart is not taken.
+        let hits = [hit(3, "Doom 3", Some(2004))];
+        assert!(pick_match("Doom", Some(2016), &hits).is_none());
+        assert_eq!(pick_match("Doom", None, &hits).map(|(h, k)| (h.game_id, k)), Some((3, MatchKind::Close)));
+        // HLTB's other names count as exact.
+        let hits = [SearchHit { game_alias: Some("Biohazard 4, RE4".into()), ..hit(4, "Resident Evil 4", Some(2005)) }];
+        assert_eq!(pick_match("RE4", None, &hits).map(|(h, k)| (h.game_id, k)), Some((4, MatchKind::Exact)));
+        // Years come as numbers or strings; 0 is none.
+        let v: Vec<SearchHit> = serde_json::from_value(json!([
+            {"game_id": 1, "game_name": "A", "release_world": 2011},
+            {"game_id": 2, "game_name": "B", "release_world": "2013"},
+            {"game_id": 3, "game_name": "C", "release_world": 0},
+            {"game_id": 4, "game_name": "D"}
+        ]))
+        .unwrap();
+        assert_eq!(v.iter().map(|h| h.release_world).collect::<Vec<_>>(), [Some(2011), Some(2013), None, None]);
+    }
+
+    #[test]
+    fn picked_match_and_not_on_hltb_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.local_library()).unwrap();
+        std::fs::create_dir_all(paths.wiki_game_info().parent().unwrap()).unwrap();
+        // Unreachable: any request fails, so every answer below is offline.
+        let http = Http::new(crate::http::Endpoints { hltb: "http://127.0.0.1:9".into(), ..Default::default() });
+        let client = HltbClient::new();
+        let pick = &hits()[0];
+        let saved = set_hltb_match(&paths, &http, "My Portal", Some(pick)).unwrap().unwrap();
+        assert_eq!((saved.game_id, saved.match_kind), (Some(7231), Some(MatchKind::Manual)));
+        assert_eq!(override_for(&paths, "My Portal"), Some(HltbOverride { game_id: Some(7231), none: false }));
+        let got = get_or_fetch_hltb(&paths, &http, &client, "My Portal", None).unwrap();
+        assert!(got.from_cache);
+        assert_eq!(got.entry.unwrap().game_id, Some(7231));
+        let wiki = WikiCache::load(&paths);
+        assert!(wiki.hltb("My Portal", "").unwrap().is_manual_match());
+
+        // Not on HowLongToBeat: an empty entry, never searched.
+        set_hltb_match(&paths, &http, "Homebrew", None).unwrap();
+        let got = get_or_fetch_hltb(&paths, &http, &client, "Homebrew", None).unwrap();
+        assert_eq!(got, HltbLookup { entry: None, from_cache: true });
+        let e = WikiCache::load(&paths).lookup("Homebrew", "").unwrap();
+        assert!(e.hltb_checked && e.hltb.is_none());
+        // A refresh keeps the choice and still asks nothing.
+        assert!(refresh_hltb(&paths, &http, &client, &HltbQuery::new("Homebrew")).unwrap().entry.is_none());
+
+        // Unreachable: nothing is written, a refresh says so.
+        assert_eq!(get_or_fetch_hltb(&paths, &http, &client, "Unknown", None).unwrap().entry, None);
+        assert!(WikiCache::load(&paths).lookup("Unknown", "").is_none(), "no 'not found' cached while offline");
+        assert!(refresh_hltb(&paths, &http, &client, &HltbQuery::new("Unknown")).is_err());
+
+        // Back to automatic.
+        clear_hltb_match(&paths, "My Portal").unwrap();
+        assert_eq!(override_for(&paths, "My Portal"), None);
+        assert!(WikiCache::load(&paths).lookup("My Portal", "").is_none());
     }
 }

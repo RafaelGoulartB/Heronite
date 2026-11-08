@@ -146,7 +146,7 @@ fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 
 pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
     let m = &d.settings.metadata;
-    let (auto_fill, download, show_age) = (m.auto_fill_missing, m.download_images, m.show_age_ratings);
+    let (auto_fill, download, show_age, hltb) = (m.auto_fill_missing, m.download_images, m.show_age_ratings, m.how_long_to_beat);
     let testing = d.metadata.testing;
 
     let creds = card_box()
@@ -200,7 +200,19 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
                 .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.show_age_ratings = !show_age)))
                 .into_any_element(),
             div().py(px(12.)).child(board_select(d, cx)).into_any_element(),
-        ]));
+        ]))
+        .child(caption("HowLongToBeat"))
+        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
+            "How long a game takes to beat, from howlongtobeat.com. Heronite is not affiliated with HowLongToBeat."
+        ))))
+        .child(card([toggle_row(
+            "md-hltb",
+            tr!("Look up HowLongToBeat times"),
+            Some(tr!("Asks HowLongToBeat about the game you select, then again after a month.")),
+            hltb,
+        )
+        .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.how_long_to_beat = !hltb)))
+        .into_any_element()]));
 
     // Field priority (advanced), collapsible.
     let open = d.metadata.advanced_open;
@@ -317,6 +329,8 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
             board_options().into_iter().map(|(_, label)| SharedString::from(label)).collect(),
             board_index(d),
         ),
+        Row::header("HowLongToBeat"),
+        Row::toggle("hltb", tr!("Look up HowLongToBeat times"), m.how_long_to_beat),
         Row::header(tr!("Preferred source per field")),
     ];
     for field in METADATA_FIELDS {
@@ -366,6 +380,7 @@ pub(super) fn console_apply(
             "autofill" => persist(d, cx, |m| m.auto_fill_missing = on),
             "download" => persist(d, cx, |m| m.download_images = on),
             "age-show" => persist(d, cx, |m| m.show_age_ratings = on),
+            "hltb" => persist(d, cx, |m| m.how_long_to_beat = on),
             _ => {}
         },
         Outcome::Changed(id, Value::Choice { index, .. }) if id.as_ref() == "age-board" => set_board(d, index, cx),

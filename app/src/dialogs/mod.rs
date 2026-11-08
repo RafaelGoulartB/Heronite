@@ -23,6 +23,7 @@ pub mod epic_import;
 pub mod epic_install;
 pub mod epic_modify;
 pub mod game_settings;
+pub mod hltb_match;
 pub mod launch_problem;
 pub mod launch_state;
 pub mod log_viewer;
