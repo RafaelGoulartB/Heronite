@@ -13,7 +13,7 @@ mod actions;
 mod console;
 mod debug;
 mod dialogs;
-mod icon;
+pub(crate) mod icon;
 mod palette;
 mod render;
 
