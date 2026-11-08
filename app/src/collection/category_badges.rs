@@ -161,6 +161,7 @@ fn tags(cats: &[CategoryBadge], a: Area, lead: Option<Div>) -> Div {
         .bottom(a.u(6.))
         .right(a.u(if a.play_room { 34. } else { 6. }))
         .flex()
+        .items_center()
         .gap(a.u(3.))
         .overflow_hidden()
         .children(lead)
