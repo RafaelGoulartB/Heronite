@@ -199,7 +199,7 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
     let cli = Cli { launch: msg.launch.clone(), no_gui: msg.no_gui, ..Default::default() };
     let hide = cli.hide_window(hide_setting);
     if !hide {
-        apply_window_flags(cx, msg.console, msg.fullscreen);
+        apply_window_flags(cx, msg.console, msg.fullscreen, false);
     }
     match msg.launch {
         // Heroic's `second-instance`: show the window unless the launch hides it.

@@ -233,7 +233,7 @@ pub fn fullscreen_asked(cx: &App) -> bool {
 
 /// [`show_window`]; `console`: the window is about to enter console mode (a
 /// new one then opens fullscreen when console mode asks for it).
-fn show_window_for(cx: &mut App, console: bool) -> Option<WeakEntity<CollectionView>> {
+pub(super) fn show_window_for(cx: &mut App, console: bool) -> Option<WeakEntity<CollectionView>> {
     let hub = hub(cx);
     let existing = hub.0.borrow().window.as_ref().map(|w| (w.handle, w.view.clone()));
     if let Some((handle, view)) = existing {
@@ -248,7 +248,9 @@ fn show_window_for(cx: &mut App, console: bool) -> Option<WeakEntity<CollectionV
         (s.fullscreen, AppPaths::for_data(&s.data_paths))
     };
     // Console mode's own fullscreen: set from the start, as switching a
-    // window that is still being mapped can switch it back.
+    // window that is still being mapped can switch it back. A window closed
+    // in console mode (to the tray, for a game) reopens in it.
+    let console = console || crate::console::active();
     let fullscreen = asked || crate::console::startup::opens_fullscreen(&paths, console);
     let window = open_main_window(cx, started, fullscreen)?;
     let view = window.view.clone();
@@ -265,7 +267,8 @@ fn show_window_for(cx: &mut App, console: bool) -> Option<WeakEntity<CollectionV
 /// `--console` / `--fullscreen` (at start or from another invocation): shows
 /// the window and switches it. Console mode is remembered like when it is
 /// picked in the app; fullscreen holds for the windows of this run.
-pub(super) fn apply_window_flags(cx: &mut App, console: bool, fullscreen: bool) {
+/// `just_opened`: the start opened the window for these flags already.
+pub(super) fn apply_window_flags(cx: &mut App, console: bool, fullscreen: bool, just_opened: bool) {
     if !(console || fullscreen) {
         return;
     }
@@ -276,7 +279,7 @@ pub(super) fn apply_window_flags(cx: &mut App, console: bool, fullscreen: bool) 
     // (asking a window that is still being mapped could switch it back).
     let Some(view) = show_window_for(cx, console) else { return };
     let Some(handle) = hub.0.borrow().window.as_ref().map(|w| w.handle) else { return };
-    let opened = existing != Some(handle);
+    let opened = just_opened || existing != Some(handle);
     let switch_fullscreen = fullscreen && !opened;
     handle
         .update(cx, |_, window, cx| {
