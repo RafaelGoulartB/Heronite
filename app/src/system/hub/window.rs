@@ -1,8 +1,10 @@
 //! The main window: opened on demand and dropped when it is closed to the tray.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use gpui_kit::*;
+use heronite_data::ui_state::{self, WindowPlacement};
+use heronite_data::AppPaths;
 
 use super::quit::{allow_user_close, maybe_exit_idle, request_quit};
 use super::start::STARTED;
@@ -32,12 +34,152 @@ fn fitted_sizes(screen: Option<Size<Pixels>>) -> (Size<Pixels>, Size<Pixels>) {
     (open.min(&room), min.min(&room))
 }
 
+/// Least of a remembered window that must still be on a screen (each way, GPUI
+/// px) for it to reopen there: enough to grab it.
+const ON_SCREEN: f32 = 48.;
+
+/// How long the window's placement rests before it is written (a drag or a
+/// resize sends many).
+const PLACEMENT_SAVE_DELAY: Duration = Duration::from_millis(500);
+
+/// The main window's latest placement and the timer that writes it.
+#[derive(Default)]
+pub(super) struct PlacementSave {
+    latest: Option<WindowPlacement>,
+    unsaved: bool,
+    timer: Option<Task<()>>,
+}
+
+/// Where a remembered window reopens (GPUI px; `zoom` is the interface's):
+/// on the screen it overlaps most (its index in `screens`), at least `min`
+/// big, shrunk and moved to fit that screen. `None` when it is on no screen
+/// any more (a monitor that was unplugged).
+fn restored_bounds(saved: &WindowPlacement, zoom: f32, min: Size<Pixels>, screens: &[Bounds<Pixels>]) -> Option<(usize, Bounds<Pixels>)> {
+    let (x, y, w, h) = (saved.x / zoom, saved.y / zoom, saved.width / zoom, saved.height / zoom);
+    let edges = |s: &Bounds<Pixels>| {
+        let (sx, sy) = (f32::from(s.origin.x), f32::from(s.origin.y));
+        (sx, sy, sx + f32::from(s.size.width), sy + f32::from(s.size.height))
+    };
+    let overlap = |s: &Bounds<Pixels>| {
+        let (left, top, right, bottom) = edges(s);
+        let (ow, oh) = ((x + w).min(right) - x.max(left), (y + h).min(bottom) - y.max(top));
+        (ow >= ON_SCREEN && oh >= ON_SCREEN).then_some(ow * oh)
+    };
+    let (i, screen) = screens
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| Some((i, s, overlap(s)?)))
+        .max_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(i, s, _)| (i, s))?;
+    let (left, top, right, bottom) = edges(screen);
+    let w = w.max(f32::from(min.width)).min(right - left);
+    let h = h.max(f32::from(min.height)).min(bottom - top);
+    let (x, y) = (x.min(right - w).max(left), y.min(bottom - h).max(top));
+    Some((i, Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) }))
+}
+
+/// The window's bounds when it opens, the screen they are on (Windows opens a
+/// window on the primary screen unless told another) and whether it opens
+/// maximized: as it was left, else centered at [`OPEN_SIZE`].
+fn opening_bounds(
+    saved: Option<&WindowPlacement>,
+    open_size: Size<Pixels>,
+    min_size: Size<Pixels>,
+    cx: &App,
+) -> (Bounds<Pixels>, Option<DisplayId>, bool) {
+    let displays = cx.displays();
+    let screens: Vec<_> = displays.iter().map(|d| d.visible_bounds()).collect();
+    match saved {
+        Some(p) => match restored_bounds(p, gpui_zoom::zoom(), min_size, &screens) {
+            Some((i, bounds)) => (bounds, Some(displays[i].id()), p.maximized),
+            None => (Bounds::centered(None, open_size, cx), None, p.maximized),
+        },
+        None => (Bounds::centered(None, open_size, cx), None, false),
+    }
+}
+
+/// Notes the window's placement after a move or resize; it is written once
+/// it rests ([`PLACEMENT_SAVE_DELAY`]) or the window closes.
+fn remember_placement(window: &Window, cx: &mut App) {
+    // Fullscreen (F11, `--fullscreen`) is not remembered: the window reopens
+    // as it was before. (X11 reports it as windowed or maximized.)
+    if window.is_fullscreen() {
+        return;
+    }
+    let (bounds, maximized) = match window.window_bounds() {
+        WindowBounds::Windowed(b) => (b, false),
+        WindowBounds::Maximized(b) => (b, true),
+        WindowBounds::Fullscreen(_) => return,
+    };
+    let zoom = gpui_zoom::zoom();
+    let mut placement = WindowPlacement {
+        x: f32::from(bounds.origin.x) * zoom,
+        y: f32::from(bounds.origin.y) * zoom,
+        width: f32::from(bounds.size.width) * zoom,
+        height: f32::from(bounds.size.height) * zoom,
+        maximized,
+    };
+    let hub = hub(cx);
+    let latest = hub.0.borrow().placement.latest;
+    // Maximized keeps the bounds it restores to. Windows reports those; X11
+    // reports the maximized ones, so on Linux the last known ones are kept.
+    if cfg!(target_os = "linux") && maximized {
+        if let Some(l) = latest {
+            placement = WindowPlacement { maximized, ..l };
+        }
+    }
+    if latest == Some(placement) {
+        return;
+    }
+    let timer = cx.spawn(async move |cx| {
+        cx.background_executor().timer(PLACEMENT_SAVE_DELAY).await;
+        cx.update(save_placement);
+    });
+    let mut s = hub.0.borrow_mut();
+    s.placement.latest = Some(placement);
+    s.placement.unsaved = true;
+    // Replacing the timer cancels the previous one.
+    s.placement.timer = Some(timer);
+}
+
+/// Writes the window's placement if it changed since the last write.
+pub(super) fn save_placement(cx: &mut App) {
+    let hub = hub(cx);
+    let (placement, paths) = {
+        let mut s = hub.0.borrow_mut();
+        if !std::mem::take(&mut s.placement.unsaved) {
+            return;
+        }
+        (s.placement.latest, AppPaths::for_data(&s.data_paths))
+    };
+    if let Some(p) = placement {
+        if let Err(err) = ui_state::set_window_placement(&paths, p) {
+            log::warn!("saving the window's placement: {err:#}");
+        }
+    }
+}
+
 fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<MainWindow> {
     let (open_size, min_size) = fitted_sizes(screen(cx));
-    let bounds = Bounds::centered(None, open_size, cx);
+    let saved = {
+        let hub = hub(cx);
+        let mut s = hub.0.borrow_mut();
+        if s.placement.latest.is_none() {
+            s.placement.latest = ui_state::window_placement(&AppPaths::for_data(&s.data_paths));
+        }
+        s.placement.latest
+    };
+    let (bounds, display_id, maximized) = opening_bounds(saved.as_ref(), open_size, min_size, cx);
     let options = WindowOptions {
+        display_id,
         // Fullscreen keeps `bounds` for when F11 switches back.
-        window_bounds: Some(if fullscreen { WindowBounds::Fullscreen(bounds) } else { WindowBounds::Windowed(bounds) }),
+        window_bounds: Some(if fullscreen {
+            WindowBounds::Fullscreen(bounds)
+        } else if maximized {
+            WindowBounds::Maximized(bounds)
+        } else {
+            WindowBounds::Windowed(bounds)
+        }),
         // No system title bar: the app draws its own controls
         // (`ui::window_controls`). `titlebar: None` hides it on Windows; on
         // Linux the compositor is asked to leave the frame to the app.
@@ -57,7 +199,12 @@ fn open_main_window(cx: &mut App, started: Instant, fullscreen: bool) -> Option<
         // The close button / compositor "close": ask first when quitting
         // would leave games or post-game work behind.
         window.on_window_should_close(cx, |_, cx| allow_user_close(cx));
-        cx.new(|cx| CollectionView::new(started, window, cx))
+        cx.new(|cx| {
+            // Moves, resizes, maximizing and restoring; the observer goes with
+            // the view.
+            cx.observe_window_bounds(window, |_, window, cx| remember_placement(window, cx)).detach();
+            CollectionView::new(started, window, cx)
+        })
     });
     crate::collection::discard_preload();
     match opened {
@@ -154,6 +301,11 @@ pub(super) fn close_window_keep_alive(cx: &mut App) -> bool {
 
 pub(super) fn on_window_closed(cx: &mut App, id: WindowId) {
     let hub = hub(cx);
+    if hub.0.borrow().window.as_ref().is_some_and(|w| w.handle.window_id() == id) {
+        // The last move or resize may still be waiting for its timer.
+        hub.0.borrow_mut().placement.timer = None;
+        save_placement(cx);
+    }
     let keep = {
         let mut s = hub.0.borrow_mut();
         if !s.window.as_ref().is_some_and(|w| w.handle.window_id() == id) {
@@ -196,8 +348,32 @@ pub fn has_window(cx: &App) -> bool {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's own `test` macro would shadow `#[test]`.
-    use super::{fitted_sizes, OPEN_SIZE};
-    use gpui_kit::{px, size};
+    use super::{fitted_sizes, restored_bounds, OPEN_SIZE};
+    use gpui_kit::{point, px, size, Bounds, Pixels};
+    use heronite_data::ui_state::WindowPlacement;
+
+    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+        Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) }
+    }
+
+    #[test]
+    fn a_remembered_window_reopens_where_it_was_while_it_fits() {
+        let min = size(px(640.), px(480.));
+        // Two 1080p screens side by side (the taskbar takes 48 px).
+        let screens = [rect(0., 0., 1920., 1032.), rect(1920., 0., 1920., 1032.)];
+        let at = |x, y, width, height| WindowPlacement { x, y, width, height, maximized: false };
+        assert_eq!(restored_bounds(&at(100., 50., 1200., 800.), 1., min, &screens), Some((0, rect(100., 50., 1200., 800.))));
+        // On the second screen: opened there.
+        assert_eq!(restored_bounds(&at(2000., 50., 1200., 800.), 1., min, &screens), Some((1, rect(2000., 50., 1200., 800.))));
+        // The interface zoom does not change the size on screen.
+        assert_eq!(restored_bounds(&at(200., 100., 1600., 1000.), 2., min, &screens), Some((0, rect(100., 50., 800., 500.))));
+        // Hanging off the screen it is mostly on: moved and shrunk onto it.
+        assert_eq!(restored_bounds(&at(-300., 600., 2400., 900.), 1., min, &screens), Some((0, rect(0., 132., 1920., 900.))));
+        // The second screen was unplugged: nowhere to reopen.
+        assert_eq!(restored_bounds(&at(2000., 50., 1200., 800.), 1., min, &screens[..1]), None);
+        // Too small (an older size limit): grown to the smallest.
+        assert_eq!(restored_bounds(&at(10., 10., 200., 100.), 1., min, &screens), Some((0, rect(10., 10., 640., 480.))));
+    }
 
     #[test]
     fn the_window_fits_the_screen() {

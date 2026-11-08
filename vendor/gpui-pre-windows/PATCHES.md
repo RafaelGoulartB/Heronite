@@ -32,5 +32,11 @@ Also, for the interface scale (Settings → Appearance → Zoom):
 crate, a dependency added to `Cargo.toml`). `retrieve_caret_position`
 (`src/events.rs`) multiplies the caret's box by `gpui_zoom::factor`.
 
+`calculate_window_bounds` (`src/window.rs`), behind `window_bounds`, calls a
+minimized window that restores to maximized (`WPF_RESTORETOMAXIMIZED`)
+maximized: upstream said windowed, so the main window, whose placement is
+remembered (`app/src/system/hub/window.rs`), reopened windowed after being
+minimized while maximized.
+
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.
