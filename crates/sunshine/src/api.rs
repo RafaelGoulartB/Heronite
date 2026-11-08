@@ -10,14 +10,22 @@
 //! a redirect (to `/welcome`) means Sunshine has no account yet; a 403 means
 //! the address does not accept this computer (`origin_web_ui_allowed`).
 //! POST and DELETE check a CSRF token only when the request has an `Origin`
-//! or `Referer` header, which this client never sends. The certificate is
-//! Sunshine's own self-signed one, so it is not verified.
+//! or `Referer` header, which this client never sends.
+//!
+//! The certificate is Sunshine's own self-signed one. On this computer it is
+//! not checked; on another computer it is trusted on first use and refused
+//! when it changes ([`crate::pin`]).
 
 use std::fmt;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use base64::Engine;
 use serde_json::{json, Value};
+use ureq::unversioned::resolver::DefaultResolver;
+use ureq::unversioned::transport::{Connector, TcpConnector};
+
+use crate::pin::{self, PinnedConnector, Seen};
 
 /// What went wrong talking to Sunshine.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +41,10 @@ pub enum Error {
     NotSetUp,
     /// Sunshine refuses this computer (its "origin" setting).
     Forbidden,
+    /// The certificate is not the one kept on first use (another computer at
+    /// the address, a reinstalled Sunshine, or someone in between). `seen` is
+    /// the new fingerprint, for the user to accept.
+    CertificateChanged { seen: String },
     /// Anything else Sunshine (or the connection) answered.
     Api(String),
 }
@@ -45,6 +57,7 @@ impl fmt::Display for Error {
             Error::Unauthorized => write!(f, "Sunshine refused the user name or password"),
             Error::NotSetUp => write!(f, "Sunshine has no web UI account yet"),
             Error::Forbidden => write!(f, "Sunshine does not accept requests from this computer"),
+            Error::CertificateChanged { seen } => write!(f, "Sunshine's certificate changed (now {seen})"),
             Error::Api(e) => write!(f, "Sunshine: {e}"),
         }
     }
@@ -72,29 +85,71 @@ pub fn normalize_address(address: &str) -> Option<String> {
     Some(format!("{scheme}://{rest}"))
 }
 
+/// How the server's certificate is trusted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Trust {
+    /// Not checked: plain HTTP, or Sunshine on this computer.
+    Any,
+    /// Pinned. `Some` is the fingerprint kept from the first use; `None` is
+    /// a first use, which takes the certificate it sees.
+    Pin(Option<String>),
+}
+
+impl Trust {
+    /// What a (normalized) address gets: nothing checked over plain HTTP or
+    /// on this computer, else the pin (`pin` empty: a first use).
+    pub fn for_address(address: &str, pin: &str) -> Trust {
+        let https = address.trim_start().get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://"));
+        if !https || pin::is_loopback(pin::host_of(address)) {
+            return Trust::Any;
+        }
+        let pin = pin.trim();
+        Trust::Pin((!pin.is_empty()).then(|| pin.to_string()))
+    }
+}
+
 /// A signed-in connection to one Sunshine.
 pub struct Client {
     base: String,
     auth: String,
     agent: ureq::Agent,
+    /// What the pinned handshakes saw; `None` when certificates are not
+    /// checked.
+    seen: Option<Arc<Mutex<Seen>>>,
 }
 
 impl Client {
-    pub fn new(address: &str, username: &str, password: &str) -> Result<Self, Error> {
+    /// `pin`: the certificate fingerprint kept from the first use (empty for
+    /// none). It only applies to an HTTPS address on another computer.
+    pub fn new(address: &str, username: &str, password: &str, pin: &str) -> Result<Self, Error> {
+        let base = normalize_address(address).ok_or(Error::BadAddress)?;
+        let trust = Trust::for_address(&base, pin);
+        Self::with_trust(&base, username, password, trust)
+    }
+
+    /// [`Client::new`] with the trust given (tests pin a local server).
+    pub fn with_trust(address: &str, username: &str, password: &str, trust: Trust) -> Result<Self, Error> {
         let base = normalize_address(address).ok_or(Error::BadAddress)?;
         let auth = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}")));
-        let tls = ureq::tls::TlsConfig::builder().disable_verification(true).build();
-        let agent = ureq::Agent::config_builder()
-            .tls_config(tls)
+        let config = ureq::Agent::config_builder()
             .http_status_as_error(false)
             .max_redirects(0)
             .max_redirects_will_error(false)
             .timeout_connect(Some(Duration::from_secs(5)))
             .timeout_global(Some(Duration::from_secs(30)))
-            .user_agent("Heronite")
-            .build()
-            .into();
-        Ok(Self { base, auth, agent })
+            .user_agent("Heronite");
+        let (agent, seen) = match trust {
+            Trust::Any => {
+                let tls = ureq::tls::TlsConfig::builder().disable_verification(true).build();
+                (config.tls_config(tls).build().into(), None)
+            }
+            Trust::Pin(pin) => {
+                let seen = Arc::new(Mutex::new(Seen::default()));
+                let connector = TcpConnector::default().chain(PinnedConnector::new(pin, seen.clone()));
+                (ureq::Agent::with_parts(config.build(), connector, DefaultResolver::default()), Some(seen))
+            }
+        };
+        Ok(Self { base, auth, agent, seen })
     }
 
     /// The address requests go to (normalized).
@@ -102,11 +157,18 @@ impl Client {
         &self.base
     }
 
+    /// The fingerprint of the certificate the last handshake saw; `None`
+    /// when certificates are not checked for this address (or nothing
+    /// answered). After a first use, this is the one to keep.
+    pub fn certificate(&self) -> Option<String> {
+        self.seen.as_ref().and_then(|s| s.lock().ok()?.fingerprint.clone())
+    }
+
     /// The applications, in Sunshine's order (the order indexes refer to).
     pub fn apps(&self) -> Result<Vec<Value>, Error> {
         let url = format!("{}/api/apps", self.base);
         let resp = self.agent.get(&url).header("Authorization", &self.auth).call();
-        let doc = answer(resp)?;
+        let doc = answer(resp.map_err(|e| self.failed(e))?)?;
         match doc.get("apps") {
             Some(Value::Array(apps)) => Ok(apps.clone()),
             None | Some(Value::Null) => Ok(Vec::new()),
@@ -122,20 +184,29 @@ impl Client {
         let url = format!("{}/api/apps", self.base);
         let resp =
             self.agent.post(&url).header("Authorization", &self.auth).header("Content-Type", "application/json").send(body.to_string());
-        answer(resp).map(drop)
+        answer(resp.map_err(|e| self.failed(e))?).map(drop)
     }
 
     /// Deletes the application at `index`.
     pub fn delete(&self, index: usize) -> Result<(), Error> {
         let url = format!("{}/api/apps/{index}", self.base);
         let resp = self.agent.delete(&url).header("Authorization", &self.auth).call();
-        answer(resp).map(drop)
+        answer(resp.map_err(|e| self.failed(e))?).map(drop)
+    }
+
+    /// A failed request as an error, telling a refused certificate apart.
+    fn failed(&self, e: ureq::Error) -> Error {
+        if let Some(seen) = self.seen.as_ref().and_then(|s| s.lock().ok()) {
+            if seen.changed {
+                return Error::CertificateChanged { seen: seen.fingerprint.clone().unwrap_or_default() };
+            }
+        }
+        transport(e)
     }
 }
 
 /// Turns a response into its JSON body, or the error it stands for.
-fn answer(resp: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result<Value, Error> {
-    let mut resp = resp.map_err(transport)?;
+fn answer(mut resp: ureq::http::Response<ureq::Body>) -> Result<Value, Error> {
     let status = resp.status().as_u16();
     // Small answers only; the app list of a big library stays well under this.
     let body = resp.body_mut().with_config().limit(32 * 1024 * 1024).read_to_string().unwrap_or_default();
@@ -176,7 +247,7 @@ fn transport(e: ureq::Error) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_address;
+    use super::{normalize_address, Trust};
 
     #[test]
     fn addresses_get_a_scheme_and_lose_trailing_slashes() {
@@ -189,5 +260,15 @@ mod tests {
         assert_eq!(normalize_address("https://"), None);
         assert_eq!(normalize_address("https://a b"), None);
         assert_eq!(normalize_address("https://x/?q=1"), None);
+    }
+
+    #[test]
+    fn certificates_are_pinned_only_for_https_on_another_computer() {
+        assert_eq!(Trust::for_address("https://localhost:47990", "AA"), Trust::Any);
+        assert_eq!(Trust::for_address("https://127.0.0.1:47990", ""), Trust::Any);
+        assert_eq!(Trust::for_address("https://[::1]:47990", ""), Trust::Any);
+        assert_eq!(Trust::for_address("http://192.168.1.20:47990", ""), Trust::Any);
+        assert_eq!(Trust::for_address("https://192.168.1.20:47990", ""), Trust::Pin(None));
+        assert_eq!(Trust::for_address("https://pc.lan:47990", " AA:BB "), Trust::Pin(Some("AA:BB".into())));
     }
 }

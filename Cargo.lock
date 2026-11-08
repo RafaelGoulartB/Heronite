@@ -3956,7 +3956,9 @@ dependencies = [
  "base64 0.22.1",
  "heronite-data",
  "heronite-platform",
+ "rustls",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "ureq",
 ]

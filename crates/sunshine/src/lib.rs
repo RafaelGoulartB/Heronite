@@ -5,6 +5,8 @@
 //! * [`api`]: Sunshine's web API (`https://localhost:47990` unless changed,
 //!   basic auth, a self-signed certificate): list, save and delete
 //!   applications.
+//! * [`pin`]: the certificate of a Sunshine on another computer, trusted on
+//!   first use and refused when it changes (not checked on this computer).
 //! * [`entry`]: what one of Heronite's applications holds, and the marker
 //!   key (`heronite-id`) that tells them from the user's own. Sunshine keeps
 //!   unknown keys of an application, so the marker survives its web UI.
@@ -23,10 +25,11 @@
 pub mod api;
 pub mod entry;
 pub mod install;
+pub mod pin;
 pub mod prefs;
 pub mod sync;
 
-pub use api::{Client, Error};
+pub use api::{Client, Error, Trust};
 pub use entry::Entry;
 pub use sync::{sync, Report};
 

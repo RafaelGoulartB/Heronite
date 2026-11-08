@@ -13,7 +13,7 @@ use heronite_sunshine::prefs::Games;
 use super::SettingsPage;
 use crate::icons::Icon;
 use crate::pages::status_pill;
-use crate::services::sunshine::{self as service, Status};
+use crate::services::sunshine::{self as service, Problem, Status};
 use crate::theme;
 use crate::ui::controls::{button_sm, caption, card, help_text, icon_badge, row, row_lead, segmented, toggle, toggle_row, ButtonKind};
 use crate::ui::fields::{input_box, labeled, new_input};
@@ -86,6 +86,11 @@ fn account_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     };
     let (pill, colour, line) = status_parts(&status, prefs.enabled);
     let busy = status == Status::Syncing;
+    // A Sunshine on another computer showed a different certificate.
+    let new_certificate = match &status {
+        Status::Failed(Problem::CertificateChanged(seen)) if prefs.enabled => Some(seen.clone()),
+        _ => None,
+    };
     let main = row_lead(
         icon_badge(Icon::Tv),
         tr!("Keep my games in Sunshine"),
@@ -117,6 +122,12 @@ fn account_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
         .children(line.map(|(text, error)| {
             div().text_size(px(12.5)).text_color(if error { theme::danger_text() } else { theme::text_muted() }).child(text)
         }))
+        .children(new_certificate.as_ref().map(|seen| {
+            div()
+                .text_size(px(12.))
+                .text_color(theme::text_dim())
+                .child(tr!("New certificate (SHA-256): {fingerprint}", fingerprint = seen.as_str()))
+        }))
         .child(
             div()
                 .flex()
@@ -128,6 +139,12 @@ fn account_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
                         .when(busy, |b| b.opacity(0.7))
                         .when(!busy, |b| b.on_click(cx.listener(|d, _, window, cx| connect(d, window, cx)))),
                 )
+                .when(new_certificate.is_some(), |r| {
+                    r.child(
+                        button_sm("sunshine-accept-cert", ButtonKind::Glass, tr!("Accept the new certificate"))
+                            .on_click(cx.listener(|_, _, _, cx| service::get(cx).update(cx, |s, cx| s.accept_certificate(cx)))),
+                    )
+                })
                 .when(prefs.enabled && has_password, |r| {
                     r.child(
                         button_sm("sunshine-sync", ButtonKind::Glass, tr!("Sync now"))

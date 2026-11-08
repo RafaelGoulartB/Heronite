@@ -12,6 +12,9 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 anyhow = "1"
 base64 = "0.22"
 ureq = "3"
+# The pinned TLS layer (`pin`); the same rustls and provider ureq uses.
+rustls = { version = "0.23", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

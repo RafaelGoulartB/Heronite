@@ -11,6 +11,9 @@
 //! - `password`: on Windows, the password sealed with DPAPI for this user
 //!   (base64). Never in the clear: other systems keep it in the desktop's
 //!   keyring instead, and this key stays empty.
+//! - `certificate`: for a Sunshine on another computer, the fingerprint of
+//!   the certificate it had the first time (trust on first use, see
+//!   [`crate::pin`]); empty until then, and for this computer.
 
 use anyhow::Result;
 use base64::Engine;
@@ -55,6 +58,8 @@ pub struct Prefs {
     pub console_entry: bool,
     /// The DPAPI-sealed password, base64 (Windows); empty when none is kept here.
     pub sealed_password: String,
+    /// The pinned certificate fingerprint; empty for none yet.
+    pub certificate: String,
 }
 
 impl Default for Prefs {
@@ -67,6 +72,7 @@ impl Default for Prefs {
             stop_on_quit: true,
             console_entry: true,
             sealed_password: String::new(),
+            certificate: String::new(),
         }
     }
 }
@@ -86,6 +92,7 @@ impl Prefs {
             stop_on_quit: flag("stopOnQuit", d.stop_on_quit),
             console_entry: flag("consoleEntry", d.console_entry),
             sealed_password: text("password").unwrap_or_default(),
+            certificate: text("certificate").unwrap_or_default(),
         }
     }
 
@@ -102,6 +109,7 @@ impl Prefs {
             doc["stopOnQuit"] = json!(self.stop_on_quit);
             doc["consoleEntry"] = json!(self.console_entry);
             doc["password"] = json!(self.sealed_password);
+            doc["certificate"] = json!(self.certificate);
             Ok(())
         })
     }
@@ -147,6 +155,7 @@ mod tests {
             stop_on_quit: false,
             console_entry: false,
             sealed_password: "c2VhbGVk".into(),
+            certificate: "AB:CD".into(),
         };
         prefs.save(&p).unwrap();
         assert_eq!(Prefs::load(&p), prefs);

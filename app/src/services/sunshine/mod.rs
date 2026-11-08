@@ -8,6 +8,10 @@
 //! Settings card and logged once until it changes: no toasts, no repeats.
 //! While Sunshine does not answer, a quiet retry runs every few minutes (it
 //! often starts after Heronite at login).
+//!
+//! A Sunshine on another computer has its certificate pinned on the first
+//! sync that goes through; a different one later stops syncing until the
+//! user accepts it ([`Sunshine::accept_certificate`]).
 
 mod secret;
 pub mod wanted;
@@ -37,6 +41,8 @@ pub enum Problem {
     Unauthorized,
     NotSetUp,
     Forbidden,
+    /// Not the certificate pinned on first use; the new fingerprint.
+    CertificateChanged(String),
     Other(String),
 }
 
@@ -49,6 +55,7 @@ impl Problem {
             Error::Unauthorized => Problem::Unauthorized,
             Error::NotSetUp => Problem::NotSetUp,
             Error::Forbidden => Problem::Forbidden,
+            Error::CertificateChanged { seen } => Problem::CertificateChanged(seen),
             Error::Api(e) => Problem::Other(e),
         }
     }
@@ -64,6 +71,10 @@ impl Problem {
             Problem::Unauthorized => tr!("Sunshine refused the user name or password.").into(),
             Problem::NotSetUp => tr!("Sunshine has no account yet: open its web page once to create one.").into(),
             Problem::Forbidden => tr!("Sunshine does not accept this computer at this address.").into(),
+            Problem::CertificateChanged(_) => tr!(
+                "Sunshine's certificate is not the one it had before. If Sunshine was reinstalled or moved, accept the new one; if not, check the address."
+            )
+            .into(),
             Problem::Other(e) => tr!("Sunshine answered with an error: {error}", error = e.as_str()),
         }
     }
@@ -204,6 +215,10 @@ impl Sunshine {
     /// and syncs.
     pub fn connect(&mut self, address: String, username: String, password: String, cx: &mut Context<Self>) {
         let address = heronite_sunshine::api::normalize_address(&address).unwrap_or(address);
+        if address != self.prefs.address {
+            // Another Sunshine: its certificate is a first use again.
+            self.prefs.certificate.clear();
+        }
         self.prefs.address = address;
         self.prefs.username = username;
         self.prefs.enabled = true;
@@ -234,6 +249,18 @@ impl Sunshine {
             .ok();
         })
         .detach();
+    }
+
+    /// Trusts the certificate Sunshine shows now, in place of the pinned one,
+    /// and syncs.
+    pub fn accept_certificate(&mut self, cx: &mut Context<Self>) {
+        let Status::Failed(Problem::CertificateChanged(seen)) = &self.status else { return };
+        log::info!("Sunshine: the new certificate {seen} was accepted");
+        self.prefs.certificate = seen.clone();
+        self.logged = None;
+        self.synced = None;
+        self.save(cx);
+        self.start(Job::Sync, cx);
     }
 
     fn save(&mut self, cx: &mut Context<Self>) {
@@ -298,9 +325,17 @@ impl Sunshine {
         .detach();
     }
 
-    fn finish(&mut self, job: Job, done: Result<(Report, usize), Problem>, cx: &mut Context<Self>) {
-        match done {
+    fn finish(&mut self, job: Job, done: Ran, cx: &mut Context<Self>) {
+        let Ran { address, certificate, result } = done;
+        match result {
             Ok((report, entries)) => {
+                // Trust on first use: the certificate of the first sync that
+                // went through (for the address it went to).
+                if let Some(fp) = certificate.filter(|_| self.prefs.certificate.is_empty() && self.prefs.address == address) {
+                    log::info!("Sunshine: trusting its certificate {fp}");
+                    self.prefs.certificate = fp;
+                    self.save(cx);
+                }
                 if report.changed() {
                     log::info!(
                         "Sunshine: {} added, {} updated, {} removed ({entries} entries)",
@@ -322,13 +357,33 @@ impl Sunshine {
     }
 }
 
+/// What a job did.
+struct Ran {
+    /// The address it used (the settings may have changed meanwhile).
+    address: String,
+    /// The certificate seen, when certificates are pinned for the address.
+    certificate: Option<String>,
+    /// What changed and how many entries Heronite has there now.
+    result: Result<(Report, usize), Problem>,
+}
+
 /// The blocking part of a job: read the library, build the entries and
-/// bring Sunshine in line. Returns what changed and how many entries
-/// Heronite has there now.
-fn run(data_paths: &DataPaths, prefs: &Prefs, password: &str, job: Job) -> Result<(Report, usize), Problem> {
-    let client = Client::new(&prefs.address, &prefs.username, password).map_err(Problem::from_api)?;
+/// bring Sunshine in line.
+fn run(data_paths: &DataPaths, prefs: &Prefs, password: &str, job: Job) -> Ran {
+    let client = Client::new(&prefs.address, &prefs.username, password, &prefs.certificate);
+    let (certificate, result) = match &client {
+        Ok(client) => {
+            let result = run_with(client, data_paths, prefs, job);
+            (client.certificate(), result)
+        }
+        Err(e) => (None, Err(Problem::from_api(e.clone()))),
+    };
+    Ran { address: prefs.address.clone(), certificate, result }
+}
+
+fn run_with(client: &Client, data_paths: &DataPaths, prefs: &Prefs, job: Job) -> Result<(Report, usize), Problem> {
     if job == Job::Clear {
-        let removed = heronite_sunshine::sync::remove_all(&client).map_err(Problem::from_api)?;
+        let removed = heronite_sunshine::sync::remove_all(client).map_err(Problem::from_api)?;
         return Ok((Report { removed, ..Default::default() }, 0));
     }
     // Reach Sunshine before the covers are rendered: a wrong password or a
@@ -336,7 +391,7 @@ fn run(data_paths: &DataPaths, prefs: &Prefs, password: &str, job: Job) -> Resul
     client.apps().map_err(Problem::from_api)?;
     let lib = Library::load(data_paths).map_err(|e| Problem::Other(format!("{e:#}")))?;
     let entries = wanted::entries(data_paths, &lib, prefs);
-    let report = heronite_sunshine::sync(&client, &entries).map_err(Problem::from_api)?;
+    let report = heronite_sunshine::sync(client, &entries).map_err(Problem::from_api)?;
     wanted::remove_stale_covers(data_paths, &entries);
     Ok((report, entries.len()))
 }
