@@ -389,8 +389,9 @@ text size) and applies it.
   is not offered.
   `audio::windows` adapts Core Audio (`heronite-platform::audio`): endpoint
   volume/mute, microphone mute and active per-app/game sessions, identified by
-  stable session IDs rather than enumeration order. Default device switching
-  stays in Windows settings. On Linux, `input` reads
+  stable session IDs rather than enumeration order. The default output and
+  microphone change through the undocumented IPolicyConfig
+  (`heronite-platform::audio::set_default_device`, every role). On Linux, `input` reads
   the controllers from `/dev/input/event*` on its own thread (only while a
   game launched by the app runs and the overlay is on) and grabs them
   (`EVIOCGRAB`) while Guide is held or the panel is open, so the game gets

@@ -110,13 +110,14 @@ fn game_changed(game_pid: u32, changed: Option<usize>) {
     }
 }
 
-/// Default endpoint switching has no documented Windows API.
-pub fn set_default_output(_name: &str) {
-    log::warn!("Core Audio: default output switching is unsupported; use Windows sound settings");
+/// Makes `id` (an [`Output::name`] of [`AudioState::outputs`]) the default output.
+pub fn set_default_output(id: &str) {
+    reported("setting the default output", native::set_default_device(id));
 }
 
-pub fn set_default_input(_name: &str) {
-    log::warn!("Core Audio: default microphone switching is unsupported; use Windows sound settings");
+/// Makes `id` (an [`Output::name`] of [`AudioState::inputs`]) the microphone.
+pub fn set_default_input(id: &str) {
+    reported("setting the default microphone", native::set_default_device(id));
 }
 
 /// Recorder stream-name selection is a PulseAudio feature, not a WASAPI one.
@@ -269,7 +270,6 @@ mod tests {
         assert_eq!(state.mic_muted, None);
         assert_eq!(state.game_volume, None);
         assert!(!state.game_muted);
-        assert!(!super::super::device_switching_supported());
     }
 
     #[test]

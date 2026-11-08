@@ -76,8 +76,11 @@ does not inject code into games.
   Audio and Controller reuse the Linux views. Screenshot capture uses the
   existing Windows backend.
 - **Audio:** Core Audio supplies system volume/mute, microphone mute and
-  active app/game audio sessions. Choose default devices in Windows sound
-  settings; Heronite does not use undocumented device-switching APIs.
+  active app/game audio sessions. The output and the microphone are switched
+  from the panel (Y on Home's mixer, the Output and Microphone rows on Audio)
+  through IPolicyConfig: undocumented, but what Windows' sound settings use
+  and unchanged since Vista (EarTrumpet and SoundSwitch rely on it). It sets
+  the device for every role (console, multimedia, communications).
 - **Notices:** non-activating, pointer-transparent windows; they do not
   request foreground. Native placement accounts for monitor origin and DPI.
 - **Unavailable:** replay recording, gamescope/MangoHud live FPS controls

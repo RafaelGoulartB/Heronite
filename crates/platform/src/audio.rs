@@ -1,16 +1,21 @@
 //! Blocking Windows Core Audio controls. Every call joins COM on the calling
 //! worker for its duration and owns its interfaces; only plain snapshot data
 //! leaves it.
+//!
+//! Changing the default device has no documented API: [`set_default_device`]
+//! uses IPolicyConfig ([`policy`]), what Windows' own sound settings call and what
+//! EarTrumpet, SoundSwitch and AudioDeviceCmdlets use, unchanged since Vista.
 
 use std::io;
 use std::ptr;
 
-use windows::core::{Error, Result, HRESULT, PWSTR};
+use windows::core::{Error, Result, HRESULT, PCWSTR, PWSTR};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Foundation::ERROR_NOT_FOUND;
 use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
 use windows::Win32::Media::Audio::{
-    eCapture, eMultimedia, eRender, EDataFlow, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+    eCapture, eCommunications, eConsole, eMultimedia, eRender, EDataFlow, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator,
+    DEVICE_STATE_ACTIVE,
 };
 use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PropVariantToStringAlloc};
 use windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_ALL, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, STGM_READ};
@@ -142,6 +147,56 @@ pub fn set_mic_muted(muted: bool) -> io::Result<()> {
     set_endpoint_muted(eCapture, muted)
 }
 
+/// Makes the endpoint `id` (a [`Device::id`] of [`Snapshot::outputs`] or
+/// [`Snapshot::inputs`]) the default for every role, as the sound settings
+/// do: games, media and calls follow it. Streams playing on the old default
+/// move with it, unless their app picked a device itself.
+pub fn set_default_device(id: &str) -> io::Result<()> {
+    let id: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
+    with_com(|| {
+        // SAFETY: COM is initialized for this call; `id` is NUL-terminated and
+        // outlives every call that borrows it.
+        unsafe {
+            let config: policy::IPolicyConfig = CoCreateInstance(&policy::CLIENT, None, CLSCTX_ALL)?;
+            for role in [eConsole, eMultimedia, eCommunications] {
+                config.SetDefaultEndpoint(PCWSTR(id.as_ptr()), role).ok()?;
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The undocumented policy interface of the audio service, in its Windows 7+
+/// layout. Only `SetDefaultEndpoint` is called; the other methods keep its
+/// place in the vtable.
+#[allow(dead_code, non_snake_case)]
+mod policy {
+    use std::ffi::c_void;
+
+    use windows::core::{GUID, HRESULT, PCWSTR};
+    use windows::Win32::Media::Audio::ERole;
+    use windows_core::{interface, IUnknown, IUnknown_Vtbl};
+
+    /// CPolicyConfigClient, the class behind [`IPolicyConfig`].
+    pub(super) const CLIENT: GUID = GUID::from_u128(0x870af99c_171d_4f9e_af0d_e63df40c2bc9);
+
+    #[interface("f8679f50-850a-41cf-9c72-430f290290c8")]
+    pub(super) unsafe trait IPolicyConfig: IUnknown {
+        fn GetMixFormat(&self, device: PCWSTR, format: *mut *mut c_void) -> HRESULT;
+        fn GetDeviceFormat(&self, device: PCWSTR, default: i32, format: *mut *mut c_void) -> HRESULT;
+        fn ResetDeviceFormat(&self, device: PCWSTR) -> HRESULT;
+        fn SetDeviceFormat(&self, device: PCWSTR, endpoint: *mut c_void, mix: *mut c_void) -> HRESULT;
+        fn GetProcessingPeriod(&self, device: PCWSTR, default: i32, period: *mut i64, minimum: *mut i64) -> HRESULT;
+        fn SetProcessingPeriod(&self, device: PCWSTR, period: *mut i64) -> HRESULT;
+        fn GetShareMode(&self, device: PCWSTR, mode: *mut c_void) -> HRESULT;
+        fn SetShareMode(&self, device: PCWSTR, mode: *mut c_void) -> HRESULT;
+        fn GetPropertyValue(&self, device: PCWSTR, key: *const c_void, value: *mut c_void) -> HRESULT;
+        fn SetPropertyValue(&self, device: PCWSTR, key: *const c_void, value: *mut c_void) -> HRESULT;
+        pub(super) fn SetDefaultEndpoint(&self, device: PCWSTR, role: ERole) -> HRESULT;
+        fn SetEndpointVisibility(&self, device: PCWSTR, visible: i32) -> HRESULT;
+    }
+}
+
 fn set_endpoint_muted(flow: EDataFlow, muted: bool) -> io::Result<()> {
     with_audio(|enumerator| {
         let volume = default_volume(enumerator, flow)?;
@@ -252,16 +307,22 @@ unsafe fn take_string(value: PWSTR) -> String {
 }
 
 fn with_audio<T>(work: impl FnOnce(&IMMDeviceEnumerator) -> Result<T>) -> io::Result<T> {
-    let error = |error: Error| io::Error::other(error.to_string());
+    with_com(|| {
+        // SAFETY: COM stays initialized on this thread until `with_com`
+        // returns, after the enumerator and all of work's locals.
+        let enumerator: IMMDeviceEnumerator = unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER) }?;
+        work(&enumerator)
+    })
+}
+
+fn with_com<T>(work: impl FnOnce() -> Result<T>) -> io::Result<T> {
     // The multithreaded apartment when this worker has none yet; a worker
     // already in a single-threaded one keeps it. Reading endpoints and
-    // sessions and setting their volume work in either (only notification
-    // callbacks, which this does not register, would want the MTA).
+    // sessions, setting their volume and the default device work in either
+    // (only notification callbacks, which this does not register, would want
+    // the MTA).
     let _com = Com::init(COINIT_MULTITHREADED);
-    // SAFETY: COM stays initialized on this thread until `_com` drops, after
-    // the enumerator and all of work's locals.
-    let enumerator: IMMDeviceEnumerator = unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER) }.map_err(error)?;
-    work(&enumerator).map_err(error)
+    work().map_err(|error: Error| io::Error::other(error.to_string()))
 }
 
 #[cfg(test)]
