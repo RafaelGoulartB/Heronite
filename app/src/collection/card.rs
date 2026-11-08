@@ -1,8 +1,8 @@
 //! `CollectionCard`: cover (125px in the list, the grid's width in the grid),
 //! radius 6 (Settings → Appearance → Corners), soft shadow, playtime label
 //! below (the title above it when the grid shows titles), hover bar with the
-//! play button, the hover effect of [`CardLook`] and the game's categories
-//! (`category_badges`).
+//! play button, the hover effect of [`CardLook`], the game's categories
+//! (`category_badges`) and its stores (`store_badges`).
 
 use std::time::Duration;
 
@@ -12,6 +12,7 @@ use gpui_kit::*;
 use heronite_data::appearance::{CategoryStyle, CoverHover};
 
 use super::category_badges::{self as cats, CategoryBadge};
+use super::store_badges as stores;
 use super::vm::CardVm;
 use crate::icons::Icon;
 use crate::theme;
@@ -30,6 +31,8 @@ pub(super) struct CardLook {
     pub caption: bool,
     /// How the game's categories show; `None` while they are off.
     pub categories: Option<CategoryStyle>,
+    /// The logos of the game's stores at the bottom-left of the cover.
+    pub stores: bool,
 }
 
 pub(super) struct CardState<'a> {
@@ -54,6 +57,9 @@ pub(super) struct CardState<'a> {
     pub look: CardLook,
     /// The game's categories (empty while [`CardLook::categories`] is off).
     pub categories: Vec<CategoryBadge>,
+    /// The logos of the game's stores, its own first (empty while
+    /// [`CardLook::stores`] is off).
+    pub stores: Vec<Icon>,
     /// The window's scale factor (the categories' SVG shapes).
     pub scale: f32,
 }
@@ -105,10 +111,27 @@ pub fn card(
     let area = cats::Area { w: s.width, radius: r, scale: s.scale, unit: 1., play_room: true };
     let circles = if style == Some(CategoryStyle::Circles) { cats::circles(&s.categories, area) } else { Vec::new() };
     let corner_taken = style.is_some_and(cats::takes_top_right);
-    let category_overlay = style
-        .filter(|st| *st != CategoryStyle::Circles && !(s.pick.is_some() && cats::takes_top_right(*st)))
-        .and_then(|st| cats::overlay(st, &s.categories, area, show_bar_now(&s)));
-    let copies_left = corner_taken && vm.copies > 1 && s.pick.is_none();
+    // The stores' chip sits at the bottom-left: first in the row of the
+    // tags, over the strip while it shows, gone while an install's progress
+    // takes the bottom of the cover.
+    let installing = s.epic.as_ref().is_some_and(|e| !e.label.is_empty());
+    let store_chip = if installing { None } else { stores::chip(&s.stores) };
+    // Each store's logo already tells the copies apart: no "⧉ 2" then.
+    let copies_told = store_chip.is_some() && s.stores.len() > 1 && s.stores.len() >= vm.copies;
+    let (category_overlay, store_overlay) = match (style, store_chip) {
+        (Some(CategoryStyle::Tags), Some(chip)) => (Some(cats::tags_after(&s.categories, area, chip).into_any_element()), None),
+        (_, chip) => {
+            let over_band = style == Some(CategoryStyle::Band) && !show_bar_now(&s);
+            (
+                style
+                    .filter(|st| *st != CategoryStyle::Circles && !(s.pick.is_some() && cats::takes_top_right(*st)))
+                    .and_then(|st| cats::overlay(st, &s.categories, area, show_bar_now(&s))),
+                chip.map(|c| div().absolute().left(px(6.)).bottom(px(if over_band { 26. } else { 6. })).child(c)),
+            )
+        }
+    };
+    let copies = vm.copies > 1 && s.pick.is_none() && !copies_told;
+    let copies_left = corner_taken && copies;
     let cover_img = match s.cover {
         Some(src) => {
             // GPUI does not clip images to a parent's rounded corners: round the image itself.
@@ -234,7 +257,7 @@ pub fn card(
                         .when(copies_left, |d| d.child(copies_badge(vm.copies).relative().top_0().right_0()))
                         .children(circles)
                 }))
-                .children((vm.copies > 1 && s.pick.is_none() && !copies_left).then(|| copies_badge(vm.copies)))
+                .children((copies && !copies_left).then(|| copies_badge(vm.copies)))
                 .children(ring.map(|color| {
                     div()
                         .absolute()
@@ -263,6 +286,7 @@ pub fn card(
                 })
                 .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(r)).overflow_hidden().child(bar)))
                 .children(category_overlay)
+                .children(store_overlay)
                 .children(s.pick.map(tick_circle)),
         )
         .when(s.title, |d| {

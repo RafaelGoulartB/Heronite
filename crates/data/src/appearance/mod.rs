@@ -230,6 +230,9 @@ pub struct Appearance {
     /// Kept while the categories are off, so switching them back on brings
     /// the same look.
     pub category_style: CategoryStyle,
+    /// The icon of the store each game comes from on its cover (off by
+    /// default): every store when the card stands for several copies.
+    pub cover_stores: bool,
     pub background: BackgroundSource,
     /// With [`BackgroundSource::Screenshot`]: a different screenshot every
     /// [`SLIDESHOW_SECS`].
@@ -271,6 +274,7 @@ impl Appearance {
         cover_hover: CoverHover::DEFAULT,
         cover_categories: false,
         category_style: CategoryStyle::DEFAULT,
+        cover_stores: false,
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
         motion: Motion::DEFAULT,
@@ -366,6 +370,7 @@ impl Appearance {
             cover_hover: name("coverHover").and_then(CoverHover::parse).unwrap_or_default(),
             cover_categories: flag("coverCategories", d.cover_categories),
             category_style: name("categoryStyle").and_then(CategoryStyle::parse).unwrap_or_default(),
+            cover_stores: flag("coverStores", d.cover_stores),
             background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
@@ -402,6 +407,7 @@ impl Appearance {
             "coverHover": self.cover_hover.as_str(),
             "coverCategories": self.cover_categories,
             "categoryStyle": self.category_style.as_str(),
+            "coverStores": self.cover_stores,
             "background": self.background.as_str(),
             "backgroundSlideshow": self.background_slideshow,
             "motion": self.motion.as_str(),
@@ -519,6 +525,7 @@ mod tests {
             cover_hover: CoverHover::Glow,
             cover_categories: true,
             category_style: CategoryStyle::Bookmarks,
+            cover_stores: true,
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
             motion: Motion::Reduced,
@@ -542,6 +549,7 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidDesktop"], true);
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
+        assert_eq!(on_disk["coverStores"], true);
         assert_eq!(on_disk["sections"][0], "related");
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
         assert_eq!(on_disk["autoView"], true);

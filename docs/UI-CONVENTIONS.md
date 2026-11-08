@@ -142,7 +142,9 @@ darkened on the light one until it reads, or "From the desktop"); never write th
 `theme::contrast_a(a)` for faint text over art. **Font** (`theme::font_body()` / `font_heading()`: Cabin + Rubik,
 Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**
 (radius 2 / 6 / 12), **Under the cover** (playtime or the sort value, playtime, last played, status with its colour,
-title, nothing; `data::chosen_caption`), **Favourite star**, **Under the pointer** (nothing, lift 4px, glow with an
+title, nothing; `data::chosen_caption`), **Favourite star**, **Store icon** (`coverStores`: the logos of the
+game's stores in a dark chip at the bottom-left, first in the row of the category tags, above the strip; each store
+once, the copies' too, `+N` past three; none while grouped by store; `store_badges`), **Under the pointer** (nothing, lift 4px, glow with an
 accent ring). **Zoom** (50 to 300%, `system::ui_scale`; Ctrl + / Ctrl − anywhere, Ctrl 0 back to the system's): the
 whole interface, on top of the screen's scale; "Follow the system" takes `GDK_DPI_SCALE`, `QT_SCALE_FACTOR`, GNOME's
 text size (Wayland) or Windows' text size. Its slider applies when let go. A window choice like the layout: profiles
@@ -240,7 +242,7 @@ rows, the covers' size (Small fits one more per row, Large one less; `focusCover
 in Grid the cover size, what goes under the covers (Nothing, Title, Info, Title and info; `gridLabel`, Info being
 Appearance's "Under the cover" line) and "Open details on select" (`gridOpenOnSelect`; off, a double click or Enter
 opens the drawer); then, in both, the covers' look, the same settings as Appearance (Cover aspect, where Banner
-shows each game's hero art, Corners, Density, Under the pointer, Favourite star); then "More in Appearance" and
+shows each game's hero art, Corners, Density, Under the pointer, Favourite star, Store icon); then "More in Appearance" and
 "Reset to defaults" (the mode's options and the covers' look; dimmed when all are at their default). Header menus
 open on click or after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open
 on click only and close on a click outside, Esc or a change of mode. The ☰ menu (`nav.rs`) is a list:

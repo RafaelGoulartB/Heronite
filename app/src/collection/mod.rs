@@ -62,6 +62,7 @@ mod selection;
 mod sideload_uninstall;
 mod steam_copy;
 mod steam_pill;
+mod store_badges;
 mod system_glue;
 mod timeline;
 mod timeline_achievements;

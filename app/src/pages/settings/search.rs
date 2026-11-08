@@ -69,6 +69,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Corners",
             "Under the cover",
             "Favourite star",
+            "Store icon",
             "Under the pointer",
             "Categories on covers",
             "Show categories on covers",

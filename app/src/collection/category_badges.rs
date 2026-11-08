@@ -102,7 +102,7 @@ pub fn overlay(style: CategoryStyle, cats: &[CategoryBadge], a: Area, hovered: b
     }
     Some(match style {
         CategoryStyle::Ribbon => ribbon(cats, a),
-        CategoryStyle::Tags => tags(cats, a).into_any_element(),
+        CategoryStyle::Tags => tags(cats, a, None).into_any_element(),
         CategoryStyle::Band if hovered => return None,
         CategoryStyle::Band => band(cats, a).into_any_element(),
         CategoryStyle::Circles => {
@@ -135,9 +135,26 @@ fn chip(a: Area) -> Div {
         .text_color(theme::white_a(0.92))
 }
 
-/// Tags at the bottom-left, clear of the play button on the right.
-fn tags(cats: &[CategoryBadge], a: Area) -> Div {
-    let shown = if a.w >= 160. && cats.len() <= 2 || a.w >= 200. { 2 } else { 1 };
+/// [`CategoryStyle::Tags`] with `lead` first in their row (the cover's
+/// store icons).
+pub fn tags_after(cats: &[CategoryBadge], a: Area, lead: Div) -> Div {
+    tags(cats, a, Some(lead))
+}
+
+/// Tags at the bottom-left, clear of the play button on the right, after
+/// `lead` (which takes the room of a tag).
+fn tags(cats: &[CategoryBadge], a: Area, lead: Option<Div>) -> Div {
+    let shown = if lead.is_some() {
+        if a.w >= 220. {
+            2
+        } else {
+            1
+        }
+    } else if a.w >= 160. && cats.len() <= 2 || a.w >= 200. {
+        2
+    } else {
+        1
+    };
     div()
         .absolute()
         .left(a.u(6.))
@@ -146,6 +163,7 @@ fn tags(cats: &[CategoryBadge], a: Area) -> Div {
         .flex()
         .gap(a.u(3.))
         .overflow_hidden()
+        .children(lead)
         .children(cats.iter().take(shown).map(|c| {
             chip(a)
                 .min_w_0()

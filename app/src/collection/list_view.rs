@@ -191,6 +191,7 @@ impl CollectionView {
                 pick: self.sel.active().then(|| self.sel.contains(&key)),
                 epic: self.epic_card(&key, cx),
                 categories: if look.categories.is_some() { self.card_categories(&key) } else { Vec::new() },
+                stores: if look.stores { self.card_stores(&key) } else { Vec::new() },
                 look,
                 scale,
             },
@@ -217,6 +218,21 @@ impl CollectionView {
             .filter(|(_, n)| found.contains(n))
             .map(|(i, n)| super::category_badges::CategoryBadge::new(n, i))
             .collect()
+    }
+
+    /// The logos of the stores of the game under `key` (and, while copies
+    /// are grouped, of its other copies), its own first. None while the
+    /// Collection is grouped by store: the section's header names it.
+    fn card_stores(&self, key: &str) -> Vec<Icon> {
+        if self.ui.group_by == heronite_data::GroupBy::Store {
+            return Vec::new();
+        }
+        let mut games = self.with_copies(key);
+        if let Some(i) = games.iter().position(|g| g.key == key) {
+            games[..=i].rotate_right(1);
+        }
+        let store = heronite_data::collection::FacetKind::Store.index();
+        super::store_badges::store_icons(games.iter().flat_map(|g| g.facets[store].iter().map(|f| f.value.as_str())))
     }
 
     fn render_row(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
@@ -473,6 +489,7 @@ fn card_look() -> card::CardLook {
         badges: a.cover_badges,
         caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
         categories: a.cover_categories.then_some(a.category_style),
+        stores: a.cover_stores,
     }
 }
 

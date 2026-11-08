@@ -307,6 +307,7 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
         },
     );
     let badges = a.cover_badges;
+    let stores = a.cover_stores;
     vec![
         row(tr!("Corners"), None, choice("corners", &corner_items(), a.cover_corners, cx, |a, v| a.cover_corners = v)).into_any_element(),
         row(
@@ -318,6 +319,14 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
         toggle_row("cover-badges", tr!("Favourite star"), Some(tr!("A star on the covers of your favourites.")), badges)
             .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_badges = !badges)))
             .into_any_element(),
+        toggle_row(
+            "cover-stores",
+            tr!("Store icon"),
+            Some(tr!("The logo of the store each game comes from, at the bottom-left of its cover.")),
+            stores,
+        )
+        .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores = !stores)))
+        .into_any_element(),
         row(
             tr!("Under the pointer"),
             Some(tr!("What a cover does when the pointer is over it.")),
