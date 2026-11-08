@@ -3554,6 +3554,7 @@ dependencies = [
  "log",
  "notify",
  "notify-rust",
+ "qrcodegen",
  "raw-window-handle",
  "rust-embed",
  "serde_json",
@@ -3913,6 +3914,7 @@ name = "heronite-steam"
 version = "1.4.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "heronite-data",
  "heronite-i18n",
@@ -3921,9 +3923,11 @@ dependencies = [
  "heronite-shortcuts",
  "log",
  "regex",
+ "serde",
  "serde_json",
  "shlex 1.3.0",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]
@@ -6558,6 +6562,12 @@ checksum = "7f6d64c71eb498fe9eae14ce4ec935c555749aef511cca85b5568910d6e48001"
 dependencies = [
  "bytemuck",
 ]
+
+[[package]]
+name = "qrcodegen"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
 
 [[package]]
 name = "quick-error"

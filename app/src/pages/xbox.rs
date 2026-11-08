@@ -1,10 +1,14 @@
-//! The Xbox page of the Stores (Windows): the Microsoft Store and PC Game
-//! Pass games the Xbox app installed on this PC (`services::xbox_library`).
-//! No login needed: Heronite reads which of the user's packages are games
-//! and adds them to the Collection; the Xbox app keeps installing, updating
-//! and signing in to them. An Xbox account may be added (Windows): the play
-//! time Xbox counted, the last play, achievements, art and the games not
-//! installed here come with it.
+//! The Xbox page of the Stores (Windows), laid out as the two import
+//! methods ([`super::methods`]):
+//!
+//! 1. Local, no login: the Microsoft Store and PC Game Pass games the Xbox
+//!    app installed on this PC (`services::xbox_library`). Heronite reads
+//!    which of the user's packages are games and adds them to the
+//!    Collection; the Xbox app keeps installing, updating and signing in to
+//!    them.
+//! 2. Online, optional: the Xbox account (Windows), which brings the play
+//!    time Xbox counted, the last play, achievements, art and the games not
+//!    installed here.
 
 use std::process::{Command, Stdio};
 
@@ -15,14 +19,15 @@ use heronite_i18n::{tr, trn};
 use heronite_xbox::XboxGame;
 
 use super::commands::{CommandCtx, PageCommand, PaletteCommands};
-use super::{caption_with, columns, empty_row, list_item, status_pill, stores, Page, PageCtx, PageEvent};
+use super::methods::{self, Method, Tone};
+use super::{empty_row, list_item, stores, Page, PageCtx, PageEvent};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::services::xbox_library::{open_xbox_app, XboxLibrary, XboxLibraryEvent};
 use crate::theme;
-use crate::ui::controls::{action_button, button_sm, caption, card, icon_button_sm, row, ButtonKind};
+use crate::ui::controls::{action_button, button_sm, caption, card, icon_button_sm, ButtonKind};
 use crate::ui::fields::{input_box, new_input};
 use crate::ui::icon;
 
@@ -48,11 +53,6 @@ const KEYWORDS: &str = "xbox microsoft store game pass gamepass pc windows loja 
 fn read_at(at: &str) -> Option<String> {
     let t = chrono::DateTime::parse_from_rfc3339(at).ok()?.with_timezone(&chrono::Local);
     Some(tr!("Last read {when}", when = t.format("%Y-%m-%d %H:%M")))
-}
-
-/// A paragraph of a card.
-fn paragraph(text: impl Into<SharedString>) -> AnyElement {
-    div().py(px(12.)).text_size(px(13.)).line_height(px(19.)).text_color(theme::text_muted()).child(text.into()).into_any_element()
 }
 
 impl XboxPage {
@@ -101,13 +101,12 @@ impl XboxPage {
         cx.emit(PageEvent::ShowGame(format!("sideload_{}", heronite_xbox::collection::app_name(&game.family))));
     }
 
-    /// The status of the Xbox app: text and colour.
-    fn status(&self, cx: &App) -> (String, Rgba) {
-        let s = self.svc.read(cx);
-        match (&s.found, s.syncing) {
-            (None, _) => (tr!("Looking for games\u{2026}").into(), theme::text_muted()),
-            (Some(f), _) if f.xbox_app => (tr!("Xbox app found").into(), theme::success()),
-            (Some(_), _) => (tr!("Xbox app not found").into(), theme::text_muted()),
+    /// The status of the Xbox app.
+    fn status(&self, cx: &App) -> (String, Tone) {
+        match &self.svc.read(cx).found {
+            None => (tr!("Looking for games\u{2026}").into(), Tone::Accent),
+            Some(f) if f.xbox_app => (tr!("Xbox app found").into(), Tone::Good),
+            Some(_) => (tr!("Xbox app not found").into(), Tone::Neutral),
         }
     }
 
@@ -150,64 +149,33 @@ impl XboxPage {
         }
     }
 
-    fn render_library(&mut self, cx: &mut Context<Self>) -> Div {
-        let (status, color) = self.status(cx);
-        let syncing = self.svc.read(cx).syncing;
-        let mut rows: Vec<AnyElement> = vec![div()
-            .flex()
-            .items_center()
-            .gap(px(14.))
-            .py(px(14.))
-            .child(icon(Icon::ShoppingBag, px(44.), theme::accent()))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(4.))
-                    .child(
-                        div()
-                            .font_family(theme::font_heading())
-                            .text_size(px(20.))
-                            .font_weight(theme::W_BOLD)
-                            .text_color(theme::text_primary())
-                            .child(tr!("Microsoft Store and PC Game Pass")),
-                    )
-                    .child(div().flex().child(status_pill(status, color))),
-            )
-            .child(action_button(
-                "xbox-open",
-                ButtonKind::Glass,
-                self.open_label(cx),
-                true,
-                cx.listener(|this, _, _, cx| this.run_action("open", cx)),
-            ))
-            .into_any_element()];
-        rows.push(div().py(px(12.)).text_size(px(13.)).text_color(theme::text_muted()).child(self.summary_line(cx)).into_any_element());
-        if let Some(text) = self.explanation(cx) {
-            rows.push(paragraph(text));
-        }
-        let read = icon_button_sm(
-            "xbox-read",
-            ButtonKind::Ghost,
-            Icon::Refresh,
-            if syncing { tr!("Reading\u{2026}") } else { tr!("Read games now") },
-            !syncing,
-            cx.listener(|this, _, _, cx| this.run_action("read", cx)),
+    /// Method 1: the games the Xbox app installed on this PC.
+    fn render_local(&mut self, cx: &mut Context<Self>) -> Div {
+        let open = action_button(
+            "xbox-open",
+            ButtonKind::Glass,
+            self.open_label(cx),
+            true,
+            cx.listener(|this, _, _, cx| this.run_action("open", cx)),
         );
-        let mut column = div().child(caption_with(tr!("Library"), read)).child(card(rows));
-        if let Some((text, error)) = self.result_line(cx) {
-            column = column.child(
-                div()
-                    .mt(px(14.))
-                    .mx(px(6.))
-                    .text_size(px(13.))
-                    .text_color(if error { theme::danger_text() } else { theme::text_primary() })
-                    .child(text),
-            );
-        }
-        column.child(self.render_games(cx))
+        let (status, tone) = self.status(cx);
+        methods::method_card(Method {
+            eyebrow: methods::local_eyebrow(),
+            icon: Icon::Computer,
+            title: tr!("From the Xbox app on this PC").into(),
+            badge: methods::no_login(),
+            status: Some((status.into(), tone)),
+            facts: vec![
+                methods::brings(tr!("Finds the games the Xbox app and the Microsoft Store installed here, bought or from PC Game Pass")),
+                methods::brings(tr!("The Xbox app keeps installing, updating and signing in to them")),
+                methods::needs(tr!("Only the games installed on this PC; apps that are not games are left out")),
+            ],
+            notice: self.explanation(cx).map(|text| (text.to_string(), Tone::Neutral)),
+            body: Vec::new(),
+            footer: Vec::new(),
+            actions: vec![open.into_any_element()],
+            message: self.error.clone().map(|e| (e, true)),
+        })
     }
 
     /// Signs in in the login window (`heronite-epic-login --store xbox`),
@@ -274,64 +242,49 @@ impl XboxPage {
         }
     }
 
-    /// The Xbox account card; `None` when this build offers no account.
-    fn render_account(&mut self, cx: &mut Context<Self>) -> Option<Div> {
+    /// Method 2: the Xbox account. Builds without one (other systems) say
+    /// it is for Windows.
+    fn render_account(&mut self, cx: &mut Context<Self>) -> Div {
         let s = self.svc.read(cx);
-        if !s.account.available() {
-            return None;
-        }
-        let (gamertag, syncing, signing_in, last) =
-            (s.account.gamertag.clone(), s.account.syncing, s.account.signing_in, s.account.last.clone());
-        let mut column = div();
-        if let Some(name) = gamertag {
-            let name = if name.is_empty() { tr!("Xbox account").to_string() } else { name };
-            let rows = vec![div()
-                .flex()
-                .items_center()
-                .gap(px(14.))
-                .py(px(14.))
-                .child(icon(Icon::AccountCircle, px(44.), theme::accent()))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(px(4.))
-                        .child(
-                            div()
-                                .font_family(theme::font_heading())
-                                .text_size(px(20.))
-                                .font_weight(theme::W_BOLD)
-                                .text_color(theme::text_primary())
-                                .truncate()
-                                .child(name),
-                        )
-                        .child(div().flex().child(status_pill(tr!("Signed in to Xbox"), theme::success()))),
-                )
-                // Not while the account is read: a renewal under way would save it again.
-                .child(action_button(
+        let (available, gamertag, syncing, signing_in, last) =
+            (s.account.available(), s.account.gamertag.clone(), s.account.syncing, s.account.signing_in, s.account.last.clone());
+        let busy = self.window_open || signing_in;
+        let status = match &gamertag {
+            _ if !available => (tr!("Windows only").into(), Tone::Neutral),
+            Some(name) if !name.is_empty() => (tr!("Signed in as {name}", name = name).into(), Tone::Good),
+            Some(_) => (tr!("Signed in to Xbox").into(), Tone::Good),
+            None if self.window_open => (tr!("Waiting for the login window").into(), Tone::Accent),
+            None if signing_in => (tr!("Signing in\u{2026}").into(), Tone::Accent),
+            None => (tr!("Not signed in").into(), Tone::Neutral),
+        };
+        let mut actions = Vec::new();
+        let mut footer = Vec::new();
+        if !available {
+        } else if gamertag.is_some() {
+            // Not while the account is read: a renewal under way would save it again.
+            actions.push(
+                action_button(
                     "xbox-sign-out",
                     ButtonKind::Glass,
                     tr!("Sign out"),
                     !syncing,
                     cx.listener(|this, _, _, cx| this.run_action("sign-out", cx)),
-                ))
-                .into_any_element()];
-            let read = icon_button_sm(
-                "xbox-account-read",
-                ButtonKind::Ghost,
-                Icon::Refresh,
-                if syncing { tr!("Reading\u{2026}") } else { tr!("Read account now") },
-                !syncing,
-                cx.listener(|this, _, _, cx| this.run_action("account-read", cx)),
+                )
+                .into_any_element(),
             );
-            column = column.child(caption_with(tr!("Xbox account"), read)).child(card(rows));
+            actions.push(
+                icon_button_sm(
+                    "xbox-account-read",
+                    ButtonKind::Ghost,
+                    Icon::Refresh,
+                    if syncing { tr!("Reading\u{2026}") } else { tr!("Read account now") },
+                    !syncing,
+                    cx.listener(|this, _, _, cx| this.run_action("account-read", cx)),
+                )
+                .into_any_element(),
+            );
         } else {
-            let busy = self.window_open || signing_in;
-            let window = row(
-                tr!("Sign in with your Microsoft account"),
-                Some(tr!("Opens Microsoft's sign-in page. Heronite never sees your password.")),
+            actions.push(
                 action_button(
                     "xbox-sign-in",
                     ButtonKind::Primary,
@@ -344,58 +297,90 @@ impl XboxPage {
                     },
                     !busy,
                     cx.listener(|this, _, _, cx| this.run_action("sign-in", cx)),
-                ),
+                )
+                .into_any_element(),
             );
-            let step1 = row(
-                tr!("1. Open the sign-in page"),
-                Some(tr!("Sign in, then copy the address of the blank page you land on (it contains code=...).")),
-                action_button(
-                    "xbox-sign-in-browser",
-                    ButtonKind::Glass,
-                    tr!("Open in browser"),
-                    !busy,
-                    cx.listener(|this, _, _, cx| this.open_sign_in_in_browser(cx)),
-                ),
-            );
-            let can_submit = !busy && !self.code.read(cx).value().trim().is_empty();
-            let step2 =
-                div().flex().flex_col().gap(px(10.)).py(px(12.)).child(div().text_size(px(14.)).child(tr!("2. Paste the address"))).child(
-                    div().flex().items_center().gap(px(10.)).child(div().flex_1().min_w_0().child(input_box(&self.code, false))).child(
-                        action_button(
-                            "xbox-sign-in-code",
-                            ButtonKind::Primary,
-                            tr!("Sign in"),
-                            can_submit,
-                            cx.listener(|this, _, window, cx| this.submit_address(window, cx)),
-                        ),
-                    ),
-                );
-            column = column
-                .child(caption(tr!("Xbox account")))
-                .child(card([
-                    paragraph(tr!(
-                        "Optional. With your Xbox account, your Xbox games show the play time Xbox counted (also outside Heronite and on console), when you last played, your achievements, and the games you played that are not installed here."
-                    )),
-                    window.into_any_element(),
-                ]))
-                .child(caption(tr!("Or sign in with your browser")))
-                .child(card([step1.into_any_element(), step2.into_any_element()]));
+            footer.push(self.render_browser_sign_in(busy, cx));
         }
+        let notice = match (available, gamertag.is_some()) {
+            (false, _) => Some((tr!("The Xbox account can be added on Windows.").to_string(), Tone::Neutral)),
+            (true, false) => Some((tr!("Opens Microsoft's sign-in page. Heronite never sees your password.").to_string(), Tone::Accent)),
+            (true, true) => None,
+        };
         let message = self.notice.clone().map(|n| (n, true)).or(last.map(|l| match l {
             Ok(text) => (text, false),
             Err(text) => (text, true),
         }));
-        if let Some((text, error)) = message {
-            column = column.child(
+        methods::method_card(Method {
+            eyebrow: methods::online_eyebrow(),
+            icon: Icon::CloudSync,
+            title: tr!("From your Xbox account").into(),
+            badge: (tr!("Sign in with Microsoft").into(), Tone::Accent),
+            status: Some(status),
+            facts: vec![
+                methods::brings(tr!("The play time Xbox counted, also outside Heronite and on console")),
+                methods::brings(tr!("Achievements, art and when you last played")),
+                methods::brings(tr!("The PC games you played that are not installed here")),
+                methods::needs(tr!("One sign-in with your Microsoft account")),
+            ],
+            notice,
+            body: Vec::new(),
+            footer,
+            actions,
+            message,
+        })
+    }
+
+    /// The sign-in through the browser, for when the login window cannot
+    /// open: open the page, then paste the address it ends on.
+    fn render_browser_sign_in(&self, busy: bool, cx: &mut Context<Self>) -> AnyElement {
+        let can_submit = !busy && !self.code.read(cx).value().trim().is_empty();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .pt(px(14.))
+            .border_t_1()
+            .border_color(theme::row_separator())
+            .child(
                 div()
-                    .mt(px(14.))
-                    .mx(px(6.))
                     .text_size(px(13.))
-                    .text_color(if error { theme::danger_text() } else { theme::text_primary() })
-                    .child(text),
-            );
-        }
-        Some(column.mb(px(24.)))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::text_primary())
+                    .child(tr!("Or sign in with your browser")),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(px(12.))
+                            .line_height(px(17.))
+                            .text_color(theme::text_muted())
+                            .child(tr!("Sign in, then copy the address of the blank page you land on (it contains code=...).")),
+                    )
+                    .child(action_button(
+                        "xbox-sign-in-browser",
+                        ButtonKind::Glass,
+                        tr!("Open in browser"),
+                        !busy,
+                        cx.listener(|this, _, _, cx| this.open_sign_in_in_browser(cx)),
+                    )),
+            )
+            .child(div().flex().items_center().gap(px(10.)).child(div().flex_1().min_w_0().child(input_box(&self.code, false))).child(
+                action_button(
+                    "xbox-sign-in-code",
+                    ButtonKind::Primary,
+                    tr!("Sign in"),
+                    can_submit,
+                    cx.listener(|this, _, window, cx| this.submit_address(window, cx)),
+                ),
+            ))
+            .into_any_element()
     }
 
     fn render_game(&self, game: &XboxGame, cx: &mut Context<Self>) -> AnyElement {
@@ -425,27 +410,17 @@ impl XboxPage {
         div().child(caption(tr!("Installed games"))).child(card(rows))
     }
 
-    fn render_about(&self) -> Div {
-        div().child(caption(tr!("About"))).child(card([
-            paragraph(tr!(
-                "Heronite finds the games the Xbox app and the Microsoft Store installed on this PC, bought or from PC Game Pass, and adds them to your Collection by itself. There is no login: the Xbox app keeps installing, updating and signing in to them, and Heronite starts them and counts their play time."
-            )),
-            paragraph(tr!(
-                "A game is found when it is made for Xbox on PC, as almost every game of the Xbox app is. Apps that are not games are left out."
-            )),
-        ]))
-    }
-
     fn console_rows(&self, cx: &App) -> Vec<Row> {
         let (status, _) = self.status(cx);
         let syncing = self.svc.read(cx).syncing;
         let mut rows = vec![
-            Row::header(tr!("Library")),
-            Row::info("status", "Xbox", status).icon(Icon::ShoppingBag),
+            Row::header(tr!("Your library")),
             Row::action("read", if syncing { tr!("Reading\u{2026}") } else { tr!("Read games now") })
                 .desc(self.summary_line(cx))
                 .icon(Icon::Refresh)
                 .enabled(!syncing),
+            Row::header(format!("{} \u{b7} {}", methods::local_eyebrow(), tr!("No login needed"))),
+            Row::info("status", tr!("From the Xbox app on this PC"), status).icon(Icon::Computer),
             Row::action("open", self.open_label(cx)).icon(Icon::OpenInNew),
         ];
         if let Some(text) = self.explanation(cx) {
@@ -456,7 +431,7 @@ impl XboxPage {
         }
         let account = &self.svc.read(cx).account;
         if account.available() {
-            rows.push(Row::header(tr!("Xbox account")));
+            rows.push(Row::header(format!("{} \u{b7} {}", methods::online_eyebrow(), tr!("Sign in with Microsoft"))));
             match &account.gamertag {
                 Some(name) => {
                     rows.push(Row::info("account", tr!("Signed in to Xbox"), name.clone()).icon(Icon::AccountCircle));
@@ -514,12 +489,30 @@ impl Render for XboxPage {
             return self.render_console(cx);
         }
         let wide = stores::content_width(window) >= 1000.;
-        let side = div().flex().flex_col().children(self.render_account(cx)).child(self.render_about());
-        let body = columns(wide, [self.render_library(cx), side]);
+        let syncing = self.svc.read(cx).syncing;
+        let read = icon_button_sm(
+            "xbox-read",
+            ButtonKind::Glass,
+            Icon::Refresh,
+            if syncing { tr!("Reading\u{2026}") } else { tr!("Read games now") },
+            !syncing,
+            cx.listener(|this, _, _, cx| this.run_action("read", cx)),
+        );
+        let result = self.result_line(cx).filter(|_| self.error.is_none());
+        let strip = methods::library_strip(self.summary_line(cx), result, read);
+        let cards = methods::methods(wide, self.render_local(cx), self.render_account(cx));
+        let note = methods::footnote(tr!("A game is found when it is made for Xbox on PC, as almost every game of the Xbox app is."));
+        let body = methods::page(strip, cards, [self.render_games(cx).into_any_element(), note.into_any_element()]);
         div()
             .size_full()
             .relative()
-            .child(stores::sheet("xbox-page", Page::Xbox, tr!("Your Microsoft Store and PC Game Pass games."), cx, body))
+            .child(stores::sheet(
+                "xbox-page",
+                Page::Xbox,
+                tr!("Two ways to bring your Microsoft Store and PC Game Pass games in. Your account is optional."),
+                cx,
+                body,
+            ))
             .into_any_element()
     }
 }

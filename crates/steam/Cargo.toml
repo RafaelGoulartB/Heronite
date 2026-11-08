@@ -17,6 +17,10 @@ serde_json.workspace = true
 shlex = "1"
 regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+# The Steam account (`account`): its QR sign-in and the Web API.
+serde = { version = "1", features = ["derive"] }
+ureq = "3"
+base64 = "0.22"
 
 [dev-dependencies]
 heronite-shortcuts = { path = "../shortcuts", features = ["test-support"] }

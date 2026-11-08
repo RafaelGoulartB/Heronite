@@ -31,8 +31,23 @@ pub struct SteamOwnedFile {
     /// When the client was last read (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    /// Where the last read came from; `None`: the client (files written
+    /// before the account could be read).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<SteamSource>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// Where the Steam library was read.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SteamSource {
+    /// The Steam client running on this PC.
+    #[default]
+    Client,
+    /// The account signed in with a QR code, through Steam's Web API.
+    Account,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -139,6 +154,18 @@ mod tests {
             updated_at: Some("x".into()),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_library_cached_before_the_source_was_kept_reads_as_the_client_s() {
+        let old = r#"{"games":[{"appId":"620","name":"Portal 2","installed":true,"playtimeMinutes":60}],"updatedAt":"2026-11-01T10:00:00.000Z","other":1}"#;
+        let f: SteamOwnedFile = serde_json::from_str(old).unwrap();
+        assert_eq!((f.games.len(), f.source.unwrap_or_default()), (1, SteamSource::Client));
+        assert!(f.known());
+        // Written back, it stays the same shape (no `source` until a read sets it).
+        let again = serde_json::to_value(&f).unwrap();
+        assert!(again.get("source").is_none());
+        assert_eq!(again["other"], 1);
     }
 
     fn cand<'a>(key: &'a str, title: &'a str, ids: &[&'a str]) -> Candidate<'a> {

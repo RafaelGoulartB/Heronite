@@ -11,6 +11,7 @@ pub mod game_actions;
 pub mod glass;
 pub mod lsfg;
 pub mod ludusavi;
+pub mod qr;
 pub mod release_notes;
 mod scrollbar;
 pub mod window_controls;

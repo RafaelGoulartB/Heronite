@@ -63,6 +63,7 @@ fn debug_steam(name: &str) -> SteamState {
         "restarting" => SteamState::Restarting,
         "restart" => SteamState::NeedsRestart,
         "blocked" => SteamState::Blocked,
+        "porttaken" => SteamState::PortTaken,
         "notanswering" => SteamState::NotAnswering,
         "failed" => SteamState::Failed,
         "reading" => SteamState::Reading,
@@ -215,6 +216,11 @@ impl CollectionView {
                 theme::danger_text(),
                 tr!("Steam restarted but did not let Heronite read its library. Its installed games still come in."),
             ),
+            SteamState::PortTaken => status(
+                tr!("Port in use"),
+                theme::warning(),
+                tr!("Another program on this PC uses the port Steam needs to let Heronite in. The Steam page says which, or lets you sign in with a QR code instead."),
+            ),
             SteamState::Reading => status(tr!("Reading your library"), busy, tr!("Reading your Steam library\u{2026} a few seconds.")),
             SteamState::Connected => {
                 status(tr!("Connected"), theme::success(), tr!("Steam is connected, but its library has no games yet."))
@@ -237,7 +243,7 @@ impl CollectionView {
                     .on_click(cx.listener(|_, _, _, cx| crate::services::steam_library(cx).update(cx, |s, cx| s.restart(cx)))),
             ),
             // The Steam page says what to change in the other tool.
-            SteamState::Failed | SteamState::NotAnswering | SteamState::Blocked => Some(
+            SteamState::Failed | SteamState::NotAnswering | SteamState::Blocked | SteamState::PortTaken => Some(
                 button_sm("welcome-steam-page", ButtonKind::Ghost, tr!("Steam page"))
                     .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Steam, window, cx))),
             ),
