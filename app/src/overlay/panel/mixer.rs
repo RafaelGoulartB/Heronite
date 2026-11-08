@@ -305,7 +305,7 @@ impl OverlayPanel {
                 let system = routes.get(SYSTEM).cloned();
                 let switch = system
                     .clone()
-                    .filter(|_| a.outputs.len() > 1 && audio::device_switching_supported() && !loading)
+                    .filter(|_| a.outputs.len() > 1 && !loading)
                     .map(|r| r.into_iter().chain([Pad::Y]).collect::<Vec<_>>())
                     .unwrap_or_default();
                 div()
