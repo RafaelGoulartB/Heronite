@@ -1,8 +1,7 @@
 //! "Getting started" on the Collection: it opens by itself once
 //! per setup (a new one, or one updated from a version without it), from the
-//! bulb next to the View button until every step is done or marked "Not
-//! used", and always from the command palette (Ctrl K). Using a feature
-//! anywhere ticks its step.
+//! bulb next to the View button until it is closed once, and always from the
+//! command palette (Ctrl K). Using a feature anywhere ticks its step.
 //! A step that leads elsewhere (a page, the palette, console mode) brings
 //! the dialog back where that step lives once the user is back on the Collection.
 //! `HERONITE_NO_ONBOARDING=1` keeps it from opening by itself (screenshots).
@@ -20,7 +19,7 @@ use heronite_i18n::tr;
 pub(super) struct OnboardingGlue {
     state: Onboarding,
     /// What the dialog asked for, in order; run on the next render (it needs
-    /// the window). "Skip the rest" asks several things at once.
+    /// the window).
     pending: Vec<(Step, Action)>,
     /// The step to show again once back from where the dialog led.
     resume: Option<Step>,
@@ -67,6 +66,17 @@ impl CollectionView {
         if let Some(step) = step {
             view.update(cx, |d, cx| d.show(step, cx));
         }
+        // Closed once, however (Close, Esc, a click outside, on the way to
+        // where a step leads): the bulb leaves the header, the command
+        // palette still opens it. Only `self.dialog` holds the dialog.
+        cx.observe_release(&view, |this, _, cx| {
+            if !this.onboarding.state.hidden {
+                this.onboarding.state.hidden = true;
+                this.save_onboarding();
+                cx.notify();
+            }
+        })
+        .detach();
         self.open_dialog(view, cx);
     }
 
@@ -145,12 +155,6 @@ impl CollectionView {
                     self.save_onboarding();
                 }
             }
-            Action::Finished => {
-                if !self.onboarding.state.hidden {
-                    self.onboarding.state.hidden = true;
-                    self.save_onboarding();
-                }
-            }
         }
     }
 
@@ -161,7 +165,7 @@ impl CollectionView {
         }
     }
 
-    /// The bulb next to the View button, until every step is settled.
+    /// The bulb next to the View button, until the dialog is closed once.
     pub(super) fn onboarding_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         (!self.onboarding.state.hidden).then(|| {
             tool_button("btn-onboarding", Icon::Lightbulb, false)

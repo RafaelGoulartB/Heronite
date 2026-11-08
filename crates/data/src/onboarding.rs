@@ -1,6 +1,6 @@
 //! The getting-started checklist, kept in `AppPaths::onboarding()`: whether
 //! it opened by itself already (once per setup, new or updated), whether it
-//! is finished, the steps that only count once done here (the others are read
+//! was closed once, the steps that only count once done here (the others are read
 //! from the settings each time) and the ones the user does not use.
 
 use std::collections::BTreeSet;
@@ -15,8 +15,8 @@ use crate::paths::AppPaths;
 pub struct Onboarding {
     /// It opened by itself once.
     pub shown: bool,
-    /// Finished (every step done or not used), or "Don't show again" in
-    /// older versions: no header button, no opening by itself.
+    /// Closed once (or "Don't show again" in older versions): no header
+    /// button, no opening by itself; the command palette still opens it.
     pub hidden: bool,
     /// Ids of the steps done through the checklist (or the feature itself).
     pub done: BTreeSet<String>,

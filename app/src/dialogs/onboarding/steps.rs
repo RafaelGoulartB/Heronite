@@ -74,8 +74,6 @@ pub enum Action {
     Skip(Step),
     /// "Undo" on a step marked "Not used".
     Unskip(Step),
-    /// Every step is done or not used: the bulb leaves the header.
-    Finished,
 }
 
 impl Step {

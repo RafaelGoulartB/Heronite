@@ -3,7 +3,7 @@
 //! cards open inside the dialog (the sources, the look picker with a live
 //! preview); the third switches things on in place. A step the user does not
 //! want is marked "Not used" and counts as settled. It opens by itself once
-//! per setup, from the bulb in the header until every step is settled
+//! per setup, from the bulb in the header until it is closed once
 //! (`collection::onboarding`), and from the command palette.
 
 mod art;
@@ -62,8 +62,6 @@ pub struct OnboardingDialog {
     images: Entity<DialogImages>,
     error: Option<String>,
     on_action: Rc<dyn Fn(Step, Action, &mut App)>,
-    /// `Action::Finished` went out (once per opening).
-    finished: bool,
 }
 
 impl EventEmitter<DialogEvent> for OnboardingDialog {}
@@ -104,13 +102,7 @@ impl OnboardingDialog {
             .ok();
         })
         .detach();
-        // Steps set up elsewhere may have settled the last one: tell the
-        // Collection once it is done opening this.
-        let this = cx.weak_entity();
-        cx.defer(move |cx| {
-            this.update(cx, |this, cx| this.settle(cx)).ok();
-        });
-        Self { ctx, facts, view: View::Hub, games, images, error: None, on_action: Rc::new(on_action), finished: false }
+        Self { ctx, facts, view: View::Hub, games, images, error: None, on_action: Rc::new(on_action) }
     }
 
     /// Opens the part of the dialog with `step` (`HERONITE_DEBUG_DIALOG=onboarding:<id>`,
@@ -137,13 +129,9 @@ impl OnboardingDialog {
         match action {
             Action::Done(step) => {
                 self.facts.done.insert(step.id().to_owned());
-                self.settle(cx);
                 cx.notify();
             }
-            Action::LookChanged => {
-                self.settle(cx);
-                cx.notify();
-            }
+            Action::LookChanged => cx.notify(),
             _ => cx.emit(DialogEvent::Close),
         }
     }
@@ -156,23 +144,7 @@ impl OnboardingDialog {
             self.facts.skipped.remove(step.id());
         }
         (self.on_action)(step, if on { Action::Skip(step) } else { Action::Unskip(step) }, cx);
-        self.settle(cx);
         cx.notify();
-    }
-
-    /// "Skip the rest": every step left is marked "Not used".
-    fn skip_rest(&mut self, cx: &mut Context<Self>) {
-        for step in self.facts.left() {
-            self.skip(step, true, cx);
-        }
-    }
-
-    /// Tells the Collection once nothing is left, so the bulb leaves the header.
-    fn settle(&mut self, cx: &mut Context<Self>) {
-        if !self.finished && self.facts.left().is_empty() {
-            self.finished = true;
-            (self.on_action)(Step::Palette, Action::Finished, cx);
-        }
     }
 
     /// Turns a step's feature on or off right here.
@@ -217,7 +189,6 @@ impl OnboardingDialog {
             }
             Err(e) => self.error = Some(tr!("Could not save the setting: {error}", error = format!("{e:#}"))),
         }
-        self.settle(cx);
         cx.notify();
     }
 
@@ -347,18 +318,11 @@ impl OnboardingDialog {
     }
 
     fn render_footer(&self, cx: &mut Context<Self>) -> Div {
-        let left = self.view == View::Hub && !self.facts.left().is_empty();
         div()
             .flex()
             .items_center()
             .gap(px(10.))
             .pt(px(18.))
-            .when(left, |d| {
-                d.child(
-                    button("onb-skip-rest", ButtonKind::Ghost, tr!("Skip the rest"))
-                        .on_click(cx.listener(|this, _, _, cx| this.skip_rest(cx))),
-                )
-            })
             .child(div().flex_1())
             .child(
                 div()
