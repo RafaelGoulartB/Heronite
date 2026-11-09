@@ -252,9 +252,8 @@ shown; a click shows only its games, a second click every game, a right click op
 colour (`theme::GROUP_COLOURS` or the accent), "Games that match all / any of these conditions", rows of field,
 comparison and value (a list field ticks several values, a number has its unit), "Except games that match any of
 these", the games it holds now (counted after each change, not each frame) and the pin; a rule nested deeper than
-that is kept and only the name, colour and pin change. In console mode each pinned group is a tab after the theme's
-(`CollectionView::console_tabs`, source `group:<id>`, in the layout of the theme's tab of every game), so pinning works
-on the desktop and the TV alike, and the Filters panel (Y) picks any group. `HERONITE_DEBUG_DIALOG=smartgroup|smartgroup:<id>|smartgroup-filters`.
+that is kept and only the name, colour and pin change. In console mode the groups are reached only from the Filters
+panel (Y): its Smart group row picks any group (the theme's tabs stay as they are). `HERONITE_DEBUG_DIALOG=smartgroup|smartgroup:<id>|smartgroup-filters`.
 Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
 metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or
@@ -613,9 +612,9 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   rising a little, each over its real reflection (`heronite_images::Variant::Reflection`, `cr:` textures) on the
   blurred cover glowing through a vignette (`Scrim::Carousel`); a thin ring a little way out marks the focus; under it
   the name (long ones shrink), the facts and the place in the list (letter, a line with a gliding mark, "n of N"),
-  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), Y opens
-  the Filters panel like every layout (no filter pills of its own: LB / RB are the tabs', smart groups' included), the
-  covers fan out from the middle on first show; A opens the Sheet game page over the carousel: a window floating
+  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), LB / RB
+  change the filter when the theme has one tab (the focused game stays when it passes it), the covers fan out from the
+  middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
   along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
   (`render_console_game_layer`, drawn by the shell above the top bar).
   Pulse's Spotlight (`layouts/spotlight/`), a console's home: a row of square icons along the top, the focused one at
