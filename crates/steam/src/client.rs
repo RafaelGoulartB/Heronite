@@ -40,14 +40,17 @@ pub fn read(client: &SteamClient, app_id: &str) -> Result<ClientApp> {
         setTimeout(() => finish(null), 5000)
       }})
       if (!details) throw new Error('Steam has no details for app {id}')
+      // The tools are extra (Proton, on Linux): a client without them
+      // (Windows) or failing to list them still gives the launch options.
       const list = SteamClient.Apps.GetAvailableCompatTools
-      const tools = typeof list === 'function' ? await list({id}) : null
+      let tools = null
+      try {{ tools = typeof list === 'function' ? await list({id}) : null }} catch (e) {{ tools = null }}
       return {{
         launchOptions: details.strLaunchOptions ?? '',
         compatTool: details.strCompatToolName ?? '',
         compatDisplay: details.strCompatToolDisplayName ?? '',
         priority: details.nCompatToolPriority ?? 0,
-        tools: tools && tools.map((t) => ({{ name: t.strToolName, display: t.strDisplayName }})),
+        tools: Array.isArray(tools) ? tools.map((t) => ({{ name: t.strToolName, display: t.strDisplayName }})) : null,
       }}
     }})()"#
     ))?;

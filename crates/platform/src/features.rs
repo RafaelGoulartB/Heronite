@@ -48,8 +48,9 @@ pub enum Feature {
     Overlay,
     /// Keeping and saving the last seconds of a game (Linux's replay buffer).
     Replay,
-    /// Steam's per-game settings: the launch options line and the
-    /// compatibility tool (Proton) forced for a game.
+    /// Steam's per-game settings: the launch options line and, on Linux,
+    /// the compatibility tool (Proton) forced for a game. Windows has the
+    /// line alone: Steam starts Windows games as they are.
     SteamGameSettings,
     /// Running games in a sandbox (bubblewrap).
     Sandbox,
@@ -181,11 +182,10 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::LaunchExtras
         | Feature::StoreClients
         | Feature::LauncherImports
+        | Feature::SteamGameSettings
         | Feature::XboxStore => true,
         Feature::Overlay => cfg!(windows),
-        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::SteamGameSettings | Feature::Sandbox | Feature::Wrappers => {
-            false
-        }
+        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::Sandbox | Feature::Wrappers => false,
     }
 }
 
@@ -263,6 +263,7 @@ mod tests {
         }
         if cfg!(windows) {
             assert!(built_in(Feature::XboxStore));
+            assert!(built_in(Feature::SteamGameSettings), "the launch options line");
         }
     }
 

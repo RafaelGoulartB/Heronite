@@ -21,6 +21,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
 - Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
+- Steam's per-game launch options (Settings → Launch of a Steam game, `Feature::SteamGameSettings`): through the running client, or in `userdata\<account>\config\localconfig.vdf` while Steam is closed, as on Linux; the account is the registry's `ActiveProcess\ActiveUser`, else the latest login. No compatibility tool: Steam starts Windows games as they are
 - Native launch extras: before/after scripts (`.bat`, `.cmd`, `.ps1`, programs), delayed companions and presets (variables and arguments); for Steam games they run around `steam://rungameid` (`heronite_launch::steam_extras`); real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
 - Steam tests: library and session fixtures run on Windows without reading the host's registry, Steam folders or process list; achievement fixtures are isolated too
@@ -113,7 +114,6 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 - GameMode, MangoHud, gamescope, wrapper commands and the Steam runtime (`Feature::Wrappers`)
 - Lossless Scaling through lsfg-vk (a Linux Vulkan layer; on Windows the Lossless Scaling app does it itself)
 - The "On Linux" row (ProtonDB)
-- Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
 - Troubleshoot (its checks are about Wine, Proton and Linux drivers)
 - AppImage and Linux packages
 
