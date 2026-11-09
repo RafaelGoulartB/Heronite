@@ -66,7 +66,7 @@ impl StatsPage {
         // all time up to 49, and the page renders again on every scroll.
         let h = self.strip.handle();
         let x = -f32::from(h.offset().x);
-        let view = f32::from(h.bounds().size.width).max(f32::from(window.viewport_size().width));
+        let view = f32::from(h.bounds().size.width).max(f32::from(crate::ui::content_size(window).width));
         let (lo, hi) = (x - view, x + 2. * view);
         let widths = st.buckets.iter().map(|b| if b.future { FUTURE_W } else { MONTH_W });
         let mut left = 24.;

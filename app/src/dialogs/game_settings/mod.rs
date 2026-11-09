@@ -475,7 +475,7 @@ impl Render for GameSettingsDialog {
             .pb(px(10.))
             .child(self.drawer_header(header_close, cx))
             .child(div().px(px(20.)).child(tab_bar));
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         let main = drawer(
             DrawerProps { id: "collection-game-settings".into(), width: DRAWER_W.min(vw * 0.96) },
             header.into_any_element(),

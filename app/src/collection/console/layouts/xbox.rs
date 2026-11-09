@@ -141,7 +141,7 @@ impl CollectionView {
         self.console_focus_game(focused.clone().or_else(|| recent.first().cloned()), cx);
 
         let scale = kit::scale();
-        let view_w = f32::from(window.viewport_size().width) / scale;
+        let view_w = f32::from(crate::ui::content_size(window).width) / scale;
         let off_x = -f32::from(row.handle().offset().x) / scale;
         let off_y = -f32::from(screen.handle().offset().y) / scale;
         let at = group.map_or(0, |g| g + 1);
@@ -193,7 +193,7 @@ impl CollectionView {
         for (g, shelf) in shelves.iter().enumerate() {
             let top = m.home + g as f32 * m.shelf;
             let in_sight = top + m.shelf > off_y && top < off_y + m.body;
-            let seen = super::in_sight(rows[g].handle().offset().x, step, window.viewport_size().width);
+            let seen = super::in_sight(rows[g].handle().offset().x, step, crate::ui::content_size(window).width);
             let mut line = div()
                 .id(("xbox-shelf", g))
                 .flex()

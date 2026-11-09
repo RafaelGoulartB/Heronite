@@ -258,7 +258,7 @@ impl GameSettingsDialog {
         self.images.update(cx, |im, _| im.frame(window));
         let s = kit::scale();
         let scale = window.scale_factor();
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         let (hero_chain, _) = self.art_chain(ArtKind::Hero);
         let hero = if hero_chain.is_empty() {
             None

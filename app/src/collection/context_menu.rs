@@ -210,8 +210,7 @@ impl CollectionView {
         lib.get(&state.key)?;
         let card_key = state.key.clone();
         let (position, open, batch) = (state.position, state.open, state.batch);
-        let viewport = window.viewport_size();
-        let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
+        let flyout_left = f32::from(crate::ui::content_bounds(window).right() - position.x) < 280. + 240.;
         if batch {
             let menu = self.batch_menu(open, flyout_left, cx);
             return Some(Self::menu_backdrop(menu, position, cx));

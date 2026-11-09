@@ -243,7 +243,8 @@ impl Render for HltbMatchDialog {
             })
             .child(button("hltb-close", ButtonKind::Glass, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))));
         let entity = cx.entity().downgrade();
-        let (vw, vh) = (f32::from(window.viewport_size().width), f32::from(window.viewport_size().height));
+        let area = crate::ui::content_size(window);
+        let (vw, vh) = (f32::from(area.width), f32::from(area.height));
         dialog(
             DialogProps {
                 id: "hltb-match".into(),

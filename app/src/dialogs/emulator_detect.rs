@@ -331,7 +331,7 @@ impl Render for DetectEmulatorsDialog {
             DialogProps {
                 id: "detect-emulators".into(),
                 title: tr!("Detect emulators").into(),
-                width: 720f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 720f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

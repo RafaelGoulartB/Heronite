@@ -330,7 +330,7 @@ impl Render for EmulatorEditDialog {
             DialogProps {
                 id: "emulator-edit".into(),
                 title: if self.create { tr!("Add emulator") } else { tr!("Edit emulator") }.into(),
-                width: 720f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 720f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

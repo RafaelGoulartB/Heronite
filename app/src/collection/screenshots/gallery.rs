@@ -120,7 +120,7 @@ impl CollectionView {
         if !self.shots.gallery || self.shots.items.is_empty() {
             return None;
         }
-        let vp = window.viewport_size();
+        let vp = crate::ui::content_size(window);
         let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
         let modal_w = 1440f32.min(vw - 64.);
         let max_h = (vh * 0.9).min(1100.);

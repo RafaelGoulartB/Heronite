@@ -445,7 +445,7 @@ impl Render for BatchEditDialog {
                         )),
                 )
         };
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         div().absolute().inset_0().child(drawer(
             DrawerProps { id: "collection-batch-edit".into(), width: 540f32.min(vw * 0.96) },
             header.into_any_element(),

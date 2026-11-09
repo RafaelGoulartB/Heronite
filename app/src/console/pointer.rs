@@ -388,8 +388,8 @@ pub fn parse_script(text: &str) -> Vec<(Duration, Step)> {
 
 /// Plays `step` in `window` as the system would send it.
 pub fn play(step: Step, window: &mut Window, cx: &mut App) {
-    let size = window.viewport_size();
-    let at = |x: f32, y: f32| point(size.width * x, size.height * y);
+    let area = crate::ui::content_bounds(window);
+    let at = |x: f32, y: f32| area.origin + point(area.size.width * x, area.size.height * y);
     let (position, button) = match step {
         Step::Click(x, y) => (at(x, y), MouseButton::Left),
         Step::Move(x, y) => {

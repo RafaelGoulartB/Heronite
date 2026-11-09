@@ -60,7 +60,7 @@ impl Render for DetailRowsDialog {
             button("detail-rows-done", ButtonKind::Primary, tr!("Done")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
         );
         let entity = cx.entity().downgrade();
-        let vh = f32::from(window.viewport_size().height);
+        let vh = f32::from(crate::ui::content_size(window).height);
         dialog(
             DialogProps { id: "detail-rows".into(), title: tr!("Details rows").into(), width: 460., height: Some(560f32.min(vh * 0.75)) },
             body.into_any_element(),

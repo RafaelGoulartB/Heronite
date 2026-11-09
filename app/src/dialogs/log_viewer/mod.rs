@@ -148,7 +148,7 @@ impl LogViewer {
 
 impl Render for LogViewer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let height = self.height.unwrap_or_else(|| (f32::from(window.viewport_size().height) - 230.).clamp(320., 1100.));
+        let height = self.height.unwrap_or_else(|| (f32::from(crate::ui::content_size(window).height) - 230.).clamp(320., 1100.));
         let mut row = div().flex().gap(px(12.)).w_full().h(px(height));
         if self.show_list {
             row = row.child(self.render_list(height, cx));

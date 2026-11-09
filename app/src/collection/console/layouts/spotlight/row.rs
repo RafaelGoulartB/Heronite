@@ -137,7 +137,7 @@ impl CollectionView {
         let dpr = window.scale_factor();
         let (off, on) = (look.off, look.on);
         let room = name_room(look.name_w);
-        let view = f32::from(window.viewport_size().width) / k;
+        let view = f32::from(crate::ui::content_size(window).width) / k;
         let theme = look::theme();
         let landscape = theme.tiles.shape == TileShape::Landscape;
         let radius = look::tile_radius();

@@ -591,7 +591,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let profiles = profiles::profiles_group(d, cx);
     let colour = look::colour_group(d, cx);
     let reading = look::reading_group(d, cx);
-    let layout = look::layout_group(d, f32::from(window.viewport_size().width), cx);
+    let layout = look::layout_group(d, f32::from(crate::ui::content_size(window).width), cx);
     let enabled = d.appearance.enabled;
     // A caption, then a card, then (optionally) a note and a reset button.
     let footer = |note: SharedString, reset: Stateful<Div>| {

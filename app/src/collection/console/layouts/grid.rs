@@ -254,7 +254,7 @@ impl CollectionView {
 
     fn grid_cols(&self, window: &Window, panel: bool, rail: bool) -> usize {
         let (tw, _) = self.console_tile_size();
-        let vw = f32::from(window.viewport_size().width) / kit::scale();
+        let vw = f32::from(crate::ui::content_size(window).width) / kit::scale();
         let taken = if panel { panel_width(vw) + SIDE } else { 0. } + if rail { RAIL } else { 0. };
         (((vw - 2. * SIDE - taken + GAP) / (tw + GAP)).floor() as usize).max(2)
     }
@@ -359,7 +359,7 @@ impl CollectionView {
         };
         let list = div().flex().flex_col().flex_1().min_w_0().child(div().flex_none().children(title_line)).child(body);
         let side = game.filter(|_| panel && !keys.is_empty()).map(|g| {
-            let w = panel_width(f32::from(window.viewport_size().width) / kit::scale());
+            let w = panel_width(f32::from(crate::ui::content_size(window).width) / kit::scale());
             self.grid_panel(&g, w, window)
         });
         div()
@@ -382,7 +382,7 @@ impl CollectionView {
         let scroll = glide.handle().clone();
         let mut grid =
             div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
-        let seen = super::in_sight(scroll.offset().y, line_h, window.viewport_size().height);
+        let seen = super::in_sight(scroll.offset().y, line_h, crate::ui::content_size(window).height);
         for (r, chunk) in keys.chunks(cols).enumerate() {
             let near = seen.start().saturating_sub(1) <= r && r <= *seen.end();
             let visible = seen.contains(&r) || r.abs_diff(index / cols) <= 1;

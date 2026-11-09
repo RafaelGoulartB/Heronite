@@ -256,7 +256,7 @@ impl Render for LaunchStateDialog {
             DialogProps {
                 id: "launch-state".into(),
                 title: tr!("How do you want to play?").into(),
-                width: 560f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 560f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

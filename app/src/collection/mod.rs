@@ -622,7 +622,10 @@ impl CollectionView {
         if crate::console::active() {
             return self.render_console(window, cx);
         }
-        let vw = f32::from(window.viewport_size().width);
+        // The views' area: a floating window with client-side decorations
+        // loses its frame (`ui::content_bounds`).
+        let area = crate::ui::content_size(window);
+        let vw = f32::from(area.width);
         let scale = window.scale_factor();
         self.sync_auto_view(vw, cx);
         let (list_w, columns) = self.list_layout(vw);
@@ -646,7 +649,7 @@ impl CollectionView {
             }
             None => stage::stage(None, SharedString::default(), self.scrim, 1.),
         };
-        let vh = f32::from(window.viewport_size().height);
+        let vh = f32::from(area.height);
         // Under a page only the stage shows: the library side is not built
         // (every frame of the page would build and throw it away).
         let library = (!on_page).then(|| {

@@ -31,7 +31,7 @@ thread_local! {
 /// Scales the design to the window: `height / 800`, between 1 and 2. Runs
 /// once at the start of every console frame.
 pub fn set_scale(window: &Window) {
-    let h = f32::from(window.viewport_size().height);
+    let h = f32::from(crate::ui::content_size(window).height);
     SCALE.store(((h / 800.).clamp(1., 2.) * look::scale()).to_bits(), Ordering::Relaxed);
     PILLS.with(|c| c.set(0));
 }
@@ -830,11 +830,12 @@ pub fn modal(heading: impl Into<SharedString>, width: f32, body: impl IntoElemen
     )
 }
 
-/// Draws `child` over the whole window, whatever the caller's bounds (for
-/// overlays of views embedded in a smaller area, like a settings panel).
+/// Draws `child` over the whole window (inside its frame, `ui::content_bounds`),
+/// whatever the caller's bounds (for overlays of views embedded in a smaller
+/// area, like a settings panel).
 pub fn window_layer(window: &Window, child: impl IntoElement) -> AnyElement {
-    let size = window.viewport_size();
-    deferred(anchored().position(point(px(0.), px(0.))).child(div().relative().w(size.width).h(size.height).occlude().child(child)))
+    let area = crate::ui::content_bounds(window);
+    deferred(anchored().position(area.origin).child(div().relative().w(area.size.width).h(area.size.height).occlude().child(child)))
         .with_priority(5)
         .into_any_element()
 }

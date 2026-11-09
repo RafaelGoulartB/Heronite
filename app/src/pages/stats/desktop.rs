@@ -504,7 +504,7 @@ impl StatsPage {
     }
 
     pub(super) fn render_desktop(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         let panel_w = vw - 24.;
         let col_w = (panel_w - 2. * PAD).clamp(320., MAX_W);
         let wide = col_w >= 1100.;

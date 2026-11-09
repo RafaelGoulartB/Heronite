@@ -154,7 +154,7 @@ impl CollectionView {
                         cx.notify();
                         return;
                     }
-                    let vw = f32::from(window.viewport_size().width);
+                    let vw = f32::from(crate::ui::content_size(window).width);
                     this.resizing = Some((panel, f32::from(ev.position.x) - this.edge_x(panel, vw)));
                 }),
             )
@@ -164,7 +164,7 @@ impl CollectionView {
                     return;
                 }
                 let Some((_, grab)) = this.resizing else { return };
-                let vw = f32::from(window.viewport_size().width);
+                let vw = f32::from(crate::ui::content_size(window).width);
                 this.drag_edge(panel, f32::from(ev.event.position.x) - grab, vw);
                 cx.notify();
             }))
