@@ -145,6 +145,8 @@ fn build_native(
 ) -> LaunchPlan {
     let app = game.app_name.as_str();
     let mut env = setup_wrapper_env_vars(app, "legendary");
+    // umu's game id means nothing without umu (the game runs as it is).
+    env.remove("GAMEID");
     env.extend(s.env_options.iter().cloned());
     let (launched, args) = launched_and_args(app, s, opts);
     let launch = epic_launch(ctx, game, s, opts, launched);
