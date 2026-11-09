@@ -203,7 +203,7 @@ impl CollectionView {
             .flex_col()
             .gap(px(d.head_gap))
             .child(section_head(tr!("Filter by")))
-            .child(div().relative().flex().flex_wrap().gap(px(6.)).children(pills).child(more).children(list))
+            .child(div().flex().flex_wrap().gap(px(6.)).children(pills).child(div().relative().flex_none().child(more).children(list)))
             .children(ages)
     }
 
@@ -234,7 +234,7 @@ impl CollectionView {
                     cx.notify();
                 })),
         );
-        popover("vm-filter-more-list", list, |el| el.top(relative(1.)).right_0().pt(px(4.)), cx)
+        popover("vm-filter-more-list", list, |el| el.top(relative(1.)).left_0().pt(px(4.)), cx)
     }
 
     /// "Manage ▾" in the footer: the managers that change the library's
