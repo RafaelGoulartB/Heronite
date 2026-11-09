@@ -80,13 +80,33 @@ pub fn stop_cmd(exe: &Path, game: &CollectionGame) -> String {
     format!("{} {}", quoted(&exe.to_string_lossy()), quoted(&url("stop", game)))
 }
 
+/// FNV-1a: the same in every build (`DefaultHasher` may change with Rust).
+fn fnv64(bytes: impl IntoIterator<Item = u8>) -> u64 {
+    bytes.into_iter().fold(0xcbf2_9ce4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
+}
+
 /// A file name for a cover: the game and the art it is made from, so new
-/// art gets a new file (and Sunshine sees the change).
+/// art gets a new file (and Sunshine sees the change). Stable across builds:
+/// an update of Heronite does not rename (and so re-render and re-send)
+/// every cover.
 fn cover_name(key: &str, chain: &[heronite_data::ImageRef]) -> String {
-    let mut h = DefaultHasher::new();
-    key.hash(&mut h);
-    format!("{chain:?}").hash(&mut h);
-    format!("{:016x}.png", h.finish())
+    use heronite_data::ImageRef;
+    let mut text = String::from(key);
+    for image in chain {
+        text.push('\0');
+        match image {
+            ImageRef::File(p) => {
+                text.push_str("file:");
+                text.push_str(&p.to_string_lossy());
+            }
+            ImageRef::Url(u) => {
+                text.push_str("url:");
+                text.push_str(u);
+            }
+            ImageRef::Fallback => text.push_str("fallback"),
+        }
+    }
+    format!("{:016x}.png", fnv64(text.bytes()))
 }
 
 fn cover(dir: &Path, key: &str, chain: &[heronite_data::ImageRef], opts: &heronite_images::Opts) -> Option<PathBuf> {
@@ -194,5 +214,8 @@ mod tests {
         assert_ne!(cover_name("gog_1", &a), cover_name("gog_1", &b));
         assert_ne!(cover_name("gog_1", &a), cover_name("gog_2", &a));
         assert!(cover_name("gog_1", &a).ends_with(".png"));
+        // Fixed: the same name in every build of Heronite.
+        assert_eq!(cover_name("gog_1", &a), format!("{:016x}.png", fnv64("gog_1\0url:https://x/1.jpg".bytes())));
+        assert_eq!(fnv64("a".bytes()), 0xaf63_dc4c_8601_ec8c);
     }
 }
