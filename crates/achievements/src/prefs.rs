@@ -30,6 +30,10 @@ pub struct Prefs {
     /// Achievements that games keep in their own files (the open-source
     /// Steam API emulators' saves), for DRM-free and offline copies.
     pub game_files: bool,
+    /// Comet stands in for GOG Galaxy's service while a GOG game runs, so
+    /// its achievements unlock on the GOG account (`heronite_launch::galaxy`),
+    /// and they show while it runs (its database, `sources::comet`).
+    pub gog_comet: bool,
     /// What the notices over the game show besides the name.
     pub notice: NoticeFields,
 }
@@ -71,6 +75,7 @@ impl Default for Prefs {
             emulators: true,
             hardcore: false,
             game_files: false,
+            gog_comet: true,
             notice: NoticeFields::default(),
         }
     }
@@ -98,6 +103,9 @@ mod tests {
     fn live_notices_default_to_the_overlay_and_game_files_only() {
         let p = Prefs::default();
         assert!(p.overlay_notices && !p.live_steam && !p.notify);
+        // Older files, from before Comet, get it on.
+        let p: Prefs = serde_json::from_str(r#"{"gameFiles":true}"#).unwrap();
+        assert!(p.gog_comet);
     }
 
     #[test]
