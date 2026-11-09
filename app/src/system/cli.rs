@@ -7,6 +7,9 @@
 //! * `heronite://launch/<appName>`, `heronite://launch/<runner>/<appName>`,
 //!   `heronite://launch?appName=..&runner=..[&arg=..][&altExe=..][&gui=false]`
 //!   (Heroic's URL forms under this app's own scheme; `heroic://` stays Heroic's).
+//! * `heronite://stop?appName=..&runner=..` (and the path forms) closes the
+//!   game if the running instance has it running; with no instance it does
+//!   nothing (Sunshine runs it when a stream's application ends).
 //!   The old `heronite-rs://` scheme is still read: Steam shortcuts made
 //!   before the rename keep it.
 //!
@@ -45,6 +48,8 @@ pub struct LaunchRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UrlAction {
     Launch(LaunchRequest),
+    /// Close this game if it runs (only `app_name` and `runner` are read).
+    Stop(LaunchRequest),
     Ping,
 }
 
@@ -54,12 +59,19 @@ pub struct Cli {
     pub launch: Option<LaunchRequest>,
     /// `--open-client <id>`.
     pub open_client: Option<Client>,
+    /// `heronite://stop?..`: the game to close in the running instance.
+    pub stop: Option<LaunchRequest>,
     /// `--no-gui`.
     pub no_gui: bool,
     /// `--console`: switch to console mode.
     pub console: bool,
     /// `--fullscreen`: the window fills the screen.
     pub fullscreen: bool,
+    /// `--handoff`: with no instance running, start one on its own (outside
+    /// the caller's process group or job) and exit at once. Sunshine ends the
+    /// whole group of what it started when the stream quits; the instance
+    /// must not be part of it ([`HANDOFF`]).
+    pub handoff: bool,
     /// `--autostart`: started with the session (the autostart entry); only
     /// then does "Start minimized" apply.
     pub autostart: bool,
@@ -80,8 +92,18 @@ Usage:
   --console                           open in console mode (it stays on until you leave it)
   --fullscreen                        open the window fullscreen (F11 switches back)
   --autostart                         started with the system (\"Start minimized\" applies)
+  --handoff                           start the instance detached and exit at once (Sunshine)
   -h, --help                          this text
 ";
+
+/// See [`Cli::handoff`].
+pub const HANDOFF: &str = "--handoff";
+
+/// The arguments of this process for the instance it hands off to: the same,
+/// without [`HANDOFF`].
+pub fn without_handoff<I: IntoIterator<Item = std::ffi::OsString>>(args: I) -> Vec<std::ffi::OsString> {
+    args.into_iter().filter(|a| a != HANDOFF).collect()
+}
 
 const OPEN_CLIENT_USAGE: &str = "--open-client needs a store client: battlenet, ea, ubisoft or rockstar";
 
@@ -138,7 +160,7 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
 
     match host.to_ascii_lowercase().as_str() {
         "ping" => Some(UrlAction::Ping),
-        "launch" => {
+        host @ ("launch" | "stop") => {
             let mut req = LaunchRequest { gui_false: param("gui").is_some_and(|g| gui_false(&g)), ..Default::default() };
             let (app_name, runner);
             // Windows adds a trailing / to shortcuts: "/" means "no path".
@@ -154,7 +176,7 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
             }
             req.app_name = app_name.filter(|a| !a.is_empty())?;
             req.runner = runner.filter(|r| is_runner(r));
-            Some(UrlAction::Launch(req))
+            Some(if host == "stop" { UrlAction::Stop(req) } else { UrlAction::Launch(req) })
         }
         _ => None,
     }
@@ -171,6 +193,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
             "--no-gui" => cli.no_gui = true,
             "--console" => cli.console = true,
             "--fullscreen" => cli.fullscreen = true,
+            HANDOFF => cli.handoff = true,
             "--autostart" => cli.autostart = true,
             "-h" | "--help" => cli.help = true,
             "--launch" => {
@@ -217,11 +240,11 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
                 }
             }
             _ => {
-                if let Some(UrlAction::Launch(req)) = parse_url(a) {
+                match parse_url(a) {
                     // `--launch X` already seen wins over nothing; a URL fills in when absent.
-                    if cli.launch.is_none() {
-                        cli.launch = Some(req);
-                    }
+                    Some(UrlAction::Launch(req)) if cli.launch.is_none() => cli.launch = Some(req),
+                    Some(UrlAction::Stop(req)) => cli.stop = Some(req),
+                    _ => {}
                 }
             }
         }
@@ -293,6 +316,17 @@ mod tests {
     }
 
     #[test]
+    fn handoff_is_read_and_left_out_of_the_new_instance() {
+        let c = p(&["--no-gui", "--handoff", "heronite://launch?appName=1&runner=gog"]);
+        assert!(c.handoff && c.no_gui);
+        assert_eq!(c.launch.map(|r| r.app_name).as_deref(), Some("1"));
+        assert!(c.errors.is_empty());
+        assert!(!p(&["--no-gui"]).handoff);
+        let args = ["--no-gui", "--handoff", "heronite://launch?appName=1&runner=gog"].map(std::ffi::OsString::from);
+        assert_eq!(without_handoff(args), ["--no-gui", "heronite://launch?appName=1&runner=gog"].map(std::ffi::OsString::from));
+    }
+
+    #[test]
     fn console_and_fullscreen() {
         let c = p(&["--console", "--fullscreen"]);
         assert!(c.console && c.fullscreen && c.wants_window());
@@ -355,12 +389,22 @@ mod tests {
     }
 
     #[test]
+    fn stop_urls() {
+        assert_eq!(parse_url("heronite://stop?appName=Quail&runner=legendary"), Some(UrlAction::Stop(req(Some("legendary"), "Quail"))));
+        assert_eq!(parse_url("heronite://stop/gog/1"), Some(UrlAction::Stop(req(Some("gog"), "1"))));
+        let c = p(&["heronite://stop?appName=My%20Game&runner=sideload"]);
+        assert_eq!(c.stop, Some(req(Some("sideload"), "My Game")));
+        assert!(c.launch.is_none());
+    }
+
+    #[test]
     fn url_rejections() {
         assert_eq!(parse_url("heronite://ping"), Some(UrlAction::Ping));
         assert_eq!(parse_url("heronite://ping?x=1"), Some(UrlAction::Ping));
         assert_eq!(parse_url("heronite://launch"), None, "no appName");
         assert_eq!(parse_url("heronite://launch?runner=gog"), None);
         assert_eq!(parse_url("heronite://other/thing"), None);
+        assert_eq!(parse_url("heronite://stop"), None, "no appName");
         assert_eq!(parse_url("https://launch/x"), None);
         assert_eq!(parse_url("heroic://launch/Quail"), None, "Heroic's own links are not ours");
         assert_eq!(parse_url("heronitex://launch/Quail"), None);

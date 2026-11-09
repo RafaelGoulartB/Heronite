@@ -12,6 +12,7 @@ pub mod replay;
 pub mod script_install;
 pub mod session;
 pub mod steam_library;
+pub mod sunshine;
 pub mod sync;
 pub mod update;
 pub mod upkeep;

@@ -1,0 +1,20 @@
+[package]
+name = "heronite-sunshine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Heronite's games in the application list of Sunshine, through its web API, for Moonlight"
+
+[dependencies]
+heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+anyhow = "1"
+base64 = "0.22"
+ureq = "3"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

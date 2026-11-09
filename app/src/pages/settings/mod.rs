@@ -13,6 +13,8 @@
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
 //!   `screenshots.rs`, `saves.rs` + `backup/`). Any write ends in
 //!   [`SettingsPage::saved`].
+//! - Integrations: Sunshine, for Moonlight (`integrations.rs`,
+//!   `services::sunshine`).
 //! - Cloud: the account the library sync, backups, game saves and screenshots
 //!   go to (`cloud/`, `sync.json` in the app state).
 //! - Console mode: the console themes and every option of console mode
@@ -27,7 +29,7 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
 mod achievements;
@@ -37,6 +39,7 @@ mod backup;
 mod cloud;
 mod console;
 mod console_mode;
+mod integrations;
 mod launchers;
 mod library;
 pub mod logs;
@@ -141,6 +144,7 @@ pub struct SettingsPage {
     defaults_section: HSection,
     library: library::State,
     launchers: launchers::State,
+    integrations: integrations::State,
     overlay: overlay::State,
     replay: replay::State,
     storage: storage::State,
@@ -238,6 +242,7 @@ impl SettingsPage {
             cloud,
             library: library::State::new(&ctx),
             launchers: launchers::State::new(cx),
+            integrations: integrations::State::new(window, cx),
             overlay: overlay::State::new(&ctx, cx),
             replay: replay::State::new(&ctx, cx),
             storage,
@@ -734,6 +739,7 @@ impl SettingsPage {
             Section::Storage => storage::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
             Section::Launchers => launchers::render(self, cx),
+            Section::Integrations => integrations::render(self, window, cx),
             Section::Replay => replay::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),

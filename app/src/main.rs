@@ -85,6 +85,21 @@ fn main() {
             system::notify::send_and_wait("Heronite", text, std::time::Duration::from_secs(3));
             std::process::exit(1);
         }
+        // `heronite://stop` with no instance running: no game to close.
+        SingleInstance::Primary { .. } if cli.stop.is_some() && cli.launch.is_none() => {
+            log::info!("stop request: Heronite is not running, nothing to close");
+            return;
+        }
+        // `--handoff` (Sunshine's entries) with no instance running: the
+        // instance starts on its own and this process exits at once, so
+        // Sunshine sees a detached launch and its stream does not own
+        // Heronite. Inside a Flatpak a detached child dies with the sandbox
+        // of this process: there it runs here as before.
+        SingleInstance::Primary { server, .. } if cli.handoff && !heronite_platform::flatpak::active() => {
+            // The socket goes first, so the new process becomes the instance.
+            drop(server);
+            hand_off();
+        }
         SingleInstance::Primary { server, messages } => (server, messages),
     };
     // SIGTERM / SIGINT / SIGHUP are a quit (see `system::signals`).
@@ -149,6 +164,23 @@ enum SingleInstance {
     },
 }
 
+/// Starts this program again, detached, with the same arguments minus
+/// `--handoff`, and exits.
+fn hand_off() -> ! {
+    let exe = system::shortcuts::own_exe();
+    let args = system::cli::without_handoff(std::env::args_os().skip(1));
+    match heronite_update::relaunch::launch(&exe, &args) {
+        Ok(pid) => {
+            log::info!("handed the request to a new, detached instance (pid {pid})");
+            std::process::exit(0)
+        }
+        Err(e) => {
+            log::error!("could not start {} detached: {e}", exe.display());
+            std::process::exit(1)
+        }
+    }
+}
+
 /// `HERONITE_NO_SINGLE_INSTANCE=1` skips all of this (screenshot runs and
 /// tests never talk to the user's running instance).
 fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
@@ -161,6 +193,7 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
     let msg = Message {
         launch: cli.launch.clone(),
         open_client: cli.open_client,
+        stop: cli.stop.clone(),
         no_gui: cli.no_gui,
         console: cli.console,
         fullscreen: cli.fullscreen,

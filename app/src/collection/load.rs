@@ -169,7 +169,10 @@ impl CollectionView {
         // The first games of a new setup (Steam import) get a selection too.
         let before = self.lib.as_ref().map_or(0, |lib| lib.games.len());
         let was_empty = before == 0;
-        self.lib = Some(Arc::new(l.lib));
+        let lib = Arc::new(l.lib);
+        // Sunshine's list follows the installed games (when that is on).
+        crate::services::sunshine::library_loaded(&lib, cx);
+        self.lib = Some(lib);
         if first {
             if let Some((text, error)) = crate::services::upkeep::take_restore_notice() {
                 self.show_toast(text, error, cx);

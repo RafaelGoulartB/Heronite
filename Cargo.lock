@@ -3544,6 +3544,7 @@ dependencies = [
  "heronite-shortcuts",
  "heronite-steam",
  "heronite-storage",
+ "heronite-sunshine",
  "heronite-sync",
  "heronite-update",
  "heronite-wine",
@@ -3945,6 +3946,19 @@ dependencies = [
  "serde_json",
  "tempfile",
  "trash",
+]
+
+[[package]]
+name = "heronite-sunshine"
+version = "1.4.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "heronite-data",
+ "heronite-platform",
+ "serde_json",
+ "tempfile",
+ "ureq",
 ]
 
 [[package]]
