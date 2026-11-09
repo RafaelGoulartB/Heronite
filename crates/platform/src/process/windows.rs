@@ -27,7 +27,8 @@ use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, ERROR_ACCESS_DENIED, FILETIME, HANDLE, INVALID_HANDLE_VALUE, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::System::Console::{
-    AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, GetConsoleProcessList, SetConsoleCtrlHandler, CTRL_C_EVENT,
+    AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, GetConsoleProcessList, GetStdHandle, SetConsoleCtrlHandler,
+    ATTACH_PARENT_PROCESS, CTRL_C_EVENT, STD_OUTPUT_HANDLE,
 };
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
@@ -178,6 +179,17 @@ const SENT: i32 = 0x4843_5443;
 /// Whether this program called [`init_stop_helper`], so it can be started as
 /// the sender.
 static SENDS_CTRL_C: AtomicBool = AtomicBool::new(false);
+
+pub(super) fn attach_parent_console() {
+    // SAFETY: console calls on this process's own console state.
+    unsafe {
+        let out = GetStdHandle(STD_OUTPUT_HANDLE);
+        if out.is_null() || out == INVALID_HANDLE_VALUE {
+            // Fails harmlessly when the parent has no console (Explorer).
+            AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+    }
+}
 
 pub(super) fn init_stop_helper() {
     let mut args = std::env::args_os().skip(1);

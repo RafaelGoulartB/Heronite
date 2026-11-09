@@ -49,6 +49,10 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-import     games of Heroic, Lutris, Bottles, Faugus and Playnite
  │                      brought into the Collection                  → data
  ├─ heronite-installer  games from YAML install scripts              → data, launch, emulation
+ ├─ heronite-display    monitors, their modes, HDR and VRR, for
+ │                      per-game display settings (DisplayConfig;
+ │                      kscreen-doctor, Mutter, wlr-randr, hyprctl),
+ │                      read-only so far                             → platform
  ├─ heronite-metadata   IGDB/Steam/Lutris/HLTB metadata and artwork  → data
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes

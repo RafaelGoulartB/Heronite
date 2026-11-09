@@ -27,6 +27,12 @@ fn main() {
     // First: on Windows this program may be started again only to send a
     // helper (legendary, gogdl, nile) the Ctrl+C that asks it to stop.
     heronite_platform::process::init_stop_helper();
+    // `--display-probe`: print the displays and exit, touching nothing else.
+    if system::cli::wants_display_probe(std::env::args_os().skip(1)) {
+        heronite_platform::process::attach_parent_console();
+        println!("{}", heronite_display::probe_json());
+        return;
+    }
     let started = Instant::now();
     tune_allocator();
     // A restore asked for before a restart: copied before anything reads the
