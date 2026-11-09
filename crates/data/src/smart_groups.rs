@@ -44,15 +44,35 @@ pub enum Field {
     Played,
     /// An installed game with an update waiting ([`Facts::updates`]).
     HasUpdate,
+    /// In the hidden list (seen only while hidden games are shown).
+    Hidden,
+    /// Notes written in its details.
+    HasNotes,
+    /// A game of another store also owned on Steam.
+    AlsoOnSteam,
+    /// Shared by another member of the Steam Family.
+    FamilyShared,
     /// Completion status ids.
     Status,
     /// Custom category names ([`crate::categories`]).
     Category,
+    /// The system an emulated game runs on ([`crate::organize::GameExtras::systems`]).
+    System,
     Facet(FacetKind),
     /// Hours played.
     Playtime,
     /// Days since the game was last played.
     LastPlayed,
+    /// Days since the game was first played.
+    FirstPlayed,
+    /// Sessions recorded.
+    TimesPlayed,
+    /// Average session, in minutes.
+    SessionLength,
+    /// Hours played in the last 30 days.
+    RecentPlaytime,
+    /// Time played against HowLongToBeat's main story, in percent.
+    Progress,
     /// Days since the game entered the library ([`crate::added`]).
     Added,
     ReleaseYear,
@@ -62,6 +82,8 @@ pub enum Field {
     CriticScore,
     /// GiB on disk, installed games only.
     InstallSize,
+    /// The youngest age its rating is for ([`CollectionGame::age_rating`]).
+    AgeRating,
     /// HowLongToBeat's main story, in hours.
     Hltb,
 }
@@ -83,19 +105,30 @@ impl Field {
         let mut out = vec![
             Field::Installed,
             Field::Favourite,
-            Field::Played,
+            Field::Hidden,
             Field::Status,
             Field::Category,
+            Field::HasNotes,
+            Field::HasUpdate,
+            Field::RunsOffline,
+            Field::AlsoOnSteam,
+            Field::FamilyShared,
+            Field::Played,
             Field::Playtime,
+            Field::RecentPlaytime,
+            Field::TimesPlayed,
+            Field::SessionLength,
             Field::LastPlayed,
+            Field::FirstPlayed,
+            Field::Progress,
             Field::Hltb,
             Field::Added,
             Field::ReleaseYear,
             Field::Rating,
             Field::CriticScore,
+            Field::AgeRating,
             Field::InstallSize,
-            Field::RunsOffline,
-            Field::HasUpdate,
+            Field::System,
         ];
         out.extend(FACET_KINDS.map(Field::Facet));
         out
@@ -108,6 +141,17 @@ impl Field {
             Field::RunsOffline => "runsOffline",
             Field::Played => "played",
             Field::HasUpdate => "hasUpdate",
+            Field::Hidden => "hidden",
+            Field::HasNotes => "hasNotes",
+            Field::AlsoOnSteam => "alsoOnSteam",
+            Field::FamilyShared => "familyShared",
+            Field::System => "system",
+            Field::FirstPlayed => "firstPlayed",
+            Field::TimesPlayed => "timesPlayed",
+            Field::SessionLength => "sessionLength",
+            Field::RecentPlaytime => "recentPlaytime",
+            Field::Progress => "progress",
+            Field::AgeRating => "ageRating",
             Field::Status => "status",
             Field::Category => "category",
             Field::Facet(kind) => kind.as_str(),
@@ -128,8 +172,16 @@ impl Field {
 
     pub fn kind(self) -> ValueKind {
         match self {
-            Field::Installed | Field::Favourite | Field::RunsOffline | Field::Played | Field::HasUpdate => ValueKind::Flag,
-            Field::Status | Field::Category | Field::Facet(_) => ValueKind::Names,
+            Field::Installed
+            | Field::Favourite
+            | Field::RunsOffline
+            | Field::Played
+            | Field::HasUpdate
+            | Field::Hidden
+            | Field::HasNotes
+            | Field::AlsoOnSteam
+            | Field::FamilyShared => ValueKind::Flag,
+            Field::Status | Field::Category | Field::System | Field::Facet(_) => ValueKind::Names,
             _ => ValueKind::Number,
         }
     }
@@ -233,6 +285,10 @@ fn flag(field: Field, g: &CollectionGame, facts: &Facts) -> bool {
         Field::RunsOffline => runs_offline(g),
         Field::Played => g.playtime_minutes > 0 || g.last_played.as_deref().is_some_and(|s| !s.is_empty()),
         Field::HasUpdate => facts.updates.is_some_and(|u| u.contains(&g.app_name)),
+        Field::Hidden => g.hidden,
+        Field::HasNotes => g.details.notes.as_deref().is_some_and(|n| !n.trim().is_empty()),
+        Field::AlsoOnSteam => g.steam_link.is_some(),
+        Field::FamilyShared => g.family.is_some(),
         _ => false,
     }
 }
@@ -252,6 +308,10 @@ fn names_match(field: Field, names: &[String], g: &CollectionGame, facts: &Facts
             let wanted = facet_key(n);
             g.facets[kind.index()].iter().any(|item| item.key == wanted)
         }),
+        Field::System => {
+            let Some(system) = facts.organize.extras.and_then(|e| e.systems.get(&g.key)).map(|s| facet_key(s)) else { return false };
+            names.iter().any(|n| facet_key(n) == system)
+        }
         _ => false,
     }
 }
@@ -273,6 +333,23 @@ fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
         Field::CriticScore => g.details.critic_score.filter(|s| *s > 0.),
         Field::InstallSize => o.size(g).filter(|_| g.installed).map(|b| b as f64 / (1024. * 1024. * 1024.)),
         Field::Hltb => facts.wiki?.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.),
+        Field::FirstPlayed => g.first_played.as_deref().and_then(|s| days_ago(s, facts.today)),
+        Field::TimesPlayed => Some(crate::organize::times_played(g) as f64),
+        Field::SessionLength => {
+            let sessions = g.sessions.as_deref().filter(|s| !s.is_empty())?;
+            Some(sessions.iter().map(|s| s.elapsed_seconds.get()).sum::<f64>() / sessions.len() as f64 / 60.)
+        }
+        Field::RecentPlaytime => {
+            let seconds = g.sessions.as_deref().map_or(0., |list| {
+                list.iter().filter(|s| days_ago(&s.started_at, facts.today).is_some_and(|d| d < 30.)).map(|s| s.elapsed_seconds.get()).sum()
+            });
+            Some(seconds / 3600.)
+        }
+        Field::Progress => {
+            let main = facts.wiki?.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.)?;
+            Some(g.playtime_minutes as f64 / 60. / main * 100.)
+        }
+        Field::AgeRating => g.age_rating.as_ref().and_then(|r| r.min_age()).map(f64::from),
         _ => None,
     }
 }
@@ -718,6 +795,36 @@ mod tests {
         let facts = with(&extras, &ratings, &statuses);
         assert!(cond(Field::InstallSize, Op::Gt(50.)).matches(&big, &facts));
         assert!(cond(Field::Added, Op::Gt(300.)).matches(&big, &facts));
+    }
+
+    #[test]
+    fn how_a_game_is_played_comes_from_its_sessions() {
+        let statuses = crate::status::default_statuses();
+        let mut g = std::sync::Arc::try_unwrap(game("p", "Played", |s| {
+            s.minutes = 300;
+            s.first_played = Some("2025-11-08T10:00:00.000Z".into());
+        }))
+        .unwrap();
+        let session = |at: &str, minutes: u64| -> crate::models::LocalGameSession {
+            serde_json::from_value(json!({ "startedAt": at, "endedAt": at, "elapsedSeconds": minutes * 60, "source": "heroic" })).unwrap()
+        };
+        g.sessions = Some(std::sync::Arc::new(vec![session("2026-11-01T20:00:00.000Z", 90), session("2026-06-01T20:00:00.000Z", 30)]));
+        g.details.notes = Some("Boss rush next".into());
+        let mut extras = GameExtras::default();
+        extras.systems.insert(g.key.clone(), "PlayStation 2".into());
+        let ratings = HashMap::new();
+        let facts = with(&extras, &ratings, &statuses);
+        assert!(cond(Field::TimesPlayed, Op::Eq(2.)).matches(&g, &facts));
+        assert!(cond(Field::SessionLength, Op::Eq(60.)).matches(&g, &facts));
+        assert!(cond(Field::RecentPlaytime, Op::Eq(1.5)).matches(&g, &facts), "only the session of the last 30 days");
+        assert!(cond(Field::FirstPlayed, Op::Gt(360.)).matches(&g, &facts));
+        assert!(cond(Field::HasNotes, Op::Is(true)).matches(&g, &facts));
+        assert!(cond(Field::System, Op::In(vec!["playstation 2".into()])).matches(&g, &facts));
+        // Never played: no average session, no time in the last 30 days.
+        let new = game("n", "New", |_| {});
+        assert!(!cond(Field::SessionLength, Op::Gt(0.)).matches(&new, &facts));
+        assert!(cond(Field::RecentPlaytime, Op::Eq(0.)).matches(&new, &facts));
+        assert!(!cond(Field::System, Op::In(vec!["PlayStation 2".into()])).matches(&new, &facts));
     }
 
     #[test]

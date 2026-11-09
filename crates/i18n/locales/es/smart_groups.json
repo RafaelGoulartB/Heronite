@@ -52,5 +52,13 @@
   "Any group": "Cualquier grupo",
   "{n} smart group": "{n} grupo inteligente",
   "{n} smart groups": "{n} grupos inteligentes",
-  "Not on this PC: {names}. These conditions match no game here.": "No está en este PC: {names}. Estas condiciones no encuentran ningún juego aquí."
+  "Not on this PC: {names}. These conditions match no game here.": "No está en este PC: {names}. Estas condiciones no encuentran ningún juego aquí.",
+  "Also on Steam": "También en Steam",
+  "Has notes": "Tiene notas",
+  "How you play it": "Cómo lo juegas",
+  "Played in the last 30 days": "Jugado en los últimos 30 días",
+  "Progress to beat it": "Progreso para terminarlo",
+  "Shared by Steam Family": "Compartido por la Familia Steam",
+  "minutes": "minutos",
+  "years": "años"
 }

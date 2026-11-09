@@ -126,6 +126,12 @@ fn default_cond(field: Field) -> Cond {
         Field::Rating => Op::Gt(3.),
         Field::CriticScore => Op::Gt(80.),
         Field::InstallSize => Op::Gt(50.),
+        Field::FirstPlayed => Op::Gt(365.),
+        Field::TimesPlayed => Op::Lt(3.),
+        Field::SessionLength => Op::Lt(30.),
+        Field::RecentPlaytime => Op::Gt(1.),
+        Field::Progress => Op::Gt(50.),
+        Field::AgeRating => Op::Lt(13.),
         _ => return Cond::empty(field),
     };
     Cond::new(field, op)
@@ -176,6 +182,14 @@ impl SmartGroupDialog {
             this.except = simple.except.into_iter().map(|c| this.row(c, window, cx)).collect();
         }
         this.recount();
+        // `HERONITE_DEBUG_SMARTGROUP_MENU=field[:<text>]`: the first row's field menu open, `<text>` searched.
+        if let Some(spec) = crate::env::value("HERONITE_DEBUG_SMARTGROUP_MENU") {
+            if !this.rows.is_empty() && spec.starts_with("field") {
+                this.open = Some((List::Match, 0, Part::Field));
+                let text = spec.strip_prefix("field:").unwrap_or_default().to_string();
+                this.filter.update(cx, |s, cx| s.set_value(text, window, cx));
+            }
+        }
         this
     }
 
@@ -259,7 +273,14 @@ impl SmartGroupDialog {
     fn toggle_menu(&mut self, list: List, i: usize, part: Part, window: &mut Window, cx: &mut Context<Self>) {
         let at = Some((list, i, part));
         self.open = if self.open == at { None } else { at };
-        self.filter.update(cx, |s, cx| s.set_value("", window, cx));
+        // The fields' menu has a search box (a long list of values too): typing goes there.
+        let search = self.open.is_some() && (part == Part::Field || part == Part::Value);
+        self.filter.update(cx, |s, cx| {
+            s.set_value("", window, cx);
+            if search {
+                s.focus(window, cx);
+            }
+        });
         cx.notify();
     }
 

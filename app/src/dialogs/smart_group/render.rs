@@ -30,10 +30,21 @@ pub(super) fn field_name(field: Field) -> &'static str {
         Field::Played => tr!("Played"),
         Field::HasUpdate => tr!("Update waiting"),
         Field::RunsOffline => tr!("Runs offline"),
+        Field::Hidden => tr!("Hidden"),
+        Field::HasNotes => tr!("Has notes"),
+        Field::AlsoOnSteam => tr!("Also on Steam"),
+        Field::FamilyShared => tr!("Shared by Steam Family"),
         Field::Status => tr!("Status"),
         Field::Category => tr!("Category"),
+        Field::System => tr!("System"),
         Field::Playtime => tr!("Time played"),
+        Field::RecentPlaytime => tr!("Played in the last 30 days"),
+        Field::TimesPlayed => tr!("Times played"),
+        Field::SessionLength => tr!("Average session"),
         Field::LastPlayed => tr!("Last played"),
+        Field::FirstPlayed => tr!("First played"),
+        Field::Progress => tr!("Progress to beat it"),
+        Field::AgeRating => tr!("Age rating"),
         Field::Hltb => tr!("Time to beat"),
         Field::Added => tr!("Date added"),
         Field::ReleaseYear => tr!("Release year"),
@@ -58,25 +69,36 @@ pub(super) fn field_name(field: Field) -> &'static str {
 /// The fields in the order of their menu, under their headings.
 fn field_menu() -> Vec<(Field, &'static str)> {
     let game = tr!("The game");
-    let time = tr!("Time");
+    let play = tr!("How you play it");
     let details = tr!("Details");
     let fields = tr!("Library fields");
     let mut out = vec![
         (Field::Installed, game),
         (Field::Favourite, game),
-        (Field::Played, game),
         (Field::Status, game),
         (Field::Category, game),
+        (Field::Hidden, game),
+        (Field::HasNotes, game),
         (Field::HasUpdate, game),
         (Field::RunsOffline, game),
-        (Field::Playtime, time),
-        (Field::LastPlayed, time),
-        (Field::Hltb, time),
-        (Field::Added, time),
+        (Field::AlsoOnSteam, game),
+        (Field::FamilyShared, game),
+        (Field::Played, play),
+        (Field::Playtime, play),
+        (Field::RecentPlaytime, play),
+        (Field::TimesPlayed, play),
+        (Field::SessionLength, play),
+        (Field::LastPlayed, play),
+        (Field::FirstPlayed, play),
+        (Field::Progress, play),
+        (Field::Hltb, details),
+        (Field::Added, details),
         (Field::ReleaseYear, details),
         (Field::Rating, details),
         (Field::CriticScore, details),
+        (Field::AgeRating, details),
         (Field::InstallSize, details),
+        (Field::System, details),
     ];
     out.extend(heronite_data::collection::FACET_KINDS.map(|k| (Field::Facet(k), fields)));
     out
@@ -118,10 +140,14 @@ fn with_value(op: &Op, old: &Op) -> Op {
 /// What follows a number.
 fn unit(field: Field) -> &'static str {
     match field {
-        Field::Playtime | Field::Hltb => tr!("hours"),
-        Field::LastPlayed | Field::Added => tr!("days ago"),
+        Field::Playtime | Field::Hltb | Field::RecentPlaytime => tr!("hours"),
+        Field::LastPlayed | Field::FirstPlayed | Field::Added => tr!("days ago"),
         Field::InstallSize => "GiB",
         Field::Rating => tr!("stars"),
+        Field::TimesPlayed => tr!("sessions"),
+        Field::SessionLength => tr!("minutes"),
+        Field::Progress => "%",
+        Field::AgeRating => tr!("years"),
         _ => "",
     }
 }
@@ -139,6 +165,13 @@ impl SmartGroupDialog {
                 .chain([(UNCATEGORIZED.to_owned(), tr!("Uncategorized").to_owned(), None)])
                 .collect(),
             Field::Facet(kind) => self.options.get(kind).iter().map(|o| (o.value.clone(), o.value.clone(), Some(o.count))).collect(),
+            Field::System => {
+                let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+                for system in self.facts.extras.systems.values().filter(|s| !s.is_empty()) {
+                    *counts.entry(system).or_default() += 1;
+                }
+                counts.into_iter().map(|(s, n)| (s.to_owned(), s.to_owned(), Some(n))).collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -177,7 +210,7 @@ impl SmartGroupDialog {
             false,
             is_open(Part::Field),
             field_options,
-            None,
+            Some(&self.filter),
             cx,
             move |this, w, cx| this.toggle_menu(list, i, Part::Field, w, cx),
             move |this, at, w, cx| {
@@ -186,7 +219,7 @@ impl SmartGroupDialog {
                 }
             },
         );
-        let mut el = div().flex().items_start().gap(px(8.)).child(div().w(px(180.)).flex_none().child(field));
+        let mut el = div().flex().items_start().gap(px(8.)).child(div().w(px(215.)).flex_none().child(field));
         let ops = op_menu(cond.field);
         if !ops.is_empty() {
             let current = ops.iter().find(|(op, _)| same_op(op, &cond.op)).map_or("", |(_, l)| *l);
