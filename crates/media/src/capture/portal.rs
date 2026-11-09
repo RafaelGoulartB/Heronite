@@ -18,11 +18,25 @@ use ashpd::zbus;
 use futures_util::future::{select, Either};
 use futures_util::StreamExt;
 use heronite_i18n::tr;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// Id of the screenshot shortcut in its portal session.
 pub const SHORTCUT_ID: &str = "game-screenshot";
+
+/// How long the portal gets to name the app, and to close a session.
+const REGISTER_TIMEOUT: Duration = Duration::from_secs(10);
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How long a screenshot may take. The first one of an app can wait for the
+/// user's permission, in a dialog that may open behind the game: without a
+/// deadline that capture would never end, and no other could start.
+const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Hears how the registration went.
+type Ready = Box<dyn FnOnce(Result<(), String>) + Send>;
 
 /// The connection every portal call here goes through.
 static CONNECTION: Mutex<Option<zbus::Connection>> = Mutex::new(None);
@@ -41,10 +55,14 @@ fn connection(app_id: Option<&str>) -> Result<zbus::Connection, String> {
         let connection = zbus::Connection::session().await.map_err(|e| e.to_string())?;
         if let Some(id) = app_id {
             match id.parse::<ashpd::AppID>() {
-                Ok(parsed) => match ashpd::register_host_app_with_connection(connection.clone(), parsed).await {
-                    Ok(()) => log::info!("registered with the desktop portal as {id}"),
-                    Err(e) => log::warn!("the desktop portal did not register the app as {id}: {e}"),
-                },
+                Ok(parsed) => {
+                    let register = ashpd::register_host_app_with_connection(connection.clone(), parsed);
+                    match unless(register, async_io::Timer::after(REGISTER_TIMEOUT)).await {
+                        Some(Ok(())) => log::info!("registered with the desktop portal as {id}"),
+                        Some(Err(e)) => log::warn!("the desktop portal did not register the app as {id}: {e}"),
+                        None => log::warn!("the desktop portal did not answer the registration as {id} in time"),
+                    }
+                }
                 Err(e) => log::warn!("invalid portal app id {id:?}: {e}"),
             }
         }
@@ -81,13 +99,14 @@ pub struct PortalShortcut {
 
 impl PortalShortcut {
     /// Binds `trigger` as the shortcut `id` and calls `on_activated` for
-    /// each press. `on_ready` receives the registration result exactly once.
+    /// each press. `on_ready` receives the registration result once, or
+    /// never when the shortcut is stopped before the desktop answered.
     pub fn start(
         app_id: Option<String>,
         (id, description): (&'static str, &'static str),
         trigger: String,
         on_activated: Arc<dyn Fn() + Send + Sync>,
-        on_ready: Box<dyn FnOnce(Result<(), String>) + Send>,
+        on_ready: Ready,
     ) -> Self {
         let (stop_tx, stop_rx) = futures_channel::oneshot::channel::<()>();
         let thread = std::thread::Builder::new()
@@ -117,18 +136,44 @@ impl Drop for PortalShortcut {
     }
 }
 
+/// What `future` gives, unless `other` finishes first.
+async fn unless<T, O>(future: impl Future<Output = T>, other: impl Future<Output = O> + Unpin) -> Option<T> {
+    futures_util::pin_mut!(future);
+    match select(future, other).await {
+        Either::Left((value, _)) => Some(value),
+        Either::Right(_) => None,
+    }
+}
+
+fn refused(id: &str, on_ready: Ready, error: &ashpd::Error) {
+    log::warn!("the desktop portal refused the shortcut {id}: {error}");
+    on_ready(Err(shortcut_error(error)));
+}
+
+/// Whoever drops the shortcut joins this thread, so nothing here waits on
+/// the desktop alone: `stop` ends every step (a desktop may hold the bind
+/// until the user approves it in a dialog, which can open behind the game)
+/// and closing the session has a deadline.
 async fn run(
     connection: zbus::Connection,
     id: &'static str,
     description: &'static str,
     trigger: String,
     on_activated: Arc<dyn Fn() + Send + Sync>,
-    on_ready: Box<dyn FnOnce(Result<(), String>) + Send>,
+    on_ready: Ready,
     mut stop: futures_channel::oneshot::Receiver<()>,
 ) {
     let setup = async {
         let shortcuts = GlobalShortcuts::with_connection(connection).await?;
         let session = shortcuts.create_session(Default::default()).await?;
+        Ok::<_, ashpd::Error>((shortcuts, session))
+    };
+    let (shortcuts, session) = match unless(setup, &mut stop).await {
+        Some(Ok(v)) => v,
+        Some(Err(e)) => return refused(id, on_ready, &e),
+        None => return,
+    };
+    let bind = async {
         let activated = shortcuts.receive_activated().await?;
         let request = shortcuts
             .bind_shortcuts(
@@ -139,42 +184,39 @@ async fn run(
             )
             .await?;
         request.response()?;
-        Ok::<_, ashpd::Error>((shortcuts, session, activated))
+        Ok::<_, ashpd::Error>(activated)
     };
-    let (shortcuts, session, mut activated) = match setup.await {
-        Ok(v) => {
+    match unless(bind, &mut stop).await {
+        Some(Ok(mut activated)) => {
             on_ready(Ok(()));
-            v
+            while let Either::Left((Some(a), _)) = select(activated.next(), &mut stop).await {
+                if a.shortcut_id() == id {
+                    on_activated();
+                }
+            }
         }
-        Err(e) => {
-            log::warn!("the desktop portal refused the shortcut {id}: {e}");
-            on_ready(Err(shortcut_error(&e)));
-            return;
-        }
-    };
-    while let Either::Left((Some(a), _)) = select(activated.next(), &mut stop).await {
-        if a.shortcut_id() == id {
-            on_activated();
-        }
+        Some(Err(e)) => refused(id, on_ready, &e),
+        // Stopped while the desktop still held the bind.
+        None => {}
     }
-    let _ = session.close().await;
-    drop(shortcuts);
+    match unless(session.close(), async_io::Timer::after(CLOSE_TIMEOUT)).await {
+        Some(Ok(())) => {}
+        Some(Err(e)) => log::debug!("closing the session of the shortcut {id}: {e}"),
+        None => log::warn!("the desktop portal did not close the session of the shortcut {id} in time"),
+    }
 }
 
 /// `org.freedesktop.portal.Screenshot` (non-interactive): path of the PNG the
 /// portal wrote. `app_id`: see [`connection`] (the desktop keeps the
-/// permission to capture under it).
+/// permission to capture under it). Gives up after [`SCREENSHOT_TIMEOUT`].
 pub fn screenshot(app_id: Option<&str>) -> Result<PathBuf, String> {
     let connection = connection(app_id)?;
     pollster::block_on(async {
-        let response = Screenshot::request()
-            .interactive(false)
-            .connection(Some(connection))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .response()
-            .map_err(|e| e.to_string())?;
+        let request = async { Screenshot::request().interactive(false).connection(Some(connection)).send().await?.response() };
+        let response = match unless(request, async_io::Timer::after(SCREENSHOT_TIMEOUT)).await {
+            Some(response) => response.map_err(|e| e.to_string())?,
+            None => return Err(tr!("The desktop did not answer in time (it may be asking for permission in a dialog)").into()),
+        };
         file_uri_to_path(response.uri().as_str()).ok_or_else(|| format!("unsupported screenshot uri {}", response.uri()))
     })
 }
@@ -244,6 +286,20 @@ mod tests {
         let result = rx.recv_timeout(std::time::Duration::from_secs(60)).expect("the portal answers");
         shortcut.stop();
         result.expect("the shortcut is bound");
+    }
+
+    #[test]
+    fn a_step_ends_when_it_is_stopped_or_late() {
+        let never = std::future::pending::<u8>;
+        let (stop, mut stopped) = futures_channel::oneshot::channel::<()>();
+        stop.send(()).unwrap();
+        assert_eq!(pollster::block_on(unless(never(), &mut stopped)), None);
+        // A dropped shortcut stops it too.
+        let (stop, mut stopped) = futures_channel::oneshot::channel::<()>();
+        drop(stop);
+        assert_eq!(pollster::block_on(unless(never(), &mut stopped)), None);
+        assert_eq!(pollster::block_on(unless(never(), async_io::Timer::after(Duration::from_millis(20)))), None);
+        assert_eq!(pollster::block_on(unless(async { 7 }, async_io::Timer::after(Duration::from_secs(30)))), Some(7));
     }
 
     #[test]

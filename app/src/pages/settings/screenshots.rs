@@ -59,6 +59,16 @@ impl State {
         if let Some(c) = &compression {
             cx.observe(c, |_, _, cx| cx.notify()).detach();
         }
+        // The shortcut is registered in the background: its status line
+        // follows the answer.
+        if let Some(session) = crate::services::session::get(cx) {
+            cx.subscribe(&session, |_, _, ev: &crate::services::session::SessionEvent, cx| {
+                if matches!(ev, crate::services::session::SessionEvent::Capture(_)) {
+                    cx.notify();
+                }
+            })
+            .detach();
+        }
         let capture_command = cfg!(target_os = "linux").then(|| capture_command(&crate::system::shortcuts::own_exe()));
         Self { folder, limit, hotkey: cx.focus_handle(), cache, info: None, busy: false, message: None, compression, capture_command }
     }

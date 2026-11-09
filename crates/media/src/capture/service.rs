@@ -1,6 +1,11 @@
 //! The capture service: session bookkeeping, shortcut registration, capture
 //! and feedback. Everything here talks to the desktop (hyprctl, D-Bus, grim,
 //! notifications) and is deliberately not exercised by the unit tests.
+//!
+//! The callers are on the UI thread, and the desktop can be slow to answer
+//! (`hyprctl` has a 2 s timeout per call, a portal may wait for the user), so
+//! the shortcut is registered and removed on a thread of its own: a change
+//! only records what is wanted and wakes it.
 
 use super::portal::PortalShortcut;
 use super::{
@@ -14,7 +19,7 @@ use signal_hook::consts::signal::SIGUSR2;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, Weak};
 
 #[derive(Default)]
@@ -38,6 +43,20 @@ struct Inner {
     state: Mutex<State>,
     busy: AtomicBool,
     signals: Mutex<Option<signal_hook::iterator::Handle>>,
+    /// Wakes the registration thread; `None` after [`CaptureService::shutdown`].
+    wake: Mutex<Option<Sender<()>>>,
+    /// Held while the shortcut is registered or removed: the registration
+    /// thread and `shutdown` never interleave.
+    registering: Mutex<()>,
+}
+
+/// Clears `busy` however the capture ends (a panic included).
+struct Busy<'a>(&'a AtomicBool);
+
+impl Drop for Busy<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 /// Captures the screen while a launched game runs. Cheap to clone.
@@ -52,16 +71,43 @@ pub struct CaptureService {
 
 impl CaptureService {
     pub fn new(events: Sender<CaptureEvent>, options: ServiceOptions) -> Self {
+        let (wake, woken) = mpsc::channel();
         let inner = Arc::new(Inner {
             events: Mutex::new(events),
             options,
             state: Mutex::new(State::default()),
             busy: AtomicBool::new(false),
             signals: Mutex::new(None),
+            wake: Mutex::new(Some(wake)),
+            registering: Mutex::new(()),
         });
         let service = Self { inner };
         service.install_signal_handler();
+        service.start_registration_thread(woken);
         service
+    }
+
+    /// The thread ends when the service is shut down or its last clone goes.
+    fn start_registration_thread(&self, woken: mpsc::Receiver<()>) {
+        let weak: Weak<Inner> = Arc::downgrade(&self.inner);
+        let spawned = std::thread::Builder::new().name("heronite-capture-shortcut".into()).spawn(move || {
+            while woken.recv().is_ok() {
+                // Several changes in a row need one registration.
+                while woken.try_recv().is_ok() {}
+                let Some(inner) = weak.upgrade() else { break };
+                CaptureService { inner }.reconfigure();
+            }
+        });
+        if let Err(e) = spawned {
+            log::error!("could not start the screenshot shortcut thread: {e}");
+        }
+    }
+
+    /// Asks the registration thread to make the shortcut match the state.
+    fn request_reconfigure(&self) {
+        if let Some(wake) = self.inner.wake.lock().unwrap().as_ref() {
+            let _ = wake.send(());
+        }
     }
 
     fn install_signal_handler(&self) {
@@ -99,29 +145,35 @@ impl CaptureService {
     /// Applies new settings (`screenshots.*`) and re-registers the shortcut.
     pub fn set_config(&self, config: CaptureConfig) {
         self.inner.state.lock().unwrap().config = config;
-        self.reconfigure();
+        self.request_reconfigure();
     }
 
     /// A game launched: it receives captures until [`end_session`](Self::end_session).
     pub fn begin_session(&self, game: ActiveGame) {
         log::info!("Collection screenshot session started for {} ({})", game.title, game.key());
         self.inner.state.lock().unwrap().games.insert(game.key(), game);
-        self.reconfigure();
+        self.request_reconfigure();
     }
 
     pub fn end_session(&self, runner: &str, app_name: &str) {
         log::info!("Collection screenshot session ended for {runner}:{app_name}");
         self.inner.state.lock().unwrap().games.remove(&format!("{runner}:{app_name}"));
-        self.reconfigure();
+        self.request_reconfigure();
     }
 
-    /// Removes the compositor bind and the portal session.
+    /// Removes the compositor bind and the portal session, here and now (the
+    /// process may be about to exit). Blocking.
     pub fn shutdown(&self) {
         {
             let mut st = self.inner.state.lock().unwrap();
             st.games.clear();
         }
-        self.unregister();
+        // No game is left, so a registration still queued only removes too.
+        drop(self.inner.wake.lock().unwrap().take());
+        {
+            let _registering = self.inner.registering.lock().unwrap_or_else(|e| e.into_inner());
+            self.unregister();
+        }
         if let Some(handle) = self.inner.signals.lock().unwrap().take() {
             handle.close();
         }
@@ -154,7 +206,9 @@ impl CaptureService {
         drop(portal);
     }
 
+    /// Blocking: runs on the registration thread.
     fn reconfigure(&self) {
+        let _registering = self.inner.registering.lock().unwrap_or_else(|e| e.into_inner());
         self.unregister();
         let (config, has_game, epoch) = {
             let st = self.inner.state.lock().unwrap();
@@ -293,7 +347,8 @@ impl CaptureService {
         if self.inner.busy.swap(true, Ordering::SeqCst) {
             return CaptureOutcome::Skipped(SkipReason::Busy);
         }
-        let outcome = match self.capture_into(&config, &game) {
+        let _busy = Busy(&self.inner.busy);
+        match self.capture_into(&config, &game) {
             Ok(path) => {
                 log::info!("Collection screenshot saved to {}", path.display());
                 self.send(CaptureEvent::Saved { app_name: game.app_name.clone(), runner: game.runner.clone(), path: path.clone() });
@@ -315,9 +370,7 @@ impl CaptureService {
                 self.send(CaptureEvent::Failed { error: error.clone() });
                 CaptureOutcome::Failed(error)
             }
-        };
-        self.inner.busy.store(false, Ordering::SeqCst);
-        outcome
+        }
     }
 
     fn capture_into(&self, config: &CaptureConfig, game: &ActiveGame) -> Result<std::path::PathBuf, String> {
