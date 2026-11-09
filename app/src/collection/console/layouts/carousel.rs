@@ -2,9 +2,11 @@
 //! and spaced out to each side, all over a glossy floor (each cover's
 //! reflection); the focused game's name, facts and place in the list under
 //! it. ◀ ▶ turn it and LT / RT jump to the previous / next letter (the
-//! letter shows over the covers for a moment); Y opens the Filters panel
-//! (LB / RB stay the tabs'). The covers fan out from the middle when the
-//! carousel first shows. GPUI has no 3D transforms, so a cover's pose is its size,
+//! letter shows over the covers for a moment); ↑ moves to a row of filter
+//! pills (All, Installed, Favourites, Playing) and ↓ comes back, and with a
+//! single tab LB / RB change the filter from anywhere. The covers fan out
+//! from the middle when the carousel first shows and when the filter
+//! changes. GPUI has no 3D transforms, so a cover's pose is its size,
 //! offset, opacity and shade, each cover on a spring of its own distance
 //! from the middle.
 
@@ -13,7 +15,8 @@ use std::time::{Duration, Instant};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::console_theme::{HeroTitle, TabSpec, TileShape, TileSize};
-use heronite_i18n::tr;
+use heronite_data::CollectionGame;
+use heronite_i18n::{n_, tr};
 use heronite_images::{Variant, REFLECTION_PART};
 
 use super::super::super::CollectionView;
@@ -29,6 +32,7 @@ use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 
+const FILTERS: [&str; 4] = [n_!("All"), n_!("Installed"), n_!("Favourites"), n_!("Playing")];
 /// Covers drawn on each side of the middle one.
 const REACH: usize = 5;
 /// How the covers move when the focus does: a touch under critical damping.
@@ -59,6 +63,8 @@ const ANCHOR: f32 = 0.78;
 /// above the name: the name sits over its faded tail.
 const FLOOR: f32 = 0.3;
 const FLOOR_ROOM: f32 = 0.14;
+/// Design px the filters take above the covers.
+const PILLS_H: f32 = 58.;
 /// Heights of the lines under the covers (the name, or the logo, the facts
 /// and the place in the list) and the space between them, design px.
 const NAME_H: f32 = 40.;
@@ -76,7 +82,11 @@ const TRACK: f32 = 180.;
 
 #[derive(Default)]
 pub(crate) struct Nav {
+    /// Index in [`FILTERS`].
+    filter: usize,
     index: usize,
+    /// The focus is on the row of pills.
+    pills: bool,
     /// The side the last move came from (-1 left, 1 right): the name slides
     /// in from it.
     from: f32,
@@ -88,7 +98,16 @@ pub(crate) struct Nav {
     fans: u64,
 }
 
-impl Nav {}
+impl Nav {
+    /// A new filter, the focus on `index`; the covers fan out again.
+    fn set_filter(&mut self, filter: usize, index: usize) {
+        self.filter = filter;
+        self.index = index;
+        self.from = 0.;
+        self.shown = None;
+        self.fans += 1;
+    }
+}
 
 /// `table` between its entries for a (fractional) distance `a` from the middle.
 fn at(table: &[f32; 6], a: f32) -> f32 {
@@ -137,6 +156,25 @@ fn turn<E: IntoElement + 'static>(id: impl Into<ElementId>, el: E, target: f32, 
         return build(el, target).into_any_element();
     }
     el.with_spring(id, SpringAnimation::new(TURN).to(target).with_epsilon(0.003), build).into_any_element()
+}
+
+/// The row of filters: the current one on a soft fill, on the focus pill
+/// while the row has the focus; the row steps back while the covers have it.
+fn filter_pills(tab: usize, filter: usize, focused: bool) -> AnyElement {
+    let row = div().flex_none().flex().justify_center().gap(u(6.)).pt(u(6.)).children(FILTERS.iter().enumerate().map(|(j, label)| {
+        let (on, current) = (focused && j == filter, j == filter);
+        // A click: ↑ to the pills, then ← → to this one.
+        let mut pads = if focused { Vec::new() } else { vec![Pad::Up] };
+        pads.extend(pointer::along(filter, j, Pad::Left, Pad::Right));
+        kit::row_base(on)
+            .on_pads(pads)
+            .min_h(u(36.))
+            .px(u(18.))
+            .when(!on && current, |d| d.bg(kit::ink(0.14)).text_color(kit::strong()))
+            .when(!current, |d| d.text_color(theme::text_muted()))
+            .child(div().text_size(u(15.)).font_weight(if current { theme::W_BOLD } else { theme::W_REGULAR }).child(tr(label)))
+    }));
+    motion::spring(SharedString::from(format!("cr-pills-{tab}")), row, motion::SOFT, focused, |d, k| d.opacity(0.62 + 0.38 * k))
 }
 
 /// The place in the list: the letter, a short line with a mark that glides
@@ -196,10 +234,25 @@ fn letter_flash(id: SharedString, letter: char) -> AnyElement {
 }
 
 impl CollectionView {
-    /// The games of the tab, sorted A–Z.
-    fn carousel_keys(&self, spec: &TabSpec) -> Vec<SharedString> {
+    /// The games of the tab that pass pill `filter`, sorted A–Z.
+    fn carousel_keys(&self, spec: &TabSpec, filter: usize) -> Vec<SharedString> {
+        let Some(lib) = self.lib.as_ref() else { return Vec::new() };
+        let playing = |g: &CollectionGame| {
+            self.playing.contains_key(&g.app_name)
+                || lib.statuses.iter().any(|s| s.id == g.status_id && matches!(s.slug.as_str(), "playing" | "endless"))
+        };
         let games = self.console_games(spec.source.as_str());
-        keys(by_title(games.iter().map(|g| g.as_ref()).collect()))
+        let picked: Vec<&CollectionGame> = games
+            .iter()
+            .map(|g| g.as_ref())
+            .filter(|g| match filter {
+                1 => g.installed,
+                2 => g.favourite,
+                3 => playing(g),
+                _ => true,
+            })
+            .collect();
+        keys(by_title(picked))
     }
 
     /// The letter of `key`'s title (`#` for digits and symbols).
@@ -220,22 +273,28 @@ impl CollectionView {
 
     pub(super) fn render_carousel(&mut self, tab: usize, spec: &TabSpec, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let theme = look::theme();
-        let all = self.carousel_keys(spec);
+        let filter = self.tab_nav(tab).carousel.filter.min(FILTERS.len() - 1);
+        let all = self.carousel_keys(spec, filter);
         let n = all.len();
         let nav = &mut self.tab_nav(tab).carousel;
         nav.index = nav.index.min(n.saturating_sub(1));
+        // Nothing to turn: the filters keep the focus.
+        if n == 0 {
+            nav.pills = true;
+        }
         let shown = *nav.shown.get_or_insert_with(Instant::now);
-        let (index, from, jumps, fans) = (nav.index, nav.from, nav.jumps, nav.fans);
+        let (index, pills_focus, from, jumps, fans) = (nav.index, nav.pills, nav.from, nav.jumps, nav.fans);
         let focused = all.get(index).cloned();
         self.console_focus_game(focused.clone(), cx);
 
+        let pills = filter_pills(tab, filter, pills_focus);
         let Some(focused) = focused else {
             return div()
                 .flex()
+                .flex_col()
                 .size_full()
-                .items_center()
-                .justify_center()
-                .child(kit::empty(Icon::GridView, tr!("No games match"), ""))
+                .child(pills)
+                .child(div().flex_1().flex().items_center().justify_center().child(kit::empty(Icon::GridView, tr!("No games match"), "")))
                 .into_any_element();
         };
 
@@ -247,7 +306,7 @@ impl CollectionView {
             + INFO_GAP
             + PLACE_H
             + INFO_PAD;
-        let room = (super::body_height(window, self.hints_visible()) - info_h) / (1. + FLOOR_ROOM);
+        let room = (super::body_height(window, self.hints_visible()) - PILLS_H - info_h) / (1. + FLOOR_ROOM);
         let (cw, ch) = cover_size(theme.tiles.shape, theme.tiles.size, self.cover_aspect, vw / k * 0.42, room);
         let (cwp, chp) = (cw * k, ch * k);
         let (pw, ph) = ((cwp * dpr).round() as u32, (chp * dpr).round() as u32);
@@ -270,13 +329,15 @@ impl CollectionView {
             let src =
                 if landscape { self.console_wide_art(&key, cw, ch, priority, window) } else { self.cover(&key, cwp, chp, dpr, priority) };
             let floor = (reflect && near <= 3).then(|| self.carousel_floor(&key, landscape, pw, ph, priority - 30)).flatten();
-            let ring = i == index;
+            let ring = i == index && !pills_focus;
             let grey = grey && !g.installed;
             let title = g.title.clone();
             let categories = self.console_categories(&key);
             let d = i as f32 - index as f32;
-            // A click: ← → to the cover; A on the focused one.
-            let pads = pointer::focus_or_activate(pointer::along(index, i, Pad::Left, Pad::Right));
+            // A click: ↓ from the pills, ← → to the cover; A on the focused one.
+            let mut pads = if pills_focus { vec![Pad::Down] } else { Vec::new() };
+            pads.extend(pointer::along(index, i, Pad::Left, Pad::Right));
+            let pads = if pills_focus { pads } else { pointer::focus_or_activate(pads) };
             let cover = turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute().on_pads(pads), d, move |el, d| {
                 let p = pose(d);
                 let (w, h) = (cwp * p.scale, chp * p.scale);
@@ -395,15 +456,44 @@ impl CollectionView {
             .flex()
             .flex_col()
             .size_full()
+            .child(pills)
             .child(div().flex_1().min_h_0().flex().flex_col().justify_center().pb(u(INFO_PAD)).child(stage).children(info))
             .into_any_element()
     }
 
     pub(super) fn carousel_pad(&mut self, tab: usize, spec: &TabSpec, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let theme = look::theme();
-        let all = self.carousel_keys(spec);
+        let filter = self.tab_nav(tab).carousel.filter.min(FILTERS.len() - 1);
+        let all = self.carousel_keys(spec, filter);
         let n = all.len();
-        let i = self.tab_nav(tab).carousel.index.min(n.saturating_sub(1));
+        let (i, pills) = {
+            let nav = &self.tab_nav(tab).carousel;
+            (nav.index.min(n.saturating_sub(1)), nav.pills)
+        };
+        // A new filter: the focused game stays when it passes it.
+        let next_filter = match pad {
+            Pad::Left | Pad::Right if pills => Some((filter as isize + pad.dir()).clamp(0, FILTERS.len() as isize - 1) as usize),
+            // With a single tab the bumpers have nothing else to do.
+            Pad::LB | Pad::RB if theme.tabs.len() < 2 => Some(super::step(filter, FILTERS.len(), pad.dir(), true)),
+            _ => None,
+        };
+        if let Some(next) = next_filter {
+            if next != filter {
+                let keep = all.get(i).cloned();
+                let at = keep.and_then(|k| self.carousel_keys(spec, next).iter().position(|x| *x == k)).unwrap_or(0);
+                self.tab_nav(tab).carousel.set_filter(next, at);
+            }
+            return true;
+        }
+        if pills {
+            return match pad {
+                Pad::Down | Pad::A | Pad::B => {
+                    self.tab_nav(tab).carousel.pills = false;
+                    true
+                }
+                _ => false,
+            };
+        }
         let letters: Vec<char> =
             if matches!(pad, Pad::LT | Pad::RT) { all.iter().map(|k| self.carousel_letter(k)).collect() } else { Vec::new() };
         let nav = &mut self.tab_nav(tab).carousel;
@@ -415,6 +505,10 @@ impl CollectionView {
                     nav.jumps += 1;
                 }
                 j
+            }
+            Pad::Up => {
+                nav.pills = true;
+                return true;
             }
             Pad::A | Pad::X => {
                 if let Some(k) = all.get(i) {
@@ -435,10 +529,18 @@ impl CollectionView {
         true
     }
 
-    pub(super) fn carousel_hints(&self, _tab: usize, _spec: &TabSpec) -> Vec<Hint> {
+    pub(super) fn carousel_hints(&self, tab: usize, _spec: &TabSpec) -> Vec<Hint> {
+        if self.console.tab_navs.get(tab).is_some_and(|n| n.carousel.pills) {
+            let mut h = vec![hint(Btn::LeftRight, tr!("Filter")), hint(Btn::B, tr!("Back"))];
+            h.extend(self.console_tab_hints());
+            return h;
+        }
         let mut h = self.console_cover_hints();
         h.insert(0, hint(Btn::LeftRight, tr!("Move")));
         h.insert(h.len() - self.console_tab_hints().len(), hint(Btn::LT, tr!("Letter")));
+        if look::theme().tabs.len() < 2 {
+            h.insert(h.len() - 1, hint(Btn::Bumpers, tr!("Filter")));
+        }
         h
     }
 }

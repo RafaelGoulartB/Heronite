@@ -346,7 +346,7 @@ impl CollectionView {
     /// Opens the library: the first Grid tab, else the results grid.
     pub(super) fn console_open_library(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
         let (i, _) = self.filters_target();
-        if i < self.console_tabs().len() {
+        if i < look::theme().tabs.len() {
             self.console.tab = i;
             self.console.tab_dir = 1.;
         } else {

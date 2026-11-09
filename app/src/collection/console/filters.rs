@@ -1,7 +1,7 @@
 //! Y on any tab: the Filters panel along the right edge, the search field
 //! on top (focused when it opens), then what the Library grid shows: Show,
-//! Sort, Favourites only, Status, Category and Smart group (every group, the
-//! pinned ones being tabs of their own too). Every change shows at once
+//! Sort, Favourites only, Status, Category and Smart group (the only way to
+//! the smart groups in console mode). Every change shows at once
 //! behind it, in the tab's grid, else the theme's first Grid tab, else (a
 //! theme without one, like Minimal) a grid of the results over the tab that
 //! B closes (`ConsoleUi::results`). A types the search on the on-screen
@@ -18,7 +18,7 @@ use super::layouts::{self, category_options, status_options, Filters, SHOW};
 use crate::console::kit::{self, u};
 use crate::console::osk::{Osk, OskEvent};
 use crate::console::pointer::{self, Clickable};
-use crate::console::{hint, motion, Btn, Hint, Pad};
+use crate::console::{hint, look, motion, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
@@ -53,11 +53,11 @@ impl CollectionView {
         if spec.layout == Layout::Grid {
             return (tab, spec);
         }
-        let tabs = self.console_tabs();
-        match tabs.iter().position(|t| t.layout == Layout::Grid) {
-            Some(i) => (i, tabs[i].clone()),
+        let theme = look::theme();
+        match theme.tabs.iter().position(|t| t.layout == Layout::Grid) {
+            Some(i) => (i, theme.tabs[i].clone()),
             // The tab's games, in a grid.
-            None => (tabs.len(), TabSpec { layout: Layout::Grid, ..spec }),
+            None => (theme.tabs.len(), TabSpec { layout: Layout::Grid, ..spec }),
         }
     }
 
@@ -74,7 +74,7 @@ impl CollectionView {
         nav.index = 0;
         nav.toolbar = None;
         nav.restart = true;
-        if target >= self.console_tabs().len() {
+        if target >= look::theme().tabs.len() {
             self.console.results = true;
         } else if target != self.console.tab {
             self.console.tab = target;

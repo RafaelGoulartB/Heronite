@@ -13,7 +13,6 @@ use heronite_data::categories::Categories;
 use heronite_data::console_theme::ShelfSpec;
 use heronite_data::hltb::WikiCache;
 use heronite_data::organize::{GameExtras, Organize};
-use heronite_data::smart_groups::SmartGroups;
 use heronite_data::{CollectionGame, Library};
 
 use super::super::CollectionView;
@@ -90,7 +89,6 @@ struct Inputs {
     extras: Arc<GameExtras>,
     wiki: Arc<WikiCache>,
     categories: Categories,
-    groups: SmartGroups,
     epoch: u64,
     day: i64,
 }
@@ -116,7 +114,6 @@ impl SourceCache {
                 && b.epoch == epoch
                 && b.day == day
                 && b.categories == view.categories
-                && b.groups == view.smart_groups
         });
         if !same {
             self.games.clear();
@@ -126,7 +123,6 @@ impl SourceCache {
                 extras: view.game_extras.clone(),
                 wiki: view.wiki.clone(),
                 categories: view.categories.clone(),
-                groups: view.smart_groups.clone(),
                 epoch,
                 day,
             });
@@ -152,7 +148,6 @@ impl CollectionView {
             "category" => self.categories.contains(value, &g.runner, &g.app_name),
             "store" => g.source_label == value,
             "platform" => self.organize().platform(g) == value,
-            "group" => self.smart_groups.get(value).is_some_and(|group| group.matches(g, &self.group_facts(&lib.statuses))),
             _ => true,
         }
     }

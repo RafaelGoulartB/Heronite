@@ -668,7 +668,6 @@ pub fn tab_icon(source: &str, layout: Layout) -> Icon {
         "status" => Icon::Flag,
         "category" => Icon::Label,
         "store" => Icon::Storefront,
-        "group" => Icon::AutoAwesome,
         _ => match layout {
             Layout::Grid => Icon::GridView,
             Layout::Dashboard => Icon::Home,

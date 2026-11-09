@@ -136,12 +136,8 @@ fn floating_hints(hints: &[Hint], shown: bool) -> AnyElement {
     })
 }
 
-/// A tab's name as shown (built-in themes name their tabs with English keys;
-/// a smart group's tab has the user's name).
+/// A tab's name as shown (built-in themes name their tabs with English keys).
 fn tab_label(t: &TabSpec) -> SharedString {
-    if t.source.starts_with("group:") {
-        return t.name.clone().into();
-    }
     SharedString::from(tr(&t.name).to_string())
 }
 
@@ -253,7 +249,7 @@ impl CollectionView {
         self.page = Page::Collection;
         self.console = ConsoleUi::default();
         if prefs.theme.nav.start_on == StartOn::Last {
-            self.console.tab = prefs.last_tab.min(self.console_tabs().len().saturating_sub(1));
+            self.console.tab = prefs.last_tab.min(prefs.theme.tabs.len().saturating_sub(1));
         }
         self.console.theme_epoch = look::epoch();
         // Fullscreen (`fullscreen`), unless `--fullscreen` already holds it
@@ -501,22 +497,11 @@ impl CollectionView {
         cx.notify();
     }
 
-    /// The theme's tabs, then one per pinned smart group (`group:<id>`), in
-    /// the layout of the theme's tab of every game (else its first tab's):
-    /// pinning a group on the desktop puts it on the TV too.
-    pub(super) fn console_tabs(&self) -> Vec<TabSpec> {
-        let theme = look::theme();
-        let mut tabs = theme.tabs.clone();
-        let layout = tabs.iter().find(|t| t.source == "all").or(tabs.first()).map_or(Layout::Grid, |t| t.layout);
-        tabs.extend(self.smart_groups.pinned().map(|g| TabSpec::new(&g.name, layout, &format!("group:{}", g.id))));
-        tabs
-    }
-
-    /// The tab `i` (clamped).
+    /// The theme's tab `i` (clamped).
     pub(super) fn console_tab_spec(&self) -> (usize, TabSpec) {
-        let tabs = self.console_tabs();
-        let i = self.console.tab.min(tabs.len().saturating_sub(1));
-        (i, tabs.get(i).cloned().unwrap_or_default())
+        let theme = look::theme();
+        let i = self.console.tab.min(theme.tabs.len().saturating_sub(1));
+        (i, theme.tabs.get(i).cloned().unwrap_or_default())
     }
 
     /// The layout on screen: the tab's, or the filters' results grid over it.
@@ -529,7 +514,7 @@ impl CollectionView {
     }
 
     fn switch_tab(&mut self, delta: isize) {
-        let n = self.console_tabs().len();
+        let n = look::theme().tabs.len();
         self.console.results = false;
         if n < 2 {
             return;
@@ -716,11 +701,11 @@ impl CollectionView {
 
     /// LB / RB (when there are tabs) and Menu.
     pub(super) fn console_tab_hints(&self) -> Vec<Hint> {
-        let tabs = self.console_tabs();
+        let theme = look::theme();
         let mut h = Vec::new();
-        if tabs.len() > 1 {
-            let next = &tabs[(self.console.tab + 1) % tabs.len()];
-            h.push(hint(Btn::Bumpers, if tabs.len() == 2 { tab_label(next).to_string() } else { tr!("Tabs").to_string() }));
+        if theme.tabs.len() > 1 {
+            let next = &theme.tabs[(self.console.tab + 1) % theme.tabs.len()];
+            h.push(hint(Btn::Bumpers, if theme.tabs.len() == 2 { tab_label(next).to_string() } else { tr!("Tabs").to_string() }));
         }
         h.push(hint(Btn::Start, tr!("Menu")));
         h
@@ -842,8 +827,7 @@ impl CollectionView {
     /// clock.
     fn console_top_bar(&self) -> Div {
         let theme = look::theme();
-        let tabs = self.console_tabs();
-        let names: Vec<SharedString> = tabs.iter().map(tab_label).collect();
+        let names: Vec<SharedString> = theme.tabs.iter().map(tab_label).collect();
         let label = theme.interface.label.trim().to_string();
         let tab = self.console.tab.min(names.len().saturating_sub(1));
         let tab_bar = theme.interface.tab_bar;
@@ -858,7 +842,7 @@ impl CollectionView {
             .when(!label.is_empty(), |d| d.child(kit::wordmark(&label)))
             .when(names.len() > 1 && tab_bar == TabBar::Top, |d| d.child(kit::tabs(&names, tab)))
             .when(names.len() > 1 && tab_bar == TabBar::Names, |d| d.child(kit::tab_names(&names, tab)))
-            .when_some(tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
+            .when_some(theme.tabs.get(tab).filter(|_| tab_bar == TabBar::Title), |d, t| {
                 let title = kit::tab_title(&tab_label(t), kit::tab_icon(&t.source, t.layout), names.len() > 1);
                 d.child(div().absolute().top_0().bottom_0().left_0().right_0().flex().items_center().justify_center().child(title))
             })
@@ -874,10 +858,9 @@ impl CollectionView {
     /// The tabs along the bottom (`tab_bar: bottom`), when there are several.
     fn console_bottom_tabs(&self) -> Option<Div> {
         let theme = look::theme();
-        let tabs = self.console_tabs();
-        (theme.interface.tab_bar == TabBar::Bottom && tabs.len() > 1).then(|| {
+        (theme.interface.tab_bar == TabBar::Bottom && theme.tabs.len() > 1).then(|| {
             let items: Vec<(SharedString, crate::icons::Icon)> =
-                tabs.iter().map(|t| (tab_label(t), kit::tab_icon(&t.source, t.layout))).collect();
+                theme.tabs.iter().map(|t| (tab_label(t), kit::tab_icon(&t.source, t.layout))).collect();
             kit::tabs_bottom(&items, self.console.tab.min(items.len() - 1))
         })
     }
@@ -885,9 +868,10 @@ impl CollectionView {
     pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         kit::set_scale(window);
         self.console_script(window, cx);
+        let theme = look::theme();
         if self.console.theme_epoch != look::epoch() {
             self.console.theme_epoch = look::epoch();
-            self.console.tab = self.console.tab.min(self.console_tabs().len().saturating_sub(1));
+            self.console.tab = self.console.tab.min(theme.tabs.len().saturating_sub(1));
         }
         let (tab, spec) = self.console_shown_tab();
         let on_page = self.page != Page::Collection;
