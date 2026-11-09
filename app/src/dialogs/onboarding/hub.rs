@@ -197,7 +197,6 @@ impl OnboardingDialog {
         let right = if n > 0 {
             done_label(trn!(n, "{n} game", "{n} games")).into_any_element()
         } else {
-            // Names: not translated.
             dim(if cfg!(windows) { tr!("Heroic and Playnite") } else { tr!("Heroic, Lutris and more") }).into_any_element()
         };
         line(Icon::CallMerge, tr!("Other launchers"), right)

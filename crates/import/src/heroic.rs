@@ -6,8 +6,9 @@
 //! games show as installed (in the same folders) once the store is logged
 //! in here. Nothing in Heroic's folder is written.
 //!
-//! A first start with Heroic around copies all of it already
-//! (`heronite_data::migrate`); this catches up with what was added since.
+//! Nothing comes in on its own: only once the user turns Heroic's import on
+//! in Settings → Other launchers (never from the Collection's welcome or
+//! the first-start dialog), then kept in sync while it is on.
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};

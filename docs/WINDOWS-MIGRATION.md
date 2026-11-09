@@ -8,8 +8,7 @@ What works on Windows, what is left, and what Windows does not need.
 
 - App: window and its controls, tray, single instance, start with Windows, `heronite://` links, keep awake
 - Collection: Steam (installed games and the whole library), games added by hand, play time
-- Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite; Heroic's games added by hand and its Epic, GOG and Amazon install records (`%APPDATA%\heroic`)
-- Copying an existing Heroic setup (`%APPDATA%\heroic`) at the first start (`Feature::HeroicMigration`)
+- Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite; Heroic's games added by hand and its Epic, GOG and Amazon install records (`%APPDATA%\heroic`), once its import is turned on there. Nothing is copied from Heroic at the first start (`Feature::HeroicMigration` is off, on Linux too)
 - Epic Games, GOG and Amazon Games through the Windows builds of legendary, gogdl and nile: login (WebView2 window), library, downloads, installs and moves, first launch, cloud saves, and the games of the official launchers (Epic Games Launcher, GOG Galaxy). Epic has one EOS Overlay switch instead of one per Wine prefix; Amazon's `.msi` installers run through `msiexec`
 - Battle.net, the EA app, Ubisoft Connect and the Rockstar Games Launcher as they are (no Wine): set up with the official installer or found already installed, sign-in and games read from this PC (`heronite_clients::place`), opened and closed by Heronite (`heronite_clients::native`), games started through the client; the session follows the programs running from the game's folder
 - Xbox (Windows only, `Feature::XboxStore`): Microsoft Store and PC Game Pass games the Xbox app installed, found among the user's packages (`heronite_platform::packages`, `heronite-xbox`) and started by their AUMID through `explorer.exe shell:AppsFolder\...`

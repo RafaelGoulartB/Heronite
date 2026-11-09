@@ -1,5 +1,10 @@
 //! One-time copy of an existing Heroic setup into this app's data folder.
 //!
+//! Off on every system (`Feature::HeroicMigration`): Heroic's games come in
+//! only when the user turns its import on in Settings → Other launchers
+//! (`heronite_import::heroic`). [`run_if_needed`] still renames the folders
+//! of the app's old name.
+//!
 //! On the first start (the data folder does not exist yet) the parts of
 //! Heroic's config folder this app uses are copied in: library, Collection,
 //! playtime, game settings, Epic login (`legendaryConfig`), Wine tools and

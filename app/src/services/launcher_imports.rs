@@ -45,6 +45,13 @@ pub struct Summary {
 /// in only from that section.
 pub const OFFERED_ELSEWHERE: bool = !cfg!(windows);
 
+/// Whether `launcher` is offered outside Settings → Other launchers
+/// ([`OFFERED_ELSEWHERE`]). Heroic never is: its games come in only once it
+/// is turned on in that section.
+pub fn offered_elsewhere(launcher: Launcher) -> bool {
+    OFFERED_ELSEWHERE && launcher != Launcher::Heroic
+}
+
 pub enum LauncherImportsEvent {
     Imported(Launcher, Report),
     /// Games found in the Collection twice, not told about before.
@@ -288,12 +295,14 @@ impl LauncherImports {
     }
 
     /// The launchers found that have games and are not imported yet, to
-    /// offer outside Settings ([`OFFERED_ELSEWHERE`]).
+    /// offer outside Settings ([`offered_elsewhere`]).
     pub fn offers(&self) -> Vec<Summary> {
-        if !OFFERED_ELSEWHERE {
-            return Vec::new();
-        }
-        self.found.iter().flatten().filter(|s| s.games > 0 && !self.prefs.enabled.contains(&s.launcher)).cloned().collect()
+        self.found
+            .iter()
+            .flatten()
+            .filter(|s| offered_elsewhere(s.launcher) && s.games > 0 && !self.prefs.enabled.contains(&s.launcher))
+            .cloned()
+            .collect()
     }
 
     pub fn summary(&self, launcher: Launcher) -> Option<&Summary> {
@@ -423,5 +432,16 @@ impl LauncherImports {
         })
         .detach();
         cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{offered_elsewhere, Launcher, OFFERED_ELSEWHERE};
+
+    #[test]
+    fn heroic_is_turned_on_only_in_settings() {
+        assert!(!offered_elsewhere(Launcher::Heroic));
+        assert_eq!(offered_elsewhere(Launcher::Lutris), OFFERED_ELSEWHERE);
     }
 }
