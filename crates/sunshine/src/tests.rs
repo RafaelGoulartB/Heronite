@@ -45,7 +45,7 @@ impl Mock {
     }
 
     fn client(&self) -> Client {
-        Client::new(&self.address, USER, PASS, "").unwrap()
+        Client::new(&self.address, USER, PASS).unwrap()
     }
 
     fn apps(&self) -> Vec<Value> {
@@ -65,7 +65,7 @@ impl Mock {
     }
 }
 
-fn answer<S: Read + Write>(mut stream: S, state: &Mutex<State>) {
+fn answer(mut stream: std::net::TcpStream, state: &Mutex<State>) {
     let mut head = Vec::new();
     let mut byte = [0u8; 1];
     while !head.ends_with(b"\r\n\r\n") {
@@ -236,7 +236,7 @@ fn duplicate_entries_of_one_game_are_cleaned_up() {
 #[test]
 fn errors_say_what_is_wrong() {
     let mock = Mock::start(users_apps());
-    let wrong = Client::new(&mock.address, USER, "nope", "").unwrap();
+    let wrong = Client::new(&mock.address, USER, "nope").unwrap();
     assert_eq!(sync(&wrong, &[game("gog_1", "Q")]), Err(Error::Unauthorized));
     // Nothing was changed by the refused attempt.
     assert_eq!(mock.apps(), users_apps());
@@ -250,9 +250,9 @@ fn errors_say_what_is_wrong() {
 
     // Nothing listens on a port that was just freed.
     let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let gone = Client::new(&format!("http://127.0.0.1:{port}"), USER, PASS, "").unwrap();
+    let gone = Client::new(&format!("http://127.0.0.1:{port}"), USER, PASS).unwrap();
     assert!(matches!(gone.apps(), Err(Error::Unreachable(_))));
-    assert_eq!(Client::new("ftp://x", USER, PASS, "").err(), Some(Error::BadAddress));
+    assert_eq!(Client::new("ftp://x", USER, PASS).err(), Some(Error::BadAddress));
 }
 
 #[test]
@@ -261,85 +261,4 @@ fn an_empty_or_missing_list_reads_as_no_apps() {
     assert!(mock.client().apps().unwrap().is_empty());
     let report = sync(&mock.client(), &[game("gog_1", "Quail")]).unwrap();
     assert_eq!(report.added, 1);
-}
-
-// Certificates: Sunshine's own self-signed kind, over TLS. `tests/data` holds
-// two throwaway certificates (made for these tests, never used anywhere else)
-// so one can stand for "Sunshine was reinstalled".
-
-mod tls {
-    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-    use rustls::{ServerConfig, ServerConnection, StreamOwned};
-
-    use super::*;
-    use crate::api::Trust;
-    use crate::pin::fingerprint;
-
-    const CERT_A: &[u8] = include_bytes!("../tests/data/cert-a.der");
-    const KEY_A: &[u8] = include_bytes!("../tests/data/key-a.der");
-    const CERT_B: &[u8] = include_bytes!("../tests/data/cert-b.der");
-    const KEY_B: &[u8] = include_bytes!("../tests/data/key-b.der");
-
-    /// The mock behind TLS with this certificate, at `https://127.0.0.1:<port>`.
-    fn start(cert: &'static [u8], key: &'static [u8]) -> Mock {
-        let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
-        let config = ServerConfig::builder_with_provider(provider)
-            .with_safe_default_protocol_versions()
-            .unwrap()
-            .with_no_client_auth()
-            .with_single_cert(vec![CertificateDer::from(cert)], PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key)))
-            .unwrap();
-        let config = Arc::new(config);
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = format!("https://{}", listener.local_addr().unwrap());
-        let state = Arc::new(Mutex::new(State { apps: users_apps(), ..Default::default() }));
-        let shared = state.clone();
-        std::thread::spawn(move || {
-            for stream in listener.incoming().flatten() {
-                let Ok(conn) = ServerConnection::new(config.clone()) else { continue };
-                // A refused handshake just ends in a read error: no request.
-                answer(StreamOwned::new(conn, stream), &shared);
-            }
-        });
-        Mock { address, state }
-    }
-
-    fn pinned(mock: &Mock, pin: Option<String>) -> Client {
-        Client::with_trust(&mock.address, USER, PASS, Trust::Pin(pin)).unwrap()
-    }
-
-    #[test]
-    fn on_this_computer_the_certificate_is_not_checked() {
-        let mock = start(CERT_A, KEY_A);
-        // Even a pin for another certificate is ignored for a loopback address.
-        let client = Client::new(&mock.address, USER, PASS, &fingerprint(CERT_B)).unwrap();
-        assert_eq!(client.apps().unwrap().len(), 2);
-        assert_eq!(client.certificate(), None);
-    }
-
-    #[test]
-    fn the_first_use_keeps_the_certificate_it_sees() {
-        let mock = start(CERT_A, KEY_A);
-        let first = pinned(&mock, None);
-        assert_eq!(first.apps().unwrap().len(), 2);
-        assert_eq!(first.certificate(), Some(fingerprint(CERT_A)));
-        // And the kept one is accepted afterwards, for every request.
-        let later = pinned(&mock, first.certificate());
-        sync(&later, &[game("gog_1", "Zeta")]).unwrap();
-        assert_eq!(mock.names(), ["Desktop", "Steam Big Picture", "Zeta"]);
-    }
-
-    #[test]
-    fn a_changed_certificate_is_refused_before_anything_is_sent() {
-        let mock = start(CERT_B, KEY_B);
-        let client = pinned(&mock, Some(fingerprint(CERT_A)));
-        assert_eq!(client.apps(), Err(Error::CertificateChanged { seen: fingerprint(CERT_B) }));
-        assert_eq!(sync(&client, &[game("gog_1", "Zeta")]), Err(Error::CertificateChanged { seen: fingerprint(CERT_B) }));
-        // The handshake stopped first: no request, so no password, went out.
-        assert!(mock.log().is_empty());
-        assert_eq!(mock.apps(), users_apps());
-        // Accepting the new one (what Settings does) makes it work again.
-        let accepted = pinned(&mock, client.certificate());
-        assert_eq!(accepted.apps().unwrap().len(), 2);
-    }
 }

@@ -29,8 +29,5 @@
   "Up to date: {n} entries of Heronite's in Sunshine.": "Atualizado: {n} entradas do Heronite no Sunshine.",
   "Up to date: {n} entry of Heronite's in Sunshine.": "Atualizado: {n} entrada do Heronite no Sunshine.",
   "User name": "Nome de usuário",
-  "Without it, the game keeps running on this computer after the stream.": "Sem isso, o jogo continua rodando neste computador depois da transmissão.",
-  "Sunshine's certificate is not the one it had before. If Sunshine was reinstalled or moved, accept the new one; if not, check the address.": "O certificado do Sunshine não é o mesmo de antes. Se o Sunshine foi reinstalado ou mudou de lugar, aceite o novo; se não, confira o endereço.",
-  "New certificate (SHA-256): {fingerprint}": "Novo certificado (SHA-256): {fingerprint}",
-  "Accept the new certificate": "Aceitar o novo certificado"
+  "Without it, the game keeps running on this computer after the stream.": "Sem isso, o jogo continua rodando neste computador depois da transmissão."
 }
