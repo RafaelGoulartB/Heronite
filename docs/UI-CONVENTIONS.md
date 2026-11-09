@@ -252,7 +252,9 @@ shown; a click shows only its games, a second click every game, a right click op
 colour (`theme::GROUP_COLOURS` or the accent), "Games that match all / any of these conditions", rows of field,
 comparison and value (a list field ticks several values, a number has its unit), "Except games that match any of
 these", the games it holds now (counted after each change, not each frame) and the pin; a rule nested deeper than
-that is kept and only the name, colour and pin change. `HERONITE_DEBUG_DIALOG=smartgroup|smartgroup:<id>|smartgroup-filters`.
+that is kept and only the name, colour and pin change. In console mode each pinned group is a tab after the theme's
+(`CollectionView::console_tabs`, source `group:<id>`, in the layout of the theme's tab of every game), so pinning works
+on the desktop and the TV alike, and the Filters panel (Y) picks any group. `HERONITE_DEBUG_DIALOG=smartgroup|smartgroup:<id>|smartgroup-filters`.
 Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
 metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or
@@ -630,7 +632,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   back while it shows.
   Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
   and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
-  Status and Category; X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
+  Status, Category and Smart group (every group, by name; the grid's Show chip then reads "<group> · <show>"); X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
   first change switches to it), else a results grid over the tab (`ConsoleUi::results`, B leaves it), so every theme has them.
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
