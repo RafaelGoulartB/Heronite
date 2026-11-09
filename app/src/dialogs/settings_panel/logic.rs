@@ -536,7 +536,8 @@ mod tests {
         assert!(!sections_for(RunKind::SteamDirect, "legendary", true).contains(&Section::Saves));
         if cfg!(windows) && !wrappers() {
             use Section::*;
-            assert_eq!(sections_for(RunKind::Native, "legendary", true), [Launch, Performance, Saves]);
+            // The GPU tab (Windows' own GPU preference) before Cloud saves, as on Linux.
+            assert_eq!(sections_for(RunKind::Native, "legendary", true), [Launch, Performance, Gpu, Saves]);
         }
     }
 
