@@ -1,7 +1,8 @@
 //! The parts of the app each system has.
 //!
-//! Linux has everything but Windows' own store (Xbox), except what a
-//! Flatpak sandbox cannot do ([`crate::flatpak`]). On Windows the port is
+//! Linux has everything but Windows' own store (Xbox) and the first-start
+//! copy of Heroic ([`Feature::HeroicMigration`], off on every system),
+//! except what a Flatpak sandbox cannot do ([`crate::flatpak`]). On Windows the port is
 //! under way (`docs/WINDOWS-MIGRATION.md`): a part turns on here once it
 //! works there.
 //! The UI asks [`supported`] before it shows a page, a menu entry or a
@@ -30,11 +31,13 @@ pub enum Feature {
     /// Launcher (under Wine on Linux, as they are on Windows).
     StoreClients,
     /// Games of the other launchers: Heroic, Lutris, Bottles and Faugus on
-    /// Linux, Playnite on Windows.
+    /// Linux, Heroic and Playnite on Windows.
     LauncherImports,
     /// Copying an existing Heroic setup in at the first start
-    /// (`heronite_data::migrate`): Heroic's Windows folder holds stores
-    /// this system has no runner for yet.
+    /// (`heronite_data::migrate`): `~/.config/heroic` on Linux,
+    /// `%APPDATA%\heroic` on Windows. Off on every system: Heroic's games
+    /// come in only when the user turns its import on in Settings → Other
+    /// launchers ([`Feature::LauncherImports`]).
     HeroicMigration,
     /// Emulators, ROM folders and save states.
     Emulation,
@@ -160,7 +163,7 @@ pub fn any_store() -> bool {
 const fn built_in(feature: Feature) -> bool {
     if cfg!(target_os = "linux") {
         // Packages of the Microsoft Store exist on Windows only.
-        return !matches!(feature, Feature::XboxStore);
+        return !matches!(feature, Feature::XboxStore | Feature::HeroicMigration);
     }
     match feature {
         // Ported to Windows.
@@ -253,13 +256,19 @@ mod tests {
     }
 
     #[test]
-    fn linux_has_everything_but_windows_own_store() {
+    fn linux_has_everything_but_windows_own_store_and_the_heroic_copy() {
         if cfg!(target_os = "linux") {
-            assert!(Feature::ALL.into_iter().filter(|f| *f != Feature::XboxStore).all(built_in));
+            assert!(Feature::ALL.into_iter().filter(|f| !matches!(f, Feature::XboxStore | Feature::HeroicMigration)).all(built_in));
             assert!(!built_in(Feature::XboxStore));
         }
         if cfg!(windows) {
             assert!(built_in(Feature::XboxStore));
         }
+    }
+
+    /// Heroic's games come in only from Settings → Other launchers.
+    #[test]
+    fn heroic_is_never_copied_at_the_first_start() {
+        assert!(!built_in(Feature::HeroicMigration));
     }
 }

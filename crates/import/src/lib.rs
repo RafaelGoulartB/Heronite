@@ -1,5 +1,5 @@
 //! Games of the other launchers brought into the Collection: Linux's
-//! (Heroic, Lutris, Bottles, Faugus) and, on Windows, Playnite.
+//! (Heroic, Lutris, Bottles, Faugus) and, on Windows, Heroic and Playnite.
 //!
 //! * [`lutris`] reads Lutris' library (`pga.db`), [`bottles`] the programs
 //!   added to each bottle of Bottles (`bottle.yml`) and [`faugus`] Faugus
@@ -14,7 +14,7 @@
 //!   Windows: its installed games start through Playnite, like Lutris'.
 //!
 //! [`detect`] finds this system's launchers ([`Launcher::here`]; on Linux
-//! native or Flatpak) and reads their libraries: small files, read only. [`sync`] writes the
+//! native or Flatpak, Heroic in `%APPDATA%` on Windows) and reads their libraries: small files, read only. [`sync`] writes the
 //! Collection; a game gone from its launcher stays, as not installed.
 //! [`duplicates`] finds the games then in the Collection twice (added here by
 //! hand, and brought in from Lutris, Bottles, Faugus or Playnite).

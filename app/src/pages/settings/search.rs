@@ -106,7 +106,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Automatically update games",
         ],
     ),
-    (Section::Launchers, if cfg!(windows) { &["Playnite"] } else { &["Heroic", "Lutris", "Bottles", "Faugus"] }),
+    (Section::Launchers, if cfg!(windows) { &["Heroic", "Playnite"] } else { &["Heroic", "Lutris", "Bottles", "Faugus"] }),
     (
         Section::Integrations,
         &[

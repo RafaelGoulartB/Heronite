@@ -57,7 +57,7 @@ fn main() {
             r.rewritten,
             r.legendary
         ),
-        heronite_data::migrate::Outcome::Fresh => log::info!("new data folder (no Heroic setup to copy)"),
+        heronite_data::migrate::Outcome::Fresh => log::info!("new data folder"),
         heronite_data::migrate::Outcome::NotNeeded => {}
     }
 

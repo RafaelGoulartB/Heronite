@@ -16,7 +16,7 @@ pub enum Section {
     GameDefaults,
     Downloads,
     Library,
-    /// Heroic, Lutris, Bottles and Faugus (Playnite on Windows): bringing
+    /// Heroic, Lutris, Bottles and Faugus (Heroic and Playnite on Windows): bringing
     /// their games in.
     Launchers,
     /// Sunshine: the games in its application list, for Moonlight.
@@ -157,7 +157,7 @@ impl Section {
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
             Section::Launchers if cfg!(windows) => {
-                tr!("Bring in the games of Playnite. While on, a game added there shows up here too.")
+                tr!("Bring in the games of Heroic and Playnite. While on, a game added there shows up here too.")
             }
             Section::Launchers => tr!("Bring in the games of Heroic, Lutris, Bottles and Faugus. While on, a game added there shows up here too."),
             Section::Integrations => tr!("Sunshine keeps your games in its list, with their covers, so Moonlight can start them from a phone, a TV or another computer."),
