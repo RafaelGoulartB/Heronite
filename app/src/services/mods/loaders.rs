@@ -147,6 +147,11 @@ mod tests {
         assert_eq!(on.start, LoaderStart::On);
         let steam = card(found[0].clone(), &list, &game_dir, true, "");
         let LoaderStart::Steam { line } = steam.start else { panic!() };
-        assert!(line.unwrap().contains("SkyrimSELauncher.exe/skse64_loader.exe"));
+        let line = line.unwrap();
+        if cfg!(windows) {
+            assert_eq!(line, format!("\"{}\" %command%", game_dir.join("skse64_loader.exe").display()));
+        } else {
+            assert!(line.contains("SkyrimSELauncher.exe/skse64_loader.exe"), "{line}");
+        }
     }
 }
