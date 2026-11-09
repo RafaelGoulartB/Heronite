@@ -67,6 +67,15 @@ impl Confirm {
     }
 }
 
+/// Suffixes of the footer buttons' ids.
+const FOOTER_PARTS: [&str; 4] = ["cancel", "secondary", "confirm", "done"];
+
+/// Id of a footer button; never the dialog's X id (see [`crate::ui::dialog::close_id`]).
+fn footer_id(id: &str, part: &str) -> SharedString {
+    debug_assert!(FOOTER_PARTS.contains(&part));
+    SharedString::from(format!("{id}-{part}"))
+}
+
 pub struct EpicConfirmDialog {
     spec: Confirm,
     toggles: Vec<bool>,
@@ -169,21 +178,21 @@ impl Render for EpicConfirmDialog {
         match &self.spec.confirm {
             Some(label) => {
                 footer = footer.child(
-                    button(SharedString::from(format!("{id}-cancel")), ButtonKind::Ghost, tr!("Cancel"))
+                    button(footer_id(&id, "cancel"), ButtonKind::Ghost, tr!("Cancel"))
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
                 );
                 if let Some((label, action)) = self.spec.secondary.clone() {
-                    footer = footer.child(button(SharedString::from(format!("{id}-secondary")), ButtonKind::Glass, label).on_click(
-                        cx.listener(move |_, _, _, cx| {
+                    footer = footer.child(button(footer_id(&id, "secondary"), ButtonKind::Glass, label).on_click(cx.listener(
+                        move |_, _, _, cx| {
                             action(cx);
                             cx.emit(DialogEvent::Close);
-                        }),
-                    ));
+                        },
+                    )));
                 }
                 let ready = self.spec.path.is_none() || self.path_input.as_ref().is_some_and(|i| !i.read(cx).value().trim().is_empty());
                 let kind = if self.spec.danger { ButtonKind::Danger } else { ButtonKind::Primary };
                 footer = footer.child(action_button(
-                    SharedString::from(format!("{id}-confirm")),
+                    footer_id(&id, "confirm"),
                     kind,
                     label.clone(),
                     ready,
@@ -192,7 +201,7 @@ impl Render for EpicConfirmDialog {
             }
             None => {
                 footer = footer.child(
-                    button(SharedString::from(format!("{id}-close")), ButtonKind::Primary, tr!("Close"))
+                    button(footer_id(&id, "done"), ButtonKind::Primary, tr!("Close"))
                         .on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
                 );
             }
@@ -207,5 +216,22 @@ impl Render for EpicConfirmDialog {
             },
         )
         .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{footer_id, FOOTER_PARTS};
+    use crate::ui::dialog::close_id;
+
+    /// The "Cloud saves synced" message's Close did nothing: it shared the
+    /// X's element id, so the two fought over one click state.
+    #[test]
+    fn footer_ids_differ_from_the_close_x() {
+        for id in ["epic-message", "epic-uninstall", "x"] {
+            for part in FOOTER_PARTS {
+                assert_ne!(footer_id(id, part), close_id(id), "{id}/{part}");
+            }
+        }
     }
 }
