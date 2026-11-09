@@ -41,8 +41,8 @@ pub struct Summary {
 
 /// Whether the launchers found are offered outside Settings → Other
 /// launchers too (the Collection's welcome, the first-start dialog), a
-/// click there bringing their games in. On Windows Playnite's games come in
-/// only from that section.
+/// click there bringing their games in. On Windows the launchers' games come
+/// in only from that section.
 pub const OFFERED_ELSEWHERE: bool = !cfg!(windows);
 
 pub enum LauncherImportsEvent {

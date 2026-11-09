@@ -30,11 +30,11 @@ pub enum Feature {
     /// Launcher (under Wine on Linux, as they are on Windows).
     StoreClients,
     /// Games of the other launchers: Heroic, Lutris, Bottles and Faugus on
-    /// Linux, Playnite on Windows.
+    /// Linux, Heroic and Playnite on Windows.
     LauncherImports,
     /// Copying an existing Heroic setup in at the first start
-    /// (`heronite_data::migrate`): Heroic's Windows folder holds stores
-    /// this system has no runner for yet.
+    /// (`heronite_data::migrate`): `~/.config/heroic` on Linux,
+    /// `%APPDATA%\heroic` on Windows.
     HeroicMigration,
     /// Emulators, ROM folders and save states.
     Emulation,
@@ -178,11 +178,10 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::LaunchExtras
         | Feature::StoreClients
         | Feature::LauncherImports
+        | Feature::HeroicMigration
         | Feature::XboxStore => true,
         Feature::Overlay => cfg!(windows),
-        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::SteamGameSettings | Feature::Sandbox | Feature::Wrappers => {
-            false
-        }
+        Feature::Wine | Feature::Replay | Feature::SteamGameSettings | Feature::Sandbox | Feature::Wrappers => false,
     }
 }
 

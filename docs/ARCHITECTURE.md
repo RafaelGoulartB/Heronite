@@ -10,9 +10,10 @@ Heroic's folders. UI state lives in `~/.config/heronite/` and caches in
 
 On the first start, when the data folder does not exist yet,
 `heronite_data::migrate` copies an existing Heroic setup into it once:
-`~/.config/heroic` (minus Chromium's files), Heroic's game logs and the
+`~/.config/heroic` (`%APPDATA%\heroic` on Windows; minus Chromium's files), Heroic's game logs and the
 legendary binary of the Heronite install (to `tools/bin/legendary`). Paths
-into Heroic's folder are rewritten. Heroic's files are only read. The
+into Heroic's folder are rewritten, also where JSON doubles a Windows path's
+backslashes. Heroic's files are only read. The
 UI state and cache folders of the old name (`heronite-rs`) are renamed.
 
 `docs/CODE-STYLE.md` has the code rules; `docs/UI-CONVENTIONS.md` the look of
@@ -239,9 +240,10 @@ text size) and applies it.
   Wine/Proton plan of local games; the first launch in a prefix runs the
   store's installers (`first_launch::StoreSetup`, Amazon's `PostInstall`).
 
-- **heronite-import:** the other launchers: Linux's, and Playnite on
-  Windows (`Launcher::here`). `detect` finds Heroic,
-  Lutris, Bottles and Faugus (native or Flatpak) and reads their libraries,
+- **heronite-import:** the other launchers: Linux's, and Heroic and Playnite
+  on Windows (`Launcher::here`). `detect` finds Heroic,
+  Lutris, Bottles and Faugus (native or Flatpak; Heroic in `%APPDATA%` on
+  Windows) and reads their libraries,
   read only: Lutris' `pga.db` (SQLite, compiled in through rusqlite's
   `bundled`) and the Wine prefix from each game's YAML, each bottle's
   `bottle.yml` (its programs; the bottle is their prefix) and Bottles'
