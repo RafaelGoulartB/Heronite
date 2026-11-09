@@ -3836,6 +3836,7 @@ name = "heronite-media"
 version = "1.5.0"
 dependencies = [
  "ashpd",
+ "async-io",
  "chrono",
  "crc32fast",
  "futures-channel",

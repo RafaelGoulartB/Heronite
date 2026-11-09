@@ -7,7 +7,8 @@ use gpui_kit::*;
 use crate::theme;
 
 /// Electron-style accelerator from a key press (`acceleratorFromKey`), or
-/// `None` for a modifier alone. The Super (logo) key is `Super`.
+/// `None` for a modifier alone and for keys no global shortcut can have.
+/// The Super (logo) key is `Super`.
 pub fn accelerator_from_key(ev: &KeyDownEvent) -> Option<String> {
     let k = ev.keystroke.key.as_str();
     if matches!(k, "control" | "ctrl" | "alt" | "shift" | "meta" | "super" | "platform" | "cmd" | "function") {
@@ -21,6 +22,9 @@ pub fn accelerator_from_key(ev: &KeyDownEvent) -> Option<String> {
         "right" => "Right".into(),
         "escape" => "Esc".into(),
         "print" | "printscreen" => "PrintScreen".into(),
+        // `+` separates the parts of an accelerator.
+        "+" => "Plus".into(),
+        "-" => "Minus".into(),
         k if k.chars().count() == 1 => k.to_uppercase(),
         k => {
             let mut c = k.chars();
@@ -42,7 +46,8 @@ pub fn accelerator_from_key(ev: &KeyDownEvent) -> Option<String> {
         parts.push("Shift".into());
     }
     parts.push(key);
-    Some(parts.join("+"))
+    // Keys no global shortcut can have (punctuation) change nothing.
+    Some(parts.join("+")).filter(|a| heronite_media::capture::is_bindable(a))
 }
 
 /// Read-only input look with the accelerator text (`input_box` needs an
