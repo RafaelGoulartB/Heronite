@@ -13,9 +13,10 @@ use gpui_kit::*;
 
 const VAR: &str = "WINEDLLOVERRIDES";
 
-/// The proxy DLLs the enabled mods need when the game plays with mods.
+/// The proxy DLLs the enabled mods need when the game plays with mods. None
+/// on Windows: there is no Wine to tell, the DLL in the game folder wins.
 pub(super) fn wanted(list: &ModList) -> Vec<String> {
-    if !list.active {
+    if !list.active || cfg!(windows) {
         return Vec::new();
     }
     let mut dlls: Vec<String> = list.enabled().flat_map(|m| m.dll_overrides.iter().map(|d| d.to_lowercase())).collect();
@@ -215,7 +216,8 @@ mod tests {
         let mut list = ModList::new("g", "G");
         list.mods.push(ModEntry { id: "a".into(), enabled: true, dll_overrides: dlls(&["Winhttp"]), ..Default::default() });
         list.mods.push(ModEntry { id: "b".into(), enabled: false, dll_overrides: dlls(&["version"]), ..Default::default() });
-        assert_eq!(wanted(&list), dlls(&["winhttp"]));
+        // Windows loads the proxy DLL from the game folder by itself.
+        assert_eq!(wanted(&list), if cfg!(windows) { Vec::new() } else { dlls(&["winhttp"]) });
         list.active = false;
         assert!(wanted(&list).is_empty());
     }

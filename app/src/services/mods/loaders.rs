@@ -53,7 +53,12 @@ pub(super) fn cards(
 
 fn card(found: Found, list: &ModList, game_dir: &Path, through_steam: bool, current: &str) -> LoaderCard {
     let start = if through_steam {
-        LoaderStart::Steam { line: loaders::steam_launch_line(found.loader) }
+        let line = if cfg!(windows) {
+            loaders::steam_launch_line_windows(found.loader, game_dir, &found.rel)
+        } else {
+            loaders::steam_launch_line(found.loader)
+        };
+        LoaderStart::Steam { line }
     } else if loaders::is_target(current, game_dir, &found.rel) {
         LoaderStart::On
     } else {
