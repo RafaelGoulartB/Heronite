@@ -146,10 +146,10 @@ impl Snapshot {
     }
 }
 
-/// Whether Steam runs games through a compatibility tool here (Proton on
-/// Linux). On Windows it starts them as they are: of a game's settings only
-/// the launch options are Steam's.
-pub const PROTON: bool = cfg!(not(windows));
+/// Whether Steam runs games through a compatibility tool here (Proton, on
+/// Linux only). Elsewhere it starts them as they are: of a game's settings
+/// only the launch options are Steam's.
+pub const PROTON: bool = cfg!(target_os = "linux");
 
 /// A change to one game; `None` leaves that setting alone.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

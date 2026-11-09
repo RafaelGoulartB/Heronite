@@ -511,8 +511,8 @@ mod tests {
         assert_eq!(steam_run_kind(false, true, false), RunKind::SteamDirect);
         assert_eq!(steam_run_kind(false, false, true), RunKind::SteamDirect);
         assert_eq!(steam_run_kind(false, false, false), RunKind::None);
-        // Windows never gets the Proton tabs.
-        assert_eq!(heronite_steam::PROTON, !cfg!(windows));
+        // Only Linux gets the Proton tabs.
+        assert_eq!(heronite_steam::PROTON, cfg!(target_os = "linux"));
     }
 
     #[test]
