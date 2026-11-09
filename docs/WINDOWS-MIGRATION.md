@@ -10,6 +10,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Collection: Steam (installed games and the whole library), games added by hand, play time
 - Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite; Heroic's games added by hand and its Epic, GOG and Amazon install records (`%APPDATA%\heroic`), once its import is turned on there. Nothing is copied from Heroic at the first start (`Feature::HeroicMigration` is off, on Linux too)
 - Epic Games, GOG and Amazon Games through the Windows builds of legendary, gogdl and nile: login (WebView2 window), library, downloads, installs and moves, first launch, cloud saves, and the games of the official launchers (Epic Games Launcher, GOG Galaxy). Epic has one EOS Overlay switch instead of one per Wine prefix; Amazon's `.msi` installers run through `msiexec`
+- GOG Galaxy services (`comet`): Comet runs beside a GOG game's Windows build, so its achievements, stats and leaderboards reach the GOG account without GOG Galaxy, and new unlocks show over the game (`heronite_launch::galaxy`). Settings → Achievements → GOG registers Comet's dummy `GalaxyCommunication` service as administrator (LocalService, in a folder only administrators may change) for the games that look for it. Not yet checked on a real Windows: the service's registration, and a standard user starting it (`sc start GalaxyCommunication`)
 - Battle.net, the EA app, Ubisoft Connect and the Rockstar Games Launcher as they are (no Wine): set up with the official installer or found already installed, sign-in and games read from this PC (`heronite_clients::place`), opened and closed by Heronite (`heronite_clients::native`), games started through the client; the session follows the programs running from the game's folder
 - Xbox (Windows only, `Feature::XboxStore`): Microsoft Store and PC Game Pass games the Xbox app installed, found among the user's packages (`heronite_platform::packages`, `heronite-xbox`) and started by their AUMID through `explorer.exe shell:AppsFolder\...`
 - Settings → Storage: drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
@@ -29,7 +30,6 @@ What works on Windows, what is left, and what Windows does not need.
 ## ⬜ To do
 
 - Replay buffer (separate from the overlay; hidden on Windows)
-- GOG Galaxy services (`comet`)
 - RetroAchievements sign-in for the remaining emulators (DuckStation, PCSX2, PPSSPP, Dolphin and Flycast): their Windows config locations and, where needed, token encryption still need support
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
