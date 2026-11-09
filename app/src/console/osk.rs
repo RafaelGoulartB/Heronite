@@ -8,6 +8,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::kit::{self, u};
+use super::pointer::Clickable;
 use super::{hint, Btn, Hint, Pad, PadTarget};
 use crate::theme;
 use heronite_i18n::{n_, tr, trc};
@@ -185,51 +186,73 @@ fn key(label: String, focused: bool, wide: f32, on: bool, (h, text): (f32, f32))
         .rounded(u(12.))
         .text_size(u(text))
         .when(focused, |d| d.relative().text_color(theme::console_on_focus()).font_weight(theme::W_BOLD).child(kit::focus_pill(12.)))
-        .when(!focused, |d| d.bg(if on { theme::accent_tint() } else { theme::white_a(0.07) }).text_color(theme::text_primary()))
+        .when(!focused, |d| d.bg(if on { theme::accent_tint() } else { kit::ink(0.07) }).text_color(theme::text_primary()))
         .child(div().relative().child(label))
 }
 
 impl Osk {
-    fn grid(&self) -> Div {
+    /// A click on the key at `row`, `col`: it is typed (or used) at once.
+    fn click_key(row: usize, col: usize, cx: &mut Context<Self>) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        let this = cx.entity().downgrade();
+        move |_, _, cx| {
+            cx.stop_propagation();
+            this.update(cx, |k, cx| {
+                (k.row, k.col) = (row, col);
+                k.press(cx);
+                cx.notify();
+            })
+            .ok();
+        }
+    }
+
+    fn grid(&self, cx: &mut Context<Self>) -> Div {
         let (gap, size, letter, (space, other)) =
             if self.compact { (6., KEY_COMPACT, 30., (110., 60.)) } else { (8., KEY, 56., (300., 110.)) };
         let mut grid = div().flex().flex_col().gap(u(gap));
         for (r, line) in ROWS.iter().enumerate() {
-            grid = grid.child(
-                div().flex().gap(u(gap)).children(
-                    line.chars()
-                        .enumerate()
-                        .map(|(c, _)| key(self.key_at(r, c).to_string(), self.row == r && self.col == c, letter, false, size)),
-                ),
-            );
+            grid = grid.child(div().flex().gap(u(gap)).children(line.chars().enumerate().map(|(c, _)| {
+                key(self.key_at(r, c).to_string(), self.row == r && self.col == c, letter, false, size)
+                    .on_mouse_down(MouseButton::Left, Self::click_key(r, c, cx))
+            })));
         }
         grid.child(div().flex().gap(u(gap)).children(SPECIAL.iter().enumerate().map(|(i, label)| {
             let wide = if i == 1 { space } else { other };
             key(tr(label).to_string(), self.row == SPECIAL_ROW && self.col == i, wide, i == 0 && self.shift, size)
+                .on_mouse_down(MouseButton::Left, Self::click_key(SPECIAL_ROW, i, cx))
         })))
     }
 
     /// The compact sheet: title, the text over a few lines, the keys.
-    fn render_compact(&self) -> Div {
+    fn render_compact(&self, cx: &mut Context<Self>) -> Div {
         let field = div()
             .min_h(u(84.))
             .px(u(14.))
             .py(u(10.))
             .rounded(u(14.))
-            .bg(theme::black_a(0.35))
+            .bg(kit::well(0.35))
             .border_1()
             .border_color(theme::accent_tint_border())
             .text_size(u(16.))
             .line_height(u(22.))
             .text_color(theme::text_primary())
             .child(format!("{}\u{2502}", self.text));
-        div().absolute().inset_0().child(div().absolute().top_0().left_0().right_0().bottom(u(HOST_HINTS_H)).child(kit::scrim())).child(
+        // A click on the dim cancels; the sheet takes its own clicks.
+        let dim = div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .right_0()
+            .bottom(u(HOST_HINTS_H))
+            .occlude()
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::click_out));
+        div().absolute().inset_0().child(dim.child(kit::scrim())).child(
             div()
                 .absolute()
                 .left_0()
                 .right_0()
                 // The host's button hints stay visible under it.
                 .bottom(u(HOST_HINTS_H))
+                .eats_clicks()
                 .flex()
                 .flex_col()
                 .gap(u(12.))
@@ -240,41 +263,46 @@ impl Osk {
                 .bg(theme::console_sidebar())
                 .border_t_1()
                 .border_b_1()
-                .border_color(theme::white_a(0.1))
+                .border_color(kit::ink(0.1))
                 .child(kit::title(self.title.clone(), 18.).px(u(4.)))
                 .children(self.image.clone().map(|path| {
                     div()
                         .h(u(120.))
                         .rounded(u(12.))
                         .overflow_hidden()
-                        .bg(theme::black_a(0.35))
+                        .bg(kit::well(0.35))
                         .child(img(path).size_full().object_fit(ObjectFit::Cover))
                 }))
                 .child(field)
-                .child(self.grid()),
+                .child(self.grid(cx)),
         )
+    }
+
+    fn click_out(&mut self, _: &MouseDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
+        cx.emit(OskEvent::Cancel);
     }
 }
 
 impl Render for Osk {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if self.compact {
-            return self.render_compact();
+            return self.render_compact(cx);
         }
-        let grid = self.grid();
+        let grid = self.grid(cx);
         let field = div()
             .flex()
             .items_center()
             .h(u(56.))
             .px(u(20.))
             .rounded(u(14.))
-            .bg(theme::black_a(0.35))
+            .bg(kit::well(0.35))
             .border_1()
-            .border_color(theme::white_a(0.12))
+            .border_color(kit::ink(0.12))
             .text_size(u(20.))
             .text_color(theme::text_primary())
             .child(format!("{}\u{2502}", self.text));
-        div().absolute().inset_0().child(kit::scrim()).child(
+        div().absolute().inset_0().occlude().on_mouse_down(MouseButton::Left, cx.listener(Self::click_out)).child(kit::scrim()).child(
             div().absolute().left_0().right_0().bottom(u(70.)).flex().justify_center().child(kit::panel_in(
                 "osk-panel",
                 div()
@@ -286,9 +314,10 @@ impl Render for Osk {
                     .rounded(u(24.))
                     .bg(theme::console_sidebar())
                     .border_1()
-                    .border_color(theme::white_a(0.1))
+                    .border_color(kit::ink(0.1))
                     .child(kit::title(self.title.clone(), 22.))
                     .shadow(kit::shadow(0.5, 18., 48.))
+                    .eats_clicks()
                     .child(field)
                     .child(grid),
             )),

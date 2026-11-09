@@ -6,6 +6,7 @@ use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalGameRom};
 use heronite_data::DataPaths;
 use serde_json::{json, Value};
 
+#[cfg(unix)]
 const UMU: &str = "/hr/tools/runtimes/umu/umu_run.py";
 
 fn ctx(global: Value) -> PlanContext {
@@ -32,6 +33,7 @@ fn meta(kind: &str) -> LocalGameMeta {
     LocalGameMeta { app_name: "g".into(), runner: "sideload".into(), launch_kind: kind.into(), title: "Game".into(), ..Default::default() }
 }
 
+#[cfg(unix)]
 fn proton_probe() -> FakeProbe {
     FakeProbe::new("/home/u").with_path("/p/GE/proton").with_path(UMU).with_path("/games/win/game.exe").with_path("/pfx")
 }
@@ -45,6 +47,8 @@ fn proton_settings() -> GameSettings {
     }))
 }
 
+// Linux games run only on Linux.
+#[cfg(unix)]
 #[test]
 fn linux_script_runs_native_with_wrappers_and_env() {
     let probe = FakeProbe::new("/home/u").with_file("/g/run.sh", b"#!/bin/sh\n").with_bin("gamemoderun", "/usr/bin/gamemoderun");
@@ -76,6 +80,8 @@ fn linux_script_runs_native_with_wrappers_and_env() {
     assert_eq!(p.make_executable.as_deref(), Some("/g/run.sh"));
 }
 
+// Linux games run only on Linux.
+#[cfg(unix)]
 #[test]
 fn native_missing_executable_and_missing_tool_are_unavailable() {
     let game = sideload("g", "/g/run.sh", "linux");
@@ -100,6 +106,8 @@ fn native_missing_executable_and_missing_tool_are_unavailable() {
     assert_eq!(plan, LaunchPlan::Unavailable("No executable is configured for this game".into()));
 }
 
+// Linux games run only on Linux.
+#[cfg(unix)]
 #[test]
 fn a_linux_game_started_by_a_command_runs_it_in_its_folder() {
     let mut game = sideload("g", "", "linux");
@@ -140,6 +148,39 @@ fn a_linux_game_started_by_a_command_runs_it_in_its_folder() {
     assert!(p.command.program.ends_with("other"));
 }
 
+// A Windows program reads its arguments the Windows way (a backslash is a
+// path separator), a Linux one the shell's way, and neither is cut at a quote
+// that is never closed.
+#[cfg(unix)]
+#[test]
+fn the_games_arguments_follow_the_syntax_of_its_program() {
+    let line = r#"-userdir C:\Users\me\saves -name Rafa's -x "a b""#;
+    let args = |game: GameInfo, probe: FakeProbe, s: GameSettings| match build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &game,
+        Some(&meta("executable")),
+        &s,
+        &Default::default(),
+    ) {
+        LaunchPlan::Wine { process, .. } | LaunchPlan::Native(process) => process.command.args,
+        plan => panic!("{plan:?}"),
+    };
+    let windows = settings(json!({
+        "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"}, "winePrefix": "/pfx", "launcherArgs": line
+    }));
+    assert_eq!(
+        args(sideload("g", "/games/win/game.exe", "Windows"), proton_probe(), windows)[1..],
+        ["-userdir", r"C:\Users\me\saves", "-name", "Rafa's", "-x", "a b"]
+    );
+
+    let probe = FakeProbe::new("/home/u").with_file("/g/run.sh", b"#!/bin/sh\n");
+    let native = settings(json!({"launcherArgs": r#"-name Rafa's -x "a b""#}));
+    assert_eq!(args(sideload("g", "/g/run.sh", "linux"), probe, native)[..], ["-name", "Rafa's", "-x", "a b"]);
+}
+
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn windows_exe_uses_umu_with_proton_path() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -165,6 +206,8 @@ fn windows_exe_uses_umu_with_proton_path() {
     assert_eq!(c.env["PROTON_PREFER_SDL"], "1");
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn heronite_switches_reach_a_umu_launch() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -199,6 +242,8 @@ fn heronite_switches_reach_a_umu_launch() {
     assert!(process.keep_awake.is_some());
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn missing_prefix_files_trigger_prefix_creation() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -212,6 +257,8 @@ fn missing_prefix_files_trigger_prefix_creation() {
     assert_eq!(process.pre_commands[0].env["PROTON_VERB"], "run");
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn disabled_umu_runs_proton_directly() {
     let probe = FakeProbe::new("/home/u").with_path("/p/GE/proton").with_path("/games/win/game.exe");
@@ -260,6 +307,8 @@ fn disabled_umu_runs_proton_directly() {
     assert!(!process.prep.umu);
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn plain_wine_waits_for_wineserver() {
     let probe = FakeProbe::new("/home/u").with_path("/w/bin/wine").with_path("/w/bin/wineserver").with_path("/games/win/game.exe");
@@ -279,6 +328,8 @@ fn plain_wine_waits_for_wineserver() {
     assert_eq!(process.pre_commands[0].args, ["wineboot", "--init"]);
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn invalid_game_wine_falls_back_to_global_default() {
     let game = sideload("g", "/games/win/game.exe", "Windows");
@@ -295,6 +346,8 @@ fn invalid_game_wine_falls_back_to_global_default() {
     assert!(none.unavailable_reason().unwrap().contains("not valid"));
 }
 
+// Wine and Proton: Linux only (Windows runs a Windows game as it is).
+#[cfg(unix)]
 #[test]
 fn run_as_windows_sends_an_elf_through_wine() {
     let probe = proton_probe().with_file("/games/win/game.exe", b"\x7fELF");
@@ -312,10 +365,16 @@ fn run_as_windows_sends_an_elf_through_wine() {
 fn steam_games_become_uris_when_steam_exists() {
     let m = LocalGameMeta { steam_app_id: Some("400".into()), ..meta("steam-uri") };
     let game = sideload("steam_400", "/usr/bin/steam", "linux");
-    let with_steam = FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam");
+    // Linux finds `steam` on the PATH, Windows `steam.exe` in Steam's folder.
+    let with_steam = if cfg!(windows) {
+        let root = std::path::PathBuf::from(r"C:\fixture\Steam");
+        FakeProbe::new("/h").with_path(&root.join("steam.exe").to_string_lossy()).with_steam_roots(vec![root])
+    } else {
+        FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")
+    };
     assert_eq!(
         build_plan_with_settings(&ctx(json!({})), &with_steam, &game, Some(&m), &settings(json!({})), &Default::default()),
-        LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into() }
+        LaunchPlan::SteamUri { app_id: "400".into(), uri: "steam://rungameid/400".into(), extras: Default::default() }
     );
     let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
     assert_eq!(plan, LaunchPlan::Unavailable("Steam client was not found on PATH".into()));
@@ -338,6 +397,7 @@ fn another_launcher_starts_its_games_and_the_session_can_follow_them() {
     assert_eq!(p.command.cwd.as_deref(), Some("/games/celeste"));
     let handoff = p.handoff.unwrap();
     assert_eq!((handoff.prefix.as_deref(), handoff.folder.as_deref()), (Some("/pfx/celeste"), Some("/games/celeste")));
+    assert!(handoff.client.is_none(), "a launcher's game is followed by its processes, not by a client's");
     // Without Lutris on this PC.
     let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
     assert_eq!(plan, LaunchPlan::Unavailable("Lutris was not found on this PC".into()));
@@ -363,6 +423,37 @@ fn bottles_gets_the_bottle_and_program_whole() {
     assert!(p.handoff.is_none(), "nothing to find the game by");
     let plan = build_plan_with_settings(&ctx(json!({})), &FakeProbe::new("/h"), &game, Some(&m), &settings(json!({})), &Default::default());
     assert_eq!(plan, LaunchPlan::Unavailable("Bottles was not found on this PC".into()));
+}
+
+/// Playnite's link goes through the shell, which returns at once whatever it
+/// says; the game is followed where its emulator runs from.
+#[test]
+fn playnite_starts_its_games_through_its_link() {
+    use heronite_data::launchers::{LAUNCH_KIND, RUNS_FROM_KEY};
+    let mut m = LocalGameMeta {
+        source: "playnite".into(),
+        launcher_args: Some("explorer.exe playnite://playnite/start/71581114-f5b5-44e2-b5c9-d2ff835b199e".into()),
+        ..meta(LAUNCH_KIND)
+    };
+    let mut game = sideload("playnite_71581114-f5b5-44e2-b5c9-d2ff835b199e", "", "windows");
+    game.install.install_path = Some(r"D:\Games\PS\Castlevania".into());
+    let probe = FakeProbe::new("/h").with_bin("explorer.exe", r"C:\Windows\explorer.exe").with_path(r"D:\Games\PS\Castlevania");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.command.program, "explorer.exe");
+    assert_eq!(p.command.args, ["playnite://playnite/start/71581114-f5b5-44e2-b5c9-d2ff835b199e"]);
+    let handoff = p.handoff.unwrap();
+    assert_eq!((handoff.folder.as_deref(), handoff.exit_ignored), (Some(r"D:\Games\PS\Castlevania"), true));
+
+    // An emulated game: followed in its emulator's folder, once it is there.
+    m.extra.insert(RUNS_FROM_KEY.into(), json!(r"D:\Emulators\duckstation"));
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.handoff.unwrap().folder.as_deref(), Some(r"D:\Games\PS\Castlevania"), "the emulator is gone");
+    let probe = probe.with_path(r"D:\Emulators\duckstation");
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, Some(&m), &settings(json!({})), &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!(p.handoff.unwrap().folder.as_deref(), Some(r"D:\Emulators\duckstation"));
 }
 
 fn emu_ctx(emu: UserEmulator) -> PlanContext {
@@ -419,9 +510,14 @@ fn open_emulator_runs_it_without_a_game() {
     assert_eq!(c.cwd.as_deref(), Some("/emu"));
 
     let flatpak = UserEmulator { launch_kind: "flatpak".into(), flatpak_id: Some("net.rpcs3.RPCS3".into()), ..Default::default() };
-    let c = open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &flatpak).unwrap();
-    assert_eq!(c.program, "flatpak");
-    assert_eq!(c.args, ["run", "net.rpcs3.RPCS3"]);
+    let c = open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &flatpak);
+    if cfg!(windows) {
+        assert_eq!(c.unwrap_err(), "Flatpak emulators do not run on Windows");
+    } else {
+        let c = c.unwrap();
+        assert_eq!(c.program, "flatpak");
+        assert_eq!(c.args, ["run", "net.rpcs3.RPCS3"]);
+    }
 
     let gone = UserEmulator { executable: "/emu/gone".into(), launch_kind: "native".into(), ..Default::default() };
     assert!(open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &gone).is_err());
@@ -488,8 +584,10 @@ fn requested_rom_wins_and_missing_roms_are_unavailable() {
     assert_eq!(plan, LaunchPlan::Unavailable("Emulator executable was not found".into()));
 }
 
+// Flatpak is Linux's.
+#[cfg(unix)]
 #[test]
-fn retroarch_core_flatpak_and_rom_working_dir() {
+fn retroarch_core_in_flatpak() {
     let mut p = profile("snes", "");
     p.core_path = Some("/cores/snes9x_libretro.so".into());
     let emu = UserEmulator {
@@ -513,7 +611,61 @@ fn retroarch_core_flatpak_and_rom_working_dir() {
     assert_eq!(process.command.args, ["run", "org.libretro.RetroArch", "-L", "/cores/snes9x_libretro.so", "/roms/zelda.sfc"]);
     assert_eq!(process.command.cwd, None);
     assert_eq!(process.stop.kill_patterns, ["retroarch", "RetroArch"]);
+}
 
+#[cfg(unix)]
+#[test]
+fn mupen64plus_runs_fullscreen_without_touching_its_config() {
+    let emu = UserEmulator {
+        id: "e1".into(),
+        definition_id: "mupen64plus".into(),
+        executable: "/usr/bin/mupen64plus".into(),
+        launch_kind: "native".into(),
+        profiles: vec![profile("n64", "--fullscreen --nosaveoptions {ImagePath}")],
+        ..Default::default()
+    };
+    let probe = FakeProbe::new("/h").with_path("/usr/bin/mupen64plus").with_path("/roms/mario.z64");
+    let m = LocalGameMeta { emulator_profile_id: Some("n64".into()), ..emu_meta(&["/roms/mario.z64"]) };
+    let game = sideload("g", "/usr/bin/mupen64plus", "linux");
+    let LaunchPlan::Emulator { process, .. } =
+        build_plan_with_settings(&emu_ctx(emu), &probe, &game, Some(&m), &settings(json!({})), &Default::default())
+    else {
+        panic!()
+    };
+    assert_eq!(process.command.program, "/usr/bin/mupen64plus");
+    assert_eq!(process.command.args, ["--fullscreen", "--nosaveoptions", "/roms/mario.z64"]);
+    assert_eq!(process.stop.kill_patterns, ["mupen64plus"]);
+}
+
+// Flatpak is Linux's.
+#[cfg(unix)]
+#[test]
+fn flatpak_without_file_access_gets_the_host_read_only() {
+    let emu = UserEmulator {
+        id: "e1".into(),
+        definition_id: "gopher64".into(),
+        name: "gopher64".into(),
+        launch_kind: "flatpak".into(),
+        flatpak_id: Some("io.github.gopher64.gopher64".into()),
+        profiles: vec![profile("n64", "--fullscreen {ImagePath}")],
+        ..Default::default()
+    };
+    let probe = FakeProbe::new("/h").with_path("/roms/mario.z64");
+    let m = LocalGameMeta { emulator_profile_id: Some("n64".into()), ..emu_meta(&["/roms/mario.z64"]) };
+    let game = sideload("g", "flatpak", "linux");
+    let LaunchPlan::Emulator { process, .. } =
+        build_plan_with_settings(&emu_ctx(emu), &probe, &game, Some(&m), &settings(json!({})), &Default::default())
+    else {
+        panic!()
+    };
+    assert_eq!(process.command.program, "flatpak");
+    assert_eq!(process.command.args, ["run", "--filesystem=host:ro", "io.github.gopher64.gopher64", "--fullscreen", "/roms/mario.z64"]);
+    assert_eq!(process.stop.kill_patterns, ["gopher64", "gopher64"]);
+}
+
+#[test]
+fn mame_runs_from_the_rom_folder() {
+    let game = sideload("g", "/usr/bin/mame", "linux");
     let mut mame_profile = profile("arcade", "");
     mame_profile.definition_profile_id = Some("arcade".into());
     let mame = UserEmulator {
@@ -535,6 +687,8 @@ fn retroarch_core_flatpak_and_rom_working_dir() {
     assert_eq!(process.command.cwd.as_deref(), Some("/roms/arcade"));
 }
 
+// Wine runs Windows emulators on Linux only.
+#[cfg(unix)]
 #[test]
 fn exe_emulators_run_through_wine() {
     let emu = UserEmulator {
@@ -584,6 +738,8 @@ fn store_game(runner: &str, app: &str, path: &str, platform: &str) -> GameInfo {
     }
 }
 
+// Wine and Linux builds: Linux (GOG on Windows is in `crate::gog`).
+#[cfg(unix)]
 #[test]
 fn gog_windows_games_run_their_primary_task_in_wine() {
     let info = br#"{"playTasks": [{"category": "game", "isPrimary": true, "type": "FileTask", "path": "bin\\game.exe", "arguments": "-x", "workingDir": "bin"}]}"#;
@@ -613,6 +769,8 @@ fn gog_windows_games_run_their_primary_task_in_wine() {
     assert!(plan.unavailable_reason().unwrap().contains("goggame-42.info"), "{plan:?}");
 }
 
+// Wine and Linux builds: Linux (GOG on Windows is in `crate::gog`).
+#[cfg(unix)]
 #[test]
 fn gog_linux_builds_start_their_script() {
     let probe = FakeProbe::new("/home/u").with_path("/games/l").with_file("/games/l/start.sh", b"#!/bin/sh\n");
@@ -623,6 +781,27 @@ fn gog_linux_builds_start_their_script() {
     assert_eq!(p.command.env["HEROIC_APP_RUNNER"], "gog");
 }
 
+#[cfg(windows)]
+#[test]
+fn amazon_games_run_as_they_are_on_windows() {
+    let fuel = br#"{"Main": {"Command": "Game.exe", "Args": ["-a"]}, "PostInstall": [{"Command": "vc.exe", "Args": ["/q"]}]}"#;
+    let probe = FakeProbe::new(r"C:\Users\u")
+        .with_path(r"D:\amz")
+        .with_path(r"D:\amz\Game.exe")
+        .with_path(r"D:\amz\vc.exe")
+        .with_file(r"D:\amz\fuel.json", fuel);
+    let game = store_game("nile", "amzn1.p", r"D:\amz", "Windows");
+    // Settings brought from Linux (Proton) are left aside.
+    let s = settings(json!({"wineVersion": {"bin": "/p/GE/proton", "type": "proton"}, "winePrefix": "/pfx"}));
+    let plan = build_plan_with_settings(&ctx(json!({})), &probe, &game, None, &s, &Default::default());
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!((p.command.program.as_str(), p.command.args.as_slice()), (r"D:\amz\Game.exe", &["-a".to_string()][..]));
+    assert_eq!(p.command.cwd.as_deref(), Some(r"D:\amz"));
+    assert_eq!(p.prep.first_launch.expect("first launch setup").post_install[0].parts, [r"D:\amz\vc.exe", "/q"]);
+}
+
+// Through Wine: Linux (Amazon on Windows is in `crate::nile`).
+#[cfg(unix)]
 #[test]
 fn amazon_games_run_their_fuel_command_with_the_sdk_variables() {
     let fuel = br#"{"Main": {"Command": "Game.exe", "Args": ["-a"], "WorkingSubdirOverride": ""}, "PostInstall": [{"Command": "vc.exe", "Args": ["/q"]}]}"#;
@@ -646,4 +825,160 @@ fn amazon_games_run_their_fuel_command_with_the_sdk_variables() {
     let first = process.prep.first_launch.expect("first launch setup");
     assert_eq!(first.runner, "nile");
     assert_eq!(first.post_install[0].parts, ["/games/amz/vc.exe", "/q"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_windows_program_runs_as_it_is_on_windows() {
+    let exe = r"C:\Games\Hades\Hades.exe";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(exe);
+    // Settings brought from Linux (Proton, MangoHud, the sandbox) are left aside.
+    let s = settings(
+        json!({"wineVersion": {"bin": "/p/GE/proton", "type": "proton"}, "showMangohud": true, "heroniteSandbox": {"enabled": true}, "launcherArgs": "-skipintro"}),
+    );
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &sideload("g", exe, "Windows"),
+        Some(&meta("executable")),
+        &s,
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    assert_eq!((p.command.program.as_str(), p.command.args.as_slice()), (exe, &["-skipintro".to_string()][..]));
+    assert_eq!(p.command.cwd.as_deref(), Some(r"C:\Games\Hades"));
+    assert_eq!(p.stop.kill_patterns, ["Hades.exe"]);
+    assert_eq!(p.command.env.get("HEROIC_APP_NAME").map(String::as_str), Some("g"));
+
+    let linux = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe.with_file(r"C:\Games\x\run.sh", b"#!/bin/sh"),
+        &sideload("g", r"C:\Games\x\run.sh", "linux"),
+        Some(&meta("executable")),
+        &settings(json!({})),
+        &Default::default(),
+    );
+    assert!(matches!(linux, LaunchPlan::Unavailable(_)), "{linux:?}");
+    let missing = build_plan_with_settings(
+        &ctx(json!({})),
+        &FakeProbe::new(r"C:\Users\u"),
+        &sideload("g", exe, "Windows"),
+        Some(&meta("executable")),
+        &settings(json!({})),
+        &Default::default(),
+    );
+    assert!(matches!(missing, LaunchPlan::Unavailable(_)), "{missing:?}");
+}
+
+#[cfg(windows)]
+#[test]
+fn a_windows_game_holds_the_computer_awake_unless_turned_off() {
+    let exe = r"C:\Games\Hades\Hades.exe";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(exe);
+    let plan = |s: Value| {
+        let plan = build_plan_with_settings(
+            &ctx(json!({})),
+            &probe,
+            &sideload("g", exe, "Windows"),
+            Some(&meta("executable")),
+            &settings(s),
+            &Default::default(),
+        );
+        let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+        p
+    };
+    // On unless turned off, with no tool to find: the runtime holds it itself.
+    let unset = plan(json!({}));
+    assert!(unset.hold_awake && unset.keep_awake.is_none() && unset.notes.is_empty());
+    assert!(plan(json!({"heroniteKeepAwake": true})).hold_awake);
+    assert!(!plan(json!({"heroniteKeepAwake": false})).hold_awake);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_windows_game_gets_its_scripts_and_programs_alongside() {
+    let exe = r"C:\Games\Hades\Hades.exe";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(exe);
+    let s = settings(json!({
+        "beforeLaunchScriptPath": r"C:\Scripts\before.ps1",
+        "afterLaunchScriptPath": r"C:\Scripts\after.bat",
+        "heroniteCompanions": [{"path": r"C:\Tools\Trainer.exe", "delay": 10}, {"path": r"C:\Tools\overlay.cmd"}],
+    }));
+    let plan = build_plan_with_settings(
+        &ctx(json!({})),
+        &probe,
+        &sideload("g", exe, "Windows"),
+        Some(&meta("executable")),
+        &s,
+        &Default::default(),
+    );
+    let LaunchPlan::Native(p) = plan else { panic!("{plan:?}") };
+    let before = p.before_script.as_ref().unwrap();
+    assert_eq!(before.program, r"C:\Scripts\before.ps1", "the runtime picks the script's host");
+    assert_eq!(before.env["HEROIC_GAME_SCRIPT_TYPE"], "before");
+    assert_eq!(p.after_script.as_ref().unwrap().program, r"C:\Scripts\after.bat");
+    // No Wine on Windows: every program starts as it is, from its folder.
+    let [trainer, tool] = &p.companions[..] else { panic!("{:?}", p.companions) };
+    assert_eq!((trainer.command.program.as_str(), trainer.command.args.len()), (r"C:\Tools\Trainer.exe", 0));
+    assert_eq!(trainer.command.cwd.as_deref(), Some(r"C:\Tools"));
+    assert_eq!(trainer.delay, std::time::Duration::from_secs(10));
+    assert_eq!(trainer.command.env["HEROIC_GAME_TITLE"], "Title of g");
+    assert_eq!(tool.command.program, r"C:\Tools\overlay.cmd");
+    assert!(p.notes.is_empty(), "{:?}", p.notes);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_windows_emulator_runs_as_it_is_on_windows() {
+    let exe = r"C:\Emulators\PCSX2\pcsx2-qt.exe";
+    let mut p = profile("ps2", "-fullscreen -- {ImagePath}");
+    p.definition_profile_id = Some("ps2".into());
+    // A Windows program set up on Linux (`wine`) runs the same way.
+    for kind in ["native", "wine"] {
+        let emu = UserEmulator {
+            id: "e1".into(),
+            definition_id: "pcsx2".into(),
+            name: "PCSX2".into(),
+            executable: exe.into(),
+            launch_kind: kind.into(),
+            profiles: vec![p.clone()],
+            ..Default::default()
+        };
+        let rom = r"D:\ROMs\ps2\Okami (USA).iso";
+        let probe = FakeProbe::new(r"C:\Users\u").with_path(exe).with_path(rom);
+        let m = LocalGameMeta { emulator_profile_id: Some("ps2".into()), ..emu_meta(&[rom]) };
+        let opts = LaunchOptions { state_args: vec!["-statefile".into(), r"C:\s\1.p2s".into()], ..Default::default() };
+        let game = sideload("g", exe, "Windows");
+        let plan = build_plan_with_settings(&emu_ctx(emu.clone()), &probe, &game, Some(&m), &proton_settings(), &opts);
+        let LaunchPlan::Emulator { process, emulator, rom: picked } = plan else { panic!("{plan:?}") };
+        assert_eq!(emulator, "PCSX2");
+        assert_eq!(picked.as_deref(), Some(rom));
+        assert_eq!(process.command.program, exe);
+        assert_eq!(process.command.args, ["-statefile", r"C:\s\1.p2s", "-fullscreen", "--", rom]);
+        assert_eq!(process.command.cwd.as_deref(), Some(r"C:\Emulators\PCSX2"));
+        assert!(process.command.env.is_empty() && !process.sandboxed);
+        assert_eq!(process.stop.kill_patterns, ["pcsx2"]);
+        assert!(process.hold_awake, "an emulator keeps the computer awake too");
+
+        let c = open_emulator_command(&ctx(json!({})), &probe, &settings(json!({})), &emu).unwrap();
+        assert_eq!((c.program.as_str(), c.cwd.as_deref()), (exe, Some(r"C:\Emulators\PCSX2")));
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn flatpak_emulators_do_not_run_on_windows() {
+    let emu = UserEmulator {
+        id: "e1".into(),
+        definition_id: "retroarch".into(),
+        launch_kind: "flatpak".into(),
+        flatpak_id: Some("org.libretro.RetroArch".into()),
+        profiles: vec![profile("custom", "{ImagePath}")],
+        ..Default::default()
+    };
+    let rom = r"D:\ROMs\a.sfc";
+    let probe = FakeProbe::new(r"C:\Users\u").with_path(rom);
+    let game = sideload("g", "flatpak", "linux");
+    let plan = build_plan_with_settings(&emu_ctx(emu), &probe, &game, Some(&emu_meta(&[rom])), &settings(json!({})), &Default::default());
+    assert_eq!(plan, LaunchPlan::Unavailable("Flatpak emulators do not run on Windows".into()));
 }

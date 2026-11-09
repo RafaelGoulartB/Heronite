@@ -182,7 +182,7 @@ fn is_installed(game: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::Env;
+    use crate::cmd::testing::{Env, Reply};
 
     const LIBRARY: &str = r#"[
       {"id": "ent-1", "product": {"id": "amzn1.adg.product.AAA", "title": "Cool: Game™ 2", "sku": "X",
@@ -283,17 +283,18 @@ mod tests {
     #[test]
     fn refresh_syncs_then_writes_the_library() {
         let env = Env::new();
-        let body = format!("mkdir -p \"$NILE_CONFIG_PATH/nile\"; cat > \"$NILE_CONFIG_PATH/nile/library.json\" <<'EOF'\n{LIBRARY}\nEOF");
-        let nile = env.nile(&body);
-        assert_eq!(refresh(&env.paths, &nile).unwrap(), 3);
-        assert_eq!(env.calls(), ["library sync"]);
+        let sync = Reply::new().write_file("${NILE_CONFIG_PATH}/nile/library.json", LIBRARY);
+        let tool = env.fake_tool().on(&["library", "sync"], sync);
+        assert_eq!(refresh(&env.paths, &env.nile_of(&tool)).unwrap(), 3);
+        assert_eq!(tool.calls(), ["library sync"]);
         assert!(!heronite_data::Library::load(&env.paths).unwrap().games.is_empty());
     }
 
     #[test]
     fn refresh_reports_a_missing_login() {
         let env = Env::new();
-        let nile = env.nile("echo 'ERROR [CLI]:\t User not logged in' >&2; exit 1");
+        let tool = env.fake_tool().otherwise(Reply::new().err("ERROR [CLI]:\t User not logged in").exit(1));
+        let nile = env.nile_of(&tool);
         let err = refresh(&env.paths, &nile).unwrap_err();
         assert!(heronite_epic::session::is_expired(&err));
         let err = err.to_string();
@@ -304,7 +305,7 @@ mod tests {
     #[test]
     fn refresh_reports_other_failures() {
         let env = Env::new();
-        let nile = env.nile("echo 'ERROR [LIBRARY]:\t There was an error syncing library' >&2; exit 1");
+        let nile = env.nile(Reply::new().err("ERROR [LIBRARY]:\t There was an error syncing library").exit(1));
         let err = refresh(&env.paths, &nile).unwrap_err().to_string();
         assert!(err.contains("error syncing library"), "{err}");
     }

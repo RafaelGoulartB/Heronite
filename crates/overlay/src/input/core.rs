@@ -1,6 +1,6 @@
 //! What the Guide button does, without devices: pure, so it is tested
-//! without a controller. The thread in `input::mod` feeds it the presses of
-//! every controller and applies the grabs it asks for.
+//! without a controller. Input backends feed it each controller's presses;
+//! only evdev can apply the grabs it asks for.
 //!
 //! - Guide down grabs that controller at once, so what follows (RB, ↑ ↓)
 //!   reaches only us, not the game.
@@ -122,9 +122,9 @@ pub(super) struct Core {
     /// The controller whose Guide is down, and whether a chord was used.
     guide: Option<(usize, bool)>,
     /// The held direction and when it repeats next.
-    held: Option<(Button, Instant)>,
+    held: Option<(usize, Button, Instant)>,
     /// Where the left stick points (past the threshold).
-    stick: Option<Button>,
+    stick: Option<(usize, Button)>,
 }
 
 impl Core {
@@ -132,12 +132,13 @@ impl Core {
         Self { opts, open: false, guide: None, held: None, stick: None }
     }
 
-    #[cfg(test)]
+    #[cfg(any(windows, test))]
     pub fn is_open(&self) -> bool {
         self.open
     }
 
     /// Whether `dev` must stay grabbed (its Guide is down or the overlay is open).
+    #[cfg(any(target_os = "linux", test))]
     pub fn holds(&self, dev: usize) -> bool {
         self.open || self.guide.is_some_and(|(d, _)| d == dev)
     }
@@ -174,10 +175,10 @@ impl Core {
         }
         if down {
             if b.is_direction() {
-                self.held = Some((b, now + REPEAT_AFTER));
+                self.held = Some((dev, b, now + REPEAT_AFTER));
             }
             out.events.push(Event::Press(b));
-        } else if self.held.is_some_and(|(h, _)| h == b) {
+        } else if self.held.is_some_and(|(d, h, _)| d == dev && h == b) {
             self.held = None;
         }
         out
@@ -187,6 +188,7 @@ impl Core {
         if down {
             if self.guide.is_none() {
                 self.guide = Some((dev, false));
+                self.held = None;
                 if !self.open {
                     out.grabs.push(Grab::Hold(dev));
                 }
@@ -253,16 +255,34 @@ impl Core {
         if self.guide.is_some_and(|(d, _)| d == dev) {
             self.guide = None;
         }
+        if self.held.is_some_and(|(d, _, _)| d == dev) {
+            self.held = None;
+        }
+        if self.stick.is_some_and(|(d, _)| d == dev) {
+            self.stick = None;
+        }
         if self.open && remaining == 0 {
             self.set_closed(&mut out);
         }
         out
     }
 
+    /// Cancel navigation when the UI changes modes. A held Guide keeps its
+    /// chords, but its release must not reopen (or close) the panel the UI
+    /// just changed, so it counts as used.
+    #[cfg(any(windows, test))]
+    pub fn reset_input(&mut self) {
+        if let Some((_, used)) = &mut self.guide {
+            *used = true;
+        }
+        self.held = None;
+        self.stick = None;
+    }
+
     /// The left stick of `dev` moved (`x`, `y` in -1..=1, `y` up). While Guide
     /// is held, up / down count as the volume chord too.
     pub fn stick(&mut self, dev: usize, x: f32, y: f32, now: Instant) -> Output {
-        let threshold = |wanted: Button| if self.stick == Some(wanted) { STICK_OFF } else { STICK_ON };
+        let threshold = |wanted: Button| if self.stick == Some((dev, wanted)) { STICK_OFF } else { STICK_ON };
         let dir = if x.abs() > y.abs() {
             if x >= threshold(Button::Right) {
                 Some(Button::Right)
@@ -278,13 +298,14 @@ impl Core {
         } else {
             None
         };
-        if dir == self.stick {
+        let own_stick = self.stick.filter(|(d, _)| *d == dev).map(|(_, b)| b);
+        if dir == own_stick {
             return Output::default();
         }
-        let old = std::mem::replace(&mut self.stick, dir);
+        let old = std::mem::replace(&mut self.stick, dir.map(|b| (dev, b)));
         let mut out = Output::default();
-        if let Some(o) = old {
-            out = self.button(dev, o, false, now);
+        if let Some((old_dev, o)) = old {
+            out = self.button(old_dev, o, false, now);
         }
         if let Some(d) = dir {
             let more = self.button(dev, d, true, now);
@@ -296,16 +317,16 @@ impl Core {
 
     /// How long the thread may sleep before [`Core::tick`] has a repeat.
     pub fn wait(&self, now: Instant) -> Option<Duration> {
-        self.held.map(|(_, at)| at.saturating_duration_since(now))
+        self.held.map(|(_, _, at)| at.saturating_duration_since(now))
     }
 
     /// The repeat due at `now`, if any.
     pub fn tick(&mut self, now: Instant) -> Option<Event> {
-        let (b, at) = self.held?;
+        let (dev, b, at) = self.held?;
         if now < at || !self.open {
             return None;
         }
-        self.held = Some((b, now + REPEAT_EVERY));
+        self.held = Some((dev, b, now + REPEAT_EVERY));
         Some(Event::Press(b))
     }
 }
@@ -456,5 +477,43 @@ mod tests {
         press(&mut c, 0, Button::Guide);
         assert!(c.removed(1, 1).events.is_empty());
         assert_eq!(c.removed(0, 0).events, vec![Event::Close]);
+    }
+
+    #[test]
+    fn disconnected_controller_does_not_leave_repeats_on_other_pads() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.open();
+        c.stick(0, 0., 1., now);
+        assert!(c.removed(0, 1).events.is_empty());
+        assert!(c.is_open());
+        assert_eq!(c.tick(now + REPEAT_AFTER), None);
+        assert_eq!(c.stick(1, 0., 1., now).events, vec![Event::Press(Button::Up)]);
+        assert!(c.stick(0, 0., 0., now).events.is_empty());
+        assert_eq!(c.tick(now + REPEAT_AFTER), Some(Event::Press(Button::Up)));
+    }
+
+    #[test]
+    fn another_controllers_release_does_not_cancel_repeat() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.open();
+        c.button(0, Button::Down, true, now);
+        c.button(1, Button::Down, false, now);
+        c.removed(1, 1);
+        assert_eq!(c.tick(now + REPEAT_AFTER), Some(Event::Press(Button::Down)));
+    }
+
+    #[test]
+    fn guide_stops_navigation_repeat_while_a_chord_is_held() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.open();
+        c.button(0, Button::Down, true, now);
+        c.button(0, Button::Guide, true, now);
+        assert_eq!(c.tick(now + REPEAT_AFTER), None);
+        assert_eq!(c.button(0, Button::Up, true, now).events, vec![Event::Volume(1)]);
+        assert!(c.button(0, Button::Guide, false, now).events.is_empty());
+        assert_eq!(c.tick(now + REPEAT_AFTER), None);
     }
 }

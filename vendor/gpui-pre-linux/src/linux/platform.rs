@@ -305,6 +305,16 @@ struct StartupEnvironment {
 }
 
 impl LinuxPlatform {
+    /// Heronite: see [`crate::hide_cursor_until_mouse_moves`].
+    pub(crate) fn hide_cursor_now(&self) {
+        self.connection.borrow().hide_cursor_until_mouse_moves()
+    }
+
+    /// Heronite: see [`crate::show_cursor`].
+    pub(crate) fn show_cursor_now(&self) {
+        self.connection.borrow().show_cursor()
+    }
+
     /// Creates the platform, headless until `run` connects it in its initial mode.
     pub(crate) fn new(allowed_modes: WindowingModes) -> Self {
         let startup = StartupEnvironment {
@@ -704,11 +714,11 @@ impl Platform for LinuxPlatform {
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        self.connection.borrow().primary_display()
+        self.connection.borrow().primary_display().map(gpui_zoom::display)
     }
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
-        self.connection.borrow().displays()
+        gpui_zoom::displays(self.connection.borrow().displays())
     }
 
     #[cfg(feature = "screen-capture")]
@@ -736,7 +746,8 @@ impl Platform for LinuxPlatform {
         handle: AnyWindowHandle,
         options: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
-        self.connection.borrow().open_window(handle, options)
+        // Heronite: the window at the app's interface scale (`gpui-zoom`).
+        gpui_zoom::open(handle, options, |options| self.connection.borrow().open_window(handle, options))
     }
 
     fn open_url(&self, url: &str) {

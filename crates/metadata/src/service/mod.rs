@@ -6,7 +6,9 @@
 //! Everything is blocking. Run calls on worker threads; the service is
 //! `Send + Sync`, keep it in an `Arc`.
 
+mod age_fill;
 mod bulk;
+mod tag_fill;
 
 pub use bulk::AUTO_FILL_BATCH;
 
@@ -52,7 +54,7 @@ use parking_lot::{Mutex, RwLock};
 
 use crate::art;
 use crate::edit;
-use crate::hltb::{self, HltbClient, HltbLookup};
+use crate::hltb::{self, HltbClient, HltbLookup, HltbQuery, HowLongToBeat, SearchHit};
 use crate::http::{Endpoints, Http};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::images::materialize_metadata_image;
@@ -79,6 +81,7 @@ pub struct MetadataService {
     bulk_cancel: AtomicBool,
     bulk_running: AtomicBool,
     filling: AtomicBool,
+    rating_fill: AtomicBool,
 }
 
 impl MetadataService {
@@ -100,6 +103,7 @@ impl MetadataService {
             bulk_cancel: AtomicBool::new(false),
             bulk_running: AtomicBool::new(false),
             filling: AtomicBool::new(false),
+            rating_fill: AtomicBool::new(false),
         }
     }
 
@@ -445,8 +449,67 @@ impl MetadataService {
         web_images::search_web_images(&self.http, query, transparent)
     }
 
+    /// The art picker's image search: SteamGridDB's art when an API key is
+    /// set (not for transparent images, which it does not have) and the web's,
+    /// apart. A failing SteamGridDB only leaves its part empty; the web's
+    /// results leave out the images SteamGridDB already gave.
+    pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
+        let key = if transparent { None } else { covers::steamgrid_api_key(&self.paths) };
+        let title = web_images::title_of_query(query);
+        let (sgdb, web) = std::thread::scope(|s| {
+            let sgdb = s.spawn(|| match key.as_deref() {
+                Some(key) if !title.is_empty() => covers::steamgrid_images(&self.http, key, &title, kind).unwrap_or_else(|e| {
+                    log::warn!("SteamGridDB image search failed for \"{title}\": {e:#}");
+                    Vec::new()
+                }),
+                _ => Vec::new(),
+            });
+            let web = self.search_web_images(query, transparent);
+            (sgdb.join().unwrap_or_default(), web)
+        });
+        let web = match web {
+            Ok(list) => list,
+            Err(e) if sgdb.is_empty() => return Err(e),
+            Err(_) => Vec::new(),
+        };
+        let mut seen: std::collections::HashSet<String> = sgdb.iter().map(|img| img.image_url.clone()).collect();
+        let web = web.into_iter().filter(|img| seen.insert(img.image_url.clone())).collect();
+        Ok(ArtImages { steamgrid: sgdb, web })
+    }
+
     /// HowLongToBeat for a game (cache first; see [`hltb::get_or_fetch_hltb`]).
     pub fn how_long_to_beat(&self, title: &str, store_title: Option<&str>) -> Result<HltbLookup> {
         hltb::get_or_fetch_hltb(&self.paths, &self.http, &self.hltb, title, store_title)
+    }
+
+    /// [`how_long_to_beat`](Self::how_long_to_beat) with the release year.
+    pub fn how_long_to_beat_for(&self, query: &HltbQuery) -> Result<HltbLookup> {
+        hltb::get_or_fetch_hltb_for(&self.paths, &self.http, &self.hltb, query)
+    }
+
+    /// Asks HowLongToBeat again now (see [`hltb::refresh_hltb`]).
+    pub fn refresh_how_long_to_beat(&self, query: &HltbQuery) -> Result<HltbLookup> {
+        hltb::refresh_hltb(&self.paths, &self.http, &self.hltb, query)
+    }
+
+    /// HowLongToBeat search results, for "Change match".
+    pub fn search_how_long_to_beat(&self, title: &str) -> Result<Vec<SearchHit>> {
+        self.hltb.search(&self.http, title)
+    }
+
+    /// Saves the user's HowLongToBeat match for `title` (`None`: not on
+    /// HowLongToBeat).
+    pub fn set_how_long_to_beat_match(&self, title: &str, hit: Option<&SearchHit>) -> Result<Option<HowLongToBeat>> {
+        hltb::set_hltb_match(&self.paths, &self.http, title, hit)
+    }
+
+    /// The HowLongToBeat match the user picked for `title`, if any.
+    pub fn how_long_to_beat_choice(&self, title: &str) -> Option<hltb::HltbOverride> {
+        hltb::override_for(&self.paths, title)
+    }
+
+    /// Back to the automatic HowLongToBeat match for `title`.
+    pub fn clear_how_long_to_beat_match(&self, title: &str) -> Result<()> {
+        hltb::clear_hltb_match(&self.paths, title)
     }
 }

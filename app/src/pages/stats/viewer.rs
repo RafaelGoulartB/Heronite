@@ -74,7 +74,7 @@ impl StatsPage {
         let lb = self.lightbox.as_ref()?;
         let (photos_len, index) = (lb.photos.len(), lb.index);
         let p = lb.photos[index].clone();
-        let vp = window.viewport_size();
+        let vp = crate::ui::content_size(window);
         let (vw, vh) = (f32::from(vp.width) - 220., f32::from(vp.height) - 220.);
         let (w, h) = if vw / vh > 16. / 9. { (vh * 16. / 9., vh) } else { (vw, vw * 9. / 16.) };
         let src = self.covers.get_file(&p.path, w, h, window.scale_factor());

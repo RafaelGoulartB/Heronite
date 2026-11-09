@@ -7,16 +7,20 @@
 //! UI thread, shared files only through the backend crates. Lay the content
 //! out with [`sheet`] so pages share the chrome, width and padding.
 
+pub mod clients;
 pub mod commands;
 pub mod downloads;
 pub mod emulators;
 pub mod epic;
+pub mod methods;
 pub mod settings;
+pub mod side_nav;
 pub mod stats;
 pub mod steam;
 pub mod store;
 pub mod stores;
 pub mod wine_manager;
+pub mod xbox;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -36,8 +40,17 @@ pub enum Page {
     Epic,
     Gog,
     Amazon,
-    /// The Steam tab of the Stores (the library read from the Steam client).
+    /// The Steam page of the Stores (the library read from the Steam client).
     Steam,
+    /// The Xbox page of the Stores (Windows): the Microsoft Store and PC Game
+    /// Pass games installed as packages.
+    Xbox,
+    /// The pages of the Stores that run the store's own program, under Wine
+    /// on Linux (`heronite_clients`).
+    BattleNet,
+    Ea,
+    Ubisoft,
+    Rockstar,
     Emulators,
     Statistics,
     /// Global settings (☰ → Settings, listed last).
@@ -55,6 +68,11 @@ impl Page {
             Page::Gog => "GOG",
             Page::Amazon => "Amazon Games",
             Page::Steam => "Steam",
+            Page::Xbox => "Xbox",
+            Page::BattleNet => "Battle.net",
+            Page::Ea => "EA app",
+            Page::Ubisoft => "Ubisoft Connect",
+            Page::Rockstar => "Rockstar Games",
             Page::Emulators => tr!("Emulators"),
             Page::Statistics => tr!("Statistics"),
             Page::Settings => tr!("Settings"),
@@ -66,13 +84,45 @@ impl Page {
             Page::Collection => Icon::GridView,
             Page::Downloads => Icon::Download,
             Page::WineManager => Icon::WineBar,
-            Page::Epic => Icon::AccountCircle,
-            Page::Gog => Icon::Storefront,
-            Page::Amazon => Icon::ShoppingBag,
-            Page::Steam => Icon::SportsEsports,
+            Page::Epic => Icon::BrandEpicGames,
+            Page::Gog => Icon::BrandGog,
+            Page::Amazon => Icon::BrandAmazon,
+            Page::Steam => Icon::BrandSteam,
+            Page::Xbox => Icon::ShoppingBag,
+            Page::BattleNet => Icon::BrandBattleNet,
+            Page::Ea => Icon::BrandEa,
+            Page::Ubisoft => Icon::BrandUbisoft,
+            Page::Rockstar => Icon::BrandRockstar,
             Page::Emulators => Icon::SportsEsports,
             Page::Statistics => Icon::BarChart,
             Page::Settings => Icon::Settings,
+        }
+    }
+
+    /// Whether this system has what the page needs (`heronite_platform::features`).
+    pub fn available(self) -> bool {
+        use heronite_platform::{supported, Feature};
+        match self {
+            Page::Collection | Page::Statistics | Page::Settings | Page::Steam => true,
+            Page::Downloads => heronite_platform::features::any_store(),
+            Page::Epic => supported(Feature::EpicStore),
+            Page::Gog => supported(Feature::GogStore),
+            Page::Amazon => supported(Feature::AmazonStore),
+            Page::Xbox => supported(Feature::XboxStore),
+            Page::BattleNet | Page::Ea | Page::Ubisoft | Page::Rockstar => supported(Feature::StoreClients),
+            Page::WineManager => supported(Feature::Wine),
+            Page::Emulators => supported(Feature::Emulation),
+        }
+    }
+
+    /// The page of a store client run by Wine.
+    pub fn of_client(client: heronite_data::clients::Client) -> Page {
+        use heronite_data::clients::Client;
+        match client {
+            Client::BattleNet => Page::BattleNet,
+            Client::Ea => Page::Ea,
+            Client::Ubisoft => Page::Ubisoft,
+            Client::Rockstar => Page::Rockstar,
         }
     }
 
@@ -86,6 +136,11 @@ impl Page {
             "gog" => Some(Page::Gog),
             "amazon" => Some(Page::Amazon),
             "steam" => Some(Page::Steam),
+            "xbox" => Some(Page::Xbox),
+            "battlenet" => Some(Page::BattleNet),
+            "ea" => Some(Page::Ea),
+            "ubisoft" => Some(Page::Ubisoft),
+            "rockstar" => Some(Page::Rockstar),
             "emulators" => Some(Page::Emulators),
             // `stats[:week|month|year|all]`, see `stats::StatsPage`.
             s if s == "stats" || s.starts_with("stats:") => Some(Page::Statistics),
@@ -115,8 +170,13 @@ pub enum PageEvent {
     /// "Show hidden games" changed in Settings: the Collection saves the flag
     /// and reloads its library.
     ShowHidden(bool),
+    /// Open the store page shown last (the Emulators page's link).
+    OpenStores,
     /// Select this game (`CollectionGame::key`) on the Collection.
     ShowGame(String),
+    /// Play this game (`CollectionGame::key`) the way its card does; a game
+    /// that is not installed is only selected.
+    Play(String),
     /// Uninstall this game (`CollectionGame::key`) the way its context menu
     /// does; the page stays on screen under the dialog.
     Uninstall(String),
@@ -126,6 +186,9 @@ pub enum PageEvent {
     /// Settings → Appearance changed the look: the Collection under the page
     /// repaints.
     AppearanceChanged,
+    /// Settings → Console mode changed how the app opens or what a controller
+    /// connecting does: the Collection starts or stops its controller watcher.
+    ConsoleStartOptionsChanged,
 }
 
 /// Round close button of a [`sheet`]: goes back to the Collection.
@@ -136,11 +199,11 @@ pub fn page_close<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> 
 /// Horizontal room for a [`sheet`]'s content: the window minus the sheet's
 /// inset (12px each side) and the body padding (32px each side).
 pub fn content_width(window: &Window) -> f32 {
-    f32::from(window.viewport_size().width) - 24. - 64.
+    f32::from(crate::ui::content_size(window).width) - 24. - 64.
 }
 
-/// Glass sheet floating over the (dimmed) Collection: title (Rubik 26) + lead
-/// on the left, `actions` on the right, then a scrolling body. Title and body
+/// Glass sheet floating over the (dimmed) Collection: title (Rubik 26, none
+/// when empty) + lead on the left, `actions` on the right, then a scrolling body. Title and body
 /// share one column of at most `max_w`, centred in the sheet, so a wide
 /// window gets even margins instead of an empty right side. The round close
 /// button sits in the sheet's top-right corner, as in Settings. Pages render
@@ -156,6 +219,7 @@ pub fn sheet(
     column: impl IntoElement,
 ) -> Div {
     let id: ElementId = id.into();
+    let title: SharedString = title.into();
     // Keep the actions clear of the close button once the column reaches it.
     let room = content_width(window);
     let clear_close = (room - max_w) / 2. < 40.;
@@ -169,7 +233,15 @@ pub fn sheet(
             .max_w(px(max_w))
             .mx_auto()
             .when(clear_close, |d| d.pr(px(44.)))
-            .child(div().flex().flex_col().gap(px(4.)).min_w_0().child(page_heading(title)).children(lead.map(help_text)))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .min_w_0()
+                    .when(!title.is_empty(), |d| d.child(page_heading(title)))
+                    .children(lead.map(help_text)),
+            )
             .child(div().flex().flex_none().items_center().gap(px(10.)).children(actions)),
     );
     let body = div()

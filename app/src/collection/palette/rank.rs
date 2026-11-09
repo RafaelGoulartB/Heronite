@@ -468,6 +468,8 @@ mod tests {
         r.groups.iter().map(|g| g.caption.as_str()).collect()
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn empty_query_shows_recently_played_games_then_go_to() {
         let e = corpus();
@@ -475,21 +477,25 @@ mod tests {
         assert_eq!(captions(&r), ["Recently played", "Go to"]);
         assert_eq!(titles(&e, &r)[..4], ["Control", "Wine Quest", "Cyberpunk 2077", "Collection"]);
         // Settings sections are not listed unless asked for.
-        assert_eq!(r.groups[1].items.len(), 10);
+        assert_eq!(r.groups[1].items.len(), 14);
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn empty_query_filters() {
         let e = corpus();
         let pages = search(&e, "", Filter::Pages, &[]);
-        assert_eq!(pages.count(), 10 + crate::pages::settings::Section::ALL.len());
+        assert_eq!(pages.count(), 14 + crate::pages::settings::Section::ALL.len());
         let actions = search(&e, "", Filter::Actions, &[]);
-        assert_eq!(actions.count(), 12);
+        assert_eq!(actions.count(), 14);
         let games = search(&e, "", Filter::Games, &[]);
         assert_eq!(captions(&games), ["Recently played", "Games"]);
         assert_eq!(games.count(), 5);
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn recent_items_come_first_when_nothing_is_typed() {
         let e = corpus();
@@ -545,6 +551,8 @@ mod tests {
         assert_eq!(r.groups[0].caption, "Games");
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn settings_sections_are_found_by_their_keywords() {
         let e = corpus();
@@ -561,6 +569,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn wi_finds_the_wine_manager_and_a_game() {
         let e = corpus();
@@ -570,6 +580,8 @@ mod tests {
         assert!(t.contains(&"Wine Quest".to_string()), "{t:?}");
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn page_shortcuts_and_sections_are_found() {
         let e = corpus();

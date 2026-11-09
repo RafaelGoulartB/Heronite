@@ -7,6 +7,7 @@ use gpui_kit::*;
 use heronite_i18n::tr;
 use heronite_launch::umu_ids;
 
+use super::super::logic;
 use super::super::presets::summary;
 use super::{item, Act, Item, SettingsPanel};
 use crate::console::list::Row;
@@ -71,9 +72,11 @@ impl SettingsPanel {
             let mut opts: Vec<SharedString> = vec![tr!("Choose a preset\u{2026}").into()];
             opts.extend(self.presets.iter().map(|p| SharedString::from(format!("{} \u{b7} {}", p.name, summary(p)))));
             v.push(item(
-                Row::choice("c:preset-apply", tr!("Apply a preset"), opts, 0)
-                    .enabled(!disabled)
-                    .desc(tr!("Adds its variables, wrappers and arguments to this game")),
+                Row::choice("c:preset-apply", tr!("Apply a preset"), opts, 0).enabled(!disabled).desc(if logic::wrappers() {
+                    tr!("Adds its variables, wrappers and arguments to this game")
+                } else {
+                    tr!("Adds its variables and arguments to this game")
+                }),
                 Act::Choice(Rc::new(|this, i, cx| {
                     if i > 0 {
                         this.apply_preset(i - 1, cx);
@@ -82,10 +85,11 @@ impl SettingsPanel {
             ));
         }
         v.push(item(
-            Row::action("d:preset-save", tr!("Save as preset\u{2026}"))
-                .icon(Icon::Save)
-                .enabled(!disabled)
-                .desc(tr!("This game's variables, wrappers and arguments, for other games")),
+            Row::action("d:preset-save", tr!("Save as preset\u{2026}")).icon(Icon::Save).enabled(!disabled).desc(if logic::wrappers() {
+                tr!("This game's variables, wrappers and arguments, for other games")
+            } else {
+                tr!("This game's variables and arguments, for other games")
+            }),
             Act::Do(Rc::new(|this, window, cx| {
                 this.console_osk(tr!("Preset name"), "", window, cx, |this, name, _, cx| this.save_preset(&name, cx))
             })),

@@ -13,7 +13,7 @@ use gpui_kit::*;
 use heronite_epic::eos_overlay;
 use heronite_epic::user::BROWSER_LOGIN_URL;
 
-use super::{columns, content_width, page_close, sheet, status_pill, stores, Page, PageCtx, PageEvent};
+use super::{columns, status_pill, stores, Page, PageCtx, PageEvent};
 use crate::dialogs::epic_import::EpicImportPicker;
 use crate::dialogs::epic_install::{EpicInstallDialog, Mode};
 use crate::dialogs::DialogEvent;
@@ -34,6 +34,8 @@ pub struct EpicPage {
     confirm_eos_remove: bool,
     /// The embedded login window is open.
     window_open: bool,
+    /// Windows: the Epic Games Launcher is on this PC (its manifests folder).
+    launcher: bool,
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
@@ -44,22 +46,11 @@ pub struct EpicPage {
 
 impl EventEmitter<PageEvent> for EpicPage {}
 
-/// `heronite-epic-login` next to this executable, else on `PATH`.
-fn login_helper() -> Option<std::path::PathBuf> {
-    let name = if cfg!(windows) { "heronite-epic-login.exe" } else { "heronite-epic-login" };
-    if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-        let candidate = dir.join(name);
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))
-}
-
 impl EpicPage {
     pub fn new(ctx: PageCtx, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let svc = services::downloads(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
+        stores::watch(cx);
         let code = new_input(window, cx, "", tr!("Authorization code or the page's JSON"));
         // Installed version and the latest one (Heroic asks when the settings open).
         svc.update(cx, |s, cx| s.eos_reload(true, cx));
@@ -71,6 +62,7 @@ impl EpicPage {
             confirm_logout: false,
             confirm_eos_remove: debug.as_deref() == Some("eos-remove"),
             window_open: false,
+            launcher: heronite_epic::egl::manifests_dir().is_some(),
             notice: None,
             dialog: None,
             dialog_sub: None,
@@ -154,6 +146,16 @@ impl EpicPage {
             })));
         }
         let mut rows = vec![row(eos_main_text(eos.installed, working), desc.as_deref(), actions).into_any_element()];
+        // Windows: on or off for every game at once.
+        if let Some(on) = eos.enabled.filter(|_| services::downloads::eos_global()) {
+            let switch = crate::ui::controls::toggle("eos-global", on, working).on_click(cx.listener(move |this, _, _, cx| {
+                this.svc.update(cx, |s, cx| s.eos_set_global(!on, cx));
+            }));
+            rows.push(
+                row(tr!("Use the overlay in games"), Some(tr!("On Windows the overlay is on or off for every game at once.")), switch)
+                    .into_any_element(),
+            );
+        }
         if let Some(b) = &busy {
             rows.push(
                 div()
@@ -192,16 +194,16 @@ impl EpicPage {
                     .into_any_element(),
             );
         }
-        div().flex().flex_col().child(card(rows)).child(
-            div()
-                .mt(px(8.))
-                .mx(px(6.))
-                .child(meta_text(tr!("Enable or disable the overlay for a game from the game's menu (right-click)."))),
-        )
+        let hint = if services::downloads::eos_global() {
+            tr!("Games that use Epic Online Services show it with Shift+F3.")
+        } else {
+            tr!("Enable or disable the overlay for a game from the game's menu (right-click).")
+        };
+        div().flex().flex_col().child(card(rows)).child(div().mt(px(8.)).mx(px(6.)).child(meta_text(hint)))
     }
 
     fn start_window_login(&mut self, cx: &mut Context<Self>) {
-        let Some(helper) = login_helper() else {
+        let Some(helper) = crate::pages::store::login_helper() else {
             self.notice = Some((
                 tr!("The login window (heronite-epic-login) was not found next to the app. Use the browser method below.").into(),
                 true,
@@ -233,11 +235,14 @@ impl EpicPage {
                         }
                     }
                     // 127: the loader could not start it (WebKitGTK 4.1 is missing).
-                    Ok(o) if o.status.code() == Some(127) => {
+                    Ok(o) if !cfg!(windows) && o.status.code() == Some(127) => {
                         this.notice = Some((
                             tr!("The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.").into(),
                             true,
                         ))
+                    }
+                    Ok(o) if cfg!(windows) && o.status.code() == Some(super::store::LOGIN_NO_WEBVIEW) => {
+                        this.notice = Some((super::store::no_webview_notice(), true));
                     }
                     // `CLOSED` of the helper: the user closed the window.
                     Ok(o) if o.status.code() == Some(4) => {}
@@ -255,7 +260,7 @@ impl EpicPage {
     }
 
     fn open_browser(&mut self, cx: &mut Context<Self>) {
-        if let Err(err) = Command::new("xdg-open").arg(BROWSER_LOGIN_URL).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        if let Err(err) = heronite_platform::shell::open(BROWSER_LOGIN_URL) {
             self.notice = Some((tr!("Could not open the browser: {err}", err).into(), true));
             cx.notify();
         }
@@ -393,6 +398,23 @@ impl Render for EpicPage {
                 )
                 .into_any_element(),
             );
+            if self.launcher {
+                let importing = self.svc.read(cx).busy_of(services::downloads::LAUNCHER_IMPORT).is_some();
+                rows.push(
+                    row(
+                        tr!("Epic Games Launcher"),
+                        Some(tr!("Add the games the Epic Games Launcher installed on this PC, without downloading them again. Its files are not moved or deleted.")),
+                        action_button(
+                            "epic-launcher-import",
+                            ButtonKind::Glass,
+                            if importing { tr!("Importing...") } else { tr!("Import its games") },
+                            !importing,
+                            cx.listener(|this, _, _, cx| this.svc.update(cx, |s, cx| s.import_from_launcher(cx))),
+                        ),
+                    )
+                    .into_any_element(),
+                );
+            }
             column = column.child(caption(tr!("Account"))).child(card(rows));
         } else {
             let login = row(
@@ -474,22 +496,12 @@ impl Render for EpicPage {
             .child(self.eos_panel(cx))
             .child(div().mt(px(18.)).mx(px(6.)).child(meta_text(tr!("Games are installed, updated and verified with legendary."))));
         // Wide: the account on the left, the EOS Overlay on the right.
-        let wide = content_width(window) >= 1000.;
-
-        let close = page_close(cx);
+        let wide = stores::content_width(window) >= 1000.;
+        let body = columns(wide, [column, eos]);
         div()
             .size_full()
             .relative()
-            .child(sheet(
-                "page-epic",
-                stores::title(),
-                Some(tr!("Your account, library and the EOS Overlay.").into()),
-                None,
-                1320.,
-                window,
-                close,
-                div().flex().flex_col().child(stores::tabs(Page::Epic, cx)).child(columns(wide, [column, eos])),
-            ))
+            .child(stores::sheet("page-epic", Page::Epic, tr!("Your account, library and the EOS Overlay."), cx, body))
             .children(self.dialog.clone())
             .into_any_element()
     }

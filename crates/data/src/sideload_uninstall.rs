@@ -10,8 +10,9 @@
 //! prefix must belong to this game only: the shared prefix, the default
 //! prefixes and a prefix another game also uses are always kept. Neither may
 //! be, hold or sit inside the folder or prefix of a game Lutris, Bottles or Faugus
-//! starts (a game added here by hand often points into one): that is the
-//! other launcher's to delete.
+//! starts, or the prefix of a store client or the folder of one of its games
+//! (a game added here by hand often points into one): that is the other
+//! launcher's or the client's to delete.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -85,7 +86,7 @@ pub fn plan(paths: &DataPaths, input: &UninstallInput) -> UninstallPlan {
     .map(|p| PathBuf::from(game_config::expand_tilde(&p, input.home)))
     .collect();
     let other_prefixes: Vec<PathBuf> = other_game_prefixes(paths, input.app_name, input.home).into_iter().map(|(_, p)| p).collect();
-    let managed = launchers::managed_paths(paths);
+    let managed = launchers::managed_paths(paths, input.home);
 
     let prefix = if input.windows { own_prefix(paths, input.app_name, input.home) } else { None };
     let prefix = prefix.filter(|p| p.exists()).map(|path| {
@@ -211,8 +212,8 @@ fn other_game_prefixes(paths: &DataPaths, app_name: &str, home: &str) -> Vec<(St
 /// no other game uses it. Games are named by their title in `lib`; settings
 /// of games `lib` leaves out (hidden ones) still count, unnamed.
 pub fn prefix_shared_note(paths: &DataPaths, lib: &Library, app_name: &str, prefix: &Path, home: &str) -> Option<String> {
-    if let Some(m) = launchers::managed_by(&launchers::managed_paths(paths), prefix) {
-        return Some(tr!("{launcher} keeps {title} there, so it is kept.", launcher = m.launcher.name(), title = m.title));
+    if let Some(m) = launchers::managed_by(&launchers::managed_paths(paths, home), prefix) {
+        return Some(tr!("{launcher} keeps {title} there, so it is kept.", launcher = m.owner, title = m.title));
     }
     let users: Vec<String> = other_game_prefixes(paths, app_name, home)
         .into_iter()
@@ -239,13 +240,13 @@ pub fn prefix_shared_note(paths: &DataPaths, lib: &Library, app_name: &str, pref
 }
 
 /// Why `path` is kept: it is, holds or sits inside the folder or prefix of
-/// a game another launcher starts.
+/// a game another launcher starts, or what a store client keeps.
 fn managed_blocked(path: &Path, managed: &[Managed]) -> Option<String> {
     let m = launchers::managed_by(managed, path)?;
     Some(tr!(
         "Won't delete {path}: {launcher} keeps {title} there. Uninstall it from {launcher}",
         path = path.display(),
-        launcher = m.launcher.name(),
+        launcher = m.owner,
         title = m.title
     ))
 }
@@ -311,8 +312,9 @@ fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 /// Absolute and without `.` / `..` parts, so `starts_with` checks hold.
+/// A Windows path starts with its drive (`C:`).
 fn is_clean_absolute(p: &Path) -> bool {
-    p.is_absolute() && p.components().all(|c| matches!(c, Component::RootDir | Component::Normal(_)))
+    p.is_absolute() && p.components().all(|c| matches!(c, Component::Prefix(_) | Component::RootDir | Component::Normal(_)))
 }
 
 #[cfg(unix)]
@@ -484,6 +486,51 @@ mod tests {
         assert!(e.plan(Some(&game), &[]).files.unwrap().blocked.unwrap().contains("Lutris"));
     }
 
+    /// A game added by hand into Battle.net's prefix, where the client keeps
+    /// its own games: neither its folder nor the prefix go.
+    #[test]
+    fn the_prefix_and_games_of_a_store_client_are_kept() {
+        let e = env();
+        let client_prefix = e.mkdir("Prefixes/Battle.net");
+        fs::create_dir_all(client_prefix.join("drive_c")).unwrap();
+        let game = e.mkdir("Prefixes/Battle.net/drive_c/Games/Diablo");
+        fs::write(game.join("diablo.exe"), "x").unwrap();
+        e.set_prefix(crate::clients::Client::BattleNet.config_app(), &client_prefix);
+        e.set_prefix("a", &client_prefix);
+
+        let plan = e.plan(Some(&game), &[]);
+        let files = plan.files.unwrap().blocked.unwrap();
+        assert!(files.contains("Battle.net keeps Battle.net there. Uninstall it from Battle.net"), "{files}");
+        assert!(plan.prefix.unwrap().blocked.unwrap().contains("Battle.net keeps"));
+        let input = UninstallInput { app_name: "a", home: e.home(), folder: Some(&game), windows: true, others: &[] };
+        assert!(uninstall(&e.paths, &input, true, true).is_err());
+        assert!(game.join("diablo.exe").exists() && client_prefix.join("drive_c").exists());
+
+        let lib = Library::load(&e.paths).unwrap();
+        let note = prefix_shared_note(&e.paths, &lib, "a", &client_prefix, e.home()).unwrap();
+        assert!(note.contains("Battle.net keeps Battle.net there"), "{note}");
+        assert!(matches!(crate::sideload::remove_prefix(&e.paths, "a", e.home()), crate::sideload::PrefixOutcome::Skipped(_)));
+
+        // A game of the client outside its prefix: its folder is the client's.
+        let elsewhere = e.mkdir("Games/Ubisoft/Anno");
+        json_store::write(
+            &e.paths.local_meta(),
+            &json!({"games": {"ubisoft_635": {"appName": "ubisoft_635", "runner": "sideload", "source": "ubisoft",
+                "launchKind": "client", "title": "Anno 1800"}}}),
+        )
+        .unwrap();
+        json_store::write(
+            &e.paths.sideload_library(),
+            &json!({"games": [
+                {"runner": "sideload", "app_name": "a", "title": "A", "is_installed": true, "install": {"executable": "x"}},
+                {"runner": "sideload", "app_name": "ubisoft_635", "title": "Anno 1800", "is_installed": true,
+                 "install": {"install_path": elsewhere}}]}),
+        )
+        .unwrap();
+        let blocked = e.plan(Some(&elsewhere), &[]).files.unwrap().blocked.unwrap();
+        assert!(blocked.contains("Ubisoft Connect keeps Anno 1800 there"), "{blocked}");
+    }
+
     #[test]
     fn linux_games_have_no_prefix_target() {
         let e = env();
@@ -527,6 +574,8 @@ mod tests {
         assert_eq!(g("/bin/a"), PathBuf::from("/bin"));
     }
 
+    // Windows makes symlinks only in Developer Mode or as an administrator.
+    #[cfg(unix)]
     #[test]
     fn a_link_is_not_followed() {
         let e = env();

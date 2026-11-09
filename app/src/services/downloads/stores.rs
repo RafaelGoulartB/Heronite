@@ -59,6 +59,12 @@ fn refresh_blocking(paths: &DataPaths, store: Store) -> anyhow::Result<Local> {
         Store::Gog => {
             let gogdl = Gogdl::locate_or_install(paths)?;
             heronite_gog::library::refresh(paths, &gogdl)?;
+            // GOG Galaxy's games of the library show as installed (Windows).
+            if cfg!(windows) {
+                if let Err(err) = heronite_gog::galaxy::import(paths) {
+                    log::warn!("gog: reading GOG Galaxy's games: {err:#}");
+                }
+            }
             if let Err(err) = heronite_gog::updates::check(paths, &gogdl) {
                 log::warn!("gog: checking for updates: {err:#}");
             }
@@ -236,6 +242,10 @@ impl Downloads {
                         this.apply_local(store, local);
                         this.toast(cx, tr!("Logged in as {name}", name), false);
                         this.emit(cx, DownloadsEvent::LibraryChanged);
+                        // The games the Amazon Games app already installed on this PC.
+                        if store == Store::Amazon {
+                            this.amazon_import_app_games(true, cx);
+                        }
                     }
                     Err(err) => {
                         let msg = format!("{err:#}");
@@ -405,7 +415,7 @@ impl Downloads {
             cx,
             move |paths, _, _| {
                 let res = match store {
-                    Store::Gog => heronite_gog::ops::uninstall(paths, &app).map(|_| None),
+                    Store::Gog => heronite_gog::ops::uninstall(paths, &app),
                     Store::Amazon => Nile::locate(paths).and_then(|n| heronite_amazon::ops::uninstall(paths, &n, &app)),
                 };
                 // What did not go as asked, for the toast.

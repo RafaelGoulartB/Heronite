@@ -3,9 +3,12 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use heronite_i18n::tr;
+
 use super::SettingsPanel;
+use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, row, toggle, ButtonKind};
+use crate::ui::controls::{action_button, caption, card, icon_badge, row, row_lead, toggle, ButtonKind};
 use crate::ui::fields::{choose_path, field_label, input_box, path_field, select_field, select_menu_field, SelectOption};
 
 /// Menus longer than this get a search box.
@@ -83,6 +86,57 @@ impl Rows {
 }
 
 impl SettingsPanel {
+    /// A technical path (a Wine binary, a prefix): a "Show path" link with
+    /// the path in its tooltip; a click spells it out with "Hide path" next
+    /// to it, and "Copy path" before that puts it on the clipboard (and says
+    /// "Copied" for a moment).
+    pub(super) fn path_note(&self, id: &'static str, path: &str, cx: &mut Context<Self>) -> Div {
+        let shown = self.show_paths;
+        let link = |id: SharedString| {
+            div()
+                .id(id)
+                .flex_none()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .cursor_pointer()
+                .hover(|s| s.text_color(theme::accent_overlay()))
+        };
+        let toggle = link(id.into())
+            .child(if shown { tr!("Hide path") } else { tr!("Show path") })
+            .when(!shown, |d| d.tooltip(crate::ui::tooltip(path.to_string())))
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.show_paths = !this.show_paths;
+                cx.notify();
+            }));
+        let copied = self.path_copied == Some(id);
+        let copy = {
+            let path = path.to_string();
+            link(SharedString::from(format!("{id}-copy"))).child(if copied { tr!("Copied") } else { tr!("Copy path") }).on_click(
+                cx.listener(move |this, _, _, cx| {
+                    cx.write_to_clipboard(ClipboardItem::new_string(path.clone()));
+                    this.path_copied = Some(id);
+                    // "Copied" goes back to "Copy path" after a moment.
+                    this.path_copied_task = Some(cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+                        this.update(cx, |this, cx| {
+                            this.path_copied = None;
+                            cx.notify();
+                        })
+                        .ok();
+                    }));
+                    cx.notify();
+                }),
+            )
+        };
+        div()
+            .flex()
+            .items_start()
+            .gap(px(14.))
+            .child(div().flex_1().min_w_0().when(shown, |d| d.child(help(path))))
+            .when(shown, |d| d.child(copy))
+            .child(toggle)
+    }
+
     /// A settings row: label, explanation and a switch. `disabled` shows it
     /// dimmed and inert.
     pub(super) fn toggle_row(
@@ -127,12 +181,53 @@ impl SettingsPanel {
         on: bool,
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
+        self.switch_row_lead(id, group, None, label, help_text, on, cx)
+    }
+
+    /// [`switch_row`](Self::switch_row) with the icon badge of a section's
+    /// main switch before the label (`lead`).
+    fn switch_row_lead(
+        &self,
+        id: &'static str,
+        group: &str,
+        lead: Option<Icon>,
+        label: &str,
+        help_text: Option<&str>,
+        on: bool,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let control = div().flex().items_center().gap(px(10.)).children(self.reset_button(group, cx)).child(toggle(
             SharedString::from(format!("{id}-sw")),
             on,
             false,
         ));
-        row(label.to_string(), help_text, control).id(id).cursor_pointer()
+        match lead {
+            Some(ic) => row_lead(icon_badge(ic), label.to_string(), help_text, control).id(id).cursor_pointer(),
+            None => row(label.to_string(), help_text, control).id(id).cursor_pointer(),
+        }
+    }
+
+    /// [`toggle_row`](Self::toggle_row) for a section's main switch: its
+    /// icon badge before the label.
+    pub(super) fn toggle_row_icon(
+        &self,
+        id: &'static str,
+        key: &'static str,
+        ic: Icon,
+        label: &str,
+        help_text: Option<&str>,
+        disabled: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let on = self.flag(key, false);
+        let group = if super::changes::group(id).is_some() { id } else { key };
+        let mut row = self.switch_row_lead(id, group, Some(ic), label, help_text, on, cx);
+        if disabled {
+            row = row.opacity(0.4).cursor_not_allowed();
+        } else {
+            row = row.on_click(cx.listener(move |this, _, _, cx| this.toggle(key, false, cx)));
+        }
+        row.into_any_element()
     }
 
     /// Labelled text input bound to input `id`.

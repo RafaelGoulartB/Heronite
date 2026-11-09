@@ -7,12 +7,13 @@ use heronite_emulation::detect::profiles_for_definition;
 use heronite_emulation::{emulator_definitions, SystemEnv};
 use heronite_i18n::{tr, trn};
 
-use super::{text_of, EmulatorEditDialog, Menu, KINDS, WORKING_DIRS};
+use super::{kind_of_pick, text_of, EmulatorEditDialog, Menu, KINDS, WORKING_DIRS};
 use crate::dialogs::scan_roms::profile_label;
 use crate::dialogs::DialogEvent;
 use crate::theme;
 use crate::ui::controls::{action_button, button, caption, ButtonKind};
 use crate::ui::fields::{choose_path, meta_text, panel, path_field, select_field, text_field};
+use heronite_emulation::pathutil::has_dir;
 
 impl EmulatorEditDialog {
     pub(super) fn render_fields(&mut self, mut body: Div, cx: &mut Context<Self>) -> Div {
@@ -49,30 +50,33 @@ impl EmulatorEditDialog {
         }
         body = body.child(text_field(tr!("Name"), &self.name));
         let kind_label = KINDS.iter().find(|k| k.0 == self.launch_kind).map(|k| tr(k.1)).unwrap_or(tr!("Native (Linux)"));
-        body = body.child(select_field(
-            "emu-kind",
-            Some(tr!("Run as")),
-            kind_label,
-            false,
-            self.menu == Some(Menu::Kind),
-            KINDS.iter().map(|k| (SharedString::from(tr(k.1)), k.0 == self.launch_kind)).collect(),
-            cx,
-            |this: &mut Self, _, cx| {
-                this.menu = if this.menu == Some(Menu::Kind) { None } else { Some(Menu::Kind) };
-                cx.notify();
-            },
-            |this: &mut Self, i, _, cx| {
-                this.launch_kind = KINDS[i].0.to_string();
-                this.menu = None;
-                if this.launch_kind == "flatpak" && text_of(&this.flatpak_id, cx).is_empty() {
-                    if let Some(fid) = emulator_definition(&this.definition_id).and_then(|d| d.flatpak_id.clone()) {
-                        let input = this.flatpak_id.clone();
-                        this.set_later(&input, fid);
+        // Windows runs every emulator as it is.
+        body = body.when(!cfg!(windows), |body| {
+            body.child(select_field(
+                "emu-kind",
+                Some(tr!("Run as")),
+                kind_label,
+                false,
+                self.menu == Some(Menu::Kind),
+                KINDS.iter().map(|k| (SharedString::from(tr(k.1)), k.0 == self.launch_kind)).collect(),
+                cx,
+                |this: &mut Self, _, cx| {
+                    this.menu = if this.menu == Some(Menu::Kind) { None } else { Some(Menu::Kind) };
+                    cx.notify();
+                },
+                |this: &mut Self, i, _, cx| {
+                    this.launch_kind = KINDS[i].0.to_string();
+                    this.menu = None;
+                    if this.launch_kind == "flatpak" && text_of(&this.flatpak_id, cx).is_empty() {
+                        if let Some(fid) = emulator_definition(&this.definition_id).and_then(|d| d.flatpak_id.clone()) {
+                            let input = this.flatpak_id.clone();
+                            this.set_later(&input, fid);
+                        }
                     }
-                }
-                cx.notify();
-            },
-        ));
+                    cx.notify();
+                },
+            ))
+        });
         if flatpak {
             body = body.child(text_field(tr!("Flatpak application id"), &self.flatpak_id));
         } else {
@@ -90,9 +94,7 @@ impl EmulatorEditDialog {
                     } else {
                         choose_path(window, cx, false, tr!("Emulator executable"), |this: &mut Self, p, window, cx| {
                             this.executable.update(cx, |s, cx| s.set_value(p.clone(), window, cx));
-                            if p.to_lowercase().ends_with(".exe") {
-                                this.launch_kind = "wine".into();
-                            }
+                            this.launch_kind = kind_of_pick(&p, &this.launch_kind);
                             if this.create {
                                 let (def, kind) = (this.definition_id.clone(), this.launch_kind.clone());
                                 if emulator_definition(&def).is_some_and(|d| d.profiles.iter().any(|p| p.core.is_some())) {
@@ -106,7 +108,7 @@ impl EmulatorEditDialog {
                     }
                 }),
             ));
-            if has && !std::path::Path::new(&exe_value).exists() && exe_value.contains('/') {
+            if has && !std::path::Path::new(&exe_value).exists() && has_dir(&exe_value) {
                 body = body.child(div().text_size(px(13.33)).text_color(theme::danger_text()).child(tr!("This file does not exist.")));
             }
         }
@@ -233,7 +235,7 @@ impl EmulatorEditDialog {
                     let has_core = !text_of(&core, cx).is_empty();
                     card = card.child(path_field(
                         SharedString::from(format!("prof-core-{i}")),
-                        Some(tr!("RetroArch core (.so)")),
+                        Some(super::core_label()),
                         &core,
                         has_core,
                         false,

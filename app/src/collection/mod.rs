@@ -3,13 +3,18 @@
 mod achievements;
 mod actions;
 mod add_game;
+mod age_rows;
 mod backdrop;
 mod card;
+pub(crate) mod category_badges;
+mod clients;
 mod console;
 mod context_menu;
+mod copies;
 mod data;
 mod debug;
 mod dock;
+mod downloads_pill;
 mod emulation;
 mod epic;
 mod extras;
@@ -21,13 +26,19 @@ mod game_facts;
 mod grid;
 mod grid_drawer;
 mod header;
+mod hltb_ui;
 mod html;
 mod install_options;
 mod journal;
+mod keys;
 mod launch_options;
+mod launch_problem;
 mod launch_progress;
 mod launchers;
+mod library_sync;
 mod list;
+mod list_heights;
+mod list_row;
 mod list_view;
 mod load;
 mod look;
@@ -36,24 +47,34 @@ mod mods;
 mod nav;
 mod onboarding;
 mod open_links;
-mod organize;
+pub(crate) mod organize;
 mod palette;
 mod pumps;
 mod render_focus;
+mod replays;
+mod reshade_menu;
 mod resize;
 mod screenshot_viewer;
 mod screenshots;
 mod script_install;
 mod scroll;
+mod section_menus;
 mod selection;
 mod sideload_uninstall;
+mod smart_groups;
 mod steam_copy;
+mod steam_pill;
+mod store_badges;
 mod system_glue;
 mod timeline;
-mod update_banner;
+mod timeline_achievements;
+mod toolbar;
+mod update_pill;
 mod user_actions;
 mod view_filters;
 mod view_menu;
+mod view_mode;
+mod view_options;
 mod welcome;
 pub use load::{discard_preload, preload_library};
 pub use screenshots::screenshots_global;
@@ -97,6 +118,10 @@ enum ToastAction {
     /// Opens Settings → Other launchers, where games in the Collection twice
     /// are merged.
     ReviewDuplicates,
+    /// Opens "Launch problem" with this report.
+    LaunchProblem(std::sync::Arc<crate::diagnosis::Report>),
+    /// Shows the age ratings just hidden again.
+    ShowAgeRatings,
 }
 
 pub struct CollectionView {
@@ -106,6 +131,8 @@ pub struct CollectionView {
     app_paths: AppPaths,
     lib: Option<Arc<Library>>,
     wiki: Arc<WikiCache>,
+    /// Games whose HowLongToBeat times were looked up this session.
+    hltb_tried: std::collections::HashSet<String>,
     ui: UiState,
     /// The focused game changed and is not saved yet; `ui_save` writes it a
     /// moment later (holding an arrow key selects many games a second).
@@ -113,6 +140,8 @@ pub struct CollectionView {
     ui_save: Option<Task<()>>,
     /// Custom categories (`games.customCategories`), loaded with the library.
     categories: heronite_data::categories::Categories,
+    /// Smart groups (`local_library/groups.json`), loaded with the library.
+    smart_groups: heronite_data::smart_groups::SmartGroups,
     /// Dates added, sizes and systems the extra sorts and groups read (`organize.rs`).
     game_extras: Arc<heronite_data::organize::GameExtras>,
     /// The actions users added to their games, by game key, loaded with the library.
@@ -127,6 +156,7 @@ pub struct CollectionView {
     menu_close: Option<Task<()>>,
     /// Hovered parts of the open header menu (`ui::dropdown::PART_*`).
     menu_parts: u8,
+    toolbar: toolbar::State,
     /// Smooth mouse-wheel scrolling of the game list.
     wheel: WheelScroll,
     /// The View menu's search box, typed text and saved-view name box.
@@ -174,7 +204,8 @@ pub struct CollectionView {
     groups: Vec<GroupVm>,
     items: Vec<ListItem>,
     columns: usize,
-    /// Card width of the list or the grid, in logical px.
+    /// Card width of the list or the grid (a row's, when the Focus list shows
+    /// rows), in logical px.
     card_w: f32,
     /// Grid view state (`grid.rs`).
     grid: grid::GridUi,
@@ -184,6 +215,8 @@ pub struct CollectionView {
     /// pointer grabbed it (pointer x − edge x).
     resizing: Option<(resize::Panel, f32)>,
     list_state: ListState,
+    /// The heights the list gives the rows it has not drawn (`list_heights.rs`).
+    row_heights: list_heights::RowHeights,
     /// Group whose header row sits under the pinned copy (hidden so the two
     /// don't show at once).
     stuck_group: Option<usize>,
@@ -197,8 +230,14 @@ pub struct CollectionView {
     blur_px: f32,
     saturation: f32,
     stage_enabled: bool,
+    /// The view menu's sections and sliders (`view_options.rs`).
+    view_look: view_options::LookMenu,
     grey_uninstalled: bool,
     cover_aspect: f32,
+    /// Settings → Appearance → "Cover aspect" of the list's and the grid's
+    /// cards (`settings.json`), and its height / width.
+    card_shape: heronite_data::settings::CoverAspect,
+    card_aspect: f32,
     /// Page shown (☰ menu); the Collection itself is `Page::Collection`.
     page: crate::pages::Page,
     pages: nav::Pages,
@@ -224,8 +263,32 @@ impl CollectionView {
         let data_paths = DataPaths::detect();
         let app_paths = AppPaths::for_data(&data_paths);
         let ui = UiState::load(&app_paths);
+        let drawer_closed = !ui.grid_open_on_select;
         // Interface / Collection-art appearance (this app's own file, tiny).
         crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&app_paths));
+        // The file may have changed while the app was in the tray.
+        crate::system::ui_scale::sync(cx);
+        // The file written from outside (a theme script following the
+        // wallpaper): every window redraws in the new look.
+        let mut appearance_file = crate::system::appearance_file::watch(&app_paths);
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt;
+            while let Some(a) = appearance_file.next().await {
+                if a == crate::theme::appearance() {
+                    continue;
+                }
+                crate::theme::set_appearance(a);
+                let applied = this.update(cx, |_, cx| {
+                    crate::system::ui_scale::sync(cx);
+                    crate::services::achievements::get(cx).update(cx, |s, cx| s.sync_live(cx));
+                    cx.refresh_windows();
+                });
+                if applied.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
         // Theme "System": the desktop's light or dark style, now and when it changes.
         crate::theme::set_system_appearance(window.appearance());
         cx.observe_window_appearance(window, |_, window, cx| {
@@ -271,7 +334,10 @@ impl CollectionView {
         // Installs from a script that end while their dialog is closed.
         let script_install = crate::services::script_install::get(cx);
         cx.subscribe(&script_install, |this, _, ev, cx| this.on_script_install_event(ev, cx)).detach();
-        // The update banner and the ☰ Settings row.
+        // The focused game's achievements and the Timeline's days.
+        let achievements = crate::services::achievements::get(cx);
+        cx.observe(&achievements, |_, _, cx| cx.notify()).detach();
+        // The update pill, its "What's new" and the ☰ Settings row.
         if let Some(updater) = crate::services::update::get(cx) {
             cx.observe(&updater, |_, _, cx| cx.notify()).detach();
         }
@@ -286,16 +352,19 @@ impl CollectionView {
             app_paths,
             lib: None,
             wiki: Arc::new(WikiCache::default()),
+            hltb_tried: Default::default(),
             ui,
             ui_focus_dirty: false,
             ui_save: None,
             categories: Default::default(),
+            smart_groups: Default::default(),
             game_extras: Default::default(),
             user_actions: Default::default(),
             update_apps: Default::default(),
             search: String::new(),
             search_input,
             open_menu: None,
+            toolbar: toolbar::State::default(),
             menu_open: None,
             menu_close: None,
             menu_parts: 0,
@@ -333,10 +402,11 @@ impl CollectionView {
             items: Vec::new(),
             columns: 3,
             card_w: theme::CARD_W,
-            grid: Default::default(),
+            grid: grid::GridUi { drawer_closed, ..Default::default() },
             look: Default::default(),
             resizing: None,
             list_state,
+            row_heights: Default::default(),
             stuck_group: None,
             selected: None,
             sel: Default::default(),
@@ -347,8 +417,11 @@ impl CollectionView {
             blur_px: 6.,
             saturation: 0.94,
             stage_enabled: true,
+            view_look: Default::default(),
             grey_uninstalled: false,
             cover_aspect: 1.5,
+            card_shape: heronite_data::settings::CoverAspect::Steam,
+            card_aspect: 1.5,
             page: crate::pages::Page::Collection,
             pages: nav::Pages::default(),
             palette: palette::Host::new(window, cx),
@@ -364,6 +437,8 @@ impl CollectionView {
         this.spawn_load(cx);
         this.start_idle_jobs(cx);
         this.watch_launcher_imports(cx);
+        this.watch_clients(cx);
+        this.watch_library_sync(cx);
         this.init_metadata(window, cx);
         this.init_mods(window, cx);
         this.spawn_disk_watch(cx);
@@ -391,7 +466,8 @@ impl CollectionView {
                     .border_color(if error { theme::danger().into() } else { theme::ink_a(0.12) })
                     .text_size(px(13.33))
                     .text_color(theme::ink_a(0.92))
-                    .child(text)
+                    // A long text wraps instead of pushing the button out.
+                    .child(div().flex_1().min_w_0().child(text))
                     .children(action.map(|action| {
                         div()
                             .id("toast-action")
@@ -409,13 +485,20 @@ impl CollectionView {
                             .cursor_pointer()
                             .hover(|s| s.bg(theme::accent_tint_border()))
                             .child(match &action {
-                                ToastAction::Undo | ToastAction::RestoreNote(..) | ToastAction::RestoreLeftOff(..) => {
+                                ToastAction::Undo
+                                | ToastAction::RestoreNote(..)
+                                | ToastAction::RestoreLeftOff(..)
+                                | ToastAction::ShowAgeRatings => {
                                     heronite_i18n::tr!("Undo")
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
                                 ToastAction::OpenMods(_) => heronite_i18n::tr!("Open"),
                                 ToastAction::ReviewDuplicates => heronite_i18n::tr!("Review"),
+                                ToastAction::LaunchProblem(r) if r.opens_by_itself() => {
+                                    heronite_i18n::tr!("How to fix")
+                                }
+                                ToastAction::LaunchProblem(_) => heronite_i18n::tr!("Details"),
                             })
                             .when(matches!(action, ToastAction::Undo), |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
                             .on_click(cx.listener(move |this, _, window, cx| {
@@ -439,6 +522,10 @@ impl CollectionView {
                                         this.toast = None;
                                         this.open_settings_section(crate::pages::settings::Section::Launchers, window, cx);
                                     }
+                                    ToastAction::LaunchProblem(report) => {
+                                        this.toast = None;
+                                        this.open_launch_problem(report.clone(), cx);
+                                    }
                                     ToastAction::RestoreNote(key, entry) => {
                                         this.toast = None;
                                         this.journal_restore(key.clone(), (**entry).clone(), cx);
@@ -447,6 +534,7 @@ impl CollectionView {
                                         this.toast = None;
                                         this.journal_restore_left_off(key.clone(), (**left).clone(), cx);
                                     }
+                                    ToastAction::ShowAgeRatings => this.set_age_ratings_shown(true, cx),
                                 }
                                 cx.notify();
                             }))
@@ -468,7 +556,15 @@ impl CollectionView {
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.shots_key(ev, cx) || self.selection_key(ev, window, cx) || self.grid_key(ev, window, cx) {
+        if self.shortcuts_key(ev, window, cx) {
+            return;
+        }
+        if self.shots_key(ev, cx)
+            || self.search_key(ev, window, cx)
+            || self.selection_key(ev, window, cx)
+            || self.list_key(ev, window, cx)
+            || self.grid_key(ev, window, cx)
+        {
             cx.notify();
             return;
         }
@@ -482,6 +578,10 @@ impl CollectionView {
                 self.context_menu = None;
             } else if self.open_menu.is_some() {
                 self.open_menu = None;
+            } else if self.palette_open() {
+                // The palette answers Esc itself.
+            } else if self.page != crate::pages::Page::Collection {
+                self.page_escape(window, cx);
             } else {
                 // Heronite clears the selected game on Esc.
                 self.focus = None;
@@ -495,6 +595,7 @@ impl CollectionView {
 impl Render for CollectionView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.schedule_ui_save(cx);
+        self.ensure_hltb_for_focus(cx);
         self.render_desktop(window, cx)
     }
 }
@@ -520,6 +621,8 @@ impl CollectionView {
         }
         self.images.drop_evicted(window);
         self.open_pending_debug_dialog(window, cx);
+        self.open_whats_new(cx);
+        self.start_debug_keys(window, cx);
         self.drive_epic(window, cx);
         self.sync_extras(window, cx);
         self.sync_view_menu(window, cx);
@@ -535,7 +638,10 @@ impl CollectionView {
         if crate::console::active() {
             return self.render_console(window, cx);
         }
-        let vw = f32::from(window.viewport_size().width);
+        // The views' area: a floating window with client-side decorations
+        // loses its frame (`ui::content_bounds`).
+        let area = crate::ui::content_size(window);
+        let vw = f32::from(area.width);
         let scale = window.scale_factor();
         self.sync_auto_view(vw, cx);
         let (list_w, columns) = self.list_layout(vw);
@@ -547,8 +653,11 @@ impl CollectionView {
             self.reveal_selected();
         }
 
-        let page_el = self.render_page(cx);
+        let page_el = self.render_page(window, cx);
         let on_page = page_el.is_some();
+        if !on_page {
+            self.sync_row_heights(list_w, window);
+        }
         let stage_el = match self.stage_image(window) {
             Some((key, src)) => stage::stage(Some(src), key, self.scrim, crate::theme::appearance().collection_opacity / 100.),
             None if self.stage_enabled && theme::appearance().background == heronite_data::appearance::BackgroundSource::Solid => {
@@ -556,7 +665,7 @@ impl CollectionView {
             }
             None => stage::stage(None, SharedString::default(), self.scrim, 1.),
         };
-        let vh = f32::from(window.viewport_size().height);
+        let vh = f32::from(area.height);
         // Under a page only the stage shows: the library side is not built
         // (every frame of the page would build and throw it away).
         let library = (!on_page).then(|| {
@@ -587,17 +696,21 @@ impl CollectionView {
         });
         let toast = self.render_toast(cx);
         let dock = if on_page { None } else { self.render_dock(window, cx) };
-        let update_banner = self.render_update_banner(cx);
 
         div()
             .id("collection")
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, ev: &KeyDownEvent, window, cx| this.on_key_down(ev, window, cx)))
+            // Before the search field's own Esc, ↓ and Enter (`keys.rs`).
+            .capture_action(cx.listener(Self::search_escape))
+            .capture_action(cx.listener(Self::search_down))
+            .capture_action(cx.listener(Self::search_enter))
             // Capture phase: runs before children, so a clicked input (search,
             // dialog fields) takes focus right after; clicks elsewhere blur it.
             .capture_any_mouse_down(cx.listener(|this, _, window, cx| {
                 window.focus(&this.focus_handle, cx);
             }))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, window, cx| this.drop_external_paths(paths, window, cx)))
             .relative()
             .size_full()
             .overflow_hidden()
@@ -609,9 +722,9 @@ impl CollectionView {
             .children(library)
             .children(dock)
             .children(toast)
-            .children(update_banner)
             .children(self.render_context_menu(window, cx))
             .children(self.dialog.clone())
+            .children(self.render_drop_target())
             .children(self.render_gallery(window, cx))
             .children(self.render_viewer(window, cx))
             .children(self.render_palette())

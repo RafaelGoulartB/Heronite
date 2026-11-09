@@ -109,7 +109,14 @@ pub fn eos_prefix_folder(settings: &GameSettings, exists: &dyn Fn(&str) -> bool)
 impl Prep<'_> {
     /// Runs the first-launch work if the prefix has not seen this game.
     pub fn first_launch(&self, spec: &PrepSpec, epic: Option<&dyn EpicSetup>, store: Option<&dyn StoreSetup>) -> Flow {
-        let (Some(fl), Some(settings)) = (&spec.first_launch, &spec.wine) else { return Flow::Go };
+        let Some(fl) = &spec.first_launch else { return Flow::Go };
+        // A game that runs without Wine (Windows builds on Windows).
+        let Some(settings) = &spec.wine else {
+            return match fl.runner.as_str() {
+                "legendary" => self.epic_native_first_launch(fl, epic),
+                _ => self.native_first_launch(fl, store),
+            };
+        };
         let prefix = settings.wine_prefix.trim();
         if prefix.is_empty() {
             return Flow::Go;
@@ -513,6 +520,8 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&file).unwrap(), r#"["z"]"#);
     }
 
+    // First-launch setup of a Wine prefix: Linux only.
+    #[cfg(unix)]
     #[test]
     fn a_game_already_in_the_prefix_does_nothing() {
         let fx = Fx::new();
@@ -524,6 +533,8 @@ mod tests {
         assert!(fx.spawned().is_empty());
     }
 
+    // First-launch setup of a Wine prefix: Linux only.
+    #[cfg(unix)]
     #[test]
     fn prerequisites_run_in_the_prefix_once() {
         let fx = Fx::new();
@@ -554,6 +565,8 @@ mod tests {
         assert!(notices.is_empty() && fx.spawned().is_empty());
     }
 
+    // First-launch setup of a Wine prefix: Linux only.
+    #[cfg(unix)]
     #[test]
     fn third_party_games_use_their_launcher_installers_not_prerequisites() {
         let fx = Fx::new();
@@ -610,6 +623,8 @@ mod tests {
         assert_eq!(eos_prefix_folder(&s, &|_| false), None);
     }
 
+    // First-launch setup of a Wine prefix: Linux only.
+    #[cfg(unix)]
     #[test]
     fn known_fixes_install_winetricks_verbs_then_programs() {
         let fx = Fx::new();
@@ -716,7 +731,7 @@ mod tests {
     }
 
     fn step(parts: &[&str]) -> SetupStep {
-        SetupStep { parts: parts.iter().map(|p| p.to_string()).collect(), cwd: None }
+        SetupStep { parts: parts.iter().map(|p| p.to_string()).collect(), ..Default::default() }
     }
 
     #[test]

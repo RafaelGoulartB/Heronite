@@ -475,6 +475,23 @@ impl DownloadManager {
         self.emit(Event::Changed);
     }
 
+    /// Moves a queued element (not the first) to `index`, clamped to the
+    /// waiting part of the queue (`1..len`): the first one keeps running.
+    pub fn move_to(&self, app_name: &str, index: usize) {
+        {
+            let mut g = self.shared.inner.lock();
+            let Some(i) = g.queue.iter().position(|e| e.params.app_name == app_name).filter(|i| *i >= 1) else { return };
+            let to = index.clamp(1, g.queue.len() - 1);
+            if to == i {
+                return;
+            }
+            let element = g.queue.remove(i);
+            g.queue.insert(to, element);
+            self.persist(&g);
+        }
+        self.emit(Event::Changed);
+    }
+
     pub fn clear_finished(&self) {
         {
             let mut g = self.shared.inner.lock();
@@ -705,6 +722,17 @@ mod tests {
         assert_eq!(order(&m), ["a", "b", "d", "c"]);
         m.move_element("b", true); // would swap with the running one: refused
         assert_eq!(order(&m), ["a", "b", "d", "c"]);
+        m.move_to("c", 1);
+        assert_eq!(order(&m), ["a", "c", "b", "d"]);
+        m.move_to("c", 99);
+        assert_eq!(order(&m), ["a", "b", "d", "c"]);
+        m.move_to("d", 0); // never in front of the running one
+        assert_eq!(order(&m), ["a", "d", "b", "c"]);
+        m.move_to("a", 2); // the running one stays first
+        assert_eq!(order(&m), ["a", "d", "b", "c"]);
+        m.move_to("d", 2);
+        m.move_to("b", 1);
+        assert_eq!(order(&m), ["a", "b", "d", "c"]);
         m.remove("a"); // running: ignored
         m.remove("b");
         assert_eq!(order(&m), ["a", "d", "c"]);
@@ -714,7 +742,9 @@ mod tests {
         assert_eq!(m.snapshot().queue[2].params.path, "/other");
         m.pause();
         m.cancel_current(false);
-        wait_until(&m, "stopped", |s| s.state != DmState::Running);
+        // `pause` changes the state at once: wait for the cancelled run to be
+        // recorded too, or it lands after the clearing below.
+        wait_until(&m, "a cancelled", |s| s.state != DmState::Running && s.finished.iter().any(|e| e.params.app_name == "a"));
         m.clear_finished_item("a");
         m.clear_finished();
         assert!(m.snapshot().finished.is_empty());
@@ -982,9 +1012,10 @@ mod tests {
 
     #[test]
     fn only_a_base_game_install_has_a_folder_to_delete() {
+        let games = if cfg!(windows) { r"D:\Games" } else { "/games" };
         let mut base = el("a");
-        base.params.path = "/games".into();
-        assert_eq!(base.partial_folder(), Some(("/games".into(), "a".into())));
+        base.params.path = games.into();
+        assert_eq!(base.partial_folder(), Some((games.into(), "a".into())));
         let mut update = base.clone();
         update.kind = ElementKind::Update;
         assert_eq!(update.partial_folder(), None);
@@ -994,6 +1025,10 @@ mod tests {
         let mut third = base.clone();
         third.params.path = "thirdParty".into();
         assert_eq!(third.partial_folder(), None);
+        // No known folder (a store that did not fill it in): never the base path itself.
+        let mut unknown = base.clone();
+        unknown.params.game_info = json!({"title": "u", "folder_name": ""});
+        assert_eq!(unknown.partial_folder(), None);
     }
 
     #[test]

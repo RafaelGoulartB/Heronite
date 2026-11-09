@@ -18,6 +18,8 @@ pub struct Endpoints {
     pub twitch_token: String,
     pub igdb: String,
     pub steam_store: String,
+    /// The Steam Web API (keyless store services: tags).
+    pub steam_api: String,
     pub steam_community: String,
     pub lutris: String,
     pub steamgriddb: String,
@@ -37,6 +39,7 @@ impl Default for Endpoints {
             twitch_token: "https://id.twitch.tv/oauth2/token".into(),
             igdb: "https://api.igdb.com/v4".into(),
             steam_store: "https://store.steampowered.com".into(),
+            steam_api: "https://api.steampowered.com".into(),
             steam_community: "https://steamcommunity.com".into(),
             lutris: "https://lutris.net".into(),
             steamgriddb: "https://www.steamgriddb.com/api/v2".into(),

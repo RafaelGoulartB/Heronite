@@ -162,6 +162,11 @@ impl DisplayConnection {
         dispatch!(self, connection => connection.hide_cursor_until_mouse_moves(), headless => ())
     }
 
+    /// Heronite: shows the cursor a hide took away.
+    pub(crate) fn show_cursor(&self) {
+        dispatch!(self, connection => connection.show_cursor(), headless => ())
+    }
+
     pub(crate) fn is_cursor_visible(&self) -> bool {
         dispatch!(self, connection => connection.is_cursor_visible(), headless => true)
     }

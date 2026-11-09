@@ -62,6 +62,10 @@ pub struct StorePage<K: StoreKind> {
     /// Amazon: the sign-in page made by nile. Its verifier lives in the
     /// service, so the same address is reused until a code is submitted.
     login_url: Option<String>,
+    /// Amazon: the Amazon Games app has games on this PC (Windows).
+    amazon_app: bool,
+    /// GOG: GOG Galaxy has games on this PC (Windows).
+    galaxy: bool,
     notice: Option<(SharedString, bool)>,
     dialog: Option<AnyView>,
     dialog_sub: Option<Subscription>,
@@ -73,17 +77,29 @@ pub struct StorePage<K: StoreKind> {
 
 impl<K: StoreKind> EventEmitter<PageEvent> for StorePage<K> {}
 
-/// `heronite-epic-login` (the login window of every store) next to this
-/// executable, else on `PATH`.
-fn login_helper() -> Option<std::path::PathBuf> {
+/// `heronite-epic-login` (the login window of every store): in the
+/// [`HELPERS_DIR`](heronite_platform::dirs::HELPERS_DIR) of this
+/// executable's folder (the Windows setup and portable zip), next to it (a
+/// cargo build, the AppImage), else on `PATH`.
+pub(crate) fn login_helper() -> Option<std::path::PathBuf> {
     let name = if cfg!(windows) { "heronite-epic-login.exe" } else { "heronite-epic-login" };
     if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
-        let candidate = dir.join(name);
-        if candidate.exists() {
-            return Some(candidate);
+        let candidates = [dir.join(heronite_platform::dirs::HELPERS_DIR).join(name), dir.join(name)];
+        if let Some(found) = candidates.into_iter().find(|c| c.exists()) {
+            return Some(found);
         }
     }
     std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|d| d.join(name)).find(|p| p.exists()))
+}
+
+/// Exit status of the login window on Windows when the Microsoft Edge
+/// WebView2 runtime it shows the page with is not installed.
+pub(crate) const LOGIN_NO_WEBVIEW: i32 = 5;
+
+/// What to tell the user then: install the runtime, or log in with the
+/// browser.
+pub(crate) fn no_webview_notice() -> SharedString {
+    tr!("The login window needs the Microsoft Edge WebView2 Runtime, which is not installed. Install it from Microsoft's website, or use the browser method below.").into()
 }
 
 /// "1 installed" / "3 installed" (Portuguese inflects it).
@@ -92,6 +108,15 @@ pub(crate) fn installed_count(n: usize) -> String {
         trc!("one", "{n} installed", n)
     } else {
         trc!("other", "{n} installed", n)
+    }
+}
+
+/// "1 not installed" / "3 not installed" (Portuguese inflects it).
+pub(crate) fn not_installed_count(n: usize) -> String {
+    if n == 1 {
+        trc!("one", "{n} not installed", n)
+    } else {
+        trc!("other", "{n} not installed", n)
     }
 }
 
@@ -105,6 +130,7 @@ impl<K: StoreKind> StorePage<K> {
             cx.notify();
         })
         .detach();
+        super::stores::watch(cx);
         let code = new_input(window, cx, "", tr!("Paste the address of the page or its code"));
         let mut this = Self {
             ctx,
@@ -114,6 +140,8 @@ impl<K: StoreKind> StorePage<K> {
             window_open: false,
             fetching_url: false,
             login_url: None,
+            amazon_app: K::STORE == Store::Amazon && heronite_amazon::amazon_app::database().is_some(),
+            galaxy: K::STORE == Store::Gog && heronite_gog::galaxy::has_games(),
             notice: None,
             dialog: None,
             dialog_sub: None,
@@ -134,7 +162,7 @@ impl<K: StoreKind> StorePage<K> {
         K::STORE
     }
 
-    /// The page (and tab) of this store.
+    /// The page of this store.
     fn page(&self) -> crate::pages::Page {
         match K::STORE {
             Store::Gog => crate::pages::Page::Gog,
@@ -163,6 +191,15 @@ impl<K: StoreKind> StorePage<K> {
         }));
         self.dialog = Some(view.into());
         cx.notify();
+    }
+
+    /// Amazon: brings in the games the Amazon Games app installed.
+    fn import_app_games(&mut self, cx: &mut Context<Self>) {
+        self.svc.update(cx, |s, cx| s.amazon_import_app_games(false, cx));
+    }
+
+    fn import_galaxy_games(&mut self, cx: &mut Context<Self>) {
+        self.svc.update(cx, |s, cx| s.gog_import_galaxy(cx));
     }
 
     fn open_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -279,11 +316,14 @@ impl<K: StoreKind> StorePage<K> {
                         }
                     }
                     // 127: the loader could not start it (WebKitGTK 4.1 is missing).
-                    Ok(o) if o.status.code() == Some(127) => {
+                    Ok(o) if !cfg!(windows) && o.status.code() == Some(127) => {
                         this.notice = Some((
                             tr!("The login window needs WebKitGTK 4.1, which is not installed. Use the browser method below.").into(),
                             true,
                         ))
+                    }
+                    Ok(o) if cfg!(windows) && o.status.code() == Some(LOGIN_NO_WEBVIEW) => {
+                        this.notice = Some((no_webview_notice(), true));
                     }
                     // `CLOSED` of the helper: the user closed the window.
                     Ok(o) if o.status.code() == Some(4) => {}
@@ -301,7 +341,7 @@ impl<K: StoreKind> StorePage<K> {
     }
 
     fn open_browser(&mut self, url: &str, cx: &mut Context<Self>) {
-        if let Err(err) = Command::new("xdg-open").arg(url).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        if let Err(err) = heronite_platform::shell::open(url) {
             self.notice = Some((tr!("Could not open the browser: {err}", err).into(), true));
             cx.notify();
         }

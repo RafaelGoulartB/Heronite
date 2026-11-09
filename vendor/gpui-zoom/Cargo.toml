@@ -1,0 +1,25 @@
+# Heronite's own crate (not a crates.io release): the interface scale the
+# patched platform crates next to it apply to every window. It sits here, not
+# in `crates/`, because it is part of GPUI's platform layer.
+[package]
+name = "gpui-zoom"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+[dependencies]
+gpui = { version = "=0.3.8", package = "gpui-pre", default-features = false }
+futures = "0.3"
+raw-window-handle = "0.6"
+uuid = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation"] }
+
+[lints]
+workspace = true
+
+[features]
+# Set by `gpui-pre-linux`'s `wayland`: layer-shell windows exist only then.
+wayland = ["gpui/wayland"]

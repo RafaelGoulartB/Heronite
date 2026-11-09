@@ -117,7 +117,7 @@ pub fn delete_backup(game_dir: &Path, backup_id: &str) -> Result<(), String> {
                     remove_path(&e.path()).map_err(|err| format!("{}: {err}", e.path().display()))?;
                 }
             }
-        } else if !name.contains('/') && name != ".." {
+        } else if !name.contains('/') && !(cfg!(windows) && name.contains('\\')) && name != ".." {
             let path = game_dir.join(&name);
             remove_path(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         }

@@ -27,14 +27,16 @@ use anyhow::Result;
 use heronite_i18n::tr;
 use serde_json::Value;
 
+use crate::age_rating::{self, AgeRating, RatingSystem};
 use crate::collection::{game_facets, GameFacets};
+use crate::copies::{CopiesFile, CopyGroups, Totals};
 use crate::focus::Details;
 use crate::json_store;
 use crate::models::*;
 use crate::paths::DataPaths;
 use crate::settings::EffectiveSettings;
 use crate::status::{resolve_status_id, sorted_or_default};
-use crate::steam_owned::{self, Candidate, SteamOwnedFile};
+use crate::steam_owned::{self, Candidate, FamilyShare, SteamOwnedFile};
 use crate::text::DateLocale;
 
 /// Everything the UI needs about one game. Cheap to share: keep it in an
@@ -79,6 +81,9 @@ pub struct CollectionGame {
     pub steam_launch_id: Option<String>,
     /// The same game owned on Steam, for an entry of another source.
     pub steam_link: Option<SteamLink>,
+    /// A Steam entry for a game another member of the Steam Family shares
+    /// (and the account does not own): who shares it.
+    pub family: Option<FamilyShare>,
     /// Only the Steam copy is installed: the game plays, uninstalls and is
     /// set up through Steam (`launch_kind` reads `steam-uri`), while its
     /// store's own actions treat it as not installed.
@@ -87,6 +92,9 @@ pub struct CollectionGame {
     /// [`focus_details`](crate::focus::focus_details) for the full chain.
     pub details: Details,
     pub facets: GameFacets,
+    /// The rating the Collection shows and filters by
+    /// ([`age_rating::shown`] in [`Library::age_order`]); `None` = not rated.
+    pub age_rating: Option<AgeRating>,
 
     // Raw models, shared with the stores they came from.
     pub game: Arc<GameInfo>,
@@ -107,6 +115,7 @@ pub struct SteamLink {
 pub(crate) struct BuildInputs<'a> {
     pub game: GameInfo,
     pub steam: Option<SteamLink>,
+    pub family: Option<FamilyShare>,
     pub overrides: Option<GameOverride>,
     pub meta: Option<Arc<LocalGameMeta>>,
     pub metadata: Option<Arc<CollectionGameMetadata>>,
@@ -117,7 +126,13 @@ pub(crate) struct BuildInputs<'a> {
     pub recent: bool,
     pub hidden: bool,
     pub statuses: &'a [CompletionStatus],
+    /// [`Library::age_order`].
+    pub age_order: &'a [RatingSystem],
 }
+
+/// Library and Store of a game the Steam Family shares (Valve's name, kept
+/// in English like the other store names).
+pub const FAMILY_LABEL: &str = "Steam Family";
 
 /// `libraryLabel` of the Focus panel (the `SOURCE_LABELS` table, then the
 /// runner, then "Local").
@@ -134,9 +149,14 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
             "lutris" => return "Lutris",
             "bottles" => return "Bottles",
             "faugus" => return "Faugus",
+            "playnite" => return "Playnite",
             "manual" => return tr!("Local"),
             "other" => return tr!("Other"),
-            _ => {}
+            other => {
+                if let Some(client) = crate::clients::Client::from_id(other) {
+                    return client.store();
+                }
+            }
         }
     }
     match runner {
@@ -149,7 +169,22 @@ fn source_label(meta: Option<&LocalGameMeta>, runner: &str) -> &'static str {
 
 impl CollectionGame {
     pub(crate) fn build(input: BuildInputs<'_>) -> Self {
-        let BuildInputs { game, steam, overrides, meta, metadata, art, timestamp, sessions, favourite, recent, hidden, statuses } = input;
+        let BuildInputs {
+            game,
+            steam,
+            family,
+            overrides,
+            meta,
+            metadata,
+            art,
+            timestamp,
+            sessions,
+            favourite,
+            recent,
+            hidden,
+            statuses,
+            age_order,
+        } = input;
         let title = display_title(&game, overrides.as_ref(), metadata.as_deref());
         let status_raw = meta.as_deref().and_then(|m| m.completion_status_id.clone()).filter(|s| !s.is_empty());
         let via_steam = !game.is_installed && steam.as_ref().is_some_and(|s| s.installed);
@@ -169,28 +204,38 @@ impl CollectionGame {
             _ => None,
         };
         let details = Details::compute(&game, meta.as_deref(), metadata.as_deref(), None, None);
+        let age_rating = metadata.as_deref().and_then(|m| age_rating::shown(&m.age_ratings, age_order)).cloned();
         let mut facets = game_facets(&game, metadata.as_deref());
-        facets[crate::collection::FacetKind::Store.index()] = crate::collection::store_facet(
-            meta.as_deref().map(|m| m.source.as_str()),
-            &game.runner,
-            meta.as_deref().is_some_and(|m| m.launch_kind == "steam-uri"),
-            steam.is_some(),
-        );
+        facets[crate::collection::FacetKind::Store.index()] = if family.is_some() {
+            crate::collection::items(vec![FAMILY_LABEL.to_string()])
+        } else {
+            crate::collection::store_facet(
+                meta.as_deref().map(|m| m.source.as_str()),
+                &game.runner,
+                meta.as_deref().is_some_and(|m| m.launch_kind == "steam-uri"),
+                steam.is_some(),
+            )
+        };
         let minutes = timestamp.map(|t| t.total_played.get()).filter(|m| *m > 0.0).unwrap_or(0.0);
         let non_empty = |s: &Option<String>| s.clone().filter(|v| !v.is_empty());
+        // What Xbox network counted (every device, Heronite's sessions
+        // included): the larger total and the later play win.
+        let (store_minutes, store_last) = crate::xbox::played(meta.as_deref());
+        let minutes = minutes.max(store_minutes as f64);
+        let last_played = crate::xbox::later(timestamp.and_then(|t| non_empty(&t.last_played)), store_last);
         Self {
             key: format!("{}_{}", game.runner, game.app_name),
             runner: game.runner.clone(),
             app_name: game.app_name.clone(),
             title_lower: title.to_lowercase(),
             title,
-            source_label: source_label(meta.as_deref(), &game.runner),
+            source_label: if family.is_some() { FAMILY_LABEL } else { source_label(meta.as_deref(), &game.runner) },
             installed: game.is_installed || via_steam,
             status_id: resolve_status_id(status_raw.as_deref(), statuses),
             status_raw,
             playtime_minutes: minutes.round() as u64,
             first_played: timestamp.and_then(|t| non_empty(&t.first_played)),
-            last_played: timestamp.and_then(|t| non_empty(&t.last_played)),
+            last_played,
             favourite,
             recent,
             hidden,
@@ -198,9 +243,11 @@ impl CollectionGame {
             steam_app_id,
             steam_launch_id,
             steam_link: steam,
+            family,
             via_steam,
             details,
             facets,
+            age_rating,
             game: Arc::new(game),
             overrides,
             meta,
@@ -208,6 +255,17 @@ impl CollectionGame {
             art,
             sessions,
         }
+    }
+
+    /// The Steam app id whose store tags the game shows: its own (a Steam
+    /// game, or one joined to its Steam copy), else the one its metadata
+    /// matched (a game from another store that is also on Steam).
+    pub fn tag_steam_id(&self) -> Option<&str> {
+        self.steam_app_id
+            .as_deref()
+            .or_else(|| self.metadata.as_deref().and_then(|m| m.steam_app_id.as_deref()))
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
     }
 
     /// `collectionMetadataKey`: `runner:appName`, with `zoom` stored as
@@ -238,6 +296,19 @@ impl CollectionGame {
         matches!(self.runner.as_str(), "legendary" | "gog" | "nile")
             && self.store_installed()
             && self.game.install.install_path.as_deref().map(str::trim).is_some_and(|p| !p.is_empty() && !std::path::Path::new(p).exists())
+    }
+
+    /// The store client (Battle.net, the EA app...) that installs and starts
+    /// the game: it is one of the client's Collection entries.
+    pub fn client(&self) -> Option<crate::clients::Client> {
+        let meta = self.meta.as_deref().filter(|m| m.launch_kind == crate::clients::LAUNCH_KIND)?;
+        crate::clients::Client::from_id(&meta.source)
+    }
+
+    /// The game is one of the Xbox app's (a Microsoft Store or PC Game Pass
+    /// package, which Windows starts and the Xbox app uninstalls).
+    pub fn is_xbox(&self) -> bool {
+        self.launch_kind.as_deref() == Some(crate::xbox::LAUNCH_KIND)
     }
 
     /// The Steam app id of the game's installed Steam copy, if any (a Steam
@@ -416,6 +487,8 @@ fn stamp_files(paths: &DataPaths) -> Vec<PathBuf> {
         paths.timestamps(),
         paths.store_config(),
         paths.steam_owned(),
+        paths.copies(),
+        paths.steam_tags(),
     ]
 }
 
@@ -432,6 +505,11 @@ pub struct Library {
     pub statuses: Vec<CompletionStatus>,
     pub settings: EffectiveSettings,
     pub date_locale: DateLocale,
+    /// Games owned in several stores ([`crate::copies`]).
+    pub copies: CopyGroups,
+    /// The boards in the order a game's rating is looked for (Settings →
+    /// Metadata → Age rating, else the interface language's).
+    pub age_order: Vec<RatingSystem>,
     index: HashMap<String, usize>,
     files: Vec<PathBuf>,
     stamp: FileStamp,
@@ -615,7 +693,8 @@ impl Library {
         }
 
         let statuses = sorted_or_default(statuses_file.statuses);
-        let settings = EffectiveSettings::from_files(&settings_file, &config);
+        let settings = EffectiveSettings::for_paths(paths, &settings_file, &config);
+        let age_order = age_rating::board_order(&settings.metadata.age_rating_system, heronite_i18n::current());
 
         let config_games = config.games.unwrap_or_default();
         let hidden: HashSet<&str> = config_games.hidden.iter().map(|g| g.app_name.as_str()).collect();
@@ -650,6 +729,12 @@ impl Library {
         let joins = steam_joins(&kept, &owned, &metas, &metadatas, &overrides, &timestamps, &sessions, &favourites);
 
         let names = crate::field_names::NameRules::load(paths);
+        let tags = crate::steam_tags::SteamTags::load(
+            paths,
+            settings.metadata.steam_tags,
+            settings.metadata.steam_tag_limit,
+            crate::focus::steam_language(heronite_i18n::current().code()),
+        );
         let mut games: Vec<Arc<CollectionGame>> = Vec::new();
         for game in kept {
             let key = format!("{}_{}", game.runner, game.app_name);
@@ -658,8 +743,15 @@ impl Library {
             }
             let app = game.app_name.clone();
             let runner = game.runner.clone();
+            let family = owned
+                .known()
+                .then(|| steam_entry_id(&game, metas.get(&app).map(|m| &**m)))
+                .flatten()
+                .and_then(|id| owned.shared(id))
+                .and_then(|g| g.share.clone());
             let mut built = CollectionGame::build(BuildInputs {
                 steam: joins.links.get(&key).cloned(),
+                family,
                 overrides: overrides.get(&app).cloned(),
                 meta: metas.get(&app).cloned(),
                 metadata: metadatas.get(&metadata_key(&runner, &app)).cloned(),
@@ -670,19 +762,24 @@ impl Library {
                 recent: recent.contains(app.as_str()),
                 hidden: hidden.contains(app.as_str()),
                 statuses: &statuses,
+                age_order: &age_order,
                 game,
             });
+            tags.apply(&mut built);
             names.apply_facets(&mut built.facets);
             games.push(Arc::new(built));
         }
 
         let index = games.iter().enumerate().map(|(i, g)| (g.key.clone(), i)).collect();
+        let copies = crate::copies::groups(&games, &CopiesFile::read(paths));
         Ok(Library {
+            copies,
             paths: paths.clone(),
             date_locale: DateLocale::from_language(&settings.language),
             games,
             statuses,
             settings,
+            age_order,
             index,
             files,
             stamp,
@@ -692,6 +789,27 @@ impl Library {
     /// A game by its `runner_appName` key.
     pub fn get(&self, key: &str) -> Option<&Arc<CollectionGame>> {
         self.index.get(key).map(|i| &self.games[*i])
+    }
+
+    /// The copies of the game `key` in their play order (the default first);
+    /// just the game when it has no other copy.
+    pub fn copies_of(&self, key: &str) -> Vec<&Arc<CollectionGame>> {
+        match self.copies.get(key) {
+            Some(group) => group.members.iter().filter_map(|k| self.get(k)).collect(),
+            None => self.get(key).into_iter().collect(),
+        }
+    }
+
+    /// The copy that Play starts for the game `key`: the first installed copy
+    /// in the play order, else the game itself (whose Play installs it).
+    pub fn launch_copy(&self, key: &str) -> Option<&Arc<CollectionGame>> {
+        let copies = self.copies_of(key);
+        copies.iter().find(|g| g.installed).or_else(|| copies.iter().find(|g| g.key == key)).copied()
+    }
+
+    /// The game's figures with every copy (see [`crate::copies::totals`]).
+    pub fn copy_totals(&self, key: &str) -> Totals {
+        crate::copies::totals(self.copies_of(key).into_iter().map(|g| &**g))
     }
 
     /// True when any file the library was built from changed since [`Library::load`]
@@ -723,6 +841,7 @@ pub(crate) mod tests_support {
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
             steam: None,
+            family: None,
             overrides: Some(overrides),
             meta: Some(Arc::new(meta)),
             metadata: Some(Arc::new(metadata)),
@@ -733,6 +852,7 @@ pub(crate) mod tests_support {
             recent: false,
             hidden: false,
             statuses: &statuses,
+            age_order: &crate::age_rating::board_order(crate::age_rating::AUTO, heronite_i18n::Lang::En),
         }))
     }
 
@@ -744,6 +864,7 @@ pub(crate) mod tests_support {
         pub first_played: Option<String>,
         pub developers: Vec<String>,
         pub genres: Vec<String>,
+        pub game_modes: Vec<String>,
         pub series: Option<String>,
         pub status: Option<String>,
         pub runner: Option<String>,
@@ -752,6 +873,8 @@ pub(crate) mod tests_support {
         pub offline: Option<bool>,
         /// The store's own title, when the Collection shows another one.
         pub store_title: Option<String>,
+        /// A Steam entry (`steam-uri`) of this app id.
+        pub steam_launch: Option<String>,
     }
 
     pub fn game(app: &str, title: &str, f: impl FnOnce(&mut Spec)) -> Arc<CollectionGame> {
@@ -769,18 +892,27 @@ pub(crate) mod tests_support {
         }
         // The Collection title wins over the store's, as metadata would.
         let overrides = spec.store_title.is_some().then(|| GameOverride { title: Some(title.into()), ..Default::default() });
-        let metadata = (!spec.developers.is_empty() || !spec.genres.is_empty() || spec.series.is_some()).then(|| {
+        let has_metadata = !spec.developers.is_empty() || !spec.genres.is_empty() || !spec.game_modes.is_empty() || spec.series.is_some();
+        let metadata = has_metadata.then(|| {
             Arc::new(CollectionGameMetadata {
                 app_name: app.into(),
                 runner: "sideload".into(),
                 developers: spec.developers.clone(),
                 genres: spec.genres.clone(),
+                game_modes: spec.game_modes.clone(),
                 series: spec.series.clone(),
                 ..Default::default()
             })
         });
-        let meta = spec.status.clone().map(|s| {
-            Arc::new(LocalGameMeta { app_name: app.into(), runner: "sideload".into(), completion_status_id: Some(s), ..Default::default() })
+        let meta = (spec.status.is_some() || spec.steam_launch.is_some()).then(|| {
+            Arc::new(LocalGameMeta {
+                app_name: app.into(),
+                runner: "sideload".into(),
+                completion_status_id: spec.status.clone(),
+                launch_kind: if spec.steam_launch.is_some() { "steam-uri".into() } else { String::new() },
+                steam_app_id: spec.steam_launch.clone(),
+                ..Default::default()
+            })
         });
         let timestamp = TimestampEntry {
             first_played: spec.first_played.clone(),
@@ -792,6 +924,7 @@ pub(crate) mod tests_support {
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
             steam: None,
+            family: None,
             overrides,
             meta,
             metadata,
@@ -802,6 +935,7 @@ pub(crate) mod tests_support {
             recent: false,
             hidden: false,
             statuses: &statuses,
+            age_order: &crate::age_rating::board_order(crate::age_rating::AUTO, heronite_i18n::Lang::En),
         }))
     }
 }
@@ -809,6 +943,7 @@ pub(crate) mod tests_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::collection::FacetKind;
     use std::fs;
     use std::path::Path;
 
@@ -840,6 +975,45 @@ mod tests {
         assert!(lib.games.is_empty());
         assert_eq!(lib.statuses.len(), 9);
         assert!(!lib.changed_on_disk());
+    }
+
+    #[test]
+    fn a_client_game_knows_its_client() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        fs::create_dir_all(paths.sideload_library().parent().unwrap()).unwrap();
+        fs::create_dir_all(paths.local_meta().parent().unwrap()).unwrap();
+        fs::write(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"battlenet_wow","title":"WoW","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"lutris_7","title":"Heroes","is_installed":true,"install":{}},
+              {"runner":"sideload","app_name":"by_hand","title":"By hand","is_installed":true,"install":{}}]}"#,
+        )
+        .unwrap();
+        fs::write(
+            paths.local_meta(),
+            r#"{"games":{
+              "battlenet_wow":{"appName":"battlenet_wow","runner":"sideload","source":"battlenet","launchKind":"client","launcherArgs":"--exec=\"launch WoW\""},
+              "lutris_7":{"appName":"lutris_7","runner":"sideload","source":"lutris","launchKind":"launcher"},
+              "by_hand":{"appName":"by_hand","runner":"sideload","source":"battlenet","launchKind":"executable"}}}"#,
+        )
+        .unwrap();
+        let lib = Library::load(&paths).unwrap();
+        let client = |key: &str| lib.get(key).unwrap().client();
+        assert_eq!(client("sideload_battlenet_wow"), Some(crate::clients::Client::BattleNet));
+        assert_eq!(client("sideload_lutris_7"), None);
+        assert_eq!(client("sideload_by_hand"), None, "a game added by hand is not the client's, whatever its source");
+        assert_eq!(lib.get("sideload_battlenet_wow").unwrap().source_label, "Battle.net");
+    }
+
+    #[test]
+    fn a_stores_client_names_its_games_library() {
+        let meta = |source: &str| LocalGameMeta { source: source.into(), ..Default::default() };
+        let labels: Vec<_> = crate::clients::Client::ALL.iter().map(|c| source_label(Some(&meta(c.id())), "sideload")).collect();
+        assert_eq!(labels, ["Battle.net", "EA", "Ubisoft", "Rockstar"]);
+        assert_eq!(source_label(Some(&meta("lutris")), "sideload"), "Lutris");
+        assert_eq!(source_label(Some(&meta("")), "legendary"), "Epic");
     }
 
     #[test]
@@ -909,6 +1083,61 @@ mod tests {
         assert!(!lib.changed_on_disk());
         w(paths.store_config(), r#"{"games":{"hidden":[]}}"#);
         assert!(lib.changed_on_disk());
+    }
+
+    #[test]
+    fn steam_tags_fill_the_tag_facet_by_steam_id_and_follow_the_name_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(
+            paths.sideload_library(),
+            r#"{"games":[
+              {"runner":"sideload","app_name":"steam_620","title":"Portal 2","install":{}},
+              {"runner":"sideload","app_name":"plain","title":"No Steam","install":{}}]}"#,
+        );
+        w(
+            paths.local_meta(),
+            r#"{"games":{"steam_620":{"appName":"steam_620","runner":"sideload","source":"steam","launchKind":"steam-uri","steamAppId":"620"}}}"#,
+        );
+        w(
+            paths.legendary_library(),
+            r#"{"library":[{"runner":"legendary","app_name":"hades","title":"Hades","install":{}}],"__timestamp":{"library":"x"}}"#,
+        );
+        w(paths.metadata(), r#"{"games":{"legendary:hades":{"appName":"hades","runner":"legendary","steamAppId":"1145360"}}}"#);
+        w(
+            paths.steam_tags(),
+            r#"{"apps":{
+                 "620":{"tags":[{"tagid":4182,"weight":604},{"tagid":1664,"weight":586}],"fetchedAt":1},
+                 "1145360":{"tags":[{"tagid":42804,"weight":1051}],"fetchedAt":1}},
+               "names":{"english":{"versionHash":"1","fetchedAt":1,
+                 "names":{"4182":"Singleplayer","1664":"Puzzle","42804":"Action Roguelike"}}}}"#,
+        );
+        let tags = |lib: &Library, key: &str| -> Vec<String> {
+            lib.get(key).unwrap().facets[FacetKind::Tag.index()].iter().map(|i| i.value.clone()).collect()
+        };
+        let lib = Library::load(&paths).unwrap();
+        assert_eq!(tags(&lib, "sideload_steam_620"), ["Singleplayer", "Puzzle"]);
+        assert_eq!(tags(&lib, "legendary_hades"), ["Action Roguelike"], "matched through its metadata");
+        assert!(tags(&lib, "sideload_plain").is_empty());
+        let options = crate::collection::collect_facet_options(&lib.games);
+        assert_eq!(options.get(FacetKind::Tag).len(), 3);
+
+        // A tag removed in Library fields stays out.
+        crate::field_names::remove(&paths, crate::field_names::Field::Tag, &["puzzle".into()]).unwrap();
+        assert!(lib.changed_on_disk(), "names.json is watched");
+        let lib = Library::load(&paths).unwrap();
+        assert_eq!(tags(&lib, "sideload_steam_620"), ["Singleplayer"]);
+        let values = crate::field_names::values(&lib.games, crate::field_names::Field::Tag);
+        assert_eq!(values.iter().map(|v| v.name.as_str()).collect::<Vec<_>>(), ["Action Roguelike", "Singleplayer"]);
+
+        // Turned off in Settings: no tags.
+        w(paths.collection_settings(), r#"{"metadata":{"steamTags":false}}"#);
+        let lib = Library::load(&paths).unwrap();
+        assert!(tags(&lib, "sideload_steam_620").is_empty());
     }
 
     #[test]

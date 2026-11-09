@@ -1,44 +1,26 @@
 //! `.desktop` shortcuts (Heroic `shortcuts/shortcuts/shortcuts.ts`, Linux
 //! branch): `<Desktop>/<title>.desktop` and
-//! `~/.local/share/applications/<title>.desktop`.
+//! `~/.local/share/applications/<title>.desktop`. The app reaches them
+//! through [`crate::menu`], which picks `.lnk` files on Windows instead.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
+pub use crate::menu::{Roots, Written};
 use crate::GameId;
-
-/// Where shortcuts go. Built from the environment by [`Roots::detect`].
-#[derive(Debug, Clone)]
-pub struct Roots {
-    /// XDG desktop dir (`None` when the system has none).
-    pub desktop: Option<PathBuf>,
-    /// `~/.local/share/applications`.
-    pub applications: PathBuf,
-}
-
-impl Roots {
-    /// `HERONITE_DESKTOP_DIR` / `HERONITE_APPLICATIONS_DIR` override the real
-    /// folders (tests and manual runs against fixtures).
-    pub fn detect() -> Self {
-        let desktop = std::env::var_os("HERONITE_DESKTOP_DIR")
-            .map(PathBuf::from)
-            .or_else(dirs::desktop_dir)
-            .or_else(|| dirs::home_dir().map(|h| h.join("Desktop")));
-        let applications = std::env::var_os("HERONITE_APPLICATIONS_DIR")
-            .map(PathBuf::from)
-            .or_else(|| dirs::data_dir().map(|d| d.join("applications")))
-            .unwrap_or_else(|| PathBuf::from("applications"));
-        Self { desktop, applications }
-    }
-}
 
 pub use heronite_data::text::sanitize_filename;
 
 /// `(desktop file, application-menu file)` for a title.
 pub fn shortcut_files(roots: &Roots, title: &str) -> (Option<PathBuf>, PathBuf) {
-    let name = format!("{}.desktop", sanitize_filename(title));
+    files_named(roots, &sanitize_filename(title))
+}
+
+/// `(desktop file, application-menu file)` named `<stem>.desktop`.
+pub fn files_named(roots: &Roots, stem: &str) -> (Option<PathBuf>, PathBuf) {
+    let name = format!("{stem}.desktop");
     (roots.desktop.as_ref().map(|d| d.join(&name)), roots.applications.join(name))
 }
 
@@ -79,29 +61,28 @@ pub fn exec_line(exe: &Path, game: &GameId) -> String {
     format!("{} --launch {} {}", quote_exec_arg(&exe.to_string_lossy()), quote_exec_arg(&game.runner), quote_exec_arg(&game.app_name))
 }
 
-/// What [`add`] wrote.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Written {
-    pub desktop: Option<PathBuf>,
-    pub menu: Option<PathBuf>,
-}
-
 /// Adds the shortcuts: `desktop` and/or `menu` choose the targets
 /// (`addDesktopShortcuts` / `addStartMenuShortcuts`, or both when asked from
 /// the menu). Existing files are overwritten (the Exec path may have changed).
 pub fn add(roots: &Roots, game: &GameId, exe: &Path, icon: Option<&Path>, desktop: bool, menu: bool) -> Result<Written> {
-    let (desktop_file, menu_file) = shortcut_files(roots, &game.title);
     let text = desktop_file_text(&game.title, &exec_line(exe, game), icon.map(|p| p.to_string_lossy()).as_deref());
+    add_named(roots, &sanitize_filename(&game.title), &text, desktop, menu)
+}
+
+/// Writes `text` as `<stem>.desktop` on the Desktop and/or in the
+/// application menu, replacing what is there.
+pub fn add_named(roots: &Roots, stem: &str, text: &str, desktop: bool, menu: bool) -> Result<Written> {
+    let (desktop_file, menu_file) = files_named(roots, stem);
     let mut written = Written::default();
     if desktop {
         if let Some(file) = desktop_file {
-            write_file(&file, &text, 0o755).with_context(|| format!("writing {}", file.display()))?;
+            write_file(&file, text, 0o755).with_context(|| format!("writing {}", file.display()))?;
             log::info!("shortcut saved on {}", file.display());
             written.desktop = Some(file);
         }
     }
     if menu {
-        write_file(&menu_file, &text, 0o755).with_context(|| format!("writing {}", menu_file.display()))?;
+        write_file(&menu_file, text, 0o755).with_context(|| format!("writing {}", menu_file.display()))?;
         log::info!("shortcut saved on {}", menu_file.display());
         written.menu = Some(menu_file);
     }
@@ -118,9 +99,15 @@ fn write_file(path: &Path, text: &str, mode: u32) -> Result<()> {
 
 /// Removes both files when present; returns what was removed.
 pub fn remove(roots: &Roots, title: &str) -> Result<Vec<PathBuf>> {
-    let (desktop_file, menu_file) = shortcut_files(roots, title);
+    remove_named(roots, &sanitize_filename(title), true, true)
+}
+
+/// Removes `<stem>.desktop` from the Desktop and/or the application menu
+/// when there; returns what was removed.
+pub fn remove_named(roots: &Roots, stem: &str, desktop: bool, menu: bool) -> Result<Vec<PathBuf>> {
+    let (desktop_file, menu_file) = files_named(roots, stem);
     let mut removed = Vec::new();
-    for file in desktop_file.into_iter().chain([menu_file]) {
+    for file in desktop_file.filter(|_| desktop).into_iter().chain(menu.then_some(menu_file)) {
         match fs::remove_file(&file) {
             Ok(()) => {
                 log::info!("shortcut removed: {}", file.display());
@@ -197,5 +184,18 @@ mod tests {
         let w = add(&roots, &g, Path::new("/bin/h"), None, false, true).unwrap();
         assert!(w.desktop.is_none() && w.menu.is_some());
         assert!(!dir.path().join("Desktop").exists());
+    }
+
+    #[test]
+    fn a_named_entry_is_added_and_removed_one_place_at_a_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let roots = Roots { desktop: Some(dir.path().join("Desktop")), applications: dir.path().join("apps") };
+        let text = desktop_file_text("EA app", "/bin/h --open-client ea", None);
+        add_named(&roots, "heronite-client-ea", &text, true, true).unwrap();
+        let (on_desktop, in_menu) = files_named(&roots, "heronite-client-ea");
+        assert!(on_desktop.as_ref().unwrap().is_file() && in_menu.is_file());
+        assert_eq!(remove_named(&roots, "heronite-client-ea", true, false).unwrap(), vec![on_desktop.clone().unwrap()]);
+        assert!(!on_desktop.unwrap().exists() && in_menu.is_file());
+        assert_eq!(remove_named(&roots, "heronite-client-ea", true, true).unwrap(), vec![in_menu]);
     }
 }

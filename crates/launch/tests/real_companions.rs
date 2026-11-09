@@ -4,6 +4,9 @@
 //!   HERONITE_REAL_PROTON=~/.local/share/heronite/tools/proton/GE-Proton-latest \
 //!   cargo test -p heronite-launch --test real_companions -- --ignored --nocapture --test-threads=1
 
+// Real Proton: Linux only.
+#![cfg(unix)]
+
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -79,7 +82,8 @@ fn run(proton: &str, umu: bool) {
 
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
-    let steam = SteamLocator { home: dir.path().into(), steam_path: dir.path().join("steam"), system_roots: vec![] };
+    let steam =
+        SteamLocator { home: dir.path().into(), steam_path: dir.path().join("steam"), system_roots: vec![], platform_roots: vec![] };
     let launcher = Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs, LauncherConfig::default(), tx);
     let started = Instant::now();
     launcher.launch(LaunchRequest { app_name: "notepad".into(), runner: "sideload".into(), title: "Notepad".into(), plan }).unwrap();

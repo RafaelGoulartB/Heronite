@@ -1,0 +1,8 @@
+{
+  "Could not load the save folders: {error}": "Die Speicherstand-Ordner konnten nicht geladen werden: {error}",
+  "Default folder": "Standardordner",
+  "GOG lists these folders. They are kept in the game's settings (gogSaves); refresh them after changing the Wine prefix.": "GOG listet diese Ordner auf. Sie werden in den Einstellungen des Spiels (gogSaves) gespeichert; aktualisiere sie, nachdem du das Wine-Prefix geändert hast.",
+  "Loading the save folders…": "Speicherstand-Ordner werden geladen…",
+  "Refresh locations": "Pfade aktualisieren",
+  "Save folders": "Speicherstände"
+}

@@ -8,7 +8,7 @@ use gpui_kit::*;
 use heronite_i18n::{tr, trn};
 
 use super::hub;
-use super::window::{close_window_keep_alive, show_window};
+use super::window::{close_window_keep_alive, save_placement, show_window};
 
 /// What a quit would leave behind: the games the launcher is tracking
 /// (titles, sorted), whether post-game work (backups, cloud saves) is still
@@ -119,8 +119,23 @@ pub fn keep_in_tray(cx: &mut App) {
     });
 }
 
-/// The updated AppImage to start once the app has quit.
+/// What to start once the app has quit: the updated AppImage, or this app
+/// again.
 static RELAUNCH: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Work for the moment the app has quit, before a restart ([`run_on_quit`]).
+pub type OnQuit = Box<dyn FnOnce(bool) -> bool + Send>;
+
+static ON_QUIT: Mutex<Option<OnQuit>> = Mutex::new(None);
+
+/// Sets (or clears) what runs once the app has quit: the Windows setup of a
+/// downloaded update, which waits for this process to end. It gets whether
+/// a restart was asked and returns whether it starts the app again itself
+/// (else the restart starts [`restart_into`]'s program as usual).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn run_on_quit(work: Option<OnQuit>) {
+    *ON_QUIT.lock().unwrap_or_else(|e| e.into_inner()) = work;
+}
 
 /// What a restart would leave behind now: a running game or post-game work
 /// (`None` = the app can restart).
@@ -135,8 +150,9 @@ pub fn restart_blocker(cx: &App) -> Option<String> {
     }
 }
 
-/// Quits gracefully and starts `appimage` (the installed update) at the end.
-/// Refused while a game runs or post-game work is in flight.
+/// Quits gracefully and starts `appimage` (the installed update, or this
+/// app) at the end. Refused while a game runs or post-game work is in
+/// flight.
 pub fn restart_into(appimage: PathBuf, cx: &mut App) {
     if hub(cx).0.borrow().quitting {
         return;
@@ -150,11 +166,27 @@ pub fn restart_into(appimage: PathBuf, cx: &mut App) {
     graceful_quit(cx);
 }
 
-/// Starts the updated AppImage if a restart asked for it. Called last, once
+/// Quits gracefully and starts this app again (a setting it reads only at
+/// start changed): the AppImage it runs from, else its executable. Refused
+/// like [`restart_into`].
+pub fn restart_now(cx: &mut App) {
+    match crate::system::own_exe::own_executable() {
+        Some(exe) => restart_into(exe, cx),
+        None => log::warn!("restart: this app's executable was not found"),
+    }
+}
+
+/// Runs the [`run_on_quit`] work, then starts the updated AppImage (or this
+/// app) if a restart asked for it and that work did not. Called last, once
 /// the single-instance socket is gone, so the new process becomes the
 /// instance (and by the quit watchdog).
 pub fn relaunch_if_requested() {
-    let Some(path) = RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    let path = RELAUNCH.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let work = ON_QUIT.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if work.is_some_and(|run| run(path.is_some())) {
+        return;
+    }
+    let Some(path) = path else { return };
     match heronite_update::relaunch::relaunch(&path) {
         Ok(pid) => log::info!("started {} (pid {pid})", path.display()),
         Err(e) => log::error!("could not start {}: {e}", path.display()),
@@ -182,6 +214,9 @@ pub(super) fn graceful_quit(cx: &mut App) {
         (s.runtime.clone(), s.tray.take())
     };
     log::info!("quitting");
+    // The window stays open while the app quits: a move or resize still
+    // waiting for its timer is written now.
+    save_placement(cx);
     crate::system::signals::quit_started();
     // A second process from now on finds no socket instead of a dying listener.
     crate::system::single_instance::close_active();
@@ -192,6 +227,8 @@ pub(super) fn graceful_quit(cx: &mut App) {
     crate::services::compression::shutdown(cx);
     // The replay recorder ends (it saves nothing).
     crate::services::replay::shutdown(cx);
+    // A cloud upload stops; the next start sends what it had not.
+    crate::services::sync::shutdown(cx);
     let hotkeys = [crate::overlay::take_hotkey(cx), crate::services::replay::take_hotkey(cx)];
     let downloads = crate::services::try_downloads(cx);
     if let Some(d) = &downloads {
@@ -239,10 +276,45 @@ pub(super) fn maybe_exit_idle(cx: &mut App) {
     let hub = hub(cx);
     let idle = {
         let s = hub.0.borrow();
-        s.exit_when_idle && s.window.is_none() && s.running.is_empty() && !crate::services::session::busy()
+        s.exit_when_idle && s.window.is_none() && s.running.is_empty() && s.clients_followed == 0 && !crate::services::session::busy()
     };
     if idle {
-        log::info!("game ended and no window was shown: exiting");
+        log::info!("nothing left to follow and no window was shown: exiting");
         graceful_quit(cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{relaunch_if_requested, run_on_quit, ON_QUIT, RELAUNCH};
+    use std::sync::{Arc, Mutex};
+
+    /// The quit's work runs once, is told whether a restart was asked, and
+    /// a restart it takes over starts nothing else.
+    #[test]
+    fn the_quit_work_runs_once_and_can_take_over_the_restart() {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let record = |takes_over: bool| {
+            let seen = seen.clone();
+            Some(Box::new(move |restart: bool| {
+                seen.lock().unwrap().push(restart);
+                takes_over
+            }) as super::OnQuit)
+        };
+        run_on_quit(record(false));
+        relaunch_if_requested();
+        relaunch_if_requested();
+        assert_eq!(*seen.lock().unwrap(), [false]);
+
+        run_on_quit(record(true));
+        *RELAUNCH.lock().unwrap() = Some("C:/nonexistent/heronite-rs.exe".into());
+        relaunch_if_requested();
+        assert_eq!(*seen.lock().unwrap(), [false, true]);
+        assert!(RELAUNCH.lock().unwrap().is_none() && ON_QUIT.lock().unwrap().is_none());
+
+        run_on_quit(record(true));
+        run_on_quit(None);
+        relaunch_if_requested();
+        assert_eq!(seen.lock().unwrap().len(), 2, "cleared");
     }
 }

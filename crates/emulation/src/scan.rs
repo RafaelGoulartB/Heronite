@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -15,9 +16,10 @@ use heronite_i18n::tr;
 use heronite_launch::emulators::{UserEmulator, UserEmulatorProfile};
 use regex::Regex;
 
-use crate::names::{name_without_disc, rom_disc_label, strip_ext, title_from_rom_path};
+use crate::disc_id::read_sfo;
+use crate::names::{name_without_disc, rom_disc_label, sanitize_rom_name, strip_ext, title_from_rom_path};
 use crate::pathutil::dirname;
-use crate::pathutil::{basename, ext_lower, join, normalize_key, resolve};
+use crate::pathutil::{basename, ext_lower, is_absolute, join, normalize_key, resolve};
 use crate::store::{self, resolve_template};
 use crate::types::{RomScanArgs, RomScanItem, RomScanPreview};
 
@@ -93,7 +95,7 @@ pub fn read_playlist_files(file_path: &str) -> std::io::Result<Vec<String>> {
             .lines()
             .map(str::trim)
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(|l| if l.starts_with('/') { l.to_string() } else { join(&dir, l) })
+            .map(|l| if is_absolute(l) { l.to_string() } else { join(&dir, l) })
             .collect(),
     })
 }
@@ -126,7 +128,16 @@ fn walk_files(directory: &str, scan_subfolders: bool, acc: &mut Vec<String>, dep
     }
 }
 
-fn walk_folders_with_indicator(directory: &str, indicator: &str, scan_subfolders: bool, acc: &mut Vec<String>, depth: usize) {
+/// Game folders (the ones holding `indicator`) and, next to them, the files
+/// with a bootable image extension. A game folder is not entered.
+fn walk_folders_with_indicator(
+    directory: &str,
+    indicator: &str,
+    extensions: &HashSet<String>,
+    scan_subfolders: bool,
+    acc: &mut Vec<String>,
+    depth: usize,
+) {
     let Some(entries) = read_dir_sorted(directory) else {
         return;
     };
@@ -135,18 +146,129 @@ fn walk_folders_with_indicator(directory: &str, indicator: &str, scan_subfolders
         acc.push(join(directory, file));
         return;
     }
-    if !scan_subfolders && depth > 0 {
-        return;
-    }
     for name in &entries {
         if name.starts_with('.') || skip_dir(name) {
             continue;
         }
         let full = join(directory, name);
-        if fs::metadata(&full).map(|m| m.is_dir()).unwrap_or(false) {
-            walk_folders_with_indicator(&full, indicator, scan_subfolders, acc, depth + 1);
+        let Ok(meta) = fs::metadata(&full) else {
+            continue;
+        };
+        if meta.is_file() {
+            if extensions.contains(&ext_lower(name)) {
+                acc.push(full);
+            }
+        } else if meta.is_dir() && (scan_subfolders || depth == 0) {
+            walk_folders_with_indicator(&full, indicator, extensions, scan_subfolders, acc, depth + 1);
         }
     }
+}
+
+/// Folders that only hold a game's files, never name it.
+const CONTAINER_DIRS: &[&str] =
+    &["usrdir", "ps3_game", "ps3_extra", "sce_sys", "sce_module", "app", "ux0", "game", "games", "dev_hdd0", "dev_flash", "bin"];
+
+/// Folders that are part of a game's layout, never a game's own folder: when
+/// they are all there is between the indicator and the scan folder, the scan
+/// folder is the game.
+const STRUCTURAL_DIRS: &[&str] = &["usrdir", "ps3_game", "ps3_extra", "sce_sys", "sce_module"];
+
+/// Packages the emulators install instead of booting (game, update and DLC
+/// `.pkg` of RPCS3 and shadPS4, Vita3K's `.vpk`): never listed as games.
+const INSTALLER_EXTENSIONS: &[&str] = &["pkg", "vpk"];
+
+/// The entries of `dir` named `names` (without case), from one listing.
+fn find_entries_ci(dir: &str, names: &[&str]) -> Vec<Option<String>> {
+    let mut found = vec![None; names.len()];
+    for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if let Some(i) = names.iter().position(|n| name.eq_ignore_ascii_case(n)) {
+            found[i].get_or_insert(join(dir, &name));
+        }
+    }
+    found
+}
+
+/// The first 64 KiB of a `PARAM.SFO`.
+fn read_sfo_file(path: &str) -> Option<Vec<u8>> {
+    let mut data = Vec::new();
+    fs::File::open(path).ok()?.take(64 * 1024).read_to_end(&mut data).ok()?;
+    Some(data)
+}
+
+/// The `TITLE` of the `PARAM.SFO` in `dir`, in the folder itself (Vita3K,
+/// shadPS4: `sce_sys/param.sfo`) or in its `PS3_GAME` / `sce_sys` subfolder.
+fn dir_sfo_title(dir: &str) -> Option<String> {
+    let [sfo, ps3_game, sce_sys] = <[Option<String>; 3]>::try_from(find_entries_ci(dir, &["PARAM.SFO", "PS3_GAME", "sce_sys"])).ok()?;
+    let nested = [ps3_game, sce_sys].into_iter().flatten().filter_map(|sub| find_entries_ci(&sub, &["PARAM.SFO"]).remove(0));
+    for path in sfo.into_iter().chain(nested) {
+        let title = read_sfo_file(&path).and_then(|data| read_sfo(&data).get("TITLE").cloned());
+        let title = title.map(|t| t.replace(['\u{2122}', '\u{00AE}'], "").split_whitespace().collect::<Vec<_>>().join(" "));
+        if let Some(title) = title.filter(|t| !t.is_empty()) {
+            return Some(title);
+        }
+    }
+    None
+}
+
+/// The folders from the one holding `indicator` up to `game`, the folder of
+/// its game, never above it (a `PARAM.SFO` further up is not this game's).
+fn folders_to_game(indicator: &str, game: &str) -> Vec<String> {
+    let game_key = normalize_key(game);
+    let mut dir = dirname(indicator);
+    let mut dirs = vec![dir.clone()];
+    while normalize_key(&dir) != game_key && dirname(&dir) != dir {
+        dir = dirname(&dir);
+        dirs.push(dir.clone());
+    }
+    dirs
+}
+
+/// The folder of the game that has `indicator`: the closest folder below
+/// `root` that is not a container (`USRDIR`, `PS3_GAME`, `app`...), else the one
+/// right below `root`. `root` itself when the indicator is directly in it or
+/// only the folders of a game's layout (`USRDIR`, `PS3_GAME`) lie between: the
+/// scan was pointed at the game.
+fn game_folder(indicator: &str, root: &str) -> String {
+    let root_key = normalize_key(root);
+    let mut chain = vec![];
+    let mut dir = dirname(indicator);
+    while normalize_key(&dir) != root_key && dirname(&dir) != dir {
+        chain.push(dir.clone());
+        dir = dirname(&dir);
+    }
+    let named = |d: &String, names: &[&str]| names.contains(&basename(d).to_lowercase().as_str());
+    if chain.iter().all(|d| named(d, STRUCTURAL_DIRS)) {
+        return root.to_string();
+    }
+    chain.iter().find(|d| !named(d, CONTAINER_DIRS)).or(chain.last()).cloned().unwrap_or_else(|| root.to_string())
+}
+
+/// Title of the game that has the folder indicator file `path`: its
+/// `PARAM.SFO`, else its folder (all `EBOOT.BIN`s are called alike).
+fn indicator_title(path: &str, root: &str) -> String {
+    let game = game_folder(path, root);
+    // `USRDIR` holds the game's files, thousands of them, and never its SFO.
+    let sfo = folders_to_game(path, &game).iter().filter(|d| !basename(d).eq_ignore_ascii_case("usrdir")).find_map(|d| dir_sfo_title(d));
+    let name = basename(&game);
+    sfo.unwrap_or_else(|| Some(sanitize_rom_name(&name)).filter(|t| !t.is_empty()).unwrap_or(name))
+}
+
+/// A file the scan may list as a game.
+struct Candidate {
+    path: String,
+    title: String,
+    /// The title when another game has the same one.
+    distinct: String,
+    /// The indicator file of a game folder (`EBOOT.BIN`), not a ROM file.
+    game_folder: bool,
+}
+
+/// The files of one game.
+struct Group {
+    title: String,
+    distinct: String,
+    roms: Vec<LocalGameRom>,
 }
 
 fn to_scan_item(title: String, roms: Vec<LocalGameRom>, imported: &HashSet<String>) -> RomScanItem {
@@ -204,12 +326,16 @@ pub fn scan_rom_directory(
 
     let mut files = Vec::new();
     match template.folder_indicator.as_deref() {
-        Some(ind) => walk_folders_with_indicator(&directory, ind, options.scan_subfolders, &mut files, 0),
+        Some(ind) => {
+            let images: HashSet<String> = extensions.iter().filter(|e| !INSTALLER_EXTENSIONS.contains(&e.as_str())).cloned().collect();
+            walk_folders_with_indicator(&directory, ind, &images, options.scan_subfolders, &mut files, 0)
+        }
         None => walk_files(&directory, options.scan_subfolders, &mut files, 0),
     }
+    let indicator = template.folder_indicator.as_deref().map(str::to_lowercase);
 
     let mut skip_children: HashSet<String> = HashSet::new();
-    let mut candidates: Vec<(String, String)> = Vec::new();
+    let mut candidates: Vec<Candidate> = Vec::new();
     for file in files {
         let ext = ext_lower(&file);
         if playlists.contains(&ext) && extensions.contains(&ext) {
@@ -222,19 +348,37 @@ pub fn scan_rom_directory(
                 Err(_) => preview.errors.push(tr!("Could not read playlist {file}", file = file.as_str())),
             }
         }
-        if !extensions.contains(&ext) && template.folder_indicator.is_none() {
-            continue;
+        let is_game_folder = indicator.as_deref().is_some_and(|i| basename(&file).to_lowercase() == i);
+        if is_game_folder {
+            let title = indicator_title(&file, &directory);
+            let folder = basename(&game_folder(&file, &directory));
+            let distinct = if folder == title { title.clone() } else { format!("{title} ({folder})") };
+            candidates.push(Candidate { path: file, title, distinct, game_folder: true });
+        } else if extensions.contains(&ext) {
+            let title = title_from_rom_path(&basename(&file));
+            let distinct = name_without_disc(&basename(&file));
+            candidates.push(Candidate { path: file, title, distinct, game_folder: false });
         }
-        let title = title_from_rom_path(&basename(&file));
-        candidates.push((file, title));
     }
 
-    let filtered = candidates.into_iter().filter(|(p, _)| !skip_children.contains(&normalize_key(p)));
+    // An image next to a game folder of the same name is that game, not another.
+    let mut folders: HashMap<String, Vec<String>> = HashMap::new();
+    for c in candidates.iter().filter(|c| c.game_folder) {
+        folders.entry(c.title.to_lowercase()).or_default().push(c.path.clone());
+    }
+    let filtered = candidates.into_iter().filter(|c| {
+        !skip_children.contains(&normalize_key(&c.path))
+            && (c.game_folder
+                || !folders.get(&c.title.to_lowercase()).is_some_and(|games| {
+                    let dir = dirname(&c.path);
+                    games.iter().any(|game| Path::new(game).starts_with(&dir))
+                }))
+    });
 
     // Insertion-ordered groups.
     let mut order: Vec<String> = Vec::new();
-    let mut groups: HashMap<String, Vec<LocalGameRom>> = HashMap::new();
-    for (path, title) in filtered {
+    let mut groups: HashMap<String, Group> = HashMap::new();
+    for Candidate { path, title, distinct, .. } in filtered {
         let disc = rom_disc_label(&strip_ext(&basename(&path)));
         let rom = LocalGameRom {
             name: Some(disc.filter(|d| !d.is_empty()).unwrap_or_else(|| title.clone())),
@@ -250,19 +394,16 @@ pub fn scan_rom_directory(
         if !groups.contains_key(&key) {
             order.push(key.clone());
         }
-        groups.entry(key).or_default().push(rom);
+        groups.entry(key).or_insert_with(|| Group { title, distinct, roms: vec![] }).roms.push(rom);
     }
 
-    let groups: Vec<Vec<LocalGameRom>> = order.into_iter().map(|k| groups.remove(&k).unwrap_or_default()).collect();
-    let titles: Vec<String> = groups.iter().map(|roms| title_from_rom_path(&basename(&roms[0].path))).collect();
+    let groups: Vec<Group> = order.into_iter().filter_map(|k| groups.remove(&k)).collect();
     let mut games: Vec<RomScanItem> = groups
-        .into_iter()
-        .zip(&titles)
-        .map(|(roms, title)| {
+        .iter()
+        .map(|g| {
             // Two versions of a game (regions, revisions) keep what tells them apart.
-            let title =
-                if titles.iter().filter(|t| *t == title).count() > 1 { name_without_disc(&basename(&roms[0].path)) } else { title.clone() };
-            to_scan_item(title, roms, imported)
+            let title = if groups.iter().filter(|o| o.title == g.title).count() > 1 { g.distinct.clone() } else { g.title.clone() };
+            to_scan_item(title, g.roms.clone(), imported)
         })
         .collect();
     games.sort_by(|a, b| locale_cmp(&a.title, &b.title));
@@ -448,8 +589,183 @@ mod tests {
         e.profiles = vec![p.clone()];
         let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
         assert_eq!(r.games.len(), 1);
-        assert_eq!(r.games[0].title, "EBOOT");
-        assert!(r.games[0].roms[0].path.ends_with("USRDIR/EBOOT.BIN"));
+        assert_eq!(r.games[0].title, "God of War III");
+        assert!(Path::new(&r.games[0].roms[0].path).ends_with("USRDIR/EBOOT.BIN"));
+    }
+
+    fn sfo(entries: &[(&str, &str)]) -> Vec<u8> {
+        let (mut keys, mut vals, mut index) = (Vec::new(), Vec::new(), Vec::new());
+        for (k, v) in entries {
+            index.extend_from_slice(&(keys.len() as u16).to_le_bytes());
+            index.extend_from_slice(&0x0204u16.to_le_bytes());
+            index.extend_from_slice(&((v.len() + 1) as u32).to_le_bytes());
+            index.extend_from_slice(&((v.len() + 1) as u32).to_le_bytes());
+            index.extend_from_slice(&(vals.len() as u32).to_le_bytes());
+            keys.extend_from_slice(k.as_bytes());
+            keys.push(0);
+            vals.extend_from_slice(v.as_bytes());
+            vals.push(0);
+        }
+        let key_table = 20 + index.len();
+        let mut out = b"\0PSF\x01\x01\0\0".to_vec();
+        out.extend_from_slice(&(key_table as u32).to_le_bytes());
+        out.extend_from_slice(&((key_table + keys.len()) as u32).to_le_bytes());
+        out.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        out.extend(index);
+        out.extend(keys);
+        out.extend(vals);
+        out
+    }
+
+    fn indicator_profile(def: &str, profile: &str, ext: &[&str], indicator: &str) -> (UserEmulator, UserEmulatorProfile) {
+        let (mut e, mut p) = emu(def, profile, "{ImagePath}", ext);
+        p.folder_indicator = Some(indicator.into());
+        e.profiles = vec![p.clone()];
+        (e, p)
+    }
+
+    #[test]
+    fn game_folders_are_named_by_their_sfo_or_their_folder() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        // Named by its PARAM.SFO (title with a line break and a mark).
+        create_dir_all(root.join("BLES00001/PS3_GAME/USRDIR")).unwrap();
+        write(root.join("BLES00001/PS3_GAME/USRDIR/EBOOT.BIN"), "x").unwrap();
+        write(root.join("BLES00001/PS3_GAME/PARAM.SFO"), sfo(&[("TITLE", "Demon's Souls\u{2122}\n"), ("TITLE_ID", "BLES00001")])).unwrap();
+        // No SFO: the folder that is not a container.
+        create_dir_all(root.join("Journey/PS3_GAME/USRDIR")).unwrap();
+        write(root.join("Journey/PS3_GAME/USRDIR/EBOOT.BIN"), "x").unwrap();
+        let (e, p) = indicator_profile("rpcs3", "ps3", &["iso", "pkg"], "EBOOT.BIN");
+        let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&r), ["Demon's Souls", "Journey"]);
+
+        // Vita3K / shadPS4: sce_sys/param.sfo beside a lowercase eboot.bin.
+        let v = tempfile::tempdir().unwrap();
+        create_dir_all(v.path().join("ux0/app/PCSE00001/sce_sys")).unwrap();
+        write(v.path().join("ux0/app/PCSE00001/eboot.bin"), "x").unwrap();
+        write(v.path().join("ux0/app/PCSE00001/sce_sys/param.sfo"), sfo(&[("TITLE", "Persona 4 Golden")])).unwrap();
+        create_dir_all(v.path().join("ux0/app/PCSE00002")).unwrap();
+        write(v.path().join("ux0/app/PCSE00002/eboot.bin"), "x").unwrap();
+        let (e, p) = indicator_profile("vita3k", "vita", &["vpk"], "eboot.bin");
+        let r = scan_rom_directory(&e, &p, v.path().to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&r), ["PCSE00002", "Persona 4 Golden"]);
+    }
+
+    #[test]
+    fn game_folders_list_images_and_dumps_beside_them() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("God of War III/PS3_GAME/USRDIR")).unwrap();
+        write(root.join("God of War III/PS3_GAME/USRDIR/EBOOT.BIN"), "x").unwrap();
+        // The same game also as an image beside its folder: one game.
+        write(root.join("God of War III.iso"), "x").unwrap();
+        write(root.join("Uncharted (USA).iso"), "x").unwrap();
+        // Installers (games, updates, DLC) are not games to boot.
+        write(root.join("Heavy Rain.pkg"), "x").unwrap();
+        write(root.join("God of War III DLC.PKG"), "x").unwrap();
+        write(root.join("readme.txt"), "x").unwrap();
+        let (e, p) = indicator_profile("rpcs3", "ps3", &["iso", "pkg"], "EBOOT.BIN");
+        let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&r), ["God of War III", "Uncharted"]);
+        assert!(r.games[0].roms[0].path.ends_with("EBOOT.BIN"));
+        // Not recursive: the root files still show, deeper folders do not.
+        create_dir_all(root.join("a/b")).unwrap();
+        write(root.join("a/b/Deep.iso"), "x").unwrap();
+        let flat = scan_rom_directory(
+            &e,
+            &p,
+            root.to_str().unwrap(),
+            ScanOptions { scan_subfolders: false, merge_related_files: true },
+            &HashSet::new(),
+        );
+        assert_eq!(titles(&flat), ["God of War III", "Uncharted"]);
+    }
+
+    #[test]
+    fn installer_packages_are_never_listed_beside_vita_and_ps4_games() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("CUSA00001")).unwrap();
+        write(root.join("CUSA00001/eboot.bin"), "x").unwrap();
+        write(root.join("Update.pkg"), "x").unwrap();
+        write(root.join("Game.vpk"), "x").unwrap();
+        for (def, profile, ext, ind) in [("shadps4", "ps4", "pkg", "eboot.bin"), ("vita3k", "vita", "vpk", "eboot.bin")] {
+            let (e, p) = indicator_profile(def, profile, &[ext], ind);
+            let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+            assert_eq!(titles(&r), ["CUSA00001"], "{def}");
+        }
+    }
+
+    #[test]
+    fn a_param_sfo_above_the_game_folder_does_not_title_it() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        // The scan root, and a library folder, hold an SFO that is not any game's.
+        write(root.join("PARAM.SFO"), sfo(&[("TITLE", "Not A Game")])).unwrap();
+        create_dir_all(root.join("Library/Journey/USRDIR")).unwrap();
+        write(root.join("Library/PARAM.SFO"), sfo(&[("TITLE", "Not A Game Either")])).unwrap();
+        write(root.join("Library/Journey/USRDIR/EBOOT.BIN"), "x").unwrap();
+        let (e, p) = indicator_profile("rpcs3", "ps3", &["iso"], "EBOOT.BIN");
+        let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&r), ["Journey"]);
+    }
+
+    #[test]
+    fn games_in_container_folders_are_not_named_after_the_scan_root() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().join("ps3");
+        create_dir_all(root.join("Game")).unwrap();
+        create_dir_all(root.join("Bin")).unwrap();
+        write(root.join("Game/EBOOT.BIN"), "x").unwrap();
+        write(root.join("Bin/EBOOT.BIN"), "x").unwrap();
+        let (e, p) = indicator_profile("rpcs3", "ps3", &["iso"], "EBOOT.BIN");
+        let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&r), ["Bin", "Game"]);
+
+        // Pointed at the game itself, the folder is the game.
+        let single = scan_rom_directory(&e, &p, root.join("Game").to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&single), ["Game"]);
+    }
+
+    #[test]
+    fn a_scan_folder_that_is_the_game_is_titled_by_its_own_sfo() {
+        let d = tempfile::tempdir().unwrap();
+        let (e, p) = indicator_profile("rpcs3", "ps3", &["iso"], "EBOOT.BIN");
+        let scan = |dir: &Path| scan_rom_directory(&e, &p, dir.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+
+        // dev_hdd0/game/NPUB30001: the SFO beside USRDIR.
+        let game = d.path().join("NPUB30001");
+        create_dir_all(game.join("USRDIR")).unwrap();
+        write(game.join("USRDIR/EBOOT.BIN"), "x").unwrap();
+        write(game.join("PARAM.SFO"), sfo(&[("TITLE", "Flower")])).unwrap();
+        assert_eq!(titles(&scan(&game)), ["Flower"]);
+
+        // The PS3_GAME folder of a game.
+        let ps3_game = d.path().join("God of War III/PS3_GAME");
+        create_dir_all(ps3_game.join("USRDIR")).unwrap();
+        write(ps3_game.join("USRDIR/EBOOT.BIN"), "x").unwrap();
+        write(ps3_game.join("PARAM.SFO"), sfo(&[("TITLE", "God of War III")])).unwrap();
+        assert_eq!(titles(&scan(&ps3_game)), ["God of War III"]);
+
+        // The game folder, with PS3_GAME inside; no SFO: the folder's name.
+        let bare = d.path().join("Journey");
+        create_dir_all(bare.join("PS3_GAME/USRDIR")).unwrap();
+        write(bare.join("PS3_GAME/USRDIR/EBOOT.BIN"), "x").unwrap();
+        assert_eq!(titles(&scan(&bare)), ["Journey"]);
+    }
+
+    #[test]
+    fn game_folders_with_one_title_keep_their_folder_apart() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        for id in ["BLUS00001", "BLES00001"] {
+            create_dir_all(root.join(id).join("USRDIR")).unwrap();
+            write(root.join(id).join("USRDIR/EBOOT.BIN"), "x").unwrap();
+            write(root.join(id).join("PARAM.SFO"), sfo(&[("TITLE", "Same Game")])).unwrap();
+        }
+        let (e, p) = indicator_profile("rpcs3", "ps3", &["iso"], "EBOOT.BIN");
+        let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &HashSet::new());
+        assert_eq!(titles(&r), ["Same Game (BLES00001)", "Same Game (BLUS00001)"]);
     }
 
     #[test]
@@ -464,8 +780,9 @@ mod tests {
         let r = scan_rom_directory(&e, &p, root.to_str().unwrap(), ScanOptions::default(), &imported);
         assert!(r.games[0].already_imported && !r.games[0].import);
         assert!(!r.games[1].already_imported && r.games[1].import);
-        let missing = scan_rom_directory(&e, &p, "/nonexistent/zzz", ScanOptions::default(), &imported);
-        assert_eq!(missing.errors, ["Folder does not exist: /nonexistent/zzz"]);
+        let gone = root.join("nonexistent").join("zzz");
+        let missing = scan_rom_directory(&e, &p, gone.to_str().unwrap(), ScanOptions::default(), &imported);
+        assert_eq!(missing.errors, [format!("Folder does not exist: {}", gone.display())]);
     }
 
     #[test]
@@ -479,5 +796,29 @@ mod tests {
         .unwrap();
         assert_eq!(r.errors, [tr!("Emulator not found. Add it in Collection settings first.")]);
         assert_eq!(r.directory, "/r");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_folders_playlists_and_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path();
+        create_dir_all(root.join("PS1")).unwrap();
+        write(root.join(r"PS1\Multi (Disc 1).chd"), "x").unwrap();
+        write(root.join(r"PS1\Multi (Disc 2).chd"), "x").unwrap();
+        // A playlist written on Windows: CRLF, one track by its full path.
+        let disc2 = root.join(r"PS1\Multi (Disc 2).chd");
+        write(root.join(r"PS1\Multi.m3u"), format!("Multi (Disc 1).chd\r\n{}\r\n", disc2.display())).unwrap();
+        write(root.join(r"PS1\Solo (USA).chd"), "x").unwrap();
+        let (e, p) = emu("duckstation", "ps1", "", &["chd", "m3u"]);
+        // The folder as typed: forward slashes, another case.
+        let typed = format!("{}/ps1/", root.display());
+        let mut imported = HashSet::new();
+        imported.insert(normalize_key(&root.join(r"PS1\SOLO (USA).CHD").to_string_lossy()));
+        let r = scan_rom_directory(&e, &p, &typed, ScanOptions::default(), &imported);
+        assert_eq!(titles(&r), ["Multi", "Solo"]);
+        assert_eq!(r.directory, root.join("ps1").to_string_lossy());
+        assert_eq!(r.games[0].roms[0].path, root.join(r"ps1\Multi.m3u").to_string_lossy());
+        assert!(r.games[1].already_imported, "paths compare without case on Windows");
     }
 }

@@ -1,9 +1,14 @@
-//! Self-update of the AppImage.
+//! Self-update of the AppImage and of the Windows copies.
 //!
 //! The release workflow publishes, for every tag, `Heronite-<arch>.AppImage`
-//! and `<file>.minisig`, a minisign signature made with the key whose public
-//! half is [`PUBLIC_KEY`]. Its trusted comment carries `version:<X.Y.Z>`, so
-//! an older signed build cannot be served as a newer release.
+//! (and the system packages, `Heronite-Setup-<arch>.exe` and
+//! `Heronite-Portable-<arch>.zip`) with `SHA256SUMS`, every file's SHA-256,
+//! and `SHA256SUMS.minisig`, its minisign signature made with the key whose
+//! public half is [`PUBLIC_KEY`]. Releases up to 1.0 signed every file
+//! instead (`<file>.minisig`); those signatures are still published for a
+//! while, for the versions that only read them, and are the fallback here.
+//! The trusted comment of a signature carries `version:<X.Y.Z>`, so an older
+//! signed build cannot be served as a newer release.
 //!
 //! - [`release`]: asks GitHub for the latest release (conditional request with
 //!   the last ETag) and picks the assets for this architecture.
@@ -13,26 +18,43 @@
 //!   disturbed; the new version starts with the next launch.
 //! - [`relaunch`]: starts the new AppImage, detached, as the app quits.
 //! - [`package`]: .deb / .rpm / Arch installs, which are only told about new
-//!   versions (their package manager owns the files).
+//!   versions (their package manager owns the files), and the AUR's and
+//!   Scoop's copies, whose package manager also installs them.
+//! - [`setup`] (Windows): a copy installed by the setup downloads the new
+//!   setup and runs it, silently, as the app quits.
+//! - [`portable`] (Windows): a portable copy downloads the new zip and swaps
+//!   its program files in, keeping the replaced ones as `.old` until the
+//!   next start.
 //! - [`prefs`]: the user's choices and the last check (`update.json`).
 //!
 //! Every function blocks; the app calls them off the UI thread.
 
 pub mod install;
 pub mod package;
+#[cfg(windows)]
+pub mod portable;
 pub mod prefs;
 pub mod relaunch;
 pub mod release;
+#[cfg(windows)]
+pub mod setup;
 pub mod version;
 
 pub use install::{InstallError, Progress, Target, Unsupported};
 pub use package::Package;
+#[cfg(windows)]
+pub use portable::Portable;
 pub use prefs::Prefs;
-pub use release::{Asset, Fetched, Release};
+pub use release::{Asset, Checksums, Fetched, Proof, Release, WindowsAsset};
+#[cfg(windows)]
+pub use setup::Installer;
 pub use version::Version;
 
 /// GitHub API endpoint of the latest (non-draft, non-prerelease) release.
 pub const LATEST_API: &str = "https://api.github.com/repos/RafaelGoulartB/Heronite/releases/latest";
+
+/// The project on GitHub (a star, issues, Discussions).
+pub const REPO_PAGE: &str = "https://github.com/RafaelGoulartB/Heronite";
 
 /// The releases page, for people who update by hand.
 pub const RELEASES_PAGE: &str = "https://github.com/RafaelGoulartB/Heronite/releases/latest";

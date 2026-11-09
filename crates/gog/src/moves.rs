@@ -10,14 +10,20 @@ use heronite_i18n::tr;
 use crate::disk::{copy_tree, dir_size, remove_tree, safe_to_remove};
 use crate::{installed, library};
 
+/// Windows' error for a rename to another drive.
+const ERROR_NOT_SAME_DEVICE: i32 = 17;
+
 /// Moves the game's folder into `new_base` (the folder keeps its name) and
 /// updates `install_path`. A rename is tried first; across file systems the
 /// folder is copied (`on_percent` is `0..=100`) and then deleted. Returns the
 /// new install path.
 pub fn move_install(paths: &DataPaths, app_name: &str, new_base: &str, cancel: &Cancel, on_percent: &mut dyn FnMut(f64)) -> Result<String> {
     let Some(mut entry) = installed::get(paths, app_name) else { bail!(tr!("{app} is not installed", app = app_name)) };
+    if entry.from_galaxy() {
+        bail!(tr!("GOG Galaxy installed this game: move it in GOG Galaxy"));
+    }
     let source = Path::new(&entry.install_path);
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let home = crate::disk::home();
     if entry.install_path.is_empty() || !safe_to_remove(source, home.as_deref()) {
         bail!(tr!("Refusing to move the game at {path}", path = entry.install_path));
     }
@@ -37,7 +43,12 @@ pub fn move_install(paths: &DataPaths, app_name: &str, new_base: &str, cancel: &
     }
     std::fs::create_dir_all(new_base).map_err(|e| anyhow!(tr!("Could not create {path}: {error}", path = new_base, error = e)))?;
 
-    if std::fs::rename(source, &target).is_err() {
+    if let Err(err) = std::fs::rename(source, &target) {
+        // On Windows only another drive is copied: a folder that cannot be
+        // renamed because a file is in use would not be deleted either.
+        if cfg!(windows) && err.raw_os_error() != Some(ERROR_NOT_SAME_DEVICE) {
+            bail!(tr!("Could not move the game: {error}", error = err));
+        }
         let total = dir_size(source).max(1);
         let mut copied = 0u64;
         let copy = copy_tree(source, &target, cancel, &mut |n| {
@@ -71,7 +82,8 @@ pub fn move_install(paths: &DataPaths, app_name: &str, new_base: &str, cancel: &
 /// install path.
 pub fn relocate(paths: &DataPaths, app_name: &str, folder: &str) -> Result<String> {
     let Some(mut entry) = installed::get(paths, app_name) else { bail!(tr!("{app} is not installed", app = app_name)) };
-    let folder = folder.trim().trim_end_matches('/');
+    let separators: &[char] = if cfg!(windows) { &['/', '\\'] } else { &['/'] };
+    let folder = folder.trim().trim_end_matches(separators);
     let dir = Path::new(folder);
     if !dir.is_dir() {
         bail!(tr!("{path} does not exist", path = folder));
@@ -150,7 +162,7 @@ mod tests {
         std::fs::write(moved.join("goggame-42.info"), "{}").unwrap();
         assert!(relocate(&paths, "42", "/nonexistent-dir").is_err());
         assert!(relocate(&paths, "7", &moved.display().to_string()).is_err(), "not installed");
-        let now = relocate(&paths, "42", &format!("{}/", moved.display())).unwrap();
+        let now = relocate(&paths, "42", &format!("{}{}", moved.display(), std::path::MAIN_SEPARATOR)).unwrap();
         assert_eq!(now, moved.display().to_string());
         assert_eq!(installed::get(&paths, "42").unwrap().install_path, now);
         assert!(moved.join("a.bin").exists(), "nothing was moved or deleted");

@@ -196,7 +196,11 @@ fn add_label(adding: bool, selected: usize) -> String {
 impl DetectEmulatorsDialog {
     fn status_text(&self) -> String {
         if self.scanning {
-            tr!("Looking in PATH, Flatpak and the usual folders\u{2026}").to_string()
+            if cfg!(windows) {
+                tr!("Looking in PATH and the usual folders\u{2026}").to_string()
+            } else {
+                tr!("Looking in PATH, Flatpak and the usual folders\u{2026}").to_string()
+            }
         } else if let Some(folder) = &self.folder_scanning {
             tr!("Searching {folder}\u{2026}", folder)
         } else if self.rows.is_empty() {
@@ -327,7 +331,7 @@ impl Render for DetectEmulatorsDialog {
             DialogProps {
                 id: "detect-emulators".into(),
                 title: tr!("Detect emulators").into(),
-                width: 720f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 720f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

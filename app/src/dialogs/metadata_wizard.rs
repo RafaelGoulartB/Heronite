@@ -105,6 +105,37 @@ impl MetadataHub {
         cx.emit(HubEvent::OpenWizard);
     }
 
+    /// Covers for the local games that have none (games just added from a
+    /// folder); the Collection reloads when some were found.
+    pub fn fill_local_covers(&mut self, cx: &mut Context<Self>) {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let found = cx.background_spawn(async move { service.refresh_missing_local_covers() }).await;
+            match found {
+                Ok(n) if n > 0 => {
+                    this.update(cx, |_, cx| cx.emit(HubEvent::DataChanged)).ok();
+                }
+                Ok(_) => {}
+                Err(err) => log::warn!("cover fill: {err:#}"),
+            }
+        })
+        .detach();
+    }
+
+    /// Steam tags for the games that lack them (when the setting is on); the
+    /// Collection reloads when some came.
+    pub fn refresh_steam_tags(&mut self, cx: &mut Context<Self>) {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| match cx.background_spawn(async move { service.refresh_steam_tags_while(&|| false) }).await {
+            Ok(r) if r.changed() => {
+                this.update(cx, |_, cx| cx.emit(HubEvent::DataChanged)).ok();
+            }
+            Ok(_) => {}
+            Err(err) => log::warn!("Steam tags: {err:#}"),
+        })
+        .detach();
+    }
+
     /// Idle maintenance like Heronite's `scheduleIdleMaintenance` (90 s after
     /// startup): fills missing Collection metadata when `autoFillMissing` is
     /// on, and local covers. Runs off the UI thread.
@@ -121,6 +152,13 @@ impl MetadataHub {
                             0
                         }
                     };
+                    let rated = match service.fill_missing_age_ratings_while(&|| false) {
+                        Ok(n) => n,
+                        Err(err) => {
+                            log::warn!("idle age rating fill: {err:#}");
+                            0
+                        }
+                    };
                     let covers = match service.refresh_missing_local_covers() {
                         Ok(n) => n,
                         Err(err) => {
@@ -128,7 +166,14 @@ impl MetadataHub {
                             0
                         }
                     };
-                    filled + covers
+                    let tags = match service.refresh_steam_tags_while(&|| false) {
+                        Ok(r) => usize::from(r.changed()),
+                        Err(err) => {
+                            log::warn!("idle Steam tags: {err:#}");
+                            0
+                        }
+                    };
+                    filled + rated + covers + tags
                 })
                 .await;
             if changed > 0 {

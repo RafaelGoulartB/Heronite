@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 use gpui_kit::{Hsla, Pixels, Rgba, SharedString};
 
+use heronite_i18n::tr;
+
 use crate::icons::Icon;
 
 /// The line under a card's cover (`data::caption`).
@@ -33,6 +35,11 @@ pub(super) struct CardVm {
     pub favourite: bool,
     /// Index into the images the view keeps (cover chain id).
     pub cover_key: SharedString,
+    /// How many copies of the game (from several stores) this card stands
+    /// for; `0` when it is the only one.
+    pub copies: usize,
+    /// Shared by the Steam Family: the owner's name (empty when unknown).
+    pub family: Option<SharedString>,
 }
 
 #[derive(Clone)]
@@ -139,8 +146,89 @@ pub(super) enum DetailValue {
     },
 }
 
+/// A kind of "Details" row, which the user can turn off (Details → Edit
+/// rows…). The key is what `UiState::detail_rows_hidden` stores.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DetailField {
+    Developer,
+    Publisher,
+    Series,
+    LastPlayed,
+    Playtime,
+    Folders,
+    Features,
+    Themes,
+    GameModes,
+    Platforms,
+    Tags,
+    SteamTags,
+    AgeRating,
+    Notes,
+}
+
+impl DetailField {
+    /// In the order Details shows them.
+    pub const ALL: [DetailField; 14] = [
+        Self::Developer,
+        Self::Publisher,
+        Self::Series,
+        Self::LastPlayed,
+        Self::Playtime,
+        Self::Folders,
+        Self::Features,
+        Self::Themes,
+        Self::GameModes,
+        Self::Platforms,
+        Self::Tags,
+        Self::SteamTags,
+        Self::AgeRating,
+        Self::Notes,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Developer => "developer",
+            Self::Publisher => "publisher",
+            Self::Series => "series",
+            Self::LastPlayed => "lastPlayed",
+            Self::Playtime => "playtime",
+            Self::Folders => "folders",
+            Self::Features => "features",
+            Self::Themes => "themes",
+            Self::GameModes => "gameModes",
+            Self::Platforms => "platforms",
+            Self::Tags => "tags",
+            Self::SteamTags => "steamTags",
+            Self::AgeRating => "ageRating",
+            Self::Notes => "notes",
+        }
+    }
+
+    /// The name in the Edit rows dialog (the rows' own labels; the folders
+    /// are one switch).
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Developer => tr!("Developer"),
+            Self::Publisher => tr!("Publisher"),
+            Self::Series => tr!("Series"),
+            Self::LastPlayed => tr!("Last Played"),
+            Self::Playtime => tr!("Playtime"),
+            Self::Folders => tr!("Folders"),
+            Self::Features => tr!("Features"),
+            Self::Themes => tr!("Themes"),
+            Self::GameModes => tr!("Game modes"),
+            Self::Platforms => tr!("Platforms"),
+            Self::Tags => tr!("Tags"),
+            Self::SteamTags => tr!("Steam tags"),
+            Self::AgeRating => tr!("Age rating"),
+            Self::Notes => tr!("Notes"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(super) struct DetailRow {
+    pub field: DetailField,
     pub label: SharedString,
     pub value: DetailValue,
     /// Border-top separator (`.is-split`).
@@ -153,6 +241,14 @@ pub(super) struct HltbVm {
     pub extra: Option<f32>,
     pub complete: Option<f32>,
     pub played_hours: f32,
+    /// The game's page on HowLongToBeat.
+    pub link: Option<SharedString>,
+    /// HowLongToBeat's name for it, when not the game's.
+    pub name: Option<SharedString>,
+    /// Matched by a similar name only.
+    pub close: bool,
+    /// Picked by the user.
+    pub manual: bool,
 }
 
 /// A game of "Related games": its cover, title and a line about it.
@@ -180,6 +276,20 @@ pub(super) struct StatusVm {
     pub color: Rgba,
 }
 
+/// The age rating of the facts card (`heronite_data::age_rating`).
+#[derive(Clone)]
+pub(super) struct AgeVm {
+    /// "ESRB".
+    pub board: SharedString,
+    /// "T", "12", "MA 15+".
+    pub badge: SharedString,
+    /// "Teen", "Ages 12 and up".
+    pub title: SharedString,
+    /// The reasons, joined ("Blood, Mild Violence"); empty when none came.
+    pub reasons: SharedString,
+    pub min_age: Option<u8>,
+}
+
 #[derive(Clone)]
 pub(super) struct FocusVm {
     pub key: SharedString,
@@ -191,7 +301,17 @@ pub(super) struct FocusVm {
     pub overview_html: Option<Arc<Vec<super::html::Block>>>,
     pub related: Vec<RelatedGroupVm>,
     pub details: Vec<DetailRow>,
+    /// `None`: no board rated the game.
+    pub age: Option<AgeVm>,
+    /// Settings → Metadata → "Show age ratings": the facts card has its row.
+    pub age_shown: bool,
     pub hltb: Option<HltbVm>,
+    /// HowLongToBeat was asked about the game (with no `hltb`: no times).
+    pub hltb_checked: bool,
+    /// The HowLongToBeat game the times are of.
+    pub hltb_game_id: Option<u64>,
+    /// Release year, for the HowLongToBeat search.
+    pub release_year: Option<i32>,
     /// Current status (left column selector), `None` when the stored id is unknown.
     pub status: Option<StatusVm>,
     /// Critic score of the left column's facts card, `0..=100`.
@@ -213,13 +333,19 @@ pub(super) struct FocusVm {
     pub last_played: Option<SharedString>,
 }
 
+/// A group of `cards` for tests elsewhere in the Collection.
+#[cfg(test)]
+pub(super) fn test_group(id: &str, cards: &[&str], collapsed: bool) -> GroupVm {
+    tests::group(id, cards, collapsed)
+}
+
 #[cfg(test)]
 mod tests {
     use gpui_kit::px;
 
     use super::*;
 
-    fn group(id: &str, cards: &[&str], collapsed: bool) -> GroupVm {
+    pub(super) fn group(id: &str, cards: &[&str], collapsed: bool) -> GroupVm {
         let card = |key: &str| {
             Arc::new(CardVm {
                 key: key.to_string().into(),
@@ -230,6 +356,8 @@ mod tests {
                 hidden: false,
                 favourite: false,
                 cover_key: "".into(),
+                copies: 0,
+                family: None,
             })
         };
         GroupVm {

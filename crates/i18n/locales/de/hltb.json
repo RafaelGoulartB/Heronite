@@ -1,0 +1,18 @@
+{
+  "Asks HowLongToBeat about the game you select, then again after a month.": "Fragt HowLongToBeat nach dem ausgewählten Spiel und nach einem Monat erneut.",
+  "Change match…": "Zuordnung ändern…",
+  "Couldn't reach HowLongToBeat. Try again later.": "HowLongToBeat ist nicht erreichbar. Versuche es später erneut.",
+  "How long a game takes to beat, from howlongtobeat.com. Heronite is not affiliated with HowLongToBeat.": "Wie lange ein Spiel dauert, von howlongtobeat.com. Heronite ist nicht mit HowLongToBeat verbunden.",
+  "HowLongToBeat has no times for this game.": "HowLongToBeat hat keine Zeiten für dieses Spiel.",
+  "HowLongToBeat match": "HowLongToBeat-Zuordnung",
+  "HowLongToBeat times updated.": "HowLongToBeat-Zeiten aktualisiert.",
+  "Look up HowLongToBeat times": "Zeiten bei HowLongToBeat nachschlagen",
+  "Match automatically": "Automatisch zuordnen",
+  "Match picked by you": "Von dir gewählte Zuordnung",
+  "Matched by a similar name": "Über einen ähnlichen Namen gefunden",
+  "Matched by a similar name: {name}": "Über einen ähnlichen Namen gefunden: {name}",
+  "No games found. Try another name.": "Keine Spiele gefunden. Versuche einen anderen Namen.",
+  "Not on HowLongToBeat": "Nicht auf HowLongToBeat",
+  "Pick the game the times are of. Your pick is kept when the times are refreshed.": "Wähle das Spiel, zu dem die Zeiten gehören. Deine Wahl bleibt beim Aktualisieren erhalten.",
+  "Search HowLongToBeat": "Auf HowLongToBeat suchen"
+}

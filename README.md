@@ -1,42 +1,109 @@
-<h1 align="center">Heronite</h1>
+<h1 align="center"><a href="https://heronite.app"><img src="assets/icon.svg" alt="" width="44" height="51" align="absmiddle" /></a> Heronite</h1>
 
 <p align="center">
-  <a href="https://github.com/RafaelGoulartB/Heronite">
-    <img alt="GitHub stars" src="https://img.shields.io/github/stars/RafaelGoulartB/Heronite?style=social" />
-  </a>
-  <a href="LICENSE">
-    <img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPL_v3-2B8CA8.svg" />
-  </a>
-  <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest">
-    <img alt="Latest release" src="https://img.shields.io/github/v/release/RafaelGoulartB/Heronite?color=2B8CA8&label=release" />
-  </a>
+  <a href="https://github.com/RafaelGoulartB/Heronite"><img alt="GitHub stars" src="https://img.shields.io/github/stars/RafaelGoulartB/Heronite?style=social" /></a>
+  <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/RafaelGoulartB/Heronite?color=2B8CA8&label=release" /></a>
+  <a href="https://github.com/RafaelGoulartB/Heronite/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/RafaelGoulartB/Heronite/total?color=2B8CA8&logo=github&label=downloads" /></a>
+  <a href="https://github.com/RafaelGoulartB/Heronite/actions/workflows/ci.yml"><img alt="CI on Linux and Windows" src="https://img.shields.io/github/actions/workflow/status/RafaelGoulartB/Heronite/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white" /></a>
   <img alt="Built with Rust" src="https://img.shields.io/badge/built%20with-Rust-2B8CA8.svg?logo=rust&logoColor=white" />
-  <img alt="Platform: Linux" src="https://img.shields.io/badge/platform-Linux-2B8CA8.svg?logo=linux&logoColor=white" />
-  <a href="https://github.com/RafaelGoulartB/Heronite/releases">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/RafaelGoulartB/Heronite/total?color=2B8CA8&logo=github&label=downloads" />
-  </a>
+  <a href="LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPL_v3-2B8CA8.svg" /></a>
 </p>
 
 <p align="center">
-  Every game you own, on Linux, in one fast native launcher.
+  Every game you own, on Linux and Windows, in one fast native launcher.
 </p>
 
-https://github.com/user-attachments/assets/438452ac-dc6e-46fa-b443-9d85e94dca54
+<p align="center">
+  <a href="https://heronite.app"><b>Website</b></a> ·
+  <a href="https://github.com/RafaelGoulartB/Heronite/releases/latest"><b>Download</b></a> ·
+  <a href="https://github.com/RafaelGoulartB/Heronite/releases"><b>Release notes</b></a> ·
+  <a href="https://github.com/RafaelGoulartB/Heronite/wiki"><b>Wiki</b></a>
+</p>
 
-> [!NOTE]
-> **Windows support is coming soon.** Heronite runs on Linux today, and a Windows version is on the way.
+<p align="center">
+  <img alt="Heronite's Collection in Focus view: picking CONTROL and back to ELDEN RING, a look at its Compatibility, Performance and GPU settings, then the Grid view and back to Focus" src="assets/screenshots/demo.webp" width="100%" />
+</p>
 
-Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux, and Windows games into one Collection, launches them through Wine/Proton or an emulator, and records every session. It is a native Rust app (GPUI, GPU rendered) that [stays light on your PC](#light-on-your-pc).
+Heronite brings your games from Steam, Epic Games, GOG, Amazon Games, Xbox and PC Game Pass, Battle.net, EA app, Ubisoft Connect, and Rockstar Games, plus emulated, native Linux, and Windows games, into one Collection. It launches them natively, through Wine/Proton on Linux, or through an emulator, records every session, and [stays light on your PC](#light-on-your-pc) as a native Rust app (GPUI, GPU rendered).
+
+Coming from Heroic, Lutris, Bottles, Faugus, or Playnite? Heronite imports your games from them.
+
+## 📥 Download
+
+<div align="center">
+
+| Platform | Package | Download |
+|:---|:---|:---|
+| 🪟 Windows | Installer | [Heronite-Setup-x86_64.exe](https://github.com/RafaelGoulartB/Heronite/releases/latest/download/Heronite-Setup-x86_64.exe) |
+| 🪟 Windows | Portable | [Heronite-Portable-x86_64.zip](https://github.com/RafaelGoulartB/Heronite/releases/latest/download/Heronite-Portable-x86_64.zip) |
+| 🐧 Linux | AppImage (any distro, updates itself) | [Heronite-x86_64.AppImage](https://github.com/RafaelGoulartB/Heronite/releases/latest/download/Heronite-x86_64.AppImage) |
+| 🐧 Arch, Debian, Fedora | .pkg.tar.zst, .deb, .rpm | [Latest release](https://github.com/RafaelGoulartB/Heronite/releases/latest) |
+
+</div>
+
+<details>
+<summary><b>How to install</b></summary>
+
+| System | File | Install |
+|---|---|---|
+| Any distribution (**recommended**) | `Heronite-x86_64.AppImage` | `chmod +x Heronite-x86_64.AppImage && ./Heronite-x86_64.AppImage` |
+| Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `heronite_<version>-1_amd64.deb` | `sudo apt install ./heronite_*_amd64.deb` |
+| Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
+| Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
+| Windows 10 and 11 (**recommended**) | `Heronite-Setup-x86_64.exe` | Run it: it installs for your user, no administrator rights needed |
+| Windows 10 and 11, portable | `Heronite-Portable-x86_64.zip` | Extract it anywhere and run `Heronite\heronite.exe`; the library, settings, and screenshots stay in that folder |
+
+</details>
+
+
+<details>
+<summary><b>Windows - Scoop</b></summary>
+
+#### 🪟 Windows
+
+With [Scoop](https://scoop.sh), from the [`scoop-heronite`](https://github.com/RafaelGoulartB/scoop-heronite) bucket:
+
+```powershell
+scoop bucket add heronite https://github.com/RafaelGoulartB/scoop-heronite
+scoop install heronite/heronite
+```
+
+`scoop update heronite` installs new versions.
+
+</details>
+
+<details>
+<summary><b>Fedora - COPR</b></summary>
+
+#### 🐧 Fedora, Nobara, Ultramarine, Bazzite
+
+From the [`rafaelgoulart/heronite`](https://copr.fedorainfracloud.org/coprs/rafaelgoulart/heronite/) COPR:
+
+```bash
+sudo dnf copr enable rafaelgoulart/heronite
+sudo dnf install heronite
+```
+
+`sudo dnf upgrade` installs new versions.
+
+On atomic desktops (Bazzite, Silverblue, Kinoite), add the [COPR repo file](https://copr.fedorainfracloud.org/coprs/rafaelgoulart/heronite/) to `/etc/yum.repos.d/`, then run `rpm-ostree install heronite`.
+
+</details>
+
+
+
+The Windows files are not code-signed yet, so SmartScreen may warn about them: choose **More info**, then **Run anyway**.
+
+---
 
 ## Your library, organized
 
-- **Collection:** every game in a list with a details panel (Focus) or a grid of covers, switching by the window's width. Group by status, store, genre, series, year and more; drag the panels wider. The details panel shows screenshots, How Long To Beat, ProtonDB and anti-cheat status, achievements, related games, and a play timeline.
-- **Journal:** notes on the days you played and on your screenshots, plus where you left off.
-- **View menu:** filter, sort, and save the view as a preset (Playing now, Backlog, Finished, and Favourites built in). Search forgives accents and typos.
-- **Bulk edits:** change status, categories, and other fields of many games at once, with undo. A fields manager renames and merges genres, companies, and series.
-- **Command palette:** <kbd>Ctrl</kbd> <kbd>K</kbd> jumps to any page, runs any action, or finds and plays a game.
-- **Add any game:** native Linux programs, Windows programs, browser games, install scripts, or ROMs from a folder. Art comes from Steam, SteamGridDB, IGDB, Lutris, the web, or your own screenshots.
-- **Getting started:** on first run, Heronite finds your Steam library, emulators, and ROM folders, and a checklist walks you through the rest.
+- **Collection:** a list with details or a grid of covers, grouped by status, store, genre, series, game mode (co-op, split screen...), or year, and filtered by any of those or by the tags Steam players gave a game. Details show screenshots, How Long To Beat, achievements, and a play timeline.
+- **Journal:** notes on your play days and screenshots.
+- **Views:** filter, sort, and save presets like Playing now or Backlog. Search forgives typos.
+- **Bulk edits:** change many games at once, with undo.
+- **Command palette:** <kbd>Ctrl</kbd> <kbd>K</kbd> opens any page, action, or game.
+- **Add any game:** programs, browser games, scripts, or ROM folders, with art from Steam, SteamGridDB, IGDB, and more.
 
 <table>
   <tr>
@@ -45,29 +112,37 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
   </tr>
 </table>
 
-## Install, configure, and play
+## Stores and launchers
 
-- **Stores:** Steam (no login needed), Epic Games, GOG, and Amazon Games, with EA app and Ubisoft Connect games started through their apps. One download queue to install, update, repair, move, import, and uninstall; it pauses while offline and retries failed downloads.
-- **Wine and Proton:** per-game Wine version, prefix, DXVK-NVAPI, Esync/Fsync, gamescope, FPS limit, GPU choice, DLSS/FSR/XeSS upgrades, Winetricks, protonfixes via umu, and Lossless Scaling frame generation (lsfg-vk).
-- **Launching:** see each step of a launch and cancel it, run scripts before and after the game or programs alongside it, and add your own actions next to Play.
-- **Sandbox:** run a game you do not trust, and its installer, through bubblewrap: no network, no access to your home folder, only its prefix and its folder. Winetricks, Run EXE and the programs alongside the game run inside it too. When a game needs more, let one thing through (the Internet, writing to its folder, your shared folders, every device), each one with what it risks.
-- **Wine Manager:** download and update Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, Proton-EM, and Proton-Sarek, and manage Wine prefixes.
-- **Emulators:** detect installed emulators or add your own with RetroArch cores, scan ROM folders, and continue from save states.
-- **In-game overlay (beta):** press the controller's Guide button (or a shortcut) for a panel over the game with volume, microphone, FPS limit, screenshots, and journal notes. Guide + Y marks a moment to write about later.
-- **Replay (off by default):** keep the last seconds of the game (30 unless changed) and save them with Guide + X (or a keyboard shortcut of your own) as a moment in its journal, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/) on the graphics card's encoder. Settings shows the memory it takes and how to spare it (Vulkan video, the buffer on disk, a smaller video); each game can have it on or off on its own.
+- **Epic Games, GOG, and Amazon Games:** log in and install, update, repair, or move games from one download queue. On Windows, games from their official launchers come in without downloading again.
+- **Steam:** your library comes in by itself, no login needed.
+- **Xbox and PC Game Pass (Windows):** Microsoft Store and Game Pass games show up in your Collection, launch from Heronite, and count their play time.
+- **Battle.net, EA app, Ubisoft Connect, and Rockstar Games:** their games join your Collection, through the store's own app on Windows and in its own Wine prefix on Linux.
+- **Other launchers:** import and sync games from Heroic, Lutris, Bottles, and Faugus on Linux, and from Playnite on Windows.
+- **Games you already have:** add one by hand, or a whole folder at once.
+
+## Configure and play
+
+- **Wine and Proton (Linux):** per-game version and prefix, DXVK, gamescope, FPS limit, DLSS/FSR upgrades, Winetricks, and Lossless Scaling frame generation.
+- **Wine Manager (Linux):** download Proton-CachyOS, GE-Proton, and other builds, and manage prefixes.
+- **Launching:** scripts before and after, programs alongside (like trainers), and presets to reuse.
+- **Sandbox (Linux):** run untrusted games without network or access to your home folder.
+- **Emulators:** detected by themselves or added with RetroArch cores, with ROM scanning and save states.
+- **In-game overlay:** volume, screenshots and notes over the game; Linux also has live FPS limits. Windows supports windowed/borderless games, with Ctrl+Shift+G or an XInput controller's Back+Start ([limits](docs/WINDOWS-MIGRATION.md#-in-game-overlay)).
+- **Replay (Linux):** save the last seconds of play with Guide + X, recorded by [gpu-screen-recorder](https://git.dec05eba.com/gpu-screen-recorder/about/).
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/game-settings.webp"><img src="assets/screenshots/game-settings.webp" width="100%" alt="Game settings for Control on the Compatibility tab, with the Proton version, prefix, Winecfg and Winetricks buttons, and the umu game fixes" /></a><br /><sub><b>Game settings</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/wine-manager.webp"><img src="assets/screenshots/wine-manager.webp" width="100%" alt="Wine Manager listing Proton-CachyOS builds with release dates, sizes, and install buttons" /></a><br /><sub><b>Wine Manager</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/game-settings.webp"><img src="assets/screenshots/game-settings-proton.webp" width="100%" alt="Control's Compatibility settings: GE-Proton-latest as the version, ProtonDB Platinum with the recommended build, the game's prefix, and the Winecfg, Winetricks, and Run .exe in prefix buttons" /></a><br /><sub><b>Proton and prefix, per game</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/wine-manager.webp"><img src="assets/screenshots/wine-manager-builds.webp" width="100%" alt="Wine Manager with Proton-CachyOS, GE-Proton, DW-Proton, UMU-Proton, and Proton-EM, each explained, next to the list of Proton-CachyOS builds" /></a><br /><sub><b>Wine Manager</b></sub></td>
   </tr>
 </table>
 
 ## Look back at what you played
 
-- **Statistics:** play time by week, month, year, or all time, in five tabs: **Overview** (charts, top games, records), **Journeys** (each game as a lane in time), **Backlog** (a yearly goal of games to beat and a plan for the rest), **Discoveries** (the period told in sentences, with milestones), and **Album** (your screenshots as moments). Any game opens a sheet with its own numbers.
-- **Year in review:** your year told as full-screen stories, with a summary card to share.
-- **Sessions:** every launch is recorded, in-game screenshots are matched to the game, and sessions can be edited by hand.
+- **Statistics:** play time by week, month, or year, plus a yearly backlog goal.
+- **Year in review:** your year as full-screen stories, with a card to share.
+- **Sessions:** every launch is recorded, and screenshots are matched to the game.
 
 <table>
   <tr>
@@ -76,12 +151,17 @@ Heronite puts your Steam, Epic Games, GOG, Amazon Games, emulated, native Linux,
   </tr>
   <tr>
     <td width="50%" align="center"><a href="assets/screenshots/stats-backlog.webp"><img src="assets/screenshots/stats-backlog.webp" width="100%" alt="Backlog tab for 2026 with 9 games beaten, the yearly goal ring, and the beaten games along the year" /></a><br /><sub><b>Backlog</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/year-in-review-wrap.webp"><img src="assets/screenshots/year-in-review-wrap.webp" width="100%" alt="Year in review closing story: 410 screenshots, 9 games beaten, and a share card with 711 hours played in 2026" /></a><br /><sub><b>Share card</b></sub></td>
   </tr>
 </table>
 
 ## Console mode
 
-A controller-first layout for the couch or a TV that covers the whole app, with an on-screen keyboard and a Power menu to suspend or shut down. Turn it on from the palette, the ☰ menu, or with `--console`.
+A controller-first layout for the couch or a TV. Turn it on from the ☰ menu, the palette, or with `--console`.
+
+- **Themes:** eight layouts (Shelves, Spotlight, Cinema, Grid, Wheel, and more), with your own covers, colours, fonts, and menus.
+- **Share them:** seven built-in themes, or export yours as a `.heronite-theme.json` file.
+- **Light when off:** nothing loads until you turn it on. It can open at startup or when a controller connects.
 
 <table>
   <tr>
@@ -92,77 +172,75 @@ A controller-first layout for the couch or a TV that covers the whole app, with 
 
 ## Make it yours
 
-- **Appearance:** a dark or light theme (or the desktop's, or one in colours you pick), profiles, an accent colour (or the game's), high contrast, fonts, density, cover style, a background picture or slideshow behind the Collection, and which sections the details panel shows.
-- **Language:** English and Portuguese (Brazil), switched live.
-- **Saves and backups:** back up saves with Ludusavi after each session and restore them into any prefix. Scheduled, incremental backups of your Collection, play history, settings, and art.
-- **Storage:** see what your games take on each disk and clean up leftovers in one click.
-- **Startup:** start with the system, launch games via `heronite://launch` links or `--launch`.
+- **Appearance:** dark or light, accent colour, fonts, density, and a background picture.
+- **Language:** English, Portuguese (Brazil), Spanish, and German.
+- **Saves and backups:** Ludusavi save backups after each session (and, if you choose, every 15 minutes to 2 hours while you play), and scheduled Collection backups.
+- **Sync:** status, ratings, notes, and play time stay the same across your PCs or both sides of a dual boot, through a shared folder or a cloud account ([rclone](https://rclone.org/)), which can also keep your backups, saves, and screenshots.
+- **Storage:** see what your games take on each disk and clean up leftovers.
+- **Startup:** start with the system, and launch games from `heronite://` links.
 
 <table>
   <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/appearance.webp"><img src="assets/screenshots/appearance.webp" width="100%" alt="Appearance settings with profiles, accent colours, font and density, and a live preview of the Collection background" /></a><br /><sub><b>Appearance</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/storage.webp"><img src="assets/screenshots/storage.webp" width="100%" alt="Storage settings with disk usage bars, space to free up, and a treemap of installed games by size" /></a><br /><sub><b>Storage</b></sub></td>
-  </tr>
-  <tr>
-    <td width="50%" align="center"><a href="assets/screenshots/backups.webp"><img src="assets/screenshots/backups.webp" width="100%" alt="Backups settings with the backup folder, schedule, what goes in a backup, and the last backup" /></a><br /><sub><b>Backups</b></sub></td>
-    <td width="50%" align="center"><a href="assets/screenshots/screenshots.webp"><img src="assets/screenshots/screenshots.webp" width="100%" alt="Screenshots settings with the capture folder and space used, lossless compression, the in-game capture shortcut, and controller capture" /></a><br /><sub><b>Screenshots</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/console-settings.webp"><img src="assets/screenshots/console-settings.webp" width="100%" alt="Console mode settings: the Minimal, Classic, Cinema, and Pulse themes, and the theme in use with a live preview next to its focus colour, cover shape and size, corners, background picture, font, hint bar, and button glyphs" /></a><br /><sub><b>Console mode themes</b></sub></td>
+    <td width="50%" align="center"><a href="assets/screenshots/storage.webp"><img src="assets/screenshots/storage-panel.webp" width="100%" alt="Storage settings with disk usage bars, space to free up, and a treemap of installed games by size" /></a><br /><sub><b>Storage</b></sub></td>
   </tr>
 </table>
 
 ## Light on your PC
 
-A single native process that draws its UI on the GPU, with no bundled browser engine. When idle, it does almost no work.
+A single native process drawn on the GPU, with no bundled browser like Electron-based launchers carry. The idle numbers come from [`scripts/idle-cost.sh`](scripts/idle-cost.sh), so you can check them on your own PC.
 
-| | Heronite |
+| | Heronite Usage |
 |---|---|
 | Memory while idle | **~190 MB** in a single process, **~95 MB** closed to the tray |
 | CPU while idle | **~0.1%** (0.05 s of CPU time over 60 s) |
 | Install size | **64 MB** (app + store login helper) |
 | Start to library on screen | **~215 ms** median |
 
-## Your data
-
-Everything stays on your machine, in Heroic-compatible files under `~/.local/share/heronite/` (override with `HERONITE_DATA_DIR`). On first start, Heronite copies an existing Heroic setup once, without ever writing to Heroic's folders. For IGDB metadata, add your Twitch client ID and secret in **Settings > Metadata**.
-
-## Download
-
-Every [release](https://github.com/RafaelGoulartB/Heronite/releases/latest) has an AppImage and packages for Debian/Ubuntu, Fedora/openSUSE, and Arch:
-
-| System | File | Install |
-|---|---|---|
-| Any distribution (**recommended**) | `Heronite-x86_64.AppImage` | `chmod +x Heronite-x86_64.AppImage && ./Heronite-x86_64.AppImage` |
-| Debian 12+, Ubuntu 22.04+, Mint, Pop!_OS | `heronite_<version>-1_amd64.deb` | `sudo apt install ./heronite_*_amd64.deb` |
-| Fedora 36+, openSUSE | `heronite-<version>-1.x86_64.rpm` | `sudo dnf install ./heronite-*.x86_64.rpm` |
-| Arch, Manjaro, EndeavourOS, CachyOS | `heronite-<version>-1-x86_64.pkg.tar.zst` | `sudo pacman -U heronite-*-x86_64.pkg.tar.zst` |
-
-Heronite updates itself: a card offers new versions, and every download is checked against its signing key. Keep the AppImage in a writable folder (like `~/Applications`) so it can update in place.
 
 ## Run from source
 
-You need a stable Rust toolchain, `clang` and `lld`, a Vulkan-capable GPU driver, and GTK/WebKitGTK. Heronite downloads legendary, gogdl, and nile on its own; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional for save backups.
+<details>
+<summary>Show build instructions</summary>
+
+<br>
+
+You need stable Rust. On Linux, also `clang` and `lld`, a Vulkan driver, and GTK/WebKitGTK; on Windows, the Visual Studio Build Tools ("Desktop development with C++") and [CMake](https://cmake.org) on the `PATH` (it builds SDL, which reads the controllers in console mode). Heronite downloads legendary, gogdl, and nile itself; [Ludusavi](https://github.com/mtkennerly/ludusavi) is optional.
 
 ```bash
 # quick build (the login window is its own binary, so build it too)
 cargo build --profile quick -p heronite-epic-login && cargo run --profile quick -p heronite
 
-# release build, installed for the current user
+# release build, installed for the current user (Linux)
 scripts/install.sh
+
+# installer and portable zip in dist\ (Windows, needs Inno Setup 6.3 or later)
+powershell -ExecutionPolicy Bypass -File scripts\windows\package.ps1
 ```
 
-## Development
+</details>
 
-A Cargo workspace: `app/` is the GPUI binary, `crates/` holds the GPUI-free libraries, and `heronite-epic-login` is the separate store login window.
 
-```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets
-cargo test --workspace
-```
+## Contributors
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md), [CODE-STYLE.md](docs/CODE-STYLE.md), and [UI-CONVENTIONS.md](docs/UI-CONVENTIONS.md). To release, merge a pull request labelled `release:patch`, `release:minor`, or `release:major`. Issues and pull requests are welcome.
+Heronite is better because of the people who gave their time to it. Thank you! 💜
+
+<a href="https://github.com/RafaelGoulartB/Heronite/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=RafaelGoulartB/Heronite" alt="Heronite contributors" />
+</a>
+
+Feel free to contribute too: every [pull request](https://github.com/RafaelGoulartB/Heronite/pulls) and [issue](https://github.com/RafaelGoulartB/Heronite/issues) is welcome!
 
 ## License
 
 Copyright (C) 2026 [Rafael Goulart](https://www.linkedin.com/in/rafael-goulartb/)
 
-Licensed under the [GNU General Public License v3.0](LICENSE). Heronite builds on the [Heroic Games Launcher](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher), also GPL-3.0. Third-party components keep their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Licensed under the [GNU General Public License v3.0](LICENSE). Third-party components keep their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+## Contact
+
+- **Questions and ideas:** [Discussions](https://github.com/RafaelGoulartB/Heronite/discussions)
+- **Bugs:** [Issues](https://github.com/RafaelGoulartB/Heronite/issues)
+- **Contributing:** start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [architecture notes](docs/ARCHITECTURE.md)
+- **Security problems:** report them privately, as [SECURITY.md](SECURITY.md) explains
+- **Anything else:** [hello@heronite.app](mailto:hello@heronite.app)

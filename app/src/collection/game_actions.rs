@@ -29,6 +29,8 @@ pub(super) enum GameAction {
     PlayWith(Option<heronite_epic::launch_options::LaunchOption>),
     /// Runs one of the actions the user added to the game (by id).
     User(String),
+    /// Opens the store client that starts the game (Battle.net, the EA app...).
+    OpenClient,
     /// The game settings on the Actions tab, where the actions are edited.
     EditActions,
     /// One of the other ways to install (the Install flyout).
@@ -45,6 +47,8 @@ pub(super) enum GameAction {
     Settings,
     /// The Mods manager (installed PC games).
     Mods,
+    /// The game settings on the ReShade section.
+    Reshade,
     EditGame,
     /// An emulated game played as a PC game from now on (a native port).
     PlayAsPc,
@@ -52,6 +56,8 @@ pub(super) enum GameAction {
     Hide,
     RemoveRecent,
     Log,
+    /// Why the game closed right after starting, and the fixes.
+    Troubleshoot,
     Details,
     EditPlaytime,
     Ludusavi,
@@ -75,6 +81,10 @@ pub(super) enum GameAction {
         add: bool,
     },
     Epic(EpicAction),
+    /// Plays (or installs) this copy of the game (a Collection key).
+    PlayCopy(String),
+    /// Takes the game's copies apart.
+    UngroupCopies,
 }
 
 #[derive(Clone, Debug)]
@@ -145,6 +155,17 @@ impl CollectionView {
                 );
             }
         }
+        // Its client installs, updates and uninstalls it (and lets the user
+        // sign in): the way to it is one click away.
+        if let Some(client) = game.client() {
+            v.push(GameActionItem::new(
+                A::OpenClient,
+                "open-client",
+                tr!("Open {client}", client = client.name()),
+                Icon::Storefront,
+                "store client launcher sign in install update loja cliente entrar instalar atualizar abrir",
+            ));
+        }
         for a in self.actions_of(&game.key).to_vec() {
             // One that plays waits for the game to end.
             if a.plays() && playing {
@@ -205,6 +226,15 @@ impl CollectionView {
                 Icon::Tune,
                 "config configure options wine proton launch configuracoes opcoes ajustes",
             ));
+            if self.reshade_fits(&game.key, cx) {
+                v.push(item(
+                    A::Reshade,
+                    "reshade",
+                    "ReShade",
+                    Icon::Palette,
+                    "reshade shaders preset filters effects sharpen filtros efeitos nitidez",
+                ));
+            }
         }
         // Emulated games have no mods; console mode builds no manager.
         if game.installed && game.launch_kind.as_deref() != Some("emulator") && !crate::console::active() {
@@ -217,9 +247,18 @@ impl CollectionView {
             ));
         }
         // Sideloaded programs and browser games; not Steam/emulated entries,
-        // nor the ones another launcher starts.
+        // nor the ones another launcher or a store client starts.
         if game.runner == "sideload"
-            && !matches!(game.launch_kind.as_deref(), Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND))
+            && !matches!(
+                game.launch_kind.as_deref(),
+                Some(
+                    "steam-uri"
+                        | "emulator"
+                        | heronite_data::launchers::LAUNCH_KIND
+                        | heronite_data::clients::LAUNCH_KIND
+                        | heronite_data::xbox::LAUNCH_KIND
+                )
+            )
         {
             v.push(item(
                 A::EditGame,
@@ -238,7 +277,7 @@ impl CollectionView {
                 "native port pc version executable linux windows nativo versao pc executavel",
             ));
         }
-        // The focus panel has its own button; the palette keeps it.
+        // Game settings has its own button; the palette keeps it.
         v.push(
             item(
                 A::Metadata,
@@ -264,8 +303,20 @@ impl CollectionView {
             ));
         }
         v.push(item(A::Log, "log", tr!("View log"), Icon::Description, "logs debug output ver registro depuracao saida"));
+        // What Steam starts has no launch log of ours.
+        // The diagnosis reads Wine's and Proton's logs.
+        if game.installed && crate::diagnosis::reads(game) && heronite_platform::supported(heronite_platform::Feature::Wine) {
+            v.push(item(
+                A::Troubleshoot,
+                "troubleshoot",
+                tr!("Troubleshoot"),
+                Icon::Build,
+                "troubleshoot launch crash fix error not starting closes problem diagnose falha erro nao abre fecha problema corrigir diagnostico solucionar",
+            ));
+        }
         v.extend(self.extras_actions(game));
         v.extend(self.steam_copy_actions(game));
+        v.extend(self.copies_actions(game));
         v.extend(self.epic_actions(game, cx));
         v.extend(self.system_actions(game, cx));
 
@@ -308,15 +359,14 @@ impl CollectionView {
         match action {
             A::Primary => self.install_or_play(key, window, cx),
             A::PlayWith(choice) => self.play_with(key, choice.clone(), cx),
+            A::OpenClient => self.open_client_of(key, cx),
             A::User(id) => self.run_user_action(key, id, cx),
             A::EditActions => self.open_actions_editor(key, window, cx),
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
             A::Category { name, on } => self.set_game_category(key, name, *on, cx),
-            A::Favourite => {
-                self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_favourite(paths, &g.app_name, &g.title))
-            }
-            A::Hide => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_hidden(paths, &g.app_name, &g.title)),
+            A::Favourite => self.toggle_favourite_of(key, cx),
+            A::Hide => self.toggle_hidden_of(key, cx),
             A::RemoveRecent => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::remove_recent(paths, &g.app_name)),
             A::OpenFolder => self.open_install_folder(key, cx),
             A::Settings => {
@@ -326,12 +376,14 @@ impl CollectionView {
                 self.open_dialog(view, cx);
             }
             A::Mods => self.open_mods(key, window, cx),
+            A::Reshade => self.open_reshade(key, window, cx),
             A::EditGame => {
-                self.open_edit_game(key, window, cx);
-            }
+            self.open_edit_game(key, window, cx);
+        }
             A::PlayAsPc => self.open_play_as_pc(key, window, cx),
             A::Metadata => self.open_metadata_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
+            A::Troubleshoot => self.troubleshoot_launch(key, None, cx),
             A::Details => self.open_details(key, cx),
             A::EditPlaytime => self.open_playtime_settings(key, window, cx),
             A::Ludusavi => self.open_ludusavi_backup(key, cx),
@@ -344,8 +396,17 @@ impl CollectionView {
             A::Shortcuts { add } => self.run_shortcuts(key, *add, cx),
             A::Steam { add } => self.run_steam_shortcut(key, *add, cx),
             A::Epic(a) => self.run_epic_action(key, *a, cx),
+            A::PlayCopy(copy) => self.play_copy(copy, window, cx),
+            A::UngroupCopies => self.ungroup_copies(key, cx),
         }
         cx.notify();
+    }
+
+    /// Opens the window of the store client that owns the game under `key`.
+    pub(super) fn open_client_of(&mut self, key: &str, cx: &mut Context<Self>) {
+        let Some(client) = self.lib.as_ref().and_then(|l| l.get(key)).and_then(|g| g.client()) else { return };
+        let svc = crate::services::clients(cx);
+        svc.update(cx, |s, cx| s.open(client, cx));
     }
 
     /// Favourites, hidden and recent lists: one write, then a reload.

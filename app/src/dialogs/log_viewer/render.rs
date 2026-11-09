@@ -49,6 +49,9 @@ impl LogViewer {
                 last_group = Some(g);
                 col = col.child(
                     div()
+                        // Flashes when the Settings search jumps to it.
+                        .relative()
+                        .children(crate::ui::find::flash(header, 4.))
                         .px(px(8.))
                         .pt(px(if i == 0 { 2. } else { 10. }))
                         .pb(px(2.))

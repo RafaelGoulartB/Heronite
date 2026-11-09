@@ -8,6 +8,7 @@ use gpui_kit::*;
 use heronite_data::settings::{self, EffectiveSettings, DEFAULT_CAPTURE_ACCELERATOR};
 use heronite_i18n::{grouped, tr, trn};
 use heronite_media::{CacheInfo, ThumbnailCache};
+use heronite_platform::{supported, Feature};
 
 use super::SettingsPage;
 use crate::collection::screenshots_global;
@@ -32,9 +33,14 @@ pub struct State {
 impl State {
     pub fn new(ctx: &PageCtx, s: &EffectiveSettings, window: &mut Window, cx: &mut Context<SettingsPage>) -> Self {
         let folder = new_input(window, cx, &s.screenshots.folder, "");
-        on_commit(&folder, window, cx, |d: &mut SettingsPage, value, _, cx| {
+        on_commit(&folder, window, cx, |d: &mut SettingsPage, value, window, cx| {
             if value != d.settings.screenshots.folder {
-                save(d, Some(value), None, None, None, cx);
+                save(d, Some(value.clone()), None, None, None, cx);
+                // An emptied field shows the default folder it went back to.
+                let now = d.settings.screenshots.folder.clone();
+                if now != value {
+                    d.screenshots.folder.update(cx, |s, cx| s.set_value(now, window, cx));
+                }
             }
         });
         let limit = new_input(window, cx, &format_number(s.screenshots.cache_limit_mb.get()), "");
@@ -253,6 +259,10 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let s = d.settings.screenshots.clone();
     let st = &d.screenshots;
     let has_folder = !s.folder.is_empty();
+    // The default folder offers "Browse"; one the user chose offers "Clear",
+    // which goes back to the default.
+    let default_folder = d.ctx.data_paths.default_screenshots().map(|p| p.to_string_lossy().into_owned());
+    let chosen = has_folder && default_folder.as_deref() != Some(s.folder.as_str());
     let accel = if s.capture_accelerator.is_empty() { DEFAULT_CAPTURE_ACCELERATOR.to_string() } else { s.capture_accelerator.clone() };
     let status = screenshots_global(cx).and_then(|g| g.capture).map(|c| c.status());
     let focused = st.hotkey.is_focused(window);
@@ -275,12 +285,14 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             "shot-folder-icon",
             Some(tr!("Screenshots folder")),
             &st.folder,
-            has_folder,
+            chosen,
             false,
             cx.listener(move |d: &mut SettingsPage, _: &ClickEvent, window, cx| {
-                // "Clear" empties the folder, "Browse" opens the chooser.
-                if has_folder {
-                    d.screenshots.folder.update(cx, |s, cx| s.set_value("", window, cx));
+                // "Clear" empties the folder (back to the default, if any),
+                // "Browse" opens the chooser.
+                if chosen {
+                    let value = default_folder.clone().unwrap_or_default();
+                    d.screenshots.folder.update(cx, |s, cx| s.set_value(value, window, cx));
                     save(d, Some(String::new()), None, None, None, cx);
                 } else {
                     choose_path(window, cx, true, tr!("Choose"), |d: &mut SettingsPage, path, window, cx| {
@@ -299,7 +311,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
 
     let status_line: Option<(SharedString, bool)> = if s.capture_enabled {
         Some(match status {
-            Some(status) if status.registered => (tr!("Shortcut registered and ready.").into(), false),
+            Some(status) if status.registered => (registered_text().into(), false),
             Some(status) if status.error.is_some() => (status.error.unwrap_or_default().into(), true),
             _ => (tr!("The shortcut activates automatically when a game starts.").into(), false),
         })
@@ -322,6 +334,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .child(meta_text(tr!(
                 "Click the shortcut field and press the desired key combination. Captures are saved in the matched game folder and appear automatically in Collection."
             )))
+            .children(shortcut_note().map(meta_text))
             .children(status_line.map(|(text, error)| {
                 div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
             }))
@@ -427,18 +440,22 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             )))
             .child(card);
     }
-    let overlay_on = d.overlay_enabled();
-    let pad_shot = super::overlay::pad_shot_card(d, cx);
+    col = col.child(caption(tr!("In-game capture"))).child(capture);
+    // The controller's capture goes through the in-game overlay, which not
+    // every system has.
+    if supported(Feature::Overlay) {
+        let overlay_on = d.overlay_enabled();
+        let pad_shot = super::overlay::pad_shot_card(d, cx);
+        col = col
+            .child(caption(tr!("With the controller")))
+            .child(div().px(px(6.)).pb(px(8.)).child(meta_text(if overlay_on {
+                tr!("Works during a game opened by Heronite, through the in-game overlay.")
+            } else {
+                tr!("Needs the in-game overlay, which is off: turn it on in Settings → Overlay.")
+            })))
+            .child(div().when(!overlay_on, |d| d.opacity(0.5)).child(pad_shot));
+    }
     col = col
-        .child(caption(tr!("In-game capture")))
-        .child(capture)
-        .child(caption(tr!("With the controller")))
-        .child(div().px(px(6.)).pb(px(8.)).child(meta_text(if overlay_on {
-            tr!("Works during a game opened by Heronite, through the in-game overlay.")
-        } else {
-            tr!("Needs the in-game overlay, which is off: turn it on in Settings → Overlay.")
-        })))
-        .child(div().when(!overlay_on, |d| d.opacity(0.5)).child(pad_shot))
         .child(caption(tr!("Preview cache")))
         .child(div().px(px(6.)).pb(px(8.)).child(meta_text(tr!(
             "Thumbnails generated so the screenshot gallery opens instantly. They are recreated on demand after clearing."
@@ -448,6 +465,22 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         col = col.child(div().mt(px(10.)).mx(px(6.)).text_size(px(13.)).text_color(theme::success()).child(m));
     }
     col.into_any_element()
+}
+
+/// The status line while the shortcut is registered.
+fn registered_text() -> &'static str {
+    if cfg!(windows) {
+        tr!("Shortcut registered with Windows and ready. The game's monitor is captured with DXGI Desktop Duplication.")
+    } else {
+        tr!("Shortcut registered and ready.")
+    }
+}
+
+/// What the shortcut does to the game on this system, if it needs saying.
+fn shortcut_note() -> Option<&'static str> {
+    cfg!(windows).then(|| {
+        tr!("While a game runs, Windows hands this shortcut to Heronite alone: the game does not receive it, so pick keys the game does not use.")
+    })
 }
 
 /// Shortcuts offered in console mode (a controller cannot record one).
@@ -494,9 +527,11 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
         Row::toggle("capture", tr!("Capture screenshots while a game runs"), s.capture_enabled),
         Row::choice("shortcut", tr!("Screenshot shortcut"), shortcuts.into_iter().map(SharedString::from).collect(), si)
             .desc(tr!("Captures go to the game's folder and show up in the Collection")),
-        Row::header(tr!("With the controller")),
     ]);
-    rows.extend(super::overlay::console_pad_shot_rows(d));
+    if supported(Feature::Overlay) {
+        rows.push(Row::header(tr!("With the controller")));
+        rows.extend(super::overlay::console_pad_shot_rows(d));
+    }
     rows.extend([
         Row::header(tr!("Preview cache")),
         Row::number("limit", tr!("Cache limit"), s.cache_limit_mb.get() as i64, 50, 10_000, 50, " MB"),

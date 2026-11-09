@@ -5,6 +5,7 @@
 //! so they are saved the same way. Hosted by the console game settings and
 //! the console Settings page.
 
+use heronite_platform::{supported, Feature};
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -150,14 +151,21 @@ impl SettingsPanel {
             i.row.changed = self.console_changed(&i.row.id).is_some();
         }
         if !self.console_tab_changes().is_empty() {
-            v.insert(
-                0,
-                Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+            let asking = self.confirm_reset;
+            let mut reset = Self::c_do("reset-tab", tr!("Reset this tab"), Icon::Replay, true, |this, _, cx| {
+                if this.confirm_reset {
                     let groups = this.console_tab_changes();
                     this.reset(&groups, cx);
-                })
-                .desc_item(tr!("The marked settings go back to the game defaults")),
-            );
+                } else {
+                    this.confirm_reset = true;
+                }
+            });
+            if asking {
+                reset.row = reset.row.danger().desc(tr!("A again puts this tab's settings back to the defaults."));
+            } else {
+                reset.row = reset.row.desc(tr!("The marked settings go back to the game defaults"));
+            }
+            v.insert(0, reset);
         }
         v
     }
@@ -387,7 +395,7 @@ impl SettingsPanel {
                     .map(|(k, v)| format!("{k}={}", shlex::try_quote(v).map(|q| q.into_owned()).unwrap_or_else(|_| v.clone())))
                     .collect::<Vec<_>>()
                     .join(" ");
-                this.console_osk(tr!("Environment Variables"), &current, window, cx, |this, text, _, cx| {
+                this.console_osk(tr!("Environment variables"), &current, window, cx, |this, text, _, cx| {
                     this.apply_env_text(&text, cx);
                 });
             });
@@ -471,6 +479,13 @@ impl SettingsPanel {
     }
 
     fn c_advanced(&self, cx: &App) -> Vec<Item> {
+        if self.steam_direct() {
+            let mut v = vec![Self::c_header(tr!("Launch"))];
+            v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
+            v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+            v.extend(self.c_companions());
+            return v;
+        }
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
         let game = self.is_game();
@@ -504,20 +519,27 @@ impl SettingsPanel {
             it.row = it.row.desc(if err.is_empty() { tr!("Appended to the launch command, like -nolauncher") } else { err });
             v.push(it);
         }
-        v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
-        v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
-        if game {
+        let (extras, wrappers) = (logic::extras(), logic::wrappers());
+        if extras {
+            v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
+            v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+        }
+        if game && extras {
             v.extend(self.c_companions());
         }
-        v.extend(self.c_presets(false));
-        v.extend(self.c_pairs(WRAPPERS));
+        if extras {
+            v.extend(self.c_presets(false));
+        }
+        if wrappers {
+            v.extend(self.c_pairs(WRAPPERS));
+        }
         v.extend(self.c_pairs(ENV));
         v.extend(self.c_preview());
         if game && !self.native() && self.wine_version().kind == "proton" {
             v.push(Self::c_header(tr!("Legacy (mostly deprecated)")));
             v.push(self.c_toggle("disableUMU", false, tr!("Disable umu"), None, false));
         }
-        if self.native() {
+        if self.native() && wrappers {
             let current = match self.settings.get("steamRuntime") {
                 Some(Value::String(s)) if !s.is_empty() => s.clone(),
                 _ => "none".to_string(),
@@ -678,6 +700,9 @@ impl SettingsPanel {
         let with_system = self.flag("startWithSystem", false);
         let app_paths = heronite_data::AppPaths::for_data(&self.paths);
         let (choices, names, selected) = super::general::language_options(&app_paths);
+        // What this system has, as on the desktop (`general.rs`).
+        let wine = supported(Feature::Wine);
+        let stores = heronite_platform::features::any_store();
         let mut v = vec![
             Self::c_header(tr!("Language")),
             item(
@@ -688,20 +713,39 @@ impl SettingsPanel {
                     }
                 })),
             ),
-            Self::c_header(tr!("Folders")),
-            self.c_path("defaultInstallPath", tr!("Default install folder"), true, cx),
-            self.c_path("defaultWinePrefixDir", tr!("Folder for new Wine prefixes"), true, cx),
-            self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
-            Self::c_header(tr!("Startup")),
-            self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false),
-            self.c_toggle("startInTray", false, tr!("Start minimized"), None, !with_system || no_tray),
-            Self::c_header(tr!("System Tray")),
-            self.c_toggle("exitToTray", false, tr!("Exit to tray"), None, no_tray),
-            self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon (needs restart)"), None, no_tray),
-            self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon (needs restart)"), None, false),
-            Self::c_header(tr!("When a game starts and ends")),
-            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize after game launch"), None, false),
         ];
+        if stores || wine {
+            v.extend([Self::c_header(tr!("Folders")), self.c_path("defaultInstallPath", tr!("Default install folder"), true, cx)]);
+        }
+        if wine {
+            v.extend([
+                self.c_path("defaultWinePrefixDir", tr!("Folder for new Wine prefixes"), true, cx),
+                self.c_path("defaultSteamPath", tr!("Steam folder"), true, cx),
+            ]);
+        }
+        if supported(Feature::Autostart) {
+            v.extend([Self::c_header(tr!("Startup")), self.c_toggle("startWithSystem", false, tr!("Start with the system"), None, false)]);
+            // Starting minimized belongs to starting with the system, as on the desktop.
+            if with_system {
+                v.push(self.c_toggle("startInTray", false, tr!("Start minimized"), None, no_tray));
+            }
+        }
+        if supported(Feature::Tray) {
+            v.extend([
+                Self::c_header(tr!("System tray")),
+                self.c_toggle("exitToTray", false, tr!("Keep in the tray when closed"), None, no_tray),
+                self.c_toggle("darkTrayIcon", false, tr!("Dark tray icon"), Some(tr!("Takes effect after Heronite restarts.")), no_tray),
+                self.c_toggle("noTrayIcon", false, tr!("Hide the tray icon"), Some(tr!("Takes effect after Heronite restarts.")), false),
+            ]);
+        }
+        if self.restart_needed() {
+            let free = crate::system::restart_blocker(cx).is_none();
+            v.push(Self::c_do("restart-now", tr!("Restart now"), Icon::Replay, free, |_, _, cx| crate::system::restart_now(cx)));
+        }
+        v.extend([
+            Self::c_header(tr!("When a game starts and ends")),
+            self.c_toggle("minimizeOnLaunch", false, tr!("Minimize when a game starts"), None, false),
+        ]);
         // Bringing the window back belongs to minimizing it.
         if self.flag("minimizeOnLaunch", false) {
             v.push(self.c_toggle(KEY_RESTORE_AFTER_GAME, false, tr!("Show Heronite again when the game ends"), None, false));
@@ -715,10 +759,19 @@ impl SettingsPanel {
                 Some(tr!("Only when Steam was not running before Heronite started the game")),
                 false,
             ),
-            Self::c_header(tr!("Game Shortcuts")),
-            self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
-            self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
-            self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),
+        ]);
+        if supported(Feature::DesktopShortcuts) {
+            v.extend([
+                Self::c_header(tr!("Game shortcuts")),
+                self.c_toggle("addDesktopShortcuts", false, tr!("Add desktop shortcuts automatically"), None, false),
+                self.c_toggle("addStartMenuShortcuts", false, tr!("Add games to the start menu automatically"), None, false),
+                self.c_toggle("addSteamShortcuts", false, tr!("Add games to Steam automatically"), None, false),
+            ]);
+        }
+        if !wine {
+            return v;
+        }
+        v.extend([
             Self::c_header(tr!("Wine and Proton")),
             self.c_toggle(
                 "showValveProton",
@@ -766,14 +819,18 @@ impl SettingsPanel {
                     .desc(tr!("More workers download faster but use more CPU, memory and disk")),
                 Act::Choice(Rc::new(|this, i, cx| this.set("maxWorkers", json!(i as i64), cx))),
             ),
-            self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx),
-            self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx),
-            self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx),
+        ]
+        .into_iter()
+        .chain(supported(Feature::EpicStore).then(|| self.c_path("altLegendaryBin", tr!("Alternative legendary binary"), false, cx)))
+        .chain(supported(Feature::GogStore).then(|| self.c_path("altGogdlBin", tr!("Alternative gogdl binary"), false, cx)))
+        .chain(supported(Feature::AmazonStore).then(|| self.c_path("altNileBin", tr!("Alternative nile binary"), false, cx)))
+        .chain([
             self.c_toggle("downloadNoHttps", false, tr!("Download without HTTPS (LanCache)"), None, false),
             Self::c_header(tr!("Updates")),
             self.c_toggle("checkForUpdatesOnStartup", true, tr!("Check for game updates at startup"), None, false),
             self.c_toggle("autoUpdateGames", false, tr!("Update games automatically"), None, false),
-        ]
+        ])
+        .collect()
     }
 
     // ------------------------------------------------------------- editors
@@ -873,7 +930,9 @@ impl SettingsPanel {
     pub fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let rows: Vec<Row> = self.console_items(cx).into_iter().map(|i| i.row).collect();
         let active = !self.console_layer.is_open() && self.console_active;
-        let list = self.console_list.render(SharedString::from(format!("console-hs-{:?}", self.section)), &rows, active);
+        // Beside the host's own rows (Settings' sections), → gives them the focus.
+        let entry = (!self.console_layer.is_open()).then_some(&[crate::console::Pad::Right][..]);
+        let list = self.console_list.render_entered(SharedString::from(format!("console-hs-{:?}", self.section)), &rows, active, entry);
         div()
             .flex()
             .flex_col()
@@ -905,6 +964,12 @@ impl PadTarget for SettingsPanel {
             self.close_winetricks(cx);
             return true;
         }
+        if pad == Pad::B && self.cancel_reset(cx) {
+            return true;
+        }
+        if pad != Pad::A {
+            self.confirm_reset = false;
+        }
         let items = self.console_items(cx);
         let rows: Vec<Row> = items.iter().map(|i| i.row.clone()).collect();
         let act = |id: &SharedString| items.iter().find(|i| &i.row.id == id).map(|i| i.act.clone()).unwrap_or(Act::None);
@@ -928,6 +993,10 @@ impl PadTarget for SettingsPanel {
             return false;
         }
         let outcome = self.console_list.on_pad(pad, &rows);
+        // The question about "Reset this tab" lasts for one press of A on that row.
+        if !matches!(&outcome, Outcome::Activate(id) if id.as_ref() == "d:reset-tab") {
+            self.confirm_reset = false;
+        }
         match outcome {
             Outcome::Changed(id, value) => match (act(&id), value) {
                 (Act::Toggle(key, default), _) => self.toggle(key, default, cx),

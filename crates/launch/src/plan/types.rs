@@ -73,15 +73,22 @@ pub struct ProcessPlan {
     /// Holds the "do not suspend" lock while the game runs (see
     /// [`crate::keep_awake`]).
     pub keep_awake: Option<Command>,
+    /// Windows' way of the same: the app itself asks the system to stay awake
+    /// while the game runs (see [`crate::keep_awake::Hold`]).
+    pub hold_awake: bool,
     /// legendary starts the game through umu (a Wine plan says it with
     /// [`WineRuntime::Umu`]): its `GAMEID` picks the protonfixes.
     pub through_umu: bool,
-    /// Another launcher starts the game and may hand it to its own running
-    /// instance (see [`Handoff`]).
+    /// Another launcher or a store client starts the game and may hand it to
+    /// its own running instance (see [`Handoff`]).
     pub handoff: Option<Handoff>,
     /// The game runs in the sandbox (see [`crate::sandbox`]): the programs
     /// alongside it join that sandbox.
     pub sandboxed: bool,
+    /// Windows: `command` is `legendary launch ... --json`. legendary signs
+    /// in and names the game's program, which starts instead of it (see
+    /// [`crate::legendary_windows`]).
+    pub ask_legendary: bool,
 }
 
 /// How to find a game another launcher started when the command that asked
@@ -92,6 +99,29 @@ pub struct ProcessPlan {
 pub struct Handoff {
     pub prefix: Option<String>,
     pub folder: Option<String>,
+    /// A store client starts the game: the session follows the game, not the
+    /// command.
+    pub client: Option<ClientHandoff>,
+    /// The command's exit code says nothing: `explorer.exe` returns 1 after
+    /// passing the request on. Any exit counts as handed on.
+    pub exit_ignored: bool,
+}
+
+/// A Windows store client (Battle.net, the EA app...) that starts the game
+/// in its own Wine prefix and stays open after the game ends, maybe started
+/// long before it was asked for the game.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ClientHandoff {
+    /// The client's brand, for the log and messages ("Battle.net").
+    pub name: String,
+    /// Lowercase program names of the client and its helpers
+    /// (`Client::programs()`): never the game.
+    pub programs: Vec<String>,
+    /// The client's main program (`Client::main_program()`): while it runs in
+    /// the prefix, `join` is spawned instead of the command.
+    pub main: String,
+    /// Asks the client that already runs to start the game.
+    pub join: Command,
 }
 
 /// A program run alongside the game (see [`crate::companions`]).
@@ -102,6 +132,17 @@ pub struct CompanionPlan {
     pub command: Command,
     /// Time after the game started.
     pub delay: std::time::Duration,
+}
+
+/// What Heronite runs around a Steam game it opens, on Windows (see
+/// [`crate::steam_extras`]). Steam still starts the game itself, as it
+/// would from its own library: the scripts run before the URI is opened and
+/// after the game is gone, the programs while it runs.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SteamExtras {
+    pub before_script: Option<Command>,
+    pub after_script: Option<Command>,
+    pub companions: Vec<CompanionPlan>,
 }
 
 /// Work around a launch that needs the network, the tools folder or the
@@ -162,13 +203,18 @@ impl CloudSaves {
     }
 }
 
-/// A Windows program run in the prefix during the first-launch setup.
+/// A Windows program run during the first-launch setup: in the prefix
+/// through Wine, or as it is on Windows ([`crate::native_setup`]).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SetupStep {
-    /// Program (a Linux path or a Wine built-in such as `msiexec`) and its arguments.
+    /// Program (a full path, or a built-in such as `msiexec`) and its arguments.
     pub parts: Vec<String>,
     /// Folder it starts in.
     pub cwd: Option<String>,
+    /// Windows: started through the administrator prompt right away (others
+    /// go through it only when Windows refuses to start them without).
+    /// Ignored under Wine.
+    pub elevate: bool,
 }
 
 impl PrepSpec {
@@ -180,7 +226,7 @@ impl PrepSpec {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaunchPlan {
     /// Open `steam://rungameid/<id>`; the game process is found in Steam's logs.
-    SteamUri { app_id: String, uri: String },
+    SteamUri { app_id: String, uri: String, extras: SteamExtras },
     /// A Linux program started directly (with Heroic's wrappers and env).
     Native(ProcessPlan),
     /// A Windows program through umu/Proton/Wine.

@@ -130,6 +130,8 @@ mod tests {
         dir
     }
 
+    // Wine and Proton builds: Linux only.
+    #[cfg(unix)]
     #[test]
     fn registers_builds_and_removes_only_its_own() {
         let dir = tempfile::tempdir().unwrap();

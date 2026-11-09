@@ -62,7 +62,7 @@ fn set_colour(d: &mut SettingsPage, c: Rgb, save: bool, cx: &mut Context<Setting
 }
 
 /// Moves the picker to the edited role's colour.
-fn sync_controls(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
+pub(super) fn sync_controls(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
     let c = d.appearance.ui.custom.get(d.appearance.custom_editor.role);
     d.appearance.custom_editor.picker.update(cx, |p, cx| p.set(c, window, cx));
 }

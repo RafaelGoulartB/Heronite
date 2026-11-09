@@ -259,7 +259,7 @@ impl Render for ImagePicker {
                 cx.listener(|this, _, _, cx| this.pick(None, cx)),
             ));
         let entity = cx.entity().downgrade();
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         dialog(
             DialogProps { id: "add-game-picker".into(), title: tr!("Search images").into(), width: 960f32.min(vw * 0.96), height: None },
             body.into_any_element(),

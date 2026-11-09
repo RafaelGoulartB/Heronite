@@ -191,18 +191,24 @@ fn default_wine() -> Option<WineInstallation> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
+    #[cfg(unix)]
     fn touch(p: &Path) {
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, "x").unwrap();
-        fs::set_permissions(p, fs::Permissions::from_mode(0o755)).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(p, fs::Permissions::from_mode(0o755)).unwrap();
+        }
     }
 
     fn env(home: &Path) -> DetectEnv {
         DetectEnv { home: home.to_path_buf(), system_steam: None, system_wine: false, steam: true }
     }
 
+    // Wine and Proton builds: Linux only.
+    #[cfg(unix)]
     #[test]
     fn finds_tools_steam_lutris_and_custom() {
         let tmp = tempfile::tempdir().unwrap();

@@ -1,6 +1,6 @@
 use crate::decode::{Channels, Raster};
 use crate::error::{ImageError, Result};
-use crate::geometry::cover_crop;
+use crate::geometry::{cover_crop, fit_size};
 use fast_image_resize::images::Image;
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer};
 
@@ -60,6 +60,38 @@ pub(crate) fn cover_to_rgba(src: Raster, tw: u32, th: u32, filter: Filter) -> Re
             out
         }
     })
+}
+
+/// Resize with object-fit *contain* semantics: the whole image, scaled down
+/// (never up) to fit inside `tw x th`, keeping its aspect ratio and its
+/// transparency. Returns the fitted size and tightly packed straight-alpha
+/// RGBA with exact capacity.
+pub(crate) fn fit_to_rgba(src: Raster, tw: u32, th: u32, filter: Filter) -> Result<(u32, u32, Vec<u8>)> {
+    if src.w == 0 || src.h == 0 || tw == 0 || th == 0 {
+        return Err(ImageError::Decode("empty image".into()));
+    }
+    let (ow, oh) = fit_size(src.w, src.h, tw, th);
+    // Straight alpha: the resizer premultiplies while it filters, so the
+    // transparent edge of a logo does not bleed a dark or white halo.
+    let rgba = match src.ch {
+        Channels::Rgba => src,
+        Channels::Rgb => {
+            let mut data = Vec::with_capacity(src.w as usize * src.h as usize * 4);
+            for p in src.data.as_chunks::<3>().0 {
+                data.extend_from_slice(&[p[0], p[1], p[2], 255]);
+            }
+            Raster { ch: Channels::Rgba, opaque: true, data, ..src }
+        }
+    };
+    let (w0, h0, opaque) = (rgba.w, rgba.h, rgba.opaque);
+    let src_img = Image::from_vec_u8(w0, h0, rgba.data, PixelType::U8x4).map_err(|e| ImageError::Decode(e.to_string()))?;
+    let mut dst = Image::new(ow, oh, PixelType::U8x4);
+    let opts = ResizeOptions::new().resize_alg(filter.alg()).use_alpha(!opaque);
+    Resizer::new().resize(&src_img, &mut dst, &opts).map_err(|e| ImageError::Decode(e.to_string()))?;
+    drop(src_img);
+    let mut px = dst.into_vec();
+    px.shrink_to_fit();
+    Ok((ow, oh, px))
 }
 
 #[cfg(test)]
@@ -123,5 +155,30 @@ mod tests {
         for p in out.chunks(4) {
             assert!(p[0] >= 253 && p[1] <= 2 && (p[3] as i32 - 128).abs() <= 1, "{p:?}");
         }
+    }
+
+    #[test]
+    fn fit_keeps_whole_image_and_transparency() {
+        // 40x20: opaque red left half, fully transparent right half.
+        let mut data = Vec::new();
+        for _ in 0..20 {
+            for x in 0..40 {
+                data.extend_from_slice(if x < 20 { &[255, 0, 0, 255] } else { &[0, 0, 0, 0] });
+            }
+        }
+        let src = Raster { w: 40, h: 20, ch: Channels::Rgba, opaque: false, data };
+        let (w, h, out) = fit_to_rgba(src, 20, 20, Filter::Bilinear).unwrap();
+        assert_eq!((w, h, out.len(), out.capacity()), (20, 10, 20 * 10 * 4, 20 * 10 * 4));
+        let px = |x: usize, y: usize| &out[(y * 20 + x) * 4..][..4];
+        assert_eq!(px(2, 5), [255, 0, 0, 255]);
+        assert_eq!(px(17, 5)[3], 0);
+    }
+
+    #[test]
+    fn fit_does_not_upscale_and_opaque_sources_get_full_alpha() {
+        let src = raster_rgb(8, 4, |_, _| [10, 20, 30]);
+        let (w, h, out) = fit_to_rgba(src, 100, 100, Filter::Lanczos3).unwrap();
+        assert_eq!((w, h), (8, 4));
+        assert!(out.chunks(4).all(|p| p == [10, 20, 30, 255]));
     }
 }

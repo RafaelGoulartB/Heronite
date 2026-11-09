@@ -42,19 +42,21 @@ impl CollectionView {
         let hero_h = (vh * 0.22).clamp(150., 220.);
         let head = self.drawer_head(&vm, width, hero_h, scale, cx);
 
-        let epic = self.epic_focus(&vm.key, vm.installed, cx);
+        // The store's progress and Update of the copy Play acts on (`vm.installed` is its).
+        let epic = self.epic_focus(&self.acting_key(&vm.key), vm.installed, cx);
         let play = self.play_area(&vm, epic, cx);
         let status = self.focus_status_row(&vm, vh, cx);
         let left_off = self.left_off_card(&vm.key, cx);
         let numbers = self.drawer_numbers(&vm);
         let rating = self.rating_row(&vm.key, cx);
         let facts = self.facts_card(&vm, cx);
+        let copies = self.copies_card(&vm.key, cx);
 
         let covers = self.focus_covers(&vm, scale);
         let html_images = self.focus_html_images(&vm, inner_w, scale);
         let screenshots = self.screenshots_section(cx);
-        let timeline = self.timeline_section(&vm.key, inner_w, cx);
-        let extras = self.focus_extras(&vm.key, scale);
+        let timeline = self.timeline_section(&vm.key, inner_w, scale, cx);
+        let extras = self.focus_extras(&vm.key, scale, cx);
         let details = focus::stacked_details(
             focus::StackedProps {
                 vm,
@@ -113,6 +115,7 @@ impl CollectionView {
                             .child(numbers)
                             .child(rating)
                             .child(facts)
+                            .children(copies)
                             .child(div().mt(px(14.)).child(details))
                             .child(div().mt(px(10.)).flex().justify_center().child(open_page)),
                     ),
@@ -174,12 +177,18 @@ impl CollectionView {
                         linear_color_stop(fade, 1.),
                     ))),
             )
-            .child(close_button("grid-drawer-close").absolute().top(px(12.)).right(px(12.)).bg(theme::art_button_fill()).on_click(
-                cx.listener(|this, _, _, cx| {
-                    this.grid.drawer_closed = true;
-                    cx.notify();
-                }),
-            ))
+            .child(
+                close_button("grid-drawer-close")
+                    .absolute()
+                    .top(px(12.))
+                    .right(px(12.))
+                    .bg(theme::art_button_fill())
+                    .tooltip(crate::ui::tooltip(tr!("Close")))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.grid.drawer_closed = true;
+                        cx.notify();
+                    })),
+            )
             .child(
                 div()
                     .absolute()
@@ -273,7 +282,7 @@ fn number_tile(label: &'static str, value: SharedString) -> Div {
         .bg(theme::ink_a(0.05))
         .border_1()
         .border_color(theme::ink_a(0.08))
-        .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.52)).child(label))
+        .child(div().truncate().text_size(px(11.5)).text_color(theme::ink_a(0.66)).child(label))
         .child(
             div()
                 .truncate()

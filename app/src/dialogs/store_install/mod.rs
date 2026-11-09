@@ -85,6 +85,8 @@ fn ui_language() -> &'static str {
     match heronite_i18n::current() {
         Lang::En => "en-US",
         Lang::PtBr => "pt-BR",
+        Lang::Es => "es-ES",
+        Lang::De => "de-DE",
     }
 }
 
@@ -143,13 +145,18 @@ impl StoreInstallDialog {
     ) -> Self {
         let app_name = game.get("app_name").and_then(Value::as_str).unwrap_or_default().to_string();
         let title = game.get("title").and_then(Value::as_str).unwrap_or(&app_name).to_string();
-        let home = std::env::var("HOME").unwrap_or_default();
+        // Windows has no `HOME` of its own: the user's folder.
+        let home = if cfg!(windows) {
+            heronite_platform::dirs::home().map(|h| h.to_string_lossy().into_owned()).unwrap_or_default()
+        } else {
+            std::env::var("HOME").unwrap_or_default()
+        };
         let global = game_config::load_global(&data_paths, &home);
         let default_install = global
             .get("defaultInstallPath")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
-            .map(|s| s.replace('\'', ""))
+            .map(|s| s.trim_matches('\'').to_string())
             .unwrap_or_else(|| game_config::default_install_dir(&home));
         let prefix_dir = global
             .get("defaultWinePrefixDir")
@@ -398,9 +405,9 @@ impl StoreInstallDialog {
         }
         let mut game_info = self.game.clone();
         if let Some(Loaded::Gog(i)) = &self.info {
-            if !i.folder_name.is_empty() {
-                game_info["folder_name"] = Value::String(i.folder_name.clone());
-            }
+            // A game never installed has none: the queue needs the folder gogdl
+            // will create to delete a cancelled download.
+            game_info["folder_name"] = Value::String(i.install_folder(&self.app_name).to_string());
         }
         let (wine_prefix, wine_version) = self.wine_selection(cx);
         let req = InstallRequest {

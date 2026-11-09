@@ -381,6 +381,23 @@ fn no_provider_answers_stores_a_fetch_error_and_idle_fill_retries_later() {
     assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
 }
 
+#[test]
+fn the_idle_fill_leaves_the_entries_that_only_hold_a_status() {
+    use heronite_data::status::{promote_played, PlayedGame, SetStatusExtras};
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    // A played Epic game that had no overlay entry gets one for its status.
+    let extras = SetStatusExtras { runner: Some("legendary".into()), title: Some("Control".into()), playnite_id: None };
+    assert_eq!(promote_played(&paths, &[PlayedGame { app_name: "ctl".into(), minutes: 60, extras }]).unwrap(), 1);
+
+    let (server, _) = mock();
+    let svc = MetadataService::with_endpoints(paths, server.endpoints());
+    // The two games of the fixture are filled, the status-only entry is not looked up.
+    assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 2);
+    assert!(svc.get_game_metadata("legendary", "ctl").unwrap().is_none());
+    assert_eq!(svc.refresh_missing_collection_metadata().unwrap(), 0);
+}
+
 /// Endpoints of a host that takes connections and drops them: every request
 /// fails without an answer, like a machine with no network. Counts them.
 fn dead_endpoints() -> (Endpoints, Arc<AtomicUsize>) {
@@ -591,6 +608,58 @@ fn web_image_search_uses_ddg_then_falls_back_to_bing() {
     assert!(svc.search_web_images("   ", false).unwrap().is_empty());
 }
 
+#[test]
+fn art_image_search_adds_steamgriddb_apart_when_a_key_is_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let server = Server::start(move |req| match req.path() {
+        "/sgdb/api/v2/search/autocomplete/007%20First%20Light" | "/sgdb/api/v2/search/autocomplete/007 First Light" => {
+            assert_eq!(req.header("authorization"), Some("Bearer K"));
+            Resp::json(json!({"success": true, "data": [{"id": 77, "name": "007 First Light"}]}))
+        }
+        "/sgdb/api/v2/grids/game/77" => {
+            assert_eq!(req.query("dimensions").as_deref(), Some("600x900,342x482,660x930"));
+            Resp::json(json!({"success": true, "data": [
+                {"url": "https://cdn2.steamgriddb.com/grid/a.png", "thumb": "https://cdn2.steamgriddb.com/thumb/a.png", "width": 600, "height": 900},
+                {"url": "https://cdn2.steamgriddb.com/grid/b.png", "width": 342, "height": 482}
+            ]}))
+        }
+        "/sgdb/api/v2/heroes/game/77" => Resp::json(json!({"success": true, "data": [
+            {"url": "https://cdn2.steamgriddb.com/hero/h.png", "thumb": "https://cdn2.steamgriddb.com/thumb/h.png", "width": 1920, "height": 620}
+        ]})),
+        "/ddg/" => Resp::html(r#"<script>nrje('/d.js?q=x&vqd="4-77"&p=1')</script>"#),
+        "/ddg/i.js" => Resp::raw_json(fixture("ddg_images_portal2_cover.json")),
+        _ => Resp::status(404),
+    });
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    let q = web_images_query("007 First Light");
+
+    // No key: the web only.
+    let images = svc.search_art_images(&q, ArtKind::Cover, false).unwrap();
+    assert!(images.steamgrid.is_empty());
+    assert_eq!(images.web.len(), 6);
+    assert_eq!(server.count(|r| r.path().starts_with("/sgdb/")), 0);
+
+    fs::create_dir_all(paths.global_config().parent().unwrap()).unwrap();
+    fs::write(paths.global_config(), r#"{"defaultSettings":{"steamGridDbApiKey":"K"},"version":"v0"}"#).unwrap();
+    let images = svc.search_art_images(&q, ArtKind::Cover, false).unwrap();
+    assert_eq!((images.steamgrid.len(), images.web.len()), (2, 6));
+    let grid = &images.steamgrid;
+    assert_eq!(grid[0].image_url, "https://cdn2.steamgriddb.com/grid/a.png");
+    assert_eq!(grid[0].thumb_url, "https://cdn2.steamgriddb.com/thumb/a.png");
+    assert_eq!((grid[0].width, grid[0].height), (600, 900));
+    assert_eq!(grid[1].thumb_url, grid[1].image_url, "no thumb: the image itself");
+
+    let heroes = svc.search_art_images(&q, ArtKind::Hero, false).unwrap();
+    assert_eq!(heroes.steamgrid[0].image_url, "https://cdn2.steamgriddb.com/hero/h.png");
+
+    // Transparent images: SteamGridDB has none.
+    let before = server.count(|r| r.path().starts_with("/sgdb/"));
+    let transparent = svc.search_art_images(&q, ArtKind::Cover, true).unwrap();
+    assert_eq!((transparent.steamgrid.len(), transparent.web.len()), (0, 6));
+    assert_eq!(server.count(|r| r.path().starts_with("/sgdb/")), before);
+}
+
 fn web_images_query(title: &str) -> String {
     heronite_metadata::web_images::cover_query(title)
 }
@@ -669,4 +738,73 @@ fn covers_use_steam_cdn_or_title_search() {
     assert_eq!(plain["art_square"], "https://cdn.cloudflare.steamstatic.com/steam/apps/4242/library_600x900_2x.jpg");
     assert_eq!(plain["art_cover"], "https://cdn.cloudflare.steamstatic.com/steam/apps/4242/header.jpg");
     assert_eq!(plain["title"], "Plain Game");
+}
+
+/// A HowLongToBeat game page as `/game/{id}` serves it, made up for the test.
+fn hltb_page(id: u64, name: &str, main: u32) -> String {
+    let data = json!({"props": {"pageProps": {"game": {"data": {"game": [
+        {"game_id": id, "game_name": name, "comp_main": main, "comp_plus": main * 2, "comp_100": main * 3}
+    ]}}}}});
+    format!(r#"<html><script id="__NEXT_DATA__" type="application/json">{data}</script></html>"#)
+}
+
+#[test]
+fn hltb_change_match_refresh_and_failures() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = make_root(dir.path());
+    let searches = Arc::new(AtomicUsize::new(0));
+    let fail = Arc::new(AtomicUsize::new(0));
+    let (s, f) = (searches.clone(), fail.clone());
+    let server = Server::start(move |req| match req.path() {
+        "/hltb/api/search/site/init" => Resp::json(json!({"token": "T0K"})),
+        "/hltb/api/search/site" if f.load(Ordering::SeqCst) == 1 => Resp::status(503),
+        "/hltb/api/search/site" => {
+            s.fetch_add(1, Ordering::SeqCst);
+            Resp::raw_json(fixture("hltb_search_portal2.json"))
+        }
+        "/hltb/game/27601" => Resp::html(&hltb_page(27601, "Portal 2: Sixense Perceptual Pack", 7200)),
+        _ => Resp::status(404),
+    });
+    let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+
+    // "Change match" lists games first, then DLCs.
+    let hits = svc.search_how_long_to_beat("Portal 2").unwrap();
+    assert_eq!(hits.iter().map(|h| h.game_id).collect::<Vec<_>>(), [7231, 27601, 7232]);
+    assert_eq!(hits[0].release_world, Some(2011));
+
+    // Picking one stores its times at once and keeps it.
+    let picked = svc.set_how_long_to_beat_match("Portal 2", Some(&hits[1])).unwrap().unwrap();
+    assert_eq!(picked.match_kind, Some(hltb::MatchKind::Manual));
+    let raw = json_store::read_value(&paths.hltb_overrides()).unwrap();
+    assert_eq!(raw["Portal 2"], json!({"gameId": 27601}));
+    // A refresh asks for that game by its id, not by its name.
+    let before = searches.load(Ordering::SeqCst);
+    let got = svc.refresh_how_long_to_beat(&hltb::HltbQuery::new("Portal 2")).unwrap();
+    let e = got.entry.unwrap();
+    assert_eq!((e.game_id, e.main_story, e.match_kind), (Some(27601), 2.0, Some(hltb::MatchKind::Manual)));
+    assert_eq!(searches.load(Ordering::SeqCst), before);
+
+    // Back to automatic: the search picks the exact name again.
+    svc.clear_how_long_to_beat_match("Portal 2").unwrap();
+    let q = hltb::HltbQuery { year: Some(2011), ..hltb::HltbQuery::new("Portal 2") };
+    let e = svc.how_long_to_beat_for(&q).unwrap().entry.unwrap();
+    assert_eq!((e.game_id, e.match_kind), (Some(7231), Some(hltb::MatchKind::Exact)));
+
+    // No close name: "not found" is cached and not asked again for a week.
+    let n = searches.load(Ordering::SeqCst);
+    assert!(svc.how_long_to_beat("Half-Life", None).unwrap().entry.is_none());
+    assert_eq!(searches.load(Ordering::SeqCst), n + 1);
+    let raw = json_store::read_value(&paths.wiki_game_info()).unwrap();
+    assert!(raw["Half-Life"]["howlongtobeat"].is_null());
+    let svc2 = MetadataService::with_endpoints(paths.clone(), server.endpoints());
+    assert!(svc2.how_long_to_beat("Half-Life", None).unwrap().from_cache, "a new session does not ask again");
+    assert_eq!(searches.load(Ordering::SeqCst), n + 1);
+
+    // A server error writes nothing, and a refresh reports it.
+    fail.store(1, Ordering::SeqCst);
+    assert!(svc.how_long_to_beat("Hades", None).unwrap().entry.is_none());
+    assert!(json_store::read_value(&paths.wiki_game_info()).unwrap().get("Hades").is_none());
+    assert!(svc.refresh_how_long_to_beat(&q).is_err());
+    let kept = heronite_data::hltb::WikiCache::load(&paths);
+    assert_eq!(kept.hltb("Portal 2", "").unwrap().game_id, Some(7231), "a failed refresh keeps the times");
 }

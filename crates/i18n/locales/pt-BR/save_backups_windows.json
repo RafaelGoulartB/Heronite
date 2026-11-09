@@ -1,0 +1,9 @@
+{
+  "1. Download the Windows version (the file ending in -win64.zip).": "1. Baixe a versão para Windows (o arquivo terminado em -win64.zip).",
+  "2. Extract ludusavi.exe into %LOCALAPPDATA%\\Programs\\Ludusavi, or install it with winget install mtkennerly.ludusavi or scoop install ludusavi.": "2. Extraia o ludusavi.exe em %LOCALAPPDATA%\\Programs\\Ludusavi, ou instale com winget install mtkennerly.ludusavi ou scoop install ludusavi.",
+  "Installed somewhere else? Set the program in Backup location & format.": "Instalou em outro lugar? Defina o programa em Local e formato do backup.",
+  "Linux paths, Wine registry files or a drive this PC does not have. They cannot be restored here.": "Caminhos do Linux, arquivos de registro do Wine ou uma unidade que este PC não tem. Não dá para restaurá-los aqui.",
+  "No place on this PC": "Sem lugar neste PC",
+  "Nothing in this backup has a place on this PC.": "Nada neste backup tem lugar neste PC.",
+  "The Saves tab of each game lists the backups in these folders: the one new backups go to, and only the folders you add. It puts a backup back where the game keeps its saves on this PC, even one made by another Windows user, in another Steam library or on Linux.": "A aba Saves de cada jogo lista os backups destas pastas: a que recebe os backups novos e só as pastas que você adicionar. Ela devolve um backup para onde o jogo guarda os saves neste PC, mesmo um feito por outro usuário do Windows, em outra biblioteca da Steam ou no Linux."
+}

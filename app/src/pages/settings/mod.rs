@@ -13,29 +13,46 @@
 //!   by `local_library/settings.json` (`appearance.rs`, `metadata.rs`,
 //!   `screenshots.rs`, `saves.rs` + `backup/`). Any write ends in
 //!   [`SettingsPage::saved`].
+//! - Integrations: Sunshine, for Moonlight (`integrations.rs`,
+//!   `services::sunshine`).
+//! - Cloud: the account the library sync, backups, game saves and screenshots
+//!   go to (`cloud/`, `sync.json` in the app state).
+//! - Console mode: the console themes and every option of console mode
+//!   (`console_mode/`; its state exists only once the section was shown).
 //! - About: updates (`updates.rs`), version, folders and system information
 //!   (`about.rs`).
 //!
 //! Emulators and ROM folders are not here: they live on the ☰ Emulators page.
 //!
-//! Debug: `HERONITE_DEBUG_PAGE=settings[:general|appearance|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|storage|mods|overlay|replay|metadata|screenshots|backups|logs|about]`.
+//! The search above the sections (Ctrl F) filters them by label, palette keywords, blurb and group;
+//! Enter opens the best match, Esc empties it.
+//!
+//! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
+//! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
+//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
+mod achievements;
 mod advanced;
 mod appearance;
 mod backup;
+mod cloud;
 mod console;
+mod console_mode;
+mod integrations;
 mod launchers;
 mod library;
 pub mod logs;
 mod metadata;
 mod mods;
+mod nav_keys;
 mod overlay;
 mod palette;
 mod replay;
 mod saves;
 mod saves_restore;
 mod screenshots;
+mod search;
 mod section;
 mod storage;
 pub mod sysinfo;
@@ -49,21 +66,26 @@ pub use section::Section;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use gpui_kit::component::input::{InputEvent, InputState, MoveDown};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::settings::{self as store, EffectiveSettings};
 use heronite_data::Library;
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
+use heronite_sync::cloud::Upload;
 
 use super::{Page, PageCtx, PageEvent};
 use crate::dialogs::settings_panel::logic::{Section as HSection, DEFAULT_SECTIONS};
 use crate::dialogs::settings_panel::{GlobalView, SettingsPanel, Target};
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{close_button, help_text, nav_pill, page_heading, tabs};
+use crate::ui::controls::{close_button, help_text, icon_button, kbd, nav_pill, page_heading, tabs};
+use crate::ui::fields::search_box_with;
 use crate::ui::glass::glass_panel;
-use crate::ui::icon;
+
+/// Frames the page waits for a setting picked in the search to be drawn.
+const FIND_FRAMES: u8 = 30;
 
 /// Section the command palette asked for; taken by the page when it is
 /// created or shown again (see [`request_section`]).
@@ -111,16 +133,19 @@ pub struct SettingsPage {
     error: Option<SharedString>,
     appearance: appearance::State,
     screenshots: screenshots::State,
+    achievements: achievements::State,
     metadata: metadata::State,
     backup: backup::State,
     saves: saves::State,
     saves_restore: saves_restore::State,
+    cloud: cloud::State,
     section: Section,
     global: Option<Entity<SettingsPanel>>,
     defaults: Option<Entity<SettingsPanel>>,
     defaults_section: HSection,
     library: library::State,
     launchers: launchers::State,
+    integrations: integrations::State,
     overlay: overlay::State,
     replay: replay::State,
     mods: mods::State,
@@ -128,10 +153,28 @@ pub struct SettingsPage {
     advanced: advanced::State,
     about: about::State,
     logs: logs::State,
+    console_mode: Option<console_mode::State>,
     /// Console mode focus, keyboard and pickers.
     console: console::ConsoleState,
     /// The section list's scroll, for its scrollbar.
     nav_scroll: ScrollHandle,
+    /// The search above the section list, and what is typed in it.
+    nav_search: Entity<InputState>,
+    nav_query: String,
+    /// The language of the search's placeholder (set again after a switch).
+    nav_lang: heronite_i18n::Lang,
+    /// The section list's keyboard focus and its cursor (an index in
+    /// `nav_items`), and where its items were drawn (`nav_keys`).
+    nav_focus: FocusHandle,
+    nav_cursor: Option<usize>,
+    nav_bounds: nav_keys::ItemBounds,
+    /// The content's scroll, to bring a setting picked in the search into view.
+    content_scroll: ScrollHandle,
+    /// Frames left to wait for the picked setting to be drawn before
+    /// scrolling to it (0: nothing to scroll to).
+    find_frames: u8,
+    /// Ends the picked setting's flash.
+    find_task: Option<Task<()>>,
 }
 
 impl EventEmitter<PageEvent> for SettingsPage {}
@@ -141,7 +184,10 @@ impl SettingsPage {
         // `HERONITE_DEBUG_PAGE=settings:<section>[:<defaults tab>]`.
         let debug = crate::env::value("HERONITE_DEBUG_PAGE");
         let mut parts = debug.as_deref().unwrap_or("").split(':').skip(1);
-        let section = take_requested_section(cx).or_else(|| parts.next().and_then(Section::parse)).unwrap_or(Section::General);
+        let section = take_requested_section(cx)
+            .or_else(|| parts.next().and_then(Section::parse))
+            .filter(|s| s.available())
+            .unwrap_or(Section::General);
         let defaults_section = match parts.next() {
             Some("performance" | "other" | "gamescope") => HSection::Performance,
             Some("launch" | "advanced") => HSection::Launch,
@@ -159,20 +205,46 @@ impl SettingsPage {
         }
         let appearance = appearance::State::new(&ctx, &settings, chain, window, cx);
         let screenshots = screenshots::State::new(&ctx, &settings, window, cx);
+        let achievements = achievements::State::new(window, cx);
         let metadata = metadata::State::new(&ctx, &settings, window, cx);
         let backup = backup::State::new(&ctx, &settings, window, cx);
         let saves = saves::State::new(&ctx, &settings, window, cx);
+        let cloud = cloud::State::new(&ctx, window, cx);
+        // `HERONITE_DEBUG_SETTINGS_SEARCH=<text>[!]`: the section list filtered by it (`!`: and Enter).
+        let debug_search = crate::env::value("HERONITE_DEBUG_SETTINGS_SEARCH").unwrap_or_default();
+        let debug_enter = debug_search.ends_with('!');
+        let nav_query = debug_search.trim_end_matches('!').trim().to_string();
+        let nav_search = crate::ui::fields::new_input(window, cx, &nav_query, tr!("Search settings"));
+        cx.subscribe_in(&nav_search, window, |this, state, ev: &InputEvent, window, cx| match ev {
+            InputEvent::Change => {
+                this.nav_query = state.read(cx).value().trim().to_string();
+                this.nav_cursor = None;
+                this.nav_scroll.set_offset(point(px(0.), px(0.)));
+                cx.notify();
+            }
+            // Enter opens the best match.
+            InputEvent::PressEnter { .. } => {
+                if let Some(hit) = search::search(&this.nav_query).first() {
+                    this.pick(hit.pick(), window, cx);
+                }
+            }
+            _ => {}
+        })
+        .detach();
         let mut this = Self {
             settings,
             error: None,
             appearance,
             screenshots,
+            achievements,
             metadata,
             backup,
             saves,
             saves_restore: Default::default(),
+            cloud,
             library: library::State::new(&ctx),
             launchers: launchers::State::new(cx),
+            integrations: integrations::State::new(window, cx),
             overlay: overlay::State::new(&ctx, cx),
             replay: replay::State::new(&ctx, cx),
             mods: mods::State::new(window, cx),
@@ -180,8 +252,18 @@ impl SettingsPage {
             advanced: advanced::State::default(),
             about: about::State::default(),
             logs: logs::State::default(),
+            console_mode: None,
             console: Default::default(),
             nav_scroll: ScrollHandle::new(),
+            nav_search,
+            nav_query,
+            nav_lang: heronite_i18n::current(),
+            nav_focus: cx.focus_handle(),
+            nav_cursor: None,
+            nav_bounds: Default::default(),
+            content_scroll: ScrollHandle::new(),
+            find_frames: 0,
+            find_task: None,
             ctx,
             section,
             global: None,
@@ -189,6 +271,28 @@ impl SettingsPage {
             defaults_section,
         };
         this.on_section_shown(window, cx);
+        if let Some(hit) = search::search(&this.nav_query).first().filter(|_| debug_enter) {
+            this.pick(hit.pick(), window, cx);
+        }
+        // `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter`: keystrokes typed in the search, a moment apart.
+        if let Some(keys) = crate::env::value("HERONITE_DEBUG_SETTINGS_KEYS") {
+            cx.spawn_in(window, async move |this, cx| {
+                let pause = || std::time::Duration::from_millis(400);
+                cx.background_executor().timer(pause()).await;
+                this.update_in(cx, |this, window, cx| this.focus_search(window, cx)).ok();
+                for k in keys.split(',').filter(|k| !k.is_empty()) {
+                    cx.background_executor().timer(pause()).await;
+                    // `lang:<code>` switches the interface language instead.
+                    if let Some(lang) = k.strip_prefix("lang:").and_then(|c| heronite_i18n::Lang::ALL.into_iter().find(|l| l.code() == c)) {
+                        heronite_i18n::set(lang);
+                        cx.update(|window, _| window.refresh()).ok();
+                    } else if let Ok(ks) = Keystroke::parse(k) {
+                        cx.update(|window, cx| window.dispatch_keystroke(ks, cx)).ok();
+                    }
+                }
+            })
+            .detach();
+        }
         if let Some(updater) = crate::services::update::get(cx) {
             cx.observe(&updater, |_, _, cx| cx.notify()).detach();
         }
@@ -206,7 +310,8 @@ impl SettingsPage {
     /// `HERONITE_DEBUG_SETTINGS_ACTION=<action>` runs a write as if clicked (fixtures only):
     /// `unhide:<app>`, `unhide-all`, `fav-clear`, `recent-clear`, `max-recent:<n>`, `show-hidden:on|off`,
     /// `clear-cache`, and on Backups `backup-now`, `backup-open:<n>` (the n-th backup's details),
-    /// `backup-confirm:<n>` (its restore question).
+    /// `backup-confirm:<n>` (its restore question). `ask:<hidden|favourites|recent|launcher id>`
+    /// only opens that question.
     fn debug_action(&mut self, cx: &mut Context<Self>) {
         let Some(action) = crate::env::value("HERONITE_DEBUG_SETTINGS_ACTION") else { return };
         match action.split_once(':').unwrap_or((action.as_str(), "")) {
@@ -217,6 +322,12 @@ impl SettingsPage {
             ("max-recent", n) => self.set_max_recent(n.parse().unwrap_or(5), cx),
             ("show-hidden", v) => self.set_show_hidden(v == "on", cx),
             ("clear-cache", _) => self.clear_cache(cx),
+            ("ask", which) => {
+                if !library::debug_ask(self, which) {
+                    self.launchers.debug_ask(which);
+                }
+                cx.notify();
+            }
             (a @ ("backup-now" | "backup-open" | "backup-confirm"), n) => backup::debug_action(self, a, n.parse().unwrap_or(0), cx),
             _ => {}
         }
@@ -231,6 +342,7 @@ impl SettingsPage {
             self.appearance.set_chain(offer.chain);
             if let Some(l) = offer.library {
                 self.storage.set_library(l.lib, l.chains, l.stages);
+                console_mode::library_changed(self);
             }
         }
         if let Some(section) = take_requested_section(cx) {
@@ -258,6 +370,7 @@ impl SettingsPage {
     /// needs (`refresh` brings it back when the page is shown).
     pub fn hidden(&mut self, window: &mut Window) {
         self.storage.hidden(window);
+        console_mode::hidden(self, window);
         self.logs.release();
     }
 
@@ -265,6 +378,7 @@ impl SettingsPage {
     /// game was uninstalled from Storage): Storage looks again.
     pub fn set_library(&mut self, offer: LibraryOffer, cx: &mut Context<Self>) {
         let changed = self.storage.set_library(offer.lib, offer.chains, offer.stages);
+        console_mode::library_changed(self);
         if changed && self.section == Section::Storage {
             storage::State::shown(self, cx);
         }
@@ -284,12 +398,21 @@ impl SettingsPage {
         cx.notify();
     }
 
+    /// Drops the questions before a destructive action (Other launchers,
+    /// Library); true when one was open.
+    fn dismiss_confirms(&mut self) -> bool {
+        let launchers = self.launchers.dismiss();
+        let library = self.library.dismiss();
+        launchers || library
+    }
+
     fn select(&mut self, section: Section, window: &mut Window, cx: &mut Context<Self>) {
-        if self.section == section {
+        if !section.available() || self.section == section {
             return;
         }
         self.section = section;
         self.error = None;
+        self.dismiss_confirms();
         if let (Some(view), Some(panel)) = (section.global_view(), self.global.clone()) {
             panel.update(cx, |p, cx| p.set_global_view(view, cx));
         }
@@ -305,10 +428,14 @@ impl SettingsPage {
         if self.section != Section::Logs {
             self.logs.release();
         }
+        if self.section != Section::ConsoleMode {
+            console_mode::hidden(self, window);
+        }
         match self.section {
             Section::Advanced => self.advanced.measure(&self.ctx, cx),
             Section::About => self.about.load(&self.ctx, cx),
             Section::Screenshots => self.screenshots.shown(cx),
+            Section::Achievements => achievements::shown(self, cx),
             Section::Overlay => overlay::shown(cx),
             Section::Launchers => launchers::shown(self, cx),
             Section::Replay => replay::shown(self, cx),
@@ -316,6 +443,8 @@ impl SettingsPage {
             Section::Storage => storage::State::shown(self, cx),
             Section::Mods => mods::shown(cx),
             Section::Backups => backup::shown(self, cx),
+            Section::Cloud => cloud::shown(self, window, cx),
+            Section::ConsoleMode => console_mode::shown(self, window, cx),
             _ => {}
         }
     }
@@ -354,17 +483,25 @@ impl SettingsPage {
         div().flex().flex_col().gap(px(16.)).child(bar).child(panel).into_any_element()
     }
 
+    /// `body` under the row saying whether it goes to the cloud account
+    /// (Backups, Saves, Screenshots).
+    fn with_cloud_row(&self, upload: Upload, body: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+        div().flex().flex_col().gap(px(18.)).child(cloud::link_row(self, upload, cx)).child(body).into_any_element()
+    }
+
     /// Body of a Collection section plus the last write error, if any.
     fn collection_section(body: AnyElement, error: Option<SharedString>) -> AnyElement {
         let error = error.map(|e| library::notice_line(e, true));
         div().flex().flex_col().child(body).children(error).into_any_element()
     }
 
-    /// Left column of the sheet: title (gear + "Settings") and the section
-    /// pills, with a scrollbar when the window is too short for all of them.
-    fn nav(&self, cx: &mut Context<Self>) -> Div {
+    /// Left column of the sheet: the search and the section pills, with a
+    /// scrollbar when the window is too short for all of them.
+    fn nav(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let mut col = div()
             .id("settings-nav")
+            .track_focus(&self.nav_focus)
+            .on_key_down(cx.listener(Self::nav_key))
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&self.nav_scroll)
@@ -374,31 +511,79 @@ impl SettingsPage {
             .px(px(14.))
             .pt(px(26.))
             .pb(px(16.))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .px(px(12.))
-                    .pb(px(18.))
-                    .child(icon(Icon::Settings, px(18.), theme::text_primary()))
-                    .child(
-                        div()
-                            .font_family(theme::font_heading())
-                            .text_size(px(19.))
-                            .font_weight(theme::W_BOLD)
-                            .text_color(theme::text_primary())
-                            .child(tr!("Settings")),
-                    ),
-            );
-        for (group, sections) in Section::GROUPS {
-            col = col.child(div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(tr(group)));
-            for s in sections.iter().copied() {
-                let active = self.section == s;
-                col = col.child(
-                    nav_pill(SharedString::from(format!("settings-nav-{s:?}")), s.icon(), s.label(), active)
-                        .on_click(cx.listener(move |this, _, window, cx| this.select(s, window, cx))),
-                );
+            .child(self.nav_search_box(cx));
+        // Items are numbered in `nav_items` order: the keyboard cursor is one of them.
+        let cursor = self.nav_cursor_shown(window);
+        let mut ix = 0;
+        let mut next = || {
+            ix += 1;
+            ix - 1
+        };
+        let layer = |ix: usize, radius: f32| nav_keys::item_layer(&self.nav_bounds, ix, cursor == Some(ix), px(radius));
+        let pill = |s: Section, ix: usize, cx: &mut Context<Self>| {
+            nav_pill(SharedString::from(format!("settings-nav-{s:?}")), s.icon(), s.label(), self.section == s)
+                .relative()
+                .child(layer(ix, 999.))
+                .on_click(cx.listener(move |this, _, window, cx| this.nav_clicked(ix, search::Pick::Section(s), window, cx)))
+        };
+        if self.nav_query.is_empty() {
+            for (group, sections) in Section::GROUPS {
+                if !sections.iter().any(|s| s.available()) {
+                    continue;
+                }
+                col =
+                    col.child(div().px(px(12.)).pt(px(12.)).pb(px(5.)).text_size(px(12.)).text_color(theme::text_muted()).child(tr(group)));
+                for s in sections.iter().copied().filter(|s| s.available()) {
+                    col = col.child(pill(s, next(), cx));
+                }
+            }
+        } else {
+            // The matches, best first, without the group captions: each
+            // section with the settings found in it. Enter opens the first.
+            let hits = search::search(&self.nav_query);
+            if hits.is_empty() {
+                col = col
+                    .child(div().px(px(12.)).pt(px(8.)).text_size(px(13.)).text_color(theme::text_muted()).child(tr!("No settings match")));
+            }
+            // What Enter opens: the cursor's item, else the best match.
+            let best = hits.first().map(search::Hit::pick);
+            let enter = |ix: usize, pick: search::Pick| cursor.map_or(best == Some(pick), |c| c == ix);
+            // Its ↵ (a pill's label does not fill it: a spacer pushes the ↵ right).
+            let hint = |d: Stateful<Div>, on: bool, spacer: bool| {
+                d.when(on, |d| d.when(spacer, |d| d.child(div().flex_1())).child(kbd("\u{21b5}")))
+            };
+            for hit in hits {
+                let section = hit.section;
+                let ix = next();
+                let pick = search::Pick::Section(section);
+                col = col.child(hint(pill(section, ix, cx), enter(ix, pick), true));
+                if hit.settings.is_empty() {
+                    continue;
+                }
+                let mut sub = div().flex().flex_col().ml(px(20.)).mb(px(4.)).pl(px(6.)).border_l_1().border_color(theme::ink_a(0.1));
+                for setting in hit.settings {
+                    let pick = search::Pick::Setting(section, setting);
+                    let ix = next();
+                    let row = div()
+                        .id(SharedString::from(format!("settings-find-{section:?}-{}", setting.label)))
+                        .relative()
+                        .child(layer(ix, 10.))
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .px(px(10.))
+                        .py(px(6.))
+                        .rounded(px(10.))
+                        .text_size(px(13.))
+                        .line_height(px(17.))
+                        .text_color(theme::nav_text())
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::ink_a(0.05)).text_color(theme::text_bright()))
+                        .child(div().flex_1().min_w_0().child(tr(setting.label)))
+                        .on_click(cx.listener(move |this, _, window, cx| this.nav_clicked(ix, pick, window, cx)));
+                    sub = sub.child(hint(row, enter(ix, pick), false));
+                }
+                col = col.child(sub);
             }
         }
         // The list's size is known only after it is laid out: draw once more
@@ -433,6 +618,113 @@ impl SettingsPage {
             .children(scrollbar.map(|b| b.right(px(2.))))
     }
 
+    /// The search above the section list, with a clear button once something is typed. Esc
+    /// in it empties it first, then leaves the field; ↓ moves to the list (`nav_keys`).
+    fn nav_search_box(&self, cx: &mut Context<Self>) -> Div {
+        let clear = (!self.nav_query.is_empty()).then(|| {
+            icon_button("settings-search-clear", Icon::Close, 14., true)
+                .on_click(cx.listener(|this, _, window, cx| this.clear_nav_search(window, cx)))
+                .into_any_element()
+        });
+        div()
+            .pb(px(6.))
+            // ↓: the keyboard on the list.
+            .on_action(cx.listener(|this, _: &MoveDown, window, cx| this.nav_enter_list(window, cx)))
+            .child(search_box_with(&self.nav_search, clear.unwrap_or_else(|| div().into_any_element())))
+    }
+
+    /// Opens what the search found: a section, or a setting (its section and
+    /// Game defaults tab, scrolled to it, flashing for a moment).
+    fn pick(&mut self, pick: search::Pick, window: &mut Window, cx: &mut Context<Self>) {
+        let (section, setting) = match pick {
+            search::Pick::Section(section) => (section, None),
+            search::Pick::Setting(section, setting) => (section, Some(setting)),
+        };
+        self.select(section, window, cx);
+        let Some(setting) = setting else {
+            crate::ui::find::clear();
+            self.find_frames = 0;
+            return;
+        };
+        if let Some(tab) = setting.tab {
+            self.defaults_section = tab;
+            if let Some(panel) = self.defaults.clone() {
+                panel.update(cx, |p, cx| p.set_section(tab, window, cx));
+            }
+        }
+        if section == Section::Cloud {
+            cloud::reveal(self, setting.label);
+        }
+        if section == Section::Achievements {
+            achievements::reveal(self, setting.label);
+        }
+        if section == Section::Replay {
+            replay::reveal(self, setting.label);
+        }
+        crate::ui::find::set_target(tr(setting.label).to_string());
+        self.find_frames = FIND_FRAMES;
+        self.find_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(crate::ui::find::FLASH).await;
+            this.update(cx, |_, cx| {
+                crate::ui::find::clear();
+                cx.notify();
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
+    /// Scrolls the content to the setting picked in the search once it was
+    /// drawn (its bounds come from the frame before), a quarter down the view.
+    fn scroll_to_found(&mut self, window: &mut Window) {
+        if self.find_frames == 0 {
+            return;
+        }
+        let Some(target) = crate::ui::find::target_bounds() else {
+            // Not drawn yet (a section that loads first), or not at all.
+            self.find_frames -= 1;
+            window.request_animation_frame();
+            return;
+        };
+        self.find_frames = 0;
+        let view = self.content_scroll.bounds();
+        let offset = f32::from(self.content_scroll.offset().y);
+        let max = f32::from(self.content_scroll.max_offset().y);
+        let top = f32::from(target.top() - view.top()) - offset;
+        let y = (top - f32::from(view.size.height) / 4.).clamp(0., max.max(0.));
+        self.content_scroll.set_offset(point(px(0.), px(-y)));
+        window.request_animation_frame();
+    }
+
+    /// Esc in a field of the page (the Collection asks): empties the search
+    /// when it has the keyboard and text. True when it did.
+    pub fn search_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let focused = self.nav_search.read(cx).focus_handle(cx).is_focused(window);
+        if !focused || self.nav_query.is_empty() {
+            return false;
+        }
+        self.clear_nav_search(window, cx);
+        true
+    }
+
+    /// Empties the nav's search: every section shows again.
+    fn clear_nav_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // `set_value` sends no change event.
+        self.nav_search.update(cx, |s, cx| s.set_value("", window, cx));
+        self.nav_query.clear();
+        self.nav_cursor = None;
+        cx.notify();
+    }
+
+    /// Ctrl F on the page: the keyboard in the nav's search, its text selected.
+    pub fn focus_search(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.nav_search.update(cx, |s, cx| {
+            s.select_all(window, cx);
+            s.focus(window, cx);
+        });
+        cx.notify();
+    }
+
     /// The content of the current section.
     fn render_body(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let section = self.section;
@@ -452,10 +744,16 @@ impl SettingsPage {
             Section::Mods => mods::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
             Section::Launchers => launchers::render(self, cx),
+            Section::Integrations => integrations::render(self, window, cx),
             Section::Replay => replay::render(self, window, cx),
             Section::Appearance => Self::collection_section(appearance::render(self, window, cx), self.error.clone()),
             Section::Metadata => Self::collection_section(metadata::render(self, window, cx), self.error.clone()),
-            Section::Screenshots => Self::collection_section(screenshots::render(self, window, cx), self.error.clone()),
+            Section::Achievements => achievements::render(self, window, cx),
+            Section::Screenshots => {
+                let body = screenshots::render(self, window, cx);
+                let body = self.with_cloud_row(Upload::Captures, body, cx);
+                Self::collection_section(body, self.error.clone())
+            }
             Section::Saves => {
                 let body = div()
                     .flex()
@@ -464,9 +762,16 @@ impl SettingsPage {
                     // Restoring needs Ludusavi: the card above says how to get it.
                     .when(!self.saves.missing(), |d| d.child(div().mt(px(12.)).child(saves_restore::render(self, window, cx))))
                     .into_any_element();
+                let body = self.with_cloud_row(Upload::Saves, body, cx);
                 Self::collection_section(body, self.error.clone())
             }
-            Section::Backups => Self::collection_section(backup::render(self, window, cx), self.error.clone()),
+            Section::Backups => {
+                let body = backup::render(self, window, cx);
+                let body = self.with_cloud_row(Upload::Backups, body, cx);
+                Self::collection_section(body, self.error.clone())
+            }
+            Section::Cloud => cloud::render(self, window, cx),
+            Section::ConsoleMode => console_mode::render(self, window, cx),
             Section::Logs => self.logs_section(cx),
             Section::About => self.about_section(cx).into_any_element(),
         }
@@ -478,18 +783,57 @@ impl Render for SettingsPage {
         if crate::console::active() {
             return self.render_console(window, cx);
         }
+        self.scroll_to_found(window);
+        let lang = heronite_i18n::current();
+        if self.nav_lang != lang {
+            self.nav_lang = lang;
+            self.nav_search.update(cx, |s, cx| s.set_placeholder(tr!("Search settings"), window, cx));
+        }
         let section = self.section;
+        // The console theme editor fills the height and scrolls its parts itself.
+        let studio = section == Section::ConsoleMode && console_mode::is_studio(self);
         let body = self.render_body(window, cx);
-        let title = div().flex().flex_col().gap(px(4.)).pr(px(48.)).child(page_heading(section.label())).child(help_text(section.blurb()));
-        // The log viewer wants the width; the forms read better narrow.
+        let title = div()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .pr(px(48.))
+            .child(page_heading(section.label()))
+            .when(!studio, |d| d.child(help_text(section.blurb())));
+        // The log viewer and the theme editor want the width; the forms read better narrow.
         let max_w = match section {
             Section::Logs => px(1400.),
             Section::Storage => px(storage::MAX_W),
+            Section::Replay => px(replay::MAX_W),
+            Section::ConsoleMode if studio => px(console_mode::STUDIO_MAX_W),
             _ => px(880.),
         };
         let column = div().flex().flex_col().w_full().max_w(max_w).mx_auto().gap(px(14.)).child(title).child(body);
-        let content =
-            div().id("page-settings").flex_1().min_w_0().h_full().overflow_y_scroll().px(px(36.)).pt(px(26.)).pb(px(32.)).child(column);
+        let content = if studio {
+            div()
+                .id("page-settings")
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .flex()
+                .flex_col()
+                .px(px(36.))
+                .pt(px(26.))
+                .pb(px(18.))
+                .child(column.flex_1().min_h_0())
+        } else {
+            div()
+                .id("page-settings")
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .overflow_y_scroll()
+                .track_scroll(&self.content_scroll)
+                .px(px(36.))
+                .pt(px(26.))
+                .pb(px(32.))
+                .child(column)
+        };
         let close = close_button("settings-close")
             .absolute()
             .top(px(20.))
@@ -501,7 +845,7 @@ impl Render for SettingsPage {
             .size_full()
             .text_color(theme::text_primary())
             .font_family(theme::font_body())
-            .child(self.nav(cx))
+            .child(self.nav(window, cx))
             .child(content)
             .child(close);
         div().size_full().p(px(12.)).pt(px(2.)).child(sheet).into_any_element()

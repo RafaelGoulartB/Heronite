@@ -53,6 +53,19 @@ pub enum Store {
 impl Store {
     pub const ALL: [Store; 2] = [Store::Gog, Store::Amazon];
 
+    /// The part of the app it is (`heronite_platform::features`).
+    pub fn feature(self) -> heronite_platform::Feature {
+        match self {
+            Store::Gog => heronite_platform::Feature::GogStore,
+            Store::Amazon => heronite_platform::Feature::AmazonStore,
+        }
+    }
+
+    /// Whether this system has the store.
+    pub fn available(self) -> bool {
+        heronite_platform::supported(self.feature())
+    }
+
     /// `GameInfo.runner` of its games.
     pub fn runner(self) -> &'static str {
         match self {
@@ -142,6 +155,9 @@ pub struct EosStatus {
     pub latest: String,
     /// "Check for updates" is running.
     pub checking: bool,
+    /// Windows: whether the overlay is on, for every game at once (`None`
+    /// until read, and on Linux, where it is per prefix).
+    pub enabled: Option<bool>,
 }
 
 /// Whether the overlay is on for the prefix of one game.

@@ -1,13 +1,19 @@
-//! Store login window. Opens a store's login page in an embedded WebKit
-//! view, waits for the authorization code the store hands back and prints it
-//! to stdout, then exits with status 0. Exits with [`CLOSED`] when the
-//! window is closed first; any other status means it failed (the app tells
-//! the user then).
+//! Store login window. Opens a store's login page in an embedded web view
+//! (WebKitGTK on Linux, WebView2 on Windows), waits for the authorization
+//! code the store hands back and prints it to stdout, then exits with status
+//! 0. Exits with [`CLOSED`] when the window is closed first (on Windows also
+//! when the program that started it exits), and on Windows with 5 when the
+//! WebView2 runtime is not installed; any other status means it failed (the
+//! app tells the user then).
 //!
 //! * no arguments (or `--store epic`): Epic Games;
 //! * `--store gog`: GOG (the code comes back in the `on_login_success` page URL);
 //! * `--store amazon --url <sign-in URL>`: Amazon Games (the URL is made by
 //!   nile for this login; the code comes back in the return URL).
+//! * `--store xbox --url <sign-in URL>`: a Microsoft account, for Xbox (the
+//!   URL is made by the app for this sign-in). What it prints is the whole
+//!   address the sign-in ends on (`login.live.com/oauth20_desktop.srf?code=…&state=…`,
+//!   or `?error=…` when the user said no): the app checks it is its sign-in.
 //!
 //! The main app spawns this helper and reads stdout; it lives in its own
 //! binary so the GPUI app does not carry a web engine.
@@ -16,16 +22,40 @@
 //! `SMOKE-READY` once it is loaded and stays open for a few seconds, for
 //! checking that the window opens where expected.
 
+// A window program on Windows: no console opens with it (the app reads its
+// redirected stdout all the same).
+#![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
+// The window is WebKitGTK's (Linux) or WebView2's (Windows); elsewhere only
+// the tests use the parsing below.
+#![cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+
+#[cfg(windows)]
+mod windows;
+
 use url::Url;
 
 /// Exit status when the user closes the window before a code arrived (GTK
 /// itself exits with 1 when it loses the display).
 const CLOSED: i32 = 4;
 
+/// Epic's login with no client named: for the launcher's user agent
+/// ([`EPIC_USER_AGENT`]) Epic picks legendary's client
+/// (`34a02cf8f4414e29b15921876da36f9a`) and, once signed in, sends the page to
+/// that client's own redirect, `https://localhost/launcher/authorized?code=...`,
+/// where the code is taken. A code for any other client is refused by
+/// `legendary auth`.
+///
+/// Not legendary's `redirectUrl=https://www.epicgames.com/id/api/redirect?...`
+/// (what `legendary.gl/epiclogin` opens): Epic no longer knows that redirect
+/// for the client and the page stops on "Invalid Client - Redirect URL is not
+/// known to the client" after signing in. Not `clientId=` either: the page then
+/// takes the window for the launcher and waits for its JS bridge.
 const EPIC_LOGIN_URL: &str = "https://www.epicgames.com/id/login?responseType=code";
 const EPIC_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) EpicGamesLauncher";
 const GOG_LOGIN_URL: &str = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=https%3A%2F%2Fembed.gog.com%2Fon_login_success%3Forigin%3Dclient&response_type=code&layout=galaxy";
 /// A desktop browser: the GOG and Amazon pages refuse unknown web views.
+/// (WebView2's own user agent is one already: Microsoft Edge's.)
+#[cfg(target_os = "linux")]
 const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +63,7 @@ enum Store {
     Epic,
     Gog,
     Amazon,
+    Xbox,
 }
 
 impl Store {
@@ -41,6 +72,7 @@ impl Store {
             "epic" => Some(Self::Epic),
             "gog" => Some(Self::Gog),
             "amazon" => Some(Self::Amazon),
+            "xbox" => Some(Self::Xbox),
             _ => None,
         }
     }
@@ -50,19 +82,29 @@ impl Store {
             Self::Epic => "Epic Games login",
             Self::Gog => "GOG login",
             Self::Amazon => "Amazon Games login",
+            Self::Xbox => "Xbox sign-in",
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn user_agent(self) -> &'static str {
         match self {
             Self::Epic => EPIC_USER_AGENT,
-            Self::Gog | Self::Amazon => BROWSER_USER_AGENT,
+            Self::Gog | Self::Amazon | Self::Xbox => BROWSER_USER_AGENT,
         }
     }
 
     /// The authorization code in a URL the store navigates to.
     fn code_from_url(self, url: &str) -> Option<String> {
+        let address = url;
         let url = Url::parse(url).ok()?;
+        // Microsoft's desktop redirect: the whole address, for the app to check.
+        if self == Self::Xbox {
+            let done = url.host_str() == Some("login.live.com")
+                && url.path() == "/oauth20_desktop.srf"
+                && url.query_pairs().any(|(k, v)| (k == "code" || k == "error") && !v.is_empty());
+            return done.then(|| address.to_string());
+        }
         let (host_ok, param) = match self {
             // Epic redirects to https://localhost/launcher/authorized?code=...
             Self::Epic => (url.host_str() == Some("localhost"), "code"),
@@ -71,6 +113,7 @@ impl Store {
             Self::Amazon => {
                 (url.host_str().is_some_and(|h| h == "amazon.com" || h.ends_with(".amazon.com")), "openid.oa2.authorization_code")
             }
+            Self::Xbox => return None,
         };
         if !host_ok {
             return None;
@@ -100,6 +143,7 @@ fn parse_args(args: &[String]) -> Result<(Store, String), String> {
         (Store::Epic, None) => EPIC_LOGIN_URL.to_string(),
         (Store::Gog, None) => GOG_LOGIN_URL.to_string(),
         (Store::Amazon, None) => return Err("--store amazon needs --url".into()),
+        (Store::Xbox, None) => return Err("--store xbox needs --url".into()),
     };
     Ok((store, url))
 }
@@ -127,7 +171,7 @@ fn main() {
 
     use gtk::glib;
     use gtk::prelude::*;
-    use wry::{PageLoadEvent, WebViewBuilder, WebViewBuilderExtUnix};
+    use wry::{PageLoadEvent, WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let smoke = args.iter().any(|a| a == "--smoke");
@@ -160,7 +204,10 @@ fn main() {
     });
 
     let (tx, rx) = mpsc::channel::<String>();
-    let (tx_nav, tx_load) = (tx.clone(), tx.clone());
+    let (tx_nav, tx_load, tx_popup) = (tx.clone(), tx.clone(), tx.clone());
+    // The popups and their views live as long as the login window.
+    let popups: std::rc::Rc<std::cell::RefCell<Vec<(gtk::Window, wry::WebView)>>> = Default::default();
+    let (popup_parent, popup_list) = (window.clone(), popups.clone());
     let mut builder = WebViewBuilder::new()
         .with_incognito(true)
         .with_user_agent(store.user_agent())
@@ -171,6 +218,18 @@ fn main() {
                 false
             }
             None => true,
+        })
+        // "Sign in with Google" and the like may open a popup, which
+        // WebKitGTK drops unless it is given a view.
+        .with_new_window_req_handler(move |_, features| {
+            match open_popup(store, &popup_parent, features.opener.webview, tx_popup.clone()) {
+                Some((popup, view)) => {
+                    let webview = view.webview();
+                    popup_list.borrow_mut().push((popup, view));
+                    wry::NewWindowResponse::Create { webview }
+                }
+                None => wry::NewWindowResponse::Deny,
+            }
         });
     builder = if smoke {
         builder.with_html("<html><body style='font-family:sans-serif;background:#222;color:#eee'><h2>Login helper</h2><p>Smoke test page.</p></body></html>")
@@ -197,26 +256,21 @@ fn main() {
             .expect("creating the web view"),
     );
 
-    // Epic's JSON page of /id/api/redirect shows the code as text.
+    // Epic's JSON page of /id/api/redirect shows the code as text. Read
+    // again while it is open: the address changes before the text is there.
     let page_check = webview.clone();
     let tx_page = tx.clone();
-    let mut last_url = String::new();
     glib::timeout_add_local(Duration::from_millis(700), move || {
         if smoke || store != Store::Epic {
             return glib::ControlFlow::Break;
         }
-        if let Ok(url) = page_check.url() {
-            if url != last_url {
-                last_url = url.clone();
-                if url.contains("/id/api/redirect") {
-                    let tx = tx_page.clone();
-                    let _ = page_check.evaluate_script_with_callback("document.body ? document.body.innerText : ''", move |text| {
-                        if let Some(code) = code_from_page_text(&text) {
-                            let _ = tx.send(code);
-                        }
-                    });
+        if page_check.url().is_ok_and(|url| url.contains("/id/api/redirect")) {
+            let tx = tx_page.clone();
+            let _ = page_check.evaluate_script_with_callback("document.body ? document.body.innerText : ''", move |text| {
+                if let Some(code) = code_from_page_text(&text) {
+                    let _ = tx.send(code);
                 }
-            }
+            });
         }
         glib::ControlFlow::Continue
     });
@@ -240,11 +294,60 @@ fn main() {
 
     window.show_all();
     gtk::main();
+    drop(popups);
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Opens the popup a page asked for in a window over the login window, with
+/// a view related to the page's (same session, and `window.opener` works).
+/// It closes when its page closes itself; a code it navigates to counts too.
+#[cfg(target_os = "linux")]
+fn open_popup(
+    store: Store,
+    parent: &gtk::Window,
+    opener: webkit2gtk::WebView,
+    tx: std::sync::mpsc::Sender<String>,
+) -> Option<(gtk::Window, wry::WebView)> {
+    use gtk::prelude::*;
+    use webkit2gtk::WebViewExt as _;
+    use wry::{WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
+
+    let popup = gtk::Window::new(gtk::WindowType::Toplevel);
+    popup.set_title(store.title());
+    popup.set_transient_for(Some(parent));
+    popup.set_default_size(480, 640);
+    let built = WebViewBuilder::new()
+        .with_related_view(opener)
+        .with_user_agent(store.user_agent())
+        .with_navigation_handler(move |url| match store.code_from_url(&url) {
+            Some(code) => {
+                let _ = tx.send(code);
+                false
+            }
+            None => true,
+        })
+        .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
+        .build_gtk(&popup);
+    let view = match built {
+        Ok(view) => view,
+        Err(e) => {
+            eprintln!("could not open a popup window: {e}");
+            return None;
+        }
+    };
+    let closing = popup.clone();
+    view.webview().connect_close(move |_| closing.close());
+    popup.show_all();
+    Some((popup, view))
+}
+
+#[cfg(windows)]
 fn main() {
-    eprintln!("The login window is only available on Linux for now; use the browser login.");
+    windows::main()
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn main() {
+    eprintln!("The login window is only available on Linux and Windows for now; use the browser login.");
     std::process::exit(2);
 }
 
@@ -281,12 +384,29 @@ mod tests {
     }
 
     #[test]
+    fn the_xbox_sign_in_hands_back_its_whole_end_address() {
+        let xbox = Store::Xbox;
+        let end = "https://login.live.com/oauth20_desktop.srf?code=M.C5_BAY.2.abc&state=st";
+        assert_eq!(xbox.code_from_url(end).as_deref(), Some(end));
+        let denied = "https://login.live.com/oauth20_desktop.srf?error=access_denied&state=st";
+        assert_eq!(xbox.code_from_url(denied).as_deref(), Some(denied));
+        assert_eq!(xbox.code_from_url("https://login.live.com/oauth20_desktop.srf?lc=1033"), None, "the blank page before");
+        assert_eq!(xbox.code_from_url("https://login.live.com/oauth20_authorize.srf?code=x"), None);
+        assert_eq!(xbox.code_from_url("https://evil.example/oauth20_desktop.srf?code=x"), None);
+    }
+
+    #[test]
     fn arguments_pick_the_store_and_page() {
         assert_eq!(parse_args(&[]).unwrap(), (Store::Epic, EPIC_LOGIN_URL.to_string()));
         assert_eq!(parse_args(&args(&["--smoke"])).unwrap().0, Store::Epic);
         assert_eq!(parse_args(&args(&["--store", "gog"])).unwrap(), (Store::Gog, GOG_LOGIN_URL.to_string()));
         assert_eq!(parse_args(&args(&["--store", "amazon", "--url", "https://amazon.com/ap/signin?x"])).unwrap().0, Store::Amazon);
         assert!(parse_args(&args(&["--store", "amazon"])).is_err());
+        assert!(parse_args(&args(&["--store", "xbox"])).is_err());
+        assert_eq!(
+            parse_args(&args(&["--store", "xbox", "--url", "https://login.live.com/oauth20_authorize.srf?x"])).unwrap().0,
+            Store::Xbox
+        );
         assert!(parse_args(&args(&["--store", "steam"])).is_err());
         assert!(parse_args(&args(&["--bogus"])).is_err());
     }

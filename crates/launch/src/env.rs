@@ -122,6 +122,15 @@ fn deprecated_ge_regex() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(GE|Wine|Proton)-(Proton[7-8]|[4-7].*-GE|GE-4.[0-9]*)").unwrap())
 }
 
+/// `WINEDEBUG` of a Proton game whose settings do not turn `verboseLogs`
+/// on. Proton's own default (`-all`) hides the loader's errors; these lines
+/// only appear when a DLL fails to load, which costs nothing while the game
+/// runs. Only reaches the log when the key is absent: the launch log is then
+/// on (`log_writer::launch_log_switches`), while `verboseLogs: false` turns
+/// it off altogether and `true` (the default of a new game) already logs
+/// Wine's errors through `+fixme`.
+pub const QUIET_WINEDEBUG: &str = "-all,err+module";
+
 /// `setupWineEnvVars`. `runtime_dir` is `<data>/tools/runtimes`.
 pub fn setup_wine_env_vars(s: &GameSettings, game_id: &str, runtime_dir: &str, probe: &dyn Probe) -> Env {
     let w = &s.wine_version;
@@ -239,11 +248,11 @@ pub fn setup_wine_env_vars(s: &GameSettings, game_id: &str, runtime_dir: &str, p
             probe.env_var("SteamGameId").filter(|v| !v.is_empty()).unwrap_or_else(|| format!("heroic-{game_id}")),
         );
         ret.insert("PROTON_LOG_DIR".into(), home.clone());
+        let has = |k: &str| s.env_options.iter().any(|(key, _)| key == k);
+        if !has("WINEDEBUG") {
+            ret.insert("WINEDEBUG".into(), if s.verbose_logs { "+fixme" } else { QUIET_WINEDEBUG }.into());
+        }
         if s.verbose_logs {
-            let has = |k: &str| s.env_options.iter().any(|(key, _)| key == k);
-            if !has("WINEDEBUG") {
-                ret.insert("WINEDEBUG".into(), "+fixme".into());
-            }
             if !has("DXVK_LOG_LEVEL") {
                 ret.insert("DXVK_LOG_LEVEL".into(), "info".into());
             }
@@ -344,7 +353,7 @@ pub fn build_wrappers_in(s: &GameSettings, probe: &dyn Probe, steam_runtime: Opt
     wrappers.extend(gamescope.iter().cloned());
     for w in &s.wrapper_options {
         wrappers.push(w.exe.clone());
-        wrappers.extend(shlex::split(&w.args).unwrap_or_default());
+        wrappers.extend(crate::args::split_args(&w.args));
     }
     if !mangohud.is_empty() && gamescope.is_empty() {
         wrappers.extend(mangohud);
@@ -409,7 +418,7 @@ pub fn gamescope_args(g: &Gamescope, old: bool, mangoapp: bool, limit: Option<&A
     if mangoapp {
         out.push("--mangoapp".into());
     }
-    out.extend(shlex::split(&g.additional_options).unwrap_or_default());
+    out.extend(crate::args::split_args(&g.additional_options));
     // Must be the last option.
     out.push("--".into());
     out
@@ -467,6 +476,22 @@ mod tests {
     }
 
     #[test]
+    fn proton_keeps_the_dll_loader_errors_in_the_log() {
+        let proton = |extra: serde_json::Value| {
+            let mut v = json!({"wineVersion": {"bin": "/t/GE-Proton9/proton", "name": "GE-Proton9", "type": "proton"}});
+            v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            setup_wine_env_vars(&settings(v), "0", "/r", &FakeProbe::new("/home/u"))
+        };
+        assert_eq!(proton(json!({}))["WINEDEBUG"], QUIET_WINEDEBUG);
+        assert_eq!(proton(json!({"verboseLogs": true}))["WINEDEBUG"], "+fixme");
+        let own = proton(json!({"enviromentOptions": [{"key": "WINEDEBUG", "value": "-all"}]}));
+        assert!(!own.contains_key("WINEDEBUG"));
+        // Plain Wine shows its errors already.
+        let wine = settings(json!({"wineVersion": {"bin": "/usr/bin/wine", "name": "Wine", "type": "wine"}}));
+        assert!(!setup_wine_env_vars(&wine, "0", "/r", &FakeProbe::new("/home/u")).contains_key("WINEDEBUG"));
+    }
+
+    #[test]
     fn plain_wine_env_appends_to_user_dll_overrides() {
         let s = settings(json!({
             "wineVersion": {"bin": "/w/bin/wine", "name": "Wine", "type": "wine"},
@@ -494,6 +519,13 @@ mod tests {
         assert_eq!(w.wrappers, ["taskset", "-c", "0-3", "/usr/bin/mangohud", "--dlsym", "/usr/bin/gamemoderun", "/umu"]);
         let missing = build_wrappers(&s, &FakeProbe::new("/h"), None);
         assert!(missing.error.unwrap().contains("mangohud"));
+    }
+
+    #[test]
+    fn a_wrapper_with_an_unclosed_quote_keeps_its_arguments() {
+        let s = settings(json!({"wrapperOptions": [{"exe": "taskset", "args": "-c 0-3 --name Rafa's"}]}));
+        let w = build_wrappers(&s, &FakeProbe::new("/h"), None);
+        assert_eq!(w.wrappers, ["taskset", "-c", "0-3", "--name", "Rafa's"]);
     }
 
     #[test]

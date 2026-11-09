@@ -41,7 +41,7 @@ fn installs(home: &Path) -> [Install; 2] {
 pub fn detect(home: &Path) -> Result<Option<Found>> {
     let Some(install) = installs(home).into_iter().find(|i| i.root.join("bottles").is_dir()) else { return Ok(None) };
     let games = read(&install)?;
-    Ok(Some(Found { launcher: Launcher::Bottles, location: install.root, flatpak: install.flatpak, games, heroic: None }))
+    Ok(Some(Found { launcher: Launcher::Bottles, location: install.root, flatpak: install.flatpak, games, heroic: None, in_use: false }))
 }
 
 fn load_yaml(file: &Path) -> Result<Value> {
@@ -190,6 +190,8 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
+    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
+    #[cfg(unix)]
     #[test]
     fn reads_the_programs_of_every_bottle() {
         let h = tempfile::tempdir().unwrap();

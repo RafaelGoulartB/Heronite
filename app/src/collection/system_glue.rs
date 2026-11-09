@@ -19,9 +19,10 @@ use heronite_i18n::tr;
 
 impl CollectionView {
     /// `--console`: switches to console mode the way the palette's "Console
-    /// mode" does (remembered).
-    pub fn enter_console_mode(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.set_console(true, window, cx);
+    /// mode" does (remembered). `opened`: the window was just opened for it
+    /// (already fullscreen when console mode asks for it).
+    pub fn enter_console_mode(&mut self, opened: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_console(true, !opened, window, cx);
     }
 
     /// Selects the game and presses its primary button (play, or the install
@@ -126,7 +127,11 @@ impl CollectionView {
     /// "Add/Remove shortcuts" and "Add to / Remove from Steam" for installed
     /// games (Heroic's context menu).
     pub(super) fn system_actions(&mut self, game: &CollectionGame, cx: &mut Context<Self>) -> Vec<GameActionItem> {
-        if !game.installed || matches!(game.launch_kind.as_deref(), Some("steam-uri")) || game.game.install.is_dlc == Some(true) {
+        if !game.installed
+            || matches!(game.launch_kind.as_deref(), Some("steam-uri"))
+            || game.game.install.is_dlc == Some(true)
+            || !heronite_platform::supported(heronite_platform::Feature::DesktopShortcuts)
+        {
             return Vec::new();
         }
         let (has_shortcuts, in_steam) = self.probe_shortcuts(game, cx);

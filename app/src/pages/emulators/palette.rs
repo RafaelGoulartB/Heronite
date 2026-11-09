@@ -5,7 +5,7 @@ use heronite_i18n::tr;
 
 use super::EmulatorsPage;
 use crate::icons::Icon;
-use crate::pages::commands::{CommandCtx, PageCommand, PaletteCommands};
+use crate::pages::commands::{close_dialog, CommandCtx, PageCommand, PaletteCommands};
 
 impl EmulatorsPage {
     /// Runs `id` once the emulators are read (the dialogs need them).
@@ -48,5 +48,11 @@ impl PaletteCommands for EmulatorsPage {
 
     fn page_modal(&self) -> bool {
         self.dialog.is_some()
+    }
+
+    fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let closed = close_dialog(&mut self.dialog, &mut self.dialog_sub, window, cx);
+        cx.notify();
+        closed
     }
 }

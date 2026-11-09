@@ -15,13 +15,15 @@ Heronite is licensed under the [GNU General Public License v3.0](LICENSE). It in
 |---|---|---|---|
 | [Cabin](https://github.com/impallari/Cabin) | `app/assets/fonts/Cabin-400.ttf`, `Cabin-600.ttf` | Copyright 2018 The Cabin Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
 | [Rubik](https://github.com/googlefonts/rubik) | `app/assets/fonts/Rubik-400.ttf`, `Rubik-600.ttf` | Copyright 2015 The Rubik Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
+| [Noto Sans Mono](https://github.com/notofonts/latin-greek-cyrillic) | `app/assets/fonts/NotoSansMono-400.ttf`, `NotoSansMono-600.ttf` (subset to Latin, Greek, Cyrillic and common symbols) | Copyright 2022 The Noto Project Authors | SIL Open Font License 1.1 ([`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt)) |
 
 ## Icons
 
 | Icons | Files | Copyright | License |
 |---|---|---|---|
-| [Material Icons](https://github.com/google/material-design-icons), through [`@mui/icons-material`](https://github.com/mui/material-ui/tree/master/packages/mui-icons-material) | every `app/assets/icons/*.svg` with a `0 0 24 24` view box, except `moon`, `sun`, `sunrise`, and `sunset`, which were drawn for Heronite (as were `play-circle`, `install-circle`, and `stop-circle`) | Google LLC (icons); Copyright (c) 2014 Call-Em-All (package) | Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)); MIT ([`licenses/MIT-mui-icons-material.txt`](licenses/MIT-mui-icons-material.txt)) |
+| [Material Icons](https://github.com/google/material-design-icons), through [`@mui/icons-material`](https://github.com/mui/material-ui/tree/master/packages/mui-icons-material) | every `app/assets/icons/*.svg` with a `0 0 24 24` view box, except `brand-*`, and `moon`, `sun`, `sunrise`, `sunset`, and `emu-*` (the emulators' icons), which were drawn for Heronite (as were `play-circle`, `install-circle`, and `stop-circle`) | Google LLC (icons); Copyright (c) 2014 Call-Em-All (package) | Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt)); MIT ([`licenses/MIT-mui-icons-material.txt`](licenses/MIT-mui-icons-material.txt)) |
 | [Font Awesome Free](https://fontawesome.com) 6 | `app/assets/icons/fa-*.svg` | Copyright (c) 2024 Fonticons, Inc. | CC BY 4.0 ([`licenses/FontAwesome-Free.txt`](licenses/FontAwesome-Free.txt)) |
+| [Simple Icons](https://simpleicons.org) 16.36.0 | `app/assets/icons/brand-*.svg` (the logos of the stores, Dolphin and RetroArch, path data unchanged) | the Simple Icons contributors; the logos are trademarks of their owners | CC0 1.0 ([`licenses/CC0-1.0-simple-icons.txt`](licenses/CC0-1.0-simple-icons.txt)) |
 
 ## Libraries in the AppImage
 
@@ -33,11 +35,28 @@ The AppImage carries these libraries in `usr/lib` because not every system has t
 | [libxcb](https://xcb.freedesktop.org) | `libxcb-xkb.so.1` | Copyright (C) 2001-2006 Bart Massey, Jamey Sharp, and Josh Triplett | MIT ([`licenses/MIT-libxcb.txt`](licenses/MIT-libxcb.txt)) |
 | libudev, from [systemd](https://github.com/systemd/systemd) | `libudev.so.1` | the systemd contributors | LGPL-2.1-or-later ([`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt)); source: the [`systemd` package of Ubuntu 22.04](https://launchpad.net/ubuntu/jammy/+source/systemd) |
 
+## Libraries in the Windows build
+
+The Windows build links this library statically into `heronite.exe`; it reads game controllers in console mode (`crates/platform/src/controllers.rs`). It is built unchanged from the source in the [`sdl3-src`](https://crates.io/crates/sdl3-src) crate, with only the joystick and HIDAPI parts enabled.
+
+| Library | Copyright | License |
+|---|---|---|
+| [SDL](https://libsdl.org) 3.4.18 | Copyright (C) 1997-2026 Sam Lantinga | zlib ([`licenses/Zlib-SDL.txt`](licenses/Zlib-SDL.txt)) |
+| [HIDAPI](https://github.com/libusb/hidapi), as included in SDL (`src/hidapi`) | Copyright (c) 2010, Alan Ott, Signal 11 Software | used under the GPL-3.0 ([`LICENSE`](LICENSE)), one of its three licenses |
+
+## Vendored C code
+
+| Project | Files | Copyright | License |
+|---|---|---|---|
+| [rcheevos](https://github.com/RetroAchievements/rcheevos) v12.5.0 (only the ROM hashing, `rc_hash`) | `crates/achievements/vendor/rcheevos/` | Copyright (c) 2018 RetroAchievements.org | MIT ([`licenses/MIT-rcheevos.txt`](licenses/MIT-rcheevos.txt)) |
+
 ## Rust crates
 
 The Rust crates Heronite depends on are listed in [`Cargo.lock`](Cargo.lock). Each one is distributed under its own license, mostly MIT and/or Apache-2.0. To list them all with their license texts, run [`cargo about`](https://github.com/EmbarkStudios/cargo-about) or [`cargo license`](https://github.com/onur/cargo-license).
 
 `vendor/gpui-pre-linux/` is a copy of the [`gpui-pre-linux`](https://crates.io/crates/gpui-pre-linux) 0.3.8 crate (GPUI's Linux platform from [Zed](https://github.com/zed-industries/zed), Copyright Zed Industries, Inc.), under the Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt), also in the folder). It is modified: `vendor/gpui-pre-linux/PATCHES.md` lists the changes.
+
+`vendor/gpui-pre-windows/` is a copy of the [`gpui-pre-windows`](https://crates.io/crates/gpui-pre-windows) 0.3.8 crate (GPUI's Windows platform from [Zed](https://github.com/zed-industries/zed), Copyright Zed Industries, Inc.), under the Apache License 2.0 ([`licenses/Apache-2.0.txt`](licenses/Apache-2.0.txt), also in the folder). It is modified: `vendor/gpui-pre-windows/PATCHES.md` lists the changes.
 
 ## External tools
 
@@ -45,4 +64,5 @@ Heronite runs these programs if they are installed. It does not include them:
 
 - [legendary](https://github.com/derrod/legendary) (GPL-3.0) for Epic Games
 - [Ludusavi](https://github.com/mtkennerly/ludusavi) (MIT) for save backups
+- [rclone](https://github.com/rclone/rclone) (MIT) for the cloud accounts of Settings → Cloud, downloaded from rclone's site when it is not installed
 - Wine/Proton builds downloaded by the Wine Manager ([GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom), [Proton-CachyOS](https://github.com/CachyOS/proton-cachyos)), under their own licenses

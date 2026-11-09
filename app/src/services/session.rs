@@ -1,7 +1,7 @@
 //! Post-game work that must run whether or not a window exists (the window
 //! can be closed to the tray while a game runs): the save-state key of
-//! emulated games, the Ludusavi backup, and the screenshot capture session
-//! of the game. The hub feeds it every launch event; the Collection only
+//! emulated games, the Ludusavi backup (after play, and every interval while
+//! the game runs when set), and the screenshot capture session of the game. The hub feeds it every launch event; the Collection only
 //! observes its [`SessionEvent`]s (toasts, saved captures).
 //!
 //! Playtime and the local session record are written by the launcher thread
@@ -18,7 +18,8 @@ use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_emulation::ludusavi::{
-    backup_after_play, notification, AfterPlay, CommandRunner, LudusaviBackupResult, LudusaviEnv, SystemRunner,
+    backup_after_play, notification, periodic_backup, AfterPlay, CommandRunner, LudusaviBackupResult, LudusaviEnv, LudusaviGame,
+    PeriodicBackups, SystemRunner,
 };
 use heronite_emulation::{remember_save_state_key, HostEnv};
 use heronite_i18n::tr;
@@ -59,6 +60,8 @@ pub struct Session {
     capture_games: HashMap<String, String>,
     /// Games launched and not exited yet (`app_name`).
     running: HashSet<String>,
+    /// Save backups of each running game that has them (`app_name`).
+    periodic: HashMap<String, PeriodicBackups>,
 }
 
 impl EventEmitter<SessionEvent> for Session {}
@@ -78,6 +81,7 @@ pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) -> E
         capture_cfg: None,
         capture_games: HashMap::new(),
         running: HashSet::new(),
+        periodic: HashMap::new(),
     });
     cx.set_global(SessionGlobal(entity.clone()));
     entity
@@ -112,23 +116,43 @@ impl Session {
             LaunchEvent::Launching { app_name } => {
                 self.running.insert(app_name.clone());
                 self.begin_capture(app_name, cx);
+                self.begin_periodic(app_name, cx);
+                self.tell_client(app_name, true, cx);
+                crate::services::sync::game_started(cx);
             }
             LaunchEvent::Exited { app_name, elapsed, .. } => {
                 self.running.remove(app_name);
                 self.end_capture(app_name);
-                self.game_ended(app_name, *elapsed, cx);
+                // Before the session is taken out.
+                self.tell_client(app_name, false, cx);
+                let periodic = self.periodic.remove(app_name);
+                self.game_ended(app_name, *elapsed, periodic, cx);
             }
             LaunchEvent::Error { app_name, .. } => {
                 self.running.remove(app_name);
                 self.end_capture(app_name);
+                // Dropping cancels them; one still copying ends on its own.
+                self.periodic.remove(app_name);
             }
             // A game picked up again after the app restarted starts here.
             LaunchEvent::Running { app_name, .. } if !self.running.contains(app_name) => {
                 self.running.insert(app_name.clone());
                 self.begin_capture(app_name, cx);
+                self.begin_periodic(app_name, cx);
+                self.tell_client(app_name, true, cx);
+                crate::services::sync::game_started(cx);
             }
             LaunchEvent::Running { .. } | LaunchEvent::Status { .. } | LaunchEvent::Preparing { .. } => {}
         }
+    }
+
+    /// A game started through a store client (Battle.net...) began or ended:
+    /// the client is followed until it closes, and looked at when the game
+    /// ends (what is installed may have changed).
+    fn tell_client(&mut self, app_name: &str, started: bool, cx: &mut Context<Self>) {
+        let Some(client) = self.runtime.session_info(app_name).and_then(|i| i.client) else { return };
+        let Some(clients) = crate::services::clients_started(cx) else { return };
+        clients.update(cx, |c, cx| if started { c.game_started(client, cx) } else { c.game_ended(client, cx) });
     }
 
     /// The Collection applies changed settings while it is open.
@@ -164,7 +188,7 @@ impl Session {
             }
         })
         .detach();
-        let svc = CaptureService::new(std_tx, ServiceOptions { portal_app_id: Some("com.heronite.launcher".into()), ..Default::default() });
+        let svc = CaptureService::new(std_tx, ServiceOptions { portal_app_id: Some("app.heronite.Heronite".into()), ..Default::default() });
         if let Some(cfg) = self.capture_cfg.clone() {
             svc.set_config(cfg);
         }
@@ -213,16 +237,92 @@ impl Session {
         }
     }
 
+    /// Starts the save backups of a launched game while it runs, when
+    /// `ludusavi.intervalMinutes` is set. The settings come from disk, off
+    /// the UI thread; each backup runs on the game's own thread and its
+    /// result comes back here.
+    fn begin_periodic(&mut self, app_name: &str, cx: &mut Context<Self>) {
+        if self.periodic.contains_key(app_name) || !heronite_platform::supported(heronite_platform::Feature::SaveBackups) {
+            return;
+        }
+        let Some(info) = self.runtime.session_info(app_name) else { return };
+        let paths = self.data_paths.clone();
+        cx.spawn(async move |this, cx| {
+            let found = cx
+                .background_spawn(async move {
+                    let interval = match heronite_data::settings::load(&paths) {
+                        Ok(s) => s.ludusavi.periodic_interval_for(&info.runner, &info.app_name)?,
+                        Err(e) => {
+                            log::warn!("reading the settings for periodic save backups: {e:#}");
+                            return None;
+                        }
+                    };
+                    let game = LudusaviGame::of_session(&paths, &info.app_name, &info.title, &info.runner);
+                    Some((interval, game, paths))
+                })
+                .await;
+            let Some((interval, game, paths)) = found else { return };
+            let (tx, mut rx) = unbounded::<Notice>();
+            let started = this.update(cx, |this, _| {
+                // The game may have ended while the settings were read.
+                if !this.running.contains(&game.app_name) || this.periodic.contains_key(&game.app_name) {
+                    return false;
+                }
+                let key = game.app_name.clone();
+                let mut current = interval;
+                let job = move || {
+                    let runner = SystemRunner::default();
+                    let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &SystemProbe };
+                    let tick = periodic_backup(&env, &game, current);
+                    if let Some(n) = tick.result.as_ref().and_then(|r| periodic_notice(r, &game.title)) {
+                        // Fails only once the Session is gone: nobody to tell.
+                        let _ = tx.unbounded_send(n);
+                    }
+                    current = tick.next.unwrap_or(current);
+                    tick.next
+                };
+                match PeriodicBackups::start(&key, interval, job) {
+                    Ok(p) => {
+                        log::info!("save backups every {} min while {key} runs", interval.as_secs() / 60);
+                        this.periodic.insert(key, p);
+                        true
+                    }
+                    Err(e) => {
+                        log::error!("starting the periodic save backups of {key}: {e}");
+                        false
+                    }
+                }
+            });
+            if !matches!(started, Ok(true)) {
+                return;
+            }
+            while let Some(n) = rx.next().await {
+                if this.update(cx, |_, cx| show_notice(n, cx)).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     /// The save-state key of emulated games and the Ludusavi backup, off the
     /// UI thread. Shows the result as a toast (Collection open) and a
     /// desktop notification (backup saved always; failures when no window).
-    fn game_ended(&mut self, app_name: &str, elapsed: Duration, cx: &mut Context<Self>) {
+    /// Periodic backups stop first; one still copying is waited for, so the
+    /// after-play backup is the last one of the session.
+    fn game_ended(&mut self, app_name: &str, elapsed: Duration, periodic: Option<PeriodicBackups>, cx: &mut Context<Self>) {
+        if let Some(p) = &periodic {
+            p.cancel();
+        }
         let Some(info) = self.runtime.take_session(app_name) else { return };
         let paths = self.data_paths.clone();
         PENDING.fetch_add(1, Ordering::SeqCst);
         cx.spawn(async move |this, cx| {
             let notice = cx
                 .background_spawn(async move {
+                    if let Some(p) = periodic {
+                        p.finish();
+                    }
                     let runner = SystemRunner::default();
                     after_play(&paths, &info, elapsed, &runner, &SystemProbe)
                 })
@@ -230,19 +330,26 @@ impl Session {
             let had_notice = notice.is_some();
             this.update(cx, |_, cx| {
                 if let Some(n) = notice {
-                    if n.desktop || (n.error && !crate::system::has_window(cx)) {
-                        crate::system::notify::send(n.title, n.text.clone());
-                    }
-                    cx.emit(SessionEvent::Toast { text: n.text, error: n.error });
+                    show_notice(n, cx);
                 }
             })
             .ok();
             PENDING.fetch_sub(1, Ordering::SeqCst);
             log::info!("post-game work of the session ended (result shown: {had_notice})");
+            cx.update(crate::services::sync::after_game);
             cx.update(crate::system::post_game_idle);
         })
         .detach();
     }
+}
+
+/// A toast (Collection open) and, when it says so or for a failure with no
+/// window, a desktop notification.
+fn show_notice(n: Notice, cx: &mut Context<Session>) {
+    if n.desktop || (n.error && !crate::system::has_window(cx)) {
+        crate::system::notify::send(n.title, n.text.clone());
+    }
+    cx.emit(SessionEvent::Toast { text: n.text, error: n.error });
 }
 
 /// What the post-game work has to say.
@@ -263,8 +370,9 @@ pub fn after_play(
     runner: &dyn CommandRunner,
     probe: &dyn Probe,
 ) -> Option<Notice> {
+    // A setting restored from Linux does not run it where it is off.
     let ludusavi = match heronite_data::settings::load(paths) {
-        Ok(s) => s.ludusavi.enabled,
+        Ok(s) => s.ludusavi.enabled && heronite_platform::supported(heronite_platform::Feature::SaveBackups),
         Err(e) => {
             log::warn!("reading the settings after the game: {e:#}");
             false
@@ -307,6 +415,17 @@ pub fn backup_notice(result: &LudusaviBackupResult, title: &str) -> Option<Notic
     })
 }
 
+/// A backup while the game runs: saved ones only in the Collection (one
+/// every interval would flood the desktop); failures like after play. A
+/// skip (another backup running, turned off) says nothing.
+pub fn periodic_notice(result: &LudusaviBackupResult, title: &str) -> Option<Notice> {
+    if result.ran {
+        let name = result.game_name.as_deref().unwrap_or(title);
+        return Some(Notice { title: "Ludusavi".into(), text: tr!("Backed up {name} while playing", name), error: false, desktop: false });
+    }
+    backup_notice(result, title)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -316,7 +435,7 @@ mod tests {
     use heronite_emulation::ludusavi::{CommandOutput, CommandRunner};
     use heronite_launch::probe::FakeProbe;
 
-    use super::{after_play, backup_notice, LudusaviBackupResult, Notice};
+    use super::{after_play, backup_notice, periodic_notice, LudusaviBackupResult, Notice};
     use crate::runtime::SessionInfo;
 
     /// The backup has a process-wide in-flight guard: tests take turns.
@@ -348,6 +467,7 @@ mod tests {
             is_emulator: false,
             rom: None,
             selected_rom: None,
+            client: None,
         }
     }
 
@@ -367,7 +487,13 @@ mod tests {
         let (_d, paths) = data_dir(ENABLED);
         let runner = FakeLudusavi::default();
         let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
-        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &probe).expect("a backup notice");
+        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &probe);
+        if !heronite_platform::supported(heronite_platform::Feature::SaveBackups) {
+            assert_eq!(n, None, "save backups are off on this system, whatever the setting");
+            assert!(runner.0.lock().unwrap().is_empty());
+            return;
+        }
+        let n = n.expect("a backup notice");
         assert!(!n.error && n.desktop);
         assert_eq!(n.title, "Ludusavi");
         assert!(n.text.contains("Hades"), "{}", n.text);
@@ -391,7 +517,12 @@ mod tests {
         let _turn = turn();
         let (_d, paths) = data_dir(ENABLED);
         let runner = FakeLudusavi::default();
-        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &FakeProbe::new("/h")).expect("an error notice");
+        let n = after_play(&paths, &info(), Duration::from_secs(120), &runner, &FakeProbe::new("/h"));
+        if !heronite_platform::supported(heronite_platform::Feature::SaveBackups) {
+            assert_eq!(n, None, "save backups are off on this system, whatever the setting");
+            return;
+        }
+        let n = n.expect("an error notice");
         assert!(n.error && !n.desktop);
         assert!(n.text.contains("not found"), "{}", n.text);
     }
@@ -415,5 +546,19 @@ mod tests {
     fn skipped_backup_says_nothing() {
         let r = LudusaviBackupResult { skipped_reason: Some("disabled".into()), ..Default::default() };
         assert_eq!(backup_notice(&r, "x"), None);
+    }
+
+    #[test]
+    fn periodic_backups_announce_saves_only_in_the_collection() {
+        let saved =
+            LudusaviBackupResult { ran: true, game_name: Some("Hades".into()), backup_path: Some("/b".into()), ..Default::default() };
+        let n = periodic_notice(&saved, "hades").unwrap();
+        assert_eq!(n, Notice { title: "Ludusavi".into(), text: "Backed up Hades while playing".into(), error: false, desktop: false });
+        let failed = LudusaviBackupResult { error: Some("boom".into()), ..Default::default() };
+        let n = periodic_notice(&failed, "x").unwrap();
+        assert!(n.error && !n.desktop, "a failure is never silent");
+        assert_eq!(n.text, "Ludusavi backup failed: boom");
+        let busy = LudusaviBackupResult { skipped_reason: Some("already-running".into()), ..Default::default() };
+        assert_eq!(periodic_notice(&busy, "x"), None);
     }
 }

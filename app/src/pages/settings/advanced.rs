@@ -2,7 +2,6 @@
 //! cache, the image cache limit and "copy all settings".
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -60,7 +59,7 @@ pub fn logs_dir(data_paths: &DataPaths) -> Option<PathBuf> {
 }
 
 pub fn open_folder(dir: &Path) -> std::io::Result<()> {
-    Command::new("xdg-open").arg(dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map(|_| ())
+    heronite_platform::shell::open(dir)
 }
 
 /// The global settings as pretty JSON for the clipboard, API keys redacted.

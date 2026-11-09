@@ -5,7 +5,7 @@
 use super::portal::PortalShortcut;
 use super::{
     capture_folder, current_game, feedback, grim, hyprland, portal, temporary_name, to_hyprland_binding, to_portal_trigger,
-    unique_screenshot_path, ActiveGame, CaptureConfig, CaptureEvent, CaptureMessages, CaptureOutcome, CaptureStatus, ShortcutBackend,
+    unique_screenshot_path, ActiveGame, CaptureConfig, CaptureEvent, CaptureOutcome, CaptureStatus, ServiceOptions, ShortcutBackend,
     SkipReason,
 };
 use crate::list::resolve_path;
@@ -16,16 +16,6 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, Weak};
-
-/// Construction options.
-#[derive(Debug, Clone, Default)]
-pub struct ServiceOptions {
-    /// Reverse-DNS desktop id registered with the portal for a non-sandboxed
-    /// app (Heronite uses `com.heronite.launcher`, matching its `.desktop`
-    /// file). Without it the portal may not be able to identify the app.
-    pub portal_app_id: Option<String>,
-    pub messages: CaptureMessages,
-}
 
 #[derive(Default)]
 struct State {

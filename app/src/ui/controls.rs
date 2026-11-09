@@ -85,10 +85,48 @@ pub fn checkbox(id: impl Into<ElementId>, checked: bool, label: impl Into<Shared
     toggle_row(id, label, None, checked).py(px(7.))
 }
 
+/// A [`toggle_row`] with a short description and the whole text in the
+/// tooltip of an (i) after the label.
+pub fn toggle_row_info(id: impl Into<ElementId>, label: impl Into<SharedString>, short: &str, full: &str, on: bool) -> Stateful<Div> {
+    let id: ElementId = id.into();
+    let sw = toggle(SharedString::from(format!("{id}-sw")), on, false);
+    let label: SharedString = label.into();
+    let tip = info_tip(SharedString::from(format!("{id}-info")), full);
+    row_with(label, Some(short), Some(tip.into_any_element()), sw).id(id).cursor_pointer()
+}
+
+/// A small (i) whose tooltip holds `text`: the whole help of a setting that
+/// shows one line of it.
+pub fn info_tip(id: impl Into<ElementId>, text: &str) -> Stateful<Div> {
+    div().id(id).flex_none().tooltip(super::tooltip(text.to_string())).child(icon(Icon::InfoOutlined, px(14.), theme::text_dim()))
+}
+
 /// Label (14px) with an optional description (12px) on the left, `control`
 /// on the right. Padding 11px 0; put rows inside a [`card`].
 pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: impl IntoElement) -> Div {
+    row_with(label.into(), description, None, control)
+}
+
+/// A [`row`] with `lead` (an [`icon_badge`]) before its label.
+pub fn row_lead(lead: impl IntoElement, label: impl Into<SharedString>, description: Option<&str>, control: impl IntoElement) -> Div {
+    let r = row_with(label.into(), description, None, control);
+    // The badge goes first; the label column keeps growing.
+    div().flex().items_center().gap(px(12.)).child(div().flex_none().child(lead)).child(r.flex_1().min_w_0())
+}
+
+/// The badge of a section's main switch: its icon on an accent tile (36px).
+pub fn icon_badge(ic: Icon) -> Div {
+    div().flex_none().size(px(36.)).rounded(px(11.)).bg(theme::accent_tint()).flex().items_center().justify_center().child(icon(
+        ic,
+        px(19.),
+        theme::accent(),
+    ))
+}
+
+fn row_with(label: SharedString, description: Option<&str>, after_label: Option<AnyElement>, control: impl IntoElement) -> Div {
     div()
+        .relative()
+        .children(super::find::flash(&label, 8.))
         .flex()
         .items_center()
         .justify_between()
@@ -101,7 +139,16 @@ pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: i
                 .flex_1()
                 .min_w_0()
                 .gap(px(1.))
-                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(label.into()))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_size(px(14.))
+                        .text_color(theme::text_primary())
+                        .child(label)
+                        .children(after_label),
+                )
                 .children(description.map(|d| {
                     div().text_size(px(12.)).line_height(px(16.)).text_color(theme::text_dim()).child(SharedString::from(d.to_string()))
                 })),
@@ -143,6 +190,11 @@ pub fn with_sub_rows(parent: AnyElement, rows: Vec<AnyElement>) -> AnyElement {
     if rows.is_empty() {
         return parent;
     }
+    div().flex().flex_col().child(parent).child(sub_rows(rows)).into_any_element()
+}
+
+/// The indented group of [`with_sub_rows`], for a parent laid out by hand.
+pub fn sub_rows(rows: Vec<AnyElement>) -> Div {
     let mut group = div().flex().flex_col().ml(px(4.)).mb(px(10.)).pl(px(16.)).border_l_2().border_color(theme::ink_a(0.1));
     for (i, r) in rows.into_iter().enumerate() {
         if i > 0 {
@@ -150,7 +202,7 @@ pub fn with_sub_rows(parent: AnyElement, rows: Vec<AnyElement>) -> AnyElement {
         }
         group = group.child(r);
     }
-    div().flex().flex_col().child(parent).child(group).into_any_element()
+    group
 }
 
 /// Line height of a [`caption`].
@@ -158,7 +210,17 @@ pub const CAPTION_H: f32 = 16.;
 
 /// Section caption above a card: 12px muted, sentence case.
 pub fn caption(text: impl Into<SharedString>) -> Div {
-    div().mt(px(14.)).mx(px(6.)).mb(px(6.)).text_size(px(12.)).line_height(px(CAPTION_H)).text_color(theme::text_muted()).child(text.into())
+    let text: SharedString = text.into();
+    div()
+        .relative()
+        .children(super::find::flash(&text, 8.))
+        .mt(px(14.))
+        .mx(px(6.))
+        .mb(px(6.))
+        .text_size(px(12.))
+        .line_height(px(CAPTION_H))
+        .text_color(theme::text_muted())
+        .child(text)
 }
 
 /// Page / sheet title: Rubik 600, 26px.
@@ -197,7 +259,10 @@ pub fn kicker(text: impl Into<SharedString>) -> Div {
 /// Keyboard hint chip (`Ctrl K`): 11px mono, radius 5.
 pub fn kbd(text: impl Into<SharedString>) -> Div {
     div()
+        .flex()
         .flex_none()
+        .items_center()
+        .justify_center()
         .px(px(6.))
         .py(px(1.))
         .rounded(px(5.))
@@ -206,6 +271,8 @@ pub fn kbd(text: impl Into<SharedString>) -> Div {
         .border_color(theme::ink_a(0.12))
         .font_family(theme::FONT_MONO)
         .text_size(px(11.))
+        // Fixed, so the chip is the same height wherever it sits.
+        .line_height(px(16.))
         .text_color(theme::text_muted())
         .child(text.into())
 }
@@ -334,6 +401,17 @@ pub fn icon_button_sm(
     }
 }
 
+/// An [`action_button`] with an icon before the label.
+pub fn icon_action_button(
+    id: impl Into<ElementId>,
+    kind: ButtonKind,
+    ic: Icon,
+    label: impl Into<SharedString>,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    button_base(id, kind, Some(ic), label.into(), false, true).on_click(on_click)
+}
+
 /// A [`button`] that only reacts when `enabled`; disabled ones are drawn at
 /// 45% opacity.
 pub fn action_button(
@@ -355,10 +433,21 @@ pub fn action_button(
 /// (`rgba(255,255,255,.14)`, white text on the dark theme). Tabs that do not fit the width
 /// (it depends on the language, not on how many there are) wrap to another
 /// row; one row keeps the pill look.
-pub fn tabs<T: Copy + PartialEq + 'static>(
+pub fn tabs<T: Copy + PartialEq + 'static, L: Clone + Into<SharedString>>(
     id: &str,
-    items: &[(T, &'static str)],
+    items: &[(T, L)],
     active: T,
+    on_select: impl Fn(T, &mut Window, &mut App) + 'static,
+) -> Div {
+    segmented(id, items, active, true, on_select)
+}
+
+/// [`tabs`] that can be switched off (`enabled` false: dimmed, nothing happens on a click).
+pub fn segmented<T: Copy + PartialEq + 'static, L: Clone + Into<SharedString>>(
+    id: &str,
+    items: &[(T, L)],
+    active: T,
+    enabled: bool,
     on_select: impl Fn(T, &mut Window, &mut App) + 'static,
 ) -> Div {
     let on_select = std::rc::Rc::new(on_select);
@@ -371,7 +460,8 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
         .flex_wrap()
         .max_w_full()
         .rounded(px(18.))
-        .bg(theme::seg_track());
+        .bg(theme::seg_track())
+        .when(!enabled, |d| d.opacity(0.45));
     for (i, (value, label)) in items.iter().enumerate() {
         let is_active = *value == active;
         let v = *value;
@@ -385,13 +475,28 @@ pub fn tabs<T: Copy + PartialEq + 'static>(
                 .rounded_full()
                 .text_size(px(13.))
                 .whitespace_nowrap()
-                .cursor_pointer()
                 .text_color(if is_active { theme::text_bright() } else { theme::seg_text().into() })
                 .when(is_active, |d| d.bg(theme::seg_active()))
-                .when(!is_active, |d| d.hover(|s| s.text_color(theme::text_bright())))
-                .on_click(move |_, w, cx| cb(v, w, cx))
-                .child(*label),
+                .when(enabled, |d| d.cursor_pointer().on_click(move |_, w, cx| cb(v, w, cx)))
+                .when(enabled && !is_active, |d| d.hover(|s| s.text_color(theme::text_bright())))
+                .child(label.clone().into()),
         );
     }
     div().flex().min_w_0().child(track)
+}
+
+/// A small round button holding an icon of `size` px (dimmed, and without
+/// the hover, when `enabled` is false; the click is the caller's).
+pub fn icon_button(id: impl Into<ElementId>, ic: Icon, size: f32, enabled: bool) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_none()
+        .size(px(28.))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .when(enabled, |d| d.cursor_pointer().hover(|s| s.bg(theme::ink_a(0.08))))
+        .when(!enabled, |d| d.opacity(0.3))
+        .child(icon(ic, px(size), theme::text_muted()))
 }

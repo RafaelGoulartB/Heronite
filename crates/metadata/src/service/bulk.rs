@@ -7,6 +7,7 @@ use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{CollectionGameMetadata, LocalMetaFile};
+use heronite_data::status::STATUS_ONLY_KEY;
 
 use super::{is_offline, MetadataService};
 use crate::store::{as_runner, get_all_game_metadata};
@@ -26,6 +27,16 @@ impl MetadataService {
     fn publish(&self, next: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) {
         *self.bulk.lock() = next.clone();
         on_progress(&next);
+    }
+
+    /// Publishes the final progress after releasing the job, so a caller that
+    /// reacts to `Done` can start the next job right away.
+    fn finish(&self, done: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
+        *self.bulk.lock() = done.clone();
+        self.bulk_running.store(false, Ordering::SeqCst);
+        self.bulk_cancel.store(false, Ordering::SeqCst);
+        on_progress(&done);
+        done
     }
 
     /// `cancelBulkMetadata`: the job stops before the next game.
@@ -78,11 +89,15 @@ impl MetadataService {
 
     /// `runBulkMetadata` (expects `bulk_running` already set).
     fn run_bulk(&self, args: &BulkArgs, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
+        // Every normal exit goes through `finish`; this only releases the job
+        // on a panic, so it never clears a job started after `finish`.
         struct Done<'a>(&'a MetadataService);
         impl Drop for Done<'_> {
             fn drop(&mut self) {
-                self.0.bulk_running.store(false, Ordering::SeqCst);
-                self.0.bulk_cancel.store(false, Ordering::SeqCst);
+                if std::thread::panicking() {
+                    self.0.bulk_running.store(false, Ordering::SeqCst);
+                    self.0.bulk_cancel.store(false, Ordering::SeqCst);
+                }
             }
         }
         let _done = Done(self);
@@ -98,8 +113,7 @@ impl MetadataService {
 
         if total == 0 {
             let done = BulkProgress { state: BulkState::Done, percent: 100, ..Default::default() };
-            self.publish(done.clone(), on_progress);
-            return done;
+            return self.finish(done, on_progress);
         }
 
         for (index, game) in args.games.iter().enumerate() {
@@ -173,8 +187,7 @@ impl MetadataService {
             current_title: None,
             errors: errors.into_iter().take(8).collect(),
         };
-        self.publish(done.clone(), on_progress);
-        done
+        self.finish(done, on_progress)
     }
 
     /// `refreshMissingCollectionMetadata`: when `autoFillMissing` is on,
@@ -208,6 +221,10 @@ impl MetadataService {
         let known = get_all_game_metadata(&self.paths)?;
         let mut missing = Vec::new();
         for meta in overlay.games.values() {
+            // An entry that only holds a status was never a game to search for.
+            if meta.extra.get(STATUS_ONLY_KEY) == Some(&serde_json::Value::Bool(true)) {
+                continue;
+            }
             let needs = match known.get(&metadata_key(&meta.runner, &meta.app_name)) {
                 None => true,
                 Some(c) if c.fetch_error.is_some() => match c.fetched_at.as_deref() {

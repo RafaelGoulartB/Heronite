@@ -1,5 +1,6 @@
 //! Per-field merge of provider candidates: exact port of `metadata/merge.ts`.
 
+use heronite_data::age_rating::{self, AgeRating};
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::num::JsNum;
 use heronite_data::settings::METADATA_FIELDS;
@@ -7,12 +8,19 @@ use indexmap::IndexMap;
 
 use crate::util::{blank_metadata, now_iso};
 
+/// [`METADATA_FIELDS`] entry of `ageRatings`.
+pub const AGE_RATINGS: &str = "ageRatings";
+/// Key in a record's `extra`: when IGDB or Steam were last asked for its
+/// age ratings (records stored before ratings were read have none).
+pub const AGE_CHECKED: &str = "ageRatingsCheckedAt";
+
 /// A field value as read from a metadata record.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldValue {
     Text(String),
     Number(f64),
     List(Vec<String>),
+    AgeRatings(Vec<AgeRating>),
 }
 
 fn list_of<'a>(md: &'a CollectionGameMetadata, field: &str) -> Option<&'a Vec<String>> {
@@ -58,6 +66,9 @@ pub fn has_field_value(metadata: Option<&CollectionGameMetadata>, field: &str) -
     if field == "criticScore" {
         return md.critic_score.is_some();
     }
+    if field == AGE_RATINGS {
+        return !md.age_ratings.is_empty();
+    }
     if let Some(text) = text_of(md, field) {
         return text.as_deref().is_some_and(|s| !s.is_empty());
     }
@@ -69,6 +80,9 @@ pub fn read_field(metadata: Option<&CollectionGameMetadata>, field: &str) -> Opt
     let md = metadata?;
     if field == "criticScore" {
         return md.critic_score.map(|n| FieldValue::Number(n.get()));
+    }
+    if field == AGE_RATINGS {
+        return Some(FieldValue::AgeRatings(md.age_ratings.clone()));
     }
     if let Some(text) = text_of(md, field) {
         return text.clone().map(FieldValue::Text);
@@ -86,6 +100,7 @@ fn write_field(target: &mut CollectionGameMetadata, field: &str, value: FieldVal
         ("criticScore", FieldValue::Number(v)) => target.critic_score = Some(JsNum(v)),
         ("cover", FieldValue::Text(v)) => target.cover_url = Some(v),
         ("hero", FieldValue::Text(v)) => target.hero_url = Some(v),
+        (AGE_RATINGS, FieldValue::AgeRatings(v)) => target.age_ratings = v,
         (f, FieldValue::List(v)) if list_of(target, f).is_some() => {
             *list_of_mut(target, f).expect("checked") = v;
         }
@@ -142,6 +157,21 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
             None => configured.iter().map(String::as_str).collect(),
         };
 
+        // Each source rates for the boards it knows: all of them add up,
+        // the first in the order winning a board both have.
+        if field == AGE_RATINGS {
+            let rated: Vec<(&str, &CollectionGameMetadata)> = order
+                .iter()
+                .filter(|s| **s != "manual")
+                .filter_map(|s| by_source.get(s).map(|md| (*s, *md)))
+                .filter(|(_, md)| !md.age_ratings.is_empty())
+                .collect();
+            if let Some((first, _)) = rated.first() {
+                let merged = age_rating::merge(rated.iter().map(|(_, md)| md.age_ratings.as_slice()));
+                write_field(&mut next, field, FieldValue::AgeRatings(merged), first);
+            }
+            continue;
+        }
         for source in order {
             if source == "manual" {
                 continue;
@@ -181,6 +211,9 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
         }
     }
 
+    if args.candidates.iter().any(|c| matches!(c.source, "igdb" | "steam")) {
+        next.extra.insert(AGE_CHECKED.into(), serde_json::Value::String(now_iso()));
+    }
     next.app_name = args.app_name.to_owned();
     next.runner = args.runner.to_owned();
     next.fetched_at = Some(now_iso());
@@ -370,5 +403,24 @@ mod tests {
         let out = merge(Some(&current), &cands, &pr, false, false, None);
         assert_eq!(out.lutris_slug.as_deref(), Some("have"));
         assert_eq!(out.websites, ["https://x"]);
+    }
+
+    #[test]
+    fn age_ratings_add_up_with_the_first_source_winning_a_board() {
+        use heronite_data::age_rating::RatingSystem;
+        let rating = |s, r| AgeRating::new(s, r, Vec::new()).unwrap();
+        let igdb = md(|m| m.age_ratings = vec![rating(RatingSystem::Esrb, "T"), rating(RatingSystem::Pegi, "12")]);
+        let steam = md(|m| m.age_ratings = vec![rating(RatingSystem::Pegi, "16"), rating(RatingSystem::ClassInd, "10")]);
+        let pr = priority();
+        let cands = [MergeCandidate { source: "steam", metadata: &steam }, MergeCandidate { source: "igdb", metadata: &igdb }];
+        let out = merge(None, &cands, &pr, true, false, None);
+        let got: Vec<(&str, &str)> = out.age_ratings.iter().map(|r| (r.system.as_str(), r.rating.as_str())).collect();
+        assert_eq!(got, [("esrb", "T"), ("pegi", "12"), ("classind", "10")]);
+        assert_eq!(out.field_sources[AGE_RATINGS], "igdb");
+        assert!(out.extra.contains_key(AGE_CHECKED));
+        // Only Steam rated it.
+        let bare = md(|_| {});
+        let cands = [MergeCandidate { source: "igdb", metadata: &bare }, MergeCandidate { source: "steam", metadata: &steam }];
+        assert_eq!(merge(None, &cands, &pr, true, false, None).field_sources[AGE_RATINGS], "steam");
     }
 }

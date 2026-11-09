@@ -205,7 +205,7 @@ pub fn game_sdl(data_paths: &DataPaths, app_name: &str) -> Vec<Sdl> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::testing::{calls, fake};
+    use crate::cmd::testing::{fake_tool, legendary_of, Reply};
     use serde_json::json;
 
     fn sample() -> Value {
@@ -247,23 +247,23 @@ mod tests {
     fn info_is_fetched_once_and_cached() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        let body = format!("echo '{}'", sample());
-        let lg = fake(dir.path(), &body);
+        let tool = fake_tool(dir.path()).on(&["info", "--json"], Reply::new().out(&sample().to_string()));
+        let lg = legendary_of(&tool, dir.path());
         let a = install_info(&data_paths, &lg, "Calluna", "Windows").unwrap();
         assert_eq!(a.download_size(), 27783660544.);
         let b = install_info(&data_paths, &lg, "Calluna", "Windows").unwrap();
         assert_eq!(b.disk_size(), 45010292103.);
-        assert_eq!(calls(dir.path()), ["info Calluna --json --platform Windows"]);
+        assert_eq!(tool.calls(), ["info Calluna --json --platform Windows"]);
     }
 
     #[test]
     fn missing_manifest_is_an_error_after_retries() {
         let dir = tempfile::tempdir().unwrap();
         let data_paths = DataPaths::at(dir.path().join("h"));
-        let lg = fake(dir.path(), "echo '{\"game\": {}}'; echo 'ERROR: not owned' >&2");
-        let err = install_info(&data_paths, &lg, "x", "Windows").unwrap_err().to_string();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"game": {}}"#).err("ERROR: not owned"));
+        let err = install_info(&data_paths, &legendary_of(&tool, dir.path()), "x", "Windows").unwrap_err().to_string();
         assert!(err.contains("not owned"), "{err}");
-        assert_eq!(calls(dir.path()).len(), 3);
+        assert_eq!(tool.calls().len(), 3);
     }
 
     #[test]

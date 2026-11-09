@@ -9,6 +9,7 @@ use std::sync::Arc;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::clients::Client;
 use heronite_data::proc::Cancel;
 use heronite_i18n::tr;
 use heronite_wine::prefixes::{self, Prefix, PrefixKind};
@@ -25,8 +26,9 @@ use crate::ui::icon;
 pub(super) struct PrefixesState {
     /// `None` until the first list is read.
     pub(super) list: Option<Vec<Prefix>>,
-    /// App name -> (title, Collection key) of the library's games that run
-    /// through Wine: only they use a prefix.
+    /// App name -> (title, Collection key) of the installed games that run
+    /// through Wine: only they use a prefix (a game not installed keeps its
+    /// settings file, and the default prefix as its fallback).
     titles: HashMap<String, (String, String)>,
     /// Bytes on disk, filled in one by one after the list.
     sizes: HashMap<PathBuf, u64>,
@@ -52,14 +54,34 @@ impl PrefixesState {
             loading: false,
         }
     }
+
+    /// Esc: drops the open question or Duplicate form. True when one was open.
+    pub(super) fn close_question(&mut self) -> bool {
+        self.confirm_trash.take().is_some() || self.duplicate.take().is_some()
+    }
 }
 
-/// Whether a game of the library runs through Wine (emulated games, Steam
-/// games and the ones another launcher starts do not, whatever their
-/// platform).
+/// Whether a game of the library runs through Wine in a prefix of its own
+/// (emulated games, Steam games and the ones another launcher or a store
+/// client starts do not, whatever their platform).
 fn runs_through_wine(g: &heronite_data::library::CollectionGame) -> bool {
     let windows = g.game.install.platform.as_deref().is_some_and(|p| p.eq_ignore_ascii_case("windows"));
-    windows && !matches!(g.launch_kind.as_deref(), Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND))
+    windows
+        && !matches!(
+            g.launch_kind.as_deref(),
+            Some(
+                "emulator"
+                    | "steam-uri"
+                    | heronite_data::launchers::LAUNCH_KIND
+                    | heronite_data::clients::LAUNCH_KIND
+                    | heronite_data::xbox::LAUNCH_KIND
+            )
+        )
+}
+
+/// The store client whose prefix `p` is (its settings file is what sets it).
+fn client_of(p: &Prefix) -> Option<Client> {
+    p.games.iter().find_map(|app| Client::from_config_app(app))
 }
 
 fn home() -> String {
@@ -67,8 +89,8 @@ fn home() -> String {
 }
 
 fn open_folder(path: &std::path::Path) {
-    if let Err(e) = std::process::Command::new("xdg-open").arg(path).spawn() {
-        log::warn!("xdg-open {}: {e}", path.display());
+    if let Err(e) = heronite_platform::shell::open(path) {
+        log::warn!("opening {}: {e}", path.display());
     }
 }
 
@@ -80,24 +102,20 @@ impl WineManagerPage {
         }
         self.prefixes.loading = true;
         let data_paths = self.ctx.data_paths.clone();
-        let need_titles = self.prefixes.titles.is_empty();
         cx.spawn(async move |this, cx| {
             let (list, titles) = cx
                 .background_spawn(async move {
                     let list = prefixes::list(&data_paths, &home());
-                    let titles: HashMap<String, (String, String)> = if need_titles {
-                        heronite_data::library::Library::load(&data_paths)
-                            .map(|lib| {
-                                lib.games
-                                    .iter()
-                                    .filter(|g| runs_through_wine(g))
-                                    .map(|g| (g.app_name.clone(), (g.title.clone(), g.key.clone())))
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    } else {
-                        HashMap::new()
-                    };
+                    // Read every time: games are installed and removed between visits.
+                    let titles: HashMap<String, (String, String)> = heronite_data::library::Library::load(&data_paths)
+                        .map(|lib| {
+                            lib.games
+                                .iter()
+                                .filter(|g| g.installed && runs_through_wine(g))
+                                .map(|g| (g.app_name.clone(), (g.title.clone(), g.key.clone())))
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     (list, titles)
                 })
                 .await;
@@ -107,9 +125,7 @@ impl WineManagerPage {
                 st.loading = false;
                 st.sizes.retain(|p, _| paths.contains(p));
                 st.list = Some(list);
-                if !titles.is_empty() {
-                    st.titles = titles;
-                }
+                st.titles = titles;
                 cx.notify();
             });
             if ok.is_err() {
@@ -209,8 +225,12 @@ impl WineManagerPage {
         }
     }
 
-    /// Title of a game (its app name when it is not in the library).
+    /// Title of a game (its app name when it is not in the library); a store
+    /// client's settings file is named after the client.
     pub(super) fn game_title(&self, app_name: &str) -> String {
+        if let Some(client) = Client::from_config_app(app_name) {
+            return client.name().to_string();
+        }
         self.prefixes.titles.get(app_name).map(|(t, _)| t.clone()).unwrap_or_else(|| app_name.to_string())
     }
 
@@ -223,10 +243,14 @@ impl WineManagerPage {
         }
     }
 
-    /// The games of the library set to `p` (settings of removed games and
-    /// Linux games do not count).
+    /// The installed games set to `p`, and the store client it is the prefix
+    /// of (settings of removed, uninstalled and Linux games do not count).
     fn users(&self, p: &Prefix) -> Vec<String> {
-        p.games.iter().filter(|g| self.prefixes.titles.contains_key(*g)).map(|g| self.game_title(g)).collect()
+        p.games
+            .iter()
+            .filter(|g| self.prefixes.titles.contains_key(*g) || Client::from_config_app(g).is_some())
+            .map(|g| self.game_title(g))
+            .collect()
     }
 
     /// "Used by Control, Hollow Knight and 3 more" or why none is listed.
@@ -240,11 +264,12 @@ impl WineManagerPage {
         }
     }
 
-    /// The prefixes matching the search.
+    /// The prefixes matching the search, the default one first.
     pub(super) fn visible_prefixes(&self) -> Vec<Prefix> {
         let q = &self.query;
         let list = self.prefixes.list.as_deref().unwrap_or_default();
-        list.iter()
+        let mut rows: Vec<Prefix> = list
+            .iter()
             // A prefix not created yet only matters when a game will create it.
             .filter(|p| p.kind != PrefixKind::NotCreated || p.default || !self.users(p).is_empty())
             .filter(|p| {
@@ -254,7 +279,9 @@ impl WineManagerPage {
                     || p.games.iter().any(|g| self.game_title(g).to_lowercase().contains(q))
             })
             .cloned()
-            .collect()
+            .collect();
+        rows.sort_by_key(|p| !p.default);
+        rows
     }
 
     pub(super) fn render_prefixes(&self, cx: &mut Context<Self>) -> Div {
@@ -327,7 +354,8 @@ impl WineManagerPage {
                     }
                 }),
             ));
-            if !p.default {
+            // A store client keeps its prefix: its games are uninstalled in it.
+            if !p.default && client_of(p).is_none() {
                 let target = path.clone();
                 actions = actions.child(icon_action(SharedString::from(format!("prefix-trash-{i}")), Icon::FaTrash, !copying).on_click(
                     cx.listener(move |this, _, _, cx| {

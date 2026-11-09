@@ -54,7 +54,8 @@ pub fn install(paths: &DataPaths) -> io::Result<PathBuf> {
     Ok(file)
 }
 
-#[cfg(test)]
+// The scripts are shell scripts.
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::process::Command;

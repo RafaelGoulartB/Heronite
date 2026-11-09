@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 
 /// Folder name of this app under the XDG base directories.
 pub const APP_DIR: &str = "heronite";
+/// Folder name of this app in the user's own folders (Pictures).
+pub const APP_TITLE: &str = "Heronite";
 
 /// File-name-safe, at most 48 characters.
 fn file_name_safe(s: &str) -> String {
@@ -27,7 +29,7 @@ fn fnv32(s: &str) -> u32 {
 
 #[derive(Debug, Clone)]
 pub struct DataPaths {
-    /// `~/.local/share/heronite` on Linux.
+    /// `~/.local/share/heronite` on Linux, `%APPDATA%\heronite\data` on Windows.
     pub root: PathBuf,
 }
 
@@ -41,9 +43,9 @@ impl DataPaths {
         Self { root: Self::default_root().unwrap_or_else(|| PathBuf::from(APP_DIR)) }
     }
 
-    /// `$XDG_DATA_HOME/heronite`.
+    /// `$XDG_DATA_HOME/heronite` (`%APPDATA%\heronite\data` on Windows).
     pub fn default_root() -> Option<PathBuf> {
-        dirs::data_dir().map(|d| d.join(APP_DIR))
+        heronite_platform::dirs::data(APP_DIR)
     }
 
     /// Whether this is the real data folder (not a fixture or a copy).
@@ -73,6 +75,14 @@ impl DataPaths {
     /// Which other launchers' games are imported (`launchers::ImportPrefs`).
     pub fn launcher_imports(&self) -> PathBuf {
         self.j("local_library/launcher-imports.json")
+    }
+    /// The store clients' games synced into the Collection (`clients::ClientPrefs`).
+    pub fn clients(&self) -> PathBuf {
+        self.j("local_library/clients.json")
+    }
+    /// The Xbox app's games synced into the Collection (`xbox::XboxPrefs`).
+    pub fn xbox(&self) -> PathBuf {
+        self.j("local_library/xbox.json")
     }
     pub fn sessions(&self) -> PathBuf {
         self.j("local_library/sessions.json")
@@ -123,13 +133,37 @@ impl DataPaths {
     pub fn added(&self) -> PathBuf {
         self.j("local_library/added.json")
     }
+    /// Groups of games defined by rules ([`crate::smart_groups`]).
+    pub fn smart_groups(&self) -> PathBuf {
+        self.j("local_library/groups.json")
+    }
     /// When each game's status changed ([`crate::status_history`]).
     pub fn status_history(&self) -> PathBuf {
         self.j("local_library/status-history.json")
     }
+    /// Copies of one game from several stores ([`crate::copies`]).
+    pub fn copies(&self) -> PathBuf {
+        self.j("local_library/copies.json")
+    }
     /// The actions users add to their games ([`crate::game_actions`]).
     pub fn game_actions(&self) -> PathBuf {
         self.j("local_library/actions.json")
+    }
+    /// The local copy of every game's achievements (`heronite_achievements::store`).
+    pub fn achievements_dir(&self) -> PathBuf {
+        self.j("local_library/achievements")
+    }
+    /// The RetroAchievements account and the optional Steam Web API key.
+    pub fn achievement_accounts(&self) -> PathBuf {
+        self.j("local_library/achievement-accounts.json")
+    }
+    /// What the library sync last published and took in (`heronite_sync::ledger`).
+    pub fn sync_ledger(&self) -> PathBuf {
+        self.j("local_library/sync-ledger.json")
+    }
+    /// The Collection's files as they were before the last sync changed them.
+    pub fn sync_before_dir(&self) -> PathBuf {
+        self.j("local_library/sync-before")
     }
 
     // Core stores (Heroic's layout and formats).
@@ -203,6 +237,11 @@ impl DataPaths {
     pub fn gog_redist_dir(&self) -> PathBuf {
         self.j("tools/redist/gog")
     }
+    /// The installers of the stores some Epic games need (the EA app,
+    /// Ubisoft Connect), downloaded once.
+    pub fn legendary_redist_dir(&self) -> PathBuf {
+        self.tools_dir().join("redist").join("legendary")
+    }
     /// `NILE_CONFIG_PATH`: nile keeps its files in `nile/` under it.
     pub fn nile_config_dir(&self) -> PathBuf {
         self.j("nile_config")
@@ -225,8 +264,18 @@ impl DataPaths {
     pub fn steam_hero(&self, steam_app_id: &str) -> PathBuf {
         self.j("local_library/heroes").join(format!("{steam_app_id}.jpg"))
     }
+    /// Steam store tags per app and tag names per language
+    /// ([`crate::steam_tags`]).
+    pub fn steam_tags(&self) -> PathBuf {
+        self.j("store_cache/steam_tags.json")
+    }
     pub fn wiki_game_info(&self) -> PathBuf {
         self.j("store_cache/wikigameinfo.json")
+    }
+    /// HowLongToBeat matches the user picked (or "not on HowLongToBeat"),
+    /// by cache key; never expires, unlike `wikigameinfo.json`.
+    pub fn hltb_overrides(&self) -> PathBuf {
+        self.j("local_library/hltb_overrides.json")
     }
     pub fn images_cache_dir(&self) -> PathBuf {
         self.j("images-cache")
@@ -249,9 +298,10 @@ impl DataPaths {
     pub fn sandbox_home_of_game(&self, app_name: &str) -> PathBuf {
         self.j("sandbox").join(format!("game-{}-{:08x}", file_name_safe(app_name), fnv32(app_name)))
     }
-    /// The legendary binary this app runs (copied in by `migrate`).
+    /// The legendary binary this app runs (copied in by `migrate`, or
+    /// downloaded): `tools/bin/legendary`, `legendary.exe` on Windows.
     pub fn legendary_bin(&self) -> PathBuf {
-        self.j("tools/bin/legendary")
+        self.tools_dir().join("bin").join(format!("legendary{}", std::env::consts::EXE_SUFFIX))
     }
     pub fn known_fixes(&self) -> PathBuf {
         self.j("known_fixes.json")
@@ -267,6 +317,13 @@ impl DataPaths {
     /// Copy of areweanticheatyet.com.
     pub fn anticheat(&self) -> PathBuf {
         self.j("areweanticheatyet.json")
+    }
+
+    /// The screenshots folder used while none is chosen (see
+    /// `heronite_platform::dirs::screenshots`). Only for the real data
+    /// folder: fixtures and copies never point into the user's Pictures.
+    pub fn default_screenshots(&self) -> Option<PathBuf> {
+        self.is_default().then(|| heronite_platform::dirs::screenshots(APP_TITLE)).flatten()
     }
 
     /// Resolves a `localart://<kind>/<rest>` URL to a file, refusing traversal.
@@ -299,8 +356,8 @@ pub struct AppPaths {
 
 impl AppPaths {
     pub fn detect() -> Self {
-        let config = dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
-        let cache = dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_DIR);
+        let config = heronite_platform::dirs::config(APP_DIR).unwrap_or_else(|| PathBuf::from(".").join(APP_DIR));
+        let cache = heronite_platform::dirs::cache(APP_DIR).unwrap_or_else(|| PathBuf::from(".").join(APP_DIR));
         Self { config, cache }
     }
     /// The app state that belongs to a data folder: the real one for the
@@ -335,6 +392,18 @@ impl AppPaths {
     pub fn screenshot_prefs(&self) -> PathBuf {
         self.config.join("screenshots.json")
     }
+    /// Console mode's theme and options (see `heronite_data::console_theme`).
+    pub fn console_prefs(&self) -> PathBuf {
+        self.config.join("console.json")
+    }
+    /// Settings → Achievements options (see `heronite_achievements::prefs`).
+    pub fn achievement_prefs(&self) -> PathBuf {
+        self.config.join("achievements.json")
+    }
+    /// The user's saved console themes, one JSON file each.
+    pub fn console_themes_dir(&self) -> PathBuf {
+        self.config.join("console-themes")
+    }
     /// In-game overlay options (see `heronite_data::overlay_prefs`).
     pub fn overlay_prefs(&self) -> PathBuf {
         self.config.join("overlay.json")
@@ -342,6 +411,16 @@ impl AppPaths {
     /// Replay buffer options (see `heronite_data::replay_prefs`).
     pub fn replay_prefs(&self) -> PathBuf {
         self.config.join("replay.json")
+    }
+    /// Settings → Integrations → Sunshine (see `heronite_sunshine::prefs`).
+    pub fn sunshine_prefs(&self) -> PathBuf {
+        self.config.join("sunshine.json")
+    }
+    /// The covers Sunshine shows for Heronite's entries: Sunshine reads them
+    /// from here, so they must outlive a cache clean-up (rendered again
+    /// when missing).
+    pub fn sunshine_covers_dir(&self) -> PathBuf {
+        self.config.join("sunshine-covers")
     }
     /// Update switches and the last update check (see `heronite_update::prefs`).
     pub fn update_state(&self) -> PathBuf {
@@ -353,6 +432,23 @@ impl AppPaths {
     }
     pub fn thumbs_dir(&self) -> PathBuf {
         self.cache.join("thumbs")
+    }
+    /// Settings → Sync of this PC: where the library syncs and this PC's id
+    /// (see `heronite_sync::prefs`).
+    pub fn sync_prefs(&self) -> PathBuf {
+        self.config.join("sync.json")
+    }
+    /// rclone's settings for the sync: the cloud account's token (0600).
+    pub fn rclone_conf(&self) -> PathBuf {
+        self.config.join("rclone.conf")
+    }
+    /// What went up to the cloud account last (`heronite_sync::sent`).
+    pub fn cloud_sent(&self) -> PathBuf {
+        self.config.join("cloud-sent.json")
+    }
+    /// The other PCs' files, as last downloaded from a cloud account.
+    pub fn sync_mirror_dir(&self) -> PathBuf {
+        self.cache.join("sync")
     }
 }
 

@@ -1,6 +1,9 @@
 //! A whole install of a native Linux script in a temporary data folder:
 //! files, steps, questions, and the game it becomes. Needs `tar` and `bash`.
 
+// A Linux game's script: Linux only.
+#![cfg(unix)]
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

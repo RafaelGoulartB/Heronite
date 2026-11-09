@@ -7,6 +7,7 @@ mod console;
 mod restore;
 
 pub(super) use console::{console_apply, console_rows};
+pub(super) use restore::open_and_ask;
 
 use chrono::{DateTime, Datelike, Local, Utc};
 use gpui_kit::component::input::InputState;
@@ -103,7 +104,7 @@ pub fn format_time(iso: &str) -> String {
             let local = dt.with_timezone(&Utc).with_timezone(&Local);
             match heronite_i18n::current() {
                 heronite_i18n::Lang::En => local.format("%b %-d, %Y, %-I:%M %p").to_string(),
-                heronite_i18n::Lang::PtBr => {
+                heronite_i18n::Lang::PtBr | heronite_i18n::Lang::Es => {
                     format!(
                         "{} {} {}, {}",
                         local.day(),
@@ -112,6 +113,7 @@ pub fn format_time(iso: &str) -> String {
                         local.format("%H:%M")
                     )
                 }
+                heronite_i18n::Lang::De => local.format("%d.%m.%Y, %H:%M").to_string(),
             }
         }
         Err(_) => iso.to_string(),

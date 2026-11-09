@@ -17,7 +17,15 @@ pub fn meta_text(text: impl Into<SharedString>) -> Div {
 
 /// Field label above a control: 12px muted.
 pub fn field_label(text: impl Into<SharedString>) -> Div {
-    div().mb(px(6.)).text_size(px(12.)).line_height(px(16.)).text_color(theme::text_muted()).child(text.into())
+    let text: SharedString = text.into();
+    div()
+        .relative()
+        .children(crate::ui::find::flash(&text, 8.))
+        .mb(px(6.))
+        .text_size(px(12.))
+        .line_height(px(16.))
+        .text_color(theme::text_muted())
+        .child(text)
 }
 
 /// A label above any control (an input, a row of input + button, a select).

@@ -21,11 +21,8 @@ pub(super) fn game_extras(lib: &Library, paths: &DataPaths, cache: &Path) -> Gam
     let walked = SizeCache::load(cache);
     let mut extras = GameExtras { added, ..Default::default() };
     for g in &lib.games {
-        let meta = g.meta.as_deref();
-        if g.launch_kind.as_deref() == Some("emulator") {
-            if let Some(name) = meta.and_then(|m| m.platform_id.as_deref()).and_then(|id| systems.get(id)) {
-                extras.systems.insert(g.key.clone(), name.clone());
-            }
+        if let Some(name) = emulated_system(g, &systems) {
+            extras.systems.insert(g.key.clone(), name);
         }
         if !g.installed {
             continue;
@@ -36,6 +33,22 @@ pub(super) fn game_extras(lib: &Library, paths: &DataPaths, cache: &Path) -> Gam
         }
     }
     extras
+}
+
+/// Only the systems of the emulated games (all `Organize::platform` reads),
+/// for what has no use for sizes and dates: the Settings pickers.
+pub(crate) fn system_extras(lib: &Library) -> GameExtras {
+    let systems = system_names();
+    let systems = lib.games.iter().filter_map(|g| Some((g.key.clone(), emulated_system(g, &systems)?))).collect();
+    GameExtras { systems, ..Default::default() }
+}
+
+/// The system an emulated game runs on.
+fn emulated_system(g: &CollectionGame, systems: &HashMap<String, String>) -> Option<String> {
+    if g.launch_kind.as_deref() != Some("emulator") {
+        return None;
+    }
+    g.meta.as_deref().and_then(|m| m.platform_id.as_deref()).and_then(|id| systems.get(id)).cloned()
 }
 
 /// Platform id → name, from the emulator catalog.

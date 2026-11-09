@@ -58,8 +58,16 @@ impl SteamAction {
     }
 }
 
-/// `steam` (or `steam-runtime`) on `$PATH`.
+/// `steam` (or `steam-runtime`) on `$PATH`; `steam.exe` of the Steam
+/// folder on Windows.
 pub fn find_steam_binary(probe: &dyn Probe) -> Option<String> {
+    if cfg!(windows) {
+        return probe
+            .steam_roots()
+            .into_iter()
+            .map(|root| root.join("steam.exe").to_string_lossy().into_owned())
+            .find(|exe| probe.exists(exe));
+    }
     ["steam", "steam-runtime", FLATPAK_STEAM_ID].iter().find_map(|n| probe.which(n)).or_else(|| {
         // Flatpak's launchers, which are not always on `$PATH`.
         let user = format!("{}/.local/share/flatpak/exports/bin/{FLATPAK_STEAM_ID}", probe.home().trim_end_matches('/'));
@@ -79,6 +87,43 @@ pub fn flatpak_steam_root(home: &Path) -> PathBuf {
 /// the Snap's home is `~/snap/steam/common`.
 pub fn snap_steam_root(home: &Path) -> PathBuf {
     home.join("snap/steam/common/.local/share/Steam")
+}
+
+/// Where Steam installs itself on this system, the usual place first: on
+/// Linux the native folders, the Flatpak's and the Snap's; on Windows the
+/// folder the Steam client wrote into the registry, then the default one.
+pub fn platform_roots(home: &Path) -> Vec<PathBuf> {
+    #[cfg(windows)]
+    {
+        let _ = home;
+        windows_roots()
+    }
+    #[cfg(not(windows))]
+    {
+        vec![home.join(".steam/steam"), home.join(".local/share/Steam"), flatpak_steam_root(home), snap_steam_root(home)]
+    }
+}
+
+#[cfg(windows)]
+fn windows_roots() -> Vec<PathBuf> {
+    use heronite_platform::registry::{string, Hive};
+    let mut roots: Vec<PathBuf> = [
+        (Hive::CurrentUser, r"Software\Valve\Steam", "SteamPath"),
+        (Hive::LocalMachine, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+        (Hive::LocalMachine, r"SOFTWARE\Valve\Steam", "InstallPath"),
+    ]
+    .into_iter()
+    .filter_map(|(hive, key, name)| string(hive, key, name))
+    .filter(|p| !p.trim().is_empty())
+    // `SteamPath` is written with forward slashes (`c:/program files (x86)/steam`).
+    .map(|p| PathBuf::from(p.trim().replace('/', "\\")))
+    .collect();
+    let program_files =
+        std::env::var_os("ProgramFiles(x86)").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Program Files (x86)"));
+    roots.push(program_files.join("Steam"));
+    let mut seen = HashSet::new();
+    roots.retain(|r| seen.insert(r.to_string_lossy().to_lowercase()));
+    roots
 }
 
 /// Opens `steam://install/<id>` or `steam://uninstall/<id>` in the Steam client.
@@ -140,28 +185,29 @@ pub struct SteamLocator {
     pub steam_path: PathBuf,
     /// Always-checked system roots (`/usr/share/steam`).
     pub system_roots: Vec<PathBuf>,
+    /// Ordered installation candidates captured at detection. Later scans
+    /// never rediscover folders from the host's registry or environment.
+    pub platform_roots: Vec<PathBuf>,
 }
 
 impl SteamLocator {
     /// The configured Steam folder when it exists, else the first existing
-    /// of the native folders and the Flatpak one.
+    /// platform candidate. With none installed, retain the configured path
+    /// or the first candidate (an empty probe falls back under its home).
     pub fn detect(global: &GlobalSettings, probe: &dyn Probe) -> Self {
         let home = PathBuf::from(probe.home());
         let configured = global.default_steam_path().filter(|p| !p.is_empty()).map(PathBuf::from);
-        let native = home.join(".steam").join("steam");
-        let candidates = configured.iter().cloned().chain([
-            native.clone(),
-            home.join(".local/share/Steam"),
-            flatpak_steam_root(&home),
-            snap_steam_root(&home),
-        ]);
+        let platform_roots = probe.steam_roots();
+        let native = platform_roots.first().cloned().unwrap_or_else(|| home.join(".steam/steam"));
+        let candidates = configured.iter().cloned().chain(platform_roots.iter().cloned());
         let found = candidates.into_iter().find(|p| probe.exists(&p.to_string_lossy()));
         let steam_path = found.or(configured).unwrap_or(native);
-        Self { home, steam_path, system_roots: vec![PathBuf::from("/usr/share/steam")] }
+        let system_roots = probe.steam_system_roots();
+        Self { home, steam_path, system_roots, platform_roots }
     }
 
-    /// `steamLibraryRoots`: system root, libraries from `libraryfolders.vdf`,
-    /// and the two usual install dirs, deduplicated and existing.
+    /// `steamLibraryRoots`: system roots, libraries from `libraryfolders.vdf`,
+    /// then the captured installation candidates, deduplicated and existing.
     pub fn library_roots(&self) -> Vec<PathBuf> {
         let mut roots: Vec<PathBuf> = self.system_roots.clone();
         let vdf_file = self.steam_path.join("steamapps").join("libraryfolders.vdf");
@@ -175,7 +221,7 @@ impl SteamLocator {
                                 Vdf::Obj(_) => folder.str_of("path"),
                                 Vdf::Str(s) => Some(s.as_str()),
                             };
-                            if let Some(p) = path.filter(|p| p.starts_with('/')) {
+                            if let Some(p) = path.filter(|p| Path::new(p).is_absolute()) {
                                 roots.push(PathBuf::from(p));
                             }
                         }
@@ -184,10 +230,7 @@ impl SteamLocator {
                 Err(e) => log::warn!("{}: {e}", vdf_file.display()),
             }
         }
-        roots.push(self.home.join(".steam").join("steam"));
-        roots.push(self.home.join(".local").join("share").join("Steam"));
-        roots.push(flatpak_steam_root(&self.home));
-        roots.push(snap_steam_root(&self.home));
+        roots.extend(self.platform_roots.iter().cloned());
         dedup_existing(roots)
     }
 
@@ -195,17 +238,9 @@ impl SteamLocator {
     /// native, Flatpak and Snap ones that exist (each once, symlinks
     /// resolved).
     pub fn installs(&self) -> Vec<PathBuf> {
-        let home = &self.home;
-        let all = [
-            self.steam_path.clone(),
-            home.join(".steam/steam"),
-            home.join(".local/share/Steam"),
-            flatpak_steam_root(home),
-            snap_steam_root(home),
-        ];
+        let all = std::iter::once(self.steam_path.clone()).chain(self.platform_roots.iter().cloned());
         let mut seen = Vec::new();
-        all.into_iter()
-            .filter(|p| p.join("config").is_dir() || p.join("steam.sh").is_file())
+        all.filter(|p| p.join("config").is_dir() || p.join("steam.sh").is_file())
             .filter(|p| {
                 let real = fs::canonicalize(p).unwrap_or_else(|_| p.clone());
                 let new = !seen.contains(&real);
@@ -246,8 +281,7 @@ impl SteamLocator {
     pub fn log_files(&self) -> Vec<PathBuf> {
         const NAMES: [&str; 3] = ["console_log.txt", "console-linux.txt", "console-windows.txt"];
         let mut dirs: Vec<PathBuf> = self.library_roots().into_iter().map(|r| r.join("logs")).collect();
-        dirs.push(self.home.join(".steam").join("steam").join("logs"));
-        dirs.push(self.home.join(".local").join("share").join("Steam").join("logs"));
+        dirs.extend(self.platform_roots.iter().map(|r| r.join("logs")));
         let mut seen = HashSet::new();
         let mut out = Vec::new();
         for dir in dirs {
@@ -264,11 +298,13 @@ impl SteamLocator {
         out
     }
 
-    /// Whether the Steam client runs: a `steam.pid` it writes (native or
-    /// Flatpak) names a live process. In Steam Deck game mode Steam is the
-    /// session, so it always counts as running there.
+    /// Whether the Steam client runs: the platform's client check, or on
+    /// Linux a native/Flatpak `steam.pid` naming a live process.
     pub fn client_running(&self, procs: &dyn Procs) -> bool {
-        if std::env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("gamescope") {
+        if cfg!(windows) {
+            return procs.steam_client_running();
+        }
+        if procs.steam_client_running() {
             return true;
         }
         let mut files = vec![self.steam_path.join("steam.pid"), self.home.join(".steam/steam.pid")];
@@ -396,6 +432,104 @@ mod tests {
         fs::write(p, text).unwrap();
     }
 
+    fn vdf_path(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")
+    }
+
+    #[test]
+    fn detection_preserves_candidate_order_and_missing_path_fallbacks() {
+        use crate::probe::FakeProbe;
+        let dir = tempfile::tempdir().unwrap();
+        let (first, second, configured) = (dir.path().join("first"), dir.path().join("second"), dir.path().join("configured"));
+        let roots = vec![first.clone(), second.clone()];
+        let probe = FakeProbe::new(dir.path().to_str().unwrap()).with_steam_roots(roots.clone());
+        let empty = GlobalSettings::default();
+        assert_eq!(SteamLocator::detect(&empty, &probe).steam_path, first);
+        let mut global = GlobalSettings::default();
+        global.defaults.insert("defaultSteamPath".into(), configured.to_string_lossy().into_owned().into());
+        assert_eq!(SteamLocator::detect(&global, &probe).steam_path, configured, "missing configured folder is the fallback");
+        let probe = probe.with_path(second.to_str().unwrap());
+        assert_eq!(SteamLocator::detect(&global, &probe).steam_path, second, "an existing candidate beats a missing configured folder");
+        let probe = probe.with_path(first.to_str().unwrap());
+        assert_eq!(SteamLocator::detect(&empty, &probe).steam_path, first, "platform ordering is kept");
+        let probe = probe.with_path(configured.to_str().unwrap());
+        let locator = SteamLocator::detect(&global, &probe);
+        assert_eq!(locator.steam_path, configured, "existing configured folder wins");
+        assert_eq!(locator.platform_roots, roots);
+        assert!(locator.system_roots.is_empty());
+    }
+
+    #[test]
+    fn later_scans_use_only_the_captured_roots() {
+        use crate::probe::FakeProbe;
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let (steam, extra, system) = (home.join(".steam/steam"), dir.path().join("extra"), dir.path().join("system"));
+        for root in [&steam, &extra, &system] {
+            fs::create_dir_all(root.join("config")).unwrap();
+            write(&root.join("logs/console-windows.txt"), "");
+            write(&root.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
+        }
+        let mut probe = FakeProbe::new(home.to_str().unwrap()).with_steam_roots(vec![steam.clone(), extra.clone(), steam.clone()]);
+        probe.steam_system_roots = vec![system.clone()];
+        let locator = SteamLocator::detect(&GlobalSettings::default(), &probe);
+        probe.steam_roots.clear();
+        probe.steam_system_roots.clear();
+        assert_eq!(locator.library_roots(), [system.clone(), steam.clone(), extra.clone()]);
+        assert_eq!(locator.installs(), [steam.clone(), extra.clone()]);
+        assert_eq!(
+            locator.log_files(),
+            [system.join("logs/console-windows.txt"), steam.join("logs/console-windows.txt"), extra.join("logs/console-windows.txt")]
+        );
+        let empty = SteamLocator { home: home.clone(), steam_path: home.join("missing"), system_roots: vec![], platform_roots: vec![] };
+        assert!(empty.library_roots().is_empty());
+        assert!(empty.installs().is_empty());
+        assert!(empty.log_files().is_empty());
+        assert!(installed_app_ids(&empty).is_empty());
+        let empty = SteamLocator::detect(&GlobalSettings::default(), &FakeProbe::new(dir.path().to_str().unwrap()));
+        assert!(empty.platform_roots.is_empty());
+        assert!(empty.system_roots.is_empty());
+        assert!(empty.library_roots().is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn binary_detection_checks_only_injected_roots_in_order() {
+        use crate::probe::FakeProbe;
+        let roots = vec![PathBuf::from(r"C:\fixture\missing"), PathBuf::from(r"D:\fixture\Steam"), PathBuf::from(r"E:\fixture\Steam")];
+        let second = roots[1].join("steam.exe");
+        let third = roots[2].join("steam.exe");
+        let probe = FakeProbe::new("/h").with_steam_roots(roots).with_path(third.to_str().unwrap()).with_path(second.to_str().unwrap());
+        assert_eq!(find_steam_binary(&probe), Some(second.to_string_lossy().into_owned()));
+        assert!(find_steam_binary(&FakeProbe::new("/h")).is_none());
+    }
+
+    #[test]
+    fn client_running_uses_only_fake_processes_and_fixture_pid_files() {
+        use crate::procs::FakeProcs;
+        let dir = tempfile::tempdir().unwrap();
+        let locator = SteamLocator {
+            home: dir.path().to_path_buf(),
+            steam_path: dir.path().join("Steam"),
+            system_roots: vec![],
+            platform_roots: vec![],
+        };
+        let procs = FakeProcs::new();
+        assert!(!locator.client_running(&procs));
+        if cfg!(windows) {
+            procs.start(100, "steamwebhelper.exe", None);
+            assert!(!locator.client_running(&procs));
+            procs.start(101, "StEaM.ExE", None);
+        } else {
+            write(&locator.steam_path.join("steam.pid"), "101\n");
+            assert!(!locator.client_running(&procs), "stale pid");
+            procs.start(101, "steam", None);
+        }
+        assert!(locator.client_running(&procs));
+        procs.exit(101);
+        assert!(!locator.client_running(&procs));
+    }
+
     fn acf(id: &str, name: &str, flags: &str) -> String {
         format!("\"AppState\"\n{{\n\t\"appid\"\t\t\"{id}\"\n\t\"name\"\t\t\"{name}\"\n\t\"StateFlags\"\t\t\"{flags}\"\n}}\n")
     }
@@ -429,23 +563,34 @@ mod tests {
         assert!(!is_non_game_steam_app("Frostpunk", "323190"));
     }
 
+    // Linux Steam folders (native, Flatpak, Snap).
+    #[cfg(unix)]
     #[test]
     fn flatpak_steam_is_found_when_the_native_one_is_missing() {
         use crate::probe::FakeProbe;
         let flatpak = "/h/.var/app/com.valvesoftware.Steam/.local/share/Steam";
-        let probe = FakeProbe::new("/h").with_path(flatpak);
+        let roots = platform_roots(Path::new("/h"));
+        let probe = FakeProbe::new("/h").with_steam_roots(roots.clone()).with_path(flatpak);
         let global = GlobalSettings::default();
         assert_eq!(SteamLocator::detect(&global, &probe).steam_path, PathBuf::from(flatpak));
         // A native install wins.
         let probe = probe.with_path("/h/.steam/steam");
         assert_eq!(SteamLocator::detect(&global, &probe).steam_path, PathBuf::from("/h/.steam/steam"));
         // Nothing installed: the usual default.
-        assert_eq!(SteamLocator::detect(&global, &FakeProbe::new("/h")).steam_path, PathBuf::from("/h/.steam/steam"));
+        assert_eq!(
+            SteamLocator::detect(&global, &FakeProbe::new("/h").with_steam_roots(roots.clone())).steam_path,
+            PathBuf::from("/h/.steam/steam")
+        );
         // The Snap is found too.
         let snap = "/h/snap/steam/common/.local/share/Steam";
-        assert_eq!(SteamLocator::detect(&global, &FakeProbe::new("/h").with_path(snap)).steam_path, PathBuf::from(snap));
+        assert_eq!(
+            SteamLocator::detect(&global, &FakeProbe::new("/h").with_steam_roots(roots).with_path(snap)).steam_path,
+            PathBuf::from(snap)
+        );
     }
 
+    // Linux Steam folders (native, Flatpak, Snap).
+    #[cfg(unix)]
     #[test]
     fn the_flatpak_steam_launcher_counts_as_a_steam_binary() {
         use crate::probe::FakeProbe;
@@ -457,13 +602,16 @@ mod tests {
         assert_eq!(find_steam_binary(&FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")).as_deref(), Some("/usr/bin/steam"));
     }
 
+    // Linux Steam folders (native, Flatpak, Snap).
+    #[cfg(unix)]
     #[test]
     fn flatpak_libraries_are_scanned() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path().join("home");
         let flatpak = flatpak_steam_root(&home);
         write(&flatpak.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
-        let loc = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+        let loc =
+            SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![], platform_roots: vec![flatpak] };
         assert!(installed_app_ids(&loc).contains("400"));
     }
 
@@ -475,7 +623,7 @@ mod tests {
         let extra = dir.path().join("SteamLibrary");
         write(
             &steam.join("steamapps/libraryfolders.vdf"),
-            &format!("\"libraryfolders\" {{ \"1\" {{ \"path\" \"{}\" }} }}", extra.display()),
+            &format!("\"libraryfolders\" {{ \"1\" {{ \"path\" \"{}\" }} }}", vdf_path(&extra)),
         );
         write(
             &extra.join("steamapps/appmanifest_1245620.acf"),
@@ -483,7 +631,7 @@ mod tests {
         );
         fs::create_dir_all(extra.join("steamapps/common/ELDEN RING")).unwrap();
         write(&steam.join("steamapps/appmanifest_400.acf"), "\"AppState\" { \"installdir\" \"Portal\" }");
-        let loc = SteamLocator { home, steam_path: steam, system_roots: vec![] };
+        let loc = SteamLocator { home, steam_path: steam.clone(), system_roots: vec![], platform_roots: vec![steam] };
         assert_eq!(loc.install_dir("1245620"), Some(extra.join("steamapps/common/ELDEN RING")));
         // Listed but the folder is gone; unknown id; not an id.
         assert_eq!(loc.install_dir("400"), None);
@@ -497,7 +645,8 @@ mod tests {
         let steam = dir.path().join("home/.steam/steam");
         write(&steam.join("steamapps/appmanifest_400.acf"), "\"AppState\" { \"installdir\" \"Portal\" \"SizeOnDisk\" \"4518092416\" }");
         write(&steam.join("steamapps/appmanifest_620.acf"), "\"AppState\" { \"installdir\" \"Portal 2\" \"SizeOnDisk\" \"0\" }");
-        let loc = SteamLocator { home: dir.path().join("home"), steam_path: steam, system_roots: vec![] };
+        let loc =
+            SteamLocator { home: dir.path().join("home"), steam_path: steam.clone(), system_roots: vec![], platform_roots: vec![steam] };
         assert_eq!(loc.size_on_disk("400"), Some(4_518_092_416));
         assert_eq!(loc.size_on_disk("620"), None, "not downloaded yet");
         assert_eq!(loc.size_on_disk("9"), None);
@@ -513,8 +662,8 @@ mod tests {
             &steam.join("steamapps/libraryfolders.vdf"),
             &format!(
                 "\"libraryfolders\" {{ \"0\" {{ \"path\" \"{}\" }} \"1\" {{ \"path\" \"{}\" }} \"2\" {{ \"path\" \"/does/not/exist\" }} }}",
-                steam.display(),
-                extra.display()
+                vdf_path(&steam),
+                vdf_path(&extra)
             ),
         );
         write(&steam.join("steamapps/appmanifest_400.acf"), &acf("400", "Portal", "4"));
@@ -525,7 +674,7 @@ mod tests {
         write(&extra.join("steamapps/appmanifest_abc.acf"), &acf("1", "ignored", "4"));
         write(&extra.join("steamapps/readme.txt"), "x");
 
-        let loc = SteamLocator { home: home.clone(), steam_path: steam.clone(), system_roots: vec![] };
+        let loc = SteamLocator { home: home.clone(), steam_path: steam.clone(), system_roots: vec![], platform_roots: vec![steam.clone()] };
         let roots = loc.library_roots();
         assert!(roots.contains(&steam) && roots.contains(&extra));
         assert!(!roots.iter().any(|r| r.ends_with("exist")));
@@ -566,7 +715,13 @@ mod tests {
         use crate::probe::FakeProbe;
         use crate::runtime::FakeSpawner;
         let spawner = FakeSpawner::new();
-        let with_steam = FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam");
+        // Linux finds `steam` on the PATH, Windows `steam.exe` in Steam's folder.
+        let with_steam = if cfg!(windows) {
+            let root = PathBuf::from(r"C:\fixture\Steam");
+            FakeProbe::new("/h").with_path(&root.join("steam.exe").to_string_lossy()).with_steam_roots(vec![root])
+        } else {
+            FakeProbe::new("/h").with_bin("steam", "/usr/bin/steam")
+        };
         open_steam_client_uri(&spawner, &with_steam, SteamAction::Install, "400").unwrap();
         open_steam_client_uri(&spawner, &with_steam, SteamAction::Uninstall, "400").unwrap();
         assert_eq!(spawner.uris(), ["steam://install/400", "steam://uninstall/400"]);
@@ -583,6 +738,8 @@ mod tests {
         assert_eq!(steam_uri(SteamAction::Uninstall.as_str(), "7"), "steam://uninstall/7");
     }
 
+    // Windows makes symlinks only in Developer Mode or as an administrator.
+    #[cfg(unix)]
     #[test]
     fn log_files_found_and_deduplicated() {
         let dir = tempfile::tempdir().unwrap();
@@ -591,7 +748,12 @@ mod tests {
         std::os::unix::fs::symlink(home.join(".local/share/Steam"), home.join(".steam_link")).unwrap();
         fs::create_dir_all(home.join(".steam")).unwrap();
         std::os::unix::fs::symlink(home.join(".local/share/Steam"), home.join(".steam/steam")).unwrap();
-        let loc = SteamLocator { home: home.to_path_buf(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+        let loc = SteamLocator {
+            home: home.to_path_buf(),
+            steam_path: home.join(".steam/steam"),
+            system_roots: vec![],
+            platform_roots: vec![home.join(".steam/steam"), home.join(".local/share/Steam")],
+        };
         let files = loc.log_files();
         assert_eq!(files.len(), 1, "{files:?}");
     }

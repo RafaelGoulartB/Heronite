@@ -324,7 +324,9 @@ mod tests {
 
     #[test]
     fn resolve_path_collapses() {
-        assert_eq!(resolve_path(Path::new("/a/b/../c/./d")), PathBuf::from("/a/c/d"));
-        assert_eq!(resolve_path(Path::new("/a/b/")), PathBuf::from("/a/b"));
+        // A full path on Windows starts with a drive.
+        let p = |s: &str| if cfg!(windows) { PathBuf::from(format!("C:{s}")) } else { PathBuf::from(s) };
+        assert_eq!(resolve_path(&p("/a/b/../c/./d")), p("/a/c/d"));
+        assert_eq!(resolve_path(&p("/a/b/")), p("/a/b"));
     }
 }

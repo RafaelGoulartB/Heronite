@@ -192,9 +192,12 @@ pub fn extra_launches(game: &Map<String, Value>, sub: &dyn Fn(&str) -> String, g
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::vars::Vars;
+    #[cfg(unix)]
     use serde_json::json;
 
+    #[cfg(unix)]
     fn sub_with(dir: &str) -> impl Fn(&str) -> String {
         let mut v = Vars::new();
         v.set("GAMEDIR", dir);
@@ -202,6 +205,7 @@ mod tests {
         move |s: &str| v.substitute(s)
     }
 
+    #[cfg(unix)]
     fn map(v: Value) -> Map<String, Value> {
         v.as_object().unwrap().clone()
     }
@@ -213,6 +217,8 @@ mod tests {
         assert!(runner("mame").unwrap_err().contains("mame"));
     }
 
+    // A Wine prefix on a file system where case matters.
+    #[cfg(unix)]
     #[test]
     fn windows_games_find_their_program_in_any_case() {
         let dir = tempfile::tempdir().unwrap();
@@ -240,6 +246,8 @@ mod tests {
         assert!(resolve(Runner::Wine, &Map::new(), &sub, d).is_err());
     }
 
+    // A Linux runner's paths.
+    #[cfg(unix)]
     #[test]
     fn linux_games_and_commands() {
         let sub = sub_with("/g");
@@ -253,6 +261,8 @@ mod tests {
         assert_eq!(l, Launch::Browser { url: "https://play.example.com".into() });
     }
 
+    // A Linux runner's paths.
+    #[cfg(unix)]
     #[test]
     fn dosbox_commands() {
         let sub = sub_with("/g");

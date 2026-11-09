@@ -3,6 +3,7 @@
 //! (the kind's name, in English or translated) narrows it to one kind.
 
 use gpui_kit::Rgba;
+use heronite_data::age_rating::AgeFilter;
 use heronite_data::fuzzy::fold;
 use heronite_data::{FacetKind, InstallFilter};
 use heronite_i18n::tr;
@@ -23,6 +24,10 @@ pub(in crate::collection) enum Pick {
     /// A category name (`categories::UNCATEGORIZED` included).
     Category(String),
     Facet(FacetKind, String),
+    /// Sets "Ages up to" to this; picking the filter already on clears it.
+    Age(AgeFilter),
+    /// A smart group's id.
+    Group(String),
 }
 
 /// A group of values: the "Only" switches, statuses, categories or a facet.
@@ -30,15 +35,17 @@ pub(in crate::collection) enum Pick {
 pub(in crate::collection) enum Kind {
     Only,
     Status,
+    Group,
     Category,
     Facet(FacetKind),
 }
 
 impl Kind {
     /// In the order the results list them.
-    pub const ALL: [Kind; 11] = [
+    pub const ALL: [Kind; 14] = [
         Kind::Only,
         Kind::Status,
+        Kind::Group,
         Kind::Category,
         Kind::Facet(FacetKind::Store),
         Kind::Facet(FacetKind::Genre),
@@ -47,6 +54,8 @@ impl Kind {
         Kind::Facet(FacetKind::Series),
         Kind::Facet(FacetKind::Theme),
         Kind::Facet(FacetKind::Feature),
+        Kind::Facet(FacetKind::GameMode),
+        Kind::Facet(FacetKind::Tag),
         Kind::Facet(FacetKind::Platform),
     ];
 
@@ -54,6 +63,7 @@ impl Kind {
         match self {
             Kind::Only => tr!("Only"),
             Kind::Status => tr!("Status"),
+            Kind::Group => tr!("Smart group"),
             Kind::Category => tr!("Category"),
             Kind::Facet(k) => facet_label(k),
         }
@@ -64,6 +74,7 @@ impl Kind {
         match self {
             Kind::Only => "only",
             Kind::Status => "status",
+            Kind::Group => "group",
             Kind::Category => "category",
             Kind::Facet(k) => k.as_str(),
         }
@@ -73,6 +84,7 @@ impl Kind {
         match self {
             Kind::Only => Icon::Star,
             Kind::Status => Icon::Flag,
+            Kind::Group => Icon::AutoAwesome,
             Kind::Category => Icon::Label,
             Kind::Facet(FacetKind::Store) => Icon::Storefront,
             Kind::Facet(FacetKind::Genre) => Icon::Palette,
@@ -82,6 +94,8 @@ impl Kind {
             Kind::Facet(FacetKind::Platform) => Icon::SportsEsports,
             Kind::Facet(FacetKind::Theme) => Icon::Lightbulb,
             Kind::Facet(FacetKind::Feature) => Icon::Tune,
+            Kind::Facet(FacetKind::GameMode) => Icon::AccountCircle,
+            Kind::Facet(FacetKind::Tag) => Icon::Bookmark,
         }
     }
 }
@@ -125,7 +139,7 @@ const PER_KIND: usize = 4;
 pub(in crate::collection) fn parse_query(raw: &str) -> (Option<Kind>, String) {
     if let Some((head, rest)) = raw.split_once(':') {
         let head = fold(head.trim());
-        if let Some(kind) = Kind::ALL.into_iter().find(|k| k.key() == head || fold(k.label()) == head) {
+        if let Some(kind) = Kind::ALL.into_iter().find(|k| fold(k.key()) == head || fold(k.label()) == head) {
             return (Some(kind), fold(rest.trim()));
         }
     }
@@ -215,6 +229,13 @@ mod tests {
         assert_eq!(parse_query("Genre: rpg"), (Some(Kind::Facet(FacetKind::Genre)), "rpg".into()));
         assert_eq!(parse_query("status:"), (Some(Kind::Status), String::new()));
         assert_eq!(parse_query("re: zero"), (None, "re: zero".into()));
+        let game_mode = Some(Kind::Facet(FacetKind::GameMode));
+        assert_eq!(parse_query("gameMode: co"), (game_mode, "co".into()));
+        assert_eq!(parse_query("gamemode: co"), (game_mode, "co".into()));
+        assert_eq!(parse_query("game mode: co"), (game_mode, "co".into()));
+        let tag = Some(Kind::Facet(FacetKind::Tag));
+        assert_eq!(parse_query("tag: rogue"), (tag, "rogue".into()));
+        assert_eq!(parse_query("Steam tag: rogue"), (tag, "rogue".into()));
     }
 
     #[test]

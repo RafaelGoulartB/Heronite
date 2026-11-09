@@ -191,9 +191,9 @@ mod tests {
 
     #[test]
     fn wine_prefix_detection() {
-        let probe = FakeProbe::new("/h").with_path("/p1/drive_c").with_path("/p2/pfx/drive_c");
+        let probe = FakeProbe::new("/h").with_path(&join("/p1", "drive_c")).with_path(&join("/p2", "pfx/drive_c"));
         assert_eq!(wine_prefix_for_ludusavi("/p1", &probe).as_deref(), Some("/p1"));
-        assert_eq!(wine_prefix_for_ludusavi("/p2", &probe).as_deref(), Some("/p2/pfx"));
+        assert_eq!(wine_prefix_for_ludusavi("/p2", &probe), Some(join("/p2", "pfx")));
         assert_eq!(wine_prefix_for_ludusavi("/p3", &probe), None);
         assert_eq!(wine_prefix_for_ludusavi("", &probe), None);
     }

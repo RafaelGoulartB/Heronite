@@ -9,26 +9,7 @@ use std::sync::{Arc, Mutex};
 use heronite_i18n::tr;
 
 use super::portal::PortalShortcut;
-use super::{hyprland, to_hyprland_binding, to_portal_trigger, ShortcutBackend};
-
-/// What to register.
-#[derive(Debug, Clone)]
-pub struct HotkeySpec {
-    /// The shortcut's id in its portal session.
-    pub id: &'static str,
-    /// Shown by the desktop; on Hyprland it also recognises a bind left
-    /// behind by a crash.
-    pub description: &'static str,
-    /// Signal the Hyprland bind sends this process. Not `SIGUSR2`: that is the
-    /// screenshot's.
-    pub signal: i32,
-    /// Electron-style (`Super+G`).
-    pub accelerator: String,
-    /// The focused window (the game) does not get the keys (Hyprland).
-    pub consume: bool,
-    /// See [`super::ServiceOptions::portal_app_id`].
-    pub portal_app_id: Option<String>,
-}
+use super::{hyprland, to_hyprland_binding, to_portal_trigger, HotkeySpec, ShortcutBackend};
 
 #[derive(Default)]
 struct Shared {

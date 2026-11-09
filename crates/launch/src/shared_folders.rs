@@ -76,8 +76,7 @@ pub fn map_drive_letters(prefix: &str, folders: &[String]) -> Vec<(char, String)
             continue;
         }
         let Some(letter) = ('d'..='y').find(|l| !taken(*l)) else { break };
-        #[cfg(unix)]
-        match std::os::unix::fs::symlink(folder, dir.join(format!("{letter}:"))) {
+        match heronite_platform::fs::symlink(Path::new(folder), &dir.join(format!("{letter}:"))) {
             Ok(()) => added.push((letter.to_ascii_uppercase(), folder.clone())),
             Err(e) => log::warn!("could not map {folder} to {letter}: in {}: {e}", dir.display()),
         }
@@ -133,6 +132,7 @@ pub fn create_prefix_first(
 mod tests {
     use super::*;
     use serde_json::json;
+    #[cfg(unix)]
     use std::fs;
 
     #[test]
@@ -151,6 +151,8 @@ mod tests {
         assert_eq!(container_env(&[], &[Some("/srv".into())]), None);
     }
 
+    // Wine's dosdevices are symlinks: a Unix prefix.
+    #[cfg(unix)]
     #[test]
     fn drive_letters_skip_used_ones_and_existing_maps() {
         let dir = tempfile::tempdir().unwrap();

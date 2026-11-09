@@ -4,7 +4,7 @@
 
 /// A tile: `index` into the values given to [`squarify`], in px.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Tile {
+pub(in crate::pages::settings) struct Tile {
     pub index: usize,
     pub x: f32,
     pub y: f32,
@@ -13,7 +13,7 @@ pub(super) struct Tile {
 }
 
 /// Lays `values` (sorted largest first, all > 0) out in a `w` x `h` box.
-pub(super) fn squarify(values: &[f64], w: f32, h: f32) -> Vec<Tile> {
+pub(in crate::pages::settings) fn squarify(values: &[f64], w: f32, h: f32) -> Vec<Tile> {
     let total: f64 = values.iter().sum();
     if values.is_empty() || total <= 0. || w <= 0. || h <= 0. {
         return Vec::new();

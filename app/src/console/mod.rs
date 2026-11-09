@@ -6,17 +6,24 @@
 //!
 //! Building blocks: [`kit`] (look), [`list`] (focusable rows with values
 //! changed by ◀ ▶), [`osk`] (on-screen keyboard), [`browser`] (folder /
-//! file picker), [`input`] (controller thread + keyboard mapping).
+//! file picker), [`input`] (controller thread + keyboard mapping),
+//! [`pointer`] (the mouse, as presses).
 
 pub mod browser;
 pub mod input;
 pub mod kit;
 pub mod layers;
 pub mod list;
+pub mod look;
 pub mod motion;
 pub mod osk;
+pub mod pointer;
 pub mod registry;
 pub mod sheet;
+pub mod spatial;
+pub mod startup;
+pub mod theme_rows;
+pub mod themes;
 
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -57,6 +64,18 @@ pub enum Pad {
     /// Right stick: scroll long text.
     ScrollUp,
     ScrollDown,
+}
+
+impl Pad {
+    /// Which way the press goes along a list: 1 for → ↓ RB RT and the stick
+    /// down, -1 for ← ↑ LB LT and the stick up, 0 for any other.
+    pub fn dir(self) -> isize {
+        match self {
+            Pad::Right | Pad::Down | Pad::RB | Pad::RT | Pad::ScrollDown => 1,
+            Pad::Left | Pad::Up | Pad::LB | Pad::LT | Pad::ScrollUp => -1,
+            _ => 0,
+        }
+    }
 }
 
 /// Button glyph in the hint bar.
@@ -175,7 +194,8 @@ impl Layer {
         self.overlay.as_ref().map(|o| o.hook.hints(cx))
     }
 
-    pub fn view(&self) -> Option<AnyView> {
-        self.overlay.as_ref().map(|o| o.view.clone())
+    /// The overlay to draw over the owner (nothing under it takes clicks).
+    pub fn view(&self) -> Option<AnyElement> {
+        self.overlay.as_ref().map(|o| div().absolute().inset_0().occlude().child(o.view.clone()).into_any_element())
     }
 }

@@ -30,7 +30,7 @@ pub(super) struct PairTable {
 
 pub(super) const ENV: PairTable = PairTable {
     id: "env",
-    title: n_!("Environment Variables"),
+    title: n_!("Environment variables"),
     setting: "enviromentOptions",
     k1: "key",
     k2: "value",
@@ -53,6 +53,9 @@ impl SettingsPanel {
     /// The game's launch settings (Heroic's Advanced tab); the Launch tab of
     /// the game settings shows them under Play and the actions.
     pub(super) fn launch_opts_tab(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Div {
+        if self.steam_direct() {
+            return self.steam_direct_tab(cx);
+        }
         let sideload = self.facts().is_some_and(|f| f.is_sideload());
         let legendary = self.facts().is_some_and(|f| f.runner == "legendary");
         let game = self.is_game();
@@ -101,8 +104,11 @@ impl SettingsPanel {
             );
         }
         col = col.child(heading(tr!("Starting"))).child(start.card());
-        col = col.child(self.scripts_section(false, cx));
-        if game {
+        let (extras, wrappers) = (logic::extras(), logic::wrappers());
+        if extras {
+            col = col.child(self.scripts_section(false, cx));
+        }
+        if game && extras {
             col = col.child(self.companions_section(cx));
         }
 
@@ -119,7 +125,7 @@ impl SettingsPanel {
             false,
             cx,
         ));
-        if native {
+        if native && wrappers {
             advanced = advanced.field_help(
                 self.steam_runtime_field(cx),
                 vec![help(tr!("Steam's libraries for Linux games; can help a game that misses some"))],
@@ -138,10 +144,18 @@ impl SettingsPanel {
         }
         col.child(heading(tr!("Advanced")))
             .child(advanced.card())
-            .child(self.presets_section(false, cx))
-            .child(self.pair_table(WRAPPERS, cx))
+            .when(extras, |c| c.child(self.presets_section(false, cx)))
+            .when(wrappers, |c| c.child(self.pair_table(WRAPPERS, cx)))
             .child(self.pair_table(ENV, cx))
             .when(self.has_preview(), |c| c.child(self.preview_section(cx)))
+    }
+
+    /// A Steam game on Windows: Steam starts it as it is, and Heronite runs
+    /// its scripts and programs alongside around it.
+    fn steam_direct_tab(&mut self, cx: &mut Context<Self>) -> Div {
+        column().child(self.scripts_section(false, cx)).child(self.companions_section(cx)).child(
+            help(tr!("Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.")).px(px(6.)),
+        )
     }
 
     /// The user's scripts before the game starts and after it exits.
@@ -152,6 +166,8 @@ impl SettingsPanel {
             .field(self.path_row("afterScript", Some(tr!("After the game exits")), false, tr!("Select script ..."), true, cx));
         if steam {
             r = r.child(help(tr!("Steam runs them through a small Heronite script, however the game starts.")).pb(px(12.)));
+        } else if cfg!(windows) {
+            r = r.child(help(tr!("A program, or a .bat, .cmd or .ps1 script")).pb(px(12.)));
         }
         column().child(heading(tr!("Scripts"))).child(r.card())
     }

@@ -36,7 +36,7 @@ fn installs(home: &Path) -> [Install; 2] {
 pub fn detect(home: &Path) -> Result<Option<Found>> {
     let Some(install) = installs(home).into_iter().find(|i| i.data.join("pga.db").is_file()) else { return Ok(None) };
     let games = read(&install)?;
-    Ok(Some(Found { launcher: Launcher::Lutris, location: install.data, flatpak: install.flatpak, games, heroic: None }))
+    Ok(Some(Found { launcher: Launcher::Lutris, location: install.data, flatpak: install.flatpak, games, heroic: None, in_use: false }))
 }
 
 fn command(flatpak: bool, id: i64) -> String {
@@ -94,6 +94,7 @@ fn read(install: &Install) -> Result<Vec<Game>> {
             banner: art("banners").map(|p| p.to_string_lossy().into_owned()),
             command: command(install.flatpak, id),
             prefix: settings.prefix,
+            runs_from: None,
         });
     }
     Ok(games)
@@ -153,6 +154,7 @@ fn game_section(file: &Path) -> GameSection {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn library(data: &Path) {
         std::fs::create_dir_all(data).unwrap();
         let conn = Connection::open(data.join("pga.db")).unwrap();
@@ -172,6 +174,8 @@ mod tests {
         .unwrap();
     }
 
+    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
+    #[cfg(unix)]
     #[test]
     fn reads_the_installed_games_but_steams() {
         let h = tempfile::tempdir().unwrap();

@@ -51,9 +51,41 @@ impl AddGameDialog {
         if self.platform_manual || self.platform == SideloadPlatform::Browser {
             return;
         }
-        if let Some(p) = detect_platform(path, &SystemProbe) {
+        if let Some(p) = detect_platform(path, &SystemProbe).filter(|p| platforms().contains(p)) {
             self.platform = p;
         }
+    }
+
+    /// An executable named before the title names the game (its file, or its
+    /// folder when the file's name is generic). The title follows the
+    /// executable until the user types their own.
+    pub(super) fn fill_title_from(&mut self, executable: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_edit() || executable.trim().is_empty() {
+            return;
+        }
+        let current = text_of(&self.title, cx);
+        if !current.trim().is_empty() && current != self.last_auto_title {
+            return;
+        }
+        let title = super::dropped::title_from_executable(std::path::Path::new(executable.trim()));
+        if title.is_empty() || title == current {
+            return;
+        }
+        self.last_auto_title = title.clone();
+        // `set_value` sends no change event: the prefix follows by hand.
+        self.title.update(cx, |s, cx| s.set_value(title, window, cx));
+        self.title_changed(window, cx);
+    }
+
+    /// An executable chosen in the file dialog: the platform, the title, the
+    /// Linux game folder and the art follow from it.
+    pub(super) fn executable_picked(&mut self, path: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.exe.update(cx, |s, cx| s.set_value(path.clone(), window, cx));
+        self.executable_changed(&path);
+        self.fill_folder_from(&path, window, cx);
+        self.fill_title_from(&path, window, cx);
+        self.auto_find_art(window, cx);
+        cx.notify();
     }
 
     /// A picked executable gives the game folder when none was chosen yet.
@@ -97,6 +129,9 @@ impl AddGameDialog {
     }
 
     pub(super) fn load_wine_list(&mut self, cx: &mut Context<Self>) {
+        if !uses_wine() {
+            return;
+        }
         let paths = self.ctx.data_paths.clone();
         // Debug captures only keep the first frames: load in place there.
         if crate::env::flag("HERONITE_DEBUG_DIALOG") {
@@ -116,17 +151,7 @@ impl AddGameDialog {
     }
 
     fn wine_loaded(&mut self, list: Vec<WineInstallation>) {
-        // `WineSelector`: the first available version unless one is chosen.
-        // A default that is not installed anymore (its folder is gone) is
-        // replaced too: one with the same name, else the first.
-        let missing = self.wine.as_ref().is_some_and(|w| !list.iter().any(|l| l.bin == w.bin));
-        if self.wine.is_none() || missing {
-            let same_name = self
-                .wine
-                .as_ref()
-                .and_then(|w| list.iter().find(|l| l.name.replace(' ', "-").eq_ignore_ascii_case(&w.name.replace(' ', "-"))));
-            self.wine = same_name.or(list.first()).cloned();
-        }
+        self.wine = default_wine(self.wine.as_ref(), &list);
         self.wine_list = Some(list);
     }
 }

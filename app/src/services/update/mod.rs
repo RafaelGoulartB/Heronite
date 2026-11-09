@@ -5,24 +5,50 @@
 //!   same format and hands it to apt / dnf / pacman through `pkexec` (the
 //!   desktop's password prompt), then restarts. Never automatic: it asks for
 //!   a password.
+//! - the AUR's `heronite-bin`: only tells that a release is out. Its AUR
+//!   helper installs it (our Arch package conflicts with it), so nothing is
+//!   downloaded;
+//! - Windows, installed by Scoop (`packaging/scoop`): the same, `scoop update
+//!   heronite` installs it (Scoop owns the files of each version);
+//! - the Fedora COPR's `heronite` (`packaging/copr`): the same, dnf (or
+//!   rpm-ostree on an atomic desktop) installs it from the COPR, which builds
+//!   it from source: the release's `.rpm` must not replace it;
+//! - Windows, installed by our setup: downloads the release's setup, which
+//!   runs silently as the app quits (a restart, or a normal quit) and
+//!   replaces the files once this process is gone ([`crate::system::run_on_quit`]);
+//! - Windows, portable copy: downloads the release's zip and swaps its
+//!   program files in place (the old ones kept as `.old` until the next
+//!   start), restarts.
 //!
-//! Anything else (built from source, a distribution's own package) is
-//! updated by whatever installed it, so it only checks when asked.
+//! Anything else (built from source, a distribution's own package, the
+//! Flatpak, a Windows build folder) is updated by whatever installed it, so
+//! it only checks when asked.
 //!
 //! Checks run [`FIRST_CHECK`] after the start (skipped when the last one is
 //! younger than [`RECHECK_AFTER`]) and every [`CHECK_EVERY`] while "Check for
 //! updates automatically" is on. A failed background check stays quiet; a
 //! failed manual check or install is shown.
 //!
-//! The Collection draws the banner ([`Updater::banner`]) and Settings → About
-//! the full card; both observe this entity.
+//! The Collection's header draws the pill ([`Updater::banner`]) and Settings
+//! → About the full card; both observe this entity. The first start of a
+//! version this app installed opens its "What's new" once
+//! ([`Updater::take_whats_new`]).
 //!
 //! Switches: `HERONITE_NO_UPDATE_CHECK=1` turns the automatic checks off;
 //! `HERONITE_UPDATE_API=<url>` asks another endpoint (local tests);
 //! `HERONITE_DEBUG_UPDATE=checking|uptodate|available|downloading|installing|ready|failed`
 //! shows that state with a made-up release, without any request;
-//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch` pretends this copy came from
-//! that package (with `HERONITE_DEBUG_UPDATE`);
+//! `HERONITE_DEBUG_UPDATE=simulate` offers a made-up release whose Update
+//! fakes the download and whose Restart opens "What's new" instead
+//! (nothing is downloaded, written or restarted; `simulate-auto` presses
+//! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
+//! new" at once;
+//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch|aur|scoop|copr` pretends this copy came from
+//! that package (with `HERONITE_DEBUG_UPDATE`; on Windows `setup|portable`,
+//! the setup by default);
+//! `HERONITE_DEBUG_UPDATE_KEY=<minisign public key>` (debug builds only)
+//! trusts that key instead of the release key, for end-to-end tests with a
+//! local `HERONITE_UPDATE_API`;
 //! `HERONITE_DEBUG_UPDATE_RESTART=1` restarts as soon as an update is
 //! installed (end-to-end tests without clicks).
 
@@ -38,13 +64,23 @@ use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::AppPaths;
-use heronite_i18n::tr;
+use heronite_i18n::{n_, tr};
 use heronite_update::{Asset, Fetched, InstallError, Package, Prefs, Progress, Release, Target, Unsupported, Version};
+#[cfg(windows)]
+use heronite_update::{Installer, Portable, WindowsAsset};
 
 const FIRST_CHECK: Duration = Duration::from_secs(3);
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
 /// A start this soon after the last check waits for the next period instead.
 const RECHECK_AFTER: Duration = Duration::from_secs(30 * 60);
+/// What an AUR copy shows for a new version, instead of the Update button.
+pub const AUR_UPDATE: &str = n_!("Update with your AUR helper, for example yay -Syu");
+/// What Scoop's copy shows for a new version, instead of the Update button.
+pub const SCOOP_UPDATE: &str = n_!("Update with Scoop: scoop update heronite");
+/// What the COPR's copy shows for a new version, instead of the Update button.
+pub const COPR_UPDATE: &str = n_!("Update with dnf: sudo dnf upgrade");
+/// [`COPR_UPDATE`] on Fedora's atomic desktops (Silverblue, Kinoite, Bazzite).
+pub const COPR_OSTREE_UPDATE: &str = n_!("Update with rpm-ostree: rpm-ostree upgrade");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Phase {
@@ -57,14 +93,16 @@ pub enum Phase {
     Downloading(Progress),
     /// The package manager is installing the downloaded package.
     Installing,
-    /// The new version is in place; it runs from the next start.
+    /// The new version is in place; it runs from the next start. For a
+    /// copy installed by the Windows setup: the setup is downloaded and runs
+    /// when the app quits ([`Updater::installs_on_quit`]).
     Ready,
     /// A check the user asked for failed.
     CheckFailed(String),
     InstallFailed(String),
 }
 
-/// What the Collection's banner shows.
+/// What the Collection's update pill shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Banner {
     Available,
@@ -76,18 +114,44 @@ pub enum Banner {
 /// How this copy is updated.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Method {
+    #[cfg_attr(windows, allow(dead_code))]
     AppImage(Target),
     /// Our system package; `exe` is this binary, read at start (once the
     /// package manager replaced it, `/proc/self/exe` names a deleted file).
-    Package {
-        kind: Package,
-        exe: PathBuf,
-    },
+    Package { kind: Package, exe: PathBuf },
+    /// Installed by our Windows setup.
+    #[cfg(windows)]
+    Installer(Installer),
+    /// A portable copy on Windows.
+    #[cfg(windows)]
+    Portable(Portable),
 }
 
 impl Method {
+    /// A copy installed by Scoop, else by our setup, else a portable one
+    /// (the setup owns the files it installed, even next to a portable
+    /// marker; Scoop's manifest takes that marker out, but an older copy of
+    /// it may still have one).
+    #[cfg(windows)]
     fn detect() -> Result<Self, Unsupported> {
-        match Target::detect(std::env::var_os("APPIMAGE")) {
+        let exe = std::env::current_exe().map_err(|_| Unsupported::NotAppImage)?;
+        if heronite_platform::scoop::installed(&exe) {
+            return Ok(Method::Package { kind: Package::Scoop, exe });
+        }
+        if let Some(installer) = Installer::detect(&exe) {
+            return Ok(Method::Installer(installer));
+        }
+        let root = heronite_platform::dirs::portable_root().ok_or(Unsupported::NotAppImage)?;
+        Portable::detect(root, exe).map(Method::Portable)
+    }
+
+    #[cfg(not(windows))]
+    fn detect() -> Result<Self, Unsupported> {
+        if heronite_platform::flatpak::active() {
+            return Err(Unsupported::Flatpak);
+        }
+        // Not `$APPIMAGE` as is: it may be another AppImage's, inherited.
+        match Target::detect(crate::system::own_exe::own_appimage().map(Into::into)) {
             Ok(t) => Ok(Method::AppImage(t)),
             Err(Unsupported::NotAppImage) => {
                 let exe = std::env::current_exe().map_err(|_| Unsupported::NotAppImage)?;
@@ -98,11 +162,28 @@ impl Method {
         }
     }
 
+    /// The release can be downloaded and installed this way (never the
+    /// AUR's package, Scoop's nor the COPR's: they have no release file).
+    fn can_install(&self, release: &Release) -> bool {
+        match self {
+            Method::AppImage(_) => release.installable(),
+            Method::Package { kind, .. } => release.package_proof(*kind).is_some(),
+            #[cfg(windows)]
+            Method::Installer(_) => release.windows_proof(WindowsAsset::Setup).is_some(),
+            #[cfg(windows)]
+            Method::Portable(_) => release.windows_proof(WindowsAsset::Portable).is_some(),
+        }
+    }
+
     /// What to start after a restart.
     fn executable(&self) -> PathBuf {
         match self {
             Method::AppImage(t) => t.appimage.clone(),
             Method::Package { exe, .. } => exe.clone(),
+            #[cfg(windows)]
+            Method::Installer(i) => i.exe.clone(),
+            #[cfg(windows)]
+            Method::Portable(p) => p.exe.clone(),
         }
     }
 }
@@ -125,14 +206,19 @@ pub struct Updater {
     dismissed: Option<String>,
     /// Version already announced by a desktop notification.
     notified: Option<String>,
-    /// The downloaded package, while it waits for or failed its install.
+    /// The downloaded package, while it waits for or failed its install (on
+    /// Windows the setup, until the app quits).
     downloaded: Option<PathBuf>,
     cancel: Option<Arc<AtomicBool>>,
     job: Option<Task<()>>,
     timer: Option<Task<()>>,
     api_url: String,
+    /// The release this start is the first run of, for its "What's new".
+    whats_new: Option<Release>,
     /// `HERONITE_DEBUG_UPDATE`: made-up states, no requests or writes.
     debug: bool,
+    /// `HERONITE_DEBUG_UPDATE=simulate`: Update and Restart are faked.
+    simulate: bool,
 }
 
 struct UpdaterGlobal(Entity<Updater>);
@@ -159,12 +245,8 @@ fn now_secs() -> u64 {
 
 /// Opens `url` in the browser.
 pub fn open_page(url: &str) {
-    use std::process::{Command, Stdio};
-    match Command::new("xdg-open").arg(url).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
-        Ok(mut child) => {
-            std::thread::spawn(move || child.wait());
-        }
-        Err(e) => log::warn!("xdg-open {url}: {e}"),
+    if let Err(e) = heronite_platform::shell::open(url) {
+        log::warn!("opening {url}: {e}");
     }
 }
 
@@ -209,6 +291,29 @@ impl Updater {
                 let t = t.clone();
                 cx.background_spawn(async move { t.sweep_staging() }).detach();
             }
+            #[cfg(windows)]
+            Ok(Method::Installer(i)) => {
+                log::info!("installed by the setup in {}: updates run the new setup as the app quits", i.exe.display());
+                // Setups of earlier updates. The one that started this
+                // process may still be finishing: its file stays until the
+                // next start (each version downloads into its own folder).
+                let dir = Self::downloads_dir(&app);
+                cx.background_spawn(async move {
+                    let _ = std::fs::remove_dir_all(dir);
+                })
+                .detach();
+            }
+            #[cfg(windows)]
+            Ok(Method::Portable(p)) => {
+                log::info!("portable copy in {}: updates are swapped in place", p.root.display());
+                // An unfinished update and the files the last one replaced
+                // (the previous process may still be exiting: it waits a bit).
+                let p = p.clone();
+                let _ = std::thread::Builder::new().name("update-sweep".into()).spawn(move || p.sweep());
+            }
+            Ok(Method::Package { kind, .. }) if kind.managed() => {
+                log::info!("installed with {}: updates are only announced, its package manager installs them", kind.label());
+            }
             Ok(Method::Package { kind, .. }) => {
                 log::info!("installed from a {} package: updates go through its package manager", kind.label());
                 // Packages of earlier updates (installed or not).
@@ -219,6 +324,7 @@ impl Updater {
                 .detach();
             }
             Err(Unsupported::NotAppImage) => {}
+            Err(Unsupported::Flatpak) => log::info!("running as a Flatpak: updates go through Flatpak"),
             Err(why) => log::info!("updates cannot be installed in place: {why}"),
         }
         let mut this = Self {
@@ -235,14 +341,30 @@ impl Updater {
             job: None,
             timer: None,
             api_url: crate::env::value("HERONITE_UPDATE_API").unwrap_or_else(|| heronite_update::LATEST_API.to_string()),
+            whats_new: None,
             debug: false,
+            simulate: false,
         };
         if let Some(state) = crate::env::value("HERONITE_DEBUG_UPDATE") {
-            this.debug_state(&state);
+            this.debug_state(&state, cx);
             return this;
+        }
+        if let Some(arrived) = arrival(&mut this.prefs, &this.current) {
+            this.whats_new = arrived;
+            this.save_prefs(cx);
         }
         this.schedule(cx);
         this
+    }
+
+    /// A "What's new" waits for the Collection.
+    pub fn has_whats_new(&self) -> bool {
+        self.whats_new.is_some()
+    }
+
+    /// The release whose "What's new" opens now (once).
+    pub fn take_whats_new(&mut self) -> Option<Release> {
+        self.whats_new.take()
     }
 
     pub fn phase(&self) -> &Phase {
@@ -274,9 +396,37 @@ impl Updater {
         }
     }
 
-    /// The file an update downloads (the AppImage or this format's package).
+    /// How to update a copy whose own package manager installs updates
+    /// (the AUR, Scoop, the COPR), shown instead of the Update button; `None` when
+    /// Heronite installs them or sends people to the release page.
+    pub fn manager_update(&self) -> Option<&'static str> {
+        match self.package()? {
+            Package::Aur => Some(AUR_UPDATE),
+            Package::Scoop => Some(SCOOP_UPDATE),
+            Package::Copr if heronite_update::package::ostree_booted() => Some(COPR_OSTREE_UPDATE),
+            Package::Copr => Some(COPR_UPDATE),
+            _ => None,
+        }
+    }
+
+    /// The Windows download this copy updates from.
+    #[cfg(windows)]
+    fn windows_asset(&self) -> Option<WindowsAsset> {
+        match &self.method {
+            Ok(Method::Installer(_)) => Some(WindowsAsset::Setup),
+            Ok(Method::Portable(_)) => Some(WindowsAsset::Portable),
+            _ => None,
+        }
+    }
+
+    /// The file an update downloads (the AppImage, this format's package,
+    /// the Windows setup or portable zip).
     pub fn download_asset(&self) -> Option<&Asset> {
         let release = self.release.as_ref()?;
+        #[cfg(windows)]
+        if let Some(kind) = self.windows_asset() {
+            return release.windows_asset(kind);
+        }
         match &self.method {
             Ok(Method::Package { kind, .. }) => release.package(*kind),
             _ => release.appimage.as_ref(),
@@ -286,17 +436,28 @@ impl Updater {
     /// The release can be downloaded and installed from here.
     pub fn can_install(&self) -> bool {
         let Some(release) = &self.release else { return false };
+        self.method.as_ref().is_ok_and(|m| m.can_install(release))
+    }
+
+    /// Updates may install without a click (not packages: they ask for a
+    /// password).
+    pub fn can_auto_install(&self) -> bool {
         match &self.method {
-            Ok(Method::AppImage(_)) => release.installable(),
-            Ok(Method::Package { kind, .. }) => release.package_signature(*kind).is_some(),
-            Err(_) => false,
+            Ok(Method::AppImage(_)) => true,
+            #[cfg(windows)]
+            Ok(Method::Installer(_) | Method::Portable(_)) => true,
+            _ => false,
         }
     }
 
-    /// Updates may install without a click (AppImages only: a package asks
-    /// for a password).
-    pub fn can_auto_install(&self) -> bool {
-        matches!(self.method, Ok(Method::AppImage(_)))
+    /// A ready update installs when the app quits (the Windows setup)
+    /// instead of being in place already.
+    pub fn installs_on_quit(&self) -> bool {
+        #[cfg(windows)]
+        if let Ok(Method::Installer(_)) = &self.method {
+            return true;
+        }
+        false
     }
 
     /// The terminal command for a downloaded package whose install failed.
@@ -442,12 +603,22 @@ impl Updater {
             return;
         }
         self.notified = Some(r.version.clone());
-        crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), tr!("Open Heronite to update."));
+        let how = match self.manager_update() {
+            Some(how) => tr(how),
+            None => tr!("Open Heronite to update."),
+        };
+        crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), how);
     }
 
     /// Downloads the release and installs it ([`Method`]).
     pub fn install(&mut self, cx: &mut Context<Self>) {
-        if self.busy() || self.debug || !self.can_install() {
+        if self.busy() || !self.can_install() {
+            return;
+        }
+        if self.debug {
+            if self.simulate {
+                self.debug_install(cx);
+            }
             return;
         }
         let (Ok(method), Some(release)) = (self.method.clone(), self.release.clone()) else { return };
@@ -458,9 +629,11 @@ impl Updater {
         cx.notify();
         let (tx, mut rx) = unbounded::<Step>();
         let dir = Self::downloads_dir(&self.app);
-        // The result, and the downloaded package when its install failed.
+        // The result, and the downloaded package when its install failed (or
+        // the Windows setup, which runs as the app quits).
+        let key = debug::public_key();
         let job = cx.background_spawn(async move {
-            let key = heronite_update::PUBLIC_KEY;
+            let key = key.as_str();
             let mut progress = |p| {
                 let _ = tx.unbounded_send(Step::Progress(p));
             };
@@ -469,13 +642,28 @@ impl Updater {
                     log::info!("downloading Heronite {} into {}", release.version, target.appimage.display());
                     (heronite_update::install::install(&release, &target, key, &cancel, &mut progress), None)
                 }
+                #[cfg(windows)]
+                Method::Installer(_) => {
+                    log::info!("downloading the setup of Heronite {} into {}", release.version, dir.display());
+                    match Installer::download(&release, &dir.join(&release.version), key, &cancel, &mut progress) {
+                        // Kept: it runs as the app quits.
+                        Ok(setup) => (Ok(()), Some(setup)),
+                        Err(e) => (Err(e), None),
+                    }
+                }
+                #[cfg(windows)]
+                Method::Portable(copy) => {
+                    log::info!("downloading Heronite {} into {}", release.version, copy.root.display());
+                    (heronite_update::portable::install(&release, &copy, key, &cancel, &mut progress), None)
+                }
                 Method::Package { kind, .. } => {
-                    let (Some(asset), Some(sig)) = (release.package(kind), release.package_signature(kind)) else {
+                    let (Some(asset), Some(proof)) = (release.package(kind), release.package_proof(kind)) else {
                         return (Err(InstallError::Failed(tr!("This release has no signed package for this system").into())), None);
                     };
                     log::info!("downloading {} into {}", asset.name, dir.display());
                     let file =
-                        match heronite_update::install::download_signed(asset, sig, &release.version, &dir, key, &cancel, &mut progress) {
+                        match heronite_update::install::download_signed(asset, &proof, &release.version, &dir, key, &cancel, &mut progress)
+                        {
                             Ok(file) => file,
                             Err(e) => return (Err(e), None),
                         };
@@ -523,8 +711,23 @@ impl Updater {
         self.cancel = None;
         let version = self.release.as_ref().map(|r| r.version.clone()).unwrap_or_default();
         self.phase = match result {
+            Ok(()) if self.installs_on_quit() => {
+                log::info!("the setup of Heronite {version} is downloaded; it runs when the app quits");
+                self.prefs.updated_to = Some(version.clone());
+                self.save_prefs(cx);
+                self.setup_on_quit();
+                if !crate::system::has_window(cx) {
+                    crate::system::notify::send(
+                        tr!("Heronite {version} is ready to install", version),
+                        tr!("It installs when you quit Heronite."),
+                    );
+                }
+                Phase::Ready
+            }
             Ok(()) => {
                 log::info!("Heronite {version} is installed; it runs from the next start");
+                self.prefs.updated_to = Some(version.clone());
+                self.save_prefs(cx);
                 if !crate::system::has_window(cx) {
                     crate::system::notify::send(
                         tr!("Heronite {version} is installed", version),
@@ -549,17 +752,40 @@ impl Updater {
         cx.notify();
     }
 
+    /// The downloaded Windows setup runs once the app has quit: it waits for
+    /// this process to end, installs silently and, after a restart, starts
+    /// the new version itself. A failure to start it is only logged (a
+    /// restart then starts this version again).
+    fn setup_on_quit(&self) {
+        #[cfg(windows)]
+        if let Some(setup) = self.downloaded.clone() {
+            let log = self.app.cache.join("update-setup.log");
+            crate::system::run_on_quit(Some(Box::new(move |relaunch| match Installer::run_setup(&setup, relaunch, Some(&log)) {
+                Ok(pid) => {
+                    log::info!("started the setup {} (pid {pid}, log {})", setup.display(), log.display());
+                    relaunch
+                }
+                Err(e) => {
+                    log::error!("could not start the setup {}: {e}", setup.display());
+                    false
+                }
+            })));
+        }
+    }
+
     pub fn cancel(&mut self, cx: &mut Context<Self>) {
         if let Some(c) = &self.cancel {
             c.store(true, Ordering::Relaxed);
         }
         if self.debug {
+            self.job = None;
             self.phase = Phase::Available;
         }
         cx.notify();
     }
 
-    /// "Later": hides the banner of this version for this session.
+    /// "Ignore" or "Later": hides the banner of this version for this
+    /// session. It is back after a restart, or with a check asked for.
     pub fn dismiss(&mut self, cx: &mut Context<Self>) {
         self.dismissed = self.release.as_ref().map(|r| r.version.clone());
         if matches!(self.phase, Phase::InstallFailed(_)) {
@@ -594,7 +820,13 @@ impl Updater {
     /// Restarts into the new version (when no game or post-game work keeps
     /// the app; see [`crate::system::restart_blocker`]).
     pub fn restart(&mut self, cx: &mut Context<Self>) {
-        if self.phase != Phase::Ready || self.debug {
+        if self.phase != Phase::Ready {
+            return;
+        }
+        if self.debug {
+            if self.simulate {
+                self.debug_restart(cx);
+            }
             return;
         }
         let Ok(method) = &self.method else { return };
@@ -613,5 +845,97 @@ impl Updater {
             }
         })
         .detach();
+    }
+}
+
+/// What a start finds of the update this app installed: `None` when nothing
+/// changed, `Some(release)` when this start is the first of the version it
+/// installed (with its notes when the last check described it). The
+/// version is forgotten once it runs or once an older one is running.
+fn arrival(prefs: &mut Prefs, current: &Version) -> Option<Option<Release>> {
+    let to = Version::parse(prefs.updated_to.as_deref()?);
+    if to.as_ref().is_some_and(|v| v > current) {
+        // Not running yet (a restart is still due).
+        return None;
+    }
+    prefs.updated_to = None;
+    let notes = prefs.latest.clone().filter(|r| to.as_ref() == Some(current) && Version::parse(&r.version).as_ref() == Some(current));
+    Some(notes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{arrival, Method};
+    use heronite_update::{Asset, Checksums, Package, Prefs, Release, Version};
+
+    fn release(version: &str) -> Release {
+        Release {
+            version: version.into(),
+            name: String::new(),
+            notes: "### Fixes\n- A fix".into(),
+            page_url: String::new(),
+            published_at: String::new(),
+            appimage: None,
+            signature: None,
+            packages: Vec::new(),
+            windows: Vec::new(),
+            checksums: None,
+        }
+    }
+
+    fn asset(name: &str) -> Asset {
+        Asset { name: name.into(), url: format!("https://dl/{name}"), size: 1 }
+    }
+
+    /// A release with every package, signed by one checksum list.
+    fn signed_release() -> Release {
+        Release {
+            packages: ["heronite_1.2.0-1_amd64.deb", "heronite-1.2.0-1.x86_64.rpm", "heronite-1.2.0-1-x86_64.pkg.tar.zst"]
+                .map(asset)
+                .to_vec(),
+            checksums: Some(Checksums { list: asset("SHA256SUMS"), signature: asset("SHA256SUMS.minisig") }),
+            ..release("1.2.0")
+        }
+    }
+
+    fn package(kind: Package) -> Method {
+        Method::Package { kind, exe: "/usr/bin/heronite-rs".into() }
+    }
+
+    #[test]
+    fn the_aur_copy_is_told_of_updates_but_never_installs_them() {
+        let r = signed_release();
+        if heronite_update::release::ARCH == "x86_64" {
+            assert!(package(Package::Deb).can_install(&r));
+            assert!(package(Package::Rpm).can_install(&r));
+            assert!(package(Package::Arch).can_install(&r), "our Arch package replaces itself");
+        }
+        assert!(!package(Package::Aur).can_install(&r), "heronite-bin conflicts with our Arch package");
+        assert!(!package(Package::Aur).can_install(&Release { packages: Vec::new(), ..r.clone() }));
+        assert!(!package(Package::Scoop).can_install(&r), "Scoop owns its copy's files");
+        assert!(!package(Package::Copr).can_install(&r), "dnf updates it from the COPR, not from the release's .rpm");
+    }
+
+    #[test]
+    fn the_first_start_of_an_installed_version_shows_its_notes_once() {
+        let current = Version::parse("0.17.1").unwrap();
+        let mut prefs = Prefs { updated_to: Some("0.17.1".into()), latest: Some(release("0.17.1")), ..Default::default() };
+        assert_eq!(arrival(&mut prefs, &current), Some(Some(release("0.17.1"))));
+        assert_eq!(prefs.updated_to, None);
+        assert_eq!(arrival(&mut prefs, &current), None, "only once");
+
+        // Installed but not restarted yet: kept for the next start.
+        let mut waiting = Prefs { updated_to: Some("0.17.2".into()), ..Default::default() };
+        assert_eq!(arrival(&mut waiting, &current), None);
+        assert_eq!(waiting.updated_to.as_deref(), Some("0.17.2"));
+
+        // An older one (updated again by other means): forgotten, no notes.
+        let mut old = Prefs { updated_to: Some("0.16.0".into()), latest: Some(release("0.17.1")), ..Default::default() };
+        assert_eq!(arrival(&mut old, &current), Some(None));
+        assert_eq!(old.updated_to, None);
+
+        // The notes of another version are not shown.
+        let mut other = Prefs { updated_to: Some("0.17.1".into()), latest: Some(release("0.18.0")), ..Default::default() };
+        assert_eq!(arrival(&mut other, &current), Some(None));
     }
 }

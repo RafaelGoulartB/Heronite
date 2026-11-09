@@ -27,7 +27,12 @@ fn rig(config_json: &str) -> Rig {
     let paths = DataPaths::at(dir.path().join("heroic"));
     fs::create_dir_all(paths.games_config_dir()).unwrap();
     fs::write(paths.root.join("config.json"), config_json).unwrap();
-    let steam = SteamLocator { home: dir.path().join("home"), steam_path: dir.path().join("home/.steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: dir.path().join("home"),
+        steam_path: dir.path().join("home/.steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![],
+    };
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
     let cfg = LauncherConfig {
@@ -72,6 +77,9 @@ fn log_path(r: &Rig, app: &str) -> PathBuf {
 
 const VERBOSE: &str = r#"{"defaultSettings":{"verboseLogs":true},"version":"v0"}"#;
 
+// The game is `sh`: Git's `sh` on Windows writes nothing into the log file it
+// is given (a Windows program does).
+#[cfg(unix)]
 #[test]
 fn launch_log_has_heroics_header_and_the_whole_output() {
     let r = rig(VERBOSE);
@@ -91,6 +99,9 @@ fn launch_log_has_heroics_header_and_the_whole_output() {
     assert!(log.contains("(") && log.contains("[INFO]:    Native? true"));
 }
 
+// The game is `sh`: Git's `sh` on Windows writes nothing into the log file it
+// is given (a Windows program does).
+#[cfg(unix)]
 #[test]
 fn a_second_launch_moves_the_first_log_to_old() {
     let r = rig(VERBOSE);
@@ -102,6 +113,9 @@ fn a_second_launch_moves_the_first_log_to_old() {
     assert!(old.contains("first-1\n") && old.contains("End of log"));
 }
 
+// The game is `sh`: Git's `sh` on Windows writes nothing into the log file it
+// is given (a Windows program does).
+#[cfg(unix)]
 #[test]
 fn big_output_is_stored_completely_without_stalling_the_game() {
     let r = rig(VERBOSE);
@@ -148,6 +162,9 @@ fn a_launch_that_cannot_start_logs_the_error() {
     assert!(log.contains("End of log"));
 }
 
+// The game is `sh`: Git's `sh` on Windows writes nothing into the log file it
+// is given (a Windows program does).
+#[cfg(unix)]
 #[test]
 fn the_game_writes_straight_to_the_log_file_without_a_pipe() {
     let r = rig(VERBOSE);
@@ -162,6 +179,9 @@ fn the_game_writes_straight_to_the_log_file_without_a_pipe() {
     assert!(log.contains("after-2\n") && log.trim_end().ends_with("End of log ============="), "{log}");
 }
 
+// The game is `sh`: Git's `sh` on Windows writes nothing into the log file it
+// is given (a Windows program does).
+#[cfg(unix)]
 #[test]
 fn launcher_and_game_lines_interleave_in_order() {
     let r = rig(VERBOSE);

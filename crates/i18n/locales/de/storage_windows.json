@@ -1,0 +1,19 @@
+{
+  "An update of Heronite is using {path}": "Ein Update von Heronite verwendet {path}",
+  "Could not move {path} to the Recycle Bin: {error}": "{path} konnte nicht in den Papierkorb verschoben werden: {error}",
+  "Deleted. Heronite downloads them again when needed.": "Gelöscht. Heronite lädt sie bei Bedarf erneut herunter.",
+  "Disk space of games, store tools, caches": "Speicherplatz von Spielen, Store-Tools, Caches",
+  "GOG redistributables": "GOG-Redistributables",
+  "Heronite updates": "Heronite-Updates",
+  "Leftover folders go to the Recycle Bin, where they can be restored; the rest is deleted.": "Verwaiste Ordner kommen in den Papierkorb und können dort wiederhergestellt werden; der Rest wird gelöscht.",
+  "Move to the Recycle Bin": "In den Papierkorb verschieben",
+  "No game points to these folders any more. They go to the Recycle Bin, where they can be restored.": "Kein Spiel verweist mehr auf diese Ordner. Sie kommen in den Papierkorb und können von dort wiederhergestellt werden.",
+  "Old downloads": "Alte Downloads",
+  "Press A again to move it to the Recycle Bin": "Zum Verschieben in den Papierkorb erneut A drücken",
+  "Store tools": "Store-Tools",
+  "To the Recycle Bin": "In den Papierkorb",
+  "Unfinished download of {name}": "Unvollständiger Download von {name}",
+  "{freed} freed, {trashed} moved to the Recycle Bin": "{freed} freigegeben, {trashed} in den Papierkorb verschoben",
+  "{path} is on a removable drive, which has no Recycle Bin": "{path} liegt auf einem Wechseldatenträger, der keinen Papierkorb hat",
+  "{size} moved to the Recycle Bin": "{size} in den Papierkorb verschoben"
+}

@@ -41,6 +41,8 @@ pub fn menu_separator() -> Div {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Align {
     Left,
+    /// For a button near the right edge: the menu grows to the left.
+    Right,
 }
 
 /// Hover callback of a dropdown: `(part, hovered)`. Parts: 1 = button,
@@ -74,6 +76,7 @@ pub fn dropdown(
             .on_hover(move |h, w, cx| h2(PART_PANEL, *h, w, cx));
         let positioned = match align {
             Align::Left => positioned.left_0(),
+            Align::Right => positioned.right_0(),
         };
         container = container.child(deferred(positioned.child(menu)).with_priority(10));
     }

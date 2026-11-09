@@ -3,6 +3,9 @@
 //! files the real ones would. Nothing real is started and everything lives in
 //! a temporary directory.
 
+// The fake legendary and Wine are shell scripts.
+#![cfg(unix)]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -135,7 +138,12 @@ fn run(r: &Rig) -> (Vec<LaunchEvent>, Vec<String>) {
 fn run_with(r: &Rig, epic: Option<Arc<dyn EpicSetup>>) -> (Vec<LaunchEvent>, Vec<String>) {
     let (tx, rx) = channel();
     let home = r.root.join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let cfg = LauncherConfig { poll_interval: Duration::from_millis(10), min_session_seconds: 0, ..Default::default() };
     let procs = Arc::new(SystemProcs);
     let launcher = Launcher::new(r.paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs, cfg, tx);

@@ -3,7 +3,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
-use heronite_data::models::CollectionGameArt;
+use heronite_data::models::{CollectionGameArt, CollectionGameMetadata};
 use heronite_data::{art, ArtContext};
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
@@ -42,6 +42,23 @@ impl GameSettingsDialog {
         let default_hero: Vec<ImageRef> =
             crate::images::to_chain(&art::stage_art(&art_ctx, game)).into_iter().filter(|r| !old_hero.contains(r)).collect();
         (default_cover, default_hero)
+    }
+
+    /// New fetched metadata: its cover and background replace the old ones
+    /// in the default chains, where `art::card_cover` / `stage_art` put them
+    /// (right after the custom image, which the chains leave out).
+    pub(super) fn metadata_art_changed(&mut self, old: Option<&CollectionGameMetadata>) {
+        let shots = self.ctx.lib.settings.screenshots_folder().map(|p| p.to_path_buf());
+        let chain = |url: Option<&str>| url.map(|u| chain_for_url(&self.ctx.data_paths, shots.as_deref(), u)).unwrap_or_default();
+        let new = self.metadata.as_deref();
+        let swap = |default: &[ImageRef], old: Vec<ImageRef>, new: Vec<ImageRef>| -> Vec<ImageRef> {
+            let rest = default.iter().filter(|r| !old.contains(r) && !new.contains(r)).cloned();
+            new.iter().cloned().chain(rest).collect()
+        };
+        self.default_cover =
+            swap(&self.default_cover, chain(old.and_then(|m| m.cover_url.as_deref())), chain(new.and_then(|m| m.cover_url.as_deref())));
+        self.default_hero =
+            swap(&self.default_hero, chain(old.and_then(|m| m.hero_url.as_deref())), chain(new.and_then(|m| m.hero_url.as_deref())));
     }
 
     fn art_result(&mut self, res: anyhow::Result<CollectionGameArt>, cx: &mut Context<Self>) {

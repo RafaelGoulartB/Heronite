@@ -67,6 +67,10 @@ pub struct Tools {
 
 impl Tools {
     pub fn detect() -> Self {
+        // Windows moves the files itself ([`move_files`]).
+        if cfg!(windows) {
+            return Self { rsync: None };
+        }
         let has_rsync = proc::output(Command::new("rsync").arg("--version")).is_ok_and(|o| o.success());
         Self { rsync: has_rsync.then(|| "rsync".to_string()) }
     }
@@ -331,8 +335,11 @@ fn game_title(data_paths: &DataPaths, app_name: &str) -> Option<String> {
 /// Moves the contents of `source` into `destination` (which may exist and be
 /// empty, or hold part of the files when `merge`). With rsync it is resumable
 /// and `source` keeps its emptied folders; without it `mv` / `cp` are used and
-/// `source` is gone afterwards.
+/// `source` is gone afterwards. Windows has neither: [`native_move`].
 fn move_dir(tools: &Tools, source: &Path, destination: &Path, merge: bool) -> Result<(), String> {
+    if cfg!(windows) {
+        return native_move(source, destination, merge);
+    }
     let run = |cmd: &mut Command| -> Result<(), String> {
         let out = proc::output(cmd).map_err(|e| e.to_string())?;
         if out.success() {
@@ -357,6 +364,192 @@ fn move_dir(tools: &Tools, source: &Path, destination: &Path, merge: bool) -> Re
         fs::remove_dir(destination).map_err(|e| format!("{} already exists: {e}", destination.display()))?;
     }
     run(Command::new("mv").arg("-f").arg(source).arg(destination))
+}
+
+/// The Windows move, without rsync, `mv` or `cp`: one rename when the new
+/// folder is on the same drive (instant), else every file is moved on its own
+/// ([`move_files`]), so a move stopped midway goes on where it was, like
+/// rsync's `--remove-source-files`. `source` keeps its emptied folders when
+/// files were moved one by one ([`finish_move`] removes them).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn native_move(source: &Path, destination: &Path, merge: bool) -> Result<(), String> {
+    if !merge {
+        if destination.is_dir() {
+            // An empty folder is replaced: a rename refuses to land on it.
+            fs::remove_dir(destination).map_err(|e| format!("{} already exists: {e}", destination.display()))?;
+        }
+        match fs::rename(source, destination) {
+            Ok(()) => return Ok(()),
+            // Another drive (or a folder Windows will not rename at once):
+            // file by file below.
+            Err(e) => log::info!("moving {} file by file ({e})", source.display()),
+        }
+    }
+    move_files(source, destination).map_err(|e| e.to_string())
+}
+
+/// Moves every file below `source` to the same place below `destination`
+/// (created as needed): a rename on the same drive, else a copy then the
+/// removal of the original. A file whose copy was cut short is copied again
+/// next time (its original is still there). Folders stay, emptied.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn move_files(source: &Path, destination: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(destination)?;
+    for entry in fs::read_dir(source)? {
+        let entry = entry?;
+        let (from, to) = (entry.path(), destination.join(entry.file_name()));
+        if entry.file_type()?.is_dir() {
+            move_files(&from, &to)?;
+            continue;
+        }
+        if fs::rename(&from, &to).is_ok() {
+            continue;
+        }
+        fs::copy(&from, &to).map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", from.display())))?;
+        if let Err(e) = fs::remove_file(&from) {
+            // Read-only files (some games ship them) cannot be removed as they are.
+            let mut perms = fs::metadata(&from)?.permissions();
+            if !perms.readonly() {
+                return Err(e);
+            }
+            #[allow(clippy::permissions_set_readonly_false)]
+            perms.set_readonly(false);
+            fs::set_permissions(&from, perms)?;
+            fs::remove_file(&from)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod native_tests {
+    use super::*;
+    use crate::cmd::testing::{fake_tool, FakeTool, Reply};
+
+    struct Fx {
+        dir: tempfile::TempDir,
+        data_paths: DataPaths,
+        tool: FakeTool,
+        lg: Legendary,
+        source: PathBuf,
+        parent: PathBuf,
+    }
+
+    const NO_RSYNC: Tools = Tools { rsync: None };
+
+    impl Fx {
+        fn new(reply: Reply) -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let data_paths = DataPaths::at(dir.path().join("h"));
+            fs::create_dir_all(data_paths.legendary_config_dir()).unwrap();
+            let tool = fake_tool(dir.path()).otherwise(reply);
+            let lg = Legendary::with_bin(tool.bin(), data_paths.legendary_config_dir());
+            let source = dir.path().join("old").join("Control");
+            fs::create_dir_all(source.join("sub")).unwrap();
+            fs::write(source.join("a.txt"), "a").unwrap();
+            fs::write(source.join("sub").join("b.txt"), "b").unwrap();
+            let parent = dir.path().join("new");
+            Self { dir, data_paths, tool, lg, source, parent }
+        }
+
+        fn dest(&self) -> PathBuf {
+            self.parent.join("Control")
+        }
+
+        fn journal(&self) -> Option<MoveJournal> {
+            read_journal(&journal_path(&self.data_paths))
+        }
+
+        fn moves(&self) -> Vec<String> {
+            self.tool.calls().into_iter().filter(|c| c.starts_with("move ")).collect()
+        }
+    }
+
+    #[test]
+    fn files_move_one_by_one_and_folders_stay_emptied() {
+        let fx = Fx::new(Reply::new());
+        let dest = fx.dir.path().join("elsewhere");
+        move_files(&fx.source, &dest).unwrap();
+        assert_eq!(fs::read_to_string(dest.join("sub").join("b.txt")).unwrap(), "b");
+        assert!(dest.join("a.txt").exists());
+        assert!(fx.source.join("sub").is_dir() && !has_files(&fx.source));
+    }
+
+    #[test]
+    fn read_only_files_move_too() {
+        let fx = Fx::new(Reply::new());
+        let file = fx.source.join("a.txt");
+        let mut perms = fs::metadata(&file).unwrap().permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&file, perms).unwrap();
+        let dest = fx.dir.path().join("elsewhere");
+        move_files(&fx.source, &dest).unwrap();
+        assert!(dest.join("a.txt").exists() && !file.exists());
+    }
+
+    #[test]
+    fn a_clean_native_move_records_the_new_path() {
+        let fx = Fx::new(Reply::new());
+        let r = move_install_with(&fx.data_paths, &fx.lg, &NO_RSYNC, "Calluna", fx.source.to_str().unwrap(), fx.parent.to_str().unwrap());
+        assert!(r.ok, "{}", r.message);
+        assert!(fx.dest().join("sub").join("b.txt").exists() && !fx.source.exists());
+        assert!(fx.journal().is_none());
+        assert_eq!(fx.moves(), [format!("move Calluna {} --skip-move", fx.parent.display())]);
+    }
+
+    #[test]
+    fn a_split_game_is_finished_by_the_resume() {
+        let fx = Fx::new(Reply::new());
+        // Stopped after `a.txt` had moved.
+        fs::create_dir_all(fx.dest().join("sub")).unwrap();
+        fs::rename(fx.source.join("a.txt"), fx.dest().join("a.txt")).unwrap();
+        // ... and while `b.txt` was being copied.
+        fs::write(fx.dest().join("sub").join("b.txt"), "").unwrap();
+        let j = MoveJournal {
+            app_name: "Calluna".into(),
+            source: fx.source.to_string_lossy().into(),
+            destination: fx.dest().to_string_lossy().into(),
+            new_parent: fx.parent.to_string_lossy().into(),
+            phase: Phase::Copying,
+        };
+        write_journal(&journal_path(&fx.data_paths), &j).unwrap();
+        assert_eq!(decide(&j), Decision::FinishCopy);
+        let r = resume_interrupted_move_with(&fx.data_paths, &fx.lg, &NO_RSYNC).unwrap();
+        assert!(r.ok, "{}", r.message);
+        assert_eq!(fs::read_to_string(fx.dest().join("sub").join("b.txt")).unwrap(), "b", "the cut-short copy was made again");
+        assert!(!fx.source.exists() && fx.journal().is_none());
+        assert_eq!(fx.moves().len(), 1);
+    }
+
+    #[test]
+    fn a_failed_record_is_retried_by_the_resume() {
+        let fx = Fx::new(Reply::new().err("[cli] ERROR: busy").exit(1));
+        let r = move_install_with(&fx.data_paths, &fx.lg, &NO_RSYNC, "Calluna", fx.source.to_str().unwrap(), fx.parent.to_str().unwrap());
+        assert!(!r.ok && r.message.contains("could not record"), "{}", r.message);
+        assert_eq!(fx.journal().unwrap().phase, Phase::Recording);
+        // legendary works again.
+        let _ok = fake_tool(fx.dir.path());
+        let r = resume_interrupted_move_with(&fx.data_paths, &fx.lg, &NO_RSYNC).unwrap();
+        assert!(r.ok, "{}", r.message);
+        assert!(fx.journal().is_none() && fx.dest().join("a.txt").exists());
+        assert_eq!(fx.moves().len(), 2);
+    }
+
+    #[test]
+    fn journals_with_paths_too_close_to_the_root_are_dropped() {
+        let fx = Fx::new(Reply::new());
+        let root = if cfg!(windows) { r"C:\" } else { "/" };
+        let j = MoveJournal {
+            app_name: "Calluna".into(),
+            source: root.into(),
+            destination: fx.dest().to_string_lossy().into(),
+            new_parent: fx.parent.to_string_lossy().into(),
+            phase: Phase::Recording,
+        };
+        write_journal(&journal_path(&fx.data_paths), &j).unwrap();
+        assert!(resume_interrupted_move_with(&fx.data_paths, &fx.lg, &NO_RSYNC).is_none());
+        assert!(fx.journal().is_none() && fx.moves().is_empty());
+    }
 }
 
 #[cfg(all(test, unix))]

@@ -1,15 +1,18 @@
 //! `CollectionCard`: cover (125px in the list, the grid's width in the grid),
 //! radius 6 (Settings → Appearance → Corners), soft shadow, playtime label
 //! below (the title above it when the grid shows titles), hover bar with the
-//! play button and the hover effect of [`CardLook`].
+//! play button, the hover effect of [`CardLook`], the game's categories
+//! (`category_badges`) and its stores (`store_badges`).
 
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use heronite_data::appearance::CoverHover;
+use heronite_data::appearance::{CategoryStyle, CoverHover};
 
+use super::category_badges::{self as cats, CategoryBadge};
+use super::store_badges as stores;
 use super::vm::CardVm;
 use crate::icons::Icon;
 use crate::theme;
@@ -26,6 +29,13 @@ pub(super) struct CardLook {
     pub badges: bool,
     /// The line under the cover (playtime, sort value, status...).
     pub caption: bool,
+    /// How the game's categories show; `None` while they are off.
+    pub categories: Option<CategoryStyle>,
+    /// The logos of the game's stores at the bottom-left of the cover.
+    pub stores: bool,
+    /// How far their chip sits from the cover's left and bottom edges, px:
+    /// closer on the Focus view's small covers.
+    pub stores_inset: f32,
 }
 
 pub(super) struct CardState<'a> {
@@ -48,6 +58,13 @@ pub(super) struct CardState<'a> {
     /// Epic install / update progress and update hint.
     pub epic: Option<super::epic::CardEpic>,
     pub look: CardLook,
+    /// The game's categories (empty while [`CardLook::categories`] is off).
+    pub categories: Vec<CategoryBadge>,
+    /// The logos of the game's stores, its own first (empty while
+    /// [`CardLook::stores`] is off).
+    pub stores: Vec<Icon>,
+    /// The window's scale factor (the categories' SVG shapes).
+    pub scale: f32,
 }
 
 pub fn card(
@@ -62,6 +79,8 @@ pub fn card(
     // Hover effects stay off while picking games (the tick says it all).
     let lift = s.hovered && s.pick.is_none() && look.hover == CoverHover::Lift;
     let glow = s.hovered && s.pick.is_none() && look.hover == CoverHover::Glow;
+    // While picking games the halo marks where the keyboard is.
+    let halo = s.selected && !vm.playing;
     let ring: Option<Rgba> = if vm.playing || s.pick == Some(true) {
         Some(theme::accent())
     } else if s.selected {
@@ -89,6 +108,36 @@ pub fn card(
     };
 
     let grey = (s.grey_uninstalled && !vm.installed || vm.hidden) && !s.hovered;
+    // The categories: the circles join the star's row; the corner styles
+    // give way to the selection's tick and push the copies badge left.
+    let style = look.categories.filter(|_| !s.categories.is_empty());
+    let area = cats::Area { w: s.width, radius: r, scale: s.scale, unit: 1., play_room: true };
+    let circles = if style == Some(CategoryStyle::Circles) { cats::circles(&s.categories, area) } else { Vec::new() };
+    let corner_taken = style.is_some_and(cats::takes_top_right);
+    // The stores' chip sits at the bottom-left: first in the row of the
+    // tags, over the strip while it shows, gone while an install's progress
+    // takes the bottom of the cover.
+    let installing = s.epic.as_ref().is_some_and(|e| !e.label.is_empty());
+    let store_chip = if installing { None } else { stores::chip(&s.stores) };
+    // Each store's logo already tells the copies apart: no "⧉ 2" then.
+    let copies_told = store_chip.is_some() && s.stores.len() > 1 && s.stores.len() >= vm.copies;
+    let (category_overlay, store_overlay) = match (style, store_chip) {
+        (Some(CategoryStyle::Tags), Some(chip)) => (Some(cats::tags_after(&s.categories, area, chip).into_any_element()), None),
+        (_, chip) => {
+            let over_band = style == Some(CategoryStyle::Band) && !show_bar_now(&s);
+            (
+                style
+                    .filter(|st| *st != CategoryStyle::Circles && !(s.pick.is_some() && cats::takes_top_right(*st)))
+                    .and_then(|st| cats::overlay(st, &s.categories, area, show_bar_now(&s))),
+                chip.map(|c| {
+                    let inset = look.stores_inset;
+                    div().absolute().left(px(inset)).bottom(px(if over_band { 20. + inset } else { inset })).child(c)
+                }),
+            )
+        }
+    };
+    let copies = vm.copies > 1 && s.pick.is_none() && !copies_told;
+    let copies_left = corner_taken && copies;
     let cover_img = match s.cover {
         Some(src) => {
             // GPUI does not clip images to a parent's rounded corners: round the image itself.
@@ -123,7 +172,20 @@ pub fn card(
                     .child(vm.title.clone()),
             )
             .into_any_element(),
-        None => div().size_full().into_any_element(),
+        // Still loading: a soft pulse where the cover goes.
+        None => {
+            let wait = div().size_full().bg(theme::ink_a(0.08));
+            if theme::animations() {
+                wait.with_animation(
+                    ElementId::Name(format!("cover-wait-{}", vm.key).into()),
+                    Animation::new(Duration::from_millis(1400)).repeat().with_max_fps(30.),
+                    |el, t| el.opacity(0.35 + 0.65 * (1. - (2. * t - 1.).abs())),
+                )
+                .into_any_element()
+            } else {
+                wait.into_any_element()
+            }
+        }
     };
 
     // Hover bar: slides up from translateY(100%) in 200ms.
@@ -196,7 +258,14 @@ pub fn card(
                 )
                 .when(glow, |d| d.child(div().absolute().inset_0().rounded(px(r)).bg(theme::white_a(0.07))))
                 .children(s.epic.as_ref().map(|e| super::epic::card_overlay(e, r)))
-                .children((vm.hidden || look.badges && vm.favourite).then(|| top_badges(vm.hidden, look.badges && vm.favourite)))
+                .children((vm.hidden || look.badges && vm.favourite || vm.family.is_some() || copies_left || !circles.is_empty()).then(
+                    || {
+                        top_badges(vm.hidden, look.badges && vm.favourite, vm.family.is_some())
+                            .when(copies_left, |d| d.child(copies_badge(vm.copies).relative().top_0().right_0()))
+                            .children(circles)
+                    },
+                ))
+                .children((copies && !copies_left).then(|| copies_badge(vm.copies)))
                 .children(ring.map(|color| {
                     div()
                         .absolute()
@@ -208,7 +277,24 @@ pub fn card(
                         .border_2()
                         .border_color(color)
                 }))
+                // The selected card also gets a halo around its ring, to find it
+                // at a glance (keyboard, controller, across the room).
+                .when_some(ring.filter(|_| halo), |d, color| {
+                    d.child(
+                        div()
+                            .absolute()
+                            .top(px(-5.))
+                            .left(px(-5.))
+                            .right(px(-5.))
+                            .bottom(px(-5.))
+                            .rounded(px(r + 5.))
+                            .border(px(3.))
+                            .border_color(Rgba { a: 0.14, ..color }),
+                    )
+                })
                 .when(show_bar, |d| d.child(div().absolute().inset_0().rounded(px(r)).overflow_hidden().child(bar)))
+                .children(category_overlay)
+                .children(store_overlay)
                 .children(s.pick.map(tick_circle)),
         )
         .when(s.title, |d| {
@@ -223,8 +309,14 @@ pub fn card(
                     .child(vm.title.clone()),
             )
         })
-        .when(look.caption, |d| d.child(playtime_label(vm).when(s.title, |d| d.mt(px(1.)))))
+        .when(look.caption, |d| d.child(caption_line(vm).mt(px(if s.title { 1. } else { 6. })).px(px(1.))))
         .into_any_element()
+}
+
+/// The play bar is up (or on its way down): the band of categories makes
+/// room for it.
+fn show_bar_now(s: &CardState<'_>) -> bool {
+    s.pick.is_none() && (s.hovered || s.leaving)
 }
 
 /// How far a cover rises under the pointer ([`CoverHover::Lift`]), px.
@@ -250,8 +342,9 @@ fn tick_circle(ticked: bool) -> Div {
 }
 
 /// Tags on the top-left of the cover: "Hidden" on a hidden game shown by
-/// "Show hidden games", a star on a favourite (when badges are on).
-fn top_badges(hidden: bool, favourite: bool) -> Div {
+/// "Show hidden games", a star on a favourite (when badges are on),
+/// "Family" on a game the Steam Family shares.
+fn top_badges(hidden: bool, favourite: bool, family: bool) -> Div {
     let tag = || div().flex().items_center().gap(px(3.)).px(px(6.)).py(px(2.)).rounded(px(4.)).bg(theme::black_a(0.62));
     div()
         .absolute()
@@ -264,14 +357,34 @@ fn top_badges(hidden: bool, favourite: bool) -> Div {
         .text_color(theme::white_a(0.9))
         .when(hidden, |d| d.child(tag().child(icon(Icon::VisibilityOff, px(11.), theme::white_a(0.9))).child(tr!("Hidden"))))
         .when(favourite, |d| d.child(tag().px(px(4.)).child(icon(Icon::Star, px(12.), theme::rgb_a(255, 209, 102, 1.)))))
+        .when(family, |d| d.child(tag().child(icon(Icon::AccountCircle, px(11.), theme::white_a(0.9))).child(tr!("Family"))))
+}
+
+/// The number of copies on the top-right of the cover of a game owned in
+/// several stores (the selection's tick takes that corner while picking).
+fn copies_badge(copies: usize) -> Div {
+    div()
+        .absolute()
+        .top(px(6.))
+        .right(px(6.))
+        .flex()
+        .items_center()
+        .gap(px(3.))
+        .px(px(5.))
+        .py(px(2.))
+        .rounded(px(4.))
+        .bg(theme::black_a(0.62))
+        .text_size(px(10.5))
+        .font_weight(theme::W_BOLD)
+        .text_color(theme::white_a(0.9))
+        .child(icon(Icon::ContentCopy, px(11.), theme::white_a(0.9)))
+        .child(copies.to_string())
 }
 
 /// The playtime, or the value the list is sorted by (`CardVm::caption`).
-fn playtime_label(vm: &CardVm) -> Div {
+pub(super) fn caption_line(vm: &CardVm) -> Div {
     let c = &vm.caption;
     div()
-        .mt(px(6.))
-        .px(px(1.))
         .flex()
         .items_center()
         .gap(px(5.))

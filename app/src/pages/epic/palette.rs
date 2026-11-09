@@ -3,9 +3,10 @@
 use gpui_kit::*;
 use heronite_i18n::tr;
 
-use super::{login_helper, EpicPage};
+use super::EpicPage;
 use crate::icons::Icon;
-use crate::pages::commands::{CommandCtx, PageCommand, PaletteCommands};
+use crate::pages::commands::{close_dialog, CommandCtx, PageCommand, PaletteCommands};
+use crate::pages::store::login_helper;
 
 impl PaletteCommands for EpicPage {
     fn palette_commands(_page: Option<&Self>, _ctx: &CommandCtx, cx: &App) -> Vec<PageCommand> {
@@ -70,5 +71,11 @@ impl PaletteCommands for EpicPage {
 
     fn page_modal(&self) -> bool {
         self.dialog.is_some()
+    }
+
+    fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let closed = close_dialog(&mut self.dialog, &mut self.dialog_sub, window, cx);
+        cx.notify();
+        closed
     }
 }

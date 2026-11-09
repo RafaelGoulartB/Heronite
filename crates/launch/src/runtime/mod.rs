@@ -6,7 +6,9 @@
 //! launching an app that is already tracked is refused.
 
 mod adopt;
+mod client;
 mod companions;
+mod epic;
 mod fake;
 mod process;
 mod sandboxed;
@@ -162,6 +164,7 @@ impl Launcher {
             stop,
             steam_pids: Arc::new(Mutex::new(BTreeSet::new())),
             title: req.title.clone(),
+            runner: req.runner.clone(),
             clock: Default::default(),
             since_ticks: crate::procs::boot_ticks_now(),
             playing: AtomicBool::new(false),

@@ -275,6 +275,7 @@ fn innoextract(archive: &Path, out: &Path, io: &Io) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn io() -> (Box<dyn Fn() -> bool>, Box<dyn Fn(&str)>) {
         (Box::new(|| false), Box::new(|_| {}))
     }
@@ -296,6 +297,8 @@ mod tests {
         assert_eq!(guess(&f), Format::Tar);
     }
 
+    // The `tar` on the PATH can be Git's GNU tar, which takes the `C:` of a path for a host.
+    #[cfg(unix)]
     #[test]
     fn a_single_top_folder_is_merged() {
         if which_any(&["tar"]).is_none() {
@@ -319,6 +322,8 @@ mod tests {
         assert!(leftovers.is_empty(), "the temporary folder is removed");
     }
 
+    // The `tar` on the PATH can be Git's GNU tar, which takes the `C:` of a path for a host.
+    #[cfg(unix)]
     #[test]
     fn a_nested_archive_is_opened() {
         if which_any(&["tar"]).is_none() {

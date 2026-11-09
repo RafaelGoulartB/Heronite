@@ -45,12 +45,20 @@ impl InstallParams {
         self.game_info.get("title").and_then(Value::as_str).filter(|t| !t.is_empty()).unwrap_or(&self.app_name).to_string()
     }
 
-    /// Cover shown in the lists.
+    /// Cover shown in the lists: the tall art (`art_square`), else the wide one.
     pub fn cover(&self) -> Option<String> {
-        ["art_cover", "art_square"]
-            .iter()
-            .find_map(|k| self.game_info.get(*k).and_then(Value::as_str))
-            .filter(|s| !s.is_empty() && *s != "fallback")
+        self.first_art(&["art_square", "art_cover"])
+    }
+
+    /// Wide art (`art_cover`, else `art_background`), behind the running download.
+    pub fn art(&self) -> Option<String> {
+        self.first_art(&["art_cover", "art_background"])
+    }
+
+    fn first_art(&self, keys: &[&str]) -> Option<String> {
+        keys.iter()
+            .filter_map(|k| self.game_info.get(*k).and_then(Value::as_str))
+            .find(|s| !s.is_empty() && *s != "fallback")
             .map(str::to_string)
     }
 
@@ -186,12 +194,24 @@ mod tests {
     }
 
     #[test]
+    fn covers_prefer_the_tall_art_and_art_the_wide_one() {
+        let params = |info: Value| InstallParams { game_info: info, ..Default::default() };
+        let p = params(json!({"art_square": "tall", "art_cover": "wide", "art_background": "bg"}));
+        assert_eq!(p.cover().as_deref(), Some("tall"));
+        assert_eq!(p.art().as_deref(), Some("wide"));
+        let p = params(json!({"art_square": "fallback", "art_cover": "", "art_background": "bg"}));
+        assert_eq!(p.cover(), None);
+        assert_eq!(p.art().as_deref(), Some("bg"));
+    }
+
+    #[test]
     fn heronite_entries_round_trip_unchanged() {
         let e: DmElement = serde_json::from_value(heronite_entry()).unwrap();
         assert_eq!(e.kind, ElementKind::Install);
         assert_eq!(e.status, Some(DmStatus::Done));
         assert_eq!(e.params.title(), "Control");
         assert_eq!(e.params.cover().as_deref(), Some("https://x/c.jpg"));
+        assert_eq!(e.params.art().as_deref(), Some("https://x/c.jpg"));
         assert_eq!(e.params.folder_name().as_deref(), Some("Control"));
         let back = serde_json::to_value(&e).unwrap();
         assert_eq!(back, heronite_entry());

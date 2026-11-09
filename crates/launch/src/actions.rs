@@ -59,9 +59,10 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     if action.plays() {
         return play_plan(ctx, probe, game, settings, action).map(|p| ActionRun::Play(Box::new(p)));
     }
-    let args = crate::plan::split_args(&action.args);
+    let windows = action.kind == ActionKind::Program && detect_executable_kind(target, probe) == ExecutableKind::Windows;
+    let args = crate::args::split_args_for(windows, &action.args);
     match action.kind {
-        ActionKind::Program if detect_executable_kind(target, probe) == ExecutableKind::Windows => {
+        ActionKind::Program if windows => {
             crate::wine_tools::run_exe_command(ctx, probe, settings, target, &args).map(|c| ActionRun::Spawn(c.command))
         }
         ActionKind::Program => confined(
@@ -194,6 +195,27 @@ mod tests {
         assert!(missing.unwrap_err().contains("/tools/mods.sh"));
     }
 
+    // A Windows program runs under the game's Wine: Linux only.
+    #[cfg(unix)]
+    #[test]
+    fn a_windows_program_gets_its_arguments_the_windows_way() {
+        let (dir, ctx) = ctx();
+        let probe = FakeProbe::new("/h")
+            .with_path("/tools/editor.exe")
+            .with_path("/p/GE/proton")
+            .with_path(&format!("{}/tools/runtimes/umu/umu_run.py", dir.path().display()))
+            .with_path("/pfx");
+        let wine = json!({"wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"}, "winePrefix": "/pfx"});
+        let s = GameSettings::from_map(wine.as_object().unwrap(), "/h");
+        let args = r"-userdir C:\Users\me\saves -x 'a b' --path /home/u/My\ Games";
+        let a = Action { args: args.into(), ..action(ActionKind::Program, "/tools/editor.exe") };
+        let Ok(ActionRun::Spawn(c)) = build(&ctx, &probe, &game(), &s, &a) else { panic!() };
+        let expected = ["-userdir", r"C:\Users\me\saves", "-x", "a b", "--path", r"/home/u/My\", "Games"];
+        assert!(c.args.ends_with(&expected.map(String::from)), "{:?}", c.args);
+    }
+
+    // A `.sh` program under MangoHud: Linux only.
+    #[cfg(unix)]
     #[test]
     fn playing_starts_the_program_like_the_game() {
         let (_d, ctx) = ctx();

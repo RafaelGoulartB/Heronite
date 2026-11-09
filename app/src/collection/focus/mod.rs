@@ -3,10 +3,14 @@
 
 mod description;
 mod panels;
+mod section_title;
+
+pub(super) use section_title::{section_title, MenuEntry, OnTitle, TitleAction, TitleMenu, TitleState};
 
 pub use description::html_image_size;
 pub(super) use panels::{RELATED_COVER_H, RELATED_COVER_W};
 
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui_kit::prelude::*;
@@ -14,8 +18,9 @@ use gpui_kit::*;
 use heronite_data::appearance::Section;
 
 use self::description::render_html;
-use self::panels::{details_panel, details_value_width, hltb_panel, related_panel};
-use super::vm::FocusVm;
+use self::panels::{details_panel, details_value_width, hltb_missing_panel, hltb_panel, related_panel};
+use super::vm::{DetailRow, FocusVm};
+use crate::icons::Icon;
 use crate::theme;
 use heronite_i18n::tr;
 
@@ -29,6 +34,10 @@ pub(super) struct DetailsUi {
     /// Labels of the chip rows showing every value (their "+N" was clicked).
     pub open: Vec<SharedString>,
     pub measure: MeasureChip,
+    /// The section pointed at and the open title menu.
+    pub titles: TitleState,
+    /// Keys of the rows the user turned off (`UiState::detail_rows_hidden`).
+    pub hidden: BTreeSet<String>,
 }
 
 /// Widths of the focus panel's columns, in logical px.
@@ -103,17 +112,17 @@ pub(super) struct FocusProps {
     pub screenshots: Option<AnyElement>,
     /// Sessions and screenshots by day (after the overview).
     pub timeline: Option<AnyElement>,
-    /// Achievements and session history panels of the side column.
+    /// The achievements panel.
     pub extras: FocusExtras,
     pub related_ui: RelatedUi,
     pub details_ui: DetailsUi,
 }
 
-/// Extra panels of the side column (see `extras.rs`).
+/// Panels built outside the focus panel (see `extras.rs`).
 #[derive(Default)]
 pub(super) struct FocusExtras {
-    /// Above "Details" (`collectionFocus__panel` of achievements).
-    pub top: Option<AnyElement>,
+    /// The "Achievements" section.
+    pub achievements: Option<AnyElement>,
 }
 
 pub(super) struct FocusActions {
@@ -126,6 +135,77 @@ pub(super) struct FocusActions {
     pub on_expand_detail: Rc<dyn Fn(SharedString, &mut Window, &mut App)>,
     /// Picks the group of "Related games".
     pub on_related: Rc<dyn Fn(RelatedUi, &mut Window, &mut App)>,
+    /// The items of "How Long To Beat"'s menu.
+    pub on_hltb: OnHltb,
+    /// The titles that are menus (pointed at, opened, "Edit rows…").
+    pub on_title: OnTitle,
+}
+
+/// A button of the "How Long To Beat" section.
+#[derive(Clone)]
+pub(super) enum HltbAction {
+    /// The game's page on HowLongToBeat.
+    Open(SharedString),
+    /// Search HowLongToBeat and pick the game (or "not on HowLongToBeat").
+    ChangeMatch,
+    /// Ask HowLongToBeat again now.
+    Refresh,
+}
+
+type OnHltb = Rc<dyn Fn(HltbAction, &mut Window, &mut App)>;
+
+/// "How Long To Beat": the times, or a note when HowLongToBeat has none.
+/// Its title opens the page, "Change match…" and "Refresh".
+fn hltb_section(vm: &FocusVm, titles: TitleState, on: &OnHltb, on_title: &OnTitle) -> Option<Div> {
+    let panel = match &vm.hltb {
+        Some(h) => hltb_panel(h),
+        None if vm.hltb_checked => hltb_missing_panel(),
+        None => return None,
+    };
+    let entry = |id, icon, label: &'static str, action: HltbAction, separated| {
+        let on = on.clone();
+        MenuEntry { id, icon, label: label.into(), run: Rc::new(move |w: &mut Window, cx: &mut App| on(action.clone(), w, cx)), separated }
+    };
+    let mut entries = Vec::new();
+    if let Some(link) = vm.hltb.as_ref().and_then(|h| h.link.clone()) {
+        entries.push(entry("open", Icon::OpenInNew, tr!("Open on HowLongToBeat"), HltbAction::Open(link), false));
+    }
+    entries.push(entry("match", Icon::Edit, tr!("Change match…"), HltbAction::ChangeMatch, false));
+    if vm.hltb.is_some() {
+        entries.push(entry("refresh", Icon::Refresh, tr!("Refresh"), HltbAction::Refresh, true));
+    }
+    let title = section_title(TitleMenu::Hltb, tr!("How Long To Beat"), titles, entries, on_title);
+    Some(div().flex().flex_col().child(hover_section("focus-hltb", TitleMenu::Hltb, on_title).child(title).child(panel)))
+}
+
+/// "Details": the rows the user keeps on; its title opens "Edit rows…".
+fn details_section(details: Div, titles: TitleState, on_title: &OnTitle) -> Div {
+    let edit = on_title.clone();
+    let entries = vec![MenuEntry {
+        id: "edit",
+        icon: Icon::Edit,
+        label: tr!("Edit rows…").into(),
+        run: Rc::new(move |w: &mut Window, cx: &mut App| edit(TitleAction::EditDetails, w, cx)),
+        separated: false,
+    }];
+    let title = section_title(TitleMenu::Details, tr!("Details"), titles, entries, on_title);
+    div().flex().flex_col().child(hover_section("focus-details", TitleMenu::Details, on_title).child(title).child(details))
+}
+
+/// A section that reports the pointer over it (its title shows the chevron).
+pub(super) fn hover_section(id: &'static str, menu: TitleMenu, on_title: &OnTitle) -> Stateful<Div> {
+    let on = on_title.clone();
+    div().id(id).flex().flex_col().on_hover(move |hovered: &bool, window, cx| on(TitleAction::Hovered(menu, *hovered), window, cx))
+}
+
+/// The Details rows the user did not turn off. The first one shown draws no
+/// separator above it.
+fn shown_rows(rows: &[DetailRow], hidden: &BTreeSet<String>) -> Vec<DetailRow> {
+    let mut shown: Vec<DetailRow> = rows.iter().filter(|r| !hidden.contains(r.field.key())).cloned().collect();
+    if let Some(first) = shown.first_mut() {
+        first.split = false;
+    }
+    shown
 }
 
 /// What "Related games" shows of the focused game.
@@ -226,8 +306,9 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
 
     let header = header(&vm, title_size);
     let details_w = if lay.stacked { lay.main_w } else { lay.side_w };
+    let rows = shown_rows(&vm.details, &details_ui.hidden);
     let details = details_panel(
-        &vm.details,
+        &rows,
         &active_facets,
         details_value_width(details_w),
         &details_ui.open,
@@ -242,9 +323,9 @@ pub(super) fn focus_panel(props: FocusProps, actions: FocusActions) -> AnyElemen
         timeline,
         related: (!vm.related.is_empty())
             .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
-        top: extras.top,
-        details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
-        hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
+        achievements: extras.achievements,
+        details: details_section(details, details_ui.titles, &actions.on_title),
+        hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
     };
     let body = body(&lay, sections);
     // Wide: the title sits above a fixed left column and the scrolling
@@ -340,8 +421,9 @@ pub(super) struct StackedProps {
 pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div {
     let StackedProps { vm, cover_for, html_images, width, active_facets, screenshots, timeline, extras, related_ui, details_ui } = props;
     let lay = Layout { narrow: true, left_w: 0., stacked: true, main_w: width, side_w: width, offset: 0. };
+    let rows = shown_rows(&vm.details, &details_ui.hidden);
     let details = details_panel(
-        &vm.details,
+        &rows,
         &active_facets,
         details_value_width(width),
         &details_ui.open,
@@ -358,9 +440,9 @@ pub(super) fn stacked_details(props: StackedProps, actions: FocusActions) -> Div
             timeline,
             related: (!vm.related.is_empty())
                 .then(|| related_panel(&vm.related, related_ui, &cover_for, actions.on_select, actions.on_related)),
-            top: extras.top,
-            details: div().flex().flex_col().child(h3(tr!("Details"))).child(details),
-            hltb: vm.hltb.as_ref().map(|h| div().flex().flex_col().child(h3(tr!("How Long To Beat"))).child(hltb_panel(h))),
+            achievements: extras.achievements,
+            details: details_section(details, details_ui.titles, &actions.on_title),
+            hltb: hltb_section(&vm, details_ui.titles, &actions.on_hltb, &actions.on_title),
         },
     )
 }
@@ -391,8 +473,7 @@ struct Sections {
     overview: Div,
     timeline: Option<AnyElement>,
     related: Option<Div>,
-    /// Extra panel above "Details" (achievements).
-    top: Option<AnyElement>,
+    achievements: Option<AnyElement>,
     details: Div,
     hltb: Option<Div>,
 }
@@ -402,7 +483,6 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
     div().flex().flex_col().child(h3(tr!("Overview"))).child(match &vm.overview_html {
         Some(blocks) => render_html(blocks, &**html_images, column_w).into_any_element(),
         None => div()
-            .max_w(px(72. * 7.6))
             .text_size(px(15.2))
             .line_height(px(15.2 * 1.65))
             .text_color(theme::ink_a(0.92))
@@ -411,14 +491,14 @@ fn overview(vm: &FocusVm, html_images: &CoverFor, column_w: f32) -> Div {
     })
 }
 
-/// Two columns (screenshots, overview, timeline, related | extra panel,
-/// details, How Long To Beat), or one when stacked. The order and the hidden
+/// Two columns (screenshots, overview, timeline, related | details, How Long
+/// To Beat, achievements), or one when stacked. The order and the hidden
 /// sections come from Settings → Appearance (by default the short side
 /// sections come right after the overview when stacked, so a long timeline
-/// does not push them out of sight). The extra panel and How Long To Beat
-/// travel with "Details" but stay when it is hidden.
+/// does not push them out of sight). How Long To Beat travels with
+/// "Details" but stays when it is hidden.
 fn body(lay: &Layout, s: Sections) -> Div {
-    let Sections { screenshots, overview, timeline, related, top, details, hltb } = s;
+    let Sections { screenshots, overview, timeline, related, achievements, details, hltb } = s;
     let look = theme::appearance().sections;
     let mut main_parts = [
         (Section::Screenshots, screenshots),
@@ -427,24 +507,38 @@ fn body(lay: &Layout, s: Sections) -> Div {
         (Section::Related, related.map(IntoElement::into_any_element)),
     ];
     let mut take = |section: Section| main_parts.iter_mut().find(|(s, _)| *s == section).and_then(|(_, el)| el.take());
-    let details = look.shown(Section::Details).then_some(details);
+    let mut details = Some(
+        div().flex().flex_col().gap(px(14.4)).children(look.shown(Section::Details).then_some(details)).children(hltb).into_any_element(),
+    );
+    let mut achievements = achievements.filter(|_| look.shown(Section::Achievements));
+    let mut side_part = |section: Section| match section {
+        Section::Details => details.take(),
+        Section::Achievements => achievements.take(),
+        _ => None,
+    };
+    let is_side = |s: &Section| matches!(s, Section::Details | Section::Achievements);
     if lay.stacked {
         let mut col = div().flex().flex_col().gap(px(24.)).min_w_0();
-        let (mut hltb, mut top, mut details) = (hltb, top, details);
         for section in look.order() {
-            col = match section {
-                Section::Details => col.children(hltb.take()).children(top.take()).children(details.take()),
-                _ if look.shown(section) => col.children(take(section)),
-                _ => col,
+            col = if is_side(&section) {
+                col.children(side_part(section))
+            } else if look.shown(section) {
+                col.children(take(section))
+            } else {
+                col
             };
         }
         return col;
     }
     let main = look
         .visible()
-        .filter(|s| *s != Section::Details)
+        .filter(|s| !is_side(s))
         .fold(div().flex().flex_col().gap(px(24.)).min_w_0(), |col, section| col.children(take(section)));
-    let side = div().flex().flex_col().gap(px(14.4)).min_w_0().children(top).children(details).children(hltb);
+    let side = look
+        .order()
+        .into_iter()
+        .filter(is_side)
+        .fold(div().flex().flex_col().gap(px(24.)).min_w_0(), |col, section| col.children(side_part(section)));
     div().flex().items_start().gap(px(COL_GAP)).child(main.flex_1()).child(side.w(px(lay.side_w)).flex_none())
 }
 

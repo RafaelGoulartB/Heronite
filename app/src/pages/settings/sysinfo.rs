@@ -1,5 +1,10 @@
-//! System information for Settings → About: OS, CPU, memory and GPUs read
-//! from `/proc`, `/sys` and the PCI id database. Nothing is spawned.
+//! System information for Settings → About and the logs: OS, CPU, memory and
+//! GPUs. On Linux they come from `/proc`, `/sys` and the PCI id database, on
+//! Windows from the registry (`heronite_platform::system`). Nothing is spawned.
+
+// The readers of `/proc` and `/sys` and their parsers have no caller on Windows; the parsers
+// are plain text functions, so their tests still run there.
+#![cfg_attr(windows, allow(dead_code))]
 
 use std::fs;
 use std::path::Path;
@@ -143,6 +148,7 @@ pub fn read_gpus() -> Vec<Gpu> {
     out
 }
 
+#[cfg(not(windows))]
 pub fn gather() -> SystemInfo {
     SystemInfo {
         os: read("/etc/os-release").and_then(|t| os_pretty_name(&t)).unwrap_or_else(|| std::env::consts::OS.to_string()),
@@ -156,6 +162,32 @@ pub fn gather() -> SystemInfo {
             let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
             [kind, desktop].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" / ")
         },
+    }
+}
+
+/// The same through the registry and `GlobalMemoryStatusEx`. The Windows build stands where
+/// Linux has the kernel version: "Windows 11 Pro 24H2" and "build 26100.4061". There is no
+/// session type to name, and a card's driver is named by its maker.
+#[cfg(windows)]
+pub fn gather() -> SystemInfo {
+    use heronite_platform::system;
+    let version = system::windows_version();
+    SystemInfo {
+        os: version.as_ref().map_or_else(|| "Windows".to_string(), system::WindowsVersion::label),
+        kernel: version.map(|v| format!("build {}", v.build_label())).unwrap_or_default(),
+        cpu: system::processor_name().unwrap_or_default(),
+        cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+        memory_kb: system::total_memory_bytes().map_or(0, |bytes| bytes / 1024),
+        gpus: system::graphics_cards()
+            .into_iter()
+            .map(|card| Gpu {
+                driver: card.vendor.clone(),
+                vendor: card.vendor,
+                name: card.name,
+                driver_version: Some(card.driver_version).filter(|v| !v.is_empty()),
+            })
+            .collect(),
+        session: String::new(),
     }
 }
 
@@ -179,6 +211,25 @@ mod tests {
         );
         assert_eq!(vendor_name("0x10de"), "NVIDIA");
         assert_eq!(vendor_name("1002"), "AMD");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn this_windows_describes_itself() {
+        let s = gather();
+        assert!(s.os.starts_with("Windows "), "{s:?}");
+        assert!(s.kernel.starts_with("build ") && s.kernel.contains('.'), "{s:?}");
+        assert!(!s.cpu.is_empty(), "{s:?}");
+        assert!(s.cores >= 1, "{s:?}");
+        assert!(s.memory_kb >= 1024 * 1024, "{s:?}");
+        assert!(s.session.is_empty(), "{s:?}");
+        for gpu in &s.gpus {
+            assert!(!gpu.name.is_empty() && gpu.driver == gpu.vendor, "{s:?}");
+        }
+        // What the logs print for it.
+        let text = crate::pages::settings::logs::format_system_info(&s);
+        assert!(text.contains(&format!("OS: {} {} (windows)", s.os, s.kernel)), "{text}");
+        assert!(!text.contains("none detected") || s.gpus.is_empty(), "{text}");
     }
 
     #[test]

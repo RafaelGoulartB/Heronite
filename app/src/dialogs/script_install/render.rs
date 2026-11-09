@@ -409,7 +409,9 @@ impl ScriptInstallDialog {
         body = body.children(self.issues());
         body = body.child(self.game_fields(cx));
         body = body.children(self.wine_field(cx));
-        body = body.child(self.sandbox_field(cx));
+        if heronite_platform::supported(heronite_platform::Feature::Sandbox) {
+            body = body.child(self.sandbox_field(cx));
+        }
         body = body.children(self.files_to_pick(cx));
         body = body.children(self.steps(cx));
         body.child(meta_text(tr!(
@@ -453,7 +455,7 @@ impl ScriptInstallDialog {
 
 impl Render for ScriptInstallDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         let face_title = if self.in_add_game { tr!("Add game") } else { tr!("Install from script") };
         let (title, body, footer) = if self.running(cx) {
             let (t, b, f) = self.run_view(cx);

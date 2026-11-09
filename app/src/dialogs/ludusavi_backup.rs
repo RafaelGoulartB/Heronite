@@ -98,8 +98,8 @@ fn show_in_folder(path: &str) {
     let path = std::path::Path::new(path);
     let target = if path.is_dir() { Some(path) } else { path.parent() };
     if let Some(target) = target {
-        if let Err(err) = std::process::Command::new("xdg-open").arg(target).spawn() {
-            log::warn!("xdg-open {}: {err}", target.display());
+        if let Err(err) = heronite_platform::shell::open(target) {
+            log::warn!("opening {}: {err}", target.display());
         }
     }
 }

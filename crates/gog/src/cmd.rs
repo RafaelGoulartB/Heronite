@@ -130,35 +130,34 @@ pub fn last_json_object(text: &str) -> Option<serde_json::Value> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
 
-    /// A fake `gogdl`: a shell script that records its arguments and the config
-    /// path, then runs `body`.
-    pub fn fake(dir: &Path, paths: &DataPaths, body: &str) -> Gogdl {
-        let bin = dir.join("gogdl");
-        let script = format!(
-            "#!/bin/sh\necho \"$@\" >> \"{log}\"\necho \"CFG=$GOGDL_CONFIG_PATH\" >> \"{log}\"\n{body}\n",
-            log = dir.join("calls.log").display()
-        );
-        std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
-        Gogdl::with_bin(bin, paths)
+    pub use heronite_data::testing::{FakeTool, Reply};
+
+    /// A fake `gogdl` in `dir` that records the config path it gets
+    /// (`heronite_data::testing::FakeTool`, the same on every system): tell
+    /// it what to answer with `.on(...)` / `.otherwise(...)`, then run it
+    /// as `Gogdl::with_bin(tool.bin(), &paths)`. Its calls start with
+    /// `--auth-config-path <file>`: [`calls_of`] leaves that out.
+    pub fn fake_tool(dir: &Path) -> FakeTool {
+        FakeTool::new(dir, "gogdl").record_env("GOGDL_CONFIG_PATH")
     }
 
-    /// The recorded command lines, without the `--auth-config-path <file>` prefix.
-    pub fn calls(dir: &Path) -> Vec<String> {
-        std::fs::read_to_string(dir.join("calls.log"))
-            .unwrap_or_default()
-            .lines()
-            .filter(|l| !l.starts_with("CFG="))
-            .map(|l| {
-                let mut parts = l.splitn(3, ' ');
-                assert_eq!(parts.next(), Some("--auth-config-path"));
-                parts.next();
-                parts.next().unwrap_or("").to_string()
-            })
-            .collect()
+    /// The calls `tool` got, without the `--auth-config-path <file>` prefix.
+    pub fn calls_of(tool: &FakeTool) -> Vec<String> {
+        tool.calls().iter().map(|l| without_auth(l)).collect()
+    }
+
+    fn without_auth(line: &str) -> String {
+        let mut parts = line.splitn(3, ' ');
+        assert_eq!(parts.next(), Some("--auth-config-path"));
+        parts.next();
+        parts.next().unwrap_or("").to_string()
+    }
+
+    /// gogdl as `tool`.
+    pub fn gogdl(tool: &FakeTool, paths: &DataPaths) -> Gogdl {
+        Gogdl::with_bin(tool.bin(), paths)
     }
 
     pub fn setup() -> (tempfile::TempDir, DataPaths) {
@@ -177,33 +176,37 @@ mod tests {
     #[test]
     fn passes_the_auth_file_and_config_path() {
         let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "echo out; echo err >&2; exit 3");
-        let out = g.run(&["info", "123"]).unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out("out").err("err").exit(3));
+        let out = Gogdl::with_bin(tool.bin(), &paths).run(&["info", "123"]).unwrap();
         assert_eq!(out.code, Some(3));
         assert_eq!(out.stdout.trim(), "out");
         assert_eq!(out.stderr.trim(), "err");
-        assert_eq!(calls(dir.path()), ["info 123"]);
-        let log = std::fs::read_to_string(dir.path().join("calls.log")).unwrap();
-        assert!(log.contains(&format!("--auth-config-path {}", paths.gog_auth().display())), "{log}");
-        assert!(log.contains(&format!("CFG={}", paths.gogdl_config_dir().display())), "{log}");
+        assert_eq!(calls_of(&tool), ["info 123"]);
+        assert_eq!(tool.calls(), [format!("--auth-config-path {} info 123", paths.gog_auth().display())]);
+        assert_eq!(tool.env_seen("GOGDL_CONFIG_PATH"), [paths.gogdl_config_dir().display().to_string()]);
         // gogdl does not create the auth file's folder itself.
         assert!(paths.gog_auth().parent().unwrap().is_dir());
     }
 
     #[test]
-    fn streams_lines_and_cancels() {
+    fn streams_lines_and_cancels_a_running_tool() {
         let (dir, paths) = setup();
-        let g = fake(dir.path(), &paths, "printf 'a\\rb\\n' >&2; echo started; sleep 60 & wait");
+        let reply = Reply::new().err_raw("a\rb\n").out("started").sleep(Duration::from_secs(60));
+        let tool = fake_tool(dir.path()).on(&["download"], reply);
+        let g = Gogdl::with_bin(tool.bin(), &paths);
         let cancel = Cancel::new();
         let c2 = cancel.clone();
-        let t = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(500));
-            c2.request();
-        });
         let mut lines = Vec::new();
         let started = Instant::now();
-        let out = g.run_streaming(&["download"], &cancel, |l| lines.push(l.to_string())).unwrap();
-        t.join().unwrap();
+        // Cancelled once it runs (a busy machine may take a while to start it).
+        let out = g
+            .run_streaming(&["download"], &cancel, |l| {
+                lines.push(l.to_string());
+                if l == "started" {
+                    c2.request();
+                }
+            })
+            .unwrap();
         assert!(out.aborted);
         assert!(started.elapsed() < Duration::from_secs(10));
         assert!(lines.contains(&"a".to_string()) && lines.contains(&"b".to_string()), "{lines:?}");
@@ -228,7 +231,7 @@ mod tests {
     fn manifest_and_support_paths() {
         let (_dir, paths) = setup();
         let g = Gogdl::with_bin("/x/gogdl", &paths);
-        assert!(g.manifest_file("42").ends_with(format!("gogdlConfig/{TOOL_DIR}/manifests/42")));
-        assert!(g.support_dir("42").ends_with(format!("gogdlConfig/{TOOL_DIR}/gog-support/42")));
+        assert!(g.manifest_file("42").ends_with(Path::new("gogdlConfig").join(TOOL_DIR).join("manifests/42")));
+        assert!(g.support_dir("42").ends_with(Path::new("gogdlConfig").join(TOOL_DIR).join("gog-support/42")));
     }
 }

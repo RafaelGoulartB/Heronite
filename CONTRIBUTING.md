@@ -8,17 +8,22 @@ Thanks for helping! Bug reports, ideas, and pull requests are all welcome.
 
 ## Build
 
-Heronite is Linux only. You need a stable Rust toolchain, `clang` and `lld` (the linker set in `.cargo/config.toml`), and the development packages for xkbcommon, xcb, Wayland, udev, fontconfig, freetype, GTK 3, and WebKitGTK 4.1. On Ubuntu, [`scripts/ci-deps.sh`](scripts/ci-deps.sh) installs everything CI uses.
+Heronite runs on Linux, and on Windows in part (the port is tracked in [WINDOWS-MIGRATION.md](docs/WINDOWS-MIGRATION.md)). The same commands build and test it on both:
 
 ```bash
 # fast optimised build for trying the app
 cargo run --profile quick -p heronite
 
-# what CI runs; all three must pass
+# what CI runs, on Linux and on Windows; all must pass
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+- **Linux:** a stable Rust toolchain, `clang` and `lld` (the linker set in `.cargo/config.toml`), and the development packages for xkbcommon, xcb, Wayland, udev, fontconfig, freetype, GTK 3, and WebKitGTK 4.1. On Ubuntu, [`scripts/ci-deps.sh`](scripts/ci-deps.sh) installs everything CI uses.
+- **Windows:** a stable Rust toolchain for `x86_64-pc-windows-msvc` and the Visual Studio Build Tools with "Desktop development with C++" (MSVC and a Windows SDK), and [CMake](https://cmake.org) on the `PATH` (`heronite-platform` builds SDL from source for console mode's controllers; GitHub's Windows runners have it). Run the tests from PowerShell or `cmd`, as CI does: Git Bash puts Unix tools (`sh`, `cp`, `sleep`) on the `PATH` that Windows itself does not have, and sets `HOME`.
+
+A change to code both systems build is checked by both CI jobs; [WINDOWS-MIGRATION.md](docs/WINDOWS-MIGRATION.md) has the rules that keep the code building on both.
 
 Point `HERONITE_DATA_DIR` at a copy of a data folder to try changes without touching your real library. To see what a new user sees, run [`scripts/fresh-start.sh`](scripts/fresh-start.sh): it starts the app with an empty home in `/tmp` (add `--steam` to let it find your Steam games, or pass an AppImage to test a release). `HERONITE_DEBUG_*` variables open a page, dialog, or menu at startup, which helps with screenshots.
 
@@ -46,6 +51,14 @@ Merging a pull request with one of these labels publishes a new version:
 | `release:minor` | new features or changed behaviour | 0.1.0 → 0.2.0 |
 | `release:major` | big or breaking changes | 0.1.0 → 1.0.0 |
 
-The release workflow bumps the version in `Cargo.toml`, tags it, builds the AppImage, and publishes a GitHub release. A pull request without a release label is merged without a new version. Maintainers can also start a release from **Actions › Release › Run workflow**.
+The release workflow bumps the version in `Cargo.toml`, tags it, builds the AppImage, the system packages, the Flatpak and the Windows files, and publishes a GitHub release (all but the Flatpak, which waits for Flathub). A pull request without a release label is merged without a new version. Maintainers can also start a release from **Actions › Release › Run workflow**.
+
+### Flatpak
+
+The Flatpak ([`packaging/flatpak/app.heronite.Heronite.yml`](packaging/flatpak/app.heronite.Heronite.yml)) is built by [`scripts/flatpak.sh`](scripts/flatpak.sh) into `dist/Heronite-x86_64.flatpak` (`--install` also installs it for your user). It needs `flatpak`, `python3` and `flatpak-builder` (or the `org.flatpak.Builder` Flatpak); the SDK comes from Flathub. It is not a download yet: a bundle gets no updates, so it waits for Flathub. Pull requests that touch it and every release run get the bundle as a workflow artifact, for trying it out. [`packaging/flatpak/README.md`](packaging/flatpak/README.md) lists what the app does differently in its sandbox.
+
+### Windows packages
+
+The Windows installer (Inno Setup 6, [`packaging/windows/heronite.iss`](packaging/windows/heronite.iss)) and portable zip are built by [`scripts/windows/package.ps1`](scripts/windows/package.ps1) into `dist\`, and [`scripts/windows/smoke.ps1`](scripts/windows/smoke.ps1) checks them (it installs and uninstalls into a temporary folder). Locally you need Inno Setup 6.3 or later (`winget install JRSoftware.InnoSetup`); the script is UTF-8 without a BOM, which older versions misread. The installer supports English, Brazilian Portuguese, Spanish and German using Inno's bundled translations; updates retain the chosen language. Run `powershell -NoProfile -File scripts\windows\test-installer-languages.ps1` to check the translations (every custom message in every language, with the same format tokens) without installing anything (packaging also runs this check). On a disposable Windows machine without an existing Heronite installation, `scripts\windows\smoke.ps1 -Language german` checks language selection, localized shortcuts and retention through a silent update; the packaging CI checks all four languages. Pull requests that touch the Windows packaging get both files as workflow artifacts (unsigned). The app's icon is drawn in `packaging/icons/`; [`scripts/make-app-icons.sh`](scripts/make-app-icons.sh) renders it into `app/assets/app-icon/`, the Linux PNG and, through [`scripts/windows/make-icon.py`](scripts/windows/make-icon.py), the program's icon `packaging/windows/heronite.ico`.
 
 By contributing, you agree that your work is licensed under the [GPL-3.0](LICENSE).

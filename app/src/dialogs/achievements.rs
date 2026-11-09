@@ -1,0 +1,510 @@
+//! "All achievements" of a game: every achievement of the set the focus
+//! panel shows, filtered (all, unlocked, locked) and searched, the latest
+//! unlock or the rarest first, with the date, rarity, points and progress of
+//! each. Secret ones keep their text hidden until revealed one by one. It
+//! follows `services::achievements`, so a refresh shows at once.
+//!
+//! A game with Steam Achievement Sets gets a row of its sets (All first),
+//! each with its unlocked/total count; in All every achievement carries its
+//! set's name. Counts are Heronite's own: Steam leaves out the DLC sets a
+//! player doesn't own, which no source tells.
+
+mod listing;
+
+use std::collections::HashSet;
+
+use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::prelude::*;
+use gpui_kit::*;
+use heronite_achievements::sources::retro::GameHit;
+use heronite_achievements::{Achievement, AchievementSet, Kind, Problem, Section, Source};
+use heronite_i18n::tr;
+
+use self::listing::{listed, Filter, Pick, Sort};
+use super::art_images::DialogImages;
+use super::{DialogCtx, DialogEvent};
+use crate::icons::Icon;
+use crate::services::achievements as service;
+use crate::theme;
+use crate::ui::achievements::{badge, bar, long_day, rarity_pill, section_label, section_line, source_chip, synced_label};
+use crate::ui::controls::{button_sm, tabs, ButtonKind};
+use crate::ui::dialog::{dialog_scrolled, DialogProps};
+use crate::ui::fields::{new_input, search_box};
+use crate::ui::icon;
+
+const ICON: f32 = 44.;
+
+pub struct AchievementsDialog {
+    /// `runner_appName`.
+    key: String,
+    title: String,
+    images: Entity<DialogImages>,
+    search: Entity<InputState>,
+    /// The set shown (Steam's Achievement Sets).
+    pick: Pick,
+    filter: Filter,
+    sort: Sort,
+    /// Secret achievements revealed by hand (their ids).
+    revealed: HashSet<String>,
+    scroll: ScrollHandle,
+    /// A ROM no set matched: the RetroAchievements games found for the
+    /// search (`None` before the first search).
+    hits: Option<Vec<GameHit>>,
+    searching: bool,
+}
+
+impl EventEmitter<DialogEvent> for AchievementsDialog {}
+
+impl AchievementsDialog {
+    pub fn new(ctx: DialogCtx, key: String, title: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let images = cx.new(|cx| DialogImages::new(&ctx, cx));
+        cx.observe(&images, |_, _, cx| cx.notify()).detach();
+        let svc = service::get(cx);
+        cx.observe(&svc, |_, _, cx| cx.notify()).detach();
+        let search = new_input(window, cx, "", tr!("Search achievements"));
+        cx.subscribe_in(&search, window, |this, _, ev: &InputEvent, _, cx| match ev {
+            InputEvent::Change => cx.notify(),
+            InputEvent::PressEnter { .. } => this.search_games(cx),
+            _ => {}
+        })
+        .detach();
+        Self {
+            key,
+            title,
+            images,
+            search,
+            // `HERONITE_DEBUG_ACH_SET=<group id>|other` opens on that set.
+            pick: match crate::env::value("HERONITE_DEBUG_ACH_SET").as_deref() {
+                None => Pick::All,
+                Some("other") => Pick::Ungrouped,
+                Some(id) => Pick::Group(id.to_string()),
+            },
+            filter: Filter::All,
+            sort: Sort::Recent,
+            revealed: HashSet::new(),
+            scroll: ScrollHandle::new(),
+            hits: None,
+            searching: false,
+        }
+    }
+
+    /// Looks the search up among the RetroAchievements games (picking the
+    /// game of a ROM no set matched).
+    fn search_games(&mut self, cx: &mut Context<Self>) {
+        let query = self.search.read(cx).value().trim().to_string();
+        if query.is_empty() || self.searching {
+            return;
+        }
+        let Some(job) = service::get(cx).read(cx).retro_search(&self.key, query) else { return };
+        self.searching = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let hits = cx.background_spawn(async move { job() }).await;
+            this.update(cx, |this, cx| {
+                this.searching = false;
+                this.hits = Some(hits);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// A ROM no set matched: what it is, a search and the games found.
+    fn picker(&mut self, file: &str, hash: Option<&str>, cx: &mut Context<Self>) -> Div {
+        let mut col = div()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .child(div().text_size(px(13.5)).child(tr!("This ROM doesn't match any RetroAchievements set.")))
+            .child(div().text_size(px(12.)).text_color(theme::ink_a(0.55)).child(match hash {
+                Some(h) => format!("{file} · MD5 {h}"),
+                None => file.to_string(),
+            }))
+            .child(div().text_size(px(12.5)).text_color(theme::ink_a(0.72)).child(tr!(
+                "Sets accept specific dumps: a patched, translated or other-region file has none. Search for the game to use its set anyway (Enter searches)."
+            )))
+            .child(
+                div().flex().gap(px(10.)).child(search_box(&self.search)).child(
+                    button_sm("ach-pick-search", ButtonKind::Glass, if self.searching { tr!("Searching…") } else { tr!("Search") })
+                        .on_click(cx.listener(|this, _, _, cx| this.search_games(cx))),
+                ),
+            );
+        match &self.hits {
+            Some(hits) if hits.is_empty() => {
+                col = col.child(div().text_size(px(12.5)).text_color(theme::ink_a(0.5)).child(tr!("No game found.")));
+            }
+            Some(hits) => {
+                for hit in hits.clone() {
+                    let key = self.key.clone();
+                    col = col.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(12.))
+                            .py(px(8.))
+                            .border_t_1()
+                            .border_color(theme::ink_a(0.06))
+                            .child(div().flex_1().min_w_0().truncate().text_size(px(13.)).child(hit.title.clone()))
+                            .child(div().text_size(px(12.)).text_color(theme::ink_a(0.55)).child(hit.console.clone()))
+                            .child(
+                                button_sm(SharedString::from(format!("ach-pick-{}", hit.id)), ButtonKind::Primary, tr!("Use this game"))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.hits = None;
+                                        service::get(cx).update(cx, |s, cx| s.pin_retro_game(&key, Some(hit.id), cx));
+                                    })),
+                            ),
+                    );
+                }
+            }
+            None => {}
+        }
+        col
+    }
+
+    fn row(&mut self, a: &Achievement, set_name: Option<String>, hide_secrets: bool, cx: &mut Context<Self>) -> Div {
+        let secret = hide_secrets && a.is_secret() && !self.revealed.contains(&a.id);
+        let url = a.icon_now().to_string();
+        let image = (!secret && !url.is_empty()).then(|| {
+            let chain = if url.starts_with("http") {
+                vec![heronite_images::ImageRef::Url(url.clone())]
+            } else {
+                vec![heronite_images::ImageRef::File(url.clone().into())]
+            };
+            self.images.update(cx, |im, _| im.get(&format!("ach:{url}"), chain, ICON, ICON))
+        });
+        let grey = !a.unlocked && a.icon_locked.is_empty();
+        let name: SharedString = if secret { tr!("Secret achievement").into() } else { a.name.clone().into() };
+        let description: AnyElement = if secret {
+            let id = a.id.clone();
+            div()
+                .flex()
+                .gap(px(6.))
+                .child(tr!("Hidden until you unlock it."))
+                .child(
+                    div()
+                        .id(SharedString::from(format!("reveal-{id}")))
+                        .cursor_pointer()
+                        .text_color(theme::accent())
+                        .child(tr!("Reveal"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.revealed.insert(id.clone());
+                            cx.notify();
+                        })),
+                )
+                .into_any_element()
+        } else {
+            div().child(a.description.clone()).into_any_element()
+        };
+        let mut meta = div().flex().flex_wrap().items_center().gap(px(6.)).mt(px(7.)).text_size(px(11.5)).text_color(theme::ink_a(0.5));
+        if let Some(r) = a.rarity {
+            let tier = theme::rarity_tier(r);
+            meta = meta.child(rarity_pill(r)).child(div().text_color(theme::rarity_colour(tier)).child(tier_label(tier)));
+        }
+        if let Some(p) = a.points {
+            meta = meta.child(pill(tr!("{n} points", n = p)));
+        }
+        if a.unlocked && a.hardcore {
+            meta = meta.child(pill(tr!("Hardcore").to_string()));
+        }
+        if let Some(k) = a.kind {
+            meta = meta.child(pill(kind_label(k).to_string()));
+        }
+        if let Some(name) = set_name {
+            meta = meta.child(pill(name));
+        }
+        meta = meta.child(div().flex_1());
+        if a.unlocked {
+            if let Some(t) = a.unlocked_at {
+                let local = t.with_timezone(&chrono::Local);
+                meta = meta.child(format!("{} · {}", long_day(local.date_naive()), local.format("%H:%M")));
+            }
+        } else if let Some(p) = a.progress.filter(|p| p.max > 1) {
+            meta = meta.child(div().w(px(90.)).child(bar(p.fraction(), false, 4.))).child(format!("{}/{}", p.current.min(p.max), p.max));
+        }
+        div()
+            .flex()
+            .items_start()
+            .gap(px(12.))
+            .py(px(10.))
+            .border_t_1()
+            .border_color(theme::ink_a(0.06))
+            .child(badge(image.flatten(), a.unlocked, grey, ICON))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(div().text_size(px(13.6)).font_weight(theme::W_BOLD).text_color(theme::text_bright()).child(name))
+                    .child(div().mt(px(2.)).text_size(px(12.3)).text_color(theme::ink_a(0.62)).child(description))
+                    .child(meta),
+            )
+    }
+
+    /// The sets row: All, then each set with its count; a note when some
+    /// are DLC sets.
+    fn sets_row(&self, set: &AchievementSet, sections: &[Section], cx: &mut Context<Self>) -> Div {
+        let mut picks = vec![Pick::All];
+        let mut items = vec![(0usize, tr!("All · {got}/{all}", got = set.unlocked(), all = set.total()))];
+        for (i, section) in sections.iter().enumerate() {
+            picks.push(Pick::of(section));
+            items.push((i + 1, section_line(section)));
+        }
+        let active = picks.iter().position(|p| *p == self.pick).unwrap_or(0);
+        let weak = cx.entity().downgrade();
+        let mut col = div().flex().flex_col().gap(px(6.)).child(tabs("ach-sets", &items, active, move |i, _, cx| {
+            let pick = picks[i].clone();
+            weak.update(cx, |this, cx| {
+                this.pick = pick;
+                cx.notify();
+            })
+            .ok();
+        }));
+        if sections.iter().any(|s| s.group.is_some_and(|g| g.is_dlc())) {
+            col = col.child(
+                div()
+                    .text_size(px(11.5))
+                    .text_color(theme::ink_a(0.5))
+                    .child(tr!("Counts include DLC sets whether or not you own the DLC; Steam counts only the DLC you own.")),
+            );
+        }
+        col
+    }
+
+    fn header(&self, set: &AchievementSet, sections: &[Section], refreshing: bool, cx: &mut Context<Self>) -> Div {
+        let (unlocked, total) = (set.unlocked(), set.total());
+        // The filters count within the set shown.
+        let (shown_unlocked, shown_total) =
+            sections.iter().find(|s| Pick::of(s) == self.pick).map_or((unlocked, total), |s| (s.unlocked(), s.total()));
+        let pct = (unlocked * 100).checked_div(total).unwrap_or(0);
+        let mut counts = format!("{unlocked}/{total} · {pct}%");
+        if let Some((got, all)) = set.points() {
+            counts.push_str(&format!(" · {}", tr!("{got}/{all} points", got, all)));
+        }
+        let key = self.key.clone();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(12.))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .text_size(px(12.))
+                    .text_color(theme::ink_a(0.55))
+                    .child(source_chip(set.source))
+                    .children(set.title.clone().filter(|t| *t != self.title).map(|t| div().truncate().child(t)))
+                    .child(if refreshing { tr!("Updating…").to_string() } else { synced_label(set.fetched_at) })
+                    .child(div().flex_1())
+                    .child(button_sm("ach-dialog-refresh", ButtonKind::Glass, tr!("Refresh")).on_click(cx.listener(move |_, _, _, cx| {
+                        service::get(cx).update(cx, |s, cx| s.refresh(&key, cx));
+                    }))),
+            )
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(div().flex_1().child(bar(pct as f32 / 100., set.is_complete(), 6.)))
+                    .child(div().text_size(px(13.)).font_weight(theme::W_BOLD).child(counts)),
+            )
+            .when(!sections.is_empty(), |d| d.child(self.sets_row(set, sections, cx)))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .child(tabs(
+                        "ach-filter",
+                        &[
+                            (Filter::All, tr!("All {n}", n = shown_total)),
+                            (Filter::Unlocked, tr!("Unlocked {n}", n = shown_unlocked)),
+                            (Filter::Locked, tr!("Locked {n}", n = shown_total - shown_unlocked)),
+                        ],
+                        self.filter,
+                        {
+                            let weak = cx.entity().downgrade();
+                            move |f, _, cx| {
+                                weak.update(cx, |this, cx| {
+                                    this.filter = f;
+                                    cx.notify();
+                                })
+                                .ok();
+                            }
+                        },
+                    ))
+                    .child(tabs(
+                        "ach-sort",
+                        &[(Sort::Recent, tr!("Recent first").to_string()), (Sort::Rarest, tr!("Rarest first").to_string())],
+                        self.sort,
+                        {
+                            let weak = cx.entity().downgrade();
+                            move |s, _, cx| {
+                                weak.update(cx, |this, cx| {
+                                    this.sort = s;
+                                    cx.notify();
+                                })
+                                .ok();
+                            }
+                        },
+                    ))
+                    .child(search_box(&self.search)),
+            )
+    }
+}
+
+fn pill(text: String) -> Div {
+    div().px(px(7.)).rounded_full().bg(theme::ink_a(0.08)).text_color(theme::ink_a(0.78)).child(text)
+}
+
+fn tier_label(tier: theme::RarityTier) -> &'static str {
+    match tier {
+        theme::RarityTier::UltraRare => tr!("Ultra rare"),
+        theme::RarityTier::Rare => tr!("Rare"),
+        theme::RarityTier::Uncommon => tr!("Uncommon"),
+        theme::RarityTier::Common => tr!("Common"),
+    }
+}
+
+pub(crate) fn kind_label(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Progression => tr!("Progression"),
+        Kind::WinCondition => tr!("Win condition"),
+        Kind::Missable => tr!("Missable"),
+    }
+}
+
+impl AchievementsDialog {
+    /// Where a game-files set comes from, and the choices about it.
+    fn game_files_footer(&self, app_id: &str, pin: Option<heronite_achievements::LocalPin>, cx: &mut Context<Self>) -> Div {
+        let link = |id: &'static str, text: String| div().id(id).cursor_pointer().text_color(theme::accent()).child(text);
+        let (key, key2, key3) = (self.key.clone(), self.key.clone(), self.key.clone());
+        let line = match pin.as_ref().and_then(|p| p.folder.as_ref()) {
+            Some(folder) => {
+                tr!("From the game's files in {folder} · Steam app id {id}", folder = folder.display().to_string(), id = app_id)
+            }
+            None => tr!("From the game's files · Steam app id {id}", id = app_id),
+        };
+        let mut links = div().flex().flex_wrap().gap(px(14.)).child(link("ach-local-folder", tr!("Choose the folder…").into()).on_click(
+            cx.listener(move |_, _, _, cx| {
+                let rx = cx.prompt_for_paths(PathPromptOptions {
+                    files: false,
+                    directories: true,
+                    multiple: false,
+                    prompt: Some(tr!("Select").into()),
+                });
+                let key = key.clone();
+                cx.spawn(async move |_, cx| {
+                    let Ok(Ok(Some(paths))) = rx.await else { return };
+                    let Some(folder) = paths.into_iter().next() else { return };
+                    cx.update(|cx| {
+                        let pin = heronite_achievements::LocalPin { folder: Some(folder), ..Default::default() };
+                        service::get(cx).update(cx, |s, cx| s.pin_local(&key, Some(pin), false, cx));
+                    });
+                })
+                .detach();
+            }),
+        ));
+        if pin.is_some() {
+            links =
+                links.child(link("ach-local-auto", tr!("Find them by itself again").into()).on_click(cx.listener(move |_, _, _, cx| {
+                    service::get(cx).update(cx, |s, cx| s.pin_local(&key2, None, false, cx));
+                })));
+        }
+        links = links.child(link("ach-local-forget", tr!("Forget these achievements").into()).on_click(cx.listener(move |_, _, _, cx| {
+            service::get(cx).update(cx, |s, cx| s.pin_local(&key3, pin.clone(), true, cx));
+        })));
+        div().flex().flex_col().gap(px(6.)).text_size(px(12.)).text_color(theme::ink_a(0.5)).child(line).child(links)
+    }
+}
+
+impl Render for AchievementsDialog {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.images.update(cx, |im, _| im.frame(window));
+        let (entry, hide_secrets) = {
+            let svc = service::get(cx);
+            let svc = svc.read(cx);
+            (svc.entry(&self.key).cloned(), svc.prefs().hide_secrets)
+        };
+        let set = entry.as_ref().and_then(|e| e.primary()).cloned();
+        let refreshing = entry.as_ref().is_some_and(|e| e.refreshing);
+        let mut body = div().flex().flex_col().gap(px(14.)).text_color(theme::text_primary());
+        match &set {
+            Some(set) => {
+                let query = self.search.read(cx).value().to_string();
+                let sections = set.sections();
+                self.pick = std::mem::replace(&mut self.pick, Pick::All).valid_in(&sections);
+                body = body.child(self.header(set, &sections, refreshing, cx));
+                let list = listed(set, &self.pick, self.filter, self.sort, &self.revealed, hide_secrets, &query);
+                // In All, each achievement says which set it is in.
+                let name_sets = !sections.is_empty() && self.pick == Pick::All;
+                let mut rows = div().flex().flex_col();
+                if list.is_empty() {
+                    rows = rows.child(
+                        div().py(px(24.)).flex().justify_center().text_color(theme::ink_a(0.5)).child(tr!("No achievements match.")),
+                    );
+                }
+                let list: Vec<(Achievement, Option<String>)> =
+                    list.into_iter().map(|a| (a.clone(), name_sets.then(|| section_label(set.group_of(a))))).collect();
+                for (a, set_name) in list {
+                    rows = rows.child(self.row(&a, set_name, hide_secrets, cx));
+                }
+                body = body.child(rows);
+            }
+            None => match entry.as_ref().and_then(|e| e.problem()).cloned() {
+                Some((_, Problem::Unmatched { file, hash })) => body = body.child(self.picker(&file, hash.as_deref(), cx)),
+                problem => {
+                    let text = match problem {
+                        Some((Source::RetroAchievements, Problem::NeedsAccount)) => {
+                            tr!("Connect your RetroAchievements account in Settings → Achievements to see this game's achievements.")
+                        }
+                        _ if refreshing => tr!("Reading the achievements…"),
+                        _ => tr!("No achievements to show yet."),
+                    };
+                    body = body.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .text_color(theme::ink_a(0.6))
+                            .child(icon(Icon::Trophy, px(18.), theme::ink_a(0.6)))
+                            .child(text),
+                    );
+                }
+            },
+        }
+        let pinned = entry.as_ref().is_some_and(|e| e.game.retro_game_id.is_some())
+            && set.as_ref().is_some_and(|s| s.source == Source::RetroAchievements);
+        if pinned {
+            let key = self.key.clone();
+            body = body.child(
+                div().flex().gap(px(8.)).text_size(px(12.)).text_color(theme::ink_a(0.5)).child(tr!("The game was picked by hand.")).child(
+                    div().id("ach-unpin").cursor_pointer().text_color(theme::accent()).child(tr!("Match by the file again")).on_click(
+                        cx.listener(move |_, _, _, cx| {
+                            service::get(cx).update(cx, |s, cx| s.pin_retro_game(&key, None, cx));
+                        }),
+                    ),
+                ),
+            );
+        }
+        if set.as_ref().is_some_and(|s| s.source == Source::Local) {
+            let app_id = set.as_ref().map(|s| s.external_id.clone()).unwrap_or_default();
+            let pin = entry.as_ref().and_then(|e| e.game.local.clone());
+            body = body.child(self.game_files_footer(&app_id, pin, cx));
+        }
+        if self.scroll.bounds().size.height <= px(0.) {
+            cx.notify();
+        }
+        let entity = cx.entity().downgrade();
+        let title = tr!("{game} — Achievements", game = self.title.as_str());
+        dialog_scrolled(
+            DialogProps { id: "achievements".into(), title: title.into(), width: 760., height: Some(620.) },
+            &self.scroll,
+            body.into_any_element(),
+            None,
+            move |_, cx| {
+                entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
+            },
+        )
+    }
+}

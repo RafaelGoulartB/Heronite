@@ -4,11 +4,14 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::vm::GroupVm;
+use crate::icons::Icon;
 use crate::theme;
 use crate::ui::icon;
 
-/// `.collection__groupToggle`: 13px/600, .78 white, 7px dot, count pill.
-pub(super) fn group_header(g: &GroupVm) -> Div {
+/// `.collection__groupToggle`: 13px/600, .78 white, 7px dot, count pill;
+/// then `extra` (the "Select group" chip) and, while the group is folded, a
+/// chevron at the end of the line saying it opens.
+pub(super) fn group_header(g: &GroupVm, extra: Option<impl IntoElement>) -> Div {
     div()
         .relative()
         .flex()
@@ -37,6 +40,8 @@ pub(super) fn group_header(g: &GroupVm) -> Div {
                 .text_color(theme::ink_a(0.8))
                 .child(g.cards.len().to_string()),
         )
+        .children(extra)
+        .when(g.collapsed, |d| d.child(div().flex_1()).child(icon(Icon::ExpandMore, px(18.), theme::ink_a(0.55))))
 }
 
 /// `.is-stuck::before`: the shade behind the pinned header, across the whole
@@ -59,6 +64,15 @@ pub(super) fn stuck_scrim(grid: bool) -> Div {
         .flex_col()
         .child(div().h(px(GROUP_HEADER_H / 2.)).flex_none().bg(shade(0.12, 0.5)))
         .child(div().flex_1().bg(shade(0.5, 0.)))
+}
+
+/// [`stuck_scrim`] over the Focus list's rows: their titles would read
+/// through the header's label, so the shade stays dense under it.
+pub(super) fn stuck_scrim_rows() -> Div {
+    let dense = theme::stage_ink_a(0.92);
+    div().absolute().top_0().left_0().right_0().bottom(px(-10.)).flex().flex_col().child(div().flex_1().bg(dense)).child(
+        div().h(px(10.)).flex_none().bg(linear_gradient(180., linear_color_stop(dense, 0.), linear_color_stop(theme::stage_ink_a(0.), 1.))),
+    )
 }
 
 /// Height of one group header row (padding + line).

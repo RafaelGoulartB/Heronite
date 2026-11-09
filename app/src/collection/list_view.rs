@@ -6,15 +6,23 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::CoverLabel;
+use heronite_data::settings::CoverAspect;
 use heronite_images::Variant;
 
 use super::vm::{CardVm, ListItem};
-use super::{card, list, CollectionView};
+use super::{card, list, list_row, CollectionView};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{button_sm, ButtonKind};
 use crate::ui::icon;
 use heronite_i18n::tr;
+
+/// How far a Focus list row reaches past the covers' padding on each side:
+/// its highlight has room around the thumbnail and the caption.
+pub(super) const ROW_INSET: f32 = 4.;
+
+type OnClick = Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
+type OnHover = Box<dyn Fn(&bool, &mut Window, &mut App)>;
 
 impl CollectionView {
     pub(super) fn list_column_width(viewport_w: f32) -> (f32, usize) {
@@ -27,19 +35,59 @@ impl CollectionView {
         }
     }
 
+    /// The Focus list shows one game per row (`focusList`), not covers.
+    pub(super) fn focus_rows(&self) -> bool {
+        !self.ui.grid_view && self.ui.focus_list
+    }
+
     pub(super) fn cover_h(&self) -> f32 {
-        self.card_w * self.cover_aspect
+        self.card_w * self.card_aspect
+    }
+
+    /// Wide cards (Banner) show the game's hero art, the cover when it has none.
+    fn wide_cards(&self) -> bool {
+        self.card_aspect < 1.
+    }
+
+    /// Settings → Appearance → "Cover aspect" of the cards.
+    pub(super) fn set_card_shape(&mut self, shape: CoverAspect) {
+        self.card_shape = shape;
+        self.card_aspect = card_aspect(shape);
+    }
+
+    /// How much wider than a 2:3 cover a card of the current shape is, for
+    /// about the same area: a square or a banner card of the same "size"
+    /// does not shrink to a strip.
+    pub(super) fn card_widen(&self) -> f32 {
+        (1.5 / self.card_aspect).sqrt()
     }
 
     /// Size the covers are requested at. The grid's cards change width with
     /// the window and the drawer: steps of 16px keep a resize from decoding
     /// every cover again for each pixel (the image scales to the card).
     fn cover_request(&self) -> (f32, f32) {
+        if self.focus_rows() {
+            return (list_row::THUMB_W, list_row::THUMB_W * self.cover_aspect);
+        }
         if !self.ui.grid_view {
             return (self.card_w, self.cover_h());
         }
         let w = (self.card_w / 16.).ceil() * 16.;
-        (w, w * self.cover_aspect)
+        (w, w * self.card_aspect)
+    }
+
+    /// The art of a wide card for the game `key`: its hero art cropped to
+    /// the card, or its cover when it has none.
+    fn banner(&mut self, key: &SharedString, cover_key: &SharedString, w: f32, h: f32, scale: f32) -> (Option<ImageSource>, bool) {
+        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
+        let id: SharedString = format!("b:{key}:{pw}x{ph}").into();
+        let chain = match self.stage_chains.get(key).filter(|c| !c.is_empty()) {
+            Some(stage) => stage.clone(),
+            None => self.cover_chains.get(cover_key).cloned().unwrap_or_default(),
+        };
+        let img = self.images.get_or_request(&id, || chain, pw, ph, Variant::Cover, 100).map(ImageSource::Render);
+        let failed = img.is_none() && self.images.is_failed(&id);
+        (img, failed)
     }
     /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
     pub(super) fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
@@ -60,7 +108,7 @@ impl CollectionView {
                 let g = &self.groups[group];
                 let gid = g.id.clone();
                 let pick = self.group_pick(&gid, cx);
-                let header = list::group_header(g).children(pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
+                let header = list::group_header(g, pick).id(SharedString::from(format!("group-{gid}"))).cursor_pointer().on_click(
                     cx.listener(move |this, _, _, cx| {
                         this.ui.toggle_group(&gid);
                         this.save_ui();
@@ -77,27 +125,33 @@ impl CollectionView {
                 let stuck = self.stuck_group == Some(group);
                 div().pl(px(m.pad_l)).pr(px(m.pad_r)).when(stuck, |d| d.opacity(0.)).child(header).into_any_element()
             }
+            ListItem::Row { group, start } if self.focus_rows() => {
+                let c = self.groups[group].cards[start].clone();
+                let (pt, pb) = self.row_padding(group, start);
+                let m = self.list_metrics();
+                div()
+                    .pl(px(m.pad_l - ROW_INSET))
+                    .pr(px(m.pad_r - ROW_INSET))
+                    .pt(px(pt))
+                    .pb(px(pb))
+                    .child(self.render_row(c, window.scale_factor(), cx))
+                    .into_any_element()
+            }
             ListItem::Row { group, start } => {
                 let cards: Vec<Arc<CardVm>> = {
                     let g = &self.groups[group];
                     g.cards[start..(start + self.columns).min(g.cards.len())].to_vec()
                 };
-                let last_row = start + cards.len() == self.groups[group].cards.len();
+                let (pt, pb) = self.row_padding(group, start);
                 let m = self.list_metrics();
-                let mut row = div()
-                    .flex()
-                    .pl(px(m.pad_l))
-                    .pr(px(m.pad_r))
-                    .gap(px(m.gap_x))
-                    .pt(px(if start == 0 { 7.2 } else { 0. }))
-                    .pb(px(if last_row { 5.6 + 13.6 } else { m.gap_y }));
+                let mut row = div().flex().pl(px(m.pad_l)).pr(px(m.pad_r)).gap(px(m.gap_x)).pt(px(pt)).pb(px(pb));
                 let scale = window.scale_factor();
                 for c in cards {
                     row = row.child(self.render_card(c, scale, cx));
                 }
                 row.into_any_element()
             }
-            ListItem::End => div().h(px(32.)).into_any_element(),
+            ListItem::End => div().h(px(super::list_heights::END_H)).into_any_element(),
         }
     }
 
@@ -105,16 +159,24 @@ impl CollectionView {
         let key = c.key.clone();
         let cover_h = self.cover_h();
         let (rw, rh) = self.cover_request();
-        let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
-        let no_art = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
-        let (k1, k2, k3, k4) = (key.clone(), key.clone(), key.clone(), key.clone());
-        let a = theme::appearance();
-        let look = card::CardLook {
-            radius: a.cover_corners.radius(),
-            hover: a.cover_hover,
-            badges: a.cover_badges,
-            caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
+        let (cover, no_art) = if self.wide_cards() {
+            self.banner(&key, &c.cover_key, rw, rh, scale)
+        } else {
+            let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
+            let failed = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));
+            (cover, failed)
         };
+        let a = theme::appearance();
+        let mut look = card_look();
+        // The grid's own choice of what goes under the covers.
+        let title = if self.ui.grid_view {
+            look.caption = self.ui.grid_label.info();
+            self.ui.grid_label.title()
+        } else {
+            look.stores_inset = FOCUS_STORES_INSET;
+            a.cover_label == CoverLabel::Title
+        };
+        let (on_select, on_hover, on_play) = self.card_listeners(&key, cx);
         let el = card::card(
             card::CardState {
                 vm: &c,
@@ -122,20 +184,99 @@ impl CollectionView {
                 no_art,
                 width: self.card_w,
                 cover_h,
-                title: self.ui.grid_view && self.ui.grid_titles || a.cover_label == CoverLabel::Title,
-                selected: !self.sel.active() && self.selected.as_ref() == Some(&key),
+                title,
+                selected: self.selected.as_ref() == Some(&key),
                 hovered: self.hovered.as_ref() == Some(&key),
                 leaving: self.leaving.as_ref() == Some(&key),
                 grey_uninstalled: self.grey_uninstalled,
                 pick: self.sel.active().then(|| self.sel.contains(&key)),
                 epic: self.epic_card(&key, cx),
+                categories: if look.categories.is_some() { self.card_categories(&key) } else { Vec::new() },
+                stores: if look.stores { self.card_stores(&key) } else { Vec::new() },
                 look,
+                scale,
             },
-            cx.listener(move |this, ev: &ClickEvent, _, cx| {
+            on_select,
+            on_hover,
+            on_play,
+        );
+        self.with_context_menu(key, el, cx)
+    }
+
+    /// The categories of the game under `key` (and, while copies are
+    /// grouped, of its other copies), each once, by name.
+    pub(super) fn card_categories(&self, key: &str) -> Vec<super::category_badges::CategoryBadge> {
+        if self.categories.is_empty() {
+            return Vec::new();
+        }
+        let mut found = std::collections::BTreeSet::new();
+        for g in self.with_copies(key) {
+            found.extend(self.categories.of_game(&g.runner, &g.app_name));
+        }
+        self.categories
+            .names()
+            .enumerate()
+            .filter(|(_, n)| found.contains(n))
+            .map(|(i, n)| super::category_badges::CategoryBadge::new(n, i))
+            .collect()
+    }
+
+    /// The logos of the stores of the game under `key`, its emulator's for
+    /// a ROM (and, with "Show
+    /// every store a game is in" while copies are grouped, of its other
+    /// copies), its own first. None while the Collection is grouped by store
+    /// and "Hide while grouped by store" is on: the section's header names it.
+    fn card_stores(&self, key: &str) -> Vec<Icon> {
+        let a = theme::appearance();
+        if a.cover_stores_hide_grouped && self.ui.group_by == heronite_data::GroupBy::Store {
+            return Vec::new();
+        }
+        let mut games = self.with_copies(key);
+        if let Some(i) = games.iter().position(|g| g.key == key) {
+            games[..=i].rotate_right(1);
+        }
+        let mut icons = super::store_badges::game_icons(&games);
+        if !a.cover_stores_all {
+            icons.truncate(1);
+        }
+        icons
+    }
+
+    fn render_row(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
+        let key = c.key.clone();
+        let (rw, rh) = self.cover_request();
+        let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
+        let (on_select, on_hover, on_play) = self.card_listeners(&key, cx);
+        let el = list_row::row(
+            list_row::RowState {
+                vm: &c,
+                cover,
+                width: self.card_w,
+                thumb_h: rh,
+                selected: self.selected.as_ref() == Some(&key),
+                hovered: self.hovered.as_ref() == Some(&key),
+                grey_uninstalled: self.grey_uninstalled,
+                pick: self.sel.active().then(|| self.sel.contains(&key)),
+                epic: self.epic_card(&key, cx),
+                look: card_look(),
+            },
+            on_select,
+            on_hover,
+            on_play,
+        );
+        self.with_context_menu(key, el, cx)
+    }
+
+    /// What a card (or a row) of the game under `key` does when clicked,
+    /// hovered and when its play button is clicked.
+    fn card_listeners(&self, key: &SharedString, cx: &mut Context<Self>) -> (OnClick, OnHover, OnClick) {
+        let (k1, k2, k3) = (key.clone(), key.clone(), key.clone());
+        (
+            Box::new(cx.listener(move |this, ev: &ClickEvent, _, cx| {
                 this.card_clicked(k1.clone(), ev);
                 cx.notify();
-            }),
-            cx.listener(move |this, hovered: &bool, _, cx| {
+            })),
+            Box::new(cx.listener(move |this, hovered: &bool, _, cx| {
                 if *hovered {
                     this.hovered = Some(k2.clone());
                 } else if this.hovered.as_ref() == Some(&k2) {
@@ -143,17 +284,21 @@ impl CollectionView {
                     this.leaving = Some(k2.clone());
                 }
                 cx.notify();
-            }),
-            cx.listener(move |this, _, _, cx| {
+            })),
+            Box::new(cx.listener(move |this, _, _, cx| {
                 this.primary_action(&k3, cx);
                 cx.notify();
-            }),
-        );
+            })),
+        )
+    }
+
+    /// `el` with the game's context menu on a right click.
+    fn with_context_menu(&self, key: SharedString, el: AnyElement, cx: &mut Context<Self>) -> AnyElement {
         div()
             .on_mouse_down(
                 MouseButton::Right,
                 cx.listener(move |this, ev: &MouseDownEvent, _, cx| {
-                    this.open_context_menu(k4.clone(), ev.position, cx);
+                    this.open_context_menu(key.clone(), ev.position, cx);
                 }),
             )
             .child(el)
@@ -227,6 +372,7 @@ impl CollectionView {
         let no_match = self.lib.as_ref().is_some_and(|lib| !lib.games.is_empty()) && self.groups.iter().all(|g| g.cards.is_empty());
         let m = self.list_metrics();
         let grid = self.ui.grid_view;
+        let rows = self.focus_rows();
         let sticky = self.sticky();
         self.stuck_group = sticky.map(|(g, _)| g);
         let sticky = sticky.map(|(g, shift)| {
@@ -238,8 +384,8 @@ impl CollectionView {
                 .right_0()
                 .pl(px(m.pad_l))
                 .pr(px(m.pad_r))
-                .child(list::stuck_scrim(grid))
-                .child(list::group_header(&self.groups[g]).children(pick))
+                .child(if rows { list::stuck_scrim_rows() } else { list::stuck_scrim(grid) })
+                .child(list::group_header(&self.groups[g], pick))
         });
         div()
             .relative()
@@ -338,6 +484,36 @@ impl CollectionView {
                     cx.notify();
                 },
             ))))
+    }
+}
+
+/// How far the stores' chip sits from the corner of a Focus view cover, px
+/// (6 in the grid).
+const FOCUS_STORES_INSET: f32 = 3.;
+
+/// How every card looks, from Settings → Appearance → Covers.
+fn card_look() -> card::CardLook {
+    let a = theme::appearance();
+    card::CardLook {
+        radius: a.cover_corners.radius(),
+        hover: a.cover_hover,
+        badges: a.cover_badges,
+        caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
+        categories: a.cover_categories.then_some(a.category_style),
+        stores: a.cover_stores,
+        stores_inset: 6.,
+    }
+}
+
+/// Height / width of a card of `shape`.
+pub(super) fn card_aspect(shape: CoverAspect) -> f32 {
+    match shape {
+        CoverAspect::Steam => 3. / 2.,
+        CoverAspect::Igdb => 4. / 3.,
+        CoverAspect::Gog => 15. / 11.,
+        CoverAspect::Square => 1.,
+        CoverAspect::Dvd => 7. / 5.,
+        CoverAspect::Banner => 9. / 16.,
     }
 }
 

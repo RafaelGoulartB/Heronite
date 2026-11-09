@@ -25,11 +25,14 @@ pub struct Prefs {
     pub etag: Option<String>,
     /// The latest release the last answer described.
     pub latest: Option<Release>,
+    /// The version this app installed, until it first starts (then its
+    /// "What's new" opens once).
+    pub updated_to: Option<String>,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Self { auto_check: true, auto_install: false, skipped_version: None, last_check: None, etag: None, latest: None }
+        Self { auto_check: true, auto_install: false, skipped_version: None, last_check: None, etag: None, latest: None, updated_to: None }
     }
 }
 
@@ -57,7 +60,13 @@ mod tests {
         let path = tmp.path().join("update.json");
         assert_eq!(Prefs::load(&path), Prefs::default());
         assert!(Prefs::default().auto_check);
-        let p = Prefs { auto_install: true, skipped_version: Some("0.2.0".into()), last_check: Some(5), ..Default::default() };
+        let p = Prefs {
+            auto_install: true,
+            skipped_version: Some("0.2.0".into()),
+            last_check: Some(5),
+            updated_to: Some("0.2.1".into()),
+            ..Default::default()
+        };
         p.save(&path).unwrap();
         assert_eq!(Prefs::load(&path), p);
         // Partial or broken files fall back field by field / entirely.

@@ -4,7 +4,7 @@ use gpui_kit::*;
 use heronite_launch::LaunchEvent;
 
 use super::hub;
-use super::launch::launch;
+use super::launch::{launch, open_client};
 use super::quit::{maybe_exit_idle, request_quit};
 use super::window::{apply_window_flags, close_window_keep_alive, has_window, show_window};
 use crate::system::cli::{Cli, LaunchRequest};
@@ -66,6 +66,11 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     if let Some(replay) = crate::services::replay::get(cx) {
         replay.update(cx, |r, cx| r.on_launch_event(&ev, cx));
     }
+    // A game that runs is checked live; one that ended is read again.
+    if matches!(ev, LaunchEvent::Running { .. } | LaunchEvent::Exited { .. } | LaunchEvent::Error { .. }) {
+        let achievements = crate::services::achievements::get(cx);
+        achievements.update(cx, |a, cx| a.on_launch_event(&ev, cx));
+    }
     tell_downloads(cx, &ev);
     tell_compression(cx, &ev);
     // Heroic's `minimizeOnLaunch`, once the game runs: the window shows the
@@ -122,13 +127,28 @@ fn tell_compression(cx: &mut App, ev: &LaunchEvent) {
 
 /// With the window closed to the tray nobody sees toasts: problems of a
 /// launch (it failed, cloud saves could not be synced, the game closed right
-/// after starting) become notifications.
+/// after starting, with its cause when the diagnosis knows it) become
+/// notifications.
 fn notify_without_window(cx: &App, ev: &LaunchEvent) {
     match ev {
         LaunchEvent::Exited { app_name, elapsed, exit, stopped, .. } => {
-            if let Some(exit) = heronite_launch::failed_launch(*exit, *stopped, *elapsed) {
-                let title = hub(cx).0.borrow().runtime.session_info(app_name).map_or_else(|| app_name.clone(), |s| s.title);
-                crate::system::notify::send("Heronite", crate::runtime::failed_launch_message(&title, exit));
+            // A game that ended well within seconds says nothing.
+            let Some(failed) = heronite_launch::failed_launch(*exit, *stopped, *elapsed) else { return };
+            let title = hub(cx).0.borrow().runtime.session_info(app_name).map_or_else(|| app_name.clone(), |s| s.title);
+            let paths = hub(cx).0.borrow().data_paths.clone();
+            let (app_name, ended) = (app_name.clone(), crate::diagnosis::Ended { elapsed: *elapsed, exit: *exit });
+            let spawned = std::thread::Builder::new().name("launch-diagnosis".into()).spawn(move || {
+                let lib = heronite_data::Library::load_with(&paths, true).ok();
+                let game = lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name));
+                let report = game.and_then(|g| crate::diagnosis::gather(&paths, g, Some(ended), None));
+                let text = match report {
+                    Some(r) if r.opens_by_itself() => crate::diagnosis::text::summary(&r),
+                    _ => crate::runtime::failed_launch_message(&title, failed),
+                };
+                crate::system::notify::send("Heronite", text);
+            });
+            if let Err(e) = spawned {
+                log::warn!("launch diagnosis: {e}");
             }
         }
         LaunchEvent::Error { message, .. } => crate::system::notify::send("Heronite", message.clone()),
@@ -140,19 +160,49 @@ fn notify_without_window(cx: &App, ev: &LaunchEvent) {
 pub(super) fn on_tray_cmd(cx: &mut App, cmd: TrayCmd) {
     log::info!("tray: {cmd:?}");
     match cmd {
-        TrayCmd::Show => {
-            show_window(cx);
-        }
+        TrayCmd::Show => show_from_tray(cx),
         TrayCmd::Toggle => {
             let open = hub(cx).0.borrow().window.is_some();
             if open {
                 close_window_keep_alive(cx);
             } else {
-                show_window(cx);
+                show_from_tray(cx);
             }
         }
         TrayCmd::Quit => request_quit(cx),
         TrayCmd::Launch(app_name) => launch(cx, LaunchRequest { app_name, ..Default::default() }, true, false),
+    }
+}
+
+/// [`show_window`] for the tray. On Windows a window it opens does not take
+/// the keyboard by itself (the tray's menu or Explorer keeps it): it is
+/// brought to the front like an open one.
+fn show_from_tray(cx: &mut App) {
+    let opening = hub(cx).0.borrow().window.is_none();
+    show_window(cx);
+    if cfg!(windows) && opening {
+        let handle = hub(cx).0.borrow().window.as_ref().map(|w| w.handle);
+        if let Some(handle) = handle {
+            handle.update(cx, |_, window, _| window.activate_window()).ok();
+        }
+    }
+}
+
+/// `heronite://stop`: closes the game when it runs here (a Sunshine stream
+/// of it ended); anything else running is left alone.
+fn stop_game(cx: &mut App, req: &crate::system::cli::LaunchRequest) {
+    let hub = hub(cx);
+    let (running, runtime) = {
+        let s = hub.0.borrow();
+        (s.running.contains_key(&req.app_name), s.runtime.clone())
+    };
+    if !running {
+        log::info!("stop request for {}: not running", req.app_name);
+        return;
+    }
+    log::info!("stop request: closing {}", req.app_name);
+    if !runtime.stop(&req.app_name) {
+        runtime.force_clear(&req.app_name);
     }
 }
 
@@ -163,11 +213,20 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
         return;
     }
     log::info!("request from another invocation: {msg:?}");
+    if let Some(req) = &msg.stop {
+        stop_game(cx, req);
+        if msg.launch.is_none() {
+            return;
+        }
+    }
     let hide_setting = hub(cx).0.borrow_mut().settings().hide_window_on_protocol_launch;
-    let cli = Cli { launch: msg.launch.clone(), no_gui: msg.no_gui, ..Default::default() };
+    let cli = Cli { launch: msg.launch.clone(), open_client: msg.open_client, no_gui: msg.no_gui, ..Default::default() };
     let hide = cli.hide_window(hide_setting);
     if !hide {
-        apply_window_flags(cx, msg.console, msg.fullscreen);
+        apply_window_flags(cx, msg.console, msg.fullscreen, false);
+    }
+    if let Some(client) = msg.open_client {
+        open_client(cx, client, false);
     }
     if let Some(link) = msg.mod_link {
         show_window(cx);
@@ -175,6 +234,8 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
         return;
     }
     match msg.launch {
+        // A shortcut of a store client asks for the client only.
+        None if msg.open_client.is_some() => {}
         // Heroic's `second-instance`: show the window unless the launch hides it.
         None => {
             show_window(cx);

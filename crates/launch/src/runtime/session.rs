@@ -36,6 +36,7 @@ pub(super) fn finish(shared: &Shared, log: &GameLog, req: &LaunchRequest, contro
         let rec = PlayRecord {
             app_name: req.app_name.clone(),
             title: req.title.clone(),
+            runner: req.runner.clone(),
             started_at,
             ended_at: started_at + chrono::Duration::milliseconds(elapsed.as_millis() as i64),
         };
@@ -129,7 +130,7 @@ pub(super) fn run_session(shared: Arc<Shared>, req: LaunchRequest, control: Arc<
     // launch preparation: what the prefix, the store setup and the fixes
     // write into the game folder must land there, not in the overwrite folder.
     match &req.plan {
-        LaunchPlan::SteamUri { app_id, uri } => run_steam(&shared, &log, &req, &control, app_id, uri),
+        LaunchPlan::SteamUri { app_id, uri, extras } => run_steam(&shared, &log, &req, &control, app_id, uri, extras),
         other => run_process(&shared, &log, &req, &control, other.process().expect("process plan")),
     }
     // Every path above closed it already; this covers a panic-free early return.
@@ -195,7 +196,9 @@ fn open_game_log(shared: &Shared, req: &LaunchRequest) -> Arc<GameLog> {
         return log;
     }
     let process = req.plan.process();
-    let native = matches!(req.plan, LaunchPlan::Native(_) | LaunchPlan::Emulator { .. } | LaunchPlan::SteamUri { .. });
+    let native = matches!(req.plan, LaunchPlan::Native(_) | LaunchPlan::Emulator { .. } | LaunchPlan::SteamUri { .. })
+        // An Epic game on Windows: no Wine.
+        || process.is_some_and(|p| p.ask_legendary);
     let system_info = shared.system_info.lock().unwrap().clone().map(|f| f());
     let settings_path = shared.paths.game_config(&req.app_name);
     let mut notes = process.map(|p| p.notes.clone()).unwrap_or_default();

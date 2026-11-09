@@ -6,16 +6,24 @@ pub mod num;
 pub mod paths;
 pub mod proc;
 pub mod temps;
+/// Helpers for other crates' tests (fake command-line tools).
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod text;
 
 pub mod added;
+pub mod age_rating;
 pub mod anticheat;
 pub mod appearance;
 pub mod art;
 pub mod carry_over;
 pub mod categories;
+pub mod clients;
 pub mod collection;
 pub mod config_games;
+pub mod console_art;
+pub mod console_theme;
+pub mod copies;
 pub mod details_url;
 pub mod field_names;
 pub mod focus;
@@ -43,12 +51,15 @@ pub mod sessions;
 pub mod settings;
 pub mod sideload;
 pub mod sideload_uninstall;
+pub mod smart_groups;
 pub mod stats;
 pub mod status;
 pub mod status_history;
 pub mod steam_owned;
+pub mod steam_tags;
 pub mod timeline;
 pub mod ui_state;
+pub mod xbox;
 
 pub use art::{ArtContext, ImageRef};
 pub use collection::{FacetFilters, FacetKind, InstallFilter, SortMode, StatusGroup, ViewQuery};

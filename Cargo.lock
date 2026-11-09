@@ -996,6 +996,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "cocoa"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2955,6 +2964,7 @@ dependencies = [
  "gpui-pre-http-client",
  "gpui-pre-util",
  "gpui-pre-wgpu",
+ "gpui-zoom",
  "libc",
  "log",
  "notify-rust",
@@ -3245,8 +3255,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-windows"
 version = "0.3.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "371f9bb13f97e3bea2f8b8e5e81232bb74d735153c244ae67f7400e743925b1c"
 dependencies = [
  "accesskit",
  "accesskit_windows",
@@ -3258,6 +3266,7 @@ dependencies = [
  "gpui-pre-collections",
  "gpui-pre-scheduler",
  "gpui-pre-util",
+ "gpui-zoom",
  "image",
  "itertools 0.14.0",
  "log",
@@ -3301,6 +3310,17 @@ name = "gpui-pre-ztracing-macro"
 version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d337c9acf058238e45ce0570d8a5958439242889492f91ae2d8e324211a61ccd"
+
+[[package]]
+name = "gpui-zoom"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "gpui-pre",
+ "raw-window-handle",
+ "uuid",
+ "windows 0.62.2",
+]
 
 [[package]]
 name = "granit-parser"
@@ -3491,17 +3511,23 @@ checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "heronite"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "ashpd",
  "chrono",
  "dirs 6.0.0",
+ "embed-resource",
  "futures",
  "gilrs",
  "gpui-kit",
+ "gpui-pre-linux",
+ "gpui-pre-windows",
+ "gpui-zoom",
+ "heronite-achievements",
  "heronite-amazon",
  "heronite-backup",
+ "heronite-clients",
  "heronite-data",
  "heronite-emulation",
  "heronite-epic",
@@ -3515,49 +3541,49 @@ dependencies = [
  "heronite-metadata",
  "heronite-mods",
  "heronite-overlay",
+ "heronite-platform",
  "heronite-shortcuts",
  "heronite-steam",
  "heronite-storage",
+ "heronite-sunshine",
+ "heronite-sync",
  "heronite-update",
  "heronite-wine",
+ "heronite-xbox",
  "image",
  "ksni",
  "libc",
  "log",
+ "notify",
  "notify-rust",
+ "qrcodegen",
+ "raw-window-handle",
  "rust-embed",
  "serde_json",
  "shlex 1.3.0",
  "signal-hook",
  "smallvec",
  "tempfile",
+ "trash",
 ]
 
 [[package]]
-name = "heronite-amazon"
-version = "0.14.0"
+name = "heronite-achievements"
+version = "1.5.0"
 dependencies = [
+ "aes",
  "anyhow",
- "heronite-data",
- "heronite-epic",
- "heronite-i18n",
- "heronite-launch",
- "log",
- "regex",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
-name = "heronite-backup"
-version = "0.14.0"
-dependencies = [
- "anyhow",
+ "base64 0.22.1",
+ "cbc",
+ "cc",
  "chrono",
  "heronite-data",
- "heronite-i18n",
- "libc",
+ "heronite-epic",
+ "heronite-gog",
+ "heronite-launch",
+ "heronite-metadata",
+ "heronite-platform",
+ "heronite-steam",
  "log",
  "serde",
  "serde_json",
@@ -3566,13 +3592,66 @@ dependencies = [
 ]
 
 [[package]]
-name = "heronite-data"
-version = "0.14.0"
+name = "heronite-amazon"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-i18n",
+ "heronite-launch",
+ "heronite-platform",
+ "log",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "heronite-backup"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-platform",
+ "log",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+]
+
+[[package]]
+name = "heronite-clients"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-data",
+ "heronite-epic",
+ "heronite-i18n",
+ "heronite-launch",
+ "heronite-platform",
+ "log",
+ "serde_json",
+ "shlex 1.3.0",
+ "tempfile",
+]
+
+[[package]]
+name = "heronite-data"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
  "dirs 6.0.0",
  "heronite-i18n",
+ "heronite-platform",
  "icu_collator",
  "indexmap",
  "libc",
@@ -3587,14 +3666,16 @@ dependencies = [
 
 [[package]]
 name = "heronite-emulation"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "dirs 6.0.0",
  "flate2",
  "heronite-data",
  "heronite-i18n",
  "heronite-launch",
+ "heronite-platform",
  "indexmap",
  "log",
  "regex",
@@ -3606,14 +3687,14 @@ dependencies = [
 
 [[package]]
 name = "heronite-epic"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
  "heronite-data",
  "heronite-i18n",
  "heronite-launch",
- "libc",
+ "heronite-platform",
  "log",
  "parking_lot",
  "regex",
@@ -3625,40 +3706,46 @@ dependencies = [
 
 [[package]]
 name = "heronite-epic-login"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
+ "embed-resource",
  "gtk",
+ "heronite-platform",
  "serde_json",
  "url",
+ "webkit2gtk",
+ "windows-sys 0.61.2",
  "wry",
 ]
 
 [[package]]
 name = "heronite-gog"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "heronite-data",
  "heronite-epic",
  "heronite-i18n",
  "heronite-launch",
+ "heronite-platform",
  "log",
  "serde",
  "serde_json",
  "tempfile",
  "ureq",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "heronite-i18n"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "heronite-images"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "fast_image_resize",
  "image",
@@ -3674,11 +3761,12 @@ dependencies = [
 
 [[package]]
 name = "heronite-import"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
  "heronite-data",
+ "heronite-platform",
  "log",
  "rusqlite",
  "serde-saphyr",
@@ -3688,13 +3776,14 @@ dependencies = [
 
 [[package]]
 name = "heronite-installer"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "heronite-data",
  "heronite-emulation",
  "heronite-i18n",
  "heronite-launch",
+ "heronite-platform",
  "log",
  "md-5",
  "serde",
@@ -3709,26 +3798,29 @@ dependencies = [
 
 [[package]]
 name = "heronite-launch"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
  "heronite-data",
  "heronite-i18n",
+ "heronite-platform",
  "libc",
  "log",
  "regex",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "shlex 1.3.0",
  "tempfile",
  "toml 0.8.23",
  "ureq",
+ "zip",
 ]
 
 [[package]]
 name = "heronite-media"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "ashpd",
  "chrono",
@@ -3738,6 +3830,7 @@ dependencies = [
  "heronite-data",
  "heronite-i18n",
  "heronite-images",
+ "heronite-platform",
  "image",
  "libwebp-sys",
  "log",
@@ -3752,11 +3845,12 @@ dependencies = [
  "signal-hook",
  "tempfile",
  "trash",
+ "windows 0.62.2",
 ]
 
 [[package]]
 name = "heronite-metadata"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3793,11 +3887,12 @@ dependencies = [
 
 [[package]]
 name = "heronite-overlay"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "evdev",
  "heronite-data",
  "heronite-i18n",
+ "heronite-platform",
  "libc",
  "log",
  "serde_json",
@@ -3805,14 +3900,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "heronite-platform"
+version = "1.5.0"
+dependencies = [
+ "ashpd",
+ "dirs 6.0.0",
+ "libc",
+ "log",
+ "pollster 0.4.0",
+ "sdl3-sys",
+ "tempfile",
+ "windows 0.62.2",
+ "windows-core 0.62.2",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "heronite-shortcuts"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
  "heronite-data",
  "heronite-i18n",
- "libc",
+ "heronite-platform",
  "log",
  "serde_json",
  "tempfile",
@@ -3820,32 +3931,36 @@ dependencies = [
 
 [[package]]
 name = "heronite-steam"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "heronite-data",
  "heronite-i18n",
  "heronite-launch",
+ "heronite-platform",
  "heronite-shortcuts",
  "log",
  "regex",
+ "serde",
  "serde_json",
  "shlex 1.3.0",
  "tempfile",
+ "ureq",
 ]
 
 [[package]]
 name = "heronite-storage"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
  "heronite-data",
  "heronite-i18n",
  "heronite-launch",
+ "heronite-platform",
  "heronite-wine",
- "libc",
  "log",
  "serde_json",
  "tempfile",
@@ -3853,24 +3968,60 @@ dependencies = [
 ]
 
 [[package]]
-name = "heronite-update"
-version = "0.14.0"
+name = "heronite-sunshine"
+version = "1.5.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "heronite-data",
- "heronite-i18n",
- "libc",
- "log",
- "minisign-verify",
- "serde",
+ "heronite-platform",
  "serde_json",
  "tempfile",
  "ureq",
 ]
 
 [[package]]
+name = "heronite-sync"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "heronite-backup",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-launch",
+ "heronite-metadata",
+ "heronite-platform",
+ "log",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "zip",
+]
+
+[[package]]
+name = "heronite-update"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-platform",
+ "libc",
+ "log",
+ "minisign-verify",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
+ "zip",
+]
+
+[[package]]
 name = "heronite-wine"
-version = "0.14.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "dirs 6.0.0",
@@ -3884,6 +4035,26 @@ dependencies = [
  "tempfile",
  "trash",
  "ureq",
+]
+
+[[package]]
+name = "heronite-xbox"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "getrandom 0.3.4",
+ "heronite-data",
+ "heronite-platform",
+ "log",
+ "roxmltree 0.21.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
+ "url",
 ]
 
 [[package]]
@@ -6426,6 +6597,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "qrcodegen"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
+
+[[package]]
 name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6912,6 +7089,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpkg-config"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a2d2f3481209a6b42eec2fbb49063fb4e8d35b57023401495d4fe0f85c817f0"
+
+[[package]]
 name = "rsqlite-vfs"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7249,6 +7432,24 @@ dependencies = [
  "objc-foundation",
  "objc_id",
  "once_cell",
+]
+
+[[package]]
+name = "sdl3-src"
+version = "3.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "400d0fb006a4485fde477cfc56a250c99d7bfb183fefd145c15fe7607db7fc49"
+
+[[package]]
+name = "sdl3-sys"
+version = "0.7.2+SDL-3.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b6a7f3cad40c5b318b3539bb4624389f4a03504cd5f4c65030787b962505ac"
+dependencies = [
+ "cc",
+ "cmake",
+ "rpkg-config",
+ "sdl3-src",
 ]
 
 [[package]]
@@ -8592,6 +8793,12 @@ checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 dependencies = [
  "core_maths",
 ]
+
+[[package]]
+name = "typed-path"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
 
 [[package]]
 name = "typeid"
@@ -10701,6 +10908,22 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "zip"
+version = "9.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1156b39d142a34b999c2310a50455e0cb3760bf7efad0122f796d813bee26ccb"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "getrandom 0.4.3",
+ "indexmap",
+ "memchr",
+ "nix 0.31.3",
+ "typed-path",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

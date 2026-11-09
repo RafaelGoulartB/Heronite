@@ -25,7 +25,9 @@ impl AddGameDialog {
     /// A new Windows or Linux game can start in the sandbox (a game in it
     /// changes it in its settings' Sandbox tab, which only such games have).
     pub(super) fn offers_sandbox(&self) -> bool {
-        !self.is_edit() && matches!(self.platform, SideloadPlatform::Windows | SideloadPlatform::Linux)
+        !self.is_edit()
+            && matches!(self.platform, SideloadPlatform::Windows | SideloadPlatform::Linux)
+            && heronite_platform::supported(heronite_platform::Feature::Sandbox)
     }
 
     pub(super) fn save(&mut self, cx: &mut Context<Self>) {
@@ -76,7 +78,7 @@ impl AddGameDialog {
             install_folder: if platform == SideloadPlatform::Linux { folder } else { String::new() },
             command: if by_command { command } else { String::new() },
         };
-        let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows)
+        let new_wine = (!self.is_edit() && platform == SideloadPlatform::Windows && uses_wine())
             .then(|| (self.prefix_path(cx), self.wine.as_ref().map(wine_to_value), self.bottle.clone()));
         let sandbox = (self.offers_sandbox() && self.sandbox).then(|| Sandbox { enabled: true, ..Default::default() }.to_value());
         let (paths, home, existing_run_as, is_edit) =

@@ -2,11 +2,12 @@
 //! this PC and how many games they have, turning the import of one on or
 //! off, and keeping the ones turned on in sync (a few seconds after start,
 //! then every quarter of an hour). Everything runs off the UI thread; the
-//! Collection reloads on [`LauncherImportsEvent::Imported`].
+//! Collection reloads on [`LauncherImportsEvent::Imported`]. Nothing comes
+//! in before the user turns a launcher on.
 //!
 //! After each import it looks for the games then in the Collection twice
 //! (`heronite_import::duplicates`: added here by hand, and brought in from
-//! Lutris, Bottles or Faugus), tells the Collection about the new ones
+//! Lutris, Bottles, Faugus or Playnite), tells the Collection about the new ones
 //! ([`LauncherImportsEvent::Duplicates`]) and settles each as the user picks
 //! in Settings → Other launchers ([`Resolve`]).
 //!
@@ -33,7 +34,16 @@ pub struct Summary {
     /// Games it has that can come in.
     pub games: usize,
     pub flatpak: bool,
+    /// It holds its library open (Playnite while it runs): its games are
+    /// read once it is closed.
+    pub in_use: bool,
 }
+
+/// Whether the launchers found are offered outside Settings → Other
+/// launchers too (the Collection's welcome, the first-start dialog), a
+/// click there bringing their games in. On Windows Playnite's games come in
+/// only from that section.
+pub const OFFERED_ELSEWHERE: bool = !cfg!(windows);
 
 pub enum LauncherImportsEvent {
     Imported(Launcher, Report),
@@ -83,7 +93,7 @@ pub struct LauncherImports {
 impl EventEmitter<LauncherImportsEvent> for LauncherImports {}
 
 fn home() -> std::path::PathBuf {
-    std::env::var_os("HOME").map(Into::into).unwrap_or_default()
+    heronite_platform::dirs::home().unwrap_or_default()
 }
 
 impl LauncherImports {
@@ -105,8 +115,13 @@ impl LauncherImports {
             saving,
         };
         let idle = !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS");
+        let supported = heronite_platform::supported(heronite_platform::Feature::LauncherImports);
         cx.spawn(async move |this, cx| {
-            if this.update(cx, |this, cx| this.look(cx)).is_err() || !idle {
+            // Where the launchers are offered only in their Settings section
+            // (Playnite), their libraries are read once it shows: Playnite
+            // starting with the PC cannot open its library while it is read.
+            let start = |this: &mut Self, cx: &mut Context<Self>| if OFFERED_ELSEWHERE { this.look(cx) } else { this.count(cx) };
+            if !supported || this.update(cx, start).is_err() || !idle {
                 return;
             }
             cx.background_executor().timer(FIRST_DELAY).await;
@@ -129,13 +144,29 @@ impl LauncherImports {
                 .background_spawn(async move {
                     let found: Vec<Summary> = heronite_import::detect(&home(), &paths)
                         .iter()
-                        .map(|f| Summary { launcher: f.launcher, games: f.count(), flatpak: f.flatpak })
+                        .map(|f| Summary { launcher: f.launcher, games: f.count(), flatpak: f.flatpak, in_use: f.in_use })
                         .collect();
                     (found, heronite_import::collection::counts(&paths))
                 })
                 .await;
             this.update(cx, |this, cx| {
                 this.found = Some(found);
+                this.in_collection = counts;
+                this.find_duplicates(false, cx);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// Counts the games each launcher brought into the Collection, without
+    /// reading the launchers.
+    fn count(&mut self, cx: &mut Context<Self>) {
+        let paths = self.paths.clone();
+        cx.spawn(async move |this, cx| {
+            let counts = cx.background_spawn(async move { heronite_import::collection::counts(&paths) }).await;
+            this.update(cx, |this, cx| {
                 this.in_collection = counts;
                 this.find_duplicates(false, cx);
                 cx.notify();
@@ -256,8 +287,12 @@ impl LauncherImports {
         cx.notify();
     }
 
-    /// The launchers found that have games and are not imported yet.
+    /// The launchers found that have games and are not imported yet, to
+    /// offer outside Settings ([`OFFERED_ELSEWHERE`]).
     pub fn offers(&self) -> Vec<Summary> {
+        if !OFFERED_ELSEWHERE {
+            return Vec::new();
+        }
         self.found.iter().flatten().filter(|s| s.games > 0 && !self.prefs.enabled.contains(&s.launcher)).cloned().collect()
     }
 
@@ -314,6 +349,9 @@ impl LauncherImports {
                 .background_spawn(async move {
                     let found = heronite_import::detect(&home(), &paths).into_iter().find(|f| f.launcher == launcher);
                     let Some(found) = found else { return Err(heronite_i18n::tr!("Not found on this PC").to_string()) };
+                    if found.in_use {
+                        return Err(heronite_i18n::tr!("Close {launcher} to bring its games in.", launcher = launcher.name()));
+                    }
                     let report = heronite_import::sync(&paths, &found, &removed).map_err(|e| format!("{e:#}"))?;
                     Ok((report, found.count(), heronite_import::collection::counts(&paths)[&launcher]))
                 })

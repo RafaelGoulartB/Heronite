@@ -66,11 +66,20 @@ pub(super) fn short_path(path: &str, target: &RestoreTarget) -> String {
             return tr!("Prefix: {file}", file = rest.display().to_string());
         }
     }
+    // Ludusavi's `/`, also on Windows, so the folders below split one way.
+    let shown = |rest: &Path| {
+        let text = rest.display().to_string();
+        if cfg!(windows) {
+            text.replace('\\', "/")
+        } else {
+            text
+        }
+    };
     if let Some(rest) = target.install_dir.as_ref().and_then(|d| p.strip_prefix(d).ok()) {
-        return tr!("Game folder: {file}", file = rest.display().to_string());
+        return tr!("Game folder: {file}", file = shown(rest));
     }
     if let Some(rest) = target.steam_userdata.as_ref().and_then(|d| p.strip_prefix(d).ok()) {
-        return tr!("Steam userdata: {file}", file = rest.display().to_string());
+        return tr!("Steam userdata: {file}", file = shown(rest));
     }
     path.to_string()
 }
@@ -180,6 +189,7 @@ pub(super) fn group_title(kind: FileKind) -> &'static str {
         FileKind::Save => tr!("Game saves"),
         FileKind::Registry => tr!("Wine registry"),
         FileKind::Outside => tr!("Outside the game's prefix"),
+        FileKind::Unmapped if cfg!(windows) => tr!("No place on this PC"),
         FileKind::Unmapped => tr!("No place on Linux"),
     }
 }
@@ -201,6 +211,9 @@ pub(super) fn group_help(kind: FileKind) -> Option<&'static str> {
         )),
         FileKind::Outside => {
             Some(tr!("Copies from another prefix or Steam library; they restore to where they came from."))
+        }
+        FileKind::Unmapped if cfg!(windows) => {
+            Some(tr!("Linux paths, Wine registry files or a drive this PC does not have. They cannot be restored here."))
         }
         FileKind::Unmapped => Some(tr!("Windows paths on another drive. They cannot be restored here.")),
     }
@@ -533,8 +546,12 @@ impl SaveBackupsView {
 
         let mut col = div().flex().flex_col().gap(px(10.));
         if !groups.iter().any(|g| g.kind == FileKind::Save) {
-            col =
-                col.child(card_box().py(px(12.)).child(meta_text(tr!("Nothing in this backup belongs in the game's prefix or folders."))));
+            let text = if cfg!(windows) {
+                tr!("Nothing in this backup has a place on this PC.")
+            } else {
+                tr!("Nothing in this backup belongs in the game's prefix or folders.")
+            };
+            col = col.child(card_box().py(px(12.)).child(meta_text(text)));
         }
         for g in groups {
             col = col.child(self.group_card(g, cx));
@@ -620,6 +637,26 @@ impl SaveBackupsView {
 #[cfg(test)]
 mod tests {
     use super::folders;
+
+    /// Windows: the game folder's files read with `/` like Ludusavi's, so
+    /// they group by folder.
+    #[cfg(windows)]
+    #[test]
+    fn windows_paths_group_by_folder() {
+        use super::short_path;
+        use heronite_emulation::ludusavi::restore::RestoreTarget;
+        let t = RestoreTarget { install_dir: Some(r"D:\Games\Hollow Knight".into()), ..Default::default() };
+        let game = short_path("D:/Games/Hollow Knight/saves/a.sav", &t);
+        assert_eq!(game, "Game folder: saves/a.sav");
+        let mine = "C:/Users/rafael/AppData/LocalLow/Team Cherry/Hollow Knight";
+        let paths = vec![
+            short_path(&format!("{mine}/user1.dat"), &t),
+            short_path(&format!("{mine}/backups/user1.dat.bak"), &t),
+            game,
+            short_path("D:/Games/Hollow Knight/saves/b.sav", &t),
+        ];
+        assert_eq!(folders(&paths), [(mine.to_string(), 2), ("Game folder: saves".to_string(), 2)]);
+    }
 
     #[test]
     fn folders_merge_under_the_game_folder() {

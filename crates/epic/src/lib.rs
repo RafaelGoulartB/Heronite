@@ -17,6 +17,7 @@
 //! * [`autoupdate`]: which updates `autoUpdateGames` may queue now.
 //! * [`eos_overlay`]: the EOS Overlay (`legendary eos-overlay`).
 //! * [`third_party`]: games of the EA app and Ubisoft Connect.
+//! * [`egl`]: games the Epic Games Launcher installed (Windows).
 //!
 //! legendary's own files (`legendaryConfig/legendary/**`) are only ever
 //! written by legendary; `third-party-installed.json` there is Heroic's.
@@ -25,6 +26,7 @@ pub mod autoupdate;
 pub mod cache_store;
 pub mod cmd;
 pub mod disk;
+pub mod egl;
 pub mod eos_overlay;
 pub mod info;
 pub mod launch_options;

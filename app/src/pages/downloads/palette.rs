@@ -58,7 +58,7 @@ impl PaletteCommands for DownloadsPage {
             "pause" => self.svc.update(cx, |s, _| s.pause()),
             "resume" => self.svc.update(cx, |s, _| s.resume()),
             // The page's own question: keep the files or delete them.
-            "stop" => self.confirm_stop = true,
+            "stop" => self.confirm_stop = self.svc.read(cx).snapshot().queue.first().map(|e| e.params.app_name.clone()),
             "update-all" => self.svc.update(cx, |s, cx| s.update_all(cx)),
             "clear" => self.svc.update(cx, |s, _| s.clear_finished()),
             _ => {}

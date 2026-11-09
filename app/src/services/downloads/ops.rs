@@ -16,6 +16,9 @@ use serde_json::Value;
 
 use super::{Busy, Downloads, DownloadsEvent};
 
+/// The busy key of [`Downloads::import_from_launcher`].
+pub const LAUNCHER_IMPORT: &str = "epic-games-launcher";
+
 enum OpMsg {
     Percent(Option<f32>),
     Done(OpResult),
@@ -244,6 +247,14 @@ impl Downloads {
                 }
             }
             r
+        });
+    }
+
+    /// Windows: takes in the games the Epic Games Launcher installed on this
+    /// PC, without downloading them (see `heronite_epic::egl`).
+    pub fn import_from_launcher(&mut self, cx: &mut Context<Self>) {
+        self.run_op(LAUNCHER_IMPORT, tr!("Importing from the Epic Games Launcher"), false, cx, |data_paths, lg, _, _| {
+            heronite_epic::egl::import(data_paths, lg)
         });
     }
 

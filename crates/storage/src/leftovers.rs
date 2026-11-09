@@ -3,8 +3,9 @@
 //! removed from the Collection. A folder is kept out when anything known
 //! lives in it: an installed game's files, a prefix, a ROM folder, an
 //! emulator, a download in the queue, a Steam library, a game of Lutris,
-//! Bottles or Faugus, or any path the settings name. Folders changed in the last hours
-//! are left out too (an install may be writing to them).
+//! Bottles, Faugus or a store client (or its prefix), or any path the settings
+//! name. Folders changed in the last hours are left out too (an install may be
+//! writing to them).
 
 use std::collections::HashMap;
 use std::fs;
@@ -30,8 +31,10 @@ pub(crate) fn items(ctx: &Ctx, lib: &Library, listed: &[Item], walked: &SizeCach
     ]
     .into_iter()
     .flatten()
-    .map(|s| PathBuf::from(s.trim_end_matches('/')))
+    .map(|s| PathBuf::from(s.trim_end_matches(std::path::is_separator)))
     .filter(|p| p.is_absolute() && p.is_dir())
+    // A whole drive (`D:\`) is no games folder: everything else on it would show.
+    .filter(|p| !cfg!(windows) || p.parent().is_some())
     .collect();
     roots.sort();
     roots.dedup();
@@ -40,8 +43,8 @@ pub(crate) fn items(ctx: &Ctx, lib: &Library, listed: &[Item], walked: &SizeCach
     let mut known = installed_paths.clone();
     known.extend(listed.iter().flat_map(|i| i.paths.iter().cloned().chain([i.folder.clone()])));
     known.push(ctx.data_paths.root.clone());
-    // What Lutris, Bottles and Faugus keep is theirs, installed there or not.
-    known.extend(heronite_data::launchers::managed_paths(&ctx.data_paths).into_iter().map(|m| m.path));
+    // What Lutris, Bottles, Faugus and the store clients keep is theirs, installed there or not.
+    known.extend(heronite_data::launchers::managed_paths(&ctx.data_paths, &home).into_iter().map(|m| m.path));
     known.extend(json_paths(&Value::Object(global)));
     for file in [ctx.data_paths.rom_scanners(), ctx.data_paths.emulators(), ctx.data_paths.download_manager()] {
         if let Ok(v) = json_store::read_value(&file) {
@@ -94,21 +97,25 @@ fn game_paths(g: &CollectionGame) -> Vec<PathBuf> {
 /// The visible, non-empty folders of `root` not changed for a while.
 fn candidates(root: &Path) -> Vec<PathBuf> {
     let Ok(rd) = fs::read_dir(root) else { return Vec::new() };
-    let now = SystemTime::now();
     let mut out: Vec<PathBuf> = rd
         .flatten()
         .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))
+        .filter(|e| !e.metadata().is_ok_and(|m| heronite_platform::disks::hidden(&m)))
         // Not followed: a link to a folder elsewhere is not this folder's.
         .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
         .map(|e| e.path())
         .filter(|p| fs::read_dir(p).is_ok_and(|mut d| d.next().is_some()))
-        .filter(|p| {
-            let changed = fs::metadata(p).and_then(|m| m.modified()).unwrap_or(now);
-            now.duration_since(changed).unwrap_or_default() >= RECENT
-        })
+        .filter(|p| old_enough(p))
         .collect();
     out.sort();
     out
+}
+
+/// Whether `path` was not changed for a while ([`RECENT`]).
+pub(crate) fn old_enough(path: &Path) -> bool {
+    let now = SystemTime::now();
+    let changed = fs::metadata(path).and_then(|m| m.modified()).unwrap_or(now);
+    now.duration_since(changed).unwrap_or_default() >= RECENT
 }
 
 /// Absolute paths among the string values of `v`, at any depth.
@@ -117,7 +124,7 @@ fn json_paths(v: &Value) -> Vec<PathBuf> {
     let mut stack = vec![v];
     while let Some(v) = stack.pop() {
         match v {
-            Value::String(s) if s.starts_with('/') => out.push(PathBuf::from(s.trim_end_matches('/'))),
+            Value::String(s) if Path::new(s).is_absolute() => out.push(PathBuf::from(s.trim_end_matches(std::path::is_separator))),
             Value::Array(a) => stack.extend(a),
             Value::Object(o) => stack.extend(o.values()),
             _ => {}
@@ -133,10 +140,66 @@ mod tests {
 
     #[test]
     fn finds_paths_at_any_depth() {
-        let v = json!({"a": "/games/x/", "b": [{"c": "/roms"}, "relative", 3], "d": "https://x"});
+        let (games, roms) = if cfg!(windows) { (r"D:\Games\x\", r"E:\roms") } else { ("/games/x/", "/roms") };
+        let v = json!({"a": games, "b": [{"c": roms}, "relative", 3], "d": "https://x"});
         let mut p = json_paths(&v);
         p.sort();
-        assert_eq!(p, [PathBuf::from("/games/x"), PathBuf::from("/roms")]);
+        assert_eq!(p, [PathBuf::from(games.trim_end_matches(std::path::is_separator)), PathBuf::from(roms)]);
+    }
+
+    // Store clients run under Wine: Linux's.
+    /// A store client's prefix and games sit in the games folder like a
+    /// leftover would, without any installed game of ours pointing there.
+    #[cfg(unix)]
+    #[test]
+    fn what_a_store_client_keeps_is_not_a_leftover() {
+        use heronite_data::{AppPaths, DataPaths};
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        let ctx = Ctx {
+            data_paths: DataPaths::at(dir.path().join("data")),
+            app: AppPaths { config: dir.path().join("cfg"), cache: dir.path().join("cache") },
+            home: home.clone(),
+            updating: false,
+        };
+        let root = home.join("Games/Heroic");
+        let old = SystemTime::now() - Duration::from_secs(3 * 3600);
+        let folders = ["Battle.net", "Anno 1800", "Old Game"].map(|n| root.join(n));
+        for f in &folders {
+            fs::create_dir_all(f.join("drive_c")).unwrap();
+            fs::File::open(f).unwrap().set_modified(old).unwrap();
+        }
+        let paths = &ctx.data_paths;
+        let client = heronite_data::clients::Client::BattleNet;
+        game_config::set_game_setting(paths, client.config_app(), &ctx.home_str(), "winePrefix", json!(folders[0])).unwrap();
+        json_store::write(
+            &paths.sideload_library(),
+            &json!({"games": [{"runner": "sideload", "app_name": "ubisoft_635", "title": "Anno 1800", "install": {"install_path": folders[1]}}]}),
+        )
+        .unwrap();
+        json_store::write(
+            &paths.local_meta(),
+            &json!({"games": {"ubisoft_635": {"appName": "ubisoft_635", "runner": "sideload", "source": "ubisoft", "launchKind": "client"}}}),
+        )
+        .unwrap();
+
+        let lib = Library::load(paths).unwrap();
+        let found = items(&ctx, &lib, &[], &SizeCache::default());
+        assert_eq!(found.iter().map(|i| i.folder.clone()).collect::<Vec<_>>(), [folders[2].clone()]);
+    }
+
+    /// Sets a folder's modification time.
+    fn age(dir: &Path, when: SystemTime) {
+        let mut open = fs::File::options();
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            // FILE_FLAG_BACKUP_SEMANTICS: a folder opens too.
+            open.write(true).custom_flags(0x0200_0000);
+        }
+        #[cfg(unix)]
+        open.read(true);
+        open.open(dir).unwrap().set_modified(when).unwrap();
     }
 
     #[test]
@@ -146,13 +209,22 @@ mod tests {
         fs::create_dir_all(r.join("Old Game/saves")).unwrap();
         fs::create_dir_all(r.join("Empty")).unwrap();
         fs::create_dir_all(r.join(".hidden/x")).unwrap();
+        fs::create_dir_all(r.join("System Volume Information/x")).unwrap();
         fs::write(r.join("file.txt"), "x").unwrap();
         // Everything was just made: nothing is old enough yet.
         assert!(candidates(r).is_empty());
         let old = SystemTime::now() - Duration::from_secs(3 * 3600);
-        for d in ["Old Game", "Empty", ".hidden"] {
-            fs::File::open(r.join(d)).unwrap().set_modified(old).unwrap();
+        for d in ["Old Game", "Empty", ".hidden", "System Volume Information"] {
+            age(&r.join(d), old);
         }
-        assert_eq!(candidates(r), [r.join("Old Game")]);
+        #[cfg(windows)]
+        {
+            // Windows hides it by its attributes, not its name.
+            let out = std::process::Command::new("attrib").arg("+h").arg("+s").arg(r.join("System Volume Information")).output().unwrap();
+            assert!(out.status.success());
+            assert_eq!(candidates(r), [r.join("Old Game")]);
+        }
+        #[cfg(unix)]
+        assert_eq!(candidates(r), [r.join("Old Game"), r.join("System Volume Information")]);
     }
 }

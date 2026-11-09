@@ -218,7 +218,8 @@ mod tests {
         let md = metadata_from_playnite_game("a", "sideload", &g, dir.path());
         assert_eq!(md.themes, ["Action"]);
         assert_eq!(md.description.as_deref(), Some("Hi"));
-        assert_eq!(md.cover_url.as_deref(), Some(dir.path().join("files/abc/cover.png").to_str().unwrap()));
+        // As paths: Windows takes `/` and `\` alike.
+        assert_eq!(md.cover_url.as_deref().map(Path::new), Some(dir.path().join("files/abc/cover.png").as_path()));
         // Bigger than 2 MB: not usable.
         assert!(md.hero_url.is_none());
     }

@@ -1,5 +1,5 @@
 //! Left column of the focus panel: the cover, Play (or the Epic progress),
-//! the status selector with favourite / metadata / settings, the user's star
+//! the status selector with favourite / settings, the user's star
 //! rating and a facts card (score, library, save backup, Linux). When the
 //! panel is narrow the same pieces sit in a row under the title.
 
@@ -15,10 +15,11 @@ use super::vm::FocusVm;
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::{icon, round_button};
+use crate::ui::{icon, round_button, tooltip};
 use heronite_i18n::tr;
 
-const STAR: u32 = 0xf4d35e;
+/// Gold of a favourite heart and of the rating stars.
+pub(super) const STAR: u32 = 0xf4d35e;
 const NARROW_COVER_W: f32 = 120.;
 
 impl CollectionView {
@@ -59,7 +60,8 @@ impl CollectionView {
             .child(self.focus_status_row(vm, vh, cx))
             .children(self.left_off_card(&vm.key, cx))
             .child(self.rating_row(&vm.key, cx))
-            .child(self.facts_card(vm, cx));
+            .child(self.facts_card(vm, cx))
+            .children(self.copies_card(&vm.key, cx));
 
         if lay.narrow {
             return div().flex().items_start().gap(px(20.)).child(cover).child(controls.flex_1().max_w(px(380.))).into_any_element();
@@ -160,7 +162,7 @@ impl CollectionView {
         div().flex().flex_col().gap(px(8.)).children(play).children(epic_el).into_any_element()
     }
 
-    /// Status selector, favourite, metadata and game settings.
+    /// Status selector, favourite and game settings.
     pub(super) fn focus_status_row(&mut self, vm: &FocusVm, vh: f32, cx: &mut Context<Self>) -> Div {
         let open = self.facts.status_open;
         let (name, color) = match &vm.status {
@@ -198,14 +200,12 @@ impl CollectionView {
             .child(wrap)
             .child(
                 round_button("focus-fav", if vm.favourite { Icon::Star } else { Icon::StarBorder }, 36., 0.72)
+                    .tooltip(tooltip(if vm.favourite { tr!("Remove from favourites") } else { tr!("Add to favourites") }))
                     .on_click(cx.listener(|this, _, _, cx| this.toggle_favourite(cx))),
             )
             .child(
-                round_button("focus-meta", Icon::TravelExplore, 36., 0.72)
-                    .on_click(cx.listener(|this, _, window, cx| this.open_metadata(window, cx))),
-            )
-            .child(
                 round_button("focus-settings", Icon::Settings, 36., 0.72)
+                    .tooltip(tooltip(tr!("Game settings")))
                     .on_click(cx.listener(|this, _, window, cx| this.open_game_settings(window, cx))),
             )
     }
@@ -321,7 +321,7 @@ impl CollectionView {
                     .child(icon(
                         if on { Icon::Star } else { Icon::StarBorder },
                         px(20.),
-                        if on { theme::readable(rgb(STAR)) } else { theme::ink_a(0.3) },
+                        if on { theme::readable(rgb(STAR)) } else { theme::ink_a(0.42) },
                     ))
                     .on_hover(cx.listener(move |this, h: &bool, _, cx| {
                         if *h {
@@ -359,7 +359,7 @@ impl CollectionView {
                 .items_center()
                 .justify_end()
                 .gap(px(8.))
-                .children(vm.score_source.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.45)).child(s)))
+                .children(vm.score_source.clone().map(|s| div().text_size(px(12.)).text_color(theme::ink_a(0.6)).child(s)))
                 .child(
                     div()
                         .px(px(7.))
@@ -370,6 +370,9 @@ impl CollectionView {
                         .child(format!("{score:.0}")),
                 );
             rows.push(fact_row(tr!("Score"), value).into_any_element());
+        }
+        if vm.age_shown {
+            rows.push(self.age_row(vm.age.as_ref(), cx));
         }
         // Filters the collection by the store the game comes from.
         let key = vm.key.clone();
@@ -392,7 +395,7 @@ impl CollectionView {
                 rows.push(self.backup_row(&vm.key, div().text_color(theme::readable(color)).child(text), cx));
             }
             Some(Backup::Never) => {
-                rows.push(self.backup_row(&vm.key, div().text_color(theme::ink_a(0.52)).child(tr!("Never")), cx));
+                rows.push(self.backup_row(&vm.key, div().text_color(theme::ink_a(0.66)).child(tr!("Never")), cx));
             }
             Some(Backup::Off) | None => {}
         }
@@ -427,7 +430,7 @@ impl CollectionView {
     }
 }
 
-fn fact_row(label: &'static str, value: Div) -> Div {
+pub(super) fn fact_row(label: &'static str, value: Div) -> Div {
     div()
         .flex()
         .items_center()
@@ -435,7 +438,7 @@ fn fact_row(label: &'static str, value: Div) -> Div {
         .gap(px(12.))
         .py(px(7.))
         .text_size(px(13.))
-        .child(div().flex_none().text_color(theme::ink_a(0.52)).child(label))
+        .child(div().flex_none().text_color(theme::ink_a(0.66)).child(label))
         .child(value.min_w_0().truncate().text_color(theme::ink_a(0.94)))
 }
 
@@ -446,7 +449,7 @@ fn clickable(row: Div, id: &'static str) -> Stateful<Div> {
 }
 
 /// Critic score colour: green from 75, amber from 50, red below.
-fn score_color(score: f64) -> Rgba {
+pub(super) fn score_color(score: f64) -> Rgba {
     match score {
         s if s >= 75. => rgb(0x3ecf8e),
         s if s >= 50. => rgb(0xf0a202),

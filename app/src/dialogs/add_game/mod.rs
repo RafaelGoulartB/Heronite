@@ -9,6 +9,7 @@ mod actions;
 mod art;
 mod console;
 mod debug;
+pub(crate) mod dropped;
 mod form;
 mod logic;
 pub mod picker;
@@ -37,6 +38,7 @@ use crate::ui::controls::{action_button, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{meta_text, new_input};
 use logic::*;
+pub(crate) use logic::{clean_title, default_wine, install_folder, suggested_prefix};
 use picker::{ImagePicker, Slot};
 
 /// Id of the store note in `ui-state.json` once "Got it" hides it.
@@ -123,6 +125,8 @@ pub struct AddGameDialog {
     show_wine: bool,
     /// Last prefix this dialog suggested (typing over it stops suggestions).
     last_suggested: String,
+    /// Last title the executable gave (typing over it stops it following).
+    last_auto_title: String,
     wine_list: Option<Vec<WineInstallation>>,
     wine: Option<WineInstallation>,
     images: Entity<DialogImages>,
@@ -278,10 +282,15 @@ impl AddGameDialog {
                 }
             }));
         }
-        subs.push(cx.subscribe_in(&exe_in, window, |this, input, ev: &InputEvent, _, cx| {
+        subs.push(cx.subscribe_in(&exe_in, window, |this, input, ev: &InputEvent, window, cx| {
             if matches!(ev, InputEvent::Change | InputEvent::Blur) {
                 let path = input.read(cx).value().to_string();
                 this.executable_changed(&path);
+                this.fill_title_from(&path, window, cx);
+                // A path typed or pasted: the art once the field is left.
+                if matches!(ev, InputEvent::Blur) {
+                    this.auto_find_art(window, cx);
+                }
                 cx.notify();
             }
         }));
@@ -323,6 +332,7 @@ impl AddGameDialog {
             sandbox: false,
             show_wine: true,
             last_suggested: suggested,
+            last_auto_title: String::new(),
             wine_list: None,
             wine: wine_global,
             images,
@@ -495,7 +505,7 @@ impl Render for AddGameDialog {
         }
         let edit = self.is_edit();
         let entity = cx.entity().downgrade();
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
 
         let (title, body, footer) = if self.confirm_discard {
             let footer = div()

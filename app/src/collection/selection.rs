@@ -74,6 +74,9 @@ pub(super) struct Selection {
     pub keys: Vec<SharedString>,
     /// Last card clicked: where a Shift click range starts.
     pub anchor: Option<SharedString>,
+    /// The games the last Shift + arrow move picked (`keys.rs`); the next
+    /// one replaces them. Any other change of the selection forgets them.
+    pub shift_range: Vec<SharedString>,
     /// Games in each category when the selection was made (a category's
     /// last click puts them back).
     orig: HashMap<String, HashSet<SharedString>>,
@@ -87,6 +90,10 @@ pub(super) struct Selection {
     /// A batch change or an undo was written and the library has not been
     /// reloaded yet (since then): an undo now would compare stale games.
     reloading: Option<std::time::Instant>,
+    /// An undo was asked for during that reload: it runs once the reload
+    /// ends, or when `undo_timer` gives up waiting.
+    undo_waiting: bool,
+    undo_timer: Option<Task<()>>,
 }
 
 impl Selection {
@@ -184,6 +191,13 @@ impl CollectionView {
         self.sel.keys.iter().filter_map(|k| lib.get(k).cloned()).collect()
     }
 
+    /// The selected games and, while copies are grouped, their other copies:
+    /// what a batch change writes to.
+    pub(super) fn selected_with_copies(&self) -> Vec<Arc<CollectionGame>> {
+        let mut seen = HashSet::new();
+        self.selected_games().iter().flat_map(|g| self.with_copies(&g.key)).filter(|g| seen.insert(g.key.clone())).collect()
+    }
+
     /// Replaces the selection (unknown and repeated keys dropped).
     pub(super) fn set_selection(&mut self, keys: Vec<SharedString>) {
         let Some(lib) = self.lib.clone() else { return };
@@ -199,6 +213,7 @@ impl CollectionView {
             .collect();
         let s = &mut self.sel;
         s.keys = keys;
+        s.shift_range.clear();
         s.orig = orig;
         s.steps.clear();
         s.reseed = false;
@@ -211,7 +226,7 @@ impl CollectionView {
         self.set_selection(Vec::new());
     }
 
-    fn toggle_selected(&mut self, key: SharedString) {
+    pub(super) fn toggle_selected(&mut self, key: SharedString) {
         let mut keys = self.sel.keys.clone();
         match keys.iter().position(|k| *k == key) {
             Some(i) => {
@@ -242,7 +257,8 @@ impl CollectionView {
                 let mut keys = self.sel.keys.clone();
                 keys.extend(order[a.min(b)..=a.max(b)].iter().cloned());
                 self.set_selection(keys);
-                self.sel.anchor = Some(key);
+                self.sel.anchor = Some(key.clone());
+                self.select(key, true);
                 return;
             }
         }
@@ -254,11 +270,16 @@ impl CollectionView {
             }
         }
         if ctrl || self.sel.active() {
-            self.toggle_selected(key);
+            // The keyboard carries on from the card clicked.
+            self.toggle_selected(key.clone());
+            self.select(key, true);
             return;
         }
         self.select(key.clone(), true);
         self.sel.anchor = Some(key);
+        if ev.click_count() > 1 {
+            self.grid.drawer_closed = false;
+        }
     }
 
     /// The context menu's "Select multiple" / "Add to selection".
@@ -297,11 +318,16 @@ impl CollectionView {
     }
 
     /// After a reload: games gone from the list (hidden, removed) leave the
-    /// selection; after an undo the categories' starting point is taken again.
-    pub(super) fn prune_selection(&mut self) {
+    /// selection; after an undo the categories' starting point is taken again,
+    /// and an undo that waited for the reload runs.
+    pub(super) fn prune_selection(&mut self, cx: &mut Context<Self>) {
         // A load that read the files before the change is followed by another.
         if !self.reload_again {
             self.sel.reloading = None;
+        }
+        if self.sel.reloading.is_none() && std::mem::take(&mut self.sel.undo_waiting) {
+            self.sel.undo_timer = None;
+            cx.spawn(async move |this, cx| this.update(cx, |this, cx| this.undo_batch(cx)).ok()).detach();
         }
         if !self.sel.active() {
             return;
@@ -400,7 +426,7 @@ impl CollectionView {
     }
 
     pub(super) fn batch_status(&mut self, status_id: String, cx: &mut Context<Self>) {
-        let games = self.selected_games();
+        let games = self.selected_with_copies();
         if games.is_empty() {
             return;
         }
@@ -431,17 +457,24 @@ impl CollectionView {
         let step = (self.sel.steps.get(&name).copied().unwrap_or(0) + 1) % cyc.len();
         self.sel.steps.insert(name.clone(), step);
         let to = cyc[step];
-        let writes: Vec<(String, String, bool)> = games
-            .iter()
-            .map(|g| {
-                let on = match to {
-                    Step::All => true,
-                    Step::None => false,
-                    Step::AsWas => orig.contains(g.key.as_str()),
-                };
-                (g.runner.clone(), g.app_name.clone(), on)
-            })
-            .collect();
+        // Every copy of a picked card follows that card (see `with_copies`).
+        let mut seen = HashSet::new();
+        let mut all = Vec::new();
+        let mut writes: Vec<(String, String, bool)> = Vec::new();
+        for g in &games {
+            let on = match to {
+                Step::All => true,
+                Step::None => false,
+                Step::AsWas => orig.contains(g.key.as_str()),
+            };
+            for c in self.with_copies(&g.key) {
+                if seen.insert(c.key.clone()) {
+                    writes.push((c.runner.clone(), c.app_name.clone(), on));
+                    all.push(c);
+                }
+            }
+        }
+        let games = all;
         let on = writes.iter().map(|(_, _, on)| *on).collect();
         let undo = self.snapshot(After::Categories { name: name.clone(), on }, &games);
         let n = games.len();
@@ -456,7 +489,7 @@ impl CollectionView {
     /// Adds every selected game to the favourites, or takes them all out when
     /// they all are.
     pub(super) fn batch_favourite(&mut self, cx: &mut Context<Self>) {
-        let games = self.selected_games();
+        let games = self.selected_with_copies();
         if games.is_empty() {
             return;
         }
@@ -476,7 +509,7 @@ impl CollectionView {
     /// Hides every selected game (they leave the list unless hidden games
     /// are shown), or shows them again when they all are hidden.
     pub(super) fn batch_hide(&mut self, cx: &mut Context<Self>) {
-        let games = self.selected_games();
+        let games = self.selected_with_copies();
         if games.is_empty() {
             return;
         }
@@ -533,7 +566,23 @@ impl CollectionView {
             return false;
         }
         // The last change is not on screen yet: its games cannot be compared.
-        if self.sel.reloading.is_some_and(|at| at.elapsed() < RELOAD_WAIT) {
+        // The undo waits for the reload, or RELOAD_WAIT at most.
+        if let Some(at) = self.sel.reloading.filter(|at| at.elapsed() < RELOAD_WAIT) {
+            if !self.sel.undo_waiting {
+                self.sel.undo_waiting = true;
+                self.show_toast(tr!("Undoing as soon as the library has reloaded…"), false, cx);
+                // A little past the limit, so the timed-out undo goes ahead.
+                let wait = RELOAD_WAIT.saturating_sub(at.elapsed()) + std::time::Duration::from_millis(50);
+                self.sel.undo_timer = Some(cx.spawn(async move |this, cx| {
+                    cx.background_executor().timer(wait).await;
+                    this.update(cx, |this, cx| {
+                        if std::mem::take(&mut this.sel.undo_waiting) {
+                            this.undo_batch(cx);
+                        }
+                    })
+                    .ok();
+                }));
+            }
             return true;
         }
         let Some(u) = self.sel.undo.pop() else { return false };

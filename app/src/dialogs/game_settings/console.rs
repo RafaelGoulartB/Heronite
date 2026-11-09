@@ -9,7 +9,6 @@ use heronite_i18n::{n_, tr};
 use heronite_launch::native::{ExecutableKind, Platform};
 use heronite_metadata::ArtKind;
 
-use super::super::DialogEvent;
 use super::details::TAG_FIELDS;
 use super::{GameSettingsDialog, Tab};
 use crate::console::browser::{Browser, BrowserEvent, PickKind};
@@ -259,7 +258,7 @@ impl GameSettingsDialog {
         self.images.update(cx, |im, _| im.frame(window));
         let s = kit::scale();
         let scale = window.scale_factor();
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         let (hero_chain, _) = self.art_chain(ArtKind::Hero);
         let hero = if hero_chain.is_empty() {
             None
@@ -385,8 +384,10 @@ impl PadTarget for GameSettingsDialog {
                 return true;
             }
             Pad::B if self.tab == Tab::Actions && self.close_action_editor(cx) => return true,
+            Pad::B if self.cancel_reset_question(cx) => return true,
             Pad::B => {
-                cx.emit(DialogEvent::Close);
+                // What the Details tab has pending is saved first.
+                self.close(cx);
                 return true;
             }
             _ => {}

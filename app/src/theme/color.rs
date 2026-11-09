@@ -218,17 +218,40 @@ pub fn danger() -> Rgba {
 pub fn warning() -> Rgba {
     status(0xf5cd5b, 0x745808)
 }
+/// The gold of the RetroAchievements card (Settings → Achievements): its
+/// trophy, benefit icons and Sign in button, with `brand_gold_text` on the
+/// button; the same in both themes.
+pub fn brand_gold() -> Rgba {
+    rgb(0xf2c75c)
+}
+pub fn brand_gold_text() -> Rgba {
+    rgb(0x2b1a07)
+}
 pub fn selected_ring() -> Rgba {
     cpick(0xe8dcc0, 0x2a313b, |p| p.text)
 }
 
-/// Console mode (proposal "2 · Console"): dark surfaces, a light pill for
-/// the focused row, controller button colours.
+/// A console theme's colour (`console::look`) while console mode is on, else `default`.
+fn themed(pick: fn() -> Option<Rgba>, default: u32) -> Rgba {
+    if crate::console::active() {
+        pick().unwrap_or_else(|| rgb(default))
+    } else {
+        rgb(default)
+    }
+}
+
+/// Console mode with a light console theme on (dark text, washed-out art).
+fn console_light() -> bool {
+    crate::console::active() && crate::console::kit::light()
+}
+
+/// Console mode: dark surfaces, a light pill for the focused row,
+/// controller button colours (a console theme may replace them).
 pub fn console_bg() -> Rgba {
-    rgb(0x0b0e13)
+    themed(crate::console::look::background, 0x0b0e13)
 }
 pub fn console_sidebar() -> Rgba {
-    rgb(0x0e1218)
+    themed(crate::console::look::panel, 0x0e1218)
 }
 /// The in-game overlay's panels: the console sidebar, nearly opaque over the game.
 pub fn overlay_fill() -> Rgba {
@@ -242,13 +265,17 @@ pub fn overlay_bar_muted() -> Rgba {
     rgb(0x6b7480)
 }
 pub fn console_focus() -> Rgba {
-    rgb(0xeef2f7)
+    if crate::console::active() {
+        crate::console::look::focus()
+    } else {
+        rgb(0xeef2f7)
+    }
 }
 pub fn console_on_focus() -> Rgba {
-    rgb(0x0d1117)
+    themed(crate::console::look::focus_text, 0x0d1117)
 }
 pub fn console_on() -> Rgba {
-    rgb(0x3dd68c)
+    themed(crate::console::look::on, 0x3dd68c)
 }
 pub fn console_btn_a() -> Rgba {
     rgb(0x3ecf8e)
@@ -261,6 +288,15 @@ pub fn console_btn_x() -> Rgba {
 }
 pub fn console_btn_y() -> Rgba {
     rgb(0xf5cd5b)
+}
+/// Replays and moments marked in-game: the yellow of the Y button that marks
+/// them. Text and icons take it through [`readable`].
+pub fn replay() -> Rgba {
+    console_btn_y()
+}
+/// [`replay`] at alpha `a` (rings, tints).
+pub fn replay_alpha(a: f32) -> Rgba {
+    Rgba { a, ..replay() }
 }
 
 /// Statistics charts: one colour per top game (most played first); the rest
@@ -276,6 +312,16 @@ pub fn chart_series(i: usize) -> Rgba {
         _ => rgb(0x9085e9),
     }
 }
+/// The colours a smart group can take (`#rrggbb` in `groups.json`), the
+/// charts' series, told apart on dark and light panels.
+pub const GROUP_COLOURS: [&str; 6] = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
+
+/// `#rrggbb` as a colour.
+pub fn parse_hex(s: &str) -> Option<Rgba> {
+    let hex = s.strip_prefix('#').filter(|h| h.len() == 6)?;
+    u32::from_str_radix(hex, 16).ok().map(rgb)
+}
+
 pub fn chart_other() -> Hsla {
     ink_a(0.22)
 }
@@ -316,12 +362,71 @@ pub fn status_color(slug: &str) -> Rgba {
     }
 }
 
+/// Achievements: an ultra rare unlock and a game at 100% (darker on the
+/// light theme so it reads on paper).
+pub fn achievement_gold() -> Rgba {
+    if super::scheme::is_light() {
+        rgb(0xa86b00)
+    } else {
+        rgb(0xf5c26b)
+    }
+}
+
+/// The colour of an achievement's rarity tier ([`rarity_tier`]).
+pub fn rarity_colour(tier: RarityTier) -> Rgba {
+    let light = super::scheme::is_light();
+    match tier {
+        RarityTier::UltraRare => achievement_gold(),
+        RarityTier::Rare => rgb(if light { 0x7c4dd6 } else { 0xc49bff }),
+        RarityTier::Uncommon => rgb(if light { 0x1f6fc5 } else { 0x6cb6ff }),
+        RarityTier::Common => text_muted(),
+    }
+}
+
+/// An age rating chip's colour by the youngest age it is for (`None` =
+/// pending): green for young children, then yellow, orange and red, muted so
+/// the facts card does not shout (darker on the light theme).
+pub fn age_tone(min_age: Option<u8>) -> Rgba {
+    let light = super::scheme::is_light();
+    match min_age {
+        None => text_muted(),
+        Some(0..=7) => rgb(if light { 0x3d7558 } else { 0x9cc7ae }),
+        Some(8..=12) => rgb(if light { 0x766634 } else { 0xd3c48f }),
+        Some(13..=16) => rgb(if light { 0x85593a } else { 0xd6ab89 }),
+        Some(_) => rgb(if light { 0x8c4b4b } else { 0xd69a9a }),
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RarityTier {
+    UltraRare,
+    Rare,
+    Uncommon,
+    Common,
+}
+
+/// The tier of a share of players (`0..=100`).
+pub fn rarity_tier(percent: f32) -> RarityTier {
+    match percent {
+        p if p < 5. => RarityTier::UltraRare,
+        p if p < 15. => RarityTier::Rare,
+        p if p < 40. => RarityTier::Uncommon,
+        _ => RarityTier::Common,
+    }
+}
+
 // Text.
 pub fn text_primary() -> Rgba {
+    if let Some(c) = crate::console::active().then(crate::console::look::text).flatten() {
+        return c;
+    }
     cpick(0xe8edf4, 0x20262f, |p| p.text)
 }
 /// Captions, leads, labels above fields (`#9aa6b6`).
 pub fn text_muted() -> Rgba {
+    if let Some(c) = crate::console::active().then(crate::console::look::muted).flatten() {
+        return c;
+    }
     if high_contrast() {
         cpick(0xc8d0dc, 0x333b46, |p| mix(p.muted, p.text, 0.5))
     } else {
@@ -330,6 +435,10 @@ pub fn text_muted() -> Rgba {
 }
 /// Row descriptions (`#8c97a8`).
 pub fn text_dim() -> Rgba {
+    if console_light() {
+        // A step under the muted text, still readable on the light panels.
+        return crate::console::motion::mix(text_muted(), console_bg(), 0.18);
+    }
     if high_contrast() {
         cpick(0xbcc6d3, 0x3c434e, |p| mix(p.muted, p.text, 0.4))
     } else {
@@ -339,6 +448,9 @@ pub fn text_dim() -> Rgba {
 /// Text a step above [`text_primary`]: active tabs and pills, titles over
 /// the Collection (white on the dark theme).
 pub fn text_bright() -> Hsla {
+    if console_light() {
+        return text_primary().into();
+    }
     if let Some(p) = custom_palette() {
         return solid(p.text).into();
     }

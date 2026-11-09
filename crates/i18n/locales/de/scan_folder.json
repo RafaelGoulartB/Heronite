@@ -1,0 +1,21 @@
+{
+  "A game with this name is in your Collection": "Ein Spiel mit diesem Namen ist schon in deiner Sammlung",
+  "Add from folder": "Aus einem Ordner hinzufügen",
+  "Add games from a folder": "Spiele aus einem Ordner hinzufügen",
+  "Add games from a folder…": "Spiele aus einem Ordner hinzufügen…",
+  "Choose the folder your games are in. Heronite looks for the programs that start them, and you choose the games to add.": "Wähle den Ordner, in dem deine Spiele liegen. Heronite sucht die Programme, die sie starten, und du wählst die Spiele aus, die hinzugefügt werden.",
+  "Could not add the games: {error}": "Die Spiele konnten nicht hinzugefügt werden: {error}",
+  "Find many games at once": "Viele Spiele auf einmal",
+  "Find the games in a folder and add them at once": "Findet die Spiele in einem Ordner und fügt sie auf einmal hinzu",
+  "Games are found by the programs that start them (.exe). Try the folder of one game, or the one that holds them.": "Spiele werden an den Programmen erkannt, die sie starten (.exe). Versuche den Ordner eines Spiels oder den Ordner, der sie enthält.",
+  "Games are found by the programs that start them: Windows programs (.exe), AppImages, start scripts and Linux programs. Try the folder of one game, or the one that holds them.": "Spiele werden an den Programmen erkannt, die sie starten: Windows-Programme (.exe), AppImages, Startskripte und Linux-Programme. Versuche den Ordner eines Spiels oder den Ordner, der sie enthält.",
+  "Games folder": "Spieleordner",
+  "Give each Windows game its own Wine prefix": "Jedem Windows-Spiel einen eigenen Wine-Prefix geben",
+  "Looking for games…": "Suche nach Spielen…",
+  "No games were found in this folder.": "In diesem Ordner wurden keine Spiele gefunden.",
+  "Scan again": "Erneut suchen",
+  "The folder your games are in": "Der Ordner, in dem deine Spiele liegen",
+  "This folder does not exist.": "Dieser Ordner existiert nicht.",
+  "This folder is very big: only part of it was searched.": "Dieser Ordner ist sehr groß: Nur ein Teil wurde durchsucht.",
+  "{n} already in Collection": "{n} schon in der Sammlung"
+}

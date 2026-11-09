@@ -112,8 +112,8 @@ impl AddGameDialog {
             Row::choice(
                 "platform",
                 tr!("Platform"),
-                PLATFORMS.iter().map(|p| SharedString::from(platform_label(*p))).collect(),
-                PLATFORMS.iter().position(|p| *p == self.platform).unwrap_or(0),
+                platforms().iter().map(|p| SharedString::from(platform_label(*p))).collect(),
+                platforms().iter().position(|p| *p == self.platform).unwrap_or(0),
             )
             .desc(tr!("What the game needs to run. Picking an executable chooses it for you.")),
         ];
@@ -175,7 +175,7 @@ impl AddGameDialog {
                 .desc(tr!("Optional wide background. The cover is used when empty.")),
         );
 
-        if self.platform == SideloadPlatform::Windows && !edit {
+        if self.platform == SideloadPlatform::Windows && !edit && uses_wine() {
             rows.push(Row::header("Wine"));
             let mut share_label = tr!("Use shared Wine prefix").to_string();
             if self.global.get("wineVersion").is_some() {
@@ -222,7 +222,7 @@ impl AddGameDialog {
             );
         }
         rows.push(Row::header(if edit { tr!("Save") } else { tr!("Add") }));
-        if !edit && self.platform == SideloadPlatform::Windows {
+        if !edit && self.platform == SideloadPlatform::Windows && uses_wine() {
             rows.push(
                 Row::action("installer", if self.installer_running { tr!("Running setup\u{2026}") } else { tr!("Run installer first") })
                     .icon(Icon::PlayArrow)
@@ -520,7 +520,7 @@ impl PadTarget for AddGameDialog {
         let rows = self.console_rows(cx);
         match self.console_list.on_pad(pad, &rows) {
             Outcome::Changed(id, value) => match (id.as_ref(), value) {
-                ("platform", Value::Choice { index, .. }) => self.set_platform(PLATFORMS[index.min(PLATFORMS.len() - 1)], cx),
+                ("platform", Value::Choice { index, .. }) => self.set_platform(platforms()[index.min(platforms().len() - 1)], cx),
                 ("wine", Value::Choice { index, .. }) => self.wine = self.wine_choices().get(index).cloned().or_else(|| self.wine.clone()),
                 ("fullscreen", Value::Toggle(on)) => self.fullscreen = on,
                 ("start", Value::Choice { index, .. }) => self.by_command = index == 1,

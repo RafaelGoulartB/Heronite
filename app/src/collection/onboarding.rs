@@ -1,7 +1,7 @@
 //! "Getting started" on the Collection: it opens by itself once
-//! per setup (a new one, or one updated from a version without it) and from
-//! the bulb next to the View button, which "Don't show again" removes (the
-//! command palette still opens it). Using a feature anywhere ticks its step.
+//! per setup (a new one, or one updated from a version without it), from the
+//! bulb next to the View button until it is closed once, and always from the
+//! command palette (Ctrl K). Using a feature anywhere ticks its step.
 //! A step that leads elsewhere (a page, the palette, console mode) brings
 //! the dialog back where that step lives once the user is back on the Collection.
 //! `HERONITE_NO_ONBOARDING=1` keeps it from opening by itself (screenshots).
@@ -13,19 +13,21 @@ use heronite_data::onboarding::Onboarding;
 use super::CollectionView;
 use crate::dialogs::onboarding::{Action, OnboardingDialog, Step};
 use crate::icons::Icon;
-use crate::ui::tool_button;
+use crate::ui::{tool_button, tooltip};
+use heronite_i18n::tr;
 
 pub(super) struct OnboardingGlue {
     state: Onboarding,
-    /// What the dialog asked for; run on the next render (it needs the window).
-    pending: Option<(Step, Action)>,
+    /// What the dialog asked for, in order; run on the next render (it needs
+    /// the window).
+    pending: Vec<(Step, Action)>,
     /// The step to show again once back from where the dialog led.
     resume: Option<Step>,
 }
 
 impl OnboardingGlue {
     pub(super) fn load(app: &heronite_data::AppPaths) -> Self {
-        Self { state: Onboarding::load(app), pending: None, resume: None }
+        Self { state: Onboarding::load(app), pending: Vec::new(), resume: None }
     }
 }
 
@@ -44,14 +46,16 @@ impl CollectionView {
     pub(super) fn open_onboarding_at(&mut self, step: Option<Step>, cx: &mut Context<Self>) {
         let Some(ctx) = self.dialog_ctx() else { return };
         let done = self.onboarding.state.done.clone();
+        let skipped = self.onboarding.state.skipped.clone();
         let weak = cx.entity().downgrade();
         let view = cx.new(|cx| {
             OnboardingDialog::new(
                 ctx,
                 done,
+                skipped,
                 move |step, action, cx| {
                     weak.update(cx, |this, cx| {
-                        this.onboarding.pending = Some((step, action));
+                        this.onboarding.pending.push((step, action));
                         cx.notify();
                     })
                     .ok();
@@ -62,6 +66,17 @@ impl CollectionView {
         if let Some(step) = step {
             view.update(cx, |d, cx| d.show(step, cx));
         }
+        // Closed once, however (Close, Esc, a click outside, on the way to
+        // where a step leads): the bulb leaves the header, the command
+        // palette still opens it. Only `self.dialog` holds the dialog.
+        cx.observe_release(&view, |this, _, cx| {
+            if !this.onboarding.state.hidden {
+                this.onboarding.state.hidden = true;
+                this.save_onboarding();
+                cx.notify();
+            }
+        })
+        .detach();
         self.open_dialog(view, cx);
     }
 
@@ -94,7 +109,17 @@ impl CollectionView {
                 self.open_onboarding_at(Some(step), cx);
             }
         }
-        let Some((step, action)) = self.onboarding.pending.take() else { return };
+        let pending = std::mem::take(&mut self.onboarding.pending);
+        if pending.is_empty() {
+            return;
+        }
+        for (step, action) in pending {
+            self.run_onboarding_action(step, action, window, cx);
+        }
+        cx.notify();
+    }
+
+    fn run_onboarding_action(&mut self, step: Step, action: Action, window: &mut Window, cx: &mut Context<Self>) {
         if matches!(action, Action::Page(_) | Action::Stores | Action::Settings(_) | Action::Palette | Action::Console) {
             self.onboarding.resume = Some(step);
         }
@@ -120,12 +145,17 @@ impl CollectionView {
                 self.apply_start_view();
             }
             Action::Done(step) => self.mark_onboarding(step),
-            Action::Hide => {
-                self.onboarding.state.hidden = true;
-                self.save_onboarding();
+            Action::Skip(step) => {
+                if self.onboarding.state.skipped.insert(step.id().to_owned()) {
+                    self.save_onboarding();
+                }
+            }
+            Action::Unskip(step) => {
+                if self.onboarding.state.skipped.remove(step.id()) {
+                    self.save_onboarding();
+                }
             }
         }
-        cx.notify();
     }
 
     /// The user used a feature of "Getting started" (once is enough).
@@ -135,9 +165,12 @@ impl CollectionView {
         }
     }
 
-    /// The bulb next to the View button, until "Don't show again".
+    /// The bulb next to the View button, until the dialog is closed once.
     pub(super) fn onboarding_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
-        (!self.onboarding.state.hidden)
-            .then(|| tool_button("btn-onboarding", Icon::Lightbulb, false).on_click(cx.listener(|this, _, _, cx| this.open_onboarding(cx))))
+        (!self.onboarding.state.hidden).then(|| {
+            tool_button("btn-onboarding", Icon::Lightbulb, false)
+                .tooltip(tooltip(tr!("Getting started")))
+                .on_click(cx.listener(|this, _, _, cx| this.open_onboarding(cx)))
+        })
     }
 }

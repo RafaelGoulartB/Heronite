@@ -5,12 +5,15 @@ use heronite_i18n::tr;
 
 use super::emulator::{emulator_plan, EmulatorOutcome};
 use super::{Command, LaunchOptions, LaunchPlan, PlanContext, PrepSpec, ProcessPlan, StopSpec};
+use crate::args::{split_args, split_args_for};
 use crate::emulators::{node_basename, node_dirname};
 use crate::env::{build_wrappers_in, setup_env_vars, setup_wrapper_env_vars};
+use crate::host::{run_mode, unavailable_reason, RunMode};
 use crate::native::{effective_platform, is_executable_game, Platform};
 use crate::probe::Probe;
 use crate::settings::{load_game_settings, GameSettings};
 use crate::steam;
+use heronite_platform::Feature;
 
 /// Builds the plan for a game, reading its `GamesConfig` from disk.
 pub fn build_plan(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, meta: Option<&LocalGameMeta>, opts: &LaunchOptions) -> LaunchPlan {
@@ -26,6 +29,15 @@ pub fn build_plan_with_settings(
     settings: &GameSettings,
     opts: &LaunchOptions,
 ) -> LaunchPlan {
+    // A store client starts these games, with the client's settings (its
+    // sandbox and Wine), not the game's. Their umu id stays `umu-0`.
+    if let Some(m) = meta.filter(|m| game.runner == "sideload" && m.launch_kind == heronite_data::clients::LAUNCH_KIND) {
+        let mut plan = crate::clients::build(ctx, probe, game, m);
+        crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+        crate::scripts::attach(&mut plan, probe, game, settings);
+        crate::clients::attach_companions(&mut plan, ctx, probe, game, settings);
+        return plan;
+    }
     let mut plan = match game.runner.as_str() {
         "sideload" => build_sideload(ctx, probe, game, meta, settings, opts),
         "legendary" => crate::legendary::build(ctx, probe, game, settings, opts),
@@ -34,12 +46,13 @@ pub fn build_plan_with_settings(
         other => LaunchPlan::Unavailable(tr!("Launching {other} games is not supported yet", other)),
     };
     // Every way to start a game puts it in the sandbox itself; one that does
-    // not (Steam, or a new one that forgot) never runs outside instead.
+    // not (Steam, or a new one that forgot) never runs outside instead. A
+    // system without the sandbox ignores the setting (a restored backup).
     let outside = match &plan {
         LaunchPlan::SteamUri { .. } => true,
         p => p.process().is_some_and(|p| !p.sandboxed),
     };
-    if settings.sandbox.enabled && outside {
+    if settings.sandbox.enabled && heronite_platform::supported(Feature::Sandbox) && outside {
         return LaunchPlan::Unavailable(tr!("This game cannot run in the sandbox. Turn it off for this game.").into());
     }
     // Before the companions: they join the game's container with its GAMEID.
@@ -51,9 +64,13 @@ pub fn build_plan_with_settings(
         user_id: &settings.umu_id,
     };
     crate::umu_ids::attach(&mut plan, ctx, keys);
+    // On Windows keeping the computer awake is its own call, no tool needed.
     crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
-    crate::scripts::attach(&mut plan, probe, game, settings);
-    crate::companions::attach(&mut plan, ctx, probe, game, settings);
+    if heronite_platform::supported(Feature::LaunchExtras) {
+        crate::scripts::attach(&mut plan, probe, game, settings);
+        crate::companions::attach(&mut plan, ctx, probe, game, settings);
+        crate::steam_extras::attach(&mut plan, probe, game, settings);
+    }
     plan
 }
 
@@ -71,19 +88,25 @@ fn build_sideload(
 ) -> LaunchPlan {
     // 1. Emulators (tryLaunchEmulatedGame).
     if let Some(m) = meta.filter(|m| m.launch_kind == "emulator") {
-        if settings.sandbox.enabled {
+        if settings.sandbox.enabled && heronite_platform::supported(Feature::Sandbox) {
             return LaunchPlan::Unavailable(tr!("The sandbox does not run emulators. Turn it off for this game.").into());
         }
         return match emulator_plan(ctx, probe, game, m, settings, opts) {
             EmulatorOutcome::Plan(p) => p,
-            // `.exe` emulators run through Wine like any Windows program.
+            // On Linux, `.exe` emulators run through Wine like any Windows
+            // program; Windows runs them as they are (a plan of their own).
             EmulatorOutcome::Wine { executable, args } => crate::wine::build_wine_plan(ctx, probe, game, settings, &executable, &args),
         };
     }
 
-    // Games another launcher (Lutris, Bottles, Faugus) starts.
+    // Games another launcher (Lutris, Bottles, Faugus, Playnite) starts.
     if let Some(m) = meta.filter(|m| m.launch_kind == heronite_data::launchers::LAUNCH_KIND) {
         return launcher_plan(probe, game, m);
+    }
+
+    // Microsoft Store and Game Pass games: Windows starts their package.
+    if let Some(m) = meta.filter(|m| m.launch_kind == heronite_data::xbox::LAUNCH_KIND) {
+        return crate::xbox::build(probe, game, m);
     }
 
     // 2. Local executables (tryLaunchNativeLocalGame, else Heroic's launchGame).
@@ -100,7 +123,8 @@ fn build_sideload(
             if steam::find_steam_binary(probe).is_none() {
                 return LaunchPlan::Unavailable(tr!("Steam client was not found on PATH").into());
             }
-            return LaunchPlan::SteamUri { app_id: app_id.to_string(), uri: steam::steam_uri("rungameid", app_id) };
+            let uri = steam::steam_uri("rungameid", app_id);
+            return LaunchPlan::SteamUri { app_id: app_id.to_string(), uri, extras: Default::default() };
         }
     }
     LaunchPlan::Unavailable(tr!("This game has no launch method").into())
@@ -108,9 +132,12 @@ fn build_sideload(
 
 /// Asks the launcher that has the game to start it (`launcherArgs`). The
 /// launcher sets the game up (Wine, wrappers); the session follows it, and
-/// the game itself when the launcher hands it to its open window.
+/// the game itself when the launcher hands it to its open window: by the
+/// programs running from the game's folder (or from where its program is,
+/// a Playnite game's emulator) or in its Wine prefix. Playnite's link goes
+/// through the shell, which passes it on and returns at once.
 fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> LaunchPlan {
-    use heronite_data::launchers::{Launcher, PREFIX_KEY};
+    use heronite_data::launchers::{Launcher, PREFIX_KEY, RUNS_FROM_KEY};
     let mut args = split_args(meta.launcher_args.as_deref().unwrap_or_default());
     if args.is_empty() {
         return LaunchPlan::Unavailable(tr!("This game has no launch method").into());
@@ -121,21 +148,25 @@ fn launcher_plan(probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> La
         return LaunchPlan::Unavailable(tr!("{launcher} was not found on this PC", launcher));
     }
     let folder = game.install.install_path.clone().filter(|f| !f.is_empty() && probe.exists(f));
-    let prefix = meta.extra.get(PREFIX_KEY).and_then(serde_json::Value::as_str).filter(|p| !p.is_empty()).map(str::to_owned);
+    let path = |key: &str| meta.extra.get(key).and_then(serde_json::Value::as_str).filter(|p| !p.is_empty()).map(str::to_owned);
+    let prefix = path(PREFIX_KEY);
+    let runs_from = path(RUNS_FROM_KEY).filter(|f| probe.exists(f));
+    let exit_ignored = Launcher::from_source(&meta.source) == Some(Launcher::Playnite);
     LaunchPlan::Native(ProcessPlan {
         command: Command { program, args, env: Default::default(), cwd: folder.clone() },
         // Nothing to find the game by: the session ends with the command.
-        handoff: (prefix.is_some() || folder.is_some()).then_some(crate::plan::Handoff { prefix, folder }),
+        handoff: (prefix.is_some() || folder.is_some() || runs_from.is_some()).then(|| crate::plan::Handoff {
+            prefix,
+            folder: runs_from.or(folder),
+            exit_ignored,
+            ..Default::default()
+        }),
         ..Default::default()
     })
 }
 
 fn first_existing<'a>(probe: &dyn Probe, paths: &[Option<&'a str>]) -> Option<&'a str> {
     paths.iter().flatten().copied().find(|p| !p.is_empty() && probe.exists(p))
-}
-
-pub(crate) fn split_args(s: &str) -> Vec<String> {
-    shlex::split(s).unwrap_or_else(|| s.split_whitespace().map(str::to_string).collect())
 }
 
 fn executable_plan(
@@ -165,14 +196,45 @@ fn executable_plan(
     if executable.is_empty() {
         return LaunchPlan::Unavailable(tr!("No executable is configured for this game").into());
     }
-    let mut extra = split_args(&settings.launcher_args);
+    let platform = effective_platform(game, meta, &executable, probe);
+    // A Windows program (under Wine, or on Windows) reads its arguments the Windows way.
+    let mut extra = split_args_for(platform == Platform::Windows, &settings.launcher_args);
     extra.extend(opts.extra_args.iter().cloned());
 
-    if effective_platform(game, meta, &executable, probe) == Platform::Windows {
-        return crate::wine::build_wine_plan(ctx, probe, game, settings, &executable, &extra);
+    match (run_mode(platform.into()), platform) {
+        (RunMode::Native, Platform::Windows) => windows_plan(probe, game, settings, &executable, extra, "sideload"),
+        (RunMode::Native, Platform::Linux) => native_plan(ctx, probe, game, settings, &executable, extra, "sideload"),
+        (RunMode::Wine, _) => crate::wine::build_wine_plan(ctx, probe, game, settings, &executable, &extra),
+        (RunMode::Unavailable, _) => LaunchPlan::Unavailable(unavailable_reason(platform.into())),
     }
+}
 
-    native_plan(ctx, probe, game, settings, &executable, extra, "sideload")
+/// A Windows program on Windows: started as it is, from its folder. Linux's
+/// wrappers, runtimes and sandbox have no counterpart there, so settings
+/// brought from Linux (a restored backup) are left aside; the game's
+/// arguments and environment variables still apply. The session follows
+/// every process it starts (a job object, see `heronite_platform::process`).
+pub(crate) fn windows_plan(
+    probe: &dyn Probe,
+    game: &GameInfo,
+    settings: &GameSettings,
+    executable: &str,
+    extra: Vec<String>,
+    runner: &str,
+) -> LaunchPlan {
+    if !probe.exists(executable) {
+        return LaunchPlan::Unavailable(tr!("Executable not found: {executable}", executable));
+    }
+    let path = std::path::Path::new(executable);
+    let folder = path.parent().map(|d| d.to_string_lossy().into_owned()).filter(|d| !d.is_empty());
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut env = setup_wrapper_env_vars(&game.app_name, runner);
+    env.extend(settings.env_options.iter().cloned());
+    LaunchPlan::Native(ProcessPlan {
+        command: Command { program: executable.to_string(), args: extra, env, cwd: folder },
+        stop: StopSpec { kill_patterns: vec![name].into_iter().filter(|n| !n.is_empty()).collect(), commands: vec![] },
+        ..Default::default()
+    })
 }
 
 /// A Linux game started by a shell command inside its folder: `sh -c` runs
@@ -275,6 +337,8 @@ pub(crate) fn native_plan(
     if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
+    // Windows runs Windows games directly: the DLL alone loads ReShade.
+    notes.extend(crate::reshade::apply(&mut env, &ctx.paths, &game.app_name, &settings.reshade, false));
     let sandbox = match native_sandbox(ctx, probe, game, settings, &crate::wine::game_folder(game, executable), &env) {
         Ok(p) => p,
         Err(e) => return LaunchPlan::Unavailable(e),

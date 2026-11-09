@@ -12,6 +12,7 @@ use super::session::{add_env, apply_mods, fail, finish};
 use super::spawner::ProcessHandle;
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
+use crate::keep_awake::Hold;
 use crate::log_writer::{self, GameLog};
 use crate::plan::{Command, ProcessPlan};
 use crate::prepare::{Flow, Notice, Prep};
@@ -173,10 +174,22 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     steps.done("mods");
     log.info(&steps.summary());
+    // A store client starts the game: the session follows the game, not the command.
+    if let Some((handoff, client)) = plan.handoff.as_ref().and_then(|h| Some((h, h.client.as_ref()?))) {
+        let session = super::client::Session { shared, log, req, control, plan, probe: &*services.probe, prep: &prep, status: &status };
+        return session.run(handoff, client);
+    }
     // MangoHud's limit moves into a file of ours so the overlay can change it.
     let mut command = plan.command.clone();
     if let Some(m) = &mods {
         add_env(&mut command.env, &m.env);
+    }
+    // An Epic game on Windows: legendary names the program to start.
+    if plan.ask_legendary {
+        match super::epic::ask_legendary(shared, log, req, control, &command, &status) {
+            Some(game) => command = game,
+            None => return,
+        }
     }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
@@ -212,6 +225,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             None
         }
     });
+    let held = plan.hold_awake.then(|| hold_awake(log, &req.title)).flatten();
     let mut companions = Companions::new(&plan.companions, Instant::now(), plan.sandboxed.then(|| handle.pid()));
     let prefix = plan.prep.wine.as_ref().map(|s| s.wine_prefix.clone());
 
@@ -270,6 +284,10 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         None if aborted => log.info("Stopped tracking the game"),
         None => {}
     }
+    // A launcher whose exit code says nothing did not fail by exiting.
+    if plan.handoff.as_ref().is_some_and(|h| h.exit_ignored) {
+        exit = exit.map(|e| ExitInfo { code: Some(0), ..e });
+    }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(prefix) = prefix.filter(|_| companions.active()) {
             aborted = follow_the_prefix(shared, control, &mut companions, &prefix, &*services.probe, log, &status);
@@ -291,6 +309,9 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     if let Some(h) = awake.as_mut() {
         h.terminate();
     }
+    if let Some(held) = held {
+        held.release();
+    }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {
             run_to_completion(shared, control, cmd, Some(log));
@@ -305,6 +326,12 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         prep.after_exit(&req.app_name, &plan.prep);
     }
     finish(shared, log, req, control, elapsed, exit);
+}
+
+/// Holds the computer awake for `title`'s game until the guard is dropped
+/// (Windows); a refusal goes to the game's log.
+pub(super) fn hold_awake(log: &GameLog, title: &str) -> Option<Hold> {
+    Hold::new(title).inspect_err(|e| log.warning(&format!("Could not keep the computer awake: {e}"))).ok()
 }
 
 /// `handle` followed until its sandbox ends, when `cmd` starts one.
@@ -451,7 +478,7 @@ pub(super) fn run_script(
     run_to_completion(shared, control, script, Some(log))
 }
 
-fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest) {
+pub(super) fn finish_aborted(shared: &Shared, log: &GameLog, req: &LaunchRequest) {
     log.info("Launch stopped before the game started");
     log.close();
     // Stopped before the game even started: nothing was played.

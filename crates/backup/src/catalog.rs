@@ -105,8 +105,14 @@ impl Side {
 const KEPT_STORE_CACHE: [&str; 5] =
     ["gog_library.json", "nile_library.json", "steam_library.json", "gog_playtime_sync_queue.json", "gog_playtime_import.json"];
 
-const LOGINS: [&str; 4] =
-    ["legendaryConfig/legendary/user.json", "gog_store/auth.json", "nile_config/nile/user.json", "nile_config/nile/current_user.json"];
+const LOGINS: [&str; 6] = [
+    "legendaryConfig/legendary/user.json",
+    "gog_store/auth.json",
+    "nile_config/nile/user.json",
+    "nile_config/nile/current_user.json",
+    "local_library/achievement-accounts.json",
+    "local_library/steam-account.json",
+];
 
 /// Files the app writes while it runs, or that are stale copies.
 fn is_temp(rel: &str) -> bool {
@@ -152,6 +158,7 @@ pub fn classify_data(rel: &str) -> Class {
         "legendaryConfig/legendary/metadata",
         "legendaryConfig/legendary/tmp",
         "save-restore-undo",
+        "local_library/sync-before",
         "store/download-manager.json",
         "store/wine-downloader-info.json",
         "store/wine-release-checks.json",
@@ -188,6 +195,10 @@ pub fn classify_config(rel: &str) -> Class {
     }
     if is_temp(rel) || ["epic-move.json", crate::restore::PENDING_FILE, "wine-releases-fetched"].contains(&rel) {
         return Class::Out(Left::Temp);
+    }
+    // The library sync's cloud account.
+    if rel == "rclone.conf" {
+        return Class::In(Part::Logins);
     }
     Class::In(Part::Settings)
 }
@@ -257,6 +268,8 @@ mod tests {
         for (rel, want) in [
             ("local_library/library.json", In(Part::Collection)),
             ("local_library/sessions.json", In(Part::Collection)),
+            // Smart groups go with the Collection they filter.
+            ("local_library/groups.json", In(Part::Collection)),
             ("GamesConfig/x.json", In(Part::Collection)),
             ("config.json", In(Part::Collection)),
             ("store/config.json", In(Part::Collection)),
@@ -267,6 +280,9 @@ mod tests {
             ("legendaryConfig/legendary/user.json", In(Part::Logins)),
             ("gog_store/auth.json", In(Part::Logins)),
             ("nile_config/nile/user.json", In(Part::Logins)),
+            ("local_library/achievement-accounts.json", In(Part::Logins)),
+            ("local_library/steam-account.json", In(Part::Logins)),
+            ("local_library/achievements/gog/1207658924.json", In(Part::Collection)),
             ("local_library/art/sideload_x/hero-1.png", In(Part::Art)),
             ("local_library/metadata-art/x/h.jpg", In(Part::Art)),
             ("tools/proton/GE/bin/wine", Out(Left::Tools)),
@@ -307,6 +323,9 @@ mod tests {
         assert_eq!(classify_config("logs/x.log"), Class::Out(Left::Logs));
         assert_eq!(classify_config("epic-move.json"), Class::Out(Left::Temp));
         assert_eq!(classify_config(crate::restore::PENDING_FILE), Class::Out(Left::Temp));
+        assert_eq!(classify_config("rclone.conf"), Class::In(Part::Logins));
+        assert_eq!(classify_data("local_library/sync-before/local_library-sessions.json"), Class::Out(Left::Caches));
+        assert_eq!(classify_data("local_library/sync-ledger.json"), Class::In(Part::Collection));
     }
 
     #[test]

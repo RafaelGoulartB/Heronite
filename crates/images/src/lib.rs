@@ -1,6 +1,7 @@
 //! Image pipeline for the Heronite Collection screen.
 //!
 //! * [`load_cover`]  - object-fit *cover* tile art at exact physical size.
+//! * [`load_fit`]    - whole image inside a box, aspect and transparency kept (logos).
 //! * [`load_stage`]  - full-window blurred + saturated background.
 //! * [`load_panel_glass`] - stronger blur variant used behind translucent panels.
 //! * [`Loader`]      - bounded, prioritised, de-duplicating background loader.
@@ -42,6 +43,8 @@ pub const PANEL_GLASS_BLUR_PX: f32 = 20.0;
 /// contrast over the brightest art once the Collection's scrims are on top.
 pub const BACKDROP_KNEE: f32 = 0.15;
 pub const BACKDROP_CAP: f32 = 0.26;
+/// The part of a cover's height its [`Variant::Reflection`] mirrors.
+pub const REFLECTION_PART: f32 = 0.3;
 
 /// One place an image can come from.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -49,6 +52,31 @@ pub enum ImageRef {
     File(PathBuf),
     /// Fetched through Heronite's shared `images-cache` (see [`Opts::images_cache_dir`]).
     Url(String),
+    /// The first file called `name` in `dir` or in one of its sub-folders
+    /// (Steam keeps a game's art in hashed folders it names itself). Looked
+    /// up by the loader's worker, never on the UI thread.
+    Find {
+        dir: PathBuf,
+        name: String,
+    },
+}
+
+impl ImageRef {
+    /// The file behind a local candidate; `None` for a URL or when
+    /// [`Find`](Self::Find) finds nothing. Reads the folder: worker threads only.
+    pub fn local_path(&self) -> Option<PathBuf> {
+        match self {
+            ImageRef::File(p) => Some(p.clone()),
+            ImageRef::Url(_) => None,
+            ImageRef::Find { dir, name } => {
+                let direct = dir.join(name);
+                if direct.is_file() {
+                    return Some(direct);
+                }
+                std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path().join(name)).filter(|p| p.is_file()).min()
+            }
+        }
+    }
 }
 
 /// A decoded, resized image ready to hand to GPUI.
@@ -82,6 +110,12 @@ impl Decoded {
 pub enum Variant {
     /// Plain cover resize to the exact target.
     Cover,
+    /// The whole image inside the box, aspect ratio and transparency kept (no
+    /// crop, no blur) and never enlarged: a logo. The result is smaller than
+    /// the target unless the image fills it on one axis. With an `ink` (RGB),
+    /// the light, colourless parts of the image (the white of a logo) turn to
+    /// it: a logo on a light surface, where white would vanish.
+    Fit { ink: Option<[u8; 3]> },
     /// Full-window background: cover + `blur(blur_px) saturate(saturation)`.
     Stage { blur_px: f32, saturation: f32 },
     /// Same as `Stage` but cached separately; meant for a stronger blur.
@@ -91,15 +125,24 @@ pub enum Variant {
     /// with [`BACKDROP_KNEE`] / [`BACKDROP_CAP`]) so white text stays legible
     /// over white or bright art, while darker art is untouched.
     Backdrop { blur_px: f32, saturation: f32 },
+    /// A cover's reflection on a glossy floor (console mode's Carousel): the
+    /// image covered to the target like [`Variant::Cover`], then its bottom
+    /// [`REFLECTION_PART`] upside down, softened and fading out downwards
+    /// (opaque at the top row, clear at the last). The result is `target_w`
+    /// wide and that part of `target_h` high.
+    Reflection,
 }
 
 impl std::hash::Hash for Variant {
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         match *self {
             Variant::Cover => 0u8.hash(h),
+            Variant::Fit { ink: None } => 4u8.hash(h),
+            Variant::Fit { ink: Some(ink) } => (5u8, ink).hash(h),
             Variant::Stage { blur_px, saturation } => (1u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Glass { blur_px, saturation } => (2u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
             Variant::Backdrop { blur_px, saturation } => (3u8, blur_px.to_bits(), saturation.to_bits()).hash(h),
+            Variant::Reflection => 6u8.hash(h),
         }
     }
 }
@@ -157,6 +200,13 @@ pub fn load_cover(chain: &[ImageRef], target_w: u32, target_h: u32, opts: &Opts)
     load(chain, target_w, target_h, Variant::Cover, opts)
 }
 
+/// The first loadable image of `chain` fitted inside `target_w x target_h`
+/// ([`Variant::Fit`], no ink): the result keeps the image's aspect ratio, so its size
+/// is the fitted one, not the target.
+pub fn load_fit(chain: &[ImageRef], target_w: u32, target_h: u32, opts: &Opts) -> Result<Decoded> {
+    load(chain, target_w, target_h, Variant::Fit { ink: None }, opts)
+}
+
 /// Full-window background: cover-fit to `target_w x target_h`, Gaussian blur of
 /// `blur_px` and CSS `saturate(saturation)`.
 ///
@@ -196,6 +246,21 @@ pub fn load(chain: &[ImageRef], target_w: u32, target_h: u32, variant: Variant, 
     }
     let mut errors = Vec::new();
     for cand in chain {
+        // A `Find` is looked up once; the rest of the loop sees the file.
+        let found;
+        let cand = match cand {
+            ImageRef::Find { .. } => match cand.local_path() {
+                Some(p) => {
+                    found = ImageRef::File(p);
+                    &found
+                }
+                None => {
+                    errors.push(format!("{cand:?}: missing"));
+                    continue;
+                }
+            },
+            _ => cand,
+        };
         let Some(identity) = thumbs::source_identity(cand) else {
             errors.push(format!("{cand:?}: missing"));
             continue;
@@ -247,14 +312,38 @@ fn produce(cand: &ImageRef, tw: u32, th: u32, variant: Variant, opts: &Opts) -> 
     let bytes = match cand {
         ImageRef::File(p) => fetch::read_file(p)?,
         ImageRef::Url(u) => fetch::url_bytes(u, opts)?,
+        ImageRef::Find { .. } => fetch::read_file(&cand.local_path().ok_or_else(|| ImageError::Io(format!("{cand:?}: not found")))?)?,
     };
     match variant {
+        Variant::Fit { ink } => {
+            let raster = decode::decode(&bytes, tw, th, opts.jpeg_scaled_decode)?;
+            drop(bytes);
+            let (w, h, mut px) = resize::fit_to_rgba(raster, tw, th, opts.filter)?;
+            if let Some([r, g, b]) = ink {
+                fx::ink_light_parts(&mut px, (r, g, b));
+            }
+            fx::swap_rb(&mut px);
+            Ok(Decoded { width: w, height: h, bgra: px })
+        }
         Variant::Cover => {
             let raster = decode::decode(&bytes, tw, th, opts.jpeg_scaled_decode)?;
             drop(bytes);
             let mut px = resize::cover_to_rgba(raster, tw, th, opts.filter)?;
             fx::swap_rb(&mut px);
             Ok(Decoded { width: tw, height: th, bgra: px })
+        }
+        Variant::Reflection => {
+            let raster = decode::decode(&bytes, tw, th, opts.jpeg_scaled_decode)?;
+            drop(bytes);
+            let mut px = resize::cover_to_rgba(raster, tw, th, opts.filter)?;
+            fx::flatten_over_black(&mut px);
+            let rows = ((th as f32 * REFLECTION_PART).round() as u32).clamp(1, th);
+            let mut px = fx::mirror_bottom(&px, tw as usize, th as usize, rows as usize);
+            // A floor is a little blurry: about 1/160 of the width.
+            fx::gaussian_blur(&mut px, tw as usize, rows as usize, (tw as f32 / 160.).max(1.));
+            fx::fade_down(&mut px, tw as usize, rows as usize);
+            fx::swap_rb(&mut px);
+            Ok(Decoded { width: tw, height: rows, bgra: px })
         }
         Variant::Stage { blur_px, saturation } | Variant::Glass { blur_px, saturation } | Variant::Backdrop { blur_px, saturation } => {
             let (ow, oh, scale) = geometry::stage_size(tw, th, blur_px, opts.stage_max_width, opts.stage_sigma_out);

@@ -1,5 +1,5 @@
 //! Startup sweep of the temp files a killed process left behind: the JSON
-//! stores' (`.<x>.heronite-rs-<pid>-<n>.tmp`), `shortcuts.vdf.tmp` next to a
+//! stores' and the shortcuts' (`.<x>.heronite-rs-<pid>-<n>.tmp`), `shortcuts.vdf.tmp` next to a
 //! `shortcuts.vdf`, and `<x>.desktop.tmp` in the shortcut folders. Only those
 //! exact names; see [`heronite_data::temps`].
 
@@ -9,15 +9,15 @@ use std::path::{Path, PathBuf};
 use heronite_data::temps;
 use heronite_data::{game_config, json_store, AppPaths, DataPaths};
 
-use crate::desktop::Roots;
-use crate::steam::clean_steam_path;
+use crate::menu::Roots;
+use crate::steam::{clean_steam_path, steam_root};
 
 /// Everything [`sweep_stale_temps_at_startup`] looks at.
 #[derive(Debug, Clone, Default)]
 pub struct Targets {
     /// Folders holding our JSON stores.
     pub json_dirs: Vec<PathBuf>,
-    /// Desktop / application-menu folders.
+    /// Desktop and menu folders (application menu, Start menu).
     pub shortcut_dirs: Vec<PathBuf>,
     /// Steam install folder (`userdata/<user>/config/shortcuts.vdf`).
     pub steam: Option<PathBuf>,
@@ -31,7 +31,7 @@ pub fn sweep_stale_temps_at_startup(data_paths: &DataPaths, app: &AppPaths) -> u
     let steam = std::env::var_os("HERONITE_STEAM_DIR").map(PathBuf::from).or_else(|| {
         let g = game_config::load_global(data_paths, &home);
         let raw = g.get("defaultSteamPath").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-        (!raw.is_empty()).then(|| clean_steam_path(&raw))
+        (!raw.is_empty() || cfg!(windows)).then(|| steam_root(clean_steam_path(&raw)))
     });
     let mut shortcut_dirs = vec![roots.applications];
     shortcut_dirs.extend(roots.desktop);
@@ -107,12 +107,14 @@ mod tests {
         }
         // Ours.
         fs::write(apps.join(".Game.desktop.heronite-rs-4194999-3.tmp"), "x").unwrap();
+        fs::write(apps.join(".Game.lnk.heronite-rs-4194999-4.tmp"), "x").unwrap();
         touch_old(&apps.join("Game.desktop.tmp"));
         fs::write(config.join(".shortcuts.vdf.heronite-rs-4194999-1.tmp"), "x").unwrap();
         fs::write(config.join("shortcuts.vdf"), "v").unwrap();
         touch_old(&config.join("shortcuts.vdf.tmp"));
         // Not ours / not stale: untouched.
         fs::write(apps.join("Game.desktop"), "d").unwrap();
+        fs::write(apps.join("Game.lnk"), "l").unwrap();
         fs::write(apps.join("notes.tmp"), "n").unwrap();
         fs::write(apps.join(".hidden.tmp"), "n").unwrap();
         fs::write(config.join("shortcuts.vdf.heronite-bak"), "b").unwrap();
@@ -122,9 +124,10 @@ mod tests {
         fs::write(orphan_config.join("shortcuts.vdf.tmp"), "fresh").unwrap();
 
         let n = sweep(&Targets { json_dirs: vec![], shortcut_dirs: vec![apps.clone()], steam: Some(steam.clone()) });
-        assert_eq!(n, 4);
+        assert_eq!(n, 5);
         for kept in [
             apps.join("Game.desktop"),
+            apps.join("Game.lnk"),
             apps.join("notes.tmp"),
             apps.join(".hidden.tmp"),
             config.join("shortcuts.vdf"),

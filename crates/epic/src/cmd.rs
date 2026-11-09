@@ -126,11 +126,26 @@ pub fn redact(args: &[String]) -> Vec<String> {
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
 
+    pub use heronite_data::testing::{FakeTool, Reply};
+
+    /// A fake `legendary` in `dir` that records the config path it gets
+    /// (`heronite_data::testing::FakeTool`, the same on every system): tell
+    /// it what to answer with `.on(...)` / `.otherwise(...)`, then run it
+    /// through [`legendary_of`].
+    pub fn fake_tool(dir: &Path) -> FakeTool {
+        FakeTool::new(dir, "legendary").record_env("LEGENDARY_CONFIG_PATH")
+    }
+
+    /// A [`Legendary`] running `tool`, with `<dir>/cfg` as its config folder.
+    pub fn legendary_of(tool: &FakeTool, dir: &Path) -> Legendary {
+        Legendary::with_bin(tool.bin(), dir.join("cfg"))
+    }
+
     /// A fake `legendary`: a shell script that records its arguments and the
-    /// config path, then runs `body`.
+    /// config path, then runs `body`. Unix only: it needs `sh`.
+    #[cfg(unix)]
     pub fn fake(dir: &Path, body: &str) -> Legendary {
         let bin = dir.join("legendary");
         let script = format!(
@@ -138,10 +153,11 @@ pub(crate) mod testing {
             log = dir.join("calls.log").display()
         );
         std::fs::write(&bin, script).unwrap();
-        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        heronite_platform::fs::make_executable(&bin).unwrap();
         Legendary::with_bin(bin, dir.join("cfg"))
     }
 
+    #[cfg(unix)]
     pub fn calls(dir: &Path) -> Vec<String> {
         std::fs::read_to_string(dir.join("calls.log"))
             .unwrap_or_default()
@@ -161,27 +177,39 @@ mod tests {
     #[test]
     fn captures_both_streams_and_passes_the_config_path() {
         let dir = tempfile::tempdir().unwrap();
-        let lg = fake(dir.path(), "echo out; echo err >&2; exit 3");
-        let out = lg.run(&["list", "--third-party"], &[]).unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out("out").err("err").exit(3));
+        let out = legendary_of(&tool, dir.path()).run(&["list", "--third-party"], &[]).unwrap();
         assert_eq!(out.code, Some(3));
         assert!(!out.success());
         assert_eq!(out.stdout.trim(), "out");
         assert_eq!(out.stderr.trim(), "err");
-        assert_eq!(calls(dir.path()), ["list --third-party"]);
-        let log = std::fs::read_to_string(dir.path().join("calls.log")).unwrap();
-        assert!(log.contains(&format!("CFG={}", dir.path().join("cfg").display())), "{log}");
+        assert_eq!(tool.calls(), ["list --third-party"]);
+        assert_eq!(tool.env_seen("LEGENDARY_CONFIG_PATH"), [dir.path().join("cfg").display().to_string()]);
     }
 
     #[test]
     fn streams_lines_split_on_carriage_returns() {
         let dir = tempfile::tempdir().unwrap();
-        let lg = fake(dir.path(), "printf 'a\\rb\\nc' >&2");
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().err_raw("a\rb\nc"));
         let mut lines = Vec::new();
-        let out = lg.run_streaming(&["x"], &[], &Cancel::new(), |l| lines.push(l.to_string())).unwrap();
+        let out = legendary_of(&tool, dir.path()).run_streaming(&["x"], &[], &Cancel::new(), |l| lines.push(l.to_string())).unwrap();
         assert!(out.success());
         assert_eq!(lines, ["a", "b", "c"]);
     }
 
+    #[test]
+    fn cancel_stops_a_running_tool() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = fake_tool(dir.path()).otherwise(Reply::new().out("started").sleep(Duration::from_secs(60)));
+        let cancel = Cancel::new();
+        let c2 = cancel.clone();
+        let started = Instant::now();
+        let out = legendary_of(&tool, dir.path()).run_streaming(&["install"], &[], &cancel, |_| c2.request()).unwrap();
+        assert!(out.aborted);
+        assert!(started.elapsed() < Duration::from_secs(10), "took {:?}", started.elapsed());
+    }
+
+    #[cfg(unix)]
     #[test]
     fn cancel_stops_the_process_group() {
         let dir = tempfile::tempdir().unwrap();

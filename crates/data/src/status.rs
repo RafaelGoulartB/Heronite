@@ -283,8 +283,31 @@ fn current_status<'a>(file: &'a LocalMetaFile, app_name: &str) -> Option<&'a str
 /// [`set_game_status`] for many games in one write: `(app_name, status_id,
 /// extras)`, each game its own status (an undo puts back different ones).
 pub fn set_games_status(paths: &DataPaths, games: &[(String, String, SetStatusExtras)]) -> Result<()> {
+    let changed = put_statuses(paths, games)?;
+    crate::status_history::record_now(paths, &changed);
+    Ok(())
+}
+
+/// [`set_games_status`] for changes made earlier, on another PC (the library
+/// sync): `at` (RFC 3339) is when each one was made, so the history keeps the
+/// day a game was beaten there.
+pub fn set_games_status_made_at(paths: &DataPaths, games: &[(String, String, SetStatusExtras, String)]) -> Result<()> {
+    let plain: Vec<(String, String, SetStatusExtras)> = games.iter().map(|(a, s, e, _)| (a.clone(), s.clone(), e.clone())).collect();
+    let changed = put_statuses(paths, &plain)?;
+    let dated: Vec<(String, String, String)> = changed
+        .into_iter()
+        .map(|(app_name, status_id)| {
+            let at = games.iter().find(|(a, ..)| *a == app_name).map(|(.., at)| at.clone()).unwrap_or_default();
+            (app_name, status_id, at)
+        })
+        .collect();
+    crate::status_history::record_dated(paths, &dated)
+}
+
+/// Writes the statuses in one go; the `(app_name, status id)` that changed.
+fn put_statuses(paths: &DataPaths, games: &[(String, String, SetStatusExtras)]) -> Result<Vec<(String, String)>> {
     if games.is_empty() {
-        return Ok(());
+        return Ok(Vec::new());
     }
     let mut changed = Vec::new();
     json_store::update::<LocalMetaFile, _>(&paths.local_meta(), |file| {
@@ -297,8 +320,7 @@ pub fn set_games_status(paths: &DataPaths, games: &[(String, String, SetStatusEx
         }
         Ok(())
     })?;
-    crate::status_history::record_now(paths, &changed);
-    Ok(())
+    Ok(changed)
 }
 
 fn put_status(file: &mut LocalMetaFile, app_name: &str, status_id: &str, extras: &SetStatusExtras) -> LocalGameMeta {
@@ -306,22 +328,118 @@ fn put_status(file: &mut LocalMetaFile, app_name: &str, status_id: &str, extras:
         existing.completion_status_id = Some(status_id.to_owned());
         return existing.clone();
     }
+    let meta = minimal_meta(app_name, status_id, extras);
+    file.games.insert(app_name.to_owned(), meta.clone());
+    meta
+}
+
+/// The entry of a game the overlay does not know yet, like Heronite makes it,
+/// with the source its runner has (see [`source_of_runner`]).
+fn minimal_meta(app_name: &str, status_id: &str, extras: &SetStatusExtras) -> LocalGameMeta {
     let runner = match extras.runner.as_deref() {
         Some("zoom") | None => "sideload",
         Some(other) => other,
     };
-    let meta = LocalGameMeta {
+    LocalGameMeta {
         app_name: app_name.to_owned(),
         runner: runner.to_owned(),
         playnite_id: extras.playnite_id.clone().unwrap_or_else(|| format!("heroic_{app_name}")),
-        source: "other".into(),
+        source: source_of_runner(extras.runner.as_deref()).into(),
         launch_kind: "unavailable".into(),
         title: extras.title.clone().unwrap_or_else(|| app_name.to_owned()),
         completion_status_id: Some(status_id.to_owned()),
         ..Default::default()
-    };
-    file.games.insert(app_name.to_owned(), meta.clone());
-    meta
+    }
+}
+
+/// A game with play time, as [`promote_played`] takes it.
+#[derive(Debug, Clone)]
+pub struct PlayedGame {
+    /// The key of its overlay entry, timestamps and status history.
+    pub app_name: String,
+    pub minutes: u64,
+    /// What a new overlay entry starts with, when the game has none yet.
+    pub extras: SetStatusExtras,
+}
+
+/// The ids of the list's own "not-played" and "played" (slug first, then id).
+/// `None` when it lacks one of them or they are the same status: the
+/// inference would fall back to the first status of the list, which may be a
+/// real choice (where `delete_status` moved the games, say).
+fn own_not_played_and_played(statuses: &[CompletionStatus]) -> Option<(String, String)> {
+    let own =
+        |slug: &str| statuses.iter().find(|s| s.slug == slug).or_else(|| statuses.iter().find(|s| s.id == slug)).map(|s| s.id.clone());
+    let (not_played, played) = (own("not-played")?, own("played")?);
+    (played != not_played).then_some((not_played, played))
+}
+
+/// The overlay "source" of a game that has no entry yet, by its runner: the
+/// store's for Epic, GOG and Amazon, "manual" for a local game (what adding
+/// one writes). The entry keeps the label and Store filter of its runner
+/// whichever path made it.
+fn source_of_runner(runner: Option<&str>) -> &'static str {
+    match runner {
+        Some("legendary") => "epic",
+        Some("gog") => "gog",
+        Some("nile") => "amazon",
+        _ => "manual",
+    }
+}
+
+/// Epic, GOG or Amazon: the runners whose games often have no overlay entry.
+fn is_store_runner(runner: Option<&str>) -> bool {
+    matches!(runner, Some("legendary" | "gog" | "nile"))
+}
+
+/// Set (`true`) in the overlay entry that [`promote_played`] makes for a game
+/// that had none. The entry only holds the status: the automatic metadata
+/// fill leaves it alone, as it left the game before, instead of searching the
+/// web for every played store game and changing their titles and art.
+pub const STATUS_ONLY_KEY: &str = "heroniteStatusOnly";
+
+/// Moves games with play time from the automatic "Not played" (or no status)
+/// to "Played": the status they would have got had the play time been known
+/// when they were added. Only that automatic status moves; a game whose
+/// status the user ever changed (the status history has it) or that is in any
+/// other status is left as it is. Nothing moves unless the list has its own
+/// "not-played" and "played". The promotion is not recorded in the status
+/// history: it is an inferred default, not a choice, and recording it would
+/// give the Statistics a "played since" day that never happened.
+///
+/// The status is read again under the lock and written only when something
+/// changed, so a second call changes and writes nothing. A store game (Epic,
+/// GOG, Amazon) without an overlay entry gets one; any other game without
+/// one is left alone, since an entry would make the install-state scan and
+/// the cover fill start acting on it. How many games changed.
+pub fn promote_played(paths: &DataPaths, games: &[PlayedGame]) -> Result<usize> {
+    let statuses = load_statuses(paths).unwrap_or_else(|_| default_statuses());
+    let Some((not_played, played)) = own_not_played_and_played(&statuses) else { return Ok(0) };
+    let chosen = crate::status_history::load(paths);
+    let candidates: Vec<&PlayedGame> =
+        games.iter().filter(|g| g.minutes > 0 && chosen.get(&g.app_name).is_none_or(Vec::is_empty)).collect();
+    if candidates.is_empty() {
+        return Ok(0);
+    }
+    json_store::update_if_changed::<LocalMetaFile, _>(&paths.local_meta(), |file| {
+        let mut promoted = 0;
+        for game in candidates {
+            match file.games.get_mut(&game.app_name) {
+                Some(meta) if meta.completion_status_id.as_deref().is_none_or(|s| s.is_empty() || s == not_played) => {
+                    meta.completion_status_id = Some(played.clone());
+                    promoted += 1;
+                }
+                Some(_) => {}
+                None if !is_store_runner(game.extras.runner.as_deref()) => {}
+                None => {
+                    let mut meta = minimal_meta(&game.app_name, &played, &game.extras);
+                    meta.extra.insert(STATUS_ONLY_KEY.into(), serde_json::Value::Bool(true));
+                    file.games.insert(game.app_name.clone(), meta);
+                    promoted += 1;
+                }
+            }
+        }
+        Ok(promoted)
+    })
 }
 
 /// `upsertCompletionStatus`: replaces the status with the same id or appends.
@@ -440,6 +558,7 @@ pub fn reorder_statuses(paths: &DataPaths, ids: &[String]) -> Result<Vec<Complet
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::fs;
 
     fn ids(s: &[CompletionStatus]) -> Vec<&str> {
@@ -513,10 +632,11 @@ mod tests {
         let v = json_store::read_value(&paths.local_meta()).unwrap();
         let e = &v["games"]["Calluna"];
         assert_eq!(e["runner"], "legendary");
-        assert_eq!(e["source"], "other");
+        assert_eq!(e["source"], "epic");
         assert_eq!(e["launchKind"], "unavailable");
         assert_eq!(e["title"], "Control");
         assert_eq!(e["completionStatusId"], "beaten");
+        assert!(e.get(STATUS_ONLY_KEY).is_none(), "a status the user set is a plain entry");
         assert_eq!(e["playniteId"], "heroic_Calluna");
         // Second call only updates the status and keeps the rest.
         set_game_status(&paths, "Calluna", "played", &SetStatusExtras::default()).unwrap();
@@ -538,6 +658,137 @@ mod tests {
         assert_eq!(v["games"]["b"]["runner"], "sideload");
         assert_eq!(v["games"]["b"]["title"], "B");
         set_games_status(&paths, &[]).unwrap();
+    }
+
+    fn played(app: &str, minutes: u64) -> PlayedGame {
+        PlayedGame { app_name: app.into(), minutes, extras: SetStatusExtras { runner: Some("legendary".into()), ..Default::default() } }
+    }
+
+    fn stored_status(paths: &DataPaths, app: &str) -> Option<String> {
+        let file: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        file.games.get(app)?.completion_status_id.clone()
+    }
+
+    #[test]
+    fn play_time_moves_the_automatic_status_to_played() {
+        let (_d, paths) = temp_paths();
+        json_store::write(
+            &paths.local_meta(),
+            &serde_json::from_value::<LocalMetaFile>(json!({"games": {
+                "a": {"appName": "a", "runner": "sideload", "completionStatusId": "not-played", "zz": 1},
+                "b": {"appName": "b", "runner": "sideload"},
+                "c": {"appName": "c", "runner": "sideload", "completionStatusId": ""},
+                "d": {"appName": "d", "runner": "sideload", "completionStatusId": "not-played"},
+                "e": {"appName": "e", "runner": "sideload", "completionStatusId": "beaten"},
+            }}))
+            .unwrap(),
+        )
+        .unwrap();
+        let games = [played("a", 90), played("b", 1), played("c", 5), played("d", 0), played("e", 600)];
+        assert_eq!(promote_played(&paths, &games).unwrap(), 3);
+        for app in ["a", "b", "c"] {
+            assert_eq!(stored_status(&paths, app).as_deref(), Some("played"), "{app}");
+        }
+        assert_eq!(stored_status(&paths, "d").as_deref(), Some("not-played"), "no play time");
+        assert_eq!(stored_status(&paths, "e").as_deref(), Some("beaten"), "another status stays");
+        assert_eq!(json_store::read_value(&paths.local_meta()).unwrap()["games"]["a"]["zz"], 1);
+        assert!(crate::status_history::load(&paths).is_empty(), "an inferred status is not a choice");
+    }
+
+    #[test]
+    fn promoting_twice_writes_nothing_the_second_time() {
+        let (_d, paths) = temp_paths();
+        let extras = SetStatusExtras { runner: Some("legendary".into()), title: Some("Control".into()), playnite_id: None };
+        let games = [PlayedGame { app_name: "ctl".into(), minutes: 30, extras }];
+        assert_eq!(promote_played(&paths, &games).unwrap(), 1);
+
+        let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400);
+        fs::File::options().write(true).open(paths.local_meta()).unwrap().set_modified(old).unwrap();
+        assert_eq!(promote_played(&paths, &games).unwrap(), 0);
+        assert_eq!(json_store::mtime(&paths.local_meta()), Some(old));
+    }
+
+    #[test]
+    fn a_game_without_an_entry_gets_one_of_its_store() {
+        let (_d, paths) = temp_paths();
+        let extras = SetStatusExtras { runner: Some("legendary".into()), title: Some("Control".into()), playnite_id: None };
+        promote_played(&paths, &[PlayedGame { app_name: "ctl".into(), minutes: 30, extras }]).unwrap();
+        let v = json_store::read_value(&paths.local_meta()).unwrap();
+        let e = &v["games"]["ctl"];
+        assert_eq!((e["runner"].as_str(), e["source"].as_str(), e["title"].as_str()), (Some("legendary"), Some("epic"), Some("Control")));
+        assert_eq!(e["completionStatusId"], "played");
+        assert_eq!(e["launchKind"], "unavailable");
+        assert_eq!(e[STATUS_ONLY_KEY], true, "the metadata fill leaves it alone");
+    }
+
+    #[test]
+    fn a_local_game_without_an_entry_is_left_alone() {
+        let (_d, paths) = temp_paths();
+        for runner in ["sideload", "zoom"] {
+            let extras = SetStatusExtras { runner: Some(runner.into()), title: Some("Local".into()), playnite_id: None };
+            assert_eq!(promote_played(&paths, &[PlayedGame { app_name: runner.into(), minutes: 30, extras }]).unwrap(), 0);
+        }
+        assert!(!paths.local_meta().exists(), "no entry, so the install scan and the cover fill keep skipping them");
+    }
+
+    #[test]
+    fn the_source_of_a_new_entry_follows_the_runner_whoever_makes_it() {
+        let (_d, paths) = temp_paths();
+        for (app, runner, source) in
+            [("e", "legendary", "epic"), ("g", "gog", "gog"), ("n", "nile", "amazon"), ("s", "sideload", "manual"), ("z", "zoom", "manual")]
+        {
+            let extras = SetStatusExtras { runner: Some(runner.into()), ..Default::default() };
+            set_game_status(&paths, &format!("set_{app}"), "beaten", &extras).unwrap();
+            promote_played(&paths, &[PlayedGame { app_name: format!("promoted_{app}"), minutes: 5, extras }]).unwrap();
+            let v = json_store::read_value(&paths.local_meta()).unwrap();
+            assert_eq!(v["games"][format!("set_{app}")]["source"], source, "{runner}");
+            match is_store_runner(Some(runner)) {
+                true => assert_eq!(v["games"][format!("promoted_{app}")]["source"], source, "{runner}"),
+                false => assert!(v["games"].get(format!("promoted_{app}")).is_none(), "{runner}: no entry is made"),
+            }
+        }
+        set_game_status(&paths, "none", "beaten", &SetStatusExtras::default()).unwrap();
+        assert_eq!(json_store::read_value(&paths.local_meta()).unwrap()["games"]["none"]["source"], "manual");
+    }
+
+    #[test]
+    fn a_status_the_user_chose_is_never_promoted() {
+        let (_d, paths) = temp_paths();
+        // Played, then back to Not played by hand: the history remembers it.
+        set_game_status(&paths, "a", "played", &SetStatusExtras::default()).unwrap();
+        set_game_status(&paths, "a", "not-played", &SetStatusExtras::default()).unwrap();
+        assert_eq!(promote_played(&paths, &[played("a", 600)]).unwrap(), 0);
+        assert_eq!(stored_status(&paths, "a").as_deref(), Some("not-played"));
+    }
+
+    #[test]
+    fn nothing_is_promoted_without_the_lists_own_statuses() {
+        for (first, second) in [("beaten", "played"), ("played", "beaten"), ("beaten", "not-played")] {
+            let (_d, paths) = temp_paths();
+            let list = json!({"statuses": [
+                {"id": first, "name": first, "slug": first, "sortOrder": 10},
+                {"id": second, "name": second, "slug": second, "sortOrder": 20},
+            ]});
+            fs::write(paths.statuses(), list.to_string()).unwrap();
+            assert_eq!(promote_played(&paths, &[played("a", 90)]).unwrap(), 0, "{first}, {second}");
+            assert!(!paths.local_meta().exists(), "{first}, {second}");
+        }
+    }
+
+    #[test]
+    fn the_promotion_uses_the_ids_of_a_custom_list() {
+        let (_d, paths) = temp_paths();
+        let list = json!({"statuses": [
+            {"id": "s1", "name": "Never", "slug": "not-played", "sortOrder": 10},
+            {"id": "s2", "name": "Tried", "slug": "played", "sortOrder": 20},
+        ]});
+        fs::write(paths.statuses(), list.to_string()).unwrap();
+        set_game_status(&paths, "a", "s1", &SetStatusExtras::default()).unwrap();
+        // `a` has a status the user chose (the history has it), `b` has none.
+        let games = [played("a", 90), played("b", 90)];
+        assert_eq!(promote_played(&paths, &games).unwrap(), 1);
+        assert_eq!(stored_status(&paths, "a").as_deref(), Some("s1"));
+        assert_eq!(stored_status(&paths, "b").as_deref(), Some("s2"));
     }
 
     #[test]

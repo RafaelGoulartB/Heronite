@@ -1,6 +1,6 @@
 //! Install and update requests, queue control and the download manager's events.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -23,6 +23,10 @@ use serde_json::Value;
 
 use super::connectivity::{self, Check};
 use super::{library_entry, Downloads, DownloadsEvent, InstallRequest, QueueState};
+
+/// Reports kept for the speed chart (legendary, gogdl and nile report about
+/// once a second: about a minute and a half).
+const SPEED_SAMPLES: usize = 90;
 
 impl Downloads {
     /// Where the game is in the queue.
@@ -74,12 +78,22 @@ impl Downloads {
                 if prev.is_none_or(|p| p.percent != progress.percent || p.downloaded_mib != progress.downloaded_mib) {
                     self.offline.moved(Instant::now());
                 }
+                if self.speed.0 != app_name {
+                    self.speed = (app_name.clone(), VecDeque::new());
+                }
+                if self.speed.1.len() == SPEED_SAMPLES {
+                    self.speed.1.pop_front();
+                }
+                self.speed.1.push_back(progress.down_speed as f32);
                 self.progress.insert(app_name, progress);
             }
             DmEvent::Changed => {
                 self.snapshot = self.manager.snapshot();
                 let alive: HashSet<&str> = self.snapshot.queue.iter().map(|e| e.params.app_name.as_str()).collect();
                 self.progress.retain(|app, _| alive.contains(app.as_str()));
+                if !alive.contains(self.speed.0.as_str()) {
+                    self.speed = Default::default();
+                }
             }
             DmEvent::Finished { element, error } => {
                 let title = element.params.title();
@@ -367,6 +381,11 @@ impl Downloads {
 
     pub fn move_in_queue(&mut self, app_name: &str, up: bool) {
         self.manager.move_element(app_name, up);
+    }
+
+    /// Moves a waiting element to `index` of the queue (1 = next).
+    pub fn move_in_queue_to(&mut self, app_name: &str, index: usize) {
+        self.manager.move_to(app_name, index);
     }
 
     pub fn clear_finished(&mut self) {

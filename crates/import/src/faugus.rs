@@ -29,7 +29,7 @@ pub fn detect(home: &Path) -> Result<Option<Found>> {
     // Covers live in the data folder even when `games.json` is in the config one.
     let data = if flatpak { home.join(".var/app").join(FLATPAK_ID).join("data/faugus-launcher") } else { dir.clone() };
     let games = list.as_array().map(|l| l.iter().filter_map(|g| game(g, &data, flatpak, home)).collect()).unwrap_or_default();
-    Ok(Some(Found { launcher: Launcher::Faugus, location: dir, flatpak, games, heroic: None }))
+    Ok(Some(Found { launcher: Launcher::Faugus, location: dir, flatpak, games, heroic: None, in_use: false }))
 }
 
 fn command(flatpak: bool, id: &str) -> String {
@@ -88,6 +88,7 @@ fn game(g: &Value, data: &Path, flatpak: bool, home: &Path) -> Option<Game> {
         cover,
         banner: file(data.join("banners").join(format!("{id}.png"))),
         prefix: Some(expand(&text("prefix"), home)).filter(|p| windows && !p.is_empty()),
+        runs_from: None,
         id,
     })
 }

@@ -73,4 +73,22 @@ pub trait PaletteCommands: Sized + 'static {
     fn page_modal(&self) -> bool {
         false
     }
+
+    /// Esc: closes the page's dialog or question when one is open. True when
+    /// it used the key (the page then stays on screen).
+    fn close_modal(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> bool {
+        false
+    }
+}
+
+/// [`PaletteCommands::close_modal`] of a page that hosts one dialog: the
+/// dialog may answer Esc itself (a question about unsaved input), else it
+/// closes.
+pub fn close_dialog(dialog: &mut Option<AnyView>, sub: &mut Option<Subscription>, window: &mut Window, cx: &mut App) -> bool {
+    let Some(view) = dialog.clone() else { return false };
+    if !crate::dialogs::handle_escape(&view, window, cx) {
+        *dialog = None;
+        *sub = None;
+    }
+    true
 }

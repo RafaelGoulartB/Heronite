@@ -2,6 +2,8 @@
 //! equivalent), kept in `AppPaths::appearance()` next to `ui-state.json`:
 //!
 //! - the opacity of the Collection background art (`collectionOpacity`, %);
+//! - the interface scale (`interfaceScale`, %; missing or `null` follows the
+//!   system, see the app's `system::ui_scale`);
 //! - the look of the interface surfaces (menus, dialogs, pages...): glass
 //!   (`interfaceMode: "transparent"`, art blurred behind translucent panels)
 //!   or solid, with the panel opacity, the blur and the solid tint;
@@ -37,6 +39,10 @@ pub const INTERFACE_BLUR_STEP: f32 = 5.;
 /// Window widths [`AutoView`] can switch at, logical px.
 pub const AUTO_VIEW_WIDTH_RANGE: (f32, f32) = (800., 2560.);
 pub const AUTO_VIEW_WIDTH_STEP: f32 = 20.;
+/// The interface scale picked by hand, %: 50 lets a 4K screen at 300% show
+/// what a 1080p one does at 150%, 300 makes a 1080p TV read from the couch.
+pub const INTERFACE_SCALE_RANGE: (f32, f32) = (50., 300.);
+pub const INTERFACE_SCALE_STEP: f32 = 5.;
 
 /// The Collection's view picked by the window's width: Grid while the window
 /// is narrower than `width`, Focus from `width` up. Off by default.
@@ -208,6 +214,9 @@ pub struct Appearance {
     pub accent_own: Option<Rgb>,
     /// Stronger secondary text and borders.
     pub high_contrast: bool,
+    /// The size of the whole interface, % ([`INTERFACE_SCALE_RANGE`]), on top
+    /// of the screen's own scale. `None` follows the system.
+    pub interface_scale: Option<f32>,
     pub font: FontChoice,
     pub density: Density,
     pub cover_corners: Corners,
@@ -215,6 +224,21 @@ pub struct Appearance {
     /// Favourite and "update available" badges on the covers.
     pub cover_badges: bool,
     pub cover_hover: CoverHover,
+    /// The game's categories on its cover (off by default), drawn as
+    /// `category_style`.
+    pub cover_categories: bool,
+    /// Kept while the categories are off, so switching them back on brings
+    /// the same look.
+    pub category_style: CategoryStyle,
+    /// The icon of the store each game comes from on its cover (off by
+    /// default): every store when the card stands for several copies.
+    pub cover_stores: bool,
+    /// With `cover_stores`: a card standing for several copies shows each
+    /// copy's store (else only its own).
+    pub cover_stores_all: bool,
+    /// With `cover_stores`: no icons while the Collection is grouped by
+    /// store (the section's header names it).
+    pub cover_stores_hide_grouped: bool,
     pub background: BackgroundSource,
     /// With [`BackgroundSource::Screenshot`]: a different screenshot every
     /// [`SLIDESHOW_SECS`].
@@ -222,6 +246,8 @@ pub struct Appearance {
     pub motion: Motion,
     pub start_view: StartView,
     pub auto_view: AutoView,
+    /// Show Collection shortcuts when the header has room (off by default).
+    pub quick_toolbar_controls: bool,
     pub sections: Sections,
 }
 
@@ -233,7 +259,7 @@ impl Appearance {
     pub const DEFAULT: Appearance = Appearance {
         collection_opacity: 100.,
         interface_mode: InterfaceMode::Transparent,
-        interface_opacity: 90.,
+        interface_opacity: 95.,
         interface_blur: 30.,
         theme: Theme::DEFAULT,
         solid_tint: SolidTint::Slate,
@@ -245,17 +271,24 @@ impl Appearance {
         accent: Accent::DEFAULT,
         accent_own: None,
         high_contrast: false,
+        interface_scale: None,
         font: FontChoice::DEFAULT,
         density: Density::DEFAULT,
         cover_corners: Corners::DEFAULT,
         cover_label: CoverLabel::DEFAULT,
         cover_badges: false,
         cover_hover: CoverHover::DEFAULT,
+        cover_categories: false,
+        category_style: CategoryStyle::DEFAULT,
+        cover_stores: false,
+        cover_stores_all: true,
+        cover_stores_hide_grouped: false,
         background: BackgroundSource::DEFAULT,
         background_slideshow: false,
         motion: Motion::DEFAULT,
         start_view: StartView::DEFAULT,
         auto_view: AutoView::DEFAULT,
+        quick_toolbar_controls: false,
         sections: Sections::DEFAULT,
     };
 }
@@ -270,6 +303,11 @@ impl Default for Appearance {
 fn own_colour(value: &Value, key: &str, light: bool) -> Option<Rgb> {
     let c = parse_hex(value.get(key)?.as_str()?)?;
     (is_light_colour(c) == light).then_some(c)
+}
+
+/// `percent` on a step of [`INTERFACE_SCALE_STEP`] within [`INTERFACE_SCALE_RANGE`].
+pub fn interface_scale_step(percent: f32) -> f32 {
+    clamp(INTERFACE_SCALE_RANGE, (percent / INTERFACE_SCALE_STEP).round() * INTERFACE_SCALE_STEP)
 }
 
 fn clamp((lo, hi): (f32, f32), v: f32) -> f32 {
@@ -287,14 +325,22 @@ impl Appearance {
         self.interface_opacity = clamp(INTERFACE_OPACITY_RANGE, self.interface_opacity).round();
         self.interface_blur = clamp(INTERFACE_BLUR_RANGE, (self.interface_blur / INTERFACE_BLUR_STEP).round() * INTERFACE_BLUR_STEP);
         self.auto_view.width = clamp(AUTO_VIEW_WIDTH_RANGE, (self.auto_view.width / AUTO_VIEW_WIDTH_STEP).round() * AUTO_VIEW_WIDTH_STEP);
+        self.interface_scale = self.interface_scale.filter(|v| v.is_finite()).map(interface_scale_step);
         self
     }
 
-    /// `self` with `other`'s [`AutoView`], [`Theme`] and custom colours. They
-    /// follow the window and the desktop, not a look: applying or matching a
-    /// profile neither changes nor breaks them.
+    /// `self` with `other`'s window layout and scale, [`Theme`] and custom
+    /// colours. They follow the window, the screen and the desktop, not a
+    /// look: applying or matching a profile neither changes nor breaks them.
     pub fn with_window_choices_of(self, other: &Appearance) -> Self {
-        Self { auto_view: other.auto_view, theme: other.theme, custom: other.custom, ..self }
+        Self {
+            auto_view: other.auto_view,
+            interface_scale: other.interface_scale,
+            quick_toolbar_controls: other.quick_toolbar_controls,
+            theme: other.theme,
+            custom: other.custom,
+            ..self
+        }
     }
 
     pub fn from_value(value: &Value) -> Self {
@@ -323,17 +369,24 @@ impl Appearance {
             accent: name("accent").and_then(Accent::parse).unwrap_or_default(),
             accent_own: name("accentColour").and_then(parse_hex),
             high_contrast: flag("highContrast", d.high_contrast),
+            interface_scale: value.get("interfaceScale").and_then(Value::as_f64).map(|v| v as f32),
             font: name("font").and_then(FontChoice::parse).unwrap_or_default(),
             density: name("density").and_then(Density::parse).unwrap_or_default(),
             cover_corners: name("coverCorners").and_then(Corners::parse).unwrap_or_default(),
             cover_label: name("coverLabel").and_then(CoverLabel::parse).unwrap_or_default(),
             cover_badges: flag("coverBadges", d.cover_badges),
             cover_hover: name("coverHover").and_then(CoverHover::parse).unwrap_or_default(),
+            cover_categories: flag("coverCategories", d.cover_categories),
+            category_style: name("categoryStyle").and_then(CategoryStyle::parse).unwrap_or_default(),
+            cover_stores: flag("coverStores", d.cover_stores),
+            cover_stores_all: flag("coverStoresAll", d.cover_stores_all),
+            cover_stores_hide_grouped: flag("coverStoresHideGrouped", d.cover_stores_hide_grouped),
             background: name("background").and_then(BackgroundSource::parse).unwrap_or_default(),
             background_slideshow: flag("backgroundSlideshow", d.background_slideshow),
             motion: name("motion").and_then(Motion::parse).unwrap_or_default(),
             start_view: name("startView").and_then(StartView::parse).unwrap_or_default(),
             auto_view: AutoView { on: flag("autoView", d.auto_view.on), width: num("autoViewWidth", d.auto_view.width) },
+            quick_toolbar_controls: flag("quickToolbarControls", d.quick_toolbar_controls),
             sections: Sections::from_names(names("sections"), names("hiddenSections")),
         }
         .normalized()
@@ -355,18 +408,25 @@ impl Appearance {
             "accent": self.accent.as_str(),
             "accentColour": self.accent_own.map(hex),
             "highContrast": self.high_contrast,
+            "interfaceScale": self.interface_scale,
             "font": self.font.as_str(),
             "density": self.density.as_str(),
             "coverCorners": self.cover_corners.as_str(),
             "coverLabel": self.cover_label.as_str(),
             "coverBadges": self.cover_badges,
             "coverHover": self.cover_hover.as_str(),
+            "coverCategories": self.cover_categories,
+            "categoryStyle": self.category_style.as_str(),
+            "coverStores": self.cover_stores,
+            "coverStoresAll": self.cover_stores_all,
+            "coverStoresHideGrouped": self.cover_stores_hide_grouped,
             "background": self.background.as_str(),
             "backgroundSlideshow": self.background_slideshow,
             "motion": self.motion.as_str(),
             "startView": self.start_view.as_str(),
             "autoView": self.auto_view.on,
             "autoViewWidth": self.auto_view.width,
+            "quickToolbarControls": self.quick_toolbar_controls,
             "sections": self.sections.order().iter().map(|s| s.as_str()).collect::<Vec<_>>(),
             "hiddenSections": self.sections.hidden_names(),
         })
@@ -409,7 +469,7 @@ mod tests {
         let d = Appearance::default();
         assert_eq!(d.collection_opacity, 100.);
         assert_eq!(d.interface_mode, InterfaceMode::Transparent);
-        assert_eq!(d.interface_opacity, 90.);
+        assert_eq!(d.interface_opacity, 95.);
         assert_eq!(d.interface_blur, 30.);
         assert_eq!(d.solid_tint, SolidTint::Slate);
         assert_eq!(d.normalized(), d);
@@ -468,18 +528,25 @@ mod tests {
             accent: Accent::Game,
             accent_own: Some((200, 90, 30)),
             high_contrast: true,
+            interface_scale: Some(120.),
             font: FontChoice::System,
             density: Density::Compact,
             cover_corners: Corners::Round,
             cover_label: CoverLabel::LastPlayed,
             cover_badges: true,
             cover_hover: CoverHover::Glow,
+            cover_categories: true,
+            category_style: CategoryStyle::Bookmarks,
+            cover_stores: true,
+            cover_stores_all: false,
+            cover_stores_hide_grouped: true,
             background: BackgroundSource::Screenshot,
             background_slideshow: true,
             motion: Motion::Reduced,
             start_view: StartView::Grid,
             auto_view: AutoView { on: true, width: 1600. },
-            sections: Sections::DEFAULT.moved(Section::Related, -4).toggled(Section::Timeline),
+            quick_toolbar_controls: true,
+            sections: Sections::DEFAULT.moved(Section::Related, -5).toggled(Section::Timeline),
         };
         a.save(&p).unwrap();
         assert_eq!(Appearance::load(&p), a);
@@ -496,10 +563,43 @@ mod tests {
         assert_eq!(on_disk["interfaceSolidDesktop"], true);
         assert_eq!(on_disk["collectionOpacity"], 60.0);
         assert_eq!(on_disk["coverLabel"], "lastPlayed");
+        assert_eq!(on_disk["coverStores"], true);
+        assert_eq!(on_disk["coverStoresAll"], false);
+        assert_eq!(on_disk["coverStoresHideGrouped"], true);
         assert_eq!(on_disk["sections"][0], "related");
         assert_eq!(on_disk["hiddenSections"], json!(["timeline"]));
         assert_eq!(on_disk["autoView"], true);
         assert_eq!(on_disk["autoViewWidth"], 1600.0);
+        assert_eq!(on_disk["quickToolbarControls"], true);
+    }
+
+    #[test]
+    fn quick_toolbar_defaults_off_and_round_trips_on() {
+        for value in [json!({}), json!({"quickToolbarControls": "invalid"}), json!({"quickToolbarControls": null})] {
+            assert!(!Appearance::from_value(&value).quick_toolbar_controls);
+        }
+        let on = Appearance::from_value(&json!({"quickToolbarControls": true}));
+        assert!(Appearance::from_value(&on.to_value()).quick_toolbar_controls);
+        assert!(Appearance::DEFAULT.with_window_choices_of(&on).quick_toolbar_controls);
+    }
+
+    #[test]
+    fn view_presets_and_filter_reset_leave_toolbar_preference_alone() {
+        use crate::ui_state::{UiState, ViewFilters};
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths(dir.path());
+        let appearance = Appearance { quick_toolbar_controls: true, ..Appearance::DEFAULT };
+        appearance.save(&p).unwrap();
+        let mut ui = UiState::default();
+        let preset = ViewFilters { install_filter: crate::InstallFilter::Installed, sort: crate::SortMode::Playtime, ..Default::default() };
+        ui.apply_view(&preset);
+        ui.save(&p).unwrap();
+        assert!(ui.shows_view(&preset));
+        assert_eq!(Appearance::load(&p), appearance);
+        ui.clear_filters();
+        ui.save(&p).unwrap();
+        assert_eq!(Appearance::load(&p), appearance);
+        assert!(ui.view_filters().to_value().get("quickToolbarControls").is_none());
     }
 
     #[test]
@@ -555,6 +655,21 @@ mod tests {
         let (light, c) = own_panel((128, 128, 128));
         let muted = if light { Palette::LIGHT.muted } else { Palette::DARK.muted };
         assert!(contrast(c, muted) >= 4.5);
+    }
+
+    #[test]
+    fn interface_scale_follows_the_system_until_picked() {
+        for value in [json!({}), json!({"interfaceScale": null}), json!({"interfaceScale": "big"})] {
+            assert_eq!(Appearance::from_value(&value).interface_scale, None);
+        }
+        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 83})).interface_scale, Some(85.));
+        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 10})).interface_scale, Some(50.));
+        assert_eq!(Appearance::from_value(&json!({"interfaceScale": 900})).interface_scale, Some(300.));
+        let picked = Appearance { interface_scale: Some(80.), ..Appearance::DEFAULT };
+        assert_eq!(Appearance::from_value(&picked.to_value()), picked);
+        assert_eq!(Appearance::DEFAULT.to_value()["interfaceScale"], Value::Null);
+        // A profile does not change it.
+        assert_eq!(Appearance::DEFAULT.with_window_choices_of(&picked).interface_scale, Some(80.));
     }
 
     #[test]

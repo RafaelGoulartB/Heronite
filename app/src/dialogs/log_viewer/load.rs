@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use gpui_kit::prelude::*;
@@ -190,7 +189,7 @@ impl LogViewer {
     }
 
     pub(super) fn open(&mut self, target: PathBuf, cx: &mut Context<Self>) {
-        self.notice = match Command::new("xdg-open").arg(&target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+        self.notice = match heronite_platform::shell::open(&target) {
             Ok(_) => None,
             Err(e) => Some(tr!("Could not open {path}: {error}", path = target.display(), error = e).into()),
         };

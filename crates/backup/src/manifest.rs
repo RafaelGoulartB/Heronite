@@ -83,7 +83,12 @@ impl Manifest {
 }
 
 pub(crate) fn hostname() -> String {
-    fs::read_to_string("/proc/sys/kernel/hostname").map(|s| s.trim().to_owned()).unwrap_or_default()
+    fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|s| s.trim().to_owned())
+        .ok()
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("COMPUTERNAME").ok())
+        .unwrap_or_default()
 }
 
 /// Counts of the Collection files in `data` (a data folder or a backup's

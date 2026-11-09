@@ -37,7 +37,16 @@ pub fn write_atomic(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<
     let tmp = unique_tmp_path(path);
     let _ = fs::remove_file(&tmp);
     let result = (|| {
-        let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        // Born with the mode (less the umask), so a private file is never
+        // readable by others, not even before the exact mode below.
+        #[cfg(unix)]
+        if let Some(mode) = mode {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(mode);
+        }
+        let mut f = opts.open(&tmp)?;
         f.write_all(bytes)?;
         #[cfg(unix)]
         if let Some(mode) = mode {
@@ -48,7 +57,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<
         let _ = mode;
         f.sync_all()?;
         drop(f);
-        fs::rename(&tmp, path)
+        heronite_platform::fs::rename_replacing(&tmp, path)
     })();
     if result.is_err() {
         let _ = fs::remove_file(&tmp);
@@ -86,8 +95,8 @@ fn pid_alive(pid: i32) -> bool {
 }
 
 #[cfg(not(unix))]
-fn pid_alive(_pid: i32) -> bool {
-    true
+fn pid_alive(pid: i32) -> bool {
+    pid > 0 && heronite_platform::process::is_alive(pid as u32)
 }
 
 fn age(path: &Path, now: SystemTime) -> Option<Duration> {

@@ -7,6 +7,7 @@ description = "What the games take on disk: installs, Wine prefixes, Proton buil
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
 heronite-i18n = { path = "../i18n" }
 heronite-launch = { path = "../launch" }
 heronite-wine = { path = "../wine" }
@@ -14,7 +15,6 @@ serde_json.workspace = true
 anyhow.workspace = true
 log.workspace = true
 dirs = "6"
-libc = "0.2"
 trash = "5"
 
 [dev-dependencies]

@@ -1,0 +1,21 @@
+{
+  "A game with this name is in your Collection": "Un juego con este nombre ya está en tu Colección",
+  "Add from folder": "Añadir desde una carpeta",
+  "Add games from a folder": "Añadir juegos desde una carpeta",
+  "Add games from a folder…": "Añadir juegos desde una carpeta…",
+  "Choose the folder your games are in. Heronite looks for the programs that start them, and you choose the games to add.": "Elige la carpeta donde están tus juegos. Heronite busca los programas que los inician y tú eliges los juegos que añadir.",
+  "Could not add the games: {error}": "No se pudieron añadir los juegos: {error}",
+  "Find many games at once": "Varios juegos a la vez",
+  "Find the games in a folder and add them at once": "Encuentra los juegos de una carpeta y los añade todos a la vez",
+  "Games are found by the programs that start them (.exe). Try the folder of one game, or the one that holds them.": "Los juegos se encuentran por los programas que los inician (.exe). Prueba con la carpeta de un juego o con la que los contiene.",
+  "Games are found by the programs that start them: Windows programs (.exe), AppImages, start scripts and Linux programs. Try the folder of one game, or the one that holds them.": "Los juegos se encuentran por los programas que los inician: programas de Windows (.exe), AppImages, scripts de inicio y programas de Linux. Prueba con la carpeta de un juego o con la que los contiene.",
+  "Games folder": "Carpeta de juegos",
+  "Give each Windows game its own Wine prefix": "Dar a cada juego de Windows su propio prefijo de Wine",
+  "Looking for games…": "Buscando juegos…",
+  "No games were found in this folder.": "No se encontró ningún juego en esta carpeta.",
+  "Scan again": "Buscar de nuevo",
+  "The folder your games are in": "La carpeta donde están tus juegos",
+  "This folder does not exist.": "Esta carpeta no existe.",
+  "This folder is very big: only part of it was searched.": "Esta carpeta es muy grande: solo se buscó en una parte.",
+  "{n} already in Collection": "{n} ya en la Colección"
+}

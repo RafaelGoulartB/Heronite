@@ -11,9 +11,11 @@
 //! (`HERONITE_DEBUG_*` hooks).
 
 mod account;
+mod amazon_app;
 mod connectivity;
 mod debug;
 mod eos;
+mod gog_galaxy;
 mod gog_saves;
 mod launch_setup;
 mod library_file;
@@ -24,7 +26,7 @@ mod stores;
 mod types;
 mod updates;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use futures::channel::mpsc::unbounded;
@@ -41,8 +43,10 @@ use heronite_i18n::tr;
 use eos::EosEntry;
 use queue::LazyJob;
 
+pub use eos::global as eos_global;
 pub use launch_setup::EpicLaunchSetup;
 pub use library_file::library_entry;
+pub use ops::LAUNCHER_IMPORT;
 pub use stores::{gog_sync_saves_flag, StoreLaunchSetup};
 pub use types::*;
 
@@ -51,6 +55,9 @@ pub struct Downloads {
     manager: DownloadManager,
     snapshot: Snapshot,
     progress: HashMap<String, Progress>,
+    /// Download speeds (MiB/s) of the running element's last reports, oldest
+    /// first, for the Downloads page's chart: `(app name, samples)`.
+    speed: (String, VecDeque<f32>),
     /// Pauses the queue while the connection is down.
     offline: connectivity::OfflineWatch,
     updates: HashSet<String>,
@@ -82,6 +89,10 @@ pub struct Downloads {
     amazon: StoreState,
     /// The Amazon sign-in in progress (nile's verifier, needed to register).
     amazon_login: Option<heronite_amazon::user::LoginRequest>,
+    /// Games of the Amazon Games app are being brought in (`amazon_app`).
+    amazon_app_importing: bool,
+    /// GOG Galaxy's games are being looked for (`gog_galaxy`).
+    gog_galaxy_importing: bool,
 }
 
 impl EventEmitter<DownloadsEvent> for Downloads {}
@@ -120,6 +131,7 @@ impl Downloads {
             manager,
             snapshot,
             progress: HashMap::new(),
+            speed: Default::default(),
             offline: Default::default(),
             updates: HashSet::new(),
             fake_update: crate::env::value("HERONITE_DEBUG_FAKE_UPDATE"),
@@ -140,6 +152,8 @@ impl Downloads {
             gog: StoreState::default(),
             amazon: StoreState::default(),
             amazon_login: None,
+            amazon_app_importing: false,
+            gog_galaxy_importing: false,
         };
         this.reload_local(cx);
         this.eos_reload(false, cx);
@@ -152,7 +166,7 @@ impl Downloads {
         } else if let Some(app) = crate::env::value("HERONITE_DEBUG_QUEUE_INSTALL") {
             // Integration check with a fake legendary (HERONITE_LEGENDARY_BIN): queues a real install.
             this.debug_queue_install(&app, cx);
-        } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
+        } else if !crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") && heronite_platform::features::any_store() {
             this.spawn_idle_jobs(cx);
             this.spawn_offline_watch(cx);
         }
@@ -213,6 +227,17 @@ impl Downloads {
 
     pub fn progress_of(&self, app_name: &str) -> Option<&Progress> {
         self.progress.get(app_name)
+    }
+
+    /// The download speeds (MiB/s) of `app_name`'s last reports, oldest
+    /// first; empty unless it is the running element.
+    pub fn speed_samples(&self, app_name: &str) -> &VecDeque<f32> {
+        static NONE: VecDeque<f32> = VecDeque::new();
+        if self.speed.0 == app_name {
+            &self.speed.1
+        } else {
+            &NONE
+        }
     }
 
     /// Queue element for the game (running first, then waiting).

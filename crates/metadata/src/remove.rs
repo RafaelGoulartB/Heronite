@@ -279,6 +279,8 @@ mod tests {
         assert_eq!(sanitize_filename("Ação"), "Ação");
     }
 
+    // XDG user folders: Linux only.
+    #[cfg(unix)]
     #[test]
     fn desktop_dir_from_user_dirs() {
         let home = Path::new("/home/u");

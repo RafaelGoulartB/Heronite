@@ -8,20 +8,21 @@
 //!
 //! `HERONITE_DEBUG_WELCOME=<steam>[:<emulation>]` shows a state for
 //! screenshots (with `HERONITE_DISABLE_IDLE_JOBS`): `checking`, `missing`,
-//! `closed`, `opening`, `restarting`, `restart`, `failed`, `reading` or
-//! `connected`; `looking`, `none`, `ready` or `unplayable`.
+//! `closed`, `opening`, `restarting`, `restart`, `blocked`, `failed`,
+//! `reading` or `connected`; `looking`, `none`, `ready` or `unplayable`.
 
-use std::path::PathBuf;
+use heronite_platform::Feature;
 use std::time::Duration;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::clients::Client;
 use heronite_emulation::setup::SetupReport;
 use heronite_i18n::{tr, trn};
 
 mod parts;
 
-use self::parts::{label, shelf, source_row, status, tile, Status};
+use self::parts::{client_tile, label, shelf, source_row, status, tile, Status};
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::pages::Page;
@@ -61,6 +62,9 @@ fn debug_steam(name: &str) -> SteamState {
         "opening" => SteamState::Opening,
         "restarting" => SteamState::Restarting,
         "restart" => SteamState::NeedsRestart,
+        "blocked" => SteamState::Blocked,
+        "porttaken" => SteamState::PortTaken,
+        "notanswering" => SteamState::NotAnswering,
         "failed" => SteamState::Failed,
         "reading" => SteamState::Reading,
         "connected" => SteamState::Connected,
@@ -88,7 +92,9 @@ impl CollectionView {
         if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") {
             return;
         }
-        self.start_emulation_setup(cx);
+        if heronite_platform::supported(Feature::Emulation) {
+            self.start_emulation_setup(cx);
+        }
         if self.welcome.watch.is_some() {
             return;
         }
@@ -126,8 +132,8 @@ impl CollectionView {
         cx.spawn(async move |this, cx| {
             let res = cx
                 .background_spawn(async move {
-                    let media = PathBuf::from("/run/media").join(std::env::var("USER").unwrap_or_default());
-                    heronite_emulation::setup::auto_setup(&paths, &heronite_emulation::SystemEnv, &media).map_err(|e| format!("{e:#}"))
+                    let disks = heronite_emulation::setup::disks();
+                    heronite_emulation::setup::auto_setup(&paths, &heronite_emulation::SystemEnv, &disks).map_err(|e| format!("{e:#}"))
                 })
                 .await;
             this.update(cx, |this, cx| {
@@ -190,15 +196,30 @@ impl CollectionView {
             SteamState::Restarting => {
                 status(tr!("Restarting"), busy, tr!("Steam is restarting. Your library comes in as soon as it is back."))
             }
+            SteamState::NotAnswering => status(
+                tr!("Not answering"),
+                theme::warning(),
+                tr!("Steam is open but does not let Heronite read its library. Finish signing in, or restart Steam once."),
+            ),
             SteamState::NeedsRestart => status(
                 tr!("Restart once"),
                 theme::warning(),
                 tr!("Steam was open before Heronite could prepare it. Restart it once to bring in your whole library."),
             ),
+            SteamState::Blocked => status(
+                tr!("Blocked by another tool"),
+                theme::warning(),
+                tr!("Another tool on this PC (Millennium, for example) keeps Steam closed to Heronite. Its installed games still come in."),
+            ),
             SteamState::Failed => status(
                 tr!("Could not connect"),
                 theme::danger_text(),
                 tr!("Steam restarted but did not let Heronite read its library. Its installed games still come in."),
+            ),
+            SteamState::PortTaken => status(
+                tr!("Port in use"),
+                theme::warning(),
+                tr!("Another program on this PC uses the port Steam needs to let Heronite in. The Steam page says which, or lets you sign in with a QR code instead."),
             ),
             SteamState::Reading => status(tr!("Reading your library"), busy, tr!("Reading your Steam library\u{2026} a few seconds.")),
             SteamState::Connected => {
@@ -217,11 +238,12 @@ impl CollectionView {
                 button("welcome-steam-open", ButtonKind::Primary, tr!("Open Steam"))
                     .on_click(cx.listener(|_, _, _, cx| crate::services::steam_library(cx).update(cx, |s, cx| s.open(cx)))),
             ),
-            SteamState::NeedsRestart if heronite_steam::can_restart() => Some(
+            SteamState::NeedsRestart | SteamState::NotAnswering if heronite_steam::can_restart() => Some(
                 button("welcome-steam-restart", ButtonKind::Primary, tr!("Restart Steam"))
                     .on_click(cx.listener(|_, _, _, cx| crate::services::steam_library(cx).update(cx, |s, cx| s.restart(cx)))),
             ),
-            SteamState::Failed => Some(
+            // The Steam page says what to change in the other tool.
+            SteamState::Failed | SteamState::NotAnswering | SteamState::Blocked | SteamState::PortTaken => Some(
                 button_sm("welcome-steam-page", ButtonKind::Ghost, tr!("Steam page"))
                     .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Steam, window, cx))),
             ),
@@ -240,17 +262,24 @@ impl CollectionView {
 
     fn welcome_left(&self, cx: &mut Context<Self>) -> Div {
         let (steam_button, steam_note) = self.steam_action(cx);
-        let steam = source_row(Icon::CloudSync, "Steam".into(), self.steam_status(cx), steam_button, steam_note, true);
+        // A click opens the Steam page of the Stores.
+        let steam = source_row(Icon::CloudSync, "Steam".into(), self.steam_status(cx), steam_button, steam_note, true)
+            .id("welcome-steam")
+            .cursor_pointer()
+            .hover(|s| s.bg(theme::accent_alpha(0.11)).border_color(theme::accent_alpha(0.4)))
+            .on_click(cx.listener(|this, _, window, cx| this.navigate(Page::Steam, window, cx)));
         let store = |id: &'static str, page: Page, name: &'static str, tint: (u8, u8, u8)| {
             tile(id, Icon::Storefront, name, tr!("Log in").into(), tint)
                 .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
         };
+        // The stores this system has (`heronite_platform::features`).
         let stores = div()
             .flex()
             .gap(px(10.))
-            .child(store("welcome-epic", Page::Epic, "Epic Games", (226, 232, 240)))
-            .child(store("welcome-gog", Page::Gog, "GOG", (185, 166, 255)))
-            .child(store("welcome-amazon", Page::Amazon, "Amazon Games", (255, 196, 107)));
+            .when(Page::Epic.available(), |d| d.child(store("welcome-epic", Page::Epic, "Epic Games", (226, 232, 240))))
+            .when(Page::Gog.available(), |d| d.child(store("welcome-gog", Page::Gog, "GOG", (185, 166, 255))))
+            .when(Page::Amazon.available(), |d| d.child(store("welcome-amazon", Page::Amazon, "Amazon Games", (255, 196, 107))));
+        let clients = self.client_tiles(cx);
         let add = div().mt(px(10.)).flex().child(icon_button_sm(
             "welcome-add",
             ButtonKind::Ghost,
@@ -287,12 +316,19 @@ impl CollectionView {
                     .child(tr!("Heronite looks on this PC and brings in what it finds by itself.")),
             )
             .child(label(Icon::TravelExplore, tr!("Found on this PC")))
-            .child(div().flex().flex_col().gap(px(10.)).child(steam).child(self.emulation_row(cx)))
-            .when_some(self.launcher_tiles(cx), |d, tiles| {
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .child(steam)
+                    .when(heronite_platform::supported(Feature::Emulation), |d| d.child(self.emulation_row(cx))),
+            )
+            .when_some(heronite_platform::supported(Feature::LauncherImports).then(|| self.launcher_tiles(cx)).flatten(), |d, tiles| {
                 d.child(label(Icon::CallMerge, tr!("Bring in from another launcher"))).child(tiles)
             })
-            .child(label(Icon::Storefront, tr!("Log in to a store")))
-            .child(stores)
+            .when(heronite_platform::features::any_store(), |d| d.child(label(Icon::Storefront, tr!("Log in to a store"))).child(stores))
+            .when(heronite_platform::supported(Feature::StoreClients), |d| d.child(clients))
             .child(add)
             .child(
                 div()
@@ -307,9 +343,33 @@ impl CollectionView {
             )
     }
 
+    /// The stores that run their own program (under Wine on Linux:
+    /// Battle.net, the EA app, Ubisoft Connect, Rockstar Games): "Set up",
+    /// or "Ready" once they are. A click opens their page.
+    fn client_tiles(&self, cx: &mut Context<Self>) -> Div {
+        let svc = crate::services::clients_started(cx);
+        let tiles = Client::ALL.into_iter().map(|client| {
+            let page = Page::of_client(client);
+            let ready = svc.as_ref().is_some_and(|s| s.read(cx).state(client).installed());
+            let tint = match client {
+                Client::BattleNet => (110, 180, 255),
+                Client::Ea => (255, 125, 125),
+                Client::Ubisoft => (130, 225, 205),
+                Client::Rockstar => (255, 205, 90),
+            };
+            let action = if ready { tr!("Ready") } else { tr!("Set up") };
+            client_tile(SharedString::from(format!("welcome-{}", client.id())), page.icon(), page.title(), action, ready, tint)
+                .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx)))
+        });
+        div().mt(px(10.)).flex().gap(px(8.)).children(tiles)
+    }
+
     /// The launchers on this PC with games to bring in (Heroic, Lutris,
     /// Faugus): a click turns the import on, and the games come in.
     fn launcher_tiles(&self, cx: &mut Context<Self>) -> Option<Div> {
+        if !crate::services::launcher_imports::OFFERED_ELSEWHERE {
+            return None;
+        }
         let svc = crate::services::launcher_imports(cx);
         let s = svc.read(cx);
         let found: Vec<_> = s

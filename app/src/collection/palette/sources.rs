@@ -32,6 +32,8 @@ pub(super) enum Act {
     /// Settings, opened on this section.
     Section(Section),
     AddGame,
+    /// "Add games from a folder".
+    ScanFolder,
     /// Install a game from an install script file.
     InstallScript,
     Refresh,
@@ -44,6 +46,8 @@ pub(super) enum Act {
     YearReview,
     /// "Getting started".
     Onboarding,
+    /// The keyboard shortcuts (`?`).
+    Shortcuts,
     ManageStatuses,
     /// The library fields manager (genres, companies...).
     ManageFields,
@@ -71,6 +75,8 @@ pub(super) enum ViewCmd {
     Group(GroupBy),
     /// Focus (list + details) or the grid.
     GridView,
+    /// The Focus list as rows or as covers (in the grid, Focus with it).
+    FocusList,
     ShowHidden,
     ClearFilters,
     /// Selects (or, when it is the active one, clears) a facet value.
@@ -172,19 +178,27 @@ fn section_help(s: Section) -> &'static str {
     match s {
         Section::General => tr!("Folders, tray, Wine and Proton lookup"),
         Section::Appearance => tr!("Page background, blur, covers"),
+        Section::ConsoleMode => tr!("Themes, tabs, covers and controls of the TV mode"),
         Section::Advanced => tr!("Folders, cache, copy settings"),
         Section::GameDefaults => tr!("Values new games start with"),
         Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
+        Section::Launchers if cfg!(windows) => tr!("Bring in games from Playnite"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
+        Section::Integrations => tr!("Sunshine, so Moonlight can start your games"),
+        Section::Storage if !heronite_platform::supported(heronite_platform::Feature::Wine) => {
+            tr!("Disk space of games, store tools, caches")
+        }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
         Section::Mods => tr!("Nexus Mods account, mod links, applying mods"),
-        Section::Overlay => tr!("Guide button panel over games (beta)"),
+        Section::Overlay => crate::overlay::labels::palette_help(),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),
+        Section::Achievements => tr!("RetroAchievements account, Steam key, notifications"),
         Section::Screenshots => tr!("Folder, capture shortcut, preview cache"),
         Section::Saves => tr!("Ludusavi save backups and restoring them"),
         Section::Backups => tr!("Scheduled copy of the data folder"),
+        Section::Cloud => tr!("Sync, backups, saves and screenshots in your account"),
         Section::Logs => tr!("Logs of this app and your games"),
         Section::About => tr!("Version, data folders, system"),
     }
@@ -200,6 +214,11 @@ fn page_name_en(p: Page) -> &'static str {
         Page::Gog => "gog",
         Page::Amazon => "amazon games",
         Page::Steam => "steam",
+        Page::Xbox => "xbox microsoft store",
+        Page::BattleNet => "battle.net",
+        Page::Ea => "ea app",
+        Page::Ubisoft => "ubisoft connect",
+        Page::Rockstar => "rockstar games",
         Page::Emulators => "emulators",
         Page::Statistics => "statistics",
         Page::Settings => "settings",
@@ -234,6 +253,17 @@ pub(super) fn static_entries() -> Vec<Entry> {
     v.push(page(Page::Gog, tr!("Account and library"), "", "gog galaxy store account login gogdl loja conta entrar biblioteca"));
     v.push(page(Page::Amazon, tr!("Account and library"), "", "amazon prime gaming store account login nile loja conta entrar biblioteca"));
     v.push(page(Page::Steam, tr!("Your Steam library"), "", "steam valve store library import loja biblioteca importar"));
+    v.push(page(Page::Xbox, tr!("Microsoft Store and PC Game Pass games"), "", "xbox microsoft store game pass gamepass loja jogos"));
+    // On Windows the clients run as they are.
+    let native = cfg!(windows);
+    let blizzard = if native { tr!("Blizzard games") } else { tr!("Blizzard games, under Wine") };
+    let ea = if native { tr!("EA games") } else { tr!("EA games, under Wine") };
+    let ubisoft = if native { tr!("Ubisoft games") } else { tr!("Ubisoft games, under Wine") };
+    let rockstar = if native { tr!("Rockstar games") } else { tr!("Rockstar games, under Wine") };
+    v.push(page(Page::BattleNet, blizzard, "", "battle.net battlenet blizzard wow overwatch diablo loja"));
+    v.push(page(Page::Ea, ea, "", "ea app origin electronic arts loja"));
+    v.push(page(Page::Ubisoft, ubisoft, "", "ubisoft connect uplay loja"));
+    v.push(page(Page::Rockstar, rockstar, "", "rockstar social club gta red dead loja"));
     v.push(page(Page::Emulators, tr!("Emulators and ROM folders"), "Ctrl 5", "emulator rom retro console emulador emuladores"));
     v.push(page(
         Page::Statistics,
@@ -242,7 +272,8 @@ pub(super) fn static_entries() -> Vec<Entry> {
         "stats playtime hours activity chart most played estatisticas tempo de jogo horas atividade grafico mais jogados",
     ));
     v.push(page(Page::Settings, tr!("Global settings"), "Ctrl ,", "preferences options config preferencias opcoes configuracoes ajustes"));
-    for s in Section::ALL {
+    v.retain(|e| !matches!(e.act, Act::Go(p) if !p.available()));
+    for s in Section::ALL.into_iter().filter(|s| s.available()) {
         let mut e = Entry::new(
             Kind::Page,
             Act::Section(s),
@@ -269,6 +300,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         )
         .shortcut("Ctrl N"),
     );
+    v.push(action(
+        Act::ScanFolder,
+        "scan-folder",
+        tr!("Add games from a folder\u{2026}"),
+        tr!("Find the games in a folder and add them at once"),
+        Icon::FolderOpen,
+        "scan folder import many bulk escanear pasta importar varios jogos",
+    ));
     v.push(action(
         Act::InstallScript,
         "install-script",
@@ -329,6 +368,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         "onboarding tour tips help checklist welcome first steps primeiros passos ajuda dicas boas-vindas",
     ));
     v.push(action(
+        Act::Shortcuts,
+        "shortcuts",
+        tr!("Keyboard shortcuts"),
+        tr!("Every shortcut, and where it works (?)"),
+        Icon::Terminal,
+        "keyboard shortcuts keys hotkeys help atalhos teclado teclas ajuda",
+    ));
+    v.push(action(
         Act::ManageStatuses,
         "statuses",
         tr!("Manage statuses\u{2026}"),
@@ -366,6 +413,8 @@ fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Store => tr!("Store"),
         FacetKind::Theme => tr!("Theme"),
         FacetKind::Feature => tr!("Feature"),
+        FacetKind::GameMode => tr!("Game mode"),
+        FacetKind::Tag => tr!("Steam tag"),
     }
 }
 
@@ -380,6 +429,8 @@ fn facet_keywords(k: FacetKind) -> &'static str {
         FacetKind::Store => "store source manual loja origem manualmente",
         FacetKind::Theme => "theme tema",
         FacetKind::Feature => "feature mode recurso modo",
+        FacetKind::GameMode => "game mode modes co-op coop multiplayer split screen modo jogo multijogador cooperativo",
+        FacetKind::Tag => "steam tag tags user tags popular etiqueta etiquetas marcador marcadores schlagwort",
     }
 }
 
@@ -508,6 +559,7 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         (GroupBy::Genre, tr!("Group by genre")),
         (GroupBy::Developer, tr!("Group by developer")),
         (GroupBy::Series, tr!("Group by series")),
+        (GroupBy::GameMode, tr!("Group by game mode")),
         (GroupBy::Year, tr!("Group by release year")),
         (GroupBy::Playtime, tr!("Group by playtime")),
         (GroupBy::InstallSize, tr!("Group by install size")),
@@ -538,6 +590,16 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         grid_sub,
         grid_icon,
         "view grid layout covers focus list mode visualizacao grade capas lista modo foco",
+    ));
+    let (list, list_icon) =
+        if ui.focus_list { (tr!("Show the list as covers"), Icon::ViewCovers) } else { (tr!("Show the list as rows"), Icon::ViewList) };
+    v.push(cmd(
+        ViewCmd::FocusList,
+        "view:focus-list".into(),
+        list,
+        tr!("The list next to the selected game's page"),
+        list_icon,
+        "view list rows lines covers compact focus lista linhas capas compacta foco",
     ));
     let hidden = if ui.show_hidden { tr!("Stop showing hidden games") } else { tr!("Show hidden games") };
     v.push(cmd(
@@ -762,6 +824,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn static_entries_list_every_page_section_and_action() {
         let v = static_entries();
@@ -776,6 +840,10 @@ mod tests {
                 "GOG",
                 "Amazon Games",
                 "Steam",
+                "Battle.net",
+                "EA app",
+                "Ubisoft Connect",
+                "Rockstar Games",
                 "Emulators",
                 "Statistics",
                 "Settings"
@@ -786,6 +854,7 @@ mod tests {
         assert!(v.iter().filter(|e| matches!(e.act, Act::Section(_))).all(|e| e.secondary));
         for a in [
             Act::AddGame,
+            Act::ScanFolder,
             Act::InstallScript,
             Act::Refresh,
             Act::ScanRoms,
@@ -801,6 +870,8 @@ mod tests {
         }
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn ids_are_unique_and_stable() {
         let v = static_entries();
@@ -813,6 +884,8 @@ mod tests {
         assert_eq!(ids.len(), v.len());
     }
 
+    // The Linux page and section list: other systems hide what they lack (`Feature`).
+    #[cfg(target_os = "linux")]
     #[test]
     fn shortcuts_shown_are_the_ones_that_exist() {
         let v = static_entries();
@@ -890,6 +963,7 @@ mod tests {
         assert_eq!(get("view:group:none").title.as_ref(), "Stop grouping");
         assert!(get("view:sort:release-date").disabled.is_none());
         assert_eq!(get("view:hidden").title.as_ref(), "Show hidden games");
+        assert_eq!(get("view:focus-list").title.as_ref(), "Show the list as rows");
         assert!(get("view:clear").disabled.is_some());
         assert_eq!(get("view:sort:direction").title.as_ref(), "Sort descending");
         assert_eq!(get("view:only:Favourites").act, Act::View(ViewCmd::Only(Only::Favourites, true)));

@@ -1,17 +1,24 @@
 //! Small styled building blocks shared by the Collection screens.
 
+pub mod achievements;
 pub mod colour_picker;
 pub mod controls;
 pub mod dialog;
 pub mod dropdown;
 pub mod fields;
+pub mod find;
 pub mod game_actions;
 pub mod glass;
 pub mod lsfg;
 pub mod ludusavi;
+pub mod qr;
+pub mod release_notes;
 mod scrollbar;
+mod window_area;
+pub mod window_controls;
 
 pub use scrollbar::{scrollbar_draggable, NoDragView};
+pub use window_area::{content_bounds, content_size};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -22,14 +29,8 @@ use crate::theme;
 /// Opens `target` (a web page, a `steam://` link) with the desktop's handler,
 /// without waiting.
 pub fn open_external(target: &str) {
-    if let Err(e) = std::process::Command::new("xdg-open")
-        .arg(target)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    {
-        log::warn!("xdg-open {target}: {e}");
+    if let Err(e) = heronite_platform::shell::open(target) {
+        log::warn!("opening {target}: {e}");
     }
 }
 

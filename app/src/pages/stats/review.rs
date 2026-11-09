@@ -311,7 +311,7 @@ impl StatsPage {
         let (year, slide, prev, epoch) = (r.year, r.slide, r.prev, r.epoch);
         let st = r.st.clone();
         let derived = r.derived.clone();
-        let vp = window.viewport_size();
+        let vp = crate::ui::content_size(window);
         let (w, h) = (f32::from(vp.width) - 24., f32::from(vp.height) - f32::from(theme::HEADER_H) - 14.);
         let k = (w / 1600.).min(h / 1000.).max(0.4);
         let z = Z(k, ((w - 1600. * k) / 2.).max(0.) / k);

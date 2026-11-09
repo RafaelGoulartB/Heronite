@@ -1,0 +1,4 @@
+rcheevos v12.5.0 (https://github.com/RetroAchievements/rcheevos), MIT, see LICENSE.
+
+Only what rc_hash needs, copied unmodified: include/{rc_hash,rc_consoles,rc_export}.h,
+src/rhash/ and src/rc_compat.{c,h}.

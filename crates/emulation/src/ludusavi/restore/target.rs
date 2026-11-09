@@ -15,6 +15,10 @@ pub struct RestoreTarget {
     pub install_dir: Option<PathBuf>,
     /// Steam's `userdata` folder, for Steam games.
     pub steam_userdata: Option<PathBuf>,
+    /// Windows: this user's folder (`C:\Users\<name>`). Files backed up from
+    /// another user's folder, or from the users of a Wine prefix on Linux,
+    /// land here. Unused on Linux.
+    pub user_home: Option<PathBuf>,
     /// The game runs through Wine / Proton. Without a prefix yet (never
     /// started), nothing can be restored.
     pub needs_prefix: bool,
@@ -51,12 +55,23 @@ pub fn wine_user(prefix: &Path, login: Option<&str>) -> Option<String> {
     users.into_iter().next()
 }
 
-/// Whether Steam is running the game: its launch command carries
-/// `AppId=<id>` (`reaper SteamLaunch AppId=<id> -- ...`).
+/// Whether Steam is running the game: on Linux its launch command carries
+/// `AppId=<id>` (`reaper SteamLaunch AppId=<id> -- ...`); on Windows Steam
+/// keeps it in `HKCU\Software\Valve\Steam\RunningAppID` while it runs.
 pub fn steam_game_running(app_id: &str) -> bool {
-    steam_game_running_in(Path::new("/proc"), app_id)
+    #[cfg(windows)]
+    {
+        use heronite_platform::registry::{dword, Hive};
+        let running = dword(Hive::CurrentUser, r"Software\Valve\Steam", "RunningAppID");
+        running.is_some_and(|id| id != 0 && app_id.parse::<u32>() == Ok(id))
+    }
+    #[cfg(not(windows))]
+    {
+        steam_game_running_in(Path::new("/proc"), app_id)
+    }
 }
 
+#[cfg(any(not(windows), test))]
 fn steam_game_running_in(proc_dir: &Path, app_id: &str) -> bool {
     if app_id.is_empty() {
         return false;

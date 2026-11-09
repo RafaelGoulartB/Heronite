@@ -9,11 +9,14 @@
 //! * [`ops`]: install / update (as a download queue job), verify, uninstall,
 //!   import and move.
 //! * [`updates`]: `nile list-updates` and the saved result.
+//! * [`amazon_app`]: games the Amazon Games app installed (Windows), brought
+//!   in with `nile import`.
 //!
 //! nile's own files (`nile_config/nile/**`) are written by nile; the only
 //! edits made here are removing an entry from `installed.json` when nile
 //! cannot uninstall, and rewriting a game's `path` after a move.
 
+pub mod amazon_app;
 pub mod cmd;
 pub mod info;
 pub mod installed;

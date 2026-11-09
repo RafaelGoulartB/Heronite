@@ -4,12 +4,12 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::FacetKind;
+use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
 
 use super::vm::{self, GroupVm, ListItem};
 use super::{data, CollectionView, ToastAction};
 use crate::services::launch_blocker::{launch_blocker, Blocker};
-use heronite_i18n::tr;
 
 impl CollectionView {
     pub(super) fn dialog_ctx(&self) -> Option<crate::dialogs::DialogCtx> {
@@ -61,7 +61,11 @@ impl CollectionView {
             categories: Some(&self.categories),
             statuses: &lib.statuses,
         };
-        let is_playing = |key: &str| lib.get(key).is_some_and(|g| playing.contains_key(&g.app_name));
+        // A card stands for every copy of its game: it plays while any of them does.
+        let is_playing = |key: &str| {
+            let copies = if self.ui.group_copies { lib.copies_of(key) } else { lib.get(key).into_iter().collect() };
+            copies.iter().any(|g| playing.contains_key(&g.app_name))
+        };
         let step = |key: &str| lib.get(key).and_then(|g| self.preparing.get(&g.app_name)).map(|s| s.label());
         let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
         self.set_groups(groups);
@@ -69,29 +73,60 @@ impl CollectionView {
         self.prune_selection_to_list();
     }
 
-    /// The list's conditions that live in the app: the selected categories
-    /// and statuses, and "Only with an update".
+    /// The list's conditions that live in the app: the selected categories,
+    /// statuses and smart groups, and "Only with an update".
     pub(super) fn keeps_game(&self, g: &heronite_data::CollectionGame, statuses: &[heronite_data::models::CompletionStatus]) -> bool {
         let ui = &self.ui;
         self.categories.matches(&ui.categories, &g.runner, &g.app_name)
             && (!ui.only.updates || self.update_apps.contains(&g.app_name))
             && (ui.statuses.is_empty()
                 || ui.statuses.contains(&heronite_data::status::resolve_status_id(g.status_raw.as_deref(), statuses)))
+            && self.in_picked_groups(g, statuses)
     }
 
-    fn refresh_focus(&mut self) {
+    /// The focus panel of `game`, whose Play stands for the copy it starts
+    /// (see [`copy_to_play`](Self::copy_to_play)).
+    fn focus_vm_of(&self, lib: &heronite_data::Library, game: &heronite_data::collection::Game) -> super::vm::FocusVm {
+        let target = self.copy_to_play(lib, &game.key).unwrap_or(game);
+        let mut vm = data::focus_vm(lib, &self.wiki, game, self.playing.contains_key(&target.app_name));
+        vm.installed = target.installed;
+        vm
+    }
+
+    pub(super) fn refresh_focus(&mut self) {
         let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
         if let Some(game) = lib.get(&key) {
-            let playing = self.playing.contains_key(&game.app_name);
-            self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
+            self.focus = Some(self.focus_vm_of(&lib, game));
         }
     }
 
+    /// Picks the interface scale (`None`: the system's) and says which.
+    pub(super) fn set_ui_scale(&mut self, percent: Option<f32>, cx: &mut Context<Self>) {
+        crate::system::ui_scale::set(percent, &self.app_paths, cx);
+        let now = crate::system::ui_scale::percent_of(&crate::theme::appearance()).round();
+        let text = match percent {
+            Some(_) => tr!("Zoom: {percent}%", percent = now),
+            None => tr!("Zoom: {percent}%, the system's", percent = now),
+        };
+        self.show_toast(text, false, cx);
+    }
+
     pub(super) fn show_toast(&mut self, text: impl Into<SharedString>, error: bool, cx: &mut Context<Self>) {
+        self.show_toast_for(text, error, std::time::Duration::from_secs(5), cx);
+    }
+
+    /// A toast that stays `shown`.
+    pub(super) fn show_toast_for(
+        &mut self,
+        text: impl Into<SharedString>,
+        error: bool,
+        shown: std::time::Duration,
+        cx: &mut Context<Self>,
+    ) {
         self.toast_action = None;
         self.toast = Some((text.into(), error));
         self.toast_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(std::time::Duration::from_secs(5)).await;
+            cx.background_executor().timer(shown).await;
             this.update(cx, |this, cx| {
                 this.toast = None;
                 cx.notify();
@@ -105,13 +140,6 @@ impl CollectionView {
     pub(super) fn show_undo_toast(&mut self, text: impl Into<SharedString>, cx: &mut Context<Self>) {
         self.show_toast(text, false, cx);
         self.toast_action = Some(ToastAction::Undo);
-    }
-
-    /// A game that died right after starting: says so, and offers its log.
-    fn show_failed_launch_toast(&mut self, app_name: &str, exit: heronite_launch::ExitInfo, cx: &mut Context<Self>) {
-        let Some(game) = self.lib.as_ref().and_then(|l| l.games.iter().find(|g| g.app_name == app_name)).cloned() else { return };
-        self.show_toast(crate::runtime::failed_launch_message(&game.title, exit), true, cx);
-        self.toast_action = Some(ToastAction::ViewLog(game.key.clone()));
     }
 
     /// For launches that skip the Play button's dialogs: refuses (with a
@@ -143,8 +171,9 @@ impl CollectionView {
                 log::info!("{app_name} exited after {elapsed:?}");
                 self.preparing.remove(&app_name);
                 self.playing.remove(&app_name);
-                if let Some(exit) = heronite_launch::failed_launch(exit, stopped, elapsed) {
-                    self.show_failed_launch_toast(&app_name, exit, cx);
+                // Ended at once on its own, badly: maybe it could not start.
+                if heronite_launch::failed_launch(exit, stopped, elapsed).is_some() {
+                    self.diagnose_exit(&app_name, crate::diagnosis::Ended { elapsed, exit }, None, cx);
                 }
                 // Post-game work is `services::session`'s; the library only
                 // reloads what changed on disk (playtime, last played, recent).
@@ -163,10 +192,53 @@ impl CollectionView {
         cx.notify();
     }
 
+    /// The copy a card's play button acts on: with "Group copies of a game",
+    /// the copy of the group that is starting or running, else an installed
+    /// copy when this one is not (see `Library::launch_copy`).
+    pub(super) fn copy_to_play<'a>(&self, lib: &'a heronite_data::Library, key: &str) -> Option<&'a heronite_data::collection::Game> {
+        let game = lib.get(key)?;
+        if !self.ui.group_copies || lib.copies.get(key).is_none() {
+            return Some(game);
+        }
+        let busy =
+            |g: &&heronite_data::collection::Game| self.playing.contains_key(&g.app_name) || self.preparing.contains_key(&g.app_name);
+        if let Some(running) = lib.copies_of(key).into_iter().find(busy) {
+            return Some(running);
+        }
+        if game.installed {
+            return Some(game);
+        }
+        lib.launch_copy(key)
+    }
+
+    /// The copy the card of `key` acts on: the one its Play starts (see
+    /// [`copy_to_play`](Self::copy_to_play)). Its menu, the palette's
+    /// actions of the selected game, its console page, Game settings and the
+    /// store footer are that copy's, so Uninstall, Settings or Verify never
+    /// go to a default copy that is not installed while another copy plays.
+    pub(super) fn acting_copy(&self, key: &str) -> Option<heronite_data::collection::Game> {
+        let lib = self.lib.as_ref()?;
+        self.copy_to_play(lib, key).cloned()
+    }
+
+    /// The key of [`Self::acting_copy`]; `key` itself when the game is gone.
+    pub(super) fn acting_key(&self, key: &SharedString) -> SharedString {
+        self.acting_copy(key).map_or_else(|| key.clone(), |g| g.key.clone().into())
+    }
+
     /// Card play button / focus primary button.
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
-        let Some(game) = lib.get(key).cloned() else { return };
+        let Some(game) = self.copy_to_play(&lib, key).cloned() else { return };
+        self.primary_action_on(&game, cx);
+    }
+
+    /// What Play / Install does for `game` itself, never another copy of it:
+    /// a store game opens its install dialog (or the Downloads page, or asks
+    /// to update first), an emulated one its pre-launch flow, a store
+    /// client's or an Xbox game opens what installs it.
+    pub(super) fn primary_action_on(&mut self, game: &heronite_data::collection::Game, cx: &mut Context<Self>) {
+        let key = game.key.as_str();
         if self.preparing.contains_key(&game.app_name) {
             return self.cancel_launch(&game.app_name, cx);
         }
@@ -176,13 +248,25 @@ impl CollectionView {
             }
             return;
         }
-        if self.epic_primary(&game, cx) {
+        if self.epic_primary(game, cx) {
             return;
         }
-        if game.installed && self.start_emulated(&game, cx) {
+        if game.installed && self.start_emulated(game, cx) {
             return;
         }
-        let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
+        // A store client installs its games: it opens, on its page for them.
+        if !game.installed && game.client().is_some() {
+            return self.open_client_of(key, cx);
+        }
+        // An Xbox game played on the account: the Store installs it.
+        if !game.installed && game.is_xbox() {
+            let product = game.meta.as_deref().and_then(|m| m.extra.get(heronite_data::xbox::STORE_ID_KEY)).and_then(|v| v.as_str());
+            if let Err(e) = crate::services::xbox_library::open_store_page(product) {
+                self.show_toast(tr!("Could not open the Microsoft Store: {error}", error = e.to_string()), true, cx);
+            }
+            return;
+        }
+        let result = if game.installed { self.runtime.play(game) } else { self.runtime.install(game) };
         if let Err(err) = result {
             self.report_launch_error(err, cx);
         }
@@ -190,11 +274,9 @@ impl CollectionView {
 
     pub(super) fn toggle_favourite(&mut self, cx: &mut Context<Self>) {
         let (Some(lib), Some(key)) = (self.lib.clone(), self.selected.clone()) else { return };
-        let Some(game) = lib.get(&key) else { return };
-        if let Err(err) = heronite_data::config_games::toggle_favourite(&self.data_paths, &game.app_name, &game.title) {
-            self.show_toast(tr!("Could not update favourites: {err}", err = format!("{err:#}")), true, cx);
+        if lib.get(&key).is_some() {
+            self.toggle_favourite_of(&key, cx);
         }
-        self.reload(cx);
     }
 
     pub(super) fn save_ui(&self) {
@@ -262,7 +344,7 @@ impl CollectionView {
     /// anchored card or header is scrolled back to.
     fn rebuild_with(&mut self, anchor: Option<vm::ScrollAnchor>) {
         self.items = vm::build_items(&self.groups, self.columns);
-        self.list_state.reset(self.items.len());
+        self.reset_list();
         let place = anchor.and_then(|a| vm::resolve_anchor(&self.items, &self.groups, self.columns, &a));
         if let Some((item_ix, offset_in_item)) = place {
             self.list_state.scroll_to(ListOffset { item_ix, offset_in_item });
@@ -302,13 +384,15 @@ impl CollectionView {
     pub(super) fn select(&mut self, key: SharedString, persist: bool) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = lib.get(&key) else { return };
-        let playing = self.playing.contains_key(&game.app_name);
-        self.focus = Some(data::focus_vm(&lib, &self.wiki, game, playing));
+        self.focus = Some(self.focus_vm_of(&lib, game));
         if self.selected.as_ref() != Some(&key) {
             self.focus_scroll.set_offset(point(px(0.), px(0.)));
         }
         self.selected = Some(key.clone());
-        self.grid.drawer_closed = false;
+        // Off, the drawer stays as it is: closed until a double click opens it.
+        if self.ui.grid_open_on_select {
+            self.grid.drawer_closed = false;
+        }
         if persist {
             self.ui.focused_game = Some(key.to_string());
             self.ui_focus_dirty = true;

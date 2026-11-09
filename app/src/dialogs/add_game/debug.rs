@@ -57,6 +57,8 @@ impl AddGameDialog {
                 "remove-now" => self.remove(cx),
                 "noprefix" => self.removable_prefix = None,
                 "picker" => self.open_picker(Slot::Square, window, cx),
+                // pick=<path>: an executable chosen in the file dialog.
+                pick if pick.starts_with("pick=") => self.executable_picked(pick[5..].to_string(), window, cx),
                 art if art.starts_with("art=") => {
                     // art=<cover url>[,<hero url>]
                     let urls: Vec<&str> = art[4..].split(',').collect();

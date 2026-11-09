@@ -17,8 +17,12 @@
 //! [`info`] reads what the recorder can do, [`plan`] builds the command and
 //! the estimate, [`recorder`] runs it, [`ipc`] saves through its socket,
 //! [`target`] finds the game's monitor and [`trim`] cuts the end of a save.
+//!
+//! gpu-screen-recorder is Linux only: elsewhere [`Program::find`] finds none.
 
 pub mod info;
+// A Unix socket.
+#[cfg(target_os = "linux")]
 pub mod ipc;
 pub mod plan;
 pub mod recorder;

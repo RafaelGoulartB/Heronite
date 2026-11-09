@@ -1,19 +1,30 @@
-//! Controller input for console mode: a `gilrs` thread turns gamepad events
-//! into [`Pad`] presses (with key-repeat for held directions and the
-//! sticks) and hands them to the UI over a channel. The thread only runs while
-//! console mode is on, and blocks between events (no polling).
+//! Controller input for console mode: a thread turns controller events into
+//! [`Pad`] presses (with key-repeat for held directions and the sticks) and
+//! hands them to the UI over a channel. It only runs while something listens
+//! (console mode, or the prompt to enter it).
+//!
+//! Where the events come from depends on the system: `gilrs` (evdev) on
+//! Linux, SDL on Windows (`heronite_platform::controllers`), where
+//! Windows.Gaming.Input missed PlayStation and Nintendo controllers. Both
+//! report a [`RawEvent`]; the [`Translator`] makes the presses the same way
+//! for both.
 //!
 //! The keyboard drives console mode too ([`pad_from_key`]), so it works
 //! without a controller.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+use futures::channel::mpsc::UnboundedReceiver;
 use gpui_kit::Keystroke;
 
 use super::Pad;
+
+#[cfg(not(windows))]
+#[path = "input/gilrs_pads.rs"]
+mod backend;
+#[cfg(windows)]
+#[path = "input/sdl_pads.rs"]
+mod backend;
 
 /// What the thread sends.
 #[derive(Clone, Debug, PartialEq)]
@@ -22,13 +33,11 @@ pub enum PadMsg {
     /// A controller is present: its name, and whether it was just plugged in
     /// (`false` for the ones found at start).
     Connected(String, bool),
-    Disconnected,
-}
-
-/// Devices that only look like gamepads (the "joystick" interface of some
-/// wireless keyboards) have no south (A) button.
-fn is_gamepad(pad: &gilrs::Gamepad<'_>) -> bool {
-    pad.button_code(gilrs::Button::South).is_some()
+    /// A controller went away. `remaining` is the name of another one that is
+    /// still connected (`None` when it was the last).
+    Disconnected {
+        remaining: Option<String>,
+    },
 }
 
 /// First repeat after this long, then every [`REPEAT_EVERY`].
@@ -39,6 +48,71 @@ const SCROLL_EVERY: Duration = Duration::from_millis(60);
 /// Stick deflection that counts as a press, and the one that releases it.
 const STICK_ON: f32 = 0.55;
 const STICK_OFF: f32 = 0.35;
+/// Trigger travel that counts as a press, and the one that releases it (what
+/// gilrs uses to turn analog triggers into buttons).
+const TRIGGER_ON: f32 = 0.75;
+const TRIGGER_OFF: f32 = 0.65;
+
+/// A controller button by its position, whatever reads it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PadButton {
+    South,
+    East,
+    West,
+    North,
+    LB,
+    RB,
+    /// A trigger that reports a button (gilrs; SDL's analog triggers are
+    /// [`RawEvent::Trigger`]).
+    #[cfg_attr(windows, allow(dead_code))]
+    LT,
+    #[cfg_attr(windows, allow(dead_code))]
+    RT,
+    Start,
+    /// Xbox, PS or Home: opens the menu like Start.
+    Guide,
+    Select,
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+/// Stick and hat axes; positive Y points up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum StickAxis {
+    LeftX,
+    LeftY,
+    RightX,
+    RightY,
+    /// A hat d-pad not mapped to buttons: moves like the left stick (gilrs;
+    /// SDL always reports d-pad buttons).
+    #[cfg_attr(windows, allow(dead_code))]
+    DPadX,
+    #[cfg_attr(windows, allow(dead_code))]
+    DPadY,
+}
+
+/// What a backend reads from the controllers.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum RawEvent {
+    Button(PadButton, bool),
+    Axis(StickAxis, f32),
+    /// An analog trigger, 0..=1 (SDL; gilrs reports trigger buttons).
+    #[cfg_attr(not(any(windows, test)), allow(dead_code))]
+    Trigger {
+        right: bool,
+        value: f32,
+    },
+    /// `plugged`: just connected (`false` for the ones found at start).
+    Connected {
+        name: String,
+        plugged: bool,
+    },
+    Disconnected {
+        remaining: Option<String>,
+    },
+}
 
 /// Turns held directions into repeated presses. Pure, so it is tested
 /// without a controller.
@@ -62,6 +136,12 @@ impl Repeater {
         if self.held.is_some_and(|(p, _)| p == pad) {
             self.held = None;
         }
+    }
+
+    /// Forgets the held direction and both sticks, so nothing keeps repeating
+    /// after a controller disappears without sending its release events.
+    pub fn reset(&mut self) {
+        *self = Self::default();
     }
 
     /// Stick moved: maps the deflection to a direction (with hysteresis)
@@ -124,127 +204,128 @@ impl Repeater {
     }
 }
 
-fn button_pad(b: gilrs::Button) -> Option<Pad> {
-    use gilrs::Button as B;
+/// The press a controller button makes. With `swap_ab` the east button
+/// confirms and the south one goes back (`controls.swapAb` of the console
+/// theme).
+fn button_pad(b: PadButton, swap_ab: bool) -> Option<Pad> {
+    use PadButton as B;
     Some(match b {
+        B::South if swap_ab => Pad::B,
+        B::East if swap_ab => Pad::A,
         B::South => Pad::A,
         B::East => Pad::B,
         B::West => Pad::X,
         B::North => Pad::Y,
-        B::LeftTrigger => Pad::LB,
-        B::RightTrigger => Pad::RB,
-        B::LeftTrigger2 => Pad::LT,
-        B::RightTrigger2 => Pad::RT,
-        B::Start | B::Mode => Pad::Start,
+        B::LB => Pad::LB,
+        B::RB => Pad::RB,
+        B::LT => Pad::LT,
+        B::RT => Pad::RT,
+        B::Start | B::Guide => Pad::Start,
         B::Select => Pad::Select,
-        B::DPadUp => Pad::Up,
-        B::DPadDown => Pad::Down,
-        B::DPadLeft => Pad::Left,
-        B::DPadRight => Pad::Right,
-        _ => return None,
+        B::Up => Pad::Up,
+        B::Down => Pad::Down,
+        B::Left => Pad::Left,
+        B::Right => Pad::Right,
     })
+}
+
+/// The theme in use, read per press so a change applies at once.
+fn swap_ab() -> bool {
+    super::look::theme().controls.swap_ab
 }
 
 fn is_direction(p: Pad) -> bool {
     matches!(p, Pad::Up | Pad::Down | Pad::Left | Pad::Right)
 }
 
-/// The running controller thread; dropping it asks the thread to stop.
+/// Turns a backend's [`RawEvent`]s into [`PadMsg`]s: repeats for held
+/// directions, stick and trigger thresholds. Pure, so it is tested without a
+/// controller.
+#[derive(Default)]
+pub(super) struct Translator {
+    rep: Repeater,
+    /// Sticks report X and Y separately; keep both.
+    lx: f32,
+    ly: f32,
+    rx: f32,
+    ry: f32,
+    /// Analog triggers held past [`TRIGGER_ON`] (left, right).
+    triggers: [bool; 2],
+}
+
+impl Translator {
+    pub fn event(&mut self, ev: RawEvent, now: Instant, swap_ab: bool) -> Option<PadMsg> {
+        match ev {
+            RawEvent::Button(b, true) => {
+                button_pad(b, swap_ab).map(|p| PadMsg::Press(if is_direction(p) { self.rep.press(p, now) } else { p }))
+            }
+            RawEvent::Button(b, false) => {
+                if let Some(p) = button_pad(b, swap_ab) {
+                    self.rep.release(p);
+                }
+                None
+            }
+            RawEvent::Axis(axis, v) => {
+                match axis {
+                    StickAxis::LeftX | StickAxis::DPadX => self.lx = v,
+                    StickAxis::LeftY | StickAxis::DPadY => self.ly = v,
+                    StickAxis::RightX => self.rx = v,
+                    StickAxis::RightY => self.ry = v,
+                }
+                let right = matches!(axis, StickAxis::RightX | StickAxis::RightY);
+                let (x, y) = if right { (self.rx, self.ry) } else { (self.lx, self.ly) };
+                self.rep.stick(right, x, y, now).map(PadMsg::Press)
+            }
+            RawEvent::Trigger { right, value } => {
+                let held = &mut self.triggers[usize::from(right)];
+                if !*held && value >= TRIGGER_ON {
+                    *held = true;
+                    Some(PadMsg::Press(if right { Pad::RT } else { Pad::LT }))
+                } else {
+                    if *held && value <= TRIGGER_OFF {
+                        *held = false;
+                    }
+                    None
+                }
+            }
+            RawEvent::Connected { name, plugged } => Some(PadMsg::Connected(name, plugged)),
+            RawEvent::Disconnected { remaining } => {
+                // The release events never arrive; the state is not per pad, so
+                // it is all dropped.
+                self.rep.reset();
+                (self.lx, self.ly, self.rx, self.ry) = (0.0, 0.0, 0.0, 0.0);
+                self.triggers = [false; 2];
+                Some(PadMsg::Disconnected { remaining })
+            }
+        }
+    }
+
+    /// How long the thread may sleep before [`Translator::tick`] has work.
+    pub fn wait(&self, now: Instant) -> Option<Duration> {
+        self.rep.wait(now)
+    }
+
+    /// The repeat due at `now`, if any.
+    pub fn tick(&mut self, now: Instant) -> Option<PadMsg> {
+        self.rep.tick(now).map(PadMsg::Press)
+    }
+}
+
+/// Reading controllers for one listener; dropping it stops (the receiver
+/// then ends).
 pub struct PadThread {
-    stop: Arc<AtomicBool>,
+    _source: backend::Source,
 }
 
-impl Drop for PadThread {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-    }
-}
-
-/// Starts reading controllers. `None` when gilrs cannot start (no udev, ...).
+/// Starts reading controllers. `None` when the reader cannot start or
+/// `HERONITE_NO_GAMEPAD` is set (test copies on a hidden workspace must not
+/// follow the controller of the app in use).
 pub fn start() -> Option<(PadThread, UnboundedReceiver<PadMsg>)> {
-    let (tx, rx) = unbounded();
-    let stop = Arc::new(AtomicBool::new(false));
-    let flag = stop.clone();
-    std::thread::Builder::new().name("gamepad".into()).spawn(move || run(tx, flag)).map_err(|e| log::warn!("gamepad thread: {e}")).ok()?;
-    Some((PadThread { stop }, rx))
-}
-
-fn run(tx: UnboundedSender<PadMsg>, stop: Arc<AtomicBool>) {
-    let mut gilrs = match gilrs::Gilrs::new() {
-        Ok(g) => g,
-        Err(err) => {
-            log::warn!("controllers unavailable: {err}");
-            return;
-        }
-    };
-    for (_, pad) in gilrs.gamepads().filter(|(_, p)| is_gamepad(p)) {
-        log::info!("controller: {}", pad.name());
-        tx.unbounded_send(PadMsg::Connected(pad.name().to_string(), false)).ok();
+    if crate::env::flag("HERONITE_NO_GAMEPAD") {
+        return None;
     }
-    let mut rep = Repeater::default();
-    // Sticks report X and Y separately; keep both.
-    let (mut lx, mut ly, mut rx, mut ry) = (0f32, 0f32, 0f32, 0f32);
-    let send = |p: Pad| tx.unbounded_send(PadMsg::Press(p)).is_ok();
-    while !stop.load(Ordering::Relaxed) {
-        let now = Instant::now();
-        // Wake for the next repeat, or at least once a second to see `stop`.
-        let timeout = rep.wait(now).unwrap_or(Duration::from_secs(1)).min(Duration::from_secs(1));
-        let Some(ev) = gilrs.next_event_blocking(Some(timeout)) else {
-            if let Some(p) = rep.tick(Instant::now()) {
-                if !send(p) {
-                    break;
-                }
-            }
-            continue;
-        };
-        let now = Instant::now();
-        if !matches!(ev.event, gilrs::EventType::Disconnected) && !is_gamepad(&gilrs.gamepad(ev.id)) {
-            continue;
-        }
-        use gilrs::{Axis, EventType as E};
-        let out = match ev.event {
-            E::ButtonPressed(b, _) => button_pad(b).map(|p| if is_direction(p) { rep.press(p, now) } else { p }),
-            E::ButtonReleased(b, _) => {
-                if let Some(p) = button_pad(b) {
-                    rep.release(p);
-                }
-                None
-            }
-            E::AxisChanged(axis, v, _) => {
-                match axis {
-                    Axis::LeftStickX => lx = v,
-                    Axis::LeftStickY => ly = v,
-                    Axis::RightStickX => rx = v,
-                    Axis::RightStickY => ry = v,
-                    // Hat d-pads that are not mapped to buttons.
-                    Axis::DPadX => lx = v,
-                    Axis::DPadY => ly = v,
-                    _ => {}
-                }
-                match axis {
-                    Axis::RightStickX | Axis::RightStickY => rep.stick(true, rx, ry, now),
-                    Axis::LeftStickX | Axis::LeftStickY | Axis::DPadX | Axis::DPadY => rep.stick(false, lx, ly, now),
-                    _ => None,
-                }
-            }
-            E::Connected => {
-                let name = gilrs.gamepad(ev.id).name().to_string();
-                log::info!("controller connected: {name}");
-                tx.unbounded_send(PadMsg::Connected(name, true)).ok();
-                None
-            }
-            E::Disconnected => {
-                tx.unbounded_send(PadMsg::Disconnected).ok();
-                None
-            }
-            _ => None,
-        };
-        if let Some(p) = out {
-            if !send(p) {
-                break;
-            }
-        }
-    }
+    let (source, rx) = backend::start()?;
+    Some((PadThread { _source: source }, rx))
 }
 
 /// Keyboard equivalents in console mode: arrows, Enter/Space (A), Escape /
@@ -315,7 +396,9 @@ pub fn parse_script(text: &str) -> Vec<(Duration, Pad)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_script, Repeater, REPEAT_AFTER, REPEAT_EVERY};
+    use super::{
+        button_pad, parse_script, PadButton as Button, PadMsg, RawEvent, Repeater, StickAxis, Translator, REPEAT_AFTER, REPEAT_EVERY,
+    };
     use crate::console::Pad;
     use std::time::{Duration, Instant};
 
@@ -334,6 +417,25 @@ mod tests {
     }
 
     #[test]
+    fn reset_stops_repeats_and_releases_the_sticks() {
+        let t0 = Instant::now();
+        let mut r = Repeater::default();
+        r.press(Pad::Left, t0);
+        r.reset();
+        assert_eq!(r.wait(t0), None);
+        assert_eq!(r.tick(t0 + Duration::from_secs(5)), None);
+
+        // A stick held past the threshold presses again after a reset.
+        assert_eq!(r.stick(false, 0.0, 0.9, t0), Some(Pad::Up));
+        r.reset();
+        assert_eq!(r.tick(t0 + Duration::from_secs(5)), None);
+        assert_eq!(r.stick(false, 0.0, 0.9, t0), Some(Pad::Up));
+        assert_eq!(r.stick(true, 0.0, 0.9, t0), Some(Pad::ScrollUp));
+        r.reset();
+        assert_eq!(r.stick(true, 0.0, 0.9, t0), Some(Pad::ScrollUp));
+    }
+
+    #[test]
     fn stick_has_hysteresis_and_one_press_per_direction() {
         let t0 = Instant::now();
         let mut r = Repeater::default();
@@ -346,6 +448,94 @@ mod tests {
         assert_eq!(r.stick(false, 0.9, 0.1, t0), Some(Pad::Right));
         assert_eq!(r.stick(false, -0.9, 0.1, t0), Some(Pad::Left));
         assert_eq!(r.stick(true, 0.0, -0.8, t0), Some(Pad::ScrollDown));
+    }
+
+    #[test]
+    fn south_confirms_and_east_goes_back_unless_swapped() {
+        assert_eq!(button_pad(Button::South, false), Some(Pad::A));
+        assert_eq!(button_pad(Button::East, false), Some(Pad::B));
+        assert_eq!(button_pad(Button::South, true), Some(Pad::B));
+        assert_eq!(button_pad(Button::East, true), Some(Pad::A));
+        // Everything else ignores the swap.
+        assert_eq!(button_pad(Button::West, true), Some(Pad::X));
+        assert_eq!(button_pad(Button::North, true), Some(Pad::Y));
+        assert_eq!(button_pad(Button::Up, true), Some(Pad::Up));
+        // Xbox, PS and Home open the menu like Start.
+        assert_eq!(button_pad(Button::Guide, false), Some(Pad::Start));
+        assert_eq!(button_pad(Button::Select, false), Some(Pad::Select));
+    }
+
+    fn press(p: Pad) -> Option<PadMsg> {
+        Some(PadMsg::Press(p))
+    }
+
+    #[test]
+    fn translator_presses_buttons_and_repeats_directions() {
+        let t0 = Instant::now();
+        let mut t = Translator::default();
+        assert_eq!(t.event(RawEvent::Button(Button::South, true), t0, false), press(Pad::A));
+        assert_eq!(t.event(RawEvent::Button(Button::South, false), t0, false), None);
+        assert_eq!(t.event(RawEvent::Button(Button::East, true), t0, true), press(Pad::A));
+        assert_eq!(t.wait(t0), None);
+        assert_eq!(t.event(RawEvent::Button(Button::Down, true), t0, false), press(Pad::Down));
+        assert_eq!(t.wait(t0), Some(REPEAT_AFTER));
+        assert_eq!(t.tick(t0 + REPEAT_AFTER), press(Pad::Down));
+        assert_eq!(t.event(RawEvent::Button(Button::Down, false), t0, false), None);
+        assert_eq!(t.tick(t0 + Duration::from_secs(5)), None);
+    }
+
+    #[test]
+    fn translator_sticks_keep_both_axes_and_the_hat_moves_like_the_left_stick() {
+        let t0 = Instant::now();
+        let mut t = Translator::default();
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftX, 0.2), t0, false), None);
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftY, 0.9), t0, false), press(Pad::Up));
+        // X alone changes but Y still dominates: no new press.
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftX, 0.3), t0, false), None);
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftY, 0.0), t0, false), None);
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::DPadX, -1.0), t0, false), press(Pad::Left));
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::DPadX, 0.0), t0, false), None);
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::RightY, -0.8), t0, false), press(Pad::ScrollDown));
+        // The right stick's X does not scroll.
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::RightY, 0.0), t0, false), None);
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::RightX, 1.0), t0, false), None);
+    }
+
+    #[test]
+    fn translator_triggers_press_once_with_hysteresis() {
+        let t0 = Instant::now();
+        let mut t = Translator::default();
+        let lt = |value| RawEvent::Trigger { right: false, value };
+        assert_eq!(t.event(lt(0.5), t0, false), None);
+        assert_eq!(t.event(lt(0.8), t0, false), press(Pad::LT));
+        assert_eq!(t.event(lt(1.0), t0, false), None);
+        // Above the release point: still held.
+        assert_eq!(t.event(lt(0.7), t0, false), None);
+        assert_eq!(t.event(lt(0.9), t0, false), None);
+        assert_eq!(t.event(lt(0.1), t0, false), None);
+        assert_eq!(t.event(lt(0.8), t0, false), press(Pad::LT));
+        assert_eq!(t.event(RawEvent::Trigger { right: true, value: 1.0 }, t0, false), press(Pad::RT));
+        // Triggers never repeat.
+        assert_eq!(t.wait(t0), None);
+    }
+
+    #[test]
+    fn translator_disconnect_drops_held_state() {
+        let t0 = Instant::now();
+        let mut t = Translator::default();
+        assert_eq!(
+            t.event(RawEvent::Connected { name: "Pad".into(), plugged: true }, t0, false),
+            Some(PadMsg::Connected("Pad".into(), true))
+        );
+        t.event(RawEvent::Button(Button::Right, true), t0, false);
+        t.event(RawEvent::Axis(StickAxis::LeftY, 0.9), t0, false);
+        t.event(RawEvent::Trigger { right: false, value: 1.0 }, t0, false);
+        assert_eq!(t.event(RawEvent::Disconnected { remaining: None }, t0, false), Some(PadMsg::Disconnected { remaining: None }));
+        assert_eq!(t.wait(t0), None);
+        assert_eq!(t.tick(t0 + Duration::from_secs(5)), None);
+        // Held past the thresholds again: new presses.
+        assert_eq!(t.event(RawEvent::Axis(StickAxis::LeftY, 0.9), t0, false), press(Pad::Up));
+        assert_eq!(t.event(RawEvent::Trigger { right: false, value: 1.0 }, t0, false), press(Pad::LT));
     }
 
     #[test]

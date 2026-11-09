@@ -21,7 +21,9 @@ pub fn font_heading() -> &'static str {
         FontChoice::System => SYSTEM_FONT,
     }
 }
-/// Keyboard hint chips.
+/// Keyboard hint chips, logs and the console's Mono font. Bundled (400 and 600,
+/// `assets/fonts/`): Windows has no Noto Sans Mono and GPUI would fall back to
+/// Segoe UI, which is not monospaced and sits the glyphs low in their line.
 pub const FONT_MONO: &str = "Noto Sans Mono";
 
 /// Heronite only ships the 400 weights of Rubik/Cabin; Chromium fakes bold for

@@ -41,6 +41,9 @@ pub struct WineManagerPage {
     query: String,
     /// Version whose removal awaits confirmation.
     confirm_remove: Option<String>,
+    /// The builds past the recommended and installed ones are listed
+    /// ("Other versions"); folded by default.
+    show_other: bool,
     download_to_steam: bool,
     /// The installed `-latest` builds update by themselves
     /// (`services::proton_setup`).
@@ -104,6 +107,8 @@ impl WineManagerPage {
             search,
             query: String::new(),
             confirm_remove: None,
+            // `HERONITE_DEBUG_WINE=...,other`: the other versions start unfolded.
+            show_other: debug_has("other"),
             download_to_steam: false,
             auto_update_latest: true,
             last_rev: 0,
@@ -336,6 +341,24 @@ impl WineManagerPage {
 
     fn job(&self, version: &str) -> Option<Job> {
         self.manager.job(version).or_else(|| self.fake.get(version).cloned())
+    }
+
+    /// The build to pick when unsure: the source's `-latest` entry, else
+    /// its newest release.
+    fn recommended(rows: &[WineVersionInfo]) -> Option<String> {
+        rows.iter().find(|r| r.version.ends_with("-latest")).or_else(|| rows.first()).map(|r| r.version.clone())
+    }
+
+    /// The rows shown at first (the recommended build, the installed ones
+    /// and any being installed or removed) and the others, folded under
+    /// "Other versions". A search lists every match.
+    fn split_rows(&self, rows: Vec<WineVersionInfo>) -> (Vec<WineVersionInfo>, Vec<WineVersionInfo>) {
+        if !self.query.is_empty() {
+            return (rows, Vec::new());
+        }
+        let recommended = Self::recommended(&rows);
+        rows.into_iter()
+            .partition(|r| recommended.as_deref() == Some(r.version.as_str()) || r.installed() || self.job(&r.version).is_some())
     }
 
     fn visible(&self) -> Vec<WineVersionInfo> {

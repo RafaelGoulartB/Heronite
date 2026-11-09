@@ -11,7 +11,13 @@
 //! the backup are removed (a game added after the backup goes too). What a
 //! backup leaves out (Wine builds, caches, logs) is never touched. Paths into
 //! the data folder, the app state folder and home are rewritten when the
-//! backup came from other folders (another user, another machine).
+//! backup came from other folders (another user, another machine, another
+//! system: a backup made on Linux restores on Windows).
+//!
+//! This PC's identity for the library sync (its id, name and folder in
+//! `sync.json`) never comes from a backup: a backup of another PC restored
+//! here would make both PCs one, ignoring each other's files and writing
+//! into the same folders of the account.
 
 use std::collections::HashSet;
 use std::fs;
@@ -159,6 +165,8 @@ pub fn restore(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
     };
     let mut done =
         Restored { snapshot: snapshot.to_path_buf(), created_at: info.created_at.clone(), parts: parts.clone(), ..Default::default() };
+    let sync_prefs = app.sync_prefs();
+    let own = own_identity(&sync_prefs);
     let mut kept: HashSet<(Side, String)> = HashSet::new();
     for f in &files {
         let dest = root(f.side).join(&f.rel);
@@ -170,12 +178,23 @@ pub fn restore(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
             }
             None => bytes,
         };
+        let bytes = if dest == sync_prefs { with_identity(&bytes, &own) } else { bytes };
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)?;
         }
         temps::write_atomic(&dest, &bytes, None).with_context(|| format!("writing {}", dest.display()))?;
         done.written += 1;
         kept.insert((f.side, f.rel.clone()));
+    }
+    // A backup without the sync's settings (made before it) still leaves
+    // this PC its identity.
+    if let Ok(rel) = sync_prefs.strip_prefix(&app.config) {
+        let rel = rel.to_string_lossy().replace('\\', "/");
+        let restored = matches!(catalog::classify_config(&rel), Class::In(part) if parts.contains(&part));
+        if restored && !own.is_empty() && kept.insert((Side::Config, rel)) {
+            temps::write_atomic(&sync_prefs, &with_identity(b"{}", &own), None)
+                .with_context(|| format!("writing {}", sync_prefs.display()))?;
+        }
     }
     // The rest of each restored part goes.
     for side in [Side::Data, Side::Config] {
@@ -197,8 +216,42 @@ pub fn restore(data: &DataPaths, app: &AppPaths, snapshot: &Path, parts: &[Part]
     Ok(done)
 }
 
+/// The fields of `sync.json` that name this PC (heronite_sync::prefs::SyncPrefs).
+const IDENTITY: [&str; 3] = ["deviceId", "deviceName", "deviceFolder"];
+
+/// This PC's [`IDENTITY`] fields in its `sync.json` (empty without one).
+fn own_identity(sync_prefs: &Path) -> serde_json::Map<String, serde_json::Value> {
+    let current = fs::read(sync_prefs).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+    let Some(serde_json::Value::Object(mut current)) = current else { return Default::default() };
+    current.retain(|k, _| IDENTITY.contains(&k.as_str()));
+    current
+}
+
+/// The backup's `sync.json` with this PC's identity `own` in place of the
+/// backup's; a field this PC has not got yet is left out (the sync makes a
+/// new one). A file that is not a JSON object keeps only the identity.
+fn with_identity(bytes: &[u8], own: &serde_json::Map<String, serde_json::Value>) -> Vec<u8> {
+    let mut prefs = match serde_json::from_slice::<serde_json::Value>(bytes) {
+        Ok(serde_json::Value::Object(prefs)) => prefs,
+        _ => serde_json::Map::new(),
+    };
+    for key in IDENTITY {
+        match own.get(key) {
+            Some(v) => prefs.insert(key.to_owned(), v.clone()),
+            None => prefs.remove(key),
+        };
+    }
+    serde_json::to_vec_pretty(&prefs).unwrap_or_default()
+}
+
 /// Old → new folder pairs, most specific first; empty when the backup came
 /// from these very folders.
+///
+/// The new folders go into the files with `/` separators, which Windows
+/// takes too: a backslash would have to be escaped in JSON, and the rest of a
+/// path from a Linux backup has `/` anyway. A backup from Windows holds its
+/// folders escaped (`C:\\Users\\...`) in its JSON files: that form is
+/// replaced too.
 fn rewrites(m: &Manifest, data: &DataPaths, app: &AppPaths) -> Vec<(String, String)> {
     let home = snapshot::dirs_home();
     let pairs = [
@@ -206,7 +259,15 @@ fn rewrites(m: &Manifest, data: &DataPaths, app: &AppPaths) -> Vec<(String, Stri
         (m.config_root.clone(), app.config.to_string_lossy().into_owned()),
         (m.home.clone(), home),
     ];
-    pairs.into_iter().filter(|(old, new)| !old.is_empty() && !new.is_empty() && old != new).collect()
+    let mut out = Vec::new();
+    for (old, new) in pairs.into_iter().filter(|(old, new)| !old.is_empty() && !new.is_empty() && old != new) {
+        let new = new.replace('\\', "/");
+        if old.contains('\\') {
+            out.push((old.replace('\\', "\\\\"), new.clone()));
+        }
+        out.push((old, new));
+    }
+    out
 }
 
 /// The file with the backup's folders replaced, when it is text and any
@@ -266,9 +327,62 @@ mod tests {
         let other_app = AppPaths { config: d.path().join("moved-config"), cache: d.path().join("moved-cache") };
         let done = restore(&other, &other_app, &made.path, &Part::ALL).unwrap();
         assert!(done.rewritten >= 1);
-        let moved = other.root.to_string_lossy().into_owned();
+        let moved = other.root.to_string_lossy().replace('\\', "/");
         assert_eq!(fs::read_to_string(other.root.join("GamesConfig/g.json")).unwrap(), format!(r#"{{"winePrefix":"{moved}/prefixes/g"}}"#));
         assert_eq!(fs::read_to_string(other.root.join("legendaryConfig/legendary/user.json")).unwrap(), "token");
+    }
+
+    #[test]
+    fn a_backup_from_linux_points_at_this_machine_s_folders() {
+        let _s = crate::tests::serial();
+        let d = tempfile::tempdir().unwrap();
+        let (data, app) = fixture(d.path());
+        let folder = d.path().join("backups");
+        fs::create_dir(&folder).unwrap();
+        fs::create_dir_all(data.root.join("GamesConfig")).unwrap();
+        let config = r#"{"winePrefix":"/home/u/.local/share/heronite/prefixes/g","savesPath":"/home/u/Games/g","other":"/home/u2/x"}"#;
+        fs::write(data.root.join("GamesConfig/g.json"), config).unwrap();
+        let made = snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now()).unwrap();
+        let mut manifest = Manifest::read(&made.path).unwrap();
+        (manifest.data_root, manifest.config_root, manifest.home) =
+            ("/home/u/.local/share/heronite".into(), "/home/u/.config/heronite".into(), "/home/u".into());
+        manifest.write(&made.path).unwrap();
+
+        let here = DataPaths::at(d.path().join("here"));
+        let here_app = AppPaths { config: d.path().join("here-config"), cache: d.path().join("here-cache") };
+        let done = restore(&here, &here_app, &made.path, &Part::ALL).unwrap();
+        assert!(done.rewritten >= 1);
+        let text = fs::read_to_string(here.root.join("GamesConfig/g.json")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&text).expect("still JSON");
+        let slashed = |p: &Path| p.to_string_lossy().replace('\\', "/");
+        assert_eq!(value["winePrefix"], format!("{}/prefixes/g", slashed(&here.root)));
+        assert_eq!(value["savesPath"], format!("{}/Games/g", snapshot::dirs_home().replace('\\', "/")));
+        assert_eq!(value["other"], "/home/u2/x", "only whole folders are rewritten");
+    }
+
+    #[test]
+    fn a_backup_from_windows_has_its_escaped_folders_rewritten() {
+        let m = Manifest {
+            format: FORMAT,
+            app_version: String::new(),
+            created_at: String::new(),
+            reason: Reason::Manual,
+            host: String::new(),
+            home: r"C:\Users\a".into(),
+            data_root: r"C:\Users\a\AppData\Roaming\heronite\data".into(),
+            config_root: r"C:\Users\a\AppData\Roaming\heronite\config".into(),
+            parts: Vec::new(),
+            summary: Default::default(),
+            files: Vec::new(),
+        };
+        let data = DataPaths::at("/new/data");
+        let app = AppPaths { config: "/new/config".into(), cache: "/new/cache".into() };
+        let text = r#"{"winePrefix":"C:\\Users\\a\\AppData\\Roaming\\heronite\\data\\prefixes\\g","x":"C:\\Users\\a\\Games"}"#;
+        let out = String::from_utf8(rewrite_paths("GamesConfig/g.json", text.as_bytes(), &rewrites(&m, &data, &app)).unwrap()).unwrap();
+        let home = snapshot::dirs_home().replace('\\', "/");
+        let value: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(value["winePrefix"], r"/new/data\prefixes\g");
+        assert_eq!(value["x"], format!(r"{home}\Games"));
     }
 
     #[test]
@@ -327,5 +441,45 @@ mod tests {
         assert!(restore(&data, &app, &old, &Part::ALL).is_err());
         assert!(prepare(&data, &app, &old, &Part::ALL, &d.path().join("backups")).is_err());
         assert_eq!(fs::read_to_string(data.root.join("local_library/library.json")).unwrap(), r#"{"games":{"a":{},"b":{}}}"#);
+    }
+
+    #[test]
+    fn this_pc_keeps_its_sync_identity() {
+        let _s = crate::tests::serial();
+        let d = tempfile::tempdir().unwrap();
+        let (data, app) = fixture(d.path());
+        let folder = d.path().join("backups");
+        fs::create_dir(&folder).unwrap();
+        let prefs = |path: &Path| serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap();
+        // The other PC's backup.
+        let theirs = r#"{"library":"auto","saves":"auto","deviceId":"other","deviceName":"Desk","deviceFolder":"Desk"}"#;
+        fs::write(app.sync_prefs(), theirs).unwrap();
+        let made = snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now()).unwrap();
+
+        fs::write(app.sync_prefs(), r#"{"library":"off","deviceId":"this","deviceFolder":"Deck"}"#).unwrap();
+        restore(&data, &app, &made.path, &[Part::Settings]).unwrap();
+        let v = prefs(&app.sync_prefs());
+        assert_eq!((v["library"].as_str(), v["saves"].as_str()), (Some("auto"), Some("auto")), "the settings come back");
+        assert_eq!((v["deviceId"].as_str(), v["deviceFolder"].as_str()), (Some("this"), Some("Deck")));
+        assert!(v.get("deviceName").is_none(), "this PC had none");
+
+        // Without a sync.json here, the sync makes a new identity.
+        fs::remove_file(app.sync_prefs()).unwrap();
+        restore(&data, &app, &made.path, &[Part::Settings]).unwrap();
+        let v = prefs(&app.sync_prefs());
+        assert!(IDENTITY.iter().all(|k| v.get(k).is_none()), "{v}");
+        assert_eq!(v["library"], "auto");
+
+        // A backup made before the sync: the restored settings go, the identity stays.
+        fs::remove_file(app.sync_prefs()).unwrap();
+        let before =
+            snapshot::create(&data, &app, &folder, &Part::ALL, Reason::Manual, Local::now() + chrono::Duration::minutes(1)).unwrap();
+        fs::write(app.sync_prefs(), r#"{"library":"auto","deviceId":"this"}"#).unwrap();
+        restore(&data, &app, &before.path, &[Part::Settings]).unwrap();
+        assert_eq!(prefs(&app.sync_prefs()), serde_json::json!({"deviceId": "this"}));
+        // Only when the settings are restored.
+        fs::write(app.sync_prefs(), r#"{"library":"auto","deviceId":"this"}"#).unwrap();
+        restore(&data, &app, &before.path, &[Part::Collection]).unwrap();
+        assert_eq!(prefs(&app.sync_prefs())["library"], "auto");
     }
 }

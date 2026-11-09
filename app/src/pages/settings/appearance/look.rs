@@ -6,22 +6,24 @@ use gpui_kit::component::slider::Slider;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::{
-    Accent, Appearance, BackgroundSource, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView, Theme,
+    Accent, Appearance, BackgroundSource, CategoryStyle, Corners, CoverHover, CoverLabel, Density, FontChoice, Motion, Section, StartView,
+    Theme,
 };
 use heronite_i18n::tr;
 
 use super::scheme::colour_dot as dot;
-use super::{apply_interface, slider_of, Field, SettingsPage};
+use super::{apply_interface, set_scale, set_sliders, slider_of, Field, SettingsPage};
+use crate::collection::category_badges::{self as badges, CategoryBadge};
 use crate::icons::Icon;
 use crate::pages::PageEvent;
+use crate::system::ui_scale;
 use crate::theme;
 use crate::ui::colour_picker::{ColourPicker, PickerEvent};
-use crate::ui::controls::{button, card, row, tabs, toggle, toggle_row, with_sub_rows, ButtonKind};
+use crate::ui::controls::{button, card, icon_button, row, tabs, toggle, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::select_field;
-use crate::ui::icon;
 
 /// Changes the look, applies it and saves it.
-pub(super) fn set_look(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, edit: impl FnOnce(&mut Appearance)) {
+pub(in crate::pages::settings) fn set_look(d: &mut SettingsPage, cx: &mut Context<SettingsPage>, edit: impl FnOnce(&mut Appearance)) {
     edit(&mut d.appearance.ui);
     apply_interface(d, true, cx);
     cx.emit(PageEvent::AppearanceChanged);
@@ -103,6 +105,7 @@ pub(super) fn section_label(s: Section) -> &'static str {
         Section::Screenshots => tr!("Screenshots"),
         Section::Overview => tr!("Overview"),
         Section::Details => tr!("Details"),
+        Section::Achievements => tr!("Achievements"),
         Section::Timeline => tr!("Timeline"),
         Section::Related => tr!("Related games"),
     }
@@ -221,10 +224,11 @@ pub(super) fn new_accent_picker(window: &mut Window, cx: &mut Context<SettingsPa
     picker
 }
 
-/// Font, density and animations.
+/// The interface's size, font, density and animations.
 pub(super) fn reading_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     card([
+        with_sub_rows(scale_row(d), vec![scale_system_row(d, cx)]),
         row(
             tr!("Font"),
             Some(tr!("Cabin for text and Rubik for titles, Rubik everywhere, or your desktop's font.")),
@@ -244,6 +248,39 @@ pub(super) fn reading_group(d: &SettingsPage, cx: &mut Context<SettingsPage>) ->
         )
         .into_any_element(),
     ])
+}
+
+/// The interface scale: its value (the one under the pointer while dragged)
+/// and its slider.
+fn scale_row(d: &SettingsPage) -> AnyElement {
+    let percent = d.appearance.scale_drag.unwrap_or_else(|| ui_scale::percent_of(&d.appearance.ui));
+    let slider = Slider::new(slider_of(&d.appearance, Field::InterfaceScale)).bg(theme::accent()).text_color(theme::accent());
+    let control = div()
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .child(div().w(px(44.)).text_size(px(13.)).text_color(theme::text_bright()).child(format!("{}%", percent.round())))
+        .child(div().w(px(220.)).child(slider));
+    row(
+        tr!("Zoom"),
+        Some(tr!("Everything on screen, text and pictures, bigger or smaller. Ctrl + and Ctrl − change it anywhere, Ctrl 0 goes back to the system's.")),
+        control,
+    )
+    .into_any_element()
+}
+
+/// Follow the system's scale, or keep the one picked here.
+fn scale_system_row(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
+    let follows = d.appearance.ui.interface_scale.is_none();
+    let source = ui_scale::system().label();
+    toggle_row("ui-scale-system", tr!("Follow the system"), Some(&source), follows)
+        .on_click(cx.listener(move |d, _, window, cx| {
+            // Off keeps the size in use, now picked here.
+            let percent = follows.then(|| ui_scale::percent_of(&theme::appearance()));
+            set_scale(d, percent, cx);
+            set_sliders(&d.appearance, &[(Field::InterfaceScale, ui_scale::percent_of(&theme::appearance()))], window, cx);
+        }))
+        .into_any_element()
 }
 
 /// Rows of the Covers card after the aspect and the grey switch.
@@ -270,6 +307,31 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
         },
     );
     let badges = a.cover_badges;
+    let stores = a.cover_stores;
+    let (stores_all, hide_grouped) = (a.cover_stores_all, a.cover_stores_hide_grouped);
+    // Its options show while it is on.
+    let store_options = if stores {
+        vec![
+            toggle_row(
+                "cover-stores-all",
+                tr!("Show every store a game is in"),
+                Some(tr!("A game you own in several stores shows each store's icon.")),
+                stores_all,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores_all = !stores_all)))
+            .into_any_element(),
+            toggle_row(
+                "cover-stores-grouped",
+                tr!("Hide while grouped by store"),
+                Some(tr!("The section's header already names the store.")),
+                hide_grouped,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores_hide_grouped = !hide_grouped)))
+            .into_any_element(),
+        ]
+    } else {
+        Vec::new()
+    };
     vec![
         row(tr!("Corners"), None, choice("corners", &corner_items(), a.cover_corners, cx, |a, v| a.cover_corners = v)).into_any_element(),
         row(
@@ -281,6 +343,17 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
         toggle_row("cover-badges", tr!("Favourite star"), Some(tr!("A star on the covers of your favourites.")), badges)
             .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_badges = !badges)))
             .into_any_element(),
+        with_sub_rows(
+            toggle_row(
+                "cover-stores",
+                tr!("Store icon"),
+                Some(tr!("The logo of the store each game comes from, at the bottom-left of its cover.")),
+                stores,
+            )
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_stores = !stores)))
+            .into_any_element(),
+            store_options,
+        ),
         row(
             tr!("Under the pointer"),
             Some(tr!("What a cover does when the pointer is over it.")),
@@ -288,6 +361,131 @@ pub(super) fn cover_rows(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Ve
         )
         .into_any_element(),
     ]
+}
+
+/// The styles of the categories on the covers, in the picker's order.
+pub(super) fn category_style_items() -> [(CategoryStyle, &'static str); 6] {
+    [
+        (CategoryStyle::Corner, tr!("Folded corner")),
+        (CategoryStyle::Tags, tr!("Tags")),
+        (CategoryStyle::Band, tr!("Strip")),
+        (CategoryStyle::Ribbon, tr!("Ribbon")),
+        (CategoryStyle::Circles, tr!("Circles")),
+        (CategoryStyle::Bookmarks, tr!("Bookmarks")),
+    ]
+}
+
+/// Size of a cover in the style picker: about a cover of the list (125px).
+const SAMPLE_W: f32 = 104.;
+const SAMPLE_H: f32 = 156.;
+
+/// The "Categories on covers" card: the switch and, while it is on, every
+/// style drawn on a sample cover. Clicking one picks it, so the choice is
+/// made by looking, not by name. `scale`: the window's.
+pub(super) fn categories_group(d: &SettingsPage, scale: f32, cx: &mut Context<SettingsPage>) -> Div {
+    let a = d.appearance.ui;
+    let on = a.cover_categories;
+    let switch = toggle_row(
+        "cover-categories",
+        tr!("Show categories on covers"),
+        Some(tr!("A badge on each cover with the game's categories, such as VR or Demo.")),
+        on,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.cover_categories = !on)));
+    let samples = [CategoryBadge::new("VR", 0), CategoryBadge::new(tr!("Demo"), 1)];
+    let radius = a.cover_corners.radius();
+    let tiles = category_style_items().into_iter().map(|(style, label)| {
+        let picked = a.category_style == style;
+        let cover = div()
+            .relative()
+            .w(px(SAMPLE_W))
+            .h(px(SAMPLE_H))
+            .rounded(px(radius))
+            .bg(linear_gradient(
+                160.,
+                linear_color_stop(theme::rgb_a(0x2b, 0x3a, 0x77, 1.), 0.),
+                linear_color_stop(theme::rgb_a(0x7a, 0x3f, 0xa8, 1.), 1.),
+            ))
+            .shadow(vec![BoxShadow {
+                color: theme::shadow_a(0.35),
+                offset: point(px(0.), px(6.)),
+                blur_radius: px(16.),
+                spread_radius: px(0.),
+                inset: false,
+            }])
+            .child(
+                div()
+                    .absolute()
+                    .top(px(34.))
+                    .left_0()
+                    .right_0()
+                    .text_center()
+                    .text_size(px(13.))
+                    .line_height(px(13.))
+                    .font_weight(theme::W_BOLD)
+                    .text_color(theme::white_a(0.85))
+                    .child("STARFALL"),
+            )
+            .children(badges::overlay(style, &samples, badges::Area { w: SAMPLE_W, radius, scale, unit: 1., play_room: true }, false))
+            .when(picked, |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .top(px(-3.))
+                        .left(px(-3.))
+                        .right(px(-3.))
+                        .bottom(px(-3.))
+                        .rounded(px(radius + 3.))
+                        .border_2()
+                        .border_color(theme::accent()),
+                )
+            });
+        div()
+            .id(SharedString::from(format!("category-style-{}", style.as_str())))
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap(px(8.))
+            .cursor_pointer()
+            .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.category_style = style)))
+            .child(cover)
+            .child(
+                div()
+                    .text_size(px(12.))
+                    .font_weight(if picked { theme::W_BOLD } else { theme::W_500 })
+                    .text_color(if picked { theme::accent() } else { theme::text_muted() })
+                    .child(label),
+            )
+    });
+    let gallery = div()
+        .flex()
+        .flex_col()
+        .gap(px(12.))
+        .py(px(12.))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(1.))
+                .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(tr!("Style")))
+                .child(
+                    div()
+                        .text_size(px(12.))
+                        .line_height(px(16.))
+                        .text_color(theme::text_dim())
+                        .child(tr!("Click a style to use it. The Collection changes at once.")),
+                ),
+        )
+        .child(div().flex().flex_wrap().gap_x(px(18.)).gap_y(px(16.)).pt(px(4.)).pb(px(2.)).children(tiles))
+        .child(
+            div()
+                .text_size(px(12.))
+                .line_height(px(16.))
+                .text_color(theme::text_dim())
+                .child(tr!("Each category has its own colour. Put a game in a category from its right-click menu.")),
+        );
+    let rows = if on { vec![gallery.into_any_element()] } else { Vec::new() };
+    card([with_sub_rows(switch.into_any_element(), rows)])
 }
 
 /// The Collection background card's picture row, with the slideshow or the
@@ -383,6 +581,14 @@ fn pick_picture(cx: &mut Context<SettingsPage>) {
 pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<SettingsPage>) -> Div {
     let a = d.appearance.ui;
     let auto = a.auto_view;
+    let toolbar = toggle_row(
+        "quick-toolbar-controls",
+        tr!("Quick toolbar controls"),
+        Some(tr!("Show sorting, install scope, favourites, grouping and presets in the Collection header when there is room. The arrow beside the View button also turns them on or off; every control stays in the View menu.")),
+        a.quick_toolbar_controls,
+    )
+    .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.quick_toolbar_controls = !a.quick_toolbar_controls)))
+    .into_any_element();
     let start = row(tr!("Open the Collection in"), None, choice("start-view", &start_items(), a.start_view, cx, |a, v| a.start_view = v))
         .into_any_element();
     let switch = toggle_row(
@@ -424,19 +630,9 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
         let shown = sections.shown(section);
         let id = section.as_str();
         let arrow = |dir: &'static str, ic: Icon, delta: i32, enabled: bool| {
-            div()
-                .id(SharedString::from(format!("sec-{id}-{dir}")))
-                .size(px(28.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded_full()
-                .when(enabled, |d| {
-                    d.cursor_pointer()
-                        .hover(|s| s.bg(theme::ink_a(0.08)))
-                        .on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.sections = a.sections.moved(section, delta))))
-                })
-                .child(icon(ic, px(18.), if enabled { theme::text_muted().into() } else { theme::ink_a(0.15) }))
+            icon_button(SharedString::from(format!("sec-{id}-{dir}")), ic, 18., enabled).when(enabled, |b| {
+                b.on_click(cx.listener(move |d, _, _, cx| set_look(d, cx, |a| a.sections = a.sections.moved(section, delta))))
+            })
         };
         rows.push(
             div()
@@ -461,5 +657,5 @@ pub(super) fn layout_group(d: &SettingsPage, window_w: f32, cx: &mut Context<Set
                 .into_any_element(),
         );
     }
-    card([start, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
+    card([toolbar, start, with_sub_rows(switch, width), widths, with_sub_rows(sections_row, rows)])
 }

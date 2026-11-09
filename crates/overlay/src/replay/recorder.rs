@@ -16,7 +16,8 @@ use heronite_data::proc::{Cancel, Run};
 use heronite_i18n::tr;
 
 use super::info::Info;
-use super::ipc;
+#[cfg(target_os = "linux")]
+use super::ipc::save_replay;
 use super::plan::Plan;
 
 const FLATPAK_ID: &str = "com.dec05eba.gpu_screen_recorder";
@@ -185,7 +186,7 @@ impl Recorder {
         if let State::Failed(why) = self.state() {
             return Err(why);
         }
-        ipc::save_replay(&self.shared.socket, seconds)
+        save_replay(&self.shared.socket, seconds)
     }
 
     /// Ends it and waits for it.
@@ -273,6 +274,12 @@ fn supervise(shared: &Shared, program: &Program, mut plan: Plan) {
     shared.set(State::Stopped);
 }
 
+/// Without Unix sockets there is no recorder to ask (nor one to find).
+#[cfg(not(target_os = "linux"))]
+fn save_replay(_socket: &Path, _seconds: u32) -> Result<PathBuf, String> {
+    Err(tr!("gpu-screen-recorder is not installed").into())
+}
+
 fn remove_socket(socket: &Path) {
     let _ = std::fs::remove_file(socket);
 }
@@ -319,6 +326,7 @@ fn describe(code: Option<i32>, last_error: Option<String>) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use heronite_data::replay_prefs::Codec;
 
     use super::super::plan::Encoding;
@@ -335,6 +343,8 @@ mod tests {
         assert_eq!(last.as_deref(), Some("no codec"));
     }
 
+    // `/bin/false` and a shell script stand in for the recorder.
+    #[cfg(unix)]
     #[test]
     fn a_dead_recorder_fails_and_reports_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -366,6 +376,7 @@ mod tests {
         rec.stop();
     }
 
+    #[cfg(unix)]
     #[test]
     fn vulkan_that_cannot_start_falls_back_to_the_usual_encoder() {
         use std::os::unix::fs::PermissionsExt;

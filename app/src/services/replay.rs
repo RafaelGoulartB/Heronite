@@ -170,7 +170,7 @@ impl Global for ReplayGlobal {}
 
 /// Creates the service (once). Called by the hub with the shared runtime.
 pub fn init(cx: &mut App, data_paths: DataPaths, runtime: Arc<GameRuntime>) {
-    if cx.has_global::<ReplayGlobal>() {
+    if !heronite_platform::supported(heronite_platform::Feature::Replay) || cx.has_global::<ReplayGlobal>() {
         return;
     }
     // A tiny file in the app's config folder.
@@ -297,10 +297,11 @@ impl ReplayService {
             id: "replay",
             description: "Heronite: save the replay",
             // SIGUSR1 is the overlay's and SIGUSR2 the screenshot's.
+            #[cfg(target_os = "linux")]
             signal: libc::SIGRTMIN() + 1,
             accelerator: accelerator.clone(),
             consume: true,
-            portal_app_id: Some("com.heronite.launcher".into()),
+            portal_app_id: Some("app.heronite.Heronite".into()),
         };
         let hotkey = GlobalHotkey::start(
             spec,

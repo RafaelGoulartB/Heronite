@@ -277,3 +277,69 @@ fn loader_reports_errors_and_survives() {
     l.submit_channel(Request::cover(vec![img], 8, 8, 0), tx);
     assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap().1.is_ok());
 }
+
+#[test]
+fn fit_keeps_aspect_and_transparency() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("logo.png");
+    // 200x100: opaque red text block on the left, transparent elsewhere.
+    write_png(&p, 200, 100, |x, _| if x < 100 { [255, 0, 0, 255] } else { [0, 0, 0, 0] });
+    let o = opts(dir.path());
+    let chain = [ImageRef::File(p)];
+    let d = load_fit(&chain, 50, 50, &o).unwrap();
+    assert_eq!((d.width, d.height, d.bgra.len()), (50, 25, 50 * 25 * 4));
+    let px = |x: usize, y: usize| &d.bgra[(y * 50 + x) * 4..][..4];
+    assert_eq!(px(5, 12), [0, 0, 255, 255]);
+    assert_eq!(px(45, 12)[3], 0);
+    // The same request is answered by the thumb cache with the same size.
+    let again = load_fit(&chain, 50, 50, &o).unwrap();
+    assert_eq!(again, d);
+    // A logo smaller than the box is not enlarged.
+    let small = load_fit(&chain, 800, 800, &o).unwrap();
+    assert_eq!((small.width, small.height), (200, 100));
+    // Cached apart from the cover of the same size.
+    let cover = load_cover(&chain, 50, 25, &o).unwrap();
+    assert_eq!((cover.width, cover.height), (50, 25));
+}
+
+#[test]
+fn reflection_mirrors_the_bottom_and_fades_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("cover.png");
+    // Red on top, blue in the bottom quarter.
+    write_png(&p, 200, 300, |_, y| if y < 225 { [255, 0, 0, 255] } else { [0, 0, 255, 255] });
+    let o = opts(dir.path());
+    let chain = [ImageRef::File(p)];
+    let d = load(&chain, 100, 150, Variant::Reflection, &o).unwrap();
+    assert_eq!((d.width, d.height), (100, 45));
+    let px = |y: usize| &d.bgra[(y * 100 + 50) * 4..][..4];
+    // The cover's bottom edge comes first, opaque (BGRA: blue).
+    assert!(px(0)[0] > 240 && px(0)[2] < 15 && px(0)[3] == 255, "{:?}", px(0));
+    // Further down: the red above it, almost clear.
+    assert!(px(44)[2] > 240 && px(44)[3] < 5, "{:?}", px(44));
+    assert!(px(10)[3] > px(30)[3]);
+    // Cached apart from the cover of the same size.
+    let again = load(&chain, 100, 150, Variant::Reflection, &o).unwrap();
+    assert_eq!(again, d);
+    assert_eq!(load_cover(&chain, 100, 150, &o).unwrap().height, 150);
+}
+
+#[test]
+fn find_looks_in_subfolders_and_skips_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    let game = dir.path().join("570");
+    let hashed = game.join("abc123");
+    std::fs::create_dir_all(&hashed).unwrap();
+    write_png(&hashed.join("logo.png"), 30, 10, |_, _| [0, 255, 0, 255]);
+    let o = opts(dir.path());
+    let find = |d: std::path::PathBuf| ImageRef::Find { dir: d, name: "logo.png".into() };
+    assert_eq!(find(game.clone()).local_path(), Some(hashed.join("logo.png")));
+    assert_eq!(find(dir.path().join("nope")).local_path(), None);
+
+    // A direct hit wins over a sub-folder; a missing folder falls through the chain.
+    write_png(&game.join("logo.png"), 30, 10, |_, _| [0, 255, 0, 255]);
+    assert_eq!(find(game.clone()).local_path(), Some(game.join("logo.png")));
+    let chain = [find(dir.path().join("nope")), find(game)];
+    let d = load_fit(&chain, 15, 15, &o).unwrap();
+    assert_eq!((d.width, d.height), (15, 5));
+}

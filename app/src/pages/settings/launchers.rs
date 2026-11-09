@@ -1,8 +1,9 @@
-//! Settings → Other launchers: Heroic, Lutris, Bottles and Faugus, whether each is on
-//! this PC and how many games it has, and a switch to bring its games into
-//! the Collection (kept in sync while on). Turning one off keeps its games;
-//! "Remove them" takes them out. Games then in the Collection twice (added
-//! here by hand, and from Lutris, Bottles or Faugus) are listed below the cards, to
+//! Settings → Other launchers: Heroic, Lutris, Bottles and Faugus on Linux,
+//! Playnite on Windows, whether each is on this PC and how many games it
+//! has, and a switch to bring its games into the Collection (kept in sync
+//! while on). Turning one off keeps its games; "Remove them" takes them out.
+//! Games then in the Collection twice (added here by hand, and from a
+//! launcher) are listed below the cards, to
 //! merge, replace or keep both. The work is the service's
 //! (`services::launcher_imports`).
 
@@ -23,13 +24,26 @@ use crate::ui::icon;
 
 pub struct State {
     svc: Entity<LauncherImports>,
+    /// The launcher whose "Remove them" is waiting for its answer.
+    confirm: Option<Launcher>,
 }
 
 impl State {
     pub fn new(cx: &mut Context<SettingsPage>) -> Self {
         let svc = crate::services::launcher_imports(cx);
         cx.observe(&svc, |_, _, cx| cx.notify()).detach();
-        Self { svc }
+        Self { svc, confirm: None }
+    }
+
+    /// Drops the question about removing games; true when there was one.
+    pub(super) fn dismiss(&mut self) -> bool {
+        self.confirm.take().is_some()
+    }
+
+    /// `ask:<launcher id>` of `HERONITE_DEBUG_SETTINGS_ACTION`: its "Remove
+    /// them" question opens, nothing is removed.
+    pub(super) fn debug_ask(&mut self, id: &str) {
+        self.confirm = Launcher::ALL.into_iter().find(|l| l.id() == id);
     }
 }
 
@@ -49,6 +63,9 @@ pub fn what(launcher: Launcher) -> &'static str {
             "The programs you added to its bottles, with the covers of its Library. Bottles keeps starting them, in their bottle and with its settings."
         ),
         Launcher::Faugus => tr!("Its games, with their covers and play time. Faugus keeps starting them, with the settings you gave them there."),
+        Launcher::Playnite => tr!(
+            "Its installed games, with their covers and play time. Playnite keeps starting them, with the settings and emulators you gave them there. Its Steam, Epic, GOG, Amazon, Xbox, Battle.net, EA and Ubisoft games are left to their own pages here."
+        ),
     }
 }
 
@@ -57,6 +74,7 @@ fn found_line(s: &LauncherImports, launcher: Launcher) -> (String, bool) {
     match (s.found.as_ref(), s.summary(launcher)) {
         (None, _) => (tr!("Looking\u{2026}").into(), true),
         (Some(_), None) => (tr!("Not found on this PC").into(), false),
+        (Some(_), Some(f)) if f.in_use => (tr!("Open right now: close it to read its games").into(), true),
         (Some(_), Some(f)) => {
             let mut parts = vec![trn!(f.games, "{n} game", "{n} games")];
             if f.flatpak {
@@ -89,14 +107,26 @@ fn launcher_card(d: &SettingsPage, launcher: Launcher, cx: &mut Context<Settings
     let svc = d.launchers.svc.clone();
     let switch = toggle(SharedString::from(format!("launchers-{id}-sw")), on, !here && !on).when(here || on, |t| {
         let svc = svc.clone();
-        t.cursor_pointer().on_click(move |_, _, cx| svc.update(cx, |s, cx| s.set_enabled(launcher, !on, cx)))
+        t.cursor_pointer().on_click(cx.listener(move |this, _, _, cx| {
+            this.launchers.confirm = None;
+            svc.update(cx, |s, cx| s.set_enabled(launcher, !on, cx))
+        }))
     });
     let mut details = div().flex().flex_col().gap(px(6.)).flex_1().min_w_0().child(
         div()
             .flex()
             .items_center()
             .gap(px(10.))
-            .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(16.)).child(launcher.name()))
+            // Flashes when the Settings search jumps to it.
+            .child(
+                div()
+                    .relative()
+                    .children(crate::ui::find::flash(launcher.name(), 6.))
+                    .font_family(theme::font_heading())
+                    .font_weight(theme::W_BOLD)
+                    .text_size(px(16.))
+                    .child(launcher.name()),
+            )
             .child(div().text_size(px(12.5)).text_color(if here { theme::text_muted() } else { theme::text_dim() }).child(found)),
     );
     details = details.child(div().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_dim()).child(what(launcher)));
@@ -119,24 +149,51 @@ fn launcher_card(d: &SettingsPage, launcher: Launcher, cx: &mut Context<Settings
                 ),
         );
     } else if in_collection > 0 {
-        let svc = svc.clone();
-        details = details.child(
-            div()
-                .mt(px(4.))
-                .flex()
-                .items_center()
-                .gap(px(12.))
+        let asking = d.launchers.confirm == Some(launcher) && !busy;
+        let mut line = div().mt(px(4.)).flex().items_center().gap(px(12.));
+        if asking {
+            line = line
+                .child(div().flex_1().text_size(px(12.5)).line_height(px(18.)).text_color(theme::text_muted()).child(trn!(
+                    in_collection,
+                    "{n} game from {launcher} leaves your Collection, with its status and notes. Its play time and journal come back if you bring it in again. Nothing changes in {launcher}.",
+                    "{n} games from {launcher} leave your Collection, with their status and notes. Their play time and journal come back if you bring them in again. Nothing changes in {launcher}.",
+                    launcher = launcher.name()
+                )))
+                .child(
+                    button_sm(SharedString::from(format!("launchers-{id}-remove-no")), ButtonKind::Ghost, tr!("Cancel")).on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.launchers.confirm = None;
+                            cx.notify();
+                        }),
+                    ),
+                )
+                .child(
+                    button_sm(SharedString::from(format!("launchers-{id}-remove-yes")), ButtonKind::Danger, tr!("Remove them")).on_click(
+                        cx.listener(move |this, _, _, cx| {
+                            this.launchers.confirm = None;
+                            svc.update(cx, |s, cx| s.remove(launcher, cx));
+                        }),
+                    ),
+                );
+        } else {
+            line = line
                 .child(div().flex_1().text_size(px(12.5)).text_color(theme::text_muted()).child(trn!(
                     in_collection,
                     "{n} game from {launcher} is still in your Collection, no longer kept in sync.",
                     "{n} games from {launcher} are still in your Collection, no longer kept in sync.",
                     launcher = launcher.name()
                 )))
-                .child(
-                    button_sm(SharedString::from(format!("launchers-{id}-remove")), ButtonKind::Danger, tr!("Remove them"))
-                        .when(!busy, |b| b.on_click(move |_, _, cx| svc.update(cx, |s, cx| s.remove(launcher, cx)))),
-                ),
-        );
+                .child(button_sm(SharedString::from(format!("launchers-{id}-remove")), ButtonKind::Danger, tr!("Remove them")).when(
+                    !busy,
+                    |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| {
+                            this.launchers.confirm = Some(launcher);
+                            cx.notify();
+                        }))
+                    },
+                ));
+        }
+        details = details.child(line);
     }
     if let Some(e) = error {
         details = details.child(div().text_size(px(12.5)).text_color(theme::danger_text()).child(e));
@@ -168,6 +225,7 @@ pub fn launcher_icon(launcher: Launcher) -> Icon {
         Launcher::Lutris => Icon::SportsEsports,
         Launcher::Bottles => Icon::Inbox,
         Launcher::Faugus => Icon::WineBar,
+        Launcher::Playnite => Icon::Collections,
     }
 }
 
@@ -293,7 +351,7 @@ fn duplicates_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Option<D
 
 pub fn render(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement {
     let duplicates = duplicates_card(d, cx);
-    let cards: Vec<Div> = Launcher::ALL.iter().map(|l| launcher_card(d, *l, cx)).collect();
+    let cards: Vec<Div> = Launcher::here().iter().map(|l| launcher_card(d, *l, cx)).collect();
     div()
         .flex()
         .flex_col()
@@ -325,7 +383,7 @@ pub fn console_rows(d: &SettingsPage, cx: &App) -> Vec<Row> {
             rows.push(Row::action(SharedString::from(format!("dup-keep|{}", dup.id())), tr!("Keep both")).enabled(!busy));
         }
     }
-    for launcher in Launcher::ALL {
+    for &launcher in Launcher::here() {
         let (found, here) = found_line(s, launcher);
         let on = s.prefs.enabled.contains(&launcher);
         rows.push(Row::header(launcher.name()));

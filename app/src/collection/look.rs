@@ -25,7 +25,7 @@ pub(super) struct LookState {
 }
 
 /// Size the accent is measured on: a cover shrunk to a few pixels.
-const ACCENT_SAMPLE: (u32, u32) = (8, 12);
+pub(super) const ACCENT_SAMPLE: (u32, u32) = (8, 12);
 
 impl CollectionView {
     /// Runs at the start of each render.
@@ -149,7 +149,7 @@ impl CollectionView {
 /// Average of the pixels (BGRA) weighted by their saturation, as a light
 /// colour (HSL lightness 0.74) so it reads like the default accent. `None`
 /// for an empty or grey image.
-fn accent_from_bgra(bgra: &[u8]) -> Option<(u8, u8, u8)> {
+pub(super) fn accent_from_bgra(bgra: &[u8]) -> Option<(u8, u8, u8)> {
     let (mut r, mut g, mut b, mut wsum) = (0f32, 0f32, 0f32, 0f32);
     for px in bgra.as_chunks::<4>().0 {
         let (pb, pg, pr) = (px[0] as f32 / 255., px[1] as f32 / 255., px[2] as f32 / 255.);

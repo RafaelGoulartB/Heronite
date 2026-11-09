@@ -94,6 +94,9 @@ pub(super) enum Tracked {
         cloud_saves: Option<CloudSaves>,
         #[serde(default)]
         keep_awake: bool,
+        /// The app itself held the computer awake (Windows).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        hold_awake: bool,
     },
     /// A Steam game: the pids Steam's logs named, with their start ticks.
     #[serde(rename_all = "camelCase")]
@@ -104,6 +107,9 @@ pub(super) enum Tracked {
         /// Steam was not running before the launch (see `steam::close_steam`).
         #[serde(default)]
         opened_steam: bool,
+        /// The game's script after it (Windows, see `crate::steam_extras`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after_script: Option<Command>,
     },
 }
 
@@ -181,12 +187,14 @@ pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::Proce
         after_script: plan.after_script.clone(),
         cloud_saves: plan.prep.cloud_saves.clone(),
         keep_awake: plan.keep_awake.is_some(),
+        hold_awake: plan.hold_awake,
     })
 }
 
 /// What a Steam session writes down (see [`remember`]).
-pub(super) fn steam_entry(shared: &Shared, control: &Control, app_id: &str, opened_steam: bool) -> Tracked {
-    Tracked::Steam { app_id: app_id.to_string(), pids: steam_pids(&*shared.procs, &control.steam_pids.lock().unwrap()), opened_steam }
+pub(super) fn steam_entry(shared: &Shared, control: &Control, app_id: &str, opened_steam: bool, after_script: Option<Command>) -> Tracked {
+    let pids = steam_pids(&*shared.procs, &control.steam_pids.lock().unwrap());
+    Tracked::Steam { app_id: app_id.to_string(), pids, opened_steam, after_script }
 }
 
 /// The Steam game's pids that are still the same processes.
@@ -297,6 +305,7 @@ fn adopted_control(entry: &RunningEntry) -> Control {
         stop,
         steam_pids: Arc::new(Mutex::new(steam_pids)),
         title: entry.title.clone(),
+        runner: entry.runner.clone(),
         clock: OnceLock::from((started_at, t0)),
         since_ticks: entry.since_ticks,
         playing: AtomicBool::new(true),
@@ -323,7 +332,7 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
     let log = GameLog::continuing(path, disabled_globally || !verbose);
     log.info("The app was restarted; following the game again");
     match &entry.tracked {
-        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, .. } => {
+        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, hold_awake, .. } => {
             let services = shared.services.lock().unwrap().clone();
             let status = |n: Notice| {
                 if n.warning {
@@ -338,9 +347,13 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
                 .then(|| crate::keep_awake::command(&*services.probe, &entry.title, std::process::id()))
                 .flatten()
                 .and_then(|cmd| shared.spawner.spawn(&cmd, None).ok());
+            let held = hold_awake.then(|| super::process::hold_awake(&log, &entry.title)).flatten();
             let aborted = follow_group(&shared, &control, *pid, *start_ticks);
             if let Some(h) = awake.as_mut() {
                 h.terminate();
+            }
+            if let Some(held) = held {
+                held.release();
             }
             let stopped = control.kill.load(Ordering::SeqCst);
             if !aborted && !stopped {
@@ -370,7 +383,7 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             }
             finish(&shared, &log, &req, &control, elapsed, None);
         }
-        Tracked::Steam { app_id, opened_steam, .. } => {
+        Tracked::Steam { app_id, opened_steam, after_script, .. } => {
             let locator = shared.steam.clone();
             let seeded: BTreeSet<u32> = control.steam_pids.lock().unwrap().clone();
             let outcome = crate::playtime_watch::follow_steam_session(
@@ -384,11 +397,25 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
                 seeded,
             );
             log.info("Steam game finished");
-            if matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished) {
+            let finished = matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished);
+            let elapsed = control.played();
+            if finished {
                 release_mods(&shared, &log, &entry.app_name, &entry.runner);
             }
-            finish(&shared, &log, &req, &control, control.played(), None);
-            if *opened_steam && matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished) {
+            if let Some(script) = after_script.as_ref().filter(|_| finished) {
+                let probe = shared.services.lock().unwrap().probe.clone();
+                let status = |n: Notice| {
+                    if n.warning {
+                        log.warning(&n.log);
+                    } else {
+                        log.info(&n.log);
+                    }
+                    shared.send(LaunchEvent::Status { app_name: entry.app_name.clone(), message: n.message, warning: n.warning })
+                };
+                run_script(&shared, &control, &*probe, script, &log, &status);
+            }
+            finish(&shared, &log, &req, &control, elapsed, None);
+            if *opened_steam && finished {
                 super::steam::close_steam(&shared, &entry.title);
             }
         }

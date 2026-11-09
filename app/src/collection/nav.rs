@@ -12,7 +12,9 @@ use crate::pages::{self, Page, PageCtx, PageEvent};
 use crate::services::downloads::Store;
 use crate::theme;
 use crate::ui::dropdown::{menu_separator, Align};
+use crate::ui::window_controls;
 use crate::ui::{glass, icon};
+use heronite_data::clients::Client;
 use heronite_i18n::{tr, trn};
 
 /// Lazily created page views.
@@ -24,6 +26,11 @@ pub struct Pages {
     gog: Option<AnyView>,
     amazon: Option<AnyView>,
     steam: Option<AnyView>,
+    xbox: Option<AnyView>,
+    battlenet: Option<AnyView>,
+    ea: Option<AnyView>,
+    ubisoft: Option<AnyView>,
+    rockstar: Option<AnyView>,
     emulators: Option<AnyView>,
     stats: Option<AnyView>,
     settings: Option<AnyView>,
@@ -35,6 +42,11 @@ pub struct Pages {
     shown: Option<Page>,
     /// Controller hooks of the pages (console mode).
     hooks: std::collections::HashMap<Page, crate::console::PadHook>,
+    /// When the Downloads page was last opened or left (ms since the epoch):
+    /// the header's downloads pill announces only what finished after it.
+    pub(super) downloads_seen: u64,
+    /// The ☰ menu's Collection row is under the pointer: it shows its refresh button.
+    pub(super) collection_hovered: bool,
 }
 
 impl Pages {
@@ -49,7 +61,15 @@ impl Pages {
 
     /// The store page the "Stores" entry opens.
     pub(super) fn stores_page(&self) -> Page {
-        self.last_store.unwrap_or(Page::Epic)
+        self.last_store.or_else(|| pages::stores::shown().first().copied()).unwrap_or(Page::Steam)
+    }
+}
+
+/// Tells a client page whether it is on screen (the client is only asked
+/// whether it runs meanwhile).
+fn set_client_shown<K: pages::clients::ClientKind>(view: &Option<AnyView>, shown: bool, cx: &mut App) {
+    if let Some(v) = view.clone().and_then(|v| v.downcast::<pages::clients::ClientPage<K>>().ok()) {
+        v.update(cx, |p, cx| p.set_shown(shown, cx));
     }
 }
 
@@ -111,6 +131,25 @@ pub(super) fn downloads_meta(svc: Option<&crate::services::downloads::Downloads>
     })
 }
 
+/// The ☰ menu's Downloads row: "42%", "Paused · 42%", "Waiting for the
+/// connection" and how many elements the queue has; `None` while it is empty.
+fn downloads_menu_meta(svc: Option<&crate::services::downloads::Downloads>) -> Option<(String, usize)> {
+    use heronite_epic::manager::DmState;
+    let svc = svc?;
+    let snap = svc.snapshot();
+    if snap.queue.is_empty() {
+        return None;
+    }
+    let percent = snap.current.as_ref().and_then(|(_, p)| p.as_ref()).map(|p| p.percent.round() as u32);
+    let text = match snap.state {
+        DmState::Running => percent.map_or_else(|| tr!("Starting...").to_string(), |p| format!("{p}%")),
+        DmState::Paused if svc.paused_offline() => tr!("Waiting for the connection").to_string(),
+        DmState::Paused => tr!("Paused{percent}", percent = percent.map(|p| format!(" \u{b7} {p}%")).unwrap_or_default()),
+        DmState::Idle => tr!("Waiting").to_string(),
+    };
+    Some((text, snap.queue.len()))
+}
+
 /// "Update 0.1.4" / "Updating 42%" / "Restart to update" while an app
 /// update wants attention (the Settings row shows it instead of its key).
 fn update_meta(cx: &App) -> Option<String> {
@@ -144,6 +183,41 @@ fn nav_row(id: SharedString, ic: Icon, title: &str, trailing: Trailing, active: 
                 .into_any_element(),
         ),
         Trailing::Key(k) => Some(crate::ui::controls::kbd(k).into_any_element()),
+        Trailing::MetaWith(text, el) => Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .min_w_0()
+                .child(div().min_w_0().truncate().text_size(px(12.)).text_color(theme::text_dim()).child(text))
+                .child(el)
+                .into_any_element(),
+        ),
+        Trailing::Count(text, n) => Some(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .min_w_0()
+                .child(div().min_w_0().truncate().text_size(px(12.)).text_color(theme::accent()).child(text))
+                .child(
+                    div()
+                        .flex_none()
+                        .min_w(px(20.))
+                        .h(px(20.))
+                        .px(px(6.))
+                        .rounded_full()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(theme::accent())
+                        .text_size(px(11.))
+                        .font_weight(theme::W_BOLD)
+                        .text_color(theme::on_accent())
+                        .child(n.to_string()),
+                )
+                .into_any_element(),
+        ),
     };
     div()
         .id(id)
@@ -182,6 +256,10 @@ enum Trailing {
     /// Text, and whether it reports something running.
     Meta(String, bool),
     Key(&'static str),
+    /// Text, then an element of the row's own (the Collection's refresh).
+    MetaWith(String, AnyElement),
+    /// Something running, and how many elements wait with it.
+    Count(String, usize),
 }
 
 impl CollectionView {
@@ -234,8 +312,7 @@ impl CollectionView {
                 let svc = crate::services::try_downloads(cx);
                 let svc = svc.as_ref().map(|s| s.read(cx));
                 let signed_in = svc.is_some_and(|s| s.account().logged_in);
-                let downloading = downloads_meta(svc);
-                let downloads = downloading.clone().unwrap_or_else(|| tr!("Idle").to_string());
+                let downloading = downloads_menu_meta(svc);
                 let meta = &this.pages.meta;
                 let pending = || "\u{2026}".to_string();
                 let emulators = match meta.emulators {
@@ -244,18 +321,35 @@ impl CollectionView {
                     None => pending(),
                 };
                 let update = update_meta(cx);
-                let stores_on =
-                    usize::from(signed_in) + Store::ALL.iter().filter(|st| svc.is_some_and(|s| s.store(**st).account.logged_in)).count();
+                let clients_on = crate::services::clients_started(cx).map_or(0, |c| c.read(cx).signed_in());
+                let stores_on = usize::from(signed_in)
+                    + Store::ALL.iter().filter(|st| svc.is_some_and(|s| s.store(**st).account.logged_in)).count()
+                    + clients_on;
                 let stores_meta = match stores_on {
                     0 => tr!("Not signed in").to_string(),
                     // Steam has no login of its own here.
-                    n => tr!("{n} of {total} signed in", n, total = Store::ALL.len() + 1),
+                    n => tr!("{n} of {total} signed in", n, total = Store::ALL.len() + 1 + Client::ALL.len()),
                 };
-                let trailing = |page: Page| match page {
-                    Page::Collection => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
-                    Page::Downloads => Trailing::Meta(downloads.clone(), downloading.is_some()),
+                let mut refresh = this.nav_refresh_button(cx);
+                let mut trailing = |page: Page| match page {
+                    Page::Collection => match refresh.take() {
+                        Some(btn) => Trailing::MetaWith(trn!(games, "{n} game", "{n} games"), btn.into_any_element()),
+                        None => Trailing::Meta(trn!(games, "{n} game", "{n} games"), false),
+                    },
+                    Page::Downloads => match &downloading {
+                        Some((text, n)) => Trailing::Count(text.clone(), *n),
+                        None => Trailing::Meta(tr!("Idle").to_string(), false),
+                    },
                     Page::Statistics => Trailing::Meta(meta.month.clone().unwrap_or_else(pending), false),
-                    Page::Epic | Page::Gog | Page::Amazon | Page::Steam => Trailing::Meta(stores_meta.clone(), false),
+                    Page::Epic
+                    | Page::Gog
+                    | Page::Amazon
+                    | Page::Steam
+                    | Page::Xbox
+                    | Page::BattleNet
+                    | Page::Ea
+                    | Page::Ubisoft
+                    | Page::Rockstar => Trailing::Meta(stores_meta.clone(), false),
                     Page::WineManager => Trailing::Meta(meta.wine.clone().unwrap_or_else(pending), false),
                     Page::Emulators => Trailing::Meta(emulators.clone(), false),
                     Page::Settings => match &update {
@@ -264,18 +358,19 @@ impl CollectionView {
                     },
                 };
                 let mut p = glass::glass_panel(theme::R_POPOVER).w(px(300.)).p(px(6.)).flex().flex_col().gap(px(2.));
-                // Where the games are, then what sets them up. The three
-                // stores are one "Stores" row (their pages switch with tabs).
+                // Where the games are, then where they come from and what
+                // runs them. The stores are one "Stores" row (their pages
+                // list each other).
                 let stores = this.pages.stores_page();
                 for (i, group) in
-                    [&[Page::Collection, Page::Downloads, Page::Statistics][..], &[stores, Page::WineManager, Page::Emulators][..]]
+                    [&[Page::Collection, Page::Downloads, Page::Statistics][..], &[stores, Page::Emulators, Page::WineManager][..]]
                         .into_iter()
                         .enumerate()
                 {
                     if i > 0 {
                         p = p.child(menu_separator());
                     }
-                    for &page in group {
+                    for &page in group.iter().filter(|p| p.available()) {
                         let is_stores = pages::stores::is_store_page(page);
                         let (id, ic, title) = if is_stores {
                             (SharedString::from("nav-stores"), Icon::Storefront, pages::stores::title())
@@ -285,6 +380,14 @@ impl CollectionView {
                         let active = this.page == page || (is_stores && pages::stores::is_store_page(this.page));
                         p = p.child(
                             nav_row(id, ic, title, trailing(page), active)
+                                .when(page == Page::Collection, |row| {
+                                    row.on_hover(cx.listener(|this, hovered: &bool, _, cx| {
+                                        if this.pages.collection_hovered != *hovered {
+                                            this.pages.collection_hovered = *hovered;
+                                            cx.notify();
+                                        }
+                                    }))
+                                })
                                 .on_click(cx.listener(move |this, _, window, cx| this.navigate(page, window, cx))),
                         );
                     }
@@ -300,6 +403,18 @@ impl CollectionView {
                         )
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.open_add_game(window, cx);
+                        })),
+                    )
+                    .child(
+                        nav_row(
+                            "nav-scan-folder".into(),
+                            Icon::FolderOpen,
+                            tr!("Add from folder"),
+                            Trailing::Meta(tr!("Find many games at once").into(), false),
+                            false,
+                        )
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.open_scan_folder(window, cx);
                         })),
                     )
                     .child(menu_separator())
@@ -330,9 +445,45 @@ impl CollectionView {
         )
     }
 
+    /// The Collection row's refresh: shown while the pointer is on the row,
+    /// and spinning while the library reloads.
+    fn nav_refresh_button(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        if !self.pages.collection_hovered && !self.refreshing {
+            return None;
+        }
+        let refresh_icon = icon(Icon::Refresh, px(16.), theme::tool_icon());
+        Some(
+            crate::ui::tool_button_base("nav-refresh", false)
+                .size(px(28.))
+                .tooltip(crate::ui::tooltip(tr!("Refresh library")))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    // The row under it opens the Collection.
+                    cx.stop_propagation();
+                    this.refresh_all(cx);
+                }))
+                .child(if self.refreshing {
+                    refresh_icon
+                        .with_animation(
+                            "nav-refresh-spin",
+                            Animation::new(std::time::Duration::from_secs(1)).repeat().with_max_fps(30.),
+                            |svg, t| svg.with_transformation(Transformation::rotate(percentage(t))),
+                        )
+                        .into_any_element()
+                } else {
+                    refresh_icon.into_any_element()
+                }),
+        )
+    }
+
     pub(super) fn navigate(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
         self.open_menu = None;
         self.context_menu = None;
+        if !page.available() {
+            return;
+        }
+        if page == Page::Downloads || self.page == Page::Downloads {
+            self.pages.downloads_seen = heronite_epic::queue::now_ms();
+        }
         self.page = page;
         if page == Page::Statistics {
             self.mark_onboarding(crate::dialogs::onboarding::Step::Stats);
@@ -387,7 +538,11 @@ impl CollectionView {
                     v.update(cx, |p, cx| p.set_shown(false, cx));
                 }
             }
-            Page::Collection | Page::Epic | Page::Gog | Page::Amazon | Page::Steam => {}
+            Page::BattleNet => set_client_shown::<pages::clients::BattleNetKind>(&p.battlenet, false, cx),
+            Page::Ea => set_client_shown::<pages::clients::EaKind>(&p.ea, false, cx),
+            Page::Ubisoft => set_client_shown::<pages::clients::UbisoftKind>(&p.ubisoft, false, cx),
+            Page::Rockstar => set_client_shown::<pages::clients::RockstarKind>(&p.rockstar, false, cx),
+            Page::Collection | Page::Epic | Page::Gog | Page::Amazon | Page::Steam | Page::Xbox => {}
         }
     }
 
@@ -404,6 +559,10 @@ impl CollectionView {
                     v.update(cx, |p, cx| p.set_shown(true, cx));
                 }
             }
+            Page::BattleNet => set_client_shown::<pages::clients::BattleNetKind>(&p.battlenet, true, cx),
+            Page::Ea => set_client_shown::<pages::clients::EaKind>(&p.ea, true, cx),
+            Page::Ubisoft => set_client_shown::<pages::clients::UbisoftKind>(&p.ubisoft, true, cx),
+            Page::Rockstar => set_client_shown::<pages::clients::RockstarKind>(&p.rockstar, true, cx),
             _ => {}
         }
     }
@@ -426,6 +585,11 @@ impl CollectionView {
                 v.update(cx, |p, cx| p.refresh(cx));
             }
         }
+        if page == Page::Xbox {
+            if let Some(v) = self.pages.xbox.clone().and_then(|v| v.downcast::<pages::xbox::XboxPage>().ok()) {
+                v.update(cx, |p, cx| p.refresh(cx));
+            }
+        }
         if page == Page::Statistics {
             // Hand the page the library after the slot below is filled.
             cx.defer_in(window, |this, _, cx| this.offer_stats_data(cx));
@@ -438,6 +602,11 @@ impl CollectionView {
             Page::Gog => self.pages.gog.is_none(),
             Page::Amazon => self.pages.amazon.is_none(),
             Page::Steam => self.pages.steam.is_none(),
+            Page::Xbox => self.pages.xbox.is_none(),
+            Page::BattleNet => self.pages.battlenet.is_none(),
+            Page::Ea => self.pages.ea.is_none(),
+            Page::Ubisoft => self.pages.ubisoft.is_none(),
+            Page::Rockstar => self.pages.rockstar.is_none(),
             Page::Emulators => self.pages.emulators.is_none(),
             Page::Statistics => self.pages.stats.is_none(),
             Page::Settings => self.pages.settings.is_none(),
@@ -483,6 +652,36 @@ impl CollectionView {
                 self.pages.hooks.insert(Page::Steam, crate::console::PadHook::new(&v));
                 self.pages.steam = Some(v.into());
             }
+            Page::Xbox => {
+                let v = cx.new(|cx| pages::xbox::XboxPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Xbox, crate::console::PadHook::new(&v));
+                self.pages.xbox = Some(v.into());
+            }
+            Page::BattleNet => {
+                let v = cx.new(|cx| pages::clients::BattleNetPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::BattleNet, crate::console::PadHook::new(&v));
+                self.pages.battlenet = Some(v.into());
+            }
+            Page::Ea => {
+                let v = cx.new(|cx| pages::clients::EaPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Ea, crate::console::PadHook::new(&v));
+                self.pages.ea = Some(v.into());
+            }
+            Page::Ubisoft => {
+                let v = cx.new(|cx| pages::clients::UbisoftPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Ubisoft, crate::console::PadHook::new(&v));
+                self.pages.ubisoft = Some(v.into());
+            }
+            Page::Rockstar => {
+                let v = cx.new(|cx| pages::clients::RockstarPage::new(ctx, window, cx));
+                self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
+                self.pages.hooks.insert(Page::Rockstar, crate::console::PadHook::new(&v));
+                self.pages.rockstar = Some(v.into());
+            }
             Page::Emulators => {
                 let v = cx.new(|cx| pages::emulators::EmulatorsPage::new(ctx, window, cx));
                 self.pages.subs.push(cx.subscribe_in(&v, window, Self::on_page_event));
@@ -520,6 +719,13 @@ impl CollectionView {
         list::<pages::store::GogPage>(Page::Gog, &p.gog, &ctx, cx, &mut out);
         list::<pages::store::AmazonPage>(Page::Amazon, &p.amazon, &ctx, cx, &mut out);
         list::<pages::steam::SteamPage>(Page::Steam, &p.steam, &ctx, cx, &mut out);
+        if Page::Xbox.available() {
+            list::<pages::xbox::XboxPage>(Page::Xbox, &p.xbox, &ctx, cx, &mut out);
+        }
+        list::<pages::clients::BattleNetPage>(Page::BattleNet, &p.battlenet, &ctx, cx, &mut out);
+        list::<pages::clients::EaPage>(Page::Ea, &p.ea, &ctx, cx, &mut out);
+        list::<pages::clients::UbisoftPage>(Page::Ubisoft, &p.ubisoft, &ctx, cx, &mut out);
+        list::<pages::clients::RockstarPage>(Page::Rockstar, &p.rockstar, &ctx, cx, &mut out);
         list::<pages::emulators::EmulatorsPage>(Page::Emulators, &p.emulators, &ctx, cx, &mut out);
         list::<pages::stats::StatsPage>(Page::Statistics, &p.stats, &ctx, cx, &mut out);
         list::<pages::settings::SettingsPage>(Page::Settings, &p.settings, &ctx, cx, &mut out);
@@ -548,6 +754,11 @@ impl CollectionView {
             Page::Gog => run::<pages::store::GogPage>(&p.gog, id, window, cx),
             Page::Amazon => run::<pages::store::AmazonPage>(&p.amazon, id, window, cx),
             Page::Steam => run::<pages::steam::SteamPage>(&p.steam, id, window, cx),
+            Page::Xbox => run::<pages::xbox::XboxPage>(&p.xbox, id, window, cx),
+            Page::BattleNet => run::<pages::clients::BattleNetPage>(&p.battlenet, id, window, cx),
+            Page::Ea => run::<pages::clients::EaPage>(&p.ea, id, window, cx),
+            Page::Ubisoft => run::<pages::clients::UbisoftPage>(&p.ubisoft, id, window, cx),
+            Page::Rockstar => run::<pages::clients::RockstarPage>(&p.rockstar, id, window, cx),
             Page::Emulators => run::<pages::emulators::EmulatorsPage>(&p.emulators, id, window, cx),
             Page::Statistics => run::<pages::stats::StatsPage>(&p.stats, id, window, cx),
             Page::Settings => run::<pages::settings::SettingsPage>(&p.settings, id, window, cx),
@@ -570,9 +781,75 @@ impl CollectionView {
             Page::Gog => modal::<pages::store::GogPage>(&p.gog, cx),
             Page::Amazon => modal::<pages::store::AmazonPage>(&p.amazon, cx),
             Page::Steam => modal::<pages::steam::SteamPage>(&p.steam, cx),
+            Page::Xbox => modal::<pages::xbox::XboxPage>(&p.xbox, cx),
+            Page::BattleNet => modal::<pages::clients::BattleNetPage>(&p.battlenet, cx),
+            Page::Ea => modal::<pages::clients::EaPage>(&p.ea, cx),
+            Page::Ubisoft => modal::<pages::clients::UbisoftPage>(&p.ubisoft, cx),
+            Page::Rockstar => modal::<pages::clients::RockstarPage>(&p.rockstar, cx),
             Page::Emulators => modal::<pages::emulators::EmulatorsPage>(&p.emulators, cx),
             Page::Statistics => modal::<pages::stats::StatsPage>(&p.stats, cx),
             Page::Settings => modal::<pages::settings::SettingsPage>(&p.settings, cx),
+        }
+    }
+
+    /// Ctrl F on the Settings page: its section search. False on another page.
+    pub(super) fn settings_search(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.page != Page::Settings {
+            return false;
+        }
+        let Some(v) = self.pages.settings.clone().and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok()) else { return false };
+        v.update(cx, |p, cx| p.focus_search(window, cx));
+        true
+    }
+
+    /// The Settings page's section list has the keyboard (not a field).
+    pub(super) fn settings_nav_focused(&self, window: &Window, cx: &App) -> bool {
+        self.page == Page::Settings
+            && self
+                .pages
+                .settings
+                .clone()
+                .and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok())
+                .is_some_and(|v| v.read(cx).nav_has_keyboard(window))
+    }
+
+    /// Esc in a field of the Settings page: empties its search when that has
+    /// the keyboard and text. True when it did.
+    pub(super) fn settings_search_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.page != Page::Settings {
+            return false;
+        }
+        let Some(v) = self.pages.settings.clone().and_then(|v| v.downcast::<pages::settings::SettingsPage>().ok()) else { return false };
+        v.update(cx, |p, cx| p.search_escape(window, cx))
+    }
+
+    /// Esc on a page: closes its dialog or question, if one is open, else
+    /// goes back to the Collection.
+    pub(super) fn page_escape(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        fn close<P: PaletteCommands + Render>(view: &Option<AnyView>, window: &mut Window, cx: &mut App) -> bool {
+            view.clone().and_then(|v| v.downcast::<P>().ok()).is_some_and(|e| e.update(cx, |p, cx| p.close_modal(window, cx)))
+        }
+        let p = &self.pages;
+        let closed = match self.page {
+            Page::Collection => return,
+            Page::Downloads => close::<pages::downloads::DownloadsPage>(&p.downloads, window, cx),
+            Page::WineManager => close::<pages::wine_manager::WineManagerPage>(&p.wine, window, cx),
+            Page::Epic => close::<pages::epic::EpicPage>(&p.epic, window, cx),
+            Page::Gog => close::<pages::store::GogPage>(&p.gog, window, cx),
+            Page::Amazon => close::<pages::store::AmazonPage>(&p.amazon, window, cx),
+            Page::Steam => close::<pages::steam::SteamPage>(&p.steam, window, cx),
+            Page::Xbox => close::<pages::xbox::XboxPage>(&p.xbox, window, cx),
+            Page::BattleNet => close::<pages::clients::BattleNetPage>(&p.battlenet, window, cx),
+            Page::Ea => close::<pages::clients::EaPage>(&p.ea, window, cx),
+            Page::Ubisoft => close::<pages::clients::UbisoftPage>(&p.ubisoft, window, cx),
+            Page::Rockstar => close::<pages::clients::RockstarPage>(&p.rockstar, window, cx),
+            Page::Emulators => close::<pages::emulators::EmulatorsPage>(&p.emulators, window, cx),
+            Page::Statistics => close::<pages::stats::StatsPage>(&p.stats, window, cx),
+            Page::Settings => close::<pages::settings::SettingsPage>(&p.settings, window, cx),
+        };
+        if !closed {
+            self.navigate(Page::Collection, window, cx);
+            window.focus(&self.focus_handle, cx);
         }
     }
 
@@ -640,23 +917,35 @@ impl CollectionView {
         view.update(cx, |p, cx| p.open_review(year, cx));
     }
 
+    /// Back on the Collection with `key` selected (when it is in the library).
+    fn show_game(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigate(Page::Collection, window, cx);
+        if self.lib.as_ref().is_some_and(|l| l.get(key).is_some()) {
+            self.select(key.to_string().into(), true);
+            self.reveal_selected();
+        }
+    }
+
     fn on_page_event<E>(&mut self, _: &Entity<E>, ev: &PageEvent, window: &mut Window, cx: &mut Context<Self>) {
         match ev {
             PageEvent::LibraryChanged => self.reload(cx),
             PageEvent::Toast(text, error) => self.show_toast(text.clone(), *error, cx),
             PageEvent::Navigate(page) => self.navigate(*page, window, cx),
+            PageEvent::OpenStores => self.navigate(self.pages.stores_page(), window, cx),
             PageEvent::ScanRoms(initial) => self.open_scan_roms(initial.clone(), window, cx),
             PageEvent::ShowHidden(on) => self.set_show_hidden(*on, cx),
-            PageEvent::ShowGame(key) => {
-                self.navigate(Page::Collection, window, cx);
-                if self.lib.as_ref().is_some_and(|l| l.get(key).is_some()) {
-                    self.select(key.clone().into(), true);
-                    self.reveal_selected();
+            PageEvent::ShowGame(key) => self.show_game(key, window, cx),
+            PageEvent::Play(key) => {
+                if self.lib.as_ref().and_then(|l| l.get(key)).is_some_and(|g| g.installed) {
+                    self.primary_action(key, cx);
+                } else {
+                    self.show_game(key, window, cx);
                 }
             }
             PageEvent::Uninstall(key) => self.uninstall_game(key, window, cx),
             PageEvent::ResetPanelWidths => self.reset_panel_widths(cx),
             PageEvent::AppearanceChanged => cx.notify(),
+            PageEvent::ConsoleStartOptionsChanged => self.console_start_options_changed(window, cx),
         }
     }
 
@@ -670,6 +959,11 @@ impl CollectionView {
             Page::Gog => self.pages.gog.clone(),
             Page::Amazon => self.pages.amazon.clone(),
             Page::Steam => self.pages.steam.clone(),
+            Page::Xbox => self.pages.xbox.clone(),
+            Page::BattleNet => self.pages.battlenet.clone(),
+            Page::Ea => self.pages.ea.clone(),
+            Page::Ubisoft => self.pages.ubisoft.clone(),
+            Page::Rockstar => self.pages.rockstar.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
@@ -678,7 +972,7 @@ impl CollectionView {
     }
 
     /// Header + body of the current non-Collection page.
-    pub(super) fn render_page(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn render_page(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let view = match self.page {
             Page::Collection => return None,
             Page::Downloads => self.pages.downloads.clone(),
@@ -687,19 +981,33 @@ impl CollectionView {
             Page::Gog => self.pages.gog.clone(),
             Page::Amazon => self.pages.amazon.clone(),
             Page::Steam => self.pages.steam.clone(),
+            Page::Xbox => self.pages.xbox.clone(),
+            Page::BattleNet => self.pages.battlenet.clone(),
+            Page::Ea => self.pages.ea.clone(),
+            Page::Ubisoft => self.pages.ubisoft.clone(),
+            Page::Rockstar => self.pages.rockstar.clone(),
             Page::Emulators => self.pages.emulators.clone(),
             Page::Statistics => self.pages.stats.clone(),
             Page::Settings => self.pages.settings.clone(),
         }?;
-        let header =
-            div().flex().flex_none().items_center().h(theme::HEADER_H).px(px(12.)).gap(px(10.)).child(self.nav_dropdown(cx)).child(
+        let header = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .h(theme::HEADER_H)
+            .px(px(12.))
+            .gap(px(10.))
+            .child(self.nav_dropdown(cx))
+            .child(
                 div()
                     .font_family(theme::font_heading())
                     .text_size(px(17.6))
                     .font_weight(theme::W_BOLD)
                     .text_color(theme::page_title())
                     .child(if pages::stores::is_store_page(self.page) { pages::stores::title() } else { self.page.title() }),
-            );
+            )
+            .child(window_controls::drag_area(div().id("page-drag").flex_1().h_full(), window))
+            .children(window_controls::controls(window, cx));
         Some(
             div()
                 .absolute()

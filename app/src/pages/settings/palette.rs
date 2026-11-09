@@ -24,4 +24,17 @@ impl PaletteCommands for SettingsPage {
         appearance::run_palette(self, id, cx);
         cx.notify();
     }
+
+    fn close_modal(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if self.dismiss_confirms() {
+            cx.notify();
+            return true;
+        }
+        // A filtered section list goes back to all of them before the page closes.
+        if !self.nav_query.is_empty() {
+            self.clear_nav_search(window, cx);
+            return true;
+        }
+        false
+    }
 }

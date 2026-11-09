@@ -150,9 +150,10 @@ impl CollectionView {
                 e.disable(tr!("Sign in to Epic Games first"));
             }
         }
-        // The game selected in the Collection: its actions, by name.
+        // The game selected in the Collection: its actions, by name (those
+        // of the copy its card acts on, as its context menu).
         let selected = self.selected.clone().filter(|_| self.page == Page::Collection);
-        if let Some(game) = selected.and_then(|k| self.lib.as_ref().and_then(|l| l.get(&k)).cloned()) {
+        if let Some(game) = selected.and_then(|k| self.acting_copy(&k)) {
             let items = self.game_actions(&game, cx);
             v.extend(sources::action_entries(&game.key, &game.title, &items, true));
         }
@@ -188,6 +189,11 @@ impl CollectionView {
         let plain = !ks.modifiers.control && !ks.modifiers.alt && !ks.modifiers.platform && !ks.modifiers.shift;
         if ks.key == "f11" && plain {
             window.toggle_fullscreen();
+            return true;
+        }
+        // Ctrl + / Ctrl − / Ctrl 0: the interface scale, in both modes.
+        if let Some(percent) = crate::system::ui_scale::shortcut(ks) {
+            self.set_ui_scale(percent, cx);
             return true;
         }
         if crate::console::active() {
@@ -276,6 +282,9 @@ impl CollectionView {
             Act::AddGame => {
                 self.open_add_game(window, cx);
             }
+            Act::ScanFolder => {
+                self.open_scan_folder(window, cx);
+            }
             Act::InstallScript => self.open_install_script(None, window, cx),
             Act::Refresh => self.refresh_all(cx),
             Act::ScanRoms => self.open_scan_roms(Default::default(), window, cx),
@@ -298,6 +307,7 @@ impl CollectionView {
             Act::Console => self.set_console(true, window, cx),
             Act::YearReview => self.open_year_review(window, cx),
             Act::Onboarding => self.open_onboarding(cx),
+            Act::Shortcuts => self.open_shortcuts(cx),
             Act::ManageStatuses => self.open_manage_statuses(window, cx),
             Act::ManageFields => self.open_manage_fields(None, window, cx),
             // The quit question needs the window: ask once this update ended.
@@ -306,7 +316,11 @@ impl CollectionView {
             Act::PageCmd { page, id, navigate } => self.run_page_command(page, &id, navigate, window, cx),
             Act::SelectGame(key) => self.palette_select(&key, window, cx),
             Act::Game(key, action) => {
-                self.palette_select(&key, window, cx);
+                // The selected card's actions may be another copy's: its card stays selected.
+                let of_selected = self.selected.as_deref().and_then(|s| self.acting_copy(s)).is_some_and(|g| g.key == key);
+                if !of_selected {
+                    self.palette_select(&key, window, cx);
+                }
                 self.run_game_action(&key, &action, window, cx);
             }
             // The view handles it (second level); nothing to run here.
@@ -324,6 +338,10 @@ impl CollectionView {
             ViewCmd::Show(filter) => self.set_install_filter(filter, cx),
             ViewCmd::Group(by) => self.set_group_by(by, cx),
             ViewCmd::GridView => self.set_grid_view(!self.ui.grid_view, cx),
+            ViewCmd::FocusList => {
+                self.set_grid_view(false, cx);
+                self.set_focus_list(!self.ui.focus_list, cx);
+            }
             ViewCmd::ShowHidden => self.set_show_hidden(!self.ui.show_hidden, cx),
             ViewCmd::ClearFilters => {
                 self.ui.clear_facets();
@@ -343,7 +361,7 @@ impl CollectionView {
     }
 
     fn open_in_file_manager(&mut self, dir: &std::path::Path, cx: &mut Context<Self>) {
-        if let Err(err) = std::process::Command::new("xdg-open").arg(dir).spawn() {
+        if let Err(err) = heronite_platform::shell::open(dir) {
             self.show_toast(format!("{err}"), true, cx);
         }
     }

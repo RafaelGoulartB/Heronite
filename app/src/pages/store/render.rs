@@ -6,7 +6,7 @@ use heronite_i18n::{tr, trn};
 
 use super::{installed_count, StoreKind, StorePage, Then};
 use crate::icons::Icon;
-use crate::pages::{columns, content_width, page_close, sheet, status_pill, stores};
+use crate::pages::{columns, status_pill, stores};
 use crate::services::downloads::{Store, StoreState};
 use crate::theme;
 use crate::ui::controls::{action_button, button, caption, card, row, ButtonKind};
@@ -117,6 +117,40 @@ impl<K: StoreKind> StorePage<K> {
             )
             .into_any_element(),
         );
+        if self.amazon_app {
+            let busy = self.svc.read(cx).amazon_app_importing();
+            rows.push(
+                row(
+                    tr!("Games of the Amazon Games app"),
+                    Some(tr!("Add the games the Amazon Games app installed on this PC, without downloading them again.")),
+                    action_button(
+                        self.id("amazon-app"),
+                        ButtonKind::Glass,
+                        if busy { tr!("Adding...") } else { tr!("Add games") },
+                        !busy,
+                        cx.listener(|this, _, _, cx| this.import_app_games(cx)),
+                    ),
+                )
+                .into_any_element(),
+            );
+        }
+        if self.galaxy {
+            let busy = self.svc.read(cx).gog_galaxy_importing();
+            rows.push(
+                row(
+                    tr!("Games of GOG Galaxy"),
+                    Some(tr!("Show the games GOG Galaxy installed on this PC as installed, without downloading them again. GOG Galaxy keeps updating them.")),
+                    action_button(
+                        self.id("galaxy"),
+                        ButtonKind::Glass,
+                        if busy { tr!("Adding...") } else { tr!("Add games") },
+                        !busy,
+                        cx.listener(|this, _, _, cx| this.import_galaxy_games(cx)),
+                    ),
+                )
+                .into_any_element(),
+            );
+        }
         div().child(caption(tr!("Account"))).child(card(rows))
     }
 
@@ -239,13 +273,12 @@ impl<K: StoreKind> Render for StorePage<K> {
             );
         }
         // Wide: the account on the left, the About card on the right.
-        let wide = content_width(window) >= 1000.;
-        let close = page_close(cx);
-        let body = div().flex().flex_col().child(stores::tabs(self.page(), cx)).child(columns(wide, [column, self.render_about()]));
+        let wide = stores::content_width(window) >= 1000.;
+        let body = columns(wide, [column, self.render_about()]);
         div()
             .size_full()
             .relative()
-            .child(sheet(self.id("page"), stores::title(), Some(tr!("Your account and library.").into()), None, 1320., window, close, body))
+            .child(stores::sheet(self.id("page"), self.page(), tr!("Your account and library."), cx, body))
             .children(self.dialog.clone())
             .into_any_element()
     }

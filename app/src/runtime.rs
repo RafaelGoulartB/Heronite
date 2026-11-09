@@ -46,6 +46,8 @@ pub struct SessionInfo {
     pub rom: Option<String>,
     /// The game's selected ROM in the overlay meta (fallback for `rom`).
     pub selected_rom: Option<String>,
+    /// The store client the game is started through (Battle.net...).
+    pub client: Option<heronite_data::clients::Client>,
 }
 
 pub struct GameRuntime {
@@ -125,6 +127,7 @@ impl GameRuntime {
                 is_emulator: false,
                 rom: None,
                 selected_rom: None,
+                client: None,
             });
             if let Ok(mut s) = self.sessions.lock() {
                 s.insert(g.app_name.clone(), info);
@@ -168,7 +171,7 @@ impl GameRuntime {
         }
         let plan = match game.steam_launch_id.as_deref().filter(|_| game.via_steam) {
             // Only its Steam copy is installed.
-            Some(app_id) => steam_plan(app_id),
+            Some(app_id) => steam_plan(&ctx, game, app_id),
             None => {
                 // Mods are mounted after the plan is built: their files count as the game's.
                 let probe = crate::services::mods::ModsProbe::for_game(&self.paths, game);
@@ -242,7 +245,7 @@ impl GameRuntime {
     /// "Play with Steam": the Steam copy of a game whose own copy is installed too.
     pub fn play_with_steam(&self, game: &CollectionGame) -> Result<(), String> {
         let app_id = game.steam_also_playable().ok_or_else(|| tr!("This game has no Steam copy installed.").to_string())?;
-        self.start(game, steam_plan(app_id)).map(|_| ())
+        self.start(game, steam_plan(&PlanContext::load(&self.paths), game, app_id)).map(|_| ())
     }
 
     /// Opens Steam's install of the game's Steam copy.
@@ -320,12 +323,17 @@ pub fn failed_launch_message(title: &str, exit: ExitInfo) -> String {
     }
 }
 
-/// Opens `app_id` through the Steam client.
-fn steam_plan(app_id: &str) -> LaunchPlan {
-    if heronite_launch::steam::find_steam_binary(&SystemProbe).is_none() {
-        return LaunchPlan::Unavailable(tr!("Steam client was not found on PATH").into());
+/// Opens `app_id` through the Steam client, with the game's scripts and
+/// programs alongside where Heronite runs them (`heronite_launch::steam_extras`).
+fn steam_plan(ctx: &PlanContext, game: &CollectionGame, app_id: &str) -> LaunchPlan {
+    let probe = SystemProbe;
+    let settings = heronite_launch::settings::load_game_settings(&ctx.paths, &game.app_name, &ctx.global, &probe);
+    let mut info = (*game.game).clone();
+    // The scripts run in the game's folder.
+    if heronite_launch::steam_extras::supported() && info.install.install_path.as_deref().is_none_or(|p| p.trim().is_empty()) {
+        info.install.install_path = SteamLocator::detect(&ctx.global, &probe).install_dir(app_id).map(|d| d.to_string_lossy().into_owned());
     }
-    LaunchPlan::SteamUri { app_id: app_id.to_string(), uri: heronite_launch::steam::steam_uri("rungameid", app_id) }
+    heronite_launch::steam_extras::plan(&probe, &info, &settings, app_id)
 }
 
 fn session_info(game: &CollectionGame, rom: Option<String>) -> SessionInfo {
@@ -338,7 +346,17 @@ fn session_info(game: &CollectionGame, rom: Option<String>) -> SessionInfo {
         is_emulator: game.launch_kind.as_deref() == Some("emulator"),
         rom,
         selected_rom: game.meta.as_ref().and_then(|m| m.selected_rom_path.clone()),
+        client: client_of(game),
     }
+}
+
+/// The store client that starts `game` (its meta's `source`), when it is
+/// one of the client games (`launchKind` `client`).
+fn client_of(game: &CollectionGame) -> Option<heronite_data::clients::Client> {
+    if game.launch_kind.as_deref() != Some(heronite_data::clients::LAUNCH_KIND) {
+        return None;
+    }
+    game.meta.as_ref().and_then(|m| heronite_data::clients::Client::from_id(&m.source))
 }
 
 /// Game settings switch "Auto Install/Update DXVK / DXVK-NVAPI / VKD3D on
@@ -368,25 +386,128 @@ pub fn toggle_tool_blocking(
     prep.toggle_tool(&ctx, settings, tool, action)
 }
 
+/// Runs `winetricks -q <verb>` in the game's prefix (`steam`: the settings
+/// of a Steam game's prefix, else the game's own); every output line goes to
+/// `line`. `pid` holds winetricks' process group while it runs (0 before and
+/// after: a group that ended may be another program's by then), which a
+/// cancel signals; `cancelled` asked before it starts keeps it from running.
+/// Blocks until winetricks exits.
+pub fn winetricks_install_blocking(
+    paths: &DataPaths,
+    home: &str,
+    app: &str,
+    steam: Result<heronite_launch::settings::GameSettings, ()>,
+    verb: &str,
+    pid: &std::sync::atomic::AtomicU32,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    line: &(dyn Fn(String) + Sync),
+) -> Result<(), String> {
+    use heronite_launch::settings::GameSettings;
+    use std::sync::atomic::Ordering;
+    let ctx = PlanContext::load(paths);
+    let settings = match steam {
+        Ok(s) => s,
+        Err(()) => {
+            let s = GameSettings::from_map(&heronite_data::game_config::load_game(paths, app, home), home);
+            // A new prefix is created first, as the other tools do.
+            heronite_launch::shared_folders::create_prefix_first(&ctx, &SystemProbe, &s)?;
+            s
+        }
+    };
+    let built = heronite_launch::wine_tools::winetricks_install_command(&ctx, &SystemProbe, &settings, verb)?;
+    for n in built.notes {
+        line(n);
+    }
+    // While the game plays in its sandbox, Winetricks joins it.
+    let c = &heronite_launch::sandbox::into_running(built.command, &settings.wine_prefix, None)?;
+    let mut cmd = std::process::Command::new(&c.program);
+    heronite_launch::wine::drop_host_certs(c, &mut cmd);
+    cmd.args(&c.args)
+        .envs(&c.env)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    heronite_platform::process::new_group(&mut cmd);
+    // Cancelled while the prefix was made: nothing to stop yet.
+    if cancelled() {
+        return Err(tr!("{verb}: installation canceled.", verb));
+    }
+    let mut child = cmd.spawn().map_err(|e| tr!("Could not start {program}: {error}", program = c.program, error = e))?;
+    heronite_platform::process::track_group(&child);
+    pid.store(child.id(), Ordering::SeqCst);
+    // A cancel between the check above and the store found no group to signal.
+    if cancelled() {
+        // The group winetricks leads, alive until the `wait` below reaps it.
+        heronite_platform::process::signal_group(child.id(), heronite_platform::process::Signal::Term);
+    }
+    let err = child.stderr.take();
+    let out = child.stdout.take();
+    std::thread::scope(|scope| {
+        if let Some(err) = err {
+            scope.spawn(|| forward_lines(err, line));
+        }
+        if let Some(out) = out {
+            forward_lines(out, line);
+        }
+    });
+    let status = child.wait();
+    pid.store(0, Ordering::SeqCst);
+    let status = status.map_err(|e| format!("{}: {e}", c.program))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(tr!("winetricks exited with {status}", status))
+    }
+}
+
+/// Sends each line of `pipe`; a line redrawn with `\r` (download progress)
+/// keeps only its last state.
+fn forward_lines(pipe: impl std::io::Read, line: &dyn Fn(String)) {
+    use std::io::BufRead;
+    let mut reader = std::io::BufReader::new(pipe);
+    let mut buf = Vec::new();
+    while reader.read_until(b'\n', &mut buf).map(|n| n > 0).unwrap_or(false) {
+        let text = String::from_utf8_lossy(&buf);
+        let last = text.trim_end().rsplit('\r').find(|s| !s.trim().is_empty()).unwrap_or("").trim();
+        if !last.is_empty() {
+            line(last.chars().take(300).collect());
+        }
+        buf.clear();
+    }
+}
+
 /// Heroic refreshes DXVK, VKD3D, DXVK-NVAPI and winetricks a few seconds after
 /// start (`DXVK.getLatest()`, `Winetricks.download()` in `main.ts`), so the
 /// first launch that needs them finds them. Off with
 /// `HERONITE_DISABLE_IDLE_JOBS` (tests against real data) or
 /// `HERONITE_DISABLE_TOOLS_UPDATE` (only this).
 fn spawn_tools_update(paths: DataPaths) {
+    use heronite_platform::{supported, Feature};
     if crate::env::flag("HERONITE_DISABLE_IDLE_JOBS") || crate::env::flag("HERONITE_DISABLE_TOOLS_UPDATE") {
+        return;
+    }
+    // Everything below is for Wine and Epic's legendary.
+    let (wine, epic) = (supported(Feature::Wine), supported(Feature::EpicStore));
+    if !wine && !epic {
         return;
     }
     let spawned = std::thread::Builder::new().name("tools-update".into()).spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(2500));
-        // A new setup with a Proton already on this PC (Steam's
-        // compatibilitytools.d, Lutris) gets it as the default Wine.
-        heronite_wine::default::ensure_default(&paths);
-        // Wine Manager builds where Steam's games can pick them too.
-        heronite_wine::steam_link::sync(&paths);
+        if wine {
+            // A new setup with a Proton already on this PC (Steam's
+            // compatibilitytools.d, Lutris) gets it as the default Wine.
+            heronite_wine::default::ensure_default(&paths);
+            // Wine Manager builds where Steam's games can pick them too.
+            heronite_wine::steam_link::sync(&paths);
+        }
         // A new setup has no legendary yet: get it before the user logs in to Epic.
-        if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
-            log::warn!("{e}");
+        if epic {
+            if let Err(e) = heronite_launch::legendary_install::ensure(&paths, &heronite_launch::SystemProbe, &SystemNet, &|| false) {
+                log::warn!("{e}");
+            }
+        }
+        if !wine {
+            return;
         }
         heronite_launch::tools::update_all_if_due(&paths, &SystemNet, &|| false, &|m| log::info!("{m}"));
         // known_fixes.json (winetricks verbs, env variables) as Heroic keeps it.

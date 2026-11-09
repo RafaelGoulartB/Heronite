@@ -2,7 +2,7 @@
 //! games, your look, while you play), the tips to discover later, what each
 //! one leads to, and whether it is done (read from the library and the
 //! settings when the dialog opens; the ones without a setting count once
-//! done here).
+//! done here) or marked "Not used".
 
 use std::collections::BTreeSet;
 
@@ -68,10 +68,12 @@ pub enum Action {
     /// The appearance changed here: the Collection repaints and applies
     /// "Open the Collection in".
     LookChanged,
-    /// A tip read here ("Got it").
+    /// A tip read here ("Got it"), or the look kept as it is.
     Done(Step),
-    /// "Don't show again".
-    Hide,
+    /// "Not used": the step counts as settled without being set up.
+    Skip(Step),
+    /// "Undo" on a step marked "Not used".
+    Unskip(Step),
 }
 
 impl Step {
@@ -92,6 +94,22 @@ impl Step {
             Step::Journal => "journal",
             Step::Stats => "stats",
             Step::Console => "console",
+        }
+    }
+
+    /// Whether this system has what the step sets up
+    /// (`heronite_platform::features`).
+    pub fn available(self) -> bool {
+        use heronite_platform::{supported, Feature};
+        match self {
+            Step::Stores => heronite_platform::features::any_store(),
+            Step::Emulators => supported(Feature::Emulation),
+            Step::Saves => supported(Feature::SaveBackups),
+            Step::Overlay => supported(Feature::Overlay),
+            Step::Screenshots => supported(Feature::Capture),
+            Step::Proton => supported(Feature::Wine),
+            Step::Tray => supported(Feature::Tray),
+            _ => true,
         }
     }
 
@@ -195,6 +213,9 @@ impl Step {
 #[derive(Clone, Debug, Default)]
 pub struct Facts {
     pub steam_games: usize,
+    /// Steam's library was read from the client once. Until then the Steam
+    /// games are only the installed ones the scan found: not done yet.
+    pub steam_read: bool,
     pub store_games: usize,
     pub emulated_games: usize,
     /// The default Wine/Proton, when it can run games.
@@ -213,15 +234,24 @@ pub struct Facts {
     pub grid_view: bool,
     /// `onboarding.json`'s `done`.
     pub done: BTreeSet<String>,
+    /// `onboarding.json`'s `skipped`.
+    pub skipped: BTreeSet<String>,
 }
 
 impl Facts {
     /// Reads the library and the settings (small files).
-    pub fn read(lib: &Library, data_paths: &heronite_data::DataPaths, app: &AppPaths, done: BTreeSet<String>) -> Self {
+    pub fn read(
+        lib: &Library,
+        data_paths: &heronite_data::DataPaths,
+        app: &AppPaths,
+        done: BTreeSet<String>,
+        skipped: BTreeSet<String>,
+    ) -> Self {
         let count = |f: &dyn Fn(&heronite_data::CollectionGame) -> bool| lib.games.iter().filter(|g| f(g)).count();
         let (overlay_why, overlay_ok) = crate::overlay::desktop_status();
         Self {
             steam_games: count(&|g| g.steam_app_id.is_some()),
+            steam_read: heronite_data::steam_owned::SteamOwnedFile::read(data_paths).known(),
             store_games: count(&|g| matches!(g.runner.as_str(), "legendary" | "gog" | "nile")),
             emulated_games: count(&|g| g.launch_kind.as_deref() == Some("emulator")),
             proton: heronite_wine::default::current(data_paths).map(|w| w.name),
@@ -235,6 +265,7 @@ impl Facts {
             tray: crate::system::settings::SysSettings::load(data_paths).exit_to_tray,
             grid_view: heronite_data::ui_state::UiState::load(app).grid_view,
             done,
+            skipped,
         }
     }
 
@@ -245,7 +276,7 @@ impl Facts {
     pub fn is_done(&self, step: Step) -> bool {
         self.done.contains(step.id())
             || match step {
-                Step::Steam => self.steam_games > 0,
+                Step::Steam => self.steam_read,
                 Step::Stores => self.store_games > 0,
                 Step::Emulators => self.emulated_games > 0,
                 Step::Overlay => self.overlay.enabled,
@@ -257,10 +288,11 @@ impl Facts {
             }
     }
 
-    /// The games a source brought in, as "{n} games".
+    /// The games a source brought in, as "{n} games" (Steam's once its
+    /// library was read).
     pub fn count_line(&self, step: Step) -> Option<String> {
         let n = match step {
-            Step::Steam => self.steam_games,
+            Step::Steam if self.steam_read => self.steam_games,
             Step::Stores => self.store_games,
             Step::Emulators => self.emulated_games,
             _ => 0,
@@ -268,13 +300,78 @@ impl Facts {
         (n > 0).then(|| trn!(n, "{n} game", "{n} games"))
     }
 
+    /// What a source found before it was connected, as "{n} installed":
+    /// Steam's installed games, before its library was read.
+    pub fn found_line(&self, step: Step) -> Option<String> {
+        (step == Step::Steam && !self.steam_read && self.steam_games > 0).then(|| crate::pages::store::installed_count(self.steam_games))
+    }
+
     /// The steps the progress counts: the three cards (the overlay only
     /// where the desktop can draw it).
     pub fn counted(&self) -> Vec<Step> {
-        GAMES.into_iter().chain([Step::Appearance]).chain(PLAY.into_iter().filter(|s| *s != Step::Overlay || self.overlay_ok)).collect()
+        GAMES
+            .into_iter()
+            .chain([Step::Appearance])
+            .chain(PLAY.into_iter().filter(|s| *s != Step::Overlay || self.overlay_ok))
+            .filter(|s| s.available())
+            .collect()
     }
 
-    pub fn done_count(&self) -> usize {
-        self.counted().into_iter().filter(|s| self.is_done(*s)).count()
+    /// Marked "Not used" and not done since.
+    pub fn is_skipped(&self, step: Step) -> bool {
+        !self.is_done(step) && self.skipped.contains(step.id())
+    }
+
+    /// The counted steps neither done nor marked "Not used", in order.
+    pub fn left(&self) -> Vec<Step> {
+        self.counted().into_iter().filter(|s| !self.is_done(*s) && !self.is_skipped(*s)).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn steam_is_done_once_its_library_is_read_not_for_its_installed_games() {
+        // A new setup: the scan found one installed Steam game.
+        let mut f = Facts { steam_games: 1, ..Default::default() };
+        assert!(!f.is_done(Step::Steam));
+        assert_eq!(f.count_line(Step::Steam), None);
+        assert_eq!(f.found_line(Step::Steam).as_deref(), Some("1 installed"));
+        // Read from the client: the whole library, with the check.
+        f.steam_read = true;
+        f.steam_games = 36;
+        assert!(f.is_done(Step::Steam));
+        assert_eq!(f.count_line(Step::Steam).as_deref(), Some("36 games"));
+        assert_eq!(f.found_line(Step::Steam), None);
+        // Nothing installed and nothing read: neither line.
+        let none = Facts::default();
+        assert_eq!((none.count_line(Step::Steam), none.found_line(Step::Steam)), (None, None));
+        assert_eq!(none.found_line(Step::Stores), None);
+    }
+
+    #[test]
+    fn a_step_marked_not_used_is_settled_until_done() {
+        let mut f = Facts { overlay_ok: true, ..Default::default() };
+        assert!(f.left().contains(&Step::Saves));
+        f.skipped.insert(Step::Saves.id().to_owned());
+        assert!(f.is_skipped(Step::Saves));
+        assert!(!f.left().contains(&Step::Saves));
+        // Turned on later: done, no longer "Not used".
+        f.saves = true;
+        assert!(!f.is_skipped(Step::Saves));
+        assert!(!f.left().contains(&Step::Saves));
+    }
+
+    #[test]
+    fn nothing_left_once_every_counted_step_is_done_or_not_used() {
+        let mut f = Facts::default();
+        let counted = f.counted();
+        assert_eq!(f.left(), counted);
+        for step in &counted {
+            f.skipped.insert(step.id().to_owned());
+        }
+        assert!(f.left().is_empty());
     }
 }

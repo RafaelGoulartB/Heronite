@@ -92,10 +92,7 @@ fn relative(dt: DateTime<Utc>) -> String {
 
 /// `Oct 12, 2026, 3:04 PM` / `12 de Out de 2026, 15:04`.
 fn local_time(dt: DateTime<Local>) -> String {
-    let clock = match heronite_i18n::current() {
-        heronite_i18n::Lang::En => "%-I:%M %p",
-        heronite_i18n::Lang::PtBr => "%H:%M",
-    };
+    let clock = if heronite_i18n::current().clock_24h() { "%H:%M" } else { "%-I:%M %p" };
     let (month, day, year) = (month_short(dt.month()), dt.day(), dt.year());
     let time = dt.format(clock).to_string();
     tr!("{month} {day}, {year}, {time}", month, day, year, time)
@@ -259,7 +256,7 @@ impl Render for LaunchStateDialog {
             DialogProps {
                 id: "launch-state".into(),
                 title: tr!("How do you want to play?").into(),
-                width: 560f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 560f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

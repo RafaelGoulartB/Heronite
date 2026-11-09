@@ -7,6 +7,9 @@ use heronite_data::DataPaths;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
+/// Key of the entries [`crate::galaxy`] adds.
+pub const GALAXY_KEY: &str = "galaxy";
+
 /// One installed game. `executable` (always `""`) and `is_dlc` live in
 /// `extra` with whatever else the file holds.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -48,6 +51,12 @@ impl Installed {
         extra.insert("executable".into(), json!(""));
         extra.insert("is_dlc".into(), json!(false));
         Self { app_name: app_name.to_string(), extra, ..Default::default() }
+    }
+
+    /// Found among GOG Galaxy's installs ([`crate::galaxy`]): Galaxy owns the
+    /// files, so they are never moved, updated, repaired or deleted here.
+    pub fn from_galaxy(&self) -> bool {
+        self.extra.get(GALAXY_KEY).and_then(Value::as_bool) == Some(true)
     }
 
     /// The `install` object of a `GameInfo`.

@@ -47,6 +47,33 @@ fn read_snapshot(data_paths: &DataPaths, app: &AppPaths, home: &str) -> Snapshot
     }
 }
 
+/// A list the user asked to empty and has not answered yet.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Clear {
+    Hidden,
+    Favourites,
+    Recent,
+}
+
+impl Clear {
+    /// The `games.*` list of `store/config.json`.
+    fn key(self) -> &'static str {
+        match self {
+            Clear::Hidden => "hidden",
+            Clear::Favourites => "favourites",
+            Clear::Recent => "recent",
+        }
+    }
+}
+
+/// `ask:<hidden|favourites|recent>` of `HERONITE_DEBUG_SETTINGS_ACTION`: the
+/// list's question opens, nothing is cleared. False for another list.
+pub(super) fn debug_ask(p: &mut SettingsPage, which: &str) -> bool {
+    let ask = [Clear::Hidden, Clear::Favourites, Clear::Recent].into_iter().find(|c| c.key() == which);
+    p.library.confirm = ask;
+    ask.is_some()
+}
+
 pub(super) struct State {
     snap: Snapshot,
     hidden_pg: Pager,
@@ -54,6 +81,8 @@ pub(super) struct State {
     open_select: bool,
     busy: bool,
     notice: Option<(SharedString, bool)>,
+    /// The list whose clear button is waiting for its answer.
+    confirm: Option<Clear>,
 }
 
 fn home() -> String {
@@ -80,7 +109,12 @@ impl State {
                 }
             }
         }
-        Self { snap, hidden_pg, fav_pg, open_select: false, busy: false, notice: None }
+        Self { snap, hidden_pg, fav_pg, open_select: false, busy: false, notice: None, confirm: None }
+    }
+
+    /// Drops the question about clearing a list; true when there was one.
+    pub(super) fn dismiss(&mut self) -> bool {
+        self.confirm.take().is_some()
     }
 
     /// Re-reads the lists off the UI thread.
@@ -132,6 +166,7 @@ impl SettingsPage {
     }
 
     pub(super) fn library_clear(&mut self, key: &'static str, cx: &mut Context<Self>) {
+        self.library.confirm = None;
         self.library_job(
             Box::new(move |data_paths, _| {
                 let n = config_games::clear_list(data_paths, key)?;
@@ -143,6 +178,16 @@ impl SettingsPage {
             }),
             cx,
         );
+    }
+
+    /// Console: the first press of A asks, the second (`asked` is this list) clears.
+    fn console_clear(&mut self, which: Clear, asked: Option<Clear>, cx: &mut Context<Self>) {
+        if asked == Some(which) {
+            self.library_clear(which.key(), cx);
+        } else {
+            self.library.confirm = Some(which);
+            cx.notify();
+        }
     }
 
     pub(super) fn library_unhide(&mut self, app: String, cx: &mut Context<Self>) {
@@ -186,18 +231,42 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
         rows.push(Row::info(SharedString::from(format!("h:{app}")), title.clone(), tr!("A shows it again")));
     }
     if !s.hidden.is_empty() {
-        rows.push(Row::action("unhide-all", tr!("Show all hidden games")).enabled(!p.library.busy));
+        let mut row = Row::action("unhide-all", tr!("Show all hidden games")).enabled(!p.library.busy);
+        if p.library.confirm == Some(Clear::Hidden) {
+            row = row.danger().desc(trn!(
+                s.hidden.len(),
+                "A again shows {n} hidden game in the Collection again.",
+                "A again shows {n} hidden games in the Collection again."
+            ));
+        }
+        rows.push(row);
     }
     rows.push(Row::header(tr!("Favourites \u{b7} {count}", count = s.favourites.len())));
     for (app, title) in &s.favourites {
         rows.push(Row::info(SharedString::from(format!("f:{app}")), title.clone(), ""));
     }
     if !s.favourites.is_empty() {
-        rows.push(Row::action("fav-clear", tr!("Clear favourites")).danger().enabled(!p.library.busy));
+        let mut row = Row::action("fav-clear", tr!("Clear favourites")).danger().enabled(!p.library.busy);
+        if p.library.confirm == Some(Clear::Favourites) {
+            row = row.desc(trn!(
+                s.favourites.len(),
+                "A again removes {n} game from your favourites.",
+                "A again removes {n} games from your favourites."
+            ));
+        }
+        rows.push(row);
     }
     rows.push(Row::header(tr!("Recent \u{b7} {count}", count = s.recent.len())));
     if !s.recent.is_empty() {
-        rows.push(Row::action("recent-clear", tr!("Clear recent games")).danger().enabled(!p.library.busy));
+        let mut row = Row::action("recent-clear", tr!("Clear recent games")).danger().enabled(!p.library.busy);
+        if p.library.confirm == Some(Clear::Recent) {
+            row = row.desc(trn!(
+                s.recent.len(),
+                "A again clears {n} game from the recent list.",
+                "A again clears {n} games from the recent list."
+            ));
+        }
+        rows.push(row);
     }
     if let Some((text, _)) = &p.library.notice {
         rows.push(Row::info("notice", text.clone(), ""));
@@ -207,13 +276,15 @@ pub(super) fn console_rows(p: &SettingsPage) -> Vec<crate::console::list::Row> {
 
 pub(super) fn console_apply(p: &mut SettingsPage, outcome: crate::console::list::Outcome, cx: &mut Context<SettingsPage>) {
     use crate::console::list::{Outcome, Value};
+    // A question lasts for one press of A on its row.
+    let asked = p.library.confirm.take();
     match outcome {
         Outcome::Changed(id, Value::Toggle(on)) if id.as_ref() == "show-hidden" => p.set_show_hidden(on, cx),
         Outcome::Changed(id, Value::Number { value, .. }) if id.as_ref() == "max-recent" => p.set_max_recent(value, cx),
         Outcome::Activate(id) => match id.as_ref() {
-            "unhide-all" => p.library_clear("hidden", cx),
-            "fav-clear" => p.library_clear("favourites", cx),
-            "recent-clear" => p.library_clear("recent", cx),
+            "unhide-all" => p.console_clear(Clear::Hidden, asked, cx),
+            "fav-clear" => p.console_clear(Clear::Favourites, asked, cx),
+            "recent-clear" => p.console_clear(Clear::Recent, asked, cx),
             id => {
                 if let Some(app) = id.strip_prefix("h:") {
                     p.library_unhide(app.to_string(), cx);

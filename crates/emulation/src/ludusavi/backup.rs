@@ -1,6 +1,7 @@
 //! The backup flow: one game, or after a play session.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use heronite_data::models::LocalMetaFile;
@@ -14,7 +15,7 @@ use super::commands::{
     backup_command, best_find_match, find_commands, game_names, parse_json, total_games, wine_prefix_for_ludusavi, BackupCommand,
 };
 use super::detect::detect_ludusavi;
-use super::runner::{CommandOutput, CommandRunner};
+use super::runner::{CommandOutput, CommandRunner, LUDUSAVI_TIMEOUT};
 use crate::iso::iso_now;
 use crate::pathutil::join;
 use crate::settings_ext::{record_ludusavi_backup, LudusaviRecord};
@@ -23,9 +24,26 @@ pub const SKIP_SESSION_SECONDS: u64 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupReason {
+    /// After a play session: waits up to [`AFTER_PLAY_WAIT`] for a backup
+    /// already running (a periodic one of another game, one by hand).
     Auto,
+    /// While the game runs (`ludusavi.intervalMinutes`): skipped when
+    /// another backup is running, the next one comes an interval later.
+    Periodic,
     Manual,
 }
+
+impl BackupReason {
+    /// Follows the automatic backup settings (on, off for the game).
+    fn automatic(self) -> bool {
+        self != BackupReason::Manual
+    }
+}
+
+/// How long the after-play backup waits for one already running: about one
+/// Ludusavi run, so the last backup of a session is not lost to a periodic
+/// one still copying.
+pub const AFTER_PLAY_WAIT: Duration = LUDUSAVI_TIMEOUT;
 
 /// Arguments of `runLudusaviBackup`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -38,6 +56,22 @@ pub struct LudusaviGame {
     pub steam_app_id: Option<String>,
     #[serde(default)]
     pub store_game_id: Option<String>,
+}
+
+impl LudusaviGame {
+    /// A launched game, with the store ids kept in its overlay meta (Ludusavi
+    /// finds a game by its Steam/GOG id when the title differs).
+    pub fn of_session(paths: &DataPaths, app_name: &str, title: &str, runner: &str) -> Self {
+        let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap_or_default();
+        let meta = metas.games.get(app_name);
+        LudusaviGame {
+            app_name: app_name.to_owned(),
+            title: title.to_owned(),
+            runner: runner.to_owned(),
+            steam_app_id: meta.and_then(|m| m.steam_app_id.clone()),
+            store_game_id: meta.and_then(|m| m.store_game_id.clone()),
+        }
+    }
 }
 
 /// `LudusaviBackupResult`.
@@ -66,6 +100,21 @@ pub(super) struct InFlight;
 impl InFlight {
     pub(super) fn acquire() -> Option<Self> {
         IN_FLIGHT.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).ok().map(|_| InFlight)
+    }
+
+    /// [`Self::acquire`], trying again for up to `wait`.
+    pub(super) fn acquire_within(wait: Duration) -> Option<Self> {
+        let deadline = Instant::now() + wait;
+        loop {
+            if let Some(g) = Self::acquire() {
+                return Some(g);
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return None;
+            }
+            std::thread::sleep(left.min(Duration::from_millis(100)));
+        }
     }
 }
 
@@ -97,8 +146,13 @@ fn record_error(paths: &DataPaths, error: &str) {
 }
 
 /// The game's own Wine prefix (the folder holding `drive_c`), from its game
-/// settings. `None` for Steam-launched games: their prefix is Steam's.
+/// settings. `None` for Steam-launched games: their prefix is Steam's. `None`
+/// on Windows, where games run as they are (a Wine prefix in settings
+/// restored from Linux means nothing there).
 pub fn game_wine_prefix(env: &LudusaviEnv, app_name: &str) -> Option<String> {
+    if cfg!(windows) {
+        return None;
+    }
     let metas: LocalMetaFile = json_store::read(&env.paths.local_meta()).ok()?;
     if metas.games.get(app_name).is_some_and(|m| m.launch_kind == "steam-uri") {
         return None;
@@ -123,8 +177,19 @@ pub(super) fn resolve_title(env: &LudusaviEnv, binary: &str, game: &LudusaviGame
 
 /// `backupLudusaviForGame`.
 pub fn backup_for_game(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) -> LudusaviBackupResult {
+    backup_for_game_within(env, game, reason, AFTER_PLAY_WAIT)
+}
+
+/// [`backup_for_game`]; an [`BackupReason::Auto`] backup waits up to `wait`
+/// for one already running.
+pub(super) fn backup_for_game_within(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason, wait: Duration) -> LudusaviBackupResult {
     log::info!("Ludusavi {reason:?} backup requested for {}", game.title);
-    let Some(_guard) = InFlight::acquire() else {
+    let guard = match reason {
+        BackupReason::Auto => InFlight::acquire_within(wait),
+        BackupReason::Periodic | BackupReason::Manual => InFlight::acquire(),
+    };
+    let Some(_guard) = guard else {
+        log::info!("Ludusavi {reason:?} backup of {} skipped: another backup is running", game.title);
         return LudusaviBackupResult { skipped_reason: Some("already-running".into()), ..Default::default() };
     };
     match backup_inner(env, game, reason) {
@@ -140,10 +205,10 @@ pub fn backup_for_game(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupRea
 
 fn backup_inner(env: &LudusaviEnv, game: &LudusaviGame, reason: BackupReason) -> Result<LudusaviBackupResult> {
     let cfg = settings::load(env.paths)?.ludusavi;
-    if reason == BackupReason::Auto && !cfg.enabled {
+    if reason.automatic() && !cfg.enabled {
         return Ok(LudusaviBackupResult { skipped_reason: Some("disabled".into()), ..Default::default() });
     }
-    if reason == BackupReason::Auto && !cfg.auto_backup_for(&game.runner, &game.app_name) {
+    if reason.automatic() && !cfg.auto_backup_for(&game.runner, &game.app_name) {
         log::info!("Ludusavi auto backup is off for {}", game.title);
         return Ok(LudusaviBackupResult { skipped_reason: Some("off-for-game".into()), ..Default::default() });
     }
@@ -246,15 +311,7 @@ pub fn backup_after_play(env: &LudusaviEnv, play: &AfterPlay) -> Option<Ludusavi
         log::info!("Skipping Ludusavi auto backup; session was only {}s", play.elapsed_seconds);
         return None;
     }
-    let metas: LocalMetaFile = json_store::read(&env.paths.local_meta()).unwrap_or_default();
-    let meta = metas.games.get(&play.app_name);
-    let game = LudusaviGame {
-        app_name: play.app_name.clone(),
-        title: play.title.clone(),
-        runner: play.runner.clone(),
-        steam_app_id: meta.and_then(|m| m.steam_app_id.clone()),
-        store_game_id: meta.and_then(|m| m.store_game_id.clone()),
-    };
+    let game = LudusaviGame::of_session(env.paths, &play.app_name, &play.title, &play.runner);
     let result = backup_for_game(env, &game, BackupReason::Auto);
     if !result.ran {
         if let Some(e) = &result.error {
@@ -310,7 +367,7 @@ mod tests {
         let r = backup_for_game(&env, &game, BackupReason::Auto);
         assert!(r.ran, "{r:?}");
         assert_eq!(r.game_name.as_deref(), Some("Tony Hawk's Underground"));
-        assert_eq!(r.backup_path.as_deref(), Some("/backups/Tony Hawk's Underground"));
+        assert_eq!(r.backup_path, Some(join("/backups", "Tony Hawk's Underground")));
         assert_eq!(r.total_games, Some(1));
         let calls = runner.calls.lock().unwrap();
         let backup_call = calls.iter().find(|c| c[0] == "backup").unwrap();
@@ -321,9 +378,39 @@ mod tests {
         assert_eq!(backup_call.last().unwrap(), "Tony Hawks Underground");
         let l = settings::load(&paths).unwrap().ludusavi;
         assert_eq!(l.last_backup_game.as_deref(), Some("Tony Hawk's Underground"));
-        assert_eq!(l.last_backup_path.as_deref(), Some("/backups/Tony Hawk's Underground"));
+        assert_eq!(l.last_backup_path, Some(join("/backups", "Tony Hawk's Underground")));
         assert!(l.last_backup_at.is_some());
         assert_eq!(l.last_error, None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_backup_with_windows_paths_and_no_prefix() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(
+            r#"{"ludusavi":{"enabled":true,"useInstalledConfig":false,"binaryPath":"","backupPath":"D:\\Game Saves","format":"simple"}}"#,
+        );
+        let reply = r#"{"overall":{"totalGames":1},"games":{"Hollow Knight":{"files":{"C:/Users/u/AppData/LocalLow/Team Cherry/Hollow Knight/user1.dat":{"change":"New","bytes":3}}}}}"#;
+        let runner = Fake { replies: vec![("backup".into(), out(reply, "", 0))], ..Default::default() };
+        let exe = r"C:\Users\u\AppData\Local\Programs\Ludusavi\ludusavi.exe";
+        let probe = FakeProbe::new(r"C:\Users\u").with_path(exe).with_env("LOCALAPPDATA", r"C:\Users\u\AppData\Local");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game = LudusaviGame {
+            app_name: "hk".into(),
+            title: "Hollow Knight".into(),
+            runner: "sideload".into(),
+            steam_app_id: Some("367520".into()),
+            ..Default::default()
+        };
+        let r = backup_for_game(&env, &game, BackupReason::Manual);
+        assert!(r.ran, "{r:?}");
+        assert_eq!(r.backup_path.as_deref(), Some(r"D:\Game Saves\Hollow Knight"));
+        let calls = runner.calls.lock().unwrap();
+        let backup_call = calls.iter().find(|c| c[0] == "backup").unwrap();
+        assert_eq!(backup_call[4..], ["--path", r"D:\Game Saves", "--format", "simple", "Hollow Knight"]);
+        assert!(!backup_call.iter().any(|a| a == "--wine-prefix"));
+        drop(calls);
+        assert_eq!(settings::load(&paths).unwrap().ludusavi.last_backup_path.as_deref(), Some(r"D:\Game Saves\Hollow Knight"));
     }
 
     #[test]
@@ -402,6 +489,49 @@ mod tests {
     }
 
     #[test]
+    fn after_play_waits_for_a_running_backup_and_the_others_skip() {
+        let _l = guard_lock();
+        let (_d, paths) = setup(ENABLED);
+        let runner =
+            Fake { replies: vec![("backup".into(), out(r#"{"overall":{"totalGames":1},"games":{"G":{}}}"#, "", 0))], ..Default::default() };
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        let game = LudusaviGame { app_name: "g".into(), title: "G".into(), runner: "sideload".into(), ..Default::default() };
+        let held = InFlight::acquire().expect("nothing else is running");
+        for reason in [BackupReason::Periodic, BackupReason::Manual] {
+            let r = backup_for_game_within(&env, &game, reason, Duration::from_secs(5));
+            assert_eq!(r.skipped_reason.as_deref(), Some("already-running"), "{reason:?}");
+        }
+        let r = backup_for_game_within(&env, &game, BackupReason::Auto, Duration::from_millis(50));
+        assert_eq!(r.skipped_reason.as_deref(), Some("already-running"), "gives up after its wait");
+        assert!(runner.calls.lock().unwrap().is_empty());
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(150));
+            drop(held);
+        });
+        let r = backup_for_game_within(&env, &game, BackupReason::Auto, Duration::from_secs(10));
+        release.join().unwrap();
+        assert!(r.ran, "the after-play backup runs once the other one ends: {r:?}");
+        assert!(InFlight::acquire().is_some(), "and lets go of the guard");
+    }
+
+    #[test]
+    fn periodic_backup_follows_the_automatic_settings() {
+        let _l = guard_lock();
+        let runner = Fake::default();
+        let probe = FakeProbe::new("/h").with_bin("ludusavi", "/usr/bin/ludusavi");
+        let game = LudusaviGame { app_name: "g".into(), title: "G".into(), runner: "sideload".into(), ..Default::default() };
+        let (_d, paths) = setup(r#"{"ludusavi":{"enabled":false,"useInstalledConfig":false,"backupPath":"/b"}}"#);
+        let env = LudusaviEnv { paths: &paths, runner: &runner, probe: &probe };
+        assert_eq!(backup_for_game(&env, &game, BackupReason::Periodic).skipped_reason.as_deref(), Some("disabled"));
+        let (_d1, paths1) =
+            setup(r#"{"ludusavi":{"enabled":true,"useInstalledConfig":false,"backupPath":"/b","autoBackupOff":["sideload:g"]}}"#);
+        let env1 = LudusaviEnv { paths: &paths1, runner: &runner, probe: &probe };
+        assert_eq!(backup_for_game(&env1, &game, BackupReason::Periodic).skipped_reason.as_deref(), Some("off-for-game"));
+        assert!(runner.calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn after_play_skips_short_sessions_and_uses_meta_ids() {
         let _l = guard_lock();
         let (_d, paths) = setup(ENABLED);
@@ -431,7 +561,7 @@ mod tests {
         assert_eq!(r.total_games, Some(0));
         let (title, body) = notification(&r, "G").unwrap();
         assert_eq!(title, "Ludusavi");
-        assert_eq!(body, "Saved G to /backups/G");
+        assert_eq!(body, format!("Saved G to {}", join("/backups", "G")));
         assert!(notification(&LudusaviBackupResult::default(), "G").is_none());
     }
 }

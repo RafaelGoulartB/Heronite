@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Heronite
+GenericName=Game Launcher
+Comment=Every game you own, on Linux, in one native launcher
+Exec=heronite-rs %U
+Icon=app.heronite.Heronite
+Terminal=false
+Categories=Game;
+Keywords=games;launcher;steam;epic;wine;proton;emulator;
+StartupWMClass=app.heronite.Heronite
