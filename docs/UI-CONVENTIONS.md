@@ -252,7 +252,9 @@ shown; a click shows only its games, a second click every game, a right click op
 colour (`theme::GROUP_COLOURS` or the accent), "Games that match all / any of these conditions", rows of field,
 comparison and value (a list field ticks several values, a number has its unit), "Except games that match any of
 these", the games it holds now (counted after each change, not each frame) and the pin; a rule nested deeper than
-that is kept and only the name, colour and pin change. In console mode the groups are reached only from the Filters
+that is kept and only the name, colour and pin change; a status or category the rules name that this PC does not have
+(made on another PC that syncs) is listed in a warning; "Delete group" is the red button with the bin. The groups and
+the custom categories sync with the Collection (no switch of their own) and are in the backups' Collection part. In console mode the groups are reached only from the Filters
 panel (Y): its Smart group row picks any group (the theme's tabs stay as they are). `HERONITE_DEBUG_DIALOG=smartgroup|smartgroup:<id>|smartgroup-filters`.
 Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
