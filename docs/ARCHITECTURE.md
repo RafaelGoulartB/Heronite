@@ -182,7 +182,10 @@ text size) and applies it.
   NVIDIA Smooth Motion and Reflex, the DLSS / FSR 4 / XeSS upgrades of GE-Proton and
   Proton-CachyOS, Mesa's Anti-Lag and glthread, vsync and what DXVK tells DirectX games)
   as variables, and `gpu::detect` finds the cards (sysfs, `vulkaninfo`, `pci.ids`) and the
-  driver layers they need. `actions` turns a game's own actions (`heronite_data::game_actions`,
+  driver layers they need. On Windows `gpu::preference` writes Windows' per-program GPU
+  preference for the program a launch starts and puts it back after the game (what it wrote
+  is kept in `local_library/gpu-preferences.json`; the registry is behind a trait), and
+  `gpu::detect` asks DXGI (`heronite_platform::gpu_adapters`) which card each choice gets. `actions` turns a game's own actions (`heronite_data::game_actions`,
   `local_library/actions.json`) into something to open, spawn or launch as
   the game's session. `galaxy` stands in for GOG Galaxy's communication service, which the GOG
   Galaxy SDK in a game talks to on `127.0.0.1:9977` for achievements, stats and leaderboards: a GOG plan of a

@@ -82,7 +82,7 @@ fn card(description: &str, provider: &str, driver_version: &str) -> Card {
 
 /// Adapters that draw nothing on a screen by themselves: Windows' fallback driver, remote
 /// desktop's and the virtual displays some apps add.
-fn is_software_adapter(description: &str) -> bool {
+pub(crate) fn is_software_adapter(description: &str) -> bool {
     const MARKERS: [&str; 6] = ["basic display", "basic render", "remote display", "virtual display", "indirect display", "mirror driver"];
     let description = description.to_lowercase();
     MARKERS.iter().any(|m| description.contains(m))
@@ -132,7 +132,7 @@ fn nvidia_release(version: &str) -> Option<String> {
 }
 
 /// `text` without the (R) / (TM) marks and with single spaces.
-fn tidy(text: &str) -> String {
+pub(crate) fn tidy(text: &str) -> String {
     let mut text = text.to_string();
     for mark in ["(R)", "(r)", "(TM)", "(tm)", "®", "™"] {
         text = text.replace(mark, "");

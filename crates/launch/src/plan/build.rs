@@ -66,6 +66,9 @@ pub fn build_plan_with_settings(
     crate::umu_ids::attach(&mut plan, ctx, keys);
     // On Windows keeping the computer awake is its own call, no tool needed.
     crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+    // Windows' per-program GPU preference (Linux picks the card through the
+    // variables of `setup_env_vars`).
+    crate::gpu::preference::attach(&mut plan, &settings.gpu);
     if heronite_platform::supported(Feature::LaunchExtras) {
         crate::scripts::attach(&mut plan, probe, game, settings);
         crate::companions::attach(&mut plan, ctx, probe, game, settings);

@@ -77,6 +77,7 @@ impl GameRuntime {
             probe: Arc::new(SystemProbe),
             net: Arc::new(SystemNet),
             cloud: Some(Arc::new(StoreCloudSaves(paths.clone()))),
+            gpu_registry: Arc::new(heronite_launch::gpu::preference::SystemRegistry),
         });
         launcher.set_epic_setup(Arc::new(crate::services::downloads::EpicLaunchSetup(paths.clone())));
         launcher.set_store_setup(Arc::new(crate::services::downloads::StoreLaunchSetup(paths.clone())));

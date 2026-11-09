@@ -151,11 +151,19 @@ pub struct PrepServices {
     pub probe: Arc<dyn Probe>,
     pub net: Arc<dyn Net>,
     pub cloud: Option<Arc<dyn CloudSync>>,
+    /// Windows' per-program GPU preferences (`crate::gpu::preference`); a
+    /// `FakeRegistry` in tests.
+    pub gpu_registry: Arc<dyn crate::gpu::preference::Registry>,
 }
 
 impl Default for PrepServices {
     fn default() -> Self {
-        Self { probe: Arc::new(SystemProbe), net: Arc::new(SystemNet), cloud: None }
+        Self {
+            probe: Arc::new(SystemProbe),
+            net: Arc::new(SystemNet),
+            cloud: None,
+            gpu_registry: Arc::new(crate::gpu::preference::SystemRegistry),
+        }
     }
 }
 

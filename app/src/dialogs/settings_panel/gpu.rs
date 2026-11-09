@@ -5,6 +5,10 @@
 //! card that draws the game show (a launch leaves the others out too, see
 //! `Gpu::for_card`).
 //!
+//! On Windows the tab has one row: the card Windows gives the game's program
+//! (`heronite_launch::gpu::preference`), written right before the game starts
+//! and put back after it.
+//!
 //! The rows are built once ([`SettingsPanel::gpu_rows`]) and drawn by the
 //! desktop tab here and by the console list (`console/gpu.rs`).
 
@@ -15,7 +19,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
 use heronite_launch::gpu::detect::{Card, Machine, ProtonFeatures};
-use heronite_launch::gpu::{self, DlssPreset, Gpu, Vendor, Vsync};
+use heronite_launch::gpu::{self, DlssPreset, Gpu, Preference, Vendor, Vsync};
 use serde_json::{json, Value};
 
 use super::parts::{column, heading, help, rows, Rows};
@@ -132,6 +136,10 @@ impl SettingsPanel {
         };
         let g = self.gpu_settings();
         let mut v = vec![GpuRow::Header(tr!("Graphics card"))];
+        if super::logic::windows_gpu() {
+            v.push(gpu_preference_row(&m, &g, disabled));
+            return v;
+        }
         v.push(self.gpu_device_row(&m, &g, disabled));
         // No card found: every option shows, as every one applies.
         let target = gpu_target(&m, &g);
@@ -423,6 +431,35 @@ impl SettingsPanel {
                 c.field_help(select, vec![help(&desc)])
             }
         }
+    }
+}
+
+/// Windows: the card Windows gives the game's program. Each choice notes the
+/// card DXGI picks for it on this computer.
+fn gpu_preference_row(m: &Machine, g: &Gpu, disabled: bool) -> GpuRow {
+    let cards = &m.preference_cards;
+    let names = [
+        (tr!("Windows' choice"), Some(tr!("as in Windows' graphics settings").to_string())),
+        (tr!("Power saving"), cards.power_saving.clone()),
+        (tr!("High performance"), cards.high_performance.clone()),
+    ];
+    let desc = if cards.same() {
+        tr!("Windows sees one graphics card here: every choice draws on it.")
+    } else {
+        tr!("Set for the game's program in Windows while it runs, then put back. Games Steam or another launcher starts keep Windows' choice.")
+    };
+    GpuRow::Choice {
+        id: "gpu-preference",
+        label: tr!("Draws the game"),
+        desc: desc.into(),
+        options: names.into_iter().map(|(n, note)| (n.to_string(), note)).collect(),
+        selected: Preference::ALL.iter().position(|p| *p == g.preference).unwrap_or(0),
+        enabled: !disabled,
+        pick: Rc::new(|this, i, cx| {
+            if let Some(p) = Preference::ALL.get(i) {
+                this.set(gpu::KEY_PREFERENCE, json!(p.id()), cx);
+            }
+        }),
     }
 }
 

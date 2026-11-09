@@ -89,6 +89,9 @@ pub struct ProcessPlan {
     /// in and names the game's program, which starts instead of it (see
     /// [`crate::legendary_windows`]).
     pub ask_legendary: bool,
+    /// Windows: the card the program asks Windows for, written right before
+    /// it starts and put back after (see [`crate::gpu::preference`]).
+    pub gpu_preference: Option<crate::gpu::preference::Preference>,
 }
 
 /// How to find a game another launcher started when the command that asked
