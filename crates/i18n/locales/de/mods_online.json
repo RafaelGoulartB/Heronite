@@ -1,0 +1,21 @@
+{
+  "Could not reach {host}: {error}": "{host} ist nicht erreichbar: {error}",
+  "Free Nexus Mods accounts download with the \"Mod manager download\" button on the mod's page": "Kostenlose Nexus-Mods-Konten laden über die Schaltfläche „Mod manager download“ auf der Seite des Mods herunter",
+  "Nexus Mods asks to wait: the hourly limit of requests was reached": "Nexus Mods bittet zu warten: Das stündliche Anfragelimit ist erreicht",
+  "Nexus Mods collections are not supported yet: install their mods one by one": "Nexus-Mods-Sammlungen werden noch nicht unterstützt: Installiere ihre Mods einzeln",
+  "Nexus Mods could not search: {error}": "Nexus Mods konnte nicht suchen: {error}",
+  "Nexus Mods gave no download link": "Nexus Mods hat keinen Download-Link geliefert",
+  "Nexus Mods refused the API key. Paste it again in Settings → Mods.": "Nexus Mods hat den API-Schlüssel abgelehnt. Füge ihn unter Einstellungen → Mods erneut ein.",
+  "Not found on {host}": "Auf {host} nicht gefunden",
+  "The download link from Nexus Mods expired or is not valid: use the \"Mod manager download\" button on the mod's page again": "Der Download-Link von Nexus Mods ist abgelaufen oder ungültig: Nutze erneut die Schaltfläche „Mod manager download“ auf der Seite des Mods",
+  "The download stopped before the end": "Der Download hat vor dem Ende aufgehört",
+  "The download stopped: {error}": "Der Download wurde abgebrochen: {error}",
+  "The download was cancelled": "Der Download wurde abgebrochen",
+  "This is not a Nexus Mods download link": "Das ist kein Download-Link von Nexus Mods",
+  "This is not a Thunderstore install link": "Das ist kein Installationslink von Thunderstore",
+  "Thunderstore has no version of {name}": "Thunderstore hat keine Version von {name}",
+  "{host} answered with HTTP {status}": "{host} hat mit HTTP {status} geantwortet",
+  "{host} asks to wait: too many requests": "{host} bittet zu warten: zu viele Anfragen",
+  "{host} refused the request (HTTP {status})": "{host} hat die Anfrage abgelehnt (HTTP {status})",
+  "{host} sent an answer Heronite does not understand: {error}": "{host} hat eine Antwort geschickt, die Heronite nicht versteht: {error}"
+}

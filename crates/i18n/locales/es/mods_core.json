@@ -1,0 +1,22 @@
+{
+  "Cannot use {path}: it is not a folder": "No se puede usar {path}: no es una carpeta",
+  "Could not download fuse-overlayfs: {error}": "No se pudo descargar fuse-overlayfs: {error}",
+  "Heronite needs FUSE (fusermount3) to apply mods. Install the fuse3 package.": "Heronite necesita FUSE (fusermount3) para aplicar mods. Instala el paquete fuse3.",
+  "Heronite needs FUSE to apply mods, but /dev/fuse is missing. Load the fuse kernel module.": "Heronite necesita FUSE para aplicar mods, pero falta /dev/fuse. Carga el módulo fuse del kernel.",
+  "Mods cannot be applied over {path}": "No se pueden aplicar mods sobre {path}",
+  "Mods could not be applied: {error}": "No se pudieron aplicar los mods: {error}",
+  "Not a valid game key: {key}": "Clave de juego no válida: {key}",
+  "The archive has no files to install": "El archivo comprimido no tiene archivos para instalar",
+  "The fuse-overlayfs download is corrupt (its checksum does not match)": "La descarga de fuse-overlayfs está dañada (su suma de comprobación no coincide)",
+  "The game is running with mods; close it first": "El juego se está ejecutando con mods; ciérralo primero",
+  "The mods folder and the game folder cannot be inside each other": "La carpeta de mods y la del juego no pueden estar una dentro de la otra",
+  "The overwrite folder is empty": "La carpeta de sobrescritura está vacía",
+  "The path {path} is not allowed": "La ruta {path} no está permitida",
+  "fuse-overlayfs did not mount {path}: {error}": "fuse-overlayfs no montó {path}: {error}",
+  "fuse-overlayfs failed: {error}": "fuse-overlayfs falló: {error}",
+  "fuse-overlayfs is needed to apply mods and could not be found. Install the fuse-overlayfs package.": "Se necesita fuse-overlayfs para aplicar mods y no se encontró. Instala el paquete fuse-overlayfs.",
+  "fuse-overlayfs is not available for {arch}; install it with your package manager": "fuse-overlayfs no está disponible para {arch}; instálalo con tu gestor de paquetes",
+  "{n} enabled mod is missing its files: {names}. Reinstall or remove it in Mods.": "A {n} mod activado le faltan sus archivos: {names}. Reinstálalo o quítalo en Mods.",
+  "{n} enabled mods are missing their files: {names}. Reinstall or remove them in Mods.": "A {n} mods activados les faltan sus archivos: {names}. Reinstálalos o quítalos en Mods.",
+  "{path} is still mounted from an earlier run and could not be unmounted": "{path} sigue montado de una ejecución anterior y no se pudo desmontar"
+}
