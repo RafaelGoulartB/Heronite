@@ -428,8 +428,8 @@ mod tests {
     fn symlinks_in_an_archive_are_not_followed() {
         let e = env(SKYRIM);
         put(e.src.join("textures/a.dds"), "a");
-        std::os::unix::fs::symlink("/etc", e.src.join("textures/etc")).unwrap();
-        std::os::unix::fs::symlink("/etc/passwd", e.src.join("textures/passwd.txt")).unwrap();
+        crate::fsutil::test_symlink(Path::new("/etc"), &e.src.join("textures/etc"));
+        crate::fsutil::test_symlink(Path::new("/etc/passwd"), &e.src.join("textures/passwd.txt"));
         let mut list = ModList::new("g", "Skyrim");
         let id = commit(&e.ctx(), &mut list, &e.folder(), Plan::Auto, entry("Links"), None, &NO).unwrap();
         assert_eq!(e.files(&id), ["Data/Textures/a.dds"]);

@@ -70,11 +70,28 @@ impl GameDirs {
     pub fn staging(&self) -> PathBuf {
         self.0.join(".staging")
     }
+    /// The journal of the files put into the game folder (Windows, see
+    /// [`crate::journal_deploy`]).
+    pub fn deploy_journal(&self) -> PathBuf {
+        self.0.join("deploy.json")
+    }
+    /// The game folder's file list from before the mods went in.
+    pub fn deploy_snapshot(&self) -> PathBuf {
+        self.0.join("deploy.snapshot")
+    }
+    /// The game's own files a mod replaced, moved aside while it runs.
+    pub fn deploy_backup(&self) -> PathBuf {
+        self.0.join(".backup")
+    }
 }
 
-/// A file name made of `name`: no `/`, no leading dot, no `..`.
+/// A file name made of `name`: no `/`, no leading dot, no `..`; on Windows
+/// none of the characters it refuses in a name either.
 pub fn safe_name(name: &str) -> String {
-    let s: String = name.chars().map(|c| if c == '/' || c == '\\' || c == '\0' { '_' } else { c }).collect();
+    let refused = |c: char| {
+        matches!(c, '/' | '\\' | '\0') || (cfg!(windows) && (matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') || c.is_control()))
+    };
+    let s: String = name.chars().map(|c| if refused(c) { '_' } else { c }).collect();
     let s = s.trim_start_matches('.').trim();
     if s.is_empty() {
         "_".to_string()

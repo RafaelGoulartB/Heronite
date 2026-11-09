@@ -3,6 +3,7 @@
 
 use std::fs;
 use std::io;
+#[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::path::Path;
 
@@ -15,9 +16,16 @@ use crate::paths::GameDirs;
 use crate::store;
 
 /// An entry that says "this file of a lower layer was deleted": a character
-/// device 0/0, or a `.wh.<name>` file.
-fn is_whiteout(name: &str, meta: &fs::Metadata) -> bool {
-    (meta.file_type().is_char_device() && meta.rdev() == 0) || name.rsplit('/').next().is_some_and(|n| n.starts_with(".wh."))
+/// device 0/0, or a `.wh.<name>` file. Windows has no devices here: an
+/// overwrite folder brought from Linux (a backup) keeps the `.wh.` form only.
+pub(crate) fn is_whiteout(name: &str, meta: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    if meta.file_type().is_char_device() && meta.rdev() == 0 {
+        return true;
+    }
+    #[cfg(not(unix))]
+    let _ = meta;
+    name.rsplit('/').next().is_some_and(|n| n.starts_with(".wh."))
 }
 
 /// What is in the overwrite folder.
@@ -141,7 +149,6 @@ fn move_files(from: &Path, to: &Path, rel: &str) -> io::Result<()> {
 mod tests {
     use super::*;
     use crate::paths::ModsRoot;
-    use std::process::Command;
 
     fn put(path: std::path::PathBuf, text: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -185,10 +192,11 @@ mod tests {
     #[test]
     fn clearing_keeps_the_folder() {
         let (_t, dirs) = setup();
-        std::os::unix::fs::symlink("/etc", dirs.overwrite().join("link")).unwrap();
+        crate::fsutil::test_symlink(Path::new("/etc"), &dirs.overwrite().join("link"));
         clear(&dirs).unwrap();
         assert!(dirs.overwrite().is_dir() && fs::read_dir(dirs.overwrite()).unwrap().next().is_none());
-        assert!(Path::new("/etc").exists());
+        #[cfg(unix)]
+        assert!(Path::new("/etc").exists(), "the link was removed, not followed");
     }
 
     #[test]
@@ -212,12 +220,13 @@ mod tests {
         assert!(!dirs.mods_dir().join("again.partial").exists());
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_real_whiteout_device_is_recognised() {
         // `mknod` works for 0/0 character devices only as root; try, skip otherwise.
         let t = tempfile::tempdir().unwrap();
         let p = t.path().join("gone");
-        let ok = Command::new("mknod").arg(&p).args(["c", "0", "0"]).status().map(|s| s.success()).unwrap_or(false);
+        let ok = std::process::Command::new("mknod").arg(&p).args(["c", "0", "0"]).status().map(|s| s.success()).unwrap_or(false);
         if ok {
             let meta = p.symlink_metadata().unwrap();
             assert!(is_whiteout("gone", &meta));

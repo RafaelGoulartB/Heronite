@@ -51,11 +51,15 @@ fn only_subfolder(dir: &Path) -> Option<PathBuf> {
 
 /// The entry of `dir` called `name`, ignoring case.
 fn child_named(dir: &Path, name: &str) -> Option<PathBuf> {
-    let exact = dir.join(name);
-    if exact.exists() {
-        return Some(exact);
+    // Windows answers `exists` for any case; the entries tell the spelling.
+    if cfg!(not(windows)) {
+        let exact = dir.join(name);
+        if exact.exists() {
+            return Some(exact);
+        }
     }
-    std::fs::read_dir(dir).ok()?.flatten().find(|e| e.file_name().to_string_lossy().eq_ignore_ascii_case(name)).map(|e| e.path())
+    let names: Vec<String> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    names.iter().find(|n| *n == name).or_else(|| names.iter().find(|n| n.eq_ignore_ascii_case(name))).map(|n| dir.join(n))
 }
 
 /// `rel` (`\` or `/` separated, any case) inside `content_root`, as it is

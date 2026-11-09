@@ -184,7 +184,7 @@ fn download_names() {
 #[test]
 fn symlinks_are_not_entries() {
     let c = tree(&["textures/a.dds"]);
-    std::os::unix::fs::symlink("/etc", c.path().join("evil")).unwrap();
+    crate::fsutil::test_symlink(std::path::Path::new("/etc"), &c.path().join("evil"));
     assert_eq!(map(&auto(c.path(), &profile(SKYRIM), None, &ModSource::File)), ["textures -> Data/textures"]);
 }
 
