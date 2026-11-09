@@ -29,5 +29,6 @@
   "Up to date: {n} entries of Heronite's in Sunshine.": "Atualizado: {n} entradas do Heronite no Sunshine.",
   "Up to date: {n} entry of Heronite's in Sunshine.": "Atualizado: {n} entrada do Heronite no Sunshine.",
   "User name": "Nome de usuário",
-  "Without it, the game keeps running on this computer after the stream.": "Sem isso, o jogo continua rodando neste computador depois da transmissão."
+  "Without it, the game keeps running on this computer after the stream.": "Sem isso, o jogo continua rodando neste computador depois da transmissão.",
+  "Sunshine has to run on this computer, where your games and their covers are. Use https://localhost:47990.": "O Sunshine precisa rodar neste computador, onde estão seus jogos e as capas deles. Use https://localhost:47990."
 }

@@ -10,8 +10,13 @@
 //! a redirect (to `/welcome`) means Sunshine has no account yet; a 403 means
 //! the address does not accept this computer (`origin_web_ui_allowed`).
 //! POST and DELETE check a CSRF token only when the request has an `Origin`
-//! or `Referer` header, which this client never sends. The certificate is
-//! Sunshine's own self-signed one, so it is not verified.
+//! or `Referer` header, which this client never sends.
+//!
+//! Only a Sunshine on this computer is talked to ([`is_this_computer`]): the
+//! entries hold this computer's paths (Heronite's executable, the covers),
+//! which mean nothing to a Sunshine elsewhere. That is also why its
+//! self-signed certificate is not verified: what answers on the loopback
+//! address is already on this machine.
 
 use std::fmt;
 use std::time::Duration;
@@ -24,6 +29,9 @@ use serde_json::{json, Value};
 pub enum Error {
     /// The address is not an `http(s)://host[:port]` address.
     BadAddress,
+    /// The address is another computer's; only this computer's Sunshine
+    /// can run the entries.
+    NotThisComputer,
     /// Nothing answers there (refused, unknown host, timed out). The text is
     /// for the log.
     Unreachable(String),
@@ -41,6 +49,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::BadAddress => write!(f, "not a Sunshine address"),
+            Error::NotThisComputer => write!(f, "not an address on this computer"),
             Error::Unreachable(e) => write!(f, "Sunshine does not answer: {e}"),
             Error::Unauthorized => write!(f, "Sunshine refused the user name or password"),
             Error::NotSetUp => write!(f, "Sunshine has no web UI account yet"),
@@ -72,6 +81,23 @@ pub fn normalize_address(address: &str) -> Option<String> {
     Some(format!("{scheme}://{rest}"))
 }
 
+/// The host of `https://host:port/path` (IPv6 without its brackets).
+fn host_of(address: &str) -> &str {
+    let rest = address.split_once("://").map_or(address, |(_, r)| r);
+    let authority = rest.split('/').next().unwrap_or("");
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    if let Some(v6) = authority.strip_prefix('[') {
+        return v6.split(']').next().unwrap_or("");
+    }
+    authority.split(':').next().unwrap_or("")
+}
+
+/// Whether `address` is this computer: `localhost`, `127.x.x.x` or `::1`.
+pub fn is_this_computer(address: &str) -> bool {
+    let host = host_of(address);
+    host.eq_ignore_ascii_case("localhost") || host.parse::<std::net::IpAddr>().is_ok_and(|ip| ip.is_loopback())
+}
+
 /// A signed-in connection to one Sunshine.
 pub struct Client {
     base: String,
@@ -82,6 +108,9 @@ pub struct Client {
 impl Client {
     pub fn new(address: &str, username: &str, password: &str) -> Result<Self, Error> {
         let base = normalize_address(address).ok_or(Error::BadAddress)?;
+        if !is_this_computer(&base) {
+            return Err(Error::NotThisComputer);
+        }
         let auth = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}")));
         let tls = ureq::tls::TlsConfig::builder().disable_verification(true).build();
         let agent = ureq::Agent::config_builder()
@@ -176,7 +205,7 @@ fn transport(e: ureq::Error) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_address;
+    use super::{is_this_computer, normalize_address, Client, Error};
 
     #[test]
     fn addresses_get_a_scheme_and_lose_trailing_slashes() {
@@ -189,5 +218,24 @@ mod tests {
         assert_eq!(normalize_address("https://"), None);
         assert_eq!(normalize_address("https://a b"), None);
         assert_eq!(normalize_address("https://x/?q=1"), None);
+    }
+
+    #[test]
+    fn only_this_computer_is_accepted() {
+        for a in ["https://localhost:47990", "https://LOCALHOST", "http://127.0.0.1:47990", "https://127.1.2.3", "https://[::1]:47990/x"] {
+            assert!(is_this_computer(a), "{a}");
+        }
+        for a in [
+            "https://pc.lan:47990",
+            "https://192.168.1.20:47990",
+            "https://[::2]:47990",
+            "https://localhost.evil.com",
+            "https://localhost@evil.com",
+        ] {
+            assert!(!is_this_computer(a), "{a}");
+        }
+        assert!(matches!(Client::new("https://192.168.1.20:47990", "u", "p"), Err(Error::NotThisComputer)));
+        assert!(matches!(Client::new("ftp://localhost", "u", "p"), Err(Error::BadAddress)));
+        assert!(Client::new("localhost:47990", "u", "p").is_ok());
     }
 }

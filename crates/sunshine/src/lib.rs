@@ -2,7 +2,7 @@
 //! them from a phone, a TV or another computer. Apollo, a Sunshine fork,
 //! keeps the same web API.
 //!
-//! * [`api`]: Sunshine's web API (`https://localhost:47990` unless changed,
+//! * [`api`]: Sunshine's web API on this computer (`https://localhost:47990`,
 //!   basic auth, a self-signed certificate): list, save and delete
 //!   applications.
 //! * [`entry`]: what one of Heronite's applications holds, and the marker

@@ -32,6 +32,8 @@ pub enum Problem {
     /// The password store failed (keyring locked or missing, DPAPI).
     Secret(String),
     BadAddress,
+    /// The address is another computer's.
+    NotThisComputer,
     NotInstalled,
     NotRunning,
     Unauthorized,
@@ -44,6 +46,7 @@ impl Problem {
     fn from_api(e: Error) -> Self {
         match e {
             Error::BadAddress => Problem::BadAddress,
+            Error::NotThisComputer => Problem::NotThisComputer,
             Error::Unreachable(_) if install::installed() => Problem::NotRunning,
             Error::Unreachable(_) => Problem::NotInstalled,
             Error::Unauthorized => Problem::Unauthorized,
@@ -59,6 +62,9 @@ impl Problem {
             Problem::NoPassword => tr!("Type Sunshine's user name and password, then Connect.").into(),
             Problem::Secret(e) => tr!("The password could not be kept safely: {error}", error = e.as_str()),
             Problem::BadAddress => tr!("That is not a Sunshine address. It looks like https://localhost:47990.").into(),
+            Problem::NotThisComputer => {
+                tr!("Sunshine has to run on this computer, where your games and their covers are. Use https://localhost:47990.").into()
+            }
             Problem::NotInstalled => tr!("Sunshine is not installed on this computer, or it is not at this address.").into(),
             Problem::NotRunning => tr!("Sunshine is not running, or it is not at this address. Start it and try again.").into(),
             Problem::Unauthorized => tr!("Sunshine refused the user name or password.").into(),
