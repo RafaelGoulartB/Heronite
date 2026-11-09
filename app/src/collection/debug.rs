@@ -46,8 +46,8 @@ impl CollectionView {
     /// `HERONITE_DEBUG_MENU_SAVES=1` for the saves'), `HERONITE_DEBUG_DROPDOWN=view|nav|downloads|update|display` opens a header menu
     /// (`facets`, `categories`, `stores` or `view:<text>`: the View menu with
     /// that search typed; `views`: its views in edit mode; `views-select`:
-    /// their select open; `more-group` / `more-sort`: the "More" list of
-    /// that row; `quick-sort|quick-install|quick-group|quick-presets`: the
+    /// their select open; `more-group` / `more-sort` / `more-filters`: the "More" list of
+    /// that row; `groups-select`: the smart groups list; `manage`: the footer's list; `quick-sort|quick-install|quick-group|quick-presets`: the
     /// corresponding quick toolbar menu, only if its trigger fits),
     /// `HERONITE_DEBUG_ORGANIZE=<group>,<sort>` groups and sorts
     /// the list (`year,releaseDate`), `HERONITE_DEBUG_DIALOG=<name>` opens a dialog on
@@ -112,8 +112,15 @@ impl CollectionView {
                     self.view_menu.set_select_open(true);
                     Some(Menu::View)
                 }
-                "more-group" | "more-sort" => {
-                    self.view_menu.set_more(menu == "more-group");
+                "more-group" | "more-sort" | "more-filters" | "groups-select" | "manage" => {
+                    use super::view_menu::organize::More;
+                    self.view_menu.set_more(match menu.as_str() {
+                        "more-group" => More::Group,
+                        "more-sort" => More::Sort,
+                        "more-filters" => More::Filters,
+                        "groups-select" => More::Groups,
+                        _ => More::Manage,
+                    });
                     Some(Menu::View)
                 }
                 "nav" => Some(Menu::Nav),

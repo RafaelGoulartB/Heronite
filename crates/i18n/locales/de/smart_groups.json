@@ -14,7 +14,6 @@
   "Name of the group": "Name der Gruppe",
   "New smart group": "Neue intelligente Gruppe",
   "New smart group…": "Neue intelligente Gruppe…",
-  "New…": "Neu…",
   "No game matches these rules yet.": "Noch erfüllt kein Spiel diese Regeln.",
   "One click away, next to the filters. Unpinned groups are in the View menu.": "Einen Klick entfernt, neben den Filtern. Nicht angeheftete Gruppen sind im Ansicht-Menü.",
   "Pick at least one value in each condition, or remove it.": "Wähle in jeder Bedingung mindestens einen Wert oder entferne sie.",
@@ -22,7 +21,6 @@
   "Pin to the header": "An die Kopfzeile anheften",
   "Unpin from the header": "Von der Kopfzeile lösen",
   "Runs offline": "Läuft offline",
-  "Save as smart group…": "Als intelligente Gruppe speichern…",
   "Show every game again": "Wieder alle Spiele zeigen",
   "Show only “{name}”. Right click to edit it.": "Nur „{name}“ zeigen. Rechtsklick zum Bearbeiten.",
   "Size on disk": "Größe auf der Festplatte",
@@ -43,5 +41,12 @@
   "rule|more than": "mehr als",
   "rule|exactly": "genau",
   "rule|all": "alle",
-  "rule|any": "eine"
+  "rule|any": "eine",
+  "Filter by": "Filtern nach",
+  "Include hidden": "Ausgeblendete zeigen",
+  "Save filters as smart group…": "Filter als intelligente Gruppe speichern…",
+  "view menu block|Filter": "Filtern",
+  "view menu block|Organize": "Ordnen",
+  "{n} group": "{n} Gruppe",
+  "{n} groups": "{n} Gruppen"
 }

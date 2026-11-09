@@ -5,6 +5,7 @@
 //! and the presets (saved views) are `views.rs`.
 
 mod age;
+mod blocks;
 mod choices;
 pub(super) mod organize;
 mod render;
@@ -47,8 +48,11 @@ pub(super) struct ViewMenu {
     select_open: bool,
     /// The Views section lists the views to rename, update, move or delete.
     editing: bool,
-    /// The "More" list of Group by or Sort is open.
+    /// The "More" list of Group by, Sort or Filter by, the smart groups
+    /// list or the "Manage" list is open.
     more: Option<organize::More>,
+    /// "Ages up to" was picked in Filter by's "More" (it also shows while it filters).
+    ages_open: bool,
     /// The pointer is on that list (a click there is not outside the menu).
     more_hovered: bool,
     /// Name box of the view being renamed (its index).
@@ -96,6 +100,7 @@ impl ViewMenu {
             select_open: false,
             editing: false,
             more: None,
+            ages_open: false,
             more_hovered: false,
             renaming: None,
             room: 600.,
@@ -113,9 +118,9 @@ impl ViewMenu {
         self.select_open = on;
     }
 
-    /// Opens the "More" list of Group by (`group`) or Sort.
-    pub(super) fn set_more(&mut self, group: bool) {
-        self.more = Some(if group { organize::More::Group } else { organize::More::Sort });
+    /// Opens one of the menu's lists (`HERONITE_DEBUG_DROPDOWN`).
+    pub(super) fn set_more(&mut self, which: organize::More) {
+        self.more = Some(which);
     }
 
     /// Typing (or naming a view) keeps the menu open when the pointer leaves.
@@ -372,6 +377,7 @@ impl CollectionView {
             self.view_menu.renaming = None;
             self.view_menu.select_open = false;
             self.view_menu.more = None;
+            self.view_menu.ages_open = false;
             self.view_menu.more_hovered = false;
         }
         let with_tokens = self.ui.active_filters() > 0 || self.ui.show_hidden;

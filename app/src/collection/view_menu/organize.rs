@@ -21,6 +21,12 @@ use crate::ui::icon;
 pub(in crate::collection) enum More {
     Group,
     Sort,
+    /// The kinds after "Filter by"'s pills.
+    Filters,
+    /// The smart groups select's list.
+    Groups,
+    /// The footer's "Manage" list.
+    Manage,
 }
 
 /// Segments before "More".
@@ -158,7 +164,7 @@ impl CollectionView {
         cx.notify();
     }
 
-    fn toggle_more(&mut self, which: More, cx: &mut Context<Self>) {
+    pub(super) fn toggle_more(&mut self, which: More, cx: &mut Context<Self>) {
         self.view_menu.more = if self.view_menu.more == Some(which) { None } else { Some(which) };
         self.view_menu.select_open = false;
         self.view_menu.more_hovered = false;
