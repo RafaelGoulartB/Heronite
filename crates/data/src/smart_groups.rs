@@ -455,7 +455,8 @@ impl SmartGroup {
         self.rule.matches(g, facts)
     }
 
-    fn from_value(value: &Value) -> Option<Self> {
+    /// A group as stored; `None` without an id or a name.
+    pub fn from_value(value: &Value) -> Option<Self> {
         let obj = value.as_object()?;
         let id = obj.get("id")?.as_str().filter(|s| !s.is_empty())?.to_owned();
         let name = obj.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())?.to_owned();
@@ -469,7 +470,7 @@ impl SmartGroup {
         })
     }
 
-    fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> Value {
         let mut obj = self.extra.clone();
         obj.insert("id".into(), json!(self.id));
         obj.insert("name".into(), json!(self.name));
@@ -511,11 +512,14 @@ impl SmartGroups {
         self.groups.iter().filter(|g| g.pinned)
     }
 
-    /// An id no group has, from the clock.
+    /// An id no group has: the clock, then a part of its nanoseconds, so
+    /// two PCs that sync never make the same one in the same millisecond.
     pub fn new_id(&self) -> String {
-        let mut n = chrono::Utc::now().timestamp_millis().max(0) as u64;
+        let now = chrono::Utc::now();
+        let mut n = now.timestamp_millis().max(0) as u64;
+        let spread = now.timestamp_subsec_nanos() % 0x1000;
         loop {
-            let id = format!("g{n:x}");
+            let id = format!("g{n:x}{spread:03x}");
             if self.get(&id).is_none() {
                 return id;
             }
@@ -592,6 +596,28 @@ pub fn rename_category(groups: &mut [SmartGroup], old: &str, new: Option<&str>) 
         }
     }
     groups.iter_mut().fold(false, |acc, g| walk(&mut g.rule, old, new) | acc)
+}
+
+/// The names `rule`'s list conditions on `field` hold (statuses, categories,
+/// values of a library field), each once.
+pub fn names_used(rule: &Rule, field: Field) -> Vec<&str> {
+    fn walk<'r>(rule: &'r Rule, field: Field, out: &mut Vec<&'r str>) {
+        match rule {
+            Rule::All(list) | Rule::Any(list) => list.iter().for_each(|r| walk(r, field, out)),
+            Rule::Not(inner) => walk(inner, field, out),
+            Rule::Cond(Cond { field: f, op: Op::In(names) }) if *f == field => {
+                for n in names {
+                    if !out.contains(&n.as_str()) {
+                        out.push(n);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(rule, field, &mut out);
+    out
 }
 
 /// Categories referenced by `rule` that `cats` no longer has.
@@ -811,6 +837,17 @@ mod tests {
                 Rule::Not(Box::new(cond(Field::Category, Op::In(vec![]))))
             ])
         );
+    }
+
+    #[test]
+    fn names_used_by_a_field_are_listed_once() {
+        let rule = Rule::All(vec![
+            cond(Field::Status, Op::In(vec!["playing".into(), "custom-1".into()])),
+            Rule::Not(Box::new(cond(Field::Status, Op::In(vec!["custom-1".into()])))),
+            cond(Field::Category, Op::In(vec!["RPG".into()])),
+        ]);
+        assert_eq!(names_used(&rule, Field::Status), ["playing", "custom-1"]);
+        assert_eq!(names_used(&rule, Field::Category), ["RPG"]);
     }
 
     #[test]

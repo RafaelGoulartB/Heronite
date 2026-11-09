@@ -267,7 +267,7 @@ fn os_label(os: &str) -> &str {
 
 fn summary_lines(s: &LastSummary) -> Vec<String> {
     let mut lines = Vec::new();
-    if s.fields + s.sessions + s.playtime == 0 {
+    if s.fields + s.sessions + s.playtime + s.groups == 0 {
         lines.push(tr!("Everything was already up to date.").to_string());
     } else {
         let mut parts = Vec::new();
@@ -276,6 +276,9 @@ fn summary_lines(s: &LastSummary) -> Vec<String> {
         }
         if s.playtime > 0 {
             parts.push(trn!(s.playtime, "{n} play time", "{n} play times"));
+        }
+        if s.groups > 0 {
+            parts.push(trn!(s.groups, "{n} smart group", "{n} smart groups"));
         }
         if s.fields > 0 {
             parts.push(trn!(s.fields, "{n} other change", "{n} other changes"));

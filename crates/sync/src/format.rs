@@ -36,6 +36,12 @@ pub struct DeviceFile {
     /// is known here).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub statuses: Vec<CompletionStatus>,
+    /// Smart groups by id, each as last written wins: the stored group
+    /// (`heronite_data::smart_groups`) without `pinned`, which each PC keeps
+    /// for itself; `null` for one deleted, so it does not come back from a
+    /// PC that still has it. Older versions skip the key.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub groups: BTreeMap<String, Stamped>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -65,6 +71,17 @@ pub struct GameState {
     /// files.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<LocalGameSession>,
+}
+
+/// Prefix of a game's field that says whether it is in a custom category
+/// (`category:<name>`: `true`, or `null` when not), each game and category
+/// on its own so that two PCs adding a game to two categories keep both.
+/// Older versions skip these keys.
+pub const CATEGORY_PREFIX: &str = "category:";
+
+/// The category a field key stands for.
+pub fn category_of(key: &str) -> Option<&str> {
+    key.strip_prefix(CATEGORY_PREFIX).filter(|n| !n.is_empty())
 }
 
 /// The fields that sync, each kept as last written wins.

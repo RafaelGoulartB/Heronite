@@ -1,7 +1,7 @@
 //! Merging the other PCs' files into this one's Collection. Pure: no I/O.
 //!
-//! - **Fields** (status, favourite, hidden, rating, notes): the newest
-//!   [`Stamp`] wins, field by field. A value changed here since the last
+//! - **Fields** (status, favourite, hidden, rating, notes, and each custom
+//!   category a game is in or not): the newest [`Stamp`] wins, field by field. A value changed here since the last
 //!   sync gets a stamp past every clock seen; a value seen for the first
 //!   time gets a weak one (clock 0), so a PC joining with defaults never
 //!   overwrites the history of the others.
@@ -11,6 +11,9 @@
 //!   made smaller by hand: the newest such change is followed.
 //! - A game the other PC has and this one does not is left alone: its data
 //!   stays in that PC's file and comes in once the game is here too.
+//! - **Smart groups**: the newest stamp wins, group by group (a deletion is a
+//!   stamped `null`). Which games a group holds is never synced: each PC
+//!   works it out from its own Collection, and keeps its own pins.
 //! - A PC that publishes only its play (`publish_edits` off, for a PC the
 //!   user does not keep organised) sends its sessions and play time and none
 //!   of its fields; what is changed there loses to any other PC's value.
@@ -19,9 +22,11 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use heronite_data::models::LocalGameSession;
 
-use crate::format::{DeviceFile, DeviceInfo, Field, GameState, Playtime, Stamp, Stamped, FORMAT};
+use serde_json::Value;
+
+use crate::format::{category_of, DeviceFile, DeviceInfo, Field, GameState, Playtime, Stamp, Stamped, CATEGORY_PREFIX, FORMAT};
 use crate::ledger::{Ledger, LedgerGame};
-use crate::local::{Changes, FieldChange, LocalGame, LocalLibrary};
+use crate::local::{CategoryChange, Changes, FieldChange, GroupChange, LocalGame, LocalLibrary};
 
 /// What a sync did, for Settings → Sync.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -34,11 +39,13 @@ pub struct Summary {
     pub playtime: usize,
     /// Games of the other PCs that are not in this Collection (yet).
     pub waiting: usize,
+    /// Smart groups added, changed or deleted here.
+    pub groups: usize,
 }
 
 impl Summary {
     pub fn changed(&self) -> bool {
-        self.fields + self.sessions + self.playtime > 0
+        self.fields + self.sessions + self.playtime + self.groups > 0
     }
 }
 
@@ -61,6 +68,7 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
     let remotes: Vec<&DeviceFile> = remotes.iter().filter(|r| r.device.id != me.id && r.format <= FORMAT).collect();
     for r in &remotes {
         ledger.clock = ledger.clock.max(r.clock);
+        take_newer(&mut ledger.groups, &r.groups);
     }
 
     let mut changes = Changes::default();
@@ -91,6 +99,18 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
     for (key, g) in &local.games {
         let lg = ledger.games.entry(key.clone()).or_default();
         for (field_key, stamped) in &lg.fields {
+            if let Some(name) = category_of(field_key) {
+                let on = stamped.value.as_bool() == Some(true);
+                if on != g.categories.contains(name) {
+                    changes.categories.push(CategoryChange {
+                        runner: g.runner.clone(),
+                        app_name: g.app_name.clone(),
+                        category: name.to_owned(),
+                        on,
+                    });
+                }
+                continue;
+            }
             let Some(field) = Field::parse(field_key) else { continue };
             if stamped.value != g.value(field) {
                 changes.fields.push(FieldChange {
@@ -114,8 +134,14 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
         lg.published_minutes = Some(merged.minutes);
         playtimes.insert(key.clone(), merged);
     }
-    summary.fields = changes.fields.len();
+    for (id, stamped) in &ledger.groups {
+        if local.groups.get(id).unwrap_or(&Value::Null) != &stamped.value {
+            changes.groups.push(GroupChange { id: id.clone(), value: stamped.value.clone() });
+        }
+    }
+    summary.fields = changes.fields.len() + changes.categories.len();
     summary.playtime = changes.playtime.len();
+    summary.groups = changes.groups.len();
 
     let known: HashSet<&str> = local.custom_statuses.iter().map(|s| s.id.as_str()).collect();
     let mut added = HashSet::new();
@@ -131,6 +157,7 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
     let mut own = own_file(local, &ledger, &playtimes, me, now);
     if !publish_edits {
         own.statuses.clear();
+        own.groups.clear();
         for g in own.games.values_mut() {
             g.fields.clear();
             if let Some(p) = &mut g.playtime {
@@ -145,9 +172,29 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
 /// Gives the fields changed here since the last sync a new stamp (the
 /// weakest of all when this PC does not publish them).
 fn stamp_local_changes(local: &LocalLibrary, ledger: &mut Ledger, me: &DeviceInfo, now: &str, publish_edits: bool) {
-    let Ledger { clock, games } = ledger;
+    let Ledger { clock, games, groups } = ledger;
+    let fresh = |clock: &mut u64| {
+        *clock += 1;
+        Stamp { clock: *clock, at: now.to_owned(), device: me.id.clone() }
+    };
+    let ids: BTreeSet<String> = local.groups.keys().chain(groups.keys()).cloned().collect();
+    for id in ids {
+        let value = local.groups.get(&id).cloned().unwrap_or(Value::Null);
+        if let Some(stamp) = restamp(groups.get(&id), &value, publish_edits, || fresh(clock), &me.id) {
+            groups.insert(id, Stamped { value, stamp });
+        }
+    }
     for (key, g) in &local.games {
         let lg = games.entry(key.clone()).or_default();
+        let names: BTreeSet<String> =
+            g.categories.iter().cloned().chain(lg.fields.keys().filter_map(|k| category_of(k)).map(str::to_owned)).collect();
+        for name in names {
+            let value = if g.categories.contains(&name) { Value::Bool(true) } else { Value::Null };
+            let key = format!("{CATEGORY_PREFIX}{name}");
+            if let Some(stamp) = restamp(lg.fields.get(&key), &value, publish_edits, || fresh(clock), &me.id) {
+                lg.fields.insert(key, Stamped { value, stamp });
+            }
+        }
         lg.runner.clone_from(&g.runner);
         lg.app_name.clone_from(&g.app_name);
         lg.title.clone_from(&g.title);
@@ -179,9 +226,32 @@ fn stamp_local_changes(local: &LocalLibrary, ledger: &mut Ledger, me: &DeviceInf
     }
 }
 
+/// The stamp for `value` against what the ledger `held` (a custom category
+/// or a smart group): a new one for a change made here, a weak one for a
+/// value the ledger never saw (the weakest of all when this PC does not
+/// publish its edits); `None` when nothing changed or there is nothing to say.
+fn restamp(held: Option<&Stamped>, value: &Value, publish_edits: bool, fresh: impl FnOnce() -> Stamp, device: &str) -> Option<Stamp> {
+    match held {
+        Some(s) if s.value == *value => None,
+        _ if !publish_edits => Some(Stamp::default()),
+        Some(_) => Some(fresh()),
+        None if value.is_null() => None,
+        None => Some(Stamp { clock: 0, at: String::new(), device: device.to_owned() }),
+    }
+}
+
+/// Takes the other PC's entries that are newer than the ledger's.
+fn take_newer(mine: &mut BTreeMap<String, Stamped>, theirs: &BTreeMap<String, Stamped>) {
+    for (key, t) in theirs {
+        if mine.get(key).is_none_or(|m| t.stamp > m.stamp) {
+            mine.insert(key.clone(), t.clone());
+        }
+    }
+}
+
 fn take_fields(lg: &mut LedgerGame, rg: &GameState) {
     for (key, theirs) in &rg.fields {
-        if Field::parse(key).is_none() {
+        if Field::parse(key).is_none() && category_of(key).is_none() {
             continue;
         }
         let newer = lg.fields.get(key).is_none_or(|mine| theirs.stamp > mine.stamp);
@@ -254,6 +324,7 @@ fn own_file(local: &LocalLibrary, ledger: &Ledger, playtimes: &BTreeMap<String, 
         clock: ledger.clock,
         games,
         statuses: local.custom_statuses.clone(),
+        groups: ledger.groups.clone(),
     }
 }
 

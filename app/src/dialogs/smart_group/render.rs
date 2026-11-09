@@ -6,7 +6,7 @@ use std::rc::Rc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::categories::UNCATEGORIZED;
-use heronite_data::smart_groups::{Cond, Field, Op, ValueKind};
+use heronite_data::smart_groups::{self, Cond, Field, Op, ValueKind};
 use heronite_data::status::status_label;
 use heronite_data::FacetKind;
 use heronite_i18n::{tr, trc, trn};
@@ -330,6 +330,29 @@ impl SmartGroupDialog {
         )
     }
 
+    /// The statuses and categories the rules name that this PC does not have
+    /// (made on another PC that syncs, or removed here).
+    fn render_missing(&self) -> Option<Div> {
+        let rule = self.rule();
+        let statuses = &self.ctx.lib.statuses;
+        let mut missing: Vec<String> = smart_groups::names_used(&rule, Field::Status)
+            .into_iter()
+            .filter(|id| !statuses.iter().any(|s| s.id == *id))
+            .map(str::to_owned)
+            .collect();
+        missing.extend(smart_groups::missing_categories(&rule, &self.facts.categories).into_iter().map(str::to_owned));
+        (!missing.is_empty()).then(|| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .text_size(px(12.5))
+                .text_color(theme::warning())
+                .child(icon(Icon::Warning, px(15.), theme::warning()))
+                .child(tr!("Not on this PC: {names}. These conditions match no game here.", names = missing.join(", ")).to_string())
+        })
+    }
+
     fn render_count(&self) -> Div {
         let titles = match self.sample.as_slice() {
             [] => tr!("No game matches these rules yet.").to_string(),
@@ -416,7 +439,7 @@ impl Render for SmartGroupDialog {
                 "The rules of this group are nested deeper than this editor shows. They are kept as they are; the name, colour and pin can change."
             )));
         }
-        body = body.child(self.render_count()).child(row(
+        body = body.children(self.render_missing()).child(self.render_count()).child(row(
             tr!("Pin to the Collection header"),
             Some(tr!("One click away, next to the filters. Unpinned groups are in the View menu.")),
             toggle("sg-pin", self.pinned, false).on_click(cx.listener(|this, _, _, cx| {

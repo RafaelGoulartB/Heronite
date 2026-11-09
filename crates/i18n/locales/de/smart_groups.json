@@ -49,5 +49,8 @@
   "view menu block|Organize": "Ordnen",
   "{n} group": "{n} Gruppe",
   "{n} groups": "{n} Gruppen",
-  "Any group": "Jede Gruppe"
+  "Any group": "Jede Gruppe",
+  "{n} smart group": "{n} intelligente Gruppe",
+  "{n} smart groups": "{n} intelligente Gruppen",
+  "Not on this PC: {names}. These conditions match no game here.": "Nicht auf diesem PC: {names}. Diese Bedingungen finden hier kein Spiel."
 }

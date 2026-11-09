@@ -209,6 +209,8 @@ pub struct LastSummary {
     pub sessions: usize,
     pub playtime: usize,
     pub waiting: usize,
+    /// Smart groups added, changed or deleted.
+    pub groups: usize,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

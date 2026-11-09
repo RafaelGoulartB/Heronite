@@ -61,6 +61,21 @@ impl Pc {
         for c in &out.changes.fields {
             self.local.games.get_mut(&c.key).unwrap().values.insert(c.field, c.value.clone());
         }
+        for c in &out.changes.categories {
+            let g = self.local.games.values_mut().find(|g| g.app_name == c.app_name).unwrap();
+            if c.on {
+                g.categories.insert(c.category.clone());
+            } else {
+                g.categories.remove(&c.category);
+            }
+        }
+        for c in &out.changes.groups {
+            if c.value.is_null() {
+                self.local.groups.remove(&c.id);
+            } else {
+                self.local.groups.insert(c.id.clone(), c.value.clone());
+            }
+        }
         for g in self.local.games.values_mut() {
             if let Some(new) = out.changes.sessions.get(&g.app_name) {
                 g.sessions.extend(new.iter().cloned());
@@ -311,4 +326,82 @@ fn a_play_only_pc_sends_its_play_and_none_of_its_edits() {
     // Windows takes Linux' values back.
     windows.sync(&[&linux], "2026-11-02T10:00:00.000Z");
     assert_eq!(windows.get(ELDEN, Field::Status), json!("playing"));
+}
+
+fn categories(pc: &Pc, key: &str) -> Vec<String> {
+    pc.local.games[key].categories.iter().cloned().collect()
+}
+
+#[test]
+fn categories_added_on_two_pcs_both_stay() {
+    let (mut linux, mut windows) = dual_boot();
+    linux.game(ELDEN).categories.insert("Souls".into());
+    linux.sync(&[], "2026-11-01T10:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T11:00:00.000Z");
+    assert_eq!(categories(&windows, ELDEN), ["Souls"], "a new PC takes the categories in");
+
+    // Both add the game to another category before syncing again.
+    linux.game(ELDEN).categories.insert("RPG".into());
+    linux.sync(&[&windows], "2026-11-02T10:00:00.000Z");
+    windows.game(ELDEN).categories.insert("Open world".into());
+    let s = windows.sync(&[&linux], "2026-11-02T11:00:00.000Z");
+    assert_eq!(s.fields, 1);
+    linux.sync(&[&windows], "2026-11-02T12:00:00.000Z");
+    for pc in [&linux, &windows] {
+        assert_eq!(categories(pc, ELDEN), ["Open world", "RPG", "Souls"]);
+    }
+
+    // Taken out on Windows, out on Linux too, and it stays out.
+    windows.game(ELDEN).categories.remove("Souls");
+    windows.sync(&[&linux], "2026-11-03T10:00:00.000Z");
+    linux.sync(&[&windows], "2026-11-03T11:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-03T12:00:00.000Z");
+    for pc in [&linux, &windows] {
+        assert_eq!(categories(pc, ELDEN), ["Open world", "RPG"]);
+    }
+}
+
+fn group(name: &str) -> Value {
+    json!({ "id": "g1", "name": name, "colour": null, "rule": { "all": [ { "field": "installed", "op": "is", "value": true } ] } })
+}
+
+#[test]
+fn smart_groups_travel_change_and_stay_deleted() {
+    let (mut linux, mut windows) = dual_boot();
+    linux.local.groups.insert("g1".into(), group("Weekend"));
+    linux.sync(&[], "2026-11-01T10:00:00.000Z");
+    let s = windows.sync(&[&linux], "2026-11-01T11:00:00.000Z");
+    assert_eq!(s.groups, 1);
+    assert_eq!(windows.local.groups["g1"], group("Weekend"));
+
+    // Renamed on Windows: the newest change wins on Linux.
+    windows.local.groups.insert("g1".into(), group("Weekend games"));
+    windows.sync(&[&linux], "2026-11-02T10:00:00.000Z");
+    linux.sync(&[&windows], "2026-11-02T11:00:00.000Z");
+    assert_eq!(linux.local.groups["g1"], group("Weekend games"));
+
+    // Deleted on Linux: gone on Windows, and Windows' old copy does not bring it back.
+    linux.local.groups.remove("g1");
+    linux.sync(&[&windows], "2026-11-03T10:00:00.000Z");
+    let s = windows.sync(&[&linux], "2026-11-03T11:00:00.000Z");
+    assert_eq!(s.groups, 1);
+    assert!(windows.local.groups.is_empty());
+    linux.sync(&[&windows], "2026-11-03T12:00:00.000Z");
+    assert!(linux.local.groups.is_empty());
+    assert_eq!(linux.own.as_ref().unwrap().groups["g1"].value, Value::Null, "published as deleted");
+}
+
+#[test]
+fn a_play_only_pc_publishes_no_groups_or_categories() {
+    let (mut linux, mut windows) = dual_boot();
+    windows.play_only = true;
+    windows.local.groups.insert("g1".into(), group("Weekend"));
+    windows.game(ELDEN).categories.insert("RPG".into());
+    windows.sync(&[], "2026-11-01T10:00:00.000Z");
+    let own = windows.own.as_ref().unwrap();
+    assert!(own.groups.is_empty());
+    assert!(own.games.get(ELDEN).is_none_or(|g| g.fields.is_empty()));
+    linux.sync(&[&windows], "2026-11-01T11:00:00.000Z");
+    assert!(linux.local.groups.is_empty());
+    assert!(categories(&linux, ELDEN).is_empty());
 }
