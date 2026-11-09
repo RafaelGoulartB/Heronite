@@ -94,12 +94,14 @@ impl Message {
         let mod_link = v.get("modLink").and_then(Value::as_str).filter(|l| super::cli::is_mod_link(l)).map(str::to_string);
         let open_client = v.get("openClient").and_then(Value::as_str).and_then(Client::from_id);
         Some(Message {
-        launch: request("launch"),
-        open_client, mod_link, stop: request("stop"),
-        no_gui: flag("noGui"),
-        console: flag("console"),
-        fullscreen: flag("fullscreen"),
-    })
+            launch: request("launch"),
+            open_client,
+            mod_link,
+            stop: request("stop"),
+            no_gui: flag("noGui"),
+            console: flag("console"),
+            fullscreen: flag("fullscreen"),
+        })
     }
 }
 

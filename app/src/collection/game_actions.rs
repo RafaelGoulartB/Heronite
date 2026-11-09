@@ -378,8 +378,8 @@ impl CollectionView {
             A::Mods => self.open_mods(key, window, cx),
             A::Reshade => self.open_reshade(key, window, cx),
             A::EditGame => {
-            self.open_edit_game(key, window, cx);
-        }
+                self.open_edit_game(key, window, cx);
+            }
             A::PlayAsPc => self.open_play_as_pc(key, window, cx),
             A::Metadata => self.open_metadata_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
