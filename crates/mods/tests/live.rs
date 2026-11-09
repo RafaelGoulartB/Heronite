@@ -1,7 +1,8 @@
 //! The whole chain against the real Thunderstore and a real fuse-overlayfs:
 //! resolve a package with its dependencies, download, install with the
-//! BepInEx layout, mount over a fake game folder, unmount. Needs the network
-//! and FUSE, so it only runs when asked:
+//! BepInEx layout, mount over a fake game folder (Windows: put the files in
+//! it), take the mods away. Needs the network, and FUSE on Linux, so it only
+//! runs when asked:
 //! `cargo test -p heronite-mods --test live -- --ignored --nocapture`.
 
 use std::path::Path;
@@ -54,13 +55,17 @@ fn thunderstore_package_with_dependencies_mounts_over_the_game() {
     // The package ships its own `BepInEx/plugins/`, which merges at the root.
     assert!(dirs.mod_dir(&more.id).join("BepInEx/plugins/MoreCompany.dll").is_file());
 
-    if heronite_mods::tool::find(Path::new("/nonexistent")).is_none() || !Path::new("/dev/fuse").exists() {
+    if cfg!(not(windows)) && (heronite_mods::tool::find(Path::new("/nonexistent")).is_none() || !Path::new("/dev/fuse").exists()) {
         eprintln!("no fuse-overlayfs (set HERONITE_FUSE_OVERLAYFS): mount not checked");
         return;
     }
-    let req = ApplyRequest { root: &root, tools_bin: Path::new("/nonexistent"), game_key: key, game_dir: &game_dir, prefix: None, known };
+    let req = ApplyRequest { root: &root, tools_bin: Path::new("/nonexistent"), game_key: key, game_dir: &game_dir, home: None, known };
     let applied = apply(&req, &mut |_| {}, &cancel).expect("apply").expect("mods to apply");
-    assert_eq!(applied.env, [("WINEDLLOVERRIDES".to_string(), "winhttp=n,b".to_string())]);
+    if cfg!(windows) {
+        assert!(applied.env.is_empty(), "Windows loads the proxy DLL by itself");
+    } else {
+        assert_eq!(applied.env, [("WINEDLLOVERRIDES".to_string(), "winhttp=n,b".to_string())]);
+    }
     assert!(game_dir.join("winhttp.dll").is_file(), "the loader shows in the game folder");
     assert!(game_dir.join("BepInEx/plugins/MoreCompany.dll").is_file());
     println!("{}", applied.summary);
@@ -69,6 +74,7 @@ fn thunderstore_package_with_dependencies_mounts_over_the_game() {
     assert!(game_dir.join("Lethal Company.exe").is_file());
 }
 
+#[cfg(not(windows))]
 #[test]
 #[ignore]
 fn fuse_overlayfs_is_downloaded_and_checked() {

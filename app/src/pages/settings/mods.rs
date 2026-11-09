@@ -9,7 +9,7 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
-use heronite_mods::tool::Support;
+use heronite_mods::tool::{Support, WindowsSupport};
 
 use super::SettingsPage;
 use crate::icons::Icon;
@@ -60,18 +60,7 @@ pub fn shown(cx: &mut Context<SettingsPage>) {
 }
 
 fn open_in_browser(url: &'static str, cx: &mut App) {
-    cx.background_spawn(async move {
-        let opened = std::process::Command::new("xdg-open")
-            .arg(url)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn();
-        if let Err(e) = opened {
-            log::warn!("xdg-open {url}: {e}");
-        }
-    })
-    .detach();
+    cx.background_spawn(async move { crate::ui::open_external(url) }).detach();
 }
 
 fn connect(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
@@ -232,7 +221,30 @@ fn links_card(f: &Facts, cx: &mut Context<SettingsPage>) -> Div {
     .into_any_element()])
 }
 
+/// Windows: how the files go in, and what the system offers beyond that
+/// (shown, never turned on from here).
+fn windows_card(w: WindowsSupport) -> Div {
+    let yes_no = |on: bool| if on { tr!("On") } else { tr!("Off") };
+    card([
+        row(
+            tr!("Hard links and copies"),
+            Some(tr!(
+                "While the game runs, the mods' files are in its folder: linked when they are on the same drive as the mods, copied otherwise. The game's own files a mod replaces are set aside and put back when it ends, or at the next start after a crash."
+            )),
+            status_line(tr!("Ready"), true),
+        )
+        .into_any_element(),
+        row(tr!("Projected File System"), Some(tr!("An optional Windows feature. Not used yet.")), status_line(yes_no(w.projfs), true))
+            .into_any_element(),
+        row(tr!("Symbolic links"), Some(tr!("Need Developer Mode or an administrator. Not used.")), status_line(yes_no(w.symlinks), true))
+            .into_any_element(),
+    ])
+}
+
 fn apply_card(f: &Facts, cx: &mut Context<SettingsPage>) -> Div {
+    if let Some(w) = f.support.as_ref().and_then(|s| s.windows) {
+        return windows_card(w);
+    }
     let (overlay, overlay_ok) = overlay_text(f);
     let (fuse, fuse_ok) = fuse_text(f);
     let missing = f.support.as_ref().is_some_and(|s| s.overlay.is_none()) && f.fetching.is_none();
@@ -262,9 +274,15 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .flex_col()
         .gap(px(6.))
         .px(px(6.))
-        .child(meta_text(tr!(
-            "Mods apply only when the game is started from Heronite. The game's own folder is never changed: the mods are laid over it while the game runs and taken away when it ends."
-        )))
+        .child(meta_text(if cfg!(windows) {
+            tr!(
+                "Mods apply only when the game is started from Heronite. Their files are put into the game's folder while it runs and taken out when it ends; what the game writes there goes to the mods' overwrite folder."
+            )
+        } else {
+            tr!(
+                "Mods apply only when the game is started from Heronite. The game's own folder is never changed: the mods are laid over it while the game runs and taken away when it ends."
+            )
+        }))
         .child(meta_text(tr!(
             "Nexus Mods shows its \"Mod manager download\" button only when your preferences on the site allow it."
         )));
@@ -314,9 +332,14 @@ pub(super) fn console_rows(d: &SettingsPage, cx: &App) -> Vec<crate::console::li
     if f.handlers != HandlerState::Ours && f.handlers != HandlerState::Unknown {
         rows.push(Row::action("register", tr!("Open them with Heronite")));
     }
+    rows.push(Row::header(tr!("Applying mods")));
+    if let Some(w) = f.support.as_ref().and_then(|s| s.windows) {
+        rows.push(Row::info("method", tr!("Hard links and copies"), tr!("Ready")));
+        rows.push(Row::info("projfs", tr!("Projected File System"), if w.projfs { tr!("On") } else { tr!("Off") }));
+        return rows;
+    }
     let (overlay, _) = overlay_text(&f);
     let (fuse, _) = fuse_text(&f);
-    rows.push(Row::header(tr!("Applying mods")));
     rows.push(Row::info("overlay", "fuse-overlayfs", overlay));
     rows.push(Row::info("fuse", "FUSE", fuse));
     if f.support.as_ref().is_some_and(|s| s.overlay.is_none()) && f.fetching.is_none() {

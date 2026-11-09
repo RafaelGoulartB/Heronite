@@ -1,5 +1,6 @@
 //! Fallout 4 and Starfield ignore loose files (textures, meshes, sounds)
-//! unless their `*Custom.ini` in the prefix's `Documents/My Games/<game>`
+//! unless their `*Custom.ini` in the user's `Documents/My Games/<game>`
+//! (the prefix's, or on Windows the real Documents folder)
 //! turns the archive check off. The keys are set while the game runs and the
 //! user's file is put back afterwards, like `Plugins.txt`.
 
@@ -9,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::file_swap::Swap;
 use crate::fsutil::find_ci;
 use crate::games::KnownGame;
-use crate::plugins::prefix_users;
+use crate::plugins::{prefix_users, UserHome};
 
 const SECTION: &str = "Archive";
 /// `(key, value)` the game needs under `[Archive]`.
@@ -41,16 +42,23 @@ fn spec_of(known: Option<&KnownGame>) -> Option<(&'static str, &'static str)> {
 
 /// Makes sure the game reads loose files. `None` when the game does not need
 /// it, the prefix has no user folder yet, or the file already says so.
-pub fn ensure_loose_files(prefix: &Path, known: Option<&KnownGame>) -> Result<Option<IniGuard>, String> {
+pub fn ensure_loose_files(home: UserHome, known: Option<&KnownGame>) -> Result<Option<IniGuard>, String> {
     let Some((folder, name)) = spec_of(known) else { return Ok(None) };
-    let users = prefix_users(prefix);
-    let has_folder = |home: &Path| documents_of(home).is_some_and(|d| d.join("My Games").join(folder).is_dir());
-    let Some((_, home)) =
-        users.iter().find(|(_, h)| has_folder(h)).or_else(|| users.iter().find(|(n, _)| n == "steamuser")).or(users.first())
-    else {
-        return Ok(None);
+    let documents = match home {
+        UserHome::Prefix(prefix) => {
+            let users = prefix_users(prefix);
+            let has_folder = |home: &Path| documents_of(home).is_some_and(|d| d.join("My Games").join(folder).is_dir());
+            let Some((_, home)) =
+                users.iter().find(|(_, h)| has_folder(h)).or_else(|| users.iter().find(|(n, _)| n == "steamuser")).or(users.first())
+            else {
+                return Ok(None);
+            };
+            documents_of(home).unwrap_or_else(|| home.join("Documents"))
+        }
+        UserHome::Native { documents, .. } if documents.is_dir() => documents.to_path_buf(),
+        UserHome::Native { .. } => return Ok(None),
     };
-    let dir = documents_of(home).unwrap_or_else(|| home.join("Documents")).join("My Games").join(folder);
+    let dir = documents.join("My Games").join(folder);
     let file = dir.join(name);
     Swap::recover(&file)?;
 
@@ -168,35 +176,35 @@ mod tests {
         let dir = prefix.join("drive_c/users/steamuser/Documents/My Games/Fallout4");
         let file = dir.join("Fallout4Custom.ini");
 
-        let guard = ensure_loose_files(&prefix, fo4()).unwrap().unwrap();
+        let guard = ensure_loose_files(UserHome::Prefix(&prefix), fo4()).unwrap().unwrap();
         assert!(fs::read_to_string(&file).unwrap().contains("bInvalidateOlderFiles=1"));
         drop(guard);
         assert!(!file.exists() && !dir.join("Fallout4Custom.ini.heronite-new").exists());
 
         fs::write(&file, "[Launcher]\r\nbEnableFileSelection=1\r\n").unwrap();
-        let guard = ensure_loose_files(&prefix, fo4()).unwrap().unwrap();
+        let guard = ensure_loose_files(UserHome::Prefix(&prefix), fo4()).unwrap().unwrap();
         let now = fs::read_to_string(&file).unwrap();
         assert!(now.starts_with("[Launcher]\r\nbEnableFileSelection=1\r\n") && now.contains("[Archive]"), "{now}");
         // A crash: the next run starts from the user's file.
         std::mem::forget(guard);
-        let again = ensure_loose_files(&prefix, fo4()).unwrap().unwrap();
+        let again = ensure_loose_files(UserHome::Prefix(&prefix), fo4()).unwrap().unwrap();
         assert_eq!(fs::read_to_string(&file).unwrap().matches("[Archive]").count(), 1);
         drop(again);
         assert_eq!(fs::read_to_string(&file).unwrap(), "[Launcher]\r\nbEnableFileSelection=1\r\n");
 
         fs::write(&file, "[Archive]\nbInvalidateOlderFiles=1\nsResourceDataDirsFinal=\n").unwrap();
-        assert!(ensure_loose_files(&prefix, fo4()).unwrap().is_none(), "already set: nothing to undo");
+        assert!(ensure_loose_files(UserHome::Prefix(&prefix), fo4()).unwrap().is_none(), "already set: nothing to undo");
     }
 
     #[test]
     fn other_games_and_empty_prefixes_are_left_alone() {
         let t = tempfile::tempdir().unwrap();
         let prefix = prefix(t.path());
-        assert!(ensure_loose_files(&prefix, find(Some("489830"), "")).unwrap().is_none());
-        assert!(ensure_loose_files(&prefix, None).unwrap().is_none());
-        assert!(ensure_loose_files(&t.path().join("none"), fo4()).unwrap().is_none());
+        assert!(ensure_loose_files(UserHome::Prefix(&prefix), find(Some("489830"), "")).unwrap().is_none());
+        assert!(ensure_loose_files(UserHome::Prefix(&prefix), None).unwrap().is_none());
+        assert!(ensure_loose_files(UserHome::Prefix(&t.path().join("none")), fo4()).unwrap().is_none());
         let sf = find(Some("1716740"), "").expect("Starfield is known");
-        let g = ensure_loose_files(&prefix, Some(sf)).unwrap().unwrap();
+        let g = ensure_loose_files(UserHome::Prefix(&prefix), Some(sf)).unwrap().unwrap();
         assert!(g.file().ends_with("My Games/Starfield/StarfieldCustom.ini"));
     }
 
@@ -206,7 +214,22 @@ mod tests {
         let prefix = prefix(t.path());
         let dir = prefix.join("drive_c/users/bob/My Documents/My Games/Fallout4");
         fs::create_dir_all(&dir).unwrap();
-        let g = ensure_loose_files(&prefix, fo4()).unwrap().unwrap();
+        let g = ensure_loose_files(UserHome::Prefix(&prefix), fo4()).unwrap().unwrap();
         assert_eq!(g.file(), dir.join("Fallout4Custom.ini"));
+    }
+
+    #[test]
+    fn windows_uses_the_real_documents_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let (local, documents) = (t.path().join("Local"), t.path().join("OneDrive/Documents"));
+        let home = UserHome::Native { local_app_data: &local, documents: &documents };
+        assert!(ensure_loose_files(home, fo4()).unwrap().is_none(), "no Documents folder");
+        fs::create_dir_all(&documents).unwrap();
+        let g = ensure_loose_files(home, fo4()).unwrap().unwrap();
+        assert_eq!(g.file(), documents.join("My Games").join("Fallout4").join("Fallout4Custom.ini"));
+        assert!(fs::read_to_string(g.file()).unwrap().contains("bInvalidateOlderFiles=1"));
+        let file = g.file().to_path_buf();
+        drop(g);
+        assert!(!file.exists(), "there was none before");
     }
 }

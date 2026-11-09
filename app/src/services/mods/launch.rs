@@ -10,7 +10,8 @@ use heronite_i18n::tr;
 use heronite_launch::{AppliedMods, GameMods};
 use heronite_mods::apply::{self, ApplyRequest};
 use heronite_mods::games;
-use heronite_mods::{deploy, install, store, ModsRoot, Progress};
+use heronite_mods::plugins::UserHome;
+use heronite_mods::{deployment, install, store, ModsRoot, Progress};
 
 use super::facts;
 
@@ -35,8 +36,9 @@ impl GameMods for ModsLaunch {
     }
 }
 
-/// Unmounts the overlay a game left behind when the app that mounted it quit
-/// before the game ended. Nothing happens when nothing of ours is mounted.
+/// Takes away the mods a game kept when the app that applied them quit before
+/// the game ended (an overlay on Linux, the files in its folder on Windows).
+/// Nothing happens when nothing of ours is applied.
 fn release_of(paths: &DataPaths, game_key: &str) {
     let root = ModsRoot::default_for(paths);
     if !root.game(game_key).list_file().is_file() {
@@ -44,7 +46,7 @@ fn release_of(paths: &DataPaths, game_key: &str) {
     }
     let Ok(game) = facts::find_game(paths, game_key) else { return };
     if let Some(dir) = facts::resolve(paths, &game).dir {
-        deploy::unmount_ours(&root, &dir);
+        deployment::release(&root, &dir);
     }
 }
 
@@ -62,12 +64,19 @@ fn apply_to(paths: &DataPaths, game_key: &str, status: &mut dyn FnMut(&str)) -> 
         tr!("The folder of {game} was not found on this computer, so its mods cannot be applied", game = game.title.clone())
     })?;
     let tools_bin = paths.root.join("tools/bin");
+    // Windows: the user's own folders (Documents may be OneDrive's).
+    let (local_app_data, documents) = (dirs::data_local_dir().unwrap_or_default(), dirs::document_dir().unwrap_or_default());
+    let home = if cfg!(windows) {
+        Some(UserHome::Native { local_app_data: &local_app_data, documents: &documents })
+    } else {
+        found.prefix.as_deref().filter(|_| !found.native).map(UserHome::Prefix)
+    };
     let request = ApplyRequest {
         root: &root,
         tools_bin: &tools_bin,
         game_key,
         game_dir: &game_dir,
-        prefix: found.prefix.as_deref().filter(|_| !found.native),
+        home,
         known: games::find(game.steam_app_id.as_deref(), &game.title),
     };
     // Progress only comes while fuse-overlayfs downloads (first use).
@@ -82,8 +91,8 @@ fn apply_to(paths: &DataPaths, game_key: &str, status: &mut dyn FnMut(&str)) -> 
 }
 
 /// At start, off the UI thread: sweeps what an install that never finished
-/// left in each game's folder and, with `unmount_stale`, unmounts the
-/// overlays a crash left (those of the games in `running` stay). Leave
+/// left in each game's folder and, with `unmount_stale`, takes away the mods
+/// a crash left applied (those of the games in `running` stay). Leave
 /// `unmount_stale` off when a game is about to start: its own mount is
 /// being made.
 pub fn startup(paths: &DataPaths, running: &[String], unmount_stale: bool) {
@@ -95,7 +104,7 @@ pub fn startup(paths: &DataPaths, running: &[String], unmount_stale: bool) {
         }
     }
     if unmount_stale {
-        deploy::cleanup_stale(&root, &folders_of(paths, running));
+        deployment::cleanup_stale(&root, &folders_of(paths, running));
     }
 }
 

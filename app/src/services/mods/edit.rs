@@ -428,11 +428,13 @@ fn remove_entry(list: &mut ModList, id: &str) -> bool {
     list.mods.len() != before
 }
 
-/// While the overlay is mounted (the game runs with its mods) the mods' files
-/// are in use and what the game writes lives in the upper layer: nothing of
-/// them is deleted, replaced or emptied. Blocking (reads the mount table).
+/// While the mods are applied (the game runs with them: the overlay is
+/// mounted on Linux, the files are in its folder on Windows) the mods' files
+/// are in use and what the game writes is not in the overwrite folder yet:
+/// nothing of them is deleted, replaced or emptied. Blocking (reads the mount
+/// table or the journals).
 pub(super) fn refuse_while_mounted(root: &ModsRoot, game_dir: Option<&std::path::Path>) -> Result<(), String> {
-    if game_dir.is_some_and(|d| heronite_mods::deploy::is_ours_mounted(root, d)) {
+    if game_dir.is_some_and(|d| heronite_mods::deployment::in_use(root, d)) {
         return Err(tr!("The game is running with mods; close it first").to_string());
     }
     Ok(())
@@ -441,7 +443,7 @@ pub(super) fn refuse_while_mounted(root: &ModsRoot, game_dir: Option<&std::path:
 #[cfg(test)]
 mod tests {
     use super::{merge_installed, refuse_while_mounted, GameShared};
-    use heronite_mods::{deploy, store, tool, ModEntry, ModList, ModsRoot};
+    use heronite_mods::{store, ModEntry, ModList, ModsRoot};
 
     fn entry(id: &str, enabled: bool) -> ModEntry {
         ModEntry { id: id.into(), name: id.into(), enabled, ..Default::default() }
@@ -487,8 +489,10 @@ mod tests {
     }
 
     /// Needs FUSE and fuse-overlayfs (`HERONITE_FUSE_OVERLAYFS=...`); skipped without.
+    #[cfg(not(windows))]
     #[test]
     fn nothing_is_deleted_while_the_game_runs_with_its_mods() {
+        use heronite_mods::{deploy, tool};
         let nowhere = std::path::Path::new("/nonexistent");
         let Some(bin) = tool::find(nowhere).filter(|_| std::path::Path::new("/dev/fuse").exists() && tool::fusermount().is_some()) else {
             return;
@@ -505,6 +509,25 @@ mod tests {
         let said = refuse_while_mounted(&root, Some(&game)).unwrap_err();
         assert_eq!(said, "The game is running with mods; close it first");
         drop(mount);
+        assert!(refuse_while_mounted(&root, Some(&game)).is_ok());
+    }
+
+    /// Windows: the files are in the game folder while it runs.
+    #[cfg(windows)]
+    #[test]
+    fn nothing_is_deleted_while_the_game_runs_with_its_mods() {
+        let t = tempfile::tempdir().unwrap();
+        let root = ModsRoot::at(t.path().join("mods"));
+        let dirs = root.game("g");
+        let game = t.path().join("game");
+        std::fs::create_dir_all(&game).unwrap();
+        std::fs::create_dir_all(dirs.mod_dir("a")).unwrap();
+        std::fs::write(dirs.mod_dir("a").join("f.txt"), b"x").unwrap();
+        assert!(refuse_while_mounted(&root, Some(&game)).is_ok());
+        let deployed = heronite_mods::journal_deploy::deploy(&dirs, &game, &[dirs.mod_dir("a")]).unwrap();
+        let said = refuse_while_mounted(&root, Some(&game)).unwrap_err();
+        assert_eq!(said, "The game is running with mods; close it first");
+        drop(deployed);
         assert!(refuse_while_mounted(&root, Some(&game)).is_ok());
     }
 }

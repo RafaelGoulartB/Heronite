@@ -1,6 +1,7 @@
-//! What a launch calls: mounts the enabled mods over the game's folder, lists
-//! their plugins and tells which environment the game needs. Dropping the
-//! result takes all of it away again.
+//! What a launch calls: applies the enabled mods to the game's folder (a
+//! `fuse-overlayfs` mount on Linux, the files put in place on Windows),
+//! lists their plugins and tells which environment the game needs. Dropping
+//! the result takes all of it away again.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
@@ -8,12 +9,11 @@ use std::sync::atomic::AtomicBool;
 use heronite_i18n::{tr, trn};
 
 use crate::bethesda_ini::{self, IniGuard};
-use crate::deploy::{self, Mount};
 use crate::games::{KnownGame, Profile};
 use crate::model::Progress;
-use crate::paths::ModsRoot;
-use crate::plugins::{self, PluginsGuard};
-use crate::{store, tool};
+use crate::paths::{GameDirs, ModsRoot};
+use crate::plugins::{self, PluginsGuard, UserHome};
+use crate::store;
 
 pub struct ApplyRequest<'a> {
     pub root: &'a ModsRoot,
@@ -21,28 +21,51 @@ pub struct ApplyRequest<'a> {
     pub tools_bin: &'a Path,
     pub game_key: &'a str,
     pub game_dir: &'a Path,
-    /// The Wine prefix, when the game runs in one (for `Plugins.txt`).
-    pub prefix: Option<&'a Path>,
+    /// Where the game keeps its user's files (`Plugins.txt`, `*Custom.ini`):
+    /// its Wine prefix, or on Windows the user's own folders. `None`: a
+    /// native Linux game.
+    pub home: Option<UserHome<'a>>,
     pub known: Option<&'static KnownGame>,
+}
+
+/// The mods applied to the game folder.
+#[derive(Debug)]
+enum Deployment {
+    #[cfg(not(windows))]
+    Mount(crate::deploy::Mount),
+    #[cfg_attr(not(windows), allow(dead_code))]
+    Files(crate::journal_deploy::Deployed),
+}
+
+impl Deployment {
+    fn game_dir(&self) -> &Path {
+        match self {
+            #[cfg(not(windows))]
+            Deployment::Mount(m) => m.game_dir(),
+            Deployment::Files(d) => d.game_dir(),
+        }
+    }
 }
 
 /// Mods in effect. Dropping it restores `Plugins.txt`, then unmounts.
 #[derive(Debug)]
 pub struct Applied {
-    /// Variables to add to the game's environment (`WINEDLLOVERRIDES`); merge
-    /// the value with the launch's own through [`merge_dll_overrides`].
+    /// Variables to add to the game's environment (`WINEDLLOVERRIDES`; none
+    /// on Windows); merge the value with the launch's own through
+    /// [`merge_dll_overrides`].
     pub env: Vec<(String, String)>,
     /// One English line for the game's log.
     pub summary: String,
-    // Fields drop in this order: the prefix files go back before the unmount.
+    // Fields drop in this order: the user's files go back before the mods
+    // leave the game folder.
     _plugins: Option<PluginsGuard>,
     _ini: Option<IniGuard>,
-    mount: Option<Mount>,
+    deployment: Option<Deployment>,
 }
 
 impl Applied {
     pub fn game_dir(&self) -> Option<&Path> {
-        self.mount.as_ref().map(Mount::game_dir)
+        self.deployment.as_ref().map(Deployment::game_dir)
     }
 }
 
@@ -86,11 +109,17 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
         return Ok(None);
     }
 
-    let support = tool::support(req.tools_bin);
-    if support.fusermount.is_none() || !support.dev_fuse {
-        return Err(failed(support.problem().unwrap_or_default()));
-    }
-    let overlay = tool::ensure(req.tools_bin, progress, cancel).map_err(failed)?;
+    #[cfg(not(windows))]
+    let overlay = {
+        let support = crate::tool::support(req.tools_bin);
+        if support.fusermount.is_none() || !support.dev_fuse {
+            return Err(failed(support.problem().unwrap_or_default()));
+        }
+        crate::tool::ensure(req.tools_bin, progress, cancel).map_err(failed)?
+    };
+    // Nothing to download on Windows.
+    #[cfg(windows)]
+    let _ = (progress, cancel);
     // Before mounting: the game's own folders, not the mods'.
     let exe_dirs = crate::install::exe_dirs(req.game_dir);
 
@@ -99,13 +128,13 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
     let mut summary = String::new();
     let spec = Profile::of(&list.links, req.known).plugins;
     let mut guard = None;
-    if let (Some(spec), Some(prefix)) = (spec, req.prefix) {
-        match plugins::write(prefix, &spec, &dirs, &list, req.game_dir) {
+    if let (Some(spec), Some(home)) = (spec, req.home) {
+        match plugins::write(home, &spec, &dirs, &list, req.game_dir) {
             Ok(Some(g)) => {
                 summary.push_str(&format!("; Plugins.txt: {} plugins", g.count()));
                 guard = Some(g);
             }
-            Ok(None) => summary.push_str("; Plugins.txt: the prefix has no user folder yet"),
+            Ok(None) => summary.push_str("; Plugins.txt: no user folder yet"),
             Err(e) => {
                 log::warn!("mods: Plugins.txt: {e}");
                 summary.push_str(&format!("; Plugins.txt failed: {e}"));
@@ -113,8 +142,8 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
         }
     }
     let mut ini = None;
-    if let Some(prefix) = req.prefix {
-        match bethesda_ini::ensure_loose_files(prefix, req.known) {
+    if let Some(home) = req.home {
+        match bethesda_ini::ensure_loose_files(home, req.known) {
             Ok(Some(g)) => {
                 summary.push_str(&format!("; {}: loose files on", g.file().file_name().unwrap_or_default().to_string_lossy()));
                 ini = Some(g);
@@ -126,13 +155,15 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
             }
         }
     }
-    let mount = deploy::mount(&overlay, &dirs, req.game_dir, &layers).map_err(failed)?;
-    let mut summary = format!(
-        "Mods: {} of {} enabled, mounted over {} with fuse-overlayfs{summary}",
-        layers.len(),
-        list.mods.len(),
-        mount.game_dir().display()
-    );
+    #[cfg(not(windows))]
+    let (deployment, how) = {
+        let mount = crate::deploy::mount(&overlay, &dirs, req.game_dir, &layers).map_err(failed)?;
+        let how = format!("mounted over {} with fuse-overlayfs", mount.game_dir().display());
+        (Deployment::Mount(mount), how)
+    };
+    #[cfg(windows)]
+    let (deployment, how) = deploy_files(&dirs, req.game_dir, &layers).map_err(failed)?;
+    let mut summary = format!("Mods: {} of {} enabled, {how}{summary}", layers.len(), list.mods.len());
 
     // Looked at again now, not only at install: mods installed before a DLL
     // was known as a proxy get their override too.
@@ -140,11 +171,39 @@ pub fn apply(req: &ApplyRequest, progress: &mut dyn FnMut(Progress), cancel: &At
     dlls.extend(layers.iter().flat_map(|l| crate::install::proxy_dlls(l, &exe_dirs)));
     dlls.sort();
     dlls.dedup();
-    let env = if dlls.is_empty() { Vec::new() } else { vec![("WINEDLLOVERRIDES".to_string(), merge_dll_overrides(None, &dlls))] };
+    let env = dll_env(&dlls);
     if !dlls.is_empty() {
-        summary.push_str(&format!("; DLL overrides: {}", dlls.join(", ")));
+        let label = if env.is_empty() { "proxy DLLs (loaded from the game folder)" } else { "DLL overrides" };
+        summary.push_str(&format!("; {label}: {}", dlls.join(", ")));
     }
-    Ok(Some(Applied { env, summary, _plugins: guard, _ini: ini, mount: Some(mount) }))
+    Ok(Some(Applied { env, summary, _plugins: guard, _ini: ini, deployment: Some(deployment) }))
+}
+
+/// Windows: the files go into the game folder ([`crate::journal_deploy`]).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn deploy_files(dirs: &GameDirs, game_dir: &Path, layers: &[PathBuf]) -> Result<(Deployment, String), String> {
+    let deployed = crate::journal_deploy::deploy(dirs, game_dir, layers)?;
+    let s = deployed.summary();
+    let how = format!(
+        "{} files put into {} ({} linked, {} copied, {} game files set aside until the game ends)",
+        s.files,
+        deployed.game_dir().display(),
+        s.linked,
+        s.copied,
+        s.replaced
+    );
+    Ok((Deployment::Files(deployed), how))
+}
+
+/// Wine and Proton prefer their own build of a DLL unless told otherwise;
+/// Windows loads the one in the game's folder first by itself (none of the
+/// proxy names is a KnownDLL), so it needs no variable.
+fn dll_env(dlls: &[String]) -> Vec<(String, String)> {
+    if dlls.is_empty() || cfg!(windows) {
+        Vec::new()
+    } else {
+        vec![("WINEDLLOVERRIDES".to_string(), merge_dll_overrides(None, dlls))]
+    }
 }
 
 /// `existing` (a `WINEDLLOVERRIDES` value, `a,b=n,b;c=d`) with `add` set to
@@ -178,6 +237,7 @@ mod tests {
     use super::*;
     use crate::games::find;
     use crate::model::{ModEntry, ModList};
+    use crate::tool;
     use std::fs;
 
     #[test]
@@ -212,7 +272,7 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let root = ModsRoot::at(t.path().join("mods"));
         let game = game(t.path());
-        let req = ApplyRequest { root: &root, tools_bin: t.path(), game_key: "g", game_dir: &game, prefix: None, known: None };
+        let req = ApplyRequest { root: &root, tools_bin: t.path(), game_key: "g", game_dir: &game, home: None, known: None };
         let cancel = AtomicBool::new(false);
         assert!(apply(&req, &mut |_| {}, &cancel).unwrap().is_none(), "no mods.json");
 
@@ -259,7 +319,8 @@ mod tests {
         fs::write(appdata.join("Plugins.txt"), "*Mine.esp\r\n").unwrap();
 
         let known = find(Some("489830"), "");
-        let req = ApplyRequest { root: &root, tools_bin: t.path(), game_key: "g", game_dir: &game, prefix: Some(&prefix), known };
+        let req =
+            ApplyRequest { root: &root, tools_bin: t.path(), game_key: "g", game_dir: &game, home: Some(UserHome::Prefix(&prefix)), known };
         let applied = apply(&req, &mut |_| {}, &AtomicBool::new(false)).unwrap().unwrap();
         assert_eq!(applied.env, [("WINEDLLOVERRIDES".to_string(), "winhttp=n,b".to_string())]);
         assert!(applied.summary.starts_with("Mods: 1 of 1 enabled, mounted over "), "{}", applied.summary);
@@ -294,7 +355,7 @@ mod tests {
             tools_bin: t.path(),
             game_key: "g",
             game_dir: &game,
-            prefix: Some(&prefix),
+            home: Some(UserHome::Prefix(&prefix)),
             known: find(Some("22330"), ""),
         };
         let time = || dirs.mod_dir("a").join("Data/Mod.esp").metadata().unwrap().modified().unwrap();
@@ -326,12 +387,53 @@ mod tests {
             tools_bin: t.path(),
             game_key: "g",
             game_dir: &game,
-            prefix: Some(&prefix),
+            home: Some(UserHome::Prefix(&prefix)),
             known: find(Some("377160"), ""),
         };
         let applied = apply(&req, &mut |_| {}, &AtomicBool::new(false)).unwrap().unwrap();
         assert!(fs::read_to_string(&ini).unwrap().contains("bInvalidateOlderFiles=1"));
         drop(applied);
         assert_eq!(fs::read_to_string(&ini).unwrap(), "[Display]\r\niSize W=1\r\n");
+    }
+
+    /// Windows: the files go into the game folder, the plugins into
+    /// `%LOCALAPPDATA%`, and no `WINEDLLOVERRIDES` is needed.
+    #[cfg(windows)]
+    #[test]
+    fn puts_files_in_place_lists_plugins_and_cleans_up() {
+        let t = tempfile::tempdir().unwrap();
+        let root = ModsRoot::at(t.path().join("mods"));
+        let dirs = root.game("g");
+        let game = game(t.path());
+        put(dirs.mod_dir("a").join("Data/Mod.esp"), "mod");
+        put(dirs.mod_dir("a").join("Data/base.txt"), "mod");
+        put(dirs.mod_dir("a").join("winhttp.dll"), "dll");
+        let mut list = ModList::new("g", "Skyrim");
+        list.mods.push(ModEntry { id: "a".into(), enabled: true, plugins: vec!["Mod.esp".into()], ..Default::default() });
+        store::save(&dirs, &list).unwrap();
+        let (local, documents) = (t.path().join("Local"), t.path().join("Documents"));
+        fs::create_dir_all(&local).unwrap();
+        let req = ApplyRequest {
+            root: &root,
+            tools_bin: t.path(),
+            game_key: "g",
+            game_dir: &game,
+            home: Some(UserHome::Native { local_app_data: &local, documents: &documents }),
+            known: find(Some("489830"), ""),
+        };
+        let applied = apply(&req, &mut |_| {}, &AtomicBool::new(false)).unwrap().unwrap();
+        assert!(applied.env.is_empty(), "{:?}", applied.env);
+        assert!(applied.summary.contains("3 files put into"), "{}", applied.summary);
+        assert!(applied.summary.contains("proxy DLLs (loaded from the game folder): winhttp"), "{}", applied.summary);
+        assert_eq!(fs::read_to_string(game.join("Data/base.txt")).unwrap(), "mod");
+        assert!(game.join("winhttp.dll").exists());
+        let plugins = local.join("Skyrim Special Edition/Plugins.txt");
+        assert!(fs::read_to_string(&plugins).unwrap().contains("*Mod.esp"));
+        assert!(crate::deployment::in_use(&root, &game));
+        drop(applied);
+        assert!(!crate::deployment::in_use(&root, &game));
+        assert!(!game.join("winhttp.dll").exists() && !game.join("Data/Mod.esp").exists());
+        assert_eq!(fs::read_to_string(game.join("Data/base.txt")).unwrap(), "game");
+        assert!(!plugins.exists());
     }
 }

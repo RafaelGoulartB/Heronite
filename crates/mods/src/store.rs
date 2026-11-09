@@ -129,9 +129,14 @@ fn is_plain_name(name: &str) -> bool {
 }
 
 /// Deletes everything the mods root keeps for the game. Refused while the
-/// game's folder has our overlay mounted over it (`game_dir`).
+/// game's folder has our overlay mounted over it, or our files in it on
+/// Windows (`game_dir`).
 pub fn forget_game(root: &ModsRoot, game_key: &str, game_dir: Option<&Path>) -> Result<(), String> {
-    if game_dir.is_some_and(crate::deploy::is_mounted) {
+    #[cfg(not(windows))]
+    let applied = game_dir.is_some_and(crate::deploy::is_mounted);
+    #[cfg(windows)]
+    let applied = game_dir.is_some_and(|d| crate::deployment::in_use(root, d));
+    if applied {
         return Err(tr!("The game is running with mods; close it first").to_string());
     }
     let dirs = root.game(game_key);
@@ -260,7 +265,7 @@ mod tests {
         let dirs = root.game("g");
         fs::create_dir_all(dirs.mod_dir("a")).unwrap();
         fs::write(dirs.mod_dir("a").join("f"), b"x").unwrap();
-        std::os::unix::fs::symlink(t.path(), dirs.root().join("link-out")).unwrap();
+        crate::fsutil::test_symlink(t.path(), &dirs.root().join("link-out"));
         save(&dirs, &ModList::new("g", "G")).unwrap();
         forget_game(&root, "g", None).unwrap();
         assert!(!dirs.root().exists() && t.path().exists());
