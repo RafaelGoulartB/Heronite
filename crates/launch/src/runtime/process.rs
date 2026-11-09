@@ -178,6 +178,14 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             None => return,
         }
     }
+    // GOG Galaxy's service, listening before the game looks for it.
+    let mut comet = super::galaxy::start(shared, log, &prep, &plan.prep);
+    if cancelled() {
+        if let Some(comet) = comet {
+            super::galaxy::stop(shared, comet, log);
+        }
+        return finish_aborted(shared, log, req);
+    }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));
@@ -188,6 +196,9 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             false => h,
         },
         Err(e) => {
+            if let Some(comet) = comet.take() {
+                super::galaxy::stop(shared, comet, log);
+            }
             let program = &plan.command.program;
             let notice =
                 Notice::warn(format!("could not start {program}: {e}"), tr!("could not start {program}: {error}", program, error = e));
@@ -292,6 +303,10 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         companions.leave_running();
     } else {
         companions.stop(shared.cfg.kill_grace, log);
+    }
+    // Also when tracking stopped: nothing would stop it later.
+    if let Some(comet) = comet {
+        super::galaxy::stop(shared, comet, log);
     }
     if let Some(h) = awake.as_mut() {
         h.terminate();
