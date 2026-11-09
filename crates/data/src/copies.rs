@@ -359,12 +359,16 @@ fn suggestions(games: &[Arc<CollectionGame>], sets: &mut Sets<'_>, file: &Copies
     out
 }
 
-/// Which of two copies comes first in a group.
+/// Which of two copies comes first in a group. A copy the Steam Family
+/// lends comes after the user's own ones (unless chosen, or the only one
+/// installed): another member may be playing it, and it leaves when sharing
+/// ends.
 fn play_order(a: &CollectionGame, b: &CollectionGame, preferred: &HashSet<&str>) -> Ordering {
     let chosen = |g: &CollectionGame| preferred.contains(g.key.as_str());
     chosen(b)
         .cmp(&chosen(a))
         .then(b.installed.cmp(&a.installed))
+        .then(a.family.is_some().cmp(&b.family.is_some()))
         // ISO 8601 dates of one format sort as text.
         .then_with(|| b.last_played.cmp(&a.last_played))
         .then(b.playtime_minutes.cmp(&a.playtime_minutes))

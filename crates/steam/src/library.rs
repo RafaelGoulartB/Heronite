@@ -113,17 +113,18 @@ pub fn read_library(client: &SteamClient) -> Result<LibraryRead> {
       const owned = games.filter((a) => a.BIsOwned() && !a.owner_account_id)
       const shared = games.filter((a) => a.visible_in_game_list && !!a.owner_account_id)
       const details = (id) => { try { return appDetailsStore.GetAppDetails(id) } catch (e) { return null } }
-      for (const a of shared) if (!details(a.appid)) appDetailsStore.RequestAppDetails(a.appid)
+      for (const a of shared) if (!details(a.appid)) try { appDetailsStore.RequestAppDetails(a.appid) } catch (e) {}
       for (let i = 0; i < 30 && shared.some((a) => !details(a.appid)); i++) await sleep(100)
       const players = (typeof g_FriendsUIApp === 'object' && g_FriendsUIApp && g_FriendsUIApp.FriendStore) || null
       const names = {}
-      for (const id of new Set(shared.map((a) => a.owner_account_id))) {
+      // All owners at once: one second at most, however many there are.
+      await Promise.all([...new Set(shared.map((a) => a.owner_account_id))].map(async (id) => {
         try {
           const p = players && players.GetPlayer(id)
           for (let i = 0; i < 10 && p && !p.is_ready; i++) await sleep(100)
           names[id] = (p && p.is_ready && p.display_name) || ''
         } catch (e) { names[id] = '' }
-      }
+      }))
       const me = (typeof App === 'object' && App && App.m_CurrentUser && App.m_CurrentUser.strSteamID) || ''
       return {
         owned: owned.map(row),
@@ -240,8 +241,20 @@ pub fn import_from(paths: &DataPaths, read: LibraryRead, steam_bin: Option<&str>
     );
 
     let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
+    // A Family game shared again gets back the status it left with: its
+    // entry went when sharing ended, the status history stayed.
+    let history =
+        if family.iter().any(|g| !known.contains(&g.app_id)) { heronite_data::status_history::load(paths) } else { Default::default() };
+    let left_with = |g: &SteamOwnedGame| {
+        let changes = history.get(&format!("steam_{}", g.app_id))?;
+        changes.last().map(|c| c.status.clone()).filter(|id| statuses.iter().any(|s| s.id == *id))
+    };
     let entry = |g: &SteamOwnedGame| {
-        let status = heronite_data::status::inferred_status_id(g.playtime_minutes as f64, &statuses);
+        let status = g
+            .share
+            .as_ref()
+            .and_then(|_| left_with(g))
+            .unwrap_or_else(|| heronite_data::status::inferred_status_id(g.playtime_minutes as f64, &statuses));
         let (mut info, mut meta) =
             steam_sideload_entry(&SteamInstalledGame { app_id: g.app_id.clone(), name: g.name.clone() }, steam_bin, &status);
         if !g.installed {
@@ -731,7 +744,7 @@ mod tests {
         let t: Value = json_store::read_value(&paths.timestamps()).unwrap();
         assert_eq!(t["steam_400"]["totalPlayed"], 90);
 
-        // Shared again: back with its play time (and so "Played").
+        // Shared again: back with its play time and the status it left with.
         let read = LibraryRead { owned: vec![owned("620", "Portal 2", true, 60, None)], family: vec![shared("400", "Portal", false, 90)] };
         let report = import(&paths, read, None).unwrap();
         assert_eq!(report.family_added, 1);
@@ -739,7 +752,11 @@ mod tests {
         assert_eq!(report.family_removed, 2);
         let lib = Library::load(&paths).unwrap();
         let portal = lib.get("sideload_steam_400").unwrap();
-        assert_eq!((portal.playtime_minutes, portal.status_id.as_str()), (90, "played"));
+        assert_eq!((portal.playtime_minutes, portal.status_id.as_str()), (90, "beaten"));
+        // Never given a status: the one its play time gives.
+        let read = LibraryRead { owned: Vec::new(), family: vec![shared("870780", "Control", false, 0)] };
+        import(&paths, read, None).unwrap();
+        assert_eq!(Library::load(&paths).unwrap().get("sideload_steam_870780").unwrap().status_id, "not-played");
     }
 
     #[test]

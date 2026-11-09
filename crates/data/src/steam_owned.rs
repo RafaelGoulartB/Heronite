@@ -138,7 +138,8 @@ impl SteamOwnedFile {
 
     /// The game as the Steam Family shares it, unless the account owns it.
     pub fn shared(&self, app_id: &str) -> Option<&SteamOwnedGame> {
-        if self.get(app_id).is_some() {
+        // Asked for every Steam entry at each load: no search without a Family.
+        if self.family.is_empty() || self.get(app_id).is_some() {
             return None;
         }
         self.family.iter().find(|g| g.app_id == app_id && g.share.is_some())
