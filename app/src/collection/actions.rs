@@ -209,10 +209,33 @@ impl CollectionView {
         lib.launch_copy(key)
     }
 
+    /// The copy the card of `key` acts on: the one its Play starts (see
+    /// [`copy_to_play`](Self::copy_to_play)). Its menu, the palette's
+    /// actions of the selected game, its console page, Game settings and the
+    /// store footer are that copy's, so Uninstall, Settings or Verify never
+    /// go to a default copy that is not installed while another copy plays.
+    pub(super) fn acting_copy(&self, key: &str) -> Option<heronite_data::collection::Game> {
+        let lib = self.lib.as_ref()?;
+        self.copy_to_play(lib, key).cloned()
+    }
+
+    /// The key of [`Self::acting_copy`]; `key` itself when the game is gone.
+    pub(super) fn acting_key(&self, key: &SharedString) -> SharedString {
+        self.acting_copy(key).map_or_else(|| key.clone(), |g| g.key.clone().into())
+    }
+
     /// Card play button / focus primary button.
     pub(super) fn primary_action(&mut self, key: &str, cx: &mut Context<Self>) {
         let Some(lib) = self.lib.clone() else { return };
         let Some(game) = self.copy_to_play(&lib, key).cloned() else { return };
+        self.primary_action_on(&game, cx);
+    }
+
+    /// What Play / Install does for `game` itself, never another copy of it:
+    /// a store game opens its install dialog (or the Downloads page, or asks
+    /// to update first), an emulated one its pre-launch flow, a store
+    /// client's or an Xbox game opens what installs it.
+    pub(super) fn primary_action_on(&mut self, game: &heronite_data::collection::Game, cx: &mut Context<Self>) {
         let key = game.key.as_str();
         if self.preparing.contains_key(&game.app_name) {
             return self.cancel_launch(&game.app_name, cx);
@@ -223,10 +246,10 @@ impl CollectionView {
             }
             return;
         }
-        if self.epic_primary(&game, cx) {
+        if self.epic_primary(game, cx) {
             return;
         }
-        if game.installed && self.start_emulated(&game, cx) {
+        if game.installed && self.start_emulated(game, cx) {
             return;
         }
         // A store client installs its games: it opens, on its page for them.
@@ -241,7 +264,7 @@ impl CollectionView {
             }
             return;
         }
-        let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
+        let result = if game.installed { self.runtime.play(game) } else { self.runtime.install(game) };
         if let Err(err) = result {
             self.report_launch_error(err, cx);
         }

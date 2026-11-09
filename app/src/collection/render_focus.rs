@@ -30,7 +30,8 @@ impl CollectionView {
         let covers = self.focus_covers(&vm, scale);
         let html_images = self.focus_html_images(&vm, focus::main_column_width(vw - list_w), scale);
         let lay = focus::layout(vw - list_w);
-        let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
+        // The store's progress and Update of the copy Play acts on (`vm.installed` is its).
+        let epic_focus = self.epic_focus(&self.acting_key(&vm.key), vm.installed, cx);
         let left = self.focus_left(&vm, &lay, epic_focus, scale, vh, cx);
         let screenshots = self.screenshots_section(cx);
         let timeline = self.timeline_section(&vm.key, lay.main_w, scale, cx);

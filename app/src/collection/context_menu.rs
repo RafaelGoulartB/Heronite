@@ -207,16 +207,20 @@ impl CollectionView {
     pub(super) fn render_context_menu(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let state = self.context_menu.as_ref()?;
         let lib = self.lib.clone()?;
-        let game = lib.get(&state.key)?.clone();
-        let key = state.key.clone();
-        let (position, open) = (state.position, state.open);
-        let playing = self.playing.contains_key(&game.app_name);
+        lib.get(&state.key)?;
+        let card_key = state.key.clone();
+        let (position, open, batch) = (state.position, state.open, state.batch);
         let viewport = window.viewport_size();
         let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
-        if state.batch {
+        if batch {
             let menu = self.batch_menu(open, flyout_left, cx);
             return Some(Self::menu_backdrop(menu, position, cx));
         }
+        // A card of several copies offers the actions of the copy it acts on
+        // (the one its Play starts): that copy's Play, Uninstall, Settings...
+        let game = self.acting_copy(&card_key)?;
+        let key: SharedString = game.key.clone().into();
+        let playing = self.playing.contains_key(&game.app_name);
 
         // Rows by group (see `menu_place`); separators between the groups.
         let mut groups: [Vec<AnyElement>; GROUPS] = Default::default();
@@ -251,7 +255,7 @@ impl CollectionView {
                 groups[group].push(row.into_any_element());
             }
         }
-        groups[GROUPS - 1].push(self.select_row(&key, cx).into_any_element());
+        groups[GROUPS - 1].push(self.select_row(&card_key, cx).into_any_element());
         let mut menu = paper().min_w(px(240.));
         for (i, rows) in groups.into_iter().filter(|g| !g.is_empty()).enumerate() {
             if i > 0 {

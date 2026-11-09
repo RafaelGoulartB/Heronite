@@ -85,16 +85,12 @@ impl CollectionView {
         self.reload(cx);
     }
 
-    /// Plays (or installs) this copy, whichever copy is the default.
-    pub(super) fn play_copy(&mut self, key: &str, cx: &mut Context<Self>) {
+    /// Plays (or installs) this copy, whichever copy is the default: what
+    /// the Play / Install button does, for this copy (a GOG, Epic or Amazon
+    /// copy opens its store's install dialog).
+    pub(super) fn play_copy(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(game) = self.lib.as_ref().and_then(|l| l.get(key)).cloned() else { return };
-        if self.refuse_busy_launch(&game, cx) {
-            return;
-        }
-        let result = if game.installed { self.runtime.play(&game) } else { self.runtime.install(&game) };
-        if let Err(err) = result {
-            self.report_launch_error(err, cx);
-        }
+        self.install_or_play_on(&game, window, cx);
     }
 
     /// Makes `key` the copy its group plays and shows.
@@ -298,13 +294,8 @@ impl CollectionView {
             .hover(|s| s.bg(theme::ink_a(0.1)))
             .child(icon(play_icon, px(15.), theme::ink_a(0.85)))
             .tooltip(tooltip(play_tip))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if this.playing.contains_key(this.lib.as_ref().and_then(|l| l.get(&key)).map_or("", |g| g.app_name.as_str())) {
-                    this.primary_action(&key, cx);
-                } else {
-                    this.play_copy(&key, cx);
-                }
-            }));
+            // Stops this copy when it runs, even if another copy runs too.
+            .on_click(cx.listener(move |this, _, window, cx| this.play_copy(&key, window, cx)));
         row_base(g, detail).id(SharedString::from(format!("copy-{}", g.key))).child(star).child(play)
     }
 }

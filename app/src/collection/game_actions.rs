@@ -383,7 +383,7 @@ impl CollectionView {
             A::Shortcuts { add } => self.run_shortcuts(key, *add, cx),
             A::Steam { add } => self.run_steam_shortcut(key, *add, cx),
             A::Epic(a) => self.run_epic_action(key, *a, cx),
-            A::PlayCopy(copy) => self.play_copy(copy, cx),
+            A::PlayCopy(copy) => self.play_copy(copy, window, cx),
             A::UngroupCopies => self.ungroup_copies(key, cx),
         }
         cx.notify();
