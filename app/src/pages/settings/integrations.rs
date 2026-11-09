@@ -1,4 +1,4 @@
-//! Settings → Integrations: Sunshine (and Apollo). The switch, the web UI's
+//! Settings → Integrations: Sunshine. The switch, the web UI's
 //! address, user name and password (typed once, kept encrypted), which
 //! games go there, and the two extras: quitting the stream closes the game,
 //! and an entry that opens console mode. Everything goes through
@@ -89,7 +89,7 @@ fn account_card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let main = row_lead(
         icon_badge(Icon::Tv),
         tr!("Keep my games in Sunshine"),
-        Some(tr!("Moonlight can then start them from a phone, a TV or another computer. Apollo works too.")),
+        Some(tr!("Moonlight can then start them from a phone, a TV or another computer.")),
         div().flex().items_center().gap(px(10.)).child(status_pill(pill, colour)).child(toggle(
             "sunshine-enabled-sw",
             prefs.enabled,

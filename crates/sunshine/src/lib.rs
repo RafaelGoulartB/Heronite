@@ -1,6 +1,10 @@
 //! Heronite's games in Sunshine's application list, so Moonlight can start
-//! them from a phone, a TV or another computer. Apollo, a Sunshine fork,
-//! keeps the same web API.
+//! them from a phone, a TV or another computer.
+//!
+//! Apollo, a Sunshine fork, is not supported: its web API signs in with a
+//! session cookie (`POST /api/login`) instead of basic auth, and saves and
+//! deletes applications by `uuid` (`POST /api/apps/delete`) instead of by
+//! index.
 //!
 //! * [`api`]: Sunshine's web API on this computer (`https://localhost:47990`,
 //!   basic auth, a self-signed certificate): list, save and delete
@@ -12,7 +16,7 @@
 //!   touching only marked entries.
 //! * [`prefs`]: Settings → Integrations → Sunshine (`sunshine.json` in the
 //!   app state), with the password sealed for this Windows user (DPAPI).
-//! * [`install`]: whether Sunshine (or Apollo) looks installed, for the
+//! * [`install`]: whether Sunshine looks installed, for the
 //!   message when nothing answers.
 //!
 //! Every function is blocking: call them off the UI thread.

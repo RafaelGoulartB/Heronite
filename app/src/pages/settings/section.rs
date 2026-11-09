@@ -19,7 +19,7 @@ pub enum Section {
     /// Heroic, Lutris, Bottles and Faugus (Playnite on Windows): bringing
     /// their games in.
     Launchers,
-    /// Sunshine (and Apollo): the games in its application list, for Moonlight.
+    /// Sunshine: the games in its application list, for Moonlight.
     Integrations,
     /// What the games take on disk, and cleaning it up.
     Storage,
@@ -186,7 +186,7 @@ impl Section {
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
             Section::Launchers => "other launchers import heroic lutris bottles faugus playnite sync bring in outros launchers importar sincronizar trazer",
-            Section::Integrations => "integrations sunshine apollo moonlight stream streaming remote play tv phone couch integracoes transmitir transmissao jogar remotamente celular sofa",
+            Section::Integrations => "integrations sunshine moonlight stream streaming remote play tv phone couch integracoes transmitir transmissao jogar remotamente celular sofa",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",

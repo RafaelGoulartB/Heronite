@@ -68,8 +68,8 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      icons of Windows programs                    → data
  ├─ heronite-steam      settings of Steam games (launch options,
  │                      Proton) via the client or its files         → data, launch, shortcuts
- ├─ heronite-sunshine   the games in Sunshine's (or Apollo's)
- │                      application list through its web API, for
+ ├─ heronite-sunshine   the games in Sunshine's application
+ │                      list through its web API, for
  │                      Moonlight; only entries marked as Heronite's  → data, platform
  └─ heronite-update     app updates: release check, signed download,
                         AppImage swap / package install, relaunch   → data

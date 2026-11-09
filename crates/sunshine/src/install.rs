@@ -1,4 +1,4 @@
-//! Whether Sunshine (or Apollo) looks installed on this computer. Only used
+//! Whether Sunshine looks installed on this computer. Only used
 //! to word the message when nothing answers at the address: "not installed"
 //! and "not running" call for different steps.
 
@@ -10,9 +10,7 @@ fn candidates() -> Vec<PathBuf> {
     if cfg!(windows) {
         for var in ["ProgramFiles", "ProgramW6432"] {
             if let Some(dir) = std::env::var_os(var).map(PathBuf::from) {
-                for app in ["Sunshine", "Apollo"] {
-                    out.push(dir.join(app).join("sunshine.exe"));
-                }
+                out.push(dir.join("Sunshine").join("sunshine.exe"));
             }
         }
     } else {
@@ -36,7 +34,7 @@ fn on_path(name: &str) -> bool {
     std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
 }
 
-/// `true` when Sunshine or Apollo is found in its usual places.
+/// `true` when Sunshine is found in its usual places.
 pub fn installed() -> bool {
     candidates().iter().any(|p| p.is_file()) || on_path(if cfg!(windows) { "sunshine.exe" } else { "sunshine" })
 }
