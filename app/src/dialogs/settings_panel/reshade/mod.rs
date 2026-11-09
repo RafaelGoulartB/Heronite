@@ -7,13 +7,14 @@
 //! once the section has loaded (each waits for the previous one), for
 //! captures without clicks: `preset:<file>`, `install`, `adopt`, `replace`,
 //! `off`, `on`, `folder:<dir>`, `repo:<url>`, `remove-source:<name>`,
-//! `remove`, `tick` / `accept` (the anti-cheat box), and the views
+//! `addon` / `standard` (the build), `renodx` / `remove-renodx`, `remove`, `tick` / `accept` (the anti-cheat box), and the views
 //! `confirm-anticheat`, `confirm-remove`,
 //! `confirm-source:<name>`, `add-repo`, `all-packages`, `installing`.
 
 mod actions;
 mod render;
 mod render_installed;
+mod render_mods;
 mod render_setup;
 
 use std::collections::VecDeque;
@@ -435,6 +436,13 @@ impl SettingsPanel {
                 "repo" => return self.add_reshade_extra(arg, cx),
                 "remove-source" => return self.remove_reshade_source(arg, cx),
                 "remove" => return self.remove_reshade(cx),
+                "addon" | "standard" => return self.set_reshade_addon(name == "addon", cx),
+                "renodx" => {
+                    if let Some(f) = self.reshade.overview.as_ref().and_then(|o| o.renodx.clone()) {
+                        return self.install_renodx(f, false, cx);
+                    }
+                }
+                "remove-renodx" => return self.remove_renodx(cx),
                 other => log::warn!("HERONITE_DEBUG_RESHADE: unknown step {other}"),
             }
         }
@@ -447,6 +455,7 @@ fn step_line(step: &Step) -> String {
         Step::Dll(version) => tr!("Downloading ReShade {version}…", version),
         Step::Compiler => tr!("Downloading d3dcompiler_47…").to_string(),
         Step::Shaders(name) => tr!("Installing shaders: {name}…", name),
+        Step::Addon(name) => tr!("Downloading the RenoDX mod: {name}…", name),
         Step::Config => tr!("Writing ReShade.ini…").to_string(),
     }
 }

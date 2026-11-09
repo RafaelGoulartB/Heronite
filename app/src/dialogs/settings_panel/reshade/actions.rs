@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 
 use gpui_kit::*;
 use heronite_i18n::tr;
+use heronite_launch::gfxmods::catalog::Found;
+use heronite_launch::gfxmods::renodx;
 use heronite_launch::reshade::catalog::Package;
 use heronite_launch::reshade::install::{self, Request};
 use heronite_launch::reshade::{self, manage, State};
@@ -213,6 +215,61 @@ impl SettingsPanel {
             |this, m, _| {
                 this.reshade.message =
                     Some((tr!("ReShade updated to {version}. Its settings and presets stay.", version = m.version), false))
+            },
+        );
+    }
+
+    /// Switches to the build with add-on support (`on`) or back.
+    pub(super) fn set_reshade_addon(&mut self, on: bool, cx: &mut Context<Self>) {
+        let Some(risk) = self.reshade.overview.as_ref().map(|o| o.risk.clone()) else { return };
+        let id = self.reshade_id();
+        let line = match on {
+            true => tr!("Switching to the build with add-on support…"),
+            false => tr!("Switching to the standard build…"),
+        };
+        self.reshade_op(
+            line.to_string(),
+            cx,
+            move |ops| manage::set_addon(ops, &id, on, &risk),
+            |this, m, _| {
+                this.reshade.message = Some((
+                    match m.addon {
+                        true => tr!("ReShade now loads add-ons. Its settings and presets stay."),
+                        false => tr!("ReShade is the standard build again. Its settings and presets stay."),
+                    }
+                    .into(),
+                    false,
+                ))
+            },
+        );
+    }
+
+    /// Installs the game's RenoDX mod (`refresh`: downloads it again).
+    pub(super) fn install_renodx(&mut self, found: Found, refresh: bool, cx: &mut Context<Self>) {
+        let Some(risk) = self.reshade.overview.as_ref().map(|o| o.risk.clone()) else { return };
+        let id = self.reshade_id();
+        let name = found.name.clone();
+        self.reshade_op(
+            tr!("Downloading the RenoDX mod: {name}…", name = name.clone()).to_string(),
+            cx,
+            move |ops| renodx::install(ops, &id, &found, &risk, refresh),
+            move |this, _, _| {
+                this.reshade.message = Some((tr!("RenoDX installed: {name}. Its settings are in ReShade's menu (Home).", name), false))
+            },
+        );
+    }
+
+    pub(super) fn remove_renodx(&mut self, cx: &mut Context<Self>) {
+        let id = self.reshade_id();
+        self.reshade_op(
+            String::new(),
+            cx,
+            move |ops| renodx::remove(ops.paths, &id),
+            |this, (_, kept), _| {
+                this.reshade.message = Some(match kept.is_empty() {
+                    true => (tr!("RenoDX removed.").into(), false),
+                    false => (tr!("RenoDX removed; {files} stays because it was changed.", files = kept.join(", ")), false),
+                })
             },
         );
     }

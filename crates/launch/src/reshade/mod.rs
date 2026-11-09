@@ -7,7 +7,10 @@
 //! its API, copies the DLL under the right name, adds shader packages and
 //! a preset, writes `ReShade.ini` ([`install`], [`manage`]). Everything is
 //! downloaded from the official sources when the user installs
-//! ([`fetch`]); nothing ships with the app.
+//! ([`fetch`]); nothing ships with the app. The standard build is
+//! installed; the build with add-on support (which RenoDX's HDR mods need,
+//! [`crate::gfxmods::renodx`]) is a switch per game, refused for games with
+//! anti-cheat ([`manage::set_addon`]).
 //!
 //! Under Wine and Proton the game must also prefer the DLL in its folder
 //! over Wine's own: [`apply`] adds `<proxy>=n,b` to `WINEDLLOVERRIDES` at

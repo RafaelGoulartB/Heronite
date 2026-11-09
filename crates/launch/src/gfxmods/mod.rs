@@ -6,13 +6,17 @@
 //! [`GraphicsMod`], and [`MODS`] lists them in the order they apply at
 //! launch. What they share lives here: [`journal`] undoes a failed
 //! operation, [`overrides`] edits `WINEDLLOVERRIDES`, [`anticheat`] tells
-//! the risk, [`download`] and [`hash`] fetch and check files.
+//! the risk, [`download`] and [`hash`] fetch and check files, [`catalog`]
+//! finds the mods made for a game. [`renodx`] adds RenoDX's HDR mods to a
+//! game's ReShade.
 
 pub mod anticheat;
+pub mod catalog;
 pub(crate) mod download;
 pub mod hash;
 pub(crate) mod journal;
 pub mod overrides;
+pub mod renodx;
 
 use heronite_data::DataPaths;
 
