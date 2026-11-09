@@ -1,15 +1,77 @@
 //! XDG desktop portals through `ashpd`: GlobalShortcuts and Screenshot.
-//! Not exercised by the tests (they need a session bus and a compositor).
+//! Only the pure parts are unit-tested; `live_portal` talks to the session's
+//! portal and runs on request (`cargo test -p heronite-media -- --ignored`).
+//!
+//! # The app id
+//! xdg-desktop-portal 1.21 and later refuse a GlobalShortcuts session from an
+//! app they cannot name ("An app id is required"). An app outside a sandbox
+//! is named by its systemd unit (`app-<id>-*.scope`, which GNOME and KDE put
+//! the apps of their menus in, and little else does) or by
+//! `Registry.Register`, which must be the first portal call of its D-Bus
+//! connection. ashpd's shared connection has long been used by then (GPUI
+//! reads the Settings portal at startup), so the portals here have a
+//! connection of their own, registered when it is made.
 
 use ashpd::desktop::global_shortcuts::{BindShortcutsOptions, GlobalShortcuts, NewShortcut};
 use ashpd::desktop::screenshot::Screenshot;
+use ashpd::zbus;
 use futures_util::future::{select, Either};
 use futures_util::StreamExt;
+use heronite_i18n::tr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Id of the screenshot shortcut in its portal session.
 pub const SHORTCUT_ID: &str = "game-screenshot";
+
+/// The connection every portal call here goes through.
+static CONNECTION: Mutex<Option<zbus::Connection>> = Mutex::new(None);
+
+/// The portals' connection, made on first use and registered as `app_id`
+/// (the first caller's; every caller passes the same one). Blocking. A
+/// failed registration is logged and the connection still used: the desktop
+/// may know the app by its systemd unit, and portals older than the registry
+/// ask for no app id.
+fn connection(app_id: Option<&str>) -> Result<zbus::Connection, String> {
+    let mut shared = CONNECTION.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(connection) = shared.as_ref() {
+        return Ok(connection.clone());
+    }
+    let connection = pollster::block_on(async {
+        let connection = zbus::Connection::session().await.map_err(|e| e.to_string())?;
+        if let Some(id) = app_id {
+            match id.parse::<ashpd::AppID>() {
+                Ok(parsed) => match ashpd::register_host_app_with_connection(connection.clone(), parsed).await {
+                    Ok(()) => log::info!("registered with the desktop portal as {id}"),
+                    Err(e) => log::warn!("the desktop portal did not register the app as {id}: {e}"),
+                },
+                Err(e) => log::warn!("invalid portal app id {id:?}: {e}"),
+            }
+        }
+        Ok::<_, String>(connection)
+    })?;
+    *shared = Some(connection.clone());
+    Ok(connection)
+}
+
+/// What to tell the user when the portal refuses a shortcut.
+fn shortcut_error(error: &ashpd::Error) -> String {
+    use ashpd::desktop::ResponseError;
+    use ashpd::PortalError;
+    match error {
+        ashpd::Error::PortalNotFound(_) => tr!("This desktop has no global shortcuts service").into(),
+        ashpd::Error::Portal(PortalError::NotAllowed(reason)) if is_missing_app_id(reason) => {
+            tr!("The desktop refused the shortcut: it could not tell that Heronite asked for it").into()
+        }
+        ashpd::Error::Response(ResponseError::Cancelled) => tr!("The shortcut was not approved in the desktop's dialog").into(),
+        other => other.to_string(),
+    }
+}
+
+/// The portal's "An app id is required".
+fn is_missing_app_id(reason: &str) -> bool {
+    reason.to_ascii_lowercase().contains("app id")
+}
 
 /// A live GlobalShortcuts session on its own thread.
 pub struct PortalShortcut {
@@ -30,7 +92,10 @@ impl PortalShortcut {
         let (stop_tx, stop_rx) = futures_channel::oneshot::channel::<()>();
         let thread = std::thread::Builder::new()
             .name("heronite-shortcut-portal".into())
-            .spawn(move || pollster::block_on(run(app_id, id, description, trigger, on_activated, on_ready, stop_rx)))
+            .spawn(move || match connection(app_id.as_deref()) {
+                Ok(connection) => pollster::block_on(run(connection, id, description, trigger, on_activated, on_ready, stop_rx)),
+                Err(e) => on_ready(Err(e)),
+            })
             .ok();
         Self { stop: Some(stop_tx), thread }
     }
@@ -53,7 +118,7 @@ impl Drop for PortalShortcut {
 }
 
 async fn run(
-    app_id: Option<String>,
+    connection: zbus::Connection,
     id: &'static str,
     description: &'static str,
     trigger: String,
@@ -61,21 +126,10 @@ async fn run(
     on_ready: Box<dyn FnOnce(Result<(), String>) + Send>,
     mut stop: futures_channel::oneshot::Receiver<()>,
 ) {
-    if let Some(id) = app_id {
-        // Non-sandboxed apps must tell the portal who they are.
-        match id.parse::<ashpd::AppID>() {
-            Ok(id) => {
-                if let Err(e) = ashpd::register_host_app(id).await {
-                    log::warn!("portal host app registration failed: {e}");
-                }
-            }
-            Err(e) => log::warn!("invalid portal app id {id:?}: {e}"),
-        }
-    }
     let setup = async {
-        let shortcuts = GlobalShortcuts::new().await.map_err(|e| e.to_string())?;
-        let session = shortcuts.create_session(Default::default()).await.map_err(|e| e.to_string())?;
-        let activated = shortcuts.receive_activated().await.map_err(|e| e.to_string())?;
+        let shortcuts = GlobalShortcuts::with_connection(connection).await?;
+        let session = shortcuts.create_session(Default::default()).await?;
+        let activated = shortcuts.receive_activated().await?;
         let request = shortcuts
             .bind_shortcuts(
                 &session,
@@ -83,10 +137,9 @@ async fn run(
                 None,
                 BindShortcutsOptions::default(),
             )
-            .await
-            .map_err(|e| e.to_string())?;
-        request.response().map_err(|e| e.to_string())?;
-        Ok::<_, String>((shortcuts, session, activated))
+            .await?;
+        request.response()?;
+        Ok::<_, ashpd::Error>((shortcuts, session, activated))
     };
     let (shortcuts, session, mut activated) = match setup.await {
         Ok(v) => {
@@ -94,7 +147,8 @@ async fn run(
             v
         }
         Err(e) => {
-            on_ready(Err(e));
+            log::warn!("the desktop portal refused the shortcut {id}: {e}");
+            on_ready(Err(shortcut_error(&e)));
             return;
         }
     };
@@ -108,11 +162,19 @@ async fn run(
 }
 
 /// `org.freedesktop.portal.Screenshot` (non-interactive): path of the PNG the
-/// portal wrote.
-pub fn screenshot() -> Result<PathBuf, String> {
+/// portal wrote. `app_id`: see [`connection`] (the desktop keeps the
+/// permission to capture under it).
+pub fn screenshot(app_id: Option<&str>) -> Result<PathBuf, String> {
+    let connection = connection(app_id)?;
     pollster::block_on(async {
-        let response =
-            Screenshot::request().interactive(false).send().await.map_err(|e| e.to_string())?.response().map_err(|e| e.to_string())?;
+        let response = Screenshot::request()
+            .interactive(false)
+            .connection(Some(connection))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .response()
+            .map_err(|e| e.to_string())?;
         file_uri_to_path(response.uri().as_str()).ok_or_else(|| format!("unsupported screenshot uri {}", response.uri()))
     })
 }
@@ -154,5 +216,50 @@ mod tests {
         assert_eq!(file_uri_to_path("file:///tmp/%E2%9C%93.png"), Some(PathBuf::from("/tmp/✓.png")));
         assert_eq!(file_uri_to_path("file:///tmp/100%"), Some(PathBuf::from("/tmp/100%")));
         assert!(file_uri_to_path("https://x/y.png").is_none());
+    }
+
+    /// The whole way through the session's portal: a connection registered
+    /// as Heronite gets a GlobalShortcuts session and its shortcut bound.
+    /// Needs xdg-desktop-portal with a GlobalShortcuts backend and
+    /// `app.heronite.Heronite.desktop` installed; a desktop that asks the
+    /// user to approve shortcuts shows its dialog.
+    #[test]
+    #[ignore = "talks to the desktop's portal"]
+    fn live_portal_binds_a_shortcut() {
+        // ashpd's shared connection is in use before any shortcut is wanted,
+        // as it is in the app (GPUI reads the Settings portal at startup):
+        // registering on it afterwards is refused.
+        let shared = pollster::block_on(async { GlobalShortcuts::new().await?.create_session(Default::default()).await.map(|_| ()) });
+        eprintln!("a session on ashpd's shared connection: {shared:?}");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut shortcut = PortalShortcut::start(
+            Some("app.heronite.Heronite".into()),
+            ("heronite-live-test", "Heronite portal test"),
+            "CTRL+ALT+SHIFT+F10".into(),
+            Arc::new(|| {}),
+            Box::new(move |result| {
+                let _ = tx.send(result);
+            }),
+        );
+        let result = rx.recv_timeout(std::time::Duration::from_secs(60)).expect("the portal answers");
+        shortcut.stop();
+        result.expect("the shortcut is bound");
+    }
+
+    #[test]
+    fn portal_refusals_are_explained() {
+        use ashpd::desktop::ResponseError;
+        use ashpd::PortalError;
+        let missing = ashpd::Error::Portal(PortalError::NotAllowed("An app id is required".into()));
+        assert_eq!(shortcut_error(&missing), "The desktop refused the shortcut: it could not tell that Heronite asked for it");
+        // Another refusal keeps the portal's own words.
+        let other = ashpd::Error::Portal(PortalError::NotAllowed("Not on this seat".into()));
+        assert!(shortcut_error(&other).contains("Not on this seat"), "{}", shortcut_error(&other));
+        assert_eq!(
+            shortcut_error(&ashpd::Error::Response(ResponseError::Cancelled)),
+            "The shortcut was not approved in the desktop's dialog"
+        );
+        let name = zbus::names::OwnedInterfaceName::try_from("org.freedesktop.portal.GlobalShortcuts").unwrap();
+        assert_eq!(shortcut_error(&ashpd::Error::PortalNotFound(name)), "This desktop has no global shortcuts service");
     }
 }

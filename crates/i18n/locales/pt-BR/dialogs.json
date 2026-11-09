@@ -333,5 +333,8 @@
   "Remove {n} game": "Remover {n} jogo",
   "Remove {n} games": "Remover {n} jogos",
   "Could not remove {n} game: {err}": "Não foi possível remover {n} jogo: {err}",
-  "Could not remove {n} games: {err}": "Não foi possível remover {n} jogos: {err}"
+  "Could not remove {n} games: {err}": "Não foi possível remover {n} jogos: {err}",
+  "This desktop has no global shortcuts service": "Este ambiente não tem serviço de atalhos globais",
+  "The desktop refused the shortcut: it could not tell that Heronite asked for it": "O ambiente recusou o atalho: não conseguiu identificar que foi o Heronite que pediu",
+  "The shortcut was not approved in the desktop's dialog": "O atalho não foi aprovado na janela do ambiente"
 }

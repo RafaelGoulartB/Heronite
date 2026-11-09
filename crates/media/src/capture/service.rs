@@ -319,7 +319,7 @@ impl CaptureService {
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let target = unique_screenshot_path(&folder, chrono::Local::now().naive_local());
         let temporary = folder.join(temporary_name(&game.app_name));
-        let png = capture_display_png()?;
+        let png = capture_display_png(self.inner.options.portal_app_id.as_deref())?;
         std::fs::write(&temporary, &png).map_err(|e| e.to_string())?;
         std::fs::rename(&temporary, &target).map_err(|e| {
             let _ = std::fs::remove_file(&temporary);
@@ -346,14 +346,14 @@ impl Drop for Inner {
 
 /// PNG bytes of the display under the pointer: `grim` on Hyprland, else (or
 /// when grim fails) the Screenshot portal.
-fn capture_display_png() -> Result<Vec<u8>, String> {
+fn capture_display_png(portal_app_id: Option<&str>) -> Result<Vec<u8>, String> {
     if hyprland::is_hyprland_session() {
         match hyprland::output_under_pointer().and_then(|name| grim::capture_png(Some(&name))) {
             Ok(png) => return Ok(png),
             Err(e) => log::warn!("Native Hyprland screenshot failed; trying the portal: {e}"),
         }
     }
-    let path = portal::screenshot()?;
+    let path = portal::screenshot(portal_app_id)?;
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()));
     // The portal leaves its file behind; remove it when it lives in a temp dir.
     if is_temporary(&path) {
