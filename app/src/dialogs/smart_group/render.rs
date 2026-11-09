@@ -15,7 +15,7 @@ use super::{List, Part, Row, SmartGroupDialog};
 use crate::dialogs::DialogEvent;
 use crate::icons::Icon;
 use crate::theme;
-use crate::ui::controls::{button, help_text, row, segmented, toggle, ButtonKind};
+use crate::ui::controls::{button, help_text, icon_action_button, row, segmented, toggle, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{field_label, input_box, select_field, select_menu_field, SelectOption};
 use crate::ui::icon;
@@ -443,10 +443,16 @@ impl Render for SmartGroupDialog {
                     .child(button("sg-del-yes", ButtonKind::Danger, tr!("Delete")).on_click(cx.listener(|this, _, _, cx| this.delete(cx)))),
             )
         } else {
-            Some(div().child(button("sg-del", ButtonKind::Ghost, tr!("Delete group")).on_click(cx.listener(|this, _, _, cx| {
-                this.confirm_delete = true;
-                cx.notify();
-            }))))
+            Some(div().child(icon_action_button(
+                "sg-del",
+                ButtonKind::Danger,
+                Icon::DeleteOutline,
+                tr!("Delete group"),
+                cx.listener(|this, _, _, cx| {
+                    this.confirm_delete = true;
+                    cx.notify();
+                }),
+            )))
         };
         let footer = div()
             .flex()
