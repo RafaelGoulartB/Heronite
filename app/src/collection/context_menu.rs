@@ -322,6 +322,7 @@ impl CollectionView {
         );
         let all_fav = games.iter().all(|g| g.favourite);
         let all_hidden = games.iter().all(|g| g.hidden);
+        let removable = !self.removable_selection().0.is_empty();
         let plain =
             |id: &'static str, ic: Icon, label: &str| item(id).child(icon(ic, px(18.), theme::text_muted())).child(label.to_string());
         paper()
@@ -368,6 +369,17 @@ impl CollectionView {
                     plain("cm-b-copies", Icon::CallMerge, tr!("Link as copies of one game"))
                         .on_hover(fold(None))
                         .on_click(cx.listener(|this, _, _, cx| this.link_selected_copies(cx))),
+                )
+            })
+            // Only games added to Heronite can leave the Collection; the dialog asks first.
+            .when(removable, |d| {
+                d.child(crate::ui::dropdown::menu_separator()).child(
+                    item("cm-b-remove")
+                        .text_color(theme::danger_text())
+                        .child(icon(Icon::DeleteForever, px(18.), theme::danger_text()))
+                        .child(tr!("Remove from Collection…"))
+                        .on_hover(fold(None))
+                        .on_click(cx.listener(|this, _, _, cx| this.open_batch_remove(cx))),
                 )
             })
             .child(crate::ui::dropdown::menu_separator())

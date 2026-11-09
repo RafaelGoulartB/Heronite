@@ -264,7 +264,7 @@ impl CollectionView {
                 "remove delete files prefix desinstalar remover excluir arquivos prefixo",
             ));
         }
-        if game.runner == "sideload" && !tracking {
+        if self.can_remove_from_collection(game) {
             v.push(item(
                 A::RemoveFromCollection,
                 "remove-collection",
@@ -312,6 +312,13 @@ impl CollectionView {
         if let Err(err) = open_steam_client_uri(&SystemSpawner::default(), &SystemProbe, SteamAction::Uninstall, app_id) {
             self.report_launch_error(err, cx);
         }
+    }
+
+    /// Whether "Remove from Collection" can take `game` out: a game added to
+    /// Heronite (by hand, a scan or a launcher import), not while it runs.
+    /// Store games come back with the store's library.
+    pub(super) fn can_remove_from_collection(&self, game: &CollectionGame) -> bool {
+        game.runner == "sideload" && !self.playing.contains_key(&game.app_name)
     }
 
     pub(super) fn open_remove_game(&mut self, key: &str, cx: &mut Context<Self>) {

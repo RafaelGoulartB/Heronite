@@ -20,6 +20,8 @@ use heronite_metadata::edit::{BatchDetails, DetailsBefore};
 
 use super::CollectionView;
 use crate::dialogs::batch_edit::{BatchEditApply, BatchEditDialog};
+use crate::dialogs::remove_game::{RemoveGameDialog, Target as RemoveTarget};
+use crate::dialogs::DialogEvent;
 
 /// The dock's open popover.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -531,6 +533,39 @@ impl CollectionView {
         if !games.is_empty() {
             self.open_wizard_for(games.iter().map(|g| super::metadata_ui::bulk_item(g)).collect(), cx);
         }
+    }
+
+    /// The selected games "Remove from Collection" can take out, and how
+    /// many of the others stay.
+    pub(super) fn removable_selection(&self) -> (Vec<Arc<CollectionGame>>, usize) {
+        let games = self.selected_games();
+        let total = games.len();
+        let removable: Vec<_> = games.into_iter().filter(|g| self.can_remove_from_collection(g)).collect();
+        let skipped = total - removable.len();
+        (removable, skipped)
+    }
+
+    /// Asks before taking the removable selected games out of the Collection.
+    /// The removed games leave the selection with the reload.
+    pub(super) fn open_batch_remove(&mut self, cx: &mut Context<Self>) {
+        self.context_menu = None;
+        self.sel.pop = None;
+        let (games, skipped) = self.removable_selection();
+        let Some(ctx) = self.dialog_ctx().filter(|_| !games.is_empty()) else {
+            cx.notify();
+            return;
+        };
+        let n = games.len();
+        let targets =
+            games.iter().map(|g| RemoveTarget { app_name: g.app_name.clone(), runner: g.runner.clone(), title: g.title.clone() }).collect();
+        let view = cx.new(|_| RemoveGameDialog::many(ctx, targets, skipped));
+        cx.subscribe(&view, move |this, _, ev: &DialogEvent, cx| {
+            if matches!(ev, DialogEvent::ChangedAndClose) {
+                this.show_toast(trn!(n, "{n} game removed from Collection", "{n} games removed from Collection"), false, cx);
+            }
+        })
+        .detach();
+        self.open_dialog(view, cx);
     }
 
     /// F3: the fields editor of the selected games.
