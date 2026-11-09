@@ -114,6 +114,14 @@ pub fn init_stop_helper() {
     sys::init_stop_helper();
 }
 
+/// Makes `print!` reach the terminal that started this program, for a
+/// command that prints and exits (`--display-probe`) from the windowed
+/// release build, which has no console of its own. Leaves a redirected or
+/// existing standard output alone. Nothing on Unix.
+pub fn attach_parent_console() {
+    sys::attach_parent_console();
+}
+
 /// The child `cmd` starts is on its own: a new session on Unix (`setsid`),
 /// no console and no job of ours on Windows. For programs that must outlive
 /// the app (the updated app, a store client).

@@ -57,6 +57,8 @@ pub(super) fn ask_to_stop(pid: u32, whole_group: bool) {
 
 pub(super) fn init_stop_helper() {}
 
+pub(super) fn attach_parent_console() {}
+
 pub(super) fn detach(cmd: &mut Command) -> &mut Command {
     // SAFETY: `setsid` is async-signal-safe and touches no memory of the parent.
     unsafe {
