@@ -72,6 +72,22 @@ pub(crate) fn hdr_from_info(value: u32) -> Feature {
     Feature { supported: supported && !force_disabled, enabled: value & (1 << 1) != 0 }
 }
 
+/// The whole-hertz rate `EnumDisplaySettings` lists for the exact `rate`.
+/// The 1000/1001 rates of TV timings (23.976, 59.94, 119.88, 143.86) are
+/// listed one hertz down (`59`), so that they stay apart from the integer
+/// rate next to them (`60`); any other rate is rounded (159.975 as `160`).
+///
+/// Should Windows list some rate otherwise, the current mode only shows up
+/// twice; no other mode is dropped.
+pub(crate) fn listed_rate(rate: Refresh) -> Refresh {
+    let hz = rate.hz();
+    // The rate with the 1000/1001 pulldown undone: 59.94 → 60.
+    let base = hz * 1.001;
+    let tv = (hz - hz.round()).abs() > 0.005 && (base - base.round()).abs() < 0.005;
+    let listed = if tv { (base.round() - 1.).max(0.) } else { hz.round() };
+    Refresh { num: listed as u32, den: 1 }
+}
+
 /// The monitors behind `targets`.
 pub(crate) fn monitors(targets: Vec<RawTarget>) -> Vec<Monitor> {
     targets.into_iter().map(monitor).collect()
@@ -100,9 +116,11 @@ fn monitor(t: RawTarget) -> Monitor {
         .unwrap_or_else(|| id.connector.clone());
     let current = Mode { width: t.width, height: t.height, refresh: t.refresh };
     let mut modes = t.modes;
-    // The current mode, with its exact rate, stands in for the rounded one
-    // EnumDisplaySettings lists.
-    modes.retain(|m| !(m.width == current.width && m.height == current.height && m.refresh.close_to(current.refresh)));
+    // The current mode, with its exact rate, stands in for the whole-hertz
+    // one EnumDisplaySettings lists, and only for that one: at 59.94 Hz the
+    // list's 60 is another mode.
+    let listed = listed_rate(current.refresh);
+    modes.retain(|m| !(m.width == current.width && m.height == current.height && m.refresh == listed));
     modes.push(current);
     tidy_modes(&mut modes);
     Monitor {
@@ -161,7 +179,8 @@ mod tests {
                 width: 3840,
                 height: 2160,
                 refresh: Refresh { num: 60000, den: 1001 },
-                modes: vec![mode(3840, 2160, 60), mode(1920, 1080, 60)],
+                // Windows lists 59.94 Hz as 59, next to the real 60.
+                modes: vec![mode(3840, 2160, 60), mode(3840, 2160, 59), mode(1920, 1080, 60)],
                 hdr: Some(hdr_from_info2(0b0000_0001)),
                 ..Default::default()
             },
@@ -197,8 +216,15 @@ mod tests {
         let snap = Snapshot::new(Backend::Windows, monitors(fixture()));
         let dell = &snap.monitors[0];
         assert_eq!(dell.current.unwrap().refresh, Refresh { num: 60000, den: 1001 });
-        // The rounded 60 Hz entry gave way to the exact current one.
-        assert_eq!(dell.modes, vec![Mode { width: 3840, height: 2160, refresh: Refresh { num: 60000, den: 1001 } }, mode(1920, 1080, 60)]);
+        // The listed 59 gave way to the exact current rate; the 60 Hz mode stays.
+        assert_eq!(
+            dell.modes,
+            vec![
+                mode(3840, 2160, 60),
+                Mode { width: 3840, height: 2160, refresh: Refresh { num: 60000, den: 1001 } },
+                mode(1920, 1080, 60)
+            ]
+        );
         let gigabyte = &snap.monitors[1];
         assert_eq!(gigabyte.modes.len(), 3);
         assert_eq!(gigabyte.modes[0].refresh, Refresh { num: 159_975, den: 1000 });
@@ -216,6 +242,28 @@ mod tests {
     }
 
     #[test]
+    fn exact_rates_map_to_the_whole_hertz_windows_lists() {
+        let listed = |num, den| listed_rate(Refresh { num, den }).num;
+        assert_eq!(listed(60000, 1001), 59);
+        assert_eq!(listed(24000, 1001), 23);
+        assert_eq!(listed(120_000, 1001), 119);
+        assert_eq!(listed(144_000, 1001), 143);
+        assert_eq!(listed(60, 1), 60);
+        assert_eq!(listed(59_997, 1000), 60);
+        assert_eq!(listed(159_975, 1000), 160);
+        assert_eq!(listed(165_080, 1000), 165);
+        assert_eq!(listed(0, 0), 0);
+    }
+
+    #[test]
+    fn at_60_hz_the_listed_59_stays() {
+        let mut t = fixture().remove(1);
+        t.refresh = Refresh { num: 60, den: 1 };
+        let dell = &monitors(vec![t])[0];
+        assert_eq!(dell.modes, vec![mode(3840, 2160, 60), mode(3840, 2160, 59), mode(1920, 1080, 60)]);
+    }
+
+    #[test]
     fn hdr_bits_old_and_new() {
         // 24H2: an SDR panel with Auto Color Management has advanced colour
         // on (bits 0-1) but HDR neither supported nor on.
@@ -228,7 +276,8 @@ mod tests {
 
     #[test]
     fn a_remote_desktop_display_with_zero_ids_is_known_by_its_port() {
-        // What Windows reported for an RDP session's display.
+        // What Windows reported for an RDP session's display; zero ids are
+        // no ids even when flagged valid.
         let rdp = RawTarget {
             edid_ids: Some((0, 0)),
             device_path: r"\\?\DISPLAY#Default_Monitor#1&c528b8a&4&UID256#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}".into(),

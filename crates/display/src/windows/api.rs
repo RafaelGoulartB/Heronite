@@ -20,6 +20,9 @@ use super::{device_instance, hdr_from_info, hdr_from_info2, RawTarget};
 use crate::edid;
 use crate::model::{Feature, Mode, Refresh, Unsupported};
 
+/// `edidIdsValid` in `DISPLAYCONFIG_TARGET_DEVICE_NAME_FLAGS`.
+const EDID_IDS_VALID: u32 = 1 << 2;
+
 /// `DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO_2` (Windows 11 24H2,
 /// `wingdi.h` 10.0.26100); not in windows-sys 0.61.
 const GET_ADVANCED_COLOR_INFO_2: i32 = 15;
@@ -137,8 +140,9 @@ fn target(path: &DISPLAYCONFIG_PATH_INFO, modes: &[DISPLAYCONFIG_MODE_INFO]) -> 
         if let Some(name) = device_info::<DISPLAYCONFIG_TARGET_DEVICE_NAME>(DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME, t_adapter, t_id) {
             out.friendly_name = wide_to_string(&name.monitorFriendlyDeviceName);
             out.device_path = wide_to_string(&name.monitorDevicePath);
-            // edidIdsValid is bit 1 of the flags.
-            if name.flags.Anonymous.value & 0b10 != 0 {
+            // DISPLAYCONFIG_TARGET_DEVICE_NAME_FLAGS: friendlyNameFromEdid (bit 0),
+            // friendlyNameForced (bit 1), edidIdsValid (bit 2).
+            if name.flags.Anonymous.value & EDID_IDS_VALID != 0 {
                 out.edid_ids = Some((name.edidManufactureId, name.edidProductCodeId));
             }
         }

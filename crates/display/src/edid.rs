@@ -126,8 +126,9 @@ pub(crate) mod tests {
         let none = parse(&edid("GSM", 0x5b9b, 0, None, None)).unwrap();
         assert_eq!(none.serial, None);
         assert_eq!(none.name, None);
+        // The number LG and Samsung panels share, behind a `0` descriptor.
         let placeholder = parse(&edid("GSM", 0x5b9b, 0x0101_0101, Some("0"), None)).unwrap();
-        assert_eq!(placeholder.serial.as_deref(), Some("01010101"));
+        assert_eq!(placeholder.serial, None);
     }
 
     #[test]

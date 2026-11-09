@@ -34,9 +34,11 @@ impl Refresh {
     }
 
     /// Whether two rates are the same one written differently (59.94 as
-    /// `60000/1001` and as `59940/1000`): within half a hertz.
+    /// `60000/1001` and as `59940/1000`, or as the tools' two-decimal floats):
+    /// within 10 mHz. Tight on purpose: 59.94 and 60 Hz are two modes, 60 mHz
+    /// apart.
     pub fn close_to(self, other: Refresh) -> bool {
-        self.millihertz().abs_diff(other.millihertz()) < 500
+        self.millihertz().abs_diff(other.millihertz()) <= 10
     }
 }
 
@@ -106,14 +108,18 @@ impl MonitorId {
 }
 
 /// A serial worth matching on: not empty and not one of the placeholders
-/// monitors without one report.
+/// monitors without one report. `01010101` is the one many LG and Samsung
+/// panels and TVs share, so it would make identical twins one monitor.
 pub fn real_serial(s: &str) -> Option<String> {
     let s = s.trim();
+    // Mutter writes the EDID's serial number field as `0x%08x`.
+    let digits = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
     let placeholder = s.is_empty()
         || s.eq_ignore_ascii_case("unknown")
-        || s.eq_ignore_ascii_case("0x00000000")
-        || s.chars().all(|c| c == '0')
-        || s.chars().all(|c| c == '1');
+        || digits.chars().all(|c| c == '0')
+        || s.chars().all(|c| c == '1')
+        || digits.eq_ignore_ascii_case("01010101")
+        || digits.eq_ignore_ascii_case("ffffffff");
     (!placeholder).then(|| s.to_string())
 }
 
@@ -237,10 +243,26 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Puts `monitors` in display order and works out the capabilities.
+    /// Puts `monitors` in display order, keeps their keys apart and works
+    /// out the capabilities.
     pub fn new(backend: Backend, mut monitors: Vec<Monitor>) -> Snapshot {
         monitors.sort_by_key(|m| (!m.enabled, m.position.0, m.position.1, m.id.connector.clone()));
+        separate_keys(&mut monitors);
         Snapshot { backend, capabilities: Capabilities::of(backend, &monitors), monitors }
+    }
+}
+
+/// Two monitors with one key (twins reporting the same serial, a placeholder
+/// [`real_serial`] does not know): their serial does not tell them apart, so
+/// it is dropped and the connector does, as for monitors without a serial.
+fn separate_keys(monitors: &mut [Monitor]) {
+    let mut seen = std::collections::HashMap::<String, usize>::new();
+    for m in monitors.iter() {
+        *seen.entry(m.key.clone()).or_default() += 1;
+    }
+    for m in monitors.iter_mut().filter(|m| seen[&m.key] > 1 && m.id.serial.is_some()) {
+        m.id.serial = None;
+        m.key = m.id.key();
     }
 }
 
@@ -301,20 +323,60 @@ mod tests {
 
     #[test]
     fn placeholder_serials_are_not_serials() {
-        for s in ["", "  ", "0", "00000000", "Unknown", "0x00000000", "11111111"] {
+        for s in ["", "  ", "0", "00000000", "Unknown", "0x00000000", "11111111", "01010101", "0x01010101", "FFFFFFFF"] {
             assert_eq!(real_serial(s), None, "{s:?}");
         }
         assert_eq!(real_serial(" 5CD2140XYZ "), Some("5CD2140XYZ".into()));
+        assert_eq!(real_serial("0x0006d3c1"), Some("0x0006d3c1".into()));
+        // A real serial may hold a run of zeros, or the pattern inside it.
+        assert_eq!(real_serial("1010101010"), Some("1010101010".into()));
     }
 
     #[test]
     fn refresh_rates_compare_across_notations() {
         let ntsc = Refresh { num: 60000, den: 1001 };
         assert!(ntsc.close_to(Refresh::from_hz(59.94)));
+        assert!(Refresh::from_hz(143.99).close_to(Refresh::from_hz(143.988)));
+        // 59.94 and 60 Hz are two modes.
+        assert!(!ntsc.close_to(Refresh::from_hz(60.)));
         assert!(!ntsc.close_to(Refresh::from_hz(50.)));
         assert_eq!(ntsc.to_string(), "59.940 Hz");
         assert_eq!(Refresh { num: 144, den: 1 }.to_string(), "144 Hz");
         assert_eq!(Refresh { num: 1, den: 0 }.hz(), 0.);
+    }
+
+    fn monitor(serial: Option<&str>, connector: &str, x: i32) -> Monitor {
+        let id = id("GSM", "5B9B", serial, connector);
+        Monitor {
+            key: id.key(),
+            name: connector.into(),
+            id,
+            enabled: true,
+            primary: false,
+            priority: None,
+            position: (x, 0),
+            current: None,
+            preferred: None,
+            modes: Vec::new(),
+            hdr: None,
+            vrr: None,
+            builtin: false,
+            virtual_display: false,
+        }
+    }
+
+    #[test]
+    fn twins_sharing_a_serial_are_told_apart_by_their_port() {
+        let snap = Snapshot::new(
+            Backend::Hyprland,
+            vec![monitor(Some("ABC"), "DP-1", 0), monitor(Some("ABC"), "DP-2", 2560), monitor(Some("XYZ"), "HDMI-A-1", 5120)],
+        );
+        let keys: Vec<&str> = snap.monitors.iter().map(|m| m.key.as_str()).collect();
+        assert_eq!(keys, ["GSM:5B9B@DP-1", "GSM:5B9B@DP-2", "GSM:5B9B:XYZ"]);
+        assert_eq!(snap.monitors[0].id.serial, None);
+        // Alone, the same monitor keeps its serial.
+        let alone = Snapshot::new(Backend::Hyprland, vec![monitor(Some("ABC"), "DP-1", 0)]);
+        assert_eq!(alone.monitors[0].key, "GSM:5B9B:ABC");
     }
 
     #[test]
