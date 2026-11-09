@@ -259,7 +259,7 @@ impl Render for ScanRomsDialog {
             DialogProps {
                 id: "scan-roms".into(),
                 title: tr!("Add emulated games").into(),
-                width: 720f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 720f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

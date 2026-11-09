@@ -123,7 +123,7 @@ impl CollectionView {
 
     /// The picture of `key` (slowly growing), fading in over the last one.
     fn slide(&mut self, key: &SharedString, window: &Window) -> Div {
-        let size = window.viewport_size();
+        let size = crate::ui::content_size(window);
         let (w, h) = (f32::from(size.width), f32::from(size.height));
         let (pw, ph) = backdrop_size(window);
         // The id of the console background with no blur: the texture is shared.

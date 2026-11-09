@@ -94,7 +94,7 @@ fn scrim_layers(scrim: Scrim) -> Vec<Div> {
 /// covers in the cache budget (a full ultrawide frame is ~20 MB).
 pub(super) fn backdrop_size(window: &Window) -> (u32, u32) {
     let scale = window.scale_factor();
-    let size = window.viewport_size();
+    let size = crate::ui::content_size(window);
     let (w, h) = (f32::from(size.width) * scale, f32::from(size.height) * scale);
     let shrink = (1920. / w).min(1.);
     ((w * shrink) as u32, (h * shrink) as u32)

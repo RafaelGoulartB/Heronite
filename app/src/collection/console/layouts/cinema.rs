@@ -96,7 +96,7 @@ impl CollectionView {
             // Only the focused shelf and its neighbours (which show while
             // the shelves glide) have covers; off screen ones are empty.
             if i.abs_diff(si) <= 1 {
-                let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, window.viewport_size().width);
+                let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, crate::ui::content_size(window).width);
                 for (c, key) in shelf.keys.iter().enumerate() {
                     let visible = super::loads(&seen, c, cols[i]);
                     let tile = self.console_tile(key, tw, th, i == si && c == cols[i], visible, window);

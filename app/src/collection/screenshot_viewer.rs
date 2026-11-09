@@ -39,7 +39,7 @@ impl CollectionView {
             return;
         }
         let scale = window.scale_factor();
-        let vp = window.viewport_size();
+        let vp = crate::ui::content_size(window);
         let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
         let (bw, bh) = if self.shots.fit { (vw, vh) } else { ((0.92 * vw).min(1400.), 0.82 * vh) };
         let m = if self.shots.boost { 3. } else { 1. };
@@ -123,9 +123,10 @@ impl CollectionView {
         if next == current {
             return;
         }
-        let vp = window.viewport_size();
-        let ox = f32::from(ev.position.x) - f32::from(vp.width) / 2.;
-        let oy = f32::from(ev.position.y) - f32::from(vp.height) / 2.;
+        // The picture is centred in the views' area (window coordinates).
+        let center = crate::ui::content_bounds(window).center();
+        let ox = f32::from(ev.position.x - center.x);
+        let oy = f32::from(ev.position.y - center.y);
         let ratio = next / current;
         self.shots.pan = if next == MIN_ZOOM {
             (0., 0.)
@@ -234,7 +235,7 @@ impl CollectionView {
         let i = self.shots.view?;
         let item = self.shots.items.get(i)?.clone();
         let n = self.shots.items.len();
-        let vp = window.viewport_size();
+        let vp = crate::ui::content_size(window);
         let (vw, vh) = (f32::from(vp.width), f32::from(vp.height));
         let scale = window.scale_factor();
         let (fit, zoom) = (self.shots.fit, self.shots.zoom);

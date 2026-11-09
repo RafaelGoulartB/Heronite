@@ -240,7 +240,7 @@ struct Cells {
 impl Cells {
     fn new(window: &Window, hints: bool) -> Self {
         let body = super::body_height(window, hints);
-        let width = f32::from(window.viewport_size().width) / kit::scale() - 2. * SIDE;
+        let width = f32::from(crate::ui::content_size(window).width) / kit::scale() - 2. * SIDE;
         Self { w: ((width - GAP * (COLS - 1.)) / COLS).max(60.), h: ((body - TOP - BOTTOM - GAP * (ROWS - 1.)) / ROWS).max(60.) }
     }
 

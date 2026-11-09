@@ -455,7 +455,7 @@ impl ScriptInstallDialog {
 
 impl Render for ScriptInstallDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         let face_title = if self.in_add_game { tr!("Add game") } else { tr!("Install from script") };
         let (title, body, footer) = if self.running(cx) {
             let (t, b, f) = self.run_view(cx);

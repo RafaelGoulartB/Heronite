@@ -505,7 +505,7 @@ impl Render for AddGameDialog {
         }
         let edit = self.is_edit();
         let entity = cx.entity().downgrade();
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
 
         let (title, body, footer) = if self.confirm_discard {
             let footer = div()

@@ -319,7 +319,7 @@ impl CollectionView {
         if visible == 0 {
             return None;
         }
-        let max_h = (f32::from(window.viewport_size().height) - 58.).max(80.);
+        let max_h = (f32::from(crate::ui::content_size(window).height) - 58.).max(80.);
         let (mode, descending) = (self.ui.sort, self.ui.sort_descending);
         let mut track = div()
             .id("collection-quick-toolbar")

@@ -314,7 +314,7 @@ impl Render for RomFolderDialog {
             DialogProps {
                 id: "rom-folder".into(),
                 title: if edit { tr!("Edit ROM folder") } else { tr!("Add ROM folder") }.into(),
-                width: 640f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 640f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

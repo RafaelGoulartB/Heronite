@@ -139,7 +139,8 @@ impl CollectionView {
         self.console_focus_game(Some(focused.clone()), cx);
 
         let scale = kit::scale();
-        let (vw, vh) = (f32::from(window.viewport_size().width) / scale, f32::from(window.viewport_size().height) / scale);
+        let area = crate::ui::content_size(window);
+        let (vw, vh) = (f32::from(area.width) / scale, f32::from(area.height) / scale);
         let list_w = (vw * 0.37).round().min(470.);
         let (_, label, count) = &data.filters[data.active];
         let head = div()

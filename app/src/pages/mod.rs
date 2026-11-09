@@ -199,7 +199,7 @@ pub fn page_close<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> 
 /// Horizontal room for a [`sheet`]'s content: the window minus the sheet's
 /// inset (12px each side) and the body padding (32px each side).
 pub fn content_width(window: &Window) -> f32 {
-    f32::from(window.viewport_size().width) - 24. - 64.
+    f32::from(crate::ui::content_size(window).width) - 24. - 64.
 }
 
 /// Glass sheet floating over the (dimmed) Collection: title (Rubik 26, none

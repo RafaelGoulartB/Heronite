@@ -152,12 +152,12 @@ impl Render for ShortcutsDialog {
             cx.defer(move |cx| cx.notify(view));
         }
         let entity = cx.entity().downgrade();
-        let height = (f32::from(window.viewport_size().height) * 0.82).min(720.);
+        let height = (f32::from(crate::ui::content_size(window).height) * 0.82).min(720.);
         dialog_scrolled(
             DialogProps {
                 id: "shortcuts".into(),
                 title: tr!("Keyboard shortcuts").into(),
-                width: 960f32.min(f32::from(window.viewport_size().width) * 0.92),
+                width: 960f32.min(f32::from(crate::ui::content_size(window).width) * 0.92),
                 height: Some(height),
             },
             &self.scroll,

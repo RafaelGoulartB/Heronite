@@ -118,7 +118,7 @@ impl Render for PickRomDialog {
             DialogProps {
                 id: "pick-rom".into(),
                 title: tr!("Choose disc").into(),
-                width: 520f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 520f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

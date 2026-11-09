@@ -299,7 +299,7 @@ impl CollectionView {
         };
 
         let k = kit::scale();
-        let viewport = window.viewport_size();
+        let viewport = crate::ui::content_size(window);
         let (vw, dpr) = (f32::from(viewport.width), window.scale_factor());
         let info_h = if theme.hero.title == HeroTitle::Logo { LOGO_H } else { NAME_H }
             + if theme.hero.facts { FACTS_H + INFO_GAP } else { 0. }

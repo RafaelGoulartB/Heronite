@@ -333,7 +333,7 @@ impl CollectionView {
     /// Per frame: a closed menu forgets what was typed; the placeholder
     /// follows the tokens.
     pub(super) fn sync_view_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let viewport = window.viewport_size();
+        let viewport = crate::ui::content_size(window);
         self.view_menu.room = (f32::from(viewport.height) - f32::from(theme::HEADER_H) - 24.).max(240.);
         self.view_menu.compact = f32::from(viewport.height) < 900. || f32::from(viewport.width) < 1200.;
         if let Some(text) = self.view_menu.debug_query.take() {

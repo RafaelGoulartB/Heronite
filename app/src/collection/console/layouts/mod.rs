@@ -169,7 +169,7 @@ fn body_height(window: &Window, hints: bool) -> f32 {
     /// Height of the shell's top bar and hint bar around the body, design px.
     const TOP_BAR: f32 = 76.;
     const HINT_BAR: f32 = 60.;
-    f32::from(window.viewport_size().height) / kit::scale() - TOP_BAR - if hints { HINT_BAR } else { 0. }
+    f32::from(crate::ui::content_size(window).height) / kit::scale() - TOP_BAR - if hints { HINT_BAR } else { 0. }
 }
 
 /// The `k` most recently played games, newest first (never-played ones
@@ -299,7 +299,7 @@ impl CollectionView {
             Pad::Down => nav.shelf = (si + 1).min(shelves.len() - 1),
             // A page along the shelf (LT / RT), ends included.
             Pad::LT | Pad::RT if more => {
-                let page = ((f32::from(window.viewport_size().width) / kit::scale() / (tw + 18.)).floor() as isize - 1).max(1);
+                let page = ((f32::from(crate::ui::content_size(window).width) / kit::scale() / (tw + 18.)).floor() as isize - 1).max(1);
                 let back = pad == Pad::LT;
                 nav.lines.cols[si] = step(ci, n, if back { -page } else { page }, false);
             }

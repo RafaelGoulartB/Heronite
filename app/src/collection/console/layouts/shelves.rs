@@ -135,7 +135,7 @@ impl CollectionView {
             // On screen: the shelves around the focused one, the columns
             // each is scrolled to (and the focus, while it glides there).
             let near = i + 1 >= si && i <= si + 2;
-            let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, window.viewport_size().width);
+            let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, crate::ui::content_size(window).width);
             for (c, key) in shelf.keys.iter().enumerate() {
                 let visible = near && super::loads(&seen, c, cols[i]);
                 let tile = self.console_tile(key, tw, th, i == si && c == cols[i], visible, window);

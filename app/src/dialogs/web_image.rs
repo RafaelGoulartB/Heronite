@@ -347,7 +347,7 @@ impl Render for WebImageDialog {
                 cx.listener(|this, _, _, cx| this.confirm(None, cx)),
             ));
         let entity = cx.entity().downgrade();
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         dialog(
             DialogProps {
                 id: "collection-web-image".into(),

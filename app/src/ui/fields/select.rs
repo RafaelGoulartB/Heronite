@@ -46,8 +46,8 @@ thread_local! {
     /// once when it opens.
     static OPEN: RefCell<Option<String>> = const { RefCell::new(None) };
     /// Where each select was drawn last (window coordinates) and the
-    /// window's height then: the menu opens on the side with room.
-    static PLACES: RefCell<HashMap<String, (Bounds<Pixels>, Pixels)>> = Default::default();
+    /// views' area then (`ui::content_bounds`): the menu opens on the side with room.
+    static PLACES: RefCell<HashMap<String, (Bounds<Pixels>, Bounds<Pixels>)>> = Default::default();
 }
 
 /// Gap between the select and its menu.
@@ -66,9 +66,9 @@ const SEARCH_H: f32 = 44.;
 /// `wanted` px, the rest of the menu `extra`) fits better above. Needs
 /// [`place_probe`] in the field.
 pub(super) fn menu_side(id: &str, wanted: f32, cap: f32, extra: f32) -> (bool, f32) {
-    let Some((at, window_h)) = PLACES.with(|p| p.borrow().get(id).copied()) else { return (false, cap) };
-    let below = f32::from(window_h - at.bottom()) - MENU_GAP - EDGE - extra;
-    let above = f32::from(at.top()) - MENU_GAP - EDGE - extra;
+    let Some((at, area)) = PLACES.with(|p| p.borrow().get(id).copied()) else { return (false, cap) };
+    let below = f32::from(area.bottom() - at.bottom()) - MENU_GAP - EDGE - extra;
+    let above = f32::from(at.top() - area.top()) - MENU_GAP - EDGE - extra;
     let up = below < wanted && above > below;
     let room = if up { above } else { below };
     (up, cap.min(room).max(MENU_MIN_H))
@@ -228,7 +228,7 @@ pub(super) fn place_probe(id: &str) -> impl IntoElement {
     let id = id.to_string();
     canvas(
         move |bounds, window, _| {
-            PLACES.with(|p| p.borrow_mut().insert(id, (bounds, window.viewport_size().height)));
+            PLACES.with(|p| p.borrow_mut().insert(id, (bounds, crate::ui::content_bounds(window))));
         },
         |_, _, _, _| {},
     )

@@ -24,7 +24,7 @@ impl CollectionView {
         let key = self.selected.clone()?;
         let (source, chain) = self.stage_source(&key)?;
         let scale = window.scale_factor();
-        let size = window.viewport_size();
+        let size = crate::ui::content_size(window);
         let (pw, ph) = ((f32::from(size.width) * scale) as u32, (f32::from(size.height) * scale) as u32);
         let blur = self.blur_px * scale;
         let sat = self.saturation;
@@ -57,7 +57,7 @@ impl CollectionView {
         }
         let key = self.selected.clone()?;
         let scale = window.scale_factor();
-        let size = window.viewport_size();
+        let size = crate::ui::content_size(window);
         let (tw, th) = glass_target(f32::from(size.width), f32::from(size.height), scale);
         let blur = crate::theme::glass_blur_px();
         let id: SharedString = format!("g:{key}:{tw}x{th}:{blur}").into();

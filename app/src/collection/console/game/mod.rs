@@ -353,7 +353,7 @@ impl CollectionView {
             ));
 
         // Wide enough for the facts in two columns (design px of the card).
-        let vw = f32::from(window.viewport_size().width) / s;
+        let vw = f32::from(crate::ui::content_size(window).width) / s;
         let card_w = vw - 2. * 46. - 560. - 40.;
         let mut about =
             div().id("console-game-about").flex().flex_col().gap(u(20.)).overflow_y_scroll().track_scroll(self.console.game.about.handle());
