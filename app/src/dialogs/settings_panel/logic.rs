@@ -213,6 +213,13 @@ pub fn wrappers() -> bool {
     heronite_platform::supported(heronite_platform::Feature::Wrappers)
 }
 
+/// Whether the GPU tab picks Windows' per-program GPU preference instead of
+/// Linux's variables (`heronite_launch::gpu::preference`): Windows, where
+/// Heronite starts the game's program itself.
+pub fn windows_gpu() -> bool {
+    cfg!(windows)
+}
+
 /// A game whose Performance tab is ReShade alone: Steam starts it as it is,
 /// or Linux's tools (wrappers, overlays, gamescope) are not there (Windows).
 pub fn reshade_only(run_kind: RunKind) -> bool {
@@ -227,6 +234,11 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
         // Their Performance tab only has ReShade (`reshade_only`).
         RunKind::SteamDirect | RunKind::Native if reshade_only(run_kind) => {
             out.extend(run_kind.reshade().map(|_| Section::Performance));
+            // Steam starts its games itself: Heronite cannot set the
+            // preference for the program it runs.
+            if run_kind == RunKind::Native && windows_gpu() {
+                out.push(Section::Gpu);
+            }
             return out;
         }
         RunKind::SteamDirect => return out,
@@ -467,7 +479,8 @@ mod tests {
         // ReShade where it applies.
         let native: &[Section] = match (wrappers(), cfg!(windows)) {
             (true, _) => &[Launch, Performance, Gpu, Sandbox],
-            (false, true) => &[Launch, Performance],
+            // Windows' own GPU preference.
+            (false, true) => &[Launch, Performance, Gpu],
             (false, false) => &[Launch],
         };
         assert_eq!(sections_for(RunKind::Native, "sideload", false), native);

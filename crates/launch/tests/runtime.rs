@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use heronite_data::models::SessionsFile;
 use heronite_data::{json_store, DataPaths};
+use heronite_launch::gpu::preference::{FakeRegistry, Preference};
 use heronite_launch::net::FakeNet;
 use heronite_launch::plan::SteamExtras;
 use heronite_launch::plan::{CloudSaves, CompanionPlan, Handoff, PrepSpec};
@@ -674,6 +675,7 @@ fn services(online: bool, cloud: Option<Arc<RecordingCloud>>) -> PrepServices {
         probe: Arc::new(SystemProbe),
         net: Arc::new(if online { FakeNet::online() } else { FakeNet::offline() }),
         cloud: cloud.map(|c| c as Arc<dyn CloudSync>),
+        gpu_registry: Arc::new(FakeRegistry::default()),
     }
 }
 
@@ -1323,4 +1325,106 @@ fn a_prefix_whose_creation_was_stopped_is_created_again() {
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     assert!(!marker.exists(), "removed once the prefix was created");
+}
+
+const GPU_GAME: &str = r"C:\Games\Hades\Hades.exe";
+
+/// A plan asking Windows for the dedicated card, and the launcher's registry
+/// a fake one: the real registry is never touched.
+fn gpu_rig(reg: &Arc<FakeRegistry>) -> (Rig, ProcessPlan) {
+    let r = rig();
+    r.launcher.set_prep_services(PrepServices { gpu_registry: reg.clone(), ..services(true, None) });
+    let plan = ProcessPlan { gpu_preference: Some(Preference::HighPerformance), ..process_plan(GPU_GAME, &[]) };
+    (r, plan)
+}
+
+#[test]
+fn the_gpu_preference_is_set_for_the_game_and_put_back_after_it() {
+    let reg = Arc::new(FakeRegistry::default().with(GPU_GAME, "AutoHDREnable=1;"));
+    let (r, plan) = gpu_rig(&reg);
+    r.procs.start(40_001, "Hades.exe", None);
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(reg.get(GPU_GAME).as_deref(), Some("AutoHDREnable=1;GpuPreference=2;"));
+    assert_eq!(running_file(&r.paths)["sessions"]["g"]["tracked"]["gpuExe"], GPU_GAME);
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert_eq!(reg.get(GPU_GAME).as_deref(), Some("AutoHDREnable=1;"));
+}
+
+#[test]
+fn a_gpu_preference_changed_in_windows_during_the_game_is_kept() {
+    let reg = Arc::new(FakeRegistry::default());
+    let (r, plan) = gpu_rig(&reg);
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    reg.set(GPU_GAME, "GpuPreference=1;");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert_eq!(reg.get(GPU_GAME).as_deref(), Some("GpuPreference=1;"));
+}
+
+#[test]
+fn a_game_that_cannot_start_puts_the_gpu_preference_back_at_once() {
+    let reg = Arc::new(FakeRegistry::default());
+    let (r, plan) = gpu_rig(&reg);
+    r.spawner.fail_next_spawn("no such file");
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    wait_until("the launch to fail", || !r.launcher.is_running("g"));
+    assert!(reg.is_empty(), "nothing is left in the registry");
+}
+
+#[test]
+fn a_program_without_a_full_path_gets_no_gpu_preference() {
+    let reg = Arc::new(FakeRegistry::default());
+    let (r, mut plan) = gpu_rig(&reg);
+    plan.command.program = "game.exe".into();
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert!(reg.is_empty());
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
+#[test]
+fn an_adopted_game_puts_its_gpu_preference_back_when_it_ends() {
+    let reg = Arc::new(FakeRegistry::default());
+    let (r, plan) = gpu_rig(&reg);
+    r.procs.start(40_001, "Hades.exe", None);
+    r.procs.set_start_ticks(40_001, 777);
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { pid: 40_001, .. }));
+    r.launcher.checkpoint_all();
+    // The app starts again while the game runs: the value stays.
+    let (again, rx) = restarted(&r);
+    again.set_prep_services(PrepServices { gpu_registry: reg.clone(), ..services(true, None) });
+    assert_eq!(again.adopt(&mut |_| {}), 1);
+    assert_eq!(next(&rx), LaunchEvent::Running { app_name: "g".into(), pid: 40_001 });
+    assert_eq!(reg.get(GPU_GAME).as_deref(), Some("GpuPreference=2;"));
+    r.procs.exit(40_001);
+    assert!(matches!(next(&rx), LaunchEvent::Exited { .. }));
+    assert!(reg.is_empty());
+}
+
+#[test]
+fn a_gpu_preference_of_a_game_that_ended_while_the_app_was_closed_goes_back_at_start() {
+    let reg = Arc::new(FakeRegistry::default().with(GPU_GAME, "GpuPreference=1;"));
+    let (r, plan) = gpu_rig(&reg);
+    r.procs.start(40_001, "Hades.exe", None);
+    r.procs.set_start_ticks(40_001, 5);
+    r.launcher.launch(request("g", LaunchPlan::Native(plan))).unwrap();
+    next(&r.rx);
+    next(&r.rx);
+    assert_eq!(reg.get(GPU_GAME).as_deref(), Some("GpuPreference=2;"));
+    // The app died; the game ended meanwhile (its pid is another program's now).
+    r.procs.set_start_ticks(40_001, 6);
+    let (again, _rx) = restarted(&r);
+    again.set_prep_services(PrepServices { gpu_registry: reg.clone(), ..services(true, None) });
+    assert_eq!(again.adopt(&mut |_| {}), 0);
+    assert_eq!(reg.get(GPU_GAME).as_deref(), Some("GpuPreference=1;"));
 }

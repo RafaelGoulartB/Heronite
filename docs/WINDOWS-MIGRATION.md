@@ -22,6 +22,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
 - Native launch extras: before/after scripts (`.bat`, `.cmd`, `.ps1`, programs), delayed companions and presets (variables and arguments); for Steam games they run around `steam://rungameid` (`heronite_launch::steam_extras`); real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
+- Game settings → GPU: the card a game's program asks Windows for ("Power saving" or "High performance", the `HKCU\Software\Microsoft\DirectX\UserGpuPreferences` value of Settings → Display → Graphics), written right before the game starts and put back after it only while it still holds Heronite's value (`heronite_launch::gpu::preference`). DXGI names the card behind each choice. Steam games, store clients, Playnite, Xbox games and emulators keep Windows' own choice; tests use a fake registry
 - Steam tests: library and session fixtures run on Windows without reading the host's registry, Steam folders or process list; achievement fixtures are isolated too
 - Tray menus follow the app's light/dark theme (including System and Custom) on Windows 10 1903+ and Windows 11. High contrast keeps Windows' native colours. Older Windows versions, or missing uxtheme exports, fall back to the native menu with a warning
 
