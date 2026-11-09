@@ -88,8 +88,7 @@ fn mutter_monitors() -> Result<Vec<Monitor>, Unsupported> {
             &(),
         )
         .map_err(failed)?;
-    let (_serial, monitors, logical, _props): (u32, Vec<DMonitor>, Vec<DLogical>, Props) =
-        reply.body().deserialize().map_err(failed)?;
+    let (_serial, monitors, logical, _props): (u32, Vec<DMonitor>, Vec<DLogical>, Props) = reply.body().deserialize().map_err(failed)?;
     let monitors = monitors
         .into_iter()
         .map(|((connector, vendor, product, serial), modes, props)| mutter::MutterMonitor {
