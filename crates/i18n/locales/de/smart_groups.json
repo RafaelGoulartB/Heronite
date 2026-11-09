@@ -48,5 +48,6 @@
   "view menu block|Filter": "Filtern",
   "view menu block|Organize": "Ordnen",
   "{n} group": "{n} Gruppe",
-  "{n} groups": "{n} Gruppen"
+  "{n} groups": "{n} Gruppen",
+  "Any group": "Jede Gruppe"
 }

@@ -232,7 +232,8 @@ pub struct TabSpec {
     pub layout: Layout,
     /// Which games: `all`, `installed`, `not-installed`, `favourites`, `pc`,
     /// `emulated`, `status:<id>`, `category:<name>`, `store:<label>`,
-    /// `platform:<name>`. Unknown values show every game.
+    /// `platform:<name>`, `group:<id>` (a smart group, `crate::smart_groups`).
+    /// Unknown values show every game.
     pub source: String,
 }
 

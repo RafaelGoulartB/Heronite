@@ -474,7 +474,7 @@ impl CollectionView {
         let next_filter = match pad {
             Pad::Left | Pad::Right if pills => Some((filter as isize + pad.dir()).clamp(0, FILTERS.len() as isize - 1) as usize),
             // With a single tab the bumpers have nothing else to do.
-            Pad::LB | Pad::RB if theme.tabs.len() < 2 => Some(super::step(filter, FILTERS.len(), pad.dir(), true)),
+            Pad::LB | Pad::RB if self.console_tabs().len() < 2 => Some(super::step(filter, FILTERS.len(), pad.dir(), true)),
             _ => None,
         };
         if let Some(next) = next_filter {
@@ -538,7 +538,7 @@ impl CollectionView {
         let mut h = self.console_cover_hints();
         h.insert(0, hint(Btn::LeftRight, tr!("Move")));
         h.insert(h.len() - self.console_tab_hints().len(), hint(Btn::LT, tr!("Letter")));
-        if look::theme().tabs.len() < 2 {
+        if self.console_tabs().len() < 2 {
             h.insert(h.len() - 1, hint(Btn::Bumpers, tr!("Filter")));
         }
         h

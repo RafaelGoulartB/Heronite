@@ -62,7 +62,12 @@ impl CollectionView {
     /// Reads `groups.json` again (after an edit) and drops picked groups that
     /// are gone.
     pub(super) fn reload_smart_groups(&mut self, cx: &mut Context<Self>) {
-        self.smart_groups = SmartGroups::load(&self.data_paths);
+        let groups = SmartGroups::load(&self.data_paths);
+        // Console mode's Filters panel keeps a group by its place in the list.
+        if groups.groups.iter().map(|g| &g.id).ne(self.smart_groups.groups.iter().map(|g| &g.id)) {
+            self.console.tab_navs.iter_mut().for_each(|nav| nav.grid.filters.group = 0);
+        }
+        self.smart_groups = groups;
         self.prune_smart_group_filter();
         if self.groups_need_updates() {
             self.update_apps = crate::services::downloads(cx).read(cx).update_apps();
