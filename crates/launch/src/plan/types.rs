@@ -161,6 +161,9 @@ pub struct PrepSpec {
     /// Epic game run through Wine: what Heroic does the first time the game
     /// starts in its prefix (`legendarySetup`, `installFixes`).
     pub first_launch: Option<FirstLaunch>,
+    /// A GOG game's Windows build: Comet stands in for GOG Galaxy's service
+    /// while it runs (see [`crate::galaxy`]).
+    pub galaxy: bool,
 }
 
 /// What a game needs the first time it runs in a Wine prefix (the prefix

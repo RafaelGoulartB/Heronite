@@ -184,7 +184,21 @@ text size) and applies it.
   as variables, and `gpu::detect` finds the cards (sysfs, `vulkaninfo`, `pci.ids`) and the
   driver layers they need. `actions` turns a game's own actions (`heronite_data::game_actions`,
   `local_library/actions.json`) into something to open, spawn or launch as
-  the game's session. `umu_ids` picks the
+  the game's session. `galaxy` stands in for GOG Galaxy's communication service, which the GOG
+  Galaxy SDK in a game talks to on `127.0.0.1:9977` for achievements, stats and leaderboards: a GOG plan of a
+  Windows build sets `PrepSpec::galaxy` (not in a sandbox without the network), and the runtime starts Comet
+  (`store_tools::COMET`, downloaded into `tools/bin` the first time, never taken from `PATH`) right before the
+  game with the GOG account the app gives (`GalaxyAccount`, unless Settings → Achievements turns it off; the
+  tokens never reach a log), unless the port is taken (GOG Galaxy, another launcher's Comet). GOG games that
+  run together share it (`runtime/galaxy.rs`: a thread of its own owns it, so on Linux it gets SIGINT if the
+  app dies; its output goes to `logs/runners/comet.log`). Once the last of them is gone it gets Ctrl+C
+  (`heronite_platform::process::interrupt`), so it uploads what is left, and is ended after 15 s. Nothing of it
+  fails or holds up a launch for long: the account (30 s, gogdl ended past it), Comet's first download (60 s,
+  then it finishes in the background for the next launch), each Wine command of the prefix setup (45 s) and
+  the start (10 s) have limits, past which the game runs without Comet. A Wine prefix gets Comet's dummy `GalaxyCommunication` service the first time (copied to
+  `ProgramData`, `sc create`, GOG Galaxy's registry path), as Heroic does; on Windows registering it needs the
+  administrator, which Settings → Achievements asks for (it runs as LocalService, from a folder only
+  administrators may change). `umu_ids` picks the
   `GAMEID` of a umu launch (protonfixes) from the user's id, the umu
   database (downloaded weekly), Heroic's cache, the metadata's Steam id or
   the title; `keep_awake` adds the logind lock the runtime holds while the
@@ -242,7 +256,8 @@ text size) and applies it.
   Both libraries are read by the Collection like Epic's. Launching is in
   `heronite-launch` (`gog.rs`: the primary task of `goggame-<id>.info`, or
   `start.sh` for Linux builds; `nile.rs`: `fuel.json`), always through the
-  Wine/Proton plan of local games; the first launch in a prefix runs the
+  Wine/Proton plan of local games (`galaxy.rs`: Comet, GOG Galaxy's service
+  for the games' achievements, runs beside a GOG game's Windows build); the first launch in a prefix runs the
   store's installers (`first_launch::StoreSetup`, Amazon's `PostInstall`).
 
 - **heronite-import:** the other launchers: Linux's, and Heroic and Playnite
@@ -518,7 +533,10 @@ text size) and applies it.
   with `dlcappid`) as optional `groups` on the set and a `group` id on each
   achievement (`AchievementGroup`: a developer's collection inside one game,
   unlike `AchievementSet`, one game at one source); `sections()` splits a
-  game by them (a flat list unless two known groups have achievements); `gog` `gameplay.gog.com` with gogdl's token;
+  game by them (a flat list unless two known groups have achievements); `gog` `gameplay.gog.com` with gogdl's token,
+  and `comet` the same achievements while the game runs, from the SQLite database Comet keeps per game and
+  account (`<comet data>/gameplay/<client id>/<galaxy user id>/gameplay.db`, read-only), where an unlock lands
+  seconds before GOG's servers have it;
   `epic` the store's GraphQL
   (`launcher.store.epicgames.com`, legendary's token, the namespace as
   sandbox, the launcher's User-Agent); `retro` RetroAchievements: the user

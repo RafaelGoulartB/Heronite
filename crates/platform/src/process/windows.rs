@@ -283,6 +283,10 @@ pub(super) fn ask_to_stop(pid: u32, whole_group: bool) {
     }
 }
 
+pub(super) fn interrupt(pid: u32) {
+    ask_to_stop(pid, false);
+}
+
 pub(super) fn exit_signal(_status: &ExitStatus) -> Option<i32> {
     None
 }
