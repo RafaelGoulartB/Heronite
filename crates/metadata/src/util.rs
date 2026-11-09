@@ -5,6 +5,7 @@
 use std::collections::HashSet;
 
 use heronite_data::models::CollectionGameMetadata;
+use heronite_data::text::title_key;
 
 macro_rules! re {
     ($pat:expr) => {{
@@ -96,23 +97,10 @@ pub fn strip_html(value: Option<&str>) -> String {
     s.trim().to_owned()
 }
 
-/// `normalizeTitle` of `playnite/mapper.ts`.
+/// `normalizeTitle` of `playnite/mapper.ts`, but accents fold and letters of
+/// any script stay ([`title_key`]). `""` when the title has no letter or digit.
 pub fn normalize_title(title: &str) -> String {
-    let lower = title.to_lowercase();
-    let mut out = String::with_capacity(lower.len());
-    let mut gap = false;
-    for c in lower.chars() {
-        if c.is_ascii_lowercase() || c.is_ascii_digit() {
-            if gap && !out.is_empty() {
-                out.push(' ');
-            }
-            gap = false;
-            out.push(c);
-        } else {
-            gap = true;
-        }
-    }
-    out
+    title_key(title)
 }
 
 /// `titleQueries` of `metadata/match.ts`: the title as is, without an edition
@@ -267,6 +255,22 @@ mod tests {
         let items = ["Portal Maze 2", "Portal 2: In Motion", "Portal 2"];
         let best = pick_best_match("Portal 2", &items, |s| s.to_string(), MIN_MATCH_SCORE);
         assert_eq!(best, Some(&"Portal 2"));
+    }
+
+    #[test]
+    fn accents_and_other_scripts_match() {
+        assert_eq!(normalize_title("Pokémon Red"), "pokemon red");
+        assert_eq!(score_title("Pokemon Red", "Pokémon Red"), 100);
+        assert_eq!(score_title("Pokémon Red", "Pokémon Red Version"), 90 - 8);
+        assert_eq!(score_title("ファイナルファンタジーVII", "ファイナルファンタジーVII"), 100);
+        assert_eq!(score_title("ファイナルファンタジーVII", "ファイナルファンタジーVIII"), 89);
+        assert_eq!(score_title("ファイナルファンタジー", "ドラゴンクエスト"), 0);
+        assert_eq!(score_title("Ведьмак 3", "ведьмак 3"), 100);
+        // A title with no letter or digit never matches anything.
+        assert_eq!(normalize_title("「」"), "");
+        assert_eq!(score_title("「」", "Portal"), 0);
+        assert_eq!(score_title("Portal", "…"), 0);
+        assert_eq!(score_title("", ""), 0);
     }
 
     #[test]

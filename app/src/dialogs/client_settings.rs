@@ -169,7 +169,7 @@ impl Render for ClientSettingsDialog {
                     button("cs-close", ButtonKind::Primary, tr!("Done")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close))),
                 )
         };
-        let vw = f32::from(window.viewport_size().width);
+        let vw = f32::from(crate::ui::content_size(window).width);
         drawer(
             DrawerProps { id: "client-settings".into(), width: DRAWER_W.min(vw * 0.96) },
             header.into_any_element(),

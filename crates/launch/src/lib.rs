@@ -10,6 +10,7 @@
 
 pub mod actions;
 pub mod anticheat_data;
+mod args;
 mod clients;
 pub mod companions;
 pub mod diagnose;
@@ -43,6 +44,7 @@ pub mod prepare;
 pub mod probe;
 pub mod procs;
 pub mod record;
+pub mod reshade;
 pub mod runtime;
 pub mod runtimes;
 pub mod sandbox;
@@ -59,6 +61,7 @@ pub mod wake;
 pub mod wine;
 pub mod wine_tools;
 pub mod winetricks;
+mod xbox;
 
 pub use plan::{build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 pub use probe::{Probe, SystemProbe};

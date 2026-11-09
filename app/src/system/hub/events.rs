@@ -4,7 +4,7 @@ use gpui_kit::*;
 use heronite_launch::LaunchEvent;
 
 use super::hub;
-use super::launch::launch;
+use super::launch::{launch, open_client};
 use super::quit::{maybe_exit_idle, request_quit};
 use super::window::{apply_window_flags, close_window_keep_alive, has_window, show_window};
 use crate::system::cli::{Cli, LaunchRequest};
@@ -66,7 +66,8 @@ pub(super) fn on_event(cx: &mut App, ev: LaunchEvent) {
     if let Some(replay) = crate::services::replay::get(cx) {
         replay.update(cx, |r, cx| r.on_launch_event(&ev, cx));
     }
-    if matches!(ev, LaunchEvent::Exited { .. }) {
+    // A game that runs is checked live; one that ended is read again.
+    if matches!(ev, LaunchEvent::Running { .. } | LaunchEvent::Exited { .. } | LaunchEvent::Error { .. }) {
         let achievements = crate::services::achievements::get(cx);
         achievements.update(cx, |a, cx| a.on_launch_event(&ev, cx));
     }
@@ -187,6 +188,24 @@ fn show_from_tray(cx: &mut App) {
     }
 }
 
+/// `heronite://stop`: closes the game when it runs here (a Sunshine stream
+/// of it ended); anything else running is left alone.
+fn stop_game(cx: &mut App, req: &crate::system::cli::LaunchRequest) {
+    let hub = hub(cx);
+    let (running, runtime) = {
+        let s = hub.0.borrow();
+        (s.running.contains_key(&req.app_name), s.runtime.clone())
+    };
+    if !running {
+        log::info!("stop request for {}: not running", req.app_name);
+        return;
+    }
+    log::info!("stop request: closing {}", req.app_name);
+    if !runtime.stop(&req.app_name) {
+        runtime.force_clear(&req.app_name);
+    }
+}
+
 /// A second invocation reached this instance.
 pub(super) fn on_message(cx: &mut App, msg: Message) {
     if hub(cx).0.borrow().quitting {
@@ -194,13 +213,24 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
         return;
     }
     log::info!("request from another invocation: {msg:?}");
+    if let Some(req) = &msg.stop {
+        stop_game(cx, req);
+        if msg.launch.is_none() {
+            return;
+        }
+    }
     let hide_setting = hub(cx).0.borrow_mut().settings().hide_window_on_protocol_launch;
-    let cli = Cli { launch: msg.launch.clone(), no_gui: msg.no_gui, ..Default::default() };
+    let cli = Cli { launch: msg.launch.clone(), open_client: msg.open_client, no_gui: msg.no_gui, ..Default::default() };
     let hide = cli.hide_window(hide_setting);
     if !hide {
-        apply_window_flags(cx, msg.console, msg.fullscreen);
+        apply_window_flags(cx, msg.console, msg.fullscreen, false);
+    }
+    if let Some(client) = msg.open_client {
+        open_client(cx, client, false);
     }
     match msg.launch {
+        // A shortcut of a store client asks for the client only.
+        None if msg.open_client.is_some() => {}
         // Heroic's `second-instance`: show the window unless the launch hides it.
         None => {
             show_window(cx);

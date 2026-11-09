@@ -81,11 +81,7 @@ fn launched_and_args(app: &str, s: &GameSettings, opts: &LaunchOptions) -> (Stri
         .filter(|a| !a.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
-    let args = if extra.is_empty() {
-        Vec::new()
-    } else {
-        shlex::split(&extra).unwrap_or_else(|| extra.split_whitespace().map(str::to_string).collect())
-    };
+    let args = if extra.is_empty() { Vec::new() } else { crate::args::split_windows_args(&extra) };
     (launched.to_string(), args)
 }
 
@@ -326,6 +322,15 @@ mod tests {
             base[k] = v.clone();
         }
         GameSettings::from_map(base.as_object().unwrap(), "/home/u")
+    }
+
+    #[test]
+    fn the_games_arguments_are_split_the_windows_way() {
+        // A backslash is a path separator, single quotes still group.
+        let s = settings(json!({"launcherArgs": r"-userdir C:\Users\me\saves -x 'a b' -name Rafa's"}));
+        let (launched, args) = launched_and_args("Calluna", &s, &LaunchOptions { extra_args: vec!["--go".into()], ..Default::default() });
+        assert_eq!(launched, "Calluna");
+        assert_eq!(args, ["--go", "-userdir", r"C:\Users\me\saves", "-x", "a b", "-name", "Rafa's"]);
     }
 
     fn process(probe: &FakeProbe, g: &GameInfo, s: &GameSettings, opts: &LaunchOptions) -> ProcessPlan {

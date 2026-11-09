@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_achievements::Source;
+use heronite_achievements::{AchievementGroup, Section, Source};
 
 use crate::icons::Icon;
 use crate::theme;
@@ -66,12 +66,22 @@ pub fn percent_label(percent: f32) -> String {
     format!("{}%", heronite_i18n::decimal(percent as f64, 1))
 }
 
+/// A source's name in the UI: its brand, or "Game files" (translated).
+pub fn source_name(source: Source) -> SharedString {
+    match source {
+        Source::Local => tr!("Game files").into(),
+        other => other.label().into(),
+    }
+}
+
 pub fn source_chip(source: Source) -> Div {
     let dot = match source {
         Source::Steam => theme::rgb_a(102, 192, 244, 1.),
         Source::Gog => theme::rgb_a(164, 107, 220, 1.),
         Source::Epic => theme::rgb_a(217, 217, 217, 1.),
         Source::RetroAchievements => theme::rgb_a(240, 180, 41, 1.),
+        // No brand: a neutral dot.
+        Source::Local => theme::rgb_a(150, 160, 175, 1.),
     };
     div()
         .flex()
@@ -85,7 +95,7 @@ pub fn source_chip(source: Source) -> Div {
         .text_size(px(11.))
         .text_color(theme::ink_a(0.78))
         .child(div().size(px(6.)).rounded_full().bg(dot))
-        .child(source.label())
+        .child(source_name(source))
 }
 
 pub fn gold_a(a: f32) -> Hsla {
@@ -118,5 +128,49 @@ pub fn synced_label(at: chrono::DateTime<chrono::Utc>) -> String {
         60..=1439 => tr!("Updated {n} h ago", n = mins / 60),
         _ if at.timestamp() <= 0 => tr!("Not updated yet").to_string(),
         _ => tr!("Updated {date}", date = short_day(at.with_timezone(&chrono::Local).date_naive())),
+    }
+}
+
+/// The name of a section of a game's achievements (one of Steam's
+/// Achievement Sets): the developer's name, else "Base game" for Steam's
+/// unnamed base group (DLC id 0, or id `0` when the source gives no DLC id,
+/// as the client's schema), else "Other achievements" (no known group).
+pub fn section_label(group: Option<&AchievementGroup>) -> String {
+    match group {
+        Some(g) if !g.name.is_empty() => g.name.clone(),
+        Some(g) if g.dlc_app_id == Some(0) || (g.dlc_app_id.is_none() && g.id == "0") => tr!("Base game").to_string(),
+        _ => tr!("Other achievements").to_string(),
+    }
+}
+
+/// "The Pale Reach · DLC · 3/8": a section's name, whether it needs a DLC
+/// (as far as the source says) and its unlocked/total count.
+pub fn section_line(section: &Section) -> String {
+    let name = section_label(section.group);
+    let count = format!("{}/{}", section.unlocked(), section.total());
+    if section.group.is_some_and(AchievementGroup::is_dlc) {
+        format!("{name} · {} · {count}", tr!("DLC"))
+    } else {
+        format!("{name} · {count}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{section_label, AchievementGroup};
+
+    fn group(id: &str, name: &str, dlc: Option<u32>) -> AchievementGroup {
+        AchievementGroup { id: id.into(), name: name.into(), dlc_app_id: dlc, ..Default::default() }
+    }
+
+    #[test]
+    fn unnamed_base_groups_read_as_the_base_game() {
+        assert_eq!(section_label(Some(&group("2", "Single Player", Some(0)))), "Single Player");
+        // The Community page says DLC 0; the client's schema gives no DLC id.
+        assert_eq!(section_label(Some(&group("0", "", Some(0)))), "Base game");
+        assert_eq!(section_label(Some(&group("0", "", None))), "Base game");
+        assert_eq!(section_label(Some(&group("3", "", None))), "Other achievements");
+        assert_eq!(section_label(Some(&group("0", "", Some(7)))), "Other achievements");
+        assert_eq!(section_label(None), "Other achievements");
     }
 }

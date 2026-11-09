@@ -58,6 +58,8 @@ pub(crate) struct Filters {
     pub status: usize,
     /// Index in [`category_options`].
     pub category: usize,
+    /// 0 = any, else the smart group `group - 1` (`CollectionView::smart_groups`).
+    pub group: usize,
 }
 
 pub(crate) const SHOW: [&str; 3] = [n_!("All games"), n_!("Installed"), n_!("Not installed")];
@@ -96,6 +98,7 @@ impl Nav {
             sort: 1,
             status: status.map_or(0, |i| i + 1),
             category: 0,
+            group: 0,
         };
         self.index = 0;
         self.toolbar = None;
@@ -136,7 +139,8 @@ impl Nav {
         keys(games)
     }
 
-    fn chips(&self, lib: &Library, cats: &Categories, search: &str) -> [(SharedString, SharedString); CHIPS] {
+    /// `group`: the Filters panel's smart group, shown before what Show shows.
+    fn chips(&self, lib: &Library, cats: &Categories, search: &str, group: Option<&str>) -> [(SharedString, SharedString); CHIPS] {
         let f = &self.filters;
         let status = status_options(lib);
         let category = match category_options(cats).get(f.category).cloned().flatten() {
@@ -147,6 +151,10 @@ impl Nav {
             (0, true) => tr!("Favourites").to_string(),
             (s, true) => format!("{} \u{b7} {}", heronite_i18n::tr(SHOW[s]), tr!("Favourites")),
             (s, false) => heronite_i18n::tr(SHOW[s]).to_string(),
+        };
+        let show = match group {
+            Some(name) => format!("{name} \u{b7} {show}"),
+            None => show,
         };
         [
             (tr!("Show").into(), show.into()),
@@ -236,7 +244,12 @@ impl CollectionView {
     /// The keys the Grid of a tab shows now (also for the layouts that reuse its filters).
     pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
         let Some(lib) = self.lib.clone() else { return Vec::new() };
-        let games = self.console_games(&spec.source);
+        let mut games = self.console_games(&spec.source);
+        let group = self.console.tab_navs.get(tab).map_or(0, |n| n.grid.filters.group);
+        if let Some(group) = group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)) {
+            let facts = self.group_facts(&lib.statuses);
+            games.retain(|g| group.matches(g, &facts));
+        }
         let search = self.console.search.clone();
         let cats = std::mem::take(&mut self.categories);
         let keys = self.tab_nav(tab).grid.keys(&games, &lib, &cats, &search);
@@ -254,7 +267,7 @@ impl CollectionView {
 
     fn grid_cols(&self, window: &Window, panel: bool, rail: bool) -> usize {
         let (tw, _) = self.console_tile_size();
-        let vw = f32::from(window.viewport_size().width) / kit::scale();
+        let vw = f32::from(crate::ui::content_size(window).width) / kit::scale();
         let taken = if panel { panel_width(vw) + SIDE } else { 0. } + if rail { RAIL } else { 0. };
         (((vw - 2. * SIDE - taken + GAP) / (tw + GAP)).floor() as usize).max(2)
     }
@@ -266,9 +279,11 @@ impl CollectionView {
         let cols = self.grid_cols(window, panel, rail);
         let keys = self.grid_keys(tab, spec);
         let search = self.console.search.clone();
+        let group = self.console.tab_navs.get(tab).map_or(0, |n| n.grid.filters.group);
+        let group = group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)).map(|g| g.name.clone());
         let cats = std::mem::take(&mut self.categories);
         let nav = &mut self.tab_nav(tab).grid;
-        let chips = nav.chips(&lib, &cats, &search);
+        let chips = nav.chips(&lib, &cats, &search, group.as_deref());
         self.categories = cats;
         let nav = &mut self.tab_nav(tab).grid;
         nav.cols = cols;
@@ -292,7 +307,13 @@ impl CollectionView {
         let bar =
             div().flex().items_center().gap(u(12.)).px(u(SIDE)).pb(u(16.)).children(chips.iter().enumerate().map(|(i, (label, value))| {
                 let on = toolbar == Some(i);
+                // A click changes the chip (A).
+                let click = self.console_click(move |this, window, cx| {
+                    this.tab_nav(tab).grid.toolbar = Some(i);
+                    this.console_pad(Pad::A, window, cx);
+                });
                 kit::row_base(on)
+                    .on_mouse_down(MouseButton::Left, click)
                     .min_h(u(46.))
                     .px(u(18.))
                     .when(!on, |d| d.bg(kit::ink(0.07)))
@@ -353,7 +374,7 @@ impl CollectionView {
         };
         let list = div().flex().flex_col().flex_1().min_w_0().child(div().flex_none().children(title_line)).child(body);
         let side = game.filter(|_| panel && !keys.is_empty()).map(|g| {
-            let w = panel_width(f32::from(window.viewport_size().width) / kit::scale());
+            let w = panel_width(f32::from(crate::ui::content_size(window).width) / kit::scale());
             self.grid_panel(&g, w, window)
         });
         div()
@@ -376,14 +397,35 @@ impl CollectionView {
         let scroll = glide.handle().clone();
         let mut grid =
             div().id(("console-grid", tab)).flex().flex_col().overflow_y_scroll().track_scroll(&scroll).px(u(SIDE - PAD)).pb(u(24.));
-        let seen = super::in_sight(scroll.offset().y, line_h, window.viewport_size().height);
+        let seen = super::in_sight(scroll.offset().y, line_h, crate::ui::content_size(window).height);
         for (r, chunk) in keys.chunks(cols).enumerate() {
             let near = seen.start().saturating_sub(1) <= r && r <= *seen.end();
             let visible = seen.contains(&r) || r.abs_diff(index / cols) <= 1;
             let mut line = div().flex_none().flex().gap(u(GAP)).h(u(line_h)).px(u(PAD)).pt(u(PAD));
             if near || r.abs_diff(index / cols) <= 1 {
                 for (c, key) in chunk.iter().enumerate() {
-                    line = line.child(self.console_tile(key, tw, th, grid_focus && r * cols + c == index, visible, window));
+                    let j = r * cols + c;
+                    let click = self.cover_click(move |this| {
+                        let nav = &mut this.tab_nav(tab).grid;
+                        let moved = nav.toolbar.is_some() || nav.index != j;
+                        (nav.toolbar, nav.index, nav.reveal) = (None, j, true);
+                        moved
+                    });
+                    let on = grid_focus && j == index;
+                    let tile = self.console_tile(key, tw, th, on, visible, window).on_mouse_down(MouseButton::Left, click);
+                    // The mouse over a cover moves the focus there (the grid stays still).
+                    let tile = if on {
+                        tile
+                    } else {
+                        // No reveal: the grid does not scroll under the pointer.
+                        tile.on_mouse_move(self.cover_hover(move |this| {
+                            let nav = &mut this.tab_nav(tab).grid;
+                            let moved = nav.toolbar.is_some() || nav.index != j;
+                            (nav.toolbar, nav.index) = (None, j);
+                            moved
+                        }))
+                    };
+                    line = line.child(tile);
                 }
             }
             grid = grid.child(line);

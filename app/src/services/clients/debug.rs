@@ -6,7 +6,8 @@
 //!   `cancelling`;
 //! - `ready` (set up, sign-in not seen), `signedout`, `signedin`, `empty`
 //!   (signed in, no games), `games` (signed in, three games), `running`,
-//!   `gamerunning` (a game of it runs);
+//!   `gamerunning` (a game of it runs), `shortcuts` (`games` with both
+//!   shortcuts);
 //! - `forget` and `settings`, which are `games` with the page's inline
 //!   confirmation or its Wine settings dialog open.
 //!
@@ -96,6 +97,8 @@ pub(super) fn fake(client: Client, state: &str) -> ClientState {
     st.last = Some(LastSync { at: (chrono::Utc::now() - chrono::Duration::minutes(2)).to_rfc3339(), games: games.len() });
     st.running = matches!(state, "running" | "gamerunning");
     st.game_running = state == "gamerunning";
+    let both = state == "shortcuts";
+    st.shortcuts = super::shortcuts::Shortcuts { desktop: both, menu: both, has_desktop: true };
     st.status = Some(Status { exe: Some(prefix.join("drive_c/client.exe")), prefix: Some(prefix), account, games });
     st
 }

@@ -45,6 +45,33 @@ thread_local! {
     /// The menu open in the last frame, to bring its selection into view
     /// once when it opens.
     static OPEN: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// Where each select was drawn last (window coordinates) and the
+    /// views' area then (`ui::content_bounds`): the menu opens on the side with room.
+    static PLACES: RefCell<HashMap<String, (Bounds<Pixels>, Bounds<Pixels>)>> = Default::default();
+}
+
+/// Gap between the select and its menu.
+pub(super) const MENU_GAP: f32 = 4.;
+/// Kept free between the menu and the window's edge.
+const EDGE: f32 = 12.;
+/// The list never gets shorter than this; past it the menu overlaps the
+/// window's edge rather than show two rows.
+const MENU_MIN_H: f32 = 120.;
+/// The menu's padding around the list, and the search box when it has one.
+pub(super) const PANEL_PAD: f32 = 16.;
+const SEARCH_H: f32 = 44.;
+
+/// Which side of the field `id` its menu opens on (`true`: above), and how
+/// tall the menu's list may be (at most `cap`): below, unless the list (about
+/// `wanted` px, the rest of the menu `extra`) fits better above. Needs
+/// [`place_probe`] in the field.
+pub(super) fn menu_side(id: &str, wanted: f32, cap: f32, extra: f32) -> (bool, f32) {
+    let Some((at, area)) = PLACES.with(|p| p.borrow().get(id).copied()) else { return (false, cap) };
+    let below = f32::from(area.bottom() - at.bottom()) - MENU_GAP - EDGE - extra;
+    let above = f32::from(at.top() - area.top()) - MENU_GAP - EDGE - extra;
+    let up = below < wanted && above > below;
+    let room = if up { above } else { below };
+    (up, cap.min(room).max(MENU_MIN_H))
 }
 
 /// `SelectField`: label, 40px select and, when `open`, its menu of `options`
@@ -96,6 +123,7 @@ pub fn select_menu_field<V: 'static>(
         .gap(px(9.))
         .children(value_dot.map(dot))
         .child(div().min_w_0().truncate().child(value.into()))
+        .child(place_probe(id))
         .child(div().absolute().right(px(14.)).top_0().bottom_0().flex().items_center().child(icon(
             Icon::ExpandMore,
             px(18.),
@@ -113,15 +141,9 @@ pub fn select_menu_field<V: 'static>(
     let query = filter.map(|f| f.read(cx).value().trim().to_lowercase()).unwrap_or_default();
     let on_pick = Rc::new(on_pick);
     let scroll = SCROLLS.with(|s| s.borrow_mut().entry(id.to_string()).or_insert_with(ScrollHandle::new).clone());
-    let mut list = div()
-        .id(SharedString::from(format!("{id}-list")))
-        .flex()
-        .flex_col()
-        .gap(px(2.))
-        .max_h(px(MENU_MAX_H))
-        .overflow_y_scroll()
-        .track_scroll(&scroll);
-    let (mut group, mut children, mut selected_child) = (None, 0, None);
+    let mut list =
+        div().id(SharedString::from(format!("{id}-list"))).flex().flex_col().gap(px(2.)).overflow_y_scroll().track_scroll(&scroll);
+    let (mut group, mut children, mut selected_child, mut headings) = (None, 0, None, 0);
     for (i, opt) in options.into_iter().enumerate() {
         let matches = query.is_empty()
             || opt.label.to_lowercase().contains(&query)
@@ -133,6 +155,7 @@ pub fn select_menu_field<V: 'static>(
             group = opt.group.clone();
             list = list.child(group_heading(group.clone().unwrap_or_default(), children == 0));
             children += 1;
+            headings += 1;
         }
         if opt.selected {
             selected_child = Some(children);
@@ -178,14 +201,41 @@ pub fn select_menu_field<V: 'static>(
         },
         None,
     );
+    // Rows of about 38px and headings of about 26px, up to the usual height.
+    let wanted = (((children - headings) * 38 + headings * 26).max(38) as f32).min(MENU_MAX_H);
+    let extra = PANEL_PAD + if filter.is_some() { SEARCH_H } else { 0. };
+    let (up, list_h) = menu_side(id, wanted, MENU_MAX_H, extra);
+    let list = list.max_h(px(list_h));
     let mut menu = menu_panel(100.).w_full();
     if let Some(f) = filter {
         menu = menu.child(search_box(f).w_full().mb(px(4.)));
     }
     let menu = menu.child(div().relative().pr(px(6.)).child(list).children(scrollbar));
-    let top = if label.is_some() { 22. + 44. } else { 44. };
-    wrap = wrap.child(deferred(div().absolute().top(px(top)).left_0().right_0().occlude().child(menu)).with_priority(40));
+    let place = div().absolute().left_0().right_0().occlude();
+    // Above: its bottom on the select's top (the wrap ends with the select).
+    let place = if up {
+        place.bottom(px(theme::INPUT_H + MENU_GAP))
+    } else {
+        place.top(px(if label.is_some() { 22. } else { 0. } + theme::INPUT_H + MENU_GAP))
+    };
+    wrap = wrap.child(deferred(place.child(menu)).with_priority(40));
     wrap
+}
+
+/// Covers a field (its parent must be `relative`) and records where it was
+/// drawn, for [`menu_side`].
+pub(super) fn place_probe(id: &str) -> impl IntoElement {
+    let id = id.to_string();
+    canvas(
+        move |bounds, window, _| {
+            PLACES.with(|p| p.borrow_mut().insert(id, (bounds, crate::ui::content_bounds(window))));
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
 }
 
 fn dot(color: Rgba) -> Div {

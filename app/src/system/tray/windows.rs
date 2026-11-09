@@ -5,9 +5,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::channel::mpsc::UnboundedSender;
+use heronite_data::appearance::Theme;
 use heronite_data::DataPaths;
 use heronite_i18n::tr;
-use heronite_platform::tray::{Icon, MenuItem, Options, Tray};
+use heronite_platform::tray::{Icon, MenuItem, MenuTheme, Options, Tray};
 
 use super::common::{click_cmd, current_rows, icon_images, show_hide, Row};
 use super::TrayCmd;
@@ -87,6 +88,12 @@ pub fn spawn(
             let _ = click.unbounded_send(click_cmd(exit_to_tray));
         }),
         menu: Box::new(move || menu(&data_paths, max_recent, exit_to_tray, open.load(Ordering::Relaxed), &tx)),
+        menu_theme: Box::new(|| match crate::theme::appearance().theme {
+            // Let Windows resolve System even while every app window is closed.
+            Theme::System => MenuTheme::System,
+            _ if crate::theme::theme_is_light() => MenuTheme::Light,
+            _ => MenuTheme::Dark,
+        }),
         // `taskkill` without `/F` reaches the tray's window while the main one
         // is closed to the tray: the normal quit, as the menu's.
         on_close: Some(Box::new(move || {

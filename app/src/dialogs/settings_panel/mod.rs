@@ -26,6 +26,7 @@ mod prefix_menu;
 mod presets;
 mod protondb;
 mod replay;
+mod reshade;
 mod sandbox;
 mod saves;
 mod shared_folders;
@@ -50,6 +51,8 @@ use crate::ui::fields::new_input;
 
 pub use general::GlobalView;
 pub use logic::{GameFacts, Section};
+pub use reshade::focus_reshade;
+pub(crate) use reshade::Place as ReshadePlace;
 
 /// What the settings are bound to.
 #[derive(Clone, Debug)]
@@ -71,6 +74,16 @@ enum Bind {
     SteamLine,
     /// A number of the FPS limit (`heronite_launch::fps_limit`), digits only.
     Fps { key: &'static str },
+}
+
+/// Prefix of the ReShade settings keys (`heronite_launch::reshade::KEY_*`).
+const RESHADE_KEYS: &str = heronite_launch::reshade::KEY_ENABLED;
+
+/// `parsed` (a Steam game's launch options as settings) with the ReShade
+/// keys of `current`, which the line does not hold.
+fn with_reshade_keys(mut parsed: Settings, current: &Settings) -> Settings {
+    parsed.extend(current.iter().filter(|(k, _)| k.starts_with(RESHADE_KEYS)).map(|(k, v)| (k.clone(), v.clone())));
+    parsed
 }
 
 const fn s(key: &'static str) -> Bind {
@@ -107,6 +120,7 @@ const INPUTS: &[(&str, Bind, &str)] = &[
     ("steamLine", Bind::SteamLine, n_!("Empty: Steam's defaults")),
     ("select.filter", Bind::Scratch, n_!("Search\u{2026}")),
     ("wt.search", Bind::Scratch, n_!("Search components\u{2026}")),
+    ("reshade.repo", Bind::Scratch, "https://github.com/…"),
 ];
 
 /// Outcome line shown under a tab (tool started, sync result, errors).
@@ -183,6 +197,8 @@ pub struct SettingsPanel {
     pub(super) lsfg: Option<heronite_launch::lsfg::Install>,
     /// `lsfg-vk-ui`, when installed.
     pub(super) lsfg_ui: Option<String>,
+    /// The ReShade section (read when the Performance tab opens).
+    reshade: reshade::ReshadeUi,
     /// The umu database, for the Game fixes section (`None` while read).
     pub(super) umu: Option<fixes::UmuData>,
     /// Why the sandbox cannot run here (`None` while looked at; `Some(None)`: it can).
@@ -218,8 +234,12 @@ impl SettingsPanel {
             Target::Defaults => None,
         };
         let settings = match &target {
-            // Filled from Steam once it is read.
-            _ if steam_app.is_some() => heronite_steam::options::defaults(),
+            // Filled from Steam once it is read; ReShade's keys are ours.
+            Target::Game(f) if steam_app.is_some() => {
+                let mut s = heronite_steam::options::defaults();
+                s.extend(game_config::load_game(&paths, &f.app_name, &home).into_iter().filter(|(k, _)| k.starts_with(RESHADE_KEYS)));
+                s
+            }
             Target::Game(f) => game_config::load_game(&paths, &f.app_name, &home),
             Target::Defaults => game_config::load_global(&paths, &home),
         };
@@ -309,6 +329,7 @@ impl SettingsPanel {
             runtimes,
             lsfg: None,
             lsfg_ui: None,
+            reshade: Default::default(),
             umu: None,
             sandbox_host: None,
             presets: Vec::new(),
@@ -336,6 +357,9 @@ impl SettingsPanel {
             this.global_wine = Some(logic::wine_of(&game_config::load_global(&this.paths, &this.home)).name);
         }
         this.load_lsfg(cx);
+        if this.section == Section::Performance {
+            this.load_reshade(false, cx);
+        }
         this.load_gpu(cx);
         this.load_presets(cx);
         if this.facts().is_some_and(|f| f.run_kind == logic::RunKind::Wine) {
@@ -405,6 +429,9 @@ impl SettingsPanel {
             self.confirm_reset = false;
             self.env_error.clear();
             self.maybe_detect_saves(window, cx);
+            if section == Section::Performance && self.reshade.overview.is_none() {
+                self.load_reshade(false, cx);
+            }
             cx.notify();
         }
     }
@@ -487,6 +514,14 @@ impl SettingsPanel {
             return;
         }
         if self.is_steam() {
+            // Not in Steam's line but in the game's config here: its
+            // overrides are written into the line on their own.
+            if key.starts_with(RESHADE_KEYS) {
+                self.settings.insert(key.to_string(), value.clone());
+                self.queue.push((key.to_string(), value));
+                self.flush(cx);
+                return cx.notify();
+            }
             return self.steam_set(key, value, cx);
         }
         self.settings.insert(key.to_string(), value.clone());
@@ -512,6 +547,15 @@ impl SettingsPanel {
     /// launch options are rebuilt once).
     pub(super) fn set_all(&mut self, values: Vec<(&str, Value)>, cx: &mut Context<Self>) {
         let mut changed: Vec<(&str, Value)> = values.into_iter().filter(|(k, v)| self.settings.get(*k) != Some(v)).collect();
+        if self.is_steam() {
+            // As in `set`: not in Steam's line but in the game's config.
+            for (k, v) in changed.extract_if(.., |(k, _)| k.starts_with(RESHADE_KEYS)) {
+                self.settings.insert(k.to_string(), v.clone());
+                self.queue.push((k.to_string(), v));
+            }
+            self.flush(cx);
+            cx.notify();
+        }
         let Some((last_key, last)) = changed.pop() else { return };
         if self.is_steam() {
             if self.steam_fields_editable() {
@@ -690,6 +734,9 @@ impl Render for SettingsPanel {
             Section::Compatibility if self.winetricks_open() => self.winetricks_tab(cx),
             Section::Compatibility if self.is_steam() => self.proton_tab(cx),
             Section::Performance if self.is_steam() => self.steam_perf_tab(cx),
+            Section::Performance if self.facts().is_some_and(|f| logic::reshade_only(f.run_kind)) => {
+                parts::column().child(self.reshade_section(cx))
+            }
             Section::Launch if self.is_steam() => self.steam_launch_tab(cx),
             Section::Gpu if self.is_steam() => self.steam_gpu_tab(cx),
             Section::General => self.general_tab(window, cx),

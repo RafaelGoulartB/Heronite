@@ -116,6 +116,29 @@ fn launcher_of(id: &str, app_path: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Shows a desktop notification through the Notification portal. Inside the
+/// sandbox this is the way: the manifest does not let the app talk to
+/// `org.freedesktop.Notifications` itself. Blocks until the portal answers.
+#[cfg(target_os = "linux")]
+pub fn notify(title: &str, body: &str) -> Result<(), String> {
+    use ashpd::desktop::notification::{Notification, NotificationProxy};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // One id per notification: a repeated id replaces the one on screen.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let id = format!("heronite-{}", NEXT.fetch_add(1, Ordering::Relaxed));
+    pollster::block_on(async {
+        let portal = NotificationProxy::new().await?;
+        portal.add_notification(&id, Notification::new(title).body(body)).await
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// Only Linux has the portal.
+#[cfg(not(target_os = "linux"))]
+pub fn notify(_title: &str, _body: &str) -> Result<(), String> {
+    Err("the Notification portal is Linux's".into())
+}
+
 /// The host's own XDG folder that `HOST_<var>` names (Flatpak sets it when
 /// the host sets `<var>`), else `$HOME/<fallback>`: inside the sandbox
 /// `$XDG_DATA_HOME` and `$XDG_CONFIG_HOME` point into `~/.var/app/<id>`,

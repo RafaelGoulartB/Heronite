@@ -121,6 +121,12 @@ pub(crate) fn own_exe() -> PathBuf {
         return launcher;
     }
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("heronite-rs"));
+    // Scoop deletes old version folders: its `current` junction follows
+    // every update.
+    #[cfg(windows)]
+    if let Some(current) = heronite_platform::scoop::current(&exe) {
+        return current;
+    }
     // A replaced binary shows up as ".../heronite-rs (deleted)".
     let s = exe.to_string_lossy();
     PathBuf::from(s.strip_suffix(" (deleted)").unwrap_or(&s).to_string())
@@ -145,13 +151,20 @@ fn game_id(game: &CollectionGame) -> GameId {
     GameId { runner: game.runner.clone(), app_name: game.app_name.clone(), title: game.title.clone() }
 }
 
-fn image_opts(data_paths: &DataPaths) -> heronite_images::Opts {
+pub(crate) fn image_opts(data_paths: &DataPaths) -> heronite_images::Opts {
     heronite_images::Opts::new(data_paths.images_cache_dir(), Some(AppPaths::for_data(data_paths).thumbs_dir()))
 }
 
 /// Writes the first loadable image of `chain` as a `w`x`h` file (`cover`
 /// crop). `png`: PNG, else JPEG q90.
-fn render(chain: &[heronite_data::ImageRef], w: u32, h: u32, dest: &Path, png: bool, opts: &heronite_images::Opts) -> Option<PathBuf> {
+pub(crate) fn render(
+    chain: &[heronite_data::ImageRef],
+    w: u32,
+    h: u32,
+    dest: &Path,
+    png: bool,
+    opts: &heronite_images::Opts,
+) -> Option<PathBuf> {
     let chain = crate::images::to_chain(chain);
     if chain.is_empty() {
         return None;

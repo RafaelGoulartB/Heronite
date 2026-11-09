@@ -3,7 +3,6 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-#[cfg(unix)]
 use std::io::Write;
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::Arc;
@@ -20,7 +19,6 @@ use heronite_launch::probe::SystemProbe;
 use heronite_launch::procs::{FakeProcs, Procs, SystemProcs};
 use heronite_launch::runtime::{FakeSpawner, PrepServices, ProcessHandle, Spawner};
 use heronite_launch::steam::SteamLocator;
-#[cfg(unix)]
 use heronite_launch::StopOptions;
 use heronite_launch::{
     Command, HandoffConfig, LaunchError, LaunchEvent, LaunchPlan, LaunchRequest, Launcher, LauncherConfig, ProcessPlan, StopSpec,
@@ -60,7 +58,12 @@ fn rig() -> Rig {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     let spawner = Arc::new(FakeSpawner::new());
     let procs = Arc::new(FakeProcs::new());
@@ -171,7 +174,7 @@ fn full_lifecycle_records_everything_like_heronite() {
 fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let r = rig();
     let mut plan = process_plan("lutris", &["lutris:rungameid/12"]);
-    plan.handoff = Some(Handoff { prefix: Some("/pfx".into()), folder: Some("/games/celeste".into()), client: None });
+    plan.handoff = Some(Handoff { prefix: Some("/pfx".into()), folder: Some("/games/celeste".into()), ..Default::default() });
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan.clone()))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
@@ -195,13 +198,37 @@ fn a_game_another_launcher_hands_to_its_open_window_is_followed() {
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
     assert!(elapsed >= Duration::from_millis(400), "{elapsed:?}");
 
-    // The launcher failed: nothing is waited for (no made-up play time).
+    // The launcher failed: nothing is waited for (no made-up play time), not
+    // even a game that is there. A game following a failed launcher would keep
+    // the session going, which a time limit would only guess at.
     r.launcher.launch(request("lutris_12", LaunchPlan::Native(plan))).unwrap();
     assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "lutris_12".into() });
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.procs.start(902, "Celeste.exe", None);
+    r.procs.set_game_pids(&[902]);
     r.spawner.finish(2, 1);
-    let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
-    assert!(elapsed < Duration::from_millis(300), "{elapsed:?}");
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    assert!(!r.launcher.is_running("lutris_12"));
+}
+
+/// `explorer.exe` starting a Store game exits with 1 whatever happened.
+#[test]
+fn a_hand_off_whose_exit_code_says_nothing_is_followed() {
+    let r = rig();
+    let mut plan = process_plan("explorer.exe", &[r"shell:AppsFolder\Studio.Game_abc!Game"]);
+    plan.handoff = Some(Handoff { folder: Some("/games/xbox".into()), exit_ignored: true, ..Default::default() });
+    r.launcher.launch(request("xbox_game", LaunchPlan::Native(plan))).unwrap();
+    assert_eq!(next(&r.rx), LaunchEvent::Launching { app_name: "xbox_game".into() });
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.spawner.finish(0, 1);
+    r.procs.start(901, "Game.exe", None);
+    r.procs.set_game_pids(&[901]);
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(r.launcher.is_running("xbox_game"), "followed past the wait for it");
+    r.procs.exit(901);
+    let LaunchEvent::Exited { elapsed, exit, .. } = next(&r.rx) else { panic!() };
+    assert!(elapsed >= Duration::from_millis(500));
+    assert_eq!(exit.unwrap().code, Some(0), "not a failed launch");
 }
 
 #[test]
@@ -274,10 +301,6 @@ fn write_steam_log(r: &Rig, text: &str) -> std::path::PathBuf {
     log
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_games_are_found_through_the_log_and_followed_until_exit() {
     let r = rig();
@@ -302,17 +325,15 @@ fn steam_games_are_found_through_the_log_and_followed_until_exit() {
 }
 
 /// Scripts and programs alongside a Steam game (Windows'
-/// `heronite_launch::steam_extras`). The fake Steam folder is a system root,
-/// which Windows looks in too (it also reads this machine's own Steam logs,
-/// whose games are not running in the fake process list).
+/// `heronite_launch::steam_extras`), using only fixture Steam roots.
 #[test]
 fn steam_extras_run_around_the_game_steam_starts() {
-    use std::io::Write as _;
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
     let steam_path = home.join(".steam/steam");
-    let steam = SteamLocator { home: home.clone(), steam_path: steam_path.clone(), system_roots: vec![steam_path.clone()] };
+    let steam =
+        SteamLocator { home: home.clone(), steam_path: steam_path.clone(), system_roots: vec![], platform_roots: vec![steam_path.clone()] };
     let (tx, rx) = channel();
     let (spawner, procs) = (Arc::new(FakeSpawner::new()), Arc::new(FakeProcs::new()));
     let launcher = Launcher::new(paths.clone(), steam, spawner.clone(), procs.clone(), fast_cfg(), tx);
@@ -359,10 +380,6 @@ fn steam_extras_run_around_the_game_steam_starts() {
     assert!(record.unwrap().session_recorded);
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
     let r = rig();
@@ -394,7 +411,6 @@ fn steam_stop_only_ends_tracking_unless_asked_to_kill() {
 /// Plays `steam_400` to its end. `steam_open_before`: Steam's pid file names
 /// a live process before the launch (else Steam "starts" with the game).
 /// Returns the URIs opened.
-#[cfg(unix)]
 fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     let r = rig();
     let log = write_steam_log(&r, "");
@@ -402,7 +418,7 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
         .unwrap();
     let steam_running = || {
         fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000\n").unwrap();
-        r.procs.start(5000, "steam", None);
+        r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
     };
     if steam_open_before {
         steam_running();
@@ -423,10 +439,6 @@ fn play_steam_game(close_after: bool, steam_open_before: bool) -> Vec<String> {
     r.spawner.uris()
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_is_closed_after_it_only_when_asked() {
     assert_eq!(play_steam_game(true, false), ["u", "steam://exit"]);
@@ -463,7 +475,12 @@ fn steam_that_never_starts_the_game_is_an_error_without_recording() {
 fn real_rig() -> (tempfile::TempDir, DataPaths, Launcher, Receiver<LaunchEvent>) {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
-    let steam = SteamLocator { home: dir.path().join("home"), steam_path: dir.path().join("home/.steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: dir.path().join("home"),
+        steam_path: dir.path().join("home/.steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![dir.path().join("home/.steam/steam")],
+    };
     let (tx, rx) = channel();
     let procs: Arc<dyn Procs> = Arc::new(SystemProcs);
     let launcher = Launcher::new(paths.clone(), steam, Arc::new(SystemSpawner::new(procs.clone())), procs, fast_cfg(), tx);
@@ -671,10 +688,12 @@ fn status_of(ev: LaunchEvent) -> (String, bool) {
 #[test]
 fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     let r = rig();
-    let cloud = Arc::new(RecordingCloud { upload_delay: Duration::from_millis(500), ..Default::default() });
+    let upload = Duration::from_millis(500);
+    let cloud = Arc::new(RecordingCloud { upload_delay: upload, ..Default::default() });
     r.launcher.set_prep_services(services(true, Some(cloud.clone())));
     let mut process = process_plan("/games/run.sh", &[]);
     process.prep = PrepSpec { cloud_saves: Some(CloudSaves::new("legendary", "/saves")), ..Default::default() };
+    let launched = Instant::now();
     r.launcher.launch(request("Calluna", LaunchPlan::Native(process))).unwrap();
 
     assert!(matches!(next(&r.rx), LaunchEvent::Launching { .. }));
@@ -687,8 +706,10 @@ fn cloud_saves_are_downloaded_before_and_uploaded_after_the_game() {
     r.spawner.finish(0, 0);
     assert_eq!(status_of(next_any(&r.rx)), ("Uploading cloud saves...".to_string(), false));
     let LaunchEvent::Exited { elapsed, .. } = next(&r.rx) else { panic!() };
-    // The upload (500 ms) is not playtime.
-    assert!(elapsed < Duration::from_millis(400), "{elapsed:?}");
+    // The upload is not playtime: the clock starts after `launched` and the
+    // upload ends before `Exited`, so this holds however long anything took.
+    let longest = launched.elapsed().saturating_sub(upload);
+    assert!(elapsed <= longest, "{elapsed:?} > {longest:?}");
     assert_eq!(cloud.calls.lock().unwrap()[1], ("--skip-download".to_string(), "Calluna:/saves".to_string()));
     assert!(!r.launcher.is_running("Calluna"));
 }
@@ -812,17 +833,22 @@ fn preparing_the_launch_is_not_playtime() {
     let _ = next_any(&r.rx);
     wait_until("the prefix command", || !r.spawner.spawned().is_empty());
     std::thread::sleep(Duration::from_millis(500));
+    // The session's clock starts after this, so however long the machine
+    // stalls it cannot read more than the time since. One that counted the
+    // 500 ms above would.
+    let prepared = Instant::now();
     r.spawner.finish(0, 0);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     std::thread::sleep(Duration::from_millis(100));
     r.spawner.finish(1, 0);
     let LaunchEvent::Exited { elapsed, record, .. } = next(&r.rx) else { panic!() };
-    assert!(elapsed >= Duration::from_millis(100) && elapsed < Duration::from_millis(400), "{elapsed:?}");
-    assert!(record.unwrap().elapsed_seconds < 1);
+    let ran = prepared.elapsed();
+    assert!(elapsed >= Duration::from_millis(100) && elapsed <= ran, "{elapsed:?} of {ran:?}");
+    assert!(record.unwrap().elapsed_seconds <= ran.as_secs() as i64);
     let s = &sessions_of(&r.paths, "g")[0];
     let (start, end) =
         (s.started_at.parse::<chrono::DateTime<chrono::Utc>>().unwrap(), s.ended_at.parse::<chrono::DateTime<chrono::Utc>>().unwrap());
-    assert!(end - start < chrono::Duration::milliseconds(400), "{} -> {}", s.started_at, s.ended_at);
+    assert!(end - start <= chrono::Duration::from_std(ran).unwrap(), "{} -> {}", s.started_at, s.ended_at);
 }
 
 #[test]
@@ -862,7 +888,12 @@ fn a_panicking_session_frees_the_game_and_says_so() {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path().join("heroic"));
     let home = dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     let launcher = Launcher::new(paths, steam, Arc::new(PanickingSpawner(FakeSpawner::new())), Arc::new(FakeProcs::new()), fast_cfg(), tx);
     launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/run.sh", &[])))).unwrap();
@@ -1083,9 +1114,12 @@ fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for
     next(&r.rx);
     assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
     wait_until("the program", || r.spawner.spawned().len() == 2);
+    // The game counts as gone only once it was seen: let the session look at
+    // the prefix before the game leaves it.
+    wait_until("a look at the prefix", || r.procs.windows_asked() > 0);
     // The game exits; Proton's process stays, waiting for the trainer.
-    r.procs.set_windows_programs("/pfx", &["steam.exe", "services.exe", "trainer.exe"]);
     let t = Instant::now();
+    r.procs.set_windows_programs("/pfx", &["steam.exe", "services.exe", "trainer.exe"]);
     wait_until("the trainer to be closed", || r.spawner.handle(1).unwrap().lock().unwrap().terminated);
     assert!(t.elapsed() >= Duration::from_secs(2), "a launcher may hand over to the game first: {:?}", t.elapsed());
     assert!(r.launcher.is_running("g"));
@@ -1097,7 +1131,12 @@ fn programs_close_when_the_game_leaves_its_prefix_even_if_its_launcher_waits_for
 /// while the first one's games still run.
 fn restarted(r: &Rig) -> (Launcher, Receiver<LaunchEvent>) {
     let home = r._dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     (Launcher::new(r.paths.clone(), steam, Arc::new(FakeSpawner::new()), r.procs.clone(), fast_cfg(), tx), rx)
 }
@@ -1123,16 +1162,17 @@ fn a_game_left_running_is_picked_up_by_the_next_run() {
 
     // Up to 30 minutes into the session, the app starts again. The clock
     // counts from boot, so a machine up for less than that (a fresh CI
-    // runner) gets a shorter session.
-    let mut minutes = 0;
+    // runner) gets a shorter session: whole minutes while it can, else half
+    // of its uptime.
+    let mut back_ms = 0;
     json_store::update_value(&r.paths.local_library().join("running.json"), |doc| {
         let mono = doc["sessions"]["g"]["monoStartMs"].as_u64().unwrap();
-        minutes = (mono / 60_000).min(30);
-        doc["sessions"]["g"]["monoStartMs"] = serde_json::json!(mono - minutes * 60_000);
+        back_ms = if mono >= 60_000 { (mono / 60_000).min(30) * 60_000 } else { mono / 2 };
+        doc["sessions"]["g"]["monoStartMs"] = serde_json::json!(mono - back_ms);
         Ok(())
     })
     .unwrap();
-    assert!(minutes > 0, "the machine has been up for less than a minute");
+    assert!(back_ms > 0);
     let (again, rx) = restarted(&r);
     let mut adopted = Vec::new();
     assert_eq!(again.adopt(&mut |g| adopted.push(g.title.clone())), 1);
@@ -1144,8 +1184,8 @@ fn a_game_left_running_is_picked_up_by_the_next_run() {
     r.procs.exit(40_001);
     let LaunchEvent::Exited { stopped, record, elapsed, .. } = next(&rx) else { panic!() };
     assert!(!stopped);
-    assert!(elapsed >= Duration::from_secs(minutes * 60));
-    assert_eq!(record.unwrap().total_played_minutes as u64, minutes);
+    assert!(elapsed >= Duration::from_millis(back_ms));
+    assert_eq!(record.unwrap().total_played_minutes as u64, back_ms / 60_000);
     let doc: SessionsFile = json_store::read(&r.paths.sessions()).unwrap();
     assert_eq!(doc.sessions["g"].len(), 1, "the checkpointed row is updated in place");
     assert!(running_file(&r.paths)["sessions"].get("g").is_none());
@@ -1198,10 +1238,6 @@ fn an_adopted_game_whose_leader_left_is_followed_through_its_group() {
     assert!(stopped);
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     let r = rig();
@@ -1226,10 +1262,6 @@ fn a_steam_game_left_running_is_picked_up_by_its_pids() {
     assert!(r.procs.signals().iter().any(|(pid, _)| *pid == 7777));
 }
 
-// TODO(windows): not isolated there: `SteamLocator` takes Steam's folder, logs
-// and pid from the registry (this machine's real Steam), so the fake Steam
-// under the test's `home` is not seen.
-#[cfg(unix)]
 #[test]
 fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
     let r = rig();
@@ -1241,14 +1273,19 @@ fn steam_opened_for_a_game_followed_again_is_closed_after_it() {
     next(&r.rx);
     wait_until("uri opened", || r.spawner.uris() == ["u"]);
     fs::write(r._dir.path().join("home/.steam/steam.pid"), "5000").unwrap();
-    r.procs.start(5000, "steam", None);
+    r.procs.start(5000, if cfg!(windows) { "steam.exe" } else { "steam" }, None);
     r.procs.start(7777, "reaper", None);
     fs::OpenOptions::new().append(true).open(&log).unwrap().write_all(b"Game process added : AppID 400 x ProcID 7777\n").unwrap();
     next(&r.rx);
     assert_eq!(running_file(&r.paths)["sessions"]["steam_400"]["tracked"]["openedSteam"], true);
 
     let home = r._dir.path().join("home");
-    let steam = SteamLocator { home: home.clone(), steam_path: home.join(".steam/steam"), system_roots: vec![] };
+    let steam = SteamLocator {
+        home: home.clone(),
+        steam_path: home.join(".steam/steam"),
+        system_roots: vec![],
+        platform_roots: vec![home.join(".steam/steam")],
+    };
     let (tx, rx) = channel();
     let spawner = Arc::new(FakeSpawner::new());
     let again = Launcher::new(r.paths.clone(), steam, spawner.clone(), r.procs.clone(), fast_cfg(), tx);

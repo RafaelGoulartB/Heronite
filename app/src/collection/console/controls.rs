@@ -53,9 +53,10 @@ impl Default for ControlsState {
 impl CollectionView {
     /// At app start, before the first frame (console mode may be off): where
     /// the app opens (`openIn`) and, when `autoConsole` is on, the watcher.
-    /// Reads only the values mirrored in ui-state.json.
-    pub(super) fn console_startup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let opens = startup::opens_in_console(self.ui.console_open_in, self.ui.console_mode);
+    /// Reads only the values mirrored in ui-state.json. `reopened`: the
+    /// window was closed in console mode in this run (it opens in it again).
+    pub(super) fn console_startup(&mut self, reopened: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let opens = reopened || startup::opens_in_console(self.ui.console_open_in, self.ui.console_mode);
         // `console_init` enters console mode from this flag.
         self.ui.console_mode = opens;
         if !opens && crate::env::value("HERONITE_DEBUG_CONSOLE").is_none() {

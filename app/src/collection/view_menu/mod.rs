@@ -4,8 +4,10 @@
 //! The panel is drawn in `render.rs`, what the box finds is `choices.rs`
 //! and the presets (saved views) are `views.rs`.
 
+mod age;
+mod blocks;
 mod choices;
-mod organize;
+pub(super) mod organize;
 mod render;
 mod views;
 
@@ -46,8 +48,11 @@ pub(super) struct ViewMenu {
     select_open: bool,
     /// The Views section lists the views to rename, update, move or delete.
     editing: bool,
-    /// The "More" list of Group by or Sort is open.
+    /// The "More" list of Group by, Sort or Filter by, the smart groups
+    /// list or the "Manage" list is open.
     more: Option<organize::More>,
+    /// "Ages up to" was picked in Filter by's "More" (it also shows while it filters).
+    ages_open: bool,
     /// The pointer is on that list (a click there is not outside the menu).
     more_hovered: bool,
     /// Name box of the view being renamed (its index).
@@ -95,6 +100,7 @@ impl ViewMenu {
             select_open: false,
             editing: false,
             more: None,
+            ages_open: false,
             more_hovered: false,
             renaming: None,
             room: 600.,
@@ -112,9 +118,9 @@ impl ViewMenu {
         self.select_open = on;
     }
 
-    /// Opens the "More" list of Group by (`group`) or Sort.
-    pub(super) fn set_more(&mut self, group: bool) {
-        self.more = Some(if group { organize::More::Group } else { organize::More::Sort });
+    /// Opens one of the menu's lists (`HERONITE_DEBUG_DROPDOWN`).
+    pub(super) fn set_more(&mut self, which: organize::More) {
+        self.more = Some(which);
     }
 
     /// Typing (or naming a view) keeps the menu open when the pointer leaves.
@@ -158,6 +164,23 @@ impl CollectionView {
                 })
                 .collect(),
         });
+        if !self.smart_groups.is_empty() {
+            out.push(Section {
+                kind: Kind::Group,
+                choices: self
+                    .smart_groups
+                    .groups
+                    .iter()
+                    .map(|g| Choice {
+                        pick: Pick::Group(g.id.clone()),
+                        label: g.name.clone(),
+                        count: Some(self.group_count(g)),
+                        on: ui.smart_groups.contains(&g.id),
+                        color: Some(super::smart_groups::group_colour(g)),
+                    })
+                    .collect(),
+            });
+        }
         if !self.categories.is_empty() {
             let names = self.categories.names().map(str::to_owned).chain([UNCATEGORIZED.to_owned()]);
             out.push(Section {
@@ -233,6 +256,15 @@ impl CollectionView {
             let label = st.map_or_else(|| id.clone(), |s| status_label(&s.name).to_string());
             out.push((Some(tr!("Status")), token(Pick::Status(id.clone()), label, st.map(|s| theme::status_color(&s.slug)))));
         }
+        if let Some(max) = ui.age.max {
+            let label = if ui.age.unrated { tr!("Up to {max}, and unrated", max) } else { tr!("Up to {max}", max) };
+            out.push((Some(tr!("Ages")), token(Pick::Age(ui.age), label, None)));
+        }
+        for id in &ui.smart_groups {
+            if let Some(g) = self.smart_groups.get(id) {
+                out.push((Some(tr!("Group")), token(Pick::Group(id.clone()), g.name.clone(), Some(super::smart_groups::group_colour(g)))));
+            }
+        }
         for name in &ui.categories {
             out.push((Some(tr!("Category")), token(Pick::Category(name.clone()), category_label(name), None)));
         }
@@ -245,7 +277,7 @@ impl CollectionView {
     }
 
     /// Switches one filter on or off.
-    pub(super) fn apply_pick(&mut self, pick: &Pick, cx: &mut Context<Self>) {
+    pub(in crate::collection) fn apply_pick(&mut self, pick: &Pick, cx: &mut Context<Self>) {
         match pick {
             Pick::Show(f) => {
                 let next = if self.ui.install_filter == *f { InstallFilter::All } else { *f };
@@ -259,7 +291,13 @@ impl CollectionView {
                 self.refresh_groups();
             }
             Pick::Category(name) => self.toggle_category_filter(name, cx),
+            Pick::Group(id) => self.toggle_smart_group_filter(id, cx),
             Pick::Facet(kind, value) => self.toggle_facet(kind.as_str(), value),
+            Pick::Age(age) => {
+                self.ui.age = if self.ui.age == *age && age.is_active() { Default::default() } else { *age };
+                self.save_ui();
+                self.refresh_groups();
+            }
         }
         cx.notify();
     }
@@ -297,7 +335,7 @@ impl CollectionView {
 
     /// "Reset all": every filter off ("Show hidden games" too); the sort and
     /// the grouping stay.
-    fn reset_view_filters(&mut self, cx: &mut Context<Self>) {
+    pub(in crate::collection) fn reset_view_filters(&mut self, cx: &mut Context<Self>) {
         self.ui.clear_filters();
         self.save_ui();
         self.refresh_groups();
@@ -323,7 +361,7 @@ impl CollectionView {
     /// Per frame: a closed menu forgets what was typed; the placeholder
     /// follows the tokens.
     pub(super) fn sync_view_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let viewport = window.viewport_size();
+        let viewport = crate::ui::content_size(window);
         self.view_menu.room = (f32::from(viewport.height) - f32::from(theme::HEADER_H) - 24.).max(240.);
         self.view_menu.compact = f32::from(viewport.height) < 900. || f32::from(viewport.width) < 1200.;
         if let Some(text) = self.view_menu.debug_query.take() {
@@ -339,6 +377,7 @@ impl CollectionView {
             self.view_menu.renaming = None;
             self.view_menu.select_open = false;
             self.view_menu.more = None;
+            self.view_menu.ages_open = false;
             self.view_menu.more_hovered = false;
         }
         let with_tokens = self.ui.active_filters() > 0 || self.ui.show_hidden;

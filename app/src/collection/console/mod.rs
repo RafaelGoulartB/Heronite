@@ -35,6 +35,7 @@ use super::CollectionView;
 use crate::console::input::{self, PadMsg};
 use crate::console::kit::{self, u};
 use crate::console::osk::{Osk, OskEvent};
+use crate::console::pointer::{self, WheelAxis};
 use crate::console::{self, hint, look, motion, Btn, Hint, Overlay, Pad};
 use crate::pages::Page;
 use crate::theme;
@@ -56,6 +57,11 @@ pub(super) enum Screen {
 #[derive(Default)]
 pub(super) struct ConsoleUi {
     thread: Option<input::PadThread>,
+    /// Console mode made the window fullscreen; leaving it switches back.
+    fullscreened: bool,
+    /// Entered behind a game (the window was not active): fullscreen waits
+    /// for the window to come back to the front.
+    fullscreen_later: Option<Subscription>,
     pub screen: Screen,
     /// The tab shown (index in the theme's tabs).
     pub tab: usize,
@@ -107,6 +113,8 @@ pub(super) struct ConsoleUi {
     logos: art::LogoCache,
     controls: controls::ControlsState,
     customize: Option<customize::CustomizeNav>,
+    /// This view, for the clicks of what it draws (`console_click`).
+    me: Option<WeakEntity<CollectionView>>,
 }
 
 /// The hint bar over the bottom of the screen, on a fade of the background
@@ -115,7 +123,8 @@ fn floating_hints(hints: &[Hint], shown: bool) -> AnyElement {
     let (mut top, mut bottom) = (theme::console_bg(), theme::console_bg());
     top.a = 0.;
     bottom.a = 0.9;
-    let bar = kit::hint_bar(hints).border_color(transparent_black()).bg(linear_gradient(
+    // Hidden, it is only faded out: it must not take clicks meant for what is under it.
+    let bar = kit::hint_bar_with(hints, shown).border_color(transparent_black()).bg(linear_gradient(
         0.,
         linear_color_stop(bottom, 0.),
         linear_color_stop(top, 1.),
@@ -141,9 +150,18 @@ impl CollectionView {
         // `=filters` for the Filters panel,
         // `=power` for the Power menu or `=power:reboot|poweroff` for its question.
         let debug = crate::env::value("HERONITE_DEBUG_CONSOLE");
-        self.console_startup(window, cx);
+        // A window closed to the tray in console mode (or for a game) left
+        // the flag and the theme of its view on: this view enters console
+        // mode again on its own, and comes back to it whatever `openIn` says.
+        let reopened = console::active();
+        if reopened {
+            console::set_active(false);
+            look::clear();
+        }
+        self.console_startup(reopened, window, cx);
         if (self.ui.console_mode || debug.is_some()) && !console::active() {
-            self.enter_console(window, cx);
+            // The window opens fullscreen for it (`hub::show_window`).
+            self.enter_console(false, window, cx);
         }
         if let Some(key) = debug.as_deref().and_then(|d| d.strip_prefix("game:")) {
             self.open_game_page(key.to_string().into());
@@ -163,6 +181,13 @@ impl CollectionView {
     }
 
     pub(super) fn set_console(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.switch_console(on, true, window, cx);
+    }
+
+    /// [`set_console`](Self::set_console); `go_fullscreen`: entering switches
+    /// the window to fullscreen when console mode asks for it (`false`: it
+    /// was opened that way).
+    pub(in crate::collection) fn switch_console(&mut self, on: bool, go_fullscreen: bool, window: &mut Window, cx: &mut Context<Self>) {
         if on == console::active() {
             return;
         }
@@ -170,9 +195,15 @@ impl CollectionView {
         self.save_ui();
         if on {
             self.mark_onboarding(crate::dialogs::onboarding::Step::Console);
-            self.enter_console(window, cx);
+            self.enter_console(go_fullscreen, window, cx);
         } else {
+            // Back to a window when console mode made it fullscreen (and F11
+            // has not switched it back already).
+            if self.console.fullscreened && window.is_fullscreen() && !crate::system::fullscreen_asked(cx) {
+                window.toggle_fullscreen();
+            }
             console::set_active(false);
+            pointer::clear_router(window);
             look::clear();
             console::themes::forget();
             self.console = ConsoleUi::default();
@@ -195,7 +226,8 @@ impl CollectionView {
         self.dialog_hook = None;
     }
 
-    fn enter_console(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// `go_fullscreen`: see [`switch_console`](Self::switch_console).
+    fn enter_console(&mut self, go_fullscreen: bool, window: &mut Window, cx: &mut Context<Self>) {
         // The theme first: everything drawn from here on reads it.
         let mut prefs = console::themes::prefs(&self.app_paths);
         // `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>`:
@@ -220,10 +252,38 @@ impl CollectionView {
             self.console.tab = prefs.last_tab.min(prefs.theme.tabs.len().saturating_sub(1));
         }
         self.console.theme_epoch = look::epoch();
+        // Fullscreen (`fullscreen`), unless `--fullscreen` already holds it
+        // for the whole run.
+        if prefs.fullscreen && !crate::system::fullscreen_asked(cx) {
+            if !go_fullscreen {
+                self.console.fullscreened = true;
+            } else if !window.is_window_active() {
+                // A controller connected while a game is in front.
+                self.console.fullscreen_later = Some(cx.observe_window_activation(window, |this, window, _| {
+                    if window.is_window_active() && this.console.fullscreen_later.is_some() && console::active() {
+                        this.console.fullscreen_later = None;
+                        this.go_fullscreen(window);
+                    }
+                }));
+            } else {
+                self.go_fullscreen(window);
+            }
+        }
         if let Some((thread, rx)) = input::start() {
             self.console.thread = Some(thread);
             Self::spawn_pad_pump(rx, window, cx);
         }
+        // The mouse presses like the controller (`console::pointer`).
+        let this = cx.entity().downgrade();
+        self.console.me = Some(this.clone());
+        pointer::set_router(window, cx, move |pad, window, cx| {
+            this.update(cx, |this, cx| {
+                if console::active() {
+                    this.console_pad(pad, window, cx);
+                }
+            })
+            .ok();
+        });
         // The clock in the top bar (nothing to redraw while the theme hides it).
         self.console.ticker = Some(cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(20)).await;
@@ -241,6 +301,14 @@ impl CollectionView {
         cx.notify();
     }
 
+    /// Console mode's fullscreen (once the window is in front).
+    fn go_fullscreen(&mut self, window: &mut Window) {
+        if !window.is_fullscreen() {
+            window.toggle_fullscreen();
+            self.console.fullscreened = true;
+        }
+    }
+
     fn spawn_pad_pump(mut rx: futures::channel::mpsc::UnboundedReceiver<PadMsg>, window: &mut Window, cx: &mut Context<Self>) {
         use futures::StreamExt;
         cx.spawn_in(window, async move |this, cx| {
@@ -253,7 +321,11 @@ impl CollectionView {
                         match msg {
                             // Presses only count while the window has the
                             // focus (not while a game is in front).
-                            PadMsg::Press(pad) if window.is_window_active() => this.console_pad(pad, window, cx),
+                            PadMsg::Press(pad) if window.is_window_active() => {
+                                // The controller is in use: the cursor steps aside until the mouse moves.
+                                pointer::hide_cursor();
+                                this.console_pad(pad, window, cx)
+                            }
                             PadMsg::Press(_) => {}
                             PadMsg::Connected(name, plugged) => {
                                 if plugged {
@@ -288,6 +360,20 @@ impl CollectionView {
             return;
         }
         self.console.script_started = true;
+        // `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,...`: mouse events, the same way.
+        if let Some(text) = crate::env::value("HERONITE_DEBUG_MOUSE") {
+            let steps = pointer::parse_script(&text);
+            cx.spawn_in(window, async move |_, cx| {
+                cx.background_executor().timer(Duration::from_millis(1200)).await;
+                for (wait, step) in steps {
+                    cx.background_executor().timer(wait).await;
+                    if cx.update(|window, cx| pointer::play(step, window, cx)).is_err() {
+                        break;
+                    }
+                }
+            })
+            .detach();
+        }
         let Some(text) = crate::env::value("HERONITE_DEBUG_PAD") else { return };
         let steps = input::parse_script(&text);
         cx.spawn_in(window, async move |this, cx| {
@@ -304,6 +390,8 @@ impl CollectionView {
 
     /// A key in console mode (called before anything else sees it).
     pub(super) fn console_key(&mut self, ks: &Keystroke, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        // A key brings back the cursor a controller hid.
+        pointer::show_cursor();
         if let Some(o) = self.console.overlay.clone() {
             if let Ok(osk) = o.view.downcast::<crate::console::osk::Osk>() {
                 if osk.update(cx, |k, cx| k.type_key(ks, cx)) {
@@ -321,6 +409,72 @@ impl CollectionView {
             }
             // Ctrl K, Ctrl , ... stay desktop shortcuts: swallow them.
             None => ks.modifiers.control,
+        }
+    }
+
+    /// A left click that runs `f` on this view once the event is over (for
+    /// a focus kept outside the presses' reach: the menu's items, a cover).
+    pub(super) fn console_click(
+        &self,
+        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        let this = self.console.me.clone();
+        let f = std::rc::Rc::new(f);
+        move |_, window, cx| {
+            cx.stop_propagation();
+            let (Some(this), f) = (this.clone(), f.clone()) else { return };
+            window.defer(cx, move |window, cx| {
+                this.update(cx, |v, cx| {
+                    if console::active() {
+                        f(v, window, cx);
+                        cx.notify();
+                    }
+                })
+                .ok();
+            });
+        }
+    }
+
+    /// A click on something of a layout: `focus` moves the focus to it
+    /// (`true` when it moved; it then shows like after a press), or when it
+    /// had the focus already, A uses it.
+    pub(super) fn cover_click(
+        &self,
+        focus: impl Fn(&mut Self) -> bool + 'static,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        self.console_click(move |this, window, cx| {
+            if !focus(this) {
+                this.console_pad(Pad::A, window, cx);
+            } else if !this.console_controls_press(Pad::Right, cx) {
+                motion::press();
+                this.show_console_hints(cx);
+            }
+        })
+    }
+
+    /// The mouse moving over something of a layout: `focus` moves the focus
+    /// to it (`true` when it moved), at most once a frame.
+    pub(super) fn cover_hover(
+        &self,
+        focus: impl Fn(&mut Self) -> bool + 'static,
+    ) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static {
+        let this = self.console.me.clone();
+        let focus = std::rc::Rc::new(focus);
+        move |_, window, cx| {
+            if !pointer::take_hover(window) {
+                return;
+            }
+            let (Some(this), focus) = (this.clone(), focus.clone()) else { return };
+            window.defer(cx, move |_, cx| {
+                this.update(cx, |v, cx| {
+                    if console::active() && focus(v) {
+                        motion::press();
+                    }
+                    // Drawn again either way: the next hover may move the focus.
+                    cx.notify();
+                })
+                .ok();
+            });
         }
     }
 
@@ -472,14 +626,38 @@ impl CollectionView {
     /// Cinema keeps the whole screen to itself: no hint bar while its covers
     /// have the focus (a dialog, menu or page over it still shows its own).
     fn cinema_in_focus(&self) -> bool {
-        self.page == Page::Collection
-            && matches!(self.console.screen, Screen::Tabs)
-            && self.dialog.is_none()
+        self.tabs_in_focus() && self.console_shown_tab().1.layout == Layout::Cinema
+    }
+
+    /// The tab's layout takes the presses: no page, game page, dialog, menu
+    /// or panel over it.
+    fn tabs_in_focus(&self) -> bool {
+        self.page == Page::Collection && matches!(self.console.screen, Screen::Tabs) && self.body_in_focus()
+    }
+
+    /// The screen under the layers (tab, page or game page) takes the
+    /// presses: no dialog, keyboard, menu or panel over it.
+    fn body_in_focus(&self) -> bool {
+        self.dialog.is_none()
             && self.console.overlay.is_none()
             && self.console.customize.is_none()
             && self.console.filters.is_none()
             && self.console.sidebar.is_none()
-            && self.console_shown_tab().1.layout == Layout::Cinema
+    }
+
+    /// The wheel moves along the row of covers of the layouts that are one
+    /// row (Carousel, Spotlight), else up and down.
+    /// On a game page with long text, the wheel scrolls it.
+    fn wheel_axis(&self) -> WheelAxis {
+        let row = matches!(self.console_shown_tab().1.layout, Layout::Carousel | Layout::Spotlight);
+        let game_page = self.page == Page::Collection && matches!(self.console.screen, Screen::Game(_)) && self.body_in_focus();
+        if row && self.tabs_in_focus() {
+            WheelAxis::Horizontal
+        } else if game_page && self.game_page_scrolls_text() {
+            WheelAxis::Text
+        } else {
+            WheelAxis::Vertical
+        }
     }
 
     fn open_sidebar(&mut self) {
@@ -728,8 +906,11 @@ impl CollectionView {
         };
         self.sync_console_colour();
         let keeps_tabs = !on_page && (game_key.is_none() || self.game_page_keeps_tabs());
-        let top_bar = keeps_tabs.then(|| self.console_top_bar());
-        let bottom_tabs = if keeps_tabs { self.console_bottom_tabs() } else { None };
+        // The tabs take clicks only while LB / RB switch them.
+        let tabs_input = self.tabs_in_focus() && !self.console.results;
+        let blocked = |d: Div| if tabs_input { d } else { d.child(div().absolute().inset_0().occlude()) };
+        let top_bar = keeps_tabs.then(|| blocked(self.console_top_bar()));
+        let bottom_tabs = if keeps_tabs { self.console_bottom_tabs().map(|d| blocked(d.relative())) } else { None };
         let scrim = if on_page {
             Scrim::Page
         } else if game_key.is_some() {
@@ -750,6 +931,8 @@ impl CollectionView {
             .and_then(|k| self.render_console_game_layer(k, window, cx))
             .map(|layer| div().absolute().top_0().left_0().right_0().bottom(if hints_on { u(60.) } else { px(0.) }).child(layer));
         let (_, body_font) = look::fonts();
+        // A layer over the screen: nothing under it takes clicks.
+        let over = |el: AnyElement| div().absolute().inset_0().occlude().child(el);
         div()
             .id("console")
             .relative()
@@ -758,6 +941,7 @@ impl CollectionView {
             .bg(theme::console_bg())
             .font_family(body_font)
             .text_color(theme::text_primary())
+            .child(pointer::layer(self.wheel_axis()))
             .child(backdrop)
             .child(
                 div()
@@ -774,7 +958,16 @@ impl CollectionView {
                     .flex()
                     .flex_col()
                     .children(top_bar)
-                    .child(div().flex_1().min_h_0().child(body))
+                    // Clicks only reach the screen while it takes the presses
+                    // (Customize lets it show without its panel).
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_h_0()
+                            .child(body)
+                            .when(!self.body_in_focus(), |d| d.child(div().absolute().inset_0().occlude())),
+                    )
                     .children(bottom_tabs)
                     .when(hints_on && !float, |d| d.child(div().flex_none().h(u(60.)))),
             )
@@ -782,10 +975,10 @@ impl CollectionView {
             .children(self.render_sidebar(cx))
             .children(customize)
             .children(filters)
-            .children(self.console.overlay.as_ref().map(|o| o.view.clone()))
+            .children(self.console.overlay.as_ref().map(|o| over(o.view.clone().into_any_element())))
             .children(self.dialog.clone().map(|d| {
                 let id = SharedString::from(format!("console-dialog-{}", d.entity_id()));
-                motion::layer_in(id, d, 240, 12.)
+                over(motion::layer_in(id, d, 240, 12.))
             }))
             .children(self.render_toast(cx))
             // Above the overlays: the hints of whatever has the focus.

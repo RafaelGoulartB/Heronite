@@ -17,6 +17,7 @@ use super::{body_height, top_recent};
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion::{self, Axis, Glide, Goal};
+use crate::console::pointer::Clickable;
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -140,10 +141,12 @@ impl CollectionView {
         self.console_focus_game(focused.clone().or_else(|| recent.first().cloned()), cx);
 
         let scale = kit::scale();
-        let view_w = f32::from(window.viewport_size().width) / scale;
+        let view_w = f32::from(crate::ui::content_size(window).width) / scale;
         let off_x = -f32::from(row.handle().offset().x) / scale;
         let off_y = -f32::from(screen.handle().offset().y) / scale;
         let at = group.map_or(0, |g| g + 1);
+        // Clicks go like ↑ ↓ between the row (level 0) and the shelves, ← → along them.
+        let levels: Vec<usize> = std::iter::once(col).chain(cols.iter().copied()).collect();
 
         // The row of tiles.
         let home_in_sight = off_y < m.home;
@@ -165,11 +168,12 @@ impl CollectionView {
             let on_screen = home_in_sight && left + width > off_x && left < off_x + view_w;
             let load = on_screen || (group.is_none() && i.abs_diff(col) <= 2);
             let on = group.is_none() && i == col;
-            tiles = tiles.child(match recent.get(i) {
+            let tile = match recent.get(i) {
                 Some(key) if i == 0 => self.console_tile_shaped(key, TileShape::Landscape, m.wide, m.sq, on, load, window),
                 Some(key) => self.console_tile_shaped(key, TileShape::Square, m.sq, m.sq, on, load, window),
                 None => self.xbox_mine_tile(on, m.sq, games.len()),
-            });
+            };
+            tiles = tiles.child(tile.on_pads(super::shelf_click(at, &levels, 0, i)));
         }
         let tiles = tiles.child(row.driver());
         let home = div().flex_none().relative().h(u(m.home)).child(tiles);
@@ -189,7 +193,7 @@ impl CollectionView {
         for (g, shelf) in shelves.iter().enumerate() {
             let top = m.home + g as f32 * m.shelf;
             let in_sight = top + m.shelf > off_y && top < off_y + m.body;
-            let seen = super::in_sight(rows[g].handle().offset().x, step, window.viewport_size().width);
+            let seen = super::in_sight(rows[g].handle().offset().x, step, crate::ui::content_size(window).width);
             let mut line = div()
                 .id(("xbox-shelf", g))
                 .flex()
@@ -202,8 +206,8 @@ impl CollectionView {
             for (c, key) in shelf.keys.iter().enumerate() {
                 let load = in_sight && super::loads(&seen, c, cols[g]);
                 // Portrait covers, so a game in the row above and in a shelf never share a tile's animation.
-                line =
-                    line.child(self.console_tile_shaped(key, TileShape::Portrait, sw, sh, group == Some(g) && c == cols[g], load, window));
+                let tile = self.console_tile_shaped(key, TileShape::Portrait, sw, sh, group == Some(g) && c == cols[g], load, window);
+                line = line.child(tile.on_pads(super::shelf_click(at, &levels, g + 1, c)));
             }
             let caption =
                 div().flex_none().h(u(CAPTION)).px(u(SIDE)).flex().items_end().text_color(theme::text_primary()).child(shelf_heading(

@@ -16,6 +16,7 @@ use super::super::tile::{focus_frame, label_room};
 use super::columns;
 use crate::console::kit::{self, u};
 use crate::console::motion;
+use crate::console::pointer::Clickable;
 use crate::console::{hint, look, Btn, Hint};
 use crate::icons::Icon;
 use crate::theme;
@@ -134,14 +135,16 @@ impl CollectionView {
             // On screen: the shelves around the focused one, the columns
             // each is scrolled to (and the focus, while it glides there).
             let near = i + 1 >= si && i <= si + 2;
-            let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, window.viewport_size().width);
+            let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, crate::ui::content_size(window).width);
             for (c, key) in shelf.keys.iter().enumerate() {
                 let visible = near && super::loads(&seen, c, cols[i]);
-                row = row.child(self.console_tile(key, tw, th, i == si && c == cols[i], visible, window));
+                let tile = self.console_tile(key, tw, th, i == si && c == cols[i], visible, window);
+                row = row.child(tile.on_pads(super::shelf_click(si, &cols, i, c)));
             }
             if shelf.cut() {
                 let c = shelf.keys.len();
-                row = row.child(more_tile(("shelf-more", i), i == si && cols[i] == c, shelf.total, tw, th));
+                let tile = more_tile(("shelf-more", i), i == si && cols[i] == c, shelf.total, tw, th);
+                row = row.child(tile.on_pads(super::shelf_click(si, &cols, i, c)));
             }
             row = row.child(rows[i].driver());
             let on = i == si;

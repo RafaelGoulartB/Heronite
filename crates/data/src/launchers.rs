@@ -1,15 +1,16 @@
-//! Games of the other Linux launchers (Heroic, Lutris, Bottles, Faugus) imported into
-//! the Collection (`heronite_import`), and which launchers the user turned
-//! the import on for (`local_library/launcher-imports.json`).
+//! Games of the other launchers imported into the Collection
+//! (`heronite_import`): Heroic, Lutris, Bottles and Faugus on Linux, Playnite
+//! on Windows ([`Launcher::here`]). Which launchers the user turned the
+//! import on for is `local_library/launcher-imports.json`.
 //!
-//! Lutris, Bottles and Faugus keep starting their games: the entries hold the command
-//! that asks them to ([`LAUNCH_KIND`]). Heroic's games added by hand are
-//! copied as this app's own and start here.
+//! Lutris, Bottles, Faugus and Playnite keep starting their games: the
+//! entries hold the command that asks them to ([`LAUNCH_KIND`]). Heroic's
+//! games added by hand are copied as this app's own and start here.
 //!
 //! The folders and Wine prefixes of those games belong to their launcher
 //! ([`managed_paths`]): uninstalling a game added here never deletes them.
 //! The same goes for the prefix and the games of a store client
-//! ([`crate::clients`]).
+//! ([`crate::clients`]) and the games of the Xbox app ([`crate::xbox`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ use crate::clients::{self, Client};
 use crate::json_store;
 use crate::models::{Extra, LocalGameMeta, LocalMetaFile};
 use crate::paths::DataPaths;
+use crate::xbox;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -30,10 +32,22 @@ pub enum Launcher {
     Lutris,
     Bottles,
     Faugus,
+    /// Windows only.
+    Playnite,
 }
 
 impl Launcher {
-    pub const ALL: [Launcher; 4] = [Launcher::Heroic, Launcher::Lutris, Launcher::Bottles, Launcher::Faugus];
+    pub const ALL: [Launcher; 5] = [Launcher::Heroic, Launcher::Lutris, Launcher::Bottles, Launcher::Faugus, Launcher::Playnite];
+
+    /// The launchers this system has, in the order they are shown: Linux's
+    /// four, Playnite on Windows.
+    pub const fn here() -> &'static [Launcher] {
+        if cfg!(windows) {
+            &[Launcher::Playnite]
+        } else {
+            &[Launcher::Heroic, Launcher::Lutris, Launcher::Bottles, Launcher::Faugus]
+        }
+    }
 
     /// Also the `source` of the Collection entries it brought in.
     pub fn id(self) -> &'static str {
@@ -42,6 +56,7 @@ impl Launcher {
             Launcher::Lutris => "lutris",
             Launcher::Bottles => "bottles",
             Launcher::Faugus => "faugus",
+            Launcher::Playnite => "playnite",
         }
     }
 
@@ -52,6 +67,7 @@ impl Launcher {
             Launcher::Lutris => "Lutris",
             Launcher::Bottles => "Bottles",
             Launcher::Faugus => "Faugus",
+            Launcher::Playnite => "Playnite",
         }
     }
 
@@ -66,6 +82,9 @@ pub const LAUNCH_KIND: &str = "launcher";
 /// `meta` key: the Wine prefix such a game runs in, to follow it when the
 /// launcher, already open, takes the request and returns at once.
 pub const PREFIX_KEY: &str = "heroniteLauncherPrefix";
+/// `meta` key: the folder the program that runs such a game is in, when it
+/// is not the game's own (a Playnite game's emulator), to follow it there.
+pub const RUNS_FROM_KEY: &str = "heroniteLauncherRunsFrom";
 
 /// When a launcher's games were last brought in.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -120,10 +139,11 @@ pub struct Managed {
 }
 
 /// The folders and Wine prefixes that are not this app's to delete: those
-/// of the games Lutris, Bottles and Faugus start (the Collection's entries of
-/// [`LAUNCH_KIND`]), and each store client's Wine prefix and the folders of
-/// its games ([`clients::LAUNCH_KIND`]), installed or not. Unreadable files
-/// give none. `home` expands the `~` of a client's prefix setting.
+/// of the games Lutris, Bottles, Faugus and Playnite start (the Collection's entries of
+/// [`LAUNCH_KIND`]), each store client's Wine prefix and the folders of
+/// its games ([`clients::LAUNCH_KIND`]), and the folders of the Xbox app's
+/// games ([`xbox::LAUNCH_KIND`]), installed or not. Unreadable files give
+/// none. `home` expands the `~` of a client's prefix setting.
 pub fn managed_paths(paths: &DataPaths, home: &str) -> Vec<Managed> {
     let metas: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap_or_default();
     // App name -> (who keeps it, the entry).
@@ -134,6 +154,7 @@ pub fn managed_paths(paths: &DataPaths, home: &str) -> Vec<Managed> {
             let owner = match m.launch_kind.as_str() {
                 LAUNCH_KIND => Launcher::from_source(&m.source)?.name(),
                 clients::LAUNCH_KIND => Client::from_id(&m.source)?.name(),
+                xbox::LAUNCH_KIND => xbox::NAME,
                 _ => return None,
             };
             Some((m.app_name.as_str(), (owner, m)))
@@ -223,9 +244,16 @@ mod tests {
         assert_eq!(again.last[&Launcher::Faugus].games, 3);
         assert_eq!(again.extra.get("future"), Some(&serde_json::json!(1)));
         assert_eq!(Launcher::from_source("faugus"), Some(Launcher::Faugus));
+        assert_eq!(Launcher::from_source("playnite"), Some(Launcher::Playnite));
     }
 
-    #[cfg(unix)]
+    #[test]
+    fn each_system_has_its_own_launchers() {
+        let here = Launcher::here();
+        assert_eq!(here.contains(&Launcher::Playnite), cfg!(windows));
+        assert_eq!(here.contains(&Launcher::Lutris), !cfg!(windows));
+    }
+
     fn write_collection(paths: &DataPaths, library: Value, meta: Value) {
         json_store::write(&paths.sideload_library(), &library).unwrap();
         json_store::write(&paths.local_meta(), &meta).unwrap();
@@ -309,5 +337,23 @@ mod tests {
         assert_eq!(managed_in(&managed, Path::new("/home/u/Prefixes")).len(), 2, "a folder holding them");
         assert_eq!(managed_by(&managed, Path::new("/games/ubi")).map(|m| m.owner), Some("Ubisoft Connect"));
         assert_eq!(managed_by(&managed, Path::new("/games/other")), None);
+    }
+
+    // The Xbox app's games are Windows packages.
+    #[cfg(windows)]
+    #[test]
+    fn the_xbox_apps_games_are_kept_by_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        write_collection(
+            &paths,
+            serde_json::json!({"games": [{"app_name": "xbox_game_abc", "install": {"install_path": r"D:\XboxGames\Game\Content"}}]}),
+            serde_json::json!({"games": {
+                "xbox_game_abc": {"appName": "xbox_game_abc", "runner": "sideload", "source": "xbox", "launchKind": "xbox", "title": "Game"}}}),
+        );
+        let managed = managed_paths(&paths, r"C:\Users\u");
+        let kept: Vec<_> = managed.iter().map(|m| (m.path.to_str().unwrap(), m.owner, m.title.as_str())).collect();
+        assert_eq!(kept, [(r"D:\XboxGames\Game\Content", "Xbox", "Game")]);
+        assert_eq!(managed_by(&managed, Path::new(r"D:\XboxGames")).map(|m| m.owner), Some("Xbox"));
     }
 }

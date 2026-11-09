@@ -43,11 +43,25 @@ The app finds out it runs in a sandbox (`heronite_platform::flatpak`):
   settings are hidden and games run without it.
 - Steam (starting and closing it) and Flatpak emulators start on the host
   through `flatpak-spawn --host`; Steam games open through `steam://` links.
+- Notifications go through the Notification portal, not through
+  `org.freedesktop.Notifications`.
 - Game shortcuts, Steam shortcuts and the autostart entry start the app
   through the launcher Flatpak exports (`exports/bin/app.heronite.Heronite`), and
   go in the host's `~/.local/share/applications` and `~/.config/autostart`.
 - MangoHud and gamescope are Flathub's Vulkan layers:
   `flatpak install flathub org.freedesktop.Platform.VulkanLayer.MangoHud//26.08 org.freedesktop.Platform.VulkanLayer.gamescope//26.08`.
+- "Keep the computer awake" has no effect: it runs `systemd-inhibit`, which
+  the runtime does not have (and the manifest does not give the app the
+  system bus name it talks to).
+- The data of an emulator installed as a Flatpak (`~/.var/app/<emulator>`)
+  is out of reach, as the home folder leaves `~/.var/app` out: what Heronite
+  reads there (save states, RetroAchievements settings) is not found for it.
+
+- ReShade (game settings → Performance) writes into the game's folder: the
+  DLL, `d3dcompiler_47.dll`, `reshade-shaders/`, `ReShade.ini` and the preset
+  copy. A game in a folder outside the home, `/mnt`, `/media` and
+  `/run/media` is out of the app's reach until
+  `flatpak override --user --filesystem=<folder> app.heronite.Heronite`.
 
 Programs installed on the host itself (a native emulator, Ludusavi, the
 system's Wine, gpu-screen-recorder) are not seen from inside the sandbox: use
@@ -64,3 +78,18 @@ To publish on Flathub, a copy of the manifest goes to the
   `Cargo.lock`, is committed next to it;
 - the app id is verified through heronite.app: Flathub gives a token that
   goes in `https://heronite.app/.well-known/org.flathub.VerifiedApps.txt`.
+
+The screenshots of the AppStream data are in `packaging/linux/screenshots/`
+and linked by the raw URL of the commit that added them, not of a branch
+(Flathub's guidelines ask for a tag or a commit): they stay where they are
+even when the images change later. Flathub copies them to its own server
+when it builds. To change one, add the new file under a new name and point
+the metainfo to the commit that adds it.
+
+To check the files the way Flathub's linter does, after `scripts/flatpak.sh`:
+
+```bash
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream packaging/linux/app.heronite.Heronite.metainfo.xml
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo target/flatpak/repo
+```
+

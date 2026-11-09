@@ -89,6 +89,8 @@ pub struct GameSettings {
     pub gamescope: Gamescope,
     /// `heroniteLsfg*`: Lossless Scaling frame generation.
     pub lsfg: crate::lsfg::Lsfg,
+    /// `heroniteReshade*` (see [`crate::reshade`]).
+    pub reshade: crate::reshade::ReShade,
     /// `heroniteGpu*` and `nvidiaPrime`: the graphics card settings.
     pub gpu: crate::gpu::Gpu,
     /// `heronitePreferSdl`: Proton reads controllers through SDL.
@@ -130,7 +132,7 @@ fn parse_wine_version(v: Option<&Value>) -> WineVersion {
     };
     WineVersion {
         // Old configs stored the path wrapped in single quotes.
-        bin: text(o.get("bin")).replace('\'', ""),
+        bin: text(o.get("bin")).trim_matches('\'').to_owned(),
         name: text(o.get("name")),
         kind: text(o.get("type")),
         wineserver: opt("wineserver"),
@@ -235,6 +237,7 @@ impl GameSettings {
             },
             gamescope: gs,
             lsfg: crate::lsfg::Lsfg::from_map(m),
+            reshade: crate::reshade::ReShade::from_map(m),
             gpu: crate::gpu::Gpu::from_map(m),
             prefer_sdl: b(crate::env::KEY_PREFER_SDL),
             // On unless the game or the defaults turned it off.
@@ -295,7 +298,7 @@ impl GlobalSettings {
 
     /// `defaultSteamPath` without Heroic's legacy quotes.
     pub fn default_steam_path(&self) -> Option<String> {
-        self.string("defaultSteamPath").map(|s| s.replace('\'', ""))
+        self.string("defaultSteamPath").map(|s| s.trim_matches('\'').to_owned())
     }
 }
 
@@ -316,6 +319,16 @@ pub fn load_game_settings(paths: &DataPaths, app_name: &str, global: &GlobalSett
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn only_the_quotes_around_a_wine_path_are_dropped() {
+        let bin = |path: &str| {
+            let m = json!({"wineVersion": {"bin": path, "name": "P", "type": "proton"}});
+            GameSettings::from_map(m.as_object().unwrap(), "/home/u").wine_version.bin
+        };
+        assert_eq!(bin("'/home/o'neil/proton'"), "/home/o'neil/proton");
+        assert_eq!(bin("/home/o'neil/proton"), "/home/o'neil/proton");
+    }
 
     #[test]
     fn parses_sic_env_options_and_quotes() {

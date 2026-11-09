@@ -353,7 +353,7 @@ pub fn build_wrappers_in(s: &GameSettings, probe: &dyn Probe, steam_runtime: Opt
     wrappers.extend(gamescope.iter().cloned());
     for w in &s.wrapper_options {
         wrappers.push(w.exe.clone());
-        wrappers.extend(shlex::split(&w.args).unwrap_or_default());
+        wrappers.extend(crate::args::split_args(&w.args));
     }
     if !mangohud.is_empty() && gamescope.is_empty() {
         wrappers.extend(mangohud);
@@ -418,7 +418,7 @@ pub fn gamescope_args(g: &Gamescope, old: bool, mangoapp: bool, limit: Option<&A
     if mangoapp {
         out.push("--mangoapp".into());
     }
-    out.extend(shlex::split(&g.additional_options).unwrap_or_default());
+    out.extend(crate::args::split_args(&g.additional_options));
     // Must be the last option.
     out.push("--".into());
     out
@@ -519,6 +519,13 @@ mod tests {
         assert_eq!(w.wrappers, ["taskset", "-c", "0-3", "/usr/bin/mangohud", "--dlsym", "/usr/bin/gamemoderun", "/umu"]);
         let missing = build_wrappers(&s, &FakeProbe::new("/h"), None);
         assert!(missing.error.unwrap().contains("mangohud"));
+    }
+
+    #[test]
+    fn a_wrapper_with_an_unclosed_quote_keeps_its_arguments() {
+        let s = settings(json!({"wrapperOptions": [{"exe": "taskset", "args": "-c 0-3 --name Rafa's"}]}));
+        let w = build_wrappers(&s, &FakeProbe::new("/h"), None);
+        assert_eq!(w.wrappers, ["taskset", "-c", "0-3", "--name", "Rafa's"]);
     }
 
     #[test]

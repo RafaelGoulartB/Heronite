@@ -80,6 +80,10 @@ impl DataPaths {
     pub fn clients(&self) -> PathBuf {
         self.j("local_library/clients.json")
     }
+    /// The Xbox app's games synced into the Collection (`xbox::XboxPrefs`).
+    pub fn xbox(&self) -> PathBuf {
+        self.j("local_library/xbox.json")
+    }
     pub fn sessions(&self) -> PathBuf {
         self.j("local_library/sessions.json")
     }
@@ -129,9 +133,17 @@ impl DataPaths {
     pub fn added(&self) -> PathBuf {
         self.j("local_library/added.json")
     }
+    /// Groups of games defined by rules ([`crate::smart_groups`]).
+    pub fn smart_groups(&self) -> PathBuf {
+        self.j("local_library/groups.json")
+    }
     /// When each game's status changed ([`crate::status_history`]).
     pub fn status_history(&self) -> PathBuf {
         self.j("local_library/status-history.json")
+    }
+    /// Copies of one game from several stores ([`crate::copies`]).
+    pub fn copies(&self) -> PathBuf {
+        self.j("local_library/copies.json")
     }
     /// The actions users add to their games ([`crate::game_actions`]).
     pub fn game_actions(&self) -> PathBuf {
@@ -252,8 +264,18 @@ impl DataPaths {
     pub fn steam_hero(&self, steam_app_id: &str) -> PathBuf {
         self.j("local_library/heroes").join(format!("{steam_app_id}.jpg"))
     }
+    /// Steam store tags per app and tag names per language
+    /// ([`crate::steam_tags`]).
+    pub fn steam_tags(&self) -> PathBuf {
+        self.j("store_cache/steam_tags.json")
+    }
     pub fn wiki_game_info(&self) -> PathBuf {
         self.j("store_cache/wikigameinfo.json")
+    }
+    /// HowLongToBeat matches the user picked (or "not on HowLongToBeat"),
+    /// by cache key; never expires, unlike `wikigameinfo.json`.
+    pub fn hltb_overrides(&self) -> PathBuf {
+        self.j("local_library/hltb_overrides.json")
     }
     pub fn images_cache_dir(&self) -> PathBuf {
         self.j("images-cache")
@@ -384,6 +406,16 @@ impl AppPaths {
     /// Replay buffer options (see `heronite_data::replay_prefs`).
     pub fn replay_prefs(&self) -> PathBuf {
         self.config.join("replay.json")
+    }
+    /// Settings → Integrations → Sunshine (see `heronite_sunshine::prefs`).
+    pub fn sunshine_prefs(&self) -> PathBuf {
+        self.config.join("sunshine.json")
+    }
+    /// The covers Sunshine shows for Heronite's entries: Sunshine reads them
+    /// from here, so they must outlive a cache clean-up (rendered again
+    /// when missing).
+    pub fn sunshine_covers_dir(&self) -> PathBuf {
+        self.config.join("sunshine-covers")
     }
     /// Update switches and the last update check (see `heronite_update::prefs`).
     pub fn update_state(&self) -> PathBuf {

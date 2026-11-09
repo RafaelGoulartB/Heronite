@@ -289,6 +289,15 @@ pub fn console_btn_x() -> Rgba {
 pub fn console_btn_y() -> Rgba {
     rgb(0xf5cd5b)
 }
+/// Replays and moments marked in-game: the yellow of the Y button that marks
+/// them. Text and icons take it through [`readable`].
+pub fn replay() -> Rgba {
+    console_btn_y()
+}
+/// [`replay`] at alpha `a` (rings, tints).
+pub fn replay_alpha(a: f32) -> Rgba {
+    Rgba { a, ..replay() }
+}
 
 /// Statistics charts: one colour per top game (most played first); the rest
 /// share [`chart_other`]. Order and steps checked for colour-blind
@@ -303,6 +312,16 @@ pub fn chart_series(i: usize) -> Rgba {
         _ => rgb(0x9085e9),
     }
 }
+/// The colours a smart group can take (`#rrggbb` in `groups.json`), the
+/// charts' series, told apart on dark and light panels.
+pub const GROUP_COLOURS: [&str; 6] = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
+
+/// `#rrggbb` as a colour.
+pub fn parse_hex(s: &str) -> Option<Rgba> {
+    let hex = s.strip_prefix('#').filter(|h| h.len() == 6)?;
+    u32::from_str_radix(hex, 16).ok().map(rgb)
+}
+
 pub fn chart_other() -> Hsla {
     ink_a(0.22)
 }
@@ -361,6 +380,20 @@ pub fn rarity_colour(tier: RarityTier) -> Rgba {
         RarityTier::Rare => rgb(if light { 0x7c4dd6 } else { 0xc49bff }),
         RarityTier::Uncommon => rgb(if light { 0x1f6fc5 } else { 0x6cb6ff }),
         RarityTier::Common => text_muted(),
+    }
+}
+
+/// An age rating chip's colour by the youngest age it is for (`None` =
+/// pending): green for young children, then yellow, orange and red, muted so
+/// the facts card does not shout (darker on the light theme).
+pub fn age_tone(min_age: Option<u8>) -> Rgba {
+    let light = super::scheme::is_light();
+    match min_age {
+        None => text_muted(),
+        Some(0..=7) => rgb(if light { 0x3d7558 } else { 0x9cc7ae }),
+        Some(8..=12) => rgb(if light { 0x766634 } else { 0xd3c48f }),
+        Some(13..=16) => rgb(if light { 0x85593a } else { 0xd6ab89 }),
+        Some(_) => rgb(if light { 0x8c4b4b } else { 0xd69a9a }),
     }
 }
 

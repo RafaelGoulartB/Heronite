@@ -52,7 +52,7 @@ pub use quit::{
 #[cfg(windows)]
 pub use quit::run_on_quit;
 pub use start::init;
-pub use window::{close_window, has_window, show_window};
+pub use window::{close_window, fullscreen_asked, has_window, show_window};
 
 /// Process exit code (non-zero when a launch from outside failed).
 static EXIT_CODE: AtomicI32 = AtomicI32::new(0);
@@ -84,6 +84,9 @@ struct State {
     /// Quit when the last game ends and no window was shown (started only to
     /// launch a game without UI).
     exit_when_idle: bool,
+    /// Store clients a start for `--open-client` waits for: in a Flatpak
+    /// they live in this process's sandbox, which ends with it.
+    clients_followed: usize,
     /// The next window close is ours (tray / minimize on launch): stay alive.
     hiding: bool,
     /// The window was closed because a game started (minimize on launch):
@@ -96,6 +99,9 @@ struct State {
     fullscreen: bool,
     settings: SysSettings,
     settings_stamp: Option<SystemTime>,
+    /// The main window's placement, written so the next window opens as this
+    /// one was left.
+    placement: window::PlacementSave,
 }
 
 impl State {

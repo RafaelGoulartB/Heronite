@@ -1,9 +1,11 @@
-//! Launch requests (CLI, protocol URLs, tray, other instances), with or without a window.
+//! Launch requests (CLI, protocol URLs, tray, other instances), with or without a window,
+//! and the store clients their shortcuts open (`--open-client`).
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use gpui_kit::*;
+use heronite_data::clients::Client;
 use heronite_data::{CollectionGame, Library};
 use heronite_i18n::tr;
 
@@ -116,6 +118,53 @@ fn on_headless_game(cx: &mut App, req: LaunchRequest, found: Result<Option<Arc<C
         }
         Err(e) => fail(cx, tr!("Could not launch {title}: {error}", title = game.title, error = e)),
     }
+}
+
+/// Opens `client` (`--open-client`, from its shortcut), never the window.
+/// `started_for_it`: this process was started only for this (it exits once
+/// the client is open); otherwise the app's service opens it and follows it
+/// as if opened from its page.
+pub(super) fn open_client(cx: &mut App, client: Client, started_for_it: bool) {
+    log::info!("open request: {}", client.name());
+    if hub(cx).0.borrow().fake_launch {
+        log::info!("[fake-launch] {}", client.name());
+        maybe_exit_idle(cx);
+        return;
+    }
+    if !started_for_it || !hub(cx).0.borrow().exit_when_idle {
+        crate::services::clients(cx).update(cx, |s, cx| s.open_from_shortcut(client, cx));
+        return;
+    }
+    let paths = hub(cx).0.borrow().data_paths.clone();
+    // In a Flatpak the client runs in this process's sandbox, which is torn
+    // down when the process exits: wait for the client there. Elsewhere it
+    // outlives the app, which exits at once.
+    let wait = heronite_platform::flatpak::active();
+    if wait {
+        hub(cx).0.borrow_mut().clients_followed += 1;
+    }
+    cx.spawn(async move |cx| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        let opened = cx
+            .background_spawn(async move {
+                let mut child = heronite_clients::run::open(&paths, client, &home)?;
+                if wait {
+                    let _ = child.wait();
+                }
+                Ok::<(), String>(())
+            })
+            .await;
+        cx.update(|cx| {
+            if wait {
+                hub(cx).0.borrow_mut().clients_followed -= 1;
+            }
+            match opened {
+                Ok(()) => maybe_exit_idle(cx),
+                Err(e) => fail(cx, tr!("Could not open {client}: {error}", client = client.name(), error = e)),
+            }
+        });
+    })
+    .detach();
 }
 
 #[cfg(test)]

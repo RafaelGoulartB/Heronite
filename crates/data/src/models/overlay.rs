@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::Extra;
+use crate::age_rating::AgeRating;
 use crate::num::JsNum;
 
 // local_library/library.json
@@ -192,6 +193,9 @@ pub struct CollectionGameMetadata {
     pub features: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub critic_score: Option<JsNum>,
+    /// One per board ([`crate::age_rating::merge`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub age_ratings: Vec<AgeRating>,
     #[serde(default)]
     pub websites: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

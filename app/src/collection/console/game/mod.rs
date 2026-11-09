@@ -161,7 +161,13 @@ impl CollectionView {
             && !playing
             && !matches!(
                 g.launch_kind.as_deref(),
-                Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+                Some(
+                    "steam-uri"
+                        | "emulator"
+                        | heronite_data::launchers::LAUNCH_KIND
+                        | heronite_data::clients::LAUNCH_KIND
+                        | heronite_data::xbox::LAUNCH_KIND
+                )
             )
         {
             manage.push(Row::action("x:edit", tr!("Edit game")).icon(Icon::Edit));
@@ -221,7 +227,10 @@ impl CollectionView {
     }
 
     /// The game page in the theme's style.
+    /// A card of several copies shows the copy it acts on (the one Play
+    /// starts): its Play, Uninstall, Settings... (`acting_copy`).
     pub(super) fn render_console_game(&mut self, key: &SharedString, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Classic => self.render_game_classic(key, window, cx),
             GamePage::Hero => self.render_game_hero(key, window, cx),
@@ -237,6 +246,7 @@ impl CollectionView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Sheet => self.render_game_sheet_layer(key, window, cx),
             _ => None,
@@ -245,6 +255,7 @@ impl CollectionView {
 
     /// `false` lets the shell use the press (B goes back).
     pub(super) fn game_pad(&mut self, key: &SharedString, pad: Pad, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Classic => self.game_pad_classic(key, pad, window, cx),
             GamePage::Hero => self.game_pad_hero(key, pad, window, cx),
@@ -254,6 +265,7 @@ impl CollectionView {
     }
 
     pub(super) fn game_hints(&self, key: &SharedString) -> Vec<Hint> {
+        let key = &self.acting_key(key);
         match look::theme().game_page {
             GamePage::Classic => self.game_hints_classic(key),
             GamePage::Hero => self.game_hints_hero(key),
@@ -270,6 +282,12 @@ impl CollectionView {
             GamePage::Sheet if self.console.game.sheet.full() => Scrim::Classic,
             GamePage::Sheet => super::layouts::scrim(spec.layout),
         }
+    }
+
+    /// Whether the page has long text the wheel scrolls (its lists take clicks);
+    /// the Sheet is a list alone.
+    pub(super) fn game_page_scrolls_text(&self) -> bool {
+        look::theme().game_page != GamePage::Sheet || self.console.game.sheet.full()
     }
 
     /// The Sheet opens over the tab: its top bar stays.
@@ -335,7 +353,7 @@ impl CollectionView {
             ));
 
         // Wide enough for the facts in two columns (design px of the card).
-        let vw = f32::from(window.viewport_size().width) / s;
+        let vw = f32::from(crate::ui::content_size(window).width) / s;
         let card_w = vw - 2. * 46. - 560. - 40.;
         let mut about =
             div().id("console-game-about").flex().flex_col().gap(u(20.)).overflow_y_scroll().track_scroll(self.console.game.about.handle());
@@ -482,18 +500,9 @@ impl CollectionView {
                         self.set_status(key, st.id, cx);
                     }
                 }
-                ("favourite", _) => {
-                    if let Err(err) = heronite_data::config_games::toggle_favourite(&self.data_paths, &g.app_name, &g.title) {
-                        self.show_toast(format!("{err:#}"), true, cx);
-                    }
-                    self.reload(cx);
-                }
-                ("hidden", _) => {
-                    if let Err(err) = heronite_data::config_games::toggle_hidden(&self.data_paths, &g.app_name, &g.title) {
-                        self.show_toast(format!("{err:#}"), true, cx);
-                    }
-                    self.reload(cx);
-                }
+                // Every copy, as on the desktop (the card may show another copy).
+                ("favourite", _) => self.toggle_favourite_of(key, cx),
+                ("hidden", _) => self.toggle_hidden_of(key, cx),
                 (id, Value::Toggle(on)) if id.starts_with("cat:") => self.set_game_category(key, &id["cat:".len()..], on, cx),
                 _ => {}
             },

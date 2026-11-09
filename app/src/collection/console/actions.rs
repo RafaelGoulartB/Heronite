@@ -3,7 +3,7 @@
 //! controller.
 
 use gpui_kit::*;
-use heronite_data::playtime::{set_playtime_minutes, split_minutes};
+use heronite_data::playtime::{promote_after_edit, set_playtime_minutes, split_minutes};
 
 use super::super::CollectionView;
 use crate::console::list::Row;
@@ -21,14 +21,15 @@ impl CollectionView {
             Row::action("save", tr!("Save")),
         ];
         let sheet = cx.new(|_| Sheet::new(tr!("Playtime \u{b7} {title}", title = g.title), None, rows));
-        let app_name = g.app_name.clone();
+        let (app_name, runner, title) = (g.app_name.clone(), g.runner.clone(), g.title.clone());
         let sub = cx.subscribe(&sheet, move |this, sheet, ev: &SheetEvent, cx| {
             let SheetEvent::Activate(id) = ev;
             if id.as_ref() == "save" {
                 let s = sheet.read(cx);
                 let minutes = s.number("hours") * 60 + s.number("minutes");
-                if let Err(err) = set_playtime_minutes(&this.data_paths, &app_name, minutes as f64) {
-                    this.show_toast(tr!("Could not save the playtime: {err}", err = format!("{err:#}")), true, cx);
+                match set_playtime_minutes(&this.data_paths, &app_name, minutes as f64) {
+                    Ok(()) => promote_after_edit(&this.data_paths, &app_name, &runner, &title, minutes.max(0) as u64),
+                    Err(err) => this.show_toast(tr!("Could not save the playtime: {err}", err = format!("{err:#}")), true, cx),
                 }
                 this.close_console_overlay(cx);
                 this.reload(cx);

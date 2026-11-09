@@ -35,6 +35,9 @@ struct UpdateView {
     highlights: Vec<String>,
     more: usize,
     can_install: bool,
+    /// How a copy its own package manager updates (the AUR, Scoop, the COPR)
+    /// gets it.
+    manager_update: Option<&'static str>,
     manual: Option<String>,
     page: String,
     blocker: Option<String>,
@@ -84,6 +87,7 @@ impl CollectionView {
             highlights,
             more,
             can_install: u.can_install(),
+            manager_update: u.manager_update(),
             manual: u.manual_command(),
             page: release.page_url.clone(),
             blocker: crate::system::restart_blocker(cx),
@@ -187,6 +191,8 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
             if v.more > 0 {
                 list = list.child(div().text_size(px(12.)).text_color(theme::text_dim()).child(tr!("and {count} more", count = v.more)));
             }
+            // Hides the pill until the next start (or a check asked for).
+            let ignore = button_sm("upd-ignore", ButtonKind::Ghost, tr!("Ignore")).on_click(act(Updater::dismiss));
             let notes = button_sm("upd-notes", ButtonKind::Glass, tr!("All notes")).on_click({
                 let view = cx.entity().downgrade();
                 move |_, window, cx| {
@@ -194,18 +200,21 @@ fn update_popover(v: UpdateView, cx: &mut Context<CollectionView>) -> AnyElement
                 }
             });
             let main = if v.can_install {
-                button_sm("upd-install", ButtonKind::Primary, tr!("Update")).on_click(act(Updater::install))
+                Some(button_sm("upd-install", ButtonKind::Primary, tr!("Update")).on_click(act(Updater::install)))
+            } else if v.manager_update.is_some() {
+                None
             } else {
-                button_sm("upd-page", ButtonKind::Primary, tr!("Download")).on_click(move |_, _, _| update::open_page(&page))
+                Some(button_sm("upd-page", ButtonKind::Primary, tr!("Download")).on_click(move |_, _, _| update::open_page(&page)))
             };
             panel
                 .child(title(format!("Heronite {}", v.version)))
                 .child(detail(you_have))
+                .children(v.manager_update.map(|how| detail(tr(how).into())))
                 .child(
                     div().pt(px(6.)).text_size(px(11.)).font_weight(theme::W_BOLD).text_color(theme::text_dim()).child(tr!("What's new")),
                 )
                 .child(list)
-                .child(footer.child(notes).child(main))
+                .child(footer.child(ignore).child(div().flex_1()).child(notes).children(main))
         }
         (Banner::Downloading, Phase::Downloading(p)) => panel
             .child(title(tr!("Downloading Heronite {version}", version = v.version)))

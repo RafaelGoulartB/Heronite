@@ -37,12 +37,19 @@ impl<K: ClientKind> ClientPage<K> {
             action = action.desc(logic::step_text(client, progress, st.cancelling()));
         } else if let Some(why) = main.why {
             action = action.desc(why);
+        } else if !st.installed() && heronite_clients::native() {
+            action = action.desc(tr!("Downloads the official installer and runs it."));
         } else if !st.installed() {
             action =
                 action.desc(tr!("Downloads the official installer and installs it in a Wine prefix of its own, with your default Proton."));
         }
         rows.push(action);
-        if st.installed() && !st.busy() {
+        if heronite_clients::native() {
+            // No prefix, Wine settings or other install to use: the client is the PC's.
+            if let Some(folder) = logic::program_folder(st).filter(|_| !st.busy()) {
+                rows.push(Row::action("folder", tr!("Open folder")).desc(folder.to_string_lossy().into_owned()).icon(Icon::FolderOpen));
+            }
+        } else if st.installed() && !st.busy() {
             rows.push(Row::action("settings", tr!("Wine settings")).desc(self.wine.clone().unwrap_or_default()).icon(Icon::Settings));
             if let Some(prefix) = st.prefix() {
                 rows.push(
@@ -60,6 +67,16 @@ impl<K: ClientKind> ClientPage<K> {
             let (title, hint) = logic::account_lines(client, &st.account());
             rows.push(Row::header(tr!("Account")));
             rows.push(Row::info("account", title, "").desc(hint.unwrap_or_default()).icon(Icon::AccountCircle));
+        }
+        if logic::shows_shortcuts(st) {
+            let sc = st.shortcuts;
+            let (desktop_on, menu_on) = logic::shortcut_switches(st);
+            let (desktop_line, menu_line) = logic::shortcut_lines(client, &sc);
+            rows.push(Row::header(tr!("Shortcuts")));
+            rows.push(Row::toggle("shortcut-desktop", tr!("Desktop shortcut"), sc.desktop).desc(desktop_line).enabled(desktop_on));
+            rows.push(Row::toggle("shortcut-menu", tr!("Application menu shortcut"), sc.menu).desc(menu_line).enabled(menu_on));
+        }
+        if st.installed() {
             rows.push(Row::header(tr!("Installed games")));
             let games = st.status.as_ref().map(|s| s.games.as_slice()).unwrap_or(&[]);
             if games.is_empty() {
@@ -195,6 +212,11 @@ impl<K: ClientKind> PadTarget for ClientPage<K> {
         let used = match self.console_list.on_pad(pad, &rows) {
             Outcome::Activate(id) => {
                 self.console_activate(&id, window, cx);
+                true
+            }
+            // The shortcut switches: the action flips what is there now.
+            Outcome::Changed(id, _) => {
+                self.run_action(&id, window, cx);
                 true
             }
             Outcome::Ignored => false,

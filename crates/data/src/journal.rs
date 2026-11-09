@@ -93,6 +93,12 @@ impl Entry {
     pub fn is_moment(&self) -> bool {
         self.text.trim().is_empty()
     }
+
+    /// A replay nothing was written about yet: listed as a replay, not
+    /// counted as a note.
+    pub fn is_bare_replay(&self) -> bool {
+        self.clip.is_some() && self.is_moment()
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

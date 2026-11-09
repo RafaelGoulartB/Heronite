@@ -107,7 +107,13 @@ impl GameSettingsDialog {
         let show_launch = game.runner == "sideload"
             && !matches!(
                 game.launch_kind.as_deref(),
-                Some("emulator" | "steam-uri" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+                Some(
+                    "emulator"
+                        | "steam-uri"
+                        | heronite_data::launchers::LAUNCH_KIND
+                        | heronite_data::clients::LAUNCH_KIND
+                        | heronite_data::xbox::LAUNCH_KIND
+                )
             );
         show_launch.then(|| {
             let exe = game.game.install.executable.clone().unwrap_or_default();

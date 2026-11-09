@@ -271,6 +271,10 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         None if aborted => log.info("Stopped tracking the game"),
         None => {}
     }
+    // A launcher whose exit code says nothing did not fail by exiting.
+    if plan.handoff.as_ref().is_some_and(|h| h.exit_ignored) {
+        exit = exit.map(|e| ExitInfo { code: Some(0), ..e });
+    }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(prefix) = prefix.filter(|_| companions.active()) {
             aborted = follow_the_prefix(shared, control, &mut companions, &prefix, &*services.probe, log, &status);

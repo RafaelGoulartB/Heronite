@@ -32,6 +32,9 @@ pub struct LudusaviSettingsPatch {
     pub full_limit: Option<Option<u8>>,
     #[serde(default)]
     pub differential_limit: Option<Option<u8>>,
+    /// Minutes between backups while a game runs; `Some(None)` turns them off.
+    #[serde(default)]
+    pub interval_minutes: Option<Option<u32>>,
 }
 
 fn current_ludusavi(paths: &DataPaths) -> Result<LudusaviSettings> {
@@ -73,6 +76,9 @@ pub fn set_ludusavi_settings(paths: &DataPaths, patch: &LudusaviSettingsPatch) -
     }
     if let Some(v) = patch.differential_limit {
         next.differential_limit = v;
+    }
+    if let Some(v) = patch.interval_minutes {
+        next.interval_minutes = settings::as_ludusavi_interval(v);
     }
     json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |f| {
         f.ludusavi = Some(next);
@@ -186,6 +192,30 @@ mod tests {
         assert_eq!(l.last_error, None);
         assert_eq!(l.last_backup_path, None);
         assert_eq!(l.last_backup_at.as_deref(), Some("t2"));
+    }
+
+    #[test]
+    fn interval_patch_round_trips_and_survives_other_patches() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(d.path());
+        std::fs::create_dir_all(paths.local_library()).unwrap();
+        std::fs::write(paths.collection_settings(), r#"{"greyUninstalledGames":true,"ludusavi":{"enabled":true}}"#).unwrap();
+        assert_eq!(settings::load(&paths).unwrap().ludusavi.interval_minutes, None);
+        let eff = set_ludusavi_settings(&paths, &LudusaviSettingsPatch { interval_minutes: Some(Some(30)), ..Default::default() }).unwrap();
+        assert_eq!(eff.ludusavi.interval_minutes, Some(30));
+        assert_eq!(json_store::read_value(&paths.collection_settings()).unwrap()["ludusavi"]["intervalMinutes"], 30);
+        // Another field's patch and a recorded backup keep it.
+        set_ludusavi_settings(&paths, &LudusaviSettingsPatch { format: Some("simple".into()), ..Default::default() }).unwrap();
+        record_ludusavi_backup(&paths, &LudusaviRecord { at: Some("t".into()), ..Default::default() }).unwrap();
+        assert_eq!(settings::load(&paths).unwrap().ludusavi.interval_minutes, Some(30));
+        // Out of range is clamped; off removes the key.
+        let eff = set_ludusavi_settings(&paths, &LudusaviSettingsPatch { interval_minutes: Some(Some(2)), ..Default::default() }).unwrap();
+        assert_eq!(eff.ludusavi.interval_minutes, Some(5));
+        let eff = set_ludusavi_settings(&paths, &LudusaviSettingsPatch { interval_minutes: Some(None), ..Default::default() }).unwrap();
+        assert_eq!(eff.ludusavi.interval_minutes, None);
+        let raw = json_store::read_value(&paths.collection_settings()).unwrap();
+        assert!(raw["ludusavi"].get("intervalMinutes").is_none(), "{raw}");
+        assert_eq!(raw["greyUninstalledGames"], true);
     }
 
     #[test]

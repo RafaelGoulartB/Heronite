@@ -1,15 +1,11 @@
 //! Battle.net: its games from the Agent's `product.db`, its sign-in from
 //! `Battle.net.config`.
 
-use std::path::Path;
-
-use heronite_data::clients::drive_c;
 use serde_json::Value;
 
-use crate::files::{last_part, read_text, unix_path};
+use crate::files::{last_part, read_text};
 use crate::pbuf::{Fields, Value as Field};
-use crate::winpath::join_ci;
-use crate::{user_dirs, Account, ClientGame};
+use crate::{Account, ClientGame, Place};
 
 const PRODUCT_DB: &str = "ProgramData/Battle.net/Agent/product.db";
 const CONFIG: &str = "AppData/Roaming/Battle.net/Battle.net.config";
@@ -106,14 +102,14 @@ fn install(message: &[u8]) -> Install {
     out
 }
 
-/// The games Battle.net has installed in `prefix`.
-pub fn games(prefix: &Path) -> Vec<ClientGame> {
-    let Ok(db) = std::fs::read(join_ci(&drive_c(prefix), PRODUCT_DB)) else { return Vec::new() };
+/// The games Battle.net has installed in `place`.
+pub fn games(place: &Place) -> Vec<ClientGame> {
+    let Ok(db) = std::fs::read(place.drive(PRODUCT_DB)) else { return Vec::new() };
     let mut seen = std::collections::HashSet::new();
-    installs(&db).into_iter().filter_map(|i| game(prefix, i)).filter(|g| seen.insert(g.id.to_lowercase())).collect()
+    installs(&db).into_iter().filter_map(|i| game(place, i)).filter(|g| seen.insert(g.id.to_lowercase())).collect()
 }
 
-fn game(prefix: &Path, install: Install) -> Option<ClientGame> {
+fn game(place: &Place, install: Install) -> Option<ClientGame> {
     let Install { uid, product_code, path, installed } = install;
     let id = if uid.is_empty() { product_code.clone() } else { uid };
     if id.is_empty() || [&id, &product_code].iter().any(|n| NOT_GAMES.iter().any(|b| n.eq_ignore_ascii_case(b))) {
@@ -133,16 +129,16 @@ fn game(prefix: &Path, install: Install) -> Option<ClientGame> {
             (code, title)
         }
     };
-    let folder = path.as_deref().and_then(|p| unix_path(prefix, p));
+    let folder = path.as_deref().and_then(|p| place.local_path(p));
     let launch = format!("--exec=\"launch {}\"", code.replace('"', ""));
     Some(ClientGame { id, title, folder, launch })
 }
 
 /// Whether Battle.net remembers an account (its email).
-pub fn account(prefix: &Path) -> Account {
+pub fn account(place: &Place) -> Account {
     let mut out = Account::Unknown;
-    for user in user_dirs(prefix) {
-        let Some(text) = read_text(&join_ci(&user, CONFIG)) else { continue };
+    for user in place.users() {
+        let Some(text) = read_text(&user.path(CONFIG)) else { continue };
         let emails = serde_json::from_str::<Value>(&text).ok().and_then(|v| saved_accounts(&v).map(str::to_string));
         match emails.as_deref().and_then(|e| e.split(',').map(str::trim).find(|e| !e.is_empty())) {
             Some(first) => return Account::SignedIn(Some(first.to_string())),
@@ -200,7 +196,7 @@ mod tests {
         let dir = prefix_with_db(&db);
         std::fs::create_dir_all(dir.path().join("drive_c/Program Files (x86)/World of Warcraft")).unwrap();
 
-        let games = games(dir.path());
+        let games = games(&dir.path().into());
         let got: Vec<_> = games.iter().map(|g| (g.id.as_str(), g.title.as_str(), g.launch.as_str())).collect();
         assert_eq!(
             got,
@@ -219,11 +215,11 @@ mod tests {
     #[test]
     fn a_missing_or_broken_database_has_no_games() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(games(dir.path()).is_empty());
+        assert!(games(&dir.path().into()).is_empty());
         let broken = prefix_with_db(&[0x0A, 0xFF, 0x01]);
-        assert!(games(broken.path()).is_empty());
+        assert!(games(&broken.path().into()).is_empty());
         let junk = prefix_with_db(b"not a protobuf at all");
-        assert!(games(junk.path()).is_empty());
+        assert!(games(&junk.path().into()).is_empty());
     }
 
     fn prefix_with_config(text: Option<&str>) -> tempfile::TempDir {
@@ -240,19 +236,22 @@ mod tests {
     #[test]
     fn the_saved_account_says_who_is_signed_in() {
         let signed = prefix_with_config(Some(r#"{"Client": {"SavedAccountNames": "me@example.com, other@example.com"}}"#));
-        assert_eq!(account(signed.path()), Account::SignedIn(Some("me@example.com".into())));
+        assert_eq!(account(&signed.path().into()), Account::SignedIn(Some("me@example.com".into())));
         let nested = prefix_with_config(Some(r#"{"Client": {"Hash": {"SavedAccountNames": "deep@example.com"}}, "Other": 1}"#));
-        assert_eq!(account(nested.path()), Account::SignedIn(Some("deep@example.com".into())));
+        assert_eq!(account(&nested.path().into()), Account::SignedIn(Some("deep@example.com".into())));
         let bom = prefix_with_config(Some("\u{feff}{\"Client\": {\"SavedAccountNames\": \"bom@example.com\"}}"));
-        assert_eq!(account(bom.path()), Account::SignedIn(Some("bom@example.com".into())));
+        assert_eq!(account(&bom.path().into()), Account::SignedIn(Some("bom@example.com".into())));
     }
 
     #[test]
     fn a_config_without_accounts_is_signed_out_and_no_config_is_unknown() {
-        assert_eq!(account(prefix_with_config(Some(r#"{"Client": {"HardwareAcceleration": "false"}}"#)).path()), Account::SignedOut);
-        assert_eq!(account(prefix_with_config(Some(r#"{"Client": {"SavedAccountNames": ""}}"#)).path()), Account::SignedOut);
-        assert_eq!(account(prefix_with_config(None).path()), Account::Unknown);
-        assert_eq!(account(prefix_with_config(Some("{ broken")).path()), Account::SignedOut);
-        assert_eq!(account(tempfile::tempdir().unwrap().path()), Account::Unknown);
+        assert_eq!(
+            account(&prefix_with_config(Some(r#"{"Client": {"HardwareAcceleration": "false"}}"#)).path().into()),
+            Account::SignedOut
+        );
+        assert_eq!(account(&prefix_with_config(Some(r#"{"Client": {"SavedAccountNames": ""}}"#)).path().into()), Account::SignedOut);
+        assert_eq!(account(&prefix_with_config(None).path().into()), Account::Unknown);
+        assert_eq!(account(&prefix_with_config(Some("{ broken")).path().into()), Account::SignedOut);
+        assert_eq!(account(&tempfile::tempdir().unwrap().path().into()), Account::Unknown);
     }
 }

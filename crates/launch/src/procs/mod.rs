@@ -22,6 +22,11 @@ pub enum Sig {
 }
 
 pub trait Procs: Send + Sync {
+    /// Platform client detection beyond Steam's pid files: registry/process
+    /// on Windows, or the gamescope session on Linux.
+    fn steam_client_running(&self) -> bool {
+        false
+    }
     /// Alive and not a zombie.
     fn is_alive(&self, pid: u32) -> bool;
     /// Short command name (`/proc/<pid>/comm`).
@@ -56,19 +61,23 @@ pub trait Procs: Send + Sync {
     fn user_ns(&self, pid: u32) -> Option<String>;
     /// The Windows programs (not Wine's own, see [`WINE_SERVICES`]) running in
     /// the Wine prefix `prefix` or from `folder`. A store client's game is
-    /// told from the client by name and by where it runs from.
+    /// told from the client by name and by where it runs from. On Windows,
+    /// with no Wine, every program of the PC (`prefix` aside).
     fn prefix_programs(&self, prefix: &str, folder: Option<&str>) -> Vec<WinProgram>;
 }
 
-/// A Windows program running in a Wine prefix (see [`Procs::prefix_programs`]).
+/// A Windows program running in a Wine prefix, or on Windows (see
+/// [`Procs::prefix_programs`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WinProgram {
     pub pid: u32,
     /// Lowercase file name (`game.exe`).
     pub name: String,
-    /// The Windows path Wine gives it (`C:\games\Game.exe`).
+    /// The Windows path Wine gives it (`C:\games\Game.exe`), or its
+    /// program's path on Windows (empty when it cannot be read).
     pub path: String,
-    /// Its working folder is the folder asked for, or inside it.
+    /// Its working folder (Linux) or its program (Windows) is in the folder
+    /// asked for.
     pub from_folder: bool,
 }
 
@@ -183,6 +192,8 @@ struct FakeState {
     signals: Vec<(u32, Sig)>,
     group_signals: Vec<(u32, Sig)>,
     windows: HashMap<String, Vec<String>>,
+    /// How many times [`Procs::windows_programs`] was asked.
+    windows_asked: usize,
     /// Start ticks; 0 for a process started without one.
     ticks: HashMap<u32, u64>,
     /// Process group of a pid; its own pid when not set.
@@ -223,6 +234,11 @@ impl FakeProcs {
     pub fn set_windows_programs(&self, prefix: &str, names: &[&str]) {
         self.inner.lock().unwrap().windows.insert(prefix.to_string(), names.iter().map(|n| n.to_string()).collect());
     }
+    /// How many times [`Procs::windows_programs`] was asked: a test can wait
+    /// for a look at a prefix before it changes.
+    pub fn windows_asked(&self) -> usize {
+        self.inner.lock().unwrap().windows_asked
+    }
     pub fn set_start_ticks(&self, pid: u32, ticks: u64) {
         self.inner.lock().unwrap().ticks.insert(pid, ticks);
     }
@@ -256,6 +272,10 @@ impl FakeProcs {
 }
 
 impl Procs for FakeProcs {
+    fn steam_client_running(&self) -> bool {
+        let s = self.inner.lock().unwrap();
+        cfg!(windows) && s.alive.iter().any(|pid| s.comms.get(pid).is_some_and(|name| name.eq_ignore_ascii_case("steam.exe")))
+    }
     fn is_alive(&self, pid: u32) -> bool {
         self.inner.lock().unwrap().alive.contains(&pid)
     }
@@ -276,7 +296,9 @@ impl Procs for FakeProcs {
         self.inner.lock().unwrap().signals.push((pid, sig));
     }
     fn windows_programs(&self, prefix: &str) -> Vec<String> {
-        self.inner.lock().unwrap().windows.get(prefix).cloned().unwrap_or_default()
+        let mut s = self.inner.lock().unwrap();
+        s.windows_asked += 1;
+        s.windows.get(prefix).cloned().unwrap_or_default()
     }
     fn start_ticks(&self, pid: u32) -> Option<u64> {
         let s = self.inner.lock().unwrap();

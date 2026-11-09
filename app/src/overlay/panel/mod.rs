@@ -1,9 +1,11 @@
 //! The overlay panel: the game and the session on top, tabs switched with
-//! LB / RB (Home, Screenshots, Notes, Audio, Controller), rows in console mode's
-//! look and the button hints at the bottom. It only takes controller presses
+//! LB / RB (Home, Screenshots, Notes, Audio, Controller, and Achievements
+//! when the game has them), rows in console mode's look and the button hints
+//! at the bottom. It takes controller presses
 //! (the service forwards them: the window never has the keyboard, so the
-//! game keeps it).
+//! game keeps it), and the mouse presses the same way (`console::pointer`).
 
+mod achievements;
 mod data;
 mod mixer;
 mod notes;
@@ -24,6 +26,7 @@ use super::{GameNow, OverlayService};
 use crate::console::kit::{self, u};
 use crate::console::list::{self, ListNav, Row};
 use crate::console::osk::{self, Osk};
+use crate::console::pointer::{self, Clickable, WheelAxis};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::theme;
@@ -36,6 +39,7 @@ pub enum Tab {
     Notes,
     Audio,
     Controller,
+    Achievements,
 }
 
 const TABS: [Tab; 5] = [Tab::Home, Tab::Shots, Tab::Notes, Tab::Audio, Tab::Controller];
@@ -50,6 +54,7 @@ impl Tab {
             Tab::Notes => tr!("Notes").into(),
             Tab::Audio => tr!("Audio").into(),
             Tab::Controller => tr!("Controller").into(),
+            Tab::Achievements => tr!("Achievements").into(),
         }
     }
 
@@ -60,6 +65,7 @@ impl Tab {
             Tab::Notes => Icon::Notes,
             Tab::Audio => Icon::VolumeUp,
             Tab::Controller => Icon::SportsEsports,
+            Tab::Achievements => Icon::Trophy,
         }
     }
 }
@@ -103,6 +109,13 @@ pub struct OverlayPanel {
     writing: Option<notes::Writing>,
     /// The replay of the game running, when it applies to it.
     replay: Option<crate::services::replay::PanelState>,
+    /// The game's achievements, as the achievements service has them.
+    achievements: Option<achievements::Shown>,
+    _achievements_sub: Option<Subscription>,
+    /// Their icons (made when the tab is first drawn).
+    icons: Option<achievements::Icons>,
+    /// This panel, for the clicks of what it draws.
+    me: WeakEntity<Self>,
 }
 
 /// Controller button to console mode's press.
@@ -133,6 +146,7 @@ impl OverlayPanel {
         game: Option<GameNow>,
         controllers: Vec<Controller>,
         keyboard: bool,
+        scale: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -141,13 +155,19 @@ impl OverlayPanel {
             window.focus(&focus, cx);
         }
         let replay = game.as_ref().and_then(|_| OverlayService::replay_panel(cx));
+        // The mouse presses like the controller.
+        let me = cx.entity().downgrade();
+        let route = me.clone();
+        pointer::set_router(window, cx, move |pad, window, cx| {
+            route.update(cx, |p, cx| p.on_pad(pad, window, cx)).ok();
+        });
         let mut this = Self {
             service,
             paths: paths.clone(),
             volume_step: i64::from(volume_step),
             game,
             controllers,
-            scale: super::window::scale(cx),
+            scale,
             tab: 0,
             nav: ListNav::default(),
             data: Data::default(),
@@ -162,8 +182,13 @@ impl OverlayPanel {
             osk: None,
             writing: None,
             replay,
+            achievements: None,
+            _achievements_sub: None,
+            icons: None,
+            me,
         };
         this.load_all(paths, cx);
+        this.watch_achievements(cx);
         // The clock and the session time.
         cx.spawn(async move |this, cx| loop {
             cx.background_executor().timer(Duration::from_secs(20)).await;
@@ -180,22 +205,63 @@ impl OverlayPanel {
         self.load_batteries(cx);
     }
 
-    fn tabs(&self) -> &'static [Tab] {
-        if self.game.is_some() {
-            &TABS
-        } else {
-            &TABS_NO_GAME
+    fn tabs(&self) -> Vec<Tab> {
+        let mut tabs = if self.game.is_some() { TABS.to_vec() } else { TABS_NO_GAME.to_vec() };
+        // Last, so the others keep their place when it shows up.
+        if self.achievements.is_some() {
+            tabs.push(Tab::Achievements);
         }
+        tabs
     }
 
     fn tab(&self) -> Tab {
-        self.tabs()[self.tab]
+        self.tabs().get(self.tab).copied().unwrap_or(Tab::Home)
+    }
+
+    /// Shows `tab` (a row of Home leads to it).
+    fn show_tab(&mut self, tab: Tab, cx: &mut Context<Self>) {
+        if let Some(i) = self.tabs().iter().position(|t| *t == tab) {
+            self.tab = i;
+            self.nav.reset();
+            self.grid = None;
+            self.error = None;
+            self.tab_shown(cx);
+        }
+    }
+
+    fn tab_shown(&mut self, cx: &mut Context<Self>) {
+        if self.tab() == Tab::Achievements {
+            self.refresh_achievements(cx);
+        }
     }
 
     fn with_service(&self, cx: &mut Context<Self>, f: impl FnOnce(&mut OverlayService, &mut Context<OverlayService>) + 'static) {
         if let Some(s) = self.service.upgrade() {
             // Deferred: the service may be closing this very window.
             cx.defer(move |cx| s.update(cx, f));
+        }
+    }
+
+    /// A left click that runs `f` on the panel (a focus the presses cannot
+    /// reach in one step: a capture, a volume level).
+    fn click(
+        &self,
+        f: impl Fn(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+        let me = self.me.clone();
+        let f = std::rc::Rc::new(f);
+        move |_, window, cx| {
+            cx.stop_propagation();
+            let (me, f) = (me.clone(), f.clone());
+            // Once the event is over, never inside an update of the panel.
+            window.defer(cx, move |window, cx| {
+                me.update(cx, |p, cx| {
+                    crate::console::motion::press();
+                    f(p, window, cx);
+                    cx.notify();
+                })
+                .ok();
+            });
         }
     }
 
@@ -229,6 +295,7 @@ impl OverlayPanel {
                 self.nav.reset();
                 self.grid = None;
                 self.error = None;
+                self.tab_shown(cx);
                 return true;
             }
             Pad::B => {
@@ -384,11 +451,12 @@ impl OverlayPanel {
             .gap(u(6.))
             .mx(u(16.))
             .pt(u(16.))
-            .child(self.glyph(Btn::LB))
+            .child(self.glyph(Btn::LB).on_pads([Pad::LB]))
             .children(self.tabs().iter().enumerate().map(|(i, t)| {
                 let on = i == self.tab;
                 let color: Hsla = if on { theme::text_primary().into() } else { theme::text_muted().into() };
                 div()
+                    .on_pads(pointer::along(self.tab, i, Pad::LB, Pad::RB))
                     .flex_1()
                     .min_w_0()
                     .flex()
@@ -401,7 +469,7 @@ impl OverlayPanel {
                     .child(icon(t.icon(), u(20.), color))
                     .child(div().text_size(u(12.)).text_color(color).truncate().child(t.label()))
             }))
-            .child(self.glyph(Btn::RB))
+            .child(self.glyph(Btn::RB).on_pads([Pad::RB]))
     }
 
     fn apps_playing(&self) -> bool {
@@ -418,6 +486,8 @@ impl OverlayPanel {
     }
 
     fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // A key brings back the cursor a controller hid.
+        pointer::show_cursor();
         if let Some(osk) = self.osk.as_ref().map(|(k, _)| k.clone()) {
             if osk.update(cx, |k, cx| k.type_key(&ev.keystroke, cx)) {
                 cx.stop_propagation();
@@ -441,21 +511,16 @@ impl OverlayPanel {
             .py(u(16.))
             .border_t_1()
             .border_color(theme::white_a(0.08))
-            .children(self.hints().into_iter().map(|h| {
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(u(7.))
-                    .text_size(u(13.))
-                    .text_color(theme::text_muted())
-                    .child(self.glyph(h.btn))
-                    .child(h.label)
-            }))
+            .eats_clicks()
+            .children(self.hints().iter().map(|h| kit::hint_item(h, self.keyboard, 13., 7.)))
     }
 
-    fn render_body(&mut self) -> Div {
+    fn render_body(&mut self, window: &Window, cx: &mut Context<Self>) -> Div {
         let rows = self.rows();
         let list_active = self.grid.is_none() && self.confirm.is_none();
+        // From the Screenshots grid, ↑ to above its first row gives the rows the focus back.
+        let to_rows: Option<Vec<Pad>> =
+            self.grid.filter(|_| self.confirm.is_none()).map(|i| pointer::repeat(Pad::Up, i / shots::COLS + 1).collect());
         let placeholder = AudioState::default();
         let has_mixer = rows.iter().any(|r| r.id.as_ref() == mixer::SYSTEM);
         // While the audio is read, the mixer shows empty at its full size.
@@ -470,24 +535,45 @@ impl OverlayPanel {
                 self.nav.clamp(&rows);
                 let focus = list_active.then(|| rows.get(self.nav.focus).map(|r| r.id.clone())).flatten();
                 let mixer_focus = focus.as_ref().filter(|id| mixer::is_mixer(id)).map(|id| id.to_string());
+                // The presses a click on row `id` starts with (the focus goes there).
+                let routes: std::collections::HashMap<String, Vec<Pad>> = if list_active {
+                    rows.iter().enumerate().map(|(i, r)| (r.id.to_string(), self.nav.route(&rows, i))).collect()
+                } else {
+                    Default::default()
+                };
                 let mut list = div().flex().flex_col().gap(u(4.));
                 for (i, r) in rows.iter().enumerate() {
                     match r.id.as_ref() {
                         mixer::SYSTEM => {
                             let apps = if self.tab() == Tab::Home { mixer::HOME_APPS } else { mixer::AUDIO_APPS };
-                            list = list.child(div().py(u(4.)).child(self.render_mixer(audio, mixer_focus.as_deref(), loading, apps)))
+                            let mixer = self.render_mixer(audio, mixer_focus.as_deref(), loading, apps, &routes);
+                            list = list.child(div().py(u(4.)).child(mixer))
                         }
                         id if mixer::is_mixer(id) => {}
-                        _ => list = list.child(list::render_row(r, list_active && i == self.nav.focus)),
+                        _ => {
+                            let row =
+                                list::render_row_at(r, list_active && i == self.nav.focus, routes.get(r.id.as_ref()).map(Vec::as_slice));
+                            let pads = if list_active { self.nav.click(&rows, i) } else { Vec::new() };
+                            let hover = routes.get(r.id.as_ref()).cloned().unwrap_or_default();
+                            list = list.child(div().on_hover_pads(hover).on_pads(pads).child(row))
+                        }
                     }
                 }
                 list.into_any_element()
             }
             // Long lists (several controllers) scroll inside the panel.
-            None if self.tab() == Tab::Controller => {
-                self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_1().min_h_0().into_any_element()
+            None if self.tab() == Tab::Controller => self
+                .nav
+                .render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref())
+                .flex_1()
+                .min_h_0()
+                .into_any_element(),
+            None if self.tab() == Tab::Achievements => {
+                self.render_achievements(list_active, window, cx).flex_1().min_h_0().into_any_element()
             }
-            None => self.nav.render(("overlay-rows", self.tab), &rows, list_active).flex_none().into_any_element(),
+            None => {
+                self.nav.render_entered(("overlay-rows", self.tab), &rows, list_active, to_rows.as_deref()).flex_none().into_any_element()
+            }
         };
         let mut body = div().flex().flex_col().flex_1().min_h_0().overflow_hidden().px(u(12.)).pt(u(10.)).pb(u(6.)).gap(u(8.)).child(list);
         if let Some(e) = &self.error {
@@ -499,7 +585,7 @@ impl OverlayPanel {
             Tab::Home if !self.apps_playing() => body.child(self.render_recent()),
             Tab::Home => body,
             Tab::Shots => body.child(self.render_grid()),
-            Tab::Notes | Tab::Audio | Tab::Controller => body,
+            Tab::Notes | Tab::Audio | Tab::Controller | Tab::Achievements => body,
         }
     }
 }
@@ -523,7 +609,8 @@ fn duration_label(minutes: u64) -> String {
 }
 
 impl Render for OverlayPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.icons_frame(window);
         // Over the game, whatever the theme.
         theme::set_dark_only(true);
         kit::set_scale_value(self.scale);
@@ -532,6 +619,7 @@ impl Render for OverlayPanel {
         let mut panel = div()
             .relative()
             .size_full()
+            .child(pointer::layer(WheelAxis::Vertical))
             .font_family(theme::font_body())
             .text_color(theme::text_primary())
             .flex()
@@ -543,7 +631,7 @@ impl Render for OverlayPanel {
             .overflow_hidden()
             .child(self.render_tabs())
             .child(self.render_header())
-            .child(self.render_body())
+            .child(self.render_body(window, cx))
             .child(self.render_hints())
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key));
@@ -561,7 +649,8 @@ impl Render for OverlayPanel {
             panel = panel.child(list::simple_dialog(&mut self.confirm_nav, "overlay-confirm", title, message, None, &rows));
         }
         if let Some(viewer) = self.render_viewer() {
-            panel = panel.child(viewer);
+            // A click on the capture closes it (A); nothing under it takes clicks.
+            panel = panel.child(div().absolute().inset_0().occlude().on_pads([Pad::A]).child(viewer));
         }
         if let Some((osk, _)) = &self.osk {
             panel = panel.child(osk.clone());

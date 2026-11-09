@@ -1,9 +1,10 @@
 //! "Timeline" of the focus panel: each day the game was played (time played,
-//! number of sessions) with the screenshots taken during those sessions, as
-//! thumbnails (the same cache as the Screenshots strip). Newest day first;
-//! days with screenshots but no tracked session are listed too. A switch in
-//! its title turns it into the game's Journal (`journal/`); each day here
-//! shows how many notes it has.
+//! number of sessions) with the replays saved and the screenshots taken
+//! during those sessions, as thumbnails (the same cache as the Screenshots
+//! strip). The replays come first, larger, on a row of their own, and ring
+//! the day's dot. Newest day first; days with screenshots but no tracked
+//! session are listed too. A switch in its title turns it into the game's
+//! Journal (`journal/`); each day here shows how many notes it has.
 
 use std::collections::HashMap;
 
@@ -11,10 +12,12 @@ use chrono::Datelike;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::format_playtime_minutes;
+use heronite_data::journal::Entry;
 use heronite_data::timeline::TimelineDay;
 
 use super::focus::{h3, panel, small_tabs};
 use super::game_facts::TIMELINE_DAYS;
+use super::replays::{replays_chip, ClipTile};
 use super::screenshots::thumb_tile;
 use super::CollectionView;
 use crate::icons::Icon;
@@ -28,6 +31,11 @@ const RAIL_W: f32 = 14.;
 const GAP: f32 = 14.;
 const TILE_W: f32 = 144.;
 const TILE_H: f32 = 81.;
+/// Screenshots of a day that has replays: they step back.
+const SMALL_TILE_W: f32 = 96.;
+const SMALL_TILE_H: f32 = 54.;
+const CLIP_W: f32 = 208.;
+const CLIP_H: f32 = 117.;
 const TILE_GAP: f32 = 8.;
 const ROW_GAP: f32 = 18.;
 /// Days the activity bars of the title cover, ending today.
@@ -40,23 +48,32 @@ const SPARK_MIN_W: f32 = 620.;
 const PAUSE_MIN_DAYS: i64 = 3;
 
 impl CollectionView {
-    /// The section (none when the game was never played and has no screenshots).
+    /// The section: the Timeline, or the Journal when picked. A game never
+    /// played and without screenshots has no Timeline, only its Journal (the
+    /// place to write a note or where to pick it up, before playing it).
     pub(super) fn timeline_section(&mut self, key: &SharedString, main_w: f32, scale: f32, cx: &mut Context<Self>) -> Option<AnyElement> {
         let days = self.timeline_days(key)?;
         let current = self.journal.is_for(key);
-        let has_notes = current && self.journal.data.as_ref().is_some_and(|d| !d.entries.is_empty() || d.left_off.is_some());
-        if current && (self.ui.journal_view || (days.is_empty() && has_notes)) {
+        if current && (self.ui.journal_view || days.is_empty()) {
             return self.journal_section(key, main_w, cx);
         }
         if days.is_empty() {
             return None;
         }
-        let notes: HashMap<chrono::NaiveDate, usize> = match self.journal_days(key) {
-            Some((_, jdays)) if current => jdays.iter().filter(|d| !d.entries.is_empty()).map(|d| (d.date, d.entries.len())).collect(),
+        // A replay is counted as a note once something is written about it.
+        let journal = self.journal.data.clone().filter(|_| current);
+        let notes: HashMap<chrono::NaiveDate, usize> = match (self.journal_days(key), &journal) {
+            (Some((_, jdays)), Some(data)) => jdays
+                .iter()
+                .map(|d| (d.date, d.entries.iter().filter(|i| !data.entries[**i].is_bare_replay()).count()))
+                .filter(|(_, n)| *n > 0)
+                .collect(),
             _ => HashMap::new(),
         };
+        let replays = self.day_replays(key);
         let content_w = main_w - 2. * 16.8 - DATE_W - RAIL_W - 2. * GAP;
-        let max_tiles = (((content_w + TILE_GAP) / (TILE_W + TILE_GAP)).floor() as usize).clamp(1, 6);
+        let fit = |w: f32, most: usize| (((content_w + TILE_GAP) / (w + TILE_GAP)).floor() as usize).clamp(1, most);
+        let (max_tiles, max_small, max_clips) = (fit(TILE_W, 6), fit(SMALL_TILE_W, 8), fit(CLIP_W, 4));
         let shown = self.facts.timeline_days.min(days.len());
         let best = days.iter().map(|d| d.played_secs).fold(0., f64::max);
         let played_days = days.iter().filter(|d| d.played_secs > 0.).count();
@@ -66,13 +83,35 @@ impl CollectionView {
         let mut list = div().flex().flex_col();
         for (i, day) in days[..shown].iter().enumerate() {
             let is_best = played_days > 1 && day.played_secs > 0. && day.played_secs >= best;
-            let tiles = self.day_tiles(i, day, max_tiles, cx);
+            let day_clips = replays.get(&day.date);
+            let clips = match (day_clips, &journal) {
+                (Some(list), Some(data)) => Some(self.day_clips(i, list, &data.entries, max_clips, cx)),
+                _ => None,
+            };
+            let tiles =
+                if clips.is_some() { self.day_tiles(i, day, max_small, true, cx) } else { self.day_tiles(i, day, max_tiles, false, cx) };
             let chip = notes.get(&day.date).map(|n| self.notes_chip(i, *n, cx));
+            let replays_chip = day_clips.map(|l| {
+                replays_chip(SharedString::from(format!("tl-replays-{i}")), l.len())
+                    .ml(px(4.))
+                    .on_click(cx.listener(|this, _, _, cx| this.set_journal_view(true, cx)))
+                    .into_any_element()
+            });
             let day_unlocks = unlocks.get(&day.date);
             let ach_chip = day_unlocks.map(|l| self.achievements_chip(i, l.len(), key, cx));
             let ach_line = day_unlocks.map(|l| self.achievements_line(i, l, key, scale, cx));
-            let row =
-                DayRow { day, this_year, has_next: i + 1 < shown, is_best, notes: chip, achievements: ach_chip, tiles, unlocks: ach_line };
+            let row = DayRow {
+                day,
+                this_year,
+                has_next: i + 1 < shown,
+                is_best,
+                replays: replays_chip,
+                notes: chip,
+                achievements: ach_chip,
+                clips,
+                tiles,
+                unlocks: ach_line,
+            };
             list = list.child(day_row(row));
             if let Some(older) = days.get(i + 1).filter(|_| i + 1 < shown) {
                 let off = (day.date - older.date).num_days() - 1;
@@ -115,9 +154,10 @@ impl CollectionView {
     }
 
     /// The section's title: "Timeline" or "Journal", what it holds, and the
-    /// switch between the two.
+    /// switch between the two (none without a Timeline to switch to).
     pub(super) fn timeline_header(&mut self, key: &SharedString, main_w: f32, cx: &mut Context<Self>) -> Div {
-        let journal = self.ui.journal_view && self.journal.is_for(key);
+        let no_timeline = self.timeline_days(key).is_none_or(|days| days.is_empty());
+        let journal = self.journal.is_for(key) && (self.ui.journal_view || no_timeline);
         let this_year = chrono::Local::now().year();
         let spark = if journal || main_w < SPARK_MIN_W { None } else { self.activity_bars(key, cx) };
         let hovered = spark.as_ref().and(self.facts.timeline_hover);
@@ -133,7 +173,7 @@ impl CollectionView {
                 None => tr!("{day} · not played", day),
             }
         } else if journal {
-            let n = self.journal.data.as_ref().map_or(0, |d| d.entries.len());
+            let n = self.journal.data.as_ref().map_or(0, |d| d.entries.iter().filter(|e| !e.is_bare_replay()).count());
             if n == 0 {
                 String::new()
             } else {
@@ -149,7 +189,7 @@ impl CollectionView {
                 (n, Some(s)) => tr!("{n} sessions since {since}", n, since = s),
             }
         };
-        let switch = self.view_switch(journal, cx);
+        let switch = (!no_timeline).then(|| self.view_switch(journal, cx));
         h3(if journal { tr!("Journal") } else { tr!("Timeline") }).flex().justify_between().items_center().gap(px(12.)).child(
             div()
                 .flex()
@@ -163,7 +203,7 @@ impl CollectionView {
                 // hovered day's (wider or narrower) text never moves them.
                 .child(meta)
                 .children(spark)
-                .child(switch),
+                .children(switch),
         )
     }
 
@@ -245,11 +285,58 @@ impl CollectionView {
             .into_any_element()
     }
 
+    /// The replays of one day (`list`: indices into `entries`), oldest
+    /// first; past `max` the last poster says "+N" and opens the Journal.
+    fn day_clips(&mut self, day_i: usize, list: &[usize], entries: &[Entry], max: usize, cx: &mut Context<Self>) -> Div {
+        let n = list.len();
+        let visible = if n > max { max - 1 } else { n };
+        let mut row = div().flex().gap(px(TILE_GAP)).mt(px(8.));
+        for (j, &e) in list.iter().take(visible + usize::from(n > visible)).enumerate() {
+            let entry = &entries[e];
+            let Some(path) = entry.clip.as_deref().map(std::path::PathBuf::from) else { continue };
+            let more = (j == visible).then_some(n - visible);
+            let tile = ClipTile {
+                id: SharedString::from(format!("tl-clip-{day_i}-{j}")),
+                path,
+                w: CLIP_W,
+                h: CLIP_H,
+                time: more.is_none().then(|| time_label(entry)).flatten(),
+                caption: (!entry.is_moment() && more.is_none()).then(|| entry.text.clone()),
+            };
+            let mut tile = self.clip_tile(tile, cx);
+            if let Some(more) = more {
+                // Over the play button: a click here opens the Journal.
+                tile = tile.child(
+                    div()
+                        .id(SharedString::from(format!("tl-clip-more-{day_i}")))
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(theme::rgb_a(8, 10, 14, 0.7))
+                        .text_color(white())
+                        .font_weight(theme::W_BOLD)
+                        .text_size(px(18.))
+                        .child(format!("+{more}"))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.set_journal_view(true, cx);
+                        })),
+                );
+            }
+            row = row.child(tile);
+        }
+        row
+    }
+
     /// Thumbnails of one day; the last tile shows "+N" when they do not fit.
-    fn day_tiles(&mut self, day_i: usize, day: &TimelineDay, max: usize, cx: &mut Context<Self>) -> Option<Div> {
+    /// `small` when the day's replays are above them.
+    fn day_tiles(&mut self, day_i: usize, day: &TimelineDay, max: usize, small: bool, cx: &mut Context<Self>) -> Option<Div> {
         if day.shots.is_empty() {
             return None;
         }
+        let (tile_w, tile_h) = if small { (SMALL_TILE_W, SMALL_TILE_H) } else { (TILE_W, TILE_H) };
         let n = day.shots.len();
         let visible = if n > max { max - 1 } else { n };
         let mut row = div().flex().gap(px(TILE_GAP)).mt(px(8.));
@@ -259,8 +346,8 @@ impl CollectionView {
             row = row.child(
                 thumb_tile(SharedString::from(format!("tl-{day_i}-{j}")), src, true)
                     .flex_none()
-                    .w(px(TILE_W))
-                    .h(px(TILE_H))
+                    .w(px(tile_w))
+                    .h(px(tile_h))
                     .on_click(cx.listener(move |this, _, window, cx| this.shots_open_view(idx, window, cx))),
             );
         }
@@ -271,8 +358,8 @@ impl CollectionView {
                 row = row.child(
                     thumb_tile(SharedString::from(format!("tl-{day_i}-more")), src, false)
                         .flex_none()
-                        .w(px(TILE_W))
-                        .h(px(TILE_H))
+                        .w(px(tile_w))
+                        .h(px(tile_h))
                         .child(
                             div()
                                 .absolute()
@@ -283,7 +370,7 @@ impl CollectionView {
                                 .bg(theme::rgb_a(8, 10, 14, 0.62))
                                 .text_color(white())
                                 .font_weight(theme::W_BOLD)
-                                .text_size(px(16.))
+                                .text_size(px(if small { 14. } else { 16. }))
                                 .child(format!("+{}", n - visible)),
                         )
                         .on_click(cx.listener(move |this, _, window, cx| this.shots_open_view(idx, window, cx))),
@@ -300,17 +387,22 @@ struct DayRow<'a> {
     this_year: i32,
     has_next: bool,
     is_best: bool,
+    /// "2 replays" (opens the Journal).
+    replays: Option<AnyElement>,
     /// "3 notes" (opens the Journal).
     notes: Option<AnyElement>,
     /// "4 achievements" (opens the list).
     achievements: Option<AnyElement>,
+    /// The posters of the day's replays.
+    clips: Option<Div>,
     tiles: Option<Div>,
     /// The icons of the day's unlocks.
     unlocks: Option<AnyElement>,
 }
 
 fn day_row(r: DayRow) -> Div {
-    let DayRow { day, this_year, has_next, is_best, notes, achievements, tiles, unlocks } = r;
+    let DayRow { day, this_year, has_next, is_best, replays, notes, achievements, clips, tiles, unlocks } = r;
+    let has_replays = replays.is_some();
     let sub = match (day.sessions, day.first_start) {
         (1, Some(t)) => t.format(trc!("time format", "%-I:%M %p")).to_string(),
         (0, _) => String::new(),
@@ -343,7 +435,7 @@ fn day_row(r: DayRow) -> Div {
                 .child(tr!("Longest day")),
         );
     }
-    line = line.children(notes).children(achievements);
+    line = line.children(replays).children(notes).children(achievements);
     div()
         .flex()
         .gap(px(GAP))
@@ -370,16 +462,25 @@ fn day_row(r: DayRow) -> Div {
                 .relative()
                 .flex_none()
                 .w(px(RAIL_W))
-                .child(div().absolute().top(px(5.)).left(px(2.)).size(px(10.)).rounded_full().bg(if day.sessions > 0 {
-                    theme::accent().into()
-                } else {
-                    theme::ink_a(0.4)
-                }))
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(5.))
+                        .left(px(2.))
+                        .size(px(10.))
+                        .rounded_full()
+                        .when(has_replays, |d| d.border_2().border_color(theme::replay()))
+                        .bg(match (has_replays, day.sessions > 0) {
+                            (true, _) => theme::replay_alpha(0.2).into(),
+                            (false, true) => theme::accent().into(),
+                            (false, false) => theme::ink_a(0.4),
+                        }),
+                )
                 .when(has_next, |d| {
                     d.child(div().absolute().top(px(20.)).bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::ink_a(0.1)))
                 }),
         )
-        .child(div().flex_1().min_w_0().child(line).children(tiles).children(unlocks))
+        .child(div().flex_1().min_w_0().child(line).children(clips).children(tiles).children(unlocks))
 }
 
 /// Between two days far apart: how long the game was left, on a fainter rail.
@@ -402,6 +503,12 @@ fn pause_row(days: i64) -> Div {
                 .child(div().absolute().top_0().bottom(px(-ROW_GAP)).left(px(6.)).w(px(2.)).bg(theme::ink_a(0.04))),
         )
         .child(div().flex_1().min_w_0().text_size(px(12.)).line_height(px(16.)).text_color(theme::ink_a(0.38)).child(text))
+}
+
+/// The local time of an entry: "1:57 AM".
+fn time_label(e: &Entry) -> Option<String> {
+    let at = chrono::TimeZone::timestamp_millis_opt(&chrono::Local, e.at_ms()?).single()?;
+    Some(at.format(trc!("time format", "%-I:%M %p")).to_string())
 }
 
 /// "Oct 7", or "Oct 7, 2025" outside the current year.

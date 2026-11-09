@@ -16,8 +16,11 @@ pub enum Section {
     GameDefaults,
     Downloads,
     Library,
-    /// Heroic, Lutris, Bottles and Faugus: bringing their games in.
+    /// Heroic, Lutris, Bottles and Faugus (Playnite on Windows): bringing
+    /// their games in.
     Launchers,
+    /// Sunshine: the games in its application list, for Moonlight.
+    Integrations,
     /// What the games take on disk, and cleaning it up.
     Storage,
     /// The in-game overlay (Guide button).
@@ -44,7 +47,7 @@ impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 6] = [
         (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode]),
-        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers]),
+        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers, Section::Integrations]),
         (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
         (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
         (n_!("Data"), &[Section::Storage, Section::Saves, Section::Backups, Section::Cloud]),
@@ -52,13 +55,14 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 19] = [
+    pub const ALL: [Section; 20] = [
         Section::General,
         Section::Appearance,
         Section::ConsoleMode,
         Section::GameDefaults,
         Section::Downloads,
         Section::Launchers,
+        Section::Integrations,
         Section::Library,
         Section::Metadata,
         Section::Achievements,
@@ -82,7 +86,8 @@ impl Section {
             Section::Downloads => heronite_platform::features::any_store(),
             Section::Launchers => supported(Feature::LauncherImports),
             Section::Storage => supported(Feature::Storage),
-            Section::Overlay | Section::Replay => supported(Feature::Overlay),
+            Section::Overlay => supported(Feature::Overlay),
+            Section::Replay => supported(Feature::Replay),
             Section::Screenshots => supported(Feature::Capture),
             Section::Saves => supported(Feature::SaveBackups),
             // Its options are mostly Wine's.
@@ -101,6 +106,7 @@ impl Section {
             Section::Downloads => tr!("Downloads"),
             Section::Library => tr!("Library"),
             Section::Launchers => tr!("Other launchers"),
+            Section::Integrations => tr!("Integrations"),
             Section::Storage => tr!("Storage"),
             Section::Overlay => tr!("Overlay"),
             Section::Replay => tr!("Replay"),
@@ -125,6 +131,7 @@ impl Section {
             Section::Downloads => Icon::Download,
             Section::Library => Icon::GridView,
             Section::Launchers => Icon::CallMerge,
+            Section::Integrations => Icon::Tv,
             Section::Storage => Icon::FaHardDrive,
             Section::Overlay => Icon::SportsEsports,
             Section::Replay => Icon::Videocam,
@@ -149,9 +156,13 @@ impl Section {
             Section::GameDefaults => tr!("What new games start with. To change a game you already have, open its own settings."),
             Section::Downloads => tr!("Downloads and updates of Epic Games, GOG and Amazon Games games."),
             Section::Library => tr!("What the Collection shows: hidden games, favourites and recent games."),
+            Section::Launchers if cfg!(windows) => {
+                tr!("Bring in the games of Playnite. While on, a game added there shows up here too.")
+            }
             Section::Launchers => tr!("Bring in the games of Heroic, Lutris, Bottles and Faugus. While on, a game added there shows up here too."),
+            Section::Integrations => tr!("Sunshine keeps your games in its list, with their covers, so Moonlight can start them from a phone, a TV or another computer."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
-            Section::Overlay => tr!("A panel the controller's Guide button or a keyboard shortcut opens over a game launched by Heronite: screenshots, volume, quitting the game."),
+            Section::Overlay => crate::overlay::labels::section_blurb(),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
             Section::Metadata => tr!("Collection uses IGDB first, then Steam and store pages to fill covers, descriptions and tags."),
             Section::Achievements => tr!("Achievements from Steam, GOG, Epic Games and RetroAchievements. Heronite keeps its own copy of them, so your history stays even if a store or an account goes away."),
@@ -168,15 +179,16 @@ impl Section {
     pub fn keywords(self) -> &'static str {
         match self {
             Section::General => "general folders tray shortcuts wine proton language theme geral pastas bandeja atalhos idioma tema",
-            Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast font density corners badges hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste fonte densidade cantos selos estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
+            Section::Appearance => "appearance background blur dim darkening saturation cover aspect grey uninstalled artwork glass opacity transparent transparency solid interface panels menus dialogs colour tint collection accent contrast zoom scale scaling size bigger smaller larger dpi hidpi 4k tv accessibility font density corners badges categories category tags ribbon strip bookmarks hover screenshot slideshow picture animations motion layout sections profile theme light dark mode system import export aparencia plano de fundo desfoque escurecer saturacao capa cinza nao instalados arte vidro opacidade transparente transparencia solido paineis cor colecao destaque contraste zoom escala tamanho maior menor ampliar aumentar diminuir acessibilidade fonte densidade cantos selos categorias categoria etiquetas fita faixa marcadores estrela animacoes movimento secoes perfil tema claro escuro modo sistema importar exportar imagem",
             Section::ConsoleMode => "console mode tv couch controller gamepad theme themes tabs shelves layout covers background font scale clock accent colours glyphs hints menu startup customize export import preset modo console televisao sofa controle tema temas abas prateleiras capas fundo fonte tamanho relogio destaque cores botoes dicas menu personalizar exportar importar perfil",
             Section::Advanced => "advanced cache folders copy settings avancado pastas copiar configuracoes",
             Section::GameDefaults => "game defaults wine proton version prefix dxvk nvapi esync fsync sync wayland wow64 gpu performance fps gamescope launch options new games padroes dos jogos versao prefixo desempenho opcoes de inicializacao novos jogos",
             Section::Downloads => "downloads epic updates install atualizacoes instalar baixar",
             Section::Library => "library hidden favourites favorites recent biblioteca ocultos favoritos recentes",
-            Section::Launchers => "other launchers import heroic lutris bottles faugus sync bring in outros launchers importar sincronizar trazer",
+            Section::Launchers => "other launchers import heroic lutris bottles faugus playnite sync bring in outros launchers importar sincronizar trazer",
+            Section::Integrations => "integrations sunshine moonlight stream streaming remote play tv phone couch integracoes transmitir transmissao jogar remotamente celular sofa",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
-            Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut beta botao guia controle teclado sobreposicao no jogo volume captura atalho",
+            Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
             Section::Achievements => "achievements trophies retroachievements retro emulator rom steam gog epic unlocked rare points hardcore web api key conquistas trofeus emulador desbloqueadas raras pontos chave",
             Section::Metadata => "metadata igdb twitch steam lutris covers fill download images priority metadados capas preencher baixar imagens prioridade",
@@ -208,6 +220,7 @@ impl Section {
             "downloads" => Some(Section::Downloads),
             "library" => Some(Section::Library),
             "launchers" | "import" => Some(Section::Launchers),
+            "integrations" | "sunshine" => Some(Section::Integrations),
             "storage" | "disk" => Some(Section::Storage),
             "overlay" => Some(Section::Overlay),
             "replay" => Some(Section::Replay),
@@ -244,6 +257,7 @@ mod tests {
         assert_eq!(Section::parse("defaults"), Some(Section::GameDefaults));
         assert_eq!(Section::parse("replay"), Some(Section::Replay));
         assert_eq!(Section::parse("console-mode"), Some(Section::ConsoleMode));
+        assert_eq!(Section::parse("sunshine"), Some(Section::Integrations));
         assert_eq!(Section::parse("nope"), None);
         assert_eq!(crate::pages::Page::from_debug("settings"), Some(crate::pages::Page::Settings));
         assert_eq!(crate::pages::Page::from_debug("settings:about"), Some(crate::pages::Page::Settings));

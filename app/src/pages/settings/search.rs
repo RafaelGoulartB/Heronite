@@ -6,6 +6,7 @@
 //!
 //! The labels are the English texts the sections draw (`tr!` keys): a renamed
 //! label must be renamed here too (`every_indexed_label_is_still_drawn`).
+//! The overlay's chord labels are this system's (`overlay::labels`).
 //! `HERONITE_DEBUG_FIND_LABELS=1` logs what a section draws.
 
 use heronite_data::fuzzy;
@@ -13,6 +14,7 @@ use heronite_i18n::tr;
 
 use super::Section;
 use crate::dialogs::settings_panel::logic::Section as Tab;
+use crate::overlay::labels;
 
 /// Settings listed under a section in the results, at most.
 const SHOWN: usize = 3;
@@ -67,19 +69,30 @@ const INDEX: &[(Section, &[&str])] = &[
             "Corners",
             "Under the cover",
             "Favourite star",
+            "Store icon",
+            "Show every store a game is in",
+            "Hide while grouped by store",
             "Under the pointer",
+            "Categories on covers",
+            "Show categories on covers",
             "Text and motion",
+            "Zoom",
+            "Follow the system",
             "Font",
             "Density",
             "Animations",
             "Layout",
+            "Quick toolbar controls",
             "Open the Collection in",
             "Switch with the window's width",
             "Panel widths",
             "Game sections",
         ],
     ),
-    (Section::ConsoleMode, &["The theme in use", "Startup", "Open the app", "When a controller connects"]),
+    (
+        Section::ConsoleMode,
+        &["The theme in use", "Startup", "Open the app", "Open console mode in fullscreen", "When a controller connects"],
+    ),
     (
         Section::Downloads,
         &[
@@ -91,7 +104,17 @@ const INDEX: &[(Section, &[&str])] = &[
             "Automatically update games",
         ],
     ),
-    (Section::Launchers, &["Heroic", "Lutris", "Bottles", "Faugus"]),
+    (Section::Launchers, if cfg!(windows) { &["Playnite"] } else { &["Heroic", "Lutris", "Bottles", "Faugus"] }),
+    (
+        Section::Integrations,
+        &[
+            "Keep my games in Sunshine",
+            "Address of Sunshine's web page",
+            "Games in Sunshine",
+            "Quitting in Moonlight closes the game",
+            "Add Heronite console mode",
+        ],
+    ),
     (Section::Library, &["Show hidden games", "Recent games", "Recent games to show", "Clear recent games"]),
     (
         Section::Metadata,
@@ -102,6 +125,14 @@ const INDEX: &[(Section, &[&str])] = &[
             "Images & fields",
             "Fill missing metadata in the background",
             "Copy covers to disk",
+            "Age ratings",
+            "Show age ratings",
+            "Rating board shown first",
+            "Steam tags",
+            "Show Steam tags",
+            "Steam tags per game",
+            "HowLongToBeat",
+            "Look up HowLongToBeat times",
             "SteamGridDB",
             "SteamGridDB API key",
         ],
@@ -117,7 +148,15 @@ const INDEX: &[(Section, &[&str])] = &[
             "Steam",
             "Read from this PC's Steam",
             "Steam Web API key (optional)",
+            "Check Steam games while they run",
             "How they show",
+            "Show new achievements over the game",
+            "Show the description",
+            "Show how rare it is",
+            "Show points or XP",
+            "Show the achievement set",
+            "Show the RetroAchievements type",
+            "Show hardcore unlocks",
             "Notify new achievements",
             "Try the notification",
             "Show achievements in the Timeline",
@@ -134,10 +173,10 @@ const INDEX: &[(Section, &[&str])] = &[
             "Open it with a keyboard shortcut",
             "Keyboard shortcut",
             "Shortcuts without opening it",
-            "Button held with Guide",
-            "Guide + ↑ / ↓: change the volume",
+            labels::BUTTON_HELD,
+            labels::VOLUME,
             "Volume step",
-            "Guide + Y: mark a moment",
+            labels::MOMENT,
             "Guide + X: save the replay",
             "Position",
             "Side of the screen",
@@ -156,7 +195,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Capture screenshots while a game is running",
             "Screenshot shortcut",
             "With the controller",
-            "Button held with Guide",
+            labels::BUTTON_HELD,
             "Lossless compression",
             "Compress screenshots without quality loss",
             "Preview cache",
@@ -393,7 +432,13 @@ fn settings_of(section: Section) -> Vec<Setting> {
     if section == Section::GameDefaults {
         return DEFAULTS_INDEX.iter().flat_map(|(tab, labels)| labels.iter().map(|&label| Setting { label, tab: Some(*tab) })).collect();
     }
-    INDEX.iter().filter(|(s, _)| *s == section).flat_map(|(_, labels)| labels.iter().map(|&label| Setting { label, tab: None })).collect()
+    INDEX
+        .iter()
+        .filter(|(s, _)| *s == section)
+        .flat_map(|(_, labels)| labels.iter().copied())
+        .filter(|label| *label != "Guide + X: save the replay" || Section::Replay.available())
+        .map(|label| Setting { label, tab: None })
+        .collect()
 }
 
 /// How well `section` itself matches.
@@ -446,7 +491,25 @@ pub fn search(query: &str) -> Vec<Hit> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{search, settings_of, Section, DEFAULTS_INDEX, INDEX};
+    #[cfg(target_os = "linux")]
+    use super::{Pick, Setting, Tab, SHOWN};
+
+    #[test]
+    fn replay_search_follows_its_own_capability() {
+        let replay = Section::Replay.available();
+        assert_eq!(search("replay").iter().any(|hit| hit.section == Section::Replay), replay);
+        assert_eq!(settings_of(Section::Overlay).iter().any(|setting| setting.label == "Guide + X: save the replay"), replay);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_controller_settings_use_back_start() {
+        let settings = settings_of(Section::Overlay);
+        assert!(settings.iter().any(|s| s.label == "Back + Start + Y: mark a moment"));
+        assert!(settings.iter().all(|s| !s.label.contains("Guide")));
+        assert!(search("Back Start").iter().any(|hit| hit.section == Section::Overlay));
+    }
 
     #[cfg(target_os = "linux")]
     fn sections(query: &str) -> Vec<Section> {
@@ -494,6 +557,19 @@ mod tests {
         assert_eq!(search("downloads")[0].pick(), Pick::Section(Section::Downloads));
         // At most a few settings per section.
         assert!(search("a").iter().all(|h| h.settings.len() <= SHOWN));
+    }
+
+    #[test]
+    fn finds_the_live_achievement_options() {
+        let hits = search("achievements over the game");
+        let hit = hits.iter().find(|h| h.section == Section::Achievements).expect("Achievements is found");
+        assert!(hit.settings.iter().any(|s| s.label == "Show new achievements over the game"));
+        let points = search("points or xp");
+        assert!(points.iter().any(|h| h.section == Section::Achievements && h.settings.iter().any(|s| s.label == "Show points or XP")));
+        let steam = search("steam games while they run");
+        assert!(steam
+            .iter()
+            .any(|h| h.section == Section::Achievements && h.settings.iter().any(|s| s.label == "Check Steam games while they run")));
     }
 
     /// Each label must still be a text the app draws, else the search lists

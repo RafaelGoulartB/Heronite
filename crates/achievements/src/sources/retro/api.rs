@@ -273,6 +273,8 @@ pub fn parse_set(doc: &Value, game_id: u32, now: DateTime<Utc>) -> Option<Achiev
         title: Some(text(doc, "Title")).filter(|t| !t.is_empty()),
         fetched_at: now,
         achievements: items.into_iter().map(|(_, _, a)| a).collect(),
+        groups: Vec::new(),
+        unknown: Default::default(),
     })
 }
 

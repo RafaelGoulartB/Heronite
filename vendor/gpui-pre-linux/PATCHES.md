@@ -19,5 +19,20 @@ through `[patch.crates-io]` in the workspace `Cargo.toml`. Changes, in
   rejected there, and when no hardware Vulkan adapter works the context is
   left empty, so the renderer builds it with both backends as upstream does.
 
+- `LinuxPlatform`'s `open_window`, `displays` and `primary_display`
+  (`src/linux/platform.rs`) go through `gpui-zoom` (`vendor/gpui-zoom`,
+  Heronite's own crate, a dependency added to `Cargo.toml` with its
+  `wayland` feature): every window opens at the interface scale the app
+  picked (Settings → Appearance → Zoom) and GPUI sees the displays at it.
+  `get_ime_area` (`src/linux/wayland/window.rs`, `src/linux/x11/window.rs`)
+  multiplies the text field's box by `gpui_zoom::factor`.
+
+- `hide_cursor_until_mouse_moves` and `show_cursor` (`src/linux.rs`, exported from the
+  crate root): GPUI only hides the cursor while typing and shows it again when the mouse
+  moves. Heronite's console mode hides it while a controller is in use and shows it again
+  on a key press. They reach the platform made last through a thread-local `Weak`, and
+  the connection's (`display_connection.rs`) and each client's `show_cursor` call the
+  existing `restore_cursor_after_hide`.
+
 To update: copy the new release from `~/.cargo/registry/src/*/` over this
 folder (without its `Cargo.lock`) and apply these changes again.

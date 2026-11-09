@@ -11,10 +11,11 @@ use heronite_data::models::GameInfo;
 use heronite_i18n::tr;
 use serde_json::Value;
 
+use crate::args::{split_args, split_args_for, split_windows_args};
 use crate::env::join;
 use crate::epic::{cached_umu_id, known_fixes_env, known_fixes_steps};
 use crate::host::{run_mode, unavailable_reason, Os, RunMode};
-use crate::plan::{native_plan, split_args, windows_plan, CloudSaves, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, WineRuntime};
+use crate::plan::{native_plan, windows_plan, CloudSaves, FirstLaunch, LaunchOptions, LaunchPlan, PlanContext, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::GameSettings;
 use crate::wine;
@@ -44,56 +45,6 @@ fn under(base: &str, rel: &str) -> String {
     } else {
         join(base, rel)
     }
-}
-
-/// Splits a Windows command line the way programs do (`CommandLineToArgvW`):
-/// spaces separate arguments, quotes group them, `\"` is a quote and other
-/// backslashes stay as they are (paths keep their separators).
-pub fn split_windows_args(text: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut word = String::new();
-    let (mut in_word, mut quoted, mut backslashes) = (false, false, 0usize);
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => {
-                backslashes += 1;
-                in_word = true;
-                continue;
-            }
-            '"' => {
-                word.extend(std::iter::repeat_n('\\', backslashes / 2));
-                if backslashes % 2 == 1 {
-                    word.push('"');
-                } else if quoted && chars.peek() == Some(&'"') {
-                    // `""` inside quotes is a quote.
-                    chars.next();
-                    word.push('"');
-                } else {
-                    quoted = !quoted;
-                }
-                in_word = true;
-            }
-            c if c.is_whitespace() && !quoted => {
-                word.extend(std::iter::repeat_n('\\', backslashes));
-                if in_word {
-                    out.push(std::mem::take(&mut word));
-                    in_word = false;
-                }
-            }
-            c => {
-                word.extend(std::iter::repeat_n('\\', backslashes));
-                word.push(c);
-                in_word = true;
-            }
-        }
-        backslashes = 0;
-    }
-    word.extend(std::iter::repeat_n('\\', backslashes));
-    if in_word {
-        out.push(word);
-    }
-    out
 }
 
 /// The primary file task of a `goggame-<id>.info` (else the first file task
@@ -205,12 +156,12 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
     if install_path.is_empty() || !probe.exists(install_path) {
         return LaunchPlan::Unavailable(tr!("Install folder not found: {install_path}", install_path));
     }
-    let mut extra = split_args(&settings.launcher_args);
-    extra.extend(opts.extra_args.iter().cloned());
     let override_exe =
         opts.alt_exe.clone().filter(|e| !e.is_empty()).or_else(|| Some(settings.target_exe.clone()).filter(|e| !e.is_empty()));
 
     let os = if is_linux(game) { Os::Linux } else { Os::from_name(game.install.platform.as_deref().unwrap_or("")).unwrap_or(Os::Windows) };
+    let mut extra = split_args_for(os != Os::Linux, &settings.launcher_args);
+    extra.extend(opts.extra_args.iter().cloned());
     match (run_mode(os), os) {
         (RunMode::Unavailable, _) => return LaunchPlan::Unavailable(unavailable_reason(os)),
         (RunMode::Native, Os::Linux) => {
@@ -288,14 +239,6 @@ mod tests {
     }
 
     #[test]
-    fn windows_command_lines_split_like_windows_programs_do() {
-        assert_eq!(split_windows_args(r#"-a "C:\Program Files\G" b"#), ["-a", r"C:\Program Files\G", "b"]);
-        assert_eq!(split_windows_args(r#"/path=C:\x\ "q\"uote" "" end\"#), [r"/path=C:\x\", r#"q"uote"#, "", r"end\"]);
-        assert_eq!(split_windows_args(r#""a\\" "x""y""#), [r"a\", r#"x"y"#]);
-        assert!(split_windows_args("   ").is_empty());
-    }
-
-    #[test]
     fn without_a_primary_task_the_game_task_is_used() {
         let info = r#"{"playTasks": [{"category": "document", "path": "a.pdf"}, {"category": "game", "path": "Game.exe"}]}"#;
         let t = primary_task(info).unwrap();
@@ -315,6 +258,42 @@ mod tests {
         let found = if cfg!(windows) { "Bin/Game.exe" } else { "BIN/game.EXE" };
         assert_eq!(resolve(&probe, base, "Bin/Game.exe"), under(base, found));
         assert_eq!(resolve(&probe, base, "Other/Game.exe"), under(base, "Other/Game.exe"));
+    }
+
+    // Wine and its prefix are Linux's.
+    #[cfg(unix)]
+    #[test]
+    fn a_windows_build_gets_the_users_arguments_the_windows_way() {
+        use crate::plan::build_plan_with_settings;
+        use crate::probe::FakeProbe;
+        use heronite_data::models::InstallInfo;
+        let umu = "/hr/tools/runtimes/umu/umu_run.py";
+        let info = br#"{"playTasks": [{"category": "game", "isPrimary": true, "type": "FileTask", "path": "game.exe"}]}"#;
+        let probe = FakeProbe::new("/home/u")
+            .with_path("/games/gog")
+            .with_path("/games/gog/game.exe")
+            .with_path("/p/GE/proton")
+            .with_path(umu)
+            .with_path("/pfx")
+            .with_file("/games/gog/goggame-42.info", info);
+        let game = GameInfo {
+            runner: "gog".into(),
+            app_name: "42".into(),
+            title: "Game".into(),
+            is_installed: true,
+            install: InstallInfo { install_path: Some("/games/gog".into()), platform: Some("windows".into()), ..Default::default() },
+            ..Default::default()
+        };
+        let wine = serde_json::json!({
+            "wineVersion": {"bin": "/p/GE/proton", "name": "GE-Proton9", "type": "proton"}, "winePrefix": "/pfx",
+            "launcherArgs": r"-userdir C:\Users\me\saves -x 'a b' --path /home/u/My\ Games"
+        });
+        let settings = GameSettings::from_map(wine.as_object().unwrap(), "/home/u");
+        let ctx = PlanContext::load(&heronite_data::DataPaths::at("/hr"));
+        let plan = build_plan_with_settings(&ctx, &probe, &game, None, &settings, &Default::default());
+        let crate::plan::LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
+        let expected = ["-userdir", r"C:\Users\me\saves", "-x", "a b", "--path", r"/home/u/My\", "Games"];
+        assert!(process.command.args.ends_with(&expected.map(String::from)), "{:?}", process.command.args);
     }
 
     #[cfg(windows)]

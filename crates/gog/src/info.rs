@@ -92,6 +92,17 @@ impl InstallInfo {
         }
     }
 
+    /// The folder gogdl creates below the chosen install path: the one it
+    /// reports, else the game's id. The queue stores it so that "Stop, delete
+    /// files" knows what to delete.
+    pub fn install_folder<'a>(&'a self, app_name: &'a str) -> &'a str {
+        if self.folder_name.is_empty() {
+            app_name
+        } else {
+            &self.folder_name
+        }
+    }
+
     /// `(download, disk)` bytes for `language` with the given DLC ids.
     pub fn size_for(&self, language: &str, dlcs: &[String]) -> (u64, u64) {
         let add = |table: &Sizes| {
@@ -210,6 +221,14 @@ mod tests {
         assert_eq!(info.size_for("fr-FR", &[]), (1000, 3000));
         assert_eq!(info.size_for("en-US", &["222".into()]), (1301, 3702));
         assert_eq!(info.size_for("en-US", &["111".into(), "222".into(), "999".into()]), (1311, 3722));
+    }
+
+    #[test]
+    fn the_install_folder_falls_back_to_the_game_id() {
+        let mut info = InstallInfo::parse("windows", &windows_doc());
+        assert_eq!(info.install_folder("42"), "The Game");
+        info.folder_name.clear();
+        assert_eq!(info.install_folder("42"), "42");
     }
 
     #[test]

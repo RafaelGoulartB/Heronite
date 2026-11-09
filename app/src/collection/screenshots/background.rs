@@ -50,30 +50,29 @@ impl CollectionView {
         self.shots.started = true;
         let cache = ThumbnailCache::new(self.data_paths.screenshot_thumbnails_dir(), settings.cache_limit_mb.get());
         let (tx, mut rx) = unbounded::<Msg>();
-        let queue = Arc::new(Queue { items: Mutex::new(VecDeque::new()), cv: Condvar::new(), closed: AtomicBool::new(false) });
+        let queue = new_queue();
         for n in 0..heronite_media::thumbnails::MAX_CONCURRENT_JOBS {
-            let (queue, cache, tx) = (queue.clone(), cache.clone(), tx.clone());
-            let _ = std::thread::Builder::new().name(format!("screenshot-thumbs-{n}")).spawn(move || loop {
-                let path = {
-                    let mut items = queue.items.lock().unwrap();
-                    loop {
-                        if queue.closed.load(Ordering::SeqCst) {
-                            return;
-                        }
-                        if let Some(p) = items.pop_front() {
-                            break p;
-                        }
-                        items = queue.cv.wait(items).unwrap();
-                    }
-                };
+            let (cache, tx) = (cache.clone(), tx.clone());
+            spawn_worker(format!("screenshot-thumbs-{n}"), queue.clone(), move |path| {
                 let res = cache.thumbnail(&path).map_err(|e| e.to_string());
-                if tx.unbounded_send(Msg::Thumb(path, res)).is_err() {
-                    break;
-                }
+                tx.unbounded_send(Msg::Thumb(path, res)).is_ok()
             });
         }
+        // One poster at a time, at idle priority (inherited by ffmpeg): a
+        // game played meanwhile never waits for it.
+        let posters = new_queue();
+        let (poster_cache, poster_tx) = (cache.clone(), tx.clone());
+        let mut idle = false;
+        spawn_worker("replay-posters".into(), posters.clone(), move |path| {
+            if !std::mem::replace(&mut idle, true) {
+                heronite_data::proc::idle_priority();
+            }
+            let res = poster_cache.poster(&path).map_err(|e| e.to_string());
+            poster_tx.unbounded_send(Msg::Poster(path, res)).is_ok()
+        });
         self.shots.cache = Some(cache.clone());
         self.shots.queue = Some(queue);
+        self.shots.posters = Some(posters);
         self.shots.tx = Some(tx);
         cx.set_global(MediaGlobal { cache, capture: None });
         cx.spawn(async move |this, cx| {
@@ -101,6 +100,7 @@ impl CollectionView {
     pub(in crate::collection) fn shots_on_msg(&mut self, msg: Msg, cx: &mut Context<Self>) {
         match msg {
             Msg::Thumb(path, res) => self.shots.on_thumb(path, res),
+            Msg::Poster(path, res) => self.shots.on_poster(path, res),
             Msg::Full { req, path, res } => {
                 if req != self.shots.full_req.load(Ordering::SeqCst) {
                     return;
@@ -166,4 +166,30 @@ impl CollectionView {
             session.update(cx, |session, _| session.apply_capture_config(s));
         }
     }
+}
+
+fn new_queue() -> Arc<Queue> {
+    Arc::new(Queue { items: Mutex::new(VecDeque::new()), cv: Condvar::new(), closed: AtomicBool::new(false) })
+}
+
+/// A thread that runs `job` on each path of `queue` until the queue closes
+/// or `job` returns false (the view is gone).
+fn spawn_worker(name: String, queue: Arc<Queue>, mut job: impl FnMut(PathBuf) -> bool + Send + 'static) {
+    let _ = std::thread::Builder::new().name(name).spawn(move || loop {
+        let path = {
+            let mut items = queue.items.lock().unwrap();
+            loop {
+                if queue.closed.load(Ordering::SeqCst) {
+                    return;
+                }
+                if let Some(p) = items.pop_front() {
+                    break p;
+                }
+                items = queue.cv.wait(items).unwrap();
+            }
+        };
+        if !job(path) {
+            break;
+        }
+    });
 }

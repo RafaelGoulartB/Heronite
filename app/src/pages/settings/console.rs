@@ -15,6 +15,7 @@ use super::{
 };
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
+use crate::console::pointer::Clickable;
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::dialogs::settings_panel::logic::Section as HSection;
 use crate::dialogs::settings_panel::{GlobalView, SettingsPanel, Target};
@@ -68,6 +69,14 @@ const GROUPS: [(&str, &[CSec]); 4] = [
 ];
 
 impl CSec {
+    fn available(self) -> bool {
+        match self {
+            CSec::Panel(s) | CSec::Rows(s) => s.available(),
+            CSec::Defaults(_) => Section::GameDefaults.available(),
+            CSec::Extras => true,
+        }
+    }
+
     fn label(self) -> String {
         match self {
             CSec::Panel(s) | CSec::Rows(s) => s.label().to_string(),
@@ -93,6 +102,10 @@ impl CSec {
     }
 }
 
+fn sections(group: usize) -> Vec<CSec> {
+    GROUPS[group].1.iter().copied().filter(|s| s.available()).collect()
+}
+
 /// Console focus of the Settings page.
 #[derive(Default)]
 pub struct ConsoleState {
@@ -106,7 +119,7 @@ pub struct ConsoleState {
 
 impl SettingsPage {
     fn console_sec(&self) -> CSec {
-        let (_, secs) = GROUPS[self.console.group];
+        let secs = sections(self.console.group);
         secs[self.console.nav.min(secs.len() - 1)]
     }
 
@@ -194,15 +207,27 @@ impl SettingsPage {
 
     pub(super) fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let sec = self.console_sec();
-        let (_, secs) = GROUPS[self.console.group];
+        let secs = sections(self.console.group);
         let groups: Vec<SharedString> = GROUPS.iter().map(|(g, _)| SharedString::from(tr(g))).collect();
         let content_focus = self.console.content && !self.console.layer.is_open();
         let mut nav = div().flex().flex_col().gap(u(4.)).w(u(320.)).flex_none();
+        let layer_open = self.console.layer.is_open();
         for (i, s) in secs.iter().enumerate() {
             let on = i == self.console.nav;
             let focused = on && !self.console.content;
+            // A click: back from the content (B), ↑ ↓ to the section; on the
+            // focused one, → into it.
+            let mut pads = if self.console.content { vec![Pad::B] } else { Vec::new() };
+            pads.extend(crate::console::pointer::along(self.console.nav, i, Pad::Up, Pad::Down));
+            // The mouse over a section shows it, while the sections have the
+            // focus (passing over them never takes it from the content).
+            let hover = if self.console.content { Vec::new() } else { pads.clone() };
+            if pads.is_empty() {
+                pads.push(Pad::Right);
+            }
             nav = nav.child(
                 kit::row_base(focused)
+                    .when(!layer_open, |d| d.on_hover_pads(hover).on_pads(pads))
                     .min_h(u(50.))
                     .when(on && !focused, |d| d.bg(theme::white_a(0.08)))
                     .child(crate::ui::icon(s.icon(), u(20.), if focused { theme::console_on_focus() } else { theme::text_muted() }))
@@ -220,7 +245,8 @@ impl SettingsPage {
             }
             None => {
                 let rows = self.console_rows(sec, cx);
-                self.console.list.render("console-settings-rows", &rows, content_focus).size_full().into_any_element()
+                let entry = (!layer_open).then_some(&[Pad::Right][..]);
+                self.console.list.render_entered("console-settings-rows", &rows, content_focus, entry).size_full().into_any_element()
             }
         };
         let error = self.error.clone().map(|e| kit::body_text(e).text_color(theme::danger_text()));
@@ -282,7 +308,7 @@ impl PadTarget for SettingsPage {
             _ => {}
         }
         if !self.console.content {
-            let len = GROUPS[self.console.group].1.len();
+            let len = sections(self.console.group).len();
             match pad {
                 Pad::Up if self.console.nav > 0 => {
                     self.console.nav -= 1;
@@ -398,5 +424,19 @@ impl SettingsPage {
             cx.notify();
         });
         self.console.layer.open(&browser, sub);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sections, CSec, Section, GROUPS};
+
+    #[test]
+    fn console_navigation_hides_unavailable_features() {
+        let sections: Vec<_> = (0..GROUPS.len()).flat_map(sections).collect();
+        assert_eq!(sections.contains(&CSec::Rows(Section::Overlay)), Section::Overlay.available());
+        assert_eq!(sections.contains(&CSec::Rows(Section::Replay)), Section::Replay.available());
+        assert!(sections.iter().all(|s| s.available()));
+        assert!((0..GROUPS.len()).all(|group| !super::sections(group).is_empty()));
     }
 }

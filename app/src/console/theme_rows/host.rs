@@ -129,6 +129,10 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
             crate::console::startup::set_open_in(&app, probe.open_in);
             themes::prefs(&app)
         }
+        "startup.fullscreen" => {
+            crate::console::startup::set_fullscreen(&app, probe.fullscreen);
+            themes::prefs(&app)
+        }
         "startup.auto_console" => {
             crate::console::startup::set_auto_console(&app, probe.auto_console);
             themes::prefs(&app)

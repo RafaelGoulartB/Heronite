@@ -127,13 +127,13 @@ impl CollectionView {
             }
             ListItem::Row { group, start } if self.focus_rows() => {
                 let c = self.groups[group].cards[start].clone();
-                let last_row = start + 1 == self.groups[group].cards.len();
+                let (pt, pb) = self.row_padding(group, start);
                 let m = self.list_metrics();
                 div()
                     .pl(px(m.pad_l - ROW_INSET))
                     .pr(px(m.pad_r - ROW_INSET))
-                    .pt(px(if start == 0 { 2. } else { 0. }))
-                    .pb(px(if last_row { 12. } else { 2. }))
+                    .pt(px(pt))
+                    .pb(px(pb))
                     .child(self.render_row(c, window.scale_factor(), cx))
                     .into_any_element()
             }
@@ -142,22 +142,16 @@ impl CollectionView {
                     let g = &self.groups[group];
                     g.cards[start..(start + self.columns).min(g.cards.len())].to_vec()
                 };
-                let last_row = start + cards.len() == self.groups[group].cards.len();
+                let (pt, pb) = self.row_padding(group, start);
                 let m = self.list_metrics();
-                let mut row = div()
-                    .flex()
-                    .pl(px(m.pad_l))
-                    .pr(px(m.pad_r))
-                    .gap(px(m.gap_x))
-                    .pt(px(if start == 0 { 7.2 } else { 0. }))
-                    .pb(px(if last_row { 5.6 + 13.6 } else { m.gap_y }));
+                let mut row = div().flex().pl(px(m.pad_l)).pr(px(m.pad_r)).gap(px(m.gap_x)).pt(px(pt)).pb(px(pb));
                 let scale = window.scale_factor();
                 for c in cards {
                     row = row.child(self.render_card(c, scale, cx));
                 }
                 row.into_any_element()
             }
-            ListItem::End => div().h(px(32.)).into_any_element(),
+            ListItem::End => div().h(px(super::list_heights::END_H)).into_any_element(),
         }
     }
 
@@ -179,6 +173,7 @@ impl CollectionView {
             look.caption = self.ui.grid_label.info();
             self.ui.grid_label.title()
         } else {
+            look.stores_inset = FOCUS_STORES_INSET;
             a.cover_label == CoverLabel::Title
         };
         let (on_select, on_hover, on_play) = self.card_listeners(&key, cx);
@@ -196,13 +191,55 @@ impl CollectionView {
                 grey_uninstalled: self.grey_uninstalled,
                 pick: self.sel.active().then(|| self.sel.contains(&key)),
                 epic: self.epic_card(&key, cx),
+                categories: if look.categories.is_some() { self.card_categories(&key) } else { Vec::new() },
+                stores: if look.stores { self.card_stores(&key) } else { Vec::new() },
                 look,
+                scale,
             },
             on_select,
             on_hover,
             on_play,
         );
         self.with_context_menu(key, el, cx)
+    }
+
+    /// The categories of the game under `key` (and, while copies are
+    /// grouped, of its other copies), each once, by name.
+    pub(super) fn card_categories(&self, key: &str) -> Vec<super::category_badges::CategoryBadge> {
+        if self.categories.is_empty() {
+            return Vec::new();
+        }
+        let mut found = std::collections::BTreeSet::new();
+        for g in self.with_copies(key) {
+            found.extend(self.categories.of_game(&g.runner, &g.app_name));
+        }
+        self.categories
+            .names()
+            .enumerate()
+            .filter(|(_, n)| found.contains(n))
+            .map(|(i, n)| super::category_badges::CategoryBadge::new(n, i))
+            .collect()
+    }
+
+    /// The logos of the stores of the game under `key`, its emulator's for
+    /// a ROM (and, with "Show
+    /// every store a game is in" while copies are grouped, of its other
+    /// copies), its own first. None while the Collection is grouped by store
+    /// and "Hide while grouped by store" is on: the section's header names it.
+    fn card_stores(&self, key: &str) -> Vec<Icon> {
+        let a = theme::appearance();
+        if a.cover_stores_hide_grouped && self.ui.group_by == heronite_data::GroupBy::Store {
+            return Vec::new();
+        }
+        let mut games = self.with_copies(key);
+        if let Some(i) = games.iter().position(|g| g.key == key) {
+            games[..=i].rotate_right(1);
+        }
+        let mut icons = super::store_badges::game_icons(&games);
+        if !a.cover_stores_all {
+            icons.truncate(1);
+        }
+        icons
     }
 
     fn render_row(&mut self, c: Arc<CardVm>, scale: f32, cx: &mut Context<Self>) -> AnyElement {
@@ -450,6 +487,10 @@ impl CollectionView {
     }
 }
 
+/// How far the stores' chip sits from the corner of a Focus view cover, px
+/// (6 in the grid).
+const FOCUS_STORES_INSET: f32 = 3.;
+
 /// How every card looks, from Settings → Appearance → Covers.
 fn card_look() -> card::CardLook {
     let a = theme::appearance();
@@ -458,6 +499,9 @@ fn card_look() -> card::CardLook {
         hover: a.cover_hover,
         badges: a.cover_badges,
         caption: !matches!(a.cover_label, CoverLabel::Title | CoverLabel::Nothing),
+        categories: a.cover_categories.then_some(a.category_style),
+        stores: a.cover_stores,
+        stores_inset: 6.,
     }
 }
 

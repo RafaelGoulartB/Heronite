@@ -191,7 +191,7 @@ impl Render for ScanFolderDialog {
             DialogProps {
                 id: "scan-folder".into(),
                 title: tr!("Add games from a folder").into(),
-                width: 760f32.min(f32::from(window.viewport_size().width) * 0.9) + 64.,
+                width: 760f32.min(f32::from(crate::ui::content_size(window).width) * 0.9) + 64.,
                 height: None,
             },
             body.into_any_element(),

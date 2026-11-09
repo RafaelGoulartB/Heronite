@@ -4,7 +4,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use heronite_data::models::{GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
+use heronite_data::models::{CompletionStatus, GameInfo, InstallInfo, LocalGameMeta, LocalMetaFile};
+use heronite_data::steam_owned::SteamOwnedFile;
 use heronite_data::{json_store, DataPaths};
 use serde_json::Value;
 
@@ -49,9 +50,12 @@ pub fn next_install_state(
         };
     }
 
-    // Installed in the launcher or store client it came from (their sync says
-    // so; there is no executable), while its folder is there.
-    if matches!(meta.launch_kind.as_str(), heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND) {
+    // Installed in the launcher, store client or Xbox app it came from (their
+    // sync says so; there is no executable), while its folder is there.
+    if matches!(
+        meta.launch_kind.as_str(),
+        heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND | heronite_data::xbox::LAUNCH_KIND
+    ) {
         let folder = game.install.install_path.as_deref().filter(|f| !f.is_empty());
         return InstallState { is_installed: game.is_installed && folder.is_none_or(|f| probe.exists(f)), executable: String::new() };
     }
@@ -80,9 +84,9 @@ pub fn next_install_state(
 }
 
 /// The sideload entry + Collection metadata created for a Steam game found
-/// by scanning manifests (`steamSideloadEntry`). `not_played_status_id` is
-/// the id of the "not played" completion status.
-pub fn steam_sideload_entry(game: &SteamInstalledGame, steam_bin: Option<&str>, not_played_status_id: &str) -> (GameInfo, LocalGameMeta) {
+/// by scanning manifests (`steamSideloadEntry`). `status_id` is the id of
+/// the completion status the entry starts with.
+pub fn steam_sideload_entry(game: &SteamInstalledGame, steam_bin: Option<&str>, status_id: &str) -> (GameInfo, LocalGameMeta) {
     let app_name = format!("steam_{}", game.app_id);
     let (art_cover, art_square) = steam_cdn_covers(&game.app_id);
     let mut info = GameInfo {
@@ -113,7 +117,7 @@ pub fn steam_sideload_entry(game: &SteamInstalledGame, steam_bin: Option<&str>, 
         store_game_id: Some(game.app_id.clone()),
         title: game.name.clone(),
         launcher_args: Some(format!("steam://rungameid/{}", game.app_id)),
-        completion_status_id: Some(not_played_status_id.to_string()),
+        completion_status_id: Some(status_id.to_string()),
         ..Default::default()
     };
     let mut meta = meta;
@@ -121,17 +125,39 @@ pub fn steam_sideload_entry(game: &SteamInstalledGame, steam_bin: Option<&str>, 
     (info, meta)
 }
 
+/// The entries for the Steam games found installed that the Collection does
+/// not have yet (`known` has the app ids it has; the new ones join it). A game
+/// starts as "Played" when the cached Steam library, what the client said the
+/// last time it was read, has play time for it (the account's, so the time
+/// played on other PCs counts), as "Not played" otherwise.
+fn new_steam_entries(
+    installed_games: Vec<SteamInstalledGame>,
+    known: &mut HashSet<String>,
+    owned: &SteamOwnedFile,
+    statuses: &[CompletionStatus],
+    steam_bin: Option<&str>,
+) -> Vec<(GameInfo, LocalGameMeta)> {
+    let mut entries = Vec::new();
+    for g in installed_games {
+        if known.insert(g.app_id.clone()) {
+            let minutes = owned.owned_or_shared(&g.app_id).map_or(0, |o| o.playtime_minutes);
+            let status = heronite_data::status::inferred_status_id(minutes as f64, statuses);
+            entries.push(steam_sideload_entry(&g, steam_bin, &status));
+        }
+    }
+    entries
+}
+
 /// Brings `installed` of the cached Steam library in line with the
-/// manifests (a game installed or uninstalled since the client was read).
-/// Whether the file changed.
+/// manifests (a game installed or uninstalled since the client was read),
+/// the games the Steam Family shares included. Whether the file changed.
 fn refresh_owned_installs(paths: &DataPaths, installed_steam: &HashSet<String>) -> anyhow::Result<bool> {
-    use heronite_data::steam_owned::SteamOwnedFile;
     let file = SteamOwnedFile::read(paths);
-    if !file.games.iter().any(|g| g.installed != installed_steam.contains(&g.app_id)) {
+    if !file.games.iter().chain(&file.family).any(|g| g.installed != installed_steam.contains(&g.app_id)) {
         return Ok(false);
     }
     json_store::update::<SteamOwnedFile, _>(&paths.steam_owned(), |f| {
-        for g in &mut f.games {
+        for g in f.games.iter_mut().chain(f.family.iter_mut()) {
             g.installed = installed_steam.contains(&g.app_id);
         }
         Ok(())
@@ -223,12 +249,7 @@ pub fn refresh_local_install_states(paths: &DataPaths, probe: &dyn Probe) -> any
     }
     if installed_games.iter().any(|g| !known.contains(&g.app_id)) {
         let statuses = heronite_data::status::load_statuses(paths).unwrap_or_else(|_| heronite_data::status::default_statuses());
-        let not_played = heronite_data::status::inferred_status_id(0., &statuses);
-        for g in installed_games {
-            if known.insert(g.app_id.clone()) {
-                new_steam.push(steam_sideload_entry(&g, steam_bin.as_deref(), &not_played));
-            }
-        }
+        new_steam = new_steam_entries(installed_games, &mut known, &owned, &statuses, steam_bin.as_deref());
     }
 
     if !meta_exes.is_empty() || !new_steam.is_empty() {
@@ -285,6 +306,7 @@ mod tests {
     use super::*;
     use crate::probe::FakeProbe;
     use heronite_data::models::LocalGameRom;
+    use heronite_data::steam_owned::SteamOwnedGame;
     use heronite_data::DataPaths;
 
     fn ctx() -> PlanContext {
@@ -359,7 +381,7 @@ mod tests {
             install: InstallInfo { install_path: folder.map(Into::into), ..Default::default() },
             ..game("")
         };
-        for kind in [heronite_data::launchers::LAUNCH_KIND, heronite_data::clients::LAUNCH_KIND] {
+        for kind in [heronite_data::launchers::LAUNCH_KIND, heronite_data::clients::LAUNCH_KIND, heronite_data::xbox::LAUNCH_KIND] {
             let meta = LocalGameMeta { launch_kind: kind.into(), ..Default::default() };
             let state = |g: &GameInfo| next_install_state(&ctx(), &probe, g, &meta, &HashSet::new(), None);
             let kept = state(&installed(Some("/pfx/drive_c/Games/Diablo IV")));
@@ -380,6 +402,46 @@ mod tests {
     }
 
     #[test]
+    fn a_steam_game_found_installed_starts_as_played_when_the_account_has_play_time_for_it() {
+        let installed = |ids: &[&str]| -> Vec<SteamInstalledGame> {
+            ids.iter().map(|id| SteamInstalledGame { app_id: (*id).into(), name: format!("Game {id}") }).collect()
+        };
+        let owned_game =
+            |id: &str, minutes: u64| SteamOwnedGame { app_id: id.into(), name: id.into(), playtime_minutes: minutes, ..Default::default() };
+        let owned = SteamOwnedFile { games: vec![owned_game("400", 0), owned_game("620", 125)], ..Default::default() };
+        let statuses = heronite_data::status::default_statuses();
+
+        let mut known: HashSet<String> = HashSet::from(["10".to_string()]);
+        let entries = new_steam_entries(installed(&["10", "400", "620", "999", "620"]), &mut known, &owned, &statuses, None);
+        let names: Vec<&str> = entries.iter().map(|(info, _)| info.app_name.as_str()).collect();
+        assert_eq!(names, ["steam_400", "steam_620", "steam_999"], "the game the Collection has and the repeated one are not added");
+        let started: Vec<&str> = entries.iter().map(|(_, meta)| meta.completion_status_id.as_deref().unwrap_or_default()).collect();
+        assert_eq!(
+            started,
+            ["not-played", "played", "not-played"],
+            "620 has play time; 400 is owned but never played; 999 is not in the library (bought since)"
+        );
+
+        let never_read = new_steam_entries(installed(&["620"]), &mut HashSet::new(), &SteamOwnedFile::default(), &statuses, None);
+        assert_eq!(never_read[0].1.completion_status_id.as_deref(), Some("not-played"), "the client was never read");
+    }
+
+    #[test]
+    fn a_shared_game_found_installed_counts_the_accounts_time_on_it() {
+        let shared = SteamOwnedGame {
+            app_id: "400".into(),
+            name: "Portal".into(),
+            playtime_minutes: 45,
+            share: Some(heronite_data::steam_owned::FamilyShare { owner_id: "76561197960266730".into(), ..Default::default() }),
+            ..Default::default()
+        };
+        let owned = SteamOwnedFile { family: vec![shared], updated_at: Some("x".into()), ..Default::default() };
+        let game = SteamInstalledGame { app_id: "400".into(), name: "Portal".into() };
+        let entries = new_steam_entries(vec![game], &mut HashSet::new(), &owned, &heronite_data::status::default_statuses(), None);
+        assert_eq!(entries[0].1.completion_status_id.as_deref(), Some("played"));
+    }
+
+    #[test]
     fn new_steam_entries_match_heronite_shape() {
         let (info, meta) = steam_sideload_entry(&SteamInstalledGame { app_id: "400".into(), name: "Portal".into() }, None, "not-played");
         assert_eq!(info.app_name, "steam_400");
@@ -390,9 +452,6 @@ mod tests {
         assert_eq!(meta.extra[heronite_data::steam_owned::AUTO_KEY], true);
     }
 
-    // TODO(windows): not isolated there: `library_roots` adds the Steam folder of
-    // the registry (this machine's real Steam) and not the test's `home`.
-    #[cfg(unix)]
     #[test]
     fn refresh_follows_steam_uninstalls_and_installs() {
         let dir = tempfile::tempdir().unwrap();
@@ -417,7 +476,7 @@ mod tests {
             r#"{"games": {"steam_400": {"appName": "steam_400", "runner": "sideload", "launchKind": "steam-uri", "steamAppId": "400", "title": "Portal"}}}"#,
         )
         .unwrap();
-        let probe = FakeProbe::new(home.to_str().unwrap());
+        let probe = FakeProbe::new(home.to_str().unwrap()).with_steam_roots(vec![home.join(".steam/steam")]);
 
         let report = refresh_local_install_states(&paths, &probe).unwrap();
         assert_eq!(report, RefreshReport { updated: 1, added: 1 });

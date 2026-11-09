@@ -6,6 +6,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::input::{input_surface, new_input};
+use super::select::{menu_side, place_probe, MENU_GAP, PANEL_PAD};
 use super::text::labeled;
 use crate::icons::Icon;
 use crate::theme;
@@ -235,12 +236,14 @@ impl Render for TagField {
         }
         boxed = boxed.child(div().flex_1().min_w(px(96.)).child(Input::new(&self.input).appearance(false)));
 
-        let mut wrap = div().relative().w_full().child(boxed);
+        let mut wrap = div().relative().w_full().child(boxed.relative().child(place_probe(&self.id)));
         if self.focused {
             let items = self.suggestions(cx);
             if !items.is_empty() {
+                // Rows of about 38px, up to 240px; above the field when below has no room.
+                let (up, list_h) = menu_side(&self.id, (items.len() as f32 * 38.).min(240.), 240., PANEL_PAD);
                 let mut list =
-                    div().id(SharedString::from(format!("{}-menu", self.id))).flex().flex_col().max_h(px(240.)).overflow_y_scroll();
+                    div().id(SharedString::from(format!("{}-menu", self.id))).flex().flex_col().max_h(px(list_h)).overflow_y_scroll();
                 for (i, item) in items.into_iter().enumerate() {
                     let value = item.clone();
                     list = list.child(
@@ -259,10 +262,9 @@ impl Render for TagField {
                             ),
                     );
                 }
-                wrap = wrap.child(
-                    deferred(div().absolute().top(relative(1.)).left_0().w_full().pt(px(4.)).occlude().child(menu_panel(120.).child(list)))
-                        .with_priority(40),
-                );
+                let place = div().absolute().left_0().w_full().occlude();
+                let place = if up { place.bottom(relative(1.)).pb(px(MENU_GAP)) } else { place.top(relative(1.)).pt(px(MENU_GAP)) };
+                wrap = wrap.child(deferred(place.child(menu_panel(120.).child(list))).with_priority(40));
             }
         }
         labeled(self.label.clone(), wrap)

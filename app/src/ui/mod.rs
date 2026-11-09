@@ -11,11 +11,14 @@ pub mod game_actions;
 pub mod glass;
 pub mod lsfg;
 pub mod ludusavi;
+pub mod qr;
 pub mod release_notes;
 mod scrollbar;
+mod window_area;
 pub mod window_controls;
 
 pub use scrollbar::{scrollbar_draggable, NoDragView};
+pub use window_area::{content_bounds, content_size};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;

@@ -48,7 +48,8 @@ pub fn backdrop_layer(radius: f32) -> Option<Canvas<()>> {
         canvas(
             |_, _, _| (),
             move |bounds, _, window, _| {
-                let full = Bounds { origin: point(px(0.), px(0.)), size: window.viewport_size() };
+                // The stage under the views, not the window's frame (`ui::content_bounds`).
+                let full = crate::ui::content_bounds(window);
                 window.paint_image(bounds, full, Corners::all(px(radius)), img, 0, false).ok();
             },
         )

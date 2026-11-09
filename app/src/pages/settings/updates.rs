@@ -4,7 +4,7 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{n_, tr};
-use heronite_update::Unsupported;
+use heronite_update::{Package, Unsupported};
 
 use super::SettingsPage;
 use crate::console::list::{Outcome, Row, Value};
@@ -65,7 +65,9 @@ fn status(u: &Updater, cx: &App) -> Status {
             Status {
                 title: tr!("Heronite {version} is available", version),
                 detail,
-                action: Some((label, ButtonKind::Primary, true, get(Action::Install))),
+                // The AUR helper, Scoop or dnf installs it: nothing to press
+                // (see `Updater::manager_update`).
+                action: u.manager_update().is_none().then_some((label, ButtonKind::Primary, true, get(Action::Install))),
             }
         }
         Phase::Downloading(p) => Status {
@@ -116,6 +118,22 @@ fn status(u: &Updater, cx: &App) -> Status {
 
 /// Why "Install updates automatically" is off for packages.
 const PACKAGE_NO_AUTO: &str = n_!("Packages ask for your password, so Heronite installs them only when you click Update.");
+
+/// Why "Install updates automatically" is off for a package.
+fn package_no_auto(u: &Updater) -> &'static str {
+    match u.package() {
+        Some(Package::Aur) => tr!("AUR packages are updated by your AUR helper, not by Heronite."),
+        Some(Package::Scoop) => tr!("Scoop updates this copy, not Heronite."),
+        Some(Package::Copr) => tr!("COPR packages are updated by your package manager, not by Heronite."),
+        _ => tr(PACKAGE_NO_AUTO),
+    }
+}
+
+/// How a copy updated by its own package manager (the AUR, Scoop, the COPR) gets the
+/// new version on offer.
+fn manager_update(u: &Updater) -> Option<&'static str> {
+    u.manager_update().filter(|_| matches!(u.phase(), Phase::Available))
+}
 
 /// Why this copy cannot install updates by itself, for the switches.
 #[cfg(windows)]
@@ -215,7 +233,7 @@ impl SettingsPage {
             if unsupported.is_some() {
                 row(label, Some(desc), toggle("upd-auto-install-sw", false, true)).into_any_element()
             } else if !u.can_auto_install() {
-                row(label, Some(tr(PACKAGE_NO_AUTO)), toggle("upd-auto-install-sw", false, true)).into_any_element()
+                row(label, Some(package_no_auto(u)), toggle("upd-auto-install-sw", false, true)).into_any_element()
             } else {
                 let updater = updater.clone();
                 toggle_row("upd-auto-install", label, Some(desc), prefs.auto_install)
@@ -224,7 +242,9 @@ impl SettingsPage {
             }
         };
 
-        let rows = std::iter::once(main.into_any_element()).chain(manual).chain([auto_check, auto_install]);
+        let how = manager_update(u).map(|how| row(tr(how), None, div()).into_any_element());
+
+        let rows = std::iter::once(main.into_any_element()).chain(manual).chain(how).chain([auto_check, auto_install]);
         let mut col = div().flex().flex_col().child(caption(tr!("Updates"))).child(card(rows));
         if let (true, Some(r)) = (show_notes, release) {
             let page = r.page_url.clone();
@@ -266,6 +286,9 @@ pub(super) fn console_rows(cx: &App) -> Vec<Row> {
         Some((label, _, enabled, _)) => Row::action("upd:action", format!("{}: {label}", s.title)).desc(s.detail).enabled(enabled),
         None => Row::info("upd:status", s.title, s.detail),
     });
+    if let Some(how) = manager_update(u) {
+        rows.push(Row::info("upd:manager", tr(how), ""));
+    }
     let unsupported = u.unsupported().map(unsupported_text);
     let check = Row::toggle("upd:auto-check", tr!("Check for updates automatically"), u.prefs().auto_check && unsupported.is_none());
     rows.push(match &unsupported {
@@ -276,7 +299,7 @@ pub(super) fn console_rows(cx: &App) -> Vec<Row> {
     rows.push(
         Row::toggle("upd:auto-install", tr!("Install updates automatically"), u.prefs().auto_install && auto)
             .desc(if u.package().is_some() {
-                tr(PACKAGE_NO_AUTO)
+                package_no_auto(u)
             } else if u.installs_on_quit() {
                 tr!("They install when you quit Heronite")
             } else {

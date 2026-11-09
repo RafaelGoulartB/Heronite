@@ -264,6 +264,7 @@ pub fn build_wine_plan_for(
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
     let bare = !executable.contains(['/', '\\']) && store.install_path.is_none();
+    let reshade = crate::reshade::apply(&mut env, &ctx.paths, &game.app_name, &s.reshade, true);
     let folder = (!bare).then(|| game_folder(game, executable));
     let req = sandbox::Request { folder: folder.as_deref(), read: Vec::new(), env: Some(&env) };
     let prelude = match sandbox::prelude(ctx, probe, s, sandbox::Owner::Prefix(&s.wine_prefix), &req) {
@@ -310,7 +311,7 @@ pub fn build_wine_plan_for(
             wait_after_exit,
             make_executable: None,
             prep: wine.prep_spec(),
-            notes: wine.notes,
+            notes: wine.notes.into_iter().chain(reshade).collect(),
             sandboxed: prelude.is_some(),
             ..Default::default()
         },

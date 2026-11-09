@@ -1,8 +1,10 @@
 //! Setting a client up (or using one that is installed), and forgetting it.
 //!
-//! A setup needs a Wine: when this PC has none, the newest GE-Proton comes
-//! first (`services::proton_setup`, which the Wine Manager and the install
-//! dialogs share) and the setup goes on once it is there.
+//! A setup under Wine needs one: when this PC has none, the newest
+//! GE-Proton comes first (`services::proton_setup`, which the Wine Manager
+//! and the install dialogs share) and the setup goes on once it is there.
+//! On Windows the client's installer runs as it is, with no Wine to wait
+//! for.
 
 use std::path::PathBuf;
 use std::time::Instant;
@@ -29,6 +31,9 @@ impl Clients {
         st.notice = None;
         st.cancel = Some(Cancel::new());
         cx.notify();
+        if heronite_clients::native() {
+            return self.run_setup(client, cx);
+        }
         self.check_wine(client, false, cx);
     }
 
@@ -227,7 +232,8 @@ impl Clients {
     /// Forgets the client: its prefix and games stay on disk, its entries
     /// leave the Collection.
     pub fn forget(&mut self, client: Client, cx: &mut Context<Self>) {
-        if self.frozen == Some(client) || self.state(client).busy() {
+        // A shortcut being written meanwhile would outlive the removal.
+        if self.frozen == Some(client) || self.state(client).busy() || self.state(client).shortcut_busy {
             return;
         }
         let st = self.state_mut(client);
@@ -238,6 +244,7 @@ impl Clients {
             let res = cx
                 .background_spawn(async move {
                     heronite_clients::setup::forget(&paths, client).map_err(|e| format!("{e:#}"))?;
+                    super::shortcuts::remove_all(&paths, client);
                     collection::remove(&paths, client).map_err(|e| format!("{e:#}"))
                 })
                 .await;
@@ -254,6 +261,7 @@ impl Clients {
                         st.last = None;
                         st.in_collection = 0;
                         st.removed.clear();
+                        st.shortcuts = Default::default();
                         cx.emit(ClientsEvent::Removed(removed));
                         this.refresh(&[client], false, cx);
                     }

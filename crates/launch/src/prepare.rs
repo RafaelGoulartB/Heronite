@@ -190,8 +190,10 @@ impl Prep<'_> {
         }
     }
 
-    /// Before the prefix is created: cloud saves down, umu present.
+    /// Before the prefix is created: cloud saves down, umu present, the
+    /// game's ReShade DLL in place.
     pub fn before_prefix(&self, app_name: &str, spec: &PrepSpec) -> Flow {
+        self.recover_reshade(app_name);
         if let Some(saves) = &spec.cloud_saves {
             self.sync_saves(app_name, saves, "--skip-upload", "downloaded");
             if (self.cancel)() {
@@ -216,6 +218,33 @@ impl Prep<'_> {
             }
         }
         Flow::Go
+    }
+
+    /// Never stops the launch: without its DLL the game starts without ReShade.
+    fn recover_reshade(&self, app_name: &str) {
+        use crate::reshade::manage::{recover, Recovery};
+        let notice = match recover(self.paths, app_name) {
+            None => return,
+            Some(Recovery::Restored { version }) => Notice::info(
+                format!("ReShade {version} was missing and is back in place"),
+                tr!("ReShade {version} was missing and is back in place", version),
+            ),
+            Some(Recovery::Blocked { path }) => {
+                let path = path.display().to_string();
+                Notice::warn(
+                    format!("ReShade is switched off: {path} is another program's DLL"),
+                    tr!("ReShade is switched off: {path} is another program's DLL", path),
+                )
+            }
+            Some(Recovery::Lost { version, error }) => {
+                let why = error.unwrap_or_else(|| "not in the cache".into());
+                Notice::warn(
+                    format!("ReShade {version} is missing ({why}); the game starts without it"),
+                    tr!("ReShade {version} is missing ({why}); the game starts without it", version, why),
+                )
+            }
+        };
+        self.notice(notice);
     }
 
     fn ensure_umu(&self) -> Result<(), String> {

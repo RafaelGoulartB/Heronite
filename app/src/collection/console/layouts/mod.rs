@@ -30,6 +30,7 @@ use super::backdrop::Scrim;
 use super::sources::Shelf;
 use crate::console::kit::{self, u};
 use crate::console::motion::{Axis, Glide, Goal};
+use crate::console::pointer;
 use crate::console::{look, Hint, Pad};
 use crate::icons::Icon;
 
@@ -135,6 +136,15 @@ impl CollectionView {
     }
 }
 
+/// The presses a click on the cover at column `c` of shelf `i` makes, the
+/// focus being on shelf `si` (each shelf keeps its column, `cols`): ↑ ↓ to
+/// the shelf, ← → along it; A when it has the focus already.
+fn shelf_click(si: usize, cols: &[usize], i: usize, c: usize) -> Vec<Pad> {
+    let mut pads = pointer::along(si, i, Pad::Up, Pad::Down);
+    pads.extend(pointer::along(cols.get(i).copied().unwrap_or(0), c, Pad::Left, Pad::Right));
+    pointer::focus_or_activate(pads)
+}
+
 /// What a layout shows when the tab has no games.
 fn no_games() -> AnyElement {
     kit::empty(Icon::GridView, tr!("No games yet"), tr!("Add a game from the menu (\u{2630}).")).into_any_element()
@@ -159,7 +169,7 @@ fn body_height(window: &Window, hints: bool) -> f32 {
     /// Height of the shell's top bar and hint bar around the body, design px.
     const TOP_BAR: f32 = 76.;
     const HINT_BAR: f32 = 60.;
-    f32::from(window.viewport_size().height) / kit::scale() - TOP_BAR - if hints { HINT_BAR } else { 0. }
+    f32::from(crate::ui::content_size(window).height) / kit::scale() - TOP_BAR - if hints { HINT_BAR } else { 0. }
 }
 
 /// The `k` most recently played games, newest first (never-played ones
@@ -289,7 +299,7 @@ impl CollectionView {
             Pad::Down => nav.shelf = (si + 1).min(shelves.len() - 1),
             // A page along the shelf (LT / RT), ends included.
             Pad::LT | Pad::RT if more => {
-                let page = ((f32::from(window.viewport_size().width) / kit::scale() / (tw + 18.)).floor() as isize - 1).max(1);
+                let page = ((f32::from(crate::ui::content_size(window).width) / kit::scale() / (tw + 18.)).floor() as isize - 1).max(1);
                 let back = pad == Pad::LT;
                 nav.lines.cols[si] = step(ci, n, if back { -page } else { page }, false);
             }
@@ -367,6 +377,18 @@ mod tests {
         assert_eq!(lines.cols[0], 20);
         lines.sync_with(&[shelf(20, 20)], true);
         assert_eq!(lines.cols[0], 19);
+    }
+
+    #[test]
+    fn a_click_on_a_shelf_goes_there_then_opens() {
+        use super::shelf_click;
+        use crate::console::Pad;
+        let cols = [2, 0, 5];
+        assert_eq!(shelf_click(0, &cols, 0, 2), [Pad::A]);
+        assert_eq!(shelf_click(0, &cols, 0, 4), [Pad::Right, Pad::Right]);
+        // Down to shelf 2, which keeps its column 5, then left to 3.
+        assert_eq!(shelf_click(0, &cols, 2, 3), [Pad::Down, Pad::Down, Pad::Left, Pad::Left]);
+        assert_eq!(shelf_click(2, &cols, 1, 0), [Pad::Up]);
     }
 
     #[test]

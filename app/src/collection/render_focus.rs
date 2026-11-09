@@ -30,7 +30,8 @@ impl CollectionView {
         let covers = self.focus_covers(&vm, scale);
         let html_images = self.focus_html_images(&vm, focus::main_column_width(vw - list_w), scale);
         let lay = focus::layout(vw - list_w);
-        let epic_focus = self.epic_focus(&vm.key, vm.installed, cx);
+        // The store's progress and Update of the copy Play acts on (`vm.installed` is its).
+        let epic_focus = self.epic_focus(&self.acting_key(&vm.key), vm.installed, cx);
         let left = self.focus_left(&vm, &lay, epic_focus, scale, vh, cx);
         let screenshots = self.screenshots_section(cx);
         let timeline = self.timeline_section(&vm.key, lay.main_w, scale, cx);
@@ -65,7 +66,12 @@ impl CollectionView {
             // Rounding of the laid-out text.
             w + 1.
         });
-        focus::DetailsUi { open: self.facts.details_open.clone(), measure }
+        focus::DetailsUi {
+            open: self.facts.details_open.clone(),
+            measure,
+            titles: self.facts.titles,
+            hidden: self.ui.detail_rows_hidden.clone(),
+        }
     }
 
     /// The filters set by facet, for the Details chips.
@@ -76,10 +82,18 @@ impl CollectionView {
             .collect()
     }
 
+    /// The section titles that are menus, into the view.
+    pub(super) fn on_title(&self, cx: &mut Context<Self>) -> focus::OnTitle {
+        let weak = cx.entity().downgrade();
+        Rc::new(move |action, _, cx| {
+            weak.update(cx, |this, cx| this.on_title_action(action, cx)).ok();
+        })
+    }
+
     /// Callbacks of the details into the view (focus panel and grid drawer).
     pub(super) fn focus_actions(&self, cx: &mut Context<Self>) -> focus::FocusActions {
         let weak = cx.entity().downgrade();
-        let (w1, w2, w3, w4, w5) = (weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak);
+        let (w1, w2, w3, w4, w5, w6) = (weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak.clone(), weak);
         focus::FocusActions {
             on_scroll: Box::new(cx.listener(|_, _: &(), _, cx| cx.notify()).into_fn()),
             on_facet: Rc::new(move |f, v, _, cx| {
@@ -114,6 +128,10 @@ impl CollectionView {
                 })
                 .ok();
             }),
+            on_hltb: Rc::new(move |action, window, cx| {
+                w6.update(cx, |this, cx| this.on_hltb_action(action, window, cx)).ok();
+            }),
+            on_title: self.on_title(cx),
         }
     }
 
@@ -124,6 +142,7 @@ impl CollectionView {
             self.facts.folder_size.as_ref().filter(|(k, _)| *k == kind).map(|(_, size)| SharedString::from(size.clone()))
         };
         let rows = self.facts.folders.iter().enumerate().map(|(i, (kind, path))| super::vm::DetailRow {
+            field: super::vm::DetailField::Folders,
             label: kind.label().into(),
             value: super::vm::DetailValue::Folder {
                 path: path.to_string_lossy().into_owned().into(),

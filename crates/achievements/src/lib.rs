@@ -8,6 +8,7 @@
 
 pub mod accounts;
 pub mod emulators;
+pub mod live;
 pub mod merge;
 pub mod migrate;
 pub mod model;
@@ -17,6 +18,6 @@ pub mod store;
 pub mod sync;
 pub mod target;
 
-pub use model::{Achievement, AchievementSet, GameAchievements, Kind, Progress, Source};
-pub use sync::{refresh, Outcome, Problem};
-pub use target::{targets_of, SourceTarget};
+pub use model::{Achievement, AchievementGroup, AchievementSet, GameAchievements, Kind, LocalPin, Progress, Section, Source};
+pub use sync::{refresh, refresh_in_session, refresh_live, Outcome, Problem, Session};
+pub use target::{targets_of, targets_with, LocalTarget, SourceTarget};

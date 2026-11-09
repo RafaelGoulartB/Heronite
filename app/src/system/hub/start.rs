@@ -13,9 +13,9 @@ use heronite_data::DataPaths;
 
 use super::debug::debug_hooks;
 use super::events::{on_event, on_message, on_tray_cmd};
-use super::launch::launch;
+use super::launch::{launch, open_client};
 use super::quit::graceful_quit;
-use super::window::{apply_window_flags, on_window_closed, show_window};
+use super::window::{apply_window_flags, on_window_closed, show_window_for};
 use super::{hub, Hub, State};
 use crate::runtime::GameRuntime;
 use crate::system::cli::Cli;
@@ -34,6 +34,10 @@ pub fn init(
 ) {
     let data_paths = DataPaths::detect();
     let settings = SysSettings::load(&data_paths);
+    // The tray needs the saved theme even when startup opens no window.
+    crate::theme::set_appearance(heronite_data::appearance::Appearance::load(&heronite_data::AppPaths::for_data(&data_paths)));
+    // Every window opens at the interface scale.
+    crate::system::ui_scale::init();
     // Points the entry at this executable (a new AppImage may live elsewhere),
     // or removes one left behind while the setting is off.
     let (autostart_paths, autostart_on) = (data_paths.clone(), settings.start_with_system);
@@ -67,7 +71,8 @@ pub fn init(
     // `--console` / `--fullscreen` show the window even when it would start in the tray.
     let want_window = !hide && (cli.wants_window() || !start_in_tray);
     // Nothing would keep the app reachable: show the window after all.
-    let unreachable = !want_window && !tray_alive && cli.launch.is_none() && !debug_hidden;
+    let one_shot = cli.launch.is_some() || cli.open_client.is_some();
+    let unreachable = !want_window && !tray_alive && !one_shot && !debug_hidden;
 
     cx.set_global(Hub(Rc::new(RefCell::new(State {
         data_paths: data_paths.clone(),
@@ -78,7 +83,8 @@ pub fn init(
         steps: HashMap::new(),
         tray,
         fake_tray,
-        exit_when_idle: cli.launch.is_some() && !want_window && !start_in_tray,
+        exit_when_idle: one_shot && !want_window && !start_in_tray,
+        clients_followed: 0,
         hiding: false,
         hidden_for_game: false,
         quitting: false,
@@ -87,6 +93,7 @@ pub fn init(
         fullscreen: cli.fullscreen && !hide,
         settings,
         settings_stamp: data_paths.global_config().metadata().and_then(|m| m.modified()).ok(),
+        placement: Default::default(),
     }))));
     STARTED.with(|s| s.set(Some(started)));
 
@@ -153,14 +160,17 @@ pub fn init(
     })
     .detach();
 
-    if want_window || unreachable {
-        show_window(cx);
-    }
+    // `--console` opens the window the way console mode wants it (fullscreen)
+    // instead of switching it while it is still being mapped.
+    let opened = (want_window || unreachable) && show_window_for(cx, cli.console && !hide).is_some();
     if !hide {
-        apply_window_flags(cx, cli.console, false);
+        apply_window_flags(cx, cli.console, false, opened);
     }
     if let Some(req) = cli.launch {
         launch(cx, req, hide, false);
+    }
+    if let Some(client) = cli.open_client {
+        open_client(cx, client, true);
     }
     debug_hooks(cx, tray_tx);
 }

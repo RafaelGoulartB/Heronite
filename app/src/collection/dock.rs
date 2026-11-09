@@ -235,7 +235,7 @@ impl CollectionView {
         }
         let n = games.len();
         // Narrow windows: the plain actions keep only their icons.
-        let compact = f32::from(window.viewport_size().width) < 1180.;
+        let compact = f32::from(crate::ui::content_size(window).width) < 1180.;
         let label = |s: &str| (!compact).then(|| SharedString::from(s.to_string()));
         let shown = self.shown_keys();
         let all_shown = shown.iter().all(|k| self.sel.contains(k));

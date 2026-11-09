@@ -240,7 +240,7 @@ struct Cells {
 impl Cells {
     fn new(window: &Window, hints: bool) -> Self {
         let body = super::body_height(window, hints);
-        let width = f32::from(window.viewport_size().width) / kit::scale() - 2. * SIDE;
+        let width = f32::from(crate::ui::content_size(window).width) / kit::scale() - 2. * SIDE;
         Self { w: ((width - GAP * (COLS - 1.)) / COLS).max(60.), h: ((body - TOP - BOTTOM - GAP * (ROWS - 1.)) / ROWS).max(60.) }
     }
 
@@ -374,13 +374,27 @@ impl CollectionView {
                 _ => div(),
             };
             let id = SharedString::from(format!("dash-{:?}", t.id));
-            root = root.child(div().absolute().left(u(l)).top(u(top)).w(u(w)).h(u(h)).child(focus_frame(
-                id,
-                on,
-                w,
-                h,
-                body.relative().size_full(),
-            )));
+            // A click focuses the tile; on the focused one, A opens it.
+            let tile_id = t.id;
+            let click = self.cover_click(move |this| {
+                let nav = &mut this.tab_nav(tab).dashboard;
+                let moved = nav.focus != tile_id;
+                nav.focus = tile_id;
+                moved
+            });
+            let place = div().absolute().left(u(l)).top(u(top)).w(u(w)).h(u(h)).on_mouse_down(MouseButton::Left, click);
+            // The mouse over a tile focuses it (the mosaic stays still).
+            let place = if on {
+                place
+            } else {
+                place.on_mouse_move(self.cover_hover(move |this| {
+                    let nav = &mut this.tab_nav(tab).dashboard;
+                    let moved = nav.focus != tile_id;
+                    nav.focus = tile_id;
+                    moved
+                }))
+            };
+            root = root.child(place.child(focus_frame(id, on, w, h, body.relative().size_full())));
         }
         root.into_any_element()
     }
@@ -401,6 +415,16 @@ impl CollectionView {
         let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
         let art = self.dash_art(key, w, h, on, window);
         let r = u(look::tile_radius());
+        let categories = self.console_categories(key);
+        let lift = super::super::tile::category_lift(categories.as_ref().map(|(s, _)| *s));
+        let badges = categories.and_then(|(style, list)| {
+            crate::collection::category_badges::overlay(
+                style,
+                &list,
+                super::super::tile::category_area(w, kit::scale(), window.scale_factor()),
+                false,
+            )
+        });
         div()
             .child(art)
             .child(div().absolute().inset_0().rounded(r).bg(linear_gradient(
@@ -408,12 +432,13 @@ impl CollectionView {
                 linear_color_stop(kit::veil(0.8), 0.),
                 linear_color_stop(kit::veil(0.), 0.62),
             )))
+            .children(badges)
             .children(game.map(|g| {
                 div()
                     .absolute()
                     .left(u(12.))
                     .right(u(12.))
-                    .bottom(u(10.))
+                    .bottom(u(10. + lift))
                     .flex()
                     .flex_col()
                     .child(div().truncate().text_size(u(15.)).font_weight(theme::W_BOLD).text_color(kit::strong()).child(g.title.clone()))

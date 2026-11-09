@@ -22,10 +22,12 @@ use heronite_images::{Variant, REFLECTION_PART};
 use super::super::super::CollectionView;
 use super::super::hero::{fitted_title, HeroSize};
 use super::super::sources::{by_title, keys};
+use super::super::tile;
 use super::grid::{jump_letter, letter_of};
 use crate::console::kit::{self, u};
 use crate::console::look;
 use crate::console::motion;
+use crate::console::pointer::{self, Clickable};
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -161,7 +163,11 @@ fn turn<E: IntoElement + 'static>(id: impl Into<ElementId>, el: E, target: f32, 
 fn filter_pills(tab: usize, filter: usize, focused: bool) -> AnyElement {
     let row = div().flex_none().flex().justify_center().gap(u(6.)).pt(u(6.)).children(FILTERS.iter().enumerate().map(|(j, label)| {
         let (on, current) = (focused && j == filter, j == filter);
+        // A click: ↑ to the pills, then ← → to this one.
+        let mut pads = if focused { Vec::new() } else { vec![Pad::Up] };
+        pads.extend(pointer::along(filter, j, Pad::Left, Pad::Right));
         kit::row_base(on)
+            .on_pads(pads)
             .min_h(u(36.))
             .px(u(18.))
             .when(!on && current, |d| d.bg(kit::ink(0.14)).text_color(kit::strong()))
@@ -293,7 +299,7 @@ impl CollectionView {
         };
 
         let k = kit::scale();
-        let viewport = window.viewport_size();
+        let viewport = crate::ui::content_size(window);
         let (vw, dpr) = (f32::from(viewport.width), window.scale_factor());
         let info_h = if theme.hero.title == HeroTitle::Logo { LOGO_H } else { NAME_H }
             + if theme.hero.facts { FACTS_H + INFO_GAP } else { 0. }
@@ -326,8 +332,13 @@ impl CollectionView {
             let ring = i == index && !pills_focus;
             let grey = grey && !g.installed;
             let title = g.title.clone();
+            let categories = self.console_categories(&key);
             let d = i as f32 - index as f32;
-            let cover = turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute(), d, move |el, d| {
+            // A click: ↓ from the pills, ← → to the cover; A on the focused one.
+            let mut pads = if pills_focus { vec![Pad::Down] } else { Vec::new() };
+            pads.extend(pointer::along(index, i, Pad::Left, Pad::Right));
+            let pads = if pills_focus { pads } else { pointer::focus_or_activate(pads) };
+            let cover = turn(SharedString::from(format!("cr-{tab}-{key}")), div().absolute().on_pads(pads), d, move |el, d| {
                 let p = pose(d);
                 let (w, h) = (cwp * p.scale, chp * p.scale);
                 let top = (chp - h) * ANCHOR;
@@ -352,6 +363,9 @@ impl CollectionView {
                             .child(title)
                             .into_any_element(),
                     })
+                    .children(categories.as_ref().and_then(|(style, list)| {
+                        crate::collection::category_badges::overlay(*style, list, tile::category_area(cw, k * p.scale, dpr), false)
+                    }))
                     .when(p.shade > 0.005, |f| f.child(div().absolute().inset_0().bg(kit::dim(p.shade))));
                 // A thin ring a little way out from the cover.
                 let gap = 6. * k;

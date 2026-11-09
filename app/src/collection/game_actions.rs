@@ -45,6 +45,8 @@ pub(super) enum GameAction {
     Favourite,
     OpenFolder,
     Settings,
+    /// The game settings on the ReShade section.
+    Reshade,
     EditGame,
     /// An emulated game played as a PC game from now on (a native port).
     PlayAsPc,
@@ -77,6 +79,10 @@ pub(super) enum GameAction {
         add: bool,
     },
     Epic(EpicAction),
+    /// Plays (or installs) this copy of the game (a Collection key).
+    PlayCopy(String),
+    /// Takes the game's copies apart.
+    UngroupCopies,
 }
 
 #[derive(Clone, Debug)]
@@ -218,13 +224,28 @@ impl CollectionView {
                 Icon::Tune,
                 "config configure options wine proton launch configuracoes opcoes ajustes",
             ));
+            if self.reshade_fits(&game.key, cx) {
+                v.push(item(
+                    A::Reshade,
+                    "reshade",
+                    "ReShade",
+                    Icon::Palette,
+                    "reshade shaders preset filters effects sharpen filtros efeitos nitidez",
+                ));
+            }
         }
         // Sideloaded programs and browser games; not Steam/emulated entries,
         // nor the ones another launcher or a store client starts.
         if game.runner == "sideload"
             && !matches!(
                 game.launch_kind.as_deref(),
-                Some("steam-uri" | "emulator" | heronite_data::launchers::LAUNCH_KIND | heronite_data::clients::LAUNCH_KIND)
+                Some(
+                    "steam-uri"
+                        | "emulator"
+                        | heronite_data::launchers::LAUNCH_KIND
+                        | heronite_data::clients::LAUNCH_KIND
+                        | heronite_data::xbox::LAUNCH_KIND
+                )
             )
         {
             v.push(item(
@@ -283,6 +304,7 @@ impl CollectionView {
         }
         v.extend(self.extras_actions(game));
         v.extend(self.steam_copy_actions(game));
+        v.extend(self.copies_actions(game));
         v.extend(self.epic_actions(game, cx));
         v.extend(self.system_actions(game, cx));
 
@@ -331,10 +353,8 @@ impl CollectionView {
             A::InstallWay(kind) => self.run_way(key, *kind, window, cx),
             A::Status(id) => self.set_status(key, id.clone(), cx),
             A::Category { name, on } => self.set_game_category(key, name, *on, cx),
-            A::Favourite => {
-                self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_favourite(paths, &g.app_name, &g.title))
-            }
-            A::Hide => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::toggle_hidden(paths, &g.app_name, &g.title)),
+            A::Favourite => self.toggle_favourite_of(key, cx),
+            A::Hide => self.toggle_hidden_of(key, cx),
             A::RemoveRecent => self.edit_game_lists(key, cx, |paths, g| heronite_data::config_games::remove_recent(paths, &g.app_name)),
             A::OpenFolder => self.open_install_folder(key, cx),
             A::Settings => {
@@ -343,6 +363,7 @@ impl CollectionView {
                 let view = cx.new(|cx| crate::dialogs::game_settings::GameSettingsDialog::new(ctx, g, tab, window, cx));
                 self.open_dialog(view, cx);
             }
+            A::Reshade => self.open_reshade(key, window, cx),
             A::EditGame => {
                 self.open_edit_game(key, window, cx);
             }
@@ -362,6 +383,8 @@ impl CollectionView {
             A::Shortcuts { add } => self.run_shortcuts(key, *add, cx),
             A::Steam { add } => self.run_steam_shortcut(key, *add, cx),
             A::Epic(a) => self.run_epic_action(key, *a, cx),
+            A::PlayCopy(copy) => self.play_copy(copy, window, cx),
+            A::UngroupCopies => self.ungroup_copies(key, cx),
         }
         cx.notify();
     }

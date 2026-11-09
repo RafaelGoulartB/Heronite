@@ -11,6 +11,7 @@ use heronite_data::appearance::{BackgroundSource, InterfaceMode};
 use heronite_i18n::tr;
 
 use crate::icons::Icon;
+use crate::overlay::labels;
 use crate::theme;
 use crate::ui::icon;
 
@@ -395,7 +396,7 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
     let title: SharedString = art.titles.first().cloned().unwrap_or_else(|| tr!("Your game").into());
     let keys =
         |ks: &[&'static str]| {
-            div().ml_auto().flex().gap(b.p(3.)).children(ks.iter().map(|k| {
+            div().ml_auto().flex().flex_none().gap(b.p(3.)).children(ks.iter().map(|k| {
                 div().px(b.p(5.)).py(b.p(1.)).rounded(b.p(4.)).bg(theme::white_a(0.1)).child(b.text(9.5, theme::text_muted(), *k))
             }))
         };
@@ -410,7 +411,7 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
             .bg(if focused { theme::accent_alpha(0.16).into() } else { theme::white_a(0.04) })
             .when(focused, |d| d.border_1().border_color(theme::accent_alpha(0.5)))
             .child(icon(ic, b.p(14.), theme::text_muted()))
-            .child(b.text(11.5, theme::text_primary(), label))
+            .child(b.text(11.5, theme::text_primary(), label).flex_1().min_w_0().truncate())
     };
     let tab = |ic: Icon, on: bool| {
         div()
@@ -442,7 +443,11 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
                     .flex_col()
                     .min_w_0()
                     .child(b.text(12.5, theme::text_primary(), title).font_family(theme::font_heading()).font_weight(theme::W_BOLD))
-                    .child(b.text(10.5, theme::text_dim(), tr!("Playing for 0:42 · 60 FPS"))),
+                    .child(b.text(
+                        10.5,
+                        theme::text_dim(),
+                        if cfg!(windows) { tr!("Session {session}", session = "0:42") } else { tr!("Playing for 0:42 · 60 FPS").into() },
+                    )),
             ),
         )
         .child(
@@ -458,8 +463,8 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
                 .child(tab(Icon::VolumeUp, false))
                 .child(tab(Icon::SportsEsports, false)),
         )
-        .child(row(Icon::PhotoCamera, tr!("Take a screenshot"), true).child(keys(&["Guide", "RB"])))
-        .child(row(Icon::Bookmark, tr!("Mark a moment"), false).child(keys(&["Guide", "Y"])))
+        .child(row(Icon::PhotoCamera, tr!("Take a screenshot"), true).child(keys(&labels::chord_keys("RB"))))
+        .child(row(Icon::Bookmark, tr!("Mark a moment"), false).child(keys(&labels::chord_keys("Y"))))
         .child(
             row(Icon::VolumeUp, tr!("Volume"), false).child(
                 div()
@@ -471,9 +476,22 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
                     .child(div().h_full().w(relative(0.64)).rounded_full().bg(theme::accent())),
             ),
         )
-        .child(row(Icon::Tune, tr!("FPS limit"), false).child(keys(&["60"])))
+        .when(heronite_platform::supported(heronite_platform::Feature::Wrappers), |d| {
+            d.child(row(Icon::Tune, tr!("FPS limit"), false).child(keys(&["60"])))
+        })
         .child(row(Icon::Home, tr!("Back to Heronite"), false));
-    let pad_x = if left { 600. - 14. - 150. } else { 18. };
+    let pad_x = if left { 600. - 14. - if cfg!(windows) { 220. } else { 150. } } else { 18. };
+    let pad_hint =
+        b.at(pad_x, 262.).flex().items_center().gap(b.p(8.)).child(icon(Icon::SportsEsports, b.p(48.), theme::white_a(0.8))).child(
+            div()
+                .px(b.p(8.))
+                .py(b.p(3.))
+                .rounded_full()
+                .bg(theme::black_a(0.55))
+                .border_1()
+                .border_color(theme::accent_alpha(0.6))
+                .child(b.text(11., theme::text_primary(), labels::opens_it())),
+        );
     div()
         .relative()
         .w(px(w))
@@ -487,64 +505,5 @@ fn overlay_board(art: &Art, w: f32, left: bool) -> Div {
         .child(b.rect(18., 16., 120., 6.).rounded_full().bg(theme::white_a(0.75)))
         .child(b.rect(18., 26., 72., 6.).rounded_full().bg(rgb(0x7ec7ff)))
         .child(panel)
-        .child(
-            b.at(pad_x, 262.).flex().items_center().gap(b.p(8.)).child(icon(Icon::SportsEsports, b.p(48.), theme::white_a(0.8))).child(
-                div()
-                    .px(b.p(8.))
-                    .py(b.p(3.))
-                    .rounded_full()
-                    .bg(theme::black_a(0.55))
-                    .border_1()
-                    .border_color(theme::accent_alpha(0.6))
-                    .child(b.text(11., theme::text_primary(), tr!("Guide opens it"))),
-            ),
-        )
-}
-
-/// A ring `size` wide filled clockwise from the top to `fraction` (0..=1).
-pub fn ring(fraction: f32, size: f32, label: impl Into<SharedString>) -> Div {
-    let fraction = fraction.clamp(0., 1.);
-    let accent = theme::accent();
-    let track = theme::ink_a(0.09);
-    div()
-        .relative()
-        .flex_none()
-        .size(px(size))
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(
-            canvas(
-                |_, _, _| (),
-                move |bounds, _, window, _| {
-                    let stroke = 5.;
-                    let c = bounds.center();
-                    let r = (f32::from(bounds.size.width).min(f32::from(bounds.size.height)) - stroke) / 2.;
-                    let arc = |from: f32, to: f32, color: Hsla, window: &mut Window| {
-                        let steps = ((to - from) * 96.).ceil().max(1.) as usize;
-                        let mut path = PathBuilder::stroke(px(stroke));
-                        for s in 0..=steps {
-                            let t = from + (to - from) * s as f32 / steps as f32;
-                            let a = t * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
-                            let p = c + point(px(r * a.cos()), px(r * a.sin()));
-                            if s == 0 {
-                                path.move_to(p);
-                            } else {
-                                path.line_to(p);
-                            }
-                        }
-                        if let Ok(path) = path.build() {
-                            window.paint_path(path, color);
-                        }
-                    };
-                    arc(0., 1., track, window);
-                    if fraction > 0. {
-                        arc(0., fraction, accent.into(), window);
-                    }
-                },
-            )
-            .absolute()
-            .inset_0(),
-        )
-        .child(div().font_family(theme::font_heading()).font_weight(theme::W_BOLD).text_size(px(14.)).child(label.into()))
+        .child(pad_hint)
 }

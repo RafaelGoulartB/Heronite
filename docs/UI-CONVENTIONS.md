@@ -62,11 +62,13 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   (`nav_keys.rs`) are the Collection search's: ↓ to the list, ↑ ↓ Home End move, ↑ on the first item back to the
   search, Enter / Space open, a letter types in the search; Esc empties the search, then leaves it, then the page. Emulators and ROM
   folders are NOT a Settings section: they live on the ☰ Emulators page.
-  Other launchers (`launchers.rs`) is a card per launcher (Heroic, Lutris, Bottles, Faugus): whether it is on this PC
-  and how many games it has, a switch that brings its games in and keeps them in sync, "Bring in now", and
-  "Remove them" for the games of one turned off. The same switch is offered where games come from: a tile per
-  launcher on the empty Collection and a row in "Getting started" → Your games, shown only for the launchers
-  found with games and not imported yet.
+  Other launchers (`launchers.rs`) is a card per launcher (Heroic, Lutris, Bottles, Faugus on Linux; Playnite on
+  Windows, `Launcher::here`): whether it is on this PC and how many games it has, a switch that brings its games in and
+  keeps them in sync, "Bring in now", and "Remove them" for the games of one turned off. On Linux the same switch is
+  offered where games come from: a tile per launcher on the empty Collection and a row in "Getting started" → Your
+  games, shown only for the launchers found with games and not imported yet. On Windows Playnite's games come in only
+  from this section (`launcher_imports::OFFERED_ELSEWHERE`); while Playnite runs it holds its library open, and the
+  card asks to close it.
 - Command palette (Ctrl K, `app/src/collection/palette/`): it reads the app's own lists, so a new feature reaches it
   without palette code. A game action goes in `collection/game_actions.rs` (`GameAction`, listed by
   `CollectionView::game_actions`, run by `run_game_action`): the card's context menu draws the same list. A page action
@@ -140,8 +142,14 @@ darkened on the light one until it reads, or "From the desktop"); never write th
 `theme::contrast_a(a)` for faint text over art. **Font** (`theme::font_body()` / `font_heading()`: Cabin + Rubik,
 Rubik, or `.SystemUIFont`). **Density** Compact halves the list and grid gaps (`list_metrics`). Covers: **Corners**
 (radius 2 / 6 / 12), **Under the cover** (playtime or the sort value, playtime, last played, status with its colour,
-title, nothing; `data::chosen_caption`), **Favourite star**, **Under the pointer** (nothing, lift 4px, glow with an
-accent ring). **Picture** behind the Collection (`look::stage_source`: the game's art, one of its screenshots, its
+title, nothing; `data::chosen_caption`), **Favourite star**, **Store icon** (`coverStores`: the logos of the
+game's stores in a dark chip at the bottom-left (a ROM's emulator icon instead, `emulators::icon`), first in the row of the category tags, above the strip; each store
+once, `+N` past three; with it on, two sub-toggles: "Show every store a game is in" (`coverStoresAll`, the copies'
+stores too) and "Hide while grouped by store" (`coverStoresHideGrouped`, off by default); `store_badges`), **Under the pointer** (nothing, lift 4px, glow with an
+accent ring). **Zoom** (50 to 300%, `system::ui_scale`; Ctrl + / Ctrl − anywhere, Ctrl 0 back to the system's): the
+whole interface, on top of the screen's scale; "Follow the system" takes `GDK_DPI_SCALE`, `QT_SCALE_FACTOR`, GNOME's
+text size (Wayland) or Windows' text size. Its slider applies when let go. A window choice like the layout: profiles
+keep it. **Picture** behind the Collection (`look::stage_source`: the game's art, one of its screenshots, its
 cover blurred, the Solid tint, or a picture copied to `AppPaths::custom_background()`), with a slideshow of the
 screenshots every 20 s. **Animations**: Full, Reduced (`theme::fades()` only: the stage cross-fade and covers fading
 in) or Off (`theme::animations()` is false; `HERONITE_NO_ANIMATIONS` forces Off). **Open the Collection in** (last
@@ -202,19 +210,62 @@ Store, Genre, Developer, Publisher, Series, Platform) with counts, four per kind
 Enter pick, and an X beside the first kind's title empties the box (back to the menu). Below, when nothing is typed (every control has the cards' faint fill and border, `render::control`): Presets (a select showing the preset on screen, else "Custom", its list drawn like the "More" lists; a preset applies
 everything the menu sets: filters, sort, grouping, hidden games; four built-in ones are added to the user's list once
 and are then ordinary presets; under them "Save as preset…" while none matches and "Edit presets…", which lists them
-with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`), Show
-(segmented with counts), Group by (None | Status | Store | More), Sort (segmented + direction), Only (Favourites, Update, Offline,
-Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…" and "Library fields…", the fields manager
-`dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
+with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`) and,
+beside it on the same row, the Smart groups select (`blocks.rs`: the picked group, "{n} groups" or "None"; its list ticks
+groups, pins and edits them, then "New smart group…" and "Save filters as smart group…" while filters are on). Then two
+blocks, each a bold word and a line: **Filter** (what shows: Show, segmented with counts, with "Include hidden" in its
+title; Only, one pill per switch: Favourites, With an update, Run offline; Filter by, pills for Genre, Store, Status and
+Category that fill `kind:`, and "More" with the other kinds and "Ages up to", whose row shows once picked or while it
+filters) and **Organize** (how: Sort, segmented + direction, and Group by, None | Status | Store | More). The footer
+has the count, "Manage ▾" (Statuses…, Manage categories…, Library fields… — the fields manager `dialogs/manage_fields`,
+also in the palette —, Edit presets…, New smart group…, opening above it) and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons) and pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
-a click outside. Each active filter also appears as a removable `filter_chip` after the button. Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
+a click outside. Each active filter also appears as a removable `filter_chip` after the button.
+The spare middle lane can also show the quick toolbar (`collection/toolbar/`): a track drawn like the Focus / Grid
+switch (`ink_a(.06)` pill, 3px padding, 26px segments 2px apart, 12.5px labels and 15px icons at `ink_a(.68)`,
+brighter on hover), in priority order Sort with its direction, Show (All / Installed / Not installed), Favourites,
+Group by, then saved Presets, using the same labels and actions as the View menu, which always keeps the complete
+controls and preset management. A control at its default is a 30px icon; a value in use adds its label and a
+chevron (a preset shows its colour dot and name; the grouping, with a stacked-groups icon, reads "by Status" with
+"by" dimmed, so it is not taken for a filter), and a filter in use (Show, Favourites) is the accent pill
+(`accent_tint`). The selects open on hover like the header's other menus (no tooltip, the chevron turns while
+open; the Sort list has each field's icon, Presets their dots); the direction and Favourites have tooltips. While
+a control is shown its filter chip is not (Show and Favourites), so nothing appears twice; the chip
+returns when the toolbar is off or the control does not fit. It is off by default: hovering the View button
+slides out a 24px arrow joined to it like a split button (one faint fill, out in about 130ms, back in about 300ms; it stays out while the View menu is open; the search
+keeps its width, the lane after it moves) that turns it on (→) or off (←), the same preference as Settings → Appearance →
+Layout → **Quick toolbar controls** (`quickToolbarControls` in `appearance.json`, independent of filters and
+presets). Visibility is a priority prefix of shaped localized segment widths within the measured flex lane, after
+reserving the remaining filter chips, 48px for dragging and the arrow's 24px, so hovering never hides a control
+(`toolbar/layout.rs`, `fit`). The lane starts 6px after the View button, as between the left controls. Search, window controls,
+Focus / Grid and activity pills keep their space. Measurement requests one redraw only when the lane changes,
+never writes settings, and closes a menu whose trigger no longer fits. Long preset names truncate with their full
+name in a tooltip.
+**Smart groups** (`collection/smart_groups.rs`, editor `dialogs/smart_group/`, data `heronite_data::smart_groups`):
+groups of games defined by rules that keep themselves current. Nothing of them shows on the Collection until the user
+makes one, by user decision: the way in is the View menu's Smart groups select, beside Presets (its list: tick to
+filter, several add up like categories; pin; pencil to edit; "New smart group…"; "Save filters as smart group…", which
+starts from the filters on screen), also "Manage ▾" → "New smart group…". The menu's search finds them (`group:`) and a
+picked group is a filter chip like the others. A pinned group is a segment of its own track in the header lane, after
+the quick controls (or first, while they are off), fitted by the same `layout::fit` prefix and hiding its chip while
+shown; a click shows only its games, a second click every game, a right click opens the editor. The editor: name,
+colour (`theme::GROUP_COLOURS` or the accent), "Games that match all / any of these conditions", rows of field
+(its menu searchable, under The game, How you play it — played, time played, in the last 30 days, times played, average
+session, last and first played, progress to beat it — Details and Library fields), comparison and value (a list field ticks several values, a number has its unit), "Except games that match any of
+these", the games it holds now (counted after each change, not each frame) and the pin; a rule nested deeper than
+that is kept and only the name, colour and pin change; a status or category the rules name that this PC does not have
+(made on another PC that syncs) is listed in a warning; "Delete group" is the red button with the bin. The groups and
+the custom categories sync with the Collection (no switch of their own) and are in the backups' Collection part. In console mode the groups are reached only from the Filters
+panel (Y): its Smart group row picks any group (the theme's tabs stay as they are). `HERONITE_DEBUG_DIALOG=smartgroup|smartgroup:<id>|smartgroup-filters`,
+`HERONITE_DEBUG_SMARTGROUP_MENU=field[:<text>]` (the first row's field menu open, searched).
+Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
 metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or
 rows, the covers' size (Small fits one more per row, Large one less; `focusCoverSize`) and the game sections shown;
 in Grid the cover size, what goes under the covers (Nothing, Title, Info, Title and info; `gridLabel`, Info being
 Appearance's "Under the cover" line) and "Open details on select" (`gridOpenOnSelect`; off, a double click or Enter
 opens the drawer); then, in both, the covers' look, the same settings as Appearance (Cover aspect, where Banner
-shows each game's hero art, Corners, Density, Under the pointer, Favourite star); then "More in Appearance" and
+shows each game's hero art, Corners, Density, Under the pointer, Favourite star, Store icon); then "More in Appearance" and
 "Reset to defaults" (the mode's options and the covers' look; dimmed when all are at their default). Header menus
 open on click or after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open
 on click only and close on a click outside, Esc or a change of mode. The ☰ menu (`nav.rs`) is a list:
@@ -231,8 +282,11 @@ stores in console mode, whose pages keep their tabs). The list reads the service
 changes (`stores::watch`); the row (and the console sidebar's) opens the store shown last. A client's page
 (`pages/clients/`, one `ClientPage<K>` for the four) is a card with the client's state and its main action (Set up, the
 setup's step with Cancel, Open, Close), its prefix and Wine with "Wine settings" (`dialogs/client_settings`: the game
-settings panel bound to the client's own settings), the sign-in the client's files show, the games it installed (Show
-selects one in the Collection) and an About card with the anti-cheats that keep some of its games off Linux.
+settings panel bound to the client's own settings), the sign-in the client's files show, on Linux its Shortcuts (a
+switch for the Desktop and one for the application menu: `heronite-client-<id>.desktop` running `--open-client <id>`,
+with the icon read from the client's `.exe`; `services/clients/shortcuts.rs`, `HERONITE_DEBUG_CLIENT=<id>:shortcuts`),
+the games it installed (Show selects one in the Collection) and an About card with the anti-cheats that keep some of
+its games off Linux.
 The ☰ Emulators page (`pages/emulators/`) has the same layout (`side_nav`): the list holds "All emulators" (counts, what
 needs attention with its fix, every ROM folder, "Scan all folders now"), then each emulator with its icon
 (`emulators::icon`: Dolphin's and RetroArch's logos, an icon drawn for each other emulator of the catalog, a gamepad
@@ -267,7 +321,12 @@ card only once the player wrote one (click: the Journal; also in the grid drawer
 aligned with the cover's left edge, so the cover, "Screenshots" and "Details" start on one line; the gap left column → main
 equals main → side (`COL_GAP`). `focus::layout(panel_w)` picks the widths: narrow = everything scrolls in one column with the
 left block as a row under the title; otherwise left column + main/side (stacked when tight), centred as a group in wide panels. The main column holds Screenshots, Overview, **Timeline** (`timeline.rs`: days of play with
-the screenshots of their sessions, thumbnails only; a bar per day of the last 30 in the title when the column has room,
+the screenshots of their sessions, thumbnails only; the replays saved that day come first on a row of their own, as
+larger posters (`replays.rs`: a frame of the video with a replay-yellow ring, `theme::replay`, the time, the length,
+the note written about it; a click plays it), the screenshots step down to 96×54 under them, the day's dot becomes a
+yellow ring and "N replays" opens the Journal, where each replay is a card with its poster, its words, Watch and Open
+folder; a replay nothing was written about is not counted as a note. Posters are made by ffmpeg on one idle-priority
+worker of their own, only for what is on screen, and kept in the screenshot preview cache; a bar per day of the last 30 in the title when the column has room,
 hovering one says that day there; a faint "5 days without playing" line between days 3+ days apart) and Related (one
 group at a time picked with pills in the title: Same series first when there is one, Same developer, Similar = 2+
 genres / themes in common; 100px covers with the time played, else the status, under the title, on one row that
@@ -492,8 +551,27 @@ entered from ☰ › Console mode or the palette,
 remembered across restarts (`ui-state.json` `consoleMode`). The desktop look must not change: every page and dialog
 keeps its desktop render and, when `crate::console::active()`, returns its console layout instead
 (`render_console`, usually in a child module `console.rs`) and implements `console::PadTarget` (`on_pad` + `hints`).
-- Input: `console::input` reads controllers with gilrs on a thread that only runs in console mode (presses only count
-  while the window is focused); the keyboard maps to the same `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
+- Input: `console::input` reads controllers on a thread that only runs in console mode (presses only count while the
+  window is focused): gilrs on Linux, SDL on Windows (`heronite_platform::controllers`, one thread shared by every
+  listener); both feed the same `Translator` (repeats, stick and trigger thresholds). The keyboard maps to the same
+  `Pad`s (arrows, Enter = A, Esc = B, X, Y, Q/E = LB/RB, M = menu).
+- Mouse (`console::pointer`): it presses too, so no screen handles it apart. Each window that takes presses registers a
+  router (`pointer::set_router`: the shell's `console_pad`, the overlay panel's `on_pad`); a click sends the presses that
+  bring the focus to what was clicked, then A: a row of a `console::list` is used at once (`ListNav::click`; the ‹ › of
+  a value press ◀ ▶), a cover takes the focus on the first click and opens on the second (`pointer::focus_or_activate`).
+  Hints, tabs and LB / RB glyphs press their button (`kit::hint_item`, `kit::tabs`). The wheel moves the focus one
+  press per notch (← → on Carousel and Spotlight; on a game page with long text it scrolls the text, as the right
+  stick does), the right and back buttons are B (`pointer::layer`, before the scroll areas). A hint bar faded out
+  (`Hints::Auto`) takes no clicks (`kit::hint_bar_with`). Row clicks are worked out when clicked, from one pass over
+  the rows (`list::Clicks`), so long lists stay cheap. Focus a press cannot reach in a few steps is set directly (`console_click`, `cover_click`: the menu's items,
+  the Grid and Dashboard tiles). Anything drawn over a screen (dialogs, `Layer`s, menus, panels, keyboards) occludes
+  it, so a click never reaches a screen that does not take the presses; a click on the dim around a modal, menu or
+  sheet is B. A list beside the owner's own focus (Settings' content) takes clicks through `render_entered` (→ first).
+  Hovering moves the focus (once a frame, `pointer::take_hover`) where nothing moves under the pointer: list rows,
+  the ☰ menu, the Filters panel, Settings' sections, Grid and Dashboard tiles, the overlay's rows (not the covers of
+  rows that glide). A controller press hides the cursor until the mouse moves or a key is pressed
+  (`pointer::hide_cursor` / `show_cursor`, patched into `vendor/gpui-pre-linux` and `vendor/gpui-pre-windows`). In
+  the overlay, a click on the output under the mixer switches to the next one (Y).
 - Hosting: pages register their hook in `nav.rs` (`pages.hooks`); dialogs are found by `console::registry::hook_for`
   (add new console-capable dialogs there). Overlays owned by a view use `console::Layer` (drawn by the owner; for a
   view embedded in a smaller area wrap it with `kit::window_layer`).
@@ -557,7 +635,7 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   back while it shows.
   Y on any tab opens the Filters panel along the right edge (`collection/console/filters.rs`): the search field first
   and focused (A opens the keyboard, a physical keyboard types into it), Show with counts, Sort, Favourites only,
-  Status and Category; X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
+  Status, Category and Smart group (every group, by name; the grid's Show chip then reads "<group> · <show>"); X resets them. They edit the filters of the tab's grid, else the theme's first Grid tab (the
   first change switches to it), else a results grid over the tab (`ConsoleUi::results`, B leaves it), so every theme has them.
   Colours go through `theme::console_*` / `text_primary` / `text_muted`, which read the theme only while console
   mode is on. Change the theme only with `console::themes::update` (installs it live, saves off the UI thread);
@@ -599,7 +677,8 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
 - Debug: `HERONITE_DEBUG_CONSOLE=1` (or `=game:<key>` for a game page, `=menu`, `=customize`, `=filters`) starts in console mode
   without saving it; `HERONITE_DEBUG_CONSOLE_PRESET=<theme id>` / `HERONITE_DEBUG_CONSOLE_LAYOUT=<layout>` start with
   that theme / every tab in that layout (not saved); `HERONITE_DEBUG_IDLE_SECS=<n>` shows the idle screen sooner;
-  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`).
+  `HERONITE_NO_GAMEPAD=1` ignores controllers (test copies must not follow the one in use; `shot.sh` and `idle-cost.sh` set it); `HERONITE_DEBUG_PAD=down,a,wait:500,b` plays presses (`up down left right a b x y lb rb lt rt start select sup sdown`); `HERONITE_DEBUG_MOUSE=click:0.5:0.4,wheel:-1,right` plays mouse events (points as fractions of the window; on a
+  hidden workspace keep capturing it with `grim -T`, or the clicks hit the last frame it presented).
 
 **Do not** use uppercase labels, outlined buttons, underlined tabs, square
 checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_primary`,
@@ -609,11 +688,11 @@ checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_prima
 drawn before the compositor stopped sending frames, so late images (art, covers)
 are missing. Take a first capture to wake the window, wait a second, then take
 the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
-`HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>`, `HERONITE_DEBUG_MENU=<key>`,
+`HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>|groups-select|more-filters|manage`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
-**In-game overlay** (`app/src/overlay/`, Settings → Overlay; beta, off by default, options in `overlay.json` of the app
+**In-game overlay** (`app/src/overlay/`, Settings → Overlay; off by default, options in `overlay.json` of the app
 state): during a game launched by the app, the controller's Guide button opens a panel over the game (by user decision:
 proposal 1 "Guide lateral, estilo Xbox"). It is a Wayland layer-shell surface on the overlay layer (no keyboard focus, so
 the game keeps it), 440 design px wide along the left or right edge, in console mode's look scaled to the display
@@ -630,10 +709,21 @@ microphone (the default source; the outputs' monitors are left out) and its mute
 (`heronite_launch::live_fps`: MangoHud through a config file of ours it watches, gamescope through its
 `GAMESCOPE_FPS_LIMIT` atom set with `xprop`; DXVK / VKD3D cannot); the value lasts for the session. Steam games are
 started by Steam, so the launch cannot move MangoHud's limit into a file of ours: they have no live limit (editing the
-user's `MangoHud.conf` or their Steam launch options was ruled out). Quitting the game asks
+user's `MangoHud.conf` or their Steam launch options was ruled out). An Achievements tab (last, so the other tabs keep
+their place when it appears; `panel/achievements.rs`) shows when the game has a set in the achievements service,
+whatever the source: a progress card (count, bar, gold at 100%, source, points, rare unlocks), what this session
+unlocked (a gold ring and the time), "Up next" and "Recently unlocked", 5 each, every achievement with its icon (a small
+`ImageStore` the tab makes when first drawn; a trophy or a lock when there is none), its rarity in its tier's colour,
+its description (in full, up to 3 lines, when focused) and a bar when the source counts its progress, then how many are
+secret (never their names); showing it reads the sources again (at most once a minute), and Home
+gets an "Achievements" row that leads to it. Quitting the game asks
 first (focus on Cancel). Guide + RB, Guide + ↑ / ↓ and Guide + X (the replay, Settings → Replay; Home and Screenshots
 show "Save replay" while it records, and Screenshots a switch that turns it off until the game ends) show a notice in
-the top corner opposite the panel. The
+the top corner opposite the panel. Achievement notices (`OverlayService::show_achievement`, Settings → Achievements →
+"Over the game" tries one) queue instead of replacing: 5 s each with the achievement's icon (loaded first, 1.5 s at
+most) or a gold trophy, "Achievement unlocked · 9.7%" in the rarity's colour when rare, up to 4 waiting, then one
+"N more achievements" (a single extra one shows as itself), in the order of the unlocks even when their icons load out
+of order; a volume or screenshot notice cuts in and the achievement shows again after it. The
 screenshot's button is a choice (RB unless changed; not ↑ / ↓ nor the triggers, which many controllers report as axes),
 shown in Settings → Overlay and in Settings → Screenshots ("With the controller"). A keyboard shortcut (Super + G unless
 changed, `heronite_media::capture::GlobalHotkey`: a temporary consuming Hyprland bind that sends SIGUSR1, else the
@@ -643,16 +733,33 @@ until it closes), console mode's keys drive it (`console::input::pad_from_key`) 
 (`kit::key_glyph`: Enter, Esc, Q / E). "Open it without a game too" (`withoutGame`, off by default) keeps the input thread and the
 shortcut running while the app runs; the panel then has no Screenshots tab, the header says "No game running", the mixer
 has only System, and Home ends with "Open Heronite".
-The panel takes controller presses from the service (`OverlayPanel::on_pad`); it never reads `OverlayService`
+The panel takes controller presses from the service (`OverlayPanel::on_pad`) and the mouse as console mode does
+(`console::pointer`: tabs, rows, hints; a click on a volume bar sets that level, on its icon mutes it; a capture
+opens on a click); it never reads `OverlayService`
 (which is usually updating when it calls in) and reaches it through deferred `with_service`. GNOME and X11 cannot show
 it (no layer-shell): Settings says so. Debug: `HERONITE_DEBUG_OVERLAY=window[:<app_name>]` draws the panel in a normal
 window (`app.heronite.overlay`) as if the game ran (Hyprland ignores its size requests there; audio changes are skipped
 under any `HERONITE_DEBUG_OVERLAY`), `=layer` the real surface; `HERONITE_DEBUG_OVERLAY_PAD=rb,down,a`
-plays presses; `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`);
+plays presses, then `HERONITE_DEBUG_OVERLAY_MOUSE` mouse events (as `HERONITE_DEBUG_MOUSE`); `HERONITE_DEBUG_OVERLAY_NOTICE=volume|shot|replay` adds a notice (`app.heronite.overlay-notice`), `=achievement|achievement-queue` one or six made-up achievement notices (icon from `HERONITE_DEBUG_OVERLAY_NOTICE_ICON`);
 `HERONITE_DEBUG_OVERLAY_FPS=<limit>` shows the FPS limit row (nothing applied); `HERONITE_DEBUG_OVERLAY=window:none` opens it with no game;
 `HERONITE_DEBUG_OVERLAY_KEYBOARD=1` opens
 it as the keyboard shortcut does, `=shortcut` registers the real shortcut instead; `HERONITE_DEBUG_OVERLAY_DISPLAY=<px>` stands in for the display height (800 for a Steam Deck, 2160 for 4K), and
-the panel's size follows it.
+the panel's size follows it. On Windows, `HERONITE_DEBUG_OVERLAY_MONITOR=<x>,<y>` puts the surfaces on the monitor holding
+that desktop point (physical px) instead of the foreground window's, so another monitor is tested without moving focus.
+
+On Windows the same panel uses a topmost tool window on the foreground
+monitor, over windowed and borderless games. Nothing opens while a game
+holds exclusive fullscreen (`SHQueryUserNotificationState`), which a
+topmost window would minimise. Ctrl+Shift+G is the default shortcut
+(`RegisterHotKey`: other apps do not get it while it is registered, which
+Settings says); Back+Start substitutes for Guide on XInput controllers.
+There is no controller grab: settings must say that the game can still
+receive presses. A keyboard-opened panel asks for focus (Windows may
+refuse; it stays open) and returns it on close only while it still owns
+foreground. Notices never
+take focus and pass pointer input through. The Audio tab uses Core Audio;
+device names are informational (choose defaults in Windows settings).
+Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
 
 ## Rules
 - No I/O on the UI thread except tiny reads; use `cx.background_spawn` and
@@ -697,6 +804,13 @@ the panel's size follows it.
   "View all" (`dialogs/achievements.rs`) and "Updated … ago" with a refresh. A game at 100% turns the panel
   gold (`theme::achievement_gold`). For a ROM it asks for the RetroAchievements account or says the file
   matches no set ("Pick the game…" opens the dialog's search).
+- A game with Steam Achievement Sets (`AchievementSet::sections`: two or more groups with achievements; the
+  ones in no group never split a game alone) gets a row of its sets in the dialog (All first, each "name · DLC · unlocked/total"; the filters count within the set shown; in All each
+  achievement carries its set's name) and a "Sets" section in the overlay's Achievements tab (bar and count per
+  set). Steam's unnamed base group reads "Base game", achievements in no known group "Other achievements".
+  Counts are Heronite's unlocked/total, never Steam's "set complete"; with DLC sets the dialog says the counts
+  include them whether or not the DLC is owned (no source says which). `HERONITE_DEBUG_DIALOG=achievements`
+  opens the dialog of the selected game, `HERONITE_DEBUG_ACH_SET=<group id>|other` on that set.
 - The Timeline puts each unlock on its day by the screenshots' rule: a chip ("3 achievements") and the icons
   under the day (`collection/timeline_achievements.rs`); it never adds days.
 - Settings → Achievements → RetroAchievements signs in with the username and password (`pages/settings/achievements/retro.rs`;
@@ -715,7 +829,7 @@ the panel's size follows it.
   never switch workspaces, never move/click the real mouse.
 - Debug hooks (env, via `SHOT_ENV="..."`): `HERONITE_DEBUG_SELECT=<runner_appName>`,
   `HERONITE_DEBUG_MENU=<key>` (context menu), `HERONITE_DEBUG_DROPDOWN=view|view:<text>|nav|downloads`,
-  `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]` (extend the match in
+  `HERONITE_DEBUG_DIALOG=settings|statuses|gamesettings:<tab>|onboarding[:<step>]|achievements` (extend the match in
   `CollectionView::render` for new dialogs; `settings:<section>` opens that Settings section,
   `onboarding:<step>` "Getting started" where that step lives: `steam`, `stores` or `emulators` open its games view, `appearance` its look view, any other step the three cards).
   `scripts/shot.sh` sets `HERONITE_NO_ONBOARDING=1`: "Getting started" does not open by itself on a new state folder.

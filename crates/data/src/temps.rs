@@ -37,15 +37,16 @@ pub fn write_atomic(path: &Path, bytes: &[u8], mode: Option<u32>) -> io::Result<
     let tmp = unique_tmp_path(path);
     let _ = fs::remove_file(&tmp);
     let result = (|| {
-        let mut options = fs::OpenOptions::new();
-        options.write(true).create_new(true);
-        // Private from the start: the bytes may be a sign-in.
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create_new(true);
+        // Born with the mode (less the umask), so a private file is never
+        // readable by others, not even before the exact mode below.
         #[cfg(unix)]
         if let Some(mode) = mode {
             use std::os::unix::fs::OpenOptionsExt;
-            options.mode(mode);
+            opts.mode(mode);
         }
-        let mut f = options.open(&tmp)?;
+        let mut f = opts.open(&tmp)?;
         f.write_all(bytes)?;
         #[cfg(unix)]
         if let Some(mode) = mode {

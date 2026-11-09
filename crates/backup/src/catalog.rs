@@ -102,12 +102,13 @@ impl Side {
 const KEPT_STORE_CACHE: [&str; 5] =
     ["gog_library.json", "nile_library.json", "steam_library.json", "gog_playtime_sync_queue.json", "gog_playtime_import.json"];
 
-const LOGINS: [&str; 5] = [
+const LOGINS: [&str; 6] = [
     "legendaryConfig/legendary/user.json",
     "gog_store/auth.json",
     "nile_config/nile/user.json",
     "nile_config/nile/current_user.json",
     "local_library/achievement-accounts.json",
+    "local_library/steam-account.json",
 ];
 
 /// Files the app writes while it runs, or that are stale copies.
@@ -244,6 +245,8 @@ mod tests {
         for (rel, want) in [
             ("local_library/library.json", In(Part::Collection)),
             ("local_library/sessions.json", In(Part::Collection)),
+            // Smart groups go with the Collection they filter.
+            ("local_library/groups.json", In(Part::Collection)),
             ("GamesConfig/x.json", In(Part::Collection)),
             ("config.json", In(Part::Collection)),
             ("store/config.json", In(Part::Collection)),
@@ -255,6 +258,7 @@ mod tests {
             ("gog_store/auth.json", In(Part::Logins)),
             ("nile_config/nile/user.json", In(Part::Logins)),
             ("local_library/achievement-accounts.json", In(Part::Logins)),
+            ("local_library/steam-account.json", In(Part::Logins)),
             ("local_library/achievements/gog/1207658924.json", In(Part::Collection)),
             ("local_library/art/sideload_x/hero-1.png", In(Part::Art)),
             ("local_library/metadata-art/x/h.jpg", In(Part::Art)),

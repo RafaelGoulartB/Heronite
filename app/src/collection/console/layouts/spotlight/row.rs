@@ -15,6 +15,8 @@ use super::super::super::super::CollectionView;
 use super::{Look, SIDE};
 use crate::console::kit::{self, u};
 use crate::console::look;
+use crate::console::pointer::{self, Clickable};
+use crate::console::Pad;
 use crate::icons::Icon;
 use crate::theme;
 
@@ -128,12 +130,14 @@ fn all_games(w: f32, h: f32, k: f32) -> Div {
 impl CollectionView {
     /// The row: `found`'s icons and "All games" after them, at `look`'s
     /// position, the name of the focused one (`index`) beside it.
-    pub(super) fn spotlight_row(&mut self, found: &[SharedString], index: usize, look: &Look, window: &Window) -> Div {
+    /// `to_row`: the presses that bring the focus to the row (a click on an
+    /// icon sends them, then ← → to it).
+    pub(super) fn spotlight_row(&mut self, found: &[SharedString], index: usize, look: &Look, to_row: &[Pad], window: &Window) -> Div {
         let k = kit::scale();
         let dpr = window.scale_factor();
         let (off, on) = (look.off, look.on);
         let room = name_room(look.name_w);
-        let view = f32::from(window.viewport_size().width) / k;
+        let view = f32::from(crate::ui::content_size(window).width) / k;
         let theme = look::theme();
         let landscape = theme.tiles.shape == TileShape::Landscape;
         let radius = look::tile_radius();
@@ -167,6 +171,14 @@ impl CollectionView {
                         }
                     });
                     let title = g.map_or(String::new(), |g| g.title.clone());
+                    let categories = self.console_categories(key).and_then(|(style, list)| {
+                        crate::collection::category_badges::overlay(
+                            style,
+                            &list,
+                            super::super::super::tile::category_area(p.w, k, dpr),
+                            false,
+                        )
+                    });
                     // The picture carries its own corners: a clip is square.
                     div()
                         .relative()
@@ -191,6 +203,7 @@ impl CollectionView {
                                 .child(div().line_clamp(4).child(title))
                                 .into_any_element(),
                         })
+                        .children(categories)
                         .when_some(running.filter(|_| theme.tiles.badges != Badges::Off), |d, b| {
                             d.child(div().absolute().top(u(6.)).left(u(6.)).child(kit::badge(b, theme::console_btn_a())))
                         })
@@ -206,7 +219,11 @@ impl CollectionView {
                 names.push(name_label(name, width, clip, p, d, off, look));
             }
             let ring = near * look.ring;
+            let mut pads = to_row.to_vec();
+            pads.extend(pointer::along(index, i, Pad::Left, Pad::Right));
+            let pads = if to_row.is_empty() { pointer::focus_or_activate(pads) } else { pads };
             let tile = div()
+                .on_pads(pads)
                 .absolute()
                 .left(u(x))
                 .top(u(PAD))

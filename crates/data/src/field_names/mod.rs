@@ -37,9 +37,12 @@ pub enum Field {
     Theme,
     Feature,
     Platform,
+    /// Steam store tags: not in `metadata.json` (they come from their own
+    /// cache), so a rule only changes them at load.
+    Tag,
 }
 
-pub const FIELDS: [Field; 6] = [Field::Genre, Field::Company, Field::Series, Field::Theme, Field::Feature, Field::Platform];
+pub const FIELDS: [Field; 7] = [Field::Genre, Field::Company, Field::Series, Field::Theme, Field::Feature, Field::Platform, Field::Tag];
 
 impl Field {
     /// Key in `names.json`.
@@ -51,6 +54,7 @@ impl Field {
             Self::Theme => "themes",
             Self::Feature => "features",
             Self::Platform => "platforms",
+            Self::Tag => "tags",
         }
     }
 
@@ -67,6 +71,7 @@ impl Field {
             Self::Theme => &[FacetKind::Theme],
             Self::Feature => &[FacetKind::Feature],
             Self::Platform => &[FacetKind::Platform],
+            Self::Tag => &[FacetKind::Tag],
         }
     }
 }
@@ -207,6 +212,7 @@ fn rewrite_metadata(md: &mut CollectionGameMetadata, field: Field, map: &dyn Fn(
         Field::Theme => rewrite(&mut md.themes, map),
         Field::Feature => rewrite(&mut md.features, map),
         Field::Platform => rewrite(&mut md.platforms, map),
+        Field::Tag => false,
         Field::Series => {
             let mut list: Vec<String> = md.series.iter().cloned().collect();
             let changed = rewrite(&mut list, map);

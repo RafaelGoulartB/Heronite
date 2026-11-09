@@ -147,6 +147,12 @@ impl CollectionView {
             .flex_col()
             .gap(px(12.))
             .child(mode)
+            .child(
+                option_row(tr!("Group copies of a game"), toggle("group-copies-sw", self.ui.group_copies, false))
+                    .id("group-copies")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.set_group_copies(!this.ui.group_copies, cx))),
+            )
             .child(separator())
             .child(
                 div()
@@ -436,6 +442,19 @@ impl CollectionView {
                     .cursor_pointer()
                     .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.cover_badges = !a.cover_badges, cx))),
             )
+            .child(
+                option_row(tr!("Store icon"), toggle("cover-stores-sw", a.cover_stores, false))
+                    .id("cover-stores")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.cover_stores = !a.cover_stores, cx))),
+            )
+            // The style is picked in Settings → Appearance (it shows them all).
+            .child(
+                option_row(tr!("Categories on covers"), toggle("cover-categories-sw", a.cover_categories, false))
+                    .id("cover-categories")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| this.set_look(|a| a.cover_categories = !a.cover_categories, cx))),
+            )
     }
 
     /// The picture behind the Collection: on or off, which one, how much
@@ -715,7 +734,9 @@ impl CollectionView {
             && a.cover_corners == d.cover_corners
             && a.density == d.density
             && a.cover_hover == d.cover_hover
-            && a.cover_badges == d.cover_badges;
+            && a.cover_badges == d.cover_badges
+            && a.cover_categories == d.cover_categories
+            && a.cover_stores == d.cover_stores;
         let bg = BackgroundSettings::default();
         let near = |v: f32, d: f64| (v - d as f32).abs() < 0.5;
         let background = self.stage_enabled == bg.enabled
@@ -734,7 +755,7 @@ impl CollectionView {
                 && self.ui.focus_cover_size == FocusCoverSize::default()
                 && Section::ALL.iter().all(|s| a.sections.shown(*s))
         };
-        covers && background && panels && mode
+        covers && background && panels && mode && self.ui.group_copies
     }
 
     /// "Reset to defaults": the current mode's options, the covers' look,
@@ -753,7 +774,9 @@ impl CollectionView {
             self.ui.focus_list = false;
             self.ui.focus_cover_size = FocusCoverSize::default();
         }
+        self.ui.group_copies = true;
         self.save_ui();
+        self.refresh_groups();
         let bg = BackgroundSettings::default();
         self.stage_enabled = bg.enabled;
         self.blur_px = bg.blur.get() as f32;
@@ -765,6 +788,8 @@ impl CollectionView {
             |a| {
                 let d = Appearance::DEFAULT;
                 (a.cover_corners, a.density, a.cover_hover, a.cover_badges) = (d.cover_corners, d.density, d.cover_hover, d.cover_badges);
+                a.cover_categories = d.cover_categories;
+                a.cover_stores = d.cover_stores;
                 (a.background, a.collection_opacity) = (d.background, d.collection_opacity);
                 (a.interface_mode, a.interface_opacity, a.interface_blur) = (d.interface_mode, d.interface_opacity, d.interface_blur);
                 if !grid {
@@ -778,6 +803,14 @@ impl CollectionView {
             cx,
         );
         self.relayout_cards(cx);
+    }
+
+    /// "Group copies of a game": one card per game, or one per copy.
+    pub(super) fn set_group_copies(&mut self, on: bool, cx: &mut Context<Self>) {
+        self.ui.group_copies = on;
+        self.save_ui();
+        self.refresh_groups();
+        cx.notify();
     }
 
     fn set_open_on_select(&mut self, on: bool, cx: &mut Context<Self>) {
@@ -805,7 +838,7 @@ impl CollectionView {
 
     /// Changes Settings → Appearance at once and saves it off the UI thread,
     /// like the Appearance page.
-    fn set_look(&mut self, edit: impl FnOnce(&mut Appearance), cx: &mut Context<Self>) {
+    pub(super) fn set_look(&mut self, edit: impl FnOnce(&mut Appearance), cx: &mut Context<Self>) {
         self.apply_look(edit, true, cx);
     }
 
@@ -814,6 +847,8 @@ impl CollectionView {
         let mut look = theme::appearance();
         edit(&mut look);
         theme::set_appearance(look);
+        // Achievements may have been switched: running games' live checks follow.
+        crate::services::achievements::get(cx).update(cx, |s, cx| s.sync_live(cx));
         if save {
             let look = theme::appearance();
             let app = self.app_paths.clone();

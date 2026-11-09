@@ -352,6 +352,14 @@ pub(super) static OPTS: &[Opt] = &[
         theme.layouts.dashboard.shortcuts
     ),
     sel!("startup.open_in", Startup, n_!("Open the app"), "", &[], OpenIn, open_in_name, open_in),
+    tgl!(
+        "startup.fullscreen",
+        Startup,
+        n_!("Open console mode in fullscreen"),
+        n_!("Leaving console mode exits fullscreen. F11 switches it anytime."),
+        &[],
+        fullscreen
+    ),
     sel!("startup.auto_console", Startup, n_!("When a controller connects"), "", &[], AutoConsole, auto_console_name, auto_console),
     sel!("startup.idle", Startup, n_!("After 5 minutes without input"), "", &[], Idle, idle_name, idle),
 ];

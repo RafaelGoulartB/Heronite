@@ -1,0 +1,238 @@
+{
+ "response": {
+  "store_items": [
+   {
+    "item_type": 0,
+    "id": 620,
+    "success": 1,
+    "visible": true,
+    "name": "Portal 2",
+    "appid": 620,
+    "tagids": [
+     4182,
+     1625,
+     1664,
+     3839,
+     5923,
+     1742,
+     5537,
+     4136,
+     7208,
+     5395,
+     1685,
+     4106,
+     19,
+     1663,
+     3968,
+     3942,
+     8122,
+     5794,
+     1719,
+     4166
+    ],
+    "tags": [
+     {
+      "tagid": 4182,
+      "weight": 604
+     },
+     {
+      "tagid": 1625,
+      "weight": 588
+     },
+     {
+      "tagid": 1664,
+      "weight": 586
+     },
+     {
+      "tagid": 3839,
+      "weight": 560
+     },
+     {
+      "tagid": 5923,
+      "weight": 557
+     },
+     {
+      "tagid": 1742,
+      "weight": 555
+     },
+     {
+      "tagid": 5537,
+      "weight": 549
+     },
+     {
+      "tagid": 4136,
+      "weight": 542
+     },
+     {
+      "tagid": 7208,
+      "weight": 538
+     },
+     {
+      "tagid": 5395,
+      "weight": 531
+     },
+     {
+      "tagid": 1685,
+      "weight": 518
+     },
+     {
+      "tagid": 4106,
+      "weight": 517
+     },
+     {
+      "tagid": 19,
+      "weight": 512
+     },
+     {
+      "tagid": 1663,
+      "weight": 512
+     },
+     {
+      "tagid": 3968,
+      "weight": 403
+     },
+     {
+      "tagid": 3942,
+      "weight": 391
+     },
+     {
+      "tagid": 8122,
+      "weight": 386
+     },
+     {
+      "tagid": 5794,
+      "weight": 382
+     },
+     {
+      "tagid": 1719,
+      "weight": 381
+     },
+     {
+      "tagid": 4166,
+      "weight": 378
+     }
+    ]
+   },
+   {
+    "item_type": 0,
+    "id": 1145360,
+    "success": 1,
+    "visible": true,
+    "name": "Hades",
+    "appid": 1145360,
+    "tagids": [
+     42804,
+     3959,
+     1646,
+     492,
+     16094,
+     19,
+     1716,
+     4182,
+     1756,
+     1742,
+     1720,
+     122,
+     4711,
+     5851,
+     4026,
+     6815,
+     4231,
+     4166,
+     44868,
+     1759
+    ],
+    "tags": [
+     {
+      "tagid": 42804,
+      "weight": 1051
+     },
+     {
+      "tagid": 3959,
+      "weight": 765
+     },
+     {
+      "tagid": 1646,
+      "weight": 750
+     },
+     {
+      "tagid": 492,
+      "weight": 733
+     },
+     {
+      "tagid": 16094,
+      "weight": 732
+     },
+     {
+      "tagid": 19,
+      "weight": 636
+     },
+     {
+      "tagid": 1716,
+      "weight": 620
+     },
+     {
+      "tagid": 4182,
+      "weight": 578
+     },
+     {
+      "tagid": 1756,
+      "weight": 556
+     },
+     {
+      "tagid": 1742,
+      "weight": 545
+     },
+     {
+      "tagid": 1720,
+      "weight": 508
+     },
+     {
+      "tagid": 122,
+      "weight": 500
+     },
+     {
+      "tagid": 4711,
+      "weight": 462
+     },
+     {
+      "tagid": 5851,
+      "weight": 362
+     },
+     {
+      "tagid": 4026,
+      "weight": 328
+     },
+     {
+      "tagid": 6815,
+      "weight": 240
+     },
+     {
+      "tagid": 4231,
+      "weight": 234
+     },
+     {
+      "tagid": 4166,
+      "weight": 231
+     },
+     {
+      "tagid": 44868,
+      "weight": 81
+     },
+     {
+      "tagid": 1759,
+      "weight": 80
+     }
+    ]
+   },
+   {
+    "item_type": 0,
+    "id": 999999999,
+    "success": 15,
+    "visible": false,
+    "name": "",
+    "appid": 0
+   }
+  ]
+ }
+}

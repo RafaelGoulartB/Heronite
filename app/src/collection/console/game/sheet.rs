@@ -12,6 +12,7 @@ use super::super::hero::HeroSize;
 use crate::console::kit::{self, u};
 use crate::console::list::{ListNav, Outcome, Row};
 use crate::console::motion;
+use crate::console::pointer::Clickable;
 use crate::console::{hint, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -60,10 +61,14 @@ pub(super) fn side_sheet(id: &'static str, body: impl IntoElement) -> AnyElement
         .border_l_1()
         .border_color(kit::ink(0.08))
         .shadow(kit::shadow(0.5, 0., 40.))
+        .eats_clicks()
         .child(body);
+    // A click on the dim goes back.
     div()
         .absolute()
         .inset_0()
+        .occlude()
+        .on_pads([Pad::B])
         .child(motion::fade_in("console-sheet-dim", div().absolute().inset_0().bg(kit::dim(0.4)), 180))
         .child(motion::enter(id, panel, 280, 40., 0.))
         .into_any_element()
@@ -84,11 +89,15 @@ fn floating_sheet(id: &'static str, body: impl IntoElement) -> AnyElement {
         .border_1()
         .border_color(kit::ink(0.1))
         .shadow(kit::shadow(0.55, 18., 56.))
+        .eats_clicks()
         .child(body);
     let place = div().absolute().top(u(MARGIN)).bottom(u(MARGIN)).left(u(MARGIN)).w(u(WIDTH));
+    // A click on the dim goes back.
     div()
         .absolute()
         .inset_0()
+        .occlude()
+        .on_pads([Pad::B])
         .child(motion::fade_in("console-sheet-dim", div().absolute().inset_0().bg(kit::dim(0.45)), 220))
         .child(place.child(motion::enter(id, panel, 340, -(WIDTH * 0.4), 0.)))
         .into_any_element()

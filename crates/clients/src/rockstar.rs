@@ -2,12 +2,11 @@
 //! from the Social Club profiles.
 
 use std::collections::HashSet;
-use std::path::Path;
 
-use crate::files::{last_part, machine_keys, subfolders, unix_path, UNINSTALL};
+use crate::files::{last_part, subfolders, UNINSTALL};
 use crate::reg::RegKey;
 use crate::winpath::join_ci;
-use crate::{user_dirs, Account, ClientGame};
+use crate::{Account, ClientGame, Place};
 
 /// Where the games the launcher knows keep their folder, in the 32-bit view
 /// and in the native one.
@@ -39,10 +38,10 @@ struct Found {
     windows_path: String,
 }
 
-/// The games the Rockstar Games Launcher has installed in `prefix`.
-pub fn games(prefix: &Path) -> Vec<ClientGame> {
+/// The games the Rockstar Games Launcher has installed in `place`.
+pub fn games(place: &Place) -> Vec<ClientGame> {
     let under: Vec<&str> = GAMES.iter().chain(&UNINSTALL).copied().collect();
-    let keys = machine_keys(prefix, &under);
+    let keys = place.machine_keys(&under);
     // The launcher's own record of each game first: it has the title id.
     let found = from_uninstall(&keys).into_iter().chain(from_game_keys(&keys));
     let mut folders = HashSet::new();
@@ -50,7 +49,7 @@ pub fn games(prefix: &Path) -> Vec<ClientGame> {
     found
         .filter(|f| folders.insert(windows_key(&f.windows_path)) && ids.insert(f.id.to_lowercase()))
         .filter_map(|f| {
-            let folder = unix_path(prefix, &f.windows_path);
+            let folder = place.local_path(&f.windows_path);
             // A key the game's uninstaller left behind.
             if folder.as_ref().is_some_and(|d| !d.is_dir()) {
                 return None;
@@ -123,10 +122,10 @@ fn from_game_keys(keys: &[RegKey]) -> Vec<Found> {
 }
 
 /// Whether the Rockstar Games Launcher is signed in.
-pub fn account(prefix: &Path) -> Account {
+pub fn account(place: &Place) -> Account {
     let mut out = Account::Unknown;
-    for user in user_dirs(prefix) {
-        let club = join_ci(&user, SOCIAL_CLUB);
+    for user in place.users() {
+        let club = user.path(SOCIAL_CLUB);
         if !club.is_dir() {
             continue;
         }
@@ -203,7 +202,7 @@ mod tests {
                 "Games/Casino Night",
             ],
         );
-        let games = games(dir.path());
+        let games = games(&dir.path().into());
         let got: Vec<_> = games.iter().map(|g| (g.id.as_str(), g.title.as_str(), g.launch.as_str())).collect();
         assert_eq!(
             got,
@@ -256,9 +255,9 @@ mod tests {
 
     #[test]
     fn a_social_club_profile_means_signed_in() {
-        assert_eq!(account(prefix_with_profiles(true, true).path()), Account::SignedIn(None));
-        assert_eq!(account(prefix_with_profiles(true, false).path()), Account::SignedOut);
-        assert_eq!(account(prefix_with_profiles(false, false).path()), Account::Unknown);
-        assert_eq!(account(tempfile::tempdir().unwrap().path()), Account::Unknown);
+        assert_eq!(account(&prefix_with_profiles(true, true).path().into()), Account::SignedIn(None));
+        assert_eq!(account(&prefix_with_profiles(true, false).path().into()), Account::SignedOut);
+        assert_eq!(account(&prefix_with_profiles(false, false).path().into()), Account::Unknown);
+        assert_eq!(account(&tempfile::tempdir().unwrap().path().into()), Account::Unknown);
     }
 }

@@ -673,6 +673,9 @@ pub struct ConsolePrefs {
     pub based_on: String,
     pub auto_console: AutoConsole,
     pub open_in: OpenIn,
+    /// Console mode fills the screen: entering it goes fullscreen and leaving
+    /// it switches back (F11 still toggles).
+    pub fullscreen: bool,
     pub idle: Idle,
     /// The tab shown last (`nav.startOn: last`).
     pub last_tab: usize,
@@ -687,6 +690,7 @@ impl Default for ConsolePrefs {
             based_on: presets::DEFAULT.into(),
             auto_console: AutoConsole::Off,
             open_in: OpenIn::Last,
+            fullscreen: true,
             idle: Idle::Off,
             last_tab: 0,
             extra: Map::new(),

@@ -107,6 +107,22 @@ pub fn row(label: impl Into<SharedString>, description: Option<&str>, control: i
     row_with(label.into(), description, None, control)
 }
 
+/// A [`row`] with `lead` (an [`icon_badge`]) before its label.
+pub fn row_lead(lead: impl IntoElement, label: impl Into<SharedString>, description: Option<&str>, control: impl IntoElement) -> Div {
+    let r = row_with(label.into(), description, None, control);
+    // The badge goes first; the label column keeps growing.
+    div().flex().items_center().gap(px(12.)).child(div().flex_none().child(lead)).child(r.flex_1().min_w_0())
+}
+
+/// The badge of a section's main switch: its icon on an accent tile (36px).
+pub fn icon_badge(ic: Icon) -> Div {
+    div().flex_none().size(px(36.)).rounded(px(11.)).bg(theme::accent_tint()).flex().items_center().justify_center().child(icon(
+        ic,
+        px(19.),
+        theme::accent(),
+    ))
+}
+
 fn row_with(label: SharedString, description: Option<&str>, after_label: Option<AnyElement>, control: impl IntoElement) -> Div {
     div()
         .relative()
@@ -243,7 +259,10 @@ pub fn kicker(text: impl Into<SharedString>) -> Div {
 /// Keyboard hint chip (`Ctrl K`): 11px mono, radius 5.
 pub fn kbd(text: impl Into<SharedString>) -> Div {
     div()
+        .flex()
         .flex_none()
+        .items_center()
+        .justify_center()
         .px(px(6.))
         .py(px(1.))
         .rounded(px(5.))
@@ -252,6 +271,8 @@ pub fn kbd(text: impl Into<SharedString>) -> Div {
         .border_color(theme::ink_a(0.12))
         .font_family(theme::FONT_MONO)
         .text_size(px(11.))
+        // Fixed, so the chip is the same height wherever it sits.
+        .line_height(px(16.))
         .text_color(theme::text_muted())
         .child(text.into())
 }

@@ -123,7 +123,8 @@ static TABLE: &[D] = &[
         id: "dolphin",
         name: "Dolphin",
         website: Some("https://dolphin-emu.org/"),
-        binaries: &["dolphin-emu", "dolphin"],
+        // Not `dolphin`: on Linux that is KDE's file manager.
+        binaries: &["dolphin-emu"],
         win_binaries: &["Dolphin.exe"],
         win_folders: &["Dolphin", "Dolphin-x64", "Dolphin Emulator"],
         core_dir_hints: None,
@@ -309,6 +310,63 @@ static TABLE: &[D] = &[
         profiles: &[p("3ds", "Nintendo 3DS", "nintendo_3ds", "Nintendo 3DS", &["3ds", "3dsx", "cci", "cxi", "app", "cia"]).cart()],
     },
     D {
+        id: "mupen64plus",
+        name: "Mupen64Plus",
+        website: Some("https://mupen64plus.org/"),
+        binaries: &["mupen64plus"],
+        win_binaries: &["mupen64plus.exe", "mupen64plus-ui-console.exe"],
+        win_folders: &["Mupen64Plus"],
+        core_dir_hints: None,
+        profiles: &[p("n64", "Nintendo 64", "nintendo_64", "Nintendo 64", &["n64", "v64", "z64"])],
+    },
+    D {
+        id: "m64py",
+        name: "M64Py",
+        website: Some("https://m64py.sourceforge.net/"),
+        binaries: &["m64py"],
+        win_binaries: &["m64py.exe"],
+        win_folders: &["M64Py"],
+        core_dir_hints: None,
+        profiles: &[p("n64", "Nintendo 64", "nintendo_64", "Nintendo 64", &["n64", "v64", "z64"]).cart()],
+    },
+    D {
+        id: "gopher64",
+        name: "gopher64",
+        website: Some("https://github.com/gopher64/gopher64"),
+        binaries: &["gopher64", "gopher64-linux-x86_64"],
+        win_binaries: &["gopher64-windows-x86_64.exe", "gopher64.exe"],
+        win_folders: &["gopher64"],
+        core_dir_hints: None,
+        profiles: &[p("n64", "Nintendo 64", "nintendo_64", "Nintendo 64", &["n64", "v64", "z64"]).cart()],
+    },
+    D {
+        id: "epsxe",
+        name: "ePSXe",
+        website: Some("https://www.epsxe.com/"),
+        // The Linux builds (2.0.5 is the last): 64-bit and 32-bit.
+        binaries: &["epsxe_x64", "ePSXe", "epsxe"],
+        win_binaries: &["ePSXe.exe"],
+        win_folders: &["ePSXe"],
+        core_dir_hints: None,
+        profiles: &[p(
+            "ps1",
+            "PlayStation",
+            "sony_playstation",
+            "PlayStation",
+            &["cue", "bin", "iso", "img", "ccd", "mdf", "nrg", "pbp", "ecm"],
+        )],
+    },
+    D {
+        id: "desmume",
+        name: "DeSmuME",
+        website: Some("https://desmume.org/"),
+        binaries: &["desmume", "desmume-cli"],
+        win_binaries: &["DeSmuME_0.9.13_x64.exe"],
+        win_folders: &["DeSmuME"],
+        core_dir_hints: None,
+        profiles: &[p("nds", "Nintendo DS", "nintendo_ds", "Nintendo DS", &["nds", "srl", "zip"])],
+    },
+    D {
         id: "retroarch",
         name: "RetroArch",
         website: Some("https://www.retroarch.com/"),
@@ -448,6 +506,12 @@ pub fn guess_definition_id(name: Option<&str>) -> String {
         ("shadps4", "shadps4"),
         ("azahar", "azahar"),
         ("citra", "azahar"),
+        // M64Py before Mupen64Plus: "M64Py (Mupen64Plus)" is the frontend.
+        ("m64py", "m64py"),
+        ("mupen64plus", "mupen64plus"),
+        ("gopher64", "gopher64"),
+        ("epsxe", "epsxe"),
+        ("desmume", "desmume"),
     ];
     for (needle, id) in ALIASES {
         if normalized.contains(needle) {
@@ -476,6 +540,31 @@ mod tests {
     }
 
     #[test]
+    fn the_new_emulators_build_their_launch_commands() {
+        let rom = heronite_launch::emulators::vars_for_rom("/roms/Super Mario 64 (USA).z64", None, None, "Super Mario 64");
+        let argv =
+            |id: &str, profile: &str| heronite_launch::emulators::expand_argv(&definition_profile(id, profile).unwrap().arguments, &rom);
+        let rom_path = "/roms/Super Mario 64 (USA).z64";
+        assert_eq!(argv("mupen64plus", "n64"), ["--fullscreen", "--nosaveoptions", rom_path]);
+        assert_eq!(argv("m64py", "n64"), [rom_path]);
+        assert_eq!(argv("gopher64", "n64"), ["--fullscreen", rom_path]);
+        assert_eq!(argv("epsxe", "ps1"), ["-nogui", "-loadiso", rom_path]);
+        assert_eq!(argv("desmume", "nds"), [rom_path]);
+        // What each loads.
+        let ext = |id: &str, profile: &str| definition_profile(id, profile).unwrap().extensions.clone();
+        assert_eq!(ext("mupen64plus", "n64"), ["n64", "v64", "z64"]);
+        assert_eq!(ext("gopher64", "n64"), ["n64", "v64", "z64", "zip", "7z"]);
+        assert!(ext("epsxe", "ps1").contains(&"cue".to_string()) && !ext("epsxe", "ps1").contains(&"chd".to_string()));
+        assert_eq!(ext("desmume", "nds"), ["nds", "srl", "zip"]);
+        // Windows names.
+        for (id, exe) in
+            [("epsxe", "ePSXe.exe"), ("desmume", "DeSmuME_0.9.13_x64.exe"), ("m64py", "m64py.exe"), ("mupen64plus", "mupen64plus.exe")]
+        {
+            assert!(TABLE.iter().find(|d| d.id == id).unwrap().win_binaries.contains(&exe), "{id}");
+        }
+    }
+
+    #[test]
     fn every_profile_exists_in_the_launch_catalog() {
         for d in emulator_definitions() {
             let l = launch_catalog::emulator_definition(&d.id).unwrap_or_else(|| panic!("{} missing in launch catalog", d.id));
@@ -483,7 +572,7 @@ mod tests {
                 assert!(l.profiles.iter().any(|lp| lp.id == pr.id), "{}:{} missing in launch catalog", d.id, pr.id);
             }
         }
-        assert_eq!(emulator_definitions().len(), 18);
+        assert_eq!(emulator_definitions().len(), 23);
     }
 
     #[test]
@@ -491,6 +580,11 @@ mod tests {
         assert_eq!(guess_definition_id(Some("PCSX2 (AppImage)")), "pcsx2");
         assert_eq!(guess_definition_id(Some("Citra Nightly")), "azahar");
         assert_eq!(guess_definition_id(Some("org.libretro.RetroArch")), "retroarch");
+        assert_eq!(guess_definition_id(Some("M64Py (Mupen64Plus)")), "m64py");
+        assert_eq!(guess_definition_id(Some("Mupen64Plus 2.6")), "mupen64plus");
+        assert_eq!(guess_definition_id(Some("Gopher64")), "gopher64");
+        assert_eq!(guess_definition_id(Some("ePSXe (Wine)")), "epsxe");
+        assert_eq!(guess_definition_id(Some("DeSmuME 0.9.13")), "desmume");
         assert_eq!(guess_definition_id(Some("whatever")), "custom");
         assert_eq!(guess_definition_id(None), "custom");
     }

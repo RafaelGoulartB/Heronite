@@ -85,7 +85,7 @@ impl CollectionView {
         let grid_mode = Mode::new("view-grid", Icon::GridView, tr!("Grid"), window);
         // The menu lines up with the right edge of the active mode.
         let menu_right = if grid { TRACK_PAD } else { TRACK_PAD + grid_mode.base + SEG_GAP };
-        let max_h = (f32::from(window.viewport_size().height) - SEG_H - 2. * TRACK_PAD - 24.).max(160.);
+        let max_h = (f32::from(crate::ui::content_size(window).height) - SEG_H - 2. * TRACK_PAD - 24.).max(160.);
         let menu = open.then(|| self.view_options(max_h, window, cx));
 
         let on_focus = cx.listener(|this, _: &ClickEvent, _, cx| this.pick_view_mode(false, cx));

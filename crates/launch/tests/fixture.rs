@@ -229,7 +229,8 @@ fn recording_into_a_copy_of_real_data_keeps_everything_else() {
     let start = chrono::Utc::now() - chrono::Duration::minutes(75);
     let end = start + chrono::Duration::minutes(75) - chrono::Duration::milliseconds(1);
     // steam_400 (Portal) has history in the fixture.
-    let rec = PlayRecord { app_name: "steam_400".into(), title: "Portal".into(), started_at: start, ended_at: end };
+    let rec =
+        PlayRecord { app_name: "steam_400".into(), title: "Portal".into(), runner: "sideload".into(), started_at: start, ended_at: end };
     let out = record_play(&paths, &rec, 5).unwrap();
     assert!(out.session_recorded);
 

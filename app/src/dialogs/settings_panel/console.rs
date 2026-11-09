@@ -928,7 +928,9 @@ impl SettingsPanel {
     pub fn render_console(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let rows: Vec<Row> = self.console_items(cx).into_iter().map(|i| i.row).collect();
         let active = !self.console_layer.is_open() && self.console_active;
-        let list = self.console_list.render(SharedString::from(format!("console-hs-{:?}", self.section)), &rows, active);
+        // Beside the host's own rows (Settings' sections), → gives them the focus.
+        let entry = (!self.console_layer.is_open()).then_some(&[crate::console::Pad::Right][..]);
+        let list = self.console_list.render_entered(SharedString::from(format!("console-hs-{:?}", self.section)), &rows, active, entry);
         div()
             .flex()
             .flex_col()

@@ -127,7 +127,8 @@ pub fn run(data: &DataPaths, app: &AppPaths, manual: bool) -> Result<Report, Syn
             p.last_sync_at = Some(now.clone());
             p.last_error = None;
             let s = &report.summary;
-            p.last_summary = Some(LastSummary { fields: s.fields, sessions: s.sessions, playtime: s.playtime, waiting: s.waiting });
+            p.last_summary =
+                Some(LastSummary { fields: s.fields, sessions: s.sessions, playtime: s.playtime, waiting: s.waiting, groups: s.groups });
             p.devices.clone_from(&report.devices);
         }
         Err(SyncError::Off | SyncError::Busy) => {}
@@ -166,7 +167,14 @@ fn run_locked(data: &DataPaths, app: &AppPaths, manual: bool) -> Result<Report, 
     ledger::save(data, &outcome.ledger).map_err(data_error)?;
     place.push(app, &outcome.own)?;
     let s = &outcome.summary;
-    log::info!("sync: {} fields, {} sessions, {} play times from {} other PCs", s.fields, s.sessions, s.playtime, remotes.len());
+    log::info!(
+        "sync: {} fields, {} sessions, {} play times, {} smart groups from {} other PCs",
+        s.fields,
+        s.sessions,
+        s.playtime,
+        s.groups,
+        remotes.len()
+    );
     let devices = remotes
         .iter()
         .filter(|r| r.device.id != me.id)
@@ -198,6 +206,7 @@ fn keep_copies(data: &DataPaths) {
         data.status_history(),
         data.timestamps(),
         data.store_config(),
+        data.smart_groups(),
     ];
     for file in files {
         let (Some(name), Some(parent)) = (file.file_name(), file.parent().and_then(|p| p.file_name())) else { continue };

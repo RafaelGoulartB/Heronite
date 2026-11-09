@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::status::{set_game_status, SetStatusExtras};
+use heronite_data::status::SetStatusExtras;
 use heronite_data::{CollectionGame, Library};
 
 use super::game_actions::{GameAction, GameActionItem};
@@ -41,9 +41,9 @@ pub(super) enum Flyout {
 }
 
 /// Groups of a game's context menu, in order: play, organize (status,
-/// categories, favourite, hidden), the game, its installation, shortcuts,
+/// categories, favourite, hidden), the game, its installation, ReShade, shortcuts,
 /// removing it, the log, then "Select multiple".
-const GROUPS: usize = 8;
+const GROUPS: usize = 9;
 
 /// The store's install actions (verify, modify, move...): one "Manage
 /// installation" row with a flyout.
@@ -80,7 +80,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
     use GameAction as A;
     match action {
         A::Primary | A::PlayWith(_) | A::User(_) | A::OpenClient | A::EditActions | A::InstallWay(_) => (0, 0),
-        A::SteamPlay => (0, 1),
+        A::SteamPlay | A::PlayCopy(_) => (0, 1),
         A::SteamInstall => (0, 2),
         A::Epic(E::Update) => (0, 3),
         A::Epic(E::ShowInDownloads) => (0, 4),
@@ -89,6 +89,7 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Status(_) | A::Category { .. } => (1, 0),
         A::Favourite => (1, 1),
         A::Hide => (1, 2),
+        A::UngroupCopies => (1, 3),
 
         A::Settings => (2, 0),
         A::EditGame => (2, 1),
@@ -101,15 +102,17 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Epic(E::Relocate) => (3, 3),
         A::Epic(E::Eos) => (3, 4),
         A::Epic(E::Forget) => (3, 5),
-        A::Shortcuts { .. } => (4, 0),
-        A::Steam { .. } => (4, 1),
-        A::RemoveRecent => (4, 2),
-        A::Epic(E::Uninstall) => (5, 0),
-        A::SteamUninstall => (5, 1),
-        A::LocalUninstall => (5, 2),
-        A::RemoveFromCollection => (5, 3),
-        A::Log => (6, 0),
-        A::Troubleshoot => (6, 1),
+        // A group of its own, above the shortcuts.
+        A::Reshade => (4, 0),
+        A::Shortcuts { .. } => (5, 0),
+        A::Steam { .. } => (5, 1),
+        A::RemoveRecent => (5, 2),
+        A::Epic(E::Uninstall) => (6, 0),
+        A::SteamUninstall => (6, 1),
+        A::LocalUninstall => (6, 2),
+        A::RemoveFromCollection => (6, 3),
+        A::Log => (7, 0),
+        A::Troubleshoot => (7, 1),
     }
 }
 
@@ -176,15 +179,24 @@ impl CollectionView {
         }
     }
 
+    /// Sets the status of the game under `key` (of every copy while they are grouped).
     pub(super) fn set_status(&mut self, key: &str, status_id: String, cx: &mut Context<Self>) {
-        let Some(lib) = self.lib.clone() else { return };
-        let Some(game) = lib.get(key) else { return };
-        let extras = SetStatusExtras {
-            runner: Some(game.runner.clone()),
-            title: Some(game.title.clone()),
-            playnite_id: game.meta.as_ref().map(|m| m.playnite_id.clone()),
-        };
-        if let Err(err) = set_game_status(&self.data_paths, &game.app_name, &status_id, &extras) {
+        let games = self.with_copies(key);
+        if games.is_empty() {
+            return;
+        }
+        let writes: Vec<_> = games
+            .iter()
+            .map(|g| {
+                let extras = SetStatusExtras {
+                    runner: Some(g.runner.clone()),
+                    title: Some(g.title.clone()),
+                    playnite_id: g.meta.as_ref().map(|m| m.playnite_id.clone()),
+                };
+                (g.app_name.clone(), status_id.clone(), extras)
+            })
+            .collect();
+        if let Err(err) = heronite_data::status::set_games_status(&self.data_paths, &writes) {
             self.show_toast(tr!("Could not change status: {err}", err = format!("{err:#}")), true, cx);
         } else {
             self.mark_onboarding(crate::dialogs::onboarding::Step::Statuses);
@@ -195,16 +207,19 @@ impl CollectionView {
     pub(super) fn render_context_menu(&mut self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let state = self.context_menu.as_ref()?;
         let lib = self.lib.clone()?;
-        let game = lib.get(&state.key)?.clone();
-        let key = state.key.clone();
-        let (position, open) = (state.position, state.open);
-        let playing = self.playing.contains_key(&game.app_name);
-        let viewport = window.viewport_size();
-        let flyout_left = f32::from(viewport.width - position.x) < 280. + 240.;
-        if state.batch {
+        lib.get(&state.key)?;
+        let card_key = state.key.clone();
+        let (position, open, batch) = (state.position, state.open, state.batch);
+        let flyout_left = f32::from(crate::ui::content_bounds(window).right() - position.x) < 280. + 240.;
+        if batch {
             let menu = self.batch_menu(open, flyout_left, cx);
             return Some(Self::menu_backdrop(menu, position, cx));
         }
+        // A card of several copies offers the actions of the copy it acts on
+        // (the one its Play starts): that copy's Play, Uninstall, Settings...
+        let game = self.acting_copy(&card_key)?;
+        let key: SharedString = game.key.clone().into();
+        let playing = self.playing.contains_key(&game.app_name);
 
         // Rows by group (see `menu_place`); separators between the groups.
         let mut groups: [Vec<AnyElement>; GROUPS] = Default::default();
@@ -239,7 +254,7 @@ impl CollectionView {
                 groups[group].push(row.into_any_element());
             }
         }
-        groups[GROUPS - 1].push(self.select_row(&key, cx).into_any_element());
+        groups[GROUPS - 1].push(self.select_row(&card_key, cx).into_any_element());
         let mut menu = paper().min_w(px(240.));
         for (i, rows) in groups.into_iter().filter(|g| !g.is_empty()).enumerate() {
             if i > 0 {
@@ -348,6 +363,13 @@ impl CollectionView {
                     .on_hover(fold(None))
                     .on_click(cx.listener(|this, _, window, cx| this.open_batch_edit(window, cx))),
             )
+            .when(n > 1, |d| {
+                d.child(
+                    plain("cm-b-copies", Icon::CallMerge, tr!("Link as copies of one game"))
+                        .on_hover(fold(None))
+                        .on_click(cx.listener(|this, _, _, cx| this.link_selected_copies(cx))),
+                )
+            })
             .child(crate::ui::dropdown::menu_separator())
             .child(
                 plain("cm-b-all", Icon::SelectAll, tr!("Select all"))

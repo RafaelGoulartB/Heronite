@@ -1,6 +1,7 @@
 //! Y on any tab: the Filters panel along the right edge, the search field
 //! on top (focused when it opens), then what the Library grid shows: Show,
-//! Sort, Favourites only, Status and Category. Every change shows at once
+//! Sort, Favourites only, Status, Category and Smart group (the only way to
+//! the smart groups in console mode). Every change shows at once
 //! behind it, in the tab's grid, else the theme's first Grid tab, else (a
 //! theme without one, like Minimal) a grid of the results over the tab that
 //! B closes (`ConsoleUi::results`). A types the search on the on-screen
@@ -16,6 +17,7 @@ use super::super::CollectionView;
 use super::layouts::{self, category_options, status_options, Filters, SHOW};
 use crate::console::kit::{self, u};
 use crate::console::osk::{Osk, OskEvent};
+use crate::console::pointer::{self, Clickable};
 use crate::console::{hint, look, motion, Btn, Hint, Pad};
 use crate::icons::Icon;
 use crate::theme;
@@ -34,6 +36,7 @@ enum Item {
     Favourites,
     Status,
     Category,
+    Group,
 }
 
 /// The panel's focus (index in [`CollectionView::filter_items`]).
@@ -87,6 +90,9 @@ impl CollectionView {
         if category_options(&self.categories).len() > 1 {
             v.push(Item::Category);
         }
+        if !self.smart_groups.is_empty() {
+            v.push(Item::Group);
+        }
         v
     }
 
@@ -114,6 +120,7 @@ impl CollectionView {
         }
         let status_n = self.lib.as_ref().map_or(0, |l| l.statuses.len()) + 1;
         let category_n = category_options(&self.categories).len();
+        let group_n = self.smart_groups.groups.len() + 1;
         let (target, _) = self.filters_target();
         let before = (self.tab_nav(target).grid.filters.clone(), self.console.search.clone());
         if pad == Pad::X {
@@ -133,6 +140,7 @@ impl CollectionView {
             (Pad::Left | Pad::Right | Pad::A, Item::Sort) => turn(&mut f.sort, SORT.len()),
             (Pad::Left | Pad::Right | Pad::A, Item::Status) => turn(&mut f.status, status_n),
             (Pad::Left | Pad::Right | Pad::A, Item::Category) => turn(&mut f.category, category_n),
+            (Pad::Left | Pad::Right | Pad::A, Item::Group) => turn(&mut f.group, group_n),
             (Pad::Left | Pad::Right | Pad::A, Item::Favourites) => f.favourites = !f.favourites,
             _ => return true,
         }
@@ -210,8 +218,19 @@ impl CollectionView {
                 theme::text_muted().into()
             }
         };
+        let items = self.filter_items();
+        // A click on an item: ↑ ↓ to it, then `then`.
+        let at = items.iter().position(|i| *i == focus).unwrap_or(0);
+        let to = |item: Item, then: &[Pad]| -> Vec<Pad> {
+            let Some(j) = items.iter().position(|i| *i == item) else { return Vec::new() };
+            let mut pads = pointer::along(at, j, Pad::Up, Pad::Down);
+            pads.extend_from_slice(then);
+            pads
+        };
         let field =
             kit::row_base(focus == Item::Search)
+                .on_hover_pads(to(Item::Search, &[]))
+                .on_pads(to(Item::Search, &[Pad::A]))
                 .when(focus != Item::Search, |d| d.bg(kit::ink(0.07)))
                 .child(div().relative().child(icon(Icon::FaSearch, u(18.), tint(focus == Item::Search))))
                 .child(
@@ -228,10 +247,11 @@ impl CollectionView {
             None => tr!("Any category").to_string(),
             Some(name) => crate::collection::view_filters::category_label(&name),
         };
-        let items = self.filter_items();
         let row = |item: Item, label: String, ic: Icon, value: AnyElement| {
             let on = focus == item;
             kit::row_base(on)
+                .on_hover_pads(to(item, &[]))
+                .on_pads(to(item, &[Pad::A]))
                 .child(div().relative().child(icon(ic, u(20.), tint(on))))
                 .child(div().relative().flex_1().min_w_0().truncate().text_size(u(17.)).child(label))
                 .child(div().relative().child(value))
@@ -242,9 +262,15 @@ impl CollectionView {
             .gap(u(6.))
             .child(field)
             .child(kit::caption(tr!("Show")))
-            .child(segments(&show, f.show, focus == Item::Show))
+            .child(
+                segments(&show, f.show, focus == Item::Show, |k| to(Item::Show, &pointer::along(f.show, k, Pad::Left, Pad::Right)))
+                    .on_hover_pads(to(Item::Show, &[])),
+            )
             .child(kit::caption(tr!("Sort")))
-            .child(segments(&sort, f.sort, focus == Item::Sort))
+            .child(
+                segments(&sort, f.sort, focus == Item::Sort, |k| to(Item::Sort, &pointer::along(f.sort, k, Pad::Left, Pad::Right)))
+                    .on_hover_pads(to(Item::Sort, &[])),
+            )
             .child(kit::caption(tr!("Only")))
             .child(row(
                 Item::Favourites,
@@ -259,7 +285,16 @@ impl CollectionView {
                 Item::Status,
                 tr!("Status").to_string(),
                 Icon::Flag,
-                kit::choice_sized(value, on, f.status > 0, f.status + 1 < statuses.len(), 120.).into_any_element(),
+                kit::choice_clickable(
+                    value,
+                    on,
+                    f.status > 0,
+                    f.status + 1 < statuses.len(),
+                    120.,
+                    to(Item::Status, &[Pad::Left]),
+                    to(Item::Status, &[Pad::Right]),
+                )
+                .into_any_element(),
             ));
         }
         if items.contains(&Item::Category) {
@@ -268,7 +303,38 @@ impl CollectionView {
                 Item::Category,
                 tr!("Category").to_string(),
                 Icon::Folder,
-                kit::choice_sized(category, on, f.category > 0, f.category + 1 < categories.len(), 120.).into_any_element(),
+                kit::choice_clickable(
+                    category,
+                    on,
+                    f.category > 0,
+                    f.category + 1 < categories.len(),
+                    120.,
+                    to(Item::Category, &[Pad::Left]),
+                    to(Item::Category, &[Pad::Right]),
+                )
+                .into_any_element(),
+            ));
+        }
+        if items.contains(&Item::Group) {
+            let on = focus == Item::Group;
+            let value = match f.group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)) {
+                Some(g) => g.name.clone(),
+                None => tr!("Any group").to_string(),
+            };
+            body = body.child(row(
+                Item::Group,
+                tr!("Smart group").to_string(),
+                Icon::AutoAwesome,
+                kit::choice_clickable(
+                    value,
+                    on,
+                    f.group > 0,
+                    f.group < self.smart_groups.groups.len(),
+                    120.,
+                    to(Item::Group, &[Pad::Left]),
+                    to(Item::Group, &[Pad::Right]),
+                )
+                .into_any_element(),
             ));
         }
         let footer = div()
@@ -297,18 +363,29 @@ impl CollectionView {
             .border_l_1()
             .border_color(kit::ink(0.08))
             .shadow(kit::shadow(0.5, 0., 40.))
+            .eats_clicks()
             .child(div().px(u(8.)).child(kit::title(tr!("Filters"), 30.)))
             .child(body)
             .child(div().flex_1())
             .child(footer);
-        Some(motion::enter("console-filters", panel, 280, 40., 0.))
+        // A click beside the panel closes it.
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .occlude()
+                .on_pads([Pad::B])
+                .child(motion::enter("console-filters", panel, 280, 40., 0.))
+                .into_any_element(),
+        )
     }
 }
 
 /// One choice among a few side by side (Show, Sort), with an optional
 /// count each; the chosen one is lit, with the focus pill while its row has
 /// the focus.
-fn segments(options: &[(SharedString, Option<usize>)], current: usize, focused: bool) -> Div {
+/// `click(i)`: the presses a click on option `i` makes.
+fn segments(options: &[(SharedString, Option<usize>)], current: usize, focused: bool, click: impl Fn(usize) -> Vec<Pad>) -> Div {
     div().flex().gap(u(4.)).p(u(4.)).rounded(u(16.)).bg(kit::ink(0.06)).children(options.iter().enumerate().map(|(i, (label, count))| {
         let on = i == current;
         let lit = on && focused;
@@ -320,6 +397,7 @@ fn segments(options: &[(SharedString, Option<usize>)], current: usize, focused: 
             theme::text_muted().into()
         };
         div()
+            .on_pads(click(i))
             .relative()
             .flex_1()
             .min_w_0()

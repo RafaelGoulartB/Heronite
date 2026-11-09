@@ -165,7 +165,11 @@ pub fn retroarch_core_dirs(env: &dyn DetectEnv, install_dir: Option<&str>) -> Ve
         Some("/usr/lib64/libretro".into()),
         Some("/usr/lib/x86_64-linux-gnu/libretro".into()),
         Some("/usr/share/libretro/cores".into()),
+        // Flatpak RetroArch: the cores it ships (system or `--user` install) and
+        // the ones its updater downloads, in the app's own config.
         Some("/var/lib/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro".into()),
+        Some(join(&home, ".local/share/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro")),
+        Some(join(&home, ".var/app/org.libretro.RetroArch/config/retroarch/cores")),
     ])
 }
 
@@ -511,6 +515,95 @@ mod tests {
         );
     }
 
+    // KDE's file manager is `dolphin` on Linux.
+    #[cfg(unix)]
+    #[test]
+    fn kdes_file_manager_is_not_the_dolphin_emulator() {
+        let mut env = Fake::default();
+        env.bins.insert("dolphin".into(), "/usr/bin/dolphin".into());
+        assert!(detect_emulators(&env, &[]).is_empty());
+
+        // The emulator's own binary and its Flatpak are still found, with the file manager around.
+        env.flatpaks.insert("org.DolphinEmu.dolphin-emu".into());
+        let found = detect_emulators(&env, &[]);
+        assert_eq!((found[0].definition_id.as_str(), found[0].launch_kind.as_str()), ("dolphin", "flatpak"));
+        env.bins.insert("dolphin-emu".into(), "/usr/bin/dolphin-emu".into());
+        let found = detect_emulators(&env, &[]);
+        assert_eq!((found[0].executable.as_str(), found[0].launch_kind.as_str()), ("/usr/bin/dolphin-emu", "native"));
+    }
+
+    #[test]
+    fn the_standalone_n64_ps1_and_ds_emulators_are_detected_by_their_binary() {
+        let mut env = Fake::default();
+        let ids = ["mupen64plus", "m64py", "gopher64", "epsxe", "desmume"];
+        for id in ids {
+            let bin = emulator_definition(id).unwrap().binaries[0].clone();
+            env.bins.insert(bin.clone(), at(&format!("opt/{id}/{bin}")));
+        }
+        let found = detect_emulators(&env, &[]);
+        let got: Vec<(&str, &str, Vec<&str>)> = found
+            .iter()
+            .map(|d| (d.definition_id.as_str(), d.source.as_str(), d.profiles.iter().map(|p| p.id.as_str()).collect()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("mupen64plus", "PATH", vec!["n64"]),
+                ("m64py", "PATH", vec!["n64"]),
+                ("gopher64", "PATH", vec!["n64"]),
+                ("epsxe", "PATH", vec!["ps1"]),
+                ("desmume", "PATH", vec!["nds"]),
+            ]
+        );
+        assert!(found.iter().all(|d| d.launch_kind == "native" && d.flatpak_id.is_none()));
+    }
+
+    // Flatpak is Linux's.
+    #[cfg(unix)]
+    #[test]
+    fn the_flatpaks_of_the_new_emulators_are_detected() {
+        let mut env = Fake::default();
+        for id in ["net.sourceforge.m64py.M64Py", "io.github.gopher64.gopher64", "org.desmume.DeSmuME"] {
+            env.flatpaks.insert(id.into());
+        }
+        let found: Vec<(String, Option<String>)> =
+            detect_emulators(&env, &[]).into_iter().map(|d| (d.definition_id, d.flatpak_id)).collect();
+        let pair = |a: &str, b: &str| (a.to_string(), Some(b.to_string()));
+        assert_eq!(
+            found,
+            [
+                pair("m64py", "net.sourceforge.m64py.M64Py"),
+                pair("gopher64", "io.github.gopher64.gopher64"),
+                pair("desmume", "org.desmume.DeSmuME"),
+            ]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_new_emulators_are_found_in_their_windows_folders() {
+        let mut env = Fake::default();
+        env.vars.insert("ProgramFiles".into(), r"C:\Program Files".into());
+        env.vars.insert("SCOOP".into(), r"D:\Scoop".into());
+        env.files.insert(r"C:\Program Files\ePSXe\ePSXe.exe".into());
+        env.files.insert(r"C:\Program Files\DeSmuME\DeSmuME_0.9.13_x64.exe".into());
+        env.files.insert(r"C:\Program Files\Mupen64Plus\mupen64plus.exe".into());
+        env.files.insert(r"C:\Program Files\M64Py\m64py.exe".into());
+        env.files.insert(r"D:\Scoop\apps\gopher64\current\gopher64-windows-x86_64.exe".into());
+        let found: Vec<(String, String)> = detect_emulators(&env, &[]).into_iter().map(|d| (d.definition_id, d.executable)).collect();
+        let pair = |a: &str, b: &str| (a.to_string(), b.to_string());
+        assert_eq!(
+            found,
+            [
+                pair("mupen64plus", r"C:\Program Files\Mupen64Plus\mupen64plus.exe"),
+                pair("m64py", r"C:\Program Files\M64Py\m64py.exe"),
+                pair("gopher64", r"D:\Scoop\apps\gopher64\current\gopher64-windows-x86_64.exe"),
+                pair("epsxe", r"C:\Program Files\ePSXe\ePSXe.exe"),
+                pair("desmume", r"C:\Program Files\DeSmuME\DeSmuME_0.9.13_x64.exe"),
+            ]
+        );
+    }
+
     #[test]
     fn new_emulator_profiles_follow_the_cores_found() {
         let mut env = Fake::default();
@@ -537,6 +630,27 @@ mod tests {
         let found = detect_emulators(&env, &[]);
         assert_eq!(found[0].profiles[0].id, "nes");
         assert_eq!((found[0].launch_kind.as_str(), found[0].source.as_str()), ("native", "PATH"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn flatpak_retroarch_cores_of_a_user_install_and_the_updater_are_found() {
+        let shipped = "/home/u/.local/share/flatpak/app/org.libretro.RetroArch/current/active/files/lib/libretro";
+        let updated = "/home/u/.var/app/org.libretro.RetroArch/config/retroarch/cores";
+        let dirs = retroarch_core_dirs(&Fake::default(), None);
+        assert!(dirs.iter().any(|d| d == shipped) && dirs.iter().any(|d| d == updated), "{dirs:?}");
+
+        for dir in [shipped, updated] {
+            let mut env = Fake::default();
+            env.flatpaks.insert("org.libretro.RetroArch".into());
+            assert!(detect_emulators(&env, &[]).is_empty(), "no core, no RetroArch");
+            let file = format!("{dir}/{}", core("nestopia"));
+            env.files.insert(file.clone());
+            let found = detect_emulators(&env, &[]);
+            assert_eq!(found.len(), 1, "{dir}");
+            assert_eq!((found[0].definition_id.as_str(), found[0].launch_kind.as_str()), ("retroarch", "flatpak"));
+            assert_eq!(found[0].profiles[0].core_path.as_deref(), Some(file.as_str()));
+        }
     }
 
     #[test]

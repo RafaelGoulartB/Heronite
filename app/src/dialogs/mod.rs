@@ -15,6 +15,7 @@ pub mod add_game;
 pub mod art_images;
 pub mod batch_edit;
 pub mod client_settings;
+pub mod detail_rows;
 pub mod emulator_confirm;
 pub mod emulator_detect;
 pub mod emulator_edit;
@@ -23,6 +24,7 @@ pub mod epic_import;
 pub mod epic_install;
 pub mod epic_modify;
 pub mod game_settings;
+pub mod hltb_match;
 pub mod launch_problem;
 pub mod launch_state;
 pub mod log_viewer;
@@ -44,6 +46,7 @@ pub mod screenshot_art;
 pub mod script_install;
 pub mod settings_panel;
 pub mod shortcuts;
+pub mod smart_group;
 pub mod store_import;
 pub mod store_install;
 pub mod web_image;
@@ -79,6 +82,9 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
     }
     if let Ok(d) = view.clone().downcast::<manage_categories::ManageCategoriesDialog>() {
         return d.update(cx, |d, cx| d.on_escape(window, cx));
+    }
+    if let Ok(d) = view.clone().downcast::<smart_group::SmartGroupDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
     }
     if let Ok(d) = view.clone().downcast::<batch_edit::BatchEditDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));

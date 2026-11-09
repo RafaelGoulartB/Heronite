@@ -66,6 +66,7 @@ pub enum Icon {
     Build,
     Logout,
     Tune,
+    ViewAgenda,
     Warning,
     CloudSync,
     Update,
@@ -83,6 +84,8 @@ pub enum Icon {
     ShoppingBag,
     Lightbulb,
     Palette,
+    /// Overlapping frames: frame generation.
+    Animation,
     PhotoCamera,
     /// A replay (a saved video of the game).
     Videocam,
@@ -108,11 +111,16 @@ pub enum Icon {
     Notes,
     /// "Where I left off" in the journal.
     Bookmark,
+    BookmarkBorder,
     /// "Find art": looks up the art by itself.
     AutoAwesome,
+    PushPin,
+    PushPinOutlined,
     Image,
     InfoOutlined,
     Link,
+    QrCode,
+    Computer,
     /// An achievement.
     Trophy,
     /// A locked achievement.
@@ -150,6 +158,11 @@ pub enum Icon {
     EmuMame,
     EmuScummVm,
     EmuAzahar,
+    EmuMupen64Plus,
+    EmuM64Py,
+    EmuGopher64,
+    EmuEpsxe,
+    EmuDesmume,
 }
 
 impl Icon {
@@ -173,10 +186,15 @@ impl Icon {
             Edit => "icons/edit.svg",
             Notes => "icons/notes.svg",
             Bookmark => "icons/bookmark.svg",
+            BookmarkBorder => "icons/bookmark-border.svg",
             AutoAwesome => "icons/auto-awesome.svg",
+            PushPin => "icons/push-pin.svg",
+            PushPinOutlined => "icons/push-pin-outlined.svg",
             Image => "icons/image.svg",
             InfoOutlined => "icons/info-outlined.svg",
             Link => "icons/link.svg",
+            QrCode => "icons/qr-code.svg",
+            Computer => "icons/computer.svg",
             ExpandMore => "icons/expand-more.svg",
             MoreHoriz => "icons/more-horiz.svg",
             Favorite => "icons/favorite.svg",
@@ -199,6 +217,7 @@ impl Icon {
             ShoppingBag => "icons/shopping-bag.svg",
             Lightbulb => "icons/lightbulb.svg",
             Palette => "icons/palette.svg",
+            Animation => "icons/animation.svg",
             PhotoCamera => "icons/photo-camera.svg",
             Videocam => "icons/videocam.svg",
             Inbox => "icons/inbox.svg",
@@ -251,6 +270,7 @@ impl Icon {
             Build => "icons/build.svg",
             Logout => "icons/logout.svg",
             Tune => "icons/tune.svg",
+            ViewAgenda => "icons/view-agenda.svg",
             Warning => "icons/warning.svg",
             CloudSync => "icons/cloud-sync.svg",
             Update => "icons/update.svg",
@@ -287,6 +307,11 @@ impl Icon {
             EmuMame => "icons/emu-mame.svg",
             EmuScummVm => "icons/emu-scummvm.svg",
             EmuAzahar => "icons/emu-azahar.svg",
+            EmuMupen64Plus => "icons/emu-mupen64plus.svg",
+            EmuM64Py => "icons/emu-m64py.svg",
+            EmuGopher64 => "icons/emu-gopher64.svg",
+            EmuEpsxe => "icons/emu-epsxe.svg",
+            EmuDesmume => "icons/emu-desmume.svg",
         }
     }
 }

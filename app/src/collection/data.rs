@@ -25,7 +25,8 @@ fn parse_hex(hex: &str) -> Rgba {
 }
 
 /// A card whose caption is `caption` instead of the playtime.
-fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> Arc<CardVm> {
+/// `copies`: the game's copies when the card stands for all of them (none otherwise).
+fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>, copies: &[&Game]) -> Arc<CardVm> {
     Arc::new(CardVm {
         key: g.key.clone().into(),
         title: g.title.clone().into(),
@@ -36,11 +37,13 @@ fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>) -> 
             stars: None,
             tint: None,
         }),
-        installed: g.installed,
+        installed: g.installed || copies.iter().any(|c| c.installed),
         playing,
         hidden: g.hidden,
         favourite: g.favourite,
         cover_key: g.key.clone().into(),
+        copies: copies.len(),
+        family: g.family.as_ref().map(|f| f.owner_name.trim().to_string().into()),
     })
 }
 
@@ -109,6 +112,7 @@ pub(super) fn group_icon(by: GroupBy) -> Option<Icon> {
         GroupBy::Genre => Icon::Palette,
         GroupBy::Developer => Icon::Build,
         GroupBy::Series => Icon::Folder,
+        GroupBy::GameMode => Icon::AccountCircle,
         GroupBy::Year => Icon::Event,
         GroupBy::Playtime => Icon::AccessTime,
         GroupBy::InstallSize => Icon::FaHardDrive,
@@ -126,6 +130,7 @@ pub(super) fn view_query(ui: &UiState, search: &str) -> ViewQuery {
         descending: ui.sort_descending,
         favourites_only: ui.only.favourites,
         offline_only: ui.only.offline,
+        age: ui.age,
     }
 }
 
@@ -139,11 +144,15 @@ pub(super) fn build_groups(
     launch_step: &dyn Fn(&str) -> Option<SharedString>,
     organize: &Organize,
 ) -> Vec<GroupVm> {
-    let filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
+    let mut filtered = collection::filter_games_organized(&lib.games, &view_query(ui, search), keep, organize);
+    if ui.group_copies {
+        filtered = lib.copies.collapse(filtered);
+    }
+    let copies = |g: &Game| if ui.group_copies && lib.copies.get(&g.key).is_some() { lib.copies_of(&g.key) } else { Vec::new() };
     let card = |g: &Game| {
         // A launch that is preparing says its step under the cover.
         let step = launch_step(&g.key).map(|text| Caption { icon: Icon::Refresh, text, muted: false, stars: None, tint: None });
-        card_vm_with(g, is_playing(&g.key), step.or_else(|| chosen_caption(g, lib, ui, organize)))
+        card_vm_with(g, is_playing(&g.key), step.or_else(|| chosen_caption(g, lib, ui, organize)), &copies(g))
     };
     let icon = group_icon(ui.group_by);
     organize::group_games(&filtered, ui.group_by, organize)
@@ -160,6 +169,27 @@ pub(super) fn build_groups(
         .collect()
 }
 
+/// The game's Steam tags for its Details, without the ones its genres,
+/// themes, features or game modes already show.
+fn steam_tags_shown(g: &CollectionGame, d: &heronite_data::focus::Details) -> Vec<String> {
+    let shown: std::collections::HashSet<String> =
+        [&d.genres, &d.themes, &d.features, &d.game_modes].into_iter().flatten().map(|v| heronite_data::text::facet_key(v)).collect();
+    g.facets[FacetKind::Tag.index()].iter().filter(|t| !shown.contains(&t.key)).map(|t| t.value.clone()).collect()
+}
+
+/// The first plausible 4-digit year in a date as shown ("Oct 10, 2007",
+/// "2011-04-19").
+pub(super) fn year_in(date: &str) -> Option<i32> {
+    let bytes = date.as_bytes();
+    (0..bytes.len().saturating_sub(3)).find_map(|i| {
+        let w = &bytes[i..i + 4];
+        let edge = |j: Option<&u8>| j.is_none_or(|b| !b.is_ascii_digit());
+        let alone = edge(i.checked_sub(1).and_then(|j| bytes.get(j))) && edge(bytes.get(i + 4));
+        let y: i32 = std::str::from_utf8(w).ok().filter(|_| alone && w.iter().all(u8::is_ascii_digit))?.parse().ok()?;
+        (1950..=2200).contains(&y).then_some(y)
+    })
+}
+
 pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, playing: bool) -> FocusVm {
     let fd = focus_data(lib, g, wiki);
     let d = &fd.details;
@@ -172,22 +202,43 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
     };
 
     if !d.developers.is_empty() {
-        rows.push(DetailRow { label: tr!("Developer").into(), value: chips(&d.developers, Some("developer")), split: false });
+        rows.push(DetailRow {
+            field: DetailField::Developer,
+            label: tr!("Developer").into(),
+            value: chips(&d.developers, Some("developer")),
+            split: false,
+        });
     }
     if !d.publishers.is_empty() {
-        rows.push(DetailRow { label: tr!("Publisher").into(), value: chips(&d.publishers, Some("publisher")), split: false });
+        rows.push(DetailRow {
+            field: DetailField::Publisher,
+            label: tr!("Publisher").into(),
+            value: chips(&d.publishers, Some("publisher")),
+            split: false,
+        });
     }
     if let Some(series) = &d.series {
-        rows.push(DetailRow { label: tr!("Series").into(), value: chips(std::slice::from_ref(series), Some("series")), split: false });
+        rows.push(DetailRow {
+            field: DetailField::Series,
+            label: tr!("Series").into(),
+            value: chips(std::slice::from_ref(series), Some("series")),
+            split: false,
+        });
     }
     let last_played = match g.last_played.as_deref().and_then(days_since) {
         Some(days) if days < 60 => Some(days_ago(days)),
         _ => fd.last_played.clone(),
     };
-    rows.push(DetailRow { label: tr!("Last Played").into(), value: text(last_played.as_deref().unwrap_or(tr!("Never"))), split: false });
-    rows.push(DetailRow { label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
+    rows.push(DetailRow {
+        field: DetailField::LastPlayed,
+        label: tr!("Last Played").into(),
+        value: text(last_played.as_deref().unwrap_or(tr!("Never"))),
+        split: false,
+    });
+    rows.push(DetailRow { field: DetailField::Playtime, label: tr!("Playtime").into(), value: text(&fd.playtime), split: false });
     if !d.features.is_empty() {
         rows.push(DetailRow {
+            field: DetailField::Features,
             label: tr!("Features").into(),
             // Steam's features (no metadata) are not a filter.
             value: chips(&d.features, (!g.facets[FacetKind::Feature.index()].is_empty()).then_some("feature")),
@@ -195,19 +246,52 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         });
     }
     if !d.themes.is_empty() {
-        rows.push(DetailRow { label: tr!("Themes").into(), value: chips(&d.themes, Some("theme")), split: true });
+        rows.push(DetailRow {
+            field: DetailField::Themes,
+            label: tr!("Themes").into(),
+            value: chips(&d.themes, Some("theme")),
+            split: true,
+        });
+    }
+    if !d.game_modes.is_empty() {
+        rows.push(DetailRow {
+            field: DetailField::GameModes,
+            label: tr!("Game modes").into(),
+            value: chips(&d.game_modes, Some("gameMode")),
+            split: true,
+        });
     }
     if d.platforms.len() > 1 {
         // The PC ones first: this is a PC launcher.
         let mut platforms = d.platforms.clone();
         platforms.sort_by_key(|p| !is_pc_platform(p));
-        rows.push(DetailRow { label: tr!("Platforms").into(), value: chips(&platforms, Some("platform")), split: true });
+        rows.push(DetailRow {
+            field: DetailField::Platforms,
+            label: tr!("Platforms").into(),
+            value: chips(&platforms, Some("platform")),
+            split: true,
+        });
     }
     if !d.genres.is_empty() {
-        rows.push(DetailRow { label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
+        rows.push(DetailRow { field: DetailField::Tags, label: tr!("Tags").into(), value: chips(&d.genres, Some("genre")), split: true });
+    }
+    let steam_tags = steam_tags_shown(g, d);
+    if !steam_tags.is_empty() {
+        rows.push(DetailRow {
+            field: DetailField::SteamTags,
+            label: tr!("Steam tags").into(),
+            value: chips(&steam_tags, Some("tag")),
+            split: true,
+        });
+    }
+    // Every board that rated it, in the order they are looked for.
+    let age_shown = lib.settings.metadata.show_age_ratings;
+    let boards = if age_shown { age_boards(lib, g) } else { Vec::new() };
+    if !boards.is_empty() {
+        rows.push(DetailRow { field: DetailField::AgeRating, label: tr!("Age rating").into(), value: chips(&boards, None), split: true });
     }
     if let Some(notes) = d.notes.as_ref().filter(|n| !n.is_empty()) {
-        rows.push(DetailRow { label: tr!("Notes").into(), value: text(notes), split: true });
+        rows.push(DetailRow { field: DetailField::Notes, label: tr!("Notes").into(), value: text(notes), split: true });
     }
 
     let related = collection::related_games_for(g, &lib.games)
@@ -235,12 +319,25 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         overview_html,
         related,
         details: rows,
+        age: age_vm(g),
+        age_shown,
         hltb: fd.hltb.as_ref().filter(|h| h.main_story > 0. || h.main_extra > 0.).map(|h| HltbVm {
             main: Some(h.main_story as f32),
             extra: Some(h.main_extra as f32),
             complete: Some(h.completionist as f32),
             played_hours: g.playtime_minutes as f32 / 60.,
+            link: h.game_web_link.clone().filter(|l| l.starts_with("https://")).map(Into::into),
+            name: h
+                .game_name
+                .clone()
+                .filter(|n| heronite_data::text::title_key(n) != heronite_data::text::title_key(&g.title))
+                .map(Into::into),
+            close: h.is_close_match(),
+            manual: h.is_manual_match(),
         }),
+        hltb_checked: fd.hltb_checked,
+        hltb_game_id: fd.hltb.as_ref().and_then(|h| h.game_id),
+        release_year: d.release_date.as_deref().and_then(year_in),
         status: display_status(g.status_raw.as_deref(), &lib.statuses).map(|st| StatusVm {
             id: st.id.clone().into(),
             name: heronite_data::status::status_label(&st.name).to_string().into(),
@@ -252,7 +349,7 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             "steam" => Some("Steam".into()),
             _ => None,
         }),
-        library: g.source_label.into(),
+        library: library_label(g).into(),
         install_size: d.install_size.clone().filter(|s| s != "0").map(Into::into),
         installed: g.installed,
         playing,
@@ -260,6 +357,42 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
         playtime: fd.playtime.clone().into(),
         last_played: last_played.map(Into::into),
     }
+}
+
+/// The Details panel's Library: the source, with who shares a game of the
+/// Steam Family (and that someone else was playing it at the last read).
+fn library_label(g: &CollectionGame) -> String {
+    let Some(f) = &g.family else { return g.source_label.to_string() };
+    let owner = f.owner_name.trim();
+    match (owner.is_empty(), f.in_use) {
+        (true, false) => g.source_label.to_string(),
+        (true, true) => tr!("{library} (in use by another member)", library = g.source_label).to_string(),
+        (false, false) => tr!("{library}, shared by {owner}", library = g.source_label, owner = owner).to_string(),
+        (false, true) => {
+            tr!("{library}, shared by {owner} (in use by another member)", library = g.source_label, owner = owner).to_string()
+        }
+    }
+}
+
+/// "ESRB T", "PEGI 12"... of every board that rated `g`, in
+/// [`Library::age_order`].
+fn age_boards(lib: &Library, g: &CollectionGame) -> Vec<String> {
+    let ratings = g.metadata.as_ref().map(|m| m.age_ratings.as_slice()).unwrap_or_default();
+    lib.age_order
+        .iter()
+        .filter_map(|b| ratings.iter().find(|r| r.board() == Some(*b)).map(|r| format!("{} {}", b.name(), r.badge())))
+        .collect()
+}
+
+fn age_vm(g: &CollectionGame) -> Option<AgeVm> {
+    let shown = g.age_rating.as_ref()?;
+    Some(AgeVm {
+        board: shown.board().map_or("", |b| b.name()).into(),
+        badge: shown.badge().into(),
+        title: shown.title().into(),
+        reasons: shown.descriptors.join(", ").into(),
+        min_age: shown.min_age(),
+    })
 }
 
 fn is_pc_platform(name: &str) -> bool {
@@ -309,4 +442,19 @@ pub(super) fn parse_day(text: &str) -> Option<chrono::NaiveDate> {
 pub(super) fn played_ago(last_played: &str) -> Option<String> {
     let days = days_since(last_played).or_else(|| Some((chrono::Local::now().date_naive() - parse_day(last_played)?).num_days().max(0)))?;
     Some(days_ago(days))
+}
+
+#[cfg(test)]
+mod hltb_year_tests {
+    use super::year_in;
+
+    #[test]
+    fn the_year_of_a_shown_date() {
+        assert_eq!(year_in("Oct 10, 2007"), Some(2007));
+        assert_eq!(year_in("2011-04-19"), Some(2011));
+        assert_eq!(year_in("19 abr. 2011"), Some(2011));
+        assert_eq!(year_in("TBA"), None);
+        assert_eq!(year_in("12345"), None, "not part of a longer number");
+        assert_eq!(year_in("1234"), None, "not a plausible year");
+    }
 }

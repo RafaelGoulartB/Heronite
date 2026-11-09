@@ -81,7 +81,7 @@ impl EpicInstallDialog {
             .get("defaultInstallPath")
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
-            .map(|s| s.replace('\'', ""))
+            .map(|s| s.trim_matches('\'').to_string())
             .unwrap_or_else(|| game_config::default_install_dir(&home));
         let prefix_dir = global
             .get("defaultWinePrefixDir")

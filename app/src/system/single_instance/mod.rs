@@ -21,6 +21,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
+use heronite_data::clients::Client;
+
 use super::cli::LaunchRequest;
 
 mod transport;
@@ -29,6 +31,10 @@ mod transport;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Message {
     pub launch: Option<LaunchRequest>,
+    /// `--open-client` on the second invocation.
+    pub open_client: Option<Client>,
+    /// A game to close (`heronite://stop`).
+    pub stop: Option<LaunchRequest>,
     /// `--no-gui` on the second invocation.
     pub no_gui: bool,
     /// `--console` / `--fullscreen` on the second invocation.
@@ -38,7 +44,7 @@ pub struct Message {
 
 impl Message {
     pub fn to_line(&self) -> String {
-        let launch = self.launch.as_ref().map(|r| {
+        let request = |r: &LaunchRequest| {
             json!({
                 "runner": r.runner,
                 "appName": r.app_name,
@@ -46,13 +52,26 @@ impl Message {
                 "altExe": r.alt_exe,
                 "guiFalse": r.gui_false,
             })
+        };
+        let (launch, stop) = (self.launch.as_ref().map(request), self.stop.as_ref().map(request));
+        let mut line = json!({
+            "v": 1,
+            "launch": launch,
+            "openClient": self.open_client.map(Client::id),
+            "noGui": self.no_gui,
+            "console": self.console,
+            "fullscreen": self.fullscreen,
         });
-        json!({ "v": 1, "launch": launch, "noGui": self.no_gui, "console": self.console, "fullscreen": self.fullscreen }).to_string()
+        // Only when set: an older instance reading this ignores the key.
+        if stop.is_some() {
+            line["stop"] = stop.into();
+        }
+        line.to_string()
     }
 
     pub fn from_line(line: &str) -> Option<Message> {
         let v: Value = serde_json::from_str(line).ok()?;
-        let launch = match v.get("launch") {
+        let request = |key: &str| match v.get(key) {
             Some(Value::Object(o)) => Some(LaunchRequest {
                 runner: o.get("runner").and_then(Value::as_str).map(str::to_string),
                 app_name: o.get("appName").and_then(Value::as_str)?.to_string(),
@@ -67,7 +86,15 @@ impl Message {
             _ => None,
         };
         let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
-        Some(Message { launch, no_gui: flag("noGui"), console: flag("console"), fullscreen: flag("fullscreen") })
+        let open_client = v.get("openClient").and_then(Value::as_str).and_then(Client::from_id);
+        Some(Message {
+            launch: request("launch"),
+            open_client,
+            stop: request("stop"),
+            no_gui: flag("noGui"),
+            console: flag("console"),
+            fullscreen: flag("fullscreen"),
+        })
     }
 }
 
@@ -268,6 +295,8 @@ mod tests {
                 alt_exe: Some("/g/x.exe".into()),
                 gui_false: true,
             }),
+            open_client: Some(Client::Ubisoft),
+            stop: None,
             no_gui: true,
             console: true,
             fullscreen: true,

@@ -17,6 +17,7 @@ use crate::dialogs::launch_state::{LaunchStateDialog, StateRow, ThumbRaw};
 use crate::dialogs::pick_rom::PickRomDialog;
 use crate::dialogs::scan_roms::{ScanInitial, ScanRomsDialog};
 use crate::services::steam_library::SteamLibraryEvent;
+use crate::services::xbox_library::XboxLibraryEvent;
 use heronite_i18n::{tr, trn};
 
 /// How long after start the Collection scans the saved ROM folders.
@@ -219,6 +220,9 @@ impl CollectionView {
             this.update(cx, |this, cx| {
                 crate::services::steam_library(cx).update(cx, |s, cx| s.sync_if_ready(cx));
                 crate::services::launcher_imports(cx).update(cx, |s, cx| s.import_enabled(cx));
+                if heronite_platform::supported(heronite_platform::Feature::XboxStore) {
+                    crate::services::xbox_library(cx).update(cx, |s, cx| s.sync_quietly(cx));
+                }
                 // `reload` skips when a reload is in flight.
                 this.refreshing = false;
                 this.after_rom_scan(res, false, cx);
@@ -262,18 +266,68 @@ impl CollectionView {
         let steam = crate::services::steam_library(cx);
         cx.subscribe(&steam, |this, _, ev: &SteamLibraryEvent, cx| {
             let SteamLibraryEvent::Imported(report) = ev;
+            // One toast: a second would replace the first.
+            let mut said: Vec<String> = Vec::new();
             if report.added > 0 {
-                this.show_toast(
-                    trn!(report.added, "Added {n} game from your Steam library", "Added {n} games from your Steam library"),
-                    false,
-                    cx,
+                said.push(
+                    trn!(report.added, "Added {n} game from your Steam library", "Added {n} games from your Steam library").to_string(),
                 );
             }
-            if report.added > 0 || report.playtime > 0 {
+            if report.family_added > 0 {
+                said.push(
+                    trn!(report.family_added, "Added {n} game your Steam Family shares", "Added {n} games your Steam Family shares")
+                        .to_string(),
+                );
+            }
+            if report.family_removed > 0 {
+                said.push(
+                    trn!(
+                        report.family_removed,
+                        "Removed {n} game your Steam Family no longer shares",
+                        "Removed {n} games your Steam Family no longer shares"
+                    )
+                    .to_string(),
+                );
+            }
+            if !said.is_empty() {
+                this.show_toast(said.join(" · "), false, cx);
+            }
+            if report.changed() {
                 this.reload(cx);
             }
         })
         .detach();
+        // The header's Steam pill: repainted only when what it shows changes
+        // (the service notifies at each of its checks, every few seconds).
+        let mut shown = steam.read(cx).notice();
+        cx.observe(&steam, move |_, steam, cx| {
+            let now = steam.read(cx).notice();
+            if now != shown {
+                shown = now;
+                cx.notify();
+            }
+        })
+        .detach();
+        if heronite_platform::supported(heronite_platform::Feature::XboxStore) {
+            let xbox = crate::services::xbox_library(cx);
+            cx.subscribe(&xbox, |this, _, ev: &XboxLibraryEvent, cx| {
+                let XboxLibraryEvent::Synced(report) = ev;
+                if report.added > 0 {
+                    // Same words as the store clients' toast.
+                    let text = trn!(
+                        report.added,
+                        "Added {n} game from {launcher}",
+                        "Added {n} games from {launcher}",
+                        launcher = heronite_data::xbox::NAME
+                    );
+                    this.show_toast(text, false, cx);
+                }
+                if report.added + report.updated > 0 {
+                    this.reload(cx);
+                }
+            })
+            .detach();
+        }
         let paths = self.data_paths.clone();
         cx.spawn(async move |this, cx| {
             let p = paths.clone();

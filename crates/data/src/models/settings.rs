@@ -81,6 +81,10 @@ pub struct LudusaviSettings {
     /// backup; a backup by hand still runs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub auto_backup_off: Vec<String>,
+    /// Minutes between backups while a game runs, on top of the after-play
+    /// one; `None` = only after play.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interval_minutes: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_backup_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -137,6 +141,12 @@ impl LudusaviSettings {
     pub fn auto_backup_for(&self, runner: &str, app_name: &str) -> bool {
         self.enabled && !self.auto_backup_off.contains(&super::game_key(runner, app_name))
     }
+
+    /// Time between backups while this game runs, when it gets any.
+    pub fn periodic_interval_for(&self, runner: &str, app_name: &str) -> Option<std::time::Duration> {
+        let minutes = self.interval_minutes.filter(|m| *m > 0)?;
+        self.auto_backup_for(runner, app_name).then(|| std::time::Duration::from_secs(u64::from(minutes) * 60))
+    }
 }
 
 fn default_true() -> bool {
@@ -173,6 +183,23 @@ pub struct MetadataSettings {
     pub download_images: bool,
     #[serde(default = "default_true")]
     pub auto_fill_missing: bool,
+    /// The board the Collection shows first: `auto` (from the interface
+    /// language) or a [`crate::age_rating::RatingSystem::id`].
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub age_rating_system: String,
+    /// The age rating rows of a game (facts card and Details); the View
+    /// menu's "Ages up to" works either way.
+    #[serde(default = "default_true")]
+    pub show_age_ratings: bool,
+    /// Steam store tags for games with a Steam app id (the Tag facet).
+    #[serde(default = "default_true")]
+    pub steam_tags: bool,
+    /// Steam tags per game; 0 = [`crate::steam_tags::DEFAULT_LIMIT`].
+    #[serde(default)]
+    pub steam_tag_limit: u32,
+    /// Ask HowLongToBeat for the times of the selected game.
+    #[serde(default = "default_true")]
+    pub how_long_to_beat: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
     #[serde(flatten)]

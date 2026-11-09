@@ -2,7 +2,8 @@
 //!
 //! Start times are Windows' creation times, in milliseconds since 1601:
 //! unlike Linux's ticks since boot they name one process across reboots too.
-//! Nothing runs under Wine here, so the prefix questions have no answer.
+//! Nothing runs under Wine here: the questions about a prefix are about the
+//! whole PC ([`Procs::prefix_programs`]), or have no answer.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -52,6 +53,13 @@ fn under(path: &Path, folder: &str) -> bool {
 pub struct SystemProcs;
 
 impl Procs for SystemProcs {
+    fn steam_client_running(&self) -> bool {
+        use heronite_platform::registry::{dword, Hive};
+        dword(Hive::CurrentUser, r"Software\Valve\Steam\ActiveProcess", "pid").is_some_and(|pid| pid != 0 && self.is_alive(pid))
+            // Steam does not always keep ActiveProcess up to date.
+            || os::snapshot().iter().any(|p| p.name.eq_ignore_ascii_case("steam.exe"))
+    }
+
     fn is_alive(&self, pid: u32) -> bool {
         pid > 1 && os::is_alive(pid)
     }
@@ -118,8 +126,20 @@ impl Procs for SystemProcs {
         None
     }
 
-    fn prefix_programs(&self, _prefix: &str, _folder: Option<&str>) -> Vec<WinProgram> {
-        Vec::new()
+    fn prefix_programs(&self, _prefix: &str, folder: Option<&str>) -> Vec<WinProgram> {
+        // Without Wine every program is a Windows one: the whole PC, the
+        // ones running from `folder` told apart by where their program is.
+        let me = std::process::id();
+        os::snapshot()
+            .into_iter()
+            .filter(|p| p.pid > 4 && p.pid != me)
+            .map(|p| {
+                let exe = os::exe_path(p.pid);
+                let from_folder = folder.is_some_and(|f| exe.as_deref().is_some_and(|e| under(e, f)));
+                let path = exe.map(|e| e.to_string_lossy().into_owned()).unwrap_or_default();
+                WinProgram { pid: p.pid, name: p.name.to_lowercase(), path, from_folder }
+            })
+            .collect()
     }
 }
 
@@ -142,6 +162,13 @@ mod tests {
         let exe = os::exe_path(child.id()).unwrap();
         let folder = exe.parent().unwrap().to_string_lossy().to_uppercase();
         assert!(SystemProcs.game_pids(None, Some(&folder)).contains(&child.id()));
+        // Every program of the PC, the prefix aside; the child is from its folder.
+        let programs = SystemProcs.prefix_programs("", Some(&folder));
+        let ping = programs.iter().find(|p| p.pid == child.id()).unwrap();
+        assert_eq!((ping.name.as_str(), ping.from_folder), ("ping.exe", true));
+        assert!(ping.path.to_lowercase().ends_with("\\ping.exe"), "{}", ping.path);
+        assert!(programs.iter().all(|p| p.pid != me), "never this process");
+        assert!(SystemProcs.prefix_programs("", None).iter().all(|p| !p.from_folder));
         let _ = child.kill();
         let _ = child.wait();
     }

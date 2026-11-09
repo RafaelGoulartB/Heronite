@@ -305,6 +305,7 @@ fn adopted_control(entry: &RunningEntry) -> Control {
         stop,
         steam_pids: Arc::new(Mutex::new(steam_pids)),
         title: entry.title.clone(),
+        runner: entry.runner.clone(),
         clock: OnceLock::from((started_at, t0)),
         since_ticks: entry.since_ticks,
         playing: AtomicBool::new(true),

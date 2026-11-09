@@ -6,7 +6,8 @@
 //!
 //! Building blocks: [`kit`] (look), [`list`] (focusable rows with values
 //! changed by ◀ ▶), [`osk`] (on-screen keyboard), [`browser`] (folder /
-//! file picker), [`input`] (controller thread + keyboard mapping).
+//! file picker), [`input`] (controller thread + keyboard mapping),
+//! [`pointer`] (the mouse, as presses).
 
 pub mod browser;
 pub mod input;
@@ -16,6 +17,7 @@ pub mod list;
 pub mod look;
 pub mod motion;
 pub mod osk;
+pub mod pointer;
 pub mod registry;
 pub mod sheet;
 pub mod spatial;
@@ -192,7 +194,8 @@ impl Layer {
         self.overlay.as_ref().map(|o| o.hook.hints(cx))
     }
 
-    pub fn view(&self) -> Option<AnyView> {
-        self.overlay.as_ref().map(|o| o.view.clone())
+    /// The overlay to draw over the owner (nothing under it takes clicks).
+    pub fn view(&self) -> Option<AnyElement> {
+        self.overlay.as_ref().map(|o| div().absolute().inset_0().occlude().child(o.view.clone()).into_any_element())
     }
 }

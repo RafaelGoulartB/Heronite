@@ -124,5 +124,7 @@
   "Get it on Flathub": "Baixar no Flathub",
   "Saving it": "Para salvar",
   "The buffer stays in memory: its RAM grows with the length.": "O buffer fica na memória: a RAM dele cresce com a duração.",
-  "Picture and sound": "Imagem e som"
+  "Picture and sound": "Imagem e som",
+  "{n} replay": "{n} replay",
+  "{n} replays": "{n} replays"
 }

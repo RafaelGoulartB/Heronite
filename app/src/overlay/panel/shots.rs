@@ -14,7 +14,7 @@ use crate::ui::icon;
 
 /// Captures on Home.
 const RECENT: usize = 3;
-const COLS: usize = 2;
+pub(super) const COLS: usize = 2;
 
 impl OverlayPanel {
     fn tile(&self, i: usize, focused: bool) -> Div {
@@ -69,7 +69,11 @@ impl OverlayPanel {
         }
         let n = self.data.shots.len().min(RECENT);
         div().flex().flex_col().gap(u(8.)).pt(u(6.)).child(kit::caption(tr!("Recent screenshots"))).child(
-            div().flex().gap(u(8.)).px(u(12.)).children((0..n).map(|i| div().flex_1().min_w_0().child(self.tile(i, false).h(u(70.))))),
+            div().flex().gap(u(8.)).px(u(12.)).children((0..n).map(|i| {
+                // A click shows it full size.
+                let open = self.click(move |p, _, _| p.viewer = Some(i));
+                div().flex_1().min_w_0().on_mouse_down(MouseButton::Left, open).child(self.tile(i, false).h(u(70.)))
+            })),
         )
     }
 
@@ -90,7 +94,16 @@ impl OverlayPanel {
                 div()
                     .flex()
                     .gap(u(8.))
-                    .children((start..start + len).map(|i| div().flex_1().min_w_0().child(self.tile(i, self.grid == Some(i)))))
+                    .children((start..start + len).map(|i| {
+                        // A click focuses it; on the focused one, it opens.
+                        let click = self.click(move |p, _, _| {
+                            if p.grid == Some(i) {
+                                p.viewer = Some(i);
+                            }
+                            p.grid = Some(i);
+                        });
+                        div().flex_1().min_w_0().on_mouse_down(MouseButton::Left, click).child(self.tile(i, self.grid == Some(i)))
+                    }))
                     .when(len < COLS, |d| d.child(div().flex_1())),
             );
         }

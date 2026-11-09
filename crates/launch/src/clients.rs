@@ -1,37 +1,130 @@
 //! Games a Windows store client starts (`heronite_data::clients`: Battle.net,
 //! the EA app, Ubisoft Connect, the Rockstar Games Launcher).
 //!
-//! The client runs under Wine in a prefix of its own, with its own settings
-//! (`GamesConfig/<config app>.json`), and starts, updates and signs in to its
-//! games. The plan of such a game runs the client's program with
-//! `launcherArgs` (what the client is asked to do), so the game's settings do
-//! not apply. The session follows the game, not the client, which may have
-//! been open for hours and stays open afterwards (see `runtime::client`).
+//! On Linux the client runs under Wine in a prefix of its own, with its own
+//! settings (`GamesConfig/<config app>.json`); on Windows it runs as it is,
+//! from where it is installed. It starts, updates and signs in to its games.
+//! The plan of such a game runs the client's program with `launcherArgs`
+//! (what the client is asked to do), so the game's settings do not apply.
+//! The session follows the game, not the client, which may have been open
+//! for hours and stays open afterwards (see `runtime::client`).
 //!
 //! The sandbox does not apply: the game starts from inside the client, so the
 //! client would have to run in it.
 
-use heronite_data::clients::{prefix_of, Client};
+use std::path::{Path, PathBuf};
+
+use heronite_data::clients::{machine_drive, prefix_of, Client};
 use heronite_data::models::{GameInfo, LocalGameMeta};
 use heronite_i18n::tr;
 
 use crate::env::join;
-use crate::plan::{split_args, ClientHandoff, Handoff, LaunchPlan, PlanContext, StopSpec, WineRuntime};
+use crate::host::{run_mode, Os, RunMode};
+use crate::plan::{split_args, ClientHandoff, Command, Handoff, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 use crate::probe::Probe;
 use crate::settings::{load_game_settings, GameSettings};
 use crate::wine_tools::{alongside_command, UMU_NSENTER};
 
 /// The plan of a game the client named in `meta.source` starts.
 pub(crate) fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta) -> LaunchPlan {
+    build_as(ctx, probe, game, meta, run_mode(Os::Windows))
+}
+
+/// [`build`] for a client that runs as `mode` says (natively on Windows,
+/// under Wine elsewhere).
+fn build_as(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, meta: &LocalGameMeta, mode: RunMode) -> LaunchPlan {
     let no_method = || LaunchPlan::Unavailable(tr!("This game has no launch method").into());
     let Some(client) = Client::from_id(&meta.source) else { return no_method() };
     let args = split_args(meta.launcher_args.as_deref().unwrap_or_default());
     if args.is_empty() {
         return no_method();
     }
-    let not_set_up = || LaunchPlan::Unavailable(tr!("{client} is not set up. Set it up in Stores → {client}.", client = client.name()));
-    let Some(prefix) = prefix_of(&ctx.paths, client, &probe.home()) else { return not_set_up() };
-    let Some(exe) = client_exe(probe, client, &prefix.to_string_lossy()) else { return not_set_up() };
+    match mode {
+        RunMode::Native => native_plan(probe, game, client, args),
+        RunMode::Wine | RunMode::Unavailable => wine_plan(ctx, probe, game, client, args),
+    }
+}
+
+fn not_set_up(client: Client) -> LaunchPlan {
+    LaunchPlan::Unavailable(tr!("{client} is not set up. Set it up in Stores → {client}.", client = client.name()))
+}
+
+/// The game's folder, when it is there: what tells the game from the client.
+fn game_folder(probe: &dyn Probe, game: &GameInfo) -> Option<String> {
+    game.install.install_path.clone().filter(|f| !f.is_empty() && probe.exists(f))
+}
+
+/// What the session follows: the game from `folder`, not the client's
+/// programs; `join` asks the client that runs already.
+fn handoff(client: Client, folder: Option<String>, join: Command) -> Handoff {
+    let client = ClientHandoff {
+        name: client.name().to_string(),
+        programs: client.programs().iter().map(|p| p.to_string()).collect(),
+        main: client.main_program().to_string(),
+        join,
+    };
+    Handoff { folder, client: Some(client), ..Default::default() }
+}
+
+/// Windows: the client's program run as it is with `args`. A client that
+/// runs already takes the same command as a request (its new instance
+/// hands it over and exits), so `join` is the command itself. The session
+/// tells the game by its folder, so a game whose folder is not there cannot
+/// be followed.
+fn native_plan(probe: &dyn Probe, game: &GameInfo, client: Client, args: Vec<String>) -> LaunchPlan {
+    let Some(exe) = native_exe(probe, client) else { return not_set_up(client) };
+    let Some(folder) = game_folder(probe, game) else {
+        return LaunchPlan::Unavailable(tr!(
+            "The folder of this game was not found. Refresh the games of {client} in Stores → {client}.",
+            client = client.name()
+        ));
+    };
+    let cwd = Path::new(&exe).parent().map(|d| d.to_string_lossy().into_owned()).filter(|d| !d.is_empty());
+    let command = Command { program: exe, args, env: Default::default(), cwd };
+    LaunchPlan::Native(ProcessPlan {
+        command: command.clone(),
+        notes: vec![format!("{} starts the game", client.name())],
+        handoff: Some(handoff(client, Some(folder), command)),
+        ..Default::default()
+    })
+}
+
+/// The client's program on this PC: where its installer puts it
+/// (`Client::exe_candidates` in this PC's `Program Files`), else in the
+/// folder its installer wrote in the registry. Looked up through the probe.
+fn native_exe(probe: &dyn Probe, client: Client) -> Option<String> {
+    let drive = machine_drive(|k| probe.env_var(k));
+    let exists = |p: &Path| probe.exists(&p.to_string_lossy());
+    let usual = client.exe_candidates().iter().map(|rel| drive.path(rel)).find(|p| exists(p));
+    let registered = || registered_folders(client).into_iter().find_map(|named| client.exe_in_folder(&named, exists));
+    usual.or_else(registered).map(|p| p.to_string_lossy().into_owned())
+}
+
+/// The folders (or programs) the client's installer wrote in this PC's
+/// registry (`Client::install_keys`).
+#[cfg(windows)]
+fn registered_folders(client: Client) -> Vec<PathBuf> {
+    use heronite_platform::registry::{string, Hive};
+    client
+        .install_keys()
+        .iter()
+        .filter_map(|(key, value)| string(Hive::LocalMachine, key, value))
+        .map(|v| v.trim().trim_matches('"').replace('/', "\\"))
+        .filter(|v| !v.is_empty())
+        .map(|v| PathBuf::from(v.trim_end_matches('\\')))
+        .collect()
+}
+
+/// No registry here.
+#[cfg(not(windows))]
+fn registered_folders(_client: Client) -> Vec<PathBuf> {
+    Vec::new()
+}
+
+/// Under Wine: the client's program in its prefix, with its Wine settings.
+fn wine_plan(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, client: Client, args: Vec<String>) -> LaunchPlan {
+    let Some(prefix) = prefix_of(&ctx.paths, client, &probe.home()) else { return not_set_up(client) };
+    let Some(exe) = client_exe(probe, client, &prefix.to_string_lossy()) else { return not_set_up(client) };
 
     let settings = load_game_settings(&ctx.paths, client.config_app(), &ctx.global, probe);
     if settings.sandbox.enabled {
@@ -70,25 +163,24 @@ pub(crate) fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, meta:
     process.wait_after_exit = None;
     process.stop = StopSpec::default();
     process.notes.push(format!("{} starts the game: its prefix and settings are used", client.name()));
-    process.handoff = Some(Handoff {
-        prefix: Some(prefix.clone()),
-        folder: game.install.install_path.clone().filter(|f| !f.is_empty() && probe.exists(f)),
-        client: Some(ClientHandoff {
-            name: client.name().to_string(),
-            programs: client.programs().iter().map(|p| p.to_string()).collect(),
-            main: client.main_program().to_string(),
-            join,
-        }),
-    });
+    let mut handoff = handoff(client, game_folder(probe, game), join);
+    handoff.prefix = Some(prefix.clone());
+    process.handoff = Some(handoff);
     LaunchPlan::Wine { process, runtime, prefix }
 }
 
-/// Adds the game's programs to the plan. They run beside the game, so with
-/// the client's Wine and prefix, not the game's own.
+/// Adds the game's programs to the plan. Under Wine they run beside the
+/// game, so with the client's Wine and prefix, not the game's own; on
+/// Windows as they are.
 pub(crate) fn attach_companions(plan: &mut LaunchPlan, ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &GameSettings) {
-    let Some(wine) = plan.process().and_then(|p| p.prep.wine.clone()) else { return };
-    let settings = GameSettings { companions: settings.companions.clone(), ..wine };
-    crate::companions::attach(plan, ctx, probe, game, &settings);
+    match plan.process().map(|p| p.prep.wine.clone()) {
+        Some(Some(wine)) => {
+            let settings = GameSettings { companions: settings.companions.clone(), ..wine };
+            crate::companions::attach(plan, ctx, probe, game, &settings);
+        }
+        Some(None) if matches!(plan, LaunchPlan::Native(_)) => crate::companions::attach(plan, ctx, probe, game, settings),
+        _ => {}
+    }
 }
 
 /// The client's program in `prefix` (Proton keeps the drive in `pfx/`),
@@ -168,9 +260,113 @@ mod tests {
         (game, meta)
     }
 
+    /// What `build_plan_with_settings` does for a client's game, with the
+    /// client running as `mode` says whatever this system is.
+    fn plan_as(
+        mode: RunMode,
+        ctx: &PlanContext,
+        probe: &dyn Probe,
+        game: &GameInfo,
+        meta: &LocalGameMeta,
+        settings: &GameSettings,
+    ) -> LaunchPlan {
+        let mut plan = build_as(ctx, probe, game, meta, mode);
+        crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+        crate::scripts::attach(&mut plan, probe, game, settings);
+        attach_companions(&mut plan, ctx, probe, game, settings);
+        plan
+    }
+
+    /// The plan under Wine.
     fn plan_of(r: &Rig, probe: &FakeProbe, game_settings: &GameSettings) -> LaunchPlan {
         let (game, meta) = wow();
-        build_plan_with_settings(&r.ctx, probe, &game, Some(&meta), game_settings, &LaunchOptions::default())
+        plan_as(RunMode::Wine, &r.ctx, probe, &game, &meta, game_settings)
+    }
+
+    #[test]
+    fn the_client_runs_under_wine_on_linux_and_as_it_is_on_windows() {
+        let r = rig(set_up());
+        let (game, meta) = wow();
+        let probe = on_this_pc(r.probe());
+        let plan = build_plan_with_settings(&r.ctx, &probe, &game, Some(&meta), &game_settings(json!({})), &LaunchOptions::default());
+        assert_eq!(plan.kind(), if cfg!(windows) { "native" } else { "wine" }, "{plan:?}");
+    }
+
+    /// Where Battle.net's installer puts it on a PC whose `Program Files
+    /// (x86)` is on `D:`.
+    fn bnet_pc() -> String {
+        Path::new(r"D:\Apps (x86)").join("Battle.net").join("Battle.net.exe").to_string_lossy().into_owned()
+    }
+
+    /// `probe` with Battle.net installed on the PC.
+    fn on_this_pc(probe: FakeProbe) -> FakeProbe {
+        probe.with_env("ProgramFiles(x86)", r"D:\Apps (x86)").with_path(&bnet_pc())
+    }
+
+    fn native_plan_of(probe: &FakeProbe, game: &GameInfo, meta: &LocalGameMeta, settings: &GameSettings) -> LaunchPlan {
+        // No settings file: the client has none on Windows.
+        let r = rig(json!({}));
+        plan_as(RunMode::Native, &r.ctx, probe, game, meta, settings)
+    }
+
+    #[test]
+    fn on_windows_the_clients_program_runs_as_it_is_and_the_game_is_followed_by_its_folder() {
+        let (game, meta) = wow();
+        let probe = on_this_pc(FakeProbe::new("/home/u")).with_path("/games/wow");
+        let LaunchPlan::Native(process) = native_plan_of(&probe, &game, &meta, &game_settings(json!({}))) else { panic!() };
+        let c = &process.command;
+        assert_eq!((c.program.as_str(), c.args.as_slice()), (bnet_pc().as_str(), &["--exec=launch WoW".to_string()][..]));
+        assert_eq!(c.cwd.as_deref(), Path::new(&bnet_pc()).parent().and_then(Path::to_str));
+        assert!(c.env.is_empty(), "the client may outlive the game: nothing of the game's in its environment");
+        assert_eq!(process.stop, StopSpec::default(), "stopping the game never touches the client");
+        assert!(process.prep.wine.is_none() && !process.sandboxed);
+        let h = process.handoff.unwrap();
+        assert_eq!((h.prefix.as_deref(), h.folder.as_deref()), (None, Some("/games/wow")));
+        let client = h.client.unwrap();
+        assert_eq!((client.name.as_str(), client.main.as_str()), ("Battle.net", "battle.net.exe"));
+        // A Battle.net that runs takes the same command as a request.
+        assert_eq!(client.join, process.command);
+    }
+
+    #[test]
+    fn on_windows_a_link_is_one_argument_and_the_games_extras_come_with_it() {
+        let (mut game, meta) = wow();
+        game.app_name = "ea_71067".into();
+        let meta = LocalGameMeta {
+            source: "ea".into(),
+            launcher_args: Some("\"origin2://game/launch?offerIds=71067,71068&autoDownload=1\"".into()),
+            ..meta
+        };
+        let parts = ["Electronic Arts", "EA Desktop", "EA Desktop", "EALauncher.exe"];
+        let ea = parts.iter().fold(PathBuf::from(r"C:\Program Files"), |p, part| p.join(part));
+        let probe = FakeProbe::new("/home/u").with_env("ProgramW6432", r"C:\Program Files").with_path(&ea.to_string_lossy());
+        let probe = probe.with_path("/games/wow").with_path("/t/trainer.exe");
+        let own = game_settings(json!({"beforeLaunchScriptPath": "/s/before.bat", "heroniteCompanions": [{"path": "/t/trainer.exe"}]}));
+        let LaunchPlan::Native(process) = native_plan_of(&probe, &game, &meta, &own) else { panic!() };
+        assert_eq!(process.command.program, ea.to_string_lossy());
+        assert_eq!(process.command.args, ["origin2://game/launch?offerIds=71067,71068&autoDownload=1"]);
+        assert_eq!(process.before_script.as_ref().unwrap().program, "/s/before.bat");
+        assert_eq!(process.handoff.as_ref().unwrap().client.as_ref().unwrap().main, "eadesktop.exe");
+        if cfg!(windows) {
+            assert_eq!(process.companions.len(), 1);
+            assert_eq!(process.companions[0].command.program, "/t/trainer.exe", "as it is, beside the game");
+        }
+    }
+
+    #[test]
+    fn on_windows_a_client_or_a_folder_that_is_not_there_cannot_start_the_game() {
+        let (game, meta) = wow();
+        let own = game_settings(json!({}));
+        // The registry of this PC may name a real Battle.net: the probe has none.
+        let none = FakeProbe::new("/home/u").with_env("ProgramFiles(x86)", r"D:\Apps (x86)").with_path("/games/wow");
+        let msg = "Battle.net is not set up. Set it up in Stores → Battle.net.";
+        assert_eq!(native_plan_of(&none, &game, &meta, &own), LaunchPlan::Unavailable(msg.into()));
+        let gone = on_this_pc(FakeProbe::new("/home/u"));
+        let msg = "The folder of this game was not found. Refresh the games of Battle.net in Stores → Battle.net.";
+        assert_eq!(native_plan_of(&gone, &game, &meta, &own), LaunchPlan::Unavailable(msg.into()));
+        let bare = LocalGameMeta { launcher_args: Some("  ".into()), ..meta };
+        let probe = on_this_pc(FakeProbe::new("/home/u")).with_path("/games/wow");
+        assert_eq!(native_plan_of(&probe, &game, &bare, &own), LaunchPlan::Unavailable("This game has no launch method".into()));
     }
 
     fn game_settings(v: Value) -> GameSettings {
@@ -261,7 +457,7 @@ mod tests {
         let msg = "Battle.net is not set up. Set it up in Stores → Battle.net.";
         // No settings file: no prefix.
         let none = rig(json!({}));
-        let plan = build_plan_with_settings(&none.ctx, &none.probe(), &game, Some(&meta), &own, &LaunchOptions::default());
+        let plan = plan_as(RunMode::Wine, &none.ctx, &none.probe(), &game, &meta, &own);
         assert_eq!(plan, LaunchPlan::Unavailable(msg.into()));
         // A prefix without the client in it.
         let r = rig(set_up());

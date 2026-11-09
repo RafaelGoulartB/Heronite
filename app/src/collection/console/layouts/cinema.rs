@@ -16,6 +16,7 @@ use super::super::tile::label_room;
 use crate::console::kit::u;
 use crate::console::look;
 use crate::console::motion;
+use crate::console::pointer::Clickable;
 use crate::theme;
 
 const GAP: f32 = 18.;
@@ -95,10 +96,11 @@ impl CollectionView {
             // Only the focused shelf and its neighbours (which show while
             // the shelves glide) have covers; off screen ones are empty.
             if i.abs_diff(si) <= 1 {
-                let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, window.viewport_size().width);
+                let seen = super::in_sight(rows[i].handle().offset().x, tw + GAP, crate::ui::content_size(window).width);
                 for (c, key) in shelf.keys.iter().enumerate() {
                     let visible = super::loads(&seen, c, cols[i]);
-                    row = row.child(self.console_tile(key, tw, th, i == si && c == cols[i], visible, window));
+                    let tile = self.console_tile(key, tw, th, i == si && c == cols[i], visible, window);
+                    row = row.child(tile.on_pads(super::shelf_click(si, &cols, i, c)));
                 }
             }
             row = row.child(rows[i].driver());

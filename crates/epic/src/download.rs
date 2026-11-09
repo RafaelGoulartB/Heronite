@@ -646,6 +646,17 @@ mod tests {
     }
 
     #[test]
+    fn an_apostrophe_in_the_install_folder_is_kept() {
+        let base = |path: &str| join_install_path(path, "Game");
+        let expected = |path: &str| Path::new(path).join("Game").to_string_lossy().into_owned();
+        // The folder is what the user picked, apostrophes included.
+        assert_eq!(base("/mnt/Rafa's SSD/Games"), expected("/mnt/Rafa's SSD/Games"));
+        // The quotes wrapping a path (old configs) are not part of it.
+        assert_eq!(base("'/g/Control'"), expected("/g/Control"));
+        assert_eq!(base("'/mnt/Rafa's SSD'"), expected("/mnt/Rafa's SSD"));
+    }
+
+    #[test]
     fn a_game_installs_updates_and_repairs_like_legendary_records_it() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = dir.path().join("cfg");

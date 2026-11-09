@@ -8,7 +8,7 @@ use gpui_kit::*;
 use heronite_i18n::{tr, trn};
 
 use super::hub;
-use super::window::{close_window_keep_alive, show_window};
+use super::window::{close_window_keep_alive, save_placement, show_window};
 
 /// What a quit would leave behind: the games the launcher is tracking
 /// (titles, sorted), whether post-game work (backups, cloud saves) is still
@@ -214,6 +214,9 @@ pub(super) fn graceful_quit(cx: &mut App) {
         (s.runtime.clone(), s.tray.take())
     };
     log::info!("quitting");
+    // The window stays open while the app quits: a move or resize still
+    // waiting for its timer is written now.
+    save_placement(cx);
     crate::system::signals::quit_started();
     // A second process from now on finds no socket instead of a dying listener.
     crate::system::single_instance::close_active();
@@ -273,10 +276,10 @@ pub(super) fn maybe_exit_idle(cx: &mut App) {
     let hub = hub(cx);
     let idle = {
         let s = hub.0.borrow();
-        s.exit_when_idle && s.window.is_none() && s.running.is_empty() && !crate::services::session::busy()
+        s.exit_when_idle && s.window.is_none() && s.running.is_empty() && s.clients_followed == 0 && !crate::services::session::busy()
     };
     if idle {
-        log::info!("game ended and no window was shown: exiting");
+        log::info!("nothing left to follow and no window was shown: exiting");
         graceful_quit(cx);
     }
 }

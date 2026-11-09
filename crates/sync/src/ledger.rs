@@ -1,6 +1,7 @@
 //! What this PC remembers between syncs (`local_library/sync-ledger.json`):
-//! each field's value as last published or taken in, with its stamp, the
-//! sessions taken in from other PCs, and the play time last published.
+//! each field's value (a game's custom categories included) and each smart
+//! group as last published or taken in, with its stamp, the sessions taken
+//! in from other PCs, and the play time last published.
 //!
 //! The data files keep Heroic's formats, which have no time of change per
 //! field: a field whose value differs from the one here was changed on this
@@ -23,6 +24,10 @@ pub struct Ledger {
     /// By Collection key.
     #[serde(default)]
     pub games: BTreeMap<String, LedgerGame>,
+    /// Smart groups by id, as last published or taken in (see
+    /// [`DeviceFile::groups`](crate::format::DeviceFile::groups)).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub groups: BTreeMap<String, Stamped>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -1,22 +1,29 @@
-//! The Steam page of the Stores: the library read from the Steam client
-//! (`services::steam_library`). No login: the client is signed in already;
-//! the page says whether it can be read, opens or restarts Steam when that
-//! is what is missing, and reads it on request.
+//! The Steam page of the Stores (`services::steam_library`), laid out as
+//! the two import methods ([`super::methods`]):
+//!
+//! 1. Local, no login: the library read from the Steam client running here
+//!    (signed in already). The card says whether it can be read and opens
+//!    or restarts Steam when that is what is missing.
+//! 2. Online, optional ([`account`]): the Steam account signed in with a QR
+//!    code, read whenever the client cannot be.
+
+mod account;
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::steam_owned::SteamSource;
 use heronite_i18n::{tr, trn};
+use heronite_steam::ClientApiFlag;
 
 use super::commands::{CommandCtx, PageCommand, PaletteCommands};
-use super::{columns, status_pill, stores, Page, PageCtx, PageEvent};
+use super::methods::{self, Method, Tone};
+use super::{stores, Page, PageCtx, PageEvent};
 use crate::console::kit::{self, u};
 use crate::console::list::{Outcome, Row};
 use crate::console::{hint, Btn, Hint, Pad, PadTarget};
 use crate::icons::Icon;
 use crate::services::steam_library::{SteamLibrary, SteamLibraryEvent, SteamState};
-use crate::theme;
-use crate::ui::controls::{action_button, caption, card, ButtonKind};
-use crate::ui::icon;
+use crate::ui::controls::{action_button, icon_button_sm, ButtonKind};
 
 pub struct SteamPage {
     svc: Entity<SteamLibrary>,
@@ -42,7 +49,7 @@ impl SteamPage {
             cx.observe(&svc, |_, _, cx| cx.notify()),
             cx.subscribe(&svc, |_, _, ev: &SteamLibraryEvent, cx| {
                 let SteamLibraryEvent::Imported(report) = ev;
-                if report.added > 0 || report.playtime > 0 {
+                if report.changed() {
                     cx.emit(PageEvent::LibraryChanged);
                 }
             }),
@@ -60,24 +67,47 @@ impl SteamPage {
         self.svc.update(cx, |s, cx| s.sync(cx));
     }
 
-    /// The status of the client: text, colour, whether it can be read.
-    fn status(&self, cx: &App) -> (String, Rgba, bool) {
-        match self.svc.read(cx).state() {
-            SteamState::Checking => (tr!("Checking Steam\u{2026}").into(), theme::text_muted(), false),
-            SteamState::Connected | SteamState::Reading => (tr!("Steam is running").into(), theme::success(), true),
-            SteamState::Closed => (tr!("Steam is closed").into(), theme::text_muted(), false),
-            SteamState::Opening => (tr!("Steam is starting").into(), theme::accent(), false),
-            SteamState::Restarting => (tr!("Restarting Steam\u{2026}").into(), theme::accent(), false),
-            SteamState::NeedsRestart => (tr!("Restart Steam once").into(), theme::warning(), false),
-            SteamState::Failed => (tr!("Could not connect").into(), theme::danger_text(), false),
-            SteamState::NotInstalled => (tr!("Steam not found").into(), theme::text_muted(), false),
-        }
+    /// The status of the client.
+    fn status(&self, cx: &App) -> (String, Tone) {
+        let (text, tone) = match self.svc.read(cx).state() {
+            SteamState::Checking => (tr!("Checking Steam\u{2026}"), Tone::Neutral),
+            SteamState::Connected => (tr!("Steam is running"), Tone::Good),
+            // A read asked for while Steam does not answer fails at once: not "running".
+            SteamState::Reading => (tr!("Reading\u{2026}"), Tone::Accent),
+            SteamState::Closed => (tr!("Steam is closed"), Tone::Neutral),
+            SteamState::Opening => (tr!("Steam is starting"), Tone::Accent),
+            SteamState::Restarting => (tr!("Restarting Steam\u{2026}"), Tone::Accent),
+            SteamState::NotAnswering => (tr!("Steam is not answering"), Tone::Warning),
+            SteamState::NeedsRestart => (tr!("Restart Steam once"), Tone::Warning),
+            SteamState::Blocked => (tr!("Blocked by another tool"), Tone::Warning),
+            SteamState::PortTaken => (tr!("Port in use"), Tone::Warning),
+            SteamState::Failed => (tr!("Could not connect"), Tone::Warning),
+            SteamState::NotInstalled => (tr!("Steam not found"), Tone::Neutral),
+        };
+        (text.to_string(), tone)
     }
 
-    fn explanation(&self, cx: &App) -> Option<&'static str> {
-        match self.svc.read(cx).state() {
-            SteamState::Closed => Some(tr!("Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.")),
+    fn explanation(&self, cx: &App) -> Option<String> {
+        let s = self.svc.read(cx);
+        if s.state() == SteamState::PortTaken {
+            return s.taken.as_ref().map(heronite_steam::port_taken_message);
+        }
+        let text = match s.state() {
+            // Said only when the flag file is there: another tool may hold its place.
+            SteamState::Closed => Some(match s.flag {
+                Some(ClientApiFlag::On) => {
+                    tr!("Open Steam and Heronite reads your library by itself. The access it needs is turned on already: no restart.")
+                }
+                Some(ClientApiFlag::Blocked) => tr!(
+                    "Open Steam and Heronite reads your library by itself, if Steam lets it: another tool on this PC (Millennium, for example) decides whether Steam opens the access Heronite needs."
+                ),
+                _ => tr!("Open Steam and Heronite reads your library by itself."),
+            }),
+            SteamState::Blocked => Some(heronite_steam::blocked_message()),
             SteamState::Opening => Some(tr!("Steam is starting. If it asks, sign in: your library is read as soon as Steam is ready.")),
+            SteamState::NotAnswering => Some(tr!(
+                "Steam is open but does not let Heronite read its library yet. If it is updating or asking you to sign in, finish that: the library is read by itself. Otherwise restart Steam once. Read library now shows what went wrong."
+            )),
             SteamState::NeedsRestart => Some(tr!(
                 "Steam was open before Heronite could turn on the access it needs. Restart it once (games running from Steam close), or wait: your library comes in the next time Steam opens."
             )),
@@ -88,18 +118,25 @@ impl SteamPage {
                 Some(tr!("Steam was not found on this PC. Install Steam and sign in, then open it: Heronite reads your library by itself."))
             }
             _ => None,
-        }
+        };
+        text.map(str::to_string)
     }
 
     /// The button the status calls for: open Steam, restart it, or read.
+    /// Reading is offered whenever Steam may be running, so a client that
+    /// does not answer says why instead of keeping the button off.
     fn main_action(&self, cx: &App) -> (&'static str, &'static str, bool) {
         let s = self.svc.read(cx);
         match s.state() {
             SteamState::Closed => ("open", tr!("Open Steam"), true),
-            SteamState::NeedsRestart => ("restart", tr!("Restart Steam"), heronite_steam::can_restart()),
+            // Blocked: once the other tool lets the access open, a restart brings it.
+            // PortTaken: once the other program let the port go, a restart opens it.
+            SteamState::NeedsRestart | SteamState::NotAnswering | SteamState::Blocked | SteamState::PortTaken => {
+                ("restart", tr!("Restart Steam"), heronite_steam::can_restart())
+            }
             SteamState::Restarting => ("restart", tr!("Restarting\u{2026}"), false),
             SteamState::Reading => ("read", tr!("Reading\u{2026}"), false),
-            state => ("read", tr!("Read library now"), state == SteamState::Connected),
+            state => ("read", tr!("Read library now"), matches!(state, SteamState::Connected | SteamState::Opening)),
         }
     }
 
@@ -108,19 +145,29 @@ impl SteamPage {
             "open" => self.svc.update(cx, |s, cx| s.open(cx)),
             "restart" => self.svc.update(cx, |s, cx| s.restart(cx)),
             "read" => self.read_now(cx),
+            "sign-in" => self.svc.update(cx, |s, cx| s.begin_sign_in(cx)),
+            "cancel-sign-in" => self.svc.update(cx, |s, cx| s.cancel_sign_in(cx)),
+            "sign-out" => self.svc.update(cx, |s, cx| s.sign_out(cx)),
             _ => {}
         }
     }
 
     fn summary_line(&self, cx: &App) -> String {
         let s = &self.svc.read(cx).summary;
+        if s.updated_at.is_none() {
+            return tr!("Not read yet: only your installed Steam games are in the Collection.").to_string();
+        }
         let mut parts =
             vec![trn!(s.games, "{n} game in your library", "{n} games in your library"), super::store::installed_count(s.installed)];
+        let missing = s.games.saturating_sub(s.installed);
+        if missing > 0 {
+            parts.push(super::store::not_installed_count(missing));
+        }
         if let Some(at) = s.updated_at.as_deref().and_then(read_at) {
             parts.push(at);
         }
-        if s.updated_at.is_none() {
-            return tr!("Not read yet").to_string();
+        if s.source == SteamSource::Account {
+            parts.push(tr!("From your Steam account").to_string());
         }
         parts.join("  \u{b7}  ")
     }
@@ -138,85 +185,66 @@ impl SteamPage {
         }
     }
 
-    fn render_library(&mut self, cx: &mut Context<Self>) -> Div {
-        let (status, color, _) = self.status(cx);
+    /// Method 1: the Steam client on this PC.
+    fn render_local(&mut self, cx: &mut Context<Self>) -> Div {
+        let state = self.svc.read(cx).state();
+        let stuck = self.svc.read(cx).client_stuck();
         let (action, label, enabled) = self.main_action(cx);
-        let mut rows: Vec<AnyElement> = vec![div()
-            .flex()
-            .items_center()
-            .gap(px(14.))
-            .py(px(14.))
-            .child(icon(Icon::SportsEsports, px(44.), theme::accent()))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .gap(px(4.))
-                    .child(
-                        div()
-                            .font_family(theme::font_heading())
-                            .text_size(px(20.))
-                            .font_weight(theme::W_BOLD)
-                            .text_color(theme::text_primary())
-                            .child(tr!("Steam library")),
-                    )
-                    .child(div().flex().child(status_pill(status, color))),
-            )
-            .child(action_button(
+        // Reading is the strip's button; the card has the rest.
+        let button = (action != "read").then(|| {
+            action_button(
                 SharedString::from(format!("steam-{action}")),
                 ButtonKind::Primary,
                 label,
                 enabled,
                 cx.listener(move |this, _, _, cx| this.run_action(action, cx)),
-            ))
-            .into_any_element()];
-        rows.push(div().py(px(12.)).text_size(px(13.)).text_color(theme::text_muted()).child(self.summary_line(cx)).into_any_element());
-        if let Some(text) = self.explanation(cx) {
-            rows.push(div().py(px(12.)).text_size(px(13.)).line_height(px(19.)).child(text).into_any_element());
-        }
-        let mut column = div().child(caption(tr!("Library"))).child(card(rows));
-        if let Some((text, error)) = self.result_line(cx) {
-            column = column.child(
-                div()
-                    .mt(px(14.))
-                    .mx(px(6.))
-                    .text_size(px(13.))
-                    .text_color(if error { theme::danger_text() } else { theme::text_primary() })
-                    .child(text),
-            );
-        }
-        column
-    }
-
-    fn render_about(&self) -> Div {
-        let text = tr!(
-            "Heronite reads your library from the Steam client, so there is no login: only games are added (no tools, soundtracks, demos or games you hid in Steam). A game you already have from another store or added yourself is not added twice: it gets Steam's install instead. Steam keeps installing, updating and launching its games."
-        );
-        div().child(caption(tr!("About"))).child(card([div()
-            .py(px(12.))
-            .text_size(px(13.))
-            .line_height(px(19.))
-            .text_color(theme::text_muted())
-            .child(text)
-            .into_any_element()]))
+            )
+            .into_any_element()
+        });
+        let notice =
+            self.explanation(cx).map(|text| (text, if stuck || state == SteamState::Failed { Tone::Warning } else { Tone::Neutral }));
+        methods::method_card(Method {
+            eyebrow: methods::local_eyebrow(),
+            icon: Icon::Computer,
+            title: tr!("From Steam on this PC").into(),
+            badge: methods::no_login(),
+            status: Some(self.status(cx)).map(|(text, tone)| (text.into(), tone)),
+            facts: vec![
+                methods::brings(tr!("Reads the Steam app already open and signed in here")),
+                methods::brings(tr!("Leaves out the games you hid in Steam and brings Family Sharing games")),
+                methods::needs(tr!("Needs Steam running on this PC")),
+            ],
+            notice,
+            body: Vec::new(),
+            footer: Vec::new(),
+            actions: button.into_iter().collect(),
+            message: None,
+        })
     }
 
     fn console_rows(&self, cx: &App) -> Vec<Row> {
-        let (status, _, _) = self.status(cx);
+        let (status, _) = self.status(cx);
         let (action, label, enabled) = self.main_action(cx);
+        let syncing = self.svc.read(cx).syncing;
         let mut rows = vec![
-            Row::header(tr!("Library")),
-            Row::info("status", "Steam", status).icon(Icon::SportsEsports),
-            Row::action(action, label).desc(self.summary_line(cx)).icon(Icon::Refresh).enabled(enabled),
+            Row::header(tr!("Your library")),
+            Row::action("read", if syncing { tr!("Reading\u{2026}") } else { tr!("Read library now") })
+                .desc(self.summary_line(cx))
+                .icon(Icon::Refresh)
+                .enabled(!syncing),
+            Row::header(format!("{} \u{b7} {}", methods::local_eyebrow(), tr!("No login needed"))),
+            Row::info("status", tr!("From Steam on this PC"), status).icon(Icon::Computer),
         ];
+        if action != "read" {
+            rows.push(Row::action(action, label).icon(Icon::Refresh).enabled(enabled));
+        }
         if let Some(text) = self.explanation(cx) {
             rows.push(Row::info("why", "Steam", text));
         }
         if let Some((text, _)) = self.result_line(cx) {
             rows.push(Row::info("result", text, ""));
         }
+        rows.extend(self.account_console_rows(cx));
         rows
     }
 
@@ -261,12 +289,23 @@ impl Render for SteamPage {
             return self.render_console(cx);
         }
         let wide = stores::content_width(window) >= 1000.;
-        let body = columns(wide, [self.render_library(cx), self.render_about()]);
-        div()
-            .size_full()
-            .relative()
-            .child(stores::sheet("steam-page", Page::Steam, tr!("Your account and library."), cx, body))
-            .into_any_element()
+        let syncing = self.svc.read(cx).syncing;
+        let read = icon_button_sm(
+            "steam-read",
+            ButtonKind::Glass,
+            Icon::Refresh,
+            if syncing { tr!("Reading\u{2026}") } else { tr!("Read library now") },
+            !syncing,
+            cx.listener(|this, _, _, cx| this.run_action("read", cx)),
+        );
+        let strip = methods::library_strip(self.summary_line(cx), self.result_line(cx), read);
+        let cards = methods::methods(wide, self.render_local(cx), self.render_account(cx));
+        let note = methods::footnote(tr!(
+            "Only games come in: no tools, soundtracks or demos. A game you already have from another store or added yourself is not added twice: it gets Steam's install instead. Steam keeps installing, updating and launching its games."
+        ));
+        let body = methods::page(strip, cards, [note.into_any_element()]);
+        let lead = tr!("Two ways to bring your Steam library in. Heronite always tries this PC first.");
+        div().size_full().relative().child(stores::sheet("steam-page", Page::Steam, lead, cx, body)).into_any_element()
     }
 }
 

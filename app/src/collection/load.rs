@@ -19,6 +19,7 @@ struct Loaded {
     lib: Library,
     wiki: WikiCache,
     categories: heronite_data::categories::Categories,
+    smart_groups: heronite_data::smart_groups::SmartGroups,
     extras: heronite_data::organize::GameExtras,
     actions: HashMap<String, Vec<heronite_data::game_actions::Action>>,
     covers: HashMap<SharedString, Vec<ImageRef>>,
@@ -30,6 +31,7 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
     let lib = Library::load_with(data_paths, include_hidden)?;
     let wiki = WikiCache::load(data_paths);
     let categories = heronite_data::categories::Categories::load(data_paths);
+    let smart_groups = heronite_data::smart_groups::SmartGroups::load(data_paths);
     let extras = super::organize::game_extras(&lib, data_paths, cache);
     let actions = heronite_data::game_actions::load(data_paths);
     let shots = (!lib.settings.screenshots.folder.is_empty()).then(|| std::path::PathBuf::from(&lib.settings.screenshots.folder));
@@ -42,7 +44,7 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, categories, extras, actions, covers, stages })
+    Ok(Loaded { lib, wiki, categories, smart_groups, extras, actions, covers, stages })
 }
 
 /// A first load started just before the window opens, so it runs while the
@@ -160,16 +162,24 @@ impl CollectionView {
         self.stage_chains = l.stages;
         self.wiki = Arc::new(l.wiki);
         self.categories = l.categories;
+        self.smart_groups = l.smart_groups;
         self.game_extras = Arc::new(l.extras);
         self.user_actions = l.actions;
         self.prune_category_filter();
+        self.prune_smart_group_filter();
+        if self.groups_need_updates() {
+            self.update_apps = crate::services::downloads(cx).read(cx).update_apps();
+        }
         if !first {
             self.refresh_launch_options(cx);
         }
         // The first games of a new setup (Steam import) get a selection too.
         let before = self.lib.as_ref().map_or(0, |lib| lib.games.len());
         let was_empty = before == 0;
-        self.lib = Some(Arc::new(l.lib));
+        let lib = Arc::new(l.lib);
+        // Sunshine's list follows the installed games (when that is on).
+        crate::services::sunshine::library_loaded(&lib, cx);
+        self.lib = Some(lib);
         if first {
             if let Some((text, error)) = crate::services::upkeep::take_restore_notice() {
                 self.show_toast(text, error, cx);
@@ -198,20 +208,22 @@ impl CollectionView {
         {
             self.context_menu = None;
         }
-        let focused = if first {
-            crate::env::value("HERONITE_DEBUG_SELECT").or_else(|| self.ui.focused_game.clone())
-        } else {
-            self.selected.as_ref().map(|s| s.to_string())
-        };
+        let debug_select = first.then(|| crate::env::value("HERONITE_DEBUG_SELECT")).flatten();
+        // `HERONITE_DEBUG_SELECT` shows its game (captures need it in sight).
+        let reveal = debug_select.is_some();
+        let focused =
+            if first { debug_select.or_else(|| self.ui.focused_game.clone()) } else { self.selected.as_ref().map(|s| s.to_string()) };
         // The remembered game, else (first start, a removed game) the first
         // card, so the panel on the right is never empty when there are games.
         let exists = |k: &String| self.lib.as_ref().is_some_and(|lib| lib.get(k).is_some());
         let focused = focused.filter(exists).or_else(|| {
             (first || was_empty).then(|| self.groups.iter().flat_map(|g| g.cards.iter()).next().map(|c| c.key.to_string())).flatten()
         });
+        // The list opens at its top (#195): the remembered game stays
+        // selected, and the first move from it scrolls it back into sight.
         if let Some(key) = focused {
             self.select(key.into(), false);
-            if first {
+            if reveal {
                 self.reveal_selected();
             }
         }

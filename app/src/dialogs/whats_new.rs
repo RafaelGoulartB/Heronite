@@ -126,12 +126,12 @@ impl Render for WhatsNewDialog {
             cx.defer(move |cx| cx.notify(view));
         }
         let entity = cx.entity().downgrade();
-        let height = body_height(&self.release.notes).min(f32::from(window.viewport_size().height) * 0.78 - 140.);
+        let height = body_height(&self.release.notes).min(f32::from(crate::ui::content_size(window).height) * 0.78 - 140.);
         dialog_scrolled(
             DialogProps {
                 id: "whats-new".into(),
                 title: tr!("What's new in Heronite {version}", version = self.release.version).into(),
-                width: 600f32.min(f32::from(window.viewport_size().width) * 0.92),
+                width: 600f32.min(f32::from(crate::ui::content_size(window).width) * 0.92),
                 height: Some(height),
             },
             &self.scroll,

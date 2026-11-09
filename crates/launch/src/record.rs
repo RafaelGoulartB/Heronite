@@ -22,6 +22,7 @@ use anyhow::Result;
 use chrono::{DateTime, SecondsFormat, Utc};
 use heronite_data::json_store;
 use heronite_data::models::{LocalGameSession, SessionsFile, MAX_SESSIONS_PER_GAME};
+use heronite_data::status::{promote_played, PlayedGame, SetStatusExtras};
 use heronite_data::{DataPaths, JsNum};
 use serde_json::{json, Map, Value};
 
@@ -37,6 +38,8 @@ pub fn iso(dt: DateTime<Utc>) -> String {
 pub struct PlayRecord {
     pub app_name: String,
     pub title: String,
+    /// The game's runner, for the overlay entry its status needs.
+    pub runner: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
 }
@@ -187,13 +190,15 @@ pub struct Checkpointer {
     base_total: Option<f64>,
     /// `games.recent` is touched once per session.
     recent_done: bool,
+    /// The game's status was checked against its play time (once per session).
+    promoted: bool,
 }
 
 impl Checkpointer {
     /// Picks a session up where another run of the app left it (see
     /// [`Self::base_total`] and [`Self::has_written`]).
     pub fn resume(base_total: Option<f64>, written: bool) -> Self {
-        Self { base_total, recent_done: written }
+        Self { base_total, recent_done: written, promoted: false }
     }
 
     /// Reads `totalPlayed` now, before the session writes anything, so the
@@ -216,10 +221,26 @@ impl Checkpointer {
         self.recent_done
     }
 
+    /// Once the game has a minute of play, its automatic "Not played" becomes
+    /// "Played" (see [`heronite_data::status::promote_played`]). Not fatal: the
+    /// play time is recorded already, and the next session tries again.
+    fn promote(&mut self, paths: &DataPaths, rec: &PlayRecord, total: i64) {
+        if self.promoted || total <= 0 {
+            return;
+        }
+        let extras = SetStatusExtras { runner: Some(rec.runner.clone()), title: Some(rec.title.clone()), playnite_id: None };
+        let game = PlayedGame { app_name: rec.app_name.clone(), minutes: total as u64, extras };
+        match promote_played(paths, &[game]) {
+            Ok(_) => self.promoted = true,
+            Err(e) => log::warn!("marking {} as Played: {e:#}", rec.app_name),
+        }
+    }
+
     /// `rec.ended_at` is "now" for a checkpoint and the real end for the last
     /// write. Sessions under `min_session_seconds` only touch the timestamps.
     pub fn write(&mut self, paths: &DataPaths, rec: &PlayRecord, min_session_seconds: i64) -> Result<RecordOutcome> {
         let total = update_timestamps_with_base(paths, rec, &mut self.base_total)?;
+        self.promote(paths, rec, total);
         let elapsed = (rec.ended_at - rec.started_at).num_milliseconds().div_euclid(1000);
         let mut session_recorded = false;
         if elapsed >= min_session_seconds {
@@ -272,7 +293,13 @@ mod tests {
         // Second launch does not move firstPlayed.
         mark_started(&paths, "g1", t(99_000)).unwrap();
 
-        let rec = PlayRecord { app_name: "g1".into(), title: "Game One".into(), started_at: t(0), ended_at: t(90_500) };
+        let rec = PlayRecord {
+            app_name: "g1".into(),
+            title: "Game One".into(),
+            runner: "sideload".into(),
+            started_at: t(0),
+            ended_at: t(90_500),
+        };
         let out = record_play(&paths, &rec, MIN_SESSION_SECONDS).unwrap();
         assert_eq!(out, RecordOutcome { elapsed_seconds: 90, session_recorded: true, total_played_minutes: 1 });
 
@@ -299,7 +326,8 @@ mod tests {
             r#"{"g1":{"firstPlayed":"2025-01-01T00:00:00.000Z","lastPlayed":"2025-01-01T01:00:00.000Z","totalPlayed":200,"other":1},"g2":{"totalPlayed":5}}"#,
         )
         .unwrap();
-        let rec = PlayRecord { app_name: "g1".into(), title: "x".into(), started_at: t(0), ended_at: t(150_000) }; // 2.5 min
+        let rec =
+            PlayRecord { app_name: "g1".into(), title: "x".into(), runner: "sideload".into(), started_at: t(0), ended_at: t(150_000) }; // 2.5 min
         assert_eq!(update_timestamps(&paths, &rec).unwrap(), 202);
         let v: Value = serde_json::from_str(&read(&paths.timestamps())).unwrap();
         assert_eq!(v["g1"]["totalPlayed"], 202);
@@ -312,7 +340,7 @@ mod tests {
     fn short_sessions_only_touch_timestamps_and_recent() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let rec = PlayRecord { app_name: "g1".into(), title: "x".into(), started_at: t(0), ended_at: t(4_999) };
+        let rec = PlayRecord { app_name: "g1".into(), title: "x".into(), runner: "sideload".into(), started_at: t(0), ended_at: t(4_999) };
         let out = record_play(&paths, &rec, MIN_SESSION_SECONDS).unwrap();
         assert_eq!(out.elapsed_seconds, 4);
         assert!(!out.session_recorded);
@@ -324,7 +352,13 @@ mod tests {
     fn a_resumed_session_is_not_counted_twice() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let rec = |end: i64| PlayRecord { app_name: "g".into(), title: "G".into(), started_at: t(0), ended_at: t(end * 60_000) };
+        let rec = |end: i64| PlayRecord {
+            app_name: "g".into(),
+            title: "G".into(),
+            runner: "sideload".into(),
+            started_at: t(0),
+            ended_at: t(end * 60_000),
+        };
         record_play(&paths, &rec(100), 5).unwrap();
         // A new session: base read at its start, a checkpoint at 30 min.
         let mut cp = Checkpointer::default();
@@ -343,8 +377,13 @@ mod tests {
     fn sessions_dedupe_and_cap_newest_first() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let mk =
-            |i: i64| PlayRecord { app_name: "g1".into(), title: "x".into(), started_at: t(i * 60_000), ended_at: t(i * 60_000 + 30_000) };
+        let mk = |i: i64| PlayRecord {
+            app_name: "g1".into(),
+            title: "x".into(),
+            runner: "sideload".into(),
+            started_at: t(i * 60_000),
+            ended_at: t(i * 60_000 + 30_000),
+        };
         // A full history, then three more sessions.
         let max = MAX_SESSIONS_PER_GAME as i64;
         let full: Vec<LocalGameSession> = (0..max)
@@ -399,7 +438,13 @@ mod tests {
         let original = r#"{"g1":{"firstPlayed":"2025-01-01T00:00:00.000Z","totalPlayed":100}}"#;
         std::fs::create_dir_all(paths.timestamps().parent().unwrap()).unwrap();
         std::fs::write(paths.timestamps(), original).unwrap();
-        let at = |end_ms: i64| PlayRecord { app_name: "g1".into(), title: "G".into(), started_at: t(0), ended_at: t(end_ms) };
+        let at = |end_ms: i64| PlayRecord {
+            app_name: "g1".into(),
+            title: "G".into(),
+            runner: "sideload".into(),
+            started_at: t(0),
+            ended_at: t(end_ms),
+        };
         let mut cp = Checkpointer::default();
         // Checkpoints every 2 minutes, one repeated, then the end.
         for min in [2, 4, 4, 6] {
@@ -433,11 +478,18 @@ mod tests {
     fn a_crash_after_a_checkpoint_keeps_what_was_written() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let rec = PlayRecord { app_name: "g1".into(), title: "G".into(), started_at: t(0), ended_at: t(130_000) };
+        let rec =
+            PlayRecord { app_name: "g1".into(), title: "G".into(), runner: "sideload".into(), started_at: t(0), ended_at: t(130_000) };
         // First run: one checkpoint, then the process dies (no final write).
         Checkpointer::default().write(&paths, &rec, 5).unwrap();
         // Next day: a new session starts from the checkpointed total.
-        let next = PlayRecord { app_name: "g1".into(), title: "G".into(), started_at: t(86_400_000), ended_at: t(86_400_000 + 60_000) };
+        let next = PlayRecord {
+            app_name: "g1".into(),
+            title: "G".into(),
+            runner: "sideload".into(),
+            started_at: t(86_400_000),
+            ended_at: t(86_400_000 + 60_000),
+        };
         let out = Checkpointer::default().write(&paths, &next, 5).unwrap();
         assert_eq!(out.total_played_minutes, 2 + 1);
         let doc: SessionsFile = json_store::read(&paths.sessions()).unwrap();
@@ -448,9 +500,52 @@ mod tests {
     fn sessions_under_the_minimum_are_not_stored_by_checkpoints_either() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path());
-        let rec = PlayRecord { app_name: "g1".into(), title: "G".into(), started_at: t(0), ended_at: t(3_000) };
+        let rec = PlayRecord { app_name: "g1".into(), title: "G".into(), runner: "sideload".into(), started_at: t(0), ended_at: t(3_000) };
         let out = Checkpointer::default().write(&paths, &rec, 5).unwrap();
         assert!(!out.session_recorded);
         assert!(!paths.sessions().exists());
+    }
+
+    fn status_in(paths: &DataPaths, app: &str) -> Option<String> {
+        let doc = json_store::read_value(&paths.local_meta()).unwrap();
+        doc["games"][app]["completionStatusId"].as_str().map(str::to_owned)
+    }
+
+    #[test]
+    fn the_first_minute_of_play_moves_the_game_to_played() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let rec = |end_ms: i64| PlayRecord {
+            app_name: "ctl".into(),
+            title: "Control".into(),
+            runner: "legendary".into(),
+            started_at: t(0),
+            ended_at: t(end_ms),
+        };
+        // Under a minute: nothing was played yet.
+        record_play(&paths, &rec(50_000), 5).unwrap();
+        assert!(!paths.local_meta().exists());
+        // A game without an overlay entry gets one of its store.
+        record_play(&paths, &rec(90_000), 5).unwrap();
+        assert_eq!(status_in(&paths, "ctl").as_deref(), Some("played"));
+        let doc = json_store::read_value(&paths.local_meta()).unwrap();
+        assert_eq!((doc["games"]["ctl"]["runner"].as_str(), doc["games"]["ctl"]["source"].as_str()), (Some("legendary"), Some("epic")));
+        assert!(heronite_data::status_history::load(&paths).is_empty());
+    }
+
+    #[test]
+    fn playing_keeps_a_status_the_user_chose() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        heronite_data::status::set_game_status(&paths, "g1", "plan-to-play", &Default::default()).unwrap();
+        heronite_data::status::set_game_status(&paths, "g2", "not-played", &Default::default()).unwrap();
+        for app in ["g1", "g2"] {
+            let rec =
+                PlayRecord { app_name: app.into(), title: "G".into(), runner: "sideload".into(), started_at: t(0), ended_at: t(600_000) };
+            record_play(&paths, &rec, 5).unwrap();
+        }
+        assert_eq!(status_in(&paths, "g1").as_deref(), Some("plan-to-play"));
+        // Not played again by hand: the history has it, so it stays.
+        assert_eq!(status_in(&paths, "g2").as_deref(), Some("not-played"));
     }
 }

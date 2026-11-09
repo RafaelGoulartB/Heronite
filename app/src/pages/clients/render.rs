@@ -12,7 +12,7 @@ use crate::pages::{caption_with, columns, empty_row, list_item, status_pill, sto
 use crate::services::clients::{Activity, ClientState};
 use crate::services::widgets::{busy_bar, progress_bar};
 use crate::theme;
-use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, ButtonKind};
+use crate::ui::controls::{action_button, button, button_sm, caption, card, icon_button_sm, row, toggle, ButtonKind};
 use crate::ui::icon;
 
 fn home() -> String {
@@ -87,11 +87,25 @@ impl<K: ClientKind> ClientPage<K> {
                     .child(bar)
                     .into_any_element(),
             );
+        } else if !st.installed() && heronite_clients::native() {
+            rows.push(paragraph(tr!(
+                "Heronite downloads the official installer of {client} and runs it. Windows may ask you to allow it.",
+                client = client.name()
+            )));
         } else if !st.installed() {
             rows.push(paragraph(tr!(
                 "Heronite downloads the official installer and installs {client} in a Wine prefix of its own, with your default Proton. It takes about 5 minutes.",
                 client = client.name()
             )));
+        }
+        if heronite_clients::native() {
+            // No prefix, Wine settings or other install to use: the client is the PC's.
+            if let Some(folder) = logic::program_folder(st) {
+                let open =
+                    icon_button_sm(self.id("folder"), ButtonKind::Glass, Icon::FolderOpen, tr!("Open folder"), true, act!(cx, "folder"));
+                rows.push(row(tr!("Installed in"), Some(&folder.to_string_lossy()), open).into_any_element());
+            }
+            return self.client_column(st, rows);
         }
         let idle = !st.busy();
         match st.prefix().filter(|_| st.installed()) {
@@ -139,6 +153,11 @@ impl<K: ClientKind> ClientPage<K> {
             ),
             None => {}
         }
+        self.client_column(st, rows)
+    }
+
+    /// The client's card, and the notice under it.
+    fn client_column(&self, st: &ClientState, rows: Vec<AnyElement>) -> Div {
         let mut column = div().child(caption(tr!("Client"))).child(card(rows));
         if let Some(notice) = &st.notice {
             column = column.child(
@@ -164,7 +183,7 @@ impl<K: ClientKind> ClientPage<K> {
                 .ml(px(-12.))
                 .child(
                     button_sm(self.id("forget"), ButtonKind::Ghost, tr!("Remove from Heronite"))
-                        .when(!st.busy(), |b| b.on_click(act!(cx, "forget"))),
+                        .when(!st.busy() && !st.shortcut_busy, |b| b.on_click(act!(cx, "forget"))),
                 )
                 .into_any_element();
         }
@@ -213,6 +232,27 @@ impl<K: ClientKind> ClientPage<K> {
                     .children(hint.map(|h| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::text_muted()).child(h))),
             );
         div().child(caption(tr!("Account"))).child(card([line.into_any_element()]))
+    }
+
+    /// The client's shortcuts on the Desktop and in the application menu
+    /// (Linux: on Windows the client's installer makes its own; see
+    /// [`logic::shows_shortcuts`]).
+    fn render_shortcuts(&self, st: &ClientState, cx: &mut Context<Self>) -> Div {
+        let sc = st.shortcuts;
+        let switch = |name: &'static str, label: &str, desc: String, on: bool, enabled: bool, cx: &mut Context<Self>| {
+            let id = self.id(name);
+            row(label.to_string(), Some(&desc), toggle(SharedString::from(format!("{id}-sw")), on, !enabled))
+                .id(id)
+                .when(enabled, |r| r.cursor_pointer().on_click(act!(cx, name)))
+                .into_any_element()
+        };
+        let (desktop_on, menu_on) = logic::shortcut_switches(st);
+        let (desktop_line, menu_line) = logic::shortcut_lines(K::CLIENT, &sc);
+        let rows = [
+            switch("shortcut-desktop", tr!("Desktop shortcut"), desktop_line, sc.desktop, desktop_on, cx),
+            switch("shortcut-menu", tr!("Application menu shortcut"), menu_line, sc.menu, menu_on, cx),
+        ];
+        div().child(caption(tr!("Shortcuts"))).child(card(rows))
     }
 
     fn render_game(&self, st: &ClientState, game: &ClientGame, cx: &mut Context<Self>) -> AnyElement {
@@ -265,6 +305,13 @@ impl<K: ClientKind> ClientPage<K> {
 
     fn render_about(&self) -> Div {
         let client = K::CLIENT;
+        // The notes are about Wine and Linux.
+        if heronite_clients::native() {
+            return div().child(caption(tr!("About"))).child(card([paragraph(tr!(
+                "You sign in, install and update games in {client}; Heronite starts them through it and counts the play time for the game, not for {client}.",
+                client = client.name()
+            ))]));
+        }
         div().child(caption(tr!("About"))).child(card([
             paragraph(tr!(
                 "{client} runs under Wine in a prefix of its own. You sign in, install and update games in it; Heronite starts them through it and counts the play time for the game, not for {client}.",
@@ -288,6 +335,9 @@ impl<K: ClientKind> Render for ClientPage<K> {
         if st.installed() {
             left = left.child(self.render_account(&st));
             right = right.child(self.render_games(&st, cx));
+        }
+        if logic::shows_shortcuts(&st) {
+            left = left.child(self.render_shortcuts(&st, cx));
         }
         right = right.child(self.render_about());
         let wide = stores::content_width(window) >= 1000.;

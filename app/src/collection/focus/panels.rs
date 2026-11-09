@@ -156,6 +156,23 @@ fn format_hours(v: Option<f32>) -> SharedString {
     }
 }
 
+/// How the game was matched, under the times, when it is worth a look (the
+/// actions are in the title's menu).
+fn hltb_note(h: &HltbVm) -> Option<Div> {
+    let note = match (&h.name, h.close, h.manual) {
+        (_, _, true) => tr!("Match picked by you").to_string(),
+        (Some(name), true, _) => tr!("Matched by a similar name: {name}", name = name.as_ref()),
+        (None, true, _) => tr!("Matched by a similar name").to_string(),
+        _ => return None,
+    };
+    Some(div().mt(px(12.)).text_size(px(12.)).text_color(theme::ink_a(0.52)).child(note))
+}
+
+/// The game was looked up and HowLongToBeat has no times for it.
+pub(super) fn hltb_missing_panel() -> Div {
+    panel(true).child(div().text_size(px(13.)).text_color(theme::ink_a(0.7)).child(tr!("HowLongToBeat has no times for this game.")))
+}
+
 pub(super) fn hltb_panel(h: &HltbVm) -> Div {
     let max = h.complete.unwrap_or(0.).max(h.extra.unwrap_or(0.)).max(h.main.unwrap_or(0.));
     let marker = (max > 0. && h.played_hours > 0.).then(|| (h.played_hours / max).min(1.));
@@ -206,14 +223,17 @@ pub(super) fn hltb_panel(h: &HltbVm) -> Div {
                     .child(format_hours(v)),
             )
     };
-    panel(true).child(bar).child(
-        div()
-            .flex()
-            .gap(px(8.8))
-            .child(stat(tr!("Main Story"), h.main))
-            .child(stat(tr!("Main + Extras"), h.extra))
-            .child(stat(tr!("Completionist"), h.complete)),
-    )
+    panel(true)
+        .child(bar)
+        .child(
+            div()
+                .flex()
+                .gap(px(8.8))
+                .child(stat(tr!("Main Story"), h.main))
+                .child(stat(tr!("Main + Extras"), h.extra))
+                .child(stat(tr!("Completionist"), h.complete)),
+        )
+        .children(hltb_note(h))
 }
 
 /// Cover size of "Related games", in logical px.

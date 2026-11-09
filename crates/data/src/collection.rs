@@ -8,6 +8,7 @@ use std::sync::Arc;
 use heronite_i18n::tr;
 use serde::{Deserialize, Serialize};
 
+use crate::age_rating::AgeFilter;
 use crate::library::CollectionGame;
 use crate::models::{CollectionGameMetadata, CompletionStatus, GameInfo};
 use crate::organize::{compare_keyed, Keyed, Organize};
@@ -118,10 +119,17 @@ pub enum FacetKind {
     Store,
     Theme,
     Feature,
+    /// How the game is played (single player, co-operative, split screen...),
+    /// from the metadata's game modes.
+    #[serde(rename = "gameMode")]
+    GameMode,
+    /// The tags Steam players voted for (the store's "popular tags"), for a
+    /// game with a Steam app id ([`crate::steam_tags`]).
+    Tag,
 }
 
 /// `FACET_KINDS`, in the order the filter menu lists them.
-pub const FACET_KINDS: [FacetKind; 8] = [
+pub const FACET_KINDS: [FacetKind; 10] = [
     FacetKind::Store,
     FacetKind::Series,
     FacetKind::Developer,
@@ -129,6 +137,8 @@ pub const FACET_KINDS: [FacetKind; 8] = [
     FacetKind::Genre,
     FacetKind::Theme,
     FacetKind::Feature,
+    FacetKind::GameMode,
+    FacetKind::Tag,
     FacetKind::Platform,
 ];
 
@@ -147,6 +157,8 @@ impl FacetKind {
             Self::Store => "store",
             Self::Theme => "theme",
             Self::Feature => "feature",
+            Self::GameMode => "gameMode",
+            Self::Tag => "tag",
         }
     }
 
@@ -168,6 +180,9 @@ pub struct FacetFilters {
     pub store: Vec<String>,
     pub theme: Vec<String>,
     pub feature: Vec<String>,
+    #[serde(rename = "gameMode")]
+    pub game_mode: Vec<String>,
+    pub tag: Vec<String>,
 }
 
 impl FacetFilters {
@@ -181,6 +196,8 @@ impl FacetFilters {
             FacetKind::Store => &self.store,
             FacetKind::Theme => &self.theme,
             FacetKind::Feature => &self.feature,
+            FacetKind::GameMode => &self.game_mode,
+            FacetKind::Tag => &self.tag,
         }
     }
 
@@ -194,6 +211,8 @@ impl FacetFilters {
             FacetKind::Store => &mut self.store,
             FacetKind::Theme => &mut self.theme,
             FacetKind::Feature => &mut self.feature,
+            FacetKind::GameMode => &mut self.game_mode,
+            FacetKind::Tag => &mut self.tag,
         }
     }
 
@@ -268,9 +287,9 @@ pub struct FacetItem {
 }
 
 /// Facet values of a game, indexed by [`FacetKind::index`].
-pub type GameFacets = [Vec<FacetItem>; 8];
+pub type GameFacets = [Vec<FacetItem>; 10];
 
-fn items(values: Vec<String>) -> Vec<FacetItem> {
+pub(crate) fn items(values: Vec<String>) -> Vec<FacetItem> {
     values.into_iter().map(|value| FacetItem { key: facet_key(&value), value }).collect()
 }
 
@@ -310,6 +329,9 @@ pub fn game_facets(game: &GameInfo, metadata: Option<&CollectionGameMetadata>) -
         Vec::new(),
         items(listed(|m| &m.themes)),
         items(listed(|m| &m.features)),
+        items(listed(|m| &m.game_modes)),
+        // Filled from the Steam tags cache at load (`steam_tags`).
+        Vec::new(),
     ]
 }
 
@@ -329,6 +351,7 @@ pub fn store_facet(source: Option<&str>, runner: &str, steam_entry: bool, also_o
         ("lutris", _) => "Lutris",
         ("bottles", _) => "Bottles",
         ("faugus", _) => "Faugus",
+        ("playnite", _) => "Playnite",
         ("battlenet", _) => "Battle.net",
         ("ea", _) => "EA app",
         ("ubisoft", _) => "Ubisoft Connect",
@@ -377,6 +400,8 @@ pub struct FacetOptions {
     pub store: Vec<FacetOption>,
     pub theme: Vec<FacetOption>,
     pub feature: Vec<FacetOption>,
+    pub game_mode: Vec<FacetOption>,
+    pub tag: Vec<FacetOption>,
 }
 
 impl FacetOptions {
@@ -390,13 +415,15 @@ impl FacetOptions {
             FacetKind::Store => &self.store,
             FacetKind::Theme => &self.theme,
             FacetKind::Feature => &self.feature,
+            FacetKind::GameMode => &self.game_mode,
+            FacetKind::Tag => &self.tag,
         }
     }
 }
 
 /// `collectFacetOptions`: first spelling wins, sorted with `localeCompare`.
 pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
-    let mut buckets: [HashMap<&str, (usize, &str)>; 8] = Default::default();
+    let mut buckets: [HashMap<&str, (usize, &str)>; 10] = Default::default();
     // Preserve first-seen order only for the spelling; the output is sorted.
     for game in games {
         for kind in FACET_KINDS {
@@ -422,6 +449,8 @@ pub fn collect_facet_options(games: &[Game]) -> FacetOptions {
         store: finish(&buckets[5]),
         theme: finish(&buckets[6]),
         feature: finish(&buckets[7]),
+        game_mode: finish(&buckets[8]),
+        tag: finish(&buckets[9]),
     }
 }
 
@@ -473,6 +502,8 @@ pub struct ViewQuery {
     pub favourites_only: bool,
     /// Games that run without a connection ([`runs_offline`]).
     pub offline_only: bool,
+    /// "Ages up to", by [`CollectionGame::age_rating`].
+    pub age: AgeFilter,
 }
 
 /// Whether the game plays without a connection: the library's
@@ -527,6 +558,7 @@ pub fn filter_games_organized(games: &[Game], query: &ViewQuery, keep: &dyn Fn(&
             query.install.matches(g.installed)
                 && (!query.favourites_only || g.favourite)
                 && (!query.offline_only || runs_offline(g))
+                && query.age.allows(g.age_rating.as_ref().and_then(|r| r.min_age()))
                 && matches_facets(g, &query.facets)
                 && keep(g)
         })
@@ -766,6 +798,32 @@ mod tests {
     }
 
     #[test]
+    fn game_modes_are_a_facet_with_counts() {
+        let games = vec![
+            g("a", "It Takes Two", |s| s.game_modes = vec!["Co-operative".into(), "Split screen".into()]),
+            g("b", "Portal 2", |s| s.game_modes = vec!["Single player".into(), "co-operative ".into()]),
+            g("c", "Celeste", |s| s.game_modes = vec!["Single player".into()]),
+            g("d", "No metadata", |_| {}),
+        ];
+        let run = |q: ViewQuery| filter_games(&games, &q).iter().map(|g| g.app_name.clone()).collect::<Vec<_>>();
+        let coop = FacetFilters::default().toggled(FacetKind::GameMode, "co-operative");
+        assert_eq!(run(ViewQuery { facets: coop.clone(), ..Default::default() }), ["a", "b"]);
+        let coop_or_split = coop.toggled(FacetKind::GameMode, "Split Screen");
+        assert_eq!(run(ViewQuery { facets: coop_or_split, ..Default::default() }), ["a", "b"]);
+        let single = FacetFilters::default().toggled(FacetKind::GameMode, "Single player");
+        assert_eq!(run(ViewQuery { facets: single, ..Default::default() }), ["c", "b"], "by title");
+        // ANDs with the other kinds
+        let coop_by_nobody = coop.toggled(FacetKind::Developer, "Valve");
+        assert!(run(ViewQuery { facets: coop_by_nobody, ..Default::default() }).is_empty());
+
+        let options = collect_facet_options(&games);
+        let counts: Vec<(&str, usize)> = options.get(FacetKind::GameMode).iter().map(|o| (o.value.as_str(), o.count)).collect();
+        assert_eq!(counts, [("Co-operative", 2), ("Single player", 2), ("Split screen", 1)]);
+        assert_eq!(FacetKind::parse("gameMode"), Some(FacetKind::GameMode));
+        assert_eq!(serde_json::to_value(FacetKind::GameMode).unwrap(), "gameMode");
+    }
+
+    #[test]
     fn search_install_and_facet_filters_combine() {
         let games = vec![
             g("a", "Half-Life", |s| {
@@ -873,6 +931,28 @@ mod tests {
         assert_eq!(run(ViewQuery { offline_only: true, ..Default::default() }), ["off"]);
         let kept = filter_games_where(&games, &ViewQuery::default(), &|g| g.app_name != "off");
         assert_eq!(kept.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["fav", "plain"]);
+    }
+
+    #[test]
+    fn ages_up_to_hides_older_games_and_maybe_the_unrated() {
+        use crate::age_rating::{AgeRating, RatingSystem};
+        use crate::library::tests_support::game_with;
+        let rated = |app: &str, system, code: &str| {
+            let r = AgeRating::new(system, code, Vec::new()).unwrap();
+            game_with(app, "sideload", move |_, _, md, _, _| md.age_ratings = vec![r])
+        };
+        let games = vec![
+            rated("teen", RatingSystem::Esrb, "T"),
+            rated("pegi7", RatingSystem::Pegi, "7"),
+            game_with("none", "sideload", |_, _, _, _, _| {}),
+        ];
+        let run = |age: AgeFilter| {
+            filter_games(&games, &ViewQuery { age, ..Default::default() }).iter().map(|g| g.app_name.clone()).collect::<Vec<_>>()
+        };
+        assert_eq!(run(AgeFilter::default()), ["none", "pegi7", "teen"]);
+        assert_eq!(run(AgeFilter { max: Some(12), unrated: false }), ["pegi7"]);
+        assert_eq!(run(AgeFilter { max: Some(12), unrated: true }), ["none", "pegi7"]);
+        assert_eq!(run(AgeFilter { max: Some(16), unrated: false }), ["pegi7", "teen"]);
     }
 
     #[test]

@@ -4,6 +4,11 @@
 //! each answer was a search over the statuses and the session history, on
 //! every frame. Built off the UI thread when the library, its status history
 //! or the sessions change.
+//!
+//! Games the Steam Family shares are played like the others (their play
+//! time, statuses and beaten days count), but they are not the user's: the
+//! counts of the Collection ([`GameFacts::owned`], the statuses, the pile's
+//! added games) leave them out.
 
 use std::collections::{HashMap, HashSet};
 
@@ -26,11 +31,15 @@ pub(super) struct GameFacts {
     /// `(day, game)`, oldest first.
     beaten_days: Vec<(NaiveDate, usize)>,
     abandoned_days: Vec<(NaiveDate, usize)>,
-    /// Games per status id.
+    /// Games per status id (the user's own games).
     per_status: HashMap<String, usize>,
+    /// Games the Steam Family shares (library indices).
+    shared: HashSet<usize>,
+    /// Games in the Collection that are the user's own (not shared).
+    pub owned: usize,
     /// Library index of each game key (the plans keep keys).
     index: HashMap<String, usize>,
-    /// Games ever opened (play time or a session), and played 5h or more.
+    /// Own games ever opened (play time or a session), and played 5h or more.
     pub opened: usize,
     pub played_5h: usize,
     /// Hours a week played over the last six months, without endless games
@@ -69,10 +78,15 @@ impl GameFacts {
             let (b, a) = (day(&BEATEN, &beaten_ids), day(&ABANDONED, &abandoned_ids));
             f.beaten_days.extend(b.map(|d| (d, i)));
             f.abandoned_days.extend(a.map(|d| (d, i)));
-            *f.per_status.entry(g.status_id.clone()).or_default() += 1;
             f.index.insert(g.key.clone(), i);
-            f.opened += usize::from(g.playtime_minutes > 0 || g.sessions.as_ref().is_some_and(|s| !s.is_empty()));
-            f.played_5h += usize::from(g.playtime_minutes >= 300);
+            if g.family.is_some() {
+                f.shared.insert(i);
+            } else {
+                f.owned += 1;
+                *f.per_status.entry(g.status_id.clone()).or_default() += 1;
+                f.opened += usize::from(g.playtime_minutes > 0 || g.sessions.as_ref().is_some_and(|s| !s.is_empty()));
+                f.played_5h += usize::from(g.playtime_minutes >= 300);
+            }
             f.slug.push(slug);
             f.beaten.push(b);
             f.abandoned.push(a);
@@ -85,6 +99,7 @@ impl GameFacts {
             let n = lib.games.len();
             // A game was in the library by the day it was first played.
             let added: Vec<NaiveDate> = (0..n)
+                .filter(|g| !f.shared.contains(g))
                 .filter_map(|g| match (backlog.added.get(&g).copied(), h.first_day(g)) {
                     (Some(a), Some(first)) => Some(a.min(first)),
                     (a, first) => a.or(first),
@@ -145,9 +160,15 @@ impl GameFacts {
         self.per_status.get(id).copied().unwrap_or(0)
     }
 
-    /// How many games have one of the status `slugs`.
-    pub fn count(&self, slugs: &[&str]) -> usize {
-        self.slug.iter().filter(|s| slugs.contains(&s.as_str())).count()
+    /// How many of the user's own games (not the Steam Family's) have one of
+    /// the status `slugs`.
+    pub fn count_owned(&self, slugs: &[&str]) -> usize {
+        self.slug.iter().enumerate().filter(|(g, s)| !self.shared.contains(g) && slugs.contains(&s.as_str())).count()
+    }
+
+    /// How many games the Steam Family shares.
+    pub fn shared(&self) -> usize {
+        self.shared.len()
     }
 }
 

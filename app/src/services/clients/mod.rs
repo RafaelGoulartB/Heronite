@@ -1,6 +1,7 @@
-//! The store clients under Wine (`heronite_clients`): Battle.net, the EA
-//! app, Ubisoft Connect and the Rockstar Games Launcher. Their status, setup,
-//! opening and closing, and their installed games kept in the Collection.
+//! The store clients (`heronite_clients`): Battle.net, the EA app, Ubisoft
+//! Connect and the Rockstar Games Launcher, under Wine on Linux and as they
+//! are on Windows. Their status, setup, opening and closing, and their
+//! installed games kept in the Collection.
 //!
 //! The service starts with the app (`system/hub/start.rs`) and costs nothing
 //! while no client is set up: ten seconds after the start it looks at every
@@ -17,9 +18,10 @@
 mod debug;
 mod run;
 mod setup;
+pub mod shortcuts;
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -111,6 +113,14 @@ pub struct ClientState {
     pub in_collection: usize,
     /// App names of its games the user took out of the Collection.
     pub removed: BTreeSet<String>,
+    /// Its shortcuts on the Desktop and in the application menu (Linux).
+    pub shortcuts: shortcuts::Shortcuts,
+    /// A shortcut is being added or removed.
+    pub shortcut_busy: bool,
+    /// Shortcut changes done, and how many there were when the running look
+    /// began: a look that began before the last change keeps its result.
+    shortcuts_changes: u64,
+    shortcuts_read_at: u64,
     cancel: Option<Arc<Cancel>>,
     visible: bool,
     /// A client this app opened, set up or started a game through: asked
@@ -179,6 +189,7 @@ struct Read {
     last: Option<LastSync>,
     in_collection: usize,
     removed: BTreeSet<String>,
+    shortcuts: shortcuts::Shortcuts,
 }
 
 /// Looks at `clients` and, when asked, brings the installed ones' games into
@@ -194,7 +205,11 @@ fn read(paths: &DataPaths, clients: &[Client], sync: bool) -> Vec<(Client, Read)
             let synced = (sync && status.installed()).then(|| collection::sync(paths, client, &status.games).map_err(|e| format!("{e:#}")));
             // Read after the sync, which records when it ran.
             let prefs = if matches!(synced, Some(Ok(_))) { ClientPrefs::load(paths) } else { prefs.clone() };
+            // Only the clients under Wine get shortcuts from Heronite; one
+            // whose prefix was deleted by hand may still have them.
+            let shortcuts = if heronite_clients::native() { Default::default() } else { shortcuts::placed(client) };
             let read = Read {
+                shortcuts,
                 last: prefs.last.get(&client).cloned(),
                 removed: prefs.removed.get(&client).cloned().unwrap_or_default(),
                 in_collection: counts.get(&client).copied().unwrap_or(0),
@@ -328,6 +343,7 @@ impl Clients {
                 continue;
             }
             st.reading = true;
+            st.shortcuts_read_at = st.shortcuts_changes;
             st.syncing = sync && st.installed();
             todo.push(client);
         }
@@ -353,6 +369,9 @@ impl Clients {
             st.in_collection = read.in_collection;
             st.removed = read.removed;
             st.last = read.last;
+            if !st.shortcut_busy && st.shortcuts_read_at == st.shortcuts_changes {
+                st.shortcuts = read.shortcuts;
+            }
             if !read.status.installed() {
                 st.running = false;
                 st.game_running = false;
@@ -408,8 +427,8 @@ impl Clients {
                     .background_spawn(async move {
                         targets
                             .into_iter()
-                            .map(|(c, prefix)| {
-                                let (running, game) = heronite_clients::run::running(c, &prefix);
+                            .map(|(c, status)| {
+                                let (running, game) = heronite_clients::run::running(c, &status);
                                 (c, running, game)
                             })
                             .collect::<Vec<_>>()
@@ -427,12 +446,13 @@ impl Clients {
         }));
     }
 
-    /// The installed clients whose state matters now, with their prefixes.
-    fn poll_targets(&self) -> Vec<(Client, PathBuf)> {
+    /// The installed clients whose state matters now, with what was last
+    /// seen of them (their prefix, or their program and games on Windows).
+    fn poll_targets(&self) -> Vec<(Client, Status)> {
         self.states
             .iter()
             .filter(|(c, s)| (s.visible || s.watched) && self.frozen != Some(**c))
-            .filter_map(|(c, s)| s.installed().then(|| s.prefix().map(|p| (*c, p.to_path_buf()))).flatten())
+            .filter_map(|(c, s)| s.status.as_ref().filter(|st| st.installed()).map(|st| (*c, st.clone())))
             .collect()
     }
 

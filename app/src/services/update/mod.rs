@@ -5,6 +5,14 @@
 //!   same format and hands it to apt / dnf / pacman through `pkexec` (the
 //!   desktop's password prompt), then restarts. Never automatic: it asks for
 //!   a password.
+//! - the AUR's `heronite-bin`: only tells that a release is out. Its AUR
+//!   helper installs it (our Arch package conflicts with it), so nothing is
+//!   downloaded;
+//! - Windows, installed by Scoop (`packaging/scoop`): the same, `scoop update
+//!   heronite` installs it (Scoop owns the files of each version);
+//! - the Fedora COPR's `heronite` (`packaging/copr`): the same, dnf (or
+//!   rpm-ostree on an atomic desktop) installs it from the COPR, which builds
+//!   it from source: the release's `.rpm` must not replace it;
 //! - Windows, installed by our setup: downloads the release's setup, which
 //!   runs silently as the app quits (a restart, or a normal quit) and
 //!   replaces the files once this process is gone ([`crate::system::run_on_quit`]);
@@ -35,7 +43,7 @@
 //! (nothing is downloaded, written or restarted; `simulate-auto` presses
 //! Update by itself); `HERONITE_DEBUG_UPDATE=whatsnew` opens that "What's
 //! new" at once;
-//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch` pretends this copy came from
+//! `HERONITE_DEBUG_UPDATE_PACKAGE=deb|rpm|arch|aur|scoop|copr` pretends this copy came from
 //! that package (with `HERONITE_DEBUG_UPDATE`; on Windows `setup|portable`,
 //! the setup by default);
 //! `HERONITE_DEBUG_UPDATE_KEY=<minisign public key>` (debug builds only)
@@ -56,7 +64,7 @@ use futures::channel::mpsc::unbounded;
 use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::AppPaths;
-use heronite_i18n::tr;
+use heronite_i18n::{n_, tr};
 use heronite_update::{Asset, Fetched, InstallError, Package, Prefs, Progress, Release, Target, Unsupported, Version};
 #[cfg(windows)]
 use heronite_update::{Installer, Portable, WindowsAsset};
@@ -65,6 +73,14 @@ const FIRST_CHECK: Duration = Duration::from_secs(3);
 const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
 /// A start this soon after the last check waits for the next period instead.
 const RECHECK_AFTER: Duration = Duration::from_secs(30 * 60);
+/// What an AUR copy shows for a new version, instead of the Update button.
+pub const AUR_UPDATE: &str = n_!("Update with your AUR helper, for example yay -Syu");
+/// What Scoop's copy shows for a new version, instead of the Update button.
+pub const SCOOP_UPDATE: &str = n_!("Update with Scoop: scoop update heronite");
+/// What the COPR's copy shows for a new version, instead of the Update button.
+pub const COPR_UPDATE: &str = n_!("Update with dnf: sudo dnf upgrade");
+/// [`COPR_UPDATE`] on Fedora's atomic desktops (Silverblue, Kinoite, Bazzite).
+pub const COPR_OSTREE_UPDATE: &str = n_!("Update with rpm-ostree: rpm-ostree upgrade");
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Phase {
@@ -112,11 +128,16 @@ pub enum Method {
 }
 
 impl Method {
-    /// A copy installed by our setup, else a portable one (the setup owns
-    /// the files it installed, even next to a portable marker).
+    /// A copy installed by Scoop, else by our setup, else a portable one
+    /// (the setup owns the files it installed, even next to a portable
+    /// marker; Scoop's manifest takes that marker out, but an older copy of
+    /// it may still have one).
     #[cfg(windows)]
     fn detect() -> Result<Self, Unsupported> {
         let exe = std::env::current_exe().map_err(|_| Unsupported::NotAppImage)?;
+        if heronite_platform::scoop::installed(&exe) {
+            return Ok(Method::Package { kind: Package::Scoop, exe });
+        }
         if let Some(installer) = Installer::detect(&exe) {
             return Ok(Method::Installer(installer));
         }
@@ -138,6 +159,19 @@ impl Method {
                 Ok(Method::Package { kind, exe })
             }
             Err(e) => Err(e),
+        }
+    }
+
+    /// The release can be downloaded and installed this way (never the
+    /// AUR's package, Scoop's nor the COPR's: they have no release file).
+    fn can_install(&self, release: &Release) -> bool {
+        match self {
+            Method::AppImage(_) => release.installable(),
+            Method::Package { kind, .. } => release.package_proof(*kind).is_some(),
+            #[cfg(windows)]
+            Method::Installer(_) => release.windows_proof(WindowsAsset::Setup).is_some(),
+            #[cfg(windows)]
+            Method::Portable(_) => release.windows_proof(WindowsAsset::Portable).is_some(),
         }
     }
 
@@ -277,6 +311,9 @@ impl Updater {
                 let p = p.clone();
                 let _ = std::thread::Builder::new().name("update-sweep".into()).spawn(move || p.sweep());
             }
+            Ok(Method::Package { kind, .. }) if kind.managed() => {
+                log::info!("installed with {}: updates are only announced, its package manager installs them", kind.label());
+            }
             Ok(Method::Package { kind, .. }) => {
                 log::info!("installed from a {} package: updates go through its package manager", kind.label());
                 // Packages of earlier updates (installed or not).
@@ -359,6 +396,19 @@ impl Updater {
         }
     }
 
+    /// How to update a copy whose own package manager installs updates
+    /// (the AUR, Scoop, the COPR), shown instead of the Update button; `None` when
+    /// Heronite installs them or sends people to the release page.
+    pub fn manager_update(&self) -> Option<&'static str> {
+        match self.package()? {
+            Package::Aur => Some(AUR_UPDATE),
+            Package::Scoop => Some(SCOOP_UPDATE),
+            Package::Copr if heronite_update::package::ostree_booted() => Some(COPR_OSTREE_UPDATE),
+            Package::Copr => Some(COPR_UPDATE),
+            _ => None,
+        }
+    }
+
     /// The Windows download this copy updates from.
     #[cfg(windows)]
     fn windows_asset(&self) -> Option<WindowsAsset> {
@@ -386,13 +436,7 @@ impl Updater {
     /// The release can be downloaded and installed from here.
     pub fn can_install(&self) -> bool {
         let Some(release) = &self.release else { return false };
-        match &self.method {
-            Ok(Method::AppImage(_)) => release.installable(),
-            Ok(Method::Package { kind, .. }) => release.package_proof(*kind).is_some(),
-            #[cfg(windows)]
-            Ok(Method::Installer(_) | Method::Portable(_)) => self.windows_asset().is_some_and(|k| release.windows_proof(k).is_some()),
-            Err(_) => false,
-        }
+        self.method.as_ref().is_ok_and(|m| m.can_install(release))
     }
 
     /// Updates may install without a click (not packages: they ask for a
@@ -559,7 +603,11 @@ impl Updater {
             return;
         }
         self.notified = Some(r.version.clone());
-        crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), tr!("Open Heronite to update."));
+        let how = match self.manager_update() {
+            Some(how) => tr(how),
+            None => tr!("Open Heronite to update."),
+        };
+        crate::system::notify::send(tr!("Heronite {version} is available", version = r.version), how);
     }
 
     /// Downloads the release and installs it ([`Method`]).
@@ -736,7 +784,8 @@ impl Updater {
         cx.notify();
     }
 
-    /// "Later": hides the banner of this version for this session.
+    /// "Ignore" or "Later": hides the banner of this version for this
+    /// session. It is back after a restart, or with a check asked for.
     pub fn dismiss(&mut self, cx: &mut Context<Self>) {
         self.dismissed = self.release.as_ref().map(|r| r.version.clone());
         if matches!(self.phase, Phase::InstallFailed(_)) {
@@ -816,8 +865,8 @@ fn arrival(prefs: &mut Prefs, current: &Version) -> Option<Option<Release>> {
 
 #[cfg(test)]
 mod tests {
-    use super::arrival;
-    use heronite_update::{Prefs, Release, Version};
+    use super::{arrival, Method};
+    use heronite_update::{Asset, Checksums, Package, Prefs, Release, Version};
 
     fn release(version: &str) -> Release {
         Release {
@@ -832,6 +881,39 @@ mod tests {
             windows: Vec::new(),
             checksums: None,
         }
+    }
+
+    fn asset(name: &str) -> Asset {
+        Asset { name: name.into(), url: format!("https://dl/{name}"), size: 1 }
+    }
+
+    /// A release with every package, signed by one checksum list.
+    fn signed_release() -> Release {
+        Release {
+            packages: ["heronite_1.2.0-1_amd64.deb", "heronite-1.2.0-1.x86_64.rpm", "heronite-1.2.0-1-x86_64.pkg.tar.zst"]
+                .map(asset)
+                .to_vec(),
+            checksums: Some(Checksums { list: asset("SHA256SUMS"), signature: asset("SHA256SUMS.minisig") }),
+            ..release("1.2.0")
+        }
+    }
+
+    fn package(kind: Package) -> Method {
+        Method::Package { kind, exe: "/usr/bin/heronite-rs".into() }
+    }
+
+    #[test]
+    fn the_aur_copy_is_told_of_updates_but_never_installs_them() {
+        let r = signed_release();
+        if heronite_update::release::ARCH == "x86_64" {
+            assert!(package(Package::Deb).can_install(&r));
+            assert!(package(Package::Rpm).can_install(&r));
+            assert!(package(Package::Arch).can_install(&r), "our Arch package replaces itself");
+        }
+        assert!(!package(Package::Aur).can_install(&r), "heronite-bin conflicts with our Arch package");
+        assert!(!package(Package::Aur).can_install(&Release { packages: Vec::new(), ..r.clone() }));
+        assert!(!package(Package::Scoop).can_install(&r), "Scoop owns its copy's files");
+        assert!(!package(Package::Copr).can_install(&r), "dnf updates it from the COPR, not from the release's .rpm");
     }
 
     #[test]

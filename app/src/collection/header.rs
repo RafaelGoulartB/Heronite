@@ -1,7 +1,8 @@
 //! `header.collection__header`: 42px. Left, over the list column: ☰, the
-//! search pill and the View button (its menu is `view_menu/`); then one chip
-//! per active filter; right: the view switches and bulk metadata (refresh is
-//! on the ☰ menu's Collection row).
+//! search pill and the View button (its menu is `view_menu/`, its hover
+//! arrow shows or hides the quick toolbar); then the quick toolbar when on and
+//! there is room, and the active filters it does not already show; right: the view switches
+//! and bulk metadata (refresh is on the ☰ menu's Collection row).
 
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::{FacetKind, InstallFilter};
 
+use super::view_menu::Pick;
 use super::CollectionView;
 use crate::icons::Icon;
 use crate::theme;
@@ -19,7 +21,7 @@ use crate::ui::{icon, tool_button_base};
 use heronite_i18n::tr;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Menu {
+pub(super) enum Menu {
     /// Show / sort / group / filter.
     View,
     Nav,
@@ -27,8 +29,12 @@ pub enum Menu {
     Downloads,
     /// The update pill's release and actions.
     Update,
+    /// The Steam pill's restart (`steam_pill.rs`).
+    Steam,
     /// The active view mode's options (`view_mode.rs`); opens on click only.
     Display,
+    /// Space-dependent Collection shortcuts (`toolbar`).
+    Quick(super::toolbar::QuickMenu),
 }
 
 const CLOSE_DELAY: Duration = Duration::from_millis(180);
@@ -45,6 +51,16 @@ pub(super) fn facet_label(k: FacetKind) -> &'static str {
         FacetKind::Store => tr!("Store"),
         FacetKind::Theme => tr!("Theme"),
         FacetKind::Feature => tr!("Feature"),
+        FacetKind::GameMode => tr!("Game mode"),
+        FacetKind::Tag => tr!("Steam tag"),
+    }
+}
+
+pub(super) fn install_label(filter: InstallFilter) -> &'static str {
+    match filter {
+        InstallFilter::All => tr!("All"),
+        InstallFilter::Installed => tr!("Installed"),
+        InstallFilter::Uninstalled => tr!("Not installed"),
     }
 }
 
@@ -69,6 +85,11 @@ impl CollectionView {
     }
 
     fn open_header_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
+        if let Menu::Quick(which) = menu {
+            if !self.toolbar.shows(which) || !theme::appearance().quick_toolbar_controls {
+                return;
+            }
+        }
         if self.open_menu != Some(menu) {
             self.open_menu = Some(menu);
             self.menu_parts = PART_BUTTON;
@@ -181,6 +202,33 @@ impl CollectionView {
                 },
             ));
         let view = self.hover_dropdown(Menu::View, view_btn, Align::Left, |this, cx| this.view_menu(cx), cx);
+        let view = self.view_button_group(view, cx);
+        let (nav, search, onboarding) = (self.nav_dropdown(cx), self.search_box(window, cx), self.onboarding_button(cx));
+        // Spans the list column (up to its border) so the search reads as
+        // the list's own.
+        let left = self.header_left((list_w - 24.).max(300.), move |el, t| el.child(nav).child(search).child(view(t)));
+        let widths = self.quick_widths(window);
+        // "Getting started" follows the quick controls in their lane.
+        let reserved = if onboarding.is_some() { f32::from(theme::TOOL_BTN) + super::toolbar::GAP } else { 0. };
+        let shown = self.quick_fit(&widths, &self.chip_widths(window), reserved);
+        let chips = self.filter_chips(shown, window, cx);
+        let quick = self.quick_toolbar(shown.controls, &widths, window, cx);
+        let pins = self.pinned_groups(shown.pins, &widths, window, cx);
+        let measured = self.toolbar.width.clone();
+        let entity = cx.entity_id();
+        // This flex lane has zero basis and min-width: its children cannot
+        // change its allocation. Notify only when that allocation changes.
+        let watch = canvas(
+            move |bounds, _, cx| {
+                let width = f32::from(bounds.size.width).floor();
+                if measured.replace(Some(width)) != Some(width) {
+                    cx.notify(entity);
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
 
         div()
             .relative()
@@ -190,28 +238,34 @@ impl CollectionView {
             .h(theme::HEADER_H)
             .px(px(12.))
             .gap(px(10.))
+            .child(left)
             .child(
-                // Spans the list column (up to its border) so the search
-                // reads as the list's own.
+                // 6px after the View button, as between the left controls.
                 div()
+                    .id("hdr-middle")
+                    .ml(px(-4.))
+                    .relative()
                     .flex()
-                    .flex_none()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
                     .items_center()
-                    .gap(px(6.))
-                    .w(px((list_w - 24.).max(300.)))
-                    .child(self.nav_dropdown(cx))
-                    .child(self.search_box(window, cx))
-                    .child(view)
-                    .children(self.onboarding_button(cx)),
+                    .gap(px(super::toolbar::GAP))
+                    .overflow_hidden()
+                    .child(watch)
+                    .children(quick)
+                    .children(pins)
+                    .children(onboarding)
+                    .child(
+                        window_controls::drag_area(
+                            div().id("hdr-drag").flex().flex_1().h_full().min_w_0().items_center().gap(px(6.)).overflow_hidden(),
+                            window,
+                        )
+                        // Over the drag area: a click on a chip is the chip's.
+                        .children(chips.into_iter().map(|chip| chip.occlude())),
+                    ),
             )
-            .child(
-                window_controls::drag_area(
-                    div().id("hdr-drag").flex().flex_1().h_full().min_w_0().items_center().gap(px(6.)).overflow_hidden(),
-                    window,
-                )
-                // Over the drag area: a click on a chip is the chip's.
-                .children(self.filter_chips(cx).into_iter().map(|chip| chip.occlude())),
-            )
+            .children(self.steam_pill(cx))
             .children(self.update_pill(cx))
             .children(self.downloads_pill(window, cx))
             .child(self.view_mode_controls(window, cx))
@@ -219,14 +273,23 @@ impl CollectionView {
             .children(window_controls::controls(window, cx))
     }
 
-    /// One removable chip per filter the View menu has set.
-    fn filter_chips(&self, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
+    /// Each filter chip's pick and width, before the quick toolbar takes any.
+    fn chip_widths(&self, window: &Window) -> Vec<(Pick, f32)> {
+        self.view_tokens().into_iter().map(|(kind, choice)| (choice.pick, chip_width(kind, &choice.label, window))).collect()
+    }
+
+    /// One removable chip per filter the View menu has set, except those the
+    /// quick toolbar's `shown` controls and pins already carry.
+    fn filter_chips(&self, shown: super::toolbar::Shown, window: &Window, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
         self.view_tokens()
             .into_iter()
+            .filter(|(_, choice)| !self.chip_shown_elsewhere(&choice.pick, shown))
             .enumerate()
             .map(|(i, (kind, choice))| {
                 let pick = choice.pick;
-                filter_chip(("chip", i), kind, &choice.label).on_click(cx.listener(move |this, _, _, cx| this.apply_pick(&pick, cx)))
+                filter_chip(("chip", i), kind, &choice.label)
+                    .w(px(chip_width(kind, &choice.label, window)))
+                    .on_click(cx.listener(move |this, _, _, cx| this.apply_pick(&pick, cx)))
             })
             .collect()
     }
@@ -289,6 +352,10 @@ impl CollectionView {
 
 /// Active filter in the header: faint pill, `kind` muted before the value;
 /// clicking it removes the filter.
+fn chip_width(kind: Option<&str>, label: &str, window: &Window) -> f32 {
+    (35. + super::toolbar::text_width(label, window) + kind.map_or(0., |k| super::toolbar::text_width(k, window) + 6.)).min(220.)
+}
+
 fn filter_chip(id: impl Into<ElementId>, kind: Option<&'static str>, value: &str) -> Stateful<Div> {
     div()
         .id(id)

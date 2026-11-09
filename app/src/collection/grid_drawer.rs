@@ -42,13 +42,15 @@ impl CollectionView {
         let hero_h = (vh * 0.22).clamp(150., 220.);
         let head = self.drawer_head(&vm, width, hero_h, scale, cx);
 
-        let epic = self.epic_focus(&vm.key, vm.installed, cx);
+        // The store's progress and Update of the copy Play acts on (`vm.installed` is its).
+        let epic = self.epic_focus(&self.acting_key(&vm.key), vm.installed, cx);
         let play = self.play_area(&vm, epic, cx);
         let status = self.focus_status_row(&vm, vh, cx);
         let left_off = self.left_off_card(&vm.key, cx);
         let numbers = self.drawer_numbers(&vm);
         let rating = self.rating_row(&vm.key, cx);
         let facts = self.facts_card(&vm, cx);
+        let copies = self.copies_card(&vm.key, cx);
 
         let covers = self.focus_covers(&vm, scale);
         let html_images = self.focus_html_images(&vm, inner_w, scale);
@@ -113,6 +115,7 @@ impl CollectionView {
                             .child(numbers)
                             .child(rating)
                             .child(facts)
+                            .children(copies)
                             .child(div().mt(px(14.)).child(details))
                             .child(div().mt(px(10.)).flex().justify_center().child(open_page)),
                     ),

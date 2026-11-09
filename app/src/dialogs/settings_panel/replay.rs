@@ -32,6 +32,9 @@ fn label(on: Option<bool>) -> &'static str {
 impl SettingsPanel {
     /// `journal::collection_key` of the game (none for the defaults).
     fn replay_key(&self) -> Option<String> {
+        if !heronite_platform::supported(heronite_platform::Feature::Replay) {
+            return None;
+        }
         self.facts().map(|f| collection_key(&f.runner, &f.app_name))
     }
 
