@@ -254,7 +254,9 @@ impl Sunshine {
             log::warn!("Sunshine: {}", problem.text());
             self.logged = Some(problem.clone());
         }
-        if matches!(problem, Problem::NotRunning) && self.prefs.enabled {
+        // "Not installed" is a guess from the usual install places (a build
+        // elsewhere is missed): nothing answering is retried either way.
+        if matches!(problem, Problem::NotRunning | Problem::NotInstalled) && self.prefs.enabled {
             self.later(RETRY, cx);
         }
         self.status = Status::Failed(problem);
