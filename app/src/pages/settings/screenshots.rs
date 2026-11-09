@@ -15,7 +15,7 @@ use crate::collection::screenshots_global;
 use crate::pages::PageCtx;
 use crate::services::compression::{self, Compression, Phase};
 use crate::theme;
-use crate::ui::controls::{action_button, caption, card, card_box, row, toggle_row, with_sub_rows, ButtonKind};
+use crate::ui::controls::{action_button, button_sm, caption, card, card_box, row, toggle_row, with_sub_rows, ButtonKind};
 use crate::ui::fields::{accelerator_from_key, choose_path, hotkey_box, input_box, labeled, meta_text, new_input, on_commit, path_field};
 
 pub struct State {
@@ -28,6 +28,9 @@ pub struct State {
     message: Option<SharedString>,
     /// The background compression service (absent in a one-shot launch).
     compression: Option<Entity<Compression>>,
+    /// What a key bound in the desktop's settings runs to capture (Linux,
+    /// where a desktop may offer apps no global shortcut).
+    capture_command: Option<String>,
 }
 
 impl State {
@@ -56,7 +59,8 @@ impl State {
         if let Some(c) = &compression {
             cx.observe(c, |_, _, cx| cx.notify()).detach();
         }
-        Self { folder, limit, hotkey: cx.focus_handle(), cache, info: None, busy: false, message: None, compression }
+        let capture_command = cfg!(target_os = "linux").then(|| capture_command(&crate::system::shortcuts::own_exe()));
+        Self { folder, limit, hotkey: cx.focus_handle(), cache, info: None, busy: false, message: None, compression, capture_command }
     }
 
     /// Section shown: reads the cache size and measures the folder (off the
@@ -66,6 +70,16 @@ impl State {
         if let Some(c) = &self.compression {
             c.update(cx, |c, cx| c.refresh_usage(cx));
         }
+    }
+}
+
+/// `heronite-rs --screenshot` with this executable, as a shell takes it.
+fn capture_command(exe: &std::path::Path) -> String {
+    let exe = exe.to_string_lossy();
+    if exe.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_' | '+')) {
+        format!("{exe} --screenshot")
+    } else {
+        format!("'{}' --screenshot", exe.replace('\'', r"'\''"))
     }
 }
 
@@ -338,7 +352,22 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             .children(status_line.map(|(text, error)| {
                 div().text_size(px(12.)).text_color(if error { theme::danger_text() } else { theme::success() }).child(text)
             }))
-            .into_any_element()],
+            .into_any_element()]
+        .into_iter()
+        .chain(st.capture_command.clone().map(|command| {
+            let description = tr!(
+                "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings: {command}",
+                command = &command
+            );
+            row(
+                tr!("Capture from a key of the desktop"),
+                Some(&description),
+                button_sm("shot-copy-command", ButtonKind::Glass, tr!("Copy command"))
+                    .on_click(move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(command.clone()))),
+            )
+            .into_any_element()
+        }))
+        .collect(),
     )]);
 
     let compress_card = st.compression.as_ref().map(|c| {
@@ -614,4 +643,17 @@ pub(super) fn console_apply(
         _ => {}
     }
     cx.notify();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capture_command;
+    use std::path::Path;
+
+    #[test]
+    fn the_capture_command_is_one_a_shell_takes() {
+        assert_eq!(capture_command(Path::new("/usr/bin/heronite-rs")), "/usr/bin/heronite-rs --screenshot");
+        assert_eq!(capture_command(Path::new("/home/me/My Apps/Heronite.AppImage")), "'/home/me/My Apps/Heronite.AppImage' --screenshot");
+        assert_eq!(capture_command(Path::new("/opt/it's/heronite-rs")), r"'/opt/it'\''s/heronite-rs' --screenshot");
+    }
 }

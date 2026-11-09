@@ -12,6 +12,10 @@
 //!   nothing (Sunshine runs it when a stream's application ends).
 //!   The old `heronite-rs://` scheme is still read: Steam shortcuts made
 //!   before the rename keep it.
+//! * `heronite://screenshot` (or `--screenshot`) captures the game the
+//!   running instance has open, like the screenshot shortcut. A key bound to
+//!   it in the desktop's settings stands in for that shortcut where Heronite
+//!   cannot register one (a desktop without a global shortcuts portal).
 //!
 //! `--open-client <id>` opens a store client (`battlenet`, `ea`, `ubisoft`,
 //! `rockstar`; the shortcuts of the clients under Wine) and never shows the
@@ -50,6 +54,8 @@ pub enum UrlAction {
     Launch(LaunchRequest),
     /// Close this game if it runs (only `app_name` and `runner` are read).
     Stop(LaunchRequest),
+    /// Capture the running game.
+    Screenshot,
     Ping,
 }
 
@@ -61,6 +67,9 @@ pub struct Cli {
     pub open_client: Option<Client>,
     /// `heronite://stop?..`: the game to close in the running instance.
     pub stop: Option<LaunchRequest>,
+    /// `--screenshot` or `heronite://screenshot`: capture the game the
+    /// running instance has open.
+    pub screenshot: bool,
     /// `--no-gui`.
     pub no_gui: bool,
     /// `--console`: switch to console mode.
@@ -88,6 +97,7 @@ Usage:
   heronite-rs --launch <runner>_<app> launch a game (also: --launch <runner> <app>, --launch <app>)
   heronite-rs [--no-gui] <url>        launch from heronite://launch?appName=..&runner=..
   heronite-rs --open-client <client>  open battlenet, ea, ubisoft or rockstar (no window)
+  heronite-rs --screenshot            capture the running game (for a key bound in the desktop's settings)
   --no-gui                            do not show the window (the process exits when the game ends)
   --console                           open in console mode (it stays on until you leave it)
   --fullscreen                        open the window fullscreen (F11 switches back)
@@ -171,6 +181,7 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
 
     match host.to_ascii_lowercase().as_str() {
         "ping" => Some(UrlAction::Ping),
+        "screenshot" => Some(UrlAction::Screenshot),
         host @ ("launch" | "stop") => {
             let mut req = LaunchRequest { gui_false: param("gui").is_some_and(|g| gui_false(&g)), ..Default::default() };
             let (app_name, runner);
@@ -206,6 +217,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
             "--fullscreen" => cli.fullscreen = true,
             HANDOFF => cli.handoff = true,
             "--autostart" => cli.autostart = true,
+            "--screenshot" => cli.screenshot = true,
             "-h" | "--help" => cli.help = true,
             "--launch" => {
                 let first = args.get(i + 1).filter(|s| !s.starts_with("--"));
@@ -255,6 +267,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
                     // `--launch X` already seen wins over nothing; a URL fills in when absent.
                     Some(UrlAction::Launch(req)) if cli.launch.is_none() => cli.launch = Some(req),
                     Some(UrlAction::Stop(req)) => cli.stop = Some(req),
+                    Some(UrlAction::Screenshot) => cli.screenshot = true,
                     _ => {}
                 }
             }
@@ -418,6 +431,20 @@ mod tests {
         let c = p(&["heronite://stop?appName=My%20Game&runner=sideload"]);
         assert_eq!(c.stop, Some(req(Some("sideload"), "My Game")));
         assert!(c.launch.is_none());
+    }
+
+    #[test]
+    fn screenshot_requests() {
+        assert_eq!(parse_url("heronite://screenshot"), Some(UrlAction::Screenshot));
+        assert_eq!(parse_url("heronite://screenshot/"), Some(UrlAction::Screenshot));
+        assert!(p(&["heronite://screenshot"]).screenshot);
+        let c = p(&["--screenshot"]);
+        assert!(c.screenshot && c.launch.is_none() && c.errors.is_empty());
+        assert!(!p(&["--no-gui"]).screenshot);
+        // It does not eat a launch that comes with it.
+        let c = p(&["--screenshot", "--launch", "gog_1"]);
+        assert!(c.screenshot);
+        assert_eq!(c.launch, Some(req(Some("gog"), "1")));
     }
 
     #[test]

@@ -202,6 +202,30 @@ pub enum SkipReason {
     Busy,
 }
 
+/// Who asked for a capture.
+#[cfg(any(target_os = "linux", windows))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Asked {
+    /// The shortcut: only while its switch is on.
+    Shortcut,
+    /// The user, from outside the app (`heronite://screenshot`).
+    Command,
+    /// The in-game overlay, which shows the result itself.
+    Overlay,
+}
+
+#[cfg(any(target_os = "linux", windows))]
+impl Asked {
+    fn needs_the_switch(self) -> bool {
+        self == Asked::Shortcut
+    }
+
+    /// Whether the service shows the result (the OSD or a notification).
+    fn shows_the_result(self) -> bool {
+        self != Asked::Overlay
+    }
+}
+
 /// Result of one capture attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureOutcome {

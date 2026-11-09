@@ -495,5 +495,7 @@
   "Ribbon": "Fita",
   "Show categories on covers": "Mostrar categorias nas capas",
   "Strip": "Faixa",
-  "Style": "Estilo"
+  "Style": "Estilo",
+  "Capture from a key of the desktop": "Capturar por uma tecla do ambiente",
+  "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings: {command}": "Onde o ambiente não aceita atalhos do Heronite, associe uma tecla a este comando nas configurações de teclado dele: {command}"
 }

@@ -5,7 +5,7 @@
 use super::portal::PortalShortcut;
 use super::{
     capture_folder, current_game, feedback, grim, hyprland, portal, temporary_name, to_hyprland_binding, to_portal_trigger,
-    unique_screenshot_path, ActiveGame, CaptureConfig, CaptureEvent, CaptureOutcome, CaptureStatus, ServiceOptions, ShortcutBackend,
+    unique_screenshot_path, ActiveGame, Asked, CaptureConfig, CaptureEvent, CaptureOutcome, CaptureStatus, ServiceOptions, ShortcutBackend,
     SkipReason,
 };
 use crate::list::resolve_path;
@@ -260,22 +260,30 @@ impl CaptureService {
     /// Captures the display under the pointer into the active game's folder.
     /// Blocking; also what the shortcut triggers.
     pub fn capture_now(&self) -> CaptureOutcome {
-        self.capture(true)
+        self.capture(Asked::Shortcut)
     }
 
     /// Like [`capture_now`](Self::capture_now) for the in-game overlay, which
     /// has its own switch and shows its own notice: it works with the
     /// shortcut turned off and shows no OSD or notification.
     pub fn capture_quiet(&self) -> CaptureOutcome {
-        self.capture(false)
+        self.capture(Asked::Overlay)
     }
 
-    fn capture(&self, shortcut: bool) -> CaptureOutcome {
+    /// Like [`capture_now`](Self::capture_now) for a capture asked for from
+    /// outside the app (`heronite://screenshot`, which a key bound in the
+    /// desktop's settings runs where no shortcut can be registered): it
+    /// works with the shortcut turned off.
+    pub fn capture_requested(&self) -> CaptureOutcome {
+        self.capture(Asked::Command)
+    }
+
+    fn capture(&self, asked: Asked) -> CaptureOutcome {
         let (config, game) = {
             let st = self.inner.state.lock().unwrap();
             (st.config.clone(), current_game(st.games.values()).cloned())
         };
-        if shortcut && !config.enabled {
+        if asked.needs_the_switch() && !config.enabled {
             return CaptureOutcome::Skipped(SkipReason::Disabled);
         }
         let Some(game) = game else { return CaptureOutcome::Skipped(SkipReason::NoActiveGame) };
@@ -290,7 +298,7 @@ impl CaptureService {
                 log::info!("Collection screenshot saved to {}", path.display());
                 self.send(CaptureEvent::Saved { app_name: game.app_name.clone(), runner: game.runner.clone(), path: path.clone() });
                 let m = &self.inner.options.messages;
-                if shortcut && !feedback::show_osd(tr(&m.saved_title), &game.title) {
+                if asked.shows_the_result() && !feedback::show_osd(tr(&m.saved_title), &game.title) {
                     feedback::notify(
                         tr(&m.saved_title),
                         &tr(&m.saved_body).replace("{game}", &game.title).replace("{path}", &path.to_string_lossy()),
@@ -300,7 +308,7 @@ impl CaptureService {
             }
             Err(error) => {
                 log::error!("Collection screenshot capture failed: {error}");
-                if shortcut {
+                if asked.shows_the_result() {
                     let m = &self.inner.options.messages;
                     feedback::notify(tr(&m.failed_title), &tr(&m.failed_body).replace("{error}", &error));
                 }

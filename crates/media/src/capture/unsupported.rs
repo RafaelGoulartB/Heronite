@@ -38,6 +38,10 @@ impl CaptureService {
     pub fn capture_quiet(&self) -> CaptureOutcome {
         CaptureOutcome::Failed(unavailable())
     }
+
+    pub fn capture_requested(&self) -> CaptureOutcome {
+        CaptureOutcome::Failed(unavailable())
+    }
 }
 
 fn unavailable() -> String {

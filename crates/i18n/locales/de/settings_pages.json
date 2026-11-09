@@ -495,5 +495,7 @@
   "Ribbon": "Schärpe",
   "Show categories on covers": "Kategorien auf Covern zeigen",
   "Strip": "Streifen",
-  "Style": "Stil"
+  "Style": "Stil",
+  "Capture from a key of the desktop": "Mit einer Taste der Desktop-Umgebung aufnehmen",
+  "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings: {command}": "Wo die Desktop-Umgebung kein Tastenkürzel von Heronite annimmt, lege in ihren Tastatureinstellungen eine Taste auf diesen Befehl: {command}"
 }
