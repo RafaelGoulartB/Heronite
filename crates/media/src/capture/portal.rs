@@ -35,41 +35,66 @@ const CLOSE_TIMEOUT: Duration = Duration::from_secs(2);
 /// deadline that capture would never end, and no other could start.
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Hears how the registration went.
-type Ready = Box<dyn FnOnce(Result<(), String>) + Send>;
+/// Hears how the registration went. A desktop behind the portal picks the
+/// keys itself (the trigger asked for is a suggestion, and one it remembers
+/// from an earlier time wins): `Ok` carries what it says triggers the
+/// shortcut, `None` when it names no key.
+pub type Ready = Box<dyn FnOnce(Result<Option<String>, String>) + Send>;
 
-/// The connection every portal call here goes through.
+/// The connection every portal call here goes through, once the portal
+/// knows it as the app.
 static CONNECTION: Mutex<Option<zbus::Connection>> = Mutex::new(None);
 
-/// The portals' connection, made on first use and registered as `app_id`
-/// (the first caller's; every caller passes the same one). Blocking. A
-/// failed registration is logged and the connection still used: the desktop
-/// may know the app by its systemd unit, and portals older than the registry
-/// ask for no app id.
+/// The portals' connection, registered as `app_id` (every caller passes the
+/// same one) and kept once it is. Blocking. When the registration fails the
+/// connection is still handed out, since the desktop may know the app by its
+/// systemd unit and portals older than the registry ask for no app id, but
+/// it is not kept: the next caller tries again on a new one, as the menu
+/// entry the portal wants may have been installed since.
 fn connection(app_id: Option<&str>) -> Result<zbus::Connection, String> {
     let mut shared = CONNECTION.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(connection) = shared.as_ref() {
         return Ok(connection.clone());
     }
-    let connection = pollster::block_on(async {
+    let (connection, registered) = pollster::block_on(async {
         let connection = zbus::Connection::session().await.map_err(|e| e.to_string())?;
-        if let Some(id) = app_id {
-            match id.parse::<ashpd::AppID>() {
-                Ok(parsed) => {
-                    let register = ashpd::register_host_app_with_connection(connection.clone(), parsed);
-                    match unless(register, async_io::Timer::after(REGISTER_TIMEOUT)).await {
-                        Some(Ok(())) => log::info!("registered with the desktop portal as {id}"),
-                        Some(Err(e)) => log::warn!("the desktop portal did not register the app as {id}: {e}"),
-                        None => log::warn!("the desktop portal did not answer the registration as {id} in time"),
-                    }
-                }
-                Err(e) => log::warn!("invalid portal app id {id:?}: {e}"),
-            }
-        }
-        Ok::<_, String>(connection)
+        let registered = match app_id {
+            Some(id) => register(&connection, id).await,
+            None => true,
+        };
+        Ok::<_, String>((connection, registered))
     })?;
-    *shared = Some(connection.clone());
+    if registered {
+        *shared = Some(connection.clone());
+    }
     Ok(connection)
+}
+
+/// Names the app behind `connection` to the portal; false when it did not
+/// take the name.
+async fn register(connection: &zbus::Connection, id: &str) -> bool {
+    let parsed = match id.parse::<ashpd::AppID>() {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            log::warn!("invalid portal app id {id:?}: {e}");
+            return false;
+        }
+    };
+    let register = ashpd::register_host_app_with_connection(connection.clone(), parsed);
+    match unless(register, async_io::Timer::after(REGISTER_TIMEOUT)).await {
+        Some(Ok(())) => {
+            log::info!("registered with the desktop portal as {id}");
+            true
+        }
+        Some(Err(e)) => {
+            log::warn!("the desktop portal did not register the app as {id}: {e}");
+            false
+        }
+        None => {
+            log::warn!("the desktop portal did not answer the registration as {id} in time");
+            false
+        }
+    }
 }
 
 /// What to tell the user when the portal refuses a shortcut.
@@ -136,6 +161,12 @@ impl Drop for PortalShortcut {
     }
 }
 
+/// What the desktop says triggers the shortcut `id`, among the
+/// `(id, trigger description)` it bound.
+fn bound_trigger<'a>(bound: impl IntoIterator<Item = (&'a str, &'a str)>, id: &str) -> Option<String> {
+    bound.into_iter().find(|(bound_id, _)| *bound_id == id).map(|(_, trigger)| trigger.trim().to_owned()).filter(|t| !t.is_empty())
+}
+
 /// What `future` gives, unless `other` finishes first.
 async fn unless<T, O>(future: impl Future<Output = T>, other: impl Future<Output = O> + Unpin) -> Option<T> {
     futures_util::pin_mut!(future);
@@ -183,12 +214,12 @@ async fn run(
                 BindShortcutsOptions::default(),
             )
             .await?;
-        request.response()?;
-        Ok::<_, ashpd::Error>(activated)
+        let trigger = bound_trigger(request.response()?.shortcuts().iter().map(|s| (s.id(), s.trigger_description())), id);
+        Ok::<_, ashpd::Error>((activated, trigger))
     };
     match unless(bind, &mut stop).await {
-        Some(Ok(mut activated)) => {
-            on_ready(Ok(()));
+        Some(Ok((mut activated, trigger))) => {
+            on_ready(Ok(trigger));
             while let Either::Left((Some(a), _)) = select(activated.next(), &mut stop).await {
                 if a.shortcut_id() == id {
                     on_activated();
@@ -285,7 +316,16 @@ mod tests {
         );
         let result = rx.recv_timeout(std::time::Duration::from_secs(60)).expect("the portal answers");
         shortcut.stop();
-        result.expect("the shortcut is bound");
+        eprintln!("the desktop's trigger: {:?}", result.expect("the shortcut is bound"));
+    }
+
+    #[test]
+    fn the_trigger_the_desktop_names() {
+        let bound = [("overlay", "Meta+G"), ("game-screenshot", " Ctrl+F10 "), ("replay", "")];
+        assert_eq!(bound_trigger(bound, "game-screenshot").as_deref(), Some("Ctrl+F10"));
+        // Bound without a key, or not bound at all.
+        assert_eq!(bound_trigger(bound, "replay"), None);
+        assert_eq!(bound_trigger(bound, "other"), None);
     }
 
     #[test]

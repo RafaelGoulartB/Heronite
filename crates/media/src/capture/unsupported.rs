@@ -28,7 +28,13 @@ impl CaptureService {
     pub fn shutdown(&self) {}
 
     pub fn status(&self) -> CaptureStatus {
-        CaptureStatus { registered: false, accelerator: String::new(), active_game: None, error: Some(unavailable()) }
+        CaptureStatus {
+            registered: false,
+            accelerator: String::new(),
+            active_game: None,
+            error: Some(unavailable()),
+            desktop_trigger: None,
+        }
     }
 
     pub fn capture_now(&self) -> CaptureOutcome {

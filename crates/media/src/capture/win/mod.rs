@@ -101,6 +101,7 @@ impl CaptureService {
             accelerator: st.config.accelerator.clone(),
             active_game: current_game(st.games.values()).map(|g| (g.app_name.clone(), g.runner.clone(), g.title.clone())),
             error: st.registration_error.clone(),
+            desktop_trigger: None,
         }
     }
 

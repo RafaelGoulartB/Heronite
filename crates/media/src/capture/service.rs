@@ -31,6 +31,8 @@ struct State {
     portal: Option<PortalShortcut>,
     /// Accelerator the portal session was asked for, once it confirmed.
     portal_registered: Option<String>,
+    /// What the desktop says triggers the portal's shortcut, if it names it.
+    portal_trigger: Option<String>,
     registration_error: Option<String>,
     last_notified_error: Option<String>,
     /// Bumped on every (re)configuration so late portal answers are ignored.
@@ -186,6 +188,7 @@ impl CaptureService {
             accelerator: st.config.accelerator.clone(),
             active_game: current_game(st.games.values()).map(|g| (g.app_name.clone(), g.runner.clone(), g.title.clone())),
             error: st.registration_error.clone(),
+            desktop_trigger: st.portal_registered.as_ref().map(|_| st.portal_trigger.clone().unwrap_or_default()),
         }
     }
 
@@ -194,6 +197,7 @@ impl CaptureService {
             let mut st = self.inner.state.lock().unwrap();
             st.epoch += 1;
             st.portal_registered = None;
+            st.portal_trigger = None;
             st.registration_error = None;
             (st.hyprland.take(), st.portal.take())
         };
@@ -220,10 +224,13 @@ impl CaptureService {
         let accelerator = config.accelerator.clone();
         log::info!("Registering Collection screenshot shortcut {accelerator}");
 
+        let mut hyprland_error = None;
         if hyprland::is_hyprland_session() {
             let result = to_hyprland_binding(&accelerator)
-                .ok_or_else(|| tr!("The shortcut {accelerator} is not supported by Hyprland", accelerator = &accelerator))
-                .and_then(|b| hyprland::register(&b, &accelerator, std::process::id()).map(|_| b));
+                .ok_or_else(|| {
+                    hyprland::Failure::Refused(tr!("The shortcut {accelerator} is not supported by Hyprland", accelerator = &accelerator))
+                })
+                .and_then(|b| hyprland::register(&b, &accelerator).map(|_| b));
             match result {
                 Ok(binding) => {
                     {
@@ -233,15 +240,21 @@ impl CaptureService {
                     }
                     log::info!("Collection screenshot shortcut {accelerator} registered through Hyprland");
                     self.send(CaptureEvent::ShortcutRegistered { accelerator, backend: ShortcutBackend::Hyprland });
+                    return;
                 }
-                Err(e) => self.registration_failed(e),
+                // Hyprland's portal may take the shortcut where `hyprctl`
+                // cannot; what Hyprland itself refused stays refused.
+                Err(hyprland::Failure::Unavailable(e)) => {
+                    log::warn!("Hyprland could not be asked for the shortcut; trying the desktop portal: {e}");
+                    hyprland_error = Some(e);
+                }
+                Err(hyprland::Failure::Refused(e)) => return self.registration_failed(e),
             }
-            return;
         }
 
         let Some(trigger) = to_portal_trigger(&accelerator) else {
-            self.registration_failed(tr!("The shortcut {accelerator} is unavailable", accelerator = &accelerator));
-            return;
+            let unavailable = tr!("The shortcut {accelerator} is unavailable", accelerator = &accelerator);
+            return self.registration_failed(hyprland_error.unwrap_or(unavailable));
         };
         let weak = Arc::downgrade(&self.inner);
         let weak_ready = weak.clone();
@@ -263,16 +276,18 @@ impl CaptureService {
                     return; // superseded
                 }
                 match result {
-                    Ok(()) => {
+                    Ok(desktop_trigger) => {
+                        log::info!("Collection screenshot shortcut {accel_ready} registered; the desktop's trigger: {desktop_trigger:?}");
                         {
                             let mut st = svc.inner.state.lock().unwrap();
                             st.portal_registered = Some(accel_ready.clone());
+                            st.portal_trigger = desktop_trigger;
                             st.last_notified_error = None;
                         }
-                        log::info!("Collection screenshot shortcut {accel_ready} registered");
                         svc.send(CaptureEvent::ShortcutRegistered { accelerator: accel_ready, backend: ShortcutBackend::Portal });
                     }
-                    Err(e) => svc.registration_failed(e),
+                    // Hyprland's reason first: that is the session's own way.
+                    Err(e) => svc.registration_failed(hyprland_error.unwrap_or(e)),
                 }
             }),
         );
@@ -311,8 +326,9 @@ impl CaptureService {
         });
     }
 
-    /// Captures the display under the pointer into the active game's folder.
-    /// Blocking; also what the shortcut triggers.
+    /// Captures the screen into the active game's folder: the display under
+    /// the pointer on Hyprland, what the desktop's portal captures elsewhere
+    /// (as a rule every display). Blocking; also what the shortcut triggers.
     pub fn capture_now(&self) -> CaptureOutcome {
         self.capture(Asked::Shortcut)
     }
@@ -405,15 +421,34 @@ impl Drop for Inner {
     }
 }
 
-/// PNG bytes of the display under the pointer: `grim` on Hyprland, else (or
-/// when grim fails) the Screenshot portal.
+/// PNG bytes of the screen. Hyprland: the display under the pointer with
+/// `grim`, else the Screenshot portal. Elsewhere: the portal, else `grim`
+/// with every display, which the compositors of the wlroots family and niri
+/// take where they have no Screenshot portal.
 fn capture_display_png(portal_app_id: Option<&str>) -> Result<Vec<u8>, String> {
-    if hyprland::is_hyprland_session() {
+    let hyprland = hyprland::is_hyprland_session();
+    if hyprland {
         match hyprland::output_under_pointer().and_then(|name| grim::capture_png(Some(&name))) {
             Ok(png) => return Ok(png),
             Err(e) => log::warn!("Native Hyprland screenshot failed; trying the portal: {e}"),
         }
     }
+    let portal_error = match portal_png(portal_app_id) {
+        Ok(png) => return Ok(png),
+        Err(e) => e,
+    };
+    if hyprland {
+        return Err(portal_error);
+    }
+    log::warn!("The screenshot portal failed; trying grim: {portal_error}");
+    grim::capture_png(None).map_err(|e| {
+        log::warn!("grim failed too: {e}");
+        portal_error
+    })
+}
+
+/// PNG bytes from the Screenshot portal, which writes a file.
+fn portal_png(portal_app_id: Option<&str>) -> Result<Vec<u8>, String> {
     let path = portal::screenshot(portal_app_id)?;
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()));
     // The portal leaves its file behind; remove it when it lives in a temp dir.
@@ -429,4 +464,90 @@ fn capture_display_png(portal_app_id: Option<&str>) -> Result<Vec<u8>, String> {
 
 fn is_temporary(path: &Path) -> bool {
     path.starts_with(std::env::temp_dir()) || std::env::var_os("XDG_RUNTIME_DIR").is_some_and(|d| path.starts_with(d))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::{HyprlandBind, BIND_DESCRIPTION};
+    use std::time::{Duration, Instant};
+
+    /// The first event `pick` takes, within 20 s.
+    fn wait_for<T>(events: &mpsc::Receiver<CaptureEvent>, mut pick: impl FnMut(CaptureEvent) -> Option<T>) -> T {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let event = events.recv_timeout(deadline.saturating_duration_since(Instant::now())).expect("the service answers in time");
+            if let Some(found) = pick(event) {
+                return found;
+            }
+        }
+    }
+
+    fn our_binds() -> Vec<String> {
+        let ours = |b: &HyprlandBind| b.description.as_deref() == Some(BIND_DESCRIPTION);
+        hyprland::binds().unwrap().iter().filter(|b| ours(b)).filter_map(HyprlandBind::keys).collect()
+    }
+
+    /// The whole way on a Hyprland session: the shortcut is bound without
+    /// the caller waiting, a bind left by an earlier run goes, the command
+    /// Hyprland runs for the keys reaches this process and the screen is
+    /// captured, and the bind goes with the game. Binds unlikely keys for a
+    /// moment and captures the screen into a temporary folder.
+    #[test]
+    #[ignore = "binds keys in the running Hyprland and captures the screen"]
+    fn live_hyprland_shortcut_captures() {
+        if !hyprland::is_hyprland_session() {
+            return eprintln!("not a Hyprland session; skipped");
+        }
+        let folder = tempfile::tempdir().unwrap();
+        let (tx, events) = mpsc::channel();
+        let service = CaptureService::new(tx, ServiceOptions::default());
+        // As a Heronite that crashed with another shortcut set would leave it.
+        hyprland::register(&to_hyprland_binding("CommandOrControl+Alt+Shift+F8").unwrap(), "CommandOrControl+Alt+Shift+F8").unwrap();
+        assert_eq!(our_binds(), ["CTRL + ALT + SHIFT + F8"]);
+
+        service.set_config(CaptureConfig {
+            enabled: true,
+            folder: folder.path().into(),
+            accelerator: "Shift+Alt+CommandOrControl+F9".into(),
+        });
+        let called = Instant::now();
+        service.begin_session(ActiveGame {
+            app_name: "live-test".into(),
+            runner: "sideload".into(),
+            title: "Live test".into(),
+            aliases: vec![],
+            steam_app_id: None,
+            started_at: std::time::SystemTime::now(),
+        });
+        eprintln!("begin_session returned after {:?}", called.elapsed());
+        let backend = wait_for(&events, |e| match e {
+            CaptureEvent::ShortcutRegistered { backend, .. } => Some(backend),
+            CaptureEvent::ShortcutError { error } => panic!("{error}"),
+            _ => None,
+        });
+        eprintln!("registered {:?} after the call", called.elapsed());
+        assert_eq!(backend, ShortcutBackend::Hyprland);
+        assert!(service.status().registered);
+        assert_eq!(our_binds(), ["CTRL + ALT + SHIFT + F9"], "the stale bind went, whatever its keys");
+
+        let command = hyprland::signal_command(SIGUSR2);
+        eprintln!("the bind runs: {command}");
+        assert!(std::process::Command::new("sh").args(["-c", &command]).status().unwrap().success());
+        let path = wait_for(&events, |e| match e {
+            CaptureEvent::Saved { path, .. } => Some(path),
+            CaptureEvent::Failed { error } => panic!("{error}"),
+            _ => None,
+        });
+        assert!(path.starts_with(folder.path().join("Live test")), "{}", path.display());
+        assert!(std::fs::read(&path).unwrap().starts_with(&[0x89, b'P', b'N', b'G']));
+
+        service.end_session("sideload", "live-test");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !our_binds().is_empty() {
+            assert!(Instant::now() < deadline, "the bind is removed with the game: {:?}", our_binds());
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(!service.status().registered);
+    }
 }

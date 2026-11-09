@@ -335,7 +335,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
 
     let status_line: Option<(SharedString, bool)> = if s.capture_enabled {
         Some(match status {
-            Some(status) if status.registered => (registered_text().into(), false),
+            Some(status) if status.registered => (registered_text(status.desktop_trigger.as_deref()), false),
             Some(status) if status.error.is_some() => (status.error.unwrap_or_default().into(), true),
             _ => (tr!("The shortcut activates automatically when a game starts.").into(), false),
         })
@@ -506,12 +506,18 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     col.into_any_element()
 }
 
-/// The status line while the shortcut is registered.
-fn registered_text() -> &'static str {
+/// The status line while the shortcut is registered. `desktop_trigger`:
+/// [`heronite_media::capture::CaptureStatus::desktop_trigger`].
+fn registered_text(desktop_trigger: Option<&str>) -> SharedString {
     if cfg!(windows) {
-        tr!("Shortcut registered with Windows and ready. The game's monitor is captured with DXGI Desktop Duplication.")
-    } else {
-        tr!("Shortcut registered and ready.")
+        return tr!("Shortcut registered with Windows and ready. The game's monitor is captured with DXGI Desktop Duplication.").into();
+    }
+    match desktop_trigger {
+        None => tr!("Shortcut registered and ready.").into(),
+        Some("") => tr!("The desktop took the shortcut but names no key for it: assign one in its keyboard settings.").into(),
+        Some(trigger) => {
+            tr!("Shortcut ready on {trigger}. The desktop picks the keys: change them in its keyboard settings.", trigger = trigger).into()
+        }
     }
 }
 
