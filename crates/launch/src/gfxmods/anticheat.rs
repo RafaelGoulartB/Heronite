@@ -1,4 +1,5 @@
-//! Whether ReShade is risky for a game. Three sources, strongest first:
+//! Whether a graphics mod is risky for a game. Three sources, strongest
+//! first:
 //!
 //! 1. `Banned=1` in ReShade's `Compatibility.ini`: the game bans or blocks
 //!    ReShade. Installing is refused.

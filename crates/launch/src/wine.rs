@@ -238,7 +238,7 @@ pub fn build_wine_plan(
     if let Err(err) = crate::lsfg::apply(&mut env, &s.lsfg, &ctx.global, probe) {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
-    let reshade = crate::reshade::apply(&mut env, &ctx.paths, &game.app_name, &s.reshade, true);
+    let reshade = crate::gfxmods::apply(&mut env, &ctx.paths, &game.app_name, s, true);
     let folder = game_folder(game, executable);
     let req = sandbox::Request { folder: Some(&folder), read: Vec::new(), env: Some(&env) };
     let prelude = match sandbox::prelude(ctx, probe, s, sandbox::Owner::Prefix(&s.wine_prefix), &req) {

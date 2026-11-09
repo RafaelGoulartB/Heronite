@@ -167,7 +167,13 @@ text size) and applies it.
   Steam game under Proton has it in its Steam launch options instead, and
   `reshade::steam` finds a Steam game's folder and tells its Windows build
   from its Linux one, which gets no ReShade). It
-  warns about anti-cheats and refuses games ReShade's list bans. `fps_limit` holds a
+  warns about anti-cheats and refuses games ReShade's list bans. `gfxmods`
+  holds what graphics mods share: the `GraphicsMod` trait and its list
+  (ReShade is the first), the journal that undoes a failed write in a game's
+  folder, `WINEDLLOVERRIDES` editing, the anti-cheat check, downloads and
+  hashes; `gfxmods::apply` adds every mod that is on to a launch. Heronite
+  only places files and sets variables for them; it never injects into a
+  game. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
   a fallback). `live_fps` makes that limit changeable while the game runs when MangoHud or gamescope applies it
