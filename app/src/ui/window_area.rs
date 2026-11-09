@@ -17,7 +17,12 @@ const FRAME_BORDER: f32 = 1.;
 
 /// Where the views are drawn, in window coordinates.
 pub fn content_bounds(window: &Window) -> Bounds<Pixels> {
-    inset(window.viewport_size(), frame_insets(window.window_decorations(), gpui_kit::component::window_paddings(window)))
+    // Only `window_border` sets the client inset (every frame, before the
+    // views render). A window opened without gpui-kit's Root, like the
+    // overlay's panel and notices, draws no frame even when it reports
+    // client-side decorations (a Wayland layer surface starts as Client).
+    let decorations = if window.client_inset().is_some() { window.window_decorations() } else { Decorations::Server };
+    inset(window.viewport_size(), frame_insets(decorations, gpui_kit::component::window_paddings(window)))
 }
 
 /// The size of [`content_bounds`]: what layouts fit in.
