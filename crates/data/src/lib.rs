@@ -51,6 +51,7 @@ pub mod sessions;
 pub mod settings;
 pub mod sideload;
 pub mod sideload_uninstall;
+pub mod smart_groups;
 pub mod stats;
 pub mod status;
 pub mod status_history;

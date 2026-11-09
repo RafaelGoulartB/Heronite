@@ -133,6 +133,10 @@ impl DataPaths {
     pub fn added(&self) -> PathBuf {
         self.j("local_library/added.json")
     }
+    /// Groups of games defined by rules ([`crate::smart_groups`]).
+    pub fn smart_groups(&self) -> PathBuf {
+        self.j("local_library/groups.json")
+    }
     /// When each game's status changed ([`crate::status_history`]).
     pub fn status_history(&self) -> PathBuf {
         self.j("local_library/status-history.json")
