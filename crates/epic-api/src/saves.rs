@@ -682,6 +682,8 @@ pub fn package(
 mod tests {
     use super::*;
 
+    // Wine prefixes live on Unix hosts, whose file names are case-sensitive.
+    #[cfg(unix)]
     #[test]
     fn templates_resolve_in_a_wine_prefix() {
         let dir = tempfile::tempdir().unwrap();

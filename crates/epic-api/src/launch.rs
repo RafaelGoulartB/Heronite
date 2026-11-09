@@ -307,7 +307,7 @@ mod tests {
         let opts = LaunchOptions { offline: true, language: Some("de"), user_args: &args, ..Default::default() };
         let p = launch_params(&client, dir.path(), Some(&session), "Calluna", &opts).unwrap();
         assert_eq!(p.game_executable, "bin/Control.exe");
-        assert!(p.working_directory.ends_with("game/bin"));
+        assert!(Path::new(&p.working_directory).ends_with(Path::new("game").join("bin")));
         assert_eq!(p.game_parameters, ["-dx12", "-nolauncher"]);
         assert_eq!(
             p.egl_parameters,
@@ -341,7 +341,7 @@ mod tests {
         assert!(p.egl_parameters.contains(&"-AUTH_PASSWORD=EXCHANGE".to_string()));
         let ovt = p.egl_parameters.iter().find_map(|a| a.strip_prefix("-epicovt=")).unwrap();
         assert_eq!(std::fs::read(ovt).unwrap(), b"OVT-BYTES");
-        assert!(ovt.ends_with("tmp/nscat.ovt"));
+        assert!(Path::new(ovt).ends_with(Path::new("tmp").join("nscat.ovt")));
         let seen = server.join().unwrap();
         assert!(seen[1].contains("nsCatalogItemId=ns%3Acat"), "{seen:?}");
     }

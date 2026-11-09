@@ -235,6 +235,8 @@ pub fn search_installs(config_dir: &Path, prefix: Option<&Path>) -> Vec<PathBuf>
 mod tests {
     use super::*;
 
+    // A Wine prefix maps host paths through `Z:`, which only Unix hosts have.
+    #[cfg(unix)]
     #[test]
     fn the_overlay_is_switched_in_a_prefix() {
         let dir = tempfile::tempdir().unwrap();

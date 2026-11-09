@@ -261,16 +261,20 @@ mod tests {
         assert!(eos::is_overlay_install(&default_install_path(&data_paths)));
         assert_eq!(latest_version(&data_paths, &epic), "1.2.0");
 
-        let prefix = d.path().join("pfx");
-        std::fs::create_dir_all(&prefix).unwrap();
-        std::fs::write(prefix.join("user.reg"), "WINE REGISTRY Version 2\n;; All keys relative to \\User\\S-1-5-21-0-0-0-1000\n\n")
-            .unwrap();
-        let p = prefix.to_str();
-        assert!(!is_enabled(&epic, p));
-        assert!(enable(&epic, p).ok);
-        assert!(is_enabled(&epic, p));
-        assert!(disable(&epic, p).ok);
-        assert!(!is_enabled(&epic, p));
+        // Switching it in a Wine prefix (only Unix hosts run Wine; a prefix
+        // maps host paths through `Z:`).
+        if cfg!(unix) {
+            let prefix = d.path().join("pfx");
+            std::fs::create_dir_all(&prefix).unwrap();
+            std::fs::write(prefix.join("user.reg"), "WINE REGISTRY Version 2\n;; All keys relative to \\User\\S-1-5-21-0-0-0-1000\n\n")
+                .unwrap();
+            let p = prefix.to_str();
+            assert!(!is_enabled(&epic, p));
+            assert!(enable(&epic, p).ok);
+            assert!(is_enabled(&epic, p));
+            assert!(disable(&epic, p).ok);
+            assert!(!is_enabled(&epic, p));
+        }
 
         assert!(remove(&epic).ok);
         assert!(!status(&data_paths).installed && !default_install_path(&data_paths).exists());
