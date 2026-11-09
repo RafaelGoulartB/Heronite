@@ -270,6 +270,10 @@ impl CollectionView {
             "hltb" => self.open_hltb_match(window, cx),
             "batchedit" => self.open_batch_edit(window, cx),
             "categories" => self.open_manage_categories(window, cx),
+            // smartgroup (a new one), smartgroup:<id> (that one), smartgroup-filters (from the filters on screen)
+            "smartgroup" => self.open_group_editor(None, None, window, cx),
+            "smartgroup-filters" => self.save_filters_as_group(window, cx),
+            w if w.starts_with("smartgroup:") => self.open_group_editor(Some(&w["smartgroup:".len()..]), None, window, cx),
             // fields[:genres|companies|series|themes|features|platforms]
             w if w == "fields" || w.starts_with("fields:") => {
                 let field = w.strip_prefix("fields:").and_then(heronite_data::field_names::Field::parse);

@@ -36,6 +36,9 @@ pub struct UiState {
     pub categories: BTreeSet<String>,
     /// Ids of the selected completion statuses. Empty: all games.
     pub statuses: BTreeSet<String>,
+    /// Ids of the selected smart groups (`heronite_data::smart_groups`),
+    /// the games of any of them. Empty: all games.
+    pub smart_groups: BTreeSet<String>,
     /// The View menu's views, in menu order.
     pub saved_views: Vec<SavedView>,
     /// The built-in views were added to [`saved_views`](Self::saved_views)
@@ -181,6 +184,7 @@ impl Default for UiState {
             age: AgeFilter::default(),
             categories: BTreeSet::new(),
             statuses: BTreeSet::new(),
+            smart_groups: BTreeSet::new(),
             saved_views: Vec::new(),
             views_seeded: false,
             sidebar_hidden: false,
@@ -399,6 +403,27 @@ impl UiState {
         }
     }
 
+    /// Drops the smart groups `keep` rejects (removed ones) from the filter
+    /// on screen and from the saved views. True when one changed.
+    pub fn prune_smart_groups(&mut self, keep: impl Fn(&str) -> bool) -> bool {
+        let before = self.smart_groups.len();
+        self.smart_groups.retain(|id| keep(id));
+        let mut changed = self.smart_groups.len() != before;
+        for view in &mut self.saved_views {
+            let before = view.filters.smart_groups.len();
+            view.filters.smart_groups.retain(|id| keep(id));
+            changed |= view.filters.smart_groups.len() != before;
+        }
+        changed
+    }
+
+    /// Selects or clears one smart group of the filter.
+    pub fn toggle_smart_group(&mut self, id: &str) {
+        if !self.smart_groups.remove(id) {
+            self.smart_groups.insert(id.to_owned());
+        }
+    }
+
     /// Selects or clears one completion status of the filter.
     pub fn toggle_status(&mut self, id: &str) {
         if !self.statuses.remove(id) {
@@ -419,6 +444,7 @@ impl UiState {
             unknown_facets: self.unknown_facets.clone(),
             categories: self.categories.clone(),
             statuses: self.statuses.clone(),
+            smart_groups: self.smart_groups.clone(),
             group_by: Some(self.group_by),
             show_hidden: Some(self.show_hidden),
         }
@@ -436,6 +462,7 @@ impl UiState {
         self.unknown_facets = view.unknown_facets.clone();
         self.categories = view.categories.clone();
         self.statuses = view.statuses.clone();
+        self.smart_groups = view.smart_groups.clone();
         if let Some(by) = view.group_by {
             self.group_by = by;
         }
@@ -453,13 +480,14 @@ impl UiState {
             && self.age == view.age
             && self.categories == view.categories
             && self.statuses == view.statuses
+            && self.smart_groups == view.smart_groups
             && self.facet_filters.same_as(&view.facet_filters)
             && view.group_by.is_none_or(|by| by == self.group_by)
             && view.show_hidden.is_none_or(|on| on == self.show_hidden)
     }
 
     /// Filters that hide games (install, "Only" switches, categories,
-    /// statuses and facet values), counted one per value.
+    /// statuses, smart groups and facet values), counted one per value.
     pub fn active_filters(&self) -> usize {
         usize::from(self.install_filter != InstallFilter::All)
             + usize::from(self.only.favourites)
@@ -468,6 +496,7 @@ impl UiState {
             + usize::from(self.age.is_active())
             + self.categories.len()
             + self.statuses.len()
+            + self.smart_groups.len()
             + self.facet_filters.len()
     }
 
@@ -480,6 +509,7 @@ impl UiState {
         self.unknown_facets.clear();
         self.categories.clear();
         self.statuses.clear();
+        self.smart_groups.clear();
     }
 }
 
@@ -497,6 +527,7 @@ pub struct ViewFilters {
     pub unknown_facets: Map<String, Value>,
     pub categories: BTreeSet<String>,
     pub statuses: BTreeSet<String>,
+    pub smart_groups: BTreeSet<String>,
     /// `None`: the view leaves it as it is.
     pub group_by: Option<GroupBy>,
     /// `None`: the view leaves it as it is.
@@ -543,6 +574,7 @@ impl ViewFilters {
         };
         v.categories = names("categories");
         v.statuses = names("statuses");
+        v.smart_groups = names("smartGroups");
         // `groupByStatus` is how the grouping was stored when it was a toggle.
         v.group_by = value
             .get("groupBy")
@@ -557,7 +589,7 @@ impl ViewFilters {
         // Every kind, as `from_value` reads them, so a new one cannot be forgotten here.
         let mut facets = self.unknown_facets.clone();
         facets.extend(FACET_KINDS.iter().map(|kind| (kind.as_str().to_owned(), json!(self.facet_filters.get(*kind)))));
-        json!({
+        let mut doc = json!({
             "installFilter": self.install_filter,
             "facetFilters": facets,
             "sort": self.sort,
@@ -571,7 +603,12 @@ impl ViewFilters {
             "statuses": self.statuses,
             "groupBy": self.group_by.map(GroupBy::as_str),
             "showHidden": self.show_hidden,
-        })
+        });
+        // Only once a group is picked: files of users without groups stay as they were.
+        if !self.smart_groups.is_empty() {
+            doc["smartGroups"] = json!(self.smart_groups);
+        }
+        doc
     }
 }
 
@@ -587,7 +624,7 @@ pub struct SavedView {
 
 /// Keys of a stored view that [`ViewFilters::from_value`] and the name cover;
 /// `groupByStatus` is replaced by `groupBy` when written.
-const VIEW_KEYS: [&str; 15] = [
+const VIEW_KEYS: [&str; 16] = [
     "name",
     "installFilter",
     "facetFilters",
@@ -600,6 +637,7 @@ const VIEW_KEYS: [&str; 15] = [
     "ageUnrated",
     "categories",
     "statuses",
+    "smartGroups",
     "groupBy",
     "groupByStatus",
     "showHidden",
@@ -1003,6 +1041,30 @@ mod tests {
         assert_eq!(UiState::from_value(&json!({ "groupByStatus": false })).group_by, GroupBy::None);
         assert_eq!(UiState::from_value(&json!({ "groupByStatus": false, "groupBy": "genre" })).group_by, GroupBy::Genre);
         assert_eq!(UiState::from_value(&json!({})).group_by, GroupBy::Status);
+    }
+
+    #[test]
+    fn smart_groups_filter_save_and_prune() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        let mut state = UiState::default();
+        state.save(&paths).unwrap();
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert!(on_disk.get("smartGroups").is_none(), "no key until a group is picked");
+        state.toggle_smart_group("g1");
+        state.toggle_smart_group("g2");
+        assert_eq!(state.active_filters(), 2);
+        state.saved_views.push(SavedView::new("Groups", state.view_filters()));
+        state.save(&paths).unwrap();
+        let mut loaded = UiState::load(&paths);
+        assert_eq!(loaded, state);
+        assert!(loaded.shows_view(&loaded.saved_views[0].filters.clone()));
+        assert!(loaded.prune_smart_groups(|id| id == "g2"));
+        assert_eq!(loaded.smart_groups, BTreeSet::from(["g2".to_owned()]));
+        assert_eq!(loaded.saved_views[0].filters.smart_groups, BTreeSet::from(["g2".to_owned()]));
+        assert!(!loaded.prune_smart_groups(|_| true));
+        loaded.clear_filters();
+        assert_eq!(loaded.active_filters(), 0);
     }
 
     #[test]

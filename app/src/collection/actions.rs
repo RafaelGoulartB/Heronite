@@ -73,14 +73,15 @@ impl CollectionView {
         self.prune_selection_to_list();
     }
 
-    /// The list's conditions that live in the app: the selected categories
-    /// and statuses, and "Only with an update".
+    /// The list's conditions that live in the app: the selected categories,
+    /// statuses and smart groups, and "Only with an update".
     pub(super) fn keeps_game(&self, g: &heronite_data::CollectionGame, statuses: &[heronite_data::models::CompletionStatus]) -> bool {
         let ui = &self.ui;
         self.categories.matches(&ui.categories, &g.runner, &g.app_name)
             && (!ui.only.updates || self.update_apps.contains(&g.app_name))
             && (ui.statuses.is_empty()
                 || ui.statuses.contains(&heronite_data::status::resolve_status_id(g.status_raw.as_deref(), statuses)))
+            && self.in_picked_groups(g, statuses)
     }
 
     /// The focus panel of `game`, whose Play stands for the copy it starts

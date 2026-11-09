@@ -1,6 +1,6 @@
 //! The View menu's panel: search box with tokens, then either the results
-//! or Presets / Sort / Group by / Show / Only / Ages up to / Browse / Manage, and a footer
-//! with the count and "Reset all".
+//! or Presets / Smart groups (once there is one) / Sort / Group by / Show / Only / Ages up to / Browse / Manage,
+//! and a footer with the count and "Reset all".
 
 use gpui_kit::component::input::Input;
 use gpui_kit::prelude::*;
@@ -73,6 +73,7 @@ impl Density {
 #[derive(Clone, Copy)]
 enum ViewAction {
     Save,
+    SaveGroup,
     Edit,
 }
 
@@ -99,6 +100,7 @@ impl CollectionView {
             .children(searching.then(|| self.vm_results(cx)))
             .when(!searching, |el| {
                 el.child(self.vm_views(cx))
+                    .children(self.vm_groups(d, cx))
                     .child(self.vm_show(cx))
                     .child(self.vm_group(d, cx))
                     .child(self.vm_sort(d, cx))
@@ -374,6 +376,9 @@ impl CollectionView {
         if current.is_none() {
             actions.push((ViewAction::Save, Icon::Add, tr!("Save as preset…")));
         }
+        if self.ui.active_filters() > self.ui.smart_groups.len() {
+            actions.push((ViewAction::SaveGroup, Icon::AutoAwesome, tr!("Save as smart group…")));
+        }
         if !cards.is_empty() {
             actions.push((ViewAction::Edit, Icon::Edit, tr!("Edit presets…")));
         }
@@ -389,6 +394,7 @@ impl CollectionView {
                         this.view_menu.select_open = false;
                         match action {
                             ViewAction::Save => this.start_naming_view(window, cx),
+                            ViewAction::SaveGroup => this.save_filters_as_group(window, cx),
                             ViewAction::Edit => this.view_menu.editing = true,
                         }
                         cx.notify();
@@ -497,6 +503,70 @@ impl CollectionView {
             .children(restore)
     }
 
+    /// The smart groups, once there is one: a click shows a group's games
+    /// (several add up), the pin puts it in the header, the pencil edits it.
+    fn vm_groups(&self, d: Density, cx: &mut Context<Self>) -> Option<Div> {
+        if self.smart_groups.is_empty() {
+            return None;
+        }
+        let new = div()
+            .id("vm-groups-new")
+            .cursor_pointer()
+            .text_size(px(12.))
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(theme::text_bright()))
+            .child(tr!("New…"))
+            .on_click(cx.listener(|this, _, window, cx| this.open_group_editor(None, None, window, cx)));
+        let rows = self.smart_groups.groups.iter().enumerate().map(|(i, g)| {
+            let (id, pinned) = (g.id.clone(), g.pinned);
+            let on = self.ui.smart_groups.contains(&g.id);
+            let (pin_id, edit_id) = (id.clone(), id.clone());
+            plain_row(("vm-group", i), false)
+                .py(px(5.))
+                .child(check(on))
+                .child(dot(super::super::smart_groups::group_colour(g)))
+                .child(div().flex_1().min_w_0().truncate().when(on, |d| d.text_color(theme::text_bright())).child(g.name.clone()))
+                .child(count_label(self.group_count(g)))
+                .child(
+                    div()
+                        .id(("vm-group-pin", i))
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .justify_center()
+                        .size(px(28.))
+                        .rounded_full()
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::ink_a(0.1)))
+                        .child(if pinned {
+                            icon(Icon::PushPin, px(16.), theme::accent())
+                        } else {
+                            icon(Icon::PushPinOutlined, px(16.), theme::text_dim())
+                        })
+                        .tooltip(crate::ui::tooltip(if pinned { tr!("Unpin from the header") } else { tr!("Pin to the header") }))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            cx.stop_propagation();
+                            this.set_group_pinned(&pin_id, !pinned, cx);
+                        })),
+                )
+                .child(icon_button(("vm-group-edit", i), Icon::Edit, true).tooltip(crate::ui::tooltip(tr!("Edit rules"))).on_click(
+                    cx.listener(move |this, _, window, cx| {
+                        cx.stop_propagation();
+                        this.open_group_editor(Some(&edit_id), None, window, cx);
+                    }),
+                ))
+                .on_click(cx.listener(move |this, _, _, cx| this.toggle_smart_group_filter(&id, cx)))
+        });
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(d.head_gap))
+                .child(section_head(tr!("Smart groups")).child(new))
+                .child(div().flex().flex_col().p(px(4.)).rounded(px(12.)).map(control).children(rows)),
+        )
+    }
+
     fn vm_show(&self, cx: &mut Context<Self>) -> Div {
         let (all, installed) = self.show_counts();
         let items = [
@@ -548,7 +618,11 @@ impl CollectionView {
     }
 
     fn vm_browse(&self, cx: &mut Context<Self>) -> Div {
-        let kinds = Kind::ALL.into_iter().filter(|k| *k != Kind::Only && (*k != Kind::Category || !self.categories.is_empty()));
+        let kinds = Kind::ALL.into_iter().filter(|k| match k {
+            Kind::Only | Kind::Group => false,
+            Kind::Category => !self.categories.is_empty(),
+            _ => true,
+        });
         let d = self.vm_density();
         section(tr!("Browse"), d).child(div().flex().flex_wrap().gap(px(6.)).children(kinds.enumerate().map(|(i, kind)| {
             pill(("vm-browse", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
@@ -576,7 +650,11 @@ impl CollectionView {
                 this.open_menu = None;
                 this.open_manage_fields(None, window, cx);
             }));
-        section(tr!("Manage"), d).child(div().flex().flex_wrap().gap(px(6.)).child(statuses).child(fields))
+        let group = pill("vm-new-group", d)
+            .child(icon(Icon::AutoAwesome, px(14.), theme::text_muted()))
+            .child(tr!("New smart group…"))
+            .on_click(cx.listener(|this, _, window, cx| this.open_group_editor(None, None, window, cx)));
+        section(tr!("Manage"), d).child(div().flex().flex_wrap().gap(px(6.)).child(statuses).child(fields).child(group))
     }
 
     fn vm_footer(&self, cx: &mut Context<Self>) -> Div {

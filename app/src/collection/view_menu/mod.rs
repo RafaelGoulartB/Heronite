@@ -159,6 +159,23 @@ impl CollectionView {
                 })
                 .collect(),
         });
+        if !self.smart_groups.is_empty() {
+            out.push(Section {
+                kind: Kind::Group,
+                choices: self
+                    .smart_groups
+                    .groups
+                    .iter()
+                    .map(|g| Choice {
+                        pick: Pick::Group(g.id.clone()),
+                        label: g.name.clone(),
+                        count: Some(self.group_count(g)),
+                        on: ui.smart_groups.contains(&g.id),
+                        color: Some(super::smart_groups::group_colour(g)),
+                    })
+                    .collect(),
+            });
+        }
         if !self.categories.is_empty() {
             let names = self.categories.names().map(str::to_owned).chain([UNCATEGORIZED.to_owned()]);
             out.push(Section {
@@ -238,6 +255,11 @@ impl CollectionView {
             let label = if ui.age.unrated { tr!("Up to {max}, and unrated", max) } else { tr!("Up to {max}", max) };
             out.push((Some(tr!("Ages")), token(Pick::Age(ui.age), label, None)));
         }
+        for id in &ui.smart_groups {
+            if let Some(g) = self.smart_groups.get(id) {
+                out.push((Some(tr!("Group")), token(Pick::Group(id.clone()), g.name.clone(), Some(super::smart_groups::group_colour(g)))));
+            }
+        }
         for name in &ui.categories {
             out.push((Some(tr!("Category")), token(Pick::Category(name.clone()), category_label(name), None)));
         }
@@ -264,6 +286,7 @@ impl CollectionView {
                 self.refresh_groups();
             }
             Pick::Category(name) => self.toggle_category_filter(name, cx),
+            Pick::Group(id) => self.toggle_smart_group_filter(id, cx),
             Pick::Facet(kind, value) => self.toggle_facet(kind.as_str(), value),
             Pick::Age(age) => {
                 self.ui.age = if self.ui.age == *age && age.is_active() { Default::default() } else { *age };

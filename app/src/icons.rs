@@ -114,6 +114,8 @@ pub enum Icon {
     BookmarkBorder,
     /// "Find art": looks up the art by itself.
     AutoAwesome,
+    PushPin,
+    PushPinOutlined,
     Image,
     InfoOutlined,
     Link,
@@ -186,6 +188,8 @@ impl Icon {
             Bookmark => "icons/bookmark.svg",
             BookmarkBorder => "icons/bookmark-border.svg",
             AutoAwesome => "icons/auto-awesome.svg",
+            PushPin => "icons/push-pin.svg",
+            PushPinOutlined => "icons/push-pin-outlined.svg",
             Image => "icons/image.svg",
             InfoOutlined => "icons/info-outlined.svg",
             Link => "icons/link.svg",

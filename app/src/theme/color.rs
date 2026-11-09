@@ -312,6 +312,16 @@ pub fn chart_series(i: usize) -> Rgba {
         _ => rgb(0x9085e9),
     }
 }
+/// The colours a smart group can take (`#rrggbb` in `groups.json`), the
+/// charts' series, told apart on dark and light panels.
+pub const GROUP_COLOURS: [&str; 6] = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
+
+/// `#rrggbb` as a colour.
+pub fn parse_hex(s: &str) -> Option<Rgba> {
+    let hex = s.strip_prefix('#').filter(|h| h.len() == 6)?;
+    u32::from_str_radix(hex, 16).ok().map(rgb)
+}
+
 pub fn chart_other() -> Hsla {
     ink_a(0.22)
 }
