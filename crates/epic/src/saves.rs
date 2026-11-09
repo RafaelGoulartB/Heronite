@@ -172,6 +172,8 @@ pub fn supported(data_paths: &DataPaths, app_name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the Wine prefix tests (Unix) talk to the fake server.
+    #[cfg(unix)]
     use crate::download::testing::{sign_in_and_own, Server};
     use serde_json::json;
 
