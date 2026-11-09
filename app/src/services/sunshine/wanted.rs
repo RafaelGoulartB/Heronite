@@ -71,8 +71,18 @@ fn url(action: &str, game: &CollectionGame) -> String {
 }
 
 /// The command that starts `game`: hidden window, as Steam shortcuts do.
+/// `--handoff`: with Heronite not running, the instance starts detached
+/// and this command exits at once, as it does when Heronite runs. Sunshine
+/// then treats the launch as detached (`auto-detach`) and quitting the
+/// stream ends nothing but what `undo` asks; otherwise Heronite and the game
+/// would be in Sunshine's process group, ended with it whatever "Quitting
+/// in Moonlight closes the game" says.
 pub fn launch_cmd(exe: &Path, game: &CollectionGame) -> String {
-    format!("{} --no-gui {}", quoted(&exe.to_string_lossy()), quoted(&url("launch", game)))
+    launch_line(exe, &url("launch", game))
+}
+
+fn launch_line(exe: &Path, url: &str) -> String {
+    format!("{} --no-gui {} {}", quoted(&exe.to_string_lossy()), crate::system::cli::HANDOFF, quoted(url))
 }
 
 /// The command that closes `game` when the stream's application ends.
@@ -202,6 +212,18 @@ mod tests {
             other => panic!("{other:?}"),
         }
         let stop = format!("{SCHEME}://stop?appName={}&runner=gog", encode("1207658930"));
+        // The launch command, split as Sunshine's shell does: a hidden,
+        // handed-off launch of that game.
+        let cmd = launch_line(Path::new("/opt/My Apps/heronite-rs"), &format!("{SCHEME}://launch?appName={}&runner=gog", encode("A B")));
+        let words: Vec<String> = cmd
+            .split('"')
+            .enumerate()
+            .flat_map(|(i, part)| if i % 2 == 1 { vec![part.to_string()] } else { part.split_whitespace().map(str::to_string).collect() })
+            .collect();
+        assert_eq!(words[0], "/opt/My Apps/heronite-rs");
+        let launch = parse(words.into_iter().skip(1));
+        assert!(launch.handoff && launch.no_gui && launch.errors.is_empty());
+        assert_eq!(launch.launch.map(|r| (r.app_name, r.runner)), Some(("A B".to_string(), Some("gog".to_string()))));
         let cli = parse([stop]);
         assert_eq!(cli.stop.map(|r| r.app_name).as_deref(), Some("1207658930"));
     }

@@ -67,6 +67,11 @@ pub struct Cli {
     pub console: bool,
     /// `--fullscreen`: the window fills the screen.
     pub fullscreen: bool,
+    /// `--handoff`: with no instance running, start one on its own (outside
+    /// the caller's process group or job) and exit at once. Sunshine ends the
+    /// whole group of what it started when the stream quits; the instance
+    /// must not be part of it ([`HANDOFF`]).
+    pub handoff: bool,
     /// `--autostart`: started with the session (the autostart entry); only
     /// then does "Start minimized" apply.
     pub autostart: bool,
@@ -87,8 +92,18 @@ Usage:
   --console                           open in console mode (it stays on until you leave it)
   --fullscreen                        open the window fullscreen (F11 switches back)
   --autostart                         started with the system (\"Start minimized\" applies)
+  --handoff                           start the instance detached and exit at once (Sunshine)
   -h, --help                          this text
 ";
+
+/// See [`Cli::handoff`].
+pub const HANDOFF: &str = "--handoff";
+
+/// The arguments of this process for the instance it hands off to: the same,
+/// without [`HANDOFF`].
+pub fn without_handoff<I: IntoIterator<Item = std::ffi::OsString>>(args: I) -> Vec<std::ffi::OsString> {
+    args.into_iter().filter(|a| a != HANDOFF).collect()
+}
 
 const OPEN_CLIENT_USAGE: &str = "--open-client needs a store client: battlenet, ea, ubisoft or rockstar";
 
@@ -178,6 +193,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
             "--no-gui" => cli.no_gui = true,
             "--console" => cli.console = true,
             "--fullscreen" => cli.fullscreen = true,
+            HANDOFF => cli.handoff = true,
             "--autostart" => cli.autostart = true,
             "-h" | "--help" => cli.help = true,
             "--launch" => {
@@ -297,6 +313,17 @@ mod tests {
         assert!(!p(&[]).hide_window(true), "the setting only applies to launches");
         assert!(p(&["--launch", "gog_1"]).hide_window(true));
         assert!(!p(&["--launch", "gog_1"]).hide_window(false));
+    }
+
+    #[test]
+    fn handoff_is_read_and_left_out_of_the_new_instance() {
+        let c = p(&["--no-gui", "--handoff", "heronite://launch?appName=1&runner=gog"]);
+        assert!(c.handoff && c.no_gui);
+        assert_eq!(c.launch.map(|r| r.app_name).as_deref(), Some("1"));
+        assert!(c.errors.is_empty());
+        assert!(!p(&["--no-gui"]).handoff);
+        let args = ["--no-gui", "--handoff", "heronite://launch?appName=1&runner=gog"].map(std::ffi::OsString::from);
+        assert_eq!(without_handoff(args), ["--no-gui", "heronite://launch?appName=1&runner=gog"].map(std::ffi::OsString::from));
     }
 
     #[test]
