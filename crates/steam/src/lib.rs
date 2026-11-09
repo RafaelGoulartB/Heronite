@@ -452,11 +452,12 @@ impl Steam {
         LibraryCheck { access, why: Some(format!("steamwebhelper {helper}; client: {probe}{owner}")), taken }
     }
 
-    /// The account's games, from the running client.
-    pub fn read_library(&self) -> Result<Vec<heronite_data::steam_owned::SteamOwnedGame>, String> {
+    /// The account's games and the ones its Steam Family shares, from the
+    /// running client.
+    pub fn read_library(&self) -> Result<library::LibraryRead, String> {
         let LibraryCheck { access, why, taken } = self.library_check();
         match access {
-            LibraryAccess::Ready => library::read_owned(&self.client).map_err(|e| format!("{e:#}")),
+            LibraryAccess::Ready => library::read_library(&self.client).map_err(|e| format!("{e:#}")),
             LibraryAccess::Closed => Err(tr!("Steam is not running. Open Steam to read your library.").to_string()),
             LibraryAccess::Starting if why.as_deref().is_some_and(|w| w.ends_with(STILL_LOADING)) => {
                 Err(tr!("Steam is still loading your library. It is read by itself as soon as Steam has it.").to_string())

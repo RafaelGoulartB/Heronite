@@ -8,6 +8,10 @@
 //! when only the Steam copy is installed, plays through Steam). Twins are
 //! found by Steam app id (the entry's own or its metadata's), else by a title
 //! that only one owned game and one entry share.
+//!
+//! Games another member of the account's Steam Family shares with it are
+//! kept apart ([`SteamOwnedFile::family`]): they become Steam entries marked
+//! "Family" (never twins), and leave the Collection when sharing ends.
 
 use std::collections::{HashMap, HashSet};
 
@@ -22,12 +26,30 @@ use crate::paths::DataPaths;
 /// entry, while untouched, gives way to a twin from another source.
 pub const AUTO_KEY: &str = "heroniteSteamAuto";
 
+/// Set (`true`) in the overlay meta of the Steam entries the library import
+/// adds for games the Steam Family shares: those are removed once the game
+/// is neither shared nor owned any more.
+pub const FAMILY_KEY: &str = "heroniteSteamFamily";
+
+/// Added to a Steam account id (32 bits) to make its 64-bit Steam id.
+const STEAMID64_BASE: u64 = 76_561_197_960_265_728;
+
+/// The 64-bit Steam id of a Steam account id.
+pub fn steamid64(account_id: u32) -> String {
+    (STEAMID64_BASE + account_id as u64).to_string()
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SteamOwnedFile {
     /// Only games (no tools, soundtracks, demos or games hidden in Steam).
     #[serde(default)]
     pub games: Vec<SteamOwnedGame>,
+    /// Games another member of the Steam Family shares with the account (each
+    /// with its [`SteamOwnedGame::share`]); none of them is in `games`.
+    /// Missing in files written before Family games were read.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub family: Vec<SteamOwnedGame>,
     /// When the client was last read (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
@@ -64,8 +86,37 @@ pub struct SteamOwnedGame {
     /// Unix seconds; `None` = never.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_played: Option<i64>,
+    /// Who shares the game: only set on the games of [`SteamOwnedFile::family`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share: Option<FamilyShare>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// A game the Steam Family shares, as the client last showed it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FamilyShare {
+    /// 64-bit Steam id of the member who owns it.
+    pub owner_id: String,
+    /// The owner's Steam name (empty when the client did not know it).
+    #[serde(default)]
+    pub owner_name: String,
+    /// Someone else was playing it (the family has one copy) when the
+    /// client was read.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub in_use: bool,
+}
+
+impl FamilyShare {
+    /// The owner's name, else their Steam id.
+    pub fn owner(&self) -> &str {
+        if self.owner_name.trim().is_empty() {
+            &self.owner_id
+        } else {
+            self.owner_name.trim()
+        }
+    }
 }
 
 impl SteamOwnedFile {
@@ -83,6 +134,20 @@ impl SteamOwnedFile {
 
     pub fn get(&self, app_id: &str) -> Option<&SteamOwnedGame> {
         self.games.iter().find(|g| g.app_id == app_id)
+    }
+
+    /// The game as the Steam Family shares it, unless the account owns it.
+    pub fn shared(&self, app_id: &str) -> Option<&SteamOwnedGame> {
+        // Asked for every Steam entry at each load: no search without a Family.
+        if self.family.is_empty() || self.get(app_id).is_some() {
+            return None;
+        }
+        self.family.iter().find(|g| g.app_id == app_id && g.share.is_some())
+    }
+
+    /// The game, owned or shared.
+    pub fn owned_or_shared(&self, app_id: &str) -> Option<&SteamOwnedGame> {
+        self.get(app_id).or_else(|| self.shared(app_id))
     }
 }
 
@@ -208,6 +273,37 @@ mod tests {
         let t = twins(&c, &o);
         assert_eq!(t.get("1").map(String::as_str), Some("legendary_a"));
         assert_eq!(t.get("5"), None);
+    }
+
+    #[test]
+    fn family_games_are_apart_from_owned_ones() {
+        let mut o = owned(&[("1", "Control")]);
+        let share = |name: &str| Some(FamilyShare { owner_id: steamid64(42), owner_name: name.into(), in_use: false });
+        o.family = vec![
+            SteamOwnedGame { app_id: "2".into(), name: "Portal".into(), share: share("Riley"), ..Default::default() },
+            // Bought since: the account's own copy wins.
+            SteamOwnedGame { app_id: "1".into(), name: "Control".into(), share: share("Riley"), ..Default::default() },
+        ];
+        assert_eq!(o.shared("2").map(|g| g.name.as_str()), Some("Portal"));
+        assert_eq!(o.shared("1"), None);
+        assert_eq!(o.owned_or_shared("1").map(|g| g.share.is_none()), Some(true));
+        assert_eq!(o.shared("3"), None);
+        // Family games never join entries of other sources.
+        let c = [cand("legendary_p", "Portal", &["2"])];
+        assert!(twins(&c, &o).is_empty());
+        assert_eq!(steamid64(42), "76561197960265770");
+        assert_eq!(share("").unwrap().owner(), "76561197960265770");
+        assert_eq!(share(" Riley ").unwrap().owner(), "Riley");
+    }
+
+    #[test]
+    fn older_files_read_without_family_games_and_stay_the_same() {
+        let old = r#"{"games":[{"appId":"620","name":"Portal 2","installed":true,"playtimeMinutes":5}],"updatedAt":"x","zz":1}"#;
+        let f: SteamOwnedFile = serde_json::from_str(old).unwrap();
+        assert!(f.family.is_empty());
+        assert_eq!(f.games[0].share, None);
+        let back: serde_json::Value = serde_json::to_value(&f).unwrap();
+        assert_eq!(back, serde_json::from_str::<serde_json::Value>(old).unwrap());
     }
 
     #[test]

@@ -140,7 +140,7 @@ fn new_steam_entries(
     let mut entries = Vec::new();
     for g in installed_games {
         if known.insert(g.app_id.clone()) {
-            let minutes = owned.get(&g.app_id).map_or(0, |o| o.playtime_minutes);
+            let minutes = owned.owned_or_shared(&g.app_id).map_or(0, |o| o.playtime_minutes);
             let status = heronite_data::status::inferred_status_id(minutes as f64, statuses);
             entries.push(steam_sideload_entry(&g, steam_bin, &status));
         }
@@ -149,15 +149,15 @@ fn new_steam_entries(
 }
 
 /// Brings `installed` of the cached Steam library in line with the
-/// manifests (a game installed or uninstalled since the client was read).
-/// Whether the file changed.
+/// manifests (a game installed or uninstalled since the client was read),
+/// the games the Steam Family shares included. Whether the file changed.
 fn refresh_owned_installs(paths: &DataPaths, installed_steam: &HashSet<String>) -> anyhow::Result<bool> {
     let file = SteamOwnedFile::read(paths);
-    if !file.games.iter().any(|g| g.installed != installed_steam.contains(&g.app_id)) {
+    if !file.games.iter().chain(&file.family).any(|g| g.installed != installed_steam.contains(&g.app_id)) {
         return Ok(false);
     }
     json_store::update::<SteamOwnedFile, _>(&paths.steam_owned(), |f| {
-        for g in &mut f.games {
+        for g in f.games.iter_mut().chain(f.family.iter_mut()) {
             g.installed = installed_steam.contains(&g.app_id);
         }
         Ok(())
@@ -424,6 +424,21 @@ mod tests {
 
         let never_read = new_steam_entries(installed(&["620"]), &mut HashSet::new(), &SteamOwnedFile::default(), &statuses, None);
         assert_eq!(never_read[0].1.completion_status_id.as_deref(), Some("not-played"), "the client was never read");
+    }
+
+    #[test]
+    fn a_shared_game_found_installed_counts_the_accounts_time_on_it() {
+        let shared = SteamOwnedGame {
+            app_id: "400".into(),
+            name: "Portal".into(),
+            playtime_minutes: 45,
+            share: Some(heronite_data::steam_owned::FamilyShare { owner_id: "76561197960266730".into(), ..Default::default() }),
+            ..Default::default()
+        };
+        let owned = SteamOwnedFile { family: vec![shared], updated_at: Some("x".into()), ..Default::default() };
+        let game = SteamInstalledGame { app_id: "400".into(), name: "Portal".into() };
+        let entries = new_steam_entries(vec![game], &mut HashSet::new(), &owned, &heronite_data::status::default_statuses(), None);
+        assert_eq!(entries[0].1.completion_status_id.as_deref(), Some("played"));
     }
 
     #[test]

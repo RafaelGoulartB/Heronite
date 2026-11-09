@@ -38,6 +38,8 @@ pub(super) struct CardVm {
     /// How many copies of the game (from several stores) this card stands
     /// for; `0` when it is the only one.
     pub copies: usize,
+    /// Shared by the Steam Family: the owner's name (empty when unknown).
+    pub family: Option<SharedString>,
 }
 
 #[derive(Clone)]
@@ -355,6 +357,7 @@ mod tests {
                 favourite: false,
                 cover_key: "".into(),
                 copies: 0,
+                family: None,
             })
         };
         GroupVm {

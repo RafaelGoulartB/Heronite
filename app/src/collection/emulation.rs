@@ -266,12 +266,31 @@ impl CollectionView {
         let steam = crate::services::steam_library(cx);
         cx.subscribe(&steam, |this, _, ev: &SteamLibraryEvent, cx| {
             let SteamLibraryEvent::Imported(report) = ev;
+            // One toast: a second would replace the first.
+            let mut said: Vec<String> = Vec::new();
             if report.added > 0 {
-                this.show_toast(
-                    trn!(report.added, "Added {n} game from your Steam library", "Added {n} games from your Steam library"),
-                    false,
-                    cx,
+                said.push(
+                    trn!(report.added, "Added {n} game from your Steam library", "Added {n} games from your Steam library").to_string(),
                 );
+            }
+            if report.family_added > 0 {
+                said.push(
+                    trn!(report.family_added, "Added {n} game your Steam Family shares", "Added {n} games your Steam Family shares")
+                        .to_string(),
+                );
+            }
+            if report.family_removed > 0 {
+                said.push(
+                    trn!(
+                        report.family_removed,
+                        "Removed {n} game your Steam Family no longer shares",
+                        "Removed {n} games your Steam Family no longer shares"
+                    )
+                    .to_string(),
+                );
+            }
+            if !said.is_empty() {
+                this.show_toast(said.join(" · "), false, cx);
             }
             if report.changed() {
                 this.reload(cx);

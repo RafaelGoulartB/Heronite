@@ -21,7 +21,8 @@ const MAX_SHOWN: usize = 3;
 /// without one (launchers, emulators, games added by hand).
 pub fn store_icon(store: &str) -> Option<Icon> {
     Some(match store {
-        "Steam" => Icon::BrandSteam,
+        // A Steam Family game plays through Steam.
+        "Steam" | heronite_data::library::FAMILY_LABEL => Icon::BrandSteam,
         "Epic Games" => Icon::BrandEpicGames,
         "GOG" => Icon::BrandGog,
         "Amazon Games" => Icon::BrandAmazon,
@@ -118,6 +119,7 @@ mod tests {
     #[test]
     fn stores_with_a_logo_get_it_and_the_others_none() {
         assert_eq!(store_icon("Steam"), Some(Icon::BrandSteam));
+        assert_eq!(store_icon("Steam Family"), Some(Icon::BrandSteam));
         assert_eq!(store_icon("Epic Games"), Some(Icon::BrandEpicGames));
         assert_eq!(store_icon("Ubisoft Connect"), Some(Icon::BrandUbisoft));
         assert_eq!(store_icon("Lutris"), None);

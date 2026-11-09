@@ -36,7 +36,7 @@ use crate::models::*;
 use crate::paths::DataPaths;
 use crate::settings::EffectiveSettings;
 use crate::status::{resolve_status_id, sorted_or_default};
-use crate::steam_owned::{self, Candidate, SteamOwnedFile};
+use crate::steam_owned::{self, Candidate, FamilyShare, SteamOwnedFile};
 use crate::text::DateLocale;
 
 /// Everything the UI needs about one game. Cheap to share: keep it in an
@@ -81,6 +81,9 @@ pub struct CollectionGame {
     pub steam_launch_id: Option<String>,
     /// The same game owned on Steam, for an entry of another source.
     pub steam_link: Option<SteamLink>,
+    /// A Steam entry for a game another member of the Steam Family shares
+    /// (and the account does not own): who shares it.
+    pub family: Option<FamilyShare>,
     /// Only the Steam copy is installed: the game plays, uninstalls and is
     /// set up through Steam (`launch_kind` reads `steam-uri`), while its
     /// store's own actions treat it as not installed.
@@ -112,6 +115,7 @@ pub struct SteamLink {
 pub(crate) struct BuildInputs<'a> {
     pub game: GameInfo,
     pub steam: Option<SteamLink>,
+    pub family: Option<FamilyShare>,
     pub overrides: Option<GameOverride>,
     pub meta: Option<Arc<LocalGameMeta>>,
     pub metadata: Option<Arc<CollectionGameMetadata>>,
@@ -125,6 +129,10 @@ pub(crate) struct BuildInputs<'a> {
     /// [`Library::age_order`].
     pub age_order: &'a [RatingSystem],
 }
+
+/// Library and Store of a game the Steam Family shares (Valve's name, kept
+/// in English like the other store names).
+pub const FAMILY_LABEL: &str = "Steam Family";
 
 /// `libraryLabel` of the Focus panel (the `SOURCE_LABELS` table, then the
 /// runner, then "Local").
@@ -164,6 +172,7 @@ impl CollectionGame {
         let BuildInputs {
             game,
             steam,
+            family,
             overrides,
             meta,
             metadata,
@@ -197,12 +206,16 @@ impl CollectionGame {
         let details = Details::compute(&game, meta.as_deref(), metadata.as_deref(), None, None);
         let age_rating = metadata.as_deref().and_then(|m| age_rating::shown(&m.age_ratings, age_order)).cloned();
         let mut facets = game_facets(&game, metadata.as_deref());
-        facets[crate::collection::FacetKind::Store.index()] = crate::collection::store_facet(
-            meta.as_deref().map(|m| m.source.as_str()),
-            &game.runner,
-            meta.as_deref().is_some_and(|m| m.launch_kind == "steam-uri"),
-            steam.is_some(),
-        );
+        facets[crate::collection::FacetKind::Store.index()] = if family.is_some() {
+            crate::collection::items(vec![FAMILY_LABEL.to_string()])
+        } else {
+            crate::collection::store_facet(
+                meta.as_deref().map(|m| m.source.as_str()),
+                &game.runner,
+                meta.as_deref().is_some_and(|m| m.launch_kind == "steam-uri"),
+                steam.is_some(),
+            )
+        };
         let minutes = timestamp.map(|t| t.total_played.get()).filter(|m| *m > 0.0).unwrap_or(0.0);
         let non_empty = |s: &Option<String>| s.clone().filter(|v| !v.is_empty());
         // What Xbox network counted (every device, Heronite's sessions
@@ -216,7 +229,7 @@ impl CollectionGame {
             app_name: game.app_name.clone(),
             title_lower: title.to_lowercase(),
             title,
-            source_label: source_label(meta.as_deref(), &game.runner),
+            source_label: if family.is_some() { FAMILY_LABEL } else { source_label(meta.as_deref(), &game.runner) },
             installed: game.is_installed || via_steam,
             status_id: resolve_status_id(status_raw.as_deref(), statuses),
             status_raw,
@@ -230,6 +243,7 @@ impl CollectionGame {
             steam_app_id,
             steam_launch_id,
             steam_link: steam,
+            family,
             via_steam,
             details,
             facets,
@@ -729,8 +743,15 @@ impl Library {
             }
             let app = game.app_name.clone();
             let runner = game.runner.clone();
+            let family = owned
+                .known()
+                .then(|| steam_entry_id(&game, metas.get(&app).map(|m| &**m)))
+                .flatten()
+                .and_then(|id| owned.shared(id))
+                .and_then(|g| g.share.clone());
             let mut built = CollectionGame::build(BuildInputs {
                 steam: joins.links.get(&key).cloned(),
+                family,
                 overrides: overrides.get(&app).cloned(),
                 meta: metas.get(&app).cloned(),
                 metadata: metadatas.get(&metadata_key(&runner, &app)).cloned(),
@@ -820,6 +841,7 @@ pub(crate) mod tests_support {
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
             steam: None,
+            family: None,
             overrides: Some(overrides),
             meta: Some(Arc::new(meta)),
             metadata: Some(Arc::new(metadata)),
@@ -902,6 +924,7 @@ pub(crate) mod tests_support {
         Arc::new(CollectionGame::build(BuildInputs {
             game: info,
             steam: None,
+            family: None,
             overrides,
             meta,
             metadata,

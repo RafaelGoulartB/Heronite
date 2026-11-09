@@ -137,6 +137,30 @@ fn the_default_copy_is_the_chosen_one_else_installed_else_by_store() {
 }
 
 #[test]
+fn a_copy_the_steam_family_lends_is_never_the_default_over_an_owned_one() {
+    // The Steam entry of a game another member shares (Steam ranks first by store).
+    let family = |is_installed: bool| {
+        let mut g = Arc::try_unwrap(game_with("steam_1145360", "sideload", |info, _, md, meta, _| {
+            info.title = "Hades".into();
+            info.is_installed = is_installed;
+            md.steam_app_id = Some("1145360".into());
+            meta.steam_app_id = Some("1145360".into());
+            meta.launch_kind = "steam-uri".into();
+        }))
+        .unwrap();
+        g.family = Some(crate::steam_owned::FamilyShare { owner_id: crate::steam_owned::steamid64(1001), ..Default::default() });
+        Arc::new(g)
+    };
+    let gog = copy("gog", "1", "Hades", None, Some("1145360"));
+    let first = |games: &[Arc<CollectionGame>], file: &CopiesFile| groups(games, file).groups[0].members[0].clone();
+    assert_eq!(first(&[family(false), gog.clone()], &CopiesFile::default()), "gog_1", "the user's own copy plays");
+    // Installed only through the Family, or chosen: it plays.
+    let file = CopiesFile { preferred: vec!["sideload_steam_1145360".into()], ..Default::default() };
+    assert_eq!(first(&[family(false), gog.clone()], &file), "sideload_steam_1145360");
+    assert_eq!(first(&[family(true), gog], &CopiesFile::default()), "sideload_steam_1145360");
+}
+
+#[test]
 fn collapse_shows_one_copy_per_group_the_best_one_the_filter_kept() {
     let games = [
         copy("gog", "1", "Hades", Some(7.0), None),

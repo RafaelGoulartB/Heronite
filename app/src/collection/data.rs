@@ -43,6 +43,7 @@ fn card_vm_with(g: &CollectionGame, playing: bool, caption: Option<Caption>, cop
         favourite: g.favourite,
         cover_key: g.key.clone().into(),
         copies: copies.len(),
+        family: g.family.as_ref().map(|f| f.owner_name.trim().to_string().into()),
     })
 }
 
@@ -348,13 +349,28 @@ pub(super) fn focus_vm(lib: &Library, wiki: &WikiCache, g: &CollectionGame, play
             "steam" => Some("Steam".into()),
             _ => None,
         }),
-        library: g.source_label.into(),
+        library: library_label(g).into(),
         install_size: d.install_size.clone().filter(|s| s != "0").map(Into::into),
         installed: g.installed,
         playing,
         favourite: g.favourite,
         playtime: fd.playtime.clone().into(),
         last_played: last_played.map(Into::into),
+    }
+}
+
+/// The Details panel's Library: the source, with who shares a game of the
+/// Steam Family (and that someone else was playing it at the last read).
+fn library_label(g: &CollectionGame) -> String {
+    let Some(f) = &g.family else { return g.source_label.to_string() };
+    let owner = f.owner_name.trim();
+    match (owner.is_empty(), f.in_use) {
+        (true, false) => g.source_label.to_string(),
+        (true, true) => tr!("{library} (in use by another member)", library = g.source_label).to_string(),
+        (false, false) => tr!("{library}, shared by {owner}", library = g.source_label, owner = owner).to_string(),
+        (false, true) => {
+            tr!("{library}, shared by {owner} (in use by another member)", library = g.source_label, owner = owner).to_string()
+        }
     }
 }
 

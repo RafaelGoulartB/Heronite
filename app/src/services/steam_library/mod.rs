@@ -24,7 +24,7 @@ use heronite_launch::steam::{find_steam_binary, installed_app_ids, SteamLocator}
 use heronite_launch::SystemProbe;
 use heronite_steam::account::http::Net;
 use heronite_steam::account::SignedOut;
-use heronite_steam::library::ImportReport;
+use heronite_steam::library::{ImportReport, LibraryRead};
 use heronite_steam::{ClientApiFlag, LibraryAccess, LibraryCheck, PortOwner, Steam};
 
 pub use account::{AccountState, QrState};
@@ -86,8 +86,8 @@ fn sync_blocking(paths: &DataPaths, account: bool) -> Result<(ImportReport, Stea
     let steam = steam(paths);
     let bin = find_steam_binary(&SystemProbe);
     let client_error = match steam.read_library() {
-        Ok(owned) => {
-            let report = heronite_steam::library::import(paths, owned, bin.as_deref()).map_err(|e| ReadError::Failed(format!("{e:#}")))?;
+        Ok(read) => {
+            let report = heronite_steam::library::import(paths, read, bin.as_deref()).map_err(|e| ReadError::Failed(format!("{e:#}")))?;
             return Ok((report, SteamSource::Client));
         }
         Err(e) => e,
@@ -103,8 +103,9 @@ fn sync_blocking(paths: &DataPaths, account: bool) -> Result<(ImportReport, Stea
             ReadError::Failed(tr!("Reading your library from your Steam account failed: {error}", error = format!("{e:#}")))
         }
     })?;
-    let report = heronite_steam::library::import_from(paths, owned, bin.as_deref(), SteamSource::Account)
-        .map_err(|e| ReadError::Failed(format!("{e:#}")))?;
+    let report =
+        heronite_steam::library::import_from(paths, LibraryRead { owned, family: Vec::new() }, bin.as_deref(), SteamSource::Account)
+            .map_err(|e| ReadError::Failed(format!("{e:#}")))?;
     Ok((report, SteamSource::Account))
 }
 
