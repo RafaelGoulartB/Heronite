@@ -236,6 +236,18 @@ reserving the remaining filter chips, 48px for dragging and the arrow's 24px, so
 Focus / Grid and activity pills keep their space. Measurement requests one redraw only when the lane changes,
 never writes settings, and closes a menu whose trigger no longer fits. Long preset names truncate with their full
 name in a tooltip.
+**Smart groups** (`collection/smart_groups.rs`, editor `dialogs/smart_group/`, data `heronite_data::smart_groups`):
+groups of games defined by rules that keep themselves current. Nothing of them shows on the Collection until the user
+makes one, by user decision: the way in is the View menu (Manage → "New smart group…", and "Save as smart group…" in
+the Presets list while filters are on, which starts from them). Once one exists the View menu lists them under Smart
+groups (tick to filter, several add up like categories; pin; pencil to edit), its search finds them (`group:`) and a
+picked group is a filter chip like the others. A pinned group is a segment of its own track in the header lane, after
+the quick controls (or first, while they are off), fitted by the same `layout::fit` prefix and hiding its chip while
+shown; a click shows only its games, a second click every game, a right click opens the editor. The editor: name,
+colour (`theme::GROUP_COLOURS` or the accent), "Games that match all / any of these conditions", rows of field,
+comparison and value (a list field ticks several values, a number has its unit), "Except games that match any of
+these", the games it holds now (counted after each change, not each frame) and the pin; a rule nested deeper than
+that is kept and only the name, colour and pin change. `HERONITE_DEBUG_DIALOG=smartgroup|smartgroup:<id>|smartgroup-filters`.
 Right: the Focus / Grid switch (`view_mode.rs`: a solid pill slides on a spring under the active mode, which
 carries a chevron; a click on it opens that mode's options and a click on the other mode switches to it) and bulk
 metadata. The options (`view_options.rs`, 300px, scrolling when the window is short): in Focus the list as covers or

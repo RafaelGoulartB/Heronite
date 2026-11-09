@@ -123,7 +123,10 @@ text size) and applies it.
   as rules in `local_library/names.json` that the metadata service and the
   library load apply too, plus the duplicate suggestions), `steam_owned` (the cached Steam library and its twins: a game
   owned on Steam that the Collection has from another source joins that
-  entry instead of getting a Steam entry of its own).
+  entry instead of getting a Steam entry of its own), `smart_groups` (groups of games defined by rules, in
+  `local_library/groups.json`: `all` / `any` / `not` over conditions on what the Collection knows of a game,
+  evaluated against the game and `Facts` (the `Organize` data, HowLongToBeat, the updates); rules and keys a newer
+  version wrote are kept as read, and a condition on a value the game lacks never matches).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
   lives in `locales/pt-BR/*.json`, Spanish (neutral, `tú`) in
   `locales/es/*.json` and German (`du`) in `locales/de/*.json`, embedded at build time (one folder per language) and
