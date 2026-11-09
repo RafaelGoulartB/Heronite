@@ -613,9 +613,9 @@ keeps its desktop render and, when `crate::console::active()`, returns its conso
   rising a little, each over its real reflection (`heronite_images::Variant::Reflection`, `cr:` textures) on the
   blurred cover glowing through a vignette (`Scrim::Carousel`); a thin ring a little way out marks the focus; under it
   the name (long ones shrink), the facts and the place in the list (letter, a line with a gliding mark, "n of N"),
-  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), LB / RB
-  change the filter when the theme has one tab (the focused game stays when it passes it), the covers fan out from the
-  middle on first show and on a new filter; A opens the Sheet game page over the carousel: a window floating
+  sliding in from the side the focus came from, each line of a fixed height so the covers never move. LT / RT jump by letter (the letter flashes over the covers), Y opens
+  the Filters panel like every layout (no filter pills of its own: LB / RB are the tabs', smart groups' included), the
+  covers fan out from the middle on first show; A opens the Sheet game page over the carousel: a window floating
   along the left edge (inset, round corners) over a dim of the whole window, sliding in from the left
   (`render_console_game_layer`, drawn by the shell above the top bar).
   Pulse's Spotlight (`layouts/spotlight/`), a console's home: a row of square icons along the top, the focused one at
