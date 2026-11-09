@@ -210,10 +210,15 @@ Store, Genre, Developer, Publisher, Series, Platform) with counts, four per kind
 Enter pick, and an X beside the first kind's title empties the box (back to the menu). Below, when nothing is typed (every control has the cards' faint fill and border, `render::control`): Presets (a select showing the preset on screen, else "Custom", its list drawn like the "More" lists; a preset applies
 everything the menu sets: filters, sort, grouping, hidden games; four built-in ones are added to the user's list once
 and are then ordinary presets; under them "Save as preset…" while none matches and "Edit presets…", which lists them
-with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`), Show
-(segmented with counts), Group by (None | Status | Store | More), Sort (segmented + direction), Only (Favourites, Update, Offline,
-Hidden tiles) Browse (one chip per kind, fills `kind:`) and Manage ("Statuses…" and "Library fields…", the fields manager
-`dialogs/manage_fields`, also in the palette); the footer has the count and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons), Only tiles and Browse pills. Several
+with move, store current state, rename and delete, plus "Restore default presets"; stored as `savedViews`) and,
+beside it on the same row, the Smart groups select (`blocks.rs`: the picked group, "{n} groups" or "None"; its list ticks
+groups, pins and edits them, then "New smart group…" and "Save filters as smart group…" while filters are on). Then two
+blocks, each a bold word and a line: **Filter** (what shows: Show, segmented with counts, with "Include hidden" in its
+title; Only, one pill per switch: Favourites, With an update, Run offline; Filter by, pills for Genre, Store, Status and
+Category that fill `kind:`, and "More" with the other kinds and "Ages up to", whose row shows once picked or while it
+filters) and **Organize** (how: Sort, segmented + direction, and Group by, None | Status | Store | More). The footer
+has the count, "Manage ▾" (Statuses…, Manage categories…, Library fields… — the fields manager `dialogs/manage_fields`,
+also in the palette —, Edit presets…, New smart group…, opening above it) and Reset all. In a small window (under 900px tall or 1200px wide) the panel is compact (`render::Density`): 360px instead of 404, tighter gaps, segments (no icons) and pills. Several
 values of a kind add up (any of them); kinds combine. While its box has the keyboard the menu stays open until Esc or
 a click outside. Each active filter also appears as a removable `filter_chip` after the button.
 The spare middle lane can also show the quick toolbar (`collection/toolbar/`): a track drawn like the Focus / Grid
@@ -238,9 +243,9 @@ never writes settings, and closes a menu whose trigger no longer fits. Long pres
 name in a tooltip.
 **Smart groups** (`collection/smart_groups.rs`, editor `dialogs/smart_group/`, data `heronite_data::smart_groups`):
 groups of games defined by rules that keep themselves current. Nothing of them shows on the Collection until the user
-makes one, by user decision: the way in is the View menu (Manage → "New smart group…", and "Save as smart group…" in
-the Presets list while filters are on, which starts from them). Once one exists the View menu lists them under Smart
-groups (tick to filter, several add up like categories; pin; pencil to edit), its search finds them (`group:`) and a
+makes one, by user decision: the way in is the View menu's Smart groups select, beside Presets (its list: tick to
+filter, several add up like categories; pin; pencil to edit; "New smart group…"; "Save filters as smart group…", which
+starts from the filters on screen), also "Manage ▾" → "New smart group…". The menu's search finds them (`group:`) and a
 picked group is a filter chip like the others. A pinned group is a segment of its own track in the header lane, after
 the quick controls (or first, while they are off), fitted by the same `layout::fit` prefix and hiding its chip while
 shown; a click shows only its games, a second click every game, a right click opens the editor. The editor: name,
@@ -678,7 +683,7 @@ checkboxes or flat grey modals in new UI. Colours come from `theme` (`text_prima
 drawn before the compositor stopped sending frames, so late images (art, covers)
 are missing. Take a first capture to wake the window, wait a second, then take
 the real one (a modified copy of `scripts/shot.sh` doing `grim -T` twice).
-`HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>`, `HERONITE_DEBUG_MENU=<key>`,
+`HERONITE_DEBUG_DROPDOWN=nav|view|view:<text>|groups-select|more-filters|manage`, `HERONITE_DEBUG_MENU=<key>`,
 `HERONITE_DEBUG_DIALOG=...`, `HERONITE_DEBUG_PAGE=...`. Copy
 `~/.local/share/heronite/images-cache` into the fixture or no art appears at all.
 
