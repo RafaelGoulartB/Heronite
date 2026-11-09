@@ -46,6 +46,7 @@ pub mod screenshot_art;
 pub mod script_install;
 pub mod settings_panel;
 pub mod shortcuts;
+pub mod smart_group;
 pub mod store_import;
 pub mod store_install;
 pub mod web_image;
@@ -81,6 +82,9 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
     }
     if let Ok(d) = view.clone().downcast::<manage_categories::ManageCategoriesDialog>() {
         return d.update(cx, |d, cx| d.on_escape(window, cx));
+    }
+    if let Ok(d) = view.clone().downcast::<smart_group::SmartGroupDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
     }
     if let Ok(d) = view.clone().downcast::<batch_edit::BatchEditDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));

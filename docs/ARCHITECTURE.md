@@ -123,7 +123,12 @@ text size) and applies it.
   as rules in `local_library/names.json` that the metadata service and the
   library load apply too, plus the duplicate suggestions), `steam_owned` (the cached Steam library and its twins: a game
   owned on Steam that the Collection has from another source joins that
-  entry instead of getting a Steam entry of its own).
+  entry instead of getting a Steam entry of its own), `smart_groups` (groups of games defined by rules, in
+  `local_library/groups.json`: `all` / `any` / `not` over conditions on what the Collection knows of a game
+  and how it is played (sessions: times played, average session, hours in the last 30 days, progress against
+  HowLongToBeat),
+  evaluated against the game and `Facts` (the `Organize` data, HowLongToBeat, the updates); rules and keys a newer
+  version wrote are kept as read, and a condition on a value the game lacks never matches).
 - **heronite-i18n:** English text is the key (`tr!("Play")`); Portuguese
   lives in `locales/pt-BR/*.json`, Spanish (neutral, `tú`) in
   `locales/es/*.json` and German (`du`) in `locales/de/*.json`, embedded at build time (one folder per language) and
@@ -456,13 +461,17 @@ text size) and applies it.
   settings; the binary is found or downloaded into `tools/bin`, checked against the release's
   SHA-256 list, and its settings with the account's token are this app's `rclone.conf`, 0600, a
   backup's sign-ins). No two PCs write one file, so nothing a sync service copies can conflict.
-  `merge` is pure: status, favourite, hidden, rating and notes are last written wins by a stamp
+  `merge` is pure: status, favourite, hidden, rating, notes and each custom category a game is in
+  (`category:<name>`, game by game, so two PCs adding a game to two categories keep both) are last written wins by a stamp
   (a logical clock past every clock read from the others, then the time, so a dual boot's wrong
   hardware clock does no harm; a value seen for the first time is weak, so a new PC's defaults,
   like the `not-played` of a Steam import, never overwrite another's); sessions are a union (a PC
   publishes only its own; one taken in and deleted here does not come back); play time is the
   largest total (the stores' own time is in every PC's, so adding would count it twice), except
-  the newest total made smaller by hand. A game another PC has and this one does not waits in that
+  the newest total made smaller by hand. Smart groups are last written wins group by group (a
+  deletion is a stamped `null`, so another PC's copy does not bring it back), without `pinned`,
+  which each PC keeps; which games a group holds is never synced, each PC works it out from its own
+  Collection. A game another PC has and this one does not waits in that
   PC's file. `ledger` (`local_library/sync-ledger.json`) remembers what was published and taken
   in: the data files have no time of change per field, so a value that differs from it was
   changed here. `local` reads the Collection and writes through `heronite_data`, after copying the

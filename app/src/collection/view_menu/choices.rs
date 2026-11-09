@@ -26,6 +26,8 @@ pub(in crate::collection) enum Pick {
     Facet(FacetKind, String),
     /// Sets "Ages up to" to this; picking the filter already on clears it.
     Age(AgeFilter),
+    /// A smart group's id.
+    Group(String),
 }
 
 /// A group of values: the "Only" switches, statuses, categories or a facet.
@@ -33,15 +35,17 @@ pub(in crate::collection) enum Pick {
 pub(in crate::collection) enum Kind {
     Only,
     Status,
+    Group,
     Category,
     Facet(FacetKind),
 }
 
 impl Kind {
     /// In the order the results list them.
-    pub const ALL: [Kind; 13] = [
+    pub const ALL: [Kind; 14] = [
         Kind::Only,
         Kind::Status,
+        Kind::Group,
         Kind::Category,
         Kind::Facet(FacetKind::Store),
         Kind::Facet(FacetKind::Genre),
@@ -59,6 +63,7 @@ impl Kind {
         match self {
             Kind::Only => tr!("Only"),
             Kind::Status => tr!("Status"),
+            Kind::Group => tr!("Smart group"),
             Kind::Category => tr!("Category"),
             Kind::Facet(k) => facet_label(k),
         }
@@ -69,6 +74,7 @@ impl Kind {
         match self {
             Kind::Only => "only",
             Kind::Status => "status",
+            Kind::Group => "group",
             Kind::Category => "category",
             Kind::Facet(k) => k.as_str(),
         }
@@ -78,6 +84,7 @@ impl Kind {
         match self {
             Kind::Only => Icon::Star,
             Kind::Status => Icon::Flag,
+            Kind::Group => Icon::AutoAwesome,
             Kind::Category => Icon::Label,
             Kind::Facet(FacetKind::Store) => Icon::Storefront,
             Kind::Facet(FacetKind::Genre) => Icon::Palette,

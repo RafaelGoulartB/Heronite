@@ -9,6 +9,7 @@
 //! trigger cannot keep its menu open.
 
 mod layout;
+mod pins;
 
 use std::cell::Cell;
 use std::f32::consts::PI;
@@ -79,6 +80,14 @@ impl QuickMenu {
 /// Favourites' place in the priority order (it has no menu).
 const FAVOURITES: usize = 2;
 
+/// What the lane shows: a prefix of the quick controls, then of the pinned
+/// groups (all of the controls before any pin).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Shown {
+    pub controls: usize,
+    pub pins: usize,
+}
+
 #[derive(Default)]
 pub(super) struct State {
     pub width: Rc<Cell<Option<f32>>>,
@@ -135,6 +144,8 @@ pub(super) struct Widths {
     group: f32,
     preset: f32,
     presets: bool,
+    /// The pinned smart groups' segments, in their order.
+    pins: Vec<f32>,
 }
 
 impl Widths {
@@ -142,17 +153,43 @@ impl Widths {
     /// is what it adds to the lane: the first carries the track's padding
     /// and the direction button, the others their `SEG_GAP`, and the last
     /// `GAP` is the space before the chips.
-    fn items(&self) -> Vec<f32> {
+    fn items(&self, controls: bool) -> Vec<f32> {
         let next = |w: f32| w + SEG_GAP - GAP;
         // The arrow takes `TOGGLE_W` from the lane while it shows: kept
         // free (`quick_fit` measures the lane as if the arrow were out), so
         // hovering the View button never hides a control.
-        let first = TOGGLE_W + 2. * TRACK_PAD + self.sort + SEG_GAP + ICON_SEG;
-        let mut items = vec![first, next(self.install), next(ICON_SEG), next(self.group)];
-        if self.presets {
-            items.push(next(self.preset));
+        let mut items = Vec::new();
+        if controls {
+            items.extend([
+                TOGGLE_W + 2. * TRACK_PAD + self.sort + SEG_GAP + ICON_SEG,
+                next(self.install),
+                next(ICON_SEG),
+                next(self.group),
+            ]);
+            if self.presets {
+                items.push(next(self.preset));
+            }
+        }
+        // The pins are a track of their own after the controls' (whose last
+        // `GAP` parts them), or the first thing of the lane.
+        for (i, w) in self.pins.iter().enumerate() {
+            items.push(match i {
+                0 => (if controls { 0. } else { TOGGLE_W }) + 2. * TRACK_PAD + w,
+                _ => next(*w),
+            });
         }
         items
+    }
+
+    /// How many of the quick controls come before the pins.
+    fn controls(&self, controls: bool) -> usize {
+        if !controls {
+            0
+        } else if self.presets {
+            5
+        } else {
+            4
+        }
     }
 }
 
@@ -211,17 +248,33 @@ impl CollectionView {
             ),
             preset: segment_width(preset),
             presets: !self.ui.saved_views.is_empty(),
+            pins: self.pin_widths(window),
         }
     }
 
-    /// How many controls the toolbar shows, given each filter chip's
-    /// `(pick, width)`. `reserved`: the lane's width taken by what follows the
-    /// controls (the "Getting started" button).
-    pub(super) fn quick_fit(&self, widths: &Widths, chips: &[(Pick, f32)], reserved: f32) -> usize {
+    /// How many controls the toolbar shows and how many pinned groups follow
+    /// them, given each filter chip's `(pick, width)`. `reserved`: the lane's
+    /// width taken by what follows them (the "Getting started" button).
+    pub(super) fn quick_fit(&self, widths: &Widths, chips: &[(Pick, f32)], reserved: f32) -> Shown {
         // The lane as if the arrow were out; it is reserved in `items`.
         let lane = (self.toolbar.width.get().unwrap_or(0.) + TOGGLE_W * self.toolbar.toggle_out.get() - reserved).max(0.);
-        let chip_width = |shown: usize| chips.iter().filter(|(pick, _)| !covers(pick, shown)).map(|(_, w)| w + GAP).sum();
-        layout::fit(theme::appearance().quick_toolbar_controls, lane, &widths.items(), chip_width)
+        let on = theme::appearance().quick_toolbar_controls;
+        let controls = widths.controls(on);
+        let split = |n: usize| Shown { controls: n.min(controls), pins: n.saturating_sub(controls) };
+        let chip_width = |n: usize| {
+            let shown = split(n);
+            chips.iter().filter(|(pick, _)| !self.chip_shown_elsewhere(pick, shown)).map(|(_, w)| w + GAP).sum()
+        };
+        split(layout::fit(on || !widths.pins.is_empty(), lane, &widths.items(on), chip_width))
+    }
+
+    /// A filter chip the toolbar already carries: its control, or the pin of
+    /// its group.
+    pub(super) fn chip_shown_elsewhere(&self, pick: &Pick, shown: Shown) -> bool {
+        match pick {
+            Pick::Group(id) => self.smart_groups.pinned().take(shown.pins).any(|g| g.id == *id),
+            _ => covers(pick, shown.controls),
+        }
     }
 
     /// The View button and, on its right while the pointer is over either,
@@ -518,7 +571,30 @@ fn option(id: impl Into<ElementId>, lead: Option<Lead>, label: &str, active: boo
 
 #[cfg(test)]
 mod tests {
-    use super::{covers, Only, Pick};
+    use super::{covers, layout, Only, Pick, Widths, GAP, SEG_GAP, TOGGLE_W, TRACK_PAD};
+
+    fn widths(pins: Vec<f32>) -> Widths {
+        Widths { sort: 120., install: 30., group: 30., preset: 30., presets: false, pins }
+    }
+
+    #[test]
+    fn pins_follow_the_controls_or_lead_the_lane_without_them() {
+        let w = widths(vec![90., 70.]);
+        assert_eq!(w.controls(true), 4);
+        assert_eq!(w.controls(false), 0);
+        let with = w.items(true);
+        assert_eq!(with.len(), 6);
+        assert_eq!(with[4], 2. * TRACK_PAD + 90.);
+        let alone = w.items(false);
+        assert_eq!(alone, vec![TOGGLE_W + 2. * TRACK_PAD + 90., 70. + SEG_GAP - GAP]);
+        // No pins and no controls: the lane shows nothing.
+        assert!(widths(Vec::new()).items(false).is_empty());
+        // The pins alone fit in their track's width (and the space before the chips).
+        let lane = layout::DRAG_SPACE + alone.iter().map(|i| i + GAP).sum::<f32>();
+        assert_eq!(layout::fit(true, lane, &alone, |_| 0.), 2);
+        assert_eq!(layout::fit(true, lane - 1., &alone, |_| 0.), 1);
+    }
+
     use heronite_data::InstallFilter;
 
     #[test]

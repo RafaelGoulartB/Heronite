@@ -212,7 +212,8 @@ impl CollectionView {
         let reserved = if onboarding.is_some() { f32::from(theme::TOOL_BTN) + super::toolbar::GAP } else { 0. };
         let shown = self.quick_fit(&widths, &self.chip_widths(window), reserved);
         let chips = self.filter_chips(shown, window, cx);
-        let quick = self.quick_toolbar(shown, &widths, window, cx);
+        let quick = self.quick_toolbar(shown.controls, &widths, window, cx);
+        let pins = self.pinned_groups(shown.pins, &widths, window, cx);
         let measured = self.toolbar.width.clone();
         let entity = cx.entity_id();
         // This flex lane has zero basis and min-width: its children cannot
@@ -253,6 +254,7 @@ impl CollectionView {
                     .overflow_hidden()
                     .child(watch)
                     .children(quick)
+                    .children(pins)
                     .children(onboarding)
                     .child(
                         window_controls::drag_area(
@@ -277,11 +279,11 @@ impl CollectionView {
     }
 
     /// One removable chip per filter the View menu has set, except those the
-    /// quick toolbar's `shown` controls already carry.
-    fn filter_chips(&self, shown: usize, window: &Window, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
+    /// quick toolbar's `shown` controls and pins already carry.
+    fn filter_chips(&self, shown: super::toolbar::Shown, window: &Window, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
         self.view_tokens()
             .into_iter()
-            .filter(|(_, choice)| !super::toolbar::covers(&choice.pick, shown))
+            .filter(|(_, choice)| !self.chip_shown_elsewhere(&choice.pick, shown))
             .enumerate()
             .map(|(i, (kind, choice))| {
                 let pick = choice.pick;

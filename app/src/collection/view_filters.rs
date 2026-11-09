@@ -72,7 +72,7 @@ impl CollectionView {
 
     /// The store service changed: "Only with updates" follows its list.
     pub(super) fn sync_update_apps(&mut self, svc: &Entity<Downloads>, cx: &mut Context<Self>) {
-        if !self.ui.only.updates {
+        if !self.ui.only.updates && !self.groups_need_updates() {
             return;
         }
         let apps = svc.read(cx).update_apps();
@@ -126,10 +126,11 @@ impl CollectionView {
         self.context_menu = None;
         let view = cx.new(|cx| crate::dialogs::manage_categories::ManageCategoriesDialog::new(ctx, window, cx));
         // Before the reload that follows the rename prunes the old name.
-        cx.subscribe(&view, |this, _, ev: &crate::dialogs::manage_categories::CategoryRenamed, _| {
+        cx.subscribe(&view, |this, _, ev: &crate::dialogs::manage_categories::CategoryRenamed, cx| {
             if this.ui.rename_category(&ev.from, &ev.to) {
                 this.save_ui();
             }
+            this.rename_category_in_groups(&ev.from, &ev.to, cx);
         })
         .detach();
         self.open_dialog(view, cx);

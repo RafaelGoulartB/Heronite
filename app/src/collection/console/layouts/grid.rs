@@ -58,6 +58,8 @@ pub(crate) struct Filters {
     pub status: usize,
     /// Index in [`category_options`].
     pub category: usize,
+    /// 0 = any, else the smart group `group - 1` (`CollectionView::smart_groups`).
+    pub group: usize,
 }
 
 pub(crate) const SHOW: [&str; 3] = [n_!("All games"), n_!("Installed"), n_!("Not installed")];
@@ -96,6 +98,7 @@ impl Nav {
             sort: 1,
             status: status.map_or(0, |i| i + 1),
             category: 0,
+            group: 0,
         };
         self.index = 0;
         self.toolbar = None;
@@ -136,7 +139,8 @@ impl Nav {
         keys(games)
     }
 
-    fn chips(&self, lib: &Library, cats: &Categories, search: &str) -> [(SharedString, SharedString); CHIPS] {
+    /// `group`: the Filters panel's smart group, shown before what Show shows.
+    fn chips(&self, lib: &Library, cats: &Categories, search: &str, group: Option<&str>) -> [(SharedString, SharedString); CHIPS] {
         let f = &self.filters;
         let status = status_options(lib);
         let category = match category_options(cats).get(f.category).cloned().flatten() {
@@ -147,6 +151,10 @@ impl Nav {
             (0, true) => tr!("Favourites").to_string(),
             (s, true) => format!("{} \u{b7} {}", heronite_i18n::tr(SHOW[s]), tr!("Favourites")),
             (s, false) => heronite_i18n::tr(SHOW[s]).to_string(),
+        };
+        let show = match group {
+            Some(name) => format!("{name} \u{b7} {show}"),
+            None => show,
         };
         [
             (tr!("Show").into(), show.into()),
@@ -236,7 +244,12 @@ impl CollectionView {
     /// The keys the Grid of a tab shows now (also for the layouts that reuse its filters).
     pub(crate) fn grid_keys(&mut self, tab: usize, spec: &TabSpec) -> Vec<SharedString> {
         let Some(lib) = self.lib.clone() else { return Vec::new() };
-        let games = self.console_games(&spec.source);
+        let mut games = self.console_games(&spec.source);
+        let group = self.console.tab_navs.get(tab).map_or(0, |n| n.grid.filters.group);
+        if let Some(group) = group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)) {
+            let facts = self.group_facts(&lib.statuses);
+            games.retain(|g| group.matches(g, &facts));
+        }
         let search = self.console.search.clone();
         let cats = std::mem::take(&mut self.categories);
         let keys = self.tab_nav(tab).grid.keys(&games, &lib, &cats, &search);
@@ -266,9 +279,11 @@ impl CollectionView {
         let cols = self.grid_cols(window, panel, rail);
         let keys = self.grid_keys(tab, spec);
         let search = self.console.search.clone();
+        let group = self.console.tab_navs.get(tab).map_or(0, |n| n.grid.filters.group);
+        let group = group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)).map(|g| g.name.clone());
         let cats = std::mem::take(&mut self.categories);
         let nav = &mut self.tab_nav(tab).grid;
-        let chips = nav.chips(&lib, &cats, &search);
+        let chips = nav.chips(&lib, &cats, &search, group.as_deref());
         self.categories = cats;
         let nav = &mut self.tab_nav(tab).grid;
         nav.cols = cols;

@@ -245,6 +245,8 @@ mod tests {
         for (rel, want) in [
             ("local_library/library.json", In(Part::Collection)),
             ("local_library/sessions.json", In(Part::Collection)),
+            // Smart groups go with the Collection they filter.
+            ("local_library/groups.json", In(Part::Collection)),
             ("GamesConfig/x.json", In(Part::Collection)),
             ("config.json", In(Part::Collection)),
             ("store/config.json", In(Part::Collection)),

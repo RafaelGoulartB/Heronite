@@ -5,6 +5,7 @@
 //! and the presets (saved views) are `views.rs`.
 
 mod age;
+mod blocks;
 mod choices;
 pub(super) mod organize;
 mod render;
@@ -47,8 +48,11 @@ pub(super) struct ViewMenu {
     select_open: bool,
     /// The Views section lists the views to rename, update, move or delete.
     editing: bool,
-    /// The "More" list of Group by or Sort is open.
+    /// The "More" list of Group by, Sort or Filter by, the smart groups
+    /// list or the "Manage" list is open.
     more: Option<organize::More>,
+    /// "Ages up to" was picked in Filter by's "More" (it also shows while it filters).
+    ages_open: bool,
     /// The pointer is on that list (a click there is not outside the menu).
     more_hovered: bool,
     /// Name box of the view being renamed (its index).
@@ -96,6 +100,7 @@ impl ViewMenu {
             select_open: false,
             editing: false,
             more: None,
+            ages_open: false,
             more_hovered: false,
             renaming: None,
             room: 600.,
@@ -113,9 +118,9 @@ impl ViewMenu {
         self.select_open = on;
     }
 
-    /// Opens the "More" list of Group by (`group`) or Sort.
-    pub(super) fn set_more(&mut self, group: bool) {
-        self.more = Some(if group { organize::More::Group } else { organize::More::Sort });
+    /// Opens one of the menu's lists (`HERONITE_DEBUG_DROPDOWN`).
+    pub(super) fn set_more(&mut self, which: organize::More) {
+        self.more = Some(which);
     }
 
     /// Typing (or naming a view) keeps the menu open when the pointer leaves.
@@ -159,6 +164,23 @@ impl CollectionView {
                 })
                 .collect(),
         });
+        if !self.smart_groups.is_empty() {
+            out.push(Section {
+                kind: Kind::Group,
+                choices: self
+                    .smart_groups
+                    .groups
+                    .iter()
+                    .map(|g| Choice {
+                        pick: Pick::Group(g.id.clone()),
+                        label: g.name.clone(),
+                        count: Some(self.group_count(g)),
+                        on: ui.smart_groups.contains(&g.id),
+                        color: Some(super::smart_groups::group_colour(g)),
+                    })
+                    .collect(),
+            });
+        }
         if !self.categories.is_empty() {
             let names = self.categories.names().map(str::to_owned).chain([UNCATEGORIZED.to_owned()]);
             out.push(Section {
@@ -238,6 +260,11 @@ impl CollectionView {
             let label = if ui.age.unrated { tr!("Up to {max}, and unrated", max) } else { tr!("Up to {max}", max) };
             out.push((Some(tr!("Ages")), token(Pick::Age(ui.age), label, None)));
         }
+        for id in &ui.smart_groups {
+            if let Some(g) = self.smart_groups.get(id) {
+                out.push((Some(tr!("Group")), token(Pick::Group(id.clone()), g.name.clone(), Some(super::smart_groups::group_colour(g)))));
+            }
+        }
         for name in &ui.categories {
             out.push((Some(tr!("Category")), token(Pick::Category(name.clone()), category_label(name), None)));
         }
@@ -264,6 +291,7 @@ impl CollectionView {
                 self.refresh_groups();
             }
             Pick::Category(name) => self.toggle_category_filter(name, cx),
+            Pick::Group(id) => self.toggle_smart_group_filter(id, cx),
             Pick::Facet(kind, value) => self.toggle_facet(kind.as_str(), value),
             Pick::Age(age) => {
                 self.ui.age = if self.ui.age == *age && age.is_active() { Default::default() } else { *age };
@@ -349,6 +377,7 @@ impl CollectionView {
             self.view_menu.renaming = None;
             self.view_menu.select_open = false;
             self.view_menu.more = None;
+            self.view_menu.ages_open = false;
             self.view_menu.more_hovered = false;
         }
         let with_tokens = self.ui.active_filters() > 0 || self.ui.show_hidden;

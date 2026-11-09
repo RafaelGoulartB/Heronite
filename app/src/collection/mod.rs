@@ -60,6 +60,7 @@ mod scroll;
 mod section_menus;
 mod selection;
 mod sideload_uninstall;
+mod smart_groups;
 mod steam_copy;
 mod steam_pill;
 mod store_badges;
@@ -136,6 +137,8 @@ pub struct CollectionView {
     ui_save: Option<Task<()>>,
     /// Custom categories (`games.customCategories`), loaded with the library.
     categories: heronite_data::categories::Categories,
+    /// Smart groups (`local_library/groups.json`), loaded with the library.
+    smart_groups: heronite_data::smart_groups::SmartGroups,
     /// Dates added, sizes and systems the extra sorts and groups read (`organize.rs`).
     game_extras: Arc<heronite_data::organize::GameExtras>,
     /// The actions users added to their games, by game key, loaded with the library.
@@ -349,6 +352,7 @@ impl CollectionView {
             ui_focus_dirty: false,
             ui_save: None,
             categories: Default::default(),
+            smart_groups: Default::default(),
             game_extras: Default::default(),
             user_actions: Default::default(),
             update_apps: Default::default(),

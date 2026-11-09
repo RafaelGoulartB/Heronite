@@ -1,6 +1,8 @@
 //! The View menu's panel: search box with tokens, then either the results
-//! or Presets / Sort / Group by / Show / Only / Ages up to / Browse / Manage, and a footer
-//! with the count and "Reset all".
+//! or the Presets and Smart groups selects, the "Filter" block (Show, Only,
+//! Filter by) and the "Organize" block (Sort, Group by), and a footer with the
+//! count, "Manage" and "Reset all". The selects and the Filter block's rows
+//! are `blocks.rs`.
 
 use gpui_kit::component::input::Input;
 use gpui_kit::prelude::*;
@@ -9,10 +11,8 @@ use heronite_data::InstallFilter;
 use heronite_i18n::tr;
 
 use super::super::header::Menu;
-use super::super::view_filters::Only;
 use super::super::CollectionView;
 use super::choices::{self, Kind, Row};
-use super::Pick;
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::dropdown::{menu_item, menu_panel, menu_separator};
@@ -36,37 +36,13 @@ pub(super) struct Density {
     pub(super) text: f32,
     pub(super) pill_h: f32,
     pub(super) pill_px: f32,
-    pub(super) tile_py: f32,
-    pub(super) tile_icon: f32,
 }
 
 impl Density {
-    const ROOMY: Density = Density {
-        w: 404.,
-        pad: 12.,
-        gap: 14.,
-        head_gap: 8.,
-        row_h: 36.,
-        seg_px: 8.,
-        text: 13.,
-        pill_h: 30.,
-        pill_px: 11.,
-        tile_py: 9.,
-        tile_icon: 18.,
-    };
-    const COMPACT: Density = Density {
-        w: 360.,
-        pad: 10.,
-        gap: 10.,
-        head_gap: 6.,
-        row_h: 31.,
-        seg_px: 6.,
-        text: 12.5,
-        pill_h: 26.,
-        pill_px: 9.,
-        tile_py: 7.,
-        tile_icon: 16.,
-    };
+    const ROOMY: Density =
+        Density { w: 404., pad: 12., gap: 14., head_gap: 8., row_h: 36., seg_px: 8., text: 13., pill_h: 30., pill_px: 11. };
+    const COMPACT: Density =
+        Density { w: 360., pad: 10., gap: 10., head_gap: 6., row_h: 31., seg_px: 6., text: 12.5, pill_h: 26., pill_px: 9. };
 }
 
 /// The actions listed after the views in their select.
@@ -99,13 +75,13 @@ impl CollectionView {
             .children(searching.then(|| self.vm_results(cx)))
             .when(!searching, |el| {
                 el.child(self.vm_views(cx))
+                    .child(self.vm_block_head(super::blocks::filter_block()))
                     .child(self.vm_show(cx))
-                    .child(self.vm_group(d, cx))
-                    .child(self.vm_sort(d, cx))
                     .child(self.vm_only(cx))
-                    .child(self.vm_age(cx))
-                    .child(self.vm_browse(cx))
-                    .child(self.vm_manage(cx))
+                    .child(self.vm_filter_by(cx))
+                    .child(self.vm_block_head(super::blocks::organize_block()))
+                    .child(self.vm_sort(d, cx))
+                    .child(self.vm_group(d, cx))
             });
         menu_panel(d.w)
             .w(px(d.w))
@@ -275,7 +251,22 @@ impl CollectionView {
     fn vm_views(&self, cx: &mut Context<Self>) -> Div {
         let d = self.vm_density();
         if !self.view_menu.editing {
-            return section(tr!("Presets"), d).child(self.vm_views_select(d, cx));
+            let (presets, naming) = self.vm_views_select(d, cx);
+            let column = |label: &'static str, el: Div| {
+                div().flex_1().min_w_0().flex().flex_col().gap(px(d.head_gap)).child(section_head(label)).child(el)
+            };
+            return div()
+                .flex()
+                .flex_col()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(column(tr!("Presets"), presets))
+                        .child(column(tr!("Smart groups"), self.vm_groups_select(d, cx))),
+                )
+                .children(naming);
         }
         let done = div()
             .id("vm-views-done")
@@ -294,8 +285,8 @@ impl CollectionView {
 
     /// The preset shown now (else "Custom") in a select; its list holds the
     /// presets, then "Save as preset…" while none matches and "Edit
-    /// presets…". The name box goes under it.
-    fn vm_views_select(&self, d: Density, cx: &mut Context<Self>) -> Div {
+    /// presets…". Also the name box, which goes under the selects' row.
+    fn vm_views_select(&self, d: Density, cx: &mut Context<Self>) -> (Div, Option<Div>) {
         let cards = self.view_cards();
         let current = self.current_view();
         let open = self.view_menu.select_open;
@@ -350,7 +341,7 @@ impl CollectionView {
             });
             div().flex().flex_col().gap(px(6.)).child(row).children(note)
         });
-        div().flex().flex_col().gap(px(8.)).child(div().relative().child(trigger).children(list)).children(naming)
+        (div().relative().child(trigger).children(list), naming)
     }
 
     /// The open list of the presets select, under it.
@@ -505,6 +496,7 @@ impl CollectionView {
             (InstallFilter::Uninstalled, super::super::header::install_label(InstallFilter::Uninstalled), all - installed),
         ];
         let d = self.vm_density();
+        let hidden = self.vm_include_hidden(cx);
         let segments = items.into_iter().map(|(f, label, n)| {
             let on = self.ui.install_filter == f;
             seg_item(("vm-show", f as usize), on, d)
@@ -512,71 +504,12 @@ impl CollectionView {
                 .child(div().text_size(px(11.)).text_color(if on { theme::text_muted() } else { theme::text_dim() }).child(n.to_string()))
                 .on_click(cx.listener(move |this, _, _, cx| this.set_install_filter(f, cx)))
         });
-        section(tr!("Show"), d).child(seg_track("vm-show", d).children(segments))
-    }
-
-    fn vm_only(&self, cx: &mut Context<Self>) -> Div {
-        let tiles = [
-            (Pick::Only(Only::Favourites), tr!("Favourites"), Icon::Star, self.ui.only.favourites),
-            (Pick::Only(Only::Updates), tr!("Update"), Icon::Update, self.ui.only.updates),
-            (Pick::Only(Only::Offline), tr!("Offline"), Icon::WifiOff, self.ui.only.offline),
-            (Pick::Hidden, tr!("Hidden"), Icon::VisibilityOff, self.ui.show_hidden),
-        ];
-        let d = self.vm_density();
-        let tile_w = (d.w - d.pad * 2. - 18.) / 4.;
-        section(tr!("Only"), d).child(div().flex().gap(px(6.)).children(tiles.into_iter().enumerate().map(|(i, (pick, label, ic, on))| {
-            div()
-                .id(("vm-only", i))
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap(px(d.tile_py - 3.))
-                .w(px(tile_w))
-                .pt(px(d.tile_py + 1.))
-                .pb(px(d.tile_py - 1.))
-                .rounded(px(12.))
-                .map(control)
-                .when(on, |s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()))
-                .cursor_pointer()
-                .hover(|s| s.bg(if on { theme::accent_tint_border() } else { control_hover() }))
-                .text_size(px(11.5))
-                .text_color(if on { theme::text_bright() } else { theme::text_muted().into() })
-                .child(icon(ic, px(d.tile_icon), if on { theme::accent() } else { theme::text_primary() }))
-                .child(label)
-                .on_click(cx.listener(move |this, _, _, cx| this.apply_pick(&pick, cx)))
-        })))
-    }
-
-    fn vm_browse(&self, cx: &mut Context<Self>) -> Div {
-        let kinds = Kind::ALL.into_iter().filter(|k| *k != Kind::Only && (*k != Kind::Category || !self.categories.is_empty()));
-        let d = self.vm_density();
-        section(tr!("Browse"), d).child(div().flex().flex_wrap().gap(px(6.)).children(kinds.enumerate().map(|(i, kind)| {
-            pill(("vm-browse", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
-                move |this, _, window, cx| {
-                    let text = choices::scoped_query(kind, "");
-                    this.set_view_query(&text, window, cx);
-                },
-            ))
-        })))
-    }
-
-    /// The statuses and the library fields managers.
-    fn vm_manage(&self, cx: &mut Context<Self>) -> Div {
-        let d = self.vm_density();
-        let statuses = pill("vm-statuses", d).child(icon(Icon::Flag, px(14.), theme::text_muted())).child(tr!("Statuses…")).on_click(
-            cx.listener(|this, _, window, cx| {
-                this.open_menu = None;
-                this.open_manage_statuses(window, cx);
-            }),
-        );
-        let fields = pill("vm-fields", d)
-            .child(icon(Icon::CallMerge, px(14.), theme::text_muted()))
-            .child(tr!("Library fields…"))
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.open_menu = None;
-                this.open_manage_fields(None, window, cx);
-            }));
-        section(tr!("Manage"), d).child(div().flex().flex_wrap().gap(px(6.)).child(statuses).child(fields))
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(d.head_gap))
+            .child(section_head(tr!("Show")).child(hidden))
+            .child(seg_track("vm-show", d).children(segments))
     }
 
     fn vm_footer(&self, cx: &mut Context<Self>) -> Div {
@@ -596,6 +529,7 @@ impl CollectionView {
             .text_size(px(12.5))
             .text_color(theme::text_muted())
             .child(div().flex_1().child(tr!("{shown} of {total} games", shown, total).to_string()))
+            .child(self.vm_manage_button(cx))
             .when(filtered, |d| {
                 d.child(
                     div()
@@ -608,11 +542,6 @@ impl CollectionView {
                 )
             })
     }
-}
-
-/// Section of the panel: small uppercase label above its content.
-fn section(label: &'static str, d: Density) -> Div {
-    div().flex().flex_col().gap(px(d.head_gap)).child(section_head(label))
 }
 
 /// The look of every control of the panel (search box, presets select,
@@ -663,8 +592,8 @@ fn icon_button(id: impl Into<ElementId>, ic: Icon, enabled: bool) -> Stateful<Di
     }
 }
 
-/// Pill of the Browse and Manage rows.
-fn pill(id: impl Into<ElementId>, d: Density) -> Stateful<Div> {
+/// Pill of the Only and Filter by rows.
+pub(super) fn pill(id: impl Into<ElementId>, d: Density) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -718,7 +647,7 @@ pub(super) fn count_label(n: usize) -> Div {
     div().flex_none().text_size(px(12.)).text_color(theme::text_dim()).child(n.to_string())
 }
 
-fn dot(color: Rgba) -> Div {
+pub(super) fn dot(color: Rgba) -> Div {
     div().flex_none().size(px(8.)).rounded_full().bg(color)
 }
 
