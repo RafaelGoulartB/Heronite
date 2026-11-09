@@ -93,8 +93,19 @@ Usage:
   --fullscreen                        open the window fullscreen (F11 switches back)
   --autostart                         started with the system (\"Start minimized\" applies)
   --handoff                           start the instance detached and exit at once (Sunshine)
+  --display-probe                     print the monitors, their modes and HDR as JSON, and exit
   -h, --help                          this text
 ";
+
+/// Prints what [`heronite_display::probe`] reads and exits, before anything
+/// else starts (no window, no single-instance check, no data folder). Only
+/// reads the displays.
+pub const DISPLAY_PROBE: &str = "--display-probe";
+
+/// Whether the command line asks for [`DISPLAY_PROBE`].
+pub fn wants_display_probe<I: IntoIterator<Item = std::ffi::OsString>>(args: I) -> bool {
+    args.into_iter().any(|a| a == DISPLAY_PROBE)
+}
 
 /// See [`Cli::handoff`].
 pub const HANDOFF: &str = "--handoff";
@@ -313,6 +324,18 @@ mod tests {
         assert!(!p(&[]).hide_window(true), "the setting only applies to launches");
         assert!(p(&["--launch", "gog_1"]).hide_window(true));
         assert!(!p(&["--launch", "gog_1"]).hide_window(false));
+    }
+
+    #[test]
+    fn display_probe_is_spotted_anywhere_and_ignored_by_parse() {
+        let os = |args: &[&str]| args.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
+        assert!(wants_display_probe(os(&["--display-probe"])));
+        assert!(wants_display_probe(os(&["--no-gui", "--display-probe"])));
+        assert!(!wants_display_probe(os(&["--launch", "gog_1"])));
+        assert!(!wants_display_probe(os(&["--display-probe=x"])));
+        // Never mistaken for a launch or an error.
+        let c = p(&["--display-probe"]);
+        assert!(c.launch.is_none() && c.errors.is_empty());
     }
 
     #[test]

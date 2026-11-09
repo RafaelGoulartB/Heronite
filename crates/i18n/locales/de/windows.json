@@ -3,6 +3,7 @@
   "Linux programs do not run on Windows": "Linux-Programme laufen nicht unter Windows",
   "Maximize": "Maximieren",
   "Minimize": "Minimieren",
+  "What Steam adds to the game's command, however the game starts (Properties → General in Steam), like -novid or -dx11.": "Was Steam an den Befehl des Spiels anhängt, egal wie das Spiel startet (Eigenschaften → Allgemein in Steam), etwa -novid oder -dx11.",
   "Windows or browser": "Windows oder Browser",
   "Windows, web": "Windows, Web"
 }

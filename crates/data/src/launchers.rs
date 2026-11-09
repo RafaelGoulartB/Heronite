@@ -1,6 +1,6 @@
 //! Games of the other launchers imported into the Collection
-//! (`heronite_import`): Heroic, Lutris, Bottles and Faugus on Linux, Playnite
-//! on Windows ([`Launcher::here`]). Which launchers the user turned the
+//! (`heronite_import`): Heroic, Lutris, Bottles and Faugus on Linux, Heroic
+//! and Playnite on Windows ([`Launcher::here`]). Which launchers the user turned the
 //! import on for is `local_library/launcher-imports.json`.
 //!
 //! Lutris, Bottles, Faugus and Playnite keep starting their games: the
@@ -40,10 +40,10 @@ impl Launcher {
     pub const ALL: [Launcher; 5] = [Launcher::Heroic, Launcher::Lutris, Launcher::Bottles, Launcher::Faugus, Launcher::Playnite];
 
     /// The launchers this system has, in the order they are shown: Linux's
-    /// four, Playnite on Windows.
+    /// four, Heroic and Playnite on Windows.
     pub const fn here() -> &'static [Launcher] {
         if cfg!(windows) {
-            &[Launcher::Playnite]
+            &[Launcher::Heroic, Launcher::Playnite]
         } else {
             &[Launcher::Heroic, Launcher::Lutris, Launcher::Bottles, Launcher::Faugus]
         }
@@ -252,6 +252,7 @@ mod tests {
         let here = Launcher::here();
         assert_eq!(here.contains(&Launcher::Playnite), cfg!(windows));
         assert_eq!(here.contains(&Launcher::Lutris), !cfg!(windows));
+        assert!(here.contains(&Launcher::Heroic), "Heroic runs on both");
     }
 
     fn write_collection(paths: &DataPaths, library: Value, meta: Value) {

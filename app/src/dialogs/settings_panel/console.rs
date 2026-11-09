@@ -480,10 +480,18 @@ impl SettingsPanel {
 
     fn c_advanced(&self, cx: &App) -> Vec<Item> {
         if self.steam_direct() {
-            let mut v = vec![Self::c_header(tr!("Launch"))];
-            v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
-            v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
-            v.extend(self.c_companions());
+            let mut v = Vec::new();
+            if heronite_launch::steam_extras::supported() {
+                v.push(Self::c_header(tr!("Launch")));
+                v.push(self.c_path("beforeScript", tr!("Script before launch"), false, cx));
+                v.push(self.c_path("afterScript", tr!("Script after exit"), false, cx));
+                v.extend(self.c_companions());
+            }
+            if self.steam_line_only() {
+                v.push(Self::c_header("Steam"));
+                v.extend(self.c_steam_status());
+                v.push(self.c_text("steamLine", tr!("Steam launch options"), cx));
+            }
             return v;
         }
         let sideload = self.facts().is_some_and(|f| f.is_sideload());

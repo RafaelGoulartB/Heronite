@@ -1,0 +1,36 @@
+"UserLocalConfigStore"
+{
+	"friends"
+	{
+		"FriendStoreLocalPrefs_76561198274778335"		"{}"
+	}
+	"Software"
+	{
+		"Valve"
+		{
+			"Steam"
+			{
+				"Apps"
+				{
+					"620"
+					{
+						"LastPlayed"		"1730000000"
+						"LaunchOptions"		"-novid -console"
+						"cloud"
+						{
+							"last_sync_state"		"synchronized"
+						}
+					}
+					"1091500"
+					{
+						"LastPlayed"		"1720000000"
+					}
+				}
+			}
+		}
+	}
+	"WebStorage"
+	{
+		"SteamUI.Beta"		"0"
+	}
+}

@@ -179,6 +179,14 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             None => return,
         }
     }
+    // GOG Galaxy's service, listening before the game looks for it.
+    let mut comet = super::galaxy::start(shared, log, &prep, &plan.prep);
+    if cancelled() {
+        if let Some(comet) = comet {
+            super::galaxy::stop(shared, comet, log);
+        }
+        return finish_aborted(shared, log, req);
+    }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
     // For the program that really starts (legendary named it above).
@@ -191,6 +199,9 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             false => h,
         },
         Err(e) => {
+            if let Some(comet) = comet.take() {
+                super::galaxy::stop(shared, comet, log);
+            }
             if let Some(exe) = &gpu_exe {
                 put_back_gpu_preference(shared, &*services.gpu_registry, log, exe);
             }
@@ -298,6 +309,10 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
         companions.leave_running();
     } else {
         companions.stop(shared.cfg.kill_grace, log);
+    }
+    // Also when tracking stopped: nothing would stop it later.
+    if let Some(comet) = comet {
+        super::galaxy::stop(shared, comet, log);
     }
     if let Some(h) = awake.as_mut() {
         h.terminate();

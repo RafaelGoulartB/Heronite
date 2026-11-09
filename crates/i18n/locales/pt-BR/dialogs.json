@@ -324,5 +324,14 @@
   "{n} sessions add up to {time}.": "{n} sessões somam {time}.",
   "They are recorded each time the game runs here.": "Elas são registradas cada vez que o jogo roda aqui.",
   "{from}–{to} of {total}": "{from}–{to} de {total}",
-  "{launcher} was not found on this PC": "O {launcher} não foi encontrado neste PC"
+  "{launcher} was not found on this PC": "O {launcher} não foi encontrado neste PC",
+  "Remove {n} game from Collection? This does not uninstall it. Playtime, status, and Collection images for it are deleted.": "Remover {n} jogo da Coleção? Isso não o desinstala. O tempo de jogo, o status e as imagens da Coleção dele serão excluídos.",
+  "Remove {n} games from Collection? This does not uninstall them. Playtime, status, and Collection images for them are deleted.": "Remover {n} jogos da Coleção? Isso não os desinstala. O tempo de jogo, o status e as imagens da Coleção deles serão excluídos.",
+  "• and {n} more": "• e mais {n}",
+  "{n} other selected game stays: games from a store account, and running games, cannot be removed.": "{n} outro jogo selecionado fica: jogos de uma conta de loja e jogos em execução não podem ser removidos.",
+  "{n} other selected games stay: games from a store account, and running games, cannot be removed.": "{n} outros jogos selecionados ficam: jogos de uma conta de loja e jogos em execução não podem ser removidos.",
+  "Remove {n} game": "Remover {n} jogo",
+  "Remove {n} games": "Remover {n} jogos",
+  "Could not remove {n} game: {err}": "Não foi possível remover {n} jogo: {err}",
+  "Could not remove {n} games: {err}": "Não foi possível remover {n} jogos: {err}"
 }

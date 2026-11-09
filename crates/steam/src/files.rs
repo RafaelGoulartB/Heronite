@@ -34,15 +34,34 @@ pub fn localconfig_vdf(root: &Path, user: &str) -> PathBuf {
 /// The account whose settings apply: the one logged in, else the most
 /// recent login, else the only `userdata` folder. `home` holds `.steam`.
 pub fn current_user(root: &Path, home: &Path) -> Option<String> {
-    let registries = [home.join(".steam/registry.vdf"), home.join(".var/app/com.valvesoftware.Steam/.steam/registry.vdf")];
-    let active = registries.iter().find_map(|file| {
-        let doc = Vdf::parse(&fs::read_to_string(file).ok()?).ok()?;
-        let mut node = &doc;
-        for key in ["Registry", "HKCU", "Software", "Valve", "Steam", "ActiveProcess"] {
-            node = node.get(key)?;
-        }
-        node.str_of("ActiveUser").filter(|id| !id.is_empty() && *id != "0").map(str::to_string)
-    });
+    pick_user(root, active_user(home))
+}
+
+/// The account Steam has signed in now: Linux keeps Steam's registry in
+/// `registry.vdf`, Windows in the real one (`ActiveProcess\ActiveUser`).
+fn active_user(home: &Path) -> Option<String> {
+    #[cfg(windows)]
+    {
+        use heronite_platform::registry::{dword, Hive};
+        let _ = home;
+        dword(Hive::CurrentUser, r"Software\Valve\Steam\ActiveProcess", "ActiveUser").filter(|id| *id != 0).map(|id| id.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let registries = [home.join(".steam/registry.vdf"), home.join(".var/app/com.valvesoftware.Steam/.steam/registry.vdf")];
+        registries.iter().find_map(|file| {
+            let doc = Vdf::parse(&fs::read_to_string(file).ok()?).ok()?;
+            let mut node = &doc;
+            for key in ["Registry", "HKCU", "Software", "Valve", "Steam", "ActiveProcess"] {
+                node = node.get(key)?;
+            }
+            node.str_of("ActiveUser").filter(|id| !id.is_empty() && *id != "0").map(str::to_string)
+        })
+    }
+}
+
+/// [`current_user`] once the signed-in account (`active`) is known.
+fn pick_user(root: &Path, active: Option<String>) -> Option<String> {
     let has_folder = |id: &String| root.join("userdata").join(id).join("config").is_dir();
     if let Some(id) = active.filter(has_folder) {
         return Some(id);
@@ -342,16 +361,30 @@ mod tests {
     #[test]
     fn the_logged_in_user_wins_then_the_latest_login() {
         let dir = tempfile::tempdir().unwrap();
-        let (home, root) = (dir.path().join("home"), dir.path().join("Steam"));
+        let root = dir.path().join("Steam");
         for id in ["111", "314512607"] {
             fs::create_dir_all(root.join("userdata").join(id).join("config")).unwrap();
         }
-        assert_eq!(current_user(&root, &home), None, "two users and nothing else to go by");
+        assert_eq!(pick_user(&root, None), None, "two users and nothing else to go by");
         write(
             &root.join("config/loginusers.vdf"),
             "\"users\" { \"76561197960265839\" { \"Timestamp\" \"5\" } \"76561198274778335\" { \"Timestamp\" \"9\" } }",
         );
-        assert_eq!(current_user(&root, &home).as_deref(), Some("314512607"));
+        assert_eq!(pick_user(&root, None).as_deref(), Some("314512607"));
+        assert_eq!(pick_user(&root, Some("111".into())).as_deref(), Some("111"));
+        assert_eq!(pick_user(&root, Some("222".into())).as_deref(), Some("314512607"), "signed in, but no folder of its own yet");
+    }
+
+    /// Linux's Steam keeps its registry in `~/.steam/registry.vdf`.
+    #[cfg(not(windows))]
+    #[test]
+    fn the_signed_in_user_comes_from_registry_vdf() {
+        let dir = tempfile::tempdir().unwrap();
+        let (home, root) = (dir.path().join("home"), dir.path().join("Steam"));
+        for id in ["111", "314512607"] {
+            fs::create_dir_all(root.join("userdata").join(id).join("config")).unwrap();
+        }
+        assert_eq!(current_user(&root, &home), None);
         write(
             &home.join(".steam/registry.vdf"),
             "\"Registry\" { \"HKCU\" { \"Software\" { \"Valve\" { \"Steam\" { \"ActiveProcess\" { \"ActiveUser\" \"111\" } } } } } }",
@@ -378,6 +411,49 @@ mod tests {
         write_compat_tool(root, "400", "").unwrap();
         assert_eq!(read_compat_tool(root, "400"), "");
         assert!(!fs::read_to_string(config_vdf(root)).unwrap().contains("\"400\""));
+    }
+
+    /// A Windows Steam folder: Steam writes `Apps` there on some installs,
+    /// and the file may have CRLF line ends after another tool saved it.
+    #[test]
+    fn windows_localconfig_keeps_its_bytes_around_the_launch_options() {
+        let lf = include_str!("../tests/fixtures/windows-localconfig.vdf");
+        for (fixture, eol) in [(lf.to_string(), "\n"), (lf.replace('\n', "\r\n"), "\r\n")] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path().join("Steam");
+            let user = "314512607";
+            write(&localconfig_vdf(&root, user), &fixture);
+            write(&root.join("config/loginusers.vdf"), include_str!("../tests/fixtures/windows-loginusers.vdf"));
+            assert_eq!(pick_user(&root, None).as_deref(), Some(user));
+
+            assert_eq!(read_launch_options(&root, user, "620").unwrap(), "-novid -console");
+            assert_eq!(read_launch_options(&root, user, "1091500").unwrap(), "");
+            write_launch_options(&root, user, "620", "-novid -dx11 +fps_max 144").unwrap();
+            let once = fs::read_to_string(localconfig_vdf(&root, user)).unwrap();
+            write_launch_options(&root, user, "1091500", "--launcher-skip -skipStartScreen").unwrap();
+            assert_eq!(read_launch_options(&root, user, "620").unwrap(), "-novid -dx11 +fps_max 144");
+            assert_eq!(read_launch_options(&root, user, "1091500").unwrap(), "--launcher-skip -skipStartScreen");
+            let after = fs::read_to_string(localconfig_vdf(&root, user)).unwrap();
+            // Only the value changed: what comes before it is byte for byte the same.
+            let (head, _) = fixture.split_once("\"-novid -console\"").unwrap();
+            assert!(after.starts_with(head));
+            assert!(after.contains(&format!("\"LastPlayed\"\t\t\"1730000000\"{eol}")));
+            assert!(after.contains(&format!("\"SteamUI.Beta\"\t\t\"0\"{eol}")));
+            // The file before the last change is kept next to it.
+            let backup = localconfig_vdf(&root, user).with_file_name("localconfig.vdf.heronite.bak");
+            assert_eq!(fs::read_to_string(backup).unwrap(), once);
+            // An empty line is Steam's default.
+            write_launch_options(&root, user, "620", "").unwrap();
+            assert_eq!(read_launch_options(&root, user, "620").unwrap(), "");
+        }
+    }
+
+    #[test]
+    fn a_missing_localconfig_is_an_error_not_an_empty_line() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_launch_options(dir.path(), "7", "620").is_err());
+        assert!(write_launch_options(dir.path(), "7", "620", "-x").is_err());
+        assert!(!localconfig_vdf(dir.path(), "7").exists(), "nothing is created when Steam has no file");
     }
 
     #[test]

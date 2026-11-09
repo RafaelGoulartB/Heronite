@@ -8,8 +8,9 @@ What works on Windows, what is left, and what Windows does not need.
 
 - App: window and its controls, tray, single instance, start with Windows, `heronite://` links, keep awake
 - Collection: Steam (installed games and the whole library), games added by hand, play time
-- Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite
+- Other launchers: Playnite's installed games (Settings → Other launchers), started through Playnite; Heroic's games added by hand and its Epic, GOG and Amazon install records (`%APPDATA%\heroic`), once its import is turned on there. Nothing is copied from Heroic at the first start (`Feature::HeroicMigration` is off, on Linux too)
 - Epic Games, GOG and Amazon Games through the Windows builds of legendary, gogdl and nile: login (WebView2 window), library, downloads, installs and moves, first launch, cloud saves, and the games of the official launchers (Epic Games Launcher, GOG Galaxy). Epic has one EOS Overlay switch instead of one per Wine prefix; Amazon's `.msi` installers run through `msiexec`
+- GOG Galaxy services (`comet`): Comet runs beside a GOG game's Windows build, so its achievements, stats and leaderboards reach the GOG account without GOG Galaxy, and new unlocks show over the game (`heronite_launch::galaxy`). Settings → Achievements → GOG registers Comet's dummy `GalaxyCommunication` service as administrator (LocalService, in a folder only administrators may change) for the games that look for it. Not yet checked on a real Windows: the service's registration, and a standard user starting it (`sc start GalaxyCommunication`)
 - Battle.net, the EA app, Ubisoft Connect and the Rockstar Games Launcher as they are (no Wine): set up with the official installer or found already installed, sign-in and games read from this PC (`heronite_clients::place`), opened and closed by Heronite (`heronite_clients::native`), games started through the client; the session follows the programs running from the game's folder
 - Xbox (Windows only, `Feature::XboxStore`): Microsoft Store and PC Game Pass games the Xbox app installed, found among the user's packages (`heronite_platform::packages`, `heronite-xbox`) and started by their AUMID through `explorer.exe shell:AppsFolder\...`
 - Settings → Storage: drives, games, store tools, caches, leftover folders (to the Recycle Bin) and old downloads
@@ -20,6 +21,7 @@ What works on Windows, what is left, and what Windows does not need.
 - Desktop and Start menu shortcuts, Add to Steam
 - Installer, portable zip, self-update, releases
 - Installer languages: English, Brazilian Portuguese, Spanish and German; silent updates retain the selected language
+- Steam's per-game launch options (Settings → Launch of a Steam game, `Feature::SteamGameSettings`): through the running client, or in `userdata\<account>\config\localconfig.vdf` while Steam is closed, as on Linux; the account is the registry's `ActiveProcess\ActiveUser`, else the latest login. No compatibility tool: Steam starts Windows games as they are
 - Native launch extras: before/after scripts (`.bat`, `.cmd`, `.ps1`, programs), delayed companions and presets (variables and arguments); for Steam games they run around `steam://rungameid` (`heronite_launch::steam_extras`); real-process tests cover environment, working folders, normal exit, stop and cancellation before a companion starts
 - Restoring a backup made on Linux
 - Game settings → GPU: the card a game's program asks Windows for ("Power saving" or "High performance", the `HKCU\Software\Microsoft\DirectX\UserGpuPreferences` value of Settings → Display → Graphics), written right before the game starts and put back after it only while it still holds Heronite's value (`heronite_launch::gpu::preference`). DXGI names the card behind each choice. Steam games, store clients, Playnite, Xbox games and emulators keep Windows' own choice; tests use a fake registry
@@ -30,7 +32,6 @@ What works on Windows, what is left, and what Windows does not need.
 ## ⬜ To do
 
 - Replay buffer (separate from the overlay; hidden on Windows)
-- GOG Galaxy services (`comet`)
 - RetroAchievements sign-in for the remaining emulators (DuckStation, PCSX2, PPSSPP, Dolphin and Flycast): their Windows config locations and, where needed, token encryption still need support
 - Ludusavi registry entries: in a backup made on Windows, Ludusavi restores them itself, but they are missing from the restore preview and from the undo copy
 - Screenshots of games in legacy exclusive fullscreen: Desktop Duplication loses the display while such a game holds it. HDR capture also still needs a check on a real HDR monitor
@@ -110,11 +111,10 @@ Windows runs Windows games directly, so these Linux parts are not needed:
 
 - Wine, Proton, winetricks and store clients under Wine (on Windows they run as they are)
 - Sandbox (bubblewrap)
-- Lutris, Bottles, Faugus and Heroic imports, and copying Heroic's setup (Windows imports Playnite instead)
+- Lutris, Bottles and Faugus imports (Linux launchers; Windows imports Heroic and Playnite)
 - GameMode, MangoHud, gamescope, wrapper commands and the Steam runtime (`Feature::Wrappers`)
 - Lossless Scaling through lsfg-vk (a Linux Vulkan layer; on Windows the Lossless Scaling app does it itself)
 - The "On Linux" row (ProtonDB)
-- Steam's per-game launch options and Proton choice (little used on Windows; Steam has them)
 - Troubleshoot (its checks are about Wine, Proton and Linux drivers)
 - AppImage and Linux packages
 

@@ -5,8 +5,9 @@
 //! Settings observe it (`cx.notify`); new unlocks become a desktop
 //! notification.
 //!
-//! While a game runs, its local achievement files are checked every few
-//! seconds (`heronite_achievements::live`): what the session unlocks shows
+//! While a game runs, its local achievement files (and Comet's database
+//! of a GOG game) are checked every few seconds
+//! (`heronite_achievements::live`): what the session unlocks shows
 //! over the game (the overlay's achievement notices) and, when asked, as a
 //! desktop notification. The check stops when the game ends.
 
@@ -727,8 +728,8 @@ impl Achievements {
     pub fn set_prefs(&mut self, prefs: Prefs, cx: &mut Context<Self>) {
         let emulators_changed = (prefs.emulators, prefs.hardcore) != (self.prefs.emulators, self.prefs.hardcore);
         let game_files_changed = prefs.game_files != self.prefs.game_files;
-        let live_changed = (prefs.overlay_notices, prefs.notify, prefs.live_steam, prefs.game_files)
-            != (self.prefs.overlay_notices, self.prefs.notify, self.prefs.live_steam, self.prefs.game_files);
+        let live_changed = (prefs.overlay_notices, prefs.notify, prefs.live_steam, prefs.game_files, prefs.gog_comet)
+            != (self.prefs.overlay_notices, self.prefs.notify, self.prefs.live_steam, self.prefs.game_files, self.prefs.gog_comet);
         let user = self.signed_in_user();
         self.prefs = prefs;
         if emulators_changed {

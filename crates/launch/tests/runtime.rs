@@ -1327,6 +1327,131 @@ fn a_prefix_whose_creation_was_stopped_is_created_again() {
     assert!(!marker.exists(), "removed once the prefix was created");
 }
 
+// ---------------------------------------------------------------------------
+// Comet beside GOG games
+// ---------------------------------------------------------------------------
+
+struct Account(Option<heronite_launch::galaxy::GalaxyLogin>);
+
+impl heronite_launch::galaxy::GalaxyAccount for Account {
+    fn login(&self) -> Result<Option<heronite_launch::galaxy::GalaxyLogin>, String> {
+        Ok(self.0.clone())
+    }
+}
+
+fn galaxy_rig(signed_in: bool) -> (Rig, String) {
+    let r = rig();
+    let bin = heronite_launch::store_tools::COMET.data_bin(&r.paths);
+    fs::create_dir_all(bin.parent().unwrap()).unwrap();
+    fs::write(&bin, "comet").unwrap();
+    let login = heronite_launch::galaxy::GalaxyLogin {
+        access_token: "SECRET-ACCESS".into(),
+        refresh_token: "SECRET-REFRESH".into(),
+        user_id: "4242".into(),
+        username: "player".into(),
+    };
+    r.launcher.set_galaxy_account(Arc::new(Account(signed_in.then_some(login))));
+    (r, bin.to_string_lossy().into_owned())
+}
+
+fn gog_plan() -> ProcessPlan {
+    let mut plan = process_plan("/games/game", &[]);
+    plan.prep.galaxy = true;
+    plan
+}
+
+#[test]
+fn comet_runs_before_a_gog_game_and_gets_ctrl_c_after_it() {
+    // A Comet or GOG Galaxy of this computer holds the port: Comet would not start.
+    if heronite_launch::galaxy::port_taken() {
+        return;
+    }
+    let (r, bin) = galaxy_rig(true);
+    r.launcher.launch(request("g", LaunchPlan::Native(gog_plan()))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    let spawned = r.spawner.spawned();
+    assert_eq!(spawned.len(), 2, "{spawned:?}");
+    assert_eq!(spawned[0].program, bin);
+    assert!(spawned[0].args.windows(2).any(|w| w == ["--username", "player"]), "{:?}", spawned[0].args);
+    assert_eq!(spawned[1].program, "/games/game");
+    assert!(!r.spawner.handle(0).unwrap().lock().unwrap().interrupted);
+    r.spawner.finish(1, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    let comet = r.spawner.handle(0).unwrap();
+    wait_until("Ctrl+C to Comet", || comet.lock().unwrap().interrupted);
+    let comet = comet.lock().unwrap();
+    assert!(!comet.killed && !comet.terminated, "it stopped by itself");
+    // Its log hides the tokens.
+    let log = fs::read_to_string(r.paths.logs_dir().join("runners/comet.log")).unwrap();
+    assert!(log.contains("--username player") && !log.contains("SECRET"), "{log}");
+}
+
+#[test]
+fn gog_games_running_together_share_one_comet() {
+    if heronite_launch::galaxy::port_taken() {
+        return;
+    }
+    let (r, bin) = galaxy_rig(true);
+    r.launcher.launch(request("a", LaunchPlan::Native(gog_plan()))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    r.launcher.launch(request("b", LaunchPlan::Native(gog_plan()))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    let spawned = r.spawner.spawned();
+    assert_eq!(spawned.iter().filter(|c| c.program == bin).count(), 1, "{spawned:?}");
+    assert_eq!(spawned.len(), 3);
+    let comet = r.spawner.handle(0).unwrap();
+    // The first game ends: the second still needs Comet.
+    r.spawner.finish(1, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(!comet.lock().unwrap().interrupted);
+    r.spawner.finish(2, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+    wait_until("Ctrl+C to Comet", || comet.lock().unwrap().interrupted);
+}
+
+struct FailingAccount;
+
+impl heronite_launch::galaxy::GalaxyAccount for FailingAccount {
+    fn login(&self) -> Result<Option<heronite_launch::galaxy::GalaxyLogin>, String> {
+        Err("gogdl: no network".into())
+    }
+}
+
+#[test]
+fn a_failing_gog_account_does_not_stop_the_game() {
+    let (r, _) = galaxy_rig(true);
+    r.launcher.set_galaxy_account(Arc::new(FailingAccount));
+    r.launcher.launch(request("g", LaunchPlan::Native(gog_plan()))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.spawned().len(), 1, "only the game");
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
+#[test]
+fn without_a_gog_account_or_a_gog_plan_comet_does_not_start() {
+    let (r, _) = galaxy_rig(false);
+    r.launcher.launch(request("g", LaunchPlan::Native(gog_plan()))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.spawned().len(), 1);
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+
+    let (r, _) = galaxy_rig(true);
+    r.launcher.launch(request("g", LaunchPlan::Native(process_plan("/games/game", &[])))).unwrap();
+    next(&r.rx);
+    assert!(matches!(next(&r.rx), LaunchEvent::Running { .. }));
+    assert_eq!(r.spawner.spawned().len(), 1);
+    r.spawner.finish(0, 0);
+    assert!(matches!(next(&r.rx), LaunchEvent::Exited { .. }));
+}
+
 const GPU_GAME: &str = r"C:\Games\Hades\Hades.exe";
 
 /// A plan asking Windows for the dedicated card, and the launcher's registry
