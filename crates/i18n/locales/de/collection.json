@@ -544,5 +544,7 @@
   "{library}, shared by {owner}": "{library}, geteilt von {owner}",
   "{library}, shared by {owner} (in use by another member)": "{library}, geteilt von {owner} (von einem anderen Mitglied benutzt)",
   "{n} Family game": "{n} Familienspiel",
-  "{n} Family games": "{n} Familienspiele"
+  "{n} Family games": "{n} Familienspiele",
+  "{n} game removed from Collection": "{n} Spiel aus der Sammlung entfernt",
+  "{n} games removed from Collection": "{n} Spiele aus der Sammlung entfernt"
 }

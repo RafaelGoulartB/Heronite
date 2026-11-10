@@ -35,8 +35,8 @@ struct Item {
     date_unlocked: Option<String>,
 }
 
-/// GOG's `2026-01-01T00:00:00+0000`.
-fn parse_date(text: &str) -> Option<DateTime<Utc>> {
+/// GOG's `2026-01-01T00:00:00+0000` (or RFC 3339).
+pub(crate) fn parse_date(text: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S%z")
         .or_else(|_| DateTime::parse_from_rfc3339(text))
         .ok()

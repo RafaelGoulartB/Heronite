@@ -6,6 +6,8 @@ pub mod appearance_file;
 pub mod autostart;
 pub mod cli;
 pub mod desktop_colours;
+#[cfg(target_os = "linux")]
+pub mod desktop_entry;
 mod hub;
 pub mod notify;
 pub mod own_exe;

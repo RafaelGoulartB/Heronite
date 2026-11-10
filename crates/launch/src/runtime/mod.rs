@@ -10,6 +10,7 @@ mod client;
 mod companions;
 mod epic;
 mod fake;
+mod galaxy;
 mod process;
 mod sandboxed;
 mod session;
@@ -27,6 +28,7 @@ use std::time::{Duration, Instant};
 use heronite_data::DataPaths;
 
 use crate::first_launch::{EpicSetup, StoreSetup};
+use crate::galaxy::GalaxyAccount;
 use crate::plan::LaunchPlan;
 use crate::procs::{signal_tree, Procs, Sig, SystemProcs};
 use crate::record::Checkpointer;
@@ -63,6 +65,8 @@ impl Launcher {
                 services: Mutex::new(PrepServices::default()),
                 epic: Mutex::new(None),
                 store_setup: Mutex::new(None),
+                galaxy: Mutex::new(None),
+                comet: Mutex::new(Default::default()),
                 paths,
                 spawner,
                 procs,
@@ -95,6 +99,12 @@ impl Launcher {
     /// (redistributables, the game's install scripts).
     pub fn set_store_setup(&self, store: Arc<dyn StoreSetup>) {
         *self.shared.store_setup.lock().unwrap() = Some(store);
+    }
+
+    /// The GOG account Comet signs in with while a GOG game runs (see
+    /// [`crate::galaxy`]). Without it, Comet never starts.
+    pub fn set_galaxy_account(&self, account: Arc<dyn GalaxyAccount>) {
+        *self.shared.galaxy.lock().unwrap() = Some(account);
     }
 
     /// Changes how often running games' playtime is saved (tests).

@@ -16,6 +16,13 @@ use crate::theme;
 use crate::ui::controls::{close_button, dialog_title};
 use crate::ui::{glass, icon};
 
+/// Element id of the round X of dialog `id`. Footer buttons need other ids:
+/// two elements with one id share GPUI's click state, so a footer "Close"
+/// with this id never fires.
+pub fn close_id(id: &str) -> SharedString {
+    SharedString::from(format!("{id}-close"))
+}
+
 pub struct DialogProps {
     pub id: SharedString,
     pub title: SharedString,
@@ -75,7 +82,7 @@ fn build(
     let on_close = Rc::new(on_close);
     let close = {
         let on_close = on_close.clone();
-        close_button(SharedString::from(format!("{}-close", props.id))).on_click(move |_, w, cx| on_close(w, cx))
+        close_button(close_id(&props.id)).on_click(move |_, w, cx| on_close(w, cx))
     };
     let header = div()
         .flex()

@@ -27,6 +27,12 @@ fn main() {
     // First: on Windows this program may be started again only to send a
     // helper (legendary, gogdl, nile) the Ctrl+C that asks it to stop.
     heronite_platform::process::init_stop_helper();
+    // `--display-probe`: print the displays and exit, touching nothing else.
+    if system::cli::wants_display_probe(std::env::args_os().skip(1)) {
+        heronite_platform::process::attach_parent_console();
+        println!("{}", heronite_display::probe_json());
+        return;
+    }
     let started = Instant::now();
     tune_allocator();
     // A restore asked for before a restart: copied before anything reads the
@@ -57,7 +63,7 @@ fn main() {
             r.rewritten,
             r.legendary
         ),
-        heronite_data::migrate::Outcome::Fresh => log::info!("new data folder (no Heroic setup to copy)"),
+        heronite_data::migrate::Outcome::Fresh => log::info!("new data folder"),
         heronite_data::migrate::Outcome::NotNeeded => {}
     }
 
@@ -88,6 +94,11 @@ fn main() {
         // `heronite://stop` with no instance running: no game to close.
         SingleInstance::Primary { .. } if cli.stop.is_some() && cli.launch.is_none() => {
             log::info!("stop request: Heronite is not running, nothing to close");
+            return;
+        }
+        // `heronite://screenshot` with no instance running: no game to capture.
+        SingleInstance::Primary { .. } if cli.screenshot && cli.launch.is_none() => {
+            log::info!("screenshot request: Heronite is not running, nothing to capture");
             return;
         }
         // `--handoff` (Sunshine's entries) with no instance running: the
@@ -194,6 +205,7 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
         launch: cli.launch.clone(),
         open_client: cli.open_client,
         stop: cli.stop.clone(),
+        screenshot: cli.screenshot,
         no_gui: cli.no_gui,
         console: cli.console,
         fullscreen: cli.fullscreen,

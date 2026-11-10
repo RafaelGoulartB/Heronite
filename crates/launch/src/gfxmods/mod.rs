@@ -95,14 +95,25 @@ mod tests {
         install(&ops(&g.paths, &net), &request(&g, None), None).unwrap();
         let reshade = ReShade { enabled: true, api: "auto".into(), anticheat_ack: vec!["BattlEye".into()], ..Default::default() };
         let mut s = GameSettings { reshade, ..Default::default() };
-        for wine in [true, false] {
-            let mut env = Env::new();
-            env.insert("WINEDLLOVERRIDES".into(), "dxgi=b;winemenubuilder.exe=d".into());
-            let mut own = env.clone();
-            let notes = apply(&mut env, &g.paths, "sp", &s, wine);
-            let note = crate::reshade::apply(&mut own, &g.paths, "sp", &s.reshade, wine);
-            assert_eq!((notes, env), (note.into_iter().collect(), own));
-        }
+        let same = |s: &GameSettings| {
+            for wine in [true, false] {
+                let mut env = Env::new();
+                env.insert("WINEDLLOVERRIDES".into(), "dxgi=b;winemenubuilder.exe=d".into());
+                let mut own = env.clone();
+                let notes = apply(&mut env, &g.paths, "sp", s, wine);
+                let note = crate::reshade::apply(&mut own, &g.paths, "sp", &s.reshade, wine);
+                assert_eq!((notes, env), (note.into_iter().collect(), own));
+            }
+        };
+        same(&s);
+        // With Heronite's d3dcompiler_47 beside it, that DLL is overridden too.
+        let mut m = crate::reshade::manifest::load(&g.paths, "sp").unwrap();
+        m.compiler = Some("fxc2".into());
+        crate::reshade::manifest::save(&g.paths, "sp", &m).unwrap();
+        same(&s);
+        let mut env = Env::new();
+        apply(&mut env, &g.paths, "sp", &s, true);
+        assert_eq!(env["WINEDLLOVERRIDES"], "dxgi=n,b;d3dcompiler_47=n,b");
         s.reshade.enabled = false;
         let mut env = Env::new();
         assert!(apply(&mut env, &g.paths, "sp", &s, true).is_empty() && env.is_empty());

@@ -2,6 +2,7 @@
 //! an [`AchievementSet`]. Blocking (files, network): call from a worker
 //! thread.
 
+pub mod comet;
 pub mod epic;
 pub mod gog;
 pub mod local;

@@ -2,7 +2,8 @@
 //! first:
 //!
 //! 1. `Banned=1` in ReShade's `Compatibility.ini`: the game bans or blocks
-//!    ReShade. Installing is refused.
+//!    ReShade. Installing is refused. ([`Risk::banned`] comes only from
+//!    ReShade's list; the other sources apply to any mod.)
 //! 2. AreWeAntiCheatYet (`heronite_data::anticheat`): the anti-cheats the
 //!    game is known to use. A warning the user must accept.
 //! 3. Files of known anti-cheats in the game's folders, for games missing

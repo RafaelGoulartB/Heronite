@@ -105,6 +105,15 @@ pub fn ask_to_stop(pid: u32, whole_group: bool) {
     }
 }
 
+/// Asks a helper to stop the way Ctrl+C in its terminal would: SIGINT on
+/// Unix, for programs that finish their work only on Ctrl+C (SIGTERM ends
+/// Comet at once); [`ask_to_stop`] on Windows. Returns at once.
+pub fn interrupt(pid: u32) {
+    if pid > 1 {
+        sys::interrupt(pid);
+    }
+}
+
 /// Call it first thing in `main` of a program that runs helpers. On Windows,
 /// when this program was started to send a Ctrl+C for [`ask_to_stop`], it
 /// does that and exits; otherwise [`ask_to_stop`] may start it so from now
@@ -112,6 +121,14 @@ pub fn ask_to_stop(pid: u32, whole_group: bool) {
 /// off. Nothing on Unix.
 pub fn init_stop_helper() {
     sys::init_stop_helper();
+}
+
+/// Makes `print!` reach the terminal that started this program, for a
+/// command that prints and exits (`--display-probe`) from the windowed
+/// release build, which has no console of its own. Leaves a redirected or
+/// existing standard output alone. Nothing on Unix.
+pub fn attach_parent_console() {
+    sys::attach_parent_console();
 }
 
 /// The child `cmd` starts is on its own: a new session on Unix (`setsid`),

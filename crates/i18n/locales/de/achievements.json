@@ -159,5 +159,17 @@
   "Show the RetroAchievements type": "RetroAchievements-Typ anzeigen",
   "Progression, Win condition or Missable.": "Fortschritt, Siegbedingung oder Verpassbar.",
   "Show hardcore unlocks": "Hardcore-Freischaltungen anzeigen",
-  "A badge when RetroAchievements counts it in hardcore mode.": "Ein Abzeichen, wenn RetroAchievements ihn im Hardcore-Modus zählt."
+  "A badge when RetroAchievements counts it in hardcore mode.": "Ein Abzeichen, wenn RetroAchievements ihn im Hardcore-Modus zählt.",
+  "Downloading Comet for GOG achievements...": "Comet für GOG-Erfolge wird heruntergeladen...",
+  "GOG Galaxy's service": "Dienst von GOG Galaxy",
+  "GOG Galaxy's service was not registered": "Der Dienst von GOG Galaxy wurde nicht registriert",
+  "Heronite runs Comet, an open-source stand-in for GOG Galaxy's service, beside each GOG game, signed in with your GOG account: what the game unlocks counts on GOG and shows here while you play. Off, games that need GOG Galaxy for their achievements unlock nothing.": "Heronite führt Comet, einen Open-Source-Ersatz für den Dienst von GOG Galaxy, neben jedem GOG-Spiel aus, angemeldet mit deinem GOG-Konto: Was das Spiel freischaltet, zählt bei GOG und erscheint hier, während du spielst. Aus schalten Spiele, die GOG Galaxy für ihre Erfolge brauchen, nichts frei.",
+  "Register": "Registrieren",
+  "Registered": "Registriert",
+  "Registering…": "Wird registriert…",
+  "Setting up GOG Galaxy's service in the prefix...": "Dienst von GOG Galaxy wird im Präfix eingerichtet...",
+  "Some games look for it before they unlock anything. Without GOG Galaxy installed, Heronite can register Comet's stand-in for it; Windows asks for the administrator once.": "Manche Spiele suchen danach, bevor sie etwas freischalten. Ohne installiertes GOG Galaxy kann Heronite den Ersatz von Comet registrieren; Windows fragt einmal nach Administratorrechten.",
+  "The service was not registered (the script ended with {code})": "Der Dienst wurde nicht registriert (das Skript endete mit {code})",
+  "Unlock GOG achievements while you play": "GOG-Erfolge beim Spielen freischalten",
+  "Windows did not get the administrator's permission": "Windows hat die Administratorrechte nicht erhalten"
 }
