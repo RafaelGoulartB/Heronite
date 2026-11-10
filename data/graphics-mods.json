@@ -1,0 +1,3121 @@
+{
+ "schema": 1,
+ "source": "https://github.com/clshortfuse/renodx/wiki/mods",
+ "generic": {
+  "unreal": {
+   "name": "Unreal Engine Extended",
+   "slug": "ue-extended",
+   "status": "working",
+   "addon64": "https://marat569.github.io/renodx/renodx-ue-extended.addon64"
+  },
+  "unity": {
+   "name": "Unity Engine",
+   "slug": "unityengine",
+   "status": "working",
+   "addon64": "https://notvoosh.github.io/renodx-unity/renodx-unityengine.addon64"
+  }
+ },
+ "games": [
+  {
+   "id": "007firstlight",
+   "match": {
+    "title": [
+     "007 First Light"
+    ]
+   },
+   "renodx": {
+    "slug": "007firstlight",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-007firstlight.addon64"
+   }
+  },
+  {
+   "id": "1000xresist",
+   "match": {
+    "title": [
+     "1000xRESIST"
+    ]
+   },
+   "renodx": {
+    "slug": "1000xresist",
+    "status": "working",
+    "addon64": "https://mohannedelfatih.github.io/renodx/renodx-1000xresist.addon64"
+   }
+  },
+  {
+   "id": "_ksp",
+   "match": {
+    "title": [
+     "Kerbal Space Program"
+    ]
+   },
+   "renodx": {
+    "slug": "_ksp",
+    "status": "working",
+    "addon64": "https://github.com/pmnoxx/renodx/releases/download/snapshot/renodx-_ksp.addon64"
+   }
+  },
+  {
+   "id": "_p5s",
+   "match": {
+    "title": [
+     "Persona 5 Strikers"
+    ]
+   },
+   "renodx": {
+    "slug": "_p5s",
+    "status": "testing",
+    "addon64": "https://github.com/pmnoxx/renodx/releases/download/snapshot/renodx-_p5s.addon64"
+   }
+  },
+  {
+   "id": "_univ",
+   "match": {
+    "title": [
+     "Against the Storm",
+     "Darkest Dungeon® II",
+     "Hardspace: Shipbreaker",
+     "IXION",
+     "Total War: WARHAMMER III"
+    ]
+   },
+   "renodx": {
+    "slug": "_univ",
+    "status": "testing",
+    "addon64": "https://github.com/pmnoxx/renodx/releases/download/snapshot/renodx-_univ.addon64"
+   }
+  },
+  {
+   "id": "absolum",
+   "match": {
+    "title": [
+     "Absolum"
+    ]
+   },
+   "renodx": {
+    "slug": "absolum",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-absolum.addon64"
+   }
+  },
+  {
+   "id": "aisomniumfiles",
+   "match": {
+    "title": [
+     "AI: The Somnium Files"
+    ]
+   },
+   "renodx": {
+    "slug": "aisomniumfiles",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-aisomniumfiles.addon64"
+   }
+  },
+  {
+   "id": "alicemadnessreturns",
+   "match": {
+    "title": [
+     "Alice: Madness Returns"
+    ]
+   },
+   "renodx": {
+    "slug": "alicemadnessreturns",
+    "status": "working",
+    "addon32": "https://github.com/steve161803/renodx/releases/download/snapshot/renodx-alicemadnessreturns.addon32",
+    "note": "Check the mod's thread Notes."
+   }
+  },
+  {
+   "id": "alienisolation",
+   "match": {
+    "title": [
+     "Alien: Isolation"
+    ]
+   },
+   "renodx": {
+    "slug": "alienisolation",
+    "status": "testing",
+    "addon32": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-alienisolation.addon32"
+   }
+  },
+  {
+   "id": "animalwell",
+   "match": {
+    "title": [
+     "ANIMAL WELL"
+    ]
+   },
+   "renodx": {
+    "slug": "animalwell",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-animalwell.addon64"
+   }
+  },
+  {
+   "id": "aptinnocence",
+   "match": {
+    "title": [
+     "A Plague Tale: Innocence"
+    ]
+   },
+   "renodx": {
+    "slug": "aptinnocence",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-aptinnocence.addon64"
+   }
+  },
+  {
+   "id": "assassinscreedliberation",
+   "match": {
+    "title": [
+     "Assassin’s Creed® Liberation Remastered"
+    ]
+   },
+   "renodx": {
+    "slug": "assassinscreedliberation",
+    "status": "working",
+    "addon64": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-AssassinsCreedLiberation.addon64"
+   }
+  },
+  {
+   "id": "assassinscreedrogue",
+   "match": {
+    "title": [
+     "Assassin’s Creed® Rogue"
+    ]
+   },
+   "renodx": {
+    "slug": "assassinscreedrogue",
+    "status": "working",
+    "addon64": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-AssassinsCreedRogue.addon64"
+   }
+  },
+  {
+   "id": "asscreed1",
+   "match": {
+    "title": [
+     "Assassin's Creed™: Director's Cut Edition (DX10)"
+    ]
+   },
+   "renodx": {
+    "slug": "asscreed1",
+    "status": "working",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-asscreed1.addon32"
+   }
+  },
+  {
+   "id": "asscreedblackflag",
+   "match": {
+    "title": [
+     "Assassin’s Creed® IV Black Flag™"
+    ]
+   },
+   "renodx": {
+    "slug": "asscreedblackflag",
+    "status": "testing",
+    "addon32": "https://oopydoopy.github.io/renodx/renodx-asscreedblackflag.addon32",
+    "note": "Playable, but some unresolved graphical bugs."
+   }
+  },
+  {
+   "id": "asscreedeziotrilogy",
+   "match": {
+    "title": [
+     "Assassin’s Creed® II",
+     "Assassin’s Creed® Brotherhood",
+     "Assassin’s Creed® Revelations"
+    ]
+   },
+   "renodx": {
+    "slug": "asscreedeziotrilogy",
+    "status": "working",
+    "addon32": "https://github.com/hartapfel/renodx/releases/download/asscreedeziotrilogy-snapshot/renodx-asscreedeziotrilogy.addon32"
+   }
+  },
+  {
+   "id": "asscreedmirage",
+   "match": {
+    "title": [
+     "Assassin’s Creed® Mirage"
+    ]
+   },
+   "renodx": {
+    "slug": "asscreedmirage",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-asscreedmirage.addon64"
+   }
+  },
+  {
+   "id": "asscreedorigins-odyssey",
+   "match": {
+    "title": [
+     "Assassin’s Creed® Origins",
+     "Assassin’s Creed® Odyssey"
+    ]
+   },
+   "renodx": {
+    "slug": "asscreedorigins-odyssey",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-asscreedorigins-odyssey.addon64"
+   }
+  },
+  {
+   "id": "asscreedshadows",
+   "match": {
+    "title": [
+     "Assassin’s Creed® Shadows"
+    ]
+   },
+   "renodx": {
+    "slug": "asscreedshadows",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-asscreedshadows.addon64"
+   }
+  },
+  {
+   "id": "asscreedvalhalla",
+   "match": {
+    "title": [
+     "Assassin’s Creed® Valhalla"
+    ]
+   },
+   "renodx": {
+    "slug": "asscreedvalhalla",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-asscreedvalhalla.addon64"
+   }
+  },
+  {
+   "id": "atelierryzadx",
+   "match": {
+    "title": [
+     "Atelier Ryza: Ever Darkness & the Secret Hideout DX"
+    ]
+   },
+   "renodx": {
+    "slug": "atelierryzadx",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-atelierryzadx.addon64"
+   }
+  },
+  {
+   "id": "atlasfallen",
+   "match": {
+    "title": [
+     "Atlas Fallen: Reign Of Sand (DX12)"
+    ]
+   },
+   "renodx": {
+    "slug": "atlasfallen",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-atlasfallen.addon64",
+    "note": "Install ReShade in 'Atlas Fallen\\bin'. FSR2 causes crashes."
+   }
+  },
+  {
+   "id": "avatarfop-swoutlaws",
+   "match": {
+    "title": [
+     "Avatar: Frontiers of Pandora™",
+     "Star Wars Outlaws"
+    ]
+   },
+   "renodx": {
+    "slug": "avatarfop-swoutlaws",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-avatarfop-swoutlaws.addon64"
+   }
+  },
+  {
+   "id": "batmanaa",
+   "match": {
+    "title": [
+     "Batman: Arkham Asylum GOTY Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "batmanaa",
+    "status": "working",
+    "addon32": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-batmanaa.addon32"
+   }
+  },
+  {
+   "id": "batmanak",
+   "match": {
+    "title": [
+     "Batman™: Arkham Knight"
+    ]
+   },
+   "renodx": {
+    "slug": "batmanak",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-batmanak.addon64"
+   }
+  },
+  {
+   "id": "bersekerkhazan",
+   "match": {
+    "title": [
+     "The First Berserker: Khazan"
+    ]
+   },
+   "renodx": {
+    "slug": "bersekerkhazan",
+    "status": "working",
+    "addon64": "https://marat569.github.io/renodx/renodx-bersekerKhazan.addon64"
+   }
+  },
+  {
+   "id": "berserkboth",
+   "match": {
+    "title": [
+     "BERSERK and the Band of the Hawk"
+    ]
+   },
+   "renodx": {
+    "slug": "berserkboth",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-BerserkBotH.addon64"
+   }
+  },
+  {
+   "id": "beyondblue",
+   "match": {
+    "title": [
+     "Beyond Blue"
+    ]
+   },
+   "renodx": {
+    "slug": "beyondblue",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-beyondblue.addon64"
+   }
+  },
+  {
+   "id": "black-desert-online",
+   "match": {
+    "title": [
+     "Black Desert"
+    ]
+   },
+   "renodx": {
+    "slug": "black-desert-online",
+    "status": "working",
+    "addon64": "https://sgtforgery.github.io/renodx/renodx-black-desert-online.addon64"
+   }
+  },
+  {
+   "id": "borderlands2",
+   "match": {
+    "title": [
+     "Borderlands 2 & The Pre-Sequel"
+    ]
+   },
+   "renodx": {
+    "slug": "borderlands2",
+    "status": "working",
+    "addon32": "https://github.com/steve161803/renodx/releases/download/snapshot/renodx-borderlands2.addon32",
+    "note": "Check the mod's thread Notes."
+   }
+  },
+  {
+   "id": "botw",
+   "match": {
+    "title": [
+     "The Legend of Zelda: Breath of the Wild"
+    ]
+   },
+   "renodx": {
+    "slug": "botw",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-botw.addon64"
+   }
+  },
+  {
+   "id": "bulletstormfullclip",
+   "match": {
+    "title": [
+     "Bulletstorm: Full Clip Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "bulletstormfullclip",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-bulletstormfullclip.addon64"
+   }
+  },
+  {
+   "id": "callistoprotocol",
+   "match": {
+    "title": [
+     "The Callisto Protocol"
+    ]
+   },
+   "renodx": {
+    "slug": "callistoprotocol",
+    "status": "working",
+    "addon64": "https://mqhaji.github.io/renodx/renodx-callistoprotocol.addon64"
+   }
+  },
+  {
+   "id": "callofjuarez",
+   "match": {
+    "title": [
+     "Call of Juarez (DX10)"
+    ]
+   },
+   "renodx": {
+    "slug": "callofjuarez",
+    "status": "working",
+    "addon32": "https://github.com/clshortfuse/renodx/releases/download/snapshot/renodx-callofjuarez.addon32"
+   }
+  },
+  {
+   "id": "castlevanialos",
+   "match": {
+    "title": [
+     "Castlevania: Lords of Shadow - Ultimate Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "castlevanialos",
+    "status": "working",
+    "addon32": "https://oopydoopy.github.io/renodx/renodx-castlevanialos.addon32"
+   }
+  },
+  {
+   "id": "childoflight",
+   "match": {
+    "title": [
+     "Child of Light"
+    ]
+   },
+   "renodx": {
+    "slug": "childoflight",
+    "status": "working",
+    "addon32": "https://github.com/steve161803/renodx/releases/download/snapshot/renodx-childoflight.addon32",
+    "note": "Check the mod's thread for Notes."
+   }
+  },
+  {
+   "id": "citizensleeper2",
+   "match": {
+    "title": [
+     "Citizen Sleeper 2: Starward Vector"
+    ]
+   },
+   "renodx": {
+    "slug": "citizensleeper2",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-citizensleeper2.addon64"
+   }
+  },
+  {
+   "id": "clairobscur_expedition33",
+   "match": {
+    "title": [
+     "Clair Obscur: Expedition 33"
+    ]
+   },
+   "renodx": {
+    "slug": "clairobscur_expedition33",
+    "status": "working",
+    "addon64": "https://github.com/clshortfuse/renodx/releases/download/snapshot/renodx-clairobscur_expedition33.addon64"
+   }
+  },
+  {
+   "id": "clivebarkersjericho",
+   "match": {
+    "title": [
+     "Clive Barker's Jericho"
+    ]
+   },
+   "renodx": {
+    "slug": "clivebarkersjericho",
+    "status": "testing",
+    "addon32": "https://github.com/clshortfuse/renodx/releases/download/snapshot/renodx-clivebarkersjericho.addon32",
+    "note": "ACES output is broken, need to be removed in next update"
+   }
+  },
+  {
+   "id": "codblops",
+   "match": {
+    "title": [
+     "Call of Duty®: Black Ops"
+    ]
+   },
+   "renodx": {
+    "slug": "codblops",
+    "status": "working",
+    "addon32": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-CODBLOPS.addon32",
+    "note": "DXVK proxy required for increased stability! Please check the Nexus page for instructions"
+   }
+  },
+  {
+   "id": "codblops2",
+   "match": {
+    "title": [
+     "Call of Duty®: Black Ops II"
+    ]
+   },
+   "renodx": {
+    "slug": "codblops2",
+    "status": "working",
+    "addon32": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-CODBLOPS2.addon32",
+    "note": "Avoiding multiplayer is recommended in case of a potential ban!"
+   }
+  },
+  {
+   "id": "codcoldwar",
+   "match": {
+    "title": [
+     "Call of Duty®: Black Ops Cold War"
+    ]
+   },
+   "renodx": {
+    "slug": "codcoldwar",
+    "status": "working",
+    "addon64": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-CODColdWar.addon64",
+    "note": "Avoiding multiplayer is recommended in case of a potential ban!"
+   }
+  },
+  {
+   "id": "codghosts",
+   "match": {
+    "title": [
+     "Call of Duty®: Ghosts"
+    ]
+   },
+   "renodx": {
+    "slug": "codghosts",
+    "status": "working",
+    "addon64": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-CODGHOSTS.addon64",
+    "note": "Avoiding multiplayer is recommended in case of a potential ban!"
+   }
+  },
+  {
+   "id": "codmw3",
+   "match": {
+    "title": [
+     "Call of Duty®: Modern Warfare® 3 (2011)"
+    ]
+   },
+   "renodx": {
+    "slug": "codmw3",
+    "status": "working",
+    "addon64": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-CODMW3.addon64",
+    "note": "64 bit, Nexus includes a stutter fix for the game. Please check the Nexus page for instructions"
+   }
+  },
+  {
+   "id": "codwaw",
+   "match": {
+    "title": [
+     "Call of Duty®: World at War"
+    ]
+   },
+   "renodx": {
+    "slug": "codwaw",
+    "status": "working",
+    "addon32": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-CODWAW.addon32"
+   }
+  },
+  {
+   "id": "controlresonant",
+   "match": {
+    "title": [
+     "CONTROL Resonant"
+    ]
+   },
+   "renodx": {
+    "slug": "controlresonant",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-controlresonant.addon64"
+   }
+  },
+  {
+   "id": "cp2077",
+   "match": {
+    "title": [
+     "Cyberpunk 2077"
+    ]
+   },
+   "renodx": {
+    "slug": "cp2077",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-cp2077.addon64"
+   }
+  },
+  {
+   "id": "dai",
+   "match": {
+    "title": [
+     "Dragon Age™ Inquisition"
+    ]
+   },
+   "renodx": {
+    "slug": "dai",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-dai.addon64"
+   }
+  },
+  {
+   "id": "darksiders-warmastered",
+   "match": {
+    "title": [
+     "Darksiders Warmastered Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "darksiders-warmastered",
+    "status": "working",
+    "addon32": "https://oopydoopy.github.io/renodx/renodx-darksiders-warmastered.addon32"
+   }
+  },
+  {
+   "id": "darksouls",
+   "match": {
+    "title": [
+     "DARK SOULS™: REMASTERED"
+    ]
+   },
+   "renodx": {
+    "slug": "darksouls",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-darksouls.addon64"
+   }
+  },
+  {
+   "id": "daysgone",
+   "match": {
+    "title": [
+     "Days Gone"
+    ]
+   },
+   "renodx": {
+    "slug": "daysgone",
+    "status": "testing",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-daysgone.addon64",
+    "note": "Functional, better than native, but could use some improvement."
+   }
+  },
+  {
+   "id": "dbzspark",
+   "match": {
+    "title": [
+     "DRAGON BALL: Sparking! ZERO"
+    ]
+   },
+   "renodx": {
+    "slug": "dbzspark",
+    "status": "working",
+    "addon64": "https://mohannedelfatih.github.io/renodx/renodx-dbzspark.addon64"
+   }
+  },
+  {
+   "id": "deadisland2",
+   "match": {
+    "title": [
+     "Dead Island 2"
+    ]
+   },
+   "renodx": {
+    "slug": "deadisland2",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-deadisland2.addon64"
+   }
+  },
+  {
+   "id": "deadislandde",
+   "match": {
+    "title": [
+     "Dead Island (& Riptide) Definitive Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "deadislandde",
+    "status": "testing",
+    "addon64": "https://notvoosh.github.io/renodx/renodx-deadislandde.addon64",
+    "note": "Currently broken"
+   }
+  },
+  {
+   "id": "deadspace",
+   "match": {
+    "title": [
+     "Dead Space"
+    ]
+   },
+   "renodx": {
+    "slug": "deadspace",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-deadspace.addon64"
+   }
+  },
+  {
+   "id": "deathstranding2",
+   "match": {
+    "title": [
+     "DEATH STRANDING 2: ON THE BEACH"
+    ]
+   },
+   "renodx": {
+    "slug": "deathstranding2",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-deathstranding2.addon64"
+   }
+  },
+  {
+   "id": "deathstrandingdc",
+   "match": {
+    "title": [
+     "DEATH STRANDING DIRECTOR'S CUT"
+    ]
+   },
+   "renodx": {
+    "slug": "deathstrandingdc",
+    "status": "testing",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-deathstrandingdc.addon64"
+   }
+  },
+  {
+   "id": "dishonored",
+   "match": {
+    "title": [
+     "Dishonored"
+    ]
+   },
+   "renodx": {
+    "slug": "dishonored",
+    "status": "working",
+    "addon32": "https://oopydoopy.github.io/renodx/renodx-dishonored.addon32",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-dishonored.addon64"
+   }
+  },
+  {
+   "id": "dmc5",
+   "match": {
+    "title": [
+     "Devil May Cry 5"
+    ]
+   },
+   "renodx": {
+    "slug": "dmc5",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-dmc5.addon64"
+   }
+  },
+  {
+   "id": "doom-tda",
+   "match": {
+    "title": [
+     "DOOM: The Dark Ages"
+    ]
+   },
+   "renodx": {
+    "slug": "doom-tda",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-doom-tda.addon64"
+   }
+  },
+  {
+   "id": "dragonquest-ue",
+   "match": {
+    "title": [
+     "DRAGON QUEST® XI: Echoes of an Elusive Age™ (Original & DE)"
+    ]
+   },
+   "renodx": {
+    "slug": "dragonquest-ue",
+    "status": "working",
+    "addon64": "https://danaforever.github.io/renodx/renodx-dragonquest-ue.addon64"
+   }
+  },
+  {
+   "id": "dragonsdogma2",
+   "match": {
+    "title": [
+     "Dragon's Dogma 2"
+    ]
+   },
+   "renodx": {
+    "slug": "dragonsdogma2",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-dragonsdogma2.addon64",
+    "note": "Delete shader.cache2 from the game directory when installing this mod, otherwise you'll get shader stutter."
+   }
+  },
+  {
+   "id": "duniaengine",
+   "match": {
+    "title": [
+     "Far Cry® 2 (DX10)",
+     "Far Cry® 3 (DX11)",
+     "James Cameron’s Avatar™: The Game"
+    ]
+   },
+   "renodx": {
+    "slug": "duniaengine",
+    "status": "working",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-duniaengine.addon32"
+   }
+  },
+  {
+   "id": "dxmd",
+   "match": {
+    "title": [
+     "Deus Ex: Mankind Divided™"
+    ]
+   },
+   "renodx": {
+    "slug": "dxmd",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-dxmd.addon64"
+   }
+  },
+  {
+   "id": "dyinglight",
+   "match": {
+    "title": [
+     "Dying Light"
+    ]
+   },
+   "renodx": {
+    "slug": "dyinglight",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-dyinglight.addon64"
+   }
+  },
+  {
+   "id": "dyinglightthebeast",
+   "match": {
+    "title": [
+     "Dying Light: The Beast"
+    ]
+   },
+   "renodx": {
+    "slug": "dyinglightthebeast",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-dyinglightthebeast.addon64"
+   }
+  },
+  {
+   "id": "endermagnolia",
+   "match": {
+    "title": [
+     "ENDER MAGNOLIA: Bloom in the Mist"
+    ]
+   },
+   "renodx": {
+    "slug": "endermagnolia",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-endermagnolia.addon64"
+   }
+  },
+  {
+   "id": "endfield",
+   "match": {
+    "title": [
+     "Arknights: Endfield"
+    ]
+   },
+   "renodx": {
+    "slug": "endfield",
+    "status": "working",
+    "addon64": "https://itsthesewerrat.github.io/renodx/renodx-endfield.addon64"
+   }
+  },
+  {
+   "id": "falcomengine",
+   "match": {
+    "title": [
+     "Trails in the Sky 1st Chapter",
+     "The Legend of Heroes: Trails through Daybreak (I & II)",
+     "The Legend of Heroes: Trails beyond the Horizon"
+    ]
+   },
+   "renodx": {
+    "slug": "falcomengine",
+    "status": "working",
+    "addon64": "https://danaforever.github.io/renodx/renodx-falcomengine.addon64"
+   }
+  },
+  {
+   "id": "fallout4",
+   "match": {
+    "title": [
+     "Fallout 4"
+    ]
+   },
+   "renodx": {
+    "slug": "fallout4",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-fallout4.addon64"
+   }
+  },
+  {
+   "id": "fallout76",
+   "match": {
+    "title": [
+     "Fallout 76"
+    ]
+   },
+   "renodx": {
+    "slug": "fallout76",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-fallout76.addon64"
+   }
+  },
+  {
+   "id": "fantasianneodimension",
+   "match": {
+    "title": [
+     "FANTASIAN Neo Dimension"
+    ]
+   },
+   "renodx": {
+    "slug": "fantasianneodimension",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-fantasianneodimension.addon64"
+   }
+  },
+  {
+   "id": "farcry5",
+   "match": {
+    "title": [
+     "Far Cry® 5"
+    ]
+   },
+   "renodx": {
+    "slug": "farcry5",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-farcry5.addon64"
+   }
+  },
+  {
+   "id": "farcry6",
+   "match": {
+    "title": [
+     "Far Cry® 6"
+    ]
+   },
+   "renodx": {
+    "slug": "farcry6",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-farcry6.addon64"
+   }
+  },
+  {
+   "id": "fatesamurairemnant",
+   "match": {
+    "title": [
+     "Fate/Samurai Remnant"
+    ]
+   },
+   "renodx": {
+    "slug": "fatesamurairemnant",
+    "status": "testing",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-fatesamurairemnant.addon64"
+   }
+  },
+  {
+   "id": "ff7rebirth",
+   "match": {
+    "title": [
+     "FINAL FANTASY VII REBIRTH"
+    ]
+   },
+   "renodx": {
+    "slug": "ff7rebirth",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-ff7rebirth.addon64"
+   }
+  },
+  {
+   "id": "ff7remake",
+   "match": {
+    "title": [
+     "FINAL FANTASY VII REMAKE INTERGRADE"
+    ]
+   },
+   "renodx": {
+    "slug": "ff7remake",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-ff7remake.addon64"
+   }
+  },
+  {
+   "id": "ffx",
+   "match": {
+    "title": [
+     "FINAL FANTASY X/X-2 HD Remaster"
+    ]
+   },
+   "renodx": {
+    "slug": "ffx",
+    "status": "working",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-ffx.addon32"
+   }
+  },
+  {
+   "id": "ffxiv",
+   "match": {
+    "title": [
+     "FINAL FANTASY XIV Online"
+    ]
+   },
+   "renodx": {
+    "slug": "ffxiv",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-ffxiv.addon64"
+   }
+  },
+  {
+   "id": "ffxv",
+   "match": {
+    "title": [
+     "FINAL FANTASY XV WINDOWS EDITION"
+    ]
+   },
+   "renodx": {
+    "slug": "ffxv",
+    "status": "working",
+    "addon64": "https://danaforever.github.io/renodx/renodx-ffxv.addon64"
+   }
+  },
+  {
+   "id": "forzahorizon6",
+   "match": {
+    "title": [
+     "Forza Horizon 6"
+    ]
+   },
+   "renodx": {
+    "slug": "forzahorizon6",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-forzahorizon6.addon64",
+    "note": "Arguably not an HDR fix. Vanilla HDR is competent and received a separate grade from SDR."
+   }
+  },
+  {
+   "id": "fromsoft_engine",
+   "match": {
+    "title": [
+     "ARMORED CORE™ VI FIRES OF RUBICON™",
+     "ELDEN RING",
+     "ELDEN RING NIGHTREIGN",
+     "Sekiro™: Shadows Die Twice"
+    ]
+   },
+   "renodx": {
+    "slug": "fromsoft_engine",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-fromsoft_engine.addon64"
+   }
+  },
+  {
+   "id": "gbfrelink",
+   "match": {
+    "title": [
+     "Granblue Fantasy: Relink"
+    ]
+   },
+   "renodx": {
+    "slug": "gbfrelink",
+    "status": "working",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-gbfrelink.addon64"
+   }
+  },
+  {
+   "id": "ghostwiretokyo",
+   "match": {
+    "title": [
+     "Ghostwire: Tokyo"
+    ]
+   },
+   "renodx": {
+    "slug": "ghostwiretokyo",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-ghostwiretokyo.addon64"
+   }
+  },
+  {
+   "id": "gomechaball",
+   "match": {
+    "title": [
+     "Go Mecha Ball"
+    ]
+   },
+   "renodx": {
+    "slug": "gomechaball",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-gomechaball.addon64"
+   }
+  },
+  {
+   "id": "gotsushima",
+   "match": {
+    "title": [
+     "Ghost of Tsushima DIRECTOR'S CUT"
+    ]
+   },
+   "renodx": {
+    "slug": "gotsushima",
+    "status": "working",
+    "addon64": "https://hartapfel.github.io/renodx/renodx-gotsushima.addon64"
+   }
+  },
+  {
+   "id": "gow2018",
+   "match": {
+    "title": [
+     "God of War (2018)"
+    ]
+   },
+   "renodx": {
+    "slug": "gow2018",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-gow2018.addon64"
+   }
+  },
+  {
+   "id": "gowragnarok",
+   "match": {
+    "title": [
+     "God of War Ragnarök"
+    ]
+   },
+   "renodx": {
+    "slug": "gowragnarok",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-gowragnarok.addon64"
+   }
+  },
+  {
+   "id": "greedfall",
+   "match": {
+    "title": [
+     "GreedFall"
+    ]
+   },
+   "renodx": {
+    "slug": "greedfall",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-greedfall.addon64"
+   }
+  },
+  {
+   "id": "greedfall2",
+   "match": {
+    "title": [
+     "GreedFall: The Dying World"
+    ]
+   },
+   "renodx": {
+    "slug": "greedfall2",
+    "status": "working",
+    "addon64": "https://github.com/RankFTW/renodx/releases/download/snapshot/renodx-greedfall2.addon64"
+   }
+  },
+  {
+   "id": "grimdawn",
+   "match": {
+    "title": [
+     "Grim Dawn",
+     "Titan Quest Anniversary Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "grimdawn",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-grimdawn.addon64"
+   }
+  },
+  {
+   "id": "gtav-enhanced",
+   "match": {
+    "title": [
+     "Grand Theft Auto V Enhanced"
+    ]
+   },
+   "renodx": {
+    "slug": "gtav-enhanced",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-gtav-enhanced.addon64"
+   }
+  },
+  {
+   "id": "guildwars2",
+   "match": {
+    "title": [
+     "Guild Wars 2®"
+    ]
+   },
+   "renodx": {
+    "slug": "guildwars2",
+    "status": "testing",
+    "addon64": "https://notvoosh.github.io/renodx/renodx-guildwars2.addon64"
+   }
+  },
+  {
+   "id": "hades",
+   "match": {
+    "title": [
+     "Hades"
+    ]
+   },
+   "renodx": {
+    "slug": "hades",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-hades.addon64"
+   }
+  },
+  {
+   "id": "hades2",
+   "match": {
+    "title": [
+     "Hades II"
+    ]
+   },
+   "renodx": {
+    "slug": "hades2",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-hades2.addon64"
+   }
+  },
+  {
+   "id": "helldivers2",
+   "match": {
+    "title": [
+     "HELLDIVERS™ 2"
+    ]
+   },
+   "renodx": {
+    "slug": "helldivers2",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-helldivers2.addon64"
+   }
+  },
+  {
+   "id": "hitmanwoa",
+   "match": {
+    "title": [
+     "HITMAN World of Assassination"
+    ]
+   },
+   "renodx": {
+    "slug": "hitmanwoa",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-hitmanwoa.addon64"
+   }
+  },
+  {
+   "id": "hollowknight",
+   "match": {
+    "title": [
+     "Hollow Knight"
+    ]
+   },
+   "renodx": {
+    "slug": "hollowknight",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-hollowknight.addon64"
+   }
+  },
+  {
+   "id": "hollowknight-silksong",
+   "match": {
+    "title": [
+     "Hollow Knight: Silksong"
+    ]
+   },
+   "renodx": {
+    "slug": "hollowknight-silksong",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-hollowknight-silksong.addon64"
+   }
+  },
+  {
+   "id": "horizonzdr-fwce",
+   "match": {
+    "title": [
+     "Horizon Forbidden West™ Complete Edition",
+     "Horizon Zero Dawn™ Remastered"
+    ]
+   },
+   "renodx": {
+    "slug": "horizonzdr-fwce",
+    "status": "working",
+    "addon64": "https://github.com/jhi721/renodx/releases/download/snapshot/renodx-horizonzdr-fwce.addon64"
+   }
+  },
+  {
+   "id": "horizonzerodawnce",
+   "match": {
+    "title": [
+     "Horizon Zero Dawn™ Complete Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "horizonzerodawnce",
+    "status": "working",
+    "addon64": "https://github.com/jhi721/renodx/releases/download/snapshot/renodx-horizonzerodawnce.addon64"
+   }
+  },
+  {
+   "id": "immortalsfenyxrising",
+   "match": {
+    "title": [
+     "Immortals Fenyx Rising"
+    ]
+   },
+   "renodx": {
+    "slug": "immortalsfenyxrising",
+    "status": "testing",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-immortalsfenyxrising.addon64"
+   }
+  },
+  {
+   "id": "indygreatcircle",
+   "match": {
+    "title": [
+     "Indiana Jones and the Great Circle"
+    ]
+   },
+   "renodx": {
+    "slug": "indygreatcircle",
+    "status": "testing",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-indygreatcircle.addon64"
+   }
+  },
+  {
+   "id": "jedisurvivor",
+   "match": {
+    "title": [
+     "STAR WARS Jedi: Survivor™"
+    ]
+   },
+   "renodx": {
+    "slug": "jedisurvivor",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-jedisurvivor.addon64"
+   }
+  },
+  {
+   "id": "journey",
+   "match": {
+    "title": [
+     "Journey"
+    ]
+   },
+   "renodx": {
+    "slug": "journey",
+    "status": "working",
+    "addon64": "https://github.com/steve161803/renodx/releases/download/snapshot/renodx-journey.addon64",
+    "note": "Check the mod's thread Notes."
+   }
+  },
+  {
+   "id": "justcause4",
+   "match": {
+    "title": [
+     "Just Cause 4"
+    ]
+   },
+   "renodx": {
+    "slug": "justcause4",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-justcause4.addon64"
+   }
+  },
+  {
+   "id": "karmathedarkworld",
+   "match": {
+    "title": [
+     "KARMA: The Dark World"
+    ]
+   },
+   "renodx": {
+    "slug": "karmathedarkworld",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-karmathedarkworld.addon64"
+   }
+  },
+  {
+   "id": "kingdomcome2",
+   "match": {
+    "title": [
+     "Kingdom Come: Deliverance II"
+    ]
+   },
+   "renodx": {
+    "slug": "kingdomcome2",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-kingdomcome2.addon64"
+   }
+  },
+  {
+   "id": "koarr",
+   "match": {
+    "title": [
+     "Kingdoms of Amalur: Re-Reckoning"
+    ]
+   },
+   "renodx": {
+    "slug": "koarr",
+    "status": "working",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-koarr.addon32"
+   }
+  },
+  {
+   "id": "legohpc",
+   "match": {
+    "title": [
+     "LEGO® Harry Potter™ Collection"
+    ]
+   },
+   "renodx": {
+    "slug": "legohpc",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-legohpc.addon64"
+   }
+  },
+  {
+   "id": "lm3",
+   "match": {
+    "title": [
+     "Luigi's Mansion 3"
+    ]
+   },
+   "renodx": {
+    "slug": "lm3",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-lm3.addon64"
+   }
+  },
+  {
+   "id": "lostplanet",
+   "match": {
+    "title": [
+     "Lost Planet: Extreme Condition - Colonies Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "lostplanet",
+    "status": "working",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-lostplanet.addon32"
+   }
+  },
+  {
+   "id": "lunacid",
+   "match": {
+    "title": [
+     "Lunacid"
+    ]
+   },
+   "renodx": {
+    "slug": "lunacid",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-lunacid.addon64"
+   }
+  },
+  {
+   "id": "madmax",
+   "match": {
+    "title": [
+     "Mad Max"
+    ]
+   },
+   "renodx": {
+    "slug": "madmax",
+    "status": "working",
+    "addon64": "https://github.com/steve161803/renodx/releases/download/snapshot/renodx-madmax.addon64"
+   }
+  },
+  {
+   "id": "mafiade",
+   "match": {
+    "title": [
+     "Mafia: Definitive Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "mafiade",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-mafiade.addon64"
+   }
+  },
+  {
+   "id": "masseffectandromeda",
+   "match": {
+    "title": [
+     "Mass Effect™: Andromeda"
+    ]
+   },
+   "renodx": {
+    "slug": "masseffectandromeda",
+    "status": "working",
+    "addon64": "https://github.com/jhi721/renodx/releases/download/snapshot/renodx-masseffectandromeda.addon64"
+   }
+  },
+  {
+   "id": "masseffectle",
+   "match": {
+    "title": [
+     "Mass Effect™ Legendary Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "masseffectle",
+    "status": "working",
+    "addon64": "https://github.com/jhi721/renodx/releases/download/snapshot/renodx-masseffectle.addon64"
+   }
+  },
+  {
+   "id": "maxpayne3",
+   "match": {
+    "title": [
+     "Max Payne 3"
+    ]
+   },
+   "renodx": {
+    "slug": "maxpayne3",
+    "status": "testing",
+    "addon32": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-maxpayne3.addon32"
+   }
+  },
+  {
+   "id": "metaphorrefantazio",
+   "match": {
+    "title": [
+     "Metaphor: ReFantazio"
+    ]
+   },
+   "renodx": {
+    "slug": "metaphorrefantazio",
+    "status": "working",
+    "addon64": "https://mohannedelfatih.github.io/renodx/renodx-metaphorrefantazio.addon64"
+   }
+  },
+  {
+   "id": "metroexodus",
+   "match": {
+    "title": [
+     "Metro Exodus Enhanced Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "metroexodus",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-metroexodus.addon64"
+   }
+  },
+  {
+   "id": "metroiddread",
+   "match": {
+    "title": [
+     "Metroid Dread"
+    ]
+   },
+   "renodx": {
+    "slug": "metroiddread",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-metroiddread.addon64"
+   }
+  },
+  {
+   "id": "metroidprime",
+   "match": {
+    "title": [
+     "Metroid Prime Remastered"
+    ]
+   },
+   "renodx": {
+    "slug": "metroidprime",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-metroidprime.addon64"
+   }
+  },
+  {
+   "id": "mgsdelta",
+   "match": {
+    "title": [
+     "METAL GEAR SOLID Δ: SNAKE EATER"
+    ]
+   },
+   "renodx": {
+    "slug": "mgsdelta",
+    "status": "working",
+    "addon64": "https://github.com/clshortfuse/renodx/releases/download/snapshot/renodx-mgsdelta.addon64"
+   }
+  },
+  {
+   "id": "mhgu",
+   "match": {
+    "title": [
+     "Monster Hunter Generations Ultimate"
+    ]
+   },
+   "renodx": {
+    "slug": "mhgu",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-mhgu.addon64"
+   }
+  },
+  {
+   "id": "mhrise",
+   "match": {
+    "title": [
+     "MONSTER HUNTER RISE"
+    ]
+   },
+   "renodx": {
+    "slug": "mhrise",
+    "status": "working",
+    "addon64": "https://github.com/Izueh/renodx/releases/download/snapshot/renodx-mhrise.addon64"
+   }
+  },
+  {
+   "id": "mhwilds",
+   "match": {
+    "title": [
+     "Monster Hunter Wilds"
+    ]
+   },
+   "renodx": {
+    "slug": "mhwilds",
+    "status": "working",
+    "addon64": "https://github.com/OopyDoopy/renodx/releases/download/snapshot/renodx-mhwilds.addon64"
+   }
+  },
+  {
+   "id": "mhworld",
+   "match": {
+    "title": [
+     "Monster Hunter: World"
+    ]
+   },
+   "renodx": {
+    "slug": "mhworld",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-mhworld.addon64"
+   }
+  },
+  {
+   "id": "mk8",
+   "match": {
+    "title": [
+     "Mario Kart 8 Deluxe"
+    ]
+   },
+   "renodx": {
+    "slug": "mk8",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-mk8.addon64"
+   }
+  },
+  {
+   "id": "nfs16",
+   "match": {
+    "title": [
+     "Need for Speed™ (2016)"
+    ]
+   },
+   "renodx": {
+    "slug": "nfs16",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-nfs16.addon64"
+   }
+  },
+  {
+   "id": "nfsmw05",
+   "match": {
+    "title": [
+     "Need for Speed™ Most Wanted (2005)"
+    ]
+   },
+   "renodx": {
+    "slug": "nfsmw05",
+    "status": "working",
+    "addon32": "https://github.com/CommandGenius/renodx/releases/download/nightly-20261008/renodx-nfsmw05.addon32",
+    "note": "DXVK Reshade proxy is recommended! Please see instructions down in Source 1 section."
+   }
+  },
+  {
+   "id": "ngsigma",
+   "match": {
+    "title": [
+     "NINJA GAIDEN Σ"
+    ]
+   },
+   "renodx": {
+    "slug": "ngsigma",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-ngsigma.addon64",
+    "note": "Requires Lyall's NinjaGaidenMCFix."
+   }
+  },
+  {
+   "id": "ngsigma2",
+   "match": {
+    "title": [
+     "NINJA GAIDEN Σ2"
+    ]
+   },
+   "renodx": {
+    "slug": "ngsigma2",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-ngsigma2.addon64",
+    "note": "Requires Lyall's NinjaGaidenMCFix."
+   }
+  },
+  {
+   "id": "nierreplicant",
+   "match": {
+    "title": [
+     "NieR Replicant"
+    ]
+   },
+   "renodx": {
+    "slug": "nierreplicant",
+    "status": "testing",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-nierreplicant.addon64"
+   }
+  },
+  {
+   "id": "nightsofazure1",
+   "match": {
+    "title": [
+     "Nights of Azure"
+    ]
+   },
+   "renodx": {
+    "slug": "nightsofazure1",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-nightsofazure1.addon64"
+   }
+  },
+  {
+   "id": "nightsofazure2",
+   "match": {
+    "title": [
+     "Nights of Azure 2: Bride of the New Moon"
+    ]
+   },
+   "renodx": {
+    "slug": "nightsofazure2",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-nightsofazure2.addon64"
+   }
+  },
+  {
+   "id": "ninjagaiden4",
+   "match": {
+    "title": [
+     "Ninja Gaiden 4"
+    ]
+   },
+   "renodx": {
+    "slug": "ninjagaiden4",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-ninjagaiden4.addon64",
+    "note": "Requires Lyall's NinjaGaidenMCFix."
+   }
+  },
+  {
+   "id": "nioh2",
+   "match": {
+    "title": [
+     "Nioh 2"
+    ]
+   },
+   "renodx": {
+    "slug": "nioh2",
+    "status": "testing",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-nioh2.addon64"
+   }
+  },
+  {
+   "id": "nioh3",
+   "match": {
+    "title": [
+     "Nioh 3"
+    ]
+   },
+   "renodx": {
+    "slug": "nioh3",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-nioh3.addon64"
+   }
+  },
+  {
+   "id": "oblivionremastered",
+   "match": {
+    "title": [
+     "The Elder Scrolls IV: Oblivion Remastered"
+    ]
+   },
+   "renodx": {
+    "slug": "oblivionremastered",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-oblivionremastered.addon64"
+   }
+  },
+  {
+   "id": "onimusha-wots",
+   "match": {
+    "title": [
+     "Onimusha: Way of the Sword"
+    ]
+   },
+   "renodx": {
+    "slug": "onimusha-wots",
+    "status": "working",
+    "addon64": "https://mqhaji.github.io/renodx/renodx-onimusha-wots.addon64"
+   }
+  },
+  {
+   "id": "opus-eos",
+   "match": {
+    "title": [
+     "OPUS: Echo of Starsong - Full Bloom Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "opus-eos",
+    "status": "working",
+    "addon64": "https://github.com/clshortfuse/renodx/releases/download/snapshot/renodx-opus-eos.addon64",
+    "note": "Steam overlay must be disabled. Disable any other overlays if you run into issues."
+   }
+  },
+  {
+   "id": "ori2",
+   "match": {
+    "title": [
+     "Ori and the Will of the Wisps"
+    ]
+   },
+   "renodx": {
+    "slug": "ori2",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-ori2.addon64"
+   }
+  },
+  {
+   "id": "p4g",
+   "match": {
+    "title": [
+     "Persona 4 Golden"
+    ]
+   },
+   "renodx": {
+    "slug": "p4g",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-p4g.addon64"
+   }
+  },
+  {
+   "id": "p5r",
+   "match": {
+    "title": [
+     "Persona 5 Royal (Remake from Ersh's)"
+    ]
+   },
+   "renodx": {
+    "slug": "p5r",
+    "status": "working",
+    "addon64": "https://danaforever.github.io/renodx/renodx-p5r.addon64"
+   }
+  },
+  {
+   "id": "partyanimals",
+   "match": {
+    "title": [
+     "Party Animals"
+    ]
+   },
+   "renodx": {
+    "slug": "partyanimals",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-partyanimals.addon64"
+   }
+  },
+  {
+   "id": "pathfinder2wotr",
+   "match": {
+    "title": [
+     "Pathfinder: Wrath of the Righteous"
+    ]
+   },
+   "renodx": {
+    "slug": "pathfinder2wotr",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-pathfinder2wotr.addon64"
+   }
+  },
+  {
+   "id": "penny",
+   "match": {
+    "title": [
+     "Penny's Big Breakaway"
+    ]
+   },
+   "renodx": {
+    "slug": "penny",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-penny.addon64"
+   }
+  },
+  {
+   "id": "poe2",
+   "match": {
+    "title": [
+     "Path of Exile 2 (DX11)"
+    ]
+   },
+   "renodx": {
+    "slug": "poe2",
+    "status": "working",
+    "addon64": "https://sgtforgery.github.io/renodx/renodx-poe2.addon64"
+   }
+  },
+  {
+   "id": "raidou",
+   "match": {
+    "title": [
+     "RAIDOU Remastered: The Mystery of the Soulless Army"
+    ]
+   },
+   "renodx": {
+    "slug": "raidou",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-raidou.addon64",
+    "note": "Needs playtesting, might be missing shaders for later zones"
+   }
+  },
+  {
+   "id": "rdr2vk",
+   "match": {
+    "title": [
+     "Red Dead Redemption 2 (Vulkan)"
+    ]
+   },
+   "renodx": {
+    "slug": "rdr2vk",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-rdr2vk.addon64"
+   }
+  },
+  {
+   "id": "re4remake",
+   "match": {
+    "title": [
+     "Resident Evil 4 (Remake)"
+    ]
+   },
+   "renodx": {
+    "slug": "re4remake",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-re4remake.addon64"
+   }
+  },
+  {
+   "id": "re7-2r-3r-village",
+   "match": {
+    "title": [
+     "Resident Evil 2 (Remake)",
+     "Resident Evil 3 (Remake)",
+     "Resident Evil 7",
+     "Resident Evil Village"
+    ]
+   },
+   "renodx": {
+    "slug": "re7-2r-3r-village",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-re7-2r-3r-village.addon64"
+   }
+  },
+  {
+   "id": "rememberme",
+   "match": {
+    "title": [
+     "Remember Me"
+    ]
+   },
+   "renodx": {
+    "slug": "rememberme",
+    "status": "working",
+    "addon32": "https://github.com/steve161803/renodx/releases/download/snapshot/renodx-rememberme.addon32",
+    "note": "Check the mod's thread Notes."
+   }
+  },
+  {
+   "id": "residentevil6",
+   "match": {
+    "title": [
+     "Resident Evil 6"
+    ]
+   },
+   "renodx": {
+    "slug": "residentevil6",
+    "status": "working",
+    "addon32": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-residentevil6.addon32"
+   }
+  },
+  {
+   "id": "riseofronin",
+   "match": {
+    "title": [
+     "Rise of the Ronin"
+    ]
+   },
+   "renodx": {
+    "slug": "riseofronin",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-riseofronin.addon64"
+   }
+  },
+  {
+   "id": "risetombraider",
+   "match": {
+    "title": [
+     "Rise of the Tomb Raider"
+    ]
+   },
+   "renodx": {
+    "slug": "risetombraider",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-risetombraider.addon64"
+   }
+  },
+  {
+   "id": "roadhogengine",
+   "match": {
+    "title": [
+     "Hard Reset Redux",
+     "Shadow Warrior (2013) & Shadow Warrior 2"
+    ]
+   },
+   "renodx": {
+    "slug": "roadhogengine",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-roadhogengine.addon64"
+   }
+  },
+  {
+   "id": "robocop",
+   "match": {
+    "title": [
+     "RoboCop: Rogue City"
+    ]
+   },
+   "renodx": {
+    "slug": "robocop",
+    "status": "working",
+    "addon64": "https://mqhaji.github.io/renodx/renodx-robocop.addon64"
+   }
+  },
+  {
+   "id": "rotsp",
+   "match": {
+    "title": [
+     "Revenge of the Savage Planet"
+    ]
+   },
+   "renodx": {
+    "slug": "rotsp",
+    "status": "working",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-rotsp.addon64"
+   }
+  },
+  {
+   "id": "routine",
+   "match": {
+    "title": [
+     "ROUTINE"
+    ]
+   },
+   "renodx": {
+    "slug": "routine",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-routine.addon64"
+   }
+  },
+  {
+   "id": "ryza",
+   "match": {
+    "title": [
+     "Atelier Ryza: Ever Darkness & the Secret Hideout"
+    ]
+   },
+   "renodx": {
+    "slug": "ryza",
+    "status": "working",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-ryza.addon64"
+   }
+  },
+  {
+   "id": "ryza2",
+   "match": {
+    "title": [
+     "Atelier Ryza 2: Lost Legends & the Secret Fairy"
+    ]
+   },
+   "renodx": {
+    "slug": "ryza2",
+    "status": "working",
+    "addon64": "https://marat569.github.io/renodx/renodx-ryza2.addon64"
+   }
+  },
+  {
+   "id": "ryza3",
+   "match": {
+    "title": [
+     "Atelier Ryza 3: Alchemist of the End & the Secret Key"
+    ]
+   },
+   "renodx": {
+    "slug": "ryza3",
+    "status": "working",
+    "addon64": "https://marat569.github.io/renodx/renodx-ryza3.addon64"
+   }
+  },
+  {
+   "id": "saboteur",
+   "match": {
+    "title": [
+     "The Saboteur"
+    ]
+   },
+   "renodx": {
+    "slug": "saboteur",
+    "status": "working",
+    "addon32": "https://github.com/CommandGenius/renodx/releases/download/snapshot/renodx-saboteur.addon32",
+    "note": "DXVK Reshade proxy is recommended! Please see instructions down in Source 1 section."
+   }
+  },
+  {
+   "id": "saintsrow2022",
+   "match": {
+    "title": [
+     "Saints Row"
+    ]
+   },
+   "renodx": {
+    "slug": "saintsrow2022",
+    "status": "working",
+    "addon64": "https://github.com/jhi721/renodx/releases/download/snapshot/renodx-saintsrow2022.addon64"
+   }
+  },
+  {
+   "id": "sao-alicization",
+   "match": {
+    "title": [
+     "SWORD ART ONLINE Alicization Lycoris"
+    ]
+   },
+   "renodx": {
+    "slug": "sao-alicization",
+    "status": "working",
+    "addon64": "https://github.com/Toru77/renodx/releases/download/snapshot/renodx-sao-alicization.addon64"
+   }
+  },
+  {
+   "id": "scblacklist",
+   "match": {
+    "title": [
+     "Tom Clancy's Splinter Cell Blacklist"
+    ]
+   },
+   "renodx": {
+    "slug": "scblacklist",
+    "status": "working",
+    "addon32": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-scblacklist.addon32"
+   }
+  },
+  {
+   "id": "scct",
+   "match": {
+    "title": [
+     "Tom Clancy's Splinter Cell: Chaos Theory"
+    ]
+   },
+   "renodx": {
+    "slug": "scct",
+    "status": "working",
+    "addon32": "https://github.com/ldavid1994/renodx/releases/download/snapshot/renodx-scct.addon32"
+   }
+  },
+  {
+   "id": "seaofstars",
+   "match": {
+    "title": [
+     "Sea of Stars: Sunset Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "seaofstars",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-seaofstars.addon64"
+   }
+  },
+  {
+   "id": "senkiseki",
+   "match": {
+    "title": [
+     "The Legend of Heroes: Trails of Cold Steel (III-IV-V)"
+    ]
+   },
+   "renodx": {
+    "slug": "senkiseki",
+    "status": "working",
+    "addon64": "https://danaforever.github.io/renodx/renodx-senkiseki.addon64"
+   }
+  },
+  {
+   "id": "shadowgambit",
+   "match": {
+    "title": [
+     "Shadow Gambit: The Cursed Crew"
+    ]
+   },
+   "renodx": {
+    "slug": "shadowgambit",
+    "status": "working",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-shadowgambit.addon64"
+   }
+  },
+  {
+   "id": "shadowofwar",
+   "match": {
+    "title": [
+     "Middle-earth™: Shadow of War™"
+    ]
+   },
+   "renodx": {
+    "slug": "shadowofwar",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-shadowofwar.addon64"
+   }
+  },
+  {
+   "id": "shadowtombraider",
+   "match": {
+    "title": [
+     "Shadow of the Tomb Raider"
+    ]
+   },
+   "renodx": {
+    "slug": "shadowtombraider",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-shadowtombraider.addon64"
+   }
+  },
+  {
+   "id": "shinobiaov",
+   "match": {
+    "title": [
+     "SHINOBI: Art of Vengeance"
+    ]
+   },
+   "renodx": {
+    "slug": "shinobiaov",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-shinobiaov.addon64"
+   }
+  },
+  {
+   "id": "silenthill2remake",
+   "match": {
+    "title": [
+     "SILENT HILL 2 (Remake)"
+    ]
+   },
+   "renodx": {
+    "slug": "silenthill2remake",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-silenthill2remake.addon64"
+   }
+  },
+  {
+   "id": "silenthillf",
+   "match": {
+    "title": [
+     "SILENT HILL f"
+    ]
+   },
+   "renodx": {
+    "slug": "silenthillf",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-silenthillf.addon64"
+   }
+  },
+  {
+   "id": "skyrimse",
+   "match": {
+    "title": [
+     "The Elder Scrolls V: Skyrim Special Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "skyrimse",
+    "status": "working",
+    "addon64": "https://github.com/legoliamneeson/renodx/releases/download/nightly-20260503/renodx-skyrimse.addon64",
+    "note": "Check the Nexus page for installation instructions"
+   }
+  },
+  {
+   "id": "smt5",
+   "match": {
+    "title": [
+     "Shin Megami Tensei V: Vengeance"
+    ]
+   },
+   "renodx": {
+    "slug": "smt5",
+    "status": "working",
+    "addon64": "https://marat569.github.io/renodx/renodx-smt5.addon64"
+   }
+  },
+  {
+   "id": "sniperelite4",
+   "match": {
+    "title": [
+     "Sniper Elite 4 (DX11)"
+    ]
+   },
+   "renodx": {
+    "slug": "sniperelite4",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-sniperelite4.addon64"
+   }
+  },
+  {
+   "id": "sonicgenerations",
+   "match": {
+    "title": [
+     "Sonic Generations"
+    ]
+   },
+   "renodx": {
+    "slug": "sonicgenerations",
+    "status": "testing",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-sonicgenerations.addon32"
+   }
+  },
+  {
+   "id": "sonicunleashedrecomp",
+   "match": {
+    "title": [
+     "Sonic Unleashed Recompiled"
+    ]
+   },
+   "renodx": {
+    "slug": "sonicunleashedrecomp",
+    "status": "testing",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-sonicunleashedrecomp.addon64",
+    "note": "Motion blur needs to be disabled. Currently doesn't work with RTX 50 GPUs."
+   }
+  },
+  {
+   "id": "sonsoftheforest",
+   "match": {
+    "title": [
+     "Sons of The Forest"
+    ]
+   },
+   "renodx": {
+    "slug": "sonsoftheforest",
+    "status": "working",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-sonsoftheforest.addon64"
+   }
+  },
+  {
+   "id": "sopffo",
+   "match": {
+    "title": [
+     "STRANGER OF PARADISE FINAL FANTASY ORIGIN"
+    ]
+   },
+   "renodx": {
+    "slug": "sopffo",
+    "status": "testing",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-sopffo.addon64"
+   }
+  },
+  {
+   "id": "sophie1",
+   "match": {
+    "title": [
+     "Atelier Sophie: The Alchemist of the Mysterious Book DX"
+    ]
+   },
+   "renodx": {
+    "slug": "sophie1",
+    "status": "working",
+    "addon64": "https://marat569.github.io/renodx/renodx-sophie1.addon64"
+   }
+  },
+  {
+   "id": "spacemarine2",
+   "match": {
+    "title": [
+     "Warhammer 40,000: Space Marine 2"
+    ]
+   },
+   "renodx": {
+    "slug": "spacemarine2",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-spacemarine2.addon64"
+   }
+  },
+  {
+   "id": "specopstheline",
+   "match": {
+    "title": [
+     "Spec Ops: The Line"
+    ]
+   },
+   "renodx": {
+    "slug": "specopstheline",
+    "status": "working",
+    "addon32": "https://github.com/steve161803/renodx/releases/download/snapshot/renodx-specopstheline.addon32",
+    "note": "Check the mod's thread for Notes."
+   }
+  },
+  {
+   "id": "spiderman2",
+   "match": {
+    "title": [
+     "Marvel's Spider-Man 2"
+    ]
+   },
+   "renodx": {
+    "slug": "spiderman2",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-spiderman2.addon64"
+   }
+  },
+  {
+   "id": "spiderman_2018_miles",
+   "match": {
+    "title": [
+     "Marvel's Spider-Man: Miles Morales",
+     "Marvel's Spider-Man Remastered"
+    ]
+   },
+   "renodx": {
+    "slug": "spiderman_2018_miles",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-spiderman_2018_miles.addon64"
+   }
+  },
+  {
+   "id": "splatoon",
+   "match": {
+    "title": [
+     "Splatoon"
+    ]
+   },
+   "renodx": {
+    "slug": "splatoon",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-splatoon.addon64"
+   }
+  },
+  {
+   "id": "splatoon2",
+   "match": {
+    "title": [
+     "Splatoon 2"
+    ]
+   },
+   "renodx": {
+    "slug": "splatoon2",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-splatoon2.addon64"
+   }
+  },
+  {
+   "id": "splatoon3",
+   "match": {
+    "title": [
+     "Splatoon 3"
+    ]
+   },
+   "renodx": {
+    "slug": "splatoon3",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-splatoon3.addon64"
+   }
+  },
+  {
+   "id": "starfield",
+   "match": {
+    "title": [
+     "Starfield"
+    ]
+   },
+   "renodx": {
+    "slug": "starfield",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-starfield.addon64"
+   }
+  },
+  {
+   "id": "steelrising",
+   "match": {
+    "title": [
+     "Steelrising"
+    ]
+   },
+   "renodx": {
+    "slug": "steelrising",
+    "status": "testing",
+    "addon64": "https://notvoosh.github.io/renodx/renodx-steelrising.addon64",
+    "note": "Currently broken"
+   }
+  },
+  {
+   "id": "streetfighter6",
+   "match": {
+    "title": [
+     "Street Fighter™ 6"
+    ]
+   },
+   "renodx": {
+    "slug": "streetfighter6",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-streetfighter6.addon64"
+   }
+  },
+  {
+   "id": "sunsetoverdrive",
+   "match": {
+    "title": [
+     "Sunset Overdrive"
+    ]
+   },
+   "renodx": {
+    "slug": "sunsetoverdrive",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-sunsetoverdrive.addon64"
+   }
+  },
+  {
+   "id": "supermario3dworld",
+   "match": {
+    "title": [
+     "Super Mario 3D World"
+    ]
+   },
+   "renodx": {
+    "slug": "supermario3dworld",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-supermario3dworld.addon64"
+   }
+  },
+  {
+   "id": "tacticalbreachwizards",
+   "match": {
+    "title": [
+     "Tactical Breach Wizards"
+    ]
+   },
+   "renodx": {
+    "slug": "tacticalbreachwizards",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-tacticalbreachwizards.addon64"
+   }
+  },
+  {
+   "id": "talesofgracesf",
+   "match": {
+    "title": [
+     "Tales of Graces f Remastered"
+    ]
+   },
+   "renodx": {
+    "slug": "talesofgracesf",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-talesofgracesf.addon64"
+   }
+  },
+  {
+   "id": "teardown",
+   "match": {
+    "title": [
+     "Teardown (DX12)"
+    ]
+   },
+   "renodx": {
+    "slug": "teardown",
+    "status": "testing",
+    "addon64": "https://notvoosh.github.io/renodx/renodx-teardown.addon64"
+   }
+  },
+  {
+   "id": "tekken8",
+   "match": {
+    "title": [
+     "TEKKEN 8"
+    ]
+   },
+   "renodx": {
+    "slug": "tekken8",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-tekken8.addon64"
+   }
+  },
+  {
+   "id": "terraria",
+   "match": {
+    "title": [
+     "Terraria"
+    ]
+   },
+   "renodx": {
+    "slug": "terraria",
+    "status": "testing",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-terraria.addon32"
+   }
+  },
+  {
+   "id": "terraria-tml",
+   "match": {
+    "title": [
+     "tModLoader"
+    ]
+   },
+   "renodx": {
+    "slug": "terraria-tml",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-terraria-tml.addon64"
+   }
+  },
+  {
+   "id": "tew2",
+   "match": {
+    "title": [
+     "The Evil Within 2"
+    ]
+   },
+   "renodx": {
+    "slug": "tew2",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-tew2.addon64",
+    "note": "Fully playable, just needs playtesting/feedback"
+   }
+  },
+  {
+   "id": "thehundredline",
+   "match": {
+    "title": [
+     "The Hundred Line: Last Defense Academy"
+    ]
+   },
+   "renodx": {
+    "slug": "thehundredline",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-thehundredline.addon64"
+   }
+  },
+  {
+   "id": "thesurge",
+   "match": {
+    "title": [
+     "The Surge"
+    ]
+   },
+   "renodx": {
+    "slug": "thesurge",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-thesurge.addon64"
+   }
+  },
+  {
+   "id": "thetownoflight",
+   "match": {
+    "title": [
+     "The Town of Light"
+    ]
+   },
+   "renodx": {
+    "slug": "thetownoflight",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-thetownoflight.addon64"
+   }
+  },
+  {
+   "id": "thewitcher3",
+   "match": {
+    "title": [
+     "The Witcher 3: Wild Hunt (Next Gen)"
+    ]
+   },
+   "renodx": {
+    "slug": "thewitcher3",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-thewitcher3.addon64"
+   }
+  },
+  {
+   "id": "thewitcher3remastered",
+   "match": {
+    "title": [
+     "The Witcher 3: Wild Hunt — Remastered"
+    ]
+   },
+   "renodx": {
+    "slug": "thewitcher3remastered",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-thewitcher3remastered.addon64"
+   }
+  },
+  {
+   "id": "thewitness",
+   "match": {
+    "title": [
+     "The Witness"
+    ]
+   },
+   "renodx": {
+    "slug": "thewitness",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-thewitness.addon64"
+   }
+  },
+  {
+   "id": "tombraider2013",
+   "match": {
+    "title": [
+     "Tomb Raider (2013)"
+    ]
+   },
+   "renodx": {
+    "slug": "tombraider2013",
+    "status": "working",
+    "addon32": "https://clshortfuse.github.io/renodx/renodx-tombraider2013.addon32"
+   }
+  },
+  {
+   "id": "tombraider2013de",
+   "match": {
+    "title": [
+     "Tomb Raider (2013) - Definitive Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "tombraider2013de",
+    "status": "testing",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-tombraider2013de.addon64",
+    "note": "Breaks the lighting in some parts of the game, like the Chasm Monastery"
+   }
+  },
+  {
+   "id": "totk",
+   "match": {
+    "title": [
+     "The Legend of Zelda: Tears of the Kingdom"
+    ]
+   },
+   "renodx": {
+    "slug": "totk",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-totk.addon64"
+   }
+  },
+  {
+   "id": "trackmania",
+   "match": {
+    "title": [
+     "Trackmania"
+    ]
+   },
+   "renodx": {
+    "slug": "trackmania",
+    "status": "testing",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-trackmania.addon64",
+    "note": "Mod has great HDR, but breaks some customization menus."
+   }
+  },
+  {
+   "id": "trine2",
+   "match": {
+    "title": [
+     "Trine 2: Complete Story"
+    ]
+   },
+   "renodx": {
+    "slug": "trine2",
+    "status": "working",
+    "addon64": "https://github.com/chrisboyer2/renodx/releases/download/v2.0/renodx-trine2.addon64"
+   }
+  },
+  {
+   "id": "tunic",
+   "match": {
+    "title": [
+     "TUNIC"
+    ]
+   },
+   "renodx": {
+    "slug": "tunic",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-tunic.addon64"
+   }
+  },
+  {
+   "id": "tw-3kingdoms",
+   "match": {
+    "title": [
+     "Total War: THREE KINGDOMS"
+    ]
+   },
+   "renodx": {
+    "slug": "tw-3kingdoms",
+    "status": "working",
+    "addon64": "https://sgtforgery.github.io/renodx/renodx-tw-3kingdoms.addon64"
+   }
+  },
+  {
+   "id": "ue-extended",
+   "match": {
+    "title": [
+     "S.T.A.L.K.E.R. 2: Heart of Chornobyl"
+    ]
+   },
+   "renodx": {
+    "slug": "ue-extended",
+    "status": "working",
+    "addon64": "https://github.com/marat569/renodx/releases/download/snapshot/renodx-ue-extended.addon64",
+    "note": "UE-Extended mod. Set gamma/contrast/brightness ingame settings to 50%!"
+   }
+  },
+  {
+   "id": "unchartedlotc",
+   "match": {
+    "title": [
+     "UNCHARTED™: Legacy of Thieves Collection"
+    ]
+   },
+   "renodx": {
+    "slug": "unchartedlotc",
+    "status": "working",
+    "addon64": "https://github.com/mqhaji/renodx/releases/download/snapshot/renodx-unchartedlotc.addon64"
+   }
+  },
+  {
+   "id": "valheim",
+   "match": {
+    "title": [
+     "Valheim"
+    ]
+   },
+   "renodx": {
+    "slug": "valheim",
+    "status": "working",
+    "addon64": "https://oopydoopy.github.io/renodx/renodx-valheim.addon64"
+   }
+  },
+  {
+   "id": "vanhelsingfinalcut",
+   "match": {
+    "title": [
+     "The Incredible Adventures of Van Helsing: Final Cut"
+    ]
+   },
+   "renodx": {
+    "slug": "vanhelsingfinalcut",
+    "status": "working",
+    "addon64": "https://notvoosh.github.io/renodx/renodx-vanhelsingfinalcut.addon64"
+   }
+  },
+  {
+   "id": "warframe",
+   "match": {
+    "title": [
+     "Warframe"
+    ]
+   },
+   "renodx": {
+    "slug": "warframe",
+    "status": "working",
+    "addon64": "https://hboyyt.github.io/renodx/renodx-warframe.addon64"
+   }
+  },
+  {
+   "id": "watchdogs",
+   "match": {
+    "title": [
+     "Watch_Dogs"
+    ]
+   },
+   "renodx": {
+    "slug": "watchdogs",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-watchdogs.addon64"
+   }
+  },
+  {
+   "id": "wolong",
+   "match": {
+    "title": [
+     "Wo Long: Fallen Dynasty"
+    ]
+   },
+   "renodx": {
+    "slug": "wolong",
+    "status": "testing",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-wolong.addon64"
+   }
+  },
+  {
+   "id": "wutheringwaves",
+   "match": {
+    "title": [
+     "Wuthering Waves"
+    ]
+   },
+   "renodx": {
+    "slug": "wutheringwaves",
+    "status": "working",
+    "addon64": "https://clshortfuse.github.io/renodx/renodx-wutheringwaves.addon64"
+   }
+  },
+  {
+   "id": "xbcx",
+   "match": {
+    "title": [
+     "Xenoblade Chronicles X: Definitive Edition"
+    ]
+   },
+   "renodx": {
+    "slug": "xbcx",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-xbcx.addon64"
+   }
+  },
+  {
+   "id": "xcom2",
+   "match": {
+    "title": [
+     "XCOM 2"
+    ]
+   },
+   "renodx": {
+    "slug": "xcom2",
+    "status": "working",
+    "addon64": "https://sgtforgery.github.io/renodx/renodx-xcom2.addon64"
+   }
+  },
+  {
+   "id": "xenobladechronicles",
+   "match": {
+    "title": [
+     "Xenoblade Chronicles (1-3)"
+    ]
+   },
+   "renodx": {
+    "slug": "xenobladechronicles",
+    "status": "working",
+    "addon64": "https://souperman9.github.io/renodx/renodx-xenobladechronicles.addon64"
+   }
+  },
+  {
+   "id": "yakuza0",
+   "match": {
+    "title": [
+     "Yakuza 0",
+     "Yakuza Kiwami (1)"
+    ]
+   },
+   "renodx": {
+    "slug": "yakuza0",
+    "status": "testing",
+    "addon64": "https://akuru-q.github.io/renodx/renodx-yakuza0.addon64"
+   }
+  },
+  {
+   "id": "yakuzapirates",
+   "match": {
+    "title": [
+     "Like a Dragon: Pirate Yakuza in Hawaii",
+     "Like a Dragon Gaiden: The Man Who Erased His Name",
+     "Like a Dragon: Infinite Wealth"
+    ]
+   },
+   "renodx": {
+    "slug": "yakuzapirates",
+    "status": "working",
+    "addon64": "https://marat569.github.io/renodx/renodx-yakuzapirates.addon64"
+   }
+  },
+  {
+   "id": "ys10",
+   "match": {
+    "title": [
+     "Ys X: Nordics"
+    ]
+   },
+   "renodx": {
+    "slug": "ys10",
+    "status": "working",
+    "addon64": "https://marat569.github.io/renodx/renodx-ys10.addon64"
+   }
+  },
+  {
+   "id": "ys9",
+   "match": {
+    "title": [
+     "YS IX: Monstrum Nox"
+    ]
+   },
+   "renodx": {
+    "slug": "ys9",
+    "status": "working",
+    "addon64": "https://danaforever.github.io/renodx/renodx-ys9.addon64"
+   }
+  },
+  {
+   "id": "yumia1",
+   "match": {
+    "title": [
+     "Atelier Yumia: The Alchemist of Memories & the Envisioned Land"
+    ]
+   },
+   "renodx": {
+    "slug": "yumia1",
+    "status": "testing",
+    "addon64": "https://marat569.github.io/renodx/renodx-yumia1.addon64",
+    "note": "Fully playable, just needs playtesting/feedback"
+   }
+  },
+  {
+   "id": "zenless-zone-zero",
+   "match": {
+    "title": [
+     "Zenless Zone Zero"
+    ]
+   },
+   "renodx": {
+    "slug": "zenless-zone-zero",
+    "status": "testing",
+    "addon64": "https://github.com/skyline330/renodx/releases/download/snapshot/renodx-zenless-zone-zero.addon64"
+   }
+  },
+  {
+   "id": "zerokiseki",
+   "match": {
+    "title": [
+     "The Legend of Heroes: Trails from Zero/to Azure"
+    ]
+   },
+   "renodx": {
+    "slug": "zerokiseki",
+    "status": "working",
+    "addon64": "https://danaforever.github.io/renodx/renodx-zerokiseki.addon64"
+   }
+  }
+ ]
+}

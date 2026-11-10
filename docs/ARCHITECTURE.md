@@ -177,9 +177,16 @@ text size) and applies it.
   holds what graphics mods share: the `GraphicsMod` trait and its list
   (ReShade is the first), the journal that undoes a failed write in a game's
   folder, `WINEDLLOVERRIDES` editing, the anti-cheat check, downloads and
-  hashes; `gfxmods::apply` adds every mod that is on to a launch. Heronite
-  only places files and sets variables for them; it never injects into a
-  game. `fps_limit` holds a
+  hashes; `gfxmods::apply` adds every mod that is on to a launch.
+  `gfxmods::catalog` reads Heronite's catalog of mods per game
+  (`data/graphics-mods.json`, fetched from its raw address at most daily,
+  the copy built into the app as fallback, built by
+  `scripts/graphics-mods-catalog.py` and changed only through reviewed pull
+  requests) and matches a game by Steam app id, executable, title or engine.
+  `gfxmods::renodx` puts RenoDX's HDR add-on beside a ReShade that is the
+  build with add-on support (`reshade::manage::set_addon`; both are refused
+  for games with anti-cheat). Heronite only places files and sets variables
+  for them; it never injects into a game. `fps_limit` holds a
   game's one FPS limit and picks the one limiter that applies it (MangoHud,
   DXVK / VKD3D-Proton or gamescope; Heroic's separate limiters are read as
   a fallback). `live_fps` makes that limit changeable while the game runs when MangoHud or gamescope applies it

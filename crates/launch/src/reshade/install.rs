@@ -31,6 +31,8 @@ pub enum Step {
     Compiler,
     /// Name of a package or extra source.
     Shaders(String),
+    /// Name of a ReShade add-on (a RenoDX mod).
+    Addon(String),
     Config,
 }
 
@@ -109,6 +111,7 @@ fn write_install(
         proxy: req.proxy.clone(),
         target_dir: dir.to_string_lossy().into_owned(),
         adopted: false,
+        addon: false,
         compiler: None,
         enabled: true,
         packages: Vec::new(),
