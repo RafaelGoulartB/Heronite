@@ -144,9 +144,10 @@ tried.
     .layers/<nnn>               short symlinks to the layers (mount options)
 ```
 
-Backups (`heronite_backup::catalog`): `mods.json` and `overwrite/` are in the
-Collection part, `nexus.json` in Logins; mod files, downloads and caches are
-left out (`Left::Mods`: big, downloaded again).
+Backups (`heronite_backup::catalog`) leave the whole `<mods root>` out
+(`Left::Mods`): the mod files and their downloads are big, what a game wrote
+while modded can be as big, and a list restored without its files would stop
+the game from starting. The Nexus Mods key is typed again after a restore.
 
 ## Mounting (`deploy`)
 

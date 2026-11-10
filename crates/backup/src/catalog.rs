@@ -65,8 +65,9 @@ pub enum Left {
     /// The home folders games in the sandbox write to (`sandbox/`): left out
     /// like the games' prefixes, which they belong with.
     Sandbox,
-    /// Mod files and their archives (`mods/<game>/mods`, `downloads`): often
-    /// many GB, and downloaded again. The mod lists are in.
+    /// Everything of the mods (`mods/`): the mod files and their archives are
+    /// often many GB, what a game wrote while modded can be as big, and a
+    /// list restored without its files would stop the game from starting.
     Mods,
 }
 
@@ -135,8 +136,8 @@ pub fn classify_data(rel: &str) -> Class {
     if under(rel, "sandbox") {
         return Class::Out(Left::Sandbox);
     }
-    if let Some(class) = classify_mods(rel) {
-        return class;
+    if under(rel, "mods") {
+        return Class::Out(Left::Mods);
     }
     if ["images-cache", "local_library/heroes", "local_library/screenshot-thumbnails"].iter().any(|d| under(rel, d)) {
         return Class::Out(Left::Images);
@@ -169,23 +170,6 @@ pub fn classify_data(rel: &str) -> Class {
         return Class::Out(Left::Caches);
     }
     Class::In(Part::Collection)
-}
-
-/// The mods folder (`heronite_mods`): each game's `mods.json` and what the
-/// game wrote while modded (`overwrite/`, often settings and saves) are in,
-/// the Nexus Mods account goes with the sign-ins, the rest is left out.
-fn classify_mods(rel: &str) -> Option<Class> {
-    let rest = rel.strip_prefix("mods/").or_else(|| (rel == "mods").then_some(""))?;
-    if rest == "nexus.json" {
-        return Some(Class::In(Part::Logins));
-    }
-    let mut parts = rest.splitn(3, '/');
-    let (_game, inner) = (parts.next(), parts.next());
-    Some(match inner {
-        Some("mods.json") if !is_temp(rel) => Class::In(Part::Collection),
-        Some("overwrite") => Class::In(Part::Collection),
-        _ => Class::Out(Left::Mods),
-    })
 }
 
 /// Class of `rel` (relative to the app state folder).
@@ -251,7 +235,7 @@ fn walk_into(dir: &Path, prefix: &str, side: Side, enter_left: bool, out: &mut V
 
 /// Left-out folders that still hold files a backup keeps.
 fn has_kept_children(side: Side, rel: &str) -> bool {
-    side == Side::Data && (rel == "store_cache" || rel == "mods" || rel.strip_prefix("mods/").is_some_and(|g| !g.contains('/')))
+    side == Side::Data && rel == "store_cache"
 }
 
 pub(crate) fn mtime_ms(meta: &fs::Metadata) -> i64 {
@@ -297,9 +281,10 @@ mod tests {
             ("local_library/steam-details/1.english.json", Out(Left::Caches)),
             ("store/download-manager.json", Out(Left::Caches)),
             ("local_library/running.json", Out(Left::Temp)),
-            ("mods/legendary_x/mods.json", In(Part::Collection)),
-            ("mods/legendary_x/overwrite/Data/SKSE/skse.ini", In(Part::Collection)),
-            ("mods/nexus.json", In(Part::Logins)),
+            ("mods/legendary_x/mods.json", Out(Left::Mods)),
+            ("mods/legendary_x/overwrite/Data/SKSE/skse.ini", Out(Left::Mods)),
+            ("mods/nexus.json", Out(Left::Mods)),
+            ("mods", Out(Left::Mods)),
             ("mods/legendary_x/mods/skyui/Data/SkyUI_SE.esp", Out(Left::Mods)),
             ("mods/legendary_x/downloads/SkyUI.7z", Out(Left::Mods)),
             ("mods/legendary_x/.work/work/x", Out(Left::Mods)),
