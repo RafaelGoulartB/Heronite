@@ -272,6 +272,9 @@ fn a_job_never_fills_a_family_that_is_not_kept() {
 #[test]
 fn a_view_that_starts_using_a_family_queues_one_job() {
     let s = setup(&[]);
+    // Off until the user asks for it: nothing is queued.
+    assert!(s.svc.cover_family_job(CoverFamily::Square, None).is_none());
+    heronite_data::settings::set_fill_cover_families(&s.paths, true).unwrap();
     put(&s.paths, &record("steam_620", |_| {}));
     put(&s.paths, &record("plain", |m| m.cover_square_url = Some("https://mine/sq.png".into())));
     let job = s.svc.cover_family_job(CoverFamily::Square, None).unwrap();
@@ -452,6 +455,7 @@ fn a_covers_download_leaves_games_without_details_and_the_fetch_marks_as_they_we
 #[test]
 fn a_family_download_is_queued_once_while_one_runs_or_waits() {
     let s = setup(&[]);
+    heronite_data::settings::set_fill_cover_families(&s.paths, true).unwrap();
     put(&s.paths, &record("steam_620", |_| {}));
     put(&s.paths, &record("plain", |_| {}));
     // The job's thread waits in its first progress until `go` is dropped.

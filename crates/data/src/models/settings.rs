@@ -223,8 +223,8 @@ pub struct MetadataSettings {
     pub keep_cover_families: Vec<String>,
     /// When a view starts using a family (the aspect or the console theme
     /// changes), its covers are fetched for the games that lack them.
-    /// Written only when off.
-    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    /// Off unless the user turns it on; written only when on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub fill_cover_families: bool,
     /// Addresses of the lists of metadata extensions the user added (the
     /// app's own list is always read and is not here), in the order added.
@@ -232,10 +232,6 @@ pub struct MetadataSettings {
     pub extension_lists: Vec<String>,
     #[serde(flatten)]
     pub extra: Extra,
-}
-
-fn is_true(v: &bool) -> bool {
-    *v
 }
 
 /// One source's entry in `settings.metadata.sources`. Every key is optional;

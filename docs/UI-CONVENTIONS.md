@@ -108,7 +108,7 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   switch. The switch keeps the family (`keepCoverFamilies`: fetches and updates fill it, the Covers dialog and the
   Metadata rows list it); it is locked on while a view draws the family, and the Tall row is always so. Then a switch,
   "Download a shape as soon as a view starts using it" ("Picking a square aspect, or a Console mode theme with square or
-  wide tiles, fetches those covers by itself", `fillCoverFamilies`, on by default), and, for each family in use that
+  wide tiles, fetches those covers by itself", `fillCoverFamilies`, off by default), and, for each family in use that
   some game shows cropped, a line "147 games show a cropped square cover" with "Download square covers" (the whole
   Collection, whatever the switch says; dimmed with "No source that gives square covers is on." when none can be asked;
   the header pill follows the job). Under the cards, "When details arrive" holds the switches that belong to no source: fill

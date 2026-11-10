@@ -418,7 +418,7 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         sources: normalize_source_prefs(value.map(|v| &v.sources)),
         source_order: value.map(|v| clean_ids(&v.source_order)).unwrap_or_default(),
         keep_cover_families: value.map(|v| clean_ids(&v.keep_cover_families)).unwrap_or_default(),
-        fill_cover_families: value.map(|v| v.fill_cover_families).unwrap_or(true),
+        fill_cover_families: value.is_some_and(|v| v.fill_cover_families),
         extension_lists: value.map(|v| clean_ids(&v.extension_lists)).unwrap_or_default(),
         // Keys a newer build added stay for it.
         extra: value.map(|v| v.extra.clone()).unwrap_or_default(),
@@ -610,7 +610,7 @@ mod tests {
         assert_eq!(s.metadata.field_priority["cover"], ["igdb", "steam", "lutris", "playnite", "store", "vndb", "launchbox", "libretro"]);
         assert!(!s.metadata.allow_adult_covers);
         assert_eq!(s.metadata.field_priority["coverSquare"], ["steamgriddb", "launchbox", "libretro"]);
-        assert!(s.metadata.keep_cover_families.is_empty() && s.metadata.fill_cover_families);
+        assert!(s.metadata.keep_cover_families.is_empty() && !s.metadata.fill_cover_families);
         assert_eq!(s.backup.interval, "weekly");
         assert_eq!(s.ludusavi.format, "zip");
         assert_eq!(s.ludusavi.compression, "deflate");
@@ -714,20 +714,20 @@ mod tests {
         std::fs::create_dir_all(paths.local_library()).unwrap();
         std::fs::write(paths.collection_settings(), r#"{"metadata":{"coverAspect":"square","igdbClientId":"x"}}"#).unwrap();
         let s = load(&paths).unwrap();
-        assert!(s.metadata.keep_cover_families.is_empty() && s.metadata.fill_cover_families);
+        assert!(s.metadata.keep_cover_families.is_empty() && !s.metadata.fill_cover_families);
         let s = set_cover_family_kept(&paths, crate::cover_family::CoverFamily::Wide, true).unwrap();
         assert_eq!(s.metadata.keep_cover_families, ["wide"]);
         set_cover_family_kept(&paths, crate::cover_family::CoverFamily::Tall, true).unwrap();
-        let s = set_fill_cover_families(&paths, false).unwrap();
-        assert!(!s.metadata.fill_cover_families);
-        let v = json_store::read_value(&paths.collection_settings()).unwrap();
-        assert_eq!(v["metadata"]["keepCoverFamilies"], json!(["wide"]));
-        assert_eq!(v["metadata"]["fillCoverFamilies"], false);
-        assert_eq!(v["metadata"]["fieldPriority"]["coverWide"], json!(["steam", "store", "steamgriddb", "libretro"]));
         let s = set_fill_cover_families(&paths, true).unwrap();
         assert!(s.metadata.fill_cover_families);
         let v = json_store::read_value(&paths.collection_settings()).unwrap();
-        assert!(v["metadata"].get("fillCoverFamilies").is_none(), "on is the default: not written");
+        assert_eq!(v["metadata"]["keepCoverFamilies"], json!(["wide"]));
+        assert_eq!(v["metadata"]["fillCoverFamilies"], true);
+        assert_eq!(v["metadata"]["fieldPriority"]["coverWide"], json!(["steam", "store", "steamgriddb", "libretro"]));
+        let s = set_fill_cover_families(&paths, false).unwrap();
+        assert!(!s.metadata.fill_cover_families);
+        let v = json_store::read_value(&paths.collection_settings()).unwrap();
+        assert!(v["metadata"].get("fillCoverFamilies").is_none(), "off is the default: not written");
         set_cover_family_kept(&paths, crate::cover_family::CoverFamily::Wide, false).unwrap();
         let v = json_store::read_value(&paths.collection_settings()).unwrap();
         assert!(v["metadata"].get("keepCoverFamilies").is_none());
