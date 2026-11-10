@@ -58,10 +58,11 @@ pub struct PackageInfo {
     /// The version installed now, if one is.
     pub installed: Option<String>,
     /// Who made the version installed now, or the one removed while what
-    /// the user set for it was kept.
+    /// the user set for it was kept. `None` with `author_changed`: an
+    /// installed version whose manifest no longer reads.
     pub installed_author: Option<String>,
     /// That author is not this package's (the name is the author's own
-    /// word: nothing proves who wrote either).
+    /// word: nothing proves who wrote either), or is unknown.
     pub author_changed: bool,
     /// Hosts (and picture hosts) it connects to that the version installed,
     /// or removed with its settings kept, did not.
@@ -204,6 +205,9 @@ fn info(service: &MetadataService, pkg: &Package) -> PackageInfo {
     let installed = installed_manifest(service, &m.id).map(|i| i.version.to_string());
     let action = installed.as_deref().map_or(InstallAction::New, |v| version_order(v, &m.version));
     let before = before(service, &m.id);
+    // A folder is installed but its manifest no longer reads: who made it
+    // is unknown, so the settings saved for it are not handed over unasked.
+    let unknown = installed.is_none() && store::root(&service.paths).join(&m.id).is_dir();
     let new_hosts = before.as_ref().map_or_else(Vec::new, |b| all_hosts(m).into_iter().filter(|h| !b.hosts.contains(h)).collect());
     PackageInfo {
         id: m.id.clone(),
@@ -227,8 +231,8 @@ fn info(service: &MetadataService, pkg: &Package) -> PackageInfo {
         readme: pkg.readme.clone(),
         warnings: m.warnings.clone(),
         installed,
-        author_changed: before.as_ref().is_some_and(|b| !same_author(&b.author, &m.author)),
-        installed_author: before.map(|b| b.author),
+        author_changed: unknown || before.as_ref().is_some_and(|b| !same_author(&b.author, &m.author)),
+        installed_author: if unknown { None } else { before.map(|b| b.author) },
         new_hosts,
         saved_settings: saved_settings(service, &m.id),
         action,
@@ -324,6 +328,7 @@ const STUCK_LOADING: &str = "loading: ";
 
 impl ExtensionsExt for MetadataService {
     fn load_extensions(&self) -> Vec<InstalledExtension> {
+        store::recover(&self.paths);
         for (id, dir) in store::folders(&self.paths) {
             let added = match load(&id, &dir) {
                 Ok(source) => {
@@ -407,7 +412,7 @@ pub(crate) fn install(
         return Err(ExtensionError::Changed);
     }
     // The script must load before anything is written.
-    ScriptSource::new(pkg.manifest.clone(), &pkg.script, Limits::default(), None)?;
+    let source = ScriptSource::new(pkg.manifest.clone(), &pkg.script, Limits::default(), None)?;
     let id = pkg.manifest.id.clone();
     let before = installed_manifest(service, &id).map(|m| m.version);
     if let Some(installed) = &before {
@@ -423,8 +428,8 @@ pub(crate) fn install(
     // Read before the files are replaced: who made what was there.
     let shown = info(service, &pkg);
     let keep = approval.map_or_else(|| shown.keeps_settings_by_default(), |a| a.keep_settings);
-    let dir = store::write(&service.paths, &pkg, from, list)?;
-    store::delete_kept(&service.paths, &id);
+    // What can fail goes before the files are replaced: an error then
+    // leaves the version installed as it was.
     if !keep && shown.saved_settings {
         settings::update_metadata(&service.paths, |m| {
             if let Some(p) = m.sources.get_mut(&id) {
@@ -433,8 +438,9 @@ pub(crate) fn install(
         })
         .map_err(|e| ExtensionError::Io(format!("{e:#}")))?;
     }
-    let source = ScriptSource::new(pkg.manifest.clone(), &pkg.script, Limits::default(), Some(dir.clone()))?;
-    service.add_source(Arc::new(source)).map_err(|e| ExtensionError::IdTaken(format!("{id}: {e:#}")))?;
+    let dir = store::write(&service.paths, &pkg, from, list)?;
+    store::delete_kept(&service.paths, &id);
+    service.add_source(Arc::new(source.installed_in(dir.clone()))).map_err(|e| ExtensionError::IdTaken(format!("{id}: {e:#}")))?;
     let extension = installed_entry(service, &id, &dir);
     Ok(match before {
         Some(from) => InstallOutcome::Updated { from: from.to_string(), extension },

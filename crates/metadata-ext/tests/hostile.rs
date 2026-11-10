@@ -133,12 +133,23 @@ fn a_service_too_slow_to_answer_is_unreachable_not_a_failure() {
     assert!(!e.to_string().contains("secret"), "no query in the message: {e}");
 }
 
+/// A server that closes every connection at once, unanswered. Not a closed
+/// port: Windows tries a refused connection again for about two seconds,
+/// most of a call's time here.
+fn closing() -> Http {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", l.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for s in l.incoming().flatten() {
+            drop(s);
+        }
+    });
+    Http::new(heronite_metadata::Endpoints { origins: vec![("https://api.example.org".into(), base)], ..Default::default() })
+}
+
 #[test]
 fn its_own_errors_after_an_unreachable_request_are_failures() {
-    let dead = TcpListener::bind("127.0.0.1:0").unwrap();
-    let base = format!("http://{}", dead.local_addr().unwrap());
-    drop(dead);
-    let http = Http::new(heronite_metadata::Endpoints { origins: vec![("https://api.example.org".into(), base)], ..Default::default() });
+    let http = closing();
     let env = env(http);
     // Uncaught, the request's error is unreachable, its address shown
     // without the query.

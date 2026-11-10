@@ -9,7 +9,7 @@ use heronite_i18n::{tr, trn};
 
 use super::super::SettingsPage;
 use super::extension::pick_file;
-use heronite_metadata_ext::lists::{host_of, is_local};
+use heronite_metadata_ext::lists::{host_of, is_local, HERONITE_LIST};
 
 use crate::dialogs::extensions::SourcesRequest;
 use crate::dialogs::metadata_wizard::{hub, HubGlobal};
@@ -32,7 +32,9 @@ fn count_line(cx: &App) -> Option<String> {
             trn!(n, "{n} more from this copy of the repository", "{n} more from this copy of the repository")
         }
         Some(copy) if is_local(&copy.url) => trn!(n, "{n} more from a list on this computer", "{n} more from a list on this computer"),
-        Some(copy) if copy.builtin => trn!(n, "{n} more from the Heronite list", "{n} more from the Heronite list"),
+        Some(copy) if copy.builtin && copy.url == HERONITE_LIST => {
+            trn!(n, "{n} more from the Heronite list", "{n} more from the Heronite list")
+        }
         Some(copy) => trn!(n, "{n} more from {host}", "{n} more from {host}", host = host_of(&copy.url)),
         None if n == 0 => tr!("Nothing new on your lists").into(),
         None => trn!(n, "{n} more from your lists", "{n} more from your lists"),

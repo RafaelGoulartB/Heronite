@@ -162,9 +162,18 @@ function hit(ctx, vn, originalFirst, matched) {
   return h;
 }
 
+// A search typed by the user: `game` holds the typed title and nothing
+// else. An automatic lookup also carries the game's platform, file name,
+// store and ids, even when they are empty.
+function isSearch(game) {
+  const empty = (v) => !v || Object.keys(v).length === 0;
+  return Object.keys(game).every((k) => k === "title" || ((k === "ids" || k === "hashes") && empty(game[k])));
+}
+
 export async function find(game, ctx) {
   const first = originalFirst(ctx);
-  const id = parseId(game.title);
+  // Only a search takes an id: a game titled "V4" is searched by its name.
+  const id = isSearch(game) ? parseId(game.title) : null;
   if (id) {
     const rows = await query(ctx, { filters: ["id", "=", id], fields: HIT_FIELDS, results: 1 });
     return rows.map((vn) => hit(ctx, vn, first, null)).filter(Boolean);

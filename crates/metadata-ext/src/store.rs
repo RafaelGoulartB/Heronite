@@ -8,6 +8,10 @@ use std::path::{Path, PathBuf};
 
 use heronite_data::paths::DataPaths;
 use heronite_data::temps::write_atomic;
+// Windows refuses a rename for a moment while an antivirus or the indexer
+// holds a file of the folder: tried again there.
+use heronite_platform::fs::rename_replacing;
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::manifest::valid_id;
@@ -79,10 +83,10 @@ fn io(e: std::io::Error) -> ExtensionError {
     ExtensionError::Io(e.to_string())
 }
 
-/// Folders of installed extensions (named by a valid id), by name.
+/// Folders of installed extensions (named by a valid id), by name. Only
+/// reads: what an interrupted install left is put back by [`recover`].
 pub fn folders(paths: &DataPaths) -> Vec<(String, PathBuf)> {
     let root = root(paths);
-    recover(&root);
     let Ok(entries) = std::fs::read_dir(&root) else { return Vec::new() };
     let mut out: Vec<(String, PathBuf)> = entries
         .flatten()
@@ -125,10 +129,18 @@ fn stamp() -> String {
     format!("{}-{nanos}", std::process::id())
 }
 
+/// Held while folders are written, swapped, deleted or put back, so
+/// [`recover`] never takes an install of this process in progress for one
+/// a crash interrupted.
+static CHANGING: Mutex<()> = Mutex::new(());
+
 /// Puts back what an interrupted install left: a replaced folder whose new
-/// one never arrived, and half-written folders.
-fn recover(root: &Path) {
-    let Ok(entries) = std::fs::read_dir(root) else { return };
+/// one never arrived, and half-written folders. Called when the installed
+/// extensions are loaded at startup, not on every read.
+pub fn recover(paths: &DataPaths) {
+    let _changing = CHANGING.lock();
+    let root = root(paths);
+    let Ok(entries) = std::fs::read_dir(&root) else { return };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if name.starts_with(".tmp-") {
@@ -137,7 +149,7 @@ fn recover(root: &Path) {
             let id = rest.rsplitn(3, '-').nth(2).unwrap_or("");
             let target = root.join(id);
             if valid_id(id) && !target.exists() {
-                let _ = std::fs::rename(entry.path(), target);
+                let _ = rename_replacing(&entry.path(), &target);
             } else {
                 let _ = std::fs::remove_dir_all(entry.path());
             }
@@ -148,6 +160,7 @@ fn recover(root: &Path) {
 /// Writes `package` as the installed extension of its id, replacing the
 /// one installed. `list`: the list it comes from. Returns its folder.
 pub fn write(paths: &DataPaths, package: &Package, from: &str, list: Option<&str>) -> Result<PathBuf, ExtensionError> {
+    let _changing = CHANGING.lock();
     let id = &package.manifest.id;
     let root = root(paths);
     std::fs::create_dir_all(&root).map_err(io)?;
@@ -176,15 +189,15 @@ pub fn write(paths: &DataPaths, package: &Package, from: &str, list: Option<&str
     let target = root.join(id);
     if target.exists() {
         let old = root.join(format!(".old-{id}-{stamp}"));
-        std::fs::rename(&target, &old).map_err(io)?;
-        if let Err(e) = std::fs::rename(&tmp, &target) {
-            let _ = std::fs::rename(&old, &target);
+        rename_replacing(&target, &old).map_err(io)?;
+        if let Err(e) = rename_replacing(&tmp, &target) {
+            let _ = rename_replacing(&old, &target);
             let _ = std::fs::remove_dir_all(&tmp);
             return Err(io(e));
         }
         let _ = std::fs::remove_dir_all(&old);
     } else {
-        std::fs::rename(&tmp, &target).map_err(io)?;
+        rename_replacing(&tmp, &target).map_err(io)?;
     }
     Ok(target)
 }
@@ -194,6 +207,7 @@ pub fn delete(paths: &DataPaths, id: &str) -> Result<bool, ExtensionError> {
     if !valid_id(id) {
         return Ok(false);
     }
+    let _changing = CHANGING.lock();
     let dir = root(paths).join(id);
     if !dir.is_dir() {
         return Ok(false);

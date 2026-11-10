@@ -162,7 +162,9 @@ pub fn set_option_value(paths: &DataPaths, d: &SourceDescriptor, key: &str, valu
             settings::update_metadata(paths, |m| m.steam_tag_limit = limit)
         }
         Some(Legacy::SteamGridKey) => {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+            // Windows sets no HOME. The home folder only seeds the default
+            // settings when the file has none yet.
+            let home = heronite_platform::dirs::home().map(|h| h.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into());
             game_config::set_global_setting(paths, &home, "steamGridDbApiKey", value.as_text().trim().into())?;
             settings::load(paths)
         }
@@ -219,6 +221,10 @@ mod tests {
         set_option_value(&paths, sgdb, "apiKey", OptionValue::Text(" key ".into())).unwrap();
         let global = json_store::read_value(&paths.global_config()).unwrap();
         assert_eq!(global["defaultSettings"]["steamGridDbApiKey"], "key");
+        // The first write seeds the defaults from the user's home folder,
+        // also where no HOME is set (Windows).
+        let home = heronite_platform::dirs::home().unwrap().to_string_lossy().into_owned();
+        assert_eq!(global["defaultSettings"]["defaultSteamPath"], format!("{}/.steam/steam", home.trim_end_matches('/')));
         assert_eq!(value(&paths, sgdb, "apiKey"), OptionValue::Text("key".into()));
         let file = json_store::read_value(&paths.collection_settings()).unwrap();
         assert!(file["metadata"].get("sources").is_none());

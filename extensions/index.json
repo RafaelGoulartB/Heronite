@@ -91,8 +91,8 @@
         },
         "source.js": {
           "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/vndb/source.js",
-          "sha256": "f93fdfbc5bceac5cf789f87f3e551cb7cc98846dce1c4e946d41aa69e1784229",
-          "size": 10641
+          "sha256": "7acdc1a6a4ca0a95e3b2298b82a64ddaf63aee2055750937f58b16b909a93832",
+          "size": 11129
         }
       }
     },

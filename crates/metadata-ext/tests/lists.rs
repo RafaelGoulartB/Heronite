@@ -76,6 +76,9 @@ fn the_committed_list_matches_the_folders() {
 }
 
 #[test]
+// On Windows `python3` may be the Microsoft Store's stub, which only says
+// how to install Python; the Linux job runs the generator.
+#[cfg_attr(windows, ignore = "the generator runs on the Linux job")]
 fn the_generator_writes_the_committed_list() {
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/extensions-index.py");
     match std::process::Command::new("python3").arg(&script).arg("--check").output() {
@@ -225,7 +228,8 @@ fn an_entry_installs_as_a_file_would_and_answers_through_the_gather() {
     let InstallOutcome::Installed(ext) = out else { panic!("{out:?}") };
     assert_eq!(ext.list.as_deref(), Some(LIST));
     assert!(ext.from.ends_with("/wikipedia/source.toml"));
-    assert_eq!(s.lists.origin(&s.svc, &ext), Origin::Heronite);
+    // The app's own list here is not at the Heronite list's address.
+    assert_eq!(s.lists.origin(&s.svc, &ext), Origin::List(LIST.into()));
     drop(prepared);
     let downloads = s.paths.extension_lists_cache_dir().join("downloads");
     assert_eq!(std::fs::read_dir(&downloads).map(|d| d.count()).unwrap_or(0), 0, "the downloaded files go once used");
@@ -343,4 +347,33 @@ fn a_list_removed_leaves_what_came_from_it() {
     let ext = s.svc.installed_extensions().into_iter().find(|e| e.id == "pcgamingwiki").unwrap();
     assert_eq!(s.lists.origin(&s.svc, &ext), Origin::GoneList(OTHER.into()));
     assert!(s.svc.sources().get("pcgamingwiki").is_some(), "still installed and asked");
+}
+
+#[test]
+fn only_the_heronite_lists_address_is_the_heronite_list() {
+    // `HERONITE_EXTENSIONS_INDEX=https://…` makes another address the app's own.
+    let own = Lists::new(LIST);
+    let in_use = [(LIST.to_owned(), true), (OTHER.to_owned(), false)];
+    assert_eq!(lists::origin_among(&own, &in_use, Some(LIST)), Origin::List(LIST.into()));
+    assert_eq!(lists::origin_among(&own, &[], Some(LIST)), Origin::List(LIST.into()), "the app's own, listed or not");
+    assert_eq!(lists::origin_among(&own, &in_use, Some(lists::HERONITE_LIST)), Origin::Heronite);
+    assert_eq!(
+        lists::origin_among(&Lists::default(), &[(lists::HERONITE_LIST.into(), true)], Some(lists::HERONITE_LIST)),
+        Origin::Heronite
+    );
+    assert_eq!(lists::origin_among(&own, &in_use, Some(OTHER)), Origin::List(OTHER.into()));
+    assert_eq!(lists::origin_among(&own, &in_use, None), Origin::File);
+}
+
+#[test]
+fn an_entrys_files_come_from_public_addresses_only() {
+    // A list may name any https address for an entry's files: one of this
+    // computer or the local network is never asked.
+    let s = setup();
+    let mut list = list_json();
+    entry_mut(&mut list, "wikipedia")["files"]["source.toml"]["url"] = json!("https://localhost/ext/wikipedia/source.toml");
+    *s.list.lock() = list;
+    let err = lists::prepare(&s.svc, LIST, &s.entry("wikipedia")).unwrap_err();
+    assert!(matches!(err, ExtensionError::Download(ref m) if m.contains("local network")), "{err:?}");
+    assert!(s.svc.installed_extensions().is_empty());
 }

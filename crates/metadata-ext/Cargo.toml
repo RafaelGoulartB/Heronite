@@ -7,6 +7,7 @@ description = "Metadata sources the community writes: manifest, package, sandbox
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
 heronite-metadata = { path = "../metadata" }
 # The public-only resolver every request and picture of an extension goes
 # through (`heronite_images::public`).

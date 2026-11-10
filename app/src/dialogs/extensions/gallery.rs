@@ -126,7 +126,8 @@ impl ExtensionsDialog {
     fn render_entry(&self, o: &Offer, picked: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let e = &o.entry;
         let mut meta = format!("{} \u{b7} {}", e.author, e.version);
-        if !o.builtin {
+        // The list's host, unless it is the Heronite list or one on this computer.
+        if matches!(words::list_origin(&o.list, o.builtin), heronite_metadata_ext::lists::Origin::List(_)) {
             meta = format!("{meta} \u{b7} {}", heronite_metadata_ext::lists::host_of(&o.list));
         }
         let id = e.id.clone();
@@ -415,7 +416,7 @@ mod tests {
     use std::time::{Duration, SystemTime};
 
     use heronite_metadata_ext::index;
-    use heronite_metadata_ext::lists::{ListCopy, ListError};
+    use heronite_metadata_ext::lists::{ListCopy, ListError, HERONITE_LIST};
 
     use super::{action_label, matches, source_line, Filter, Offer, OfferState, SourceKind};
 
@@ -456,7 +457,7 @@ mod tests {
     fn the_footer_says_where_the_list_came_from_and_when() {
         let now = SystemTime::now();
         let index = Some(index::parse(br#"{"index": 1, "extensions": []}"#).unwrap());
-        let own = ListCopy { url: "https://own".into(), builtin: true, index: index.clone(), read_at: Some(now), error: None };
+        let own = ListCopy { url: HERONITE_LIST.into(), builtin: true, index: index.clone(), read_at: Some(now), error: None };
         assert_eq!(source_line(std::slice::from_ref(&own), now, None).as_deref(), Some("From the Heronite list \u{b7} read today"));
         let old = ListCopy {
             read_at: Some(now - Duration::from_secs(3 * 86_400)),
@@ -469,6 +470,9 @@ mod tests {
         );
         let other = ListCopy { url: "https://lists.example.net/x.json".into(), builtin: false, index, read_at: Some(now), error: None };
         assert_eq!(source_line(&[own.clone(), other], now, None).as_deref(), Some("From 2 lists \u{b7} read today"));
+        // The app's own list at another address (`HERONITE_EXTENSIONS_INDEX`).
+        let elsewhere = ListCopy { url: "https://lists.example.net/own.json".into(), ..own.clone() };
+        assert_eq!(source_line(std::slice::from_ref(&elsewhere), now, None).as_deref(), Some("From lists.example.net \u{b7} read today"));
         // A debug build's own list: this repository's, on this computer.
         let path = "/src/heronite/extensions/index.json";
         let checkout = ListCopy { url: path.into(), ..own.clone() };

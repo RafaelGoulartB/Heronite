@@ -421,6 +421,24 @@ fn a_typed_id_or_address_finds_that_entry_and_a_name_finds_several() {
 }
 
 #[test]
+fn a_title_that_looks_like_an_id_is_an_id_only_in_a_search() {
+    let s = setup();
+    let ids = || s.server.count(|r| r.path() == API && body(r)["filters"][0] == "id");
+    // A game titled "V2002", looked up by itself: searched by its name.
+    let ctx = SourceContext::new(&s.paths, &s.svc.http);
+    let game = SourceGame { app_name: "v".into(), runner: "sideload".into(), title: "V2002".into(), ..Default::default() };
+    let sources = s.svc.sources();
+    let vndb = sources.lookups().find(|l| l.descriptor().id == "vndb").unwrap();
+    assert!(matches!(vndb.lookup(&ctx, &game), Lookup::NotFound));
+    assert_eq!(ids(), 0, "never read as VNDB's entry v2002");
+    assert_eq!(s.server.count(|r| r.path() == API && body(r)["filters"][0] == "search" && body(r)["filters"][2] == "V2002"), 1);
+    // Typed in a search, it is the entry.
+    let Lookup::Found(hits) = sources.search(&ctx, "vndb", "V2002") else { panic!() };
+    assert_eq!(hits.iter().filter_map(|h| h.id.as_deref()).collect::<Vec<_>>(), ["v2002"]);
+    assert_eq!(ids(), 1);
+}
+
+#[test]
 fn a_pinned_entry_is_looked_up_by_its_id_and_is_sure() {
     let s = setup();
     let mut a = args("portal");

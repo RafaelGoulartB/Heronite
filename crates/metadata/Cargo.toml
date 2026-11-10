@@ -7,6 +7,7 @@ description = "Collection metadata and artwork backend (IGDB, Steam, Lutris, Lau
 
 [dependencies]
 heronite-data = { path = "../data" }
+heronite-platform = { path = "../platform" }
 heronite-i18n = { path = "../i18n" }
 # `public`: the resolver that keeps what an extension asks for on the
 # public internet, shared with the pictures it names.

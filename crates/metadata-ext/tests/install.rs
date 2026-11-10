@@ -276,3 +276,75 @@ fn a_key_in_an_address_never_reaches_the_record_or_settings() {
     let stored = heronite_metadata_ext::store::read_record(&dir).unwrap().failing.unwrap();
     assert!(!stored.contains("secret"), "{stored}");
 }
+
+#[test]
+fn an_installed_version_that_no_longer_reads_does_not_get_the_saved_keys_unasked() {
+    let data = tempfile::tempdir().unwrap();
+    let pkgs = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(data.path());
+    let svc = MetadataService::new(paths.clone());
+    svc.install_extension(&by(pkgs.path(), "1.0.0", "Alice", "\"api.example.org\""), false).unwrap();
+    let d = svc.sources().get("mydb").unwrap().clone();
+    heronite_metadata::sources::options::set_option_value(&svc.paths, &d, "apiKey", OptionValue::Text("alice-key".into())).unwrap();
+    // Its manifest broke on disk: nothing tells who made it any more.
+    std::fs::write(paths.metadata_extensions_dir().join("mydb/source.toml"), "not = a manifest").unwrap();
+
+    let next = by(pkgs.path(), "1.1.0", "Alice", "\"api.example.org\"");
+    let info = svc.inspect_extension(&next).unwrap();
+    assert!(info.author_changed && info.installed_author.is_none(), "{info:?}");
+    assert!(info.asks_about_settings() && !info.keeps_settings_by_default());
+    svc.install_extension(&next, false).unwrap();
+    assert_eq!(key(&svc), "", "not handed over without the installer's approval");
+}
+
+#[test]
+fn reading_what_is_installed_never_touches_an_install_in_progress() {
+    let data = tempfile::tempdir().unwrap();
+    let pkgs = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(data.path());
+    let svc = MetadataService::new(paths.clone());
+    svc.install_extension(&package(pkgs.path(), "1.0.0"), false).unwrap();
+    // An install between its two renames: the new folder written, the
+    // installed one moved aside.
+    let root = paths.metadata_extensions_dir();
+    let (tmp, old) = (root.join(".tmp-mydb-1-2"), root.join(".old-mydb-1-2"));
+    std::fs::create_dir_all(&tmp).unwrap();
+    std::fs::rename(root.join("mydb"), &old).unwrap();
+    assert!(svc.installed_extensions().is_empty());
+    assert!(tmp.is_dir() && old.is_dir() && !root.join("mydb").exists(), "a read leaves them as they are");
+    // What a crash left is put back when the extensions load at startup.
+    let loaded = MetadataService::new(paths.clone()).load_extensions();
+    assert_eq!(loaded.iter().map(|e| e.version.as_str()).collect::<Vec<_>>(), ["1.0.0"]);
+    assert!(!tmp.exists() && !old.exists());
+}
+
+/// Permissions stop the settings from being written; root ignores them,
+/// and Windows has no such mode bits.
+#[cfg(unix)]
+#[test]
+fn an_install_that_fails_leaves_the_installed_version_as_it_was() {
+    use std::os::unix::fs::PermissionsExt;
+    let data = tempfile::tempdir().unwrap();
+    let pkgs = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(data.path());
+    let svc = MetadataService::new(paths.clone());
+    svc.install_extension(&by(pkgs.path(), "1.0.0", "Alice", "\"api.example.org\""), false).unwrap();
+    let d = svc.sources().get("mydb").unwrap().clone();
+    heronite_metadata::sources::options::set_option_value(&svc.paths, &d, "apiKey", OptionValue::Text("alice-key".into())).unwrap();
+
+    // Someone else's update forgets the key, and the settings cannot be written now.
+    let library = paths.collection_settings().parent().unwrap().to_path_buf();
+    std::fs::set_permissions(&library, std::fs::Permissions::from_mode(0o555)).unwrap();
+    if std::fs::write(library.join("probe"), b"").is_ok() {
+        std::fs::set_permissions(&library, std::fs::Permissions::from_mode(0o755)).unwrap();
+        eprintln!("the folder is writable anyway (root): not checked");
+        return;
+    }
+    let out = svc.install_extension(&by(pkgs.path(), "2.0.0", "Mallory", "\"api.example.org\""), false);
+    std::fs::set_permissions(&library, std::fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(matches!(out, Err(ExtensionError::Io(_))), "{out:?}");
+    // Failed, so nothing changed: the files, the registry, the key.
+    assert_eq!(svc.installed_extensions()[0].version, "1.0.0");
+    assert_eq!(svc.sources().get("mydb").unwrap().extension.as_ref().unwrap().version, "1.0.0");
+    assert_eq!(key(&svc), "alice-key");
+}

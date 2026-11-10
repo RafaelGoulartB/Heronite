@@ -387,6 +387,10 @@ fn clean_ids(ids: &[String]) -> Vec<String> {
     out
 }
 
+fn https_only(urls: Vec<String>) -> Vec<String> {
+    urls.into_iter().filter(|u| u.get(..8).is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"))).collect()
+}
+
 fn normalize_source_prefs(value: Option<&IndexMap<String, SourcePrefs>>) -> IndexMap<String, SourcePrefs> {
     value
         .into_iter()
@@ -425,7 +429,9 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         source_order: value.map(|v| clean_ids(&v.source_order)).unwrap_or_default(),
         keep_cover_families: value.map(|v| clean_ids(&v.keep_cover_families)).unwrap_or_default(),
         fill_cover_families: value.is_some_and(|v| v.fill_cover_families),
-        extension_lists: value.map(|v| clean_ids(&v.extension_lists)).unwrap_or_default(),
+        // Addresses only: a list the user adds is https; a path here (a
+        // hand-edited or synced file) would be read as a list on this computer.
+        extension_lists: value.map(|v| https_only(clean_ids(&v.extension_lists))).unwrap_or_default(),
         // Keys a newer build added stay for it.
         extra: value.map(|v| v.extra.clone()).unwrap_or_default(),
     }
@@ -625,6 +631,23 @@ mod tests {
         assert_eq!(s.theme, "midnightMirage");
         assert_eq!(s.language, "en");
         assert!(!s.all_tiles_in_color);
+    }
+
+    #[test]
+    fn only_https_addresses_are_kept_as_lists_of_extensions() {
+        let m = MetadataSettings {
+            extension_lists: [
+                "https://a.example.org/x.json",
+                "/home/me/index.json",
+                "file:///tmp/index.json",
+                "http://b.example.org",
+                " HTTPS://C.example.org/y.json ",
+            ]
+            .map(String::from)
+            .to_vec(),
+            ..Default::default()
+        };
+        assert_eq!(normalize_metadata(Some(&m)).extension_lists, ["https://a.example.org/x.json", "HTTPS://C.example.org/y.json"]);
     }
 
     #[test]

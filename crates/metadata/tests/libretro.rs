@@ -514,6 +514,11 @@ fn only_404_and_410_say_a_name_is_missing() {
     }
 }
 
+/// How much earlier than asked a wait may end as `Instant` measures it:
+/// none on Unix; on Windows the timer a sleep waits on and `Instant` (the
+/// performance counter) are different clocks.
+const EARLY: std::time::Duration = std::time::Duration::from_millis(if cfg!(windows) { 50 } else { 0 });
+
 #[test]
 fn a_short_retry_after_is_waited_out_once() {
     let s = setup(&[("Sega - Mega Drive - Genesis/Sonic The Hedgehog (USA, Europe)", 512, 731)], &[]);
@@ -521,7 +526,7 @@ fn a_short_retry_after_is_waited_out_once() {
     s.mock.throttled.store(1, Ordering::SeqCst);
     let started = std::time::Instant::now();
     assert!(lookup(&s, &game).into_option().is_some_and(|c| c.matched_by == Some(MatchedBy::ExactTitle)));
-    assert!(started.elapsed() >= std::time::Duration::from_secs(1), "Retry-After: 1 was honoured");
+    assert!(started.elapsed() + EARLY >= std::time::Duration::from_secs(1), "Retry-After: 1 was honoured: {:?}", started.elapsed());
     assert_eq!(s.mock.requests().len(), 2, "refused once, then answered");
     // Refused again after the wait: no answer for this game, no more names asked.
     s.mock.throttled.store(2, Ordering::SeqCst);
@@ -536,7 +541,7 @@ fn requests_are_spaced_and_missing_names_are_not_asked_twice() {
     let started = std::time::Instant::now();
     assert!(matches!(lookup(&s, &game), Lookup::NotFound));
     assert_eq!(s.mock.requests().len(), heronite_metadata::libretro::MAX_REQUESTS);
-    assert!(started.elapsed() >= std::time::Duration::from_millis(700), "about 100 ms apart: {:?}", started.elapsed());
+    assert!(started.elapsed() + EARLY >= std::time::Duration::from_millis(700), "about 100 ms apart: {:?}", started.elapsed());
     // A second pass (another family's download): the names are known missing.
     let only_square = SourceGame { fields: Some(vec!["coverSquare".into()]), ..game.clone() };
     assert!(matches!(lookup(&s, &only_square), Lookup::NotFound));

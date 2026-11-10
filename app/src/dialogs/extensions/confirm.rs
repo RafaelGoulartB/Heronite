@@ -108,16 +108,24 @@ fn error_block(e: &heronite_metadata_ext::ExtensionError) -> Div {
 }
 
 /// What changed since the version installed (or removed with its settings
-/// kept): another author, new hosts. Calm, but plain.
-fn changes(info: &PackageInfo) -> Option<Div> {
+/// kept): another author, or one that cannot be told, new hosts.
+fn change_lines(info: &PackageInfo) -> Vec<String> {
     let mut lines = Vec::new();
     if info.author_changed {
-        let author = info.installed_author.clone().unwrap_or_default();
-        lines.push(tr!("Made by someone other than the one installed ({author}).", author));
+        lines.push(match info.installed_author.clone() {
+            Some(author) => tr!("Made by someone other than the one installed ({author}).", author),
+            None => tr!("The version installed no longer reads, so who made it is not known.").into(),
+        });
     }
     if !info.new_hosts.is_empty() {
         lines.push(tr!("Connects to new hosts: {hosts}", hosts = info.new_hosts.join(", ")));
     }
+    lines
+}
+
+/// [`change_lines`], calm but plain.
+fn changes(info: &PackageInfo) -> Option<Div> {
+    let lines = change_lines(info);
     if lines.is_empty() {
         return None;
     }
@@ -316,5 +324,17 @@ mod tests {
         i.saved_settings = true;
         assert!(i.asks_about_settings() && !i.keeps_settings_by_default());
         assert!(!replacing(&i).unwrap().contains("settings"));
+    }
+
+    #[test]
+    fn an_installed_version_that_no_longer_reads_is_said() {
+        let mut i = info(InstallAction::New, None);
+        i.author_changed = true;
+        i.installed_author = None;
+        i.saved_settings = true;
+        assert_eq!(super::change_lines(&i), ["The version installed no longer reads, so who made it is not known."]);
+        assert!(i.asks_about_settings() && !i.keeps_settings_by_default());
+        i.installed_author = Some("Alice".into());
+        assert_eq!(super::change_lines(&i), ["Made by someone other than the one installed (Alice)."]);
     }
 }

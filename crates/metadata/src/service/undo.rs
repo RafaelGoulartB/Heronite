@@ -424,7 +424,10 @@ fn restore_pictures(paths: &DataPaths, p: &Pictures, record: Option<&CollectionG
         }
         let Ok(old) = fs::read(&from) else { continue };
         let part = dir.join(format!("{name}.part"));
-        match fs::create_dir_all(&dir).and_then(|_| fs::write(&part, &old)).and_then(|_| fs::rename(&part, &to)) {
+        match fs::create_dir_all(&dir)
+            .and_then(|_| fs::write(&part, &old))
+            .and_then(|_| heronite_platform::fs::rename_replacing(&part, &to))
+        {
             Ok(()) => report.files_restored += 1,
             Err(e) => log::warn!("Undo could not put back {}: {e}", to.display()),
         }

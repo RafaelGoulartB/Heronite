@@ -219,7 +219,9 @@ impl LaunchBox {
         {
             let mut open = self.open.lock();
             *open = None;
-            std::fs::rename(&part, files.index())?;
+            // Windows refuses for a moment while an antivirus scans the
+            // new ~100 MB file: tried again there.
+            heronite_platform::fs::rename_replacing(&part, &files.index())?;
         }
         files.store(&Stored { refreshed_at: now_secs(), etag, last_modified, games: built.games, ..Stored::default() })?;
         drop_archive(files);

@@ -45,7 +45,11 @@ fn a_list_is_written_as_an_address_or_a_path() {
     assert_eq!(at("https://lists.example.org/index.json"), ListLocation::Address("https://lists.example.org/index.json".into()));
     assert_eq!(at("http://lists.example.org/index.json"), ListLocation::Address("http://lists.example.org/index.json".into()));
     assert_eq!(at("/home/me/heronite/extensions/index.json"), ListLocation::File("/home/me/heronite/extensions/index.json".into()));
+    // A file address is an absolute path of this system: a drive on Windows.
+    #[cfg(unix)]
     assert_eq!(at(" file:///home/me/list/index.json "), ListLocation::File("/home/me/list/index.json".into()));
+    #[cfg(windows)]
+    assert_eq!(at(" file:///C:/me/list/index.json "), ListLocation::File(r"C:\me\list\index.json".into()));
     let file = ListLocation::File("/home/me/list/index.json".into());
     assert_eq!(ListLocation::of(&file.key()), file, "the key reads back as the same list");
     assert!(lists::is_local("/x/index.json") && !lists::is_local(lists::HERONITE_LIST));

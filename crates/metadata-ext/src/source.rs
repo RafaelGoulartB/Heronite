@@ -52,21 +52,31 @@ impl ScriptSource {
             language: "en".into(),
         };
         let script = Script::compile(script, &probe)?;
-        let record = dir.as_deref().and_then(store::read_record);
-        let failing = record.as_ref().and_then(|r| r.failing.clone());
-        let dir = dir.map(|d| (d, record.map(|r| r.sha256).unwrap_or_default()));
         let pictures = manifest.network.hosts.iter().chain(&manifest.network.images).cloned().collect();
-        Ok(Self {
+        let source = Self {
             descriptor: manifest.descriptor(),
             manifest,
             script,
             rate,
             limits,
             pictures,
-            dir,
+            dir: None,
             in_a_row: AtomicU32::new(0),
-            failing: Mutex::new(failing),
+            failing: Mutex::new(None),
+        };
+        Ok(match dir {
+            Some(dir) => source.installed_in(dir),
+            None => source,
         })
+    }
+
+    /// This source as the one installed in `dir`: its `install.json` read
+    /// there (the package's SHA-256, whether it was stopped).
+    pub(crate) fn installed_in(mut self, dir: PathBuf) -> Self {
+        let record = store::read_record(&dir);
+        *self.failing.get_mut() = record.as_ref().and_then(|r| r.failing.clone());
+        self.dir = Some((dir, record.map(|r| r.sha256).unwrap_or_default()));
+        self
     }
 
     pub fn manifest(&self) -> &Manifest {

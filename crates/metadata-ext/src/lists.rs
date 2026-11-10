@@ -323,15 +323,17 @@ fn local_copy(url: &str, builtin: bool, path: &Path) -> ListCopy {
     }
 }
 
-/// [`Lists::origin`] knowing the lists in use.
+/// [`Lists::origin`] knowing the lists in use. Only [`HERONITE_LIST`] is
+/// the Heronite list: the app's own list set to another address
+/// (`HERONITE_EXTENSIONS_INDEX`) is a list like one the user added.
 pub fn origin_among(lists: &Lists, in_use: &[(String, bool)], list: Option<&str>) -> Origin {
     match list {
         None => Origin::File,
         // Before the app's own: a debug build's own list is a file, and
         // what came from it is not from the Heronite list.
         Some(u) if is_local(u) => Origin::Local(u.to_owned()),
-        Some(u) if lists.is_builtin(u) => Origin::Heronite,
-        Some(u) if in_use.iter().any(|(x, _)| x == u) => Origin::List(u.to_owned()),
+        Some(HERONITE_LIST) => Origin::Heronite,
+        Some(u) if u == lists.builtin || in_use.iter().any(|(x, _)| x == u) => Origin::List(u.to_owned()),
         Some(u) => Origin::GoneList(u.to_owned()),
     }
 }
@@ -355,9 +357,13 @@ pub enum Origin {
 
 /// GETs `url` with the app's user agent, at most `max` bytes, without
 /// following redirects (a list could move to plain `http` otherwise).
-fn get(http: &Http, url: &str, max: u64) -> Result<Vec<u8>, ListError> {
-    let (to, _) = http.route(url);
-    let resp = http.get(to).header("User-Agent", APP_UA).max_bytes(max).timeout(TIMEOUT).no_redirects().send().map_err(|e| {
+/// `public`: only to a public address ([`crate::net::public_client`]), for
+/// an entry's files, whose addresses whoever keeps the list chose (a test
+/// serves its origins itself).
+fn get(http: &Http, url: &str, max: u64, public: bool) -> Result<Vec<u8>, ListError> {
+    let (to, routed) = http.route(url);
+    let client = if public && !routed { crate::net::public_client() } else { http };
+    let resp = client.get(to).header("User-Agent", APP_UA).max_bytes(max).timeout(TIMEOUT).no_redirects().send().map_err(|e| {
         if e.downcast_ref::<BodyTooLarge>().is_some() {
             ListError::TooLarge
         } else {
@@ -375,7 +381,7 @@ pub fn fetch_list(http: &Http, url: &str) -> Result<(String, Index), ListError> 
     if !https_url(url) {
         return Err(ListError::NotHttps);
     }
-    checked(get(http, url, MAX_INDEX_BYTES)?)
+    checked(get(http, url, MAX_INDEX_BYTES, false)?)
 }
 
 /// Reads and checks the list at `path` on this computer, as strictly as
@@ -451,7 +457,7 @@ impl Drop for Folder {
 
 fn download(http: &Http, file: &IndexFile, name: &str) -> Result<Vec<u8>, ExtensionError> {
     // One byte over: a longer file is caught here rather than read whole.
-    let bytes = match get(http, &file.url, file.size + 1) {
+    let bytes = match get(http, &file.url, file.size + 1, true) {
         Ok(b) => b,
         // Larger than the list says: not the file it names.
         Err(ListError::TooLarge) => return Err(ExtensionError::Checksum(name.to_owned())),

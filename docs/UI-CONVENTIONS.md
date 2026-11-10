@@ -523,7 +523,7 @@ never stops a job.
   runs a tinted row shows the game being fetched ("Fetching…", "Stopping after this game…" after Stop). The list is a
   `uniform_list` of 48px rows, so only the rows in view are built (a job of 2,000 games stays cheap): the cover, the
   title, the fields that changed as chips with their source's mark (three, then "+2"), or why nothing did ("Nothing was
-  missing", "The sources had nothing new", "No source found this game", "Could not reach the sources", "Could not be
+  missing", "The sources had nothing new", "No source found this game", "A source did not answer: try again later", "Could not be
   saved" with the error in a tooltip, "Already had details", "No source is for this game", "The update stopped before
   it", "You said no source has this game"; for a game sent to review, why: "Found by a similar name only", "The sources
   found different games", "You asked to check it"), and the outcome's dot and word. A game sent to review has a
@@ -758,11 +758,12 @@ package off the UI thread. Esc goes back from the installer to the gallery, clos
   - **What it is allowed to do** (`permissions.rs`; the same lines in the panel and in the installer, built from the
     entry or the manifest, each one something the sandbox enforces and nothing more): "Connects to api.example.org and
     img.example.org, and nowhere else" (or "Connects to nothing on the internet"), "Takes pictures from … too" when its
-    pictures come from other hosts, "Reads from your games: title, platform, year, file name (never a folder), store and
+    pictures come from other hosts, "Reads from your games: title, platform, year, file or install folder name (never a path), store and
     ids", "No access to your files, your accounts or other sources' keys", in amber "Its pictures are hidden until “Allow
     adult covers” is on" for an adult source, and "Asks you for: API key (needed), Region" when it has options.
-  - **The trust line** says only what Heronite checked, with a tick when the app's own list is the origin and a warning,
-    in amber, otherwise (`words::origin`, `words::guarantee`). "From the Heronite list": "Its files are checked against
+  - **The trust line** says only what Heronite checked, with a tick when the Heronite list (at its own address) is the
+    origin and a warning, in amber, otherwise (`words::origin`, `words::guarantee`); the app's own list set to another
+    address is worded as a list the user added. "From the Heronite list": "Its files are checked against
     the Heronite list (SHA-256) before anything is installed." A list the user added ("From lists.example.org"; "…, a
     list you removed" when it was removed since): "Its files are checked against this list (SHA-256), but Heronite does
     not know who keeps the list. Install only what you trust." A file: "Installed from a file: nobody checked this
@@ -791,9 +792,10 @@ package off the UI thread. Esc goes back from the installer to the gallery, clos
   version is installed) or "Go back to Wikipedia 1.0.0" (an older one), "Install a source" while a file is read and
   "This source cannot be installed" when it does not read. Pressing a gallery entry's button first downloads its two
   files ("Downloading…" on the button; every other button is dimmed meanwhile) and checks them against the list's SHA-256
-  and sizes, then reads the package as a file is read, and refuses one that is not what the entry says (another id or
-  version, a field or a host it does not name; "It is not what the list says it is (its name, version, fields or hosts
-  differ), so nothing was installed."): nothing is written until Install. The body shows the mark, the name, "okabe ·
+  and sizes, then reads the package as a file is read, and refuses one that is not what the entry says (another id,
+  version or kind, adult content it does not declare, a field or a host it does not name; "It is not what the list says
+  it is (its id, version, kind, fields, hosts or adult content differ), so nothing was installed."): nothing is written
+  until Install. The body shows the mark, the name, "okabe ·
   version 1.4.2", in accent what replacing does ("It replaces version 1.0.0. What you set for it (on or off, its
   settings, its place) stays.", "Version 1.0.0 is installed already: this puts its files back. What you set for it
   stays.", "Version 2.0.0 is installed: this replaces it with an older one. What you set for it stays."), pills (kind,

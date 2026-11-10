@@ -319,9 +319,16 @@ fn answers_over_the_size_cap_end_the_call() {
 
 #[test]
 fn an_unreachable_service_is_not_a_failure() {
+    // A server that closes every connection unanswered. Not a closed port:
+    // Windows tries a refused connection again for about two seconds, past
+    // the call's time here.
     let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", dead.local_addr().unwrap());
-    drop(dead);
+    std::thread::spawn(move || {
+        for s in dead.incoming().flatten() {
+            drop(s);
+        }
+    });
     let http = Http::new(heronite_metadata::Endpoints { origins: vec![("https://api.example.org".into(), base)], ..Default::default() });
     let e = run_with(&env(http, quick()), "return (await ctx.http.get('https://api.example.org/json')).json();", json!({})).unwrap_err();
     assert!(matches!(e, CallError::Unreachable(_)), "{e:?}");
@@ -335,7 +342,10 @@ fn the_rate_is_kept_across_calls() {
     let started = Instant::now();
     run_with(&env, "for (let i = 0; i < 3; i++) await ctx.http.get('https://api.example.org/json'); return 1;", json!({})).unwrap();
     run_with(&env, "await ctx.http.get('https://api.example.org/json'); return 1;", json!({})).unwrap();
-    assert!(started.elapsed() >= Duration::from_millis(450), "{:?}", started.elapsed());
+    // On Windows the timer a sleep waits on and `Instant` are different
+    // clocks: a wait may end a little earlier as `Instant` measures it.
+    let early = Duration::from_millis(if cfg!(windows) { 50 } else { 0 });
+    assert!(started.elapsed() + early >= Duration::from_millis(450), "{:?}", started.elapsed());
     assert_eq!(server.count(|_| true), 4);
     // A rate that leaves no time for a request ends the call; the service
     // could not be asked now, which is no failure of the extension.

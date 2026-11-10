@@ -371,8 +371,10 @@ fn lookups_are_fast_on_a_full_size_index() {
         let _ = lb.lookup(&paths, game);
     }
     let each = start.elapsed() / games.len() as u32;
-    // About 0.1 ms in a release build; a debug build is slower, hence the margin.
-    assert!(each < std::time::Duration::from_millis(5), "{each:?} per lookup");
+    // About 0.1 ms in a release build; a debug build is slower, hence the
+    // margin, and the Windows runners' disks and file APIs slower still.
+    let bound = std::time::Duration::from_millis(if cfg!(windows) { 25 } else { 5 });
+    assert!(each < bound, "{each:?} per lookup");
     let hit = emulated("sony_playstation", Some("Game Number 1 Adventure (Japan).bin"), "x");
     assert_eq!(found(&lb, &paths, &hit), Some((1, MatchedBy::ExactTitle)));
 }

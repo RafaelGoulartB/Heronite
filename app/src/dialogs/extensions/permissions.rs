@@ -86,7 +86,7 @@ pub fn lines(a: &Asks) -> Vec<Line> {
     }
     out.push(Line {
         mark: Mark::Reads,
-        text: tr!("Reads from your games: title, platform, year, file name (never a folder), store and ids").into(),
+        text: tr!("Reads from your games: title, platform, year, file or install folder name (never a path), store and ids").into(),
     });
     out.push(Line { mark: Mark::Walled, text: tr!("No access to your files, your accounts or other sources' keys").into() });
     if a.adult {
@@ -140,7 +140,7 @@ mod tests {
         let l = lines(&a);
         assert_eq!(l.iter().map(|l| l.mark).collect::<Vec<_>>(), [Mark::Network, Mark::Reads, Mark::Walled]);
         assert_eq!(l[0].text, "Connects to *.wikipedia.org, and nowhere else");
-        assert!(l[1].text.contains("file name (never a folder)"));
+        assert!(l[1].text.contains("file or install folder name (never a path)"), "a PC game's fileName is its install folder's name");
 
         let a = Asks {
             hosts: vec!["www.doujin.example.org".into(), "api.doujin.example.org".into(), "http://old.example.org".into()],
