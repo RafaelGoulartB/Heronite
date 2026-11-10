@@ -9,7 +9,9 @@
 //! (the square and wide covers): the tall cover and the background keep
 //! the details sources they always had. Sources that are off, or have the
 //! field switched off, are then left out. A source added after the lists
-//! were saved (`ADDED_SOURCES`: VNDB, LaunchBox) joins a saved list at its end.
+//! were saved (`ADDED_SOURCES`: VNDB, LaunchBox) joins a saved list at its
+//! end, and so does an extension, in every list of a field it fills (the
+//! default ones and the user's): it is asked after the sources already there.
 //!
 //! One rule depends on the game ([`SourceRegistry::field_orders_led`]): a
 //! source that declares `leadsFor` an audience (LaunchBox: emulated games)
@@ -53,13 +55,31 @@ impl SourceRegistry {
         self.order(m).iter().filter_map(|id| self.get(id)).filter(|d| d.kind == kind).collect()
     }
 
+    /// The extensions that fill `field`, in the user's order.
+    fn extensions_for(&self, m: &MetadataSettings, field: &str) -> Vec<String> {
+        self.order(m)
+            .into_iter()
+            .filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.extension.is_some() && d.provides(field)))
+            .collect()
+    }
+
+    /// `list` followed by the extensions that fill `field` it lacks.
+    fn with_extensions(&self, m: &MetadataSettings, field: &str, mut list: Vec<String>) -> Vec<String> {
+        for id in self.extensions_for(m, field) {
+            if !list.contains(&id) {
+                list.push(id);
+            }
+        }
+        list
+    }
+
     /// The order of `field` when the user did not set one (see the module docs).
     pub fn base_order(&self, m: &MetadataSettings, field: &str) -> Vec<String> {
         if !self.is_order_customised(m) {
-            return default_field_priority(field);
+            return self.with_extensions(m, field, default_field_priority(field));
         }
         let default = default_field_priority(field);
-        let joins = |d: &SourceDescriptor| d.kind != SourceKind::Pictures || default.contains(&d.id);
+        let joins = |d: &SourceDescriptor| d.kind != SourceKind::Pictures || d.extension.is_some() || default.contains(&d.id);
         self.order(m).into_iter().filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.provides(field) && joins(d))).collect()
     }
 
@@ -77,7 +97,7 @@ impl SourceRegistry {
                         list.push(id.to_string());
                     }
                 }
-                list
+                self.with_extensions(m, field, list)
             }
             _ => self.base_order(m, field),
         }

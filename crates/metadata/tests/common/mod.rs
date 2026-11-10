@@ -122,6 +122,7 @@ impl Server {
             bing: format!("{b}/bing"),
             google: format!("{b}/google"),
             steam_hero_urls: Some(vec![format!("{b}/cdn/missing_hero.jpg"), format!("{b}/cdn/hero.jpg")]),
+            origins: Vec::new(),
         }
     }
 }

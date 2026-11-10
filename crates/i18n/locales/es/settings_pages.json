@@ -576,5 +576,7 @@
   "Download the database ({size})": "Descargar la base de datos ({size})",
   "Nothing is downloaded before you ask. The database stays on this PC and is refreshed {every} while this source is on.": "No se descarga nada antes de que lo pidas. La base de datos se queda en este PC y se actualiza {every} mientras esta fuente está activada.",
   "The last download failed: {error}": "La última descarga falló: {error}",
-  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Las portadas que usa RetroArch (thumbnails.libretro.com), halladas por el nombre de archivo del volcado de cada juego en su plataforma. Sin clave ni cuenta. Cada portada conserva su forma: las cajas apaisadas llenan la portada panorámica y las cajas de CD la cuadrada. Heronite no está afiliado a libretro."
+  "The box art RetroArch uses (thumbnails.libretro.com), found by each game's dump file name on its platform. No key or account. Box art keeps its own shape: landscape boxes fill the wide cover and CD cases the square one. Heronite is not affiliated with libretro.": "Las portadas que usa RetroArch (thumbnails.libretro.com), halladas por el nombre de archivo del volcado de cada juego en su plataforma. Sin clave ni cuenta. Cada portada conserva su forma: las cajas apaisadas llenan la portada panorámica y las cajas de CD la cuadrada. Heronite no está afiliado a libretro.",
+  "Could not be loaded": "No se pudo cargar",
+  "Stopped after errors": "Detenida tras errores"
 }

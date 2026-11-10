@@ -48,7 +48,8 @@ impl MetadataDialog {
     fn source_row(&self, state: &SourceState, cx: &mut Context<Self>) -> Stateful<Div> {
         let id = state.source.clone();
         let name = words::source_name(&self.service, &id);
-        let descriptor = self.service.sources().get(&id);
+        let sources = self.service.sources();
+        let descriptor = sources.get(&id);
         let searchable = descriptor.is_some_and(|d| d.searchable);
         // A source of emulated games matches on a platform: it shows which.
         let by_platform = descriptor.is_some_and(|d| {
@@ -143,7 +144,7 @@ impl MetadataDialog {
                 .map(|s| words::source_name(&self.service, &s.source))
                 .collect::<Vec<_>>()
         };
-        [NotAsked::NotForThisGame, NotAsked::Off, NotAsked::NeedsKey, NotAsked::NeedsDownload, NotAsked::NotChosen]
+        [NotAsked::NotForThisGame, NotAsked::Off, NotAsked::NeedsKey, NotAsked::NeedsDownload, NotAsked::Failing, NotAsked::NotChosen]
             .into_iter()
             .filter_map(|why| {
                 let list = names(why);
@@ -156,6 +157,7 @@ impl MetadataDialog {
                     NotAsked::Off => tr!("Off: {sources}", sources),
                     NotAsked::NeedsKey => tr!("Needs a key: {sources}", sources),
                     NotAsked::NeedsDownload => tr!("Needs a download: {sources}", sources),
+                    NotAsked::Failing => tr!("Stopped after errors: {sources}", sources),
                     NotAsked::NotChosen | NotAsked::Fallback => tr!("Not asked: {sources}", sources),
                 }))
             })

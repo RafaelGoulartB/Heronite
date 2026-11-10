@@ -125,7 +125,8 @@ fn live_launchbox() {
         eprintln!("{}", status.lines().filter(|l| l.starts_with("VmHWM")).collect::<String>());
     }
     let ctx = SourceContext::new(&svc.paths, &svc.http);
-    let lb = svc.sources().lookups().find(|s| s.descriptor().id == "launchbox").unwrap();
+    let sources = svc.sources();
+    let lb = sources.lookups().find(|s| s.descriptor().id == "launchbox").unwrap();
     let cases = [
         ("nintendo_super_nes", "Legend of Zelda, The - A Link to the Past (USA).sfc", "The Legend of Zelda: A Link to the Past"),
         ("sony_playstation", "Castlevania - Symphony of the Night (USA) (Track 1).bin", "Castlevania: Symphony of the Night"),

@@ -44,6 +44,11 @@ pub struct Endpoints {
     pub google: String,
     /// Replaces the five Steam hero CDN URLs when set (tests).
     pub steam_hero_urls: Option<Vec<String>>,
+    /// Origins served elsewhere (tests): `("https://api.example.org",
+    /// "http://127.0.0.1:4000/example")`. Requests to an address under an
+    /// origin go to the replacement; [`Http::route`] applies them. Used for
+    /// the addresses extensions build themselves.
+    pub origins: Vec<(String, String)>,
 }
 
 impl Default for Endpoints {
@@ -67,6 +72,7 @@ impl Default for Endpoints {
             bing: "https://www.bing.com".into(),
             google: "https://www.google.com".into(),
             steam_hero_urls: None,
+            origins: Vec::new(),
         }
     }
 }
@@ -84,9 +90,23 @@ impl std::fmt::Display for Unreachable {
 
 impl std::error::Error for Unreachable {}
 
+/// A body over the request's [`Request::max_bytes`]. Counts as
+/// [`Unreachable`] for [`is_unreachable`], as it always did; the extension
+/// runtime tells it apart.
+#[derive(Debug)]
+pub struct BodyTooLarge(pub u64);
+
+impl std::fmt::Display for BodyTooLarge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the answer is larger than {} bytes", self.0)
+    }
+}
+
+impl std::error::Error for BodyTooLarge {}
+
 /// Whether `err` came from a request that got no answer at all.
 pub fn is_unreachable(err: &anyhow::Error) -> bool {
-    err.downcast_ref::<Unreachable>().is_some()
+    err.downcast_ref::<Unreachable>().is_some() || err.downcast_ref::<BodyTooLarge>().is_some()
 }
 
 /// A finished response (status errors are not turned into `Err`).
@@ -97,6 +117,8 @@ pub struct Response {
     pub content_length: Option<u64>,
     /// `Retry-After` in seconds, when the server sent one.
     pub retry_after: Option<u64>,
+    /// Every header, names lowercase, in the order received.
+    pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
 }
 
@@ -136,6 +158,7 @@ pub struct Request<'a> {
     body: Option<String>,
     timeout: Duration,
     max_bytes: u64,
+    redirects: bool,
 }
 
 impl<'a> Request<'a> {
@@ -162,15 +185,28 @@ impl<'a> Request<'a> {
         self
     }
 
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
     pub fn max_bytes(mut self, max: u64) -> Self {
         self.max_bytes = max;
         self
     }
 
+    /// Returns a redirect as it is (status 3xx, `location` header) instead
+    /// of following it.
+    pub fn no_redirects(mut self) -> Self {
+        self.redirects = false;
+        self
+    }
+
     pub fn send(self) -> Result<Response> {
         let agent = &self.http.agent;
+        let redirects = if self.redirects { MAX_REDIRECTS } else { 0 };
         let mut resp = if self.post {
-            let mut req = agent.post(&self.url).config().timeout_global(Some(self.timeout)).build();
+            let mut req = agent.post(&self.url).config().timeout_global(Some(self.timeout)).max_redirects(redirects).build();
             for (k, v) in &self.headers {
                 req = req.header(k, v);
             }
@@ -179,7 +215,7 @@ impl<'a> Request<'a> {
                 None => req.send_empty(),
             }
         } else {
-            let mut req = agent.get(&self.url).config().timeout_global(Some(self.timeout)).build();
+            let mut req = agent.get(&self.url).config().timeout_global(Some(self.timeout)).max_redirects(redirects).build();
             for (k, v) in &self.headers {
                 req = req.header(k, v);
             }
@@ -191,13 +227,13 @@ impl<'a> Request<'a> {
         let content_type = header("content-type").unwrap_or_default();
         let content_length = header("content-length").and_then(|v| v.parse().ok());
         let retry_after = header("retry-after").and_then(|v| v.trim().parse().ok());
-        let body = resp
-            .body_mut()
-            .with_config()
-            .limit(self.max_bytes)
-            .read_to_vec()
-            .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
-        Ok(Response { status, content_type, content_length, retry_after, body })
+        let headers =
+            resp.headers().iter().filter_map(|(k, v)| Some((k.as_str().to_ascii_lowercase(), v.to_str().ok()?.to_owned()))).collect();
+        let body = resp.body_mut().with_config().limit(self.max_bytes).read_to_vec().map_err(|e| match e {
+            ureq::Error::BodyExceedsLimit(max) => anyhow::Error::new(BodyTooLarge(max)),
+            e => anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))),
+        })?;
+        Ok(Response { status, content_type, content_length, retry_after, headers, body })
     }
 
     /// `send` that fails on a non-2xx status.
@@ -301,11 +337,13 @@ impl Http {
     }
 }
 
+const MAX_REDIRECTS: u32 = 8;
+
 impl Http {
     pub fn new(endpoints: Endpoints) -> Self {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .http_status_as_error(false)
-            .max_redirects(8)
+            .max_redirects(MAX_REDIRECTS)
             .timeout_connect(Some(Duration::from_secs(10)))
             .user_agent(BROWSER_UA)
             .build()
@@ -322,7 +360,21 @@ impl Http {
             body: None,
             timeout: Duration::from_secs(20),
             max_bytes: 16 * 1024 * 1024,
+            redirects: true,
         }
+    }
+
+    /// `url` with [`Endpoints::origins`] applied: the address it is really
+    /// sent to (itself, outside tests), and whether an origin replaced it.
+    pub fn route(&self, url: &str) -> (String, bool) {
+        for (origin, to) in &self.endpoints.origins {
+            if let Some(rest) = url.strip_prefix(origin.as_str()) {
+                if rest.is_empty() || rest.starts_with(['/', '?', '#']) {
+                    return (format!("{to}{rest}"), true);
+                }
+            }
+        }
+        (url.to_owned(), false)
     }
 
     pub fn post(&self, url: impl Into<String>) -> Request<'_> {

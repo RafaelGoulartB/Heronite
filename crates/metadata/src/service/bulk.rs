@@ -281,7 +281,7 @@ impl MetadataService {
 
         let settings = self.metadata_settings();
         // With every source off there is nothing to ask.
-        if !settings.auto_fill_missing || !self.sources.lookups().any(|s| is_on(&settings, &s.descriptor().id)) {
+        if !settings.auto_fill_missing || !self.sources().lookups().any(|s| is_on(&settings, &s.descriptor().id)) {
             return Ok(0);
         }
         let overlay: LocalMetaFile = json_store::read(&self.paths.local_meta())?;

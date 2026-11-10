@@ -541,5 +541,6 @@
   "Choose covers…": "Escolher capas…",
   "Not asked: the others found it": "Não consultada: as outras o encontraram",
   "Needs a download: {sources}": "Precisa de download: {sources}",
-  "Download its database in Settings → Metadata first: {sources}.": "Baixe antes o banco de dados em Configurações → Metadados: {sources}."
+  "Download its database in Settings → Metadata first: {sources}.": "Baixe antes o banco de dados em Configurações → Metadados: {sources}.",
+  "Stopped after errors: {sources}": "Paradas após erros: {sources}"
 }

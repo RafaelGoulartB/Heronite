@@ -157,7 +157,8 @@ fn args(app: &str, title: &str) -> MetadataApplyArgs {
 }
 
 fn lookup(s: &Setup, game: &SourceGame) -> Lookup<MetadataCandidate> {
-    let source = s.svc.sources().lookups().find(|l| l.descriptor().id == "libretro").unwrap();
+    let sources = s.svc.sources();
+    let source = sources.lookups().find(|l| l.descriptor().id == "libretro").unwrap();
     source.lookup(&SourceContext::new(&s.paths, &s.svc.http), game)
 }
 

@@ -11,7 +11,7 @@ use parking_lot::Mutex;
 
 use super::download::{DownloadState, SourceDownload};
 use super::options::{option_values, OptionValue, SourceOption};
-use super::{Needs, SourceDescriptor, SourceKind, SourceRegistry};
+use super::{Needs, SourceDescriptor, SourceHealth, SourceKind, SourceRegistry};
 
 /// A source's state, worded by the interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,28 +32,42 @@ pub enum SourceStatus {
     Unavailable,
     /// On, but asked only when the user searches by hand.
     ByHandOnly,
+    /// An extension that could not be loaded (broken files, or made for a
+    /// newer app): never asked; [`SourceRow::problem`] says why.
+    LoadFailed,
+    /// An extension that failed too many times in a row: not asked until
+    /// switched on again or updated; [`SourceRow::problem`] has the last error.
+    Failing,
 }
 
 /// `d`'s status. `last_test`: the outcome of its last test with the current
 /// option values, `None` when not tested since they changed. A source that
 /// needs a download needs it here: see [`status_with`].
 pub fn status(d: &SourceDescriptor, on: bool, options: &[(SourceOption, OptionValue)], last_test: Option<bool>) -> SourceStatus {
-    status_with(d, on, options, last_test, None)
+    status_with(d, on, options, last_test, None, &SourceHealth::Ok)
 }
 
-/// [`status`] knowing where its download stands (`None`: not downloaded).
+/// [`status`] knowing where its download stands (`None`: not downloaded)
+/// and whether it can be asked ([`SourceHealth`]).
 pub fn status_with(
     d: &SourceDescriptor,
     on: bool,
     options: &[(SourceOption, OptionValue)],
     last_test: Option<bool>,
     download: Option<&DownloadState>,
+    health: &SourceHealth,
 ) -> SourceStatus {
     if !d.available_here() {
         return SourceStatus::Unavailable;
     }
+    if matches!(health, SourceHealth::LoadFailed(_)) {
+        return SourceStatus::LoadFailed;
+    }
     if !on {
         return SourceStatus::Off;
+    }
+    if matches!(health, SourceHealth::Failing(_)) {
+        return SourceStatus::Failing;
     }
     // No built-in source signs in yet: nothing can say it is done.
     match d.needs {
@@ -91,7 +105,7 @@ pub struct FieldRow {
     pub field: String,
     pub on: bool,
     /// Whether switching it off does something: only the merge honours it,
-    /// so only details sources' fields can be switched.
+    /// so only the fields of details sources and extensions can be switched.
     pub switchable: bool,
 }
 
@@ -113,11 +127,14 @@ pub struct SourceRow {
     pub fields: Vec<FieldRow>,
     /// Whether it has a "Test" ([`SourceRegistry::test`]).
     pub can_test: bool,
-    /// Whether dragging it changes anything: only the details sources'
-    /// order feeds the merge.
+    /// Whether dragging it changes anything: only the order of the details
+    /// sources and of the extensions feeds the merge.
     pub reorderable: bool,
     /// Its database, when it downloads one (whether the source is on or not).
     pub download: Option<DownloadRow>,
+    /// Why it cannot be asked ([`SourceStatus::LoadFailed`],
+    /// [`SourceStatus::Failing`]): technical English text for the details.
+    pub problem: Option<String>,
 }
 
 /// The outcome of each source's last test, remembered with the option
@@ -154,17 +171,23 @@ impl SourceRegistry {
             .map(|d| {
                 let values = option_values(paths, m, d);
                 let enabled = is_on(m, &d.id);
-                let switchable = d.kind == SourceKind::Details;
+                let merged = d.kind == SourceKind::Details || (d.extension.is_some() && self.has_lookup(&d.id));
+                let switchable = merged;
+                let health = self.health(&d.id);
                 let download =
                     d.download.clone().and_then(|download| Some(DownloadRow { download, state: self.download_state(paths, &d.id)? }));
                 SourceRow {
-                    status: status_with(d, enabled, &values, tests.get(&d.id, &values), download.as_ref().map(|r| &r.state)),
+                    status: status_with(d, enabled, &values, tests.get(&d.id, &values), download.as_ref().map(|r| &r.state), &health),
                     download,
                     enabled,
                     options: values.into_iter().map(|(option, value)| OptionRow { option, value }).collect(),
                     fields: d.provides.iter().map(|f| FieldRow { field: f.clone(), on: is_field_on(m, &d.id, f), switchable }).collect(),
                     can_test: self.has_test(&d.id),
-                    reorderable: d.kind == SourceKind::Details,
+                    reorderable: merged,
+                    problem: match health {
+                        SourceHealth::Ok => None,
+                        SourceHealth::LoadFailed(why) | SourceHealth::Failing(why) => Some(why),
+                    },
                     descriptor: d.clone(),
                 }
             })
@@ -272,10 +295,14 @@ mod tests {
         d.needs = Needs::Download;
         assert_eq!(status(&d, true, &[], None), SourceStatus::NeedsDownload);
         let mut state = DownloadState::default();
-        assert_eq!(status_with(&d, true, &[], None, Some(&state)), SourceStatus::NeedsDownload);
+        assert_eq!(status_with(&d, true, &[], None, Some(&state), &SourceHealth::Ok), SourceStatus::NeedsDownload);
         state.ready = true;
-        assert_eq!(status_with(&d, true, &[], None, Some(&state)), SourceStatus::On);
-        assert_eq!(status_with(&d, false, &[], None, Some(&state)), SourceStatus::Off, "off keeps the database, and says off");
+        assert_eq!(status_with(&d, true, &[], None, Some(&state), &SourceHealth::Ok), SourceStatus::On);
+        assert_eq!(
+            status_with(&d, false, &[], None, Some(&state), &SourceHealth::Ok),
+            SourceStatus::Off,
+            "off keeps the database, and says off"
+        );
         d.needs = Needs::Nothing;
         assert_eq!(status(&d, true, &[], Some(false)), SourceStatus::TestFailed);
         d.only_on = vec!["no-such-os".into()];

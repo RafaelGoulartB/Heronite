@@ -122,6 +122,11 @@ impl DataPaths {
     pub fn metadata_review(&self) -> PathBuf {
         self.j("local_library/metadata-review.json")
     }
+    /// Installed metadata extensions (`heronite-metadata-ext`): a folder
+    /// per extension id with its files and `install.json`.
+    pub fn metadata_extensions_dir(&self) -> PathBuf {
+        self.j("metadata-extensions")
+    }
     pub fn steam_details_dir(&self) -> PathBuf {
         self.j("local_library/steam-details")
     }

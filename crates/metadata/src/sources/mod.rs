@@ -17,6 +17,13 @@
 //! off) is stored by `heronite_data::source_prefs`; [`options`] reads and
 //! writes the options, [`order`] gives the order of each field and
 //! [`rows`] the read model of Settings → Metadata.
+//!
+//! Extensions (`heronite-metadata-ext`) are sources too: their descriptor
+//! carries [`ExtensionInfo`], their [`MetadataSource`] runs a script, and
+//! the service adds and removes them at runtime
+//! ([`SourceRegistry::with_source`]). An extension never takes a built-in
+//! id. A source that failed to load or keeps failing says so through
+//! [`MetadataSource::health`] and is not asked.
 
 mod builtin;
 mod descriptor;
@@ -27,7 +34,9 @@ pub mod rows;
 #[cfg(test)]
 mod tests;
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
+
+use anyhow::{bail, Result};
 
 use heronite_data::models::MetadataSettings;
 use heronite_data::paths::DataPaths;
@@ -35,7 +44,7 @@ use heronite_data::settings;
 
 pub(crate) use builtin::Shared;
 pub use builtin::{builtin_descriptors, offered};
-pub use descriptor::{extra_fields, AlsoFor, AppliesTo, Asked, GameKind, Needs, SourceDescriptor, SourceGame, SourceKind};
+pub use descriptor::{extra_fields, AlsoFor, AppliesTo, Asked, ExtensionInfo, GameKind, Needs, SourceDescriptor, SourceGame, SourceKind};
 pub use download::{DownloadProgress, DownloadState, Phase, ProgressSnapshot, SourceDownload};
 pub use heronite_data::source_prefs::{ids, is_field_on, is_on};
 pub use options::{OptionChoice, OptionKind, OptionValue, SourceOption};
@@ -70,6 +79,25 @@ impl<'a> SourceContext<'a> {
 /// Effective (normalized) `settings.metadata`.
 pub(crate) fn load_metadata_settings(paths: &DataPaths) -> MetadataSettings {
     settings::load(paths).map(|s| s.metadata).unwrap_or_else(|_| settings::normalize_metadata(None))
+}
+
+/// Whether a source can be asked at all.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum SourceHealth {
+    #[default]
+    Ok,
+    /// It could not be loaded (an extension whose files are broken or need
+    /// a newer app); the text says why, for the log and the details.
+    LoadFailed(String),
+    /// It failed too many times in a row and is not asked until it is
+    /// switched on again or updated; the text is the last failure.
+    Failing(String),
+}
+
+impl SourceHealth {
+    pub fn is_ok(&self) -> bool {
+        *self == Self::Ok
+    }
 }
 
 /// A source that can be asked about one game. Lookups of different sources
@@ -125,12 +153,22 @@ pub trait MetadataSource: Send + Sync {
     fn remove_download(&self, _ctx: &SourceContext<'_>) -> anyhow::Result<()> {
         Ok(())
     }
+
+    /// Whether it can be asked; a source that is not ok is not asked.
+    fn health(&self) -> SourceHealth {
+        SourceHealth::Ok
+    }
+
+    /// Forgets the failures that put it in [`SourceHealth::Failing`] (the
+    /// user switched it on again).
+    fn reset_health(&self) {}
 }
 
+#[derive(Clone)]
 enum Entry {
-    Lookup(Box<dyn MetadataSource>),
+    Lookup(Arc<dyn MetadataSource>),
     /// Known (listed, has settings) but fetched elsewhere.
-    DescriptorOnly(Box<SourceDescriptor>),
+    DescriptorOnly(Arc<SourceDescriptor>),
 }
 
 impl Entry {
@@ -142,15 +180,62 @@ impl Entry {
     }
 }
 
-/// The sources, in the order their candidates are listed and merged.
+/// The sources, in the order their candidates are listed and merged: the
+/// built-in ones, then the extensions in the order they were added. A
+/// registry does not change; adding or removing a source makes a new one
+/// (the service swaps it, a gather keeps the one it started with).
+#[derive(Clone)]
 pub struct SourceRegistry {
     entries: Vec<Entry>,
+}
+
+/// Whether `id` is a built-in source's, or a value the saved settings give
+/// a meaning of their own (`manual`, `keep`, `auto`): an extension cannot
+/// take it.
+pub fn is_reserved_id(id: &str) -> bool {
+    builtin_descriptors().iter().any(|d| d.id == id) || settings::SOURCE_IDS.contains(&id) || matches!(id, "keep" | "auto")
 }
 
 impl SourceRegistry {
     /// The built-in sources over the service's shared state.
     pub(crate) fn builtin(shared: Shared) -> Self {
         builtin::registry(shared)
+    }
+
+    /// This registry with `source` added at the end, or in the place of the
+    /// extension it updates. A reserved id ([`is_reserved_id`]) is refused.
+    pub fn with_source(&self, source: Arc<dyn MetadataSource>) -> Result<Self> {
+        let id = source.descriptor().id.clone();
+        if is_reserved_id(&id) {
+            bail!("{id} is the id of a built-in source");
+        }
+        let mut entries = self.entries.clone();
+        match entries.iter().position(|e| e.descriptor().id == id) {
+            Some(i) => entries[i] = Entry::Lookup(source),
+            None => entries.push(Entry::Lookup(source)),
+        }
+        Ok(Self { entries })
+    }
+
+    /// This registry without the extension `id`; `None` when it has none
+    /// (a built-in source is never removed).
+    pub fn without_source(&self, id: &str) -> Option<Self> {
+        if is_reserved_id(id) || self.get(id).is_none() {
+            return None;
+        }
+        Some(Self { entries: self.entries.iter().filter(|e| e.descriptor().id != id).cloned().collect() })
+    }
+
+    /// Whether `id` can be asked (registered with a lookup and healthy).
+    pub fn health(&self, id: &str) -> SourceHealth {
+        self.lookup(id).map_or(SourceHealth::Ok, |s| s.health())
+    }
+
+    /// Clears the failures of `id` ([`MetadataSource::reset_health`]).
+    pub fn reset_health(&self, id: &str) {
+        if let Some(s) = self.lookup(id) {
+            s.reset_health();
+        }
     }
 
     pub fn descriptors(&self) -> impl Iterator<Item = &SourceDescriptor> {
@@ -164,7 +249,7 @@ impl SourceRegistry {
     /// The sources with a lookup, in order.
     pub fn lookups(&self) -> impl Iterator<Item = &dyn MetadataSource> {
         self.entries.iter().filter_map(|e| match e {
-            Entry::Lookup(source) => Some(source.as_ref()),
+            Entry::Lookup(source) => Some(source.as_ref() as &dyn MetadataSource),
             Entry::DescriptorOnly(_) => None,
         })
     }
@@ -183,7 +268,7 @@ impl SourceRegistry {
     /// without the pictures flagged adult unless the user allows them.
     pub fn lookup_id(&self, ctx: &SourceContext<'_>, source: &str, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
         match self.lookup(source) {
-            Some(s) if s.descriptor().searchable => s.lookup_id(ctx, game, id).map(|mut c| {
+            Some(s) if s.descriptor().searchable && s.health().is_ok() => s.lookup_id(ctx, game, id).map(|mut c| {
                 if !ctx.settings().allow_adult_covers {
                     c.drop_adult();
                 }
@@ -197,7 +282,7 @@ impl SourceRegistry {
     /// the thumbnails flagged adult unless the user allows them.
     pub fn search(&self, ctx: &SourceContext<'_>, source: &str, query: &str) -> Lookup<Vec<SourceHit>> {
         match self.lookup(source) {
-            Some(s) if s.descriptor().searchable => s.search(ctx, query).map(|mut hits| {
+            Some(s) if s.descriptor().searchable && s.health().is_ok() => s.search(ctx, query).map(|mut hits| {
                 if !ctx.settings().allow_adult_covers {
                     hits.iter_mut().for_each(SourceHit::drop_adult);
                 }
@@ -266,7 +351,6 @@ impl SourceRegistry {
     /// The built-in sources over fresh state, for tests.
     #[cfg(test)]
     pub(crate) fn for_tests() -> Self {
-        use std::sync::Arc;
         Self::builtin(Shared {
             igdb: Arc::new(crate::igdb::Igdb::new()),
             steam: Arc::new(crate::steam::SteamState::default()),

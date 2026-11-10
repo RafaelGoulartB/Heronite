@@ -63,7 +63,7 @@ impl MetadataService {
         }
         // The sources age ratings are taken from, in order: IGDB and Steam
         // unless the user turned them, or their age ratings, off.
-        let order = self.sources.field_order(&settings, AGE_RATINGS);
+        let order = self.sources().field_order(&settings, AGE_RATINGS);
         let (ask_igdb, ask_steam) = (order.iter().any(|s| s == "igdb"), order.iter().any(|s| s == "steam"));
         if !ask_igdb && !ask_steam {
             return Ok(0);

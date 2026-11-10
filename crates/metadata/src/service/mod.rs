@@ -78,7 +78,9 @@ pub struct MetadataService {
     steam: Arc<SteamState>,
     hltb: HltbClient,
     playnite: Arc<RwLock<Option<Arc<dyn PlayniteSource>>>>,
-    sources: SourceRegistry,
+    /// Swapped whole when an extension is added or removed; readers keep
+    /// the one they took.
+    sources: RwLock<Arc<SourceRegistry>>,
     tests: TestResults,
     /// Bulk jobs: progress, queue and the last one's undo.
     jobs: Mutex<bulk::Jobs>,
@@ -122,7 +124,7 @@ impl MetadataService {
             steam,
             hltb: HltbClient::new(),
             playnite,
-            sources,
+            sources: RwLock::new(Arc::new(sources)),
             tests: TestResults::default(),
             jobs: Mutex::new(bulk::Jobs::default()),
             stop_job: AtomicU64::new(0),
@@ -140,9 +142,10 @@ impl MetadataService {
         *self.playnite.write() = source;
     }
 
-    /// The metadata sources, in the order candidates are listed.
-    pub fn sources(&self) -> &SourceRegistry {
-        &self.sources
+    /// The metadata sources, in the order candidates are listed: the
+    /// registry as it is now (an extension added later is not in it).
+    pub fn sources(&self) -> Arc<SourceRegistry> {
+        self.sources.read().clone()
     }
 
     /// Effective (normalized) `settings.metadata`.
@@ -215,7 +218,7 @@ impl MetadataService {
             runner,
             current: existing.as_ref(),
             candidates: &[MergeCandidate { source: "playnite", metadata: from_playnite }],
-            priority: &self.sources.field_orders(&settings),
+            priority: &self.sources().field_orders(&settings),
             overwrite_existing: false,
             preserve_manual: true,
             field_picks: None,

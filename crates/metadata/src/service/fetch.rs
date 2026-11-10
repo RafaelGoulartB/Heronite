@@ -71,7 +71,7 @@ pub(super) struct Decision {
 /// sure ones, and those of records from before matches were recorded (an
 /// IGDB id or a Lutris slug alone), named and dated as the record is.
 ///
-/// A pictures source (`is_picture`) never sends a game to review: its
+/// A pictures or extras source (`is_picture`) never sends a game to review: its
 /// candidate is used when it is sure, or the same game as a candidate used
 /// or a match the record has, and left out otherwise.
 pub(super) fn decide(
@@ -139,10 +139,10 @@ pub(super) fn mark_not_found(md: &mut CollectionGameMetadata, title: &str) {
 impl MetadataService {
     /// Whether `candidates` answer a fetch of `fields` (`None`: every
     /// field). One that [asks for details](asks_details) is answered only
-    /// by a details source: a pictures source alone does not say which game
-    /// it is, so the game counts as found by no source (`fetchError`, tried
-    /// again by the idle fill, "failed last time"). One that asks only for
-    /// pictures, by any source.
+    /// by a details source: a pictures or extras source alone does not say
+    /// which game it is, so the game counts as found by no source
+    /// (`fetchError`, tried again by the idle fill, "failed last time").
+    /// One that asks only for pictures, by any source.
     pub(super) fn found(&self, fields: Option<&[String]>, candidates: &[MetadataCandidate]) -> bool {
         if asks_details(fields) {
             candidates.iter().any(|c| !self.is_picture_source(&c.source))
@@ -151,9 +151,10 @@ impl MetadataService {
         }
     }
 
-    /// Whether `source` is a pictures source (SteamGridDB): see [`decide`].
+    /// Whether `source` only follows the details sources (a pictures
+    /// source such as SteamGridDB, or an extras one): see [`decide`].
     pub(super) fn is_picture_source(&self, source: &str) -> bool {
-        self.sources.get(source).is_some_and(|d| d.kind == SourceKind::Pictures)
+        self.sources().get(source).is_some_and(|d| d.kind != SourceKind::Details)
     }
 
     /// [`decide`] with this service's sources.
@@ -162,7 +163,7 @@ impl MetadataService {
     }
 
     /// The candidates a review entry lists: those of details sources (a
-    /// pictures source has no match to pick).
+    /// pictures or extras source does not decide which game it is).
     pub(super) fn review_candidates(&self, candidates: &[MetadataCandidate]) -> Vec<MetadataCandidate> {
         candidates.iter().filter(|c| !self.is_picture_source(&c.source)).cloned().collect()
     }
@@ -207,17 +208,18 @@ impl MetadataService {
         candidates: &[MetadataCandidate],
         settings: &MetadataSettings,
     ) -> IndexMap<String, Vec<String>> {
+        let sources = self.sources();
         let leads = |c: &&MetadataCandidate| {
-            c.matched_by.is_some_and(MatchedBy::is_sure) && self.sources.get(&c.source).is_some_and(|d| d.leads_for.is_some())
+            c.matched_by.is_some_and(MatchedBy::is_sure) && sources.get(&c.source).is_some_and(|d| d.leads_for.is_some())
         };
         if !candidates.iter().any(|c| leads(&c)) {
-            return self.sources.field_orders(settings);
+            return sources.field_orders(settings);
         }
-        let game = self.source_game(args, current);
+        let game = self.source_game(&sources, args, current);
         let leaders: Vec<String> = candidates
             .iter()
             .filter(leads)
-            .filter(|c| self.sources.get(&c.source).and_then(|d| d.leads_for.as_ref()).is_some_and(|a| a.matches(&game)))
+            .filter(|c| sources.get(&c.source).and_then(|d| d.leads_for.as_ref()).is_some_and(|a| a.matches(&game)))
             .map(|c| c.source.clone())
             .collect();
         // Found by title now, or again by the id a match by title stored
@@ -230,7 +232,7 @@ impl MetadataService {
         };
         let title_found: Vec<String> =
             candidates.iter().filter(by_title).filter(|c| !leaders.contains(&c.source)).map(|c| c.source.clone()).collect();
-        self.sources.field_orders_led(settings, &leaders, &title_found)
+        sources.field_orders_led(settings, &leaders, &title_found)
     }
 
     /// The merge of `candidates` (those to save) into `current`, with the

@@ -188,7 +188,7 @@ pub struct SourceDescriptor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game_kind: Option<GameKind>,
     /// English `tr!` key: a line on what the source is, shown in its open
-    /// row in Settings.
+    /// row in Settings. An extension's is its own text, shown as is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub about: Option<String>,
     /// The database it downloads before it can be asked
@@ -203,6 +203,24 @@ pub struct SourceDescriptor {
     /// whose order the user did not set (`crate::sources::order`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leads_for: Option<AppliesTo>,
+    /// Set for a source installed as an extension; `None` for a built-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extension: Option<ExtensionInfo>,
+}
+
+/// What an extension's manifest says about the extension itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionInfo {
+    /// Semantic version (`1.2.0`).
+    pub version: String,
+    pub author: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<String>,
+    /// It is about adult games: every picture it gives counts as adult
+    /// (dropped unless the user allows adult covers).
+    #[serde(default)]
+    pub adult: bool,
 }
 
 fn is_always(a: &Asked) -> bool {
@@ -258,6 +276,14 @@ pub struct SourceGame {
     /// none yet, so this is empty until it does.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rom_hashes: BTreeMap<String, String>,
+    /// The release year the record has, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year: Option<i32>,
+    /// The name (never the path) the game's files go by: its ROM's
+    /// ([`rom_file`](Self::rom_file)) for an emulated game, else its
+    /// install folder's, when the overlay has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
     /// The fields asked of this source (`None`: every field it gives). Set
     /// for pictures sources, which fetch one picture per field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -272,6 +298,7 @@ impl SourceGame {
         let non_empty = |s: Option<&String>| s.filter(|s| !s.is_empty()).cloned();
         let emulated = overlay.is_some_and(|m| m.launch_kind == "emulator" || m.source == "emulator");
         let emulation = overlay.filter(|_| emulated);
+        let rom_file = emulation.and_then(crate::platforms::rom_file);
         Self {
             app_name: args.app_name.clone(),
             runner: args.runner.clone(),
@@ -286,9 +313,18 @@ impl SourceGame {
                 .and_then(|m| crate::platforms::resolve(m, record_platforms))
                 .map(|p| p.id.to_owned())
                 .or_else(|| non_empty(emulation.and_then(|m| m.platform_id.as_ref())).filter(|p| p != "other")),
-            rom_file: emulation.and_then(crate::platforms::rom_file),
+            year: None,
+            file_name: rom_file.clone().or_else(|| overlay.and_then(folder_name)),
+            rom_file,
             rom_hashes: BTreeMap::new(),
             fields: None,
         }
     }
+}
+
+/// The last part of the game's install folder.
+fn folder_name(m: &LocalGameMeta) -> Option<String> {
+    let path = m.windows_install_directory.as_deref()?;
+    let name = path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next()?.trim();
+    (!name.is_empty()).then(|| name.to_owned())
 }

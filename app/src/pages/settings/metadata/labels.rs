@@ -77,6 +77,8 @@ pub(super) fn status_word(s: SourceStatus) -> &'static str {
         SourceStatus::NeedsDownload => tr!("Needs a download"),
         SourceStatus::Unavailable => tr!("Not on this system"),
         SourceStatus::ByHandOnly => tr!("By hand only"),
+        SourceStatus::LoadFailed => tr!("Could not be loaded"),
+        SourceStatus::Failing => tr!("Stopped after errors"),
     }
 }
 
@@ -87,7 +89,7 @@ pub(super) fn status_colour(s: SourceStatus) -> Hsla {
         SourceStatus::On | SourceStatus::Connected => theme::success().into(),
         SourceStatus::ByHandOnly => theme::accent().into(),
         SourceStatus::NeedsKey | SourceStatus::NeedsSignIn | SourceStatus::NeedsDownload => theme::warning().into(),
-        SourceStatus::TestFailed => theme::danger().into(),
+        SourceStatus::TestFailed | SourceStatus::LoadFailed | SourceStatus::Failing => theme::danger().into(),
         SourceStatus::Off | SourceStatus::Unavailable => theme::ink_a(0.3),
     }
 }

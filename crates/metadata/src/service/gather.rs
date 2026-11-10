@@ -24,7 +24,7 @@ use indexmap::IndexMap;
 
 use super::MetadataService;
 use crate::record;
-use crate::sources::{is_on, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind};
+use crate::sources::{is_on, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};
 use crate::store::{as_runner, get_game_metadata};
 use crate::types::*;
 
@@ -72,21 +72,29 @@ fn kind_in(kind: &GameKind, md: &CollectionGameMetadata) -> bool {
 impl MetadataService {
     /// The fields of `fields` a pictures source is asked for: those it gives
     /// and is in the order of.
-    fn picture_fields(&self, d: &SourceDescriptor, fields: &[String], settings: &MetadataSettings) -> Vec<String> {
-        fields.iter().filter(|f| d.provides(f) && self.sources.field_order(settings, f).contains(&d.id)).cloned().collect()
+    fn picture_fields(sources: &SourceRegistry, d: &SourceDescriptor, fields: &[String], settings: &MetadataSettings) -> Vec<String> {
+        fields.iter().filter(|f| d.provides(f) && sources.field_order(settings, f).contains(&d.id)).cloned().collect()
     }
 
     /// `game` as the sources see it. The overlay is read only when needed:
     /// for the Steam id the arguments lack, or for a source's audience (an
     /// emulated game's platform and ROM). `current`: its record, whose
-    /// platforms are the last word on an emulated game's platform.
-    pub(super) fn source_game(&self, args: &MetadataApplyArgs, current: Option<&CollectionGameMetadata>) -> SourceGame {
+    /// platforms are the last word on an emulated game's platform and which
+    /// gives the release year.
+    pub(super) fn source_game(
+        &self,
+        sources: &SourceRegistry,
+        args: &MetadataApplyArgs,
+        current: Option<&CollectionGameMetadata>,
+    ) -> SourceGame {
         let has_steam_id = args.steam_app_id.as_deref().is_some_and(|s| !s.is_empty());
-        let overlay = (!has_steam_id || self.sources.needs_overlay())
+        let overlay = (!has_steam_id || sources.needs_overlay())
             .then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok())
             .flatten()
             .and_then(|mut file| file.games.shift_remove(&args.app_name));
-        SourceGame::new(args, overlay.as_ref(), current.map_or(&[], |md| md.platforms.as_slice()))
+        let mut game = SourceGame::new(args, overlay.as_ref(), current.map_or(&[], |md| md.platforms.as_slice()));
+        game.year = current.and_then(|md| release_year(md.release_date.as_deref()));
+        game
     }
 
     /// `gatherCandidates`: asks every provider that is on and applies to the
@@ -121,6 +129,9 @@ impl MetadataService {
     /// the record has, unless the arguments unpin them, and a fallback
     /// source from the match the record has.
     pub(super) fn gather(&self, game: &MetadataApplyArgs) -> Gathered {
+        // One registry for the whole gather, whatever is installed meanwhile.
+        let sources = self.sources();
+        let sources = sources.as_ref();
         let current = get_game_metadata(&self.paths, as_runner(&game.runner), &game.app_name).ok().flatten();
         let pins = pins(game, current.as_ref());
         let unpinned = |source: &str| game.pins.as_ref().is_some_and(|p| p.get(source).is_some_and(Option::is_none));
@@ -129,18 +140,17 @@ impl MetadataService {
             game.igdb_id.or_else(|| current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get() as i64).filter(|_| !unpinned("igdb")));
         with_ids.lutris_slug =
             game.lutris_slug.clone().or_else(|| current.as_ref().and_then(|c| c.lutris_slug.clone()).filter(|_| !unpinned("lutris")));
-        let game_view = self.source_game(&with_ids, current.as_ref());
+        let game_view = self.source_game(sources, &with_ids, current.as_ref());
         let ctx = SourceContext::new(&self.paths, &self.http);
         let settings = ctx.settings();
         let fields = self.fetch_fields(game);
         // A pictures source sees the game with the fields asked of it.
-        let views: Vec<Option<SourceGame>> = self
-            .sources
+        let views: Vec<Option<SourceGame>> = sources
             .lookups()
             .map(|source| {
                 let d = source.descriptor();
                 (d.kind == SourceKind::Pictures)
-                    .then(|| SourceGame { fields: Some(self.picture_fields(d, &fields, settings)), ..game_view.clone() })
+                    .then(|| SourceGame { fields: Some(Self::picture_fields(sources, d, &fields, settings)), ..game_view.clone() })
             })
             .collect();
         // The match a fallback source has in the record (not unpinned): it
@@ -150,12 +160,11 @@ impl MetadataService {
             .map(record::source_matches)
             .unwrap_or_default()
             .into_iter()
-            .filter(|(source, _)| self.sources.get(source).is_some_and(SourceDescriptor::is_fallback) && !unpinned(source))
+            .filter(|(source, _)| sources.get(source).is_some_and(SourceDescriptor::is_fallback) && !unpinned(source))
             .map(|(source, m)| (source, m.id))
             .collect();
         let mut steam_tags: Option<Vec<String>> = None;
-        let plans: Vec<Plan<'_>> = self
-            .sources
+        let plans: Vec<Plan<'_>> = sources
             .lookups()
             .zip(&views)
             .map(|(source, view)| {
@@ -165,14 +174,17 @@ impl MetadataService {
                 if !is_on(settings, &d.id) {
                     return Plan::Not(NotAsked::Off);
                 }
+                if !source.health().is_ok() {
+                    return Plan::Not(NotAsked::Failing);
+                }
                 if !Self::wanted(d, game, game_view) {
                     return Plan::Not(NotAsked::NotChosen);
                 }
-                if pin.is_none() && !self.sources.applies(&self.paths, settings, d, game_view) {
+                if pin.is_none() && !sources.applies(&self.paths, settings, d, game_view) {
                     return Plan::Not(NotAsked::NotForThisGame);
                 }
                 // Never asked, not even for a pinned game, before the user downloads its database.
-                if !self.sources.downloaded(&self.paths, &d.id) {
+                if !sources.downloaded(&self.paths, &d.id) {
                     return Plan::Not(NotAsked::NeedsDownload);
                 }
                 if !d.is_fallback() || pin.is_some() {
@@ -188,14 +200,14 @@ impl MetadataService {
                             .as_deref()
                             .is_some_and(|id| kind.said_by(steam_tags.get_or_insert_with(|| self.steam_tag_names(id)).iter()))
                 });
-                if of_kind || self.sources.names_fallback(&d.id, game.only_sources.as_deref()) {
+                if of_kind || sources.names_fallback(&d.id, game.only_sources.as_deref()) {
                     Plan::Ask(None)
                 } else {
                     Plan::Later
                 }
             })
             .collect();
-        let lookups: Vec<&dyn MetadataSource> = self.sources.lookups().collect();
+        let lookups: Vec<&dyn MetadataSource> = sources.lookups().collect();
         let view_of = |i: usize| views[i].as_ref().unwrap_or(&game_view);
         let first: Vec<(usize, Option<&str>)> =
             plans.iter().enumerate().filter_map(|(i, p)| if let Plan::Ask(pin) = p { Some((i, *pin)) } else { None }).collect();

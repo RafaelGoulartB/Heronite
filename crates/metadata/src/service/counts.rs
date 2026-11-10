@@ -59,25 +59,25 @@ impl MetadataService {
         // A fallback source counts only when the job names it: otherwise it
         // is not asked about games the others found, and counting its
         // fields would fetch every game lacking them for nothing.
-        let fallback = |id: &String| self.sources.get(id).is_some_and(|d| d.is_fallback());
+        let registry = self.sources();
+        let fallback = |id: &String| registry.get(id).is_some_and(|d| d.is_fallback());
         let asked = |id: &String| {
-            self.sources.has_lookup(id)
-                && sources.is_none_or(|s| s.contains(id))
-                && (!fallback(id) || self.sources.names_fallback(id, sources))
+            registry.has_lookup(id) && sources.is_none_or(|s| s.contains(id)) && (!fallback(id) || registry.names_fallback(id, sources))
         };
-        fields.iter().copied().filter(|f| self.sources.field_order(settings, f).iter().any(asked)).collect()
+        fields.iter().copied().filter(|f| registry.field_order(settings, f).iter().any(asked)).collect()
     }
 
     /// The sources a job may ask, in the user's order: the details sources
     /// that are on and offered, and Steam tags when on. A pictures source
     /// (SteamGridDB) is asked by the fields it gives, not listed here.
     pub fn bulk_sources(&self, settings: &MetadataSettings) -> Vec<SourceDescriptor> {
-        self.sources
+        let sources = self.sources();
+        sources
             .order(settings)
             .iter()
-            .filter_map(|id| self.sources.get(id))
+            .filter_map(|id| sources.get(id))
             .filter(|d| is_on(settings, &d.id) && !d.hidden && !d.manual_only && d.available_here())
-            .filter(|d| (self.sources.has_lookup(&d.id) && d.kind == SourceKind::Details) || d.id == ids::STEAM_TAGS)
+            .filter(|d| (sources.has_lookup(&d.id) && d.kind == SourceKind::Details) || d.id == ids::STEAM_TAGS)
             .cloned()
             .collect()
     }
@@ -87,14 +87,15 @@ impl MetadataService {
     pub fn bulk_counts(&self, games: &[BulkItem]) -> Result<GameCounts> {
         let settings = self.metadata_settings();
         let records = get_all_game_metadata(&self.paths)?;
+        let registry = self.sources();
         let sources = self.bulk_sources(&settings);
         let families = CoverFamilies::load(&self.paths);
         let fields: Vec<&'static str> = METADATA_FIELDS.iter().copied().chain(families.kept_extra_fields()).collect();
         let fillable = self.fillable_fields(&settings, &fields, None);
         let tags = is_on(&settings, ids::STEAM_TAGS).then(|| SteamTagsFile::load(&self.paths));
-        let overlay = self.sources.needs_overlay().then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok()).flatten();
+        let overlay = registry.needs_overlay().then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok()).flatten();
         let needs_download: Vec<String> =
-            sources.iter().filter(|d| !self.sources.downloaded(&self.paths, &d.id)).map(|d| d.id.clone()).collect();
+            sources.iter().filter(|d| !registry.downloaded(&self.paths, &d.id)).map(|d| d.id.clone()).collect();
 
         let art: ArtFile = json_store::read(&self.paths.art())?;
         let attention = classify(games, &records, &review::load(&self.paths), &art, &families.in_use());
@@ -141,7 +142,7 @@ impl MetadataService {
             let platforms = md.map_or(&[][..], |m| m.platforms.as_slice());
             let view = SourceGame::new(&args, overlay.as_ref().and_then(|o| o.games.get(&game.app_name)), platforms);
             for d in sources.iter().filter(|d| !needs_download.contains(&d.id)) {
-                if self.sources.applies(&self.paths, &settings, d, &view) {
+                if registry.applies(&self.paths, &settings, d, &view) {
                     *counts.reach.entry(d.id.clone()).or_default() += 1;
                 }
             }

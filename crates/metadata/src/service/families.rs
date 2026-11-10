@@ -58,15 +58,16 @@ impl MetadataService {
     /// every game of the Collection).
     fn family_askable(&self, family: CoverFamily, games: Option<&[BulkItem]>) -> bool {
         let settings = self.metadata_settings();
-        let ready: Vec<&SourceDescriptor> = self
-            .sources
+        // One registry throughout, whatever is installed meanwhile.
+        let sources = self.sources();
+        let ready: Vec<&SourceDescriptor> = sources
             .field_order(&settings, family.field())
             .iter()
             .filter(|id| {
-                self.sources.has_lookup(id)
+                sources.has_lookup(id)
                     && self.source_status(&settings, id).is_some_and(|s| matches!(s, SourceStatus::On | SourceStatus::Connected))
             })
-            .filter_map(|id| self.sources.get(id))
+            .filter_map(|id| sources.get(id))
             .collect();
         if ready.iter().any(|d| d.applies_to == AppliesTo::All) {
             return true;
@@ -90,7 +91,7 @@ impl MetadataService {
                 SourceGame::new(&args, Some(m), &[])
             })
             .collect();
-        ready.iter().any(|d| views.iter().any(|g| self.sources.applies(&self.paths, &settings, d, g)))
+        ready.iter().any(|d| views.iter().any(|g| sources.applies(&self.paths, &settings, d, g)))
     }
 
     /// The games of `games` (`None`: every game of the Collection) with

@@ -82,6 +82,7 @@ fn source(id: &str, name: &str, kind: SourceKind, provides: &[&str]) -> SourceDe
         download: None,
         also_for: None,
         leads_for: None,
+        extension: None,
     }
 }
 
@@ -329,16 +330,16 @@ pub(super) fn registry(shared: Shared) -> SourceRegistry {
     let entries = BUILTIN
         .iter()
         .map(|d| match d.id.as_str() {
-            IGDB => Entry::Lookup(Box::new(IgdbSource { d, igdb: shared.igdb.clone() })),
-            STEAM => Entry::Lookup(Box::new(SteamSource { d, state: shared.steam.clone() })),
-            STORE => Entry::Lookup(Box::new(StoreSource { d, stores: shared.stores.clone() })),
-            LUTRIS => Entry::Lookup(Box::new(LutrisSource { d })),
-            PLAYNITE => Entry::Lookup(Box::new(PlayniteDump { d, source: shared.playnite.clone() })),
-            VNDB => Entry::Lookup(Box::new(VndbSource { d, client: shared.vndb.clone() })),
-            LAUNCHBOX => Entry::Lookup(Box::new(LaunchBoxSource { d, db: shared.launchbox.clone() })),
-            STEAMGRIDDB => Entry::Lookup(Box::new(SteamGridSource { d })),
-            LIBRETRO => Entry::Lookup(Box::new(LibretroSource { d })),
-            _ => Entry::DescriptorOnly(Box::new(d.clone())),
+            IGDB => Entry::Lookup(Arc::new(IgdbSource { d, igdb: shared.igdb.clone() })),
+            STEAM => Entry::Lookup(Arc::new(SteamSource { d, state: shared.steam.clone() })),
+            STORE => Entry::Lookup(Arc::new(StoreSource { d, stores: shared.stores.clone() })),
+            LUTRIS => Entry::Lookup(Arc::new(LutrisSource { d })),
+            PLAYNITE => Entry::Lookup(Arc::new(PlayniteDump { d, source: shared.playnite.clone() })),
+            VNDB => Entry::Lookup(Arc::new(VndbSource { d, client: shared.vndb.clone() })),
+            LAUNCHBOX => Entry::Lookup(Arc::new(LaunchBoxSource { d, db: shared.launchbox.clone() })),
+            STEAMGRIDDB => Entry::Lookup(Arc::new(SteamGridSource { d })),
+            LIBRETRO => Entry::Lookup(Arc::new(LibretroSource { d })),
+            _ => Entry::DescriptorOnly(Arc::new(d.clone())),
         })
         .collect();
     SourceRegistry { entries }

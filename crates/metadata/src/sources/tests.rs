@@ -216,6 +216,23 @@ fn emulated_games_carry_their_platform_and_rom() {
     assert!(!pc.emulated && pc.platform.is_none() && pc.rom_file.is_none());
 }
 
+/// `file_name`, what an extension's script gets: never a path.
+#[test]
+fn the_file_name_is_the_roms_else_the_install_folders() {
+    let rom = overlay(|m| {
+        m.launch_kind = "emulator".into();
+        m.windows_install_directory = Some("/roms/snes".into());
+        m.selected_rom_path = Some("{InstallDir}/Super Metroid (Japan, USA) (En,Ja).sfc".into());
+    });
+    let game = SourceGame::new(&args(None), Some(&rom), &[]);
+    assert_eq!(game.file_name, game.rom_file);
+    assert_eq!(game.file_name.as_deref(), Some("Super Metroid (Japan, USA) (En,Ja).sfc"));
+    let pc = overlay(|m| m.windows_install_directory = Some("C:\\Games\\Portal 2\\".into()));
+    let game = SourceGame::new(&args(None), Some(&pc), &[]);
+    assert_eq!((game.file_name.as_deref(), game.rom_file), (Some("Portal 2"), None));
+    assert_eq!(SourceGame::new(&args(None), None, &[]).file_name, None);
+}
+
 #[test]
 fn libretro_is_for_the_emulated_games_of_platforms_with_a_folder() {
     let reg = registry();
@@ -312,4 +329,88 @@ fn a_manifest_descriptor_takes_defaults() {
         assert_eq!(&back, d);
     }
     assert_eq!(serde_json::to_value(AppliesTo::HasSteamId).unwrap(), "hasSteamId");
+}
+
+/// An extension-like source: a descriptor with `extension`, a health.
+struct Ext(SourceDescriptor, SourceHealth);
+
+impl MetadataSource for Ext {
+    fn descriptor(&self) -> &SourceDescriptor {
+        &self.0
+    }
+    fn lookup(&self, _: &SourceContext<'_>, _: &SourceGame) -> crate::types::Lookup<crate::types::MetadataCandidate> {
+        crate::types::Lookup::NotFound
+    }
+    fn health(&self) -> SourceHealth {
+        self.1.clone()
+    }
+}
+
+fn ext(id: &str, version: &str, kind: &str, provides: &[&str], health: SourceHealth) -> Arc<dyn MetadataSource> {
+    let d: SourceDescriptor = serde_json::from_value(serde_json::json!({
+        "id": id, "name": id, "kind": kind, "provides": provides, "network": true, "searchable": true,
+        "extension": {"version": version, "author": "x"}
+    }))
+    .unwrap();
+    Arc::new(Ext(d, health))
+}
+
+#[test]
+fn extensions_are_added_after_the_built_ins_and_never_take_their_ids() {
+    let reg = registry();
+    let reg = reg.with_source(ext("mydb", "1.0.0", "details", &["description", "series"], SourceHealth::Ok)).unwrap();
+    let reg = reg.with_source(ext("pics", "1.0.0", "pictures", &["coverSquare"], SourceHealth::Ok)).unwrap();
+    assert_eq!(ids(reg.descriptors()).last().copied(), Some("pics"));
+    // An update takes the place of the old one.
+    let reg = reg.with_source(ext("mydb", "2.0.0", "details", &["description", "series"], SourceHealth::Ok)).unwrap();
+    assert_eq!(reg.descriptors().filter(|d| d.id == "mydb").count(), 1);
+    assert_eq!(reg.get("mydb").unwrap().extension.as_ref().unwrap().version, "2.0.0");
+    for taken in ["igdb", "steamgriddb", "protondb", "manual", "keep", "auto"] {
+        assert!(is_reserved_id(taken), "{taken}");
+        assert!(reg.with_source(ext(taken, "1.0.0", "details", &["description"], SourceHealth::Ok)).is_err(), "{taken}");
+        assert!(reg.without_source(taken).is_none());
+    }
+    // In each field it fills, after the sources already there; the user's lists too.
+    let mut m = heronite_data::settings::normalize_metadata(None);
+    assert_eq!(reg.field_order(&m, "series"), ["igdb", "playnite", "mydb"]);
+    assert_eq!(reg.field_order(&m, "coverSquare"), ["steamgriddb", "launchbox", "libretro", "pics"]);
+    m.field_priority.insert("series".into(), vec!["playnite".into()]);
+    assert_eq!(reg.field_order(&m, "series"), ["playnite", "mydb"]);
+    assert!(!reg.is_order_customised(&m));
+    // Moved first among the details sources, it leads every field it fills.
+    m.source_order = reg.order_after_move(&m, "mydb", 0).unwrap();
+    assert_eq!(reg.field_order(&m, "description").first().map(String::as_str), Some("mydb"));
+    let reg = reg.without_source("mydb").unwrap();
+    assert!(reg.get("mydb").is_none() && reg.without_source("mydb").is_none());
+}
+
+#[test]
+fn a_source_that_is_not_healthy_shows_why_and_is_not_searched() {
+    let (dir, http) = (tempfile::tempdir().unwrap(), crate::http::Http::default());
+    let paths = heronite_data::paths::DataPaths::at(dir.path());
+    let broken = SourceHealth::LoadFailed("api = 9".into());
+    let reg = registry()
+        .with_source(ext("broken", "1.0.0", "details", &["description"], broken.clone()))
+        .unwrap()
+        .with_source(ext("tired", "1.0.0", "extras", &["features"], SourceHealth::Failing("boom".into())))
+        .unwrap();
+    assert_eq!(reg.health("broken"), broken);
+    assert!(reg.health("igdb").is_ok() && reg.health("unknown").is_ok());
+    let m = heronite_data::settings::normalize_metadata(None);
+    let rows = reg.rows(&paths, &m, &rows::TestResults::default());
+    let row = |id: &str| rows.iter().find(|r| r.descriptor.id == id).unwrap().clone();
+    assert_eq!((row("broken").status, row("broken").problem.as_deref()), (SourceStatus::LoadFailed, Some("api = 9")));
+    let tired = row("tired");
+    assert_eq!((tired.status, tired.problem.as_deref()), (SourceStatus::Failing, Some("boom")));
+    assert!(tired.reorderable && tired.fields.iter().all(|f| f.switchable), "an extension's fields feed the merge");
+    assert!(row("igdb").problem.is_none());
+    let ctx = SourceContext::new(&paths, &http);
+    assert!(matches!(reg.search(&ctx, "tired", "x"), crate::types::Lookup::Skipped));
+    // Off wins over failing; a load failure shows even when off.
+    let mut off = m.clone();
+    heronite_data::source_prefs::set_on(&mut off, "tired", false);
+    heronite_data::source_prefs::set_on(&mut off, "broken", false);
+    let rows = reg.rows(&paths, &off, &rows::TestResults::default());
+    let status = |id: &str| rows.iter().find(|r| r.descriptor.id == id).unwrap().status;
+    assert_eq!((status("tired"), status("broken")), (SourceStatus::Off, SourceStatus::LoadFailed));
 }

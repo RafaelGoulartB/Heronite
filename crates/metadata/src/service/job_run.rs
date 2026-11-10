@@ -138,7 +138,7 @@ impl MetadataService {
         let only_fields = (fields != every).then(|| fields.iter().map(|f| f.to_string()).collect());
         // Naming every details source offered is asking every source.
         let offered: Vec<String> =
-            self.bulk_sources(settings).into_iter().filter(|d| self.sources.has_lookup(&d.id)).map(|d| d.id).collect();
+            self.bulk_sources(settings).into_iter().filter(|d| self.sources().has_lookup(&d.id)).map(|d| d.id).collect();
         let only_sources = args.sources.clone().filter(|list| !offered.iter().all(|id| list.contains(id)));
         let tags = args.fields.as_ref().is_some_and(|list| list.iter().any(|f| f == extra_fields::STEAM_TAGS))
             && is_on(settings, ids::STEAM_TAGS)

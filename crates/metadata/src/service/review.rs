@@ -122,27 +122,27 @@ impl MetadataService {
         Ok(ReviewEntry::new(&game.app_name, runner, &game.title, reason, &self.review_candidates(&gathered.candidates)))
     }
 
-    /// Searches every source that can search, is on and has its database
-    /// when it needs one (or those of `only`) for `query`, at once, and
-    /// groups the hits by game.
+    /// Searches every source that can search, is on, is healthy and has its
+    /// database when it needs one (or those of `only`) for `query`, at
+    /// once, and groups the hits by game.
     pub fn search_sources(&self, query: &str, only: Option<&[String]>) -> SourceSearch {
         let ctx = SourceContext::new(&self.paths, &self.http);
         let settings = ctx.settings();
-        let asked: Vec<&str> = self
-            .sources
+        let sources = self.sources();
+        let asked: Vec<&str> = sources
             .lookups()
             .map(|s| s.descriptor())
             .filter(|d| d.searchable && is_on(settings, &d.id) && only.is_none_or(|o| o.contains(&d.id)))
-            // Not asked before the user downloads its database.
-            .filter(|d| self.sources.downloaded(&self.paths, &d.id))
+            // Not asked before the user downloads its database, nor while it cannot be asked.
+            .filter(|d| sources.downloaded(&self.paths, &d.id) && sources.health(&d.id).is_ok())
             .map(|d| d.id.as_str())
             .collect();
         let answers: Vec<(&str, Lookup<_>)> = std::thread::scope(|scope| {
             let handles: Vec<_> = asked
                 .iter()
                 .map(|&id| {
-                    let ctx = &ctx;
-                    (id, scope.spawn(move || self.sources.search(ctx, id, query)))
+                    let (ctx, sources) = (&ctx, &sources);
+                    (id, scope.spawn(move || sources.search(ctx, id, query)))
                 })
                 .collect();
             handles.into_iter().map(|(id, h)| (id, h.join().unwrap_or(Lookup::NotFound))).collect()
