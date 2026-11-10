@@ -341,6 +341,16 @@ impl CollectionView {
             w if w.starts_with("wizard:") || w.starts_with("metadata:") || w.starts_with("review:") || w.starts_with("covers:") => {
                 self.open_metadata_debug(w, window, cx)
             }
+            // "Get more sources" (`sources:<id>` picks that entry) and the
+            // installer of a package (`extension-file:<path>`).
+            w if w == "sources" || w.starts_with("sources:") => {
+                let pick = w.strip_prefix("sources:").map(str::to_owned);
+                self.open_sources(crate::dialogs::extensions::SourcesRequest::Gallery { pick }, window, cx);
+            }
+            w if w.starts_with("extension-file:") => {
+                let path = std::path::PathBuf::from(&w["extension-file:".len()..]);
+                self.open_sources(crate::dialogs::extensions::SourcesRequest::File(path), window, cx);
+            }
             w if w.starts_with("launch-problem:") => self.debug_launch_problem(&w["launch-problem:".len()..], false, cx),
             w if w.starts_with("launch-problem-toast:") => self.debug_launch_problem(&w["launch-problem-toast:".len()..], true, cx),
             // troubleshoot[:<log>]: "Troubleshoot", reading that log.

@@ -55,6 +55,8 @@ pub(super) enum Act {
     UpdateMetadata,
     /// "Review matches" on every game waiting for review.
     ReviewMatches,
+    /// "Get more sources": the gallery of extensions.
+    GetMoreSources,
     Quit,
     /// Sort, filters and grouping of the Collection list.
     View(ViewCmd),
@@ -409,6 +411,14 @@ pub(super) fn static_entries() -> Vec<Entry> {
         tr!("Say which game it is where the sources were not sure"),
         Icon::TravelExplore,
         "review matches match fix queue unsure attention metadata revisar correspondencias jogo fila metadados",
+    ));
+    v.push(action(
+        Act::GetMoreSources,
+        "get-more-sources",
+        tr!("Get more sources"),
+        tr!("Install metadata sources made by the community"),
+        Icon::Add,
+        "extensions sources metadata gallery install community plugins add extensoes fontes metadados galeria instalar comunidade",
     ));
     v.push(action(
         Act::Console,
@@ -884,6 +894,7 @@ mod tests {
             Act::ManageFields,
             Act::UpdateMetadata,
             Act::ReviewMatches,
+            Act::GetMoreSources,
             Act::Console,
             Act::Quit,
         ] {

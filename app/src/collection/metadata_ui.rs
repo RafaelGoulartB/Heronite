@@ -11,6 +11,7 @@ use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, JobKind, UpdateMode};
 
 use super::{CollectionView, ToastAction};
 use crate::dialogs::covers::CoversDialog;
+use crate::dialogs::extensions::{ExtensionsDialog, SourcesRequest};
 use crate::dialogs::game_settings::{GameSettingsDialog, Tab as GameTab};
 use crate::dialogs::metadata::MetadataDialog;
 use crate::dialogs::metadata_update::hub::{hub, HubEvent, HubGlobal, MetadataHub};
@@ -52,8 +53,13 @@ impl CollectionView {
                 this.dialog_sub = None;
                 this.open_settings_section(crate::pages::settings::Section::Metadata, window, cx);
             }
-            // Settings → Metadata reads it.
-            HubEvent::SourceDownloaded => {}
+            HubEvent::OpenSources(request) => {
+                this.dialog = None;
+                this.dialog_sub = None;
+                this.open_sources(request.clone(), window, cx);
+            }
+            // Settings → Metadata reads them.
+            HubEvent::SourceDownloaded | HubEvent::ExtensionsChanged => {}
         })
         .detach();
         // The header pill follows the job's progress.
@@ -91,6 +97,16 @@ impl CollectionView {
 
     pub(super) fn game_for(&self, key: &str) -> Option<heronite_data::collection::Game> {
         self.lib.as_ref()?.get(key).cloned()
+    }
+
+    /// "Get more sources", or the installer of a file
+    /// (`dialogs/extensions`).
+    pub(super) fn open_sources(&mut self, request: SourcesRequest, window: &mut Window, cx: &mut Context<Self>) {
+        let view = match request {
+            SourcesRequest::Gallery { pick } => cx.new(|cx| ExtensionsDialog::gallery(pick, window, cx)),
+            SourcesRequest::File(path) => cx.new(|cx| ExtensionsDialog::file(path, window, cx)),
+        };
+        self.open_dialog(view, cx);
     }
 
     /// Focus footer / context menu: "Collection metadata".

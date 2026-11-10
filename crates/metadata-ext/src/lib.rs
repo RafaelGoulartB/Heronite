@@ -10,6 +10,9 @@
 //! - [`engine`]: the sandbox (QuickJS) and the `ctx` API scripts get.
 //! - [`record`]: what a script returns, checked and clamped like the
 //!   built-in sources' answers.
+//! - [`index`]: a list of extensions (`index.json`), read strictly.
+//! - [`lists`]: the lists the gallery reads, their copies kept offline,
+//!   updates, and installing an entry (downloaded, checked, then as a file).
 //! - [`ExtensionsExt`]: the entry points the app calls on the
 //!   `MetadataService` (load, inspect, install, remove, list).
 //!
@@ -17,7 +20,9 @@
 
 pub mod engine;
 mod error;
+pub mod index;
 pub mod limits;
+pub mod lists;
 pub mod manifest;
 pub mod net;
 pub mod package;

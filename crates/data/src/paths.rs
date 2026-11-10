@@ -229,6 +229,12 @@ impl DataPaths {
     pub fn source_cache_dir(&self, id: &str) -> PathBuf {
         self.j("store_cache").join("sources").join(id)
     }
+    /// `store_cache/extension-lists/`: the last good copy of each list of
+    /// metadata extensions (`heronite-metadata-ext`), and the files of an
+    /// entry while it is checked before installing. A cache.
+    pub fn extension_lists_cache_dir(&self) -> PathBuf {
+        self.j("store_cache").join("extension-lists")
+    }
     /// `gog_store/<name>.json`.
     pub fn gog_store(&self, name: &str) -> PathBuf {
         self.j("gog_store").join(format!("{name}.json"))

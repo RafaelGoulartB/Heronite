@@ -26,6 +26,15 @@ pub enum ExtensionError {
     NotInstalled(String),
     /// Writing to the data folder failed.
     Io(String),
+    /// A file of a list's entry could not be downloaded (no answer, or an
+    /// error status); the text says which and why.
+    Download(String),
+    /// A downloaded file is not the one its list names: its SHA-256
+    /// differs. The text names the file.
+    Checksum(String),
+    /// The package is not what its list's entry says (another id, version
+    /// or kind, a host the entry does not list).
+    NotAsListed(String),
 }
 
 impl std::fmt::Display for ExtensionError {
@@ -44,6 +53,9 @@ impl std::fmt::Display for ExtensionError {
             Self::Script(m) => write!(f, "source.js: {m}"),
             Self::NotInstalled(id) => write!(f, "no extension \"{id}\" is installed"),
             Self::Io(m) => write!(f, "could not write the extension: {m}"),
+            Self::Download(m) => write!(f, "could not download: {m}"),
+            Self::Checksum(m) => write!(f, "{m} is not the file the list names (SHA-256 differs)"),
+            Self::NotAsListed(m) => write!(f, "not what the list says: {m}"),
         }
     }
 }

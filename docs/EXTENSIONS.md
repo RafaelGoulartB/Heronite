@@ -300,18 +300,18 @@ its own:
 - It cannot decide by itself that a match is sure by title: the app
   compares the titles.
 
-Extensions are installed only by you, from a file you choose, after the
-installer has shown what the extension is, what it fills, who it is for,
-where it connects, the settings it asks for, whether it is about adult
-games, and the package's SHA-256. An installed extension starts switched
-on.
+Extensions are installed only by you, from a file you choose or from a
+list (below), after the installer has shown what the extension is, what
+it fills, who it is for, where it connects, the settings it asks for,
+whether it is about adult games, where it comes from, and the package's
+SHA-256. An installed extension starts switched on.
 
 ## Installing, updating, removing
 
 Installed extensions live in the data folder, in
 `metadata-extensions/<id>/`: the package's files as they were and
-`install.json` (when, from where, the package's SHA-256, and the last error
-while stopped). The SHA-256 is the zip file's, or for a folder the digest of
+`install.json` (when, from where, the package's SHA-256, the address of the
+list it came from, if any, and the last error while stopped). The SHA-256 is the zip file's, or for a folder the digest of
 its files (each name, a zero byte, its length as 8 little-endian bytes and
 its bytes, in name order).
 
@@ -319,6 +319,112 @@ Installing a newer version replaces the files and keeps what the user set
 (on or off, settings, order). The same version again, or an older one, asks
 first. Removing an extension keeps what the user set for it, for a later
 install, unless they choose to forget it.
+
+In the app, Settings → Metadata lists an installed extension with the
+built-in sources ("Extension · 1.2.0" beside its name). Its open row says
+who made it, where it came from, where it connects, and has "Update from a
+file…" and "Remove". Under the sources, "Get more sources" opens the
+gallery of the lists, and "Install from a file…" takes a `.zip` or the
+`source.toml` of an extension's folder.
+
+## Lists of extensions
+
+The gallery ("Get more sources") reads lists: small JSON documents that
+name extensions and where their two files are. Heronite always reads its
+own list, `extensions/index.json` on the repository's main branch; you
+can add others by their address ("Lists…"), and remove them (what you
+installed from a list stays installed). The last good copy of each list is
+kept in `store_cache/extension-lists/`, so the gallery opens offline with
+it and says how old it is.
+
+Installing from a list downloads the entry's `source.toml` and
+`source.js`, checks that the SHA-256 and the size of each are the ones the
+list gives, then shows the same installer as a file. The manifest must be
+what the entry says: the same id, version and kind, no field the entry
+does not list, no host the entry does not name (a picture host may be in
+`hosts` or `images`), and adult only if the entry says so; otherwise
+nothing is installed. Nothing updates by itself: an installed extension
+whose list offers a newer version is flagged in the gallery ("Updates")
+and in its row, and you install the update like any other.
+
+What this checks, and what it does not: the files are the ones the list
+names. Nobody reviews an extension because it is on a list; Heronite's own
+list holds what was merged into the repository by a pull request, and a
+list you add is kept by someone Heronite does not know. An extension from
+a file was checked by nobody.
+
+### The format
+
+```json
+{
+  "index": 1,
+  "name": "Heronite",
+  "extensions": [
+    {
+      "id": "wikipedia",
+      "name": "Wikipedia",
+      "version": "1.0.0",
+      "api": 1,
+      "author": "Heronite",
+      "homepage": "https://www.wikipedia.org",
+      "kind": "details",
+      "adult": false,
+      "description": "The first paragraphs of the game's Wikipedia article, in your language when there is one.",
+      "fields": ["description", "releaseDate"],
+      "applies": { "to": "all", "asked": "fallback" },
+      "hosts": ["*.wikipedia.org"],
+      "images": [],
+      "settings": [{ "label": "API key", "required": true }],
+      "files": {
+        "source.toml": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.toml",
+          "sha256": "5d12d1646140a78c7e9614f028aa98178db81d45df879e3f0e26248841e71c54",
+          "size": 659
+        },
+        "source.js": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.js",
+          "sha256": "382556b0935ac6b7c20478b4fe0f1d55c4a039cc331f659d5c4482e3b1c4218e",
+          "size": 3199
+        }
+      }
+    }
+  ]
+}
+```
+
+- `index` is the version of the format; a list of a later one is refused
+  ("made for a newer Heronite"). `name` is optional.
+- Each entry copies its manifest: `id`, `name`, `version`, `api`, `author`,
+  `homepage` (optional), `kind`, `adult` (optional), `description`,
+  `fields` (`[provides] fields`), `applies` (the `[applies]` table, as is;
+  optional), `hosts` and `images` (`[network]`), `settings` (each
+  setting's `label` and `required`; optional). An entry whose `api` is
+  higher than the app's is listed but cannot be installed.
+- `files` gives `source.toml` and `source.js`: an `https` address, the
+  SHA-256 in lowercase hex, and the size in bytes (64 KB and 512 KB at
+  most).
+- The list is read strictly: every address must be `https`, ids must be
+  valid and not a built-in source's, an id appears once, at most 500
+  entries and 1 MB. One wrong entry refuses the whole list, with what is
+  wrong. Keys the app does not know are left out.
+
+### Getting listed
+
+Open a pull request on the repository that adds your extension's folder
+under `extensions/` (`source.toml`, `source.js`, a `README.md`; the folder
+named after the id) and regenerates the list:
+
+```sh
+python3 scripts/extensions-index.py           # rewrites extensions/index.json
+python3 scripts/extensions-index.py --check   # what the tests check
+```
+
+The script reads each folder's `source.toml`, hashes the two files and
+builds their addresses from a base (`--base`, the raw files of the main
+branch by default). A test fails while `extensions/index.json` does not
+match the folders. To publish a list of your own, run the script with
+`--base <where your folders are served>` and `--out`, and serve the result
+over `https`.
 
 ## Trying an extension
 

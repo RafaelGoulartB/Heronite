@@ -189,7 +189,7 @@ impl<'a> Keys<'a> {
     }
 }
 
-fn check_text(name: &str, value: &str, max: usize) -> Result<(), ExtensionError> {
+pub(crate) fn check_text(name: &str, value: &str, max: usize) -> Result<(), ExtensionError> {
     if value.is_empty() {
         return Err(err(format!("{name} is empty")));
     }
@@ -209,7 +209,7 @@ pub fn valid_id(id: &str) -> bool {
         && id.split('-').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()))
 }
 
-fn http_url(name: &str, value: &str) -> Result<(), ExtensionError> {
+pub(crate) fn http_url(name: &str, value: &str) -> Result<(), ExtensionError> {
     match url::Url::parse(value) {
         Ok(u) if matches!(u.scheme(), "http" | "https") && u.host_str().is_some() => Ok(()),
         _ => Err(err(format!("{name} \"{value}\" is not an http(s) address"))),
@@ -358,7 +358,16 @@ fn provides(top: &Keys<'_>, kind: SourceKind, warnings: &mut Vec<String>) -> Res
 }
 
 fn applies(top: &Keys<'_>, warnings: &mut Vec<String>) -> Result<(AppliesTo, Asked, Option<GameKind>), ExtensionError> {
-    let Some(table) = top.table("applies")? else { return Ok((AppliesTo::All, Asked::Always, None)) };
+    applies_of(top.table("applies")?, warnings)
+}
+
+/// The `[applies]` table read as the manifest reads it (a list of
+/// extensions copies it as is: `index.rs`).
+pub(crate) fn applies_of(
+    table: Option<&Table>,
+    warnings: &mut Vec<String>,
+) -> Result<(AppliesTo, Asked, Option<GameKind>), ExtensionError> {
+    let Some(table) = table else { return Ok((AppliesTo::All, Asked::Always, None)) };
     let keys = Keys::new(table, "applies", &["to", "platforms", "stores", "asked", "game_kind"]);
     warnings.extend(keys.unknown().into_iter().map(|k| format!("unknown key {k} left out")));
     let to = keys.string("to")?;

@@ -125,14 +125,14 @@ fn store_name(id: &str) -> &str {
 
 /// The games a source is for, in a few words: the kind of game it is
 /// about, else its audience.
-pub(super) fn audience(d: &SourceDescriptor) -> String {
+pub(crate) fn audience(d: &SourceDescriptor) -> String {
     if let Some(kind) = &d.game_kind {
         return tr(&kind.name).to_owned();
     }
     audience_of(&d.applies_to)
 }
 
-fn audience_of(a: &AppliesTo) -> String {
+pub(crate) fn audience_of(a: &AppliesTo) -> String {
     match a {
         AppliesTo::All => tr!("All games").into(),
         AppliesTo::HasSteamId => tr!("Games found on Steam").into(),
@@ -173,7 +173,7 @@ pub(crate) fn field_name(field: &str) -> &str {
 
 /// What a source gives, in kinds rather than fields ("Text · Scores ·
 /// Covers"), for the closed row.
-pub(super) fn gives(fields: &[String]) -> String {
+pub(crate) fn gives(fields: &[String]) -> String {
     const TEXT: [&str; 10] =
         ["description", "releaseDate", "developers", "publishers", "genres", "themes", "gameModes", "platforms", "series", "features"];
     let has = |f: &str| fields.iter().any(|x| x == f);
@@ -218,7 +218,7 @@ pub(super) fn about(d: &SourceDescriptor) -> Option<&str> {
 }
 
 /// When the source is asked, for the sources the user cannot tell otherwise.
-pub(super) fn when_asked(d: &SourceDescriptor) -> Option<String> {
+pub(crate) fn when_asked(d: &SourceDescriptor) -> Option<String> {
     if d.is_fallback() {
         return Some(match &d.game_kind {
             Some(kind) => tr!(

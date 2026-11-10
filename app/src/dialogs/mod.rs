@@ -24,6 +24,7 @@ pub mod epic_confirm;
 pub mod epic_import;
 pub mod epic_install;
 pub mod epic_modify;
+pub mod extensions;
 pub mod game_settings;
 pub mod hltb_match;
 pub mod launch_problem;
@@ -107,6 +108,9 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     if let Ok(d) = view.clone().downcast::<covers::CoversDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<extensions::ExtensionsDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     false

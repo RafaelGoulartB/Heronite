@@ -124,7 +124,34 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   for each field", one choice per field between "List order" and the details sources that fill it; before "When details
   arrive" it has the same Cover shapes: a header, a switch per family (its aspects and who draws it in the description,
   locked while in use), the automatic download and a row per "Download <family> covers". The Settings search
-  finds the sources, their options and "Order for one field (advanced)" and opens the row that holds them.
+  finds the sources, their options, "Get more sources" and "Order for one field (advanced)" and opens the row that holds them.
+  **Extensions** (sources the community writes, `docs/EXTENSIONS.md`; `extension.rs`, `more.rs`) are rows among the
+  others, in the card of their kind, drawn from the same descriptor. After its name a row has a small grey pill,
+  "Extension · 1.2.0" ("Extension" when the version is not known); a details extension has the drag handle and takes part
+  in the order like a built-in one, and its fields feed the merge. Its open row adds, under "Fills": who made it ("Made by
+  okabe") and where it came from ("From the Heronite list", "From lists.example.org", "From lists.example.org, a list you
+  removed", or "Installed from a file: nobody checked this source"; amber unless it came from the app's list), "Connects
+  to: api.example.org, img.example.org" (every host it may contact, pictures included; "Connects to nothing on the
+  internet" when it has none; left out when its manifest could not be read), its homepage as a link with the address
+  shown, and, when the list it came from offers a newer version, "Version 1.1.0 is on its list." with "See the update…"
+  (opens the gallery with that entry picked); an extension installed from a file is never flagged. Last, "Update from a
+  file…" (the file chooser, then the installer, which words an update, the same version or an older one) and "Remove",
+  which turns the row's buttons into a question in place: "Remove Wikipedia? Its files are deleted and it is no longer
+  asked. What you set for it stays, in case you install it again." with Cancel and a red Remove ("Removing…" while it
+  runs; the row closes, and a failure is written beside the buttons). Removing keeps what the user set for the source
+  (on or off, options, its place in the order) and forgets nothing, so installing it again finds it as it was.
+  An extension that cannot be asked shows a block first in its open row, red tint and a warning icon: "Could not be
+  loaded" (the row's status) says "Its files could not be loaded, so it is never asked. Install a version that works,
+  or remove it." and has no fields to list; "Stopped after errors" says "It failed too many times in a row, so it is not
+  asked for now. It is asked again once you try again or install an update." with "Try again", which switches it on
+  again; both add "The last error: …" in small muted text. An extension that was installed or updated opens its row,
+  scrolls to it and flashes it once the page lists it.
+  Under the sources, a dashed row, "Get more sources" with a plus tile, opens the gallery (`more.rs`); once a copy of a
+  list was read it adds how many sources the lists offer that are not installed: "· 2 more from the Heronite list",
+  "· 5 more from lists.example.org" (one list), "· 5 more from your lists" (several), "· Nothing new on your lists"; no
+  copy, no count. "Install from a file…" at its right goes straight to the file chooser and the installer. Console mode
+  shows one muted row, "Get more sources" with "On the desktop" and "Sources made by the community are installed from
+  Settings → Metadata on the desktop." (the file chooser and the permissions need the desktop).
 - Command palette (Ctrl K, `app/src/collection/palette/`): it reads the app's own lists, so a new feature reaches it
   without palette code. A game action goes in `collection/game_actions.rs` (`GameAction`, listed by
   `CollectionView::game_actions`, run by `run_game_action`): the card's context menu draws the same list. A page action
@@ -705,6 +732,86 @@ for the picked slot), "Reset" (back to what the sources gave; only when the slot
 the primary "Use for Square" (Tall, Wide, Background; "Downloading…" while it saves), which needs a picture picked. Every
 change is saved at once and the Collection behind shows it; Esc closes the screenshot picker first.
 
+**Get more sources** (`dialogs/extensions/`: `mod.rs` the dialog and its two faces, `gallery.rs` the entries and the picked
+one's panel, `confirm.rs` the installer, `lists_manager.rs` "Lists…", `permissions.rs` "What it is allowed to do",
+`words.rs` every error, origin and trust sentence and how old a copy is, `actions.rs` what runs off the UI thread,
+`state.rs` what the hub keeps (`MetadataHub::extensions`), `fake.rs` the debug lists): one dialog, titled "Get more
+sources", to install the sources the community writes. It opens from Settings → Metadata's dashed row (and "See the
+update…"), from the palette's "Get more sources" (Actions: "Install metadata sources made by the community") and, for a
+file, from "Install from a file…" and "Update from a file…" (`HubEvent::OpenSources`; the hub emits it so the Collection
+opens the dialog from any page). Opening the gallery reads the lists from the network; the file's installer reads the
+package off the UI thread. Esc goes back from the installer to the gallery, closes "Lists…", then closes the dialog.
+- **The gallery** (1020px at most): a line, "Sources made by the community. Once installed, a source sits in your lists
+  like any other.", then, in amber, one line per list that could not be read now but has an older copy ("The Heronite
+  list: There is no list at this address. Showing the copy read before."). A search field ("Search sources": every word
+  must be in the name, author, id or description) and the filters: "All 7", "Game details", "Pictures", "Extras" and,
+  only when some installed extension has a newer version in its list, "Updates 1" (accent tint). Below, on the left, the
+  entries, one card each (each id once, the first list that offers it): its mark, name, "okabe · 1.4.2" (and, for a list
+  the user added, "· lists.example.org"), the description in two lines, a kind pill, "Adult content" in amber when it is,
+  what it fills ("Text · Covers") and a small button by its state: "Install", "Update to 1.1.0", "Installed" (disabled; an
+  extension installed from a file counts as installed, never as an update) or "Needs a newer Heronite" (disabled); a
+  click on the card picks it, a click on the button starts the install. On the right (340px), the picked entry (the first
+  shown when none is picked): its mark, name, "okabe · version 1.4.2", pills (kind, the games it is for, "Adult content",
+  "1.0.0 installed" in accent for an update), the description, "What it is allowed to do" (below) and "Fills", then,
+  pinned under it so the button stays in view, the trust line, the primary button (the download icon, or update) with
+  "Homepage" at its right, and the reason in red when the last try failed.
+  - **What it is allowed to do** (`permissions.rs`; the same lines in the panel and in the installer, built from the
+    entry or the manifest, each one something the sandbox enforces and nothing more): "Connects to api.example.org and
+    img.example.org, and nowhere else" (or "Connects to nothing on the internet"), "Takes pictures from … too" when its
+    pictures come from other hosts, "Reads from your games: title, platform, year, file name (never a folder), store and
+    ids", "No access to your files, your accounts or other sources' keys", in amber "Its pictures are hidden until “Allow
+    adult covers” is on" for an adult source, and "Asks you for: API key (needed), Region" when it has options.
+  - **The trust line** says only what Heronite checked, with a tick when the app's own list is the origin and a warning,
+    in amber, otherwise (`words::origin`, `words::guarantee`). "From the Heronite list": "Its files are checked against
+    the Heronite list (SHA-256) before anything is installed." A list the user added ("From lists.example.org"; "…, a
+    list you removed" when it was removed since): "Its files are checked against this list (SHA-256), but Heronite does
+    not know who keeps the list. Install only what you trust." A file: "Installed from a file: nobody checked this
+    source", "Install it only if you trust where the file comes from." Nobody reviews what a list names: the check is
+    that the files are the ones it names.
+  - **The footer**: on the left where the copy shown comes from and how old it is ("From the Heronite list · read
+    today", "From 2 lists · read yesterday", "· read 3 days ago · could not be read now" when the list was not
+    reachable and the copy kept is shown; "Reading the lists…" meanwhile), then "Refresh" (reads every list again; dimmed
+    meanwhile), "Install from a file…", "Lists…" and Done.
+  - **Lists…** takes the place of the entries, with "Back to the sources" and "Lists in use": a row per list, the app's
+    own first ("The Heronite list", the tick, no Remove) then the ones added (their host, a link icon, Remove), each
+    with its address and how it stands ("3 sources · read today", the sentence of why it could not be read, or "Not read
+    yet"). "Add a list by its address" is a field (https://; Enter or Add) with a red reason when it is refused ("Only
+    https addresses can be added.", "There is no list at this address.", "This list is in use already."…). A line with a
+    warning icon closes it: "Anyone can publish a list. Heronite checks that a source's files are the ones its list
+    names, not what the source does: add only lists from people you trust. Removing a list keeps the sources installed
+    from it." Lists are kept in `settings.metadata.extensionLists`.
+  - **Empty states**: "Reading the lists…" while no copy exists yet; with no copy and no list read, a Wi-Fi-off icon,
+    "Could not read the list", why in a sentence (no connection, 404, too large, not a list, a newer format, mistakes
+    with the engine's words under it), "You can still install a source from a file." and "Try again" (the app's own
+    list answers 404 until it is published on the main branch); a list with no entry, an inbox icon, "No sources here
+    yet" and "The lists in use offer no source. Sources show here once someone adds them to a list."; and "No source
+    matches." when the search or the filter leaves nothing.
+- **The installer** (640px, from the gallery with a back arrow, from a file alone), the one place every extension goes
+  through: its title is "Install Wikipedia", "Update Wikipedia 1.0.0 → 1.1.0", "Install Wikipedia 1.0.0 again" (the same
+  version is installed) or "Go back to Wikipedia 1.0.0" (an older one), "Install a source" while a file is read and
+  "This source cannot be installed" when it does not read. Pressing a gallery entry's button first downloads its two
+  files ("Downloading…" on the button; every other button is dimmed meanwhile) and checks them against the list's SHA-256
+  and sizes, then reads the package as a file is read, and refuses one that is not what the entry says (another id or
+  version, a field or a host it does not name; "It is not what the list says it is (its name, version, fields or hosts
+  differ), so nothing was installed."): nothing is written until Install. The body shows the mark, the name, "okabe ·
+  version 1.4.2", in accent what replacing does ("It replaces version 1.0.0. What you set for it (on or off, its
+  settings, its place) stays.", "Version 1.0.0 is installed already: this puts its files back. What you set for it
+  stays.", "Version 2.0.0 is installed: this replaces it with an older one. What you set for it stays."), pills (kind,
+  the games it is for, "Adult content"), the description and when it is asked, "What it is allowed to do", "Fills", the
+  trust box (a tick on a quiet tint, or a warning on an amber one), "Its source.toml has keys this Heronite does not
+  know; they are left out." when it has any, and "SHA-256 …" in small text. The footer is Cancel (Close when it did not
+  read) and the primary button: "Install", "Update", "Install again" or "Install the older version" ("Installing…"
+  and dimmed meanwhile). An error reads in plain words in red with the engine's own words under it in
+  small muted text, for the extension's author ("This is not an extension. Choose its .zip, or the source.toml in its
+  folder.", "The package has no source.js.", "Its source.toml has a mistake, so it cannot be installed.", "It was made
+  for a newer Heronite. Update Heronite to install it.", "Its id is the id of a source Heronite has, so it cannot be
+  installed.", "A file downloaded is not the one the list names, so nothing was installed.", "It could not be saved in
+  the data folder."…; every `ExtensionError` has its sentence in `words::error`, and a test fails for a new one); a file
+  that does not read adds "Nothing was installed. Choose another file, or ask the source's author for one that works."
+  and "Choose another file…". A file chosen inside an extension's folder (`source.toml`, `source.js`, `README.md`)
+  stands for the folder. After Install the dialog closes, the extension is on, and Settings → Metadata (on the page the
+  user is on, else the next time it shows) opens its row and scrolls to it.
+
 **Game settings → Images** (`dialogs/game_settings/images.rs`): the Cover block is the cover of the family the desktop
 draws, "Custom image · Square" or "Default image · Square" (just "Custom image" or "Default image" for the tall one), its
 preview in that shape, "Shown on the game card", the line "Square: cropped · Wide: not kept" (the other families, each
@@ -1169,6 +1276,17 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   those sources' rows (`advanced`: "Order for one field") and scrolls to the last; with `HERONITE_DEBUG_PAGE=settings:metadata`.
   `HERONITE_DEBUG_SOURCE_DOWNLOAD=<source id>:<none|downloading[:<percent>]|preparing[:<percent>]|ready|failed>` shows
   that source's database in a made-up state, without the network.
+  `HERONITE_DEBUG_METADATA_OPEN` also takes an extension's id (its row opens once the extensions are loaded).
+  Extensions (`dialogs/extensions/`): `HERONITE_DEBUG_DIALOG=sources[:<id>]` opens "Get more sources" (that entry
+  picked) and `HERONITE_DEBUG_DIALOG=extension-file:<path>` the installer of a package (a zip, a folder, or a file in
+  it; nothing is installed until Install is pressed: use a data copy). `HERONITE_DEBUG_EXTENSIONS=<state>[+<state>…]`
+  makes the lists up, without the network: `list` (the two examples and made-up sources, one adult, one for a newer
+  Heronite), `update` (the installed extensions count as from the app's list, which offers Wikipedia 1.1.0), `old`
+  (a copy 3 days old, not readable now), `offline`, `404`, `invalid`, `empty`, `other` (a list the user added), `lists`
+  (the "Lists…" manager open), `pick:<id>`, `busy` / `error` (the picked entry installing, or its install failed;
+  installing from a made-up list always fails as a download would). `HERONITE_EXTENSIONS_INDEX=<https address>`
+  replaces the app's own list (`heronite_metadata_ext::lists::HERONITE_LIST`, which answers 404 until this list is
+  published on the main branch).
 - Main Collection screen: compare with the reference PNG (crop the same region with PIL, view both). Dialogs/menus/settings: one sanity check is enough — they need to work and be consistent, not pixel-identical (user decision).
 - Anything that WRITES data must be exercised only against a copy:
   `HERONITE_DATA_DIR=/tmp/heronite-fixture-<you> scripts/shot.sh …`

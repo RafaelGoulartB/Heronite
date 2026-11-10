@@ -68,6 +68,12 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
             }
         }
     }
+    // Installing a source needs a file chooser and reading what it may
+    // do: the desktop's.
+    rows.push(
+        Row::info("more", tr!("Get more sources"), tr!("On the desktop"))
+            .desc(tr!("Sources made by the community are installed from Settings \u{2192} Metadata on the desktop.")),
+    );
     rows.extend(super::shapes::console_rows(d));
     rows.extend([
         Row::header(tr!("When details arrive")),

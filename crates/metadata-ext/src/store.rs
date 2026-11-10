@@ -28,6 +28,10 @@ pub struct InstallRecord {
     /// The last error, while it is stopped after failing too often.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failing: Option<String>,
+    /// The address of the list it was installed from (`index.rs`); none
+    /// for a file or a folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -105,8 +109,8 @@ fn recover(root: &Path) {
 }
 
 /// Writes `package` as the installed extension of its id, replacing the
-/// one installed. Returns its folder.
-pub fn write(paths: &DataPaths, package: &Package, from: &str) -> Result<PathBuf, ExtensionError> {
+/// one installed. `list`: the list it comes from. Returns its folder.
+pub fn write(paths: &DataPaths, package: &Package, from: &str, list: Option<&str>) -> Result<PathBuf, ExtensionError> {
     let id = &package.manifest.id;
     let root = root(paths);
     std::fs::create_dir_all(&root).map_err(io)?;
@@ -123,6 +127,7 @@ pub fn write(paths: &DataPaths, package: &Package, from: &str) -> Result<PathBuf
             sha256: package.sha256.clone(),
             version: package.manifest.version.to_string(),
             failing: None,
+            list: list.map(str::to_owned),
             extra: Default::default(),
         };
         write_record(&tmp, &record)

@@ -419,6 +419,7 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         source_order: value.map(|v| clean_ids(&v.source_order)).unwrap_or_default(),
         keep_cover_families: value.map(|v| clean_ids(&v.keep_cover_families)).unwrap_or_default(),
         fill_cover_families: value.map(|v| v.fill_cover_families).unwrap_or(true),
+        extension_lists: value.map(|v| clean_ids(&v.extension_lists)).unwrap_or_default(),
         // Keys a newer build added stay for it.
         extra: value.map(|v| v.extra.clone()).unwrap_or_default(),
     }

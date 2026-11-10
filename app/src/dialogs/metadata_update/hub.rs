@@ -38,6 +38,13 @@ pub enum HubEvent {
     /// The database of a source was downloaded, refreshed or removed (or
     /// that failed): its row reads its state again.
     SourceDownloaded,
+    /// Someone asks the Collection for "Get more sources" or for the
+    /// installer of a file (`dialogs/extensions`).
+    OpenSources(crate::dialogs::extensions::SourcesRequest),
+    /// Extensions were loaded, installed or removed, or their lists read
+    /// again ([`MetadataHub::extensions`]): Settings → Metadata reads its
+    /// rows again.
+    ExtensionsChanged,
 }
 
 /// The games "Review matches" goes through.
@@ -80,6 +87,9 @@ pub struct MetadataHub {
     pub(super) following_downloads: bool,
     /// `HERONITE_DEBUG_SOURCE_DOWNLOAD`.
     pub(super) fake_download: Option<FakeDownload>,
+    /// The installed extensions and their lists, as last read
+    /// (`dialogs/extensions/state.rs`).
+    pub extensions: crate::dialogs::extensions::ExtensionsState,
     tx: Arc<Mutex<UnboundedSender<BulkProgress>>>,
 }
 
@@ -99,9 +109,13 @@ impl MetadataHub {
         // The installed extensions join the sources off the UI thread (each
         // script is compiled); a fetch before that asks the built-in ones.
         let loading = service.clone();
-        cx.background_spawn(async move {
-            use heronite_metadata_ext::ExtensionsExt;
-            loading.load_extensions();
+        cx.spawn(async move |this, cx| {
+            cx.background_spawn(async move {
+                use heronite_metadata_ext::ExtensionsExt;
+                loading.load_extensions();
+            })
+            .await;
+            this.update(cx, |h, cx| h.read_extensions(false, cx)).ok();
         })
         .detach();
         let (tx, mut rx) = unbounded::<BulkProgress>();
@@ -130,6 +144,7 @@ impl MetadataHub {
             source_downloads: SourceDownloads::new(),
             following_downloads: false,
             fake_download: FakeDownload::from_env(),
+            extensions: crate::dialogs::extensions::ExtensionsState::from_env(),
             tx: Arc::new(Mutex::new(tx)),
         };
         this.read_queue(cx);

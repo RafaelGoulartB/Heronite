@@ -226,6 +226,10 @@ pub struct MetadataSettings {
     /// Written only when off.
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub fill_cover_families: bool,
+    /// Addresses of the lists of metadata extensions the user added (the
+    /// app's own list is always read and is not here), in the order added.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extension_lists: Vec<String>,
     #[serde(flatten)]
     pub extra: Extra,
 }

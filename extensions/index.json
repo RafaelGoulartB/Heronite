@@ -1,0 +1,77 @@
+{
+  "index": 1,
+  "name": "Heronite",
+  "extensions": [
+    {
+      "id": "pcgamingwiki",
+      "name": "PCGamingWiki",
+      "version": "1.0.0",
+      "api": 1,
+      "author": "Heronite",
+      "homepage": "https://www.pcgamingwiki.com",
+      "kind": "extras",
+      "adult": false,
+      "description": "Controller support, ultra-wide screens, HDR and ray tracing of PC games, and their series, from PCGamingWiki. Found by the Steam id when the game has one, else by its name.",
+      "fields": [
+        "series",
+        "features"
+      ],
+      "applies": {
+        "to": "pc"
+      },
+      "hosts": [
+        "www.pcgamingwiki.com"
+      ],
+      "images": [],
+      "settings": [],
+      "files": {
+        "source.toml": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/pcgamingwiki/source.toml",
+          "sha256": "201680e68ebec152ea9cfdf002582e7cc54ed04780e640332634615ad8303110",
+          "size": 661
+        },
+        "source.js": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/pcgamingwiki/source.js",
+          "sha256": "5dde054ba0f7ecfd42fe3cdc8b914375cbbea1a57605ba4b752b0058709ae2f9",
+          "size": 3283
+        }
+      }
+    },
+    {
+      "id": "wikipedia",
+      "name": "Wikipedia",
+      "version": "1.0.0",
+      "api": 1,
+      "author": "Heronite",
+      "homepage": "https://www.wikipedia.org",
+      "kind": "details",
+      "adult": false,
+      "description": "The first paragraphs of the game's Wikipedia article, in your language when there is one. Asked only when the other sources lack the game.",
+      "fields": [
+        "description",
+        "releaseDate"
+      ],
+      "applies": {
+        "to": "all",
+        "asked": "fallback"
+      },
+      "hosts": [
+        "*.wikipedia.org"
+      ],
+      "images": [],
+      "settings": [],
+      "files": {
+        "source.toml": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.toml",
+          "sha256": "5d12d1646140a78c7e9614f028aa98178db81d45df879e3f0e26248841e71c54",
+          "size": 659
+        },
+        "source.js": {
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.js",
+          "sha256": "382556b0935ac6b7c20478b4fe0f1d55c4a039cc331f659d5c4482e3b1c4218e",
+          "size": 3199
+        }
+      }
+    }
+  ]
+}

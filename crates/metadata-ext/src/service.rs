@@ -114,6 +114,12 @@ pub struct InstalledExtension {
     /// ISO 8601 (UTC).
     pub installed_at: String,
     pub from: String,
+    /// The list it was installed from (its address); none for a file.
+    pub list: Option<String>,
+    /// Where its script may send requests, as the manifest writes them.
+    pub hosts: Vec<String>,
+    /// Further hosts its pictures may come from.
+    pub image_hosts: Vec<String>,
     pub sha256: String,
     pub state: ExtensionState,
 }
@@ -208,6 +214,9 @@ fn installed_entry(service: &MetadataService, id: &str, dir: &Path) -> Installed
         kind: manifest.as_ref().map(|m| m.kind),
         installed_at: record.installed_at,
         from: record.from,
+        list: record.list,
+        hosts: manifest.as_ref().map(|m| m.network.hosts.iter().map(|h| h.text()).collect()).unwrap_or_default(),
+        image_hosts: manifest.as_ref().map(|m| m.network.images.iter().map(|h| h.text()).collect()).unwrap_or_default(),
         sha256: record.sha256,
         state: state_of(service, id),
     }
@@ -254,29 +263,7 @@ impl ExtensionsExt for MetadataService {
     }
 
     fn install_extension(&self, path: &Path, confirmed: bool) -> Result<InstallOutcome, ExtensionError> {
-        let pkg = package::read(path)?;
-        // The script must load before anything is written.
-        ScriptSource::new(pkg.manifest.clone(), &pkg.script, Limits::default(), None)?;
-        let id = pkg.manifest.id.clone();
-        let before = installed_manifest(self, &id).map(|m| m.version);
-        if let Some(installed) = &before {
-            let downgrade = pkg.manifest.version < *installed;
-            if !confirmed && pkg.manifest.version <= *installed {
-                return Ok(InstallOutcome::NeedsConfirmation {
-                    installed: installed.to_string(),
-                    offered: pkg.manifest.version.to_string(),
-                    downgrade,
-                });
-            }
-        }
-        let dir = store::write(&self.paths, &pkg, &path.display().to_string())?;
-        let source = ScriptSource::new(pkg.manifest.clone(), &pkg.script, Limits::default(), Some(dir.clone()))?;
-        self.add_source(Arc::new(source)).map_err(|e| ExtensionError::IdTaken(format!("{id}: {e:#}")))?;
-        let extension = installed_entry(self, &id, &dir);
-        Ok(match before {
-            Some(from) => InstallOutcome::Updated { from: from.to_string(), extension },
-            None => InstallOutcome::Installed(extension),
-        })
+        install(self, path, confirmed, &path.display().to_string(), None)
     }
 
     fn remove_extension(&self, id: &str, forget_settings: bool) -> Result<(), ExtensionError> {
@@ -301,4 +288,38 @@ impl ExtensionsExt for MetadataService {
     fn installed_extensions(&self) -> Vec<InstalledExtension> {
         store::folders(&self.paths).into_iter().map(|(id, dir)| installed_entry(self, &id, &dir)).collect()
     }
+}
+
+/// Installs the package at `path` (see [`ExtensionsExt::install_extension`]),
+/// recording `from` and the `list` it comes from (a list's address).
+pub(crate) fn install(
+    service: &MetadataService,
+    path: &Path,
+    confirmed: bool,
+    from: &str,
+    list: Option<&str>,
+) -> Result<InstallOutcome, ExtensionError> {
+    let pkg = package::read(path)?;
+    // The script must load before anything is written.
+    ScriptSource::new(pkg.manifest.clone(), &pkg.script, Limits::default(), None)?;
+    let id = pkg.manifest.id.clone();
+    let before = installed_manifest(service, &id).map(|m| m.version);
+    if let Some(installed) = &before {
+        let downgrade = pkg.manifest.version < *installed;
+        if !confirmed && pkg.manifest.version <= *installed {
+            return Ok(InstallOutcome::NeedsConfirmation {
+                installed: installed.to_string(),
+                offered: pkg.manifest.version.to_string(),
+                downgrade,
+            });
+        }
+    }
+    let dir = store::write(&service.paths, &pkg, from, list)?;
+    let source = ScriptSource::new(pkg.manifest.clone(), &pkg.script, Limits::default(), Some(dir.clone()))?;
+    service.add_source(Arc::new(source)).map_err(|e| ExtensionError::IdTaken(format!("{id}: {e:#}")))?;
+    let extension = installed_entry(service, &id, &dir);
+    Ok(match before {
+        Some(from) => InstallOutcome::Updated { from: from.to_string(), extension },
+        None => InstallOutcome::Installed(extension),
+    })
 }

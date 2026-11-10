@@ -94,12 +94,21 @@ fn row(r: &SourceRow, place: usize, movable: bool, open: bool, cx: &mut Context<
         .gap(px(2.))
         .child(
             div()
-                .relative()
-                .children(crate::ui::find::flash(&name, 8.))
-                .text_size(px(14.))
-                .text_color(theme::text_primary())
-                .truncate()
-                .child(name.clone()),
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .min_w_0()
+                .child(
+                    div()
+                        .relative()
+                        .min_w_0()
+                        .children(crate::ui::find::flash(&name, 8.))
+                        .text_size(px(14.))
+                        .text_color(theme::text_primary())
+                        .truncate()
+                        .child(name.clone()),
+                )
+                .children(super::extension::pill(r)),
         )
         .child(div().text_size(px(12.)).text_color(theme::text_dim()).truncate().child(labels::gives(&r.descriptor.provides)));
     let audience =

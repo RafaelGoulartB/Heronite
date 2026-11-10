@@ -319,6 +319,7 @@ impl CollectionView {
                 self.open_metadata_update(true, window, cx);
             }
             Act::ReviewMatches => self.open_review(Default::default(), window, cx),
+            Act::GetMoreSources => self.open_sources(crate::dialogs::extensions::SourcesRequest::Gallery { pick: None }, window, cx),
             // The quit question needs the window: ask once this update ended.
             Act::Quit => cx.defer(crate::system::request_quit),
             Act::View(cmd) => self.run_view_cmd(cmd, window, cx),

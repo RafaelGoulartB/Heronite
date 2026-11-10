@@ -14,12 +14,18 @@
 //! those rows (`advanced`: the order of each field) and scrolls to the last;
 //! `HERONITE_DEBUG_SOURCE_DOWNLOAD` shows a source's database in a made-up
 //! state (`dialogs/metadata_update/source_downloads.rs`).
+//!
+//! An extension's row adds who made it, where it came from and its actions
+//! (`extension.rs`); under the cards, the dashed "Get more sources" row
+//! (`more.rs`) opens the gallery (`dialogs/extensions`).
 
 mod arrive;
 mod console;
 mod download;
+mod extension;
 mod field_order;
 pub(crate) mod labels;
+mod more;
 mod shapes;
 mod source_body;
 mod sources;
@@ -85,6 +91,14 @@ pub struct State {
     debug_done: bool,
     /// Follows the hub: a database download's progress, and its end.
     hub_watch: Option<Subscription>,
+    /// The extension whose removal is being asked.
+    removing: Option<String>,
+    /// An extension is being removed.
+    ext_busy: bool,
+    /// Why the last removal failed.
+    ext_error: Option<String>,
+    /// An extension `HERONITE_DEBUG_METADATA_OPEN` named: opened once listed.
+    debug_reveal: Option<String>,
 }
 
 impl State {
@@ -111,7 +125,7 @@ fn watch_hub(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     }
     let entity = hub(cx);
     let watch = cx.subscribe(&entity, |d: &mut SettingsPage, _, ev: &HubEvent, cx| {
-        if let HubEvent::SourceDownloaded = ev {
+        if let HubEvent::SourceDownloaded | HubEvent::ExtensionsChanged = ev {
             d.metadata.stale = true;
             cx.notify();
         }
@@ -124,6 +138,9 @@ fn watch_hub(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
 pub(super) fn shown(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
     d.metadata.stale = true;
     watch_hub(d, cx);
+    if cx.has_global::<HubGlobal>() {
+        hub(cx).update(cx, |h, cx| h.read_extensions(false, cx));
+    }
     ensure_rows(d, window, cx);
     summary::count(d, cx);
     if !d.metadata.debug_done {
@@ -142,7 +159,10 @@ pub(super) fn library_changed(d: &mut SettingsPage, cx: &mut Context<SettingsPag
 /// Builds the rows again when they are stale, and the inputs of options not
 /// seen yet. An input that does not have the keyboard takes the saved value.
 pub(super) fn ensure_rows(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) {
+    // The page may show before the Collection made the hub.
+    watch_hub(d, cx);
     if !d.metadata.stale {
+        reveal_installed(d, cx);
         return;
     }
     let Some(service) = service(cx) else { return };
@@ -192,6 +212,37 @@ pub(super) fn ensure_rows(d: &mut SettingsPage, window: &mut Window, cx: &mut Co
         }
     }
     d.metadata.rows = rows;
+    reveal_installed(d, cx);
+}
+
+/// Opens the row of the extension just installed and scrolls to it, once
+/// the rows list it.
+fn reveal_installed(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    let from_hub = cx.has_global::<HubGlobal>().then(|| hub(cx).read(cx).extensions.reveal.clone()).flatten();
+    let Some(id) = from_hub.or_else(|| d.metadata.debug_reveal.clone()) else { return };
+    let Some(name) = d.metadata.row(&id).map(|r| labels::name(&r.descriptor.name).to_string()) else { return };
+    if cx.has_global::<HubGlobal>() {
+        hub(cx).update(cx, |h, _| h.extensions.reveal = None);
+    }
+    if d.metadata.debug_reveal.as_deref() == Some(id.as_str()) {
+        d.metadata.debug_reveal = None;
+    }
+    d.metadata.open.insert(id);
+    flash_to(d, name, cx);
+}
+
+/// Scrolls the page to the row whose name is `text` and flashes it.
+fn flash_to(d: &mut SettingsPage, text: String, cx: &mut Context<SettingsPage>) {
+    crate::ui::find::set_target(text);
+    d.find_frames = super::FIND_FRAMES;
+    d.find_task = Some(cx.spawn(async move |this, cx| {
+        cx.background_executor().timer(crate::ui::find::FLASH).await;
+        this.update(cx, |_, cx| {
+            crate::ui::find::clear();
+            cx.notify();
+        })
+        .ok();
+    }));
 }
 
 /// Records a write made through the service and builds the rows again.
@@ -326,19 +377,13 @@ fn debug_open(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
         } else if let Some(s) = builtin_descriptors().iter().find(|s| s.id == id) {
             d.metadata.open.insert(s.id.clone());
             last = Some(labels::name(&s.name).to_string());
+        } else {
+            // An extension: listed once the extensions are loaded.
+            d.metadata.debug_reveal = Some(id.to_string());
         }
     }
     if let Some(text) = last {
-        crate::ui::find::set_target(text);
-        d.find_frames = super::FIND_FRAMES;
-        d.find_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(crate::ui::find::FLASH).await;
-            this.update(cx, |_, cx| {
-                crate::ui::find::clear();
-                cx.notify();
-            })
-            .ok();
-        }));
+        flash_to(d, text, cx);
     }
 }
 
@@ -349,6 +394,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .flex_col()
         .child(summary::card(d))
         .children(sources::cards(d, cx))
+        .child(more::row(cx))
         .children(shapes::card(d, cx))
         .child(arrive::card(d, cx))
         .child(field_order::block(d, cx))

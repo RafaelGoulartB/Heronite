@@ -10,7 +10,7 @@ use heronite_i18n::tr;
 use heronite_metadata::sources::{OptionKind, OptionRow, OptionValue, SourceRow};
 
 use super::super::SettingsPage;
-use super::{download, labels, set_option, test};
+use super::{download, extension, labels, set_option, test};
 use crate::icons::Icon;
 use crate::theme;
 use crate::ui::controls::{action_button, toggle_row, ButtonKind};
@@ -30,6 +30,7 @@ pub(super) fn body(d: &SettingsPage, r: &SourceRow, indent: f32, cx: &mut Contex
     if !about.is_empty() {
         col = col.child(div().flex().flex_col().gap(px(4.)).children(about.into_iter().map(meta_text)));
     }
+    col = col.children(extension::problem_block(r, cx));
     if let Some(row) = &r.download {
         col = col.child(download::block(id, row, cx));
     }
@@ -50,7 +51,9 @@ pub(super) fn body(d: &SettingsPage, r: &SourceRow, indent: f32, cx: &mut Contex
     if r.can_test {
         col = col.child(test_line(d, id, cx));
     }
-    col.child(fills(r, cx))
+    let extension = extension::block(d, r, cx);
+    // An extension that could not be read has no field to list.
+    col.when(!r.fields.is_empty(), |c| c.child(fills(r, cx))).children(extension)
 }
 
 /// A label, a link under it when the descriptor gives one (its help as the
