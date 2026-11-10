@@ -78,7 +78,7 @@ impl AddGameDialog {
             let t = title.clone();
             let found = cx
                 .background_spawn(async move {
-                    let key = heronite_metadata::covers::steamgrid_api_key(&service.paths);
+                    let key = heronite_metadata::covers::steamgrid_key_if_on(&service.paths);
                     let meta = heronite_data::models::LocalGameMeta {
                         app_name: app_name.clone(),
                         runner: "sideload".into(),

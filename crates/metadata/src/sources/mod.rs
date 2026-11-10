@@ -4,10 +4,19 @@
 //!
 //! Details sources have a lookup and feed the merge. Pictures and extras
 //! sources (SteamGridDB, web images, HowLongToBeat, Steam tags, ProtonDB) are
-//! registered as descriptors only: they still run on their own paths.
+//! registered as descriptors only: they still run on their own paths, which
+//! ask [`is_on`] first.
+//!
+//! What the user set per source (on or off, options, order, fields switched
+//! off) is stored by `heronite_data::source_prefs`; [`options`] reads and
+//! writes the options, [`order`] gives the order of each field and
+//! [`rows`] the read model of Settings → Metadata.
 
 mod builtin;
 mod descriptor;
+pub mod options;
+pub mod order;
+pub mod rows;
 #[cfg(test)]
 mod tests;
 
@@ -20,9 +29,15 @@ use heronite_data::settings;
 pub(crate) use builtin::Shared;
 pub use builtin::{builtin_descriptors, offered};
 pub use descriptor::{extra_fields, AppliesTo, Needs, SourceDescriptor, SourceGame, SourceKind};
+pub use heronite_data::source_prefs::{ids, is_field_on, is_on};
+pub use options::{OptionChoice, OptionKind, OptionValue, SourceOption};
+pub use rows::{FieldRow, OptionRow, SourceRow, SourceStatus};
 
 use crate::http::Http;
-use crate::types::{Lookup, MetadataCandidate};
+use crate::types::{IgdbCredentialTest, Lookup, MetadataCandidate};
+
+/// The outcome of a source's test (IGDB's credentials check today).
+pub type SourceTest = IgdbCredentialTest;
 
 /// What a lookup may use besides the game. One per gather, shared by the
 /// lookups running at once.
@@ -58,6 +73,17 @@ pub trait MetadataSource: Send + Sync {
     /// Only called for games the descriptor's `applies_to` matches.
     /// [`Lookup::Skipped`] when it cannot be asked (no credentials, no id).
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate>;
+
+    /// Whether [`test`](Self::test) does something.
+    fn has_test(&self) -> bool {
+        false
+    }
+
+    /// Checks that the source can be asked with what the user set (keys,
+    /// sign-in). Blocking. `None` when it has no test.
+    fn test(&self, _ctx: &SourceContext<'_>) -> Option<SourceTest> {
+        None
+    }
 }
 
 enum Entry {
@@ -106,6 +132,32 @@ impl SourceRegistry {
     /// unknown ids).
     pub fn has_lookup(&self, id: &str) -> bool {
         self.lookups().any(|s| s.descriptor().id == id)
+    }
+
+    fn lookup(&self, id: &str) -> Option<&dyn MetadataSource> {
+        self.lookups().find(|s| s.descriptor().id == id)
+    }
+
+    /// Whether `id` has a test (Settings shows "Test" for it).
+    pub fn has_test(&self, id: &str) -> bool {
+        self.lookup(id).is_some_and(|s| s.has_test())
+    }
+
+    /// Runs the test of `id`; `None` when it has none. Blocking.
+    pub fn test(&self, ctx: &SourceContext<'_>, id: &str) -> Option<SourceTest> {
+        self.lookup(id)?.test(ctx)
+    }
+
+    /// The built-in sources over fresh state, for tests.
+    #[cfg(test)]
+    pub(crate) fn for_tests() -> Self {
+        use std::sync::Arc;
+        Self::builtin(Shared {
+            igdb: Arc::new(crate::igdb::Igdb::new()),
+            steam: Arc::new(crate::steam::SteamState::default()),
+            stores: Arc::new(crate::providers::StoreLibraries::default()),
+            playnite: Arc::new(parking_lot::RwLock::new(None)),
+        })
     }
 
     /// Whether some lookup's audience depends on the overlay entry.

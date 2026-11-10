@@ -65,6 +65,16 @@ pub fn steamgrid_api_key(paths: &DataPaths) -> Option<String> {
     Some(key)
 }
 
+/// [`steamgrid_api_key`] while SteamGridDB is on in Settings → Metadata:
+/// what every automatic fetch and search uses.
+pub fn steamgrid_key_if_on(paths: &DataPaths) -> Option<String> {
+    let m = crate::sources::load_metadata_settings(paths);
+    if !crate::sources::is_on(&m, crate::sources::ids::STEAMGRIDDB) {
+        return None;
+    }
+    steamgrid_api_key(paths)
+}
+
 fn title_queries(title: &str) -> Vec<String> {
     let cleaned = re!(r"\s+").replace_all(&title.replace('_', " "), " ").trim().to_owned();
     let colon = re!(r"\s+-\s+").replace_all(&cleaned, ": ").into_owned();
@@ -422,7 +432,7 @@ pub fn refresh_missing_local_covers(paths: &DataPaths, http: &Http) -> Result<us
         return Ok(0);
     }
     log::info!("Fetching covers for {} local game(s) without artwork", missing.len());
-    let api_key = steamgrid_api_key(paths);
+    let api_key = steamgrid_key_if_on(paths);
 
     let next = AtomicUsize::new(0);
     let results: Mutex<Vec<(String, Covers)>> = Mutex::new(Vec::new());

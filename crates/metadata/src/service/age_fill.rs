@@ -13,7 +13,7 @@ use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use serde_json::Value;
 
 use super::MetadataService;
-use crate::igdb::RATINGS_BATCH;
+use crate::igdb::{IgdbCredentials, RATINGS_BATCH};
 use crate::merge::{AGE_CHECKED, AGE_RATINGS};
 use crate::steam;
 use crate::store::get_all_game_metadata;
@@ -57,6 +57,13 @@ impl MetadataService {
         if !settings.auto_fill_missing {
             return Ok(0);
         }
+        // The sources age ratings are taken from, in order: IGDB and Steam
+        // unless the user turned them, or their age ratings, off.
+        let order = self.sources.field_order(&settings, AGE_RATINGS);
+        let (ask_igdb, ask_steam) = (order.iter().any(|s| s == "igdb"), order.iter().any(|s| s == "steam"));
+        if !ask_igdb && !ask_steam {
+            return Ok(0);
+        }
         let todo: Vec<(String, CollectionGameMetadata)> =
             get_all_game_metadata(&self.paths)?.into_iter().filter(|(_, md)| needs_age_ratings(md)).collect();
         if todo.is_empty() {
@@ -64,7 +71,7 @@ impl MetadataService {
         }
         log::info!("Reading age ratings for {} game(s)", todo.len());
 
-        let creds = self.credentials();
+        let creds = if ask_igdb { self.credentials() } else { IgdbCredentials::new("", "") };
         let mut from_igdb: HashMap<i64, Vec<AgeRating>> = HashMap::new();
         let mut igdb_answered = creds.configured();
         if igdb_answered {
@@ -81,7 +88,6 @@ impl MetadataService {
             }
         }
 
-        let order = settings.field_priority.get(AGE_RATINGS).cloned().unwrap_or_default();
         let mut found: Vec<(String, Option<(String, Vec<AgeRating>)>)> = Vec::new();
         let mut steam_asked = 0;
         for (key, md) in &todo {
@@ -93,7 +99,7 @@ impl MetadataService {
                 Some(id) if creds.configured() => Some(from_igdb.get(&id).cloned().unwrap_or_default()),
                 _ => None,
             };
-            let steam = match md.steam_app_id.as_deref().filter(|s| !s.is_empty()) {
+            let steam = match md.steam_app_id.as_deref().filter(|s| ask_steam && !s.is_empty()) {
                 Some(_) if steam_asked >= STEAM_PER_PASS => continue,
                 Some(id) => {
                     if steam_asked > 0 {

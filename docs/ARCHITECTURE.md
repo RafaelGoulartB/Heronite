@@ -109,7 +109,8 @@ text size) and applies it.
   unknown keys kept), `temps` (atomic writes and the startup `.tmp` sweep),
   `proc` (`guard` and `Run`: helper processes die with the app), and one
   module per data file: `library`, `collection`, `sideload`, `game_config`,
-  `settings`, `status`, `status_history` (when each game's status changed, in
+  `settings` (and `source_prefs`, the per-source part of its metadata),
+  `status`, `status_history` (when each game's status changed, in
   `local_library/status-history.json`, recorded by the status setters), `sessions`, `playtime`, `ui_state`, `appearance`,
   `stats` (the Statistics page's numbers: periods cut into hours, the history
   indexed by time and by game so a period reads only its slice, `game` for a
@@ -558,6 +559,18 @@ text size) and applies it.
   candidate says how it was found (`MatchedBy`: the game's own record, an
   id, the Steam id, an exact or a fuzzy title). Settings → Metadata and the
   per-game dialog list the offered details sources from the registry.
+  What the user sets per source is stored by `heronite_data::source_prefs`
+  (`settings.metadata.sources`: on or off, options, fields switched off;
+  `sourceOrder`; the older switches `steamTags`, `howLongToBeat`, the IGDB
+  keys, `steamTagLimit` and the global `steamGridDbApiKey` stay where they
+  were). In `sources`, `options` (a descriptor's options as data, read and
+  written where each is kept), `order` (each field's order: the user's
+  `fieldPriority` for that field, else the default list until a source is
+  moved, then the user's order of the sources that fill it; sources off and
+  fields switched off left out) and `rows` (status and rows for Settings);
+  `service/source_settings` has the entry points. A source that is off is
+  not asked: `gather`, the idle fill, the age ratings fill, and the side paths
+  (`covers::steamgrid_key_if_on`, web images, ProtonDB in the app).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

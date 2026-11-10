@@ -13,7 +13,8 @@ use serde_json::json;
 
 use crate::json_store;
 use crate::models::{
-    BackgroundSettings, BackupSettings, CollectionSettingsFile, LudusaviSettings, MetadataSettings, ScreenshotsSettings, StoreConfigFile,
+    BackgroundSettings, BackupSettings, CollectionSettingsFile, LudusaviSettings, MetadataSettings, ScreenshotsSettings, SourcePrefs,
+    StoreConfigFile,
 };
 use crate::num::{js_round, JsNum};
 use crate::paths::DataPaths;
@@ -41,9 +42,9 @@ pub const METADATA_FIELDS: [&str; 14] = [
     "hero",
 ];
 
-/// `MetadataSourceId`: the ids a saved `fieldPriority` keeps. Every one but
+/// `MetadataSourceId`: the built-in ids of a `fieldPriority`. Every one but
 /// `manual` is a details source of `heronite_metadata::sources` (its tests
-/// check the two agree).
+/// check the two agree). A saved list keeps other ids too.
 pub const SOURCE_IDS: [&str; 6] = ["igdb", "steam", "store", "playnite", "lutris", "manual"];
 
 /// `DEFAULT_FIELD_PRIORITY`. Uses only [`SOURCE_IDS`].
@@ -310,14 +311,38 @@ fn as_screenshot_cache_limit(value: Option<f64>) -> f64 {
     }
 }
 
+/// A saved list of source ids. An id this build does not know (an
+/// extension's, or one a newer build added) is kept: it never answers here,
+/// and the list stays the same for the build that knows it.
 fn as_source_list(value: Option<&Vec<String>>, fallback: Vec<String>) -> Vec<String> {
     let Some(list) = value else { return fallback };
-    let next: Vec<String> = list.iter().filter(|s| SOURCE_IDS.contains(&s.as_str())).cloned().collect();
+    let next = clean_ids(list);
     if next.is_empty() {
         fallback
     } else {
         next
     }
+}
+
+/// `ids` without blanks and repeats, in order.
+fn clean_ids(ids: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(ids.len());
+    for id in ids.iter().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if !out.iter().any(|o| o == id) {
+            out.push(id.to_owned());
+        }
+    }
+    out
+}
+
+fn normalize_source_prefs(value: Option<&IndexMap<String, SourcePrefs>>) -> IndexMap<String, SourcePrefs> {
+    value
+        .into_iter()
+        .flatten()
+        .filter(|(id, _)| !id.trim().is_empty())
+        .map(|(id, p)| (id.clone(), SourcePrefs { fields_off: clean_ids(&p.fields_off), ..p.clone() }))
+        .filter(|(_, p)| !p.is_empty())
+        .collect()
 }
 
 /// `normalizeMetadata`.
@@ -343,8 +368,23 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
             .unwrap_or(crate::age_rating::AUTO)
             .to_owned(),
         field_priority,
-        extra: Default::default(),
+        sources: normalize_source_prefs(value.map(|v| &v.sources)),
+        source_order: value.map(|v| clean_ids(&v.source_order)).unwrap_or_default(),
+        // Keys a newer build added stay for it.
+        extra: value.map(|v| v.extra.clone()).unwrap_or_default(),
     }
+}
+
+/// Read-modify-write of `settings.metadata` through `edit`, normalized
+/// before and after; the rest of the file is untouched.
+pub fn update_metadata(paths: &DataPaths, edit: impl FnOnce(&mut MetadataSettings)) -> Result<EffectiveSettings> {
+    json_store::update::<CollectionSettingsFile, _>(&paths.collection_settings(), |file| {
+        let mut m = normalize_metadata(file.metadata.as_ref());
+        edit(&mut m);
+        file.metadata = Some(normalize_metadata(Some(&m)));
+        Ok(())
+    })?;
+    load(paths)
 }
 
 // Setters (read-modify-write of local_library/settings.json)
@@ -594,7 +634,8 @@ mod tests {
         let s = save_metadata(&paths, &md).unwrap();
         assert_eq!(s.metadata.igdb_client_id, "id");
         assert_eq!(s.cover_aspect, CoverAspect::Dvd);
-        assert_eq!(s.metadata.field_priority["cover"], ["steam"]);
+        // An id this build does not know is kept (it never answers).
+        assert_eq!(s.metadata.field_priority["cover"], ["steam", "bogus"]);
         assert_eq!(s.metadata.field_priority["hero"], ["igdb", "steam", "lutris", "playnite"]);
     }
 

@@ -202,6 +202,38 @@ pub struct MetadataSettings {
     pub how_long_to_beat: bool,
     #[serde(default)]
     pub field_priority: IndexMap<String, Vec<String>>,
+    /// What the user set per metadata source, by source id; see
+    /// [`crate::source_prefs`] for the shape and the keys that stay elsewhere.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub sources: IndexMap<String, SourcePrefs>,
+    /// Source ids in the order the user dragged them to; empty = the
+    /// registry's order. Ids this build does not know are kept.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_order: Vec<String>,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+/// One source's entry in `settings.metadata.sources`. Every key is optional;
+/// an entry with nothing set is not written.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcePrefs {
+    /// `None` = on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// The source's own options by key (a string or a bool each).
+    #[serde(default, skip_serializing_if = "Extra::is_empty")]
+    pub options: Extra,
+    /// Field ids this source must not fill.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields_off: Vec<String>,
+    #[serde(flatten)]
+    pub extra: Extra,
+}
+
+impl SourcePrefs {
+    pub fn is_empty(&self) -> bool {
+        self.enabled.is_none() && self.options.is_empty() && self.fields_off.is_empty() && self.extra.is_empty()
+    }
 }

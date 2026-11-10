@@ -8,6 +8,7 @@
 
 mod age_fill;
 mod bulk;
+mod source_settings;
 mod tag_fill;
 
 pub use bulk::AUTO_FILL_BATCH;
@@ -44,6 +45,7 @@ use heronite_data::field_names::NameRules;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
 use heronite_data::paths::DataPaths;
+use heronite_data::settings::METADATA_FIELDS;
 use heronite_i18n::tr;
 use indexmap::IndexMap;
 use parking_lot::{Mutex, RwLock};
@@ -54,9 +56,10 @@ use crate::hltb::{self, HltbClient, HltbLookup, HltbQuery, HowLongToBeat, Search
 use crate::http::{Endpoints, Http};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::images::materialize_metadata_image;
-use crate::merge::{merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
+use crate::merge::{clear_field, merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
 use crate::providers::{metadata_from_playnite_game, PlayniteGame, PlayniteSource, StoreLibraries};
-use crate::sources::{self, Shared, SourceContext, SourceDescriptor, SourceGame, SourceRegistry};
+use crate::sources::rows::TestResults;
+use crate::sources::{self, ids, is_field_on, is_on, Shared, SourceContext, SourceDescriptor, SourceGame, SourceRegistry};
 use crate::steam::{self, SteamAppDetails, SteamState};
 use crate::store::{as_runner, current_or_blank, get_game_metadata, list_game_metadata, upsert_game_metadata};
 use crate::types::*;
@@ -71,6 +74,7 @@ pub struct MetadataService {
     hltb: HltbClient,
     playnite: Arc<RwLock<Option<Arc<dyn PlayniteSource>>>>,
     sources: SourceRegistry,
+    tests: TestResults,
     bulk: Mutex<BulkProgress>,
     bulk_cancel: AtomicBool,
     bulk_running: AtomicBool,
@@ -102,6 +106,7 @@ impl MetadataService {
             hltb: HltbClient::new(),
             playnite,
             sources,
+            tests: TestResults::default(),
             bulk: Mutex::new(BulkProgress::default()),
             bulk_cancel: AtomicBool::new(false),
             bulk_running: AtomicBool::new(false),
@@ -172,8 +177,9 @@ impl MetadataService {
         SourceGame::new(args, overlay.as_ref())
     }
 
-    /// `gatherCandidates`: asks every provider at once (IGDB calls queue
-    /// among themselves) and keeps those that answered, in provider order.
+    /// `gatherCandidates`: asks every provider that is on and applies to the
+    /// game at once (IGDB calls queue among themselves) and keeps those that
+    /// answered, in provider order.
     pub fn gather_candidates(&self, game: &MetadataApplyArgs) -> Vec<MetadataCandidate> {
         self.gather(game).candidates
     }
@@ -185,14 +191,16 @@ impl MetadataService {
         with_ids.lutris_slug = game.lutris_slug.clone().or_else(|| current.as_ref().and_then(|c| c.lutris_slug.clone()));
         let game_view = self.source_game(&with_ids);
         let ctx = SourceContext::new(&self.paths, &self.http);
+        let settings = ctx.settings();
         let lookups: Vec<(&SourceDescriptor, Lookup<MetadataCandidate>)> = std::thread::scope(|scope| {
             let handles: Vec<_> = self
                 .sources
                 .lookups()
                 .map(|source| {
                     let (ctx, game_view) = (&ctx, &game_view);
-                    let applies = source.descriptor().applies_to.matches(game_view);
-                    (source.descriptor(), applies.then(|| scope.spawn(move || source.lookup(ctx, game_view))))
+                    let d = source.descriptor();
+                    let ask = is_on(settings, &d.id) && d.applies_to.matches(game_view);
+                    (d, ask.then(|| scope.spawn(move || source.lookup(ctx, game_view))))
                 })
                 .collect();
             handles
@@ -220,6 +228,22 @@ impl MetadataService {
         Gathered { candidates, offline }
     }
 
+    /// The candidates the merge may use: those of sources that are on, each
+    /// without the fields switched off for its source.
+    fn usable(settings: &MetadataSettings, candidates: &[MetadataCandidate]) -> Vec<(String, CollectionGameMetadata)> {
+        candidates
+            .iter()
+            .filter(|c| is_on(settings, &c.source))
+            .map(|c| {
+                let mut md = c.metadata.clone();
+                for field in METADATA_FIELDS.iter().filter(|f| !is_field_on(settings, &c.source, f)) {
+                    clear_field(&mut md, field);
+                }
+                (c.source.clone(), md)
+            })
+            .collect()
+    }
+
     /// The merge of `candidates` into `current` that a preview proposes.
     fn propose(
         &self,
@@ -230,9 +254,10 @@ impl MetadataService {
         let has_picks = args.field_picks.as_ref().is_some_and(|p| !p.is_empty());
         let overwrite = args.overwrite_existing != Some(false);
         let preserve_manual = if has_picks { false } else { args.preserve_manual.unwrap_or(args.overwrite_existing == Some(false)) };
-        let priority = with_preferred_source(&self.metadata_settings().field_priority, args.source.as_deref());
-        let merge_candidates: Vec<MergeCandidate<'_>> =
-            candidates.iter().map(|c| MergeCandidate { source: &c.source, metadata: &c.metadata }).collect();
+        let settings = self.metadata_settings();
+        let priority = with_preferred_source(&self.sources.field_orders(&settings), args.source.as_deref());
+        let usable = Self::usable(&settings, candidates);
+        let merge_candidates: Vec<MergeCandidate<'_>> = usable.iter().map(|(source, md)| MergeCandidate { source, metadata: md }).collect();
         let mut proposed = merge_metadata(MergeArgs {
             app_name: &args.app_name,
             runner: &args.runner,
@@ -345,13 +370,22 @@ impl MetadataService {
         if let Some(e) = existing.as_ref().filter(|e| !e.field_sources.is_empty()) {
             return Ok(e.clone());
         }
-        let from_playnite = metadata_from_playnite_game(app_name, runner, game, library_path);
+        let settings = self.metadata_settings();
+        let from_playnite = MetadataCandidate::new(
+            "playnite",
+            metadata_from_playnite_game(app_name, runner, game, library_path),
+            Some(MatchedBy::SourceId),
+        );
+        let usable = Self::usable(&settings, std::slice::from_ref(&from_playnite));
+        let Some((_, from_playnite)) = usable.first() else {
+            return Ok(existing.unwrap_or_else(|| crate::util::blank_metadata(app_name, runner)));
+        };
         let mut merged = merge_metadata(MergeArgs {
             app_name,
             runner,
             current: existing.as_ref(),
-            candidates: &[MergeCandidate { source: "playnite", metadata: &from_playnite }],
-            priority: &self.metadata_settings().field_priority,
+            candidates: &[MergeCandidate { source: "playnite", metadata: from_playnite }],
+            priority: &self.sources.field_orders(&settings),
             overwrite_existing: false,
             preserve_manual: true,
             field_picks: None,
@@ -425,17 +459,20 @@ impl MetadataService {
         covers::refresh_missing_local_covers(&self.paths, &self.http)
     }
 
-    /// `searchCollectionWebImages`.
+    /// `searchCollectionWebImages`; nothing while web images are off.
     pub fn search_web_images(&self, query: &str, transparent: bool) -> Result<Vec<WebImage>> {
+        if !self.source_on(ids::WEB_IMAGES) {
+            return Ok(Vec::new());
+        }
         web_images::search_web_images(&self.http, query, transparent)
     }
 
-    /// The art picker's image search: SteamGridDB's art when an API key is
-    /// set (not for transparent images, which it does not have) and the web's,
-    /// apart. A failing SteamGridDB only leaves its part empty; the web's
+    /// The art picker's image search: SteamGridDB's art when it is on and an
+    /// API key is set (not for transparent images, which it does not have)
+    /// and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
     /// results leave out the images SteamGridDB already gave.
     pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
-        let key = if transparent { None } else { covers::steamgrid_api_key(&self.paths) };
+        let key = if transparent { None } else { covers::steamgrid_key_if_on(&self.paths) };
         let title = web_images::title_of_query(query);
         let (sgdb, web) = std::thread::scope(|s| {
             let sgdb = s.spawn(|| match key.as_deref() {

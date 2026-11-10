@@ -109,6 +109,32 @@ fn write_field(target: &mut CollectionGameMetadata, field: &str, value: FieldVal
     target.field_sources.insert(field.to_owned(), source.to_owned());
 }
 
+/// Empties `field` of `md` (a `METADATA_FIELDS` entry; others are ignored).
+pub fn clear_field(md: &mut CollectionGameMetadata, field: &str) {
+    match field {
+        "criticScore" => md.critic_score = None,
+        AGE_RATINGS => md.age_ratings.clear(),
+        f => {
+            if let Some(list) = list_of_mut(md, f) {
+                list.clear();
+            } else if let Some(text) = text_of_mut(md, f) {
+                *text = None;
+            }
+        }
+    }
+}
+
+fn text_of_mut<'a>(md: &'a mut CollectionGameMetadata, field: &str) -> Option<&'a mut Option<String>> {
+    Some(match field {
+        "description" => &mut md.description,
+        "releaseDate" => &mut md.release_date,
+        "series" => &mut md.series,
+        "cover" => &mut md.cover_url,
+        "hero" => &mut md.hero_url,
+        _ => return None,
+    })
+}
+
 /// A provider result handed to [`merge_metadata`].
 pub struct MergeCandidate<'a> {
     pub source: &'a str,
@@ -389,6 +415,22 @@ mod tests {
         assert_eq!(out["gameModes"], ["lutris", "igdb"]);
         assert_eq!(with_preferred_source(&pr, Some("auto")), pr);
         assert_eq!(with_preferred_source(&pr, None), pr);
+    }
+
+    #[test]
+    fn a_cleared_field_reads_as_empty() {
+        let mut m = md(|m| {
+            m.description = Some("d".into());
+            m.genres = vec!["G".into()];
+            m.critic_score = Some(JsNum(80.0));
+            m.cover_url = Some("c".into());
+            m.title = Some("T".into());
+        });
+        for field in METADATA_FIELDS {
+            clear_field(&mut m, field);
+            assert!(!has_field_value(Some(&m), field), "{field}");
+        }
+        assert_eq!(m.title.as_deref(), Some("T"), "not a field: kept");
     }
 
     #[test]

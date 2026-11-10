@@ -143,6 +143,7 @@ fn a_manifest_descriptor_takes_defaults() {
     assert_eq!(d.applies_to, AppliesTo::All);
     assert_eq!(d.needs, Needs::Nothing);
     assert!(d.provides.is_empty() && d.finds_by.is_empty() && !d.network && !d.hidden);
+    assert!(d.options.is_empty() && d.only_on.is_empty() && !d.manual_only && d.available_here());
 
     let d: SourceDescriptor = serde_json::from_str(
         r#"{"id":"x","name":"X","kind":"extras","provides":["timeToBeat"],"appliesTo":{"platforms":["snes"]},

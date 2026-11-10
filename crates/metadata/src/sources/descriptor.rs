@@ -6,6 +6,7 @@
 use heronite_data::models::LocalGameMeta;
 use serde::{Deserialize, Serialize};
 
+use super::options::SourceOption;
 use crate::types::{MatchedBy, MetadataApplyArgs};
 
 /// [`SourceDescriptor::provides`] ids beyond `heronite_data::settings::METADATA_FIELDS`
@@ -109,11 +110,27 @@ pub struct SourceDescriptor {
     /// Kept in saved priorities and records, but not offered as a choice.
     #[serde(default)]
     pub hidden: bool,
+    /// Asked only when the user searches by hand (the art picker), never by
+    /// a fill or an update.
+    #[serde(default)]
+    pub manual_only: bool,
+    /// Operating systems it works on (`std::env::consts::OS`: `windows`,
+    /// `linux`, `macos`); empty = all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub only_on: Vec<String>,
+    /// What the user can set for it, in the order shown.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<SourceOption>,
 }
 
 impl SourceDescriptor {
     pub fn provides(&self, field: &str) -> bool {
         self.provides.iter().any(|f| f == field)
+    }
+
+    /// Whether it works on this operating system.
+    pub fn available_here(&self) -> bool {
+        self.only_on.is_empty() || self.only_on.iter().any(|os| os == std::env::consts::OS)
     }
 }
 

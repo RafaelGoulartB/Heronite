@@ -23,8 +23,10 @@ use crate::ui::controls::{action_button, button, help_text, ButtonKind};
 use crate::ui::dialog::{dialog, DialogProps};
 use crate::ui::fields::{input_box, new_input, select_field};
 
-/// The source choices of this dialog and of Settings → Metadata: "Auto",
-/// then the details sources offered, as `(id, tr! key or proper name)`.
+/// The source choices of Settings → Metadata and the labels of this
+/// dialog: "Auto", then the details sources offered, as `(id, tr! key or
+/// proper name)`. The dialog offers the ones that are on
+/// ([`MetadataDialog::sources`]).
 pub static FETCH_SOURCES: LazyLock<Vec<(&str, &str)>> = LazyLock::new(|| {
     std::iter::once(("auto", n_!("Auto (IGDB first)")))
         .chain(sources::offered(SourceKind::Details).map(|d| (d.id.as_str(), d.name.as_str())))
@@ -103,6 +105,8 @@ pub struct MetadataDialog {
     title: String,
     runner: String,
     source: String,
+    /// [`FETCH_SOURCES`] without the sources that are off.
+    sources: Vec<(&'static str, &'static str)>,
     source_open: bool,
     preview: Option<MetadataPreview>,
     picks: HashMap<String, String>,
@@ -132,6 +136,8 @@ impl MetadataDialog {
         let igdb_id = game.metadata.as_ref().and_then(|m| m.igdb_id).map(|n| n.get() as i64);
         let auto_fetch = crate::env::flag("HERONITE_DEBUG_FETCH");
         let runner = if game.runner == "zoom" { "sideload".to_string() } else { game.runner.clone() };
+        let sources =
+            FETCH_SOURCES.iter().copied().filter(|(id, _)| *id == "auto" || sources::is_on(&ctx.lib.settings.metadata, id)).collect();
         let mut this = Self {
             ctx,
             service,
@@ -140,6 +146,7 @@ impl MetadataDialog {
             runner,
             game,
             source: "auto".into(),
+            sources,
             source_open: false,
             preview: None,
             picks: HashMap::new(),
@@ -350,7 +357,7 @@ impl MetadataDialog {
     fn render_source_row(&self, cx: &mut Context<Self>) -> Div {
         let busy = self.busy.is_some();
         let sources: Vec<(SharedString, bool)> =
-            FETCH_SOURCES.iter().map(|(id, label)| (tr(label).to_string().into(), *id == self.source)).collect();
+            self.sources.iter().map(|(id, label)| (tr(label).to_string().into(), *id == self.source)).collect();
         let select = select_field(
             "md-source",
             Some(tr!("Source")),
@@ -366,7 +373,7 @@ impl MetadataDialog {
                 }
             },
             |this, i, _, cx| {
-                this.source = FETCH_SOURCES[i].0.to_string();
+                this.source = this.sources[i].0.to_string();
                 this.source_open = false;
                 cx.notify();
             },

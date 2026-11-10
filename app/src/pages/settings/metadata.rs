@@ -171,7 +171,7 @@ fn test_igdb(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     d.error = None;
     let service = hub(cx).read(cx).service.clone();
     cx.spawn(async move |this, cx| {
-        let res = cx.background_spawn(async move { service.test_igdb_credentials() }).await;
+        let res = cx.background_spawn(async move { service.test_source("igdb").unwrap_or_else(|| service.test_igdb_credentials()) }).await;
         this.update(cx, |d, cx| {
             d.metadata.testing = false;
             if res.ok {

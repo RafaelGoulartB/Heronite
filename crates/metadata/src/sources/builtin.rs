@@ -5,11 +5,13 @@ use std::sync::{Arc, LazyLock};
 
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::source_prefs::ids::{HOW_LONG_TO_BEAT, PROTONDB, STEAMGRIDDB, STEAM_TAGS, WEB_IMAGES};
 use heronite_i18n::n_;
 use parking_lot::RwLock;
 
-use super::descriptor::extra_fields::{LINUX_RATING, STEAM_TAGS, TIME_TO_BEAT};
-use super::{AppliesTo, Entry, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};
+use super::descriptor::extra_fields::{LINUX_RATING, STEAM_TAGS as STEAM_TAGS_FIELD, TIME_TO_BEAT};
+use super::options::{OptionChoice, OptionKind, OptionValue, SourceOption};
+use super::{AppliesTo, Entry, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry, SourceTest};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::lutris::fetch_lutris_metadata;
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
@@ -46,7 +48,19 @@ fn source(id: &str, name: &str, kind: SourceKind, provides: &[&str]) -> SourceDe
         needs: Needs::Nothing,
         network: true,
         hidden: false,
+        manual_only: false,
+        only_on: Vec::new(),
+        options: Vec::new(),
     }
+}
+
+fn option(key: &str, label: &str, kind: OptionKind) -> SourceOption {
+    SourceOption { key: key.into(), label: label.into(), kind, choices: Vec::new(), default: None, help: None, link: None, required: false }
+}
+
+/// A key the source cannot be asked without.
+fn key(key: &str, label: &str, kind: OptionKind, help: Option<&str>, link: Option<&str>) -> SourceOption {
+    SourceOption { help: help.map(Into::into), link: link.map(Into::into), required: true, ..option(key, label, kind) }
 }
 
 static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
@@ -56,6 +70,16 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         SourceDescriptor {
             finds_by: vec![SourceId, SteamId, ExactTitle, FuzzyTitle],
             needs: Needs::ApiKey,
+            options: vec![
+                key(
+                    "clientId",
+                    n_!("Client ID"),
+                    OptionKind::Text,
+                    Some(n_!("Create a Twitch app to get IGDB keys: dev.twitch.tv/console")),
+                    Some("https://dev.twitch.tv/console"),
+                ),
+                key("clientSecret", n_!("Client secret"), OptionKind::Secret, None, None),
+            ],
             ..source(IGDB, "IGDB", Details, &METADATA_FIELDS)
         },
         SourceDescriptor {
@@ -94,6 +118,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
             finds_by: vec![SourceId],
             network: false,
             hidden: true,
+            only_on: strings(&["windows"]),
             ..source(
                 PLAYNITE,
                 "Playnite",
@@ -116,19 +141,35 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
         SourceDescriptor {
             finds_by: vec![SteamId, FuzzyTitle],
             needs: Needs::ApiKey,
-            ..source("steamgriddb", "SteamGridDB", Pictures, &["cover", "hero"])
+            options: vec![key(
+                "apiKey",
+                n_!("SteamGridDB API key"),
+                OptionKind::Secret,
+                Some(n_!("Optional. Get a key at steamgriddb.com/profile/preferences/api")),
+                Some("https://www.steamgriddb.com/profile/preferences/api"),
+            )],
+            ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero"])
         },
-        SourceDescriptor { finds_by: vec![FuzzyTitle], ..source("webimages", n_!("From the web"), Pictures, &["cover", "hero"]) },
+        SourceDescriptor {
+            finds_by: vec![FuzzyTitle],
+            manual_only: true,
+            ..source(WEB_IMAGES, n_!("From the web"), Pictures, &["cover", "hero"])
+        },
         SourceDescriptor {
             finds_by: vec![SourceId, ExactTitle, FuzzyTitle],
-            ..source("howlongtobeat", "HowLongToBeat", Extras, &[TIME_TO_BEAT])
+            ..source(HOW_LONG_TO_BEAT, "HowLongToBeat", Extras, &[TIME_TO_BEAT])
         },
         SourceDescriptor {
             applies_to: AppliesTo::HasSteamId,
             finds_by: vec![SteamId],
-            ..source("steamtags", n_!("Steam tags"), Extras, &[STEAM_TAGS])
+            options: vec![SourceOption {
+                choices: [5, 10, 15, 20].iter().map(|n| OptionChoice { value: n.to_string(), label: n.to_string() }).collect(),
+                default: Some(OptionValue::Text(heronite_data::steam_tags::DEFAULT_LIMIT.to_string())),
+                ..option("limit", n_!("Steam tags per game"), OptionKind::Select)
+            }],
+            ..source(STEAM_TAGS, n_!("Steam tags"), Extras, &[STEAM_TAGS_FIELD])
         },
-        SourceDescriptor { finds_by: vec![SteamId, ExactTitle], ..source("protondb", "ProtonDB", Extras, &[LINUX_RATING]) },
+        SourceDescriptor { finds_by: vec![SteamId, ExactTitle], ..source(PROTONDB, "ProtonDB", Extras, &[LINUX_RATING]) },
     ]
 });
 
@@ -194,6 +235,16 @@ impl MetadataSource for IgdbSource {
             };
             candidate(self.d, matched_by)(md)
         })
+    }
+
+    fn has_test(&self) -> bool {
+        true
+    }
+
+    /// Asks Twitch for a token and IGDB for one game with the saved keys.
+    fn test(&self, ctx: &SourceContext<'_>) -> Option<SourceTest> {
+        let m = ctx.settings();
+        Some(self.igdb.test_credentials(ctx.http, &IgdbCredentials::new(&m.igdb_client_id, &m.igdb_client_secret)))
     }
 }
 
