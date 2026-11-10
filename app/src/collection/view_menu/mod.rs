@@ -66,9 +66,9 @@ pub(super) struct ViewMenu {
     /// The Categories section shows every row of chips, not only the first
     /// [`blocks::CATEGORY_ROWS`].
     cats_all: bool,
-    /// Height of the first [`blocks::CATEGORY_ROWS`] rows of category chips,
+    /// Where the first [`blocks::CATEGORY_ROWS`] rows of category chips end,
     /// as laid out on the last frame; `None` while every chip fits in them.
-    cats_cut: std::rc::Rc<std::cell::Cell<Option<f32>>>,
+    cats_cut: std::rc::Rc<std::cell::Cell<Option<blocks::RowsCut>>>,
     _sub: Subscription,
 }
 

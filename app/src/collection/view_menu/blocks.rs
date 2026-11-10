@@ -31,9 +31,21 @@ pub(super) const CATEGORY_ROWS: usize = 5;
 /// Space between the category chips.
 const CHIP_GAP: f32 = 6.;
 
-/// Height of the first `rows` rows of chips laid out at `bounds`, or `None`
+/// The end of the first rows of a wrapping row of chips.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct RowsCut {
+    /// Height of those rows.
+    height: f32,
+    /// Chips in them (the first ones, in order).
+    shown: usize,
+}
+
+/// Where the first `rows` rows of chips laid out at `bounds` end, or `None`
 /// when there are no more rows than that.
-fn rows_height(bounds: &[Bounds<Pixels>], rows: usize) -> Option<f32> {
+fn rows_cut(bounds: &[Bounds<Pixels>], rows: usize) -> Option<RowsCut> {
+    if rows == 0 {
+        return None;
+    }
     let first = bounds.iter().map(|b| f32::from(b.top())).reduce(f32::min)?;
     let mut tops: Vec<f32> = Vec::new();
     for b in bounds {
@@ -47,8 +59,9 @@ fn rows_height(bounds: &[Bounds<Pixels>], rows: usize) -> Option<f32> {
     }
     tops.sort_by(f32::total_cmp);
     let last = tops[rows - 1];
-    let bottom = bounds.iter().filter(|b| (f32::from(b.top()) - last).abs() < 1.).map(|b| f32::from(b.bottom())).reduce(f32::max)?;
-    Some(bottom - first)
+    let in_rows = |b: &&Bounds<Pixels>| f32::from(b.top()) < last + 1.;
+    let bottom = bounds.iter().filter(in_rows).map(|b| f32::from(b.bottom())).reduce(f32::max)?;
+    Some(RowsCut { height: bottom - first, shown: bounds.iter().filter(in_rows).count() })
 }
 
 impl CollectionView {
@@ -83,11 +96,13 @@ impl CollectionView {
         let chip = |id: ElementId, on: bool| {
             pill(id, d).when(on, |s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()).text_color(theme::text_bright()))
         };
+        let mut picks: Vec<bool> = Vec::with_capacity(entries.len() + 1);
         let mut chips: Vec<Stateful<Div>> = entries
             .iter()
             .enumerate()
             .map(|(i, c)| {
                 let on = self.category_on(&c.r);
+                picks.push(on);
                 let r = c.r.clone();
                 chip(("vm-cat", i).into(), on)
                     .child(if c.smart() {
@@ -105,6 +120,7 @@ impl CollectionView {
             .collect();
         if !self.categories.is_empty() {
             let on = self.ui.categories.contains(UNCATEGORIZED);
+            picks.push(on);
             chips.push(
                 chip("vm-cat-none".into(), on)
                     .child(icon(Icon::Label, px(13.), theme::text_muted()))
@@ -128,13 +144,14 @@ impl CollectionView {
                 .child(tr!("Save filters as smart category…"))
                 .on_click(cx.listener(|this, _, window, cx| this.save_filters_as_group(window, cx)))
         });
-        // Past CATEGORY_ROWS rows the chips are cut off until "Show all". The
-        // rows are only known once laid out: each frame measures them, and a
-        // change draws once more.
+        // Past CATEGORY_ROWS rows the chips are cut off until "Show all",
+        // unless a picked one would be cut off. The rows are only known once
+        // laid out: each frame measures them, and a change draws once more.
         let count = chips.len();
         let measured = self.view_menu.cats_cut.clone();
         let cut = measured.get();
-        let all = self.view_menu.cats_all;
+        let hidden_pick = cut.is_some_and(|c| picks.iter().skip(c.shown).any(|on| *on));
+        let all = self.view_menu.cats_all || hidden_pick;
         let wrap = (!chips.is_empty()).then(|| {
             div()
                 .flex()
@@ -142,15 +159,16 @@ impl CollectionView {
                 .gap(px(CHIP_GAP))
                 .children(chips)
                 .on_children_prepainted(move |bounds, window, _| {
-                    let rows = rows_height(&bounds, CATEGORY_ROWS);
+                    let rows = rows_cut(&bounds, CATEGORY_ROWS);
                     if measured.get() != rows {
                         measured.set(rows);
                         window.request_animation_frame();
                     }
                 })
-                .when_some(cut.filter(|_| !all), |el, h| el.max_h(px(h)).overflow_hidden())
+                .when_some(cut.filter(|_| !all), |el, c| el.max_h(px(c.height)).overflow_hidden())
         });
-        let more = cut.is_some().then(|| {
+        // While a picked chip keeps them all open, there is nothing to fold.
+        let more = (cut.is_some() && !hidden_pick).then(|| {
             div()
                 .id("vm-cats-more")
                 .flex()
@@ -369,4 +387,39 @@ pub(super) fn filter_block() -> &'static str {
 /// The word over the "Organize" block.
 pub(super) fn organize_block() -> &'static str {
     trc!("view menu block", "Organize")
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui_kit::{point, px, size, Bounds, Pixels};
+
+    use super::{rows_cut, RowsCut};
+
+    fn chip(x: f32, y: f32, w: f32) -> Bounds<Pixels> {
+        Bounds::new(point(px(x), px(y)), size(px(w), px(30.)))
+    }
+
+    /// Three chips a row, `rows` rows, 6px apart, from y = 100.
+    fn grid(rows: usize) -> Vec<Bounds<Pixels>> {
+        (0..rows).flat_map(|r| (0..3).map(move |c| chip(c as f32 * 90., 100. + r as f32 * 36., 84.))).collect()
+    }
+
+    #[test]
+    fn rows_cut_ends_after_the_last_row_shown() {
+        assert_eq!(rows_cut(&[], 5), None);
+        assert_eq!(rows_cut(&grid(5), 5), None, "five rows fit");
+        assert_eq!(rows_cut(&grid(7), 5), Some(RowsCut { height: 4. * 36. + 30., shown: 15 }));
+        assert_eq!(rows_cut(&grid(2), 0), None);
+    }
+
+    #[test]
+    fn rows_cut_counts_a_short_last_row_and_rounding() {
+        // Sub-pixel tops in one row are one row; the cut row is partly full.
+        let mut b = grid(5);
+        b[1].origin.y += px(0.4);
+        b.truncate(13);
+        b.push(chip(0., 100. + 5. * 36., 84.));
+        assert_eq!(rows_cut(&b, 5), Some(RowsCut { height: 4. * 36. + 30., shown: 13 }));
+        assert_eq!(rows_cut(&b, 6), None);
+    }
 }
