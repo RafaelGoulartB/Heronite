@@ -139,6 +139,12 @@ pub struct CollectionView {
     categories: heronite_data::categories::Categories,
     /// Smart groups (`local_library/groups.json`), loaded with the library.
     smart_groups: heronite_data::smart_groups::SmartGroups,
+    /// Today, while [`refresh_groups`](Self::refresh_groups) runs: the
+    /// groups' day counts read it once per pass, not once per game.
+    group_today: std::cell::Cell<Option<chrono::NaiveDate>>,
+    /// Games per smart group (by id) for the View menu, until the list is
+    /// built again.
+    group_counts: std::cell::RefCell<std::collections::HashMap<String, usize>>,
     /// Dates added, sizes and systems the extra sorts and groups read (`organize.rs`).
     game_extras: Arc<heronite_data::organize::GameExtras>,
     /// The actions users added to their games, by game key, loaded with the library.
@@ -353,6 +359,8 @@ impl CollectionView {
             ui_save: None,
             categories: Default::default(),
             smart_groups: Default::default(),
+            group_today: Default::default(),
+            group_counts: Default::default(),
             game_extras: Default::default(),
             user_actions: Default::default(),
             update_apps: Default::default(),

@@ -332,7 +332,7 @@ fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
         Field::Rating => o.rating(g).map(f64::from),
         Field::CriticScore => g.details.critic_score.filter(|s| *s > 0.),
         Field::InstallSize => o.size(g).filter(|_| g.installed).map(|b| b as f64 / (1024. * 1024. * 1024.)),
-        Field::Hltb => facts.wiki?.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.),
+        Field::Hltb => facts.wiki?.main_story(&g.title, &g.game.title),
         Field::FirstPlayed => g.first_played.as_deref().and_then(|s| days_ago(s, facts.today)),
         Field::TimesPlayed => Some(crate::organize::times_played(g) as f64),
         Field::SessionLength => {
@@ -346,7 +346,7 @@ fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
             Some(seconds / 3600.)
         }
         Field::Progress => {
-            let main = facts.wiki?.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.)?;
+            let main = facts.wiki?.main_story(&g.title, &g.game.title)?;
             Some(g.playtime_minutes as f64 / 60. / main * 100.)
         }
         Field::AgeRating => g.age_rating.as_ref().and_then(|r| r.min_age()).map(f64::from),

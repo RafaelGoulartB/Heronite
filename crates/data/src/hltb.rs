@@ -159,20 +159,31 @@ impl WikiCache {
     /// Cached wiki info for `title` (the Collection title); `store_title` is
     /// the second key Heroic tries (the game's own title) when different.
     pub fn lookup(&self, title: &str, store_title: &str) -> Option<WikiEntry> {
-        let entry = self.get(title).or_else(|| {
+        self.entry(title, store_title).map(WikiEntry::from_value)
+    }
+
+    /// The raw cached entry [`lookup`](Self::lookup) reads.
+    fn entry(&self, title: &str, store_title: &str) -> Option<&Value> {
+        self.get(title).or_else(|| {
             let fallback = remove_special_characters(store_title);
             if !fallback.is_empty() && fallback != remove_special_characters(title) {
                 self.get(store_title)
             } else {
                 None
             }
-        })?;
-        Some(WikiEntry::from_value(entry))
+        })
     }
 
     /// Just the HowLongToBeat part, shown only when it has times.
     pub fn hltb(&self, title: &str, store_title: &str) -> Option<HltbEntry> {
         self.lookup(title, store_title)?.hltb.filter(HltbEntry::is_displayable)
+    }
+
+    /// HowLongToBeat's main story hours, when above 0: what smart groups
+    /// read for every game, without parsing the rest of the entry.
+    pub fn main_story(&self, title: &str, store_title: &str) -> Option<f64> {
+        let hours = self.entry(title, store_title)?.get("howlongtobeat")?.get("mainStory")?.as_f64()?;
+        (hours > 0.).then_some(hours)
     }
 
     pub fn len(&self) -> usize {
@@ -223,6 +234,18 @@ mod tests {
         let e = c.lookup("Onimusha: Way of the Sword", "").unwrap();
         assert_eq!(e.pcgw_genres, ["Action"]);
         assert_eq!(e.pcgw_release_date.as_deref(), Some("Apr 10, 2024"));
+    }
+
+    #[test]
+    fn main_story_matches_the_full_lookup() {
+        let c = cache();
+        let full = c.hltb("Onimusha: Way of the Sword", "").map(|h| h.main_story);
+        assert_eq!(c.main_story("Onimusha: Way of the Sword", ""), full);
+        assert_eq!(c.main_story("Custom Name", "Onimusha: Way of the Sword"), full);
+        assert_eq!(c.main_story("Empty Game", "Onimusha: Way of the Sword"), None);
+        let zero =
+            WikiCache { entries: json!({ "Z": {"howlongtobeat": {"mainStory": 0.0, "mainExtra": 3.0}} }).as_object().unwrap().clone() };
+        assert_eq!(zero.main_story("Z", ""), None);
     }
 
     #[test]

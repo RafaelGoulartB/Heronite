@@ -52,7 +52,9 @@ impl CollectionView {
     }
 
     pub(super) fn refresh_groups(&mut self) {
+        self.group_counts.get_mut().clear();
         let Some(lib) = self.lib.clone() else { return };
+        self.group_today.set(Some(chrono::Local::now().date_naive()));
         let playing = &self.playing;
         let keep = |g: &heronite_data::CollectionGame| self.keeps_game(g, &lib.statuses);
         let organize = heronite_data::organize::Organize {
@@ -68,6 +70,7 @@ impl CollectionView {
         };
         let step = |key: &str| lib.get(key).and_then(|g| self.preparing.get(&g.app_name)).map(|s| s.label());
         let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
+        self.group_today.set(None);
         self.set_groups(groups);
         self.refresh_focus();
         self.prune_selection_to_list();
