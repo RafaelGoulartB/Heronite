@@ -244,18 +244,16 @@ impl CollectionView {
                 v.push(item(EpicAction::Eos, "eos", Icon::Fullscreen, label, "epic online services overlay sobreposicao ativar desativar"));
             }
         }
-        // The game settings' cloud saves tab has "Sync now"; the palette keeps it.
-        if cloud {
-            v.push(
-                item(
-                    EpicAction::Sync,
-                    "sync",
-                    Icon::CloudSync,
-                    tr!("Cloud saves sync"),
-                    "upload download saves sincronizar nuvem salvamentos",
-                )
-                .palette_only(),
-            );
+        // A quick two-way sync; the game settings' Cloud saves tab has the
+        // forced ones and the folder.
+        if cloud && !playing {
+            v.push(item(
+                EpicAction::Sync,
+                "sync",
+                Icon::CloudSync,
+                tr!("Cloud saves sync"),
+                "upload download saves sincronizar nuvem salvamentos",
+            ));
         }
         v.push(item(
             EpicAction::Uninstall,

@@ -364,8 +364,9 @@ impl CollectionView {
         div().mt(px(10.)).flex().gap(px(8.)).children(tiles)
     }
 
-    /// The launchers on this PC with games to bring in (Heroic, Lutris,
-    /// Faugus): a click turns the import on, and the games come in.
+    /// The launchers on this PC with games to bring in (Lutris, Bottles,
+    /// Faugus; Heroic only from Settings): a click turns the import on, and
+    /// the games come in.
     fn launcher_tiles(&self, cx: &mut Context<Self>) -> Option<Div> {
         if !crate::services::launcher_imports::OFFERED_ELSEWHERE {
             return None;
@@ -376,7 +377,11 @@ impl CollectionView {
             .found
             .iter()
             .flatten()
-            .filter(|f| f.games > 0 && (!s.prefs.enabled.contains(&f.launcher) || s.busy.contains(&f.launcher)))
+            .filter(|f| {
+                crate::services::launcher_imports::offered_elsewhere(f.launcher)
+                    && f.games > 0
+                    && (!s.prefs.enabled.contains(&f.launcher) || s.busy.contains(&f.launcher))
+            })
             .map(|f| (f.launcher, f.games, s.busy.contains(&f.launcher)))
             .collect();
         if found.is_empty() {

@@ -31,6 +31,8 @@ ashpd = { version = "0.13", default-features = false, features = ["async-io", "g
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 futures-channel = "0.3"
 pollster = "0.4"
+# Deadlines for the portal's answers (zbus already runs on it).
+async-io = "2"
 signal-hook = "0.3"
 notify-rust = "4"
 

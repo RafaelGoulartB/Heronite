@@ -202,7 +202,7 @@ const INHERITED_KEYS_2: [&str; 5] = ["useGameMode", "battlEyeRuntime", "eacRunti
 // settings, `heronite_launch::gpu`), `heronitePreferSdl` and
 // `heroniteKeepAwake` are Heronite's. A game's `heroniteUmuId` is its own and
 // never inherited.
-const INHERITED_KEYS_3: [&str; 32] = [
+const INHERITED_KEYS_3: [&str; 33] = [
     "gamescope",
     "verboseLogs",
     "advertiseAvxForRosetta",
@@ -235,6 +235,7 @@ const INHERITED_KEYS_3: [&str; 32] = [
     "heroniteGpuVsync",
     "heroniteGpuVendor",
     "heroniteGpuVram",
+    "heroniteGpuPreference",
 ];
 
 /// The defaults of `GameConfigV0.getSettings()` before the game's own section

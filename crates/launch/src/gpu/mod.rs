@@ -7,11 +7,16 @@
 //! Steam games carry the same variables in their launch options:
 //! [`launch_options_vars`] writes them and [`read_launch_options`] reads
 //! them back.
+//!
+//! On Windows none of those variables exist: the tab picks the card through
+//! Windows' own per-program GPU preference instead ([`preference`]).
 
 pub mod detect;
+pub mod preference;
 
 use serde_json::{json, Map, Value};
 
+pub use self::preference::{Preference, KEY_PREFERENCE};
 use crate::env::Env;
 use crate::probe::Probe;
 
@@ -50,8 +55,9 @@ pub const KEY_VENDOR: &str = "heroniteGpuVendor";
 pub const KEY_VRAM: &str = "heroniteGpuVram";
 /// The keys new games inherit from the global defaults (besides Heroic's
 /// `nvidiaPrime`).
-pub const INHERITED_KEYS: [&str; 16] = [
+pub const INHERITED_KEYS: [&str; 17] = [
     KEY_DEVICE,
+    KEY_PREFERENCE,
     KEY_SMOOTH_MOTION,
     KEY_REFLEX,
     KEY_SHADER_CACHE,
@@ -213,6 +219,8 @@ pub struct Gpu {
     pub vendor: Option<Vendor>,
     /// MiB; `0`: all of it.
     pub vram: u32,
+    /// Windows' per-program GPU preference ([`KEY_PREFERENCE`]).
+    pub preference: Preference,
 }
 
 impl Gpu {
@@ -237,6 +245,7 @@ impl Gpu {
             vsync: Vsync::parse(&text(KEY_VSYNC)),
             vendor: Vendor::parse(&text(KEY_VENDOR)),
             vram: u32::try_from(vram).unwrap_or(0),
+            preference: Preference::parse(&text(KEY_PREFERENCE)),
         }
     }
 }

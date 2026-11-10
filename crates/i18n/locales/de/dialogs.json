@@ -324,5 +324,18 @@
   "{n} sessions add up to {time}.": "{n} Sitzungen ergeben {time}.",
   "They are recorded each time the game runs here.": "Sie werden jedes Mal erfasst, wenn das Spiel hier läuft.",
   "{from}–{to} of {total}": "{from}–{to} von {total}",
-  "{launcher} was not found on this PC": "{launcher} wurde auf diesem PC nicht gefunden"
+  "{launcher} was not found on this PC": "{launcher} wurde auf diesem PC nicht gefunden",
+  "Remove {n} game from Collection? This does not uninstall it. Playtime, status, and Collection images for it are deleted.": "{n} Spiel aus der Sammlung entfernen? Es wird dadurch nicht deinstalliert. Spielzeit, Status und Sammlungsbilder dafür werden gelöscht.",
+  "Remove {n} games from Collection? This does not uninstall them. Playtime, status, and Collection images for them are deleted.": "{n} Spiele aus der Sammlung entfernen? Sie werden dadurch nicht deinstalliert. Spielzeit, Status und Sammlungsbilder dafür werden gelöscht.",
+  "• and {n} more": "• und {n} weitere",
+  "{n} other selected game stays: games from a store account, and running games, cannot be removed.": "{n} weiteres ausgewähltes Spiel bleibt: Spiele aus einem Store-Konto und laufende Spiele können nicht entfernt werden.",
+  "{n} other selected games stay: games from a store account, and running games, cannot be removed.": "{n} weitere ausgewählte Spiele bleiben: Spiele aus einem Store-Konto und laufende Spiele können nicht entfernt werden.",
+  "Remove {n} game": "{n} Spiel entfernen",
+  "Remove {n} games": "{n} Spiele entfernen",
+  "Could not remove {n} game: {err}": "{n} Spiel konnte nicht entfernt werden: {err}",
+  "Could not remove {n} games: {err}": "{n} Spiele konnten nicht entfernt werden: {err}",
+  "This desktop has no global shortcuts service": "Diese Desktop-Umgebung hat keinen Dienst für globale Tastenkürzel",
+  "The desktop refused the shortcut: it could not tell that Heronite asked for it": "Die Desktop-Umgebung hat das Tastenkürzel abgelehnt: Sie konnte nicht erkennen, dass Heronite es angefordert hat",
+  "The shortcut was not approved in the desktop's dialog": "Das Tastenkürzel wurde im Dialog der Desktop-Umgebung nicht bestätigt",
+  "The desktop did not answer in time (it may be asking for permission in a dialog)": "Die Desktop-Umgebung hat nicht rechtzeitig geantwortet (vielleicht fragt sie in einem Dialog nach der Erlaubnis)"
 }

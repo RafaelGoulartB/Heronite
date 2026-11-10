@@ -324,5 +324,18 @@
   "{n} sessions add up to {time}.": "{n} sesiones suman {time}.",
   "They are recorded each time the game runs here.": "Se registran cada vez que el juego se ejecuta aquí.",
   "{from}–{to} of {total}": "{from}–{to} de {total}",
-  "{launcher} was not found on this PC": "No se encontró {launcher} en este PC"
+  "{launcher} was not found on this PC": "No se encontró {launcher} en este PC",
+  "Remove {n} game from Collection? This does not uninstall it. Playtime, status, and Collection images for it are deleted.": "¿Quitar {n} juego de la Colección? Esto no lo desinstala. Se eliminarán su tiempo de juego, su estado y sus imágenes de la Colección.",
+  "Remove {n} games from Collection? This does not uninstall them. Playtime, status, and Collection images for them are deleted.": "¿Quitar {n} juegos de la Colección? Esto no los desinstala. Se eliminarán su tiempo de juego, su estado y sus imágenes de la Colección.",
+  "• and {n} more": "• y {n} más",
+  "{n} other selected game stays: games from a store account, and running games, cannot be removed.": "{n} otro juego seleccionado se queda: los juegos de una cuenta de tienda y los juegos en ejecución no se pueden quitar.",
+  "{n} other selected games stay: games from a store account, and running games, cannot be removed.": "{n} otros juegos seleccionados se quedan: los juegos de una cuenta de tienda y los juegos en ejecución no se pueden quitar.",
+  "Remove {n} game": "Quitar {n} juego",
+  "Remove {n} games": "Quitar {n} juegos",
+  "Could not remove {n} game: {err}": "No se pudo quitar {n} juego: {err}",
+  "Could not remove {n} games: {err}": "No se pudieron quitar {n} juegos: {err}",
+  "This desktop has no global shortcuts service": "Este escritorio no tiene servicio de atajos globales",
+  "The desktop refused the shortcut: it could not tell that Heronite asked for it": "El escritorio rechazó el atajo: no pudo saber que lo pidió Heronite",
+  "The shortcut was not approved in the desktop's dialog": "El atajo no se aprobó en el diálogo del escritorio",
+  "The desktop did not answer in time (it may be asking for permission in a dialog)": "El escritorio no respondió a tiempo (puede estar pidiendo permiso en un diálogo)"
 }

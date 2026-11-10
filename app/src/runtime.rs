@@ -77,10 +77,12 @@ impl GameRuntime {
             probe: Arc::new(SystemProbe),
             net: Arc::new(SystemNet),
             cloud: Some(Arc::new(StoreCloudSaves(paths.clone()))),
+            gpu_registry: Arc::new(heronite_launch::gpu::preference::SystemRegistry),
         });
         launcher.set_epic_setup(Arc::new(crate::services::downloads::EpicLaunchSetup(paths.clone())));
         launcher.set_store_setup(Arc::new(crate::services::downloads::StoreLaunchSetup(paths.clone())));
         launcher.set_game_mods(Arc::new(crate::services::mods::ModsLaunch::new(paths.clone())));
+        launcher.set_galaxy_account(Arc::new(crate::services::downloads::GogGalaxyAccount(paths.clone())));
         // Header of every launch log (Heroic's `formatSystemInfo`).
         launcher.set_system_info(Arc::new(crate::pages::settings::logs::system_info_text));
         spawn_tools_update(paths.clone());

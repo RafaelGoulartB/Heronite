@@ -3,7 +3,7 @@ name = "heronite-achievements"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Achievements of every game (Steam, GOG, Epic, RetroAchievements) and the local copy the app keeps of them"
+description = "Achievements of every game (Steam, GOG and Comet, Epic, RetroAchievements) and the local copy the app keeps of them"
 
 [dependencies]
 heronite-data = { path = "../data" }
@@ -22,6 +22,7 @@ aes = "0.8"
 cbc = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 
 [dev-dependencies]
 tempfile = "3"

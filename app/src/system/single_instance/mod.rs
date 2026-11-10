@@ -37,6 +37,8 @@ pub struct Message {
     pub open_client: Option<Client>,
     /// A game to close (`heronite://stop`).
     pub stop: Option<LaunchRequest>,
+    /// Capture the running game (`heronite://screenshot`).
+    pub screenshot: bool,
     /// `--no-gui` on the second invocation.
     pub no_gui: bool,
     /// `--console` / `--fullscreen` on the second invocation.
@@ -71,6 +73,9 @@ impl Message {
         if let Some(link) = &self.mod_link {
             line["modLink"] = link.as_str().into();
         }
+        if self.screenshot {
+            line["screenshot"] = true.into();
+        }
         line.to_string()
     }
 
@@ -98,6 +103,7 @@ impl Message {
             open_client,
             mod_link,
             stop: request("stop"),
+            screenshot: flag("screenshot"),
             no_gui: flag("noGui"),
             console: flag("console"),
             fullscreen: flag("fullscreen"),
@@ -305,6 +311,7 @@ mod tests {
             mod_link: Some("nxm://skyrimspecialedition/mods/1/files/2".into()),
             open_client: Some(Client::Ubisoft),
             stop: None,
+            screenshot: false,
             no_gui: true,
             console: true,
             fullscreen: true,
@@ -317,6 +324,10 @@ mod tests {
         assert_eq!(Message::from_line(&m.to_line()), Some(m));
         let plain = Message::default();
         assert_eq!(Message::from_line(&plain.to_line()), Some(plain));
+        let shot = Message { screenshot: true, ..Default::default() };
+        assert_eq!(Message::from_line(&shot.to_line()), Some(shot));
+        // An instance that does not know the key yet reads the rest.
+        assert!(!Message::default().to_line().contains("screenshot"));
         assert_eq!(Message::from_line("garbage"), None);
         assert!(!msg().to_line().contains('\n'));
     }

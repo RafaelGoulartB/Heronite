@@ -28,6 +28,8 @@
 //! - `system` (Windows): what the computer is (processor, memory, graphics
 //!   cards, Windows version), for the logs.
 //! - `gamepad` (Windows): XInput controllers, for the overlay.
+//! - `gpu_adapters` (Windows): the graphics adapters DXGI picks for power
+//!   saving and for high performance, for a game's GPU preference.
 //! - `controllers` (Windows): every kind of controller through SDL, for
 //!   console mode.
 //! - `audio` (Windows): Core Audio volumes, mutes and per-app sessions, for
@@ -60,6 +62,8 @@ mod com;
 pub mod controllers;
 #[cfg(windows)]
 pub mod gamepad;
+#[cfg(windows)]
+pub mod gpu_adapters;
 #[cfg(windows)]
 pub mod overlay_window;
 #[cfg(windows)]

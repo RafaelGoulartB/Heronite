@@ -374,7 +374,7 @@ impl Render for EpicModifyDialog {
             }
         }
         let footer =
-            button("epic-modify-close", ButtonKind::Primary, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)));
+            button("epic-modify-done", ButtonKind::Primary, tr!("Close")).on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)));
         let entity = cx.entity().downgrade();
         dialog(
             DialogProps {
