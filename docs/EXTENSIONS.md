@@ -1,0 +1,358 @@
+# Writing a metadata extension
+
+An extension adds a metadata source to Heronite: a site or a database that
+gives games their description, dates, genres, covers or other facts. It is
+listed in Settings → Metadata like the built-in sources, can be switched on
+and off, ordered, configured, searched and pinned like them, and is asked
+by the same fetches, updates and reviews.
+
+An extension is a folder with two text files, shared as a zip of that
+folder:
+
+```text
+mysource/
+  source.toml    the manifest: what it is, what it fills, where it connects
+  source.js      the script: how it finds a game and reads its record
+  README.md      optional: what it does, for people
+  icon.png       optional (or icon.svg): its icon
+```
+
+Nothing else may be in the package: no other files, no folders, no links.
+Limits: `source.toml` 64 KB, `source.js` 512 KB, `README.md` 64 KB, the
+icon 256 KB, the zip 2 MB. In a zip the files sit at the top or in one
+folder at the top. Everything the app shows about an extension comes from
+the manifest; no script runs to draw a screen.
+
+The repository has two complete examples: `extensions/wikipedia` (a
+details source asked as a fallback) and `extensions/pcgamingwiki` (an
+extras source that finds games by their Steam id).
+
+## The manifest: `source.toml`
+
+```toml
+id = "exampledb"                 # lowercase letters, digits, single dashes; 2–40
+name = "Example DB"              # shown as is; 40 characters at most
+version = "1.2.0"                # semantic version
+api = 1                          # the contract version this extension is written for
+author = "Your name"
+homepage = "https://example.org" # optional
+kind = "details"                 # details | pictures | extras
+adult = false                    # optional: a source about adult games
+description = "Games from Example DB, the database of example games."   # the "about" line; 300 at most
+
+[provides]
+# The fields it fills, by the app's ids:
+# description releaseDate developers publishers genres themes gameModes
+# platforms series features criticScore ageRatings
+# cover (the tall cover) coverSquare coverWide hero (the background)
+fields = ["description", "releaseDate", "genres", "cover", "hero"]
+
+[applies]                        # optional: every game, always asked
+to = "all"                       # all | emulated | pc (not emulated) | steam (games with a Steam id)
+# platforms = ["snes", "n64"]    # or: emulated games of these platforms
+# stores = ["gog", "steam"]      # or: games of these stores
+asked = "always"                 # always | fallback
+# The kind of game it is about, for a fallback source:
+# game_kind = { name = "Visual novels", signals = ["Visual Novel"] }
+
+[network]
+hosts = ["api.example.org", "*.cdn.example.org"]   # where the script may send requests
+images = ["images.example.net"]                    # further hosts its pictures may come from
+rate = "2/s"                                       # N/s or N/min; 1/s if left out; 10/s at most
+
+[[settings]]                     # optional, one table per setting, 16 at most
+key = "apiKey"                   # letters, digits and _, starting with a letter
+label = "API key"
+type = "secret"                  # text | secret | select | switch
+required = true                  # the source is not asked while it is empty
+help = "Get a key on your profile page."
+link = "https://example.org/profile/api"
+
+[[settings]]
+key = "region"
+label = "Region"
+type = "select"
+options = ["eu", { value = "us", label = "America" }]
+default = "us"
+```
+
+- **id** must not be a built-in source's (`igdb`, `steam`, `store`,
+  `lutris`, `playnite`, `vndb`, `launchbox`, `steamgriddb`, `libretro`,
+  `webimages`, `howlongtobeat`, `steamtags`, `protondb`, `manual`, `keep`,
+  `auto`). The
+  user's settings for it are kept under this id: keep it for ever.
+- **kind**: a *details* source takes part in deciding which game a game is
+  (an unsure match of its sends the game to review). A *pictures* source
+  provides pictures only (`cover`, `coverSquare`, `coverWide`, `hero`).
+  An *extras* source fills facts beside the others; its match is used when
+  it is sure, or the same game the details sources found, and it never
+  sends a game to review.
+- **platforms**: the app's platform ids (`nintendo_super_nes`,
+  `sony_playstation2`), or the names and short names the app knows them
+  by (`Super Nintendo Entertainment System`, `snes`, `ps2`); each is read
+  as the app's id, which is what `game.platform` carries. A name the app
+  does not know is left out with a line in the log; a list with none it
+  knows is refused. An emulated game whose platform the app cannot tell
+  matches `to = "emulated"` but no `platforms` list.
+- **asked = "fallback"**: asked only when no other online details source
+  found the game for sure, when the record or the game's Steam tags carry
+  its `game_kind` signal, when the game was already matched with it, or
+  when the user asks it by name.
+- An extension's fields are taken after the sources already in a field's
+  order; the user can move it like any source. It never goes ahead of
+  them by itself: unlike a built-in source such as the LaunchBox Games
+  Database, which goes first for an emulated game it found surely, an
+  extension has no such rule, and no database to download.
+- **hosts**: a name (`api.example.org`), or `*.example.org` for its
+  subdomains (not `example.org` itself: list both if needed). Requests are
+  `https` only; write `http://old.example.org` to allow plain `http` to
+  that host. No IP addresses, ports or paths.
+- **adult = true**: every picture it gives counts as adult and is dropped
+  unless the user allows adult covers.
+- Unknown keys are refused in `[network]` and for `api`; anywhere else they
+  are left out with a line in the log, so a manifest for a later minor
+  version of the contract still loads.
+
+## The script: `source.js`
+
+An ES module that exports functions the app calls. Each may be `async`;
+the app waits for its promise.
+
+```js
+export async function find(game, ctx) { /* -> [hit, ...] */ }
+export async function fetch(id, ctx) { /* -> record | null */ }
+export async function test(ctx) { /* optional -> true | "what went wrong" */ }
+```
+
+### `find(game, ctx)` → hits
+
+Called to find a game automatically (the app takes the best hit and reads
+it with `fetch`) and for the search by name in the per-game dialog and the
+review (then `game` holds only the typed `title`). Return the games it may
+be, best first, at most 25 (more are left out):
+
+```js
+{
+  id: "12345",              // its id in your source; passed back to fetch, saved when pinned
+  title: "Portal 2",        // its name as your source has it
+  year: 2011,               // optional
+  platform: "PC",           // optional
+  thumb: "https://images.example.net/12345.jpg", // optional, on your hosts
+  confidence: 1,            // optional, 0..1
+  matchedBy: { id: "steam" } // optional, see below
+}
+```
+
+How sure a match is decides whether it is saved or sent to review:
+
+- By title (the default): sure only when `title` is the game's title once
+  normalised the app's way (`ctx.normalize`), and `confidence`, when given,
+  is at least 0.75. A script cannot claim more. The record `fetch` returns
+  should carry the same title; a different one makes the match a guess.
+- `matchedBy: { id: "steam" }`: you found it by one of `game.ids` (name
+  the key you used). Sure, if the game has that id.
+- `matchedBy: { hash: "md5" }`: by one of `game.hashes`. Sure, if the game
+  has that hash.
+
+The `game` it gets:
+
+```js
+{
+  title: "Portal 2",
+  platform: null,            // an emulated game's platform id ("nintendo_super_nes"), else null
+  year: 2011,                // when the record already knows it, else null
+  fileName: "Portal 2",      // see below; never a path; else null
+  store: "steam",            // steam, epic, gog, amazon, xbox, emulator, ... or null
+  ids: { steam: "620", igdb: "72", lutris: "portal-2" },  // only those it has
+  hashes: {},                // ROM hashes by kind (crc32, md5, sha1), when the app has them (none yet)
+  fields: null               // for a pictures source: the fields asked, else null
+}
+```
+
+- `platform` is the app's id of an emulated game's platform: the one its
+  entry names, else what its ROM's extension, its emulator or its folders
+  (`…/PS2/…`) say, else the one its record names. `null` for a PC game
+  and when nothing says it.
+- `fileName` is, for an emulated game, the name of its ROM with the
+  extension, as the dump is named (`"Super Metroid (Japan, USA)
+  (En,Ja).sfc"`; for a game started from a boot file such as `EBOOT.BIN`,
+  the folder that names it); for another game, the name of its install
+  folder.
+
+Nothing else about the user or their library is passed.
+
+### `fetch(id, ctx)` → record
+
+Return the game's record, or `null` when your source has no such game.
+Every key is optional; what the manifest does not provide is left out.
+
+```js
+{
+  title: "Portal 2",
+  description: "Plain text; HTML tags are removed. 2000 characters at most.",
+  releaseDate: "2011-04-18",   // YYYY, YYYY-MM or YYYY-MM-DD (ctx.date.parse helps)
+  developers: ["Valve"], publishers: [], genres: [], themes: [],
+  gameModes: [], platforms: [], features: [],  // 12 names each at most, 100 characters each
+  series: "Portal",
+  score: 95,                   // 0..100
+  ageRatings: [{ system: "esrb", rating: "E10+", descriptors: ["Fantasy Violence"] }],
+  websites: ["https://www.thinkwithportals.com"],
+  images: [
+    { kind: "cover", url: "https://images.example.net/c.jpg" },               // the tall cover
+    { kind: "cover", shape: "square", url: "https://images.example.net/s.jpg" },
+    { kind: "cover", shape: "wide", url: "https://images.example.net/w.jpg" },
+    { kind: "background", url: "https://images.example.net/b.jpg", adult: true }
+  ],
+  extras: {}                   // reserved for a later version of the contract; ignored
+}
+```
+
+Pictures must be `https` addresses (or `http` where the manifest allows it)
+on the manifest's `hosts` or `images`; others are left out. The first
+picture of each kind and shape is used. `adult: true` flags one picture.
+
+### `test(ctx)`
+
+Optional: Settings shows a "Test" button when it exists. Check that the
+source can be asked with the user's settings; return `true`, or text that
+says what is wrong.
+
+### `ctx`: what the script may use
+
+```js
+const r = await ctx.http.get("https://api.example.org/search", {
+  query: { q: game.title },              // added to the address
+  headers: { Authorization: "Bearer " + ctx.settings.get("apiKey") },
+});
+r.status;   // 200
+r.url;      // the address after redirects
+r.headers;  // { "content-type": "...", ... } (lowercase names)
+r.text;     // the body as text
+r.json();   // the body parsed as JSON
+
+await ctx.http.post(url, { json: { ... } });        // or form: { ... }, or body: "..."
+
+const doc = ctx.html.parse(r.text);    // a read-only HTML document
+doc.text("h1.title");                  // text of the first match (spaces squashed), or null
+doc.attr("img.cover", "src");          // an attribute of the first match, or null
+doc.all("ul.genres li").map((li) => li.text());   // each match: text(), attr(name), all(sel), html()
+
+ctx.settings.get("region");    // this extension's own settings only
+ctx.date.parse("April 18, 2011");   // "2011-04-18"; also "2011-04", "18 Apr 2011", "April 2011"...; or null
+ctx.normalize("Pokémon: Red!");     // the app's title key, to compare titles like the app does
+ctx.language;                  // the interface language: "en", "pt-BR", "de"...
+ctx.log("found 3 pages");      // a line in the app's log, tagged with the extension id
+```
+
+`ctx.http` requests carry the app's user agent (`Heronite/<version>`; a
+script cannot set `User-Agent`, `Host` and the like), go out at the
+manifest's rate, and follow redirects only to the manifest's hosts. An HTTP
+error status is not an exception: check `r.status`. A request that cannot
+reach the service (offline, DNS, timeout) throws; if the call then fails,
+the game's lookup counts as "unreachable", not as a failure of the script.
+
+## Limits
+
+Each call of an exported function (a `find`, a `fetch`, a `test`) may use:
+
+| What | Limit |
+| --- | --- |
+| Time, requests and waits included | 10 s |
+| Memory of the script's engine | 32 MB |
+| Stack (recursion) | 1 MB |
+| Requests (each redirect counts) | 12 |
+| One answer's size | 2 MB |
+| All the answers of the call | 6 MB |
+| Time of one request | 8 s (and never more than the call has left) |
+| Log lines | 20 (more are dropped) |
+| Hits of `find` | 25 |
+| Data returned | 100,000 values, 8 MB of text, 32 levels deep |
+
+Going over a limit ends the call: the source answers "not found" for that
+game, and the fetch goes on with the other sources. After 5 failures in a
+row (errors and limits, not an unreachable network) the extension is
+stopped: Settings shows "Stopped after errors" with the last error, and it
+is not asked until the user switches it on again or installs an update.
+
+## What an extension can and cannot do
+
+The script runs in QuickJS, an embedded JavaScript engine, in a sandbox of
+its own:
+
+- It can send `GET` and `POST` requests to the hosts its manifest lists,
+  over `https` (or `http` only where listed), at the manifest's rate. It
+  cannot reach any other host, an IP address, a port, a name that leads to
+  your computer or local network, or an address with a user and password.
+  The installer shows the hosts before you install.
+- It can read its own settings. It cannot read the app's settings, other
+  sources' keys or settings, your library, your files, or anything about
+  you beyond the game it is asked about (its title, platform, year, file
+  name — never a path —, store, ids and hashes).
+- It has no file system, no processes, no sockets, no timers, no `eval` or
+  `Function` constructor, no `import` (static or dynamic), no `fetch` or
+  `XMLHttpRequest`; only the standard JavaScript objects and `ctx`.
+- Each lookup runs in a fresh engine that is thrown away afterwards: what a
+  script changes (globals, prototypes) does not last, and two lookups never
+  share anything.
+- What it returns is checked like the built-in sources' answers: plain
+  text, capped lengths and lists, real dates, pictures only from its hosts,
+  and only the fields its manifest provides.
+- It cannot decide by itself that a match is sure by title: the app
+  compares the titles.
+
+Extensions are installed only by you, from a file you choose, after the
+installer has shown what the extension is, what it fills, who it is for,
+where it connects, the settings it asks for, whether it is about adult
+games, and the package's SHA-256. An installed extension starts switched
+on.
+
+## Installing, updating, removing
+
+Installed extensions live in the data folder, in
+`metadata-extensions/<id>/`: the package's files as they were and
+`install.json` (when, from where, the package's SHA-256, and the last error
+while stopped). The SHA-256 is the zip file's, or for a folder the digest of
+its files (each name, a zero byte, its length as 8 little-endian bytes and
+its bytes, in name order).
+
+Installing a newer version replaces the files and keeps what the user set
+(on or off, settings, order). The same version again, or an older one, asks
+first. Removing an extension keeps what the user set for it, for a later
+install, unless they choose to forget it.
+
+## Trying an extension
+
+Run it against a game from the repository, with the real network and a
+throw-away data folder:
+
+```sh
+cargo run -p heronite-metadata-ext --example run -- path/to/mysource inspect
+cargo run -p heronite-metadata-ext --example run -- path/to/mysource find "Portal 2"
+cargo run -p heronite-metadata-ext --example run -- path/to/mysource find "Portal 2" --steam 620 --language pt-BR
+cargo run -p heronite-metadata-ext --example run -- path/to/mysource find "Super Metroid" --platform snes --file "Super Metroid (Japan, USA) (En,Ja).sfc"
+cargo run -p heronite-metadata-ext --example run -- path/to/mysource search "Portal"
+cargo run -p heronite-metadata-ext --example run -- path/to/mysource fetch 12345 --set apiKey=...
+cargo run -p heronite-metadata-ext --example run -- path/to/mysource test
+```
+
+`find` prints the candidate the app would merge (the record after the
+checks above, how the match was found). `--platform` (an id, name or short
+name, read as the app's id) makes the game an emulated one, and `--file`
+gives its `fileName`. Set `RUST_LOG=info` to see the
+script's `ctx.log` lines and errors. The path may be the folder or its zip.
+
+For tests in this repository, `crates/metadata-ext/tests/examples.rs` shows
+how to serve recorded answers to an extension: the test HTTP client maps
+an origin such as `https://en.wikipedia.org` to a local fixture server
+(`Endpoints::origins`).
+
+## Versions of the contract
+
+`api` is the version of everything this page describes. A build reads
+manifests of its version and older ones; a manifest with a higher `api` is
+refused at install ("made for a newer Heronite") and, once installed, shows
+as "Could not be loaded". Additions that old scripts do not notice (a new
+`ctx` helper, a new optional key) do not change the number; a change that
+would break a script does.
+
+Version 1 is the first.

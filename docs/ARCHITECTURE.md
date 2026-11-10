@@ -56,6 +56,9 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
  │                      Lutris, VNDB, LaunchBox, HLTB, ...), the merge,
  │                      the review of unsure matches, artwork        → data
+ ├─ heronite-metadata-ext metadata sources as extensions: manifest,
+ │                      package (folder / zip), installed ones, the
+ │                      QuickJS sandbox that runs their scripts      → data, metadata
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
  │                      by the vendored rcheevos), and the local copy
@@ -729,6 +732,27 @@ text size) and applies it.
   cropped are listed apart, per family, and are not a reason to need
   attention).
 
+  Extensions are sources too (`heronite-metadata-ext`): the registry
+  holds the built-in sources then the extensions, and the service swaps it
+  whole when one is added or removed (`MetadataService::add_source` /
+  `remove_source`, `sources()` returns the registry of the moment, a
+  gather keeps the one it started with); a built-in id is never taken
+  (`sources::is_reserved_id`). A descriptor with `extension`
+  (`ExtensionInfo`: version, author, homepage, adult) is an extension's:
+  it joins the end of each field order it fills (`order`), and its fields
+  can be switched and its row moved whatever its kind. A source says
+  whether it can be asked (`MetadataSource::health`: `LoadFailed`,
+  `Failing`); one that is not ok is not asked (`NotAsked::Failing`) and
+  shows `SourceStatus::LoadFailed` / `Failing` with `SourceRow::problem`;
+  switching it on calls `reset_health`. Extras and pictures sources only
+  follow the details ones in `fetch::decide`. `SourceGame` carries the
+  record's year and `file_name` (the ROM's, else the install folder's
+  name, never a path) beside the platform and ROM the emulated-game
+  sources use; `http` answers keep their headers, a request may refuse
+  redirects, a body over its cap is `BodyTooLarge`, and
+  `Endpoints::origins` sends whole origins to a test server
+  (`Http::route`).
+
   *Adding a built-in source* (what VNDB, LaunchBox and libretro-thumbnails needed; no screen code):
   1. A provider module (`crates/metadata/src/<source>.rs`, or a folder
      when it has a local database: `launchbox/`): the client (base URLs in
@@ -783,6 +807,33 @@ text size) and applies it.
      id, search, when it is asked and when it is not (never before a
      download), offline, and the debug states that show it in a capture
      (`dialogs/metadata/fake.rs`, `HERONITE_DEBUG_SOURCE_DOWNLOAD`).
+- **heronite-metadata-ext:** metadata sources the community writes
+  (`docs/EXTENSIONS.md` is the authors' reference). `manifest` parses and
+  checks `source.toml` into the `SourceDescriptor` (contract version
+  `API_VERSION`; unknown keys refused in `[network]`, left out with a
+  warning elsewhere; `[applies]` gives `applies_to` — `pc` is
+  `AppliesTo::Pc`, `platforms` are read through `platforms::by_name` into
+  the app's platform ids — `asked` and `game_kind`; an extension never has
+  a `download`, `also_for` or `leads_for`, so it never goes ahead of the
+  sources already in a field's order); `package` reads a folder or a zip
+  (only the expected files, no links, no path out, size caps; SHA-256);
+  `store` keeps the
+  installed ones in `<data>/metadata-extensions/<id>/` with `install.json`,
+  replaced whole by renames; `engine` is the sandbox: QuickJS (`rquickjs`),
+  the script compiled once to bytecode, each lookup in a fresh runtime on
+  a thread of its own (memory, stack and time limits, no `eval`, no module
+  loader), `ctx` the only host object (`request`: the manifest's hosts
+  over https, checked again on every redirect, the app's user agent, the
+  manifest's rate, per-call request and byte budgets; `html`: CSS
+  selectors over `dom_query`); `record` checks and clamps what scripts
+  return like the built-in mappings; `source::ScriptSource` is the
+  `MetadataSource` (failures in a row stop it, kept in `install.json`),
+  `BrokenExtension` one that could not be loaded; `service::ExtensionsExt`
+  is what the app calls on its `MetadataService` (`load_extensions` at
+  startup, `inspect_extension`, `install_extension`, `remove_extension`,
+  `installed_extensions`). `examples/run.rs` runs an extension against a
+  title. The example extensions are in `extensions/` (Wikipedia,
+  PCGamingWiki).
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

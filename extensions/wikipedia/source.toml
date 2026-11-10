@@ -1,0 +1,23 @@
+# Wikipedia as a metadata source: the lead of a game's article as its
+# description, in the interface's language when Wikipedia has the article
+# in it, else in English.
+id = "wikipedia"
+name = "Wikipedia"
+version = "1.0.0"
+api = 1
+author = "Heronite"
+homepage = "https://www.wikipedia.org"
+kind = "details"
+description = "The first paragraphs of the game's Wikipedia article, in your language when there is one. Asked only when the other sources lack the game."
+
+[provides]
+fields = ["description", "releaseDate"]
+
+[applies]
+to = "all"
+asked = "fallback"
+
+[network]
+# en.wikipedia.org and the other languages' sites.
+hosts = ["*.wikipedia.org"]
+rate = "5/s"

@@ -1,0 +1,143 @@
+use serde_json::json;
+
+use super::*;
+
+fn rules() -> Vec<HostRule> {
+    ["api.example.org", "*.img.example.org"].iter().map(|r| HostRule::parse(r).unwrap()).collect()
+}
+
+fn keys<'a>(title: &'a str, ids: &'a Map<String, Value>, hashes: &'a Map<String, Value>) -> GameKeys<'a> {
+    GameKeys { title, ids, hashes }
+}
+
+fn all_fields() -> Vec<String> {
+    heronite_data::settings::ALL_FIELDS.iter().map(|f| f.to_string()).collect()
+}
+
+#[test]
+fn dates_in_the_usual_spellings() {
+    for (text, want) in [
+        ("2011-04-18", Some("2011-04-18")),
+        ("2011/04/18", Some("2011-04-18")),
+        ("2011-04", Some("2011-04")),
+        ("2011", Some("2011")),
+        ("April 18, 2011", Some("2011-04-18")),
+        ("Apr 18 2011", Some("2011-04-18")),
+        ("18 April 2011", Some("2011-04-18")),
+        ("18 Apr 2011.", Some("2011-04-18")),
+        ("April 2011", Some("2011-04")),
+        ("2011-02-30", None),
+        ("2011-13", None),
+        ("1850", None),
+        ("TBA", None),
+        ("", None),
+        ("Q3 2011", None),
+    ] {
+        assert_eq!(parse_date(text).as_deref(), want, "{text}");
+    }
+}
+
+#[test]
+fn a_title_match_is_sure_only_when_the_titles_agree() {
+    let (ids, hashes) = (Map::new(), Map::new());
+    let found = json!([
+        { "id": "1", "title": "Portal 2: The Lab", "year": 2011 },
+        { "id": "2", "title": "portal-2", "year": 2011, "thumb": "https://x.img.example.org/a.jpg" },
+        { "id": "3", "title": "Portal 2", "confidence": 0.2 },
+        { "id": "", "title": "no id" },
+        { "id": "4" },
+        { "id": 5, "title": "<b>Portal</b> 2", "year": 1800, "thumb": "https://elsewhere.org/a.jpg", "platform": "PC" },
+    ]);
+    let hits = hits(&found, &keys("Portal 2", &ids, &hashes), &rules());
+    let summary: Vec<(&str, MatchedBy)> = hits.iter().map(|h| (h.id.as_str(), h.matched_by)).collect();
+    assert_eq!(
+        summary,
+        [("2", MatchedBy::ExactTitle), ("5", MatchedBy::ExactTitle), ("1", MatchedBy::FuzzyTitle), ("3", MatchedBy::FuzzyTitle)],
+        "the same title first, a doubtful one is a guess, no id or no title is dropped"
+    );
+    assert_eq!(hits[0].thumb.as_deref(), Some("https://x.img.example.org/a.jpg"));
+    assert_eq!(
+        (hits[1].title.as_str(), hits[1].year, hits[1].thumb.as_deref()),
+        ("Portal 2", None, None),
+        "plain text; no year 1800; no foreign host"
+    );
+    assert_eq!(hits[1].platform.as_deref(), Some("PC"));
+}
+
+#[test]
+fn an_id_or_hash_match_names_one_the_game_has() {
+    let ids: Map<String, Value> = json!({"steam": "620", "igdb": "72"}).as_object().unwrap().clone();
+    let hashes: Map<String, Value> = json!({"md5": "abc"}).as_object().unwrap().clone();
+    let found = json!([
+        { "id": "a", "title": "Other name", "matchedBy": { "id": "steam" } },
+        { "id": "b", "title": "Other name", "matchedBy": { "id": "igdb" } },
+        { "id": "c", "title": "Other name", "matchedBy": { "hash": "md5" } },
+        { "id": "d", "title": "Other name", "matchedBy": { "id": "gog" } },
+        { "id": "e", "title": "Other name", "matchedBy": { "hash": "sha1" } },
+        { "id": "f", "title": "Other name", "matchedBy": "exactTitle" },
+    ]);
+    let by: Vec<MatchedBy> = hits(&found, &keys("Portal 2", &ids, &hashes), &rules()).iter().map(|h| h.matched_by).collect();
+    assert_eq!(
+        by,
+        [MatchedBy::SteamId, MatchedBy::SourceId, MatchedBy::RomHash, MatchedBy::FuzzyTitle, MatchedBy::FuzzyTitle, MatchedBy::FuzzyTitle],
+        "an id the game lacks, or a claim of a title match, is a title guess"
+    );
+    assert!(hits(&json!({"not": "a list"}), &keys("x", &ids, &hashes), &rules()).is_empty());
+    let many: Vec<Value> = (0..40).map(|i| json!({"id": i.to_string(), "title": "x"})).collect();
+    assert_eq!(hits(&Value::Array(many), &keys("x", &ids, &hashes), &rules()).len(), 25);
+}
+
+#[test]
+fn a_record_is_clamped_like_the_built_in_mappings() {
+    let long = "word ".repeat(1000);
+    let value = json!({
+        "title": "  Portal   2 ",
+        "description": format!("<p>Hello <b>there</b></p>{long}"),
+        "releaseDate": "April 18, 2011",
+        "developers": ["Valve", "valve", " ", "<i>Valve</i> South", 7],
+        "genres": (0..30).map(|i| format!("G{i}")).collect::<Vec<_>>(),
+        "series": "Portal",
+        "score": 95.4,
+        "features": ["Controller"],
+        "ageRatings": [{ "system": "esrb", "rating": "E10+", "descriptors": ["Fantasy Violence"] }, { "system": "nope", "rating": "X" }],
+        "websites": ["https://portal2.example.org", "javascript:alert(1)", "ftp://x.org"],
+        "images": [
+            { "kind": "cover", "url": "https://api.example.org/c.jpg" },
+            { "kind": "cover", "url": "https://api.example.org/second.jpg" },
+            { "kind": "cover", "shape": "square", "url": "http://api.example.org/s.jpg" },
+            { "kind": "cover", "shape": "wide", "url": "https://x.img.example.org/w.jpg", "adult": true },
+            { "kind": "background", "url": "file:///etc/passwd" },
+            { "kind": "logo", "url": "https://api.example.org/l.png" },
+        ],
+        "extras": { "engine": "Source" },
+    });
+    let r = record(&value, "a", "sideload", &all_fields(), None, &rules(), false).unwrap();
+    let md = &r.metadata;
+    assert_eq!(md.title.as_deref(), Some("Portal 2"));
+    let description = md.description.as_deref().unwrap();
+    assert!(description.starts_with("Hello there") && !description.contains('<'));
+    assert_eq!(description.chars().count(), 2000);
+    assert_eq!(md.release_date.as_deref(), Some("2011-04-18"));
+    assert_eq!(md.developers, ["Valve", "Valve South"]);
+    assert_eq!(md.genres.len(), 12);
+    assert_eq!(md.critic_score.map(|s| s.get()), Some(95.0));
+    assert_eq!(md.age_ratings.len(), 1);
+    assert_eq!(md.websites, ["https://portal2.example.org"]);
+    assert_eq!(md.cover_url.as_deref(), Some("https://api.example.org/c.jpg"), "the first cover wins");
+    assert_eq!(md.cover_square_url, None, "plain http to a host listed for https only");
+    assert_eq!(md.cover_wide_url.as_deref(), Some("https://x.img.example.org/w.jpg"));
+    assert_eq!(md.hero_url, None);
+    assert_eq!(r.adult, ["coverWide"]);
+
+    // Only what the manifest provides, and of that what was asked.
+    let r = record(&value, "a", "sideload", &["description".into(), "cover".into()], None, &rules(), false).unwrap();
+    assert!(r.metadata.developers.is_empty() && r.metadata.series.is_none() && r.metadata.cover_wide_url.is_none());
+    assert!(r.metadata.description.is_some() && r.metadata.cover_url.is_some() && r.adult.is_empty());
+    let r = record(&value, "a", "sideload", &all_fields(), Some(&["cover".into()]), &rules(), false).unwrap();
+    assert!(r.metadata.description.is_none() && r.metadata.cover_url.is_some());
+    // An adult source: every picture is adult.
+    let r = record(&value, "a", "sideload", &all_fields(), None, &rules(), true).unwrap();
+    assert_eq!(r.adult, ["cover", "coverWide"]);
+    assert!(record(&Value::Null, "a", "sideload", &all_fields(), None, &rules(), false).is_none());
+    assert!(record(&json!({"score": 400}), "a", "sideload", &all_fields(), None, &rules(), false).unwrap().metadata.critic_score.is_none());
+}

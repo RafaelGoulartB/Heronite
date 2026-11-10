@@ -82,7 +82,8 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   source is left out. A closed row shows a drag handle (details sources only), the source's tile (its logo, else two
   letters in its colour), its name over what it gives ("Text · Scores · Covers"), the games it is for ("All games",
   "Games found on Steam"…, or the kind of game it is about: "Visual novels"), its status (a dot and a word: Off, On, Connected, Add a key, Could not connect, Sign in,
-  Needs a download, Not on this system, By hand only), its switch and a chevron. A source on but waiting for a key shows
+  Needs a download, Not on this system, By hand only; an extension also Could not be loaded or Stopped after errors, in
+  red), its switch and a chevron. A source on but waiting for a key shows
   its switch grey; one not on this system has its switch locked. A click on the row opens it in place (several can be
   open); the switch does not. A source that is asked from a database it downloads (LaunchBox) shows "Needs a download"
   with its switch grey until it has it; its open row puts the database under the line about it, the same for any such

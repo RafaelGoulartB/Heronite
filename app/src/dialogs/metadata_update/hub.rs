@@ -96,6 +96,14 @@ pub fn hub(cx: &App) -> Entity<MetadataHub> {
 impl MetadataHub {
     pub fn new(data_paths: DataPaths, cx: &mut Context<Self>) -> Self {
         let service = Arc::new(MetadataService::new(data_paths));
+        // The installed extensions join the sources off the UI thread (each
+        // script is compiled); a fetch before that asks the built-in ones.
+        let loading = service.clone();
+        cx.background_spawn(async move {
+            use heronite_metadata_ext::ExtensionsExt;
+            loading.load_extensions();
+        })
+        .detach();
         let (tx, mut rx) = unbounded::<BulkProgress>();
         cx.spawn(async move |this, cx| {
             while let Some(p) = rx.next().await {
