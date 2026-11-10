@@ -150,6 +150,11 @@ impl CollectionView {
                 e.disable(tr!("Sign in to Epic Games first"));
             }
         }
+        let waiting = cx.has_global::<crate::dialogs::metadata_wizard::HubGlobal>()
+            && !crate::dialogs::metadata_wizard::hub(cx).read(cx).queue.is_empty();
+        if let Some(e) = v.iter_mut().find(|e| e.act == Act::ReviewMatches).filter(|_| !waiting) {
+            e.disable(tr!("No game waits for review"));
+        }
         // The game selected in the Collection: its actions, by name (those
         // of the copy its card acts on, as its context menu).
         let selected = self.selected.clone().filter(|_| self.page == Page::Collection);
@@ -313,6 +318,7 @@ impl CollectionView {
             Act::UpdateMetadata => {
                 self.open_metadata_update(true, window, cx);
             }
+            Act::ReviewMatches => self.open_review(Default::default(), window, cx),
             // The quit question needs the window: ask once this update ended.
             Act::Quit => cx.defer(crate::system::request_quit),
             Act::View(cmd) => self.run_view_cmd(cmd, window, cx),

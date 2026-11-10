@@ -1,8 +1,9 @@
 //! Step 3, the update: its progress, the results filtered by outcome and the
 //! list of games (a `uniform_list`: only the rows in view are built, so a job
 //! of 2,000 games stays cheap), each with what changed and from where, or
-//! why nothing did. Stop and Hide while it runs; Undo, "Update again" and
-//! Done once it ended. A job waiting behind another says so.
+//! why nothing did; a game sent to review has "Review". Stop and Hide while
+//! it runs; Undo, "Review N…", "Update again" and Done once it ended. A job
+//! waiting behind another says so.
 
 use std::ops::Range;
 use std::sync::Arc;
@@ -10,14 +11,15 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{tr, trn};
-use heronite_metadata::{BulkProgress, BulkState, GameOutcome, GameResult, JobTally};
+use heronite_metadata::{BulkItem, BulkProgress, BulkState, GameOutcome, GameResult, JobTally};
 
+use super::hub::ReviewRequest;
 use super::words::{self, Bucket};
 use super::{footer_note, MetadataUpdate, Step};
 use crate::icons::Icon;
 use crate::services::widgets::{cover_box, progress_bar};
 use crate::theme;
-use crate::ui::controls::{button, icon_button_sm, ButtonKind};
+use crate::ui::controls::{button, button_sm, icon_button_sm, ButtonKind};
 use crate::ui::icon;
 
 const ROW_H: f32 = 48.;
@@ -89,7 +91,36 @@ impl MetadataUpdate {
         self.covers.get_chain(&format!("mu:{key}"), chain, w, h, scale)
     }
 
-    fn render_row(&mut self, i: usize, r: &GameResult, scale: f32, cx: &App) -> AnyElement {
+    /// The games the job sent to review, in its order.
+    fn review_items(&self, cx: &App) -> Vec<BulkItem> {
+        let p = &self.hub.read(cx).progress;
+        p.results
+            .iter()
+            .filter(|r| matches!(r.outcome, GameOutcome::ToReview(_)))
+            .map(|r| {
+                let steam =
+                    self.games.all.iter().find(|g| g.app_name == r.app_name && heronite_metadata::store::as_runner(&g.runner) == r.runner);
+                BulkItem {
+                    app_name: r.app_name.clone(),
+                    runner: r.runner.clone(),
+                    title: r.title.clone(),
+                    steam_app_id: steam.and_then(|g| g.steam_app_id.clone()),
+                }
+            })
+            .collect()
+    }
+
+    /// "Review matches" on the job's games sent to review, from `start`.
+    fn open_review(&mut self, start: usize, cx: &mut Context<Self>) {
+        let games = self.review_items(cx);
+        if games.is_empty() {
+            return;
+        }
+        let request = ReviewRequest { start: start.min(games.len() - 1), games: Some(games) };
+        self.hub.update(cx, |h, cx| h.request_review(request, cx));
+    }
+
+    fn render_row(&mut self, i: usize, r: &GameResult, scale: f32, cx: &mut Context<Self>) -> AnyElement {
         let cover = self.cover_of(&r.key, 26., 35., scale);
         let service = self.hub.read(cx).service.clone();
         let middle = if r.changes.is_empty() {
@@ -124,7 +155,18 @@ impl MetadataUpdate {
             .child(cover_box(cover, 26., 35.).rounded(px(4.)))
             .child(div().w(px(210.)).flex_none().truncate().text_size(px(13.5)).text_color(theme::text_primary()).child(r.title.clone()))
             .child(div().flex().flex_1().min_w_0().child(middle))
-            .child(words::status(&r.outcome))
+            .child(match r.outcome {
+                GameOutcome::ToReview(_) => {
+                    let key = r.key.clone();
+                    button_sm(("mu-review", i), ButtonKind::Glass, tr!("Review"))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            let at = this.review_index(&key, cx);
+                            this.open_review(at, cx);
+                        }))
+                        .into_any_element()
+                }
+                _ => words::status(&r.outcome).into_any_element(),
+            })
             .into_any_element()
     }
 
@@ -135,6 +177,12 @@ impl MetadataUpdate {
         };
         let scale = window.scale_factor();
         results.into_iter().map(|(row, r)| self.render_row(row, &r, scale, cx)).collect()
+    }
+
+    /// Where the game of `key` is among the job's games sent to review.
+    fn review_index(&self, key: &str, cx: &App) -> usize {
+        let p = &self.hub.read(cx).progress;
+        p.results.iter().filter(|r| matches!(r.outcome, GameOutcome::ToReview(_))).position(|r| r.key == key).unwrap_or(0)
     }
 
     /// The game being fetched, above the list while the job runs.
@@ -331,6 +379,7 @@ impl MetadataUpdate {
             String::new()
         };
         let can_undo = hub.can_undo() && undone.is_none() && updated > 0;
+        let to_review = self.cache.tally.to_review;
         row.child(footer_note(note))
             .when(can_undo, |d| {
                 d.child(
@@ -346,6 +395,12 @@ impl MetadataUpdate {
                         }),
                     )
                     .h(px(theme::BUTTON_H)),
+                )
+            })
+            .when(to_review > 0, |d| {
+                d.child(
+                    button("mu-review-all", ButtonKind::Glass, trn!(to_review, "Review {n}\u{2026}", "Review {n}\u{2026}"))
+                        .on_click(cx.listener(|this, _, _, cx| this.open_review(0, cx))),
                 )
             })
             .child(button("mu-again", ButtonKind::Glass, tr!("Update again")).on_click(cx.listener(|this, _, _, cx| {

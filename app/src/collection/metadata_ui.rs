@@ -32,8 +32,25 @@ impl CollectionView {
             HubEvent::Undone(report) => {
                 this.show_toast(trn!(report.games, "Update undone: {n} game put back", "Update undone: {n} games put back"), false, cx)
             }
-            // Nothing shows the queue yet.
-            HubEvent::ReviewChanged => {}
+            // The selection's "Fix matches…" says how many of its games wait.
+            HubEvent::ReviewChanged => this.forget_meta_counts(cx),
+            HubEvent::OpenReview(request) => {
+                this.dialog = None;
+                this.dialog_sub = None;
+                this.open_review(request.clone(), window, cx);
+            }
+            HubEvent::OpenAttention => {
+                this.dialog = None;
+                this.dialog_sub = None;
+                if let Some(view) = this.open_metadata_update(false, window, cx) {
+                    view.update(cx, |d, cx| d.show_attention(cx));
+                }
+            }
+            HubEvent::OpenSettings => {
+                this.dialog = None;
+                this.dialog_sub = None;
+                this.open_settings_section(crate::pages::settings::Section::Metadata, window, cx);
+            }
         })
         .detach();
         // The header pill follows the job's progress.
@@ -163,10 +180,15 @@ impl CollectionView {
 
     /// `HERONITE_DEBUG_DIALOG` values of the metadata dialogs:
     /// `wizard[:<step>[:<state>]]` is "Update metadata" (on the selection
-    /// when `HERONITE_DEBUG_MULTI` made one; see `MetadataUpdate::debug_state`).
+    /// when `HERONITE_DEBUG_MULTI` made one; see `MetadataUpdate::debug_state`);
+    /// `metadata` the selected game's "Metadata" (asking the sources),
+    /// `metadata:<state>` the same over a made-up preview; `review[:<state>]`
+    /// a made-up "Review matches".
     pub(super) fn open_metadata_debug(&mut self, which: &str, window: &mut Window, cx: &mut Context<Self>) {
         match which {
             "metadata" => self.open_metadata(window, cx),
+            w if w.starts_with("metadata:") => self.open_metadata_fake(&w["metadata:".len()..], window, cx),
+            w if w == "review" || w.starts_with("review:") => self.open_review_debug(w, window, cx),
             "gamesettings" => self.open_game_settings_tab(GameTab::Game, window, cx),
             "gamesettings:details" => self.open_game_settings_tab(GameTab::Game, window, cx),
             "gamesettings:launch" => self.open_game_settings_tab(GameTab::Actions, window, cx),
@@ -196,6 +218,10 @@ impl CollectionView {
             return;
         }
         let Some(games) = self.update_games(false) else { return };
+        if hub(cx).read(cx).fake_idle() {
+            hub(cx).update(cx, |h, cx| h.fake_idle_queue(&games.shown, cx));
+            return;
+        }
         let args = BulkArgs::update(games.shown, UpdateMode::Fill, None, None);
         hub(cx).update(cx, |h, cx| h.start(args, cx));
     }

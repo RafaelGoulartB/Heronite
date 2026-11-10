@@ -1,11 +1,14 @@
 //! How a bulk job and its results read on screen, shared by the dialog's
-//! results and the header pill: each game's outcome as a group, a word, a
-//! colour and a reason; a changed field as a chip with its source's mark.
+//! results, the header pill and "Review matches": each game's outcome as a
+//! group, a word, a colour and a reason; why a game waits for review; a
+//! changed field as a chip with its source's mark.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::{tr, trn};
-use heronite_metadata::{BulkProgress, FieldChange, GameOutcome, JobTally, MetadataService, NoChangeReason, SkipReason, UpdateMode};
+use heronite_metadata::{
+    BulkProgress, FieldChange, GameOutcome, JobTally, MatchedBy, MetadataService, NoChangeReason, ReviewReason, SkipReason, UpdateMode,
+};
 
 use crate::pages::settings::metadata_labels as labels;
 use crate::services::widgets::duration_text;
@@ -15,6 +18,8 @@ use crate::theme;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Bucket {
     Updated,
+    /// Sent to the review queue.
+    ToReview,
     NoChange,
     NotFound,
     Failed,
@@ -23,7 +28,7 @@ pub(crate) enum Bucket {
 }
 
 impl Bucket {
-    pub const ALL: [Bucket; 5] = [Self::Updated, Self::NoChange, Self::NotFound, Self::Failed, Self::NotDone];
+    pub const ALL: [Bucket; 6] = [Self::Updated, Self::ToReview, Self::NoChange, Self::NotFound, Self::Failed, Self::NotDone];
 
     pub fn of(o: &GameOutcome) -> Self {
         match o {
@@ -31,8 +36,8 @@ impl Bucket {
             GameOutcome::NoChange(_) | GameOutcome::Skipped(SkipReason::AlreadyFetched | SkipReason::NoSource | SkipReason::InNoSource) => {
                 Self::NoChange
             }
-            // Until the results have their own group for the review queue.
-            GameOutcome::NotFound | GameOutcome::ToReview(_) => Self::NotFound,
+            GameOutcome::ToReview(_) => Self::ToReview,
+            GameOutcome::NotFound => Self::NotFound,
             GameOutcome::Offline | GameOutcome::Failed(_) => Self::Failed,
             GameOutcome::Skipped(SkipReason::Stopped) => Self::NotDone,
         }
@@ -42,7 +47,8 @@ impl Bucket {
         match self {
             Self::Updated => t.updated,
             Self::NoChange => t.no_change + t.skipped,
-            Self::NotFound => t.not_found + t.to_review,
+            Self::ToReview => t.to_review,
+            Self::NotFound => t.not_found,
             Self::Failed => t.failed + t.offline,
             Self::NotDone => t.stopped,
         }
@@ -51,6 +57,7 @@ impl Bucket {
     pub fn label(self) -> &'static str {
         match self {
             Self::Updated => tr!("Updated"),
+            Self::ToReview => tr!("To review"),
             Self::NoChange => tr!("No change"),
             Self::NotFound => tr!("Not found"),
             Self::Failed => tr!("Failed"),
@@ -62,6 +69,7 @@ impl Bucket {
     pub fn colour(self) -> Hsla {
         match self {
             Self::Updated => theme::success().into(),
+            Self::ToReview => theme::warning().into(),
             Self::NoChange => theme::ink_a(0.35),
             Self::NotFound => theme::warning().into(),
             Self::Failed => theme::danger().into(),
@@ -77,7 +85,7 @@ pub(crate) fn reason(o: &GameOutcome) -> &'static str {
         GameOutcome::NoChange(NoChangeReason::NothingMissing) => tr!("Nothing was missing"),
         GameOutcome::NoChange(NoChangeReason::NothingNew) => tr!("The sources had nothing new"),
         GameOutcome::NoChange(NoChangeReason::Locked) => tr!("Its fields are locked"),
-        GameOutcome::ToReview(_) => tr!("The sources were not sure: waiting for review"),
+        GameOutcome::ToReview(r) => review_short(*r),
         GameOutcome::NotFound => tr!("No source found this game"),
         GameOutcome::Offline => tr!("Could not reach the sources"),
         GameOutcome::Failed(_) => tr!("Could not be saved"),
@@ -86,6 +94,50 @@ pub(crate) fn reason(o: &GameOutcome) -> &'static str {
         GameOutcome::Skipped(SkipReason::Stopped) => tr!("The update stopped before it"),
         GameOutcome::Skipped(SkipReason::InNoSource) => tr!("You said no source has this game"),
     }
+}
+
+/// Why a game waits for review, in a few words (a row of the results).
+pub(crate) fn review_short(r: ReviewReason) -> &'static str {
+    match r {
+        ReviewReason::LoneGuess => tr!("Found by a similar name only"),
+        ReviewReason::SourcesDisagree => tr!("The sources found different games"),
+        ReviewReason::Requested => tr!("You asked to check it"),
+        ReviewReason::Other => tr!("The sources were not sure: waiting for review"),
+    }
+}
+
+/// Why a game is asked about, as "Review matches" says it.
+pub(crate) fn review_why(r: ReviewReason) -> &'static str {
+    match r {
+        ReviewReason::LoneGuess => tr!("Only one source found a game for this name, and its name is not quite the same."),
+        ReviewReason::SourcesDisagree => tr!("The sources found different games for this name."),
+        ReviewReason::Requested => tr!("You asked to check which game this is."),
+        ReviewReason::Other => tr!("The sources were not sure which game this is."),
+    }
+}
+
+/// How a source found a game, after its name ("by its Steam id"); `None`
+/// where it says nothing the user needs.
+pub(crate) fn matched_by(m: MatchedBy) -> Option<&'static str> {
+    Some(match m {
+        MatchedBy::Game => return None,
+        MatchedBy::SourceId => tr!("by its id"),
+        MatchedBy::SteamId => tr!("by its Steam id"),
+        MatchedBy::RomHash => tr!("by ROM hash"),
+        MatchedBy::ExactTitle => tr!("by name"),
+        MatchedBy::FuzzyTitle => tr!("by a similar name"),
+    })
+}
+
+/// The pill of a sure match in "Review matches" ("Hash matches"); `None`
+/// for a match by name.
+pub(crate) fn sure_pill(m: MatchedBy) -> Option<&'static str> {
+    Some(match m {
+        MatchedBy::RomHash => tr!("Hash matches"),
+        MatchedBy::SteamId => tr!("Steam id matches"),
+        MatchedBy::SourceId | MatchedBy::Game => tr!("Id matches"),
+        MatchedBy::ExactTitle | MatchedBy::FuzzyTitle => return None,
+    })
 }
 
 /// The dot and the word of an outcome.

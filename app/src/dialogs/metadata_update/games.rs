@@ -67,14 +67,15 @@ impl MetadataUpdate {
                 .text_color(theme::text_muted())
                 .child(label)
         };
-        let mut row = div().flex().flex_wrap().gap(px(6.)).mt(px(8.));
-        if c.no_details > 0 {
-            row = row.child(chip(tr!("No details {n}", n = c.no_details)));
-        }
-        if c.failed_last_time > 0 {
-            row = row.child(chip(tr!("Failed last time {n}", n = c.failed_last_time)));
-        }
-        (c.no_details + c.failed_last_time > 0).then_some(row)
+        let chips = [
+            (c.to_review, tr!("To review {n}", n = c.to_review)),
+            (c.no_details, tr!("No details {n}", n = c.no_details)),
+            (c.failed_last_time, tr!("Failed last time {n}", n = c.failed_last_time)),
+            (c.no_description, tr!("No description {n}", n = c.no_description)),
+            (c.no_cover, tr!("No cover {n}", n = c.no_cover)),
+        ];
+        let row = div().flex().flex_wrap().gap(px(6.)).mt(px(8.));
+        (c.needs_attention > 0).then(|| row.children(chips.into_iter().filter(|(n, _)| *n > 0).map(|(_, label)| chip(label))))
     }
 
     /// The first covers of the chosen games and how many there are.
@@ -120,7 +121,7 @@ impl MetadataUpdate {
         cards = cards.child(self.scope_card(
             Scope::Attention,
             tr!("Games that need attention").into(),
-            tr!("No details yet, or the last try found nothing").into(),
+            tr!("Waiting for review, or missing details, a description or a cover").into(),
             chips,
             cx,
         ));

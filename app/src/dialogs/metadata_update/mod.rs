@@ -256,6 +256,12 @@ impl MetadataUpdate {
         self.go(Step::Update, cx);
     }
 
+    /// Opens on step 1 with "Games that need attention" chosen.
+    pub fn show_attention(&mut self, cx: &mut Context<Self>) {
+        self.go(Step::Games, cx);
+        self.set_scope(Scope::Attention, cx);
+    }
+
     /// `HERONITE_DEBUG_DIALOG=wizard:<step>[:<state>]`: `2`, `2:replace`
     /// (Replace everything with its question), `3`, `3:undo` (the undo's
     /// question).

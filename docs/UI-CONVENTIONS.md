@@ -71,7 +71,12 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   card asks to close it.
   Metadata (`metadata/`, drawn from the metadata service's source registry: a new source needs no code here) opens with
   a summary card ("{n} of {total} games have details" with a progress bar, counted off the UI thread; "Update metadata…"
-  opens the "Update metadata" dialog on the games on screen, or on the results of the update that runs). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
+  opens the "Update metadata" dialog on the games on screen, or on the results of the update that runs). When games need
+  attention, a muted line under the count says how many and why ("23 need attention: 9 without a match, 4 without a
+  cover": without a match = waiting for review, no details at all or the last try found no game; the reasons with no game
+  are left out; read with the count, `MetadataHub::attention`) and "Review 23" sits before "Update metadata…": it opens
+  "Review matches" on the games waiting for review, or, when none waits, "Update metadata" on the games that need
+  attention (`summary.rs`). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
   Store, Lutris), Pictures (SteamGridDB, From the web) and Extras (HowLongToBeat, Steam tags, ProtonDB); a kind with no
   source is left out. A closed row shows a drag handle (details sources only), the source's tile (its logo, else two
   letters in its colour), its name over what it gives ("Text · Scores · Covers"), the games it is for ("All games",
@@ -409,14 +414,17 @@ until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|ca
 `HERONITE_DEBUG_MENU_METADATA=1` (with `HERONITE_DEBUG_MENU` on a selected game: the batch menu's Metadata flyout).
 
 The **Metadata popover** (`collection/metadata_menu.rs`, 300px, above the dock's Metadata button; the dock's button
-toggles it and Esc closes it) opens with the selection's count ("12 games") and has two rows, an icon and a title over a
+toggles it and Esc closes it) opens with the selection's count ("12 games") and has three rows, an icon and a title over a
 hint. "Fill what is missing" (accent icon) starts an update of the selected games at once and closes the popover: every
 empty field of theirs, extras included, from every source that is on (`BulkArgs::fill_missing`); no dialog opens, the
 header pill follows it. Its hint says what it would write ("34 fields in 12 games"), "Counting…" while that is read off
 the UI thread (once per selection, when the menu first opens), or "Nothing is missing" with the row dimmed and
 disabled. Enter does it while the popover is open (the dock's rows show the key; the context menu's do not).
-"More options…" (hint "Pick the games, fields and sources") opens "Update metadata" on the selection. The selection's
-context menu has the same two rows in its "Metadata" flyout (hover or click, like Status and Categories).
+"Fix matches…" (hint "Check which game each one is", or "3 of these wait for review" when some of the selection are in
+the review queue) opens "Review matches" on the selection: the games waiting for review first, then the others, whose
+proposals are asked from the sources live (`fix_selection_matches`). "More options…" (hint "Pick the games, fields and
+sources") opens "Update metadata" on the selection. The selection's context menu has the same three rows in its
+"Metadata" flyout (hover or click, like Status and Categories).
 
 **Update metadata** (`dialogs/metadata_update/`: `mod.rs` the dialog and its stepper, `games.rs`, `what.rs` and
 `results.rs` the three steps, `words.rs` how an outcome reads, shared with the pill, `hub.rs` the owner of the jobs,
@@ -430,8 +438,9 @@ never stops a job.
 - **1 · Games** (`games.rs`): a radio card per set, its count on the right: "Selected games" ("The games ticked in the
   Collection", only when it was opened from a selection, and then the default), "Games on screen" ("What the list shows
   now", or "…now, with its filters: “zelda”, Platform: PlayStation 2" when a search or a filter is on; the default
-  otherwise), "Whole Collection" and "Games that need attention" ("No details yet, or the last try found nothing",
-  counted off the UI thread, with chips "No details 14" and "Failed last time 3" under it). A strip of the first ten
+  otherwise), "Whole Collection" and "Games that need attention" ("Waiting for review, or missing details, a description or a cover",
+  counted off the UI thread, with a chip per reason that has games under it: "To review 5", "No details 14", "Failed last
+  time 3", "No description 8", "No cover 4"; the Settings summary's "Review" opens the dialog on this card). A strip of the first ten
   covers and "N games" sits under the cards. Footer: the count, Cancel, Next (off with no game).
 - **2 · What to update** (`what.rs`): "How", three cards in a row, one picked (Fill what is empty is the default), each
   with its consequence: Fill what is empty ("Nothing you have changes"), Refresh ("What you edited by hand stays"),
@@ -448,16 +457,19 @@ never stops a job.
   closes it, and once confirmed it is not asked again by that dialog.
 - **3 · Update** (`results.rs`): the line "3 of 7 games" (after it ended, "Updated 5 of 7 games"), a progress bar
   (accent; amber when games need a look; green otherwise) and the pills of the results: "All 7" and one per outcome
-  that has games, with its count (Updated, No change, Not found, Failed, Not done), which filter the list. While it
+  that has games, with its count (Updated, To review, No change, Not found, Failed, Not done), which filter the list. While it
   runs a tinted row shows the game being fetched ("Fetching…", "Stopping after this game…" after Stop). The list is a
   `uniform_list` of 48px rows, so only the rows in view are built (a job of 2,000 games stays cheap): the cover, the
   title, the fields that changed as chips with their source's mark (three, then "+2"), or why nothing did ("Nothing was
   missing", "The sources had nothing new", "No source found this game", "Could not reach the sources", "Could not be
   saved" with the error in a tooltip, "Already had details", "No source is for this game", "The update stopped before
-  it"), and the outcome's dot and word. While it runs the footer says "The update keeps going when this is hidden"
+  it", "You said no source has this game"; for a game sent to review, why: "Found by a similar name only", "The sources
+  found different games", "You asked to check it"), and the outcome's dot and word. A game sent to review has a
+  "Review" button where the word would be: it opens "Review matches" on the job's games sent to review, at that game. While it runs the footer says "The update keeps going when this is hidden"
   beside Stop and Hide; Stop finishes the game in hand and leaves the rest as "Not done". Once it ended: "Done in 2 min 05 s ·
   31 fields updated" ("filled" for a Fill; "Stopped after 4 of 7 games · …" after a Stop), "Undo this update" (only when
-  the job changed something and can still be undone), "Update again" (back to step 2) and Done. Undo asks first, in the
+  the job changed something and can still be undone), "Review 3…" (when it sent games to review: "Review matches" on
+  them), "Update again" (back to step 2) and Done. Undo asks first, in the
   footer: "Put back what this update changed in 5 games? Changes made since stay." with Cancel and a red Undo; it works
   off the UI thread ("Undoing…"), then the line reads "Undone: 5 games put back" and a toast says "Update undone: 5
   games put back". A job that
@@ -468,25 +480,127 @@ One job runs at a time and the rest queue in order; Undo takes back the last job
 
 **Metadata pill** (`collection/metadata_pill.rs`, `Menu::Metadata`, modelled on the downloads pill): in the Collection
 header's right cluster, between the Focus / Grid switch and the window controls, like the downloads pill a hover or a
-click opens its popover. It exists only for a bulk update (the Metadata popover's fill, or the dialog's), not for the
-idle fill. Running: a ring with the percent, "Metadata", the percent and "+2" when updates wait. Ended: a full ring
-with "Metadata ·" and a short result, in amber with a warning glyph and an amber border when games need a look ("3 not
-found" when all of them were not found, "3 failed" when none was, "3 need a look" otherwise), or green with a
+click opens its popover. It exists for a bulk update (the Metadata popover's fill, or the dialog's) and, in amber, for
+the idle fill when it queued games for review (below). Running: a ring with the percent, "Metadata", the percent and "+2" when updates wait. Ended: a full ring
+with "Metadata ·" and a short result, in amber with a warning glyph and an amber border when games need a look ("3 to review" when the update sent games to
+review, whatever else happened; else "3 not found" when all of them were not found, "3 failed" when none was, "3 need a
+look" otherwise), or green with a
 check ("12 updated", or "nothing new"). It stays after the end until its popover is opened or the dialog showed the
 results; then it goes, and the next update brings it back. The popover (360px) has the title ("Updating 7 games",
 "Updated 5 of 7 games"), a line under it ("3 done · now: Hades", "Stopping after this game…", "Done in 2 min 05 s · 31 fields
 updated", "Undone: 5 games put back"), a round Stop while it runs, the progress bar and three results as in step 3
-(the last ones while it runs; the games that need a look when the update ended with some; else the last ones). Below:
-"N more updates waiting" when any, Undo (as in the dialog but without the question) and "See all", which opens the
-dialog on the results. A one-click fill (the Metadata popover's) also says how it ended with a toast: "Updated 12
+(the last ones while it runs; the games that need a look, those to review included, when the update ended with some;
+else the last ones). Below: "N more updates waiting" when any (replaced by "3 to review" with an amber dot while games
+wait for review), Undo (as in the dialog but without the question), "See all", which opens the dialog on the results,
+and "Review", which opens "Review matches" on the games the update sent to review. A one-click fill (the Metadata popover's) also says how it ended with a toast: "Updated 12
 games" with Undo (while the update can still be undone), "3 games were not found" when nothing was updated and some
 games were not found or failed, or "Nothing new for these games". The dialog's updates show no toast,
-only the pill. Debug: `HERONITE_DEBUG_DIALOG=wizard[:<step>[:<state>]]` opens "Update metadata" (on the selection when
+only the pill. The idle fill (`MetadataHub::idle_review`, "fill missing metadata in the background") never opens a
+dialog: when it queued games for review, the pill reads "Metadata · 4 to review" in amber, with no job behind it, until
+the review or the pill's popover opens (then it goes; the games stay in the queue). That popover (360px) says "4 games to
+review" and "The sources were not sure which game these are.", lists the first three (cover, title, why: "Found by a
+similar name only"…) and has "Review" for the whole queue. Debug: `HERONITE_DEBUG_DIALOG=wizard[:<step>[:<state>]]` opens "Update metadata" (on the selection when
 `HERONITE_DEBUG_MULTI` made one) at step `1`, `2`, `2:replace` (Replace everything with its question), `3` or `3:undo`
 (the undo's question); `HERONITE_DEBUG_WIZARD_LIMIT=<n>` starts a real update of the first n games on screen (data copy
-only); `HERONITE_DEBUG_METADATA_JOB=running|done|clean[+queued]` makes every bulk job up (no network, nothing written:
-held at ~60% with a game "being fetched", ended with games not found and failed, or ended clean; `+queued` adds one
-waiting) and starts one over the games on screen; `HERONITE_DEBUG_DROPDOWN=metadata` opens the pill's popover.
+only); `HERONITE_DEBUG_METADATA_JOB=running|done|clean|review|idle-review[+queued]` makes every bulk job up (no
+network, nothing written: held at ~60% with a game "being fetched", ended with games not found and failed, ended clean,
+or ended with games sent to review; `idle-review` starts no job and fills the review queue the hub shows with the first
+games on screen, as the idle fill would; `+queued` adds one waiting) and starts one over the games on screen, and
+"Review matches" opened meanwhile is made up too; `HERONITE_DEBUG_DROPDOWN=metadata` opens the pill's popover.
+
+**Review matches** (`dialogs/metadata_review/`: `mod.rs` the dialog, its keys and its end state, `game.rs` the strip and
+the game on the left, `choices.rs` the cards and the search, `actions.rs` what reads, searches and saves off the UI
+thread, `fake.rs` the debug review; opened by `collection/metadata_review.rs`): one dialog, 900px, where the user says
+which game of the sources a game of the Collection is when the sources were not sure. A *match* is the game of a source
+(IGDB, Steam…) that a game of the Collection was identified as. It opens from the header pill's "Review" (the whole
+queue), the palette's "Review matches" (Actions; dimmed with "No game waits for review" while the queue is empty),
+Settings → Metadata's "Review 23" (the queue), the "Review" buttons of an update's results and of the pill's popover
+(that update's games sent to review, at the game clicked) and "Fix matches…" (the selection). Opening it counts as seeing
+what the pill announced. It goes through the games one at a time:
+- **The strip** on top: up to 14 covers around the game shown, the current one ringed in the accent; a game already
+  matched or put "in no source" is dimmed, a skipped one is not; a click goes to that game (not while something saves);
+  "2 of 7" sits at its right.
+- **The game** (left, 220px): its cover (a placeholder when it has none), title, where it comes from ("PlayStation 2 ·
+  DuckStation", "Steam") and "Why you are asked" with one sentence ("Only one source found a game for this name, and its
+  name is not quite the same.", "The sources found different games for this name.", "You asked to check which game
+  this is.", "The sources were not sure which game this is.").
+- **The choices** (right, "Which one is it?"): a radio card per game the sources proposed (thumbnail, name, "2011 ·
+  PC, Mac", the marks of the sources that proposed it with their names as tooltips and "3 sources agree" or "1 source
+  found it"), the one most sources agree on first and picked at start (ties keep the sources' order); a click, or ↑ ↓,
+  picks another. A green pill ("Hash matches", "Steam id matches", "Id matches") says that a source found that game by
+  ROM hash, Steam id or id, so the match is certain; a match by name has none. A game that was queued opens with what the
+  sources proposed when it was queued ("Reading what the sources proposed…", no network); one that was not ("Fix
+  matches…" on a game that waits for nothing) asks the sources live ("Asking the sources about this game…"). Offline
+  shows the reason in place of the cards.
+- **The search** under the cards ("Search another name in every source"): Enter asks every source for that name (empty:
+  the game's title) and the cards become what they found, sorted and picked as above; a line under the field in amber
+  says what is missing ("Nothing found for “zelda”.", "Could not reach IGDB.", "Needs a key: SteamGridDB.", "No source
+  that can search by name is on.").
+- **The footer**: the keys ("↑ ↓ pick · Enter use · S skip"; only "S skip" when nothing was found), Skip, "In no
+  source" and "Use this match". Skip leaves the game in the queue. "In no source" says that no source has this game:
+  automatic updates stop asking about it until it is fetched by hand or its title changes (its results say "You said no
+  source has this game"). "Use this match" (needs a pick) looks the picked game up in each source that proposed it,
+  merges and saves it pinned, so later updates use the same game ("Saving…"); a failure (offline, a source that could
+  not read the game) shows in red under the search and the game stays. The keys do not act while the search field has
+  the keyboard (Enter searches there). After an answer, the dialog goes to the next game not answered yet.
+- **A game with nothing found**: the cards give way to "No source found a game for this name. Search another name, or say
+  it is in no source."; "In no source" becomes the primary button and "Use this match" goes.
+- **The end**: a green check, "All reviewed" and what was done ("4 matched · 1 in no source · 2 skipped") with Done
+  (Enter closes). Opened with no game: "No game waits for review", "Games the sources are not sure about wait here.".
+
+*When a game is sent to review* (`crates/metadata/src/confidence.rs`; every automatic path obeys it, the per-game dialog
+saves what the user picked): a match found by the game's own record, an id, the Steam id, the ROM hash or the exact name
+is sure and saved; a match by a similar name is saved only when at least two sources found the same game (or when it is
+the same game as a sure one), while a lone similar-name match, or sources that found different games, is not saved: the
+game waits in the review queue (`local_library/metadata-review.json`) and counts as needing attention.
+`HERONITE_DEBUG_DIALOG=review[:<state>]` opens a made-up "Review matches" on the selection, else the first three games on
+screen (nothing asked or written): `review` (three, two and one choices in turn), `review:search` (after a search by
+another name, one source unreachable), `review:empty` (one game, nothing found), `review:done` (the end state),
+`review:busy` (asking the sources), `review:saving`, `review:error` (offline).
+
+**Metadata of one game** (`dialogs/metadata/`: `mod.rs` the dialog, its head and footer, `found_as.rs` the left column,
+`change.rs` "Change", `fields.rs` the field rows, `actions.rs` what it asks, picks and saves, `fake.rs` the debug
+preview): one dialog, 1060px, with two columns 470px high that scroll inside, titled "Metadata". It opens from the
+palette's "Collection metadata" (a game action) and from Game settings → Game → Details' "Fetch metadata", which opens
+it over the drawer (Apply then updates the drawer's details). It asks every source when it opens ("Asking every
+source…"), and again after a match is pinned and after "Search every source again". The head has the cover, the title and
+"Steam · last updated 3 weeks ago".
+- **Found as** (left, 310px): a row per details source that was asked: its mark, its name and the game it matched ("Hades
+  · 2020 · by its Steam id"; after the title and year, how it found it: "by its id", "by its Steam id", "by ROM hash",
+  "by name" or "by a similar name"), or "Not found" or "Could not be reached". "Change" (on a found match) and "Search" (on
+  a source that found nothing) are on sources that can be searched. A pinned match, one the user chose, has a pin with the
+  tooltip "Pinned: every update uses this game". A match the merge ignored because it is another game than the others
+  found is amber and reads "(left out: another game)" (not while the game waits for review, where nothing is merged).
+  The sources not asked fold into one muted line per reason under the rows: "Not for this game: Lutris", "Off: …",
+  "Needs a key: …", "Not asked: …". Above the rows: the offline line, the IGDB key hint with
+  "Open Settings → Metadata" (closes the dialog), and, for a game that waits for review, "The sources are not sure which
+  game this is: nothing is picked for you. Pick the values, or change a match." The refresh button below ("Search every
+  source again") asks again.
+- **Change** replaces the column: a back arrow, "Which game of IGDB is it?", the hits of that source alone for the game's
+  title (a search field, "Search this source", Enter searches again), the one in use checked. A click pins that game and
+  asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
+  unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
+  key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
+  Change, then an open select, then the dialog.
+- **The fields** (right): a header (Field, What will be saved, Take it from), then a row per field that has a value now or
+  from some source, in the usual order: the field's name, the value that will be saved (two lines at most, "Empty" when
+  none; a cover or a background as a small picture), a pill per source that has a value ("Take it from": its mark, the
+  picked one ringed in the accent, the number inside a score's pill) plus "Keep current" when the game has a value, and
+  the lock. A click on a pill picks it; the pill under the pointer shows its value in the middle without picking. With
+  nothing picked, a field takes what the merge would save (the order of Settings → Metadata). The lock (amber when
+  locked, tooltips "Lock this field" and "Locked: later updates leave this field as it is. Click to unlock.") keeps
+  the field as it is in every later update; a field already locked in the record has its pills dimmed and keeps the
+  game's value until it is unlocked. While the sources answer: "The fields appear when the sources answered."; with no
+  source finding the game and no details: "No source found this game, and it has no details yet. Search a source by
+  another name, on the left."
+- **Footer**: "A locked field stays as it is in every later update.", "Everything from…" (a select of the sources that found
+  the game: picks that source for every field it has, except the locked ones), Close and Apply, which saves the picks,
+  pins and locks of what is on screen without asking the sources again ("Saving…") and closes; with no source having
+  answered it saves only the locks.
+`HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
+match, a match left out, a locked field, a field picked from another source), `change` (the same with "Change" open),
+`none` (no source found the game), `offline`, `nokey` (no IGDB key); plain `metadata` asks the sources for real.
+
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The

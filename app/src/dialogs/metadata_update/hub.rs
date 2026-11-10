@@ -11,7 +11,7 @@ use futures::StreamExt;
 use gpui_kit::*;
 use heronite_data::DataPaths;
 use heronite_metadata::service::{Attention, Resolution, Resolved};
-use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, BulkState, MetadataService, UndoReport};
+use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, BulkState, MetadataService, ReviewItem, UndoReport};
 
 use super::fake::Fake;
 
@@ -25,8 +25,23 @@ pub enum HubEvent {
     /// The last job was undone.
     Undone(UndoReport),
     /// The review queue changed (a job or the idle fill queued games, a
-    /// game was answered, an undo): read it again.
+    /// game was answered, an undo): [`MetadataHub::queue`] holds it again.
     ReviewChanged,
+    /// Someone asks the Collection to open "Review matches".
+    OpenReview(ReviewRequest),
+    /// Someone asks for "Update metadata" on the games that need attention.
+    OpenAttention,
+    /// Someone asks for Settings → Metadata (a key is missing).
+    OpenSettings,
+}
+
+/// The games "Review matches" goes through.
+#[derive(Clone, Debug, Default)]
+pub struct ReviewRequest {
+    /// `None`: every game of the queue.
+    pub games: Option<Vec<BulkItem>>,
+    /// The game shown first (an index of `games`).
+    pub start: usize,
 }
 
 pub struct MetadataHub {
@@ -41,6 +56,15 @@ pub struct MetadataHub {
     pub undone: Option<UndoReport>,
     /// The service's review revision last announced.
     review_revision: u64,
+    /// The review queue, oldest first, read off the UI thread at start and
+    /// whenever the service changed it.
+    pub queue: Vec<ReviewItem>,
+    /// The idle fill queued games nobody looked at yet: the header pill
+    /// says so until the review or its popover opens.
+    pub idle_review: bool,
+    /// The idle fill ended: the next read of the queue tells whether it
+    /// queued games.
+    idle_check: Option<usize>,
     /// `HERONITE_DEBUG_METADATA_JOB`: jobs are made up (see `fake.rs`).
     fake: Option<Fake>,
     tx: Arc<Mutex<UnboundedSender<BulkProgress>>>,
@@ -70,16 +94,80 @@ impl MetadataHub {
         })
         .detach();
         let progress = service.bulk_progress();
-        Self {
+        let mut this = Self {
             review_revision: service.review_revision(),
             service,
             progress,
             seen: 0,
             undoing: false,
             undone: None,
+            queue: Vec::new(),
+            idle_review: false,
+            idle_check: None,
             fake: Fake::from_env(),
             tx: Arc::new(Mutex::new(tx)),
+        };
+        this.read_queue(cx);
+        this
+    }
+
+    /// Reads the review queue off the UI thread into [`Self::queue`].
+    fn read_queue(&mut self, cx: &mut Context<Self>) {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let queue = cx.background_spawn(async move { service.review_queue() }).await;
+            this.update(cx, |this, cx| {
+                // `idle-review` keeps its made-up queue.
+                if this.fake_idle() {
+                    return;
+                }
+                if let Some(before) = this.idle_check.take() {
+                    this.idle_review |= queue.len() > before;
+                }
+                this.idle_review &= !queue.is_empty();
+                this.queue = queue;
+                cx.emit(HubEvent::ReviewChanged);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The made-up queue of `HERONITE_DEBUG_METADATA_JOB=idle-review`.
+    pub(super) fn set_fake_queue(&mut self, queue: Vec<ReviewItem>, cx: &mut Context<Self>) {
+        self.idle_review = !queue.is_empty();
+        self.queue = queue;
+        cx.notify();
+    }
+
+    /// Whether `key` (`runner:appName`) waits for review.
+    pub fn queued(&self, key: &str) -> bool {
+        self.queue.iter().any(|q| q.key == key)
+    }
+
+    /// The review opened: what the pill announced was seen.
+    pub fn review_seen(&mut self, cx: &mut Context<Self>) {
+        self.idle_review = false;
+        if self.progress.state == BulkState::Done {
+            self.seen = self.progress.job;
         }
+        cx.notify();
+    }
+
+    /// Asks the Collection to open "Review matches" on `request`.
+    pub fn request_review(&mut self, request: ReviewRequest, cx: &mut Context<Self>) {
+        cx.emit(HubEvent::OpenReview(request));
+    }
+
+    /// Asks the Collection for "Update metadata" on the games that need attention.
+    pub fn request_attention(&mut self, cx: &mut Context<Self>) {
+        cx.emit(HubEvent::OpenAttention);
+    }
+
+    /// Asks the Collection for Settings → Metadata.
+    pub fn request_settings(&mut self, cx: &mut Context<Self>) {
+        cx.emit(HubEvent::OpenSettings);
     }
 
     pub(super) fn on_progress(&mut self, p: BulkProgress, cx: &mut Context<Self>) {
@@ -98,19 +186,19 @@ impl MetadataHub {
         cx.notify();
     }
 
-    /// Announces [`HubEvent::ReviewChanged`] when the service changed the
-    /// review queue since the last time.
+    /// Reads the review queue again (then announces
+    /// [`HubEvent::ReviewChanged`]) when the service changed it since the
+    /// last time.
     pub fn note_review(&mut self, cx: &mut Context<Self>) {
         let now = self.service.review_revision();
         if now != self.review_revision {
             self.review_revision = now;
-            cx.emit(HubEvent::ReviewChanged);
+            self.read_queue(cx);
         }
     }
 
     /// Applies the user's answer for a game of the review off the UI thread;
     /// the Collection reloads and the queue is announced as changed after.
-    #[allow(dead_code)] // Nothing draws the review queue yet.
     pub fn resolve_review(&mut self, game: BulkItem, resolution: Resolution, cx: &mut Context<Self>) -> Task<anyhow::Result<Resolved>> {
         let service = self.service.clone();
         cx.spawn(async move |this, cx| {
@@ -128,7 +216,6 @@ impl MetadataHub {
 
     /// The games of `games` that need attention, by reason, read off the UI
     /// thread (no network).
-    #[allow(dead_code)] // Nothing draws the attention summary yet.
     pub fn attention(&self, games: Vec<BulkItem>, cx: &mut Context<Self>) -> Task<anyhow::Result<Attention>> {
         let service = self.service.clone();
         cx.background_spawn(async move { service.attention(&games) })
@@ -235,6 +322,10 @@ impl MetadataHub {
         self.fake.is_some()
     }
 
+    pub(super) fn fake_ref(&self) -> Option<&Fake> {
+        self.fake.as_ref()
+    }
+
     pub(super) fn fake_mut(&mut self) -> Option<&mut Fake> {
         self.fake.as_mut()
     }
@@ -314,7 +405,14 @@ impl MetadataHub {
                 log::info!("idle fill updated {changed} item(s)");
                 this.update(cx, |_, cx| cx.emit(HubEvent::DataChanged)).ok();
             }
-            this.update(cx, |this, cx| this.note_review(cx)).ok();
+            this.update(cx, |this, cx| {
+                // The queue read that follows tells whether the fill queued games.
+                if this.service.review_revision() != this.review_revision {
+                    this.idle_check = Some(this.queue.len());
+                }
+                this.note_review(cx);
+            })
+            .ok();
         })
         .detach();
     }

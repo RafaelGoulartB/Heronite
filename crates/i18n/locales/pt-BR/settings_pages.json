@@ -520,5 +520,11 @@
   "Where the details and pictures of your games come from. Sources are asked from the top of each list down; a field stays with the first one that has it.": "De onde vêm os detalhes e as imagens dos seus jogos. As fontes são consultadas de cima para baixo em cada lista; um campo fica com a primeira que o tiver.",
   "{name} answered.": "{name} respondeu.",
   "{name} did not answer.": "{name} não respondeu.",
-  "{n} of {total} games have details": "{n} de {total} jogos têm detalhes"
+  "{n} of {total} games have details": "{n} de {total} jogos têm detalhes",
+  "Review {n}": "Revisar {n}",
+  "{n} need attention: {reasons}": "{n} precisam de atenção: {reasons}",
+  "{n} needs attention: {reasons}": "{n} precisa de atenção: {reasons}",
+  "{n} without a cover": "{n} sem capa",
+  "{n} without a description": "{n} sem descrição",
+  "{n} without a match": "{n} sem correspondência"
 }

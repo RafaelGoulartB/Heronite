@@ -1,18 +1,22 @@
-//! `HERONITE_DEBUG_METADATA_JOB=running|done|clean[+queued]`: every bulk job
-//! (from the dock, the dialog or the Collection at start) is made up: nothing
-//! is fetched or written, no network. `running` holds at about 60% with the
-//! next game "being fetched"; `done` finishes with some games not found and
-//! one failed; `clean` finishes with every game updated or unchanged;
-//! `+queued` adds a job waiting behind it. Stop and Undo act on the made-up
-//! job. For captures of the dialog's results and the header pill.
+//! `HERONITE_DEBUG_METADATA_JOB=running|done|clean|review|idle-review[+queued]`:
+//! every bulk job (from the dock, the dialog or the Collection at start) is
+//! made up: nothing is fetched or written, no network. `running` holds at
+//! about 60% with the next game "being fetched"; `done` finishes with some
+//! games not found and one failed; `clean` finishes with every game updated
+//! or unchanged; `review` finishes with some games sent to review;
+//! `idle-review` starts no job but fills the review queue the hub shows with
+//! the first games on screen, as the idle fill would; `+queued` adds a job
+//! waiting behind it. Stop and Undo act on the made-up job, and "Review
+//! matches" makes up its entries while jobs are made up. For captures of the
+//! dialog's results and the header pill.
 
 use std::sync::Arc;
 
 use gpui_kit::*;
 use heronite_data::library::metadata_key;
 use heronite_metadata::{
-    BulkArgs, BulkItem, BulkProgress, BulkState, FieldChange, GameOutcome, GameResult, JobKind, NoChangeReason, QueuedJob, SkipReason,
-    UndoReport, UpdateMode,
+    BulkArgs, BulkItem, BulkProgress, BulkState, FieldChange, GameOutcome, GameResult, JobKind, NoChangeReason, QueuedJob, ReviewItem,
+    ReviewReason, SkipReason, UndoReport, UpdateMode,
 };
 
 use super::hub::{HubEvent, MetadataHub};
@@ -22,6 +26,9 @@ enum Ends {
     Running,
     Done,
     Clean,
+    Review,
+    /// No job: the idle fill queued games.
+    IdleReview,
 }
 
 pub(super) struct Fake {
@@ -39,6 +46,8 @@ impl Fake {
         let ends = match ends {
             "running" => Ends::Running,
             "clean" => Ends::Clean,
+            "review" => Ends::Review,
+            "idle-review" => Ends::IdleReview,
             _ => Ends::Done,
         };
         Some(Self { ends, queued: rest == "queued", next_id: 0, games: Vec::new() })
@@ -57,8 +66,12 @@ const CHANGES: [(&str, &str); 7] = [
 ];
 
 /// What the made-up job did with game `i`.
-fn outcome(i: usize, clean: bool) -> (GameOutcome, Vec<FieldChange>) {
+fn outcome(i: usize, ends: Ends) -> (GameOutcome, Vec<FieldChange>) {
+    let clean = ends == Ends::Clean;
     match i % 9 {
+        0 if ends == Ends::Review => (GameOutcome::ToReview(ReviewReason::SourcesDisagree), Vec::new()),
+        4 if ends == Ends::Review => (GameOutcome::ToReview(ReviewReason::LoneGuess), Vec::new()),
+        3 if ends == Ends::Review => (GameOutcome::NoChange(NoChangeReason::NothingNew), Vec::new()),
         3 if !clean => (GameOutcome::NotFound, Vec::new()),
         7 if !clean && i % 2 == 1 => (GameOutcome::Failed("metadata.json: permission denied".into()), Vec::new()),
         5 => (GameOutcome::NoChange(NoChangeReason::NothingMissing), Vec::new()),
@@ -91,6 +104,32 @@ fn now_ms() -> i64 {
 }
 
 impl MetadataHub {
+    /// Whether made-up jobs stand for the idle fill (no job is started).
+    pub fn fake_idle(&self) -> bool {
+        self.fake_ref().is_some_and(|f| f.ends == Ends::IdleReview)
+    }
+
+    /// `idle-review`: the first games of `games` wait for review.
+    pub fn fake_idle_queue(&mut self, games: &[BulkItem], cx: &mut Context<Self>) {
+        let queue = games
+            .iter()
+            .take(4)
+            .enumerate()
+            .map(|(i, g)| {
+                let runner = if g.runner == "zoom" { "sideload" } else { g.runner.as_str() };
+                ReviewItem {
+                    key: metadata_key(runner, &g.app_name),
+                    app_name: g.app_name.clone(),
+                    runner: runner.to_owned(),
+                    title: g.title.clone(),
+                    reason: if i % 2 == 0 { ReviewReason::SourcesDisagree } else { ReviewReason::LoneGuess },
+                    choices: 3 - i % 2,
+                }
+            })
+            .collect();
+        self.set_fake_queue(queue, cx);
+    }
+
     pub(super) fn fake_start(&mut self, args: BulkArgs, cx: &mut Context<Self>) -> u64 {
         let Some(fake) = self.fake_mut() else { return 0 };
         fake.next_id += 1;
@@ -104,7 +143,7 @@ impl MetadataHub {
             .take(done)
             .enumerate()
             .map(|(i, g)| {
-                let (outcome, changes) = outcome(i, ends == Ends::Clean);
+                let (outcome, changes) = outcome(i, ends);
                 result(g, outcome, changes)
             })
             .collect();

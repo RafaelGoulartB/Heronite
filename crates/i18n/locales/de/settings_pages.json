@@ -520,5 +520,11 @@
   "Where the details and pictures of your games come from. Sources are asked from the top of each list down; a field stays with the first one that has it.": "Woher die Details und Bilder deiner Spiele kommen. Die Quellen werden in jeder Liste von oben nach unten abgefragt; ein Feld bleibt bei der ersten Quelle, die es hat.",
   "{name} answered.": "{name} hat geantwortet.",
   "{name} did not answer.": "{name} hat nicht geantwortet.",
-  "{n} of {total} games have details": "{n} von {total} Spielen haben Details"
+  "{n} of {total} games have details": "{n} von {total} Spielen haben Details",
+  "Review {n}": "{n} prüfen",
+  "{n} need attention: {reasons}": "{n} brauchen Aufmerksamkeit: {reasons}",
+  "{n} needs attention: {reasons}": "{n} braucht Aufmerksamkeit: {reasons}",
+  "{n} without a cover": "{n} ohne Cover",
+  "{n} without a description": "{n} ohne Beschreibung",
+  "{n} without a match": "{n} ohne Treffer"
 }

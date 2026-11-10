@@ -44,6 +44,7 @@ mod load;
 mod look;
 mod metadata_menu;
 mod metadata_pill;
+mod metadata_review;
 mod metadata_ui;
 mod nav;
 mod onboarding;
@@ -224,6 +225,9 @@ pub struct CollectionView {
     sel: selection::Selection,
     /// The counts of the selection's Metadata menu (`metadata_menu.rs`).
     meta_menu: metadata_menu::MetaMenu,
+    /// The metadata pill's popover was opened while it announced games the
+    /// idle fill sent to review: it stops announcing them once closed.
+    metadata_idle_opened: bool,
     hovered: Option<SharedString>,
     leaving: Option<SharedString>,
     focus: Option<FocusVm>,
@@ -411,6 +415,7 @@ impl CollectionView {
             selected: None,
             sel: Default::default(),
             meta_menu: Default::default(),
+            metadata_idle_opened: false,
             hovered: None,
             leaving: None,
             focus: None,
@@ -562,6 +567,14 @@ impl CollectionView {
     }
 
     fn on_key_down(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if ev.keystroke.key != "escape" {
+            if let Some(dialog) = self.dialog.clone() {
+                if crate::dialogs::handle_key(&dialog, ev, window, cx) {
+                    cx.stop_propagation();
+                    return;
+                }
+            }
+        }
         if self.shortcuts_key(ev, window, cx) {
             return;
         }

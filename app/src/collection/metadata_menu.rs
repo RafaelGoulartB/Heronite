@@ -1,8 +1,9 @@
 //! The Metadata menu of a selection: the dock's popover above its Metadata
 //! button and the context menu's "Metadata" flyout share its rows. "Fill
 //! what is missing" runs at once (the header pill then shows it; Enter does
-//! it while the dock's menu is open); "More options…" opens the "Update
-//! metadata" dialog on the selection. What "Fill" would look at is counted
+//! it while the dock's menu is open); "Fix matches…" opens "Review matches"
+//! on the selection; "More options…" opens the "Update metadata" dialog on
+//! the selection. What "Fill" would look at is counted
 //! off the UI thread when the menu opens, once per selection and again after
 //! the library reloads (a job, an undo or a settings change was saved).
 
@@ -49,15 +50,17 @@ impl MetaMenu {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Row {
     FillMissing,
+    FixMatches,
     MoreOptions,
 }
 
 impl Row {
-    const ALL: [Row; 2] = [Row::FillMissing, Row::MoreOptions];
+    const ALL: [Row; 3] = [Row::FillMissing, Row::FixMatches, Row::MoreOptions];
 
     fn icon(self) -> Icon {
         match self {
             Self::FillMissing => Icon::AutoAwesome,
+            Self::FixMatches => Icon::TravelExplore,
             Self::MoreOptions => Icon::Tune,
         }
     }
@@ -65,6 +68,7 @@ impl Row {
     fn title(self) -> &'static str {
         match self {
             Self::FillMissing => tr!("Fill what is missing"),
+            Self::FixMatches => tr!("Fix matches\u{2026}"),
             Self::MoreOptions => tr!("More options\u{2026}"),
         }
     }
@@ -149,6 +153,14 @@ impl CollectionView {
         }
     }
 
+    /// The line under "Fix matches…": how many of the games wait for review.
+    fn fix_hint(&self) -> String {
+        match &self.meta_menu.counts {
+            Some(c) if c.to_review > 0 => trn!(c.to_review, "{n} of these waits for review", "{n} of these wait for review"),
+            _ => tr!("Check which game each one is").to_string(),
+        }
+    }
+
     /// The menu's rows; `prefix` keeps the dock's and the context menu's ids apart.
     pub(super) fn metadata_rows(&self, prefix: &str, enter: bool, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
         Row::ALL
@@ -156,6 +168,7 @@ impl CollectionView {
             .map(|row| {
                 let (hint, enabled) = match row {
                     Row::FillMissing => self.fill_hint(),
+                    Row::FixMatches => (self.fix_hint(), true),
                     Row::MoreOptions => (tr!("Pick the games, fields and sources").to_string(), true),
                 };
                 let text = div()
@@ -177,6 +190,7 @@ impl CollectionView {
                     Row::FillMissing => {
                         this.fill_selection(cx);
                     }
+                    Row::FixMatches => this.fix_selection_matches(window, cx),
                     Row::MoreOptions => {
                         this.open_metadata_update(true, window, cx);
                     }

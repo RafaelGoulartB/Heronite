@@ -71,6 +71,8 @@ pub struct State {
     testing: Option<String>,
     tested: HashMap<String, Tested>,
     coverage: Option<summary::Coverage>,
+    /// The Collection's games that need attention, counted with `coverage`.
+    attention: Option<heronite_metadata::service::Attention>,
     coverage_task: Option<Task<()>>,
     /// `HERONITE_DEBUG_METADATA_OPEN` was applied.
     debug_done: bool,

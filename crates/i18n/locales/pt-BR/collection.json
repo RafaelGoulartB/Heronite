@@ -571,5 +571,16 @@
   "now: {title}": "agora: {title}",
   "Updating {n} game": "Atualizando {n} jogo",
   "Updating {n} games": "Atualizando {n} jogos",
-  "See all": "Ver tudo"
+  "See all": "Ver tudo",
+  "Check which game each one is": "Conferir qual é o jogo de cada um",
+  "Fix matches…": "Corrigir correspondências…",
+  "{n} of these waits for review": "{n} destes aguarda revisão",
+  "{n} of these wait for review": "{n} destes aguardam revisão",
+  "No game waits for review": "Nenhum jogo aguarda revisão",
+  "Review matches": "Revisar correspondências",
+  "Say which game it is where the sources were not sure": "Diga qual é o jogo quando as fontes não tinham certeza",
+  "The sources were not sure which game these are.": "As fontes não tinham certeza de quais são estes jogos.",
+  "{n} game to review": "{n} jogo para revisar",
+  "{n} games to review": "{n} jogos para revisar",
+  "{n} to review": "{n} para revisar"
 }
