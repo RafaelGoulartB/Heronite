@@ -1,0 +1,28 @@
+[package]
+name = "heronite-display"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The monitors, their modes, HDR and what the desktop lets us change: read-only probing for per-game display settings"
+
+[dependencies]
+heronite-platform = { path = "../platform" }
+serde.workspace = true
+serde_json.workspace = true
+log.workspace = true
+
+# Mutter's `org.gnome.Mutter.DisplayConfig` (GNOME). Already in the tree
+# through ashpd; blocking, because a probe is one call off the UI thread.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Devices_Display",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[lints]
+workspace = true

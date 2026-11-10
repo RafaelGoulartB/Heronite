@@ -6,8 +6,9 @@
 //! games show as installed (in the same folders) once the store is logged
 //! in here. Nothing in Heroic's folder is written.
 //!
-//! A first start with Heroic around copies all of it already
-//! (`heronite_data::migrate`); this catches up with what was added since.
+//! Nothing comes in on its own: only once the user turns Heroic's import on
+//! in Settings → Other launchers (never from the Collection's welcome or
+//! the first-start dialog), then kept in sync while it is on.
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
@@ -95,14 +96,31 @@ impl Library {
     }
 }
 
-/// Heroic's folder, unless it is this app's own: the native one, else the
-/// Flatpak's; with both around, the one with more games (a native folder
-/// left behind by a switch to the Flatpak has none).
+/// Heroic's folders on this system, with whether each is the Flatpak's: on
+/// Linux the native one and the Flatpak's, on Windows `%APPDATA%\heroic`.
+fn candidates(home: &Path) -> Vec<(PathBuf, bool)> {
+    if cfg!(windows) {
+        vec![(roaming(home).join("heroic"), false)]
+    } else {
+        vec![
+            (crate::xdg(home, "XDG_CONFIG_HOME", ".config").join("heroic"), false),
+            (home.join(".var/app").join(FLATPAK_ID).join("config/heroic"), true),
+        ]
+    }
+}
+
+/// Windows' roaming folder of `home`: `%APPDATA%` when `home` is this
+/// user's own, else `home\AppData\Roaming`.
+fn roaming(home: &Path) -> PathBuf {
+    let own = std::env::var_os("USERPROFILE").is_some_and(|h| Path::new(&h) == home);
+    std::env::var_os("APPDATA").filter(|_| own).map(PathBuf::from).unwrap_or_else(|| home.join("AppData").join("Roaming"))
+}
+
+/// Heroic's folder, unless it is this app's own. On Linux: the native one,
+/// else the Flatpak's; with both around, the one with more games (a native
+/// folder left behind by a switch to the Flatpak has none).
 pub fn detect(home: &Path, data: &DataPaths) -> Result<Option<Found>> {
-    let candidates = [
-        (crate::xdg(home, "XDG_CONFIG_HOME", ".config").join("heroic"), false),
-        (home.join(".var/app").join(FLATPAK_ID).join("config/heroic"), true),
-    ];
+    let candidates = candidates(home);
     let same = |a: &Path, b: &Path| std::fs::canonicalize(a).ok().is_some_and(|a| std::fs::canonicalize(b).is_ok_and(|b| a == b));
     let mut found = candidates
         .into_iter()
@@ -289,7 +307,7 @@ mod tests {
         std::fs::write(p, s).unwrap();
     }
 
-    // Linux launchers' data and paths; imports are off on Windows (`Feature::LauncherImports`).
+    // Linux's folders and paths; Windows' are in the test below.
     #[cfg(unix)]
     #[test]
     fn copies_new_hand_added_games_and_install_records_once() {
@@ -367,8 +385,68 @@ mod tests {
     #[test]
     fn this_apps_own_folder_is_not_heroic() {
         let h = tempfile::tempdir().unwrap();
-        let heroic = h.path().join(".config/heroic");
+        let heroic = candidates(h.path()).remove(0).0;
         w(&heroic.join("config.json"), "{}");
+        assert!(detect(h.path(), &DataPaths::at(h.path().join("data"))).unwrap().is_some());
         assert!(detect(h.path(), &DataPaths::at(&heroic)).unwrap().is_none());
+    }
+
+    #[test]
+    fn another_users_roaming_folder_is_under_their_home() {
+        let home = Path::new("/elsewhere/u");
+        assert_eq!(roaming(home), home.join("AppData").join("Roaming"));
+    }
+
+    /// Heroic for Windows: `%APPDATA%\heroic`, its records holding Windows
+    /// paths (JSON doubles their backslashes).
+    #[cfg(windows)]
+    #[test]
+    fn windows_heroic_brings_hand_added_games_and_epic_gog_amazon_installs() {
+        let h = tempfile::tempdir().unwrap();
+        let home = h.path().join("home");
+        let heroic = home.join(r"AppData\Roaming\heroic");
+        let games = h.path().join("Games");
+        for g in ["Control", "Witcher 3", "Fallout 3"] {
+            std::fs::create_dir_all(games.join(g)).unwrap();
+        }
+        let at = |g: &str| games.join(g).to_string_lossy().into_owned();
+        w(&heroic.join("config.json"), "{}");
+        let doom = json!({"runner": "sideload", "app_name": "doom1", "title": "Doom", "is_installed": true,
+            "install": {"executable": r"C:\Games\Doom\doom.exe", "install_path": r"C:\Games\Doom", "platform": "Windows"}});
+        w(&heroic.join(r"sideload_apps\library.json"), &json!({ "games": [doom] }).to_string());
+        w(&heroic.join(r"GamesConfig\doom1.json"), &json!({"doom1": {"targetExe": r"C:\Games\Doom\doom.exe"}}).to_string());
+        w(&heroic.join(r"store\timestamp.json"), r#"{"doom1":{"lastPlayed":"2026-01-01T00:00:00.000Z","totalPlayed":90}}"#);
+        let epic = json!({
+            "ctl": {"app_name": "ctl", "install_path": at("Control"), "platform": "Windows"},
+            "gone": {"app_name": "gone", "install_path": r"Z:\Nowhere\Gone", "platform": "Windows"}});
+        w(&heroic.join(r"legendaryConfig\legendary\installed.json"), &epic.to_string());
+        let gog = json!({"installed": [{"appName": "w3", "install_path": at("Witcher 3"), "platform": "windows"}]});
+        w(&heroic.join(r"gog_store\installed.json"), &gog.to_string());
+        let amazon = json!([{"id": "amzn1.fo3", "path": at("Fallout 3"), "version": "1"}, {"id": "amzn1.gone", "path": r"Z:\Nowhere"}]);
+        w(&heroic.join(r"nile_config\nile\installed.json"), &amazon.to_string());
+
+        let paths = DataPaths::at(h.path().join(r"heronite\data"));
+        let found = detect(&home, &paths).unwrap().unwrap();
+        assert_eq!((found.location.as_path(), found.flatpak), (heroic.as_path(), false));
+        assert_eq!(found.count(), 4, "the hand-added game and the three installs whose folders exist");
+        let lib = found.heroic.as_ref().unwrap();
+        assert_eq!(sync(&paths, lib, &BTreeSet::new()).unwrap(), Report { added: 4, updated: 0 });
+
+        let collection = heronite_data::Library::load(&paths).unwrap();
+        let game = collection.get("sideload_doom1").unwrap();
+        assert_eq!(game.source_label, "Heroic");
+        assert_eq!(game.playtime_minutes, 90);
+        let meta: LocalMetaFile = json_store::read(&paths.local_meta()).unwrap();
+        assert_eq!(meta.games["doom1"].remapped_executable.as_deref(), Some(r"C:\Games\Doom\doom.exe"));
+        assert!(paths.game_config("doom1").is_file());
+        let epic = json_store::read_value(&paths.legendary_config_dir().join("installed.json")).unwrap();
+        assert_eq!(epic["ctl"]["install_path"], at("Control"));
+        assert!(epic.get("gone").is_none());
+        assert_eq!(json_store::read_value(&paths.gog_installed()).unwrap()["installed"][0]["install_path"], at("Witcher 3"));
+        let amazon = json_store::read_value(&paths.nile_config_dir().join(r"nile\installed.json")).unwrap();
+        assert_eq!(amazon.as_array().map(Vec::len), Some(1));
+        assert_eq!(amazon[0]["path"], at("Fallout 3"));
+
+        assert_eq!(sync(&paths, lib, &BTreeSet::new()).unwrap(), Report::default(), "nothing new the second time");
     }
 }

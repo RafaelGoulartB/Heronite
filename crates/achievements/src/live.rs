@@ -4,9 +4,10 @@
 //! (`sync::refresh_live`), so a new unlock shows while the game runs.
 //!
 //! Only sources this PC writes are checked: the game files of the Steam API
-//! emulators and, when the user asks, the Steam client's stats files. Cloud
-//! sources (GOG, Epic, RetroAchievements) wait for the refresh after the
-//! game exits; their own overlays already announce unlocks during play.
+//! emulators, Comet's database of a GOG game (`sources::comet`) and, when
+//! the user asks, the Steam client's stats files. The other cloud sources
+//! (Epic, RetroAchievements) wait for the refresh after the game exits;
+//! their own overlays already announce unlocks during play.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
@@ -18,7 +19,7 @@ use heronite_launch::steam::SteamLocator;
 
 use crate::model::{LocalPin, Source};
 use crate::prefs::Prefs;
-use crate::sources::{local, steam, Ctx};
+use crate::sources::{comet, local, steam, Ctx};
 use crate::sync::Problem;
 use crate::target::SourceTarget;
 
@@ -44,6 +45,9 @@ pub fn sources(prefs: &Prefs) -> Vec<Source> {
     }
     if prefs.live_steam {
         out.push(Source::Steam);
+    }
+    if prefs.gog_comet {
+        out.push(Source::Gog);
     }
     out
 }
@@ -82,6 +86,9 @@ pub fn watched_files(ctx: &Ctx, target: &SourceTarget, pin: Option<&LocalPin>) -
                     Some(steam::local::user_file(&root, &account, app_id))
                 })
                 .collect()
+        }
+        SourceTarget::Gog { product_id } => {
+            comet::database_of(ctx.paths, product_id).map(|db| comet::watched_files(&db)).unwrap_or_default()
         }
         _ => Vec::new(),
     }
@@ -236,12 +243,15 @@ mod tests {
 
     #[test]
     fn the_options_pick_the_sources() {
-        let p = Prefs { game_files: true, ..Prefs::default() };
+        let p = Prefs { game_files: true, gog_comet: false, ..Prefs::default() };
         assert_eq!(sources(&p), [Source::Local]);
         assert!(wanted(&p));
         assert_eq!(sources(&Prefs { live_steam: true, ..p }), [Source::Local, Source::Steam]);
+        // GOG games are checked by default (Comet runs beside them).
+        assert_eq!(sources(&Prefs::default()), [Source::Gog]);
+        assert!(wanted(&Prefs::default()));
         // Nothing to read, or nothing to announce it: no check.
-        assert!(!wanted(&Prefs::default()));
+        assert!(!wanted(&Prefs { gog_comet: false, ..Prefs::default() }));
         assert!(!wanted(&Prefs { overlay_notices: false, notify: false, ..p }));
         assert!(wanted(&Prefs { overlay_notices: false, notify: true, ..p }));
         let targets = [
@@ -250,6 +260,7 @@ mod tests {
             SourceTarget::Steam { app_id: "2".into() },
         ];
         assert_eq!(sources_of(&p, &targets), [Source::Local]);
+        assert_eq!(sources_of(&Prefs { gog_comet: true, ..p }, &targets), [Source::Gog, Source::Local]);
     }
 
     #[test]

@@ -53,9 +53,10 @@ pub enum RunKind {
     Native,
     /// Installed Steam game: the settings are Steam's own (`heronite_steam`).
     Steam,
-    /// Installed Steam game that Steam starts as it is (Windows): only what
+    /// Installed Steam game that Steam starts as it is (Windows): what
     /// Heronite runs around it, the scripts and the programs alongside
-    /// (`heronite_launch::steam_extras`).
+    /// (`heronite_launch::steam_extras`), and Steam's launch options as text
+    /// ([`steam_line`]).
     SteamDirect,
     /// Browser games, emulated ROMs, not installed: no Heroic settings.
     None,
@@ -86,7 +87,8 @@ pub struct GameFacts {
     pub runner: String,
     pub run_kind: RunKind,
     pub cloud_saves: bool,
-    /// Steam's app id of a [`RunKind::Steam`] game.
+    /// Steam's app id of a [`RunKind::Steam`] game, or of a
+    /// [`RunKind::SteamDirect`] one whose launch options show ([`steam_line`]).
     pub steam_app_id: Option<String>,
     /// The Steam id ProtonDB knows the game by (its own or the metadata's).
     pub protondb_id: Option<String>,
@@ -103,14 +105,11 @@ impl GameFacts {
         let launch_kind = game.launch_kind.as_deref().unwrap_or("");
         let steam_app_id = game.steam_launch_id.clone().filter(|_| game.installed && launch_kind == "steam-uri");
         let run_kind = if steam_app_id.is_some() {
-            // Steam's settings are edited through its client.
-            if heronite_platform::supported(heronite_platform::Feature::SteamGameSettings) {
-                RunKind::Steam
-            } else if heronite_launch::steam_extras::supported() {
-                RunKind::SteamDirect
-            } else {
-                RunKind::None
-            }
+            steam_run_kind(
+                heronite_steam::PROTON,
+                heronite_platform::supported(heronite_platform::Feature::SteamGameSettings),
+                heronite_launch::steam_extras::supported(),
+            )
         } else if !game.installed
             || matches!(
                 launch_kind,
@@ -162,8 +161,8 @@ impl GameFacts {
                 .flatten()
                 .find(|s| !s.is_empty())
                 .map(str::to_owned);
-        // Only a game whose settings are Steam's reads them from Steam.
-        let steam_app_id = steam_app_id.filter(|_| run_kind == RunKind::Steam);
+        // Only a game whose settings (or launch options) are Steam's reads them from Steam.
+        let steam_app_id = steam_app_id.filter(|_| run_kind == RunKind::Steam || (run_kind == RunKind::SteamDirect && steam_line()));
         Self {
             app_name: game.app_name.clone(),
             title: game.title.clone(),
@@ -207,10 +206,38 @@ pub fn extras() -> bool {
     heronite_platform::supported(heronite_platform::Feature::LaunchExtras)
 }
 
+/// How an installed Steam game runs. With Proton (Linux) the game's settings
+/// are Steam's: its launch options and compatibility tool. Without (Windows)
+/// Steam starts the game as it is: Heronite runs the `extras` around it, and
+/// Steam's own line (`settings`) is edited as text.
+fn steam_run_kind(proton: bool, settings: bool, extras: bool) -> RunKind {
+    match (proton, settings) {
+        (true, true) => RunKind::Steam,
+        (false, true) => RunKind::SteamDirect,
+        _ if extras => RunKind::SteamDirect,
+        _ => RunKind::None,
+    }
+}
+
+/// Whether a [`RunKind::SteamDirect`] game shows Steam's launch options
+/// (`heronite_platform::Feature::SteamGameSettings` on Windows): the line
+/// Steam adds to the game's command, edited as text. No compatibility tool:
+/// Steam starts Windows games as they are.
+pub fn steam_line() -> bool {
+    !heronite_steam::PROTON && heronite_platform::supported(heronite_platform::Feature::SteamGameSettings)
+}
+
 /// Whether Linux's wrappers exist here (`heronite_platform::Feature::Wrappers`):
 /// without them a native game only has the Launch tab.
 pub fn wrappers() -> bool {
     heronite_platform::supported(heronite_platform::Feature::Wrappers)
+}
+
+/// Whether the GPU tab picks Windows' per-program GPU preference instead of
+/// Linux's variables (`heronite_launch::gpu::preference`): Windows, where
+/// Heronite starts the game's program itself.
+pub fn windows_gpu() -> bool {
+    cfg!(windows)
 }
 
 /// A game whose Performance tab is ReShade alone: Steam starts it as it is,
@@ -219,14 +246,30 @@ pub fn reshade_only(run_kind: RunKind) -> bool {
     run_kind == RunKind::SteamDirect || (run_kind == RunKind::Native && !wrappers())
 }
 
+/// Whether a game gets the Cloud saves tab: an Epic or GOG game with cloud
+/// saves whose Windows build runs through Wine, or as it is on Windows (the
+/// stores resolve the save folders of this PC then).
+pub fn saves_tab(run_kind: RunKind, runner: &str, cloud_saves: bool) -> bool {
+    cloud_saves && matches!(runner, "legendary" | "gog") && (run_kind == RunKind::Wine || (run_kind == RunKind::Native && cfg!(windows)))
+}
+
 /// The panel's sections of a game, in tab order.
 pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> Vec<Section> {
     let mut out = vec![Section::Launch];
+    let saves = saves_tab(run_kind, runner, cloud_saves_tab);
     match run_kind {
         RunKind::None => return Vec::new(),
         // Their Performance tab only has ReShade (`reshade_only`).
         RunKind::SteamDirect | RunKind::Native if reshade_only(run_kind) => {
             out.extend(run_kind.reshade().map(|_| Section::Performance));
+            // Steam starts its games itself: Heronite cannot set the
+            // preference for the program it runs.
+            if run_kind == RunKind::Native && windows_gpu() {
+                out.push(Section::Gpu);
+            }
+            if saves {
+                out.push(Section::Saves);
+            }
             return out;
         }
         RunKind::SteamDirect => return out,
@@ -237,7 +280,7 @@ pub fn sections_for(run_kind: RunKind, runner: &str, cloud_saves_tab: bool) -> V
     if run_kind != RunKind::Steam {
         out.push(Section::Sandbox);
     }
-    if run_kind == RunKind::Wine && matches!(runner, "legendary" | "gog") && cloud_saves_tab {
+    if saves {
         out.push(Section::Saves);
     }
     out
@@ -467,7 +510,8 @@ mod tests {
         // ReShade where it applies.
         let native: &[Section] = match (wrappers(), cfg!(windows)) {
             (true, _) => &[Launch, Performance, Gpu, Sandbox],
-            (false, true) => &[Launch, Performance],
+            // Windows' own GPU preference.
+            (false, true) => &[Launch, Performance, Gpu],
             (false, false) => &[Launch],
         };
         assert_eq!(sections_for(RunKind::Native, "sideload", false), native);
@@ -478,6 +522,38 @@ mod tests {
         assert_eq!(sections_for(RunKind::Steam, "sideload", true), [Launch, Compatibility, Performance, Gpu]);
         let direct: &[Section] = if cfg!(windows) { &[Launch, Performance] } else { &[Launch] };
         assert_eq!(sections_for(RunKind::SteamDirect, "sideload", true), direct);
+    }
+
+    /// Windows builds that run as they are on Windows sync their cloud saves
+    /// too; Linux builds do not (the stores only list Windows folders).
+    #[test]
+    fn native_windows_games_get_cloud_saves() {
+        for runner in ["legendary", "gog"] {
+            assert_eq!(sections_for(RunKind::Native, runner, true).contains(&Section::Saves), cfg!(windows), "{runner}");
+            assert!(!sections_for(RunKind::Native, runner, false).contains(&Section::Saves), "{runner}");
+        }
+        assert!(!sections_for(RunKind::Native, "sideload", true).contains(&Section::Saves));
+        assert!(!sections_for(RunKind::SteamDirect, "legendary", true).contains(&Section::Saves));
+        if cfg!(windows) && !wrappers() {
+            use Section::*;
+            // The GPU tab (Windows' own GPU preference) before Cloud saves, as on Linux.
+            assert_eq!(sections_for(RunKind::Native, "legendary", true), [Launch, Performance, Gpu, Saves]);
+        }
+    }
+
+    #[test]
+    fn steam_games_get_proton_on_linux_and_the_line_alone_on_windows() {
+        // Linux: the settings are Steam's, Proton included.
+        assert_eq!(steam_run_kind(true, true, false), RunKind::Steam);
+        assert_eq!(steam_run_kind(true, false, false), RunKind::None);
+        // Windows: Steam starts the game as it is; its launch options show
+        // with the extras, or alone.
+        assert_eq!(steam_run_kind(false, true, true), RunKind::SteamDirect);
+        assert_eq!(steam_run_kind(false, true, false), RunKind::SteamDirect);
+        assert_eq!(steam_run_kind(false, false, true), RunKind::SteamDirect);
+        assert_eq!(steam_run_kind(false, false, false), RunKind::None);
+        // Only Linux gets the Proton tabs.
+        assert_eq!(heronite_steam::PROTON, cfg!(target_os = "linux"));
     }
 
     #[test]

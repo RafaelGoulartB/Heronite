@@ -235,9 +235,12 @@ impl SettingsPanel {
             Target::Game(f) => f.steam_app_id.clone(),
             Target::Defaults => None,
         };
+        // Windows: only Steam's launch options are Steam's; the rest is ours.
+        let steam_line_only = matches!(&target, Target::Game(f) if f.run_kind == logic::RunKind::SteamDirect);
+        let steam_settings = steam_app.is_some() && !steam_line_only;
         let settings = match &target {
             // Filled from Steam once it is read; ReShade's keys are ours.
-            Target::Game(f) if steam_app.is_some() => {
+            Target::Game(f) if steam_settings => {
                 let mut s = heronite_steam::options::defaults();
                 s.extend(game_config::load_game(&paths, &f.app_name, &home).into_iter().filter(|(k, _)| k.starts_with(RESHADE_KEYS)));
                 s
@@ -286,7 +289,7 @@ impl SettingsPanel {
             inputs.insert(*id, input);
         }
         let inherited = match &target {
-            _ if steam_app.is_some() => Some(heronite_steam::options::defaults()),
+            _ if steam_settings => Some(heronite_steam::options::defaults()),
             Target::Game(_) => Some(game_config::default_game_settings(&game_config::load_global(&paths, &home), false, &home)),
             Target::Defaults => None,
         };
@@ -338,7 +341,7 @@ impl SettingsPanel {
             env_error: String::new(),
             env_text: None,
             saves: SavesState::default(),
-            steam: steam_app.map(steam::SteamState::new),
+            steam: steam_app.map(|id| steam::SteamState::new(id, steam_line_only)),
             protondb: protondb::ProtonDb::Off,
             global_wine: None,
             inherited,
@@ -369,6 +372,10 @@ impl SettingsPanel {
         }
         if this.facts().is_some_and(|f| matches!(f.run_kind, logic::RunKind::Wine | logic::RunKind::Native)) {
             this.load_sandbox_host(cx);
+        }
+        if this.steam_line_only() {
+            this.load_steam(cx);
+            this.watch_steam(cx);
         }
         if this.is_steam() {
             // Debug settings are applied once Steam was read.

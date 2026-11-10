@@ -153,9 +153,16 @@ impl SettingsPanel {
     /// A Steam game on Windows: Steam starts it as it is, and Heronite runs
     /// its scripts and programs alongside around it.
     fn steam_direct_tab(&mut self, cx: &mut Context<Self>) -> Div {
-        column().child(self.scripts_section(false, cx)).child(self.companions_section(cx)).child(
-            help(tr!("Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.")).px(px(6.)),
-        )
+        let mut col = column();
+        if heronite_launch::steam_extras::supported() {
+            col = col.child(self.scripts_section(false, cx)).child(self.companions_section(cx)).child(
+                help(tr!("Steam starts the game itself, as from its library. Heronite runs these when you play from Heronite.")).px(px(6.)),
+            );
+        }
+        if self.steam_line_only() {
+            col = col.child(self.steam_line_section(cx));
+        }
+        col
     }
 
     /// The user's scripts before the game starts and after it exits.

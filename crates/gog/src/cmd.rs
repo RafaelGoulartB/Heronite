@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use heronite_data::proc::Run;
 use heronite_data::DataPaths;
 use heronite_epic::cmd::Output;
@@ -79,6 +79,22 @@ impl Gogdl {
     /// Like [`run`](Self::run) but calls `on_line` for every output line (both
     /// streams) while the command runs, and stops it when `cancel` is requested.
     pub fn run_streaming<S: AsRef<str>>(&self, args: &[S], cancel: &Cancel, on_line: impl FnMut(&str)) -> Result<Output> {
+        self.run_with(args, cancel, on_line, None)
+    }
+
+    /// [`run`](Self::run) that gives up after `limit`: gogdl is stopped and
+    /// it is an error. For what must not hold anything up (a game's launch).
+    pub fn run_within<S: AsRef<str>>(&self, args: &[S], limit: std::time::Duration) -> Result<Output> {
+        self.run_with(args, &Cancel::new(), |_| {}, Some(limit))
+    }
+
+    fn run_with<S: AsRef<str>>(
+        &self,
+        args: &[S],
+        cancel: &Cancel,
+        on_line: impl FnMut(&str),
+        limit: Option<std::time::Duration>,
+    ) -> Result<Output> {
         let args: Vec<String> = args.iter().map(|a| a.as_ref().to_string()).collect();
         log::info!("gogdl {}", redact(&args).join(" "));
         // gogdl writes the auth file without creating its folder.
@@ -89,13 +105,14 @@ impl Gogdl {
         // SIGTERM only gogdl (it leaves `.gogdl-resume` behind); its workers
         // are killed with the group afterwards.
         let mut on_line = on_line;
-        let out = Run::new()
-            .cancel(cancel)
-            .term_main_only()
-            .line_capture()
-            .on_line(&mut on_line)
-            .run(&mut cmd)
-            .with_context(|| format!("starting {}", self.bin.display()))?;
+        let mut run = Run::new().cancel(cancel).term_main_only().line_capture().on_line(&mut on_line);
+        if let Some(limit) = limit {
+            run = run.timeout(limit).grace(std::time::Duration::from_secs(2));
+        }
+        let out = run.run(&mut cmd).with_context(|| format!("starting {}", self.bin.display()))?;
+        if out.timed_out {
+            bail!("gogdl did not answer within {} s", limit.unwrap_or_default().as_secs());
+        }
         Ok(Output { stdout: out.stdout_text(), stderr: out.stderr_text(), code: out.code, aborted: out.aborted })
     }
 }

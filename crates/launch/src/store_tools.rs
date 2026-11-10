@@ -1,11 +1,13 @@
 //! The command-line tools behind the stores: `legendary` (Epic), `gogdl`
-//! (GOG downloads, cloud saves) and `nile` (Amazon Games login, library and
-//! downloads). Each is found in the settings, the data folder or `PATH`, and
-//! downloaded into `<data>/tools/bin` (`legendary.exe` there on Windows)
-//! from its GitHub release when none is there. The releases are the ones
-//! Heroic pins (`RELEASE_TAGS` in its `meta/downloadHelperBinaries.ts`);
-//! their Windows builds are standalone programs (PyInstaller), no Python
-//! needed.
+//! (GOG downloads, cloud saves), `nile` (Amazon Games login, library and
+//! downloads) and `comet` (GOG Galaxy's service for GOG games' achievements,
+//! see [`crate::galaxy`]). Each is found in the settings, the data folder or
+//! `PATH`, and downloaded into `<data>/tools/bin` (`legendary.exe` there on
+//! Windows) from its GitHub release when none is there. The releases of
+//! legendary, gogdl and nile are the ones Heroic pins (`RELEASE_TAGS` in its
+//! `meta/downloadHelperBinaries.ts`); their Windows builds are standalone
+//! programs (PyInstaller), no Python needed. Comet's is newer than Heroic's
+//! pin (v0.2.0).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -29,6 +31,9 @@ pub struct StoreTool {
     pub setting: &'static str,
     repo: &'static str,
     version: &'static str,
+    /// Looked for on `PATH` too. Not for a name other programs use
+    /// (`comet`): it would get the account's tokens.
+    on_path: bool,
     /// Release assets: (system, CPU, file), as `std::env::consts` names them.
     assets: &'static [(&'static str, &'static str, &'static str)],
 }
@@ -40,6 +45,7 @@ pub const LEGENDARY: StoreTool = StoreTool {
     setting: "altLegendaryBin",
     repo: "legendary-gl/legendary",
     version: "0.21.1",
+    on_path: true,
     assets: &[
         ("linux", "x86_64", "legendary_linux_x64"),
         ("linux", "aarch64", "legendary_linux_arm64"),
@@ -55,6 +61,7 @@ pub const GOGDL: StoreTool = StoreTool {
     setting: "altGogdlBin",
     repo: "Heroic-Games-Launcher/heroic-gogdl",
     version: "v1.3.0",
+    on_path: true,
     assets: &[
         ("linux", "x86_64", "gogdl_linux_x86_64"),
         ("linux", "aarch64", "gogdl_linux_arm64"),
@@ -70,12 +77,29 @@ pub const NILE: StoreTool = StoreTool {
     setting: "altNileBin",
     repo: "imLinguin/nile",
     version: "v1.2.0",
+    on_path: true,
     assets: &[
         ("linux", "x86_64", "nile_linux_x86_64"),
         ("linux", "aarch64", "nile_linux_arm64"),
         ("windows", "x86_64", "nile_windows_x86_64.exe"),
         // No Arm build: Windows on Arm runs x64 programs.
         ("windows", "aarch64", "nile_windows_x86_64.exe"),
+    ],
+};
+
+/// GOG Galaxy's communication service, open source (a Rust program).
+pub const COMET: StoreTool = StoreTool {
+    name: "comet",
+    env: "HERONITE_COMET_BIN",
+    setting: "altCometBin",
+    repo: "imLinguin/comet",
+    version: "v0.4.1",
+    on_path: false,
+    assets: &[
+        ("linux", "x86_64", "comet-x86_64-unknown-linux-gnu"),
+        ("linux", "aarch64", "comet-aarch64-unknown-linux-gnu"),
+        ("windows", "x86_64", "comet-x86_64-pc-windows-msvc.exe"),
+        ("windows", "aarch64", "comet-aarch64-pc-windows-msvc.exe"),
     ],
 };
 
@@ -136,8 +160,8 @@ fn elf_interpreter(head: &[u8]) -> Option<String> {
 /// One download of each tool at a time per process: a login and a refresh
 /// can both ask.
 fn busy(tool: &StoreTool) -> &'static Mutex<()> {
-    static BUSY: [Mutex<()>; 3] = [Mutex::new(()), Mutex::new(()), Mutex::new(())];
-    let i = [LEGENDARY.name, GOGDL.name, NILE.name].iter().position(|n| *n == tool.name).unwrap_or(0);
+    static BUSY: [Mutex<()>; 4] = [Mutex::new(()), Mutex::new(()), Mutex::new(()), Mutex::new(())];
+    let i = [LEGENDARY.name, GOGDL.name, NILE.name, COMET.name].iter().position(|n| *n == tool.name).unwrap_or(0);
     &BUSY[i]
 }
 
@@ -187,12 +211,13 @@ impl StoreTool {
     /// what NixOS leaves out ([`missing_runtime`]).
     pub fn find(&self, ctx: &PlanContext, probe: &dyn Probe) -> Option<String> {
         let mut candidates = self.candidates(ctx, probe);
+        let which = || if self.on_path { probe.which(self.name) } else { None };
         if probe.exists(NIXOS_MARKER) {
-            if let Some(on_path) = probe.which(self.name) {
+            if let Some(on_path) = which() {
                 candidates.insert(candidates.len() - 1, on_path);
             }
         }
-        candidates.into_iter().find(|p| probe.exists(p)).or_else(|| probe.which(self.name))
+        candidates.into_iter().find(|p| probe.exists(p)).or_else(which)
     }
 
     /// The binary to run: an existing one, else a fresh download into the
@@ -236,7 +261,7 @@ pub(crate) mod tests {
 
     #[test]
     fn downloads_into_the_data_folder_when_none_is_found() {
-        for tool in [LEGENDARY, GOGDL, NILE] {
+        for tool in [LEGENDARY, GOGDL, NILE, COMET] {
             let dir = tempfile::tempdir().unwrap();
             let paths = DataPaths::at(dir.path().join("heronite"));
             let url = tool.download_url(tool.asset_name().unwrap());
@@ -268,10 +293,15 @@ pub(crate) mod tests {
             Some("https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_windows_x86_64.exe")
         );
         assert_eq!(url(NILE, "windows", "aarch64"), url(NILE, "windows", "x86_64"), "x64 under emulation");
+        assert_eq!(
+            url(COMET, "linux", "x86_64").as_deref(),
+            Some("https://github.com/imLinguin/comet/releases/download/v0.4.1/comet-x86_64-unknown-linux-gnu")
+        );
+        assert_eq!(COMET.asset_for("windows", "aarch64"), Some("comet-aarch64-pc-windows-msvc.exe"));
         assert_eq!(LEGENDARY.asset_for("linux", "x86_64"), Some("legendary_linux_x64"));
         assert_eq!(GOGDL.asset_for("linux", "aarch64"), Some("gogdl_linux_arm64"));
         assert_eq!(NILE.asset_for("macos", "aarch64"), None);
-        for tool in [LEGENDARY, GOGDL, NILE] {
+        for tool in [LEGENDARY, GOGDL, NILE, COMET] {
             assert!(tool.asset_name().is_some(), "{} has a build for this system", tool.name);
         }
     }
@@ -294,6 +324,9 @@ pub(crate) mod tests {
         let probe = FakeProbe::default().with_bin("gogdl", "/usr/bin/gogdl");
         assert_eq!(GOGDL.find(&ctx, &probe).as_deref(), Some("/usr/bin/gogdl"));
         assert_eq!(GOGDL.find(&ctx, &FakeProbe::default()), None);
+        // Another program may be called `comet`.
+        let probe = FakeProbe::default().with_bin("comet", "/usr/bin/comet").with_path(NIXOS_MARKER);
+        assert_eq!(COMET.find(&ctx, &probe), None);
     }
 
     #[test]
@@ -363,11 +396,11 @@ pub(crate) mod tests {
     /// The real releases, downloaded and run (`--version`) on this system:
     /// `cargo test -p heronite-launch --lib real_releases -- --ignored`.
     #[test]
-    #[ignore = "downloads about 45 MB"]
+    #[ignore = "downloads about 60 MB"]
     fn real_releases_install_and_run_here() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
-        for tool in [LEGENDARY, GOGDL, NILE] {
+        for tool in [LEGENDARY, GOGDL, NILE, COMET] {
             let got = tool.ensure(&paths, &FakeProbe::default(), &crate::net::SystemNet, &|| false).unwrap();
             assert_eq!(got, tool.data_bin(&paths));
             let out = heronite_data::proc::output(std::process::Command::new(&got).arg("--version")).unwrap();
