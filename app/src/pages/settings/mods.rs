@@ -268,9 +268,21 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
         .child(meta_text(tr!(
             "Nexus Mods shows its \"Mod manager download\" button only when your preferences on the site allow it."
         )));
+    // The feature's own caveat first: what follows only matters if mods suit the game.
+    let experimental = div()
+        .flex()
+        .items_start()
+        .gap(px(10.))
+        .px(px(6.))
+        .pb(px(4.))
+        .child(div().pt(px(1.)).child(crate::dialogs::mods::experimental_pill()))
+        .child(div().flex_1().min_w_0().child(meta_text(tr!(
+            "Mods are new in Heronite. They work for games whose mods are files in the game's folder; games that keep mods elsewhere, or that need their own tools, are not covered. Each game's Mods says what to expect for it."
+        ))));
     div()
         .flex()
         .flex_col()
+        .child(experimental)
         .child(caption(tr!("Nexus Mods account")))
         .child(account_card(d, &f, cx))
         .children(message)

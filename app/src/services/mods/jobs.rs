@@ -302,11 +302,19 @@ impl ModsService {
                 job.name = name.clone();
                 job.progress = Progress::default();
                 job.dependencies = dependencies;
-                self.prune_later(id, cx);
-                // The warning takes the place of the success line: a toast shows one at a time.
+                // The warning takes the place of the success line (a toast shows
+                // one at a time) and its job stays until it is dismissed.
                 match misplaced {
-                    true => Some((misplaced_line(&name), true)),
-                    false => Some((installed_line(&name, &title, updated, dependencies), false)),
+                    true => {
+                        job.warning = Some(
+                            tr!("Installed, but the game will probably not see it. See \"Check files\" on the mod below.").to_string(),
+                        );
+                        Some((misplaced_line(&name), true))
+                    }
+                    false => {
+                        self.prune_later(id, cx);
+                        Some((installed_line(&name, &title, updated, dependencies), false))
+                    }
                 }
             }
             Outcome::Finished(line) => {
@@ -335,7 +343,7 @@ impl ModsService {
             cx.background_executor().timer(KEEP_DONE).await;
             this.update(cx, |s, cx| {
                 let before = s.jobs.len();
-                s.jobs.retain(|j| !(j.id == id && j.stage == JobStage::Done));
+                s.jobs.retain(|j| !(j.id == id && j.stage == JobStage::Done && j.warning.is_none()));
                 if s.jobs.len() != before {
                     cx.emit(ModsEvent::Jobs);
                 }
@@ -399,6 +407,7 @@ impl ModsService {
             stage: JobStage::Waiting,
             progress: Progress::default(),
             error: None,
+            warning: None,
             dependencies: 0,
         });
         let thread_env = env.clone();

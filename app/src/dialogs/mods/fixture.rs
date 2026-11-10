@@ -3,7 +3,7 @@
 //!
 //! `HERONITE_DEBUG_MODS_FIXTURE=1` (or a `,`-separated list of `nodir`,
 //! `steam`, `account`, `premium`, `fuse`, `jobs`, `running`, `native`,
-//! `anticheat`, `deleted`, `misplaced`, `loader`, `loader-on`, `loader-steam`) shows the
+//! `anticheat`, `deleted`, `misplaced`, `warned`, `loader`, `loader-on`, `loader-steam`) shows the
 //! `mods.json` of the game under the data folder, with invented conflicts, an
 //! overwrite folder and jobs, for as long as the service has not loaded the game.
 
@@ -64,7 +64,21 @@ pub(super) fn load(ctx: &DialogCtx, game: &CollectionGame) -> Option<Fixture> {
         l.overridden_by.push((winner.clone(), n));
         l.fully_overridden = k == 4;
     }
-    let jobs = if has("jobs") { jobs(&game.key) } else { Vec::new() };
+    let mut jobs = if has("jobs") { jobs(&game.key) } else { Vec::new() };
+    if has("warned") {
+        jobs.push(Job {
+            id: 9,
+            game_key: game.key.clone(),
+            name: "Reshade Preset Pack".into(),
+            stage: JobStage::Done,
+            progress: Progress::default(),
+            error: None,
+            warning: Some(
+                heronite_i18n::tr!("Installed, but the game will probably not see it. See \"Check files\" on the mod below.").into(),
+            ),
+            dependencies: 0,
+        });
+    }
     let account = if has("premium") || has("account") {
         let account = Account { name: "Rafa".into(), user_id: 1, is_premium: has("premium"), ..Default::default() };
         Some(StoredAccount::new("fixture", account))
@@ -99,6 +113,7 @@ fn jobs(key: &str) -> Vec<Job> {
         stage,
         progress: Progress { done, total },
         error: error.map(str::to_string),
+        warning: None,
         dependencies: 0,
     };
     let mut done = job(3, "Better Combat", JobStage::Done, 0, 0, None);

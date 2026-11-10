@@ -129,20 +129,26 @@ impl ModsService {
         let steam = self.games.get(game_key).filter(|g| g.info.through_steam).and_then(|g| g.info.steam_app_id.clone());
         let game_dir = self.games.get(game_key).and_then(|g| g.info.game_dir.clone());
         let (through_steam, native) = self.games.get(game_key).map(|g| (g.info.through_steam, g.info.native)).unwrap_or_default();
+        let profile = self.games.get(game_key).map(|g| g.info.profile.clone());
         let source = self.sources.get(game_key).cloned();
         let (paths, key) = (self.data_paths.clone(), game_key.to_string());
         let loaders_paths = paths.clone();
         cx.spawn(async move |this, cx| {
             let list = shared.clone();
-            let (found, written, dlls_changed, loaders) = cx
+            let (found, written, dlls_changed, loaders, misplaced) = cx
                 .background_spawn(async move {
                     let changed = game_dir.as_deref().is_some_and(|d| refresh_proxy_dlls(&list, &dirs, d));
                     let list = list.list();
+                    // Without the game's folder nothing can be said about where files belong.
+                    let misplaced = match (&game_dir, &profile) {
+                        (Some(dir), Some(profile)) => Some(misplaced_mods(&list, &dirs, dir, profile)),
+                        _ => None,
+                    };
                     let loaders = match (&source, &game_dir) {
                         (Some(game), Some(dir)) => super::loaders::cards(&loaders_paths, game, &dirs, &list, dir, through_steam, native),
                         _ => Vec::new(),
                     };
-                    (conflicts::compute(&dirs, &list), overwrite::summary(&dirs), changed, loaders)
+                    (conflicts::compute(&dirs, &list), overwrite::summary(&dirs), changed, loaders, misplaced)
                 })
                 .await;
             let k = key.clone();
@@ -154,6 +160,9 @@ impl ModsService {
                     if dlls_changed {
                         s.refresh_from_shared(&k, cx);
                         s.save_later(&k, cx);
+                    }
+                    if let Some(misplaced) = misplaced {
+                        s.flagged.insert(k.clone(), misplaced);
                     }
                     if let Some(game) = s.games.get_mut(&k) {
                         game.conflicts = Some(Arc::new(found));
@@ -212,6 +221,22 @@ impl ModsService {
     }
 }
 
+/// The mods whose files do not line up with the game's folders ("Check
+/// files"): looked at on every check, so the flag outlives the app and
+/// follows a change of the game's mods folder.
+fn misplaced_mods(
+    list: &heronite_mods::ModList,
+    dirs: &heronite_mods::GameDirs,
+    game_dir: &std::path::Path,
+    profile: &Profile,
+) -> std::collections::HashSet<String> {
+    list.mods
+        .iter()
+        .filter(|m| heronite_mods::install::looks_misplaced(&dirs.mod_dir(&m.id), game_dir, profile))
+        .map(|m| m.id.clone())
+        .collect()
+}
+
 /// Looks again for the mods' proxy DLLs where the game has executables, so
 /// mods installed before a DLL was known as a proxy (or before the game
 /// folder was found) get their `WINEDLLOVERRIDES`. True when a mod changed.
@@ -232,4 +257,35 @@ fn refresh_proxy_dlls(shared: &super::edit::GameShared, dirs: &heronite_mods::Ga
         changed
     });
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::misplaced_mods;
+    use heronite_mods::games::Profile;
+    use heronite_mods::{GameLinks, ModEntry, ModList, ModsRoot};
+
+    #[test]
+    fn a_mod_outside_the_games_folders_is_flagged_again_on_every_check() {
+        let t = tempfile::tempdir().unwrap();
+        let dirs = ModsRoot::at(t.path().join("mods")).game("g");
+        let game = t.path().join("game");
+        let put = |path: std::path::PathBuf| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "x").unwrap();
+        };
+        put(game.join("data_pc/a.bin"));
+        put(dirs.mod_dir("fits").join("data_pc/b.bin"));
+        put(dirs.mod_dir("lost").join("Some Pack/textures/c.dds"));
+        let mut list = ModList::new("g", "G");
+        list.mods =
+            ["fits", "lost", "gone"].iter().map(|id| ModEntry { id: id.to_string(), enabled: true, ..Default::default() }).collect();
+        let profile = Profile::of(&GameLinks::default(), None);
+        let flagged = misplaced_mods(&list, &dirs, &game, &profile);
+        assert_eq!(flagged.into_iter().collect::<Vec<_>>(), ["lost"], "a mod without files says nothing");
+
+        // The user names the folder the game reads mods from: the flag goes.
+        let profile = Profile::of(&GameLinks { mod_root: Some("Some Pack".into()), ..Default::default() }, None);
+        assert!(misplaced_mods(&list, &dirs, &game, &profile).is_empty());
+    }
 }

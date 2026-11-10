@@ -20,6 +20,9 @@ mod render_menu;
 mod render_notes;
 mod render_plugins;
 mod render_row;
+mod render_support;
+
+pub use render_support::experimental_pill;
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -131,6 +134,9 @@ pub struct ModsDialog {
     confirm: Option<Confirm>,
     /// Mods whose conflict list is open.
     expanded: HashSet<String>,
+    /// Mods whose "Check files" explanation is open.
+    checking: HashSet<String>,
+    debug_tip: Option<render_support::Tip>,
     /// "Turn into a mod": the name being typed.
     naming_overwrite: Option<Entity<InputState>>,
     browse: browse::Browse,
@@ -174,6 +180,8 @@ impl ModsDialog {
             rename: None,
             confirm: None,
             expanded: HashSet::new(),
+            checking: HashSet::new(),
+            debug_tip: None,
             naming_overwrite: None,
             browse,
             links,
@@ -257,7 +265,8 @@ impl ModsDialog {
         cx.notify();
     }
 
-    /// Kicker, game title, status line, the master switch and close.
+    /// Kicker with "Experimental", game title, the game's support label and
+    /// the status line, the master switch and close.
     fn render_header(&mut self, v: Option<&View>, cx: &mut Context<Self>) -> Div {
         let (status, active) = match v {
             None => (tr!("Loading…").to_string(), false),
@@ -297,9 +306,17 @@ impl ModsDialog {
                     .flex_1()
                     .min_w_0()
                     .gap(px(1.))
-                    .child(kicker(tr!("Mods")))
+                    .child(div().flex().items_center().gap(px(8.)).child(kicker(tr!("Mods"))).child(self.experimental_label()))
                     .child(dialog_title(self.game.title.clone()).truncate())
-                    .child(div().text_size(px(13.)).text_color(theme::text_muted()).truncate().child(status)),
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .mt(px(2.))
+                            .children(v.map(|v| self.support_label(v)))
+                            .child(div().min_w_0().text_size(px(13.)).text_color(theme::text_muted()).truncate().child(status)),
+                    ),
             )
             .child(switch)
             .child(div().self_start().child(close_button("mods-close-x").on_click(cx.listener(|_, _, _, cx| cx.emit(DialogEvent::Close)))))

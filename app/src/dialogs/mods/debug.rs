@@ -2,11 +2,14 @@
 //! that otherwise needs clicks. Steps, `,`-separated: `menu:<n>` (the menu of
 //! mod n), `expand:<n>` (its conflicts), `rename:<n>`, `remove:<n>` (the
 //! question), `overwrite-name`, `overwrite-clear`, `forget` (Game tab's
-//! question), `running`, `thunderstore` (Browse on that site).
+//! question), `running`, `thunderstore` (Browse on that site),
+//! `tip:experimental|support` (that label's reason drawn open), `check:<n>`
+//! (the "Check files" explanation of mod n).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
+use super::render_support::Tip;
 use super::{Confirm, ModsDialog, RowMenu, Tab};
 
 impl ModsDialog {
@@ -31,6 +34,13 @@ impl ModsDialog {
                         self.start_rename(&id, &name, window, cx);
                     }
                 }
+                Some(("check", n)) => {
+                    if let Some((id, _)) = mod_at(n) {
+                        self.checking.insert(id);
+                    }
+                }
+                Some(("tip", "experimental")) => self.debug_tip = Some(Tip::Experimental),
+                Some(("tip", "support")) => self.debug_tip = Some(Tip::Support),
                 Some(("remove", n)) => {
                     if let Some((id, _)) = mod_at(n) {
                         self.confirm = Some(Confirm::Remove(id));

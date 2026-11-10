@@ -176,12 +176,25 @@ impl ModsDialog {
             meta = meta.child(div().min_w_0().max_w(px(150.)).truncate().child(author));
         }
         meta = meta.child(tag_pill(format::source_label(&m.source)));
-        if v.misplaced.contains(&m.id) {
+        let misplaced = v.misplaced.contains(&m.id);
+        let checking = misplaced && self.checking.contains(&id);
+        if misplaced {
+            let id = id.clone();
             meta = meta.child(
                 div()
                     .id(SharedString::from(format!("mods-check-{id}")))
-                    .tooltip(crate::ui::tooltip(tr!("Its files do not match the game's folders. Check the mod's instructions.")))
-                    .child(status_pill(tr!("Check files"), theme::warning())),
+                    .flex_none()
+                    .cursor_pointer()
+                    .opacity(if checking { 1. } else { 0.92 })
+                    .hover(|s| s.opacity(1.))
+                    .tooltip(crate::ui::tooltip(tr!("The game will probably not see this mod. Click to see why.")))
+                    .child(status_pill(tr!("Check files"), theme::warning()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if !this.checking.remove(&id) {
+                            this.checking.insert(id.clone());
+                        }
+                        cx.notify();
+                    })),
             );
         }
         if let Some(c) = conflicts {
@@ -260,12 +273,80 @@ impl ModsDialog {
                 .children(update)
                 .child(more),
         );
+        if checking {
+            row = row.child(self.check_files(m, cx));
+        }
         if expanded {
             if let Some(c) = conflicts {
                 row = row.child(conflict_list(&v.g, c));
             }
         }
         row.into_any_element()
+    }
+
+    /// Why a mod is flagged "Check files", and what to do about it.
+    fn check_files(&self, m: &ModEntry, cx: &mut Context<Self>) -> Div {
+        let id = m.id.clone();
+        let c: Hsla = theme::warning().into();
+        let mut actions = div().flex().flex_wrap().gap(px(8.)).child({
+            let id = id.clone();
+            button_sm(SharedString::from(format!("mods-check-open-{id}")), ButtonKind::Glass, tr!("Open folder")).on_click(cx.listener(
+                move |this, _, _, cx| {
+                    let dir = this.mod_dir(&id, cx);
+                    this.open_dir(dir, cx);
+                },
+            ))
+        });
+        if let Some(url) = m.source.page_url() {
+            actions = actions.child(
+                button_sm(SharedString::from(format!("mods-check-page-{id}")), ButtonKind::Glass, tr!("Open mod page"))
+                    .on_click(cx.listener(move |this, _, _, cx| this.open_url(url.clone(), cx))),
+            );
+        }
+        if m.archive.is_some() {
+            let id = id.clone();
+            actions = actions.child(
+                button_sm(SharedString::from(format!("mods-check-again-{id}")), ButtonKind::Glass, tr!("Reinstall")).on_click(cx.listener(
+                    move |this, _, _, cx| {
+                        let key = this.key.clone();
+                        this.service.update(cx, |s, cx| s.reinstall(&key, &id, cx));
+                    },
+                )),
+            );
+        }
+        actions = actions.child(
+            button_sm(SharedString::from(format!("mods-check-remove-{id}")), ButtonKind::Ghost, tr!("Remove"))
+                .on_click(cx.listener(move |this, _, _, cx| this.ask(Confirm::Remove(id.clone()), cx))),
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .mx(px(36.))
+            .mb(px(8.))
+            .px(px(14.))
+            .py(px(10.))
+            .rounded(px(12.))
+            .bg(Hsla { a: 0.09, ..c })
+            .border_1()
+            .border_color(Hsla { a: 0.24, ..c })
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(3.))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .font_weight(theme::W_500)
+                            .text_color(theme::text_primary())
+                            .child(tr!("The game will probably not see this mod")),
+                    )
+                    .child(div().text_size(px(12.5)).line_height(px(17.)).text_color(theme::text_muted()).child(tr!(
+                        "Its files were installed, but none of them is in a folder the game has, so they are not where the game looks. Compare the mod's folder with the instructions on its page. If they name a folder, set it in Game \u{2192} Mods go into and reinstall."
+                    ))),
+            )
+            .child(actions)
     }
 
     /// 44px picture of the mod, else its initial on the source's tint.

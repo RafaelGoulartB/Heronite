@@ -98,6 +98,7 @@ impl ModsService {
             stage: JobStage::Tool,
             progress: Progress::default(),
             error: None,
+            warning: None,
             dependencies: 0,
         });
         let (tx, bin) = (self.work.tx.clone(), self.data_paths.root.join("tools/bin"));

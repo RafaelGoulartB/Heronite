@@ -91,17 +91,40 @@ Mods.
    mod, or empty it. Turning "Play with mods" off keeps it (a notice says the
    game will not see it until mods are on again); "Remove all mods" deletes it
    and says so.
-8. **Limits the manager says out loud.** Baldur's Gate 3's `.pak` mods live
-   outside the game's folder (not applicable); games with anti-cheat (Elden
-   Ring, Dark Souls III, any game the anti-cheat list knows) can ban the
-   account for online play; a Linux build ignores DLL-based loaders. A mod
-   whose files do not look like they belong in the game's folders gets a
-   "Check files" pill and a notice after the install
-   (`heronite_mods::install::looks_misplaced`). Without the game's folder
-   nothing is installed.
+8. **Limits the manager says out loud.** The manager is labelled
+   "Experimental" and every game has a label for what to expect of its mods
+   (see "What to expect" below). Games with anti-cheat (Elden Ring, Dark
+   Souls III, any game the anti-cheat list knows) can ban the account for
+   online play; a Linux build ignores DLL-based loaders. A mod whose files
+   do not look like they belong in the game's folders
+   (`heronite_mods::install::looks_misplaced`) ends its install with an amber
+   job that stays until dismissed and gets a "Check files" pill; a click on
+   the pill says why the game will probably not see the mod and offers its
+   folder, its page, Reinstall and Remove. The flag is looked at again each
+   time the game's list is checked, so it outlives the app. Without the
+   game's folder nothing is installed.
 9. **While the game runs** (the overlay is mounted) the mods' files are in
    use: removing, updating, reinstalling, replacing, emptying the overwrite
    folder and "Remove all mods" are refused with a notice.
+
+## What to expect (`support`)
+
+The overlay only reaches the game's own folder, so the manager says how far
+that goes for each game: `Support::of(known game, kind, native)` gives a
+level and a reason, shown as a label under the game's title (the reason under
+the pointer) and, for every level but the first, as a card on the Installed
+tab.
+
+| Level | Label | Games |
+|---|---|---|
+| Expected | Should work | Known games whose mods are files in the game's folder, with the loader the manager sets up: the BepInEx games of Thunderstore, Unreal `~mods`, Control, Monster Hunter: World, Sekiro, Kingdom Come, Bannerlord, RimWorld… |
+| Steps | Needs extra steps | Bethesda games (script extender loader, plugin order by hand), Morrowind and Oblivion Remastered (the game's own plugin list), Cyberpunk 2077 (REDmod), The Witcher 3 (Script Merger), the RE Engine games (REFramework), Elden Ring and Dark Souls III (ModEngine 2), Stardew Valley (SMAPI's installer) |
+| Untested | Untested game | Every game that is not in the table |
+| Unsupported | Most mods won't work | Baldur's Gate 3, Dragon Age: Origins, Divinity: Original Sin 2 (mods outside the game's folder), Mass Effect Legendary Edition (its own mod manager), and the Linux build of a BepInEx game |
+
+The level of a known game is its `KnownGame::fit`. It comes from how the game
+loads mods, not from a test of the game: move a game up or down as it is
+tried.
 
 ## Storage
 

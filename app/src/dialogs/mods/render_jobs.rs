@@ -168,9 +168,11 @@ impl ModsDialog {
         for job in &v.jobs {
             let id = job.id;
             let failed = job.stage == JobStage::Failed;
+            let warned = job.warning.is_some();
             let active = format::is_active(job.stage);
             let (ic, color) = match job.stage {
                 JobStage::Failed => (Icon::Warning, theme::danger_text()),
+                JobStage::Done if warned => (Icon::Warning, theme::warning()),
                 JobStage::Done => (Icon::Check, theme::success()),
                 JobStage::Cancelled => (Icon::Close, theme::text_dim()),
                 _ => (Icon::Downloading, theme::accent()),
@@ -203,9 +205,17 @@ impl ModsDialog {
                     .px(px(14.))
                     .py(px(11.))
                     .rounded(px(14.))
-                    .bg(if failed { theme::danger_fill() } else { theme::card_fill() })
+                    .bg(match (failed, warned) {
+                        (true, _) => theme::danger_fill(),
+                        (_, true) => Hsla { a: 0.11, ..theme::warning().into() },
+                        _ => theme::card_fill(),
+                    })
                     .border_1()
-                    .border_color(if failed { Hsla { a: 0.3, ..theme::danger().into() } } else { theme::card_border() })
+                    .border_color(match (failed, warned) {
+                        (true, _) => Hsla { a: 0.3, ..theme::danger().into() },
+                        (_, true) => Hsla { a: 0.28, ..theme::warning().into() },
+                        _ => theme::card_border(),
+                    })
                     .child(icon(ic, px(20.), color))
                     .child(
                         div()
@@ -219,7 +229,11 @@ impl ModsDialog {
                                 div()
                                     .text_size(px(12.5))
                                     .line_height(px(17.))
-                                    .text_color(if failed { theme::danger_text() } else { theme::text_muted() })
+                                    .text_color(match (failed, warned) {
+                                        (true, _) => theme::danger_text().into(),
+                                        (_, true) => theme::readable(theme::warning()),
+                                        _ => Hsla::from(theme::text_muted()),
+                                    })
                                     .child(format::stage_text(job)),
                             )
                             .children(bar.map(|b| div().mt(px(3.)).child(b))),

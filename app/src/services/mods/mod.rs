@@ -134,6 +134,9 @@ pub struct Job {
     pub progress: Progress,
     /// Translated reason when `Failed`.
     pub error: Option<String>,
+    /// `Done`, but the mod will likely not work: the translated reason. The
+    /// job stays in the list until it is dismissed.
+    pub warning: Option<String>,
     /// Thunderstore dependencies installed along ("+2 dependencies").
     pub dependencies: usize,
 }

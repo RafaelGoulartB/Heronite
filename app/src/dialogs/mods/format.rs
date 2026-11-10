@@ -69,6 +69,7 @@ pub(super) fn stage_text(job: &Job) -> String {
         JobStage::Extracting => tr!("Unpacking…").to_string(),
         JobStage::NeedsChoices => tr!("Waiting for your choices").to_string(),
         JobStage::Installing => tr!("Installing…").to_string(),
+        JobStage::Done if job.warning.is_some() => job.warning.clone().unwrap_or_default(),
         JobStage::Done if job.dependencies > 0 => {
             let n = job.dependencies;
             tr!("Installed · {deps}", deps = trn!(n, "+{n} dependency", "+{n} dependencies"))
@@ -86,4 +87,27 @@ pub(super) fn initial(name: &str) -> String {
 
 pub(super) fn is_active(stage: JobStage) -> bool {
     !matches!(stage, JobStage::Done | JobStage::Failed | JobStage::Cancelled)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stage_text;
+    use crate::services::mods::{Job, JobStage};
+
+    #[test]
+    fn a_job_that_ended_with_a_warning_says_it_instead_of_installed() {
+        let mut job = Job {
+            id: 1,
+            game_key: "g".into(),
+            name: "Pack".into(),
+            stage: JobStage::Done,
+            progress: Default::default(),
+            error: None,
+            warning: None,
+            dependencies: 0,
+        };
+        assert_eq!(stage_text(&job), "Installed");
+        job.warning = Some("Installed, but the game will probably not see it.".into());
+        assert_eq!(stage_text(&job), "Installed, but the game will probably not see it.");
+    }
 }

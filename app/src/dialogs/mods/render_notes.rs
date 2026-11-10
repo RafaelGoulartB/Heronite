@@ -1,10 +1,11 @@
-//! Installed tab notices about the game itself: what mods cannot do for it
-//! (Baldur's Gate 3's `.pak` files, a Linux build, anti-cheat) and the mod
-//! loaders that the game has to be started through.
+//! Installed tab notices about the game itself: what to expect of its mods
+//! (`heronite_mods::support`), a Linux build, anti-cheat, and the mod loaders
+//! that the game has to be started through.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_i18n::tr;
+use heronite_mods::support::Level;
 
 use super::render_jobs::{tinted, Tone};
 use super::{ModsDialog, View};
@@ -29,20 +30,21 @@ fn words(title: Option<SharedString>, text: impl Into<SharedString>) -> Div {
 const BAN_RISK: [&str; 2] = ["eldenring", "darksouls3"];
 
 impl ModsDialog {
-    /// What mods cannot do for this game: short, one card each.
+    /// What to expect of mods for this game: short, one card each.
     pub(super) fn limit_notices(&self, v: &View) -> Vec<AnyElement> {
         let info = &v.g.info;
         let domain = info.nexus_domain.as_deref().or(info.known.and_then(|k| k.nexus_domain)).unwrap_or_default();
         let mut out = Vec::new();
-        if domain == "baldursgate3" {
-            out.push(
-                tinted(Tone::Warn, Icon::Warning)
-                    .child(words(
-                        Some(tr!("Most mods for this game cannot be applied").into()),
-                        tr!("Its .pak mods live in AppData/Larian Studios, outside the game's folder, so Heronite cannot apply them. Only Script Extender and native mods work."),
-                    ))
-                    .into_any_element(),
-            );
+        // A game expected to work says so in the header only.
+        let support = super::render_support::support_of(v);
+        let look = match support.level {
+            Level::Expected => None,
+            Level::Steps => Some((Tone::Warn, Icon::Build)),
+            Level::Untested => Some((Tone::Info, Icon::InfoOutlined)),
+            Level::Unsupported => Some((Tone::Error, Icon::Warning)),
+        };
+        if let Some((tone, ic)) = look {
+            out.push(tinted(tone, ic).child(words(Some(support.label().into()), support.explain())).into_any_element());
         }
         if BAN_RISK.contains(&domain) {
             let text = if domain == "eldenring" {
