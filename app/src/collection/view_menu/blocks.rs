@@ -96,38 +96,37 @@ impl CollectionView {
         let chip = |id: ElementId, on: bool| {
             pill(id, d).when(on, |s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()).text_color(theme::text_bright()))
         };
-        let mut picks: Vec<bool> = Vec::with_capacity(entries.len() + 1);
-        let mut chips: Vec<Stateful<Div>> = entries
+        // Chip `i`: a category of `entries`, or "Uncategorized" after them.
+        let uncategorized = !self.categories.is_empty();
+        let count = entries.len() + usize::from(uncategorized);
+        let picks: Vec<bool> = entries
             .iter()
-            .enumerate()
-            .map(|(i, c)| {
-                let on = self.category_on(&c.r);
-                picks.push(on);
-                let r = c.r.clone();
-                chip(("vm-cat", i).into(), on)
-                    .child(if c.smart() {
-                        icon(Icon::AutoAwesome, px(13.), c.colour).into_any_element()
-                    } else {
-                        dot(c.colour).into_any_element()
-                    })
-                    .child(div().min_w_0().truncate().child(c.name.clone()))
-                    .child(count_label(self.category_count(&c.r)))
-                    .when(c.smart(), |el| {
-                        el.tooltip(crate::ui::tooltip(tr!("Smart category: games join and leave it as they match its rules.")))
-                    })
-                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_category_ref(&r, cx)))
-            })
+            .map(|c| self.category_on(&c.r))
+            .chain(uncategorized.then(|| self.ui.categories.contains(UNCATEGORIZED)))
             .collect();
-        if !self.categories.is_empty() {
-            let on = self.ui.categories.contains(UNCATEGORIZED);
-            picks.push(on);
-            chips.push(
-                chip("vm-cat-none".into(), on)
+        let make = |i: usize, id: ElementId| -> Stateful<Div> {
+            let Some(c) = entries.get(i) else {
+                return chip(id, picks[i])
                     .child(icon(Icon::Label, px(13.), theme::text_muted()))
                     .child(category_label(UNCATEGORIZED))
-                    .on_click(cx.listener(|this, _, _, cx| this.toggle_category_filter(UNCATEGORIZED, cx))),
-            );
-        }
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_category_filter(UNCATEGORIZED, cx)));
+            };
+            let r = c.r.clone();
+            chip(id, picks[i])
+                .child(if c.smart() {
+                    icon(Icon::AutoAwesome, px(13.), c.colour).into_any_element()
+                } else {
+                    dot(c.colour).into_any_element()
+                })
+                .child(div().min_w_0().truncate().child(c.name.clone()))
+                .child(count_label(self.category_count(&c.r)))
+                .when(c.smart(), |el| {
+                    el.tooltip(crate::ui::tooltip(tr!("Smart category: games join and leave it as they match its rules.")))
+                })
+                .on_click(cx.listener(move |this, _, _, cx| this.toggle_category_ref(&r, cx)))
+        };
+        let chips: Vec<Stateful<Div>> =
+            (0..count).map(|i| make(i, if i < entries.len() { ("vm-cat", i).into() } else { "vm-cat-none".into() })).collect();
         let picked = self.ui.categories.len() + self.ui.smart_groups.len();
         let save = (self.ui.active_filters() > picked).then(|| {
             div()
@@ -144,15 +143,15 @@ impl CollectionView {
                 .child(tr!("Save filters as smart category…"))
                 .on_click(cx.listener(|this, _, window, cx| this.save_filters_as_group(window, cx)))
         });
-        // Past CATEGORY_ROWS rows the chips are cut off until "Show all",
-        // unless a picked one would be cut off. The rows are only known once
-        // laid out: each frame measures them, and a change draws once more.
-        let count = chips.len();
+        // Past CATEGORY_ROWS rows the chips are cut off until "Show all"; the
+        // picked ones that are cut off show after the rows, so a filter on
+        // never hides. The rows are only known once laid out: each frame
+        // measures them, and a change draws once more.
         let measured = self.view_menu.cats_cut.clone();
         let cut = measured.get();
-        let hidden_pick = cut.is_some_and(|c| picks.iter().skip(c.shown).any(|on| *on));
-        let all = self.view_menu.cats_all || hidden_pick;
-        let wrap = (!chips.is_empty()).then(|| {
+        let all = self.view_menu.cats_all;
+        let folded = cut.filter(|_| !all);
+        let wrap = (count > 0).then(|| {
             div()
                 .flex()
                 .flex_wrap()
@@ -165,10 +164,12 @@ impl CollectionView {
                         window.request_animation_frame();
                     }
                 })
-                .when_some(cut.filter(|_| !all), |el, c| el.max_h(px(c.height)).overflow_hidden())
+                .when_some(folded, |el, c| el.max_h(px(c.height)).overflow_hidden())
         });
-        // While a picked chip keeps them all open, there is nothing to fold.
-        let more = (cut.is_some() && !hidden_pick).then(|| {
+        let cut_picks: Vec<usize> = folded.map(|c| (c.shown..count).filter(|i| picks[*i]).collect()).unwrap_or_default();
+        let picked_after = (!cut_picks.is_empty())
+            .then(|| div().flex().flex_wrap().gap(px(CHIP_GAP)).children(cut_picks.into_iter().map(|i| make(i, ("vm-cat-cut", i).into()))));
+        let more = cut.is_some().then(|| {
             div()
                 .id("vm-cats-more")
                 .flex()
@@ -199,6 +200,7 @@ impl CollectionView {
             .child(section_head(tr!("Categories")).child(manage))
             .children(empty)
             .children(wrap)
+            .children(picked_after)
             .children(more)
             .children(save)
     }
