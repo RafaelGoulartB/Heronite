@@ -22,6 +22,7 @@ use indexmap::IndexMap;
 
 use super::bulk::initial;
 use super::counts::{missing_details, tag_steam_id};
+use super::fetch::{asks_details, mark_not_found};
 use super::gather::Gathered;
 use super::undo::{clear_backups, UndoLog};
 use super::{tag_fill, MetadataService, Offline, NO_DATA};
@@ -33,7 +34,7 @@ use crate::sources::{extra_fields, ids, is_on};
 use crate::steam_tags;
 use crate::store::{as_runner, get_all_game_metadata, get_game_metadata, upsert_game_metadata};
 use crate::types::{ArtKind, BulkArgs, BulkItem, BulkProgress, BulkState, MetadataApplyArgs};
-use crate::util::{blank_metadata, now_iso, now_ms};
+use crate::util::{blank_metadata, now_ms};
 
 type Records = anyhow::Result<IndexMap<String, CollectionGameMetadata>>;
 
@@ -323,13 +324,19 @@ impl MetadataService {
             }
             Some(_) => (!plan.fillable.is_empty()).then(|| Ask { fields: plan.only_fields.clone(), full: plan.full }),
         };
-        let ask = ask.filter(|_| !in_no_source && !all_locked);
+        // A game whose details were never fetched gets its pictures with
+        // them, from the idle fill: a job asking only for pictures leaves it
+        // (a record holding only a picture would keep the idle fill away).
+        let no_details =
+            ask.as_ref().is_some_and(|a| !asks_details(a.fields.as_deref())) && !METADATA_FIELDS.iter().any(|f| has_field_value(stored, f));
+        let ask = ask.filter(|_| !in_no_source && !all_locked && !no_details);
         let details = ask.map(|ask| self.job_details(plan, &ask, game, &key, known, undo));
 
         let (outcome, mut changes, error) = match details {
             Some(d) => (d.outcome, d.changes, d.error),
             None if in_no_source && !tag_asked => (GameOutcome::Skipped(SkipReason::InNoSource), Vec::new(), None),
             None if all_locked && !tag_asked => (GameOutcome::NoChange(NoChangeReason::Locked), Vec::new(), None),
+            None if no_details && !tag_asked => (GameOutcome::Skipped(SkipReason::NoDetails), Vec::new(), None),
             None if tag_asked && tags.unreachable => (GameOutcome::Offline, Vec::new(), None),
             None if tag_asked => (GameOutcome::NoChange(NoChangeReason::NothingNew), Vec::new(), None),
             None => {
@@ -389,11 +396,10 @@ impl MetadataService {
         if !asked {
             return Details { outcome: GameOutcome::Skipped(SkipReason::NoSource), changes: Vec::new(), error: None };
         }
-        if candidates.is_empty() {
+        if !self.found(ask.fields.as_deref(), &candidates) {
             if ask.full {
                 let mut failed = before.clone().unwrap_or_else(|| blank_metadata(&game.app_name, runner));
-                failed.fetch_error = Some(NO_DATA.into());
-                failed.fetched_at = Some(now_iso());
+                mark_not_found(&mut failed, &game.title);
                 if let Err(e) = write(failed, None, undo) {
                     return Details::failed(game, format!("{e:#}"));
                 }

@@ -562,7 +562,8 @@ text size) and applies it.
   Database's public API v2 ("Kana", no key): one `POST /vn` searches a
   title (any script, aliases) with every field, a pinned entry is read by
   its id (`v17`, or a vndb.org address typed in a search); its client keeps
-  under VNDB's 200 requests per 5 minutes and waits out a 429; its tags
+  under VNDB's 200 requests per 5 minutes and waits out a 429, a few
+  seconds at most (longer, VNDB counts as unreachable); its tags
   (content, no spoilers, rated 2+, 12 at most) are themes, its genre is
   "Visual Novel", its 10..100 rating the score, a safe landscape screenshot
   the background. `launchbox` is the LaunchBox Games Database: no API, the
@@ -665,12 +666,15 @@ text size) and applies it.
   source, lock, order, file `cover-square.*` / `cover-wide.*` beside
   `cover.*`); a fetch fills the kept families only, and
   `BulkArgs::download_covers` / `service/families` (`cover_family_job`, what a
-  view that starts using a family queues) fill one for the games lacking
-  it; `family_lack` lists those games (and whether a source that gives the
-  family can be asked now) whatever the automatic download says, for the
-  notices and the "Download <family> covers" rows (a source counts only when
-  it is for some game: a Collection without emulated games is not offered
-  libretro's covers). `service` asks the sources that apply to a game in parallel,
+  view that starts using a family queues, once while one runs or waits)
+  fill one for the games with details lacking it (a game without details is
+  left to the idle fill: a fetch of pictures only neither marks a game as
+  fetched nor as failed, and only a details source's answer counts as
+  finding a game); `family_lack` lists those games (and whether a source
+  that gives the family can be asked now) whatever the automatic download
+  says, for the notices and the "Download <family> covers" rows (a source
+  counts only when it is for some game: a Collection without emulated games
+  is not offered libretro's covers). `service` asks the sources that apply to a game in parallel,
   marks a fetch offline when every network source asked was unreachable,
   and `merge` combines the candidates field by field
   (`settings.metadata.fieldPriority`, whose defaults stay in

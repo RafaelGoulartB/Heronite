@@ -169,3 +169,36 @@ fn search_hits_carry_the_other_title_and_platforms() {
     assert_eq!(platform_name("win"), "Windows");
     assert_eq!(platform_name("x68"), "X68");
 }
+
+/// A client whose window is full, its oldest request sent `age` ago.
+fn full_window(age: Duration) -> Option<Vndb> {
+    let now = Instant::now();
+    let oldest = now.checked_sub(age)?;
+    let client = Vndb::new();
+    let mut sent = client.sent.lock();
+    sent.push_back(oldest);
+    sent.extend(std::iter::repeat_n(now, WINDOW_REQUESTS - 1));
+    drop(sent);
+    Some(client)
+}
+
+#[test]
+fn a_full_window_gives_up_at_once_instead_of_waiting_minutes() {
+    let Some(client) = full_window(Duration::from_secs(1)) else { return };
+    let started = Instant::now();
+    assert!(client.slot().is_err());
+    assert!(started.elapsed() < Duration::from_secs(1), "gave up after {:?}", started.elapsed());
+    assert_eq!(client.sent.lock().len(), WINDOW_REQUESTS, "no slot taken");
+}
+
+#[test]
+fn a_slot_freed_soon_is_waited_for_without_holding_the_lock() {
+    let Some(client) = full_window(WINDOW - Duration::from_millis(400)) else { return };
+    std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| client.slot());
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(client.sent.try_lock().is_some(), "another lookup can see the window while one waits");
+        assert!(waiting.join().unwrap().is_ok());
+    });
+    assert_eq!(client.sent.lock().len(), WINDOW_REQUESTS);
+}

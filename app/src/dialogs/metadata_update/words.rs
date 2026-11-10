@@ -33,7 +33,8 @@ impl Bucket {
     pub fn of(o: &GameOutcome) -> Self {
         match o {
             GameOutcome::Updated => Self::Updated,
-            GameOutcome::NoChange(_) | GameOutcome::Skipped(SkipReason::AlreadyFetched | SkipReason::NoSource | SkipReason::InNoSource) => {
+            GameOutcome::NoChange(_)
+            | GameOutcome::Skipped(SkipReason::AlreadyFetched | SkipReason::NoSource | SkipReason::InNoSource | SkipReason::NoDetails) => {
                 Self::NoChange
             }
             GameOutcome::ToReview(_) => Self::ToReview,
@@ -93,6 +94,7 @@ pub(crate) fn reason(o: &GameOutcome) -> &'static str {
         GameOutcome::Skipped(SkipReason::NoSource) => tr!("No source is for this game"),
         GameOutcome::Skipped(SkipReason::Stopped) => tr!("The update stopped before it"),
         GameOutcome::Skipped(SkipReason::InNoSource) => tr!("You said no source has this game"),
+        GameOutcome::Skipped(SkipReason::NoDetails) => tr!("Its details are not fetched yet"),
     }
 }
 

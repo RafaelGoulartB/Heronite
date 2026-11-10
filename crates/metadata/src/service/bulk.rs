@@ -22,7 +22,7 @@ use super::fetch::NoSourceAsked;
 use super::job_run::result_of;
 use super::undo::UndoLog;
 use super::{is_offline, is_sent_to_review, tag_fill, MetadataService};
-use crate::job::{GameOutcome, QueuedJob, SkipReason};
+use crate::job::{GameOutcome, JobKind, QueuedJob, SkipReason};
 use crate::sources::is_on;
 use crate::store::get_all_game_metadata;
 use crate::types::*;
@@ -103,6 +103,12 @@ impl MetadataService {
     /// Whether a job runs or waits (the idle fills give way to it).
     pub(super) fn job_pending(&self) -> bool {
         self.jobs.lock().running
+    }
+
+    /// Whether a job of `kind` runs or waits.
+    pub(super) fn job_of_kind(&self, kind: JobKind) -> bool {
+        let jobs = self.jobs.lock();
+        (jobs.running && jobs.progress.is_running() && jobs.progress.kind == kind) || jobs.queue.iter().any(|q| q.args.kind == kind)
     }
 
     /// Whether job `id` was asked to stop.

@@ -387,6 +387,7 @@
   "Its fields are locked": "Sus campos están bloqueados",
   "The sources were not sure: waiting for review": "Las fuentes no estaban seguras: espera revisión",
   "You said no source has this game": "Dijiste que ninguna fuente tiene este juego",
+  "Its details are not fetched yet": "Sus detalles aún no se han obtenido",
   "{n} field filled": "{n} campo rellenado",
   "{n} fields filled": "{n} campos rellenados",
   "{n} field updated": "{n} campo actualizado",

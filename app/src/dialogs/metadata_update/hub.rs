@@ -129,8 +129,9 @@ impl MetadataHub {
         this
     }
 
-    /// Reads the review queue off the UI thread into [`Self::queue`].
-    fn read_queue(&mut self, cx: &mut Context<Self>) {
+    /// Reads the review queue off the UI thread into [`Self::queue`]; also
+    /// after a change made without the service (a game removed).
+    pub(crate) fn read_queue(&mut self, cx: &mut Context<Self>) {
         let service = self.service.clone();
         cx.spawn(async move |this, cx| {
             let queue = cx.background_spawn(async move { service.review_queue() }).await;

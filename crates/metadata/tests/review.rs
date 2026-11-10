@@ -629,3 +629,45 @@ fn the_collection_is_classified_from_disk_quickly() {
     assert_eq!((counts.to_review, counts.without_match, counts.needs_attention, counts.in_no_source), (n, 3 * n, 5 * n, n));
     assert_eq!(s.svc.needs_attention(&games).unwrap().len(), 5 * n);
 }
+
+#[test]
+fn a_field_picked_from_a_guess_does_not_make_the_guess_sure() {
+    let s = setup();
+    // IGDB guesses Silksong for Hollow Knight: left out, but the user takes its description.
+    let preview = s.svc.preview_game_metadata(&args("hk", "Hollow Knight")).unwrap();
+    assert_eq!(preview.review, Some(ReviewReason::LoneGuess));
+    let mut a = args("hk", "Hollow Knight");
+    a.field_picks = Some(IndexMap::from([("description".to_string(), "igdb".to_string())]));
+    let saved = s.svc.apply_preview(&preview, &a).unwrap();
+    assert_eq!(saved.description.as_deref(), Some("About Hollow Knight: Silksong."));
+    assert!(saved.igdb_id.is_none() && record::source_match(&saved, "igdb").is_none());
+
+    // The next update finds the game again by its name, and is still not sure.
+    let done = run(&s.svc, BulkArgs::update(vec![item("hk")], UpdateMode::Refresh, None, None));
+    assert_eq!(done.results[0].outcome, GameOutcome::ToReview(ReviewReason::LoneGuess));
+    assert_eq!(igdb_by_id(&s.server, 500), 0);
+
+    // A game the user pins is recorded, picked fields or not.
+    let mut pinned = a.clone();
+    pinned.pins = Some(IndexMap::from([("igdb".to_string(), Some("500".to_string()))]));
+    let saved = s.svc.apply_preview(&preview, &pinned).unwrap();
+    let m = record::source_match(&saved, "igdb").unwrap();
+    assert_eq!((m.id.as_str(), m.pinned), ("500", true));
+}
+
+#[test]
+fn a_game_in_no_source_renamed_and_still_not_found_waits_a_week() {
+    let s = setup();
+    assert!(matches!(s.svc.resolve_review(&item("ghost"), &Resolution::InNoSource).unwrap(), Resolved::InNoSource));
+    json_store::update_value(&s.paths.local_meta(), |v| {
+        v["games"]["ghost"]["title"] = json!("Ghost Game Deluxe");
+        Ok(())
+    })
+    .unwrap();
+    s.svc.refresh_missing_collection_metadata().unwrap();
+    assert_eq!(igdb_search(&s.server, "Ghost Game Deluxe"), 1, "renamed: asked again");
+    let md = get(&s.svc, "ghost").unwrap();
+    assert!(md.fetch_error.is_some() && record::no_match(&md).is_none(), "the old title's mark goes");
+    s.svc.refresh_missing_collection_metadata().unwrap();
+    assert_eq!(igdb_search(&s.server, "Ghost Game Deluxe"), 1, "not asked again before a week");
+}

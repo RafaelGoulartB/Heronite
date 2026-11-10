@@ -47,6 +47,9 @@ impl CoversDialog {
     /// Searches the picked slot's pictures with the words typed (the game's
     /// title to start), or shows the ones already found for them.
     pub(super) fn search(&mut self, cx: &mut Context<Self>) {
+        // Every search, even one shown from before, makes the answers of
+        // those still running stale: they must not replace what is shown.
+        self.request += 1;
         self.selected = None;
         self.visible = found::PAGE;
         self.results = ArtImages::default();
@@ -64,7 +67,6 @@ impl CoversDialog {
             cx.notify();
             return;
         }
-        self.request += 1;
         let (id, slot) = (self.request, self.slot);
         self.loading = true;
         self.error.clear();
@@ -99,6 +101,7 @@ impl CoversDialog {
                 self.searched.insert((slot, typed), list.clone());
                 if self.slot == slot {
                     self.results = list;
+                    self.selected = None;
                 }
             }
             Err(err) => self.error = format!("{err:#}"),

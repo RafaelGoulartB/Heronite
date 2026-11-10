@@ -11,6 +11,7 @@ use heronite_data::{DataPaths, Library};
 use heronite_i18n::{tr, trn};
 use heronite_metadata::remove::{remove_collection_game, RemoveOutcome, ShortcutDirs};
 
+use super::metadata_update::hub::{hub, HubGlobal};
 use super::{DialogCtx, DialogEvent};
 use crate::theme;
 use crate::ui::controls::{button, ButtonKind};
@@ -189,6 +190,10 @@ impl RemoveGameDialog {
                 .await;
             this.update(cx, |this, cx| {
                 this.working = false;
+                // A removed game leaves the review queue (the header pill's).
+                if cx.has_global::<HubGlobal>() {
+                    hub(cx).update(cx, |hub, cx| hub.read_queue(cx));
+                }
                 let mut failed = Vec::new();
                 let mut first_error = None;
                 for ((target, origin), result) in this.targets.iter().zip(origins).zip(results) {

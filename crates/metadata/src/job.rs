@@ -165,6 +165,9 @@ pub enum SkipReason {
     Stopped,
     /// The user said no source has this game ("In no source").
     InNoSource,
+    /// The job asked only for pictures and the game's details were never
+    /// fetched: the idle fill fetches them, pictures included.
+    NoDetails,
 }
 
 /// One game of a job.

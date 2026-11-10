@@ -116,7 +116,41 @@ pub(super) fn decide(
     }
 }
 
+/// Whether a fetch of `fields` (`None`: every field) asks for the game's
+/// details: some `METADATA_FIELDS` entry. One that asks only for the other
+/// cover families' pictures (a family's download) is no fetch of the
+/// details: it neither marks the game as fetched nor as failed.
+pub(super) fn asks_details(fields: Option<&[String]>) -> bool {
+    fields.is_none_or(|fields| fields.iter().any(|f| METADATA_FIELDS.contains(&f.as_str())))
+}
+
+/// Marks `md` as found in no source (`fetchError`, so the idle fill tries
+/// again after a week). A "in no source" said under another title goes:
+/// it no longer holds, and kept it would have the idle fill ask again at
+/// every start.
+pub(super) fn mark_not_found(md: &mut CollectionGameMetadata, title: &str) {
+    md.fetch_error = Some(NO_DATA.into());
+    md.fetched_at = Some(now_iso());
+    if record::no_match(md).is_some() && !record::marked_no_match(md, title) {
+        record::clear_no_match(md);
+    }
+}
+
 impl MetadataService {
+    /// Whether `candidates` answer a fetch of `fields` (`None`: every
+    /// field). One that [asks for details](asks_details) is answered only
+    /// by a details source: a pictures source alone does not say which game
+    /// it is, so the game counts as found by no source (`fetchError`, tried
+    /// again by the idle fill, "failed last time"). One that asks only for
+    /// pictures, by any source.
+    pub(super) fn found(&self, fields: Option<&[String]>, candidates: &[MetadataCandidate]) -> bool {
+        if asks_details(fields) {
+            candidates.iter().any(|c| !self.is_picture_source(&c.source))
+        } else {
+            !candidates.is_empty()
+        }
+    }
+
     /// Whether `source` is a pictures source (SteamGridDB): see [`decide`].
     pub(super) fn is_picture_source(&self, source: &str) -> bool {
         self.sources.get(source).is_some_and(|d| d.kind == SourceKind::Pictures)
@@ -201,7 +235,10 @@ impl MetadataService {
 
     /// The merge of `candidates` (those to save) into `current`, with the
     /// locked fields kept, the locks of the arguments set, and the matches
-    /// of the candidates recorded.
+    /// of the candidates recorded. It marks the game as fetched only when it
+    /// asks for details and a details source is among `candidates`
+    /// ([`found`](Self::found)); otherwise the record keeps its
+    /// `fetchedAt` and `fetchError`.
     pub(super) fn propose(
         &self,
         args: &MetadataApplyArgs,
@@ -256,6 +293,11 @@ impl MetadataService {
             record::clear_no_match(&mut proposed);
         }
         record_matches(args, current, candidates, &mut proposed);
+        let asked = args.only_fields.as_deref();
+        if !(asks_details(asked) && self.found(asked, candidates)) {
+            proposed.fetched_at = current.and_then(|c| c.fetched_at.clone());
+            proposed.fetch_error = current.and_then(|c| c.fetch_error.clone());
+        }
         proposed
     }
 
@@ -317,8 +359,10 @@ impl MetadataService {
     }
 
     /// `applyGameMetadata`: fetch, merge and store. When no provider answers
-    /// the record is stored with `fetchError` so the idle fill retries after
-    /// a week. When none could be reached at all nothing is stored
+    /// ([`found`](Self::found): a pictures source alone does not count) the
+    /// record is stored with `fetchError` so the idle fill retries after a
+    /// week; a fetch of pictures only stores nothing then. When none could
+    /// be reached at all nothing is stored
     /// ([`Offline`]): local data alone must not count as a fetch; nor when
     /// none was asked (`NoSourceAsked`: each is off or not for the game).
     /// When the sources are not sure which game it is, nothing is stored and
@@ -332,10 +376,13 @@ impl MetadataService {
         if !asked {
             return Err(NoSourceAsked.into());
         }
-        if preview.candidates.is_empty() {
+        let fields = args.only_fields.as_deref();
+        if !self.found(fields, &preview.candidates) {
+            if !asks_details(fields) {
+                bail!(NO_DATA);
+            }
             let mut failed = current_or_blank(&self.paths, runner, &args.app_name)?;
-            failed.fetch_error = Some(NO_DATA.into());
-            failed.fetched_at = Some(now_iso());
+            mark_not_found(&mut failed, &args.title);
             return upsert_game_metadata(&self.paths, failed);
         }
         if let Some(reason) = preview.review {
@@ -353,9 +400,11 @@ impl MetadataService {
     /// again: the preview's candidates are merged with `args` (`field_picks`,
     /// `pins`, `locks` and the merge options) over the saved record. The
     /// candidates an automatic update would leave out are used only for the
-    /// fields picked from them. A fetch by hand: the game leaves the review
-    /// queue and loses its "in no source" mark. Nothing is written, and an
-    /// error returned, when the preview holds no online data.
+    /// fields picked from them: their match is not recorded (an unsure guess
+    /// would be looked up as sure from then on), unless the user pinned it.
+    /// A fetch by hand: the game leaves the review queue and loses its "in
+    /// no source" mark. Nothing is written, and an error returned, when the
+    /// preview holds no online data.
     pub fn apply_preview(&self, preview: &MetadataPreview, args: &MetadataApplyArgs) -> Result<CollectionGameMetadata> {
         if preview.offline {
             return Err(Offline.into());
@@ -368,18 +417,15 @@ impl MetadataService {
         let mut args = args.clone();
         args.runner = runner;
         let decision = self.decide(&preview.candidates, current.as_ref());
-        let chosen: HashSet<&str> = args
-            .field_picks
-            .iter()
-            .flat_map(|p| p.values())
-            .chain(args.pins.iter().flat_map(|p| p.iter().filter(|(_, id)| id.is_some()).map(|(s, _)| s)))
-            .map(String::as_str)
-            .collect();
+        let pinned: HashSet<&str> =
+            args.pins.iter().flat_map(|p| p.iter().filter(|(_, id)| id.is_some()).map(|(s, _)| s.as_str())).collect();
+        let picked: HashSet<&str> = args.field_picks.iter().flat_map(|p| p.values()).map(String::as_str).collect();
+        let matched = |c: &MetadataCandidate| pinned.contains(c.source.as_str()) || decision.used.iter().any(|u| u.source == c.source);
         let used: Vec<MetadataCandidate> = preview
             .candidates
             .iter()
-            .filter(|c| chosen.contains(c.source.as_str()) || decision.used.iter().any(|u| u.source == c.source))
-            .cloned()
+            .filter(|c| matched(c) || picked.contains(c.source.as_str()))
+            .map(|c| if matched(c) { c.clone() } else { picked_only(c) })
             .collect();
         let mut proposed = self.propose(&args, current.as_ref(), &used);
         record::clear_no_match(&mut proposed);
@@ -401,6 +447,18 @@ impl MetadataService {
             Ok(Some(md.clone()))
         })
     }
+}
+
+/// `c` for the fields picked from it alone: without its match and the ids
+/// the merge would copy into the record (IGDB, Lutris, Steam).
+fn picked_only(c: &MetadataCandidate) -> MetadataCandidate {
+    let mut c = c.clone();
+    c.match_id = None;
+    c.metadata.igdb_id = None;
+    c.metadata.igdb_slug = None;
+    c.metadata.lutris_slug = None;
+    c.metadata.steam_app_id = None;
+    c
 }
 
 /// Records which game of its source each candidate with an id is. A match

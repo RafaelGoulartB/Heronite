@@ -3,8 +3,8 @@
 //!
 //! Only `sideload` games can be removed. The game does not get uninstalled:
 //! its entry in `sideload_apps/library.json`, its Collection data (overlay
-//! meta, sessions, metadata, art, playtime) and its recent/favourite/hidden
-//! entries are deleted. Desktop and start menu shortcuts go too.
+//! meta, sessions, metadata, art, playtime, its place in the review queue)
+//! and its recent/favourite/hidden entries are deleted. Desktop and start menu shortcuts go too.
 //!
 //! Removing the game from Steam's non-Steam shortcuts (`removeNonSteamGame`)
 //! lives in the app (`system::shortcuts`); the app passes
@@ -13,6 +13,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
+use heronite_data::library::metadata_key;
 use heronite_data::models::{LocalMetaFile, SessionsFile};
 use heronite_data::paths::DataPaths;
 use heronite_data::text::sanitize_filename;
@@ -22,6 +23,7 @@ use serde_json::Value;
 
 use crate::art::remove_all_collection_game_art;
 use crate::images::remove_metadata_art;
+use crate::review;
 use crate::store::delete_game_metadata;
 
 /// Message of the refusal for stores other than the Local Collection.
@@ -139,6 +141,10 @@ pub fn remove_collection_game(paths: &DataPaths, shortcuts: &ShortcutDirs, app_n
     remove_all_collection_game_art(paths, runner, app_name)?;
     delete_game_metadata(paths, runner, app_name)?;
     remove_metadata_art(paths, runner, app_name);
+    let key = metadata_key(runner, app_name);
+    if review::load(paths).games.contains_key(&key) {
+        review::update(paths, |file| Ok(file.games.shift_remove(&key)))?;
+    }
     json_store::update_value(&paths.timestamps(), |doc| {
         if let Some(map) = doc.as_object_mut() {
             map.shift_remove(app_name);
@@ -247,6 +253,22 @@ mod tests {
         assert!(!e.shortcuts.desktop.join("Game A.desktop").exists());
         assert!(!e.shortcuts.applications.join("Game A.desktop").exists());
         assert!(e.shortcuts.applications.join("B.desktop").exists(), "other shortcuts stay");
+    }
+
+    #[test]
+    fn a_removed_game_leaves_the_review_queue() {
+        let e = env();
+        review::update(&e.paths, |file| {
+            for app in ["a", "b"] {
+                let entry = crate::review::ReviewEntry::new(app, "sideload", app, crate::review::ReviewReason::LoneGuess, &[]);
+                file.games.insert(format!("sideload:{app}"), entry);
+            }
+            Ok(())
+        })
+        .unwrap();
+        remove_collection_game(&e.paths, &e.shortcuts, "a", "sideload").unwrap();
+        let queued: Vec<String> = review::load(&e.paths).games.into_keys().collect();
+        assert_eq!(queued, ["sideload:b"]);
     }
 
     #[test]

@@ -5,7 +5,9 @@
 //! VNDB asks clients to stay under 200 requests per 5 minutes (and a second
 //! of server time per minute) and answers 429 past that: [`Vndb`] keeps the
 //! requests of the last 5 minutes under the limit, and backs off and tries
-//! again on a 429. Requests say who they are ([`APP_UA`]), nothing more.
+//! again on a 429. It never waits long ([`MAX_WAIT`]): past that VNDB counts
+//! as unreachable for the lookup, so a job's Stop and the dialogs' searches
+//! never hang on it. Requests say who they are ([`APP_UA`]), nothing more.
 //!
 //! Images carry the flagging votes of VNDB's users (`sexual`, `violence`,
 //! 0..=2 each). VNDB calls an image safe (and tame) while both averages are
@@ -51,9 +53,11 @@ const MIN_TAG_RATING: f64 = 2.0;
 const WINDOW_REQUESTS: usize = 190;
 const WINDOW: Duration = Duration::from_secs(300);
 /// Waits before trying again after a 429 without `Retry-After`.
-const BACKOFF: [Duration; 2] = [Duration::from_secs(5), Duration::from_secs(20)];
-/// The longest `Retry-After` honoured.
-const MAX_WAIT: Duration = Duration::from_secs(60);
+const BACKOFF: [Duration; 2] = [Duration::from_secs(1), Duration::from_secs(4)];
+/// The longest wait for a free slot of the window, or after a 429: a
+/// longer one gives up (unreachable). In a steady run the window frees a
+/// slot as fast as the requests went out, so only a burst waits that long.
+const MAX_WAIT: Duration = Duration::from_secs(5);
 
 /// What the user set for VNDB (its descriptor's options).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -366,27 +370,37 @@ impl Vndb {
         Self::default()
     }
 
-    /// Waits for a free slot of the window, then takes it.
-    fn slot(&self) {
-        let mut sent = self.sent.lock();
-        while sent.front().is_some_and(|at| at.elapsed() >= WINDOW) {
-            sent.pop_front();
-        }
-        if sent.len() >= WINDOW_REQUESTS {
-            if let Some(oldest) = sent.pop_front() {
-                std::thread::sleep(WINDOW.saturating_sub(oldest.elapsed()));
+    /// Takes a free slot of the window, waiting for one at most
+    /// [`MAX_WAIT`] (outside the lock: the other lookups go on).
+    fn slot(&self) -> Result<(), Throttled> {
+        let deadline = Instant::now() + MAX_WAIT;
+        loop {
+            let wait = {
+                let mut sent = self.sent.lock();
+                while sent.front().is_some_and(|at| at.elapsed() >= WINDOW) {
+                    sent.pop_front();
+                }
+                if sent.len() < WINDOW_REQUESTS {
+                    sent.push_back(Instant::now());
+                    return Ok(());
+                }
+                sent.front().map_or(Duration::ZERO, |oldest| WINDOW.saturating_sub(oldest.elapsed()))
+            };
+            if Instant::now() + wait > deadline {
+                return Err(Throttled);
             }
+            std::thread::sleep(wait);
         }
-        sent.push_back(Instant::now());
     }
 
     /// `POST /vn` with `body`; after a 429, waits (`Retry-After`, else
-    /// [`BACKOFF`]) and tries again, twice at most.
+    /// [`BACKOFF`]) and tries again, twice at most, unless the wait asked is
+    /// longer than [`MAX_WAIT`].
     fn query(&self, http: &Http, body: &Value) -> anyhow::Result<Vec<Vn>> {
         let url = format!("{}/vn", http.endpoints.vndb);
         let body = body.to_string();
         for attempt in 0..=BACKOFF.len() {
-            self.slot();
+            self.slot()?;
             let resp = http
                 .post(&url)
                 .header("Content-Type", "application/json")
@@ -396,7 +410,10 @@ impl Vndb {
                 .send()?;
             if resp.status == 429 {
                 let Some(wait) = BACKOFF.get(attempt) else { break };
-                let wait = resp.retry_after.map(Duration::from_secs).unwrap_or(*wait).min(MAX_WAIT);
+                let wait = resp.retry_after.map(Duration::from_secs).unwrap_or(*wait);
+                if wait > MAX_WAIT {
+                    break;
+                }
                 log::info!("VNDB asked to slow down; trying again in {}s", wait.as_secs());
                 std::thread::sleep(wait);
                 continue;

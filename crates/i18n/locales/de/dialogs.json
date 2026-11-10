@@ -387,6 +387,7 @@
   "Its fields are locked": "Seine Felder sind gesperrt",
   "The sources were not sure: waiting for review": "Die Quellen waren nicht sicher: wartet auf Prüfung",
   "You said no source has this game": "Laut dir hat keine Quelle dieses Spiel",
+  "Its details are not fetched yet": "Seine Details sind noch nicht abgerufen",
   "{n} field filled": "{n} Feld gefüllt",
   "{n} fields filled": "{n} Felder gefüllt",
   "{n} field updated": "{n} Feld aktualisiert",
