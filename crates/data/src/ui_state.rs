@@ -311,6 +311,11 @@ impl UiState {
                 *doc = Value::Object(Default::default());
             }
             let obj = doc.as_object_mut().expect("object");
+            // Not written when no group is picked (see `ViewFilters::to_value`):
+            // the groups picked before would come back on the next start.
+            if !known.contains_key("smartGroups") {
+                obj.remove("smartGroups");
+            }
             for (k, v) in known {
                 obj.insert(k, v);
             }
@@ -1065,6 +1070,11 @@ mod tests {
         assert!(!loaded.prune_smart_groups(|_| true));
         loaded.clear_filters();
         assert_eq!(loaded.active_filters(), 0);
+        // No group picked when the app closed: none when it starts again.
+        loaded.save(&paths).unwrap();
+        assert!(UiState::load(&paths).smart_groups.is_empty());
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert!(on_disk.get("smartGroups").is_none());
     }
 
     #[test]
