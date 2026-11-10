@@ -135,7 +135,9 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
         playtimes.insert(key.clone(), merged);
     }
     for (id, stamped) in &ledger.groups {
-        if local.groups.get(id).unwrap_or(&Value::Null) != &stamped.value {
+        // A group this PC can't read (from a newer version) is never stored
+        // here, so it would count as a change on every sync.
+        if local.groups.get(id).unwrap_or(&Value::Null) != &stamped.value && crate::local::storable_group(id, &stamped.value) {
             changes.groups.push(GroupChange { id: id.clone(), value: stamped.value.clone() });
         }
     }
