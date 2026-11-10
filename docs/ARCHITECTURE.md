@@ -395,8 +395,10 @@ text size) and applies it.
   sealed with DPAPI on Windows; signing out ends the sign-in on Steam with
   `RevokeToken`, so it leaves the account's authorized devices, and
   deletes the file even when Steam cannot be reached) (games only: no tools,
-  soundtracks, demos, test servers or games hidden in Steam), caches it and
-  adds the games the Collection does not have yet; Steam's play time moves
+  soundtracks, demos or test servers), caches it and adds the games the
+  Collection does not have yet (a game hidden in Steam comes in hidden, read
+  from the client or, for the account, from Steam's
+  `userdata/<id>/config/cloudstorage` files); Steam's play time moves
   the Steam entries up when it is ahead. A Steam entry still "Not played"
   (the status the scan of the installed games gave it before the library was
   read; the scan now starts a game as "Played" when the cached library has

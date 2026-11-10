@@ -18,6 +18,7 @@
 pub mod account;
 pub mod client;
 pub mod files;
+pub mod hidden;
 pub mod library;
 pub mod options;
 pub mod vdf_edit;

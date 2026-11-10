@@ -179,8 +179,26 @@ impl SteamPage {
             return Some((e.clone(), true));
         }
         match s.last.as_ref()? {
-            Ok(r) if r.added > 0 => Some((trn!(r.added, "Added {n} game to the Collection.", "Added {n} games to the Collection."), false)),
-            Ok(_) => Some((tr!("The Collection already has every game of your library.").to_string(), false)),
+            Ok(r) => {
+                let mut said: Vec<String> = Vec::new();
+                if r.added > 0 {
+                    said.push(trn!(r.added, "Added {n} game to the Collection.", "Added {n} games to the Collection.").to_string());
+                }
+                if r.hidden_added > 0 {
+                    said.push(
+                        trn!(
+                            r.hidden_added,
+                            "Added {n} game you hid in Steam, hidden here too",
+                            "Added {n} games you hid in Steam, hidden here too"
+                        )
+                        .to_string(),
+                    );
+                }
+                if said.is_empty() {
+                    said.push(tr!("The Collection already has every game of your library.").to_string());
+                }
+                Some((said.join("  \u{b7}  "), false))
+            }
             Err(e) => Some((e.clone(), true)),
         }
     }
@@ -211,7 +229,7 @@ impl SteamPage {
             status: Some(self.status(cx)).map(|(text, tone)| (text.into(), tone)),
             facts: vec![
                 methods::brings(tr!("Reads the Steam app already open and signed in here")),
-                methods::brings(tr!("Leaves out the games you hid in Steam and brings Family Sharing games")),
+                methods::brings(tr!("Brings the games you hid in Steam, hidden here too, and Family Sharing games")),
                 methods::needs(tr!("Needs Steam running on this PC")),
             ],
             notice,

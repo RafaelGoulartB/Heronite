@@ -66,7 +66,7 @@ impl SteamPage {
             }
             (true, false) => {
                 Some((
-                    tr!("Used whenever method 1 cannot read your library. While it can, method 1 stays the source: it knows your hidden and Family Sharing games.")
+                    tr!("Used whenever method 1 cannot read your library. While it can, method 1 stays the source: it knows your Family Sharing games.")
                         .to_string(),
                     Tone::Neutral,
                 ))
@@ -133,7 +133,7 @@ impl SteamPage {
                 methods::brings(tr!("Works when Steam on this PC cannot be read")),
                 methods::brings(tr!("Brings play time; private profiles work too")),
                 methods::needs(tr!("One sign-in with the Steam app on your phone. Heronite never sees your password")),
-                methods::needs(tr!("Does not know Family Sharing games or the games you hid in Steam")),
+                methods::needs(tr!("Does not know Family Sharing games")),
             ],
             notice,
             body,

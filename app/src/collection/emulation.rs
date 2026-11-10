@@ -279,6 +279,16 @@ impl CollectionView {
                         .to_string(),
                 );
             }
+            if report.hidden_added > 0 {
+                said.push(
+                    trn!(
+                        report.hidden_added,
+                        "Added {n} game you hid in Steam, hidden here too",
+                        "Added {n} games you hid in Steam, hidden here too"
+                    )
+                    .to_string(),
+                );
+            }
             if report.family_removed > 0 {
                 said.push(
                     trn!(
