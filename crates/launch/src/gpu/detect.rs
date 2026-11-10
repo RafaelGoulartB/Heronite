@@ -4,6 +4,9 @@
 //!
 //! [`Machine::detect`] blocks (it reads files and runs `vulkaninfo`, about
 //! half a second): call it off the UI thread.
+//!
+//! On Windows it asks DXGI instead ([`PreferenceCards`]): the GPU tab there
+//! only picks Windows' per-program GPU preference.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -75,10 +78,49 @@ pub struct Machine {
     pub anti_lag: bool,
     /// Version of the loaded `nvidia` kernel module, like `580.82.07`.
     pub nvidia_driver: Option<String>,
+    /// Windows: the cards behind each GPU preference.
+    pub preference_cards: PreferenceCards,
+}
+
+/// The cards Windows gives a program set to "Power saving" and to "High
+/// performance" (the first adapter of DXGI's order for each).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PreferenceCards {
+    pub power_saving: Option<String>,
+    pub high_performance: Option<String>,
+    /// How many hardware adapters there are.
+    pub count: usize,
+}
+
+impl PreferenceCards {
+    /// Asks DXGI (nothing elsewhere than on Windows).
+    pub fn detect() -> Self {
+        #[cfg(windows)]
+        {
+            let a = heronite_platform::gpu_adapters::Adapters::detect();
+            Self {
+                power_saving: a.power_saving.first().map(|c| c.name.clone()),
+                high_performance: a.high_performance.first().map(|c| c.name.clone()),
+                count: a.high_performance.len(),
+            }
+        }
+        #[cfg(not(windows))]
+        Self::default()
+    }
+
+    /// Both choices draw on the same card (one card, or Windows sees no
+    /// difference between them).
+    pub fn same(&self) -> bool {
+        self.count < 2 || self.power_saving == self.high_performance
+    }
 }
 
 impl Machine {
     pub fn detect(probe: &dyn Probe) -> Self {
+        // No sysfs, and the Linux options do not apply.
+        if cfg!(windows) {
+            return Self { preference_cards: PreferenceCards::detect(), ..Default::default() };
+        }
         let vulkan = vulkan_devices();
         let ids = std::fs::read_to_string(PCI_IDS.iter().find(|p| Path::new(p).is_file()).copied().unwrap_or("")).unwrap_or_default();
         let mut cards: Vec<Card> = drm_slots()
@@ -120,6 +162,7 @@ impl Machine {
                 .map(|b| String::from_utf8_lossy(&b).trim().to_string())
                 .filter(|v| !v.is_empty()),
             cards,
+            preference_cards: PreferenceCards::default(),
         }
     }
 

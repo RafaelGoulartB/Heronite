@@ -21,6 +21,13 @@ pub(super) fn group_colour(group: &SmartGroup) -> Rgba {
     group.colour.as_deref().and_then(theme::parse_hex).unwrap_or_else(theme::accent)
 }
 
+/// The console filter's `group` (0 = any, else `groups[group - 1]`) of
+/// `old` in `new`: the same group at its new place, or 0 when it is gone.
+fn follow_group(group: usize, old: &[SmartGroup], new: &[SmartGroup]) -> usize {
+    let id = group.checked_sub(1).and_then(|i| old.get(i)).map(|g| &g.id);
+    id.and_then(|id| new.iter().position(|g| &g.id == id)).map_or(0, |i| i + 1)
+}
+
 impl CollectionView {
     /// What the rules read, from what the Collection has loaded.
     pub(super) fn group_facts<'a>(&'a self, statuses: &'a [CompletionStatus]) -> Facts<'a> {
@@ -33,7 +40,7 @@ impl CollectionView {
             },
             wiki: Some(&self.wiki),
             updates: Some(&self.update_apps),
-            today: chrono::Local::now().date_naive(),
+            today: self.group_today.get().unwrap_or_else(|| chrono::Local::now().date_naive()),
         }
     }
 
@@ -46,11 +53,17 @@ impl CollectionView {
         self.ui.smart_groups.iter().filter_map(|id| self.smart_groups.get(id)).any(|group| group.matches(g, &facts))
     }
 
-    /// Games of the library in `group`.
+    /// Games of the library in `group`, counted once until the list is
+    /// built again.
     pub(super) fn group_count(&self, group: &SmartGroup) -> usize {
+        if let Some(n) = self.group_counts.borrow().get(&group.id) {
+            return *n;
+        }
         let Some(lib) = self.lib.as_deref() else { return 0 };
         let facts = self.group_facts(&lib.statuses);
-        lib.games.iter().filter(|g| group.matches(g, &facts)).count()
+        let n = lib.games.iter().filter(|g| group.matches(g, &facts)).count();
+        self.group_counts.borrow_mut().insert(group.id.clone(), n);
+        n
     }
 
     /// Some group asks whether a game has an update: keep the list current
@@ -63,9 +76,10 @@ impl CollectionView {
     /// are gone.
     pub(super) fn reload_smart_groups(&mut self, cx: &mut Context<Self>) {
         let groups = SmartGroups::load(&self.data_paths);
-        // Console mode's Filters panel keeps a group by its place in the list.
-        if groups.groups.iter().map(|g| &g.id).ne(self.smart_groups.groups.iter().map(|g| &g.id)) {
-            self.console.tab_navs.iter_mut().for_each(|nav| nav.grid.filters.group = 0);
+        // Console mode's Filters panel keeps a group by its place in the
+        // list: follow the picked group to its new place (gone: any group).
+        for nav in self.console.tab_navs.iter_mut() {
+            nav.grid.filters.group = follow_group(nav.grid.filters.group, &self.smart_groups.groups, &groups.groups);
         }
         self.smart_groups = groups;
         self.prune_smart_group_filter();
@@ -160,5 +174,23 @@ impl CollectionView {
     pub(super) fn save_filters_as_group(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let rule = Rule::from_view(&self.ui.view_filters());
         self.open_group_editor(None, Some(rule), window, cx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{follow_group, Rule, SmartGroup};
+
+    fn groups(ids: &[&str]) -> Vec<SmartGroup> {
+        ids.iter().map(|id| SmartGroup::new(*id, *id, Rule::default())).collect()
+    }
+
+    #[test]
+    fn the_console_filter_follows_its_group_through_edits() {
+        let old = groups(&["a", "b", "c"]);
+        assert_eq!(follow_group(2, &old, &groups(&["new", "a", "b", "c"])), 3, "a group added before it");
+        assert_eq!(follow_group(2, &old, &groups(&["b", "c"])), 1, "the one before it deleted");
+        assert_eq!(follow_group(2, &old, &groups(&["a", "c"])), 0, "it was deleted");
+        assert_eq!(follow_group(0, &old, &groups(&["a"])), 0, "any group stays");
     }
 }

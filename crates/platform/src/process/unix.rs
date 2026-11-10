@@ -55,7 +55,16 @@ pub(super) fn ask_to_stop(pid: u32, whole_group: bool) {
     }
 }
 
+pub(super) fn interrupt(pid: u32) {
+    // SAFETY: plain kill(2) on a pid we were asked to signal.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGINT);
+    }
+}
+
 pub(super) fn init_stop_helper() {}
+
+pub(super) fn attach_parent_console() {}
 
 pub(super) fn detach(cmd: &mut Command) -> &mut Command {
     // SAFETY: `setsid` is async-signal-safe and touches no memory of the parent.

@@ -69,7 +69,8 @@ impl Pc {
                 g.categories.remove(&c.category);
             }
         }
-        for c in &out.changes.groups {
+        // `local::write` stores only the groups this version reads.
+        for c in out.changes.groups.iter().filter(|c| crate::local::storable_group(&c.id, &c.value)) {
             if c.value.is_null() {
                 self.local.groups.remove(&c.id);
             } else {
@@ -404,4 +405,55 @@ fn a_play_only_pc_publishes_no_groups_or_categories() {
     linux.sync(&[&windows], "2026-11-01T11:00:00.000Z");
     assert!(linux.local.groups.is_empty());
     assert!(categories(&linux, ELDEN).is_empty());
+}
+
+#[test]
+fn a_group_this_pc_cant_read_is_not_a_change_on_every_sync() {
+    let (mut linux, mut windows) = dual_boot();
+    // A blank name: a newer version's group this one rejects.
+    linux.local.groups.insert("g1".into(), json!({ "id": "g1", "name": "", "rule": { "all": [] } }));
+    linux.sync(&[], "2026-11-01T10:00:00.000Z");
+    for at in ["2026-11-01T11:00:00.000Z", "2026-11-01T12:00:00.000Z"] {
+        assert_eq!(windows.sync(&[&linux], at).groups, 0);
+    }
+    assert!(windows.local.groups.is_empty());
+    // Nor does this PC publish it as deleted.
+    linux.sync(&[&windows], "2026-11-01T13:00:00.000Z");
+    assert_eq!(linux.local.groups["g1"]["name"], "");
+}
+
+#[test]
+fn a_group_this_pc_cant_read_does_not_lose_to_its_older_copy() {
+    let (mut linux, mut windows) = dual_boot();
+    let older = json!({ "id": "g1", "name": "W", "colour": null, "rule": { "all": [] } });
+    linux.local.groups.insert("g1".into(), older.clone());
+    linux.sync(&[], "2026-11-01T10:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T11:00:00.000Z");
+    assert_eq!(windows.local.groups["g1"], older);
+    // A newer version changes it to something this one rejects.
+    let newer = json!({ "id": "g1", "name": "", "rule": { "all": [] } });
+    linux.local.groups.insert("g1".into(), newer.clone());
+    linux.sync(&[&windows], "2026-11-01T12:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T13:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T14:00:00.000Z");
+    assert_eq!(windows.local.groups["g1"], older, "kept as this version read it");
+    linux.sync(&[&windows], "2026-11-01T15:00:00.000Z");
+    assert_eq!(linux.local.groups["g1"], newer);
+}
+
+#[test]
+fn a_newer_conditions_key_survives_a_round_trip_through_an_older_pc() {
+    use heronite_data::smart_groups::SmartGroup;
+    let (mut linux, mut windows) = dual_boot();
+    let newer = json!({ "id": "g1", "name": "W", "colour": null,
+        "rule": { "all": [ { "field": "playtime", "op": "gt", "value": 5.0, "unit": "hours" } ] } });
+    linux.local.groups.insert("g1".into(), newer.clone());
+    linux.sync(&[], "2026-11-01T10:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T11:00:00.000Z");
+    // What `local::read` gives after `local::write`.
+    let stored = crate::local::shared_group(&SmartGroup::from_value(&windows.local.groups["g1"]).unwrap());
+    windows.local.groups.insert("g1".into(), stored);
+    windows.sync(&[&linux], "2026-11-01T12:00:00.000Z");
+    linux.sync(&[&windows], "2026-11-01T13:00:00.000Z");
+    assert_eq!(linux.local.groups["g1"], newer);
 }

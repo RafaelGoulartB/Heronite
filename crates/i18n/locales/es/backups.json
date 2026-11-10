@@ -52,5 +52,6 @@
   "temporary files": "archivos temporales",
   "{n} backup, {size} on disk.": "{n} copia, {size} en disco.",
   "{n} backups, {size} on disk.": "{n} copias, {size} en disco.",
-  "{size} ({new} new)": "{size} ({new} nuevos)"
+  "{size} ({new} new)": "{size} ({new} nuevos)",
+  "mods and their downloads": "mods y sus descargas"
 }

@@ -8,19 +8,15 @@ use heronite_data::DataPaths;
 
 use super::catalog::Package;
 use super::detect::{occupant, Api, Arch, Occupant};
-use super::fetch::{is_known_compiler, repo_zip_url, sha256_file, Cache};
+use super::fetch::{is_known_compiler, repo_zip_url, sha256_file, Build, Cache};
 use super::ini::Ini;
 use super::install::{config_text, copy_preset, install_archive, now, ours, Journal, Ops, Step, COMPILER, CONFIG};
 use super::manifest::{self, join, Kind, Manifest, ADOPTED};
+use crate::gfxmods::anticheat::{Policy, Risk};
+use crate::gfxmods::journal::journaled;
 
 fn load(paths: &DataPaths, game_id: &str) -> Result<Manifest, String> {
     manifest::load(paths, game_id).ok_or_else(|| "ReShade is not installed for this game".to_string())
-}
-
-/// Runs `f` with a journal; undoes its writes when it fails.
-fn journaled<T>(f: impl FnOnce(&mut Journal) -> Result<T, String>) -> Result<T, String> {
-    let mut j = Journal::default();
-    f(&mut j).inspect_err(|_| j.rollback())
 }
 
 /// Renames the DLL: Windows loads any DLL in the game's folder, and under
@@ -46,12 +42,40 @@ pub fn set_enabled(paths: &DataPaths, game_id: &str, on: bool) -> Result<Manifes
 }
 
 /// Replaces only the DLL (and nothing the user set up: INI, preset and
-/// shaders stay).
+/// shaders stay). The build stays the one installed.
 pub fn update_dll(ops: &Ops, game_id: &str, version: &str) -> Result<Manifest, String> {
-    let mut m = load(ops.paths, game_id)?;
+    let m = load(ops.paths, game_id)?;
+    let addon = m.addon;
+    replace_dll(ops, game_id, m, version, addon)
+}
+
+/// Switches to the build with add-on support (`on`) or back to the standard
+/// one, at the installed version. `risk`: the game's, from the overview; the
+/// add-on build is refused for a game with any known anti-cheat. Going back
+/// is refused while an add-on Heronite installed is there (it would stop
+/// loading).
+pub fn set_addon(ops: &Ops, game_id: &str, on: bool, risk: &Risk) -> Result<Manifest, String> {
+    let m = load(ops.paths, game_id)?;
+    if m.addon == on {
+        return Ok(m);
+    }
+    if m.version.trim().is_empty() {
+        return Err("ReShade's version is not known here: update ReShade first".into());
+    }
+    if on && risk.blocks(Policy::Block) {
+        return Err("the build with add-on support is not offered for games with anti-cheat".into());
+    }
+    if !on && m.files.iter().any(|f| f.kind == Kind::Addon) {
+        return Err("remove the ReShade add-ons first".into());
+    }
+    let version = m.version.clone();
+    replace_dll(ops, game_id, m, &version, on)
+}
+
+fn replace_dll(ops: &Ops, game_id: &str, mut m: Manifest, version: &str, addon: bool) -> Result<Manifest, String> {
     let arch = arch_of(&m)?;
     (ops.progress)(Step::Dll(version.to_string()));
-    let dll = Cache::new(ops.paths).dll(ops.net, version, arch, ops.cancel)?;
+    let dll = Cache::new(ops.paths).build_dll(ops.net, version, Build::of(addon), arch, ops.cancel)?;
     let dest = m.dll_path();
     if let Occupant::Other { path, .. } = occupant(&m.dir(), &m.proxy) {
         return Err(format!("{} is no longer ReShade", path.display()));
@@ -59,6 +83,7 @@ pub fn update_dll(ops: &Ops, game_id: &str, version: &str) -> Result<Manifest, S
     let sha = journaled(|j| j.copy(&dll, &dest))?;
     m.record(&m.proxy.clone(), sha, Kind::Dll, None);
     m.version = version.to_string();
+    m.addon = addon;
     manifest::save(ops.paths, game_id, &m)?;
     Ok(m)
 }
@@ -355,7 +380,7 @@ pub fn remove(paths: &DataPaths, game_id: &str, discard: &dyn Fn(&Path) -> Resul
 pub fn will_load(paths: &DataPaths, m: &Manifest) -> bool {
     match occupant(&m.dir(), &m.proxy) {
         Occupant::ReShade { off, .. } => !off,
-        Occupant::Free => arch_of(m).ok().and_then(|a| Cache::new(paths).cached_dll(&m.version, a)).is_some(),
+        Occupant::Free => arch_of(m).ok().and_then(|a| Cache::new(paths).cached_build_dll(&m.version, Build::of(m.addon), a)).is_some(),
         Occupant::Other { .. } => false,
     }
 }
@@ -400,6 +425,7 @@ pub fn adopt(paths: &DataPaths, game_id: &str, dir: &Path, proxy: &str) -> Resul
         proxy: proxy.to_string(),
         target_dir: dir.to_string_lossy().into_owned(),
         adopted: true,
+        addon: false,
         compiler: None,
         enabled: !off,
         packages: Vec::new(),
@@ -474,7 +500,7 @@ pub fn recover(paths: &DataPaths, game_id: &str) -> Option<Recovery> {
         }
         Occupant::Free => {
             let version = m.version.clone();
-            let Some(dll) = arch_of(&m).ok().and_then(|a| Cache::new(paths).cached_dll(&m.version, a)) else {
+            let Some(dll) = arch_of(&m).ok().and_then(|a| Cache::new(paths).cached_build_dll(&m.version, Build::of(m.addon), a)) else {
                 return Some(Recovery::Lost { version, error: None });
             };
             let dest = m.dir().join(&m.proxy);

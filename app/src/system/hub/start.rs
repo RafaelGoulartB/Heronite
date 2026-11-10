@@ -44,6 +44,8 @@ pub fn init(
     std::thread::spawn(move || {
         crate::system::autostart::sync(&autostart_paths, autostart_on);
         crate::system::protocol::sync(&autostart_paths);
+        #[cfg(target_os = "linux")]
+        crate::system::desktop_entry::sync(&autostart_paths);
     });
     let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);
@@ -152,11 +154,15 @@ pub fn init(
     }
     // Games still running from before the app restarted; after the services
     // above, which follow running games through the same events.
+    // A game about to start makes its own mount: only the installs are swept then.
+    let paths = data_paths.clone();
+    let launching = cli.launch.is_some();
     cx.background_spawn(async move {
         let n = adopting.adopt_leftovers();
         if n > 0 {
             log::info!("following {n} game(s) left running");
         }
+        crate::services::mods::startup(&paths, &adopting.running_apps(), !launching);
     })
     .detach();
 
@@ -168,6 +174,9 @@ pub fn init(
     }
     if let Some(req) = cli.launch {
         launch(cx, req, hide, false);
+    }
+    if let Some(link) = cli.mod_link {
+        crate::services::mods::open_link(cx, link);
     }
     if let Some(client) = cli.open_client {
         open_client(cx, client, true);

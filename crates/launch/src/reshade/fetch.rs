@@ -6,30 +6,68 @@
 //! latest.json                     newest version, asked at most daily
 //! catalog/EffectPackages.ini      refreshed at most daily
 //! catalog/Compatibility.ini
-//! <version>/ReShade{32,64}.dll
+//! <version>/ReShade{32,64}.dll       the standard build
+//! <version>-addon/ReShade{32,64}.dll the build with add-on support
 //! packages/<sha256 of the url>.zip
 //! d3dcompiler_47/{x86,x64}/d3dcompiler_47.dll
 //! ```
 //! Offline, whatever is cached is used.
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 
 use heronite_data::DataPaths;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 use super::archive;
 use super::catalog::{COMPATIBILITY_URL, PACKAGES_URL};
 use super::detect::{is_reshade, Arch};
 use crate::diagnose::pe;
+use crate::gfxmods::download::{download, fresh, https};
+pub use crate::gfxmods::hash::{sha256, sha256_file};
 use crate::net::{Cancel, Net};
 
 const TAGS_URL: &str = "https://api.github.com/repos/crosire/reshade/tags";
-/// Only the standard build: the "Addon" one is for add-ons, which games
-/// with anti-cheat block more often.
+/// The standard build, the default: games with anti-cheat block the add-on
+/// one more often.
 pub(super) fn setup_url(version: &str) -> String {
     format!("https://reshade.me/downloads/ReShade_Setup_{version}.exe")
+}
+
+/// The build with full add-on support, which add-ons such as RenoDX need.
+pub(crate) fn addon_setup_url(version: &str) -> String {
+    format!("https://reshade.me/downloads/ReShade_Setup_{version}_Addon.exe")
+}
+
+/// Which ReShade build a DLL is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Build {
+    Standard,
+    /// Full add-on support.
+    Addon,
+}
+
+impl Build {
+    pub fn of(addon: bool) -> Self {
+        if addon {
+            Build::Addon
+        } else {
+            Build::Standard
+        }
+    }
+
+    fn folder(self, version: &str) -> String {
+        match self {
+            Build::Standard => version.to_string(),
+            Build::Addon => format!("{version}-addon"),
+        }
+    }
+
+    fn setup_url(self, version: &str) -> String {
+        match self {
+            Build::Standard => setup_url(version),
+            Build::Addon => addon_setup_url(version),
+        }
+    }
 }
 
 /// `d3dcompiler_47` from mozilla/fxc2 (Microsoft's redistributable DLL),
@@ -49,38 +87,6 @@ pub fn is_known_compiler(sha: &str) -> bool {
     [Arch::X64, Arch::X86].iter().any(|a| compiler_source(*a).1 == sha)
 }
 
-const TTL: Duration = Duration::from_secs(24 * 3600);
-
-pub fn sha256_file(path: &Path) -> Result<String, String> {
-    let mut f = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut h = Sha256::new();
-    std::io::copy(&mut f, &mut h).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(hex(&h.finalize()))
-}
-
-pub fn sha256(bytes: &[u8]) -> String {
-    hex(&Sha256::digest(bytes))
-}
-
-fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-fn fresh(path: &Path) -> bool {
-    std::fs::metadata(path)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| SystemTime::now().duration_since(t).ok())
-        .is_some_and(|age| age < TTL)
-}
-
-fn https(url: &str) -> Result<(), String> {
-    match url.starts_with("https://") {
-        true => Ok(()),
-        false => Err(format!("only HTTPS downloads are allowed: {url}")),
-    }
-}
-
 /// `6.10.1` sorts after `6.9.0`.
 fn version_key(v: &str) -> Vec<u32> {
     v.split('.').map(|p| p.parse().unwrap_or(0)).collect()
@@ -98,18 +104,6 @@ impl Cache {
     #[cfg(test)]
     pub fn at(root: &Path) -> Self {
         Self { root: root.to_path_buf() }
-    }
-
-    /// Downloads into a temporary name, then renames: a cut download never
-    /// looks complete.
-    fn download(&self, net: &dyn Net, url: &str, dest: &Path, cancel: Cancel) -> Result<(), String> {
-        https(url)?;
-        let tmp = dest.with_extension("part");
-        let res = net.download(url, &tmp, cancel).and_then(|_| std::fs::rename(&tmp, dest).map_err(|e| e.to_string()));
-        if res.is_err() {
-            let _ = std::fs::remove_file(&tmp);
-        }
-        res
     }
 
     /// The newest ReShade version (`refresh`: ask even within a day).
@@ -147,7 +141,7 @@ impl Cache {
         if refresh || !fresh(&file) {
             if let Err(e) = std::fs::create_dir_all(self.root.join("catalog"))
                 .map_err(|e| e.to_string())
-                .and_then(|_| self.download(net, url, &file, &|| false))
+                .and_then(|_| download(net, url, &file, &|| false))
             {
                 log::info!("ReShade {name} not refreshed: {e}");
             }
@@ -162,16 +156,22 @@ impl Cache {
         std::fs::read_to_string(self.root.join("catalog").join(name)).ok()
     }
 
-    /// The DLL of `version` for `arch`, downloaded and checked once.
+    /// The standard DLL of `version` for `arch`, downloaded and checked once.
     pub fn dll(&self, net: &dyn Net, version: &str, arch: Arch, cancel: Cancel) -> Result<PathBuf, String> {
-        let dir = self.root.join(version);
+        self.build_dll(net, version, Build::Standard, arch, cancel)
+    }
+
+    /// The DLL of `version` and `build` for `arch`, downloaded and checked
+    /// once.
+    pub fn build_dll(&self, net: &dyn Net, version: &str, build: Build, arch: Arch, cancel: Cancel) -> Result<PathBuf, String> {
+        let dir = self.root.join(build.folder(version));
         let dest = dir.join(arch.dll());
         if dest.is_file() && validate_dll(&dest, arch).is_ok() {
             return Ok(dest);
         }
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         let setup = dir.join("setup.exe");
-        self.download(net, &setup_url(version), &setup, cancel)?;
+        download(net, &build.setup_url(version), &setup, cancel)?;
         let res = [Arch::X64, Arch::X86].iter().try_for_each(|a| {
             let out = dir.join(a.dll());
             archive::extract_file(&setup, a.dll(), &out)?;
@@ -191,7 +191,7 @@ impl Cache {
             return Ok(dest);
         }
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        self.download(net, url, &dest, cancel)?;
+        download(net, url, &dest, cancel)?;
         Ok(dest)
     }
 
@@ -204,7 +204,7 @@ impl Cache {
             return Ok(dest);
         }
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        self.download(net, &url, &dest, cancel)?;
+        download(net, &url, &dest, cancel)?;
         let got = sha256_file(&dest)?;
         if got != sha {
             let _ = std::fs::remove_file(&dest);
@@ -216,7 +216,11 @@ impl Cache {
     /// The cached DLL of `version`, without downloading (recovery before a
     /// launch must not wait on the network).
     pub fn cached_dll(&self, version: &str, arch: Arch) -> Option<PathBuf> {
-        Some(self.root.join(version).join(arch.dll())).filter(|p| p.is_file())
+        self.cached_build_dll(version, Build::Standard, arch)
+    }
+
+    pub fn cached_build_dll(&self, version: &str, build: Build, arch: Arch) -> Option<PathBuf> {
+        Some(self.root.join(build.folder(version)).join(arch.dll())).filter(|p| p.is_file())
     }
 }
 
@@ -270,6 +274,18 @@ pub(crate) mod tests {
         assert_eq!(cache.latest_version(&FakeNet::offline(), false).as_deref(), Some("6.10.1"));
         assert_eq!(net.requests().len(), 1);
         assert_eq!(cache.latest_version(&FakeNet::offline(), true).as_deref(), Some("6.10.1"));
+    }
+
+    #[test]
+    fn the_addon_build_has_its_own_installer_and_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = Cache::at(dir.path());
+        let net = FakeNet::online().with_file(&addon_setup_url("6.8.0"), fake_setup());
+        let dll = cache.build_dll(&net, "6.8.0", Build::Addon, Arch::X64, &|| false).unwrap();
+        assert!(dll.starts_with(dir.path().join("6.8.0-addon")));
+        assert!(cache.cached_build_dll("6.8.0", Build::Addon, Arch::X86).is_some());
+        assert!(cache.cached_dll("6.8.0", Arch::X64).is_none());
+        assert_eq!(addon_setup_url("6.8.0"), "https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe");
     }
 
     #[test]

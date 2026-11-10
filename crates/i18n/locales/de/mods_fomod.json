@@ -1,0 +1,11 @@
+{
+  "ModuleConfig.xml is not valid: {error}": "ModuleConfig.xml ist ungültig: {error}",
+  "The option {flag} is not set to {value}": "Die Option {flag} ist nicht auf {value} gesetzt",
+  "This mod has no FOMOD installer": "Dieser Mod hat keinen FOMOD-Installer",
+  "This mod uses a scripted installer (script.cs), which Heronite cannot run": "Dieser Mod nutzt einen Skript-Installer (script.cs), den Heronite nicht ausführen kann",
+  "could not read ModuleConfig.xml: {error}": "ModuleConfig.xml konnte nicht gelesen werden: {error}",
+  "{file} is installed but not enabled": "{file} ist installiert, aber nicht aktiviert",
+  "{file} is not installed": "{file} ist nicht installiert",
+  "{file} must be installed and not enabled": "{file} muss installiert und darf nicht aktiviert sein",
+  "{file} must not be installed": "{file} darf nicht installiert sein"
+}

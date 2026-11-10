@@ -98,6 +98,37 @@ pub fn tooltip(text: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) 
     move |_, cx| cx.new(|_| Tip(text.clone())).into()
 }
 
+/// [`tooltip`] with a title over the text, for a label that needs a sentence
+/// or two to be understood.
+pub fn tooltip_titled(
+    title: impl Into<SharedString>,
+    text: impl Into<SharedString>,
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let (title, text) = (title.into(), text.into());
+    move |_, cx| cx.new(|_| TitledTip(title.clone(), text.clone())).into()
+}
+
+/// The box [`tooltip_titled`] shows, for a view that draws it itself.
+pub fn titled_tip_box(title: SharedString, text: SharedString) -> Div {
+    glass::glass_menu_surface(theme::R_ITEM)
+        .flex()
+        .flex_col()
+        .gap(px(3.))
+        .w(px(320.))
+        .px(px(12.))
+        .py(px(10.))
+        .child(div().text_size(px(13.)).font_weight(theme::W_500).text_color(theme::text_primary()).child(title))
+        .child(div().text_size(px(12.5)).line_height(px(17.)).text_color(theme::text_muted()).child(text))
+}
+
+struct TitledTip(SharedString, SharedString);
+
+impl Render for TitledTip {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        titled_tip_box(self.0.clone(), self.1.clone())
+    }
+}
+
 struct Tip(SharedString);
 
 impl Render for Tip {

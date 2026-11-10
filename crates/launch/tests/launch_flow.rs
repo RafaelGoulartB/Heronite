@@ -165,6 +165,7 @@ fn run_with(r: &Rig, setup: Option<Arc<dyn EpicSetup>>, service: FakeEpic) -> (V
         probe: Arc::new(SystemProbe),
         net: Arc::new(FakeNet::online()),
         cloud: Some(Arc::new(LoggingCloud(r.log.clone()))),
+        gpu_registry: Arc::new(heronite_launch::gpu::preference::FakeRegistry::default()),
     });
     if let Some(setup) = setup {
         launcher.set_epic_setup(setup);

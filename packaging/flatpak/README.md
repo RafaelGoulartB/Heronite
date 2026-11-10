@@ -41,6 +41,10 @@ The app finds out it runs in a sandbox (`heronite_platform::flatpak`):
   installing them.
 - The game sandbox (bubblewrap) cannot run inside Flatpak's sandbox: its
   settings are hidden and games run without it.
+- Mods (`docs/MODS.md`) need to lay a game's mods over its folder with
+  `fuse-overlayfs`, and a Flatpak cannot mount: "Mods" is not in a game's
+  menu, Settings has no Mods section, the mod sites' links are not opened
+  and games start without mods.
 - Steam (starting and closing it) and Flatpak emulators start on the host
   through `flatpak-spawn --host`; Steam games open through `steam://` links.
 - Notifications go through the Notification portal, not through

@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::process::{run_script, run_to_completion};
-use super::session::{finish, spawn_checkpointer, SessionEnd};
+use super::session::{finish, release_mods, spawn_checkpointer, SessionEnd};
 use super::state::{Control, Ledger, Shared};
 use super::{LaunchEvent, LaunchRequest, Launcher};
 use crate::log_writer::{self, GameLog, GameLogType, LogPaths};
@@ -97,6 +97,10 @@ pub(super) enum Tracked {
         /// The app itself held the computer awake (Windows).
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         hold_awake: bool,
+        /// The program whose GPU preference Heronite wrote, put back once
+        /// the game ends (Windows, see `crate::gpu::preference`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gpu_exe: Option<String>,
     },
     /// A Steam game: the pids Steam's logs named, with their start ticks.
     #[serde(rename_all = "camelCase")]
@@ -178,7 +182,7 @@ pub(super) fn remember(shared: &Shared, control: &Control, req: &LaunchRequest, 
 }
 
 /// What a process plan's session writes down (see [`remember`]).
-pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::ProcessPlan) -> Option<Tracked> {
+pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::ProcessPlan, gpu_exe: Option<String>) -> Option<Tracked> {
     Some(Tracked::Process {
         pid,
         start_ticks: shared.procs.start_ticks(pid)?,
@@ -188,6 +192,7 @@ pub(super) fn process_entry(shared: &Shared, pid: u32, plan: &crate::plan::Proce
         cloud_saves: plan.prep.cloud_saves.clone(),
         keep_awake: plan.keep_awake.is_some(),
         hold_awake: plan.hold_awake,
+        gpu_exe,
     })
 }
 
@@ -254,13 +259,27 @@ impl Launcher {
     pub fn adopt(&self, on_adopt: &mut dyn FnMut(&AdoptedGame)) -> usize {
         let shared = &self.shared;
         let file = load(&shared.paths);
+        // The GPU preferences of games that still run go back when they end;
+        // the others (a game that ended while the app was closed, a launch
+        // the app died in) go back now.
+        let mut gpu_exes: Vec<String> = Vec::new();
+        let put_back_gpu = |running: &[String]| {
+            let reg = shared.services.lock().unwrap().gpu_registry.clone();
+            let file = crate::gpu::preference::ledger_path(&shared.paths);
+            let still = |exe: &str| running.iter().any(|r| r.eq_ignore_ascii_case(exe));
+            for (exe, done) in crate::gpu::preference::restore_all_except(&*reg, &file, &still) {
+                log::info!("GPU preference of {exe} after a session that ended without the app: {done:?}");
+            }
+        };
         if file.sessions.is_empty() {
+            put_back_gpu(&gpu_exes);
             return 0;
         }
         let boot_id = shared.procs.boot_id();
         let mut adopted = 0;
         for (app_name, entry) in file.sessions {
             if shared.sessions.lock().unwrap().contains_key(&app_name) {
+                gpu_exes.extend(gpu_exe_of(&entry));
                 continue;
             }
             if !still_running(&*shared.procs, boot_id.as_deref(), &entry) {
@@ -268,6 +287,7 @@ impl Launcher {
                 remove(&shared.paths, &app_name);
                 continue;
             }
+            gpu_exes.extend(gpu_exe_of(&entry));
             let control = Arc::new(adopted_control(&entry));
             shared.sessions.lock().unwrap().insert(app_name.clone(), control.clone());
             on_adopt(&AdoptedGame { app_name: app_name.clone(), runner: entry.runner.clone(), title: entry.title.clone() });
@@ -281,7 +301,15 @@ impl Launcher {
                 Err(e) => log::error!("following {app_name} again: {e}"),
             }
         }
+        put_back_gpu(&gpu_exes);
         adopted
+    }
+}
+
+fn gpu_exe_of(entry: &RunningEntry) -> Option<String> {
+    match &entry.tracked {
+        Tracked::Process { gpu_exe, .. } => gpu_exe.clone(),
+        Tracked::Steam { .. } => None,
     }
 }
 
@@ -332,7 +360,7 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
     let log = GameLog::continuing(path, disabled_globally || !verbose);
     log.info("The app was restarted; following the game again");
     match &entry.tracked {
-        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, hold_awake, .. } => {
+        Tracked::Process { pid, start_ticks, wait_after_exit, after_script, cloud_saves, keep_awake, hold_awake, gpu_exe, .. } => {
             let services = shared.services.lock().unwrap().clone();
             let status = |n: Notice| {
                 if n.warning {
@@ -354,6 +382,9 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             }
             if let Some(held) = held {
                 held.release();
+            }
+            if let Some(exe) = gpu_exe {
+                super::process::put_back_gpu_preference(&shared, &*services.gpu_registry, &log, exe);
             }
             let stopped = control.kill.load(Ordering::SeqCst);
             if !aborted && !stopped {
@@ -378,6 +409,9 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
                 };
                 prep.after_exit(&entry.app_name, &PrepSpec { cloud_saves: cloud_saves.clone(), ..Default::default() });
             }
+            if !aborted {
+                release_mods(&shared, &log, &entry.app_name, &entry.runner);
+            }
             finish(&shared, &log, &req, &control, elapsed, None);
         }
         Tracked::Steam { app_id, opened_steam, after_script, .. } => {
@@ -396,6 +430,9 @@ fn run_adopted(shared: Arc<Shared>, entry: RunningEntry, control: Arc<Control>) 
             log.info("Steam game finished");
             let finished = matches!(outcome, crate::playtime_watch::SteamWaitOutcome::Finished);
             let elapsed = control.played();
+            if finished {
+                release_mods(&shared, &log, &entry.app_name, &entry.runner);
+            }
             if let Some(script) = after_script.as_ref().filter(|_| finished) {
                 let probe = shared.services.lock().unwrap().probe.clone();
                 let status = |n: Notice| {

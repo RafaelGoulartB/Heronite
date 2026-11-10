@@ -43,6 +43,7 @@ mod list_view;
 mod load;
 mod look;
 mod metadata_ui;
+mod mods;
 mod nav;
 mod onboarding;
 mod open_links;
@@ -112,6 +113,8 @@ enum ToastAction {
     RestoreNote(String, Box<heronite_data::journal::Entry>),
     /// Puts back the "where I left off" line just cleared (game key, the line).
     RestoreLeftOff(String, Box<heronite_data::journal::LeftOff>),
+    /// Opens the Mods manager of this game (key).
+    OpenMods(String),
     /// Opens Settings → Other launchers, where games in the Collection twice
     /// are merged.
     ReviewDuplicates,
@@ -139,6 +142,12 @@ pub struct CollectionView {
     categories: heronite_data::categories::Categories,
     /// Smart groups (`local_library/groups.json`), loaded with the library.
     smart_groups: heronite_data::smart_groups::SmartGroups,
+    /// Today, while [`refresh_groups`](Self::refresh_groups) runs: the
+    /// groups' day counts read it once per pass, not once per game.
+    group_today: std::cell::Cell<Option<chrono::NaiveDate>>,
+    /// Games per smart group (by id) for the View menu, until the list is
+    /// built again.
+    group_counts: std::cell::RefCell<std::collections::HashMap<String, usize>>,
     /// Dates added, sizes and systems the extra sorts and groups read (`organize.rs`).
     game_extras: Arc<heronite_data::organize::GameExtras>,
     /// The actions users added to their games, by game key, loaded with the library.
@@ -186,6 +195,8 @@ pub struct CollectionView {
     /// The focused game's journal (`journal/`).
     journal: journal::JournalUi,
     focus_scroll: ScrollHandle,
+    /// The Mods manager, FOMOD wizard and game picker (`mods.rs`).
+    mods: mods::ModsUi,
     shots: screenshots::Shots,
     toast_task: Option<Task<()>>,
     images: ImageStore,
@@ -353,6 +364,8 @@ impl CollectionView {
             ui_save: None,
             categories: Default::default(),
             smart_groups: Default::default(),
+            group_today: Default::default(),
+            group_counts: Default::default(),
             game_extras: Default::default(),
             user_actions: Default::default(),
             update_apps: Default::default(),
@@ -386,6 +399,7 @@ impl CollectionView {
             facts: Default::default(),
             journal: Default::default(),
             focus_scroll: ScrollHandle::new(),
+            mods: Default::default(),
             shots: Default::default(),
             images,
             cover_chains: HashMap::new(),
@@ -434,6 +448,7 @@ impl CollectionView {
         this.watch_clients(cx);
         this.watch_library_sync(cx);
         this.init_metadata(window, cx);
+        this.init_mods(window, cx);
         this.spawn_disk_watch(cx);
         this.spawn_debug_browse(cx);
         this
@@ -486,6 +501,7 @@ impl CollectionView {
                                 }
                                 ToastAction::ViewLog(_) => heronite_i18n::tr!("View log"),
                                 ToastAction::ScriptInstall => heronite_i18n::tr!("Details"),
+                                ToastAction::OpenMods(_) => heronite_i18n::tr!("Open"),
                                 ToastAction::ReviewDuplicates => heronite_i18n::tr!("Review"),
                                 ToastAction::LaunchProblem(r) if r.opens_by_itself() => {
                                     heronite_i18n::tr!("How to fix")
@@ -495,6 +511,10 @@ impl CollectionView {
                             .when(matches!(action, ToastAction::Undo), |d| d.child(crate::ui::controls::kbd("Ctrl Z")))
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 match &action {
+                                    ToastAction::OpenMods(key) => {
+                                        this.toast = None;
+                                        this.open_mods(key, window, cx);
+                                    }
                                     ToastAction::Undo => {
                                         this.undo_batch(cx);
                                     }

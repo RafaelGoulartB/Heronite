@@ -65,10 +65,14 @@ pub enum Left {
     /// The home folders games in the sandbox write to (`sandbox/`): left out
     /// like the games' prefixes, which they belong with.
     Sandbox,
+    /// Everything of the mods (`mods/`): the mod files and their archives are
+    /// often many GB, what a game wrote while modded can be as big, and a
+    /// list restored without its files would stop the game from starting.
+    Mods,
 }
 
 impl Left {
-    pub const ALL: [Left; 6] = [Left::Tools, Left::Images, Left::Caches, Left::Logs, Left::Temp, Left::Sandbox];
+    pub const ALL: [Left; 7] = [Left::Tools, Left::Images, Left::Caches, Left::Logs, Left::Temp, Left::Sandbox, Left::Mods];
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -131,6 +135,9 @@ pub fn classify_data(rel: &str) -> Class {
     }
     if under(rel, "sandbox") {
         return Class::Out(Left::Sandbox);
+    }
+    if under(rel, "mods") {
+        return Class::Out(Left::Mods);
     }
     if ["images-cache", "local_library/heroes", "local_library/screenshot-thumbnails"].iter().any(|d| under(rel, d)) {
         return Class::Out(Left::Images);
@@ -274,6 +281,14 @@ mod tests {
             ("local_library/steam-details/1.english.json", Out(Left::Caches)),
             ("store/download-manager.json", Out(Left::Caches)),
             ("local_library/running.json", Out(Left::Temp)),
+            ("mods/legendary_x/mods.json", Out(Left::Mods)),
+            ("mods/legendary_x/overwrite/Data/SKSE/skse.ini", Out(Left::Mods)),
+            ("mods/nexus.json", Out(Left::Mods)),
+            ("mods", Out(Left::Mods)),
+            ("mods/legendary_x/mods/skyui/Data/SkyUI_SE.esp", Out(Left::Mods)),
+            ("mods/legendary_x/downloads/SkyUI.7z", Out(Left::Mods)),
+            ("mods/legendary_x/.work/work/x", Out(Left::Mods)),
+            ("mods/links-cache/nexus-domains.json", Out(Left::Mods)),
             ("local_library/statuses.json.bak-before-unnumber", Out(Left::Temp)),
             ("sideload_apps/library.json.bak-bloodborne-20261007011623", Out(Left::Temp)),
             ("store/.config.json.heronite-rs-12-1.tmp", Out(Left::Temp)),

@@ -151,12 +151,47 @@ pub struct PrepServices {
     pub probe: Arc<dyn Probe>,
     pub net: Arc<dyn Net>,
     pub cloud: Option<Arc<dyn CloudSync>>,
+    /// Windows' per-program GPU preferences (`crate::gpu::preference`); a
+    /// `FakeRegistry` in tests.
+    pub gpu_registry: Arc<dyn crate::gpu::preference::Registry>,
 }
 
 impl Default for PrepServices {
     fn default() -> Self {
-        Self { probe: Arc::new(SystemProbe), net: Arc::new(SystemNet), cloud: None }
+        Self {
+            probe: Arc::new(SystemProbe),
+            net: Arc::new(SystemNet),
+            cloud: None,
+            gpu_registry: Arc::new(crate::gpu::preference::SystemRegistry),
+        }
     }
+}
+
+/// The mods of a game, put in place around its session (the app provides it,
+/// see `heronite_mods::apply`). Called on the session thread before the
+/// game starts, Steam games included.
+pub trait GameMods: Send + Sync {
+    /// `Ok(None)`: the game has no mods to apply. `status` shows a step of
+    /// the launch ("Applying mods..."). An error aborts the launch: a game
+    /// whose saves expect its mods must not start without them.
+    fn apply(&self, app_name: &str, runner: &str, status: &mut dyn FnMut(&str)) -> Result<Option<AppliedMods>, String>;
+
+    /// A game this run did not start has ended (it was picked up again after
+    /// the app restarted): its mods were applied by the earlier run, whose
+    /// guard is gone, so take them away. Blocking; must be safe to call when
+    /// nothing is applied.
+    fn release(&self, _app_name: &str, _runner: &str) {}
+}
+
+/// Mods in place for one session.
+pub struct AppliedMods {
+    /// Variables added to the game's command (`WINEDLLOVERRIDES` of the mod
+    /// loaders), merged with the command's own by the launcher.
+    pub env: Vec<(String, String)>,
+    /// One line for the game's log.
+    pub summary: String,
+    /// Dropped when the session ends: takes the mods away again.
+    pub guard: Box<dyn Send>,
 }
 
 /// `formatSystemInfo` for the log header (the app provides it).

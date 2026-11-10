@@ -128,14 +128,14 @@ impl SettingsPanel {
                 tr!("Save folder not found, please select it manually (click to retry)")
             })
             .on_click(cx.listener(|this, _, window, cx| this.detect_saves(window, cx)));
-        let folder = rows().field_help(
-            self.path_row("savesPath", Some(tr!("Saves folder")), true, tr!("Choose the saves directory"), true, cx),
-            vec![
-                div().child(retry),
-                help(tr!("Found by itself in most games; change it above if it is wrong.")),
-                help(tr!("After changing the prefix, clear this path and detect it again: Proton uses /pfx and the user steamuser.")),
-            ],
-        );
+        let mut notes = vec![div().child(retry), help(tr!("Found by itself in most games; change it above if it is wrong."))];
+        if self.runs_in_wine() {
+            notes.push(help(tr!(
+                "After changing the prefix, clear this path and detect it again: Proton uses /pfx and the user steamuser."
+            )));
+        }
+        let folder = rows()
+            .field_help(self.path_row("savesPath", Some(tr!("Saves folder")), true, tr!("Choose the saves directory"), true, cx), notes);
         col = col.child(heading(tr!("Location"))).child(folder.card());
 
         let mode = self.saves.mode;
@@ -203,6 +203,13 @@ impl SettingsPanel {
             ));
         }
         col.child(heading(tr!("Automatic"))).child(auto.card())
+    }
+}
+
+impl SettingsPanel {
+    /// The game runs through Wine (its save folders are in a prefix).
+    fn runs_in_wine(&self) -> bool {
+        self.facts().is_some_and(|f| f.run_kind == super::logic::RunKind::Wine)
     }
 }
 
@@ -299,9 +306,11 @@ impl SettingsPanel {
         );
         places = places.field_help(
             div().flex().child(refresh),
-            vec![help(tr!(
-                "GOG lists these folders. They are kept in the game's settings (gogSaves); refresh them after changing the Wine prefix."
-            ))],
+            vec![help(if self.runs_in_wine() {
+                tr!("GOG lists these folders. They are kept in the game's settings (gogSaves); refresh them after changing the Wine prefix.")
+            } else {
+                tr!("GOG lists these folders. They are kept in the game's settings (gogSaves).")
+            })],
         );
 
         let has_places = !self.gog_locations().is_empty();

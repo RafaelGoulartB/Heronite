@@ -494,5 +494,9 @@
   "Ribbon": "Cinta",
   "Show categories on covers": "Mostrar categorías en las portadas",
   "Strip": "Franja",
-  "Style": "Estilo"
+  "Style": "Estilo",
+  "Capture from a key of the desktop": "Capturar con una tecla del escritorio",
+  "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings: {command}": "Si el escritorio no acepta atajos de Heronite, asigna una tecla a este comando en su configuración de teclado: {command}",
+  "Shortcut ready on {trigger}. The desktop picks the keys: change them in its keyboard settings.": "Atajo listo en {trigger}. El escritorio elige las teclas: cámbialas en su configuración de teclado.",
+  "The desktop took the shortcut but names no key for it: assign one in its keyboard settings.": "El escritorio aceptó el atajo, pero no indica ninguna tecla para él: asígnale una en su configuración de teclado."
 }

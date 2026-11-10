@@ -7,7 +7,10 @@
 //! its API, copies the DLL under the right name, adds shader packages and
 //! a preset, writes `ReShade.ini` ([`install`], [`manage`]). Everything is
 //! downloaded from the official sources when the user installs
-//! ([`fetch`]); nothing ships with the app.
+//! ([`fetch`]); nothing ships with the app. The standard build is
+//! installed; the build with add-on support (which RenoDX's HDR mods need,
+//! [`crate::gfxmods::renodx`]) is a switch per game, refused for games with
+//! anti-cheat ([`manage::set_addon`]).
 //!
 //! Under Wine and Proton the game must also prefer the DLL in its folder
 //! over Wine's own: [`apply`] adds `<proxy>=n,b` to `WINEDLLOVERRIDES` at
@@ -22,7 +25,6 @@
 //! among them), emulated games (ReShade would go next to the emulator, into
 //! every game it runs).
 
-mod anticheat;
 mod archive;
 pub mod catalog;
 pub mod detect;
@@ -38,10 +40,14 @@ pub mod steam;
 use heronite_data::DataPaths;
 use serde_json::{Map, Value};
 
-pub use anticheat::{Finding, Risk, Source};
+use crate::gfxmods::anticheat;
+pub use crate::gfxmods::anticheat::{Finding, Risk, Source};
+pub use crate::gfxmods::overrides::{merge_overrides, strip_overrides, user_overrides};
+use crate::gfxmods::{GraphicsMod, Launch};
 pub use overview::{fits, overview, Facts, Overview, SourceRow, State};
 
 use crate::env::Env;
+use crate::settings::GameSettings;
 
 /// Mirrors the manifest's `enabled`: whether the DLL has its name.
 pub const KEY_ENABLED: &str = "heroniteReshade";
@@ -88,75 +94,39 @@ impl ReShade {
     }
 }
 
-/// The DLL names of an override list (`a,b=n,b;c=d`), lowercase, without
-/// `.dll`, with the entry each belongs to.
-fn override_names(value: &str) -> Vec<(String, usize)> {
-    value
-        .split(';')
-        .enumerate()
-        .flat_map(|(i, entry)| {
-            let names = entry.split_once('=').map_or(entry, |(n, _)| n);
-            names.split(',').map(move |n| (n.trim().to_ascii_lowercase().trim_end_matches(".dll").to_string(), i))
-        })
-        .filter(|(n, _)| !n.is_empty())
-        .collect()
-}
+/// ReShade as a [`GraphicsMod`].
+pub struct ReShadeMod;
 
-fn stem(dll: &str) -> String {
-    dll.trim().to_ascii_lowercase().trim_end_matches(".dll").to_string()
-}
-
-/// `current` with `<dll>=n,b` added for each of `dlls` it does not name.
-/// Gives the names the user already sets: their value is kept.
-pub fn merge_overrides(current: &str, dlls: &[&str]) -> (String, Vec<String>) {
-    let named: Vec<String> = override_names(current).into_iter().map(|(n, _)| n).collect();
-    let mut entries: Vec<String> = current.split(';').map(str::trim).filter(|e| !e.is_empty()).map(str::to_string).collect();
-    let mut kept = Vec::new();
-    for dll in dlls {
-        let s = stem(dll);
-        if named.contains(&s) {
-            kept.push(s);
-        } else if !entries.iter().any(|e| e == &format!("{s}=n,b")) {
-            entries.push(format!("{s}=n,b"));
-        }
+impl GraphicsMod for ReShadeMod {
+    fn id(&self) -> &'static str {
+        "reshade"
     }
-    (entries.join(";"), kept)
-}
 
-/// `value` without the names in `dlls` (an entry left with no name goes).
-pub fn strip_overrides(value: &str, dlls: &[&str]) -> String {
-    let drop: Vec<String> = dlls.iter().map(|d| stem(d)).collect();
-    value
-        .split(';')
-        .filter_map(|entry| {
-            let entry = entry.trim();
-            let (names, val) = match entry.split_once('=') {
-                Some((n, v)) => (n, Some(v)),
-                None => (entry, None),
-            };
-            let left: Vec<&str> = names.split(',').map(str::trim).filter(|n| !n.is_empty() && !drop.contains(&stem(n))).collect();
-            match (left.is_empty(), val) {
-                (true, _) => None,
-                (false, Some(v)) => Some(format!("{}={v}", left.join(","))),
-                (false, None) => Some(left.join(",")),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(";")
-}
+    fn name(&self) -> &'static str {
+        "ReShade"
+    }
 
-/// The names of `dlls` that the user's `WINEDLLOVERRIDES` sets.
-pub fn user_overrides(env_options: &[(String, String)], dlls: &[&str]) -> Vec<String> {
-    let Some((_, v)) = env_options.iter().find(|(k, _)| k.eq_ignore_ascii_case("WINEDLLOVERRIDES")) else { return Vec::new() };
-    let named: Vec<String> = override_names(v).into_iter().map(|(n, _)| n).collect();
-    dlls.iter().map(|d| stem(d)).filter(|d| named.contains(d)).collect()
+    /// When the game's ReShade is on and its DLL is in place: the DLL, and
+    /// `d3dcompiler_47` when Heronite put it there.
+    fn launch(&self, paths: &DataPaths, game_id: &str, s: &GameSettings) -> Option<Launch> {
+        launch(paths, game_id, &s.reshade)
+    }
 }
 
 /// At launch: when the game's ReShade is on and its DLL is in place, tells
 /// Wine to load it (`wine`: Wine or Proton runs the game; on Windows the
 /// file is enough). Gives the line for the launch log. Never fails: a
 /// problem of ReShade must not keep the game from starting.
+/// [`crate::gfxmods::apply`] does this for every mod.
 pub fn apply(env: &mut Env, paths: &DataPaths, game_id: &str, s: &ReShade, wine: bool) -> Option<String> {
+    let launch = launch(paths, game_id, s)?;
+    if wine {
+        crate::gfxmods::add_overrides(env, &launch.dlls, ReShadeMod.name());
+    }
+    Some(launch.note)
+}
+
+fn launch(paths: &DataPaths, game_id: &str, s: &ReShade) -> Option<Launch> {
     let m = manifest::load(paths, game_id)?;
     if !s.enabled || !m.enabled {
         return None;
@@ -167,31 +137,21 @@ pub fn apply(env: &mut Env, paths: &DataPaths, game_id: &str, s: &ReShade, wine:
         log::warn!("ReShade is on but {} is missing or not ReShade; starting without it", m.dir().join(&m.proxy).display());
         return None;
     }
-    if wine {
-        let mut dlls = vec![m.proxy.as_str()];
-        if m.compiler.is_some() {
-            dlls.push(install::COMPILER);
-        }
-        let current = env.get("WINEDLLOVERRIDES").cloned().unwrap_or_default();
-        let (merged, kept) = merge_overrides(&current, &dlls);
-        for k in kept {
-            log::warn!("WINEDLLOVERRIDES already sets {k}; ReShade leaves it as it is");
-        }
-        env.insert("WINEDLLOVERRIDES".into(), merged);
+    let mut dlls = vec![m.proxy.clone()];
+    if m.compiler.is_some() {
+        dlls.push(install::COMPILER.to_string());
     }
-    let mut line = format!("ReShade {} ({}, {}) at {}", m.version, m.api, m.arch, m.target_dir);
+    let mut note = format!("ReShade {} ({}, {}) at {}", m.version, m.api, m.arch, m.target_dir);
     if !s.anticheat_ack.is_empty() {
-        line.push_str(&format!("; the game uses {}, the user accepted the risk", s.anticheat_ack.join(", ")));
+        note.push_str(&format!("; the game uses {}, the user accepted the risk", s.anticheat_ack.join(", ")));
     }
-    Some(line)
+    Some(Launch { dlls, note })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-
-    const SP: &str = "ddraw,steam_api64,dxgi,d3dcompiler_47=n,b;lsteamclient=d";
 
     #[test]
     fn settings_read_with_defaults() {
@@ -205,27 +165,5 @@ mod tests {
         assert!(s.enabled);
         assert_eq!((s.proxy_choice().as_deref(), s.anticheat_ack.as_slice()), (Some("d3d11.dll"), ["BattlEye".to_string()].as_slice()));
         assert_eq!(ReShade::from_map(json!({"heroniteReshadeApi": "vulkan"}).as_object().unwrap()).api, "auto");
-    }
-
-    #[test]
-    fn overrides_merge_without_duplicates_and_keep_the_users() {
-        assert_eq!(merge_overrides("", &["dxgi.dll"]), ("dxgi=n,b".to_string(), vec![]));
-        assert_eq!(
-            merge_overrides("winemenubuilder.exe=d", &["dxgi.dll", "d3dcompiler_47.dll"]).0,
-            "winemenubuilder.exe=d;dxgi=n,b;d3dcompiler_47=n,b"
-        );
-        let (sp, kept) = merge_overrides(SP, &["dxgi.dll", "d3dcompiler_47.dll"]);
-        assert_eq!((sp.as_str(), kept), (SP, vec!["dxgi".to_string(), "d3dcompiler_47".to_string()]));
-        assert_eq!(merge_overrides("dxgi=n,b", &["dxgi.dll"]).0, "dxgi=n,b");
-        assert_eq!(merge_overrides("a=n;", &["d3d9.dll"]).0, "a=n;d3d9=n,b");
-    }
-
-    #[test]
-    fn the_users_overrides_can_be_cleaned_up() {
-        assert_eq!(strip_overrides(SP, &["dxgi.dll", "d3dcompiler_47.dll"]), "ddraw,steam_api64=n,b;lsteamclient=d");
-        assert_eq!(strip_overrides("dxgi=n,b", &["dxgi.dll"]), "");
-        let env = vec![("WINEDLLOVERRIDES".to_string(), SP.to_string())];
-        assert_eq!(user_overrides(&env, &["dxgi.dll", "d3d9.dll"]), ["dxgi"]);
-        assert!(user_overrides(&[], &["dxgi.dll"]).is_empty());
     }
 }

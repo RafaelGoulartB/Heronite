@@ -66,6 +66,9 @@ pub fn build_plan_with_settings(
     crate::umu_ids::attach(&mut plan, ctx, keys);
     // On Windows keeping the computer awake is its own call, no tool needed.
     crate::keep_awake::attach(&mut plan, probe, &game.title, settings);
+    // Windows' per-program GPU preference (Linux picks the card through the
+    // variables of `setup_env_vars`).
+    crate::gpu::preference::attach(&mut plan, &settings.gpu);
     if heronite_platform::supported(Feature::LaunchExtras) {
         crate::scripts::attach(&mut plan, probe, game, settings);
         crate::companions::attach(&mut plan, ctx, probe, game, settings);
@@ -337,8 +340,8 @@ pub(crate) fn native_plan(
     if let Err(err) = crate::lsfg::apply(&mut env, &settings.lsfg, &ctx.global, probe) {
         return LaunchPlan::Unavailable(tr!("Launch aborted: {error}", error = err));
     }
-    // Windows runs Windows games directly: the DLL alone loads ReShade.
-    notes.extend(crate::reshade::apply(&mut env, &ctx.paths, &game.app_name, &settings.reshade, false));
+    // Windows runs Windows games directly: the DLLs alone load the mods.
+    notes.extend(crate::gfxmods::apply(&mut env, &ctx.paths, &game.app_name, settings, false));
     let sandbox = match native_sandbox(ctx, probe, game, settings, &crate::wine::game_folder(game, executable), &env) {
         Ok(p) => p,
         Err(e) => return LaunchPlan::Unavailable(e),

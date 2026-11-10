@@ -24,10 +24,19 @@ pub struct Account {
     pub username: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Credentials {
     pub access_token: String,
     pub user_id: String,
+    /// Comet needs it, see `heronite_launch::galaxy`.
+    pub refresh_token: String,
+}
+
+/// Without the tokens: they must not reach a log.
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials").field("user_id", &self.user_id).finish_non_exhaustive()
+    }
 }
 
 /// Names of the caches that depend on the account.
@@ -70,13 +79,24 @@ pub fn extract_code(input: &str) -> Option<String> {
 /// refreshing.
 pub fn credentials(paths: &DataPaths) -> Result<Credentials> {
     match auth::credentials(&paths.gog_auth()) {
-        Ok(c) => Ok(Credentials { access_token: c.access_token, user_id: c.user_id }),
+        Ok(c) => Ok(Credentials { access_token: c.access_token, user_id: c.user_id, refresh_token: c.refresh_token }),
         Err(err) if err.downcast_ref::<SignInExpired>().is_some() => {
             log::warn!("gog: the sign-in was refused: {err:#}");
             Err(anyhow!(SessionExpired).context(tr!("Your GOG sign-in expired: log in again")))
         }
         Err(err) => Err(err),
     }
+}
+
+/// [`credentials`] that gives up after `limit` (a refresh may hang on a bad
+/// network). The refresh then goes on in the background.
+pub fn credentials_within(paths: &DataPaths, limit: std::time::Duration) -> Result<Credentials> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let paths = paths.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(credentials(&paths));
+    });
+    rx.recv_timeout(limit).map_err(|_| anyhow!(tr!("GOG did not answer in time")))?
 }
 
 /// The account saved in `config.json` for a GOG user document.
@@ -212,7 +232,9 @@ mod tests {
         )
         .unwrap();
         let c = credentials(&paths).unwrap();
-        assert_eq!((c.access_token.as_str(), c.user_id.as_str()), ("tok", "7"));
+        assert_eq!((c.access_token.as_str(), c.user_id.as_str(), c.refresh_token.as_str()), ("tok", "7", "r"));
+        let c = credentials_within(&paths, std::time::Duration::from_secs(30)).unwrap();
+        assert_eq!(c.access_token, "tok");
     }
 
     #[test]

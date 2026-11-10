@@ -1,7 +1,8 @@
 //! The parts of the app each system has.
 //!
-//! Linux has everything but Windows' own store (Xbox), except what a
-//! Flatpak sandbox cannot do ([`crate::flatpak`]). On Windows the port is
+//! Linux has everything but Windows' own store (Xbox) and the first-start
+//! copy of Heroic ([`Feature::HeroicMigration`], off on every system),
+//! except what a Flatpak sandbox cannot do ([`crate::flatpak`]). On Windows the port is
 //! under way (`docs/WINDOWS-MIGRATION.md`): a part turns on here once it
 //! works there.
 //! The UI asks [`supported`] before it shows a page, a menu entry or a
@@ -30,11 +31,13 @@ pub enum Feature {
     /// Launcher (under Wine on Linux, as they are on Windows).
     StoreClients,
     /// Games of the other launchers: Heroic, Lutris, Bottles and Faugus on
-    /// Linux, Playnite on Windows.
+    /// Linux, Heroic and Playnite on Windows.
     LauncherImports,
     /// Copying an existing Heroic setup in at the first start
-    /// (`heronite_data::migrate`): Heroic's Windows folder holds stores
-    /// this system has no runner for yet.
+    /// (`heronite_data::migrate`): `~/.config/heroic` on Linux,
+    /// `%APPDATA%\heroic` on Windows. Off on every system: Heroic's games
+    /// come in only when the user turns its import on in Settings → Other
+    /// launchers ([`Feature::LauncherImports`]).
     HeroicMigration,
     /// Emulators, ROM folders and save states.
     Emulation,
@@ -45,8 +48,9 @@ pub enum Feature {
     Overlay,
     /// Keeping and saving the last seconds of a game (Linux's replay buffer).
     Replay,
-    /// Steam's per-game settings: the launch options line and the
-    /// compatibility tool (Proton) forced for a game.
+    /// Steam's per-game settings: the launch options line and, on Linux,
+    /// the compatibility tool (Proton) forced for a game. Windows has the
+    /// line alone: Steam starts Windows games as they are.
     SteamGameSettings,
     /// Running games in a sandbox (bubblewrap).
     Sandbox,
@@ -76,10 +80,13 @@ pub enum Feature {
     /// The Microsoft Store and PC Game Pass games the Xbox app installs
     /// (Windows' own packages): its page and the games it brings in.
     XboxStore,
+    /// The mods of a game (`docs/MODS.md`): its manager, Settings → Mods,
+    /// the mod sites' links and applying the mods when the game starts.
+    Mods,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 22] = [
+    pub const ALL: [Feature; 23] = [
         Feature::Wine,
         Feature::EpicStore,
         Feature::GogStore,
@@ -102,6 +109,7 @@ impl Feature {
         Feature::DesktopShortcuts,
         Feature::Capture,
         Feature::XboxStore,
+        Feature::Mods,
     ];
 
     /// Its name in `HERONITE_FEATURES`.
@@ -129,6 +137,7 @@ impl Feature {
             Feature::DesktopShortcuts => "desktop-shortcuts",
             Feature::Capture => "capture",
             Feature::XboxStore => "xbox",
+            Feature::Mods => "mods",
         }
     }
 }
@@ -145,9 +154,11 @@ pub fn supported(feature: Feature) -> bool {
 }
 
 /// What the Flatpak's sandbox rules out: bubblewrap cannot make the
-/// namespaces of a sandbox inside it, and Flatpak installs the updates.
+/// namespaces of a sandbox inside it, Flatpak installs the updates, and
+/// nothing can be mounted over a game's folder (`fusermount3` needs to be
+/// setuid, which a Flatpak never is), so mods cannot be applied.
 const fn off_in_flatpak(feature: Feature) -> bool {
-    matches!(feature, Feature::Sandbox | Feature::SelfUpdate)
+    matches!(feature, Feature::Sandbox | Feature::SelfUpdate | Feature::Mods)
 }
 
 /// Whether any of the stores Heronite signs in to is on: what they share
@@ -160,7 +171,7 @@ pub fn any_store() -> bool {
 const fn built_in(feature: Feature) -> bool {
     if cfg!(target_os = "linux") {
         // Packages of the Microsoft Store exist on Windows only.
-        return !matches!(feature, Feature::XboxStore);
+        return !matches!(feature, Feature::XboxStore | Feature::HeroicMigration);
     }
     match feature {
         // Ported to Windows.
@@ -178,11 +189,11 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::LaunchExtras
         | Feature::StoreClients
         | Feature::LauncherImports
-        | Feature::XboxStore => true,
+        | Feature::SteamGameSettings
+        | Feature::XboxStore
+        | Feature::Mods => true,
         Feature::Overlay => cfg!(windows),
-        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::SteamGameSettings | Feature::Sandbox | Feature::Wrappers => {
-            false
-        }
+        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::Sandbox | Feature::Wrappers => false,
     }
 }
 
@@ -253,13 +264,20 @@ mod tests {
     }
 
     #[test]
-    fn linux_has_everything_but_windows_own_store() {
+    fn linux_has_everything_but_windows_own_store_and_the_heroic_copy() {
         if cfg!(target_os = "linux") {
-            assert!(Feature::ALL.into_iter().filter(|f| *f != Feature::XboxStore).all(built_in));
+            assert!(Feature::ALL.into_iter().filter(|f| !matches!(f, Feature::XboxStore | Feature::HeroicMigration)).all(built_in));
             assert!(!built_in(Feature::XboxStore));
         }
         if cfg!(windows) {
             assert!(built_in(Feature::XboxStore));
+            assert!(built_in(Feature::SteamGameSettings), "the launch options line");
         }
+    }
+
+    /// Heroic's games come in only from Settings → Other launchers.
+    #[test]
+    fn heroic_is_never_copied_at_the_first_start() {
+        assert!(!built_in(Feature::HeroicMigration));
     }
 }

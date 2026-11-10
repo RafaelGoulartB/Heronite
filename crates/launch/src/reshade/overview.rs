@@ -13,6 +13,8 @@ use super::fetch::Cache;
 use super::manifest::{self, Manifest, ADOPTED};
 use super::preset::{self, Needs};
 use super::ReShade;
+use crate::gfxmods::catalog::{self as mods, Found};
+use crate::gfxmods::renodx;
 use crate::net::Net;
 
 /// The game, as the settings know it.
@@ -95,6 +97,10 @@ pub struct Overview {
     pub sharing: Vec<String>,
     /// DLL names the user's `WINEDLLOVERRIDES` already sets.
     pub user_overrides: Vec<String>,
+    /// The RenoDX mod Heronite's catalog has for the game.
+    pub renodx: Option<Found>,
+    /// The RenoDX mod installed, when there is one.
+    pub renodx_installed: Option<renodx::Installed>,
 }
 
 fn file_name(p: &Path) -> String {
@@ -238,6 +244,8 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
         true => super::user_overrides(f.env_options, &dlls),
         false => Vec::new(),
     };
+    let renodx = mods::load(paths, net, refresh).renodx_for(f.steam_app_id, exe.as_deref(), f.title);
+    let renodx_installed = manifest.as_ref().and_then(renodx::installed);
     Overview {
         state,
         exe,
@@ -255,6 +263,8 @@ pub fn overview(paths: &DataPaths, net: &dyn Net, f: &Facts, refresh: bool) -> O
         sources,
         sharing,
         user_overrides,
+        renodx,
+        renodx_installed,
     }
 }
 

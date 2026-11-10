@@ -12,6 +12,13 @@
 //!   nothing (Sunshine runs it when a stream's application ends).
 //!   The old `heronite-rs://` scheme is still read: Steam shortcuts made
 //!   before the rename keep it.
+//! * `heronite://screenshot` (or `--screenshot`) captures the game the
+//!   running instance has open, like the screenshot shortcut. A key bound to
+//!   it in the desktop's settings stands in for that shortcut where Heronite
+//!   cannot register one (a desktop without a global shortcuts portal).
+//!
+//! Mod links (`nxm://` from Nexus Mods' "Mod manager download", `ror2mm://`
+//! from Thunderstore's "Install with mod manager") go to the mods service.
 //!
 //! `--open-client <id>` opens a store client (`battlenet`, `ea`, `ubisoft`,
 //! `rockstar`; the shortcuts of the clients under Wine) and never shows the
@@ -50,6 +57,8 @@ pub enum UrlAction {
     Launch(LaunchRequest),
     /// Close this game if it runs (only `app_name` and `runner` are read).
     Stop(LaunchRequest),
+    /// Capture the running game.
+    Screenshot,
     Ping,
 }
 
@@ -57,10 +66,15 @@ pub enum UrlAction {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Cli {
     pub launch: Option<LaunchRequest>,
+    /// An `nxm://` or `ror2mm://` link to install a mod from.
+    pub mod_link: Option<String>,
     /// `--open-client <id>`.
     pub open_client: Option<Client>,
     /// `heronite://stop?..`: the game to close in the running instance.
     pub stop: Option<LaunchRequest>,
+    /// `--screenshot` or `heronite://screenshot`: capture the game the
+    /// running instance has open.
+    pub screenshot: bool,
     /// `--no-gui`.
     pub no_gui: bool,
     /// `--console`: switch to console mode.
@@ -87,14 +101,27 @@ Usage:
   heronite-rs                         open the Collection
   heronite-rs --launch <runner>_<app> launch a game (also: --launch <runner> <app>, --launch <app>)
   heronite-rs [--no-gui] <url>        launch from heronite://launch?appName=..&runner=..
+  heronite-rs <nxm://..|ror2mm://..>  install a mod from Nexus Mods or Thunderstore
   heronite-rs --open-client <client>  open battlenet, ea, ubisoft or rockstar (no window)
+  heronite-rs --screenshot            capture the running game (for a key bound in the desktop's settings)
   --no-gui                            do not show the window (the process exits when the game ends)
   --console                           open in console mode (it stays on until you leave it)
   --fullscreen                        open the window fullscreen (F11 switches back)
   --autostart                         started with the system (\"Start minimized\" applies)
   --handoff                           start the instance detached and exit at once (Sunshine)
+  --display-probe                     print the monitors, their modes and HDR as JSON, and exit
   -h, --help                          this text
 ";
+
+/// Prints what [`heronite_display::probe`] reads and exits, before anything
+/// else starts (no window, no single-instance check, no data folder). Only
+/// reads the displays.
+pub const DISPLAY_PROBE: &str = "--display-probe";
+
+/// Whether the command line asks for [`DISPLAY_PROBE`].
+pub fn wants_display_probe<I: IntoIterator<Item = std::ffi::OsString>>(args: I) -> bool {
+    args.into_iter().any(|a| a == DISPLAY_PROBE)
+}
 
 /// See [`Cli::handoff`].
 pub const HANDOFF: &str = "--handoff";
@@ -160,6 +187,7 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
 
     match host.to_ascii_lowercase().as_str() {
         "ping" => Some(UrlAction::Ping),
+        "screenshot" => Some(UrlAction::Screenshot),
         host @ ("launch" | "stop") => {
             let mut req = LaunchRequest { gui_false: param("gui").is_some_and(|g| gui_false(&g)), ..Default::default() };
             let (app_name, runner);
@@ -182,6 +210,11 @@ pub fn parse_url(url: &str) -> Option<UrlAction> {
     }
 }
 
+/// `nxm://…` (Nexus Mods) or `ror2mm://…` (Thunderstore).
+pub fn is_mod_link(arg: &str) -> bool {
+    arg.split_once("://").is_some_and(|(scheme, _)| scheme.eq_ignore_ascii_case("nxm") || scheme.eq_ignore_ascii_case("ror2mm"))
+}
+
 /// Parses the arguments after the program name.
 pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
     let args: Vec<String> = args.into_iter().collect();
@@ -195,6 +228,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
             "--fullscreen" => cli.fullscreen = true,
             HANDOFF => cli.handoff = true,
             "--autostart" => cli.autostart = true,
+            "--screenshot" => cli.screenshot = true,
             "-h" | "--help" => cli.help = true,
             "--launch" => {
                 let first = args.get(i + 1).filter(|s| !s.starts_with("--"));
@@ -239,11 +273,13 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Cli {
                     cli.launch = Some(LaunchRequest { runner, app_name, ..Default::default() });
                 }
             }
+            _ if is_mod_link(a) => cli.mod_link = Some(a.clone()),
             _ => {
                 match parse_url(a) {
                     // `--launch X` already seen wins over nothing; a URL fills in when absent.
                     Some(UrlAction::Launch(req)) if cli.launch.is_none() => cli.launch = Some(req),
                     Some(UrlAction::Stop(req)) => cli.stop = Some(req),
+                    Some(UrlAction::Screenshot) => cli.screenshot = true,
                     _ => {}
                 }
             }
@@ -313,6 +349,18 @@ mod tests {
         assert!(!p(&[]).hide_window(true), "the setting only applies to launches");
         assert!(p(&["--launch", "gog_1"]).hide_window(true));
         assert!(!p(&["--launch", "gog_1"]).hide_window(false));
+    }
+
+    #[test]
+    fn display_probe_is_spotted_anywhere_and_ignored_by_parse() {
+        let os = |args: &[&str]| args.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
+        assert!(wants_display_probe(os(&["--display-probe"])));
+        assert!(wants_display_probe(os(&["--no-gui", "--display-probe"])));
+        assert!(!wants_display_probe(os(&["--launch", "gog_1"])));
+        assert!(!wants_display_probe(os(&["--display-probe=x"])));
+        // Never mistaken for a launch or an error.
+        let c = p(&["--display-probe"]);
+        assert!(c.launch.is_none() && c.errors.is_empty());
     }
 
     #[test]
@@ -389,12 +437,36 @@ mod tests {
     }
 
     #[test]
+    fn mod_links() {
+        let c = p(&["nxm://skyrimspecialedition/mods/12604/files/35407?key=a&expires=1&user_id=2"]);
+        assert_eq!(c.mod_link.as_deref(), Some("nxm://skyrimspecialedition/mods/12604/files/35407?key=a&expires=1&user_id=2"));
+        assert!(c.launch.is_none());
+        assert!(p(&["ROR2MM://v1/install/thunderstore.io/a/b/1.0.0/"]).mod_link.is_some());
+        assert!(p(&["heronite://launch/Quail"]).mod_link.is_none());
+        assert!(!is_mod_link("nxm:/broken"));
+    }
+
+    #[test]
     fn stop_urls() {
         assert_eq!(parse_url("heronite://stop?appName=Quail&runner=legendary"), Some(UrlAction::Stop(req(Some("legendary"), "Quail"))));
         assert_eq!(parse_url("heronite://stop/gog/1"), Some(UrlAction::Stop(req(Some("gog"), "1"))));
         let c = p(&["heronite://stop?appName=My%20Game&runner=sideload"]);
         assert_eq!(c.stop, Some(req(Some("sideload"), "My Game")));
         assert!(c.launch.is_none());
+    }
+
+    #[test]
+    fn screenshot_requests() {
+        assert_eq!(parse_url("heronite://screenshot"), Some(UrlAction::Screenshot));
+        assert_eq!(parse_url("heronite://screenshot/"), Some(UrlAction::Screenshot));
+        assert!(p(&["heronite://screenshot"]).screenshot);
+        let c = p(&["--screenshot"]);
+        assert!(c.screenshot && c.launch.is_none() && c.errors.is_empty());
+        assert!(!p(&["--no-gui"]).screenshot);
+        // It does not eat a launch that comes with it.
+        let c = p(&["--screenshot", "--launch", "gog_1"]);
+        assert!(c.screenshot);
+        assert_eq!(c.launch, Some(req(Some("gog"), "1")));
     }
 
     #[test]

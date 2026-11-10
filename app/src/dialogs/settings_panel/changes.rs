@@ -74,6 +74,7 @@ const GROUPS: &[Group] = &[
     g(heronite_launch::keep_awake::KEY, P, &[heronite_launch::keep_awake::KEY]),
     t(heronite_launch::env::KEY_PREFER_SDL, P, &[heronite_launch::env::KEY_PREFER_SDL]),
     t("gpu-device", G, &[gpu::KEY_DEVICE, gpu::KEY_PRIME]),
+    t("gpu-preference", G, &[gpu::KEY_PREFERENCE]),
     g(gpu::KEY_SMOOTH_MOTION, G, &[gpu::KEY_SMOOTH_MOTION]),
     g(gpu::KEY_REFLEX, G, &[gpu::KEY_REFLEX]),
     t(gpu::KEY_SHADER_CACHE, G, &[gpu::KEY_SHADER_CACHE]),

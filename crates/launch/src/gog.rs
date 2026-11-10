@@ -143,6 +143,7 @@ fn native_windows(
             platform: game.install.platform.clone().unwrap_or_default(),
             ..Default::default()
         });
+        process.prep.galaxy = true;
     }
     plan
 }
@@ -198,6 +199,8 @@ pub fn build(ctx: &PlanContext, probe: &dyn Probe, game: &GameInfo, settings: &G
         if settings.auto_sync_saves {
             process.prep.cloud_saves = Some(CloudSaves::new("gog", ""));
         }
+        // A game in a sandbox without the network cannot reach Comet.
+        process.prep.galaxy = !settings.sandbox.enabled || settings.sandbox.network;
         // Redistributables, the game's install scripts and known fixes: once per game and prefix.
         let (winetricks, run_in_prefix) = known_fixes_steps(ctx, "gog", app);
         process.prep.first_launch = Some(FirstLaunch {
@@ -294,6 +297,19 @@ mod tests {
         let crate::plan::LaunchPlan::Wine { process, .. } = plan else { panic!("{plan:?}") };
         let expected = ["-userdir", r"C:\Users\me\saves", "-x", "a b", "--path", r"/home/u/My\", "Games"];
         assert!(process.command.args.ends_with(&expected.map(String::from)), "{:?}", process.command.args);
+        assert!(process.prep.galaxy, "Comet runs beside it");
+
+        // In a sandbox without the network the game cannot reach Comet.
+        let mut sandboxed = wine.clone();
+        sandboxed["heroniteSandbox"] = serde_json::json!({"enabled": true});
+        let settings = GameSettings::from_map(sandboxed.as_object().unwrap(), "/home/u");
+        let probe = probe.with_bwrap((0, 9, 0));
+        let plan = build_plan_with_settings(&ctx, &probe, &game, None, &settings, &Default::default());
+        assert!(!plan.process().unwrap_or_else(|| panic!("{plan:?}")).prep.galaxy, "{plan:?}");
+        sandboxed["heroniteSandbox"] = serde_json::json!({"enabled": true, "network": true});
+        let settings = GameSettings::from_map(sandboxed.as_object().unwrap(), "/home/u");
+        let plan = build_plan_with_settings(&ctx, &probe, &game, None, &settings, &Default::default());
+        assert!(plan.process().unwrap().prep.galaxy, "{plan:?}");
     }
 
     #[cfg(windows)]
@@ -348,6 +364,7 @@ mod tests {
             let first = p.prep.first_launch.expect("the store setup");
             assert_eq!((first.runner.as_str(), first.app_name.as_str(), first.install_path.as_str()), ("gog", "42", r"C:\Games\The Game"));
             assert!(first.winetricks.is_empty() && first.run_in_prefix.is_empty());
+            assert!(p.prep.galaxy, "Comet runs beside it");
 
             let sync = GameSettings { auto_sync_saves: true, ..Default::default() };
             let plan = build_plan_with_settings(&ctx(), &probe(), &game("windows"), None, &sync, &Default::default());

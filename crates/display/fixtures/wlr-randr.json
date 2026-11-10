@@ -1,0 +1,100 @@
+[
+  {
+    "name": "DP-1",
+    "description": "Dell Inc. DELL U2723QE 5CD2140XYZ (DP-1)",
+    "make": "Dell Inc.",
+    "model": "DELL U2723QE",
+    "serial": "5CD2140XYZ",
+    "physical_size": {
+      "width": 600,
+      "height": 340
+    },
+    "enabled": true,
+    "modes": [
+      {
+        "width": 3840,
+        "height": 2160,
+        "refresh": 59.997002,
+        "preferred": true,
+        "current": true
+      },
+      {
+        "width": 2560,
+        "height": 1440,
+        "refresh": 59.951000,
+        "preferred": false,
+        "current": false
+      },
+      {
+        "width": 1920,
+        "height": 1080,
+        "refresh": 60.000000,
+        "preferred": false,
+        "current": false
+      }
+    ],
+    "position": {
+      "x": 0,
+      "y": 0
+    },
+    "transform": "normal",
+    "scale": 1.500000,
+    "adaptive_sync": false
+  },
+  {
+    "name": "DP-2",
+    "description": "LG Electronics LG ULTRAGEAR Unknown (DP-2)",
+    "make": "LG Electronics",
+    "model": "LG ULTRAGEAR",
+    "serial": null,
+    "physical_size": {
+      "width": 600,
+      "height": 340
+    },
+    "enabled": true,
+    "modes": [
+      {
+        "width": 2560,
+        "height": 1440,
+        "refresh": 143.998001,
+        "preferred": true,
+        "current": true
+      },
+      {
+        "width": 2560,
+        "height": 1440,
+        "refresh": 59.951000,
+        "preferred": false,
+        "current": false
+      }
+    ],
+    "position": {
+      "x": 3840,
+      "y": 0
+    },
+    "transform": "normal",
+    "scale": 1.000000,
+    "adaptive_sync": true
+  },
+  {
+    "name": "eDP-1",
+    "description": "BOE 0x0BCA Unknown (eDP-1)",
+    "make": "BOE",
+    "model": "0x0BCA",
+    "serial": null,
+    "physical_size": {
+      "width": 290,
+      "height": 190
+    },
+    "enabled": false,
+    "modes": [
+      {
+        "width": 2256,
+        "height": 1504,
+        "refresh": 59.999001,
+        "preferred": true,
+        "current": false
+      }
+    ]
+  }
+]

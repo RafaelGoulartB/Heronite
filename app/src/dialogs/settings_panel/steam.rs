@@ -4,6 +4,10 @@
 //! game config. The panel's settings map holds the launch options as fields
 //! (`heronite_steam::options`), and every change rebuilds the line and hands
 //! it to Steam.
+//!
+//! On Windows Steam starts its games as they are: the game's settings stay
+//! this app's (`RunKind::SteamDirect`), and only Steam's launch options are
+//! read and changed here, as text ([`SteamState::line_only`]).
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -69,10 +73,13 @@ pub(super) struct SteamState {
     reload_wanted: bool,
     /// Steam can be restarted from here (not in a gamescope session).
     pub(super) can_restart: bool,
+    /// Only the launch options are Steam's, as text (Windows): the panel's
+    /// settings are the game's own config, not fields of the line.
+    pub(super) line_only: bool,
 }
 
 impl SteamState {
-    pub(super) fn new(app_id: String) -> Self {
+    pub(super) fn new(app_id: String, line_only: bool) -> Self {
         Self {
             app_id,
             snapshot: None,
@@ -86,6 +93,7 @@ impl SteamState {
             starting_since: None,
             reload_wanted: false,
             can_restart: heronite_steam::can_restart(),
+            line_only,
         }
     }
 
@@ -95,8 +103,15 @@ impl SteamState {
 }
 
 impl SettingsPanel {
+    /// Whether the game's settings are Steam's (Linux): its launch options as
+    /// fields, and its compatibility tool.
     pub(super) fn is_steam(&self) -> bool {
-        self.steam.is_some()
+        self.steam.as_ref().is_some_and(|s| !s.line_only)
+    }
+
+    /// Whether only Steam's launch options are Steam's, as text (Windows).
+    pub(super) fn steam_line_only(&self) -> bool {
+        self.steam.as_ref().is_some_and(|s| s.line_only)
     }
 
     /// Reads the game's settings from Steam (again).
@@ -107,7 +122,12 @@ impl SettingsPanel {
         cx.spawn(async move |this, cx| {
             let res = cx.background_spawn(async move { steam(&paths).read(&app_id) }).await;
             this.update(cx, |this, cx| {
-                if let Ok(snap) = &res {
+                let line_only = this.steam_line_only();
+                if let Some(snap) = res.as_ref().ok().filter(|_| line_only) {
+                    if let Some(st) = this.steam.as_mut() {
+                        st.line = snap.launch_options.clone();
+                    }
+                } else if let Ok(snap) = &res {
                     let parsed = options::parse(&snap.launch_options);
                     this.settings = super::with_reshade_keys(parsed.settings, &this.settings);
                     if let Some(st) = this.steam.as_mut() {
@@ -120,7 +140,7 @@ impl SettingsPanel {
                     st.snapshot = Some(res);
                     st.inputs_stale = true;
                 }
-                if read {
+                if read && !line_only {
                     this.apply_debug_settings(cx);
                     this.sync_steam_reshade(cx);
                 }
@@ -177,9 +197,11 @@ impl SettingsPanel {
             cx.notify();
             return;
         }
-        let parsed = options::parse(&text);
-        self.settings = super::with_reshade_keys(parsed.settings, &self.settings);
-        self.steam_mut().editable = parsed.editable;
+        if !self.steam_line_only() {
+            let parsed = options::parse(&text);
+            self.settings = super::with_reshade_keys(parsed.settings, &self.settings);
+            self.steam_mut().editable = parsed.editable;
+        }
         self.steam_send_line(text, cx);
     }
 
@@ -261,7 +283,10 @@ impl SettingsPanel {
         let Some(st) = self.steam.as_mut().filter(|s| s.inputs_stale) else { return };
         st.inputs_stale = false;
         let line = st.line.clone();
-        self.reload_inputs(window, cx);
+        // The other inputs are the game's own settings when only the line is Steam's.
+        if !st.line_only {
+            self.reload_inputs(window, cx);
+        }
         self.set_input("steamLine", &line, window, cx);
     }
 
@@ -670,6 +695,18 @@ impl SettingsPanel {
         }
         let off = !self.steam_fields_editable();
         col.child(self.gpu_tab(off, cx))
+    }
+
+    /// Steam's launch options as text, for a game Steam starts as it is
+    /// (Windows): where they go, and the line.
+    pub(super) fn steam_line_section(&mut self, cx: &mut Context<Self>) -> Div {
+        let line = rows().field_help(
+            self.text_row("steamLine", Some(tr!("Steam launch options")), None, cx),
+            vec![help(tr!(
+                "What Steam adds to the game's command, however the game starts (Properties \u{2192} General in Steam), like -novid or -dx11."
+            ))],
+        );
+        column().child(heading("Steam")).child(self.steam_banner(cx)).child(line.card())
     }
 
     pub(super) fn steam_launch_tab(&mut self, cx: &mut Context<Self>) -> Div {

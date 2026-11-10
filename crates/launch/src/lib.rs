@@ -22,6 +22,8 @@ pub mod epic_launch;
 pub mod epic_native_setup;
 pub mod first_launch;
 pub mod fps_limit;
+pub mod galaxy;
+pub mod gfxmods;
 pub mod gog;
 pub mod gpu;
 pub mod host;
@@ -66,6 +68,6 @@ mod xbox;
 pub use plan::{build_plan, build_plan_with_settings, Command, LaunchOptions, LaunchPlan, PlanContext, ProcessPlan, StopSpec, WineRuntime};
 pub use probe::{Probe, SystemProbe};
 pub use runtime::{
-    failed_launch, ExitInfo, HandoffConfig, LaunchError, LaunchEvent, LaunchRequest, Launcher, LauncherConfig, ProcessHandle, Spawner,
-    StopOptions, SystemSpawner,
+    failed_launch, AppliedMods, ExitInfo, GameMods, HandoffConfig, LaunchError, LaunchEvent, LaunchRequest, Launcher, LauncherConfig,
+    ProcessHandle, Spawner, StopOptions, SystemSpawner,
 };

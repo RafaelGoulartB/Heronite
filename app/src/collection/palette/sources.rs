@@ -183,13 +183,14 @@ fn section_help(s: Section) -> &'static str {
         Section::GameDefaults => tr!("Values new games start with"),
         Section::Downloads => tr!("Store downloads and updates"),
         Section::Library => tr!("Hidden games, favourites, recent games"),
-        Section::Launchers if cfg!(windows) => tr!("Bring in games from Playnite"),
+        Section::Launchers if cfg!(windows) => tr!("Bring in games from Heroic and Playnite"),
         Section::Launchers => tr!("Bring in games from Heroic, Lutris, Bottles and Faugus"),
         Section::Integrations => tr!("Sunshine, so Moonlight can start your games"),
         Section::Storage if !heronite_platform::supported(heronite_platform::Feature::Wine) => {
             tr!("Disk space of games, store tools, caches")
         }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
+        Section::Mods => tr!("Nexus Mods account, mod links, applying mods"),
         Section::Overlay => crate::overlay::labels::palette_help(),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("IGDB keys, covers, field sources"),

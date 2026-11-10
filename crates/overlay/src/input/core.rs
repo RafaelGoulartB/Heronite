@@ -189,9 +189,9 @@ impl Core {
             if self.guide.is_none() {
                 self.guide = Some((dev, false));
                 self.held = None;
-                if !self.open {
-                    out.grabs.push(Grab::Hold(dev));
-                }
+                // Even while open (where it is normally held already): a grab
+                // that fails tells that another program owns the controller.
+                out.grabs.push(Grab::Hold(dev));
             }
             return;
         }
@@ -249,11 +249,54 @@ impl Core {
         out
     }
 
+    /// The controller whose Guide is held, as far as the core knows.
+    #[cfg(any(target_os = "linux", test))]
+    pub fn guide_device(&self) -> Option<usize> {
+        self.guide.map(|(d, _)| d)
+    }
+
+    #[cfg(any(target_os = "linux", test))]
+    pub fn guide_held_on(&self, dev: usize) -> bool {
+        self.guide_device() == Some(dev)
+    }
+
+    /// The kernel dropped events of `dev`: a held direction may have been
+    /// released unseen, so it stops repeating.
+    #[cfg(any(target_os = "linux", test))]
+    pub fn dropped(&mut self, dev: usize) {
+        if self.held.is_some_and(|(d, _, _)| d == dev) {
+            self.held = None;
+        }
+        if self.stick.is_some_and(|(d, _)| d == dev) {
+            self.stick = None;
+        }
+    }
+
+    /// The Guide release of `dev` will never come: another program grabbed
+    /// the controller first (it gets the release, not us), or the kernel
+    /// dropped events. Forget the Guide without opening the overlay, or every
+    /// later press would be read as a chord (RB a screenshot, X a replay).
+    #[cfg(any(target_os = "linux", test))]
+    pub fn lost_guide(&mut self, dev: usize) -> Output {
+        let mut out = Output::default();
+        if self.guide_held_on(dev) {
+            self.guide = None;
+            if !self.open {
+                out.grabs.push(Grab::ReleaseAll);
+            }
+        }
+        out
+    }
+
     /// A controller went away.
     pub fn removed(&mut self, dev: usize, remaining: usize) -> Output {
         let mut out = Output::default();
         if self.guide.is_some_and(|(d, _)| d == dev) {
             self.guide = None;
+            // A chord may have grabbed other controllers: the game gets them back.
+            if !self.open {
+                out.grabs.push(Grab::ReleaseAll);
+            }
         }
         if self.held.is_some_and(|(d, _, _)| d == dev) {
             self.held = None;
@@ -360,7 +403,7 @@ mod tests {
 
         let again = press(&mut c, 0, Button::Guide);
         assert_eq!(again.events, vec![Event::Close]);
-        assert_eq!(again.grabs, vec![Grab::ReleaseAll]);
+        assert_eq!(again.grabs, vec![Grab::Hold(0), Grab::ReleaseAll], "Guide down asks for the grab even while open");
         assert!(!c.is_open() && !c.holds(0));
     }
 
@@ -469,6 +512,58 @@ mod tests {
         assert!(out.events.is_empty());
         assert_eq!(out.grabs, vec![Grab::ReleaseAll]);
         assert!(!c.is_open());
+    }
+
+    #[test]
+    fn a_lost_guide_release_does_not_leave_chords_behind() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.button(0, Button::Guide, true, now);
+        assert!(c.guide_held_on(0) && !c.guide_held_on(1));
+        assert!(c.lost_guide(1).grabs.is_empty(), "another controller's Guide is not this one");
+        let out = c.lost_guide(0);
+        assert!(out.events.is_empty(), "never opens the overlay");
+        assert_eq!(out.grabs, vec![Grab::ReleaseAll]);
+        assert!(!c.holds(0));
+        assert!(press(&mut c, 0, Button::RB).events.is_empty(), "RB alone is the game's again");
+        assert!(press(&mut c, 0, Button::X).events.is_empty(), "X alone is the game's again");
+        assert!(c.button(0, Button::Guide, false, now).events.is_empty(), "the late release does nothing");
+        assert!(!c.is_open());
+    }
+
+    #[test]
+    fn a_lost_guide_while_open_keeps_the_overlay_held() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.open();
+        c.button(0, Button::Guide, true, now);
+        let out = c.lost_guide(0);
+        assert!(out.events.is_empty() && out.grabs.is_empty());
+        assert!(c.is_open() && c.holds(0));
+        assert_eq!(press(&mut c, 0, Button::A).events, vec![Event::Press(Button::A)]);
+    }
+
+    #[test]
+    fn a_guide_pad_gone_mid_chord_gives_the_others_back() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.button(0, Button::Guide, true, now);
+        assert_eq!(c.button(1, Button::RB, true, now).grabs, vec![Grab::Hold(1)]);
+        assert_eq!(c.removed(0, 1).grabs, vec![Grab::ReleaseAll]);
+        assert!(!c.holds(1));
+        assert!(press(&mut c, 1, Button::RB).events.is_empty(), "RB alone is the game's again");
+    }
+
+    #[test]
+    fn dropped_events_stop_a_repeat() {
+        let mut c = Core::new(ALL);
+        let now = Instant::now();
+        c.open();
+        c.button(0, Button::Down, true, now);
+        c.dropped(1);
+        assert_eq!(c.tick(now + REPEAT_AFTER), Some(Event::Press(Button::Down)), "another controller's drop");
+        c.dropped(0);
+        assert_eq!(c.tick(now + Duration::from_secs(5)), None);
     }
 
     #[test]

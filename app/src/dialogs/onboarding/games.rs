@@ -43,8 +43,9 @@ fn tile(head: Div, title: &'static str, sub: Div, description: &'static str, foo
 }
 
 impl OnboardingDialog {
-    /// The launchers on this PC with games not brought in yet (Heroic,
-    /// Lutris, Bottles, Faugus): a button each turns its import on.
+    /// The launchers on this PC with games not brought in yet (Lutris,
+    /// Bottles, Faugus; Heroic only from Settings): a button each turns its
+    /// import on.
     fn other_launchers(&self, cx: &mut Context<Self>) -> Option<Div> {
         let svc = crate::services::launcher_imports(cx);
         let offers = svc.read(cx).offers();

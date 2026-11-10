@@ -4,7 +4,8 @@
 //!
 //! * the launch options ([`options`] turns the line into game settings and
 //!   back; [`wrap`] is the script behind the before/after scripts),
-//! * the compatibility tool (Proton build) forced for the game.
+//! * the compatibility tool (Proton build) forced for the game (Linux only:
+//!   on Windows Steam starts games as they are, see [`PROTON`]).
 //!
 //! While Steam runs, its CEF debugging interface ([`client`]) is the only
 //! way: Steam keeps the settings in memory and rewrites its files. With
@@ -127,6 +128,28 @@ pub struct Snapshot {
     /// gamescope or MangoHud of the system) are not visible to it.
     pub flatpak: bool,
 }
+
+impl Snapshot {
+    /// Only the launch options: Windows, where Steam runs games as they are.
+    fn line_only() -> Self {
+        Self {
+            launch_options: String::new(),
+            compat_tool: String::new(),
+            tools: Vec::new(),
+            default_tool: None,
+            last_ran: None,
+            unseen: Vec::new(),
+            access: Access::Files,
+            prefix: None,
+            flatpak: false,
+        }
+    }
+}
+
+/// Whether Steam runs games through a compatibility tool here (Proton, on
+/// Linux only). Elsewhere it starts them as they are: of a game's settings
+/// only the launch options are Steam's.
+pub const PROTON: bool = cfg!(target_os = "linux");
 
 /// A change to one game; `None` leaves that setting alone.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -292,6 +315,13 @@ impl Steam {
                     access = Access::ReadOnly;
                 }
             }
+        }
+        if !PROTON {
+            let launch_options = match from_client {
+                Some(app) => app.launch_options,
+                None => files::read_launch_options(self.root(), &self.user()?, app_id)?,
+            };
+            return Ok(Snapshot { launch_options, access, ..Snapshot::line_only() });
         }
         let on_disk = files::compat_tools(&self.locator);
         let (launch_options, compat_tool, automatic, mut tools) = match from_client {
@@ -483,7 +513,7 @@ impl Steam {
                 if let Some(line) = &change.launch_options {
                     client::set_launch_options(&self.client, app_id, line).map_err(fail)?;
                 }
-                if let Some(tool) = &change.compat_tool {
+                if let Some(tool) = change.compat_tool.as_ref().filter(|_| PROTON) {
                     client::set_compat_tool(&self.client, app_id, tool).map_err(fail)?;
                 }
             }
@@ -491,7 +521,7 @@ impl Steam {
                 if let Some(line) = &change.launch_options {
                     files::write_launch_options(self.root(), &self.user()?, app_id, line)?;
                 }
-                if let Some(tool) = &change.compat_tool {
+                if let Some(tool) = change.compat_tool.as_ref().filter(|_| PROTON) {
                     files::write_compat_tool(self.root(), app_id, tool)?;
                 }
             }

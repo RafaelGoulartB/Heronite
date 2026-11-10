@@ -199,7 +199,7 @@ pub fn content_width(window: &Window) -> f32 {
 }
 
 /// Settings → Other launchers, under the stores: the games of Heroic,
-/// Lutris, Bottles and Faugus (Playnite on Windows) come in from there.
+/// Lutris, Bottles and Faugus (Heroic and Playnite on Windows) come in from there.
 fn other_launchers<V: EventEmitter<PageEvent> + 'static>(cx: &mut Context<V>) -> Stateful<Div> {
     // Names: not translated.
     let names = heronite_data::launchers::Launcher::here().iter().map(|l| l.name()).collect::<Vec<_>>().join(", ");

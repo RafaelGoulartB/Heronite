@@ -12,12 +12,19 @@
 //! 1. `begin_session` for a launched game registers the shortcut (only while a
 //!    game is active and `screenshots.captureEnabled` is set).
 //! 2. On Hyprland a temporary, in-memory, non-consuming bind
-//!    (`hyprctl eval hl.bind(...)`) runs `kill -USR2 <our pid>`; a
-//!    `signal-hook` thread turns SIGUSR2 into a capture. Elsewhere the XDG
-//!    GlobalShortcuts portal (`ashpd`) delivers the activation.
-//! 3. The display under the pointer is captured with `grim` (Hyprland) or the
-//!    portal Screenshot method, written as PNG into the game's matched folder
-//!    (or `<root>/<sanitized title>`), and a [`CaptureEvent::Saved`] is sent.
+//!    (`hyprctl eval hl.bind(...)`) sends this process SIGUSR2; a
+//!    `signal-hook` thread turns it into a capture. Elsewhere, and on a
+//!    Hyprland that cannot be asked, the XDG GlobalShortcuts portal (`ashpd`)
+//!    delivers the activation.
+//! 3. On Hyprland the display under the pointer is captured with `grim`;
+//!    elsewhere the portal's Screenshot method gives what the desktop
+//!    captures (as a rule every display), and `grim` stands in where there
+//!    is no such portal. The PNG goes into the game's matched folder (or
+//!    `<root>/<sanitized title>`) and a [`CaptureEvent::Saved`] is sent.
+//!
+//! A desktop without a way to give an app a shortcut still captures: a key
+//! bound in its own settings to `heronite-rs --screenshot` reaches
+//! [`CaptureService::capture_requested`].
 
 mod accelerator;
 
@@ -28,7 +35,7 @@ use heronite_i18n::n_;
 use std::path::{Path, PathBuf};
 
 pub use accelerator::{
-    hyprland_bind_expression, hyprland_bind_expression_as, hyprland_unbind_expression, parse_accelerator, to_hyprland_binding,
+    hyprland_bind_expression_as, hyprland_signal_command, hyprland_unbind_expression, is_bindable, parse_accelerator, to_hyprland_binding,
     to_portal_trigger, to_windows_hotkey, Accelerator, HyprlandBind, HyprlandBinding, WindowsHotkey, MOD_ALT, MOD_CTRL, MOD_SHIFT,
     MOD_SUPER, WIN_MOD_ALT, WIN_MOD_CONTROL, WIN_MOD_NOREPEAT, WIN_MOD_SHIFT, WIN_MOD_WIN,
 };
@@ -202,6 +209,30 @@ pub enum SkipReason {
     Busy,
 }
 
+/// Who asked for a capture.
+#[cfg(any(target_os = "linux", windows))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Asked {
+    /// The shortcut: only while its switch is on.
+    Shortcut,
+    /// The user, from outside the app (`heronite://screenshot`).
+    Command,
+    /// The in-game overlay, which shows the result itself.
+    Overlay,
+}
+
+#[cfg(any(target_os = "linux", windows))]
+impl Asked {
+    fn needs_the_switch(self) -> bool {
+        self == Asked::Shortcut
+    }
+
+    /// Whether the service shows the result (the OSD or a notification).
+    fn shows_the_result(self) -> bool {
+        self != Asked::Overlay
+    }
+}
+
 /// Result of one capture attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureOutcome {
@@ -250,14 +281,19 @@ pub struct CaptureStatus {
     /// `(app_name, runner, title)` of the game receiving captures.
     pub active_game: Option<(String, String, String)>,
     pub error: Option<String>,
+    /// Set while a desktop that picks the keys itself (the portal) holds the
+    /// shortcut: what it says triggers it, which may not be `accelerator`,
+    /// and is empty when it names no key.
+    pub desktop_trigger: Option<String>,
 }
 
 /// [`CaptureService`] construction options.
 #[derive(Debug, Clone, Default)]
 pub struct ServiceOptions {
-    /// Reverse-DNS desktop id registered with the portal for a non-sandboxed
-    /// app (Heronite uses `app.heronite.Heronite`, matching its `.desktop`
-    /// file). Without it the portal may not be able to identify the app.
+    /// Reverse-DNS desktop id the portal is told for an app outside a
+    /// sandbox (Heronite uses `app.heronite.Heronite`). The portal only
+    /// takes it when a `.desktop` file of that name is installed, and
+    /// refuses global shortcuts to an app it cannot name.
     pub portal_app_id: Option<String>,
     pub messages: CaptureMessages,
 }

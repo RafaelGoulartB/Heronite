@@ -1,0 +1,21 @@
+{
+  "Could not reach {host}: {error}": "No se pudo conectar con {host}: {error}",
+  "Free Nexus Mods accounts download with the \"Mod manager download\" button on the mod's page": "Las cuentas gratuitas de Nexus Mods descargan con el botón «Mod manager download» de la página del mod",
+  "Nexus Mods asks to wait: the hourly limit of requests was reached": "Nexus Mods pide esperar: se alcanzó el límite de solicitudes por hora",
+  "Nexus Mods collections are not supported yet: install their mods one by one": "Las colecciones de Nexus Mods aún no son compatibles: instala sus mods uno por uno",
+  "Nexus Mods could not search: {error}": "Nexus Mods no pudo buscar: {error}",
+  "Nexus Mods gave no download link": "Nexus Mods no dio ningún enlace de descarga",
+  "Nexus Mods refused the API key. Paste it again in Settings → Mods.": "Nexus Mods rechazó la clave de API. Pégala de nuevo en Ajustes → Mods.",
+  "Not found on {host}": "No encontrado en {host}",
+  "The download link from Nexus Mods expired or is not valid: use the \"Mod manager download\" button on the mod's page again": "El enlace de descarga de Nexus Mods caducó o no es válido: usa de nuevo el botón «Mod manager download» de la página del mod",
+  "The download stopped before the end": "La descarga se detuvo antes del final",
+  "The download stopped: {error}": "La descarga se detuvo: {error}",
+  "The download was cancelled": "La descarga se canceló",
+  "This is not a Nexus Mods download link": "Este no es un enlace de descarga de Nexus Mods",
+  "This is not a Thunderstore install link": "Este no es un enlace de instalación de Thunderstore",
+  "Thunderstore has no version of {name}": "Thunderstore no tiene ninguna versión de {name}",
+  "{host} answered with HTTP {status}": "{host} respondió con HTTP {status}",
+  "{host} asks to wait: too many requests": "{host} pide esperar: demasiadas solicitudes",
+  "{host} refused the request (HTTP {status})": "{host} rechazó la solicitud (HTTP {status})",
+  "{host} sent an answer Heronite does not understand: {error}": "{host} envió una respuesta que Heronite no entiende: {error}"
+}

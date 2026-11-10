@@ -16,14 +16,33 @@ pub struct Accelerator {
 }
 
 /// Parses an Electron-style accelerator. Returns `None` when there is no key
-/// or it contains characters that cannot be a key name.
+/// (only modifiers, as in `Ctrl+`) or it contains characters that cannot be
+/// a key name.
 pub fn parse_accelerator(accelerator: &str) -> Option<Accelerator> {
     let mut parts: Vec<&str> = accelerator.split('+').map(str::trim).filter(|p| !p.is_empty()).collect();
     let key = parts.pop()?;
-    if !key.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b' ' | b'-')) {
+    if !key.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b' ' | b'-')) || is_modifier(key) {
         return None;
     }
     Some(Accelerator { modifiers: parts.into_iter().map(str::to_owned).collect(), key: key.to_owned() })
+}
+
+fn is_modifier(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "commandorcontrol" | "control" | "ctrl" | "command" | "super" | "meta" | "win" | "windows" | "alt" | "option" | "shift"
+    )
+}
+
+/// Whether the shortcut backends of this system can register `accelerator`,
+/// for a recorder to refuse the keys they cannot (punctuation, a modifier
+/// alone) when they are pressed, not when a game starts.
+pub fn is_bindable(accelerator: &str) -> bool {
+    if cfg!(windows) {
+        to_windows_hotkey(accelerator).is_some()
+    } else {
+        to_hyprland_binding(accelerator).is_some() && to_portal_trigger(accelerator).is_some()
+    }
 }
 
 /// Hyprland modifier masks (`modmask` in `hyprctl binds -j`).
@@ -62,6 +81,7 @@ pub fn to_hyprland_binding(accelerator: &str) -> Option<HyprlandBinding> {
         names.push(name);
         modmask |= mask;
     }
+    // Hyprland takes XKB keysym names, whatever their case.
     let key = match acc.key.as_str() {
         "Esc" => "Escape",
         "Up" => "UP",
@@ -69,7 +89,7 @@ pub fn to_hyprland_binding(accelerator: &str) -> Option<HyprlandBinding> {
         "Left" => "LEFT",
         "Right" => "RIGHT",
         "PrintScreen" => "Print",
-        other => other,
+        other => named_keysym(other).unwrap_or(other),
     };
     names.push(key);
     Some(HyprlandBinding { keys: names.join(" + "), key: key.to_owned(), modmask })
@@ -96,9 +116,10 @@ pub fn to_portal_trigger(accelerator: &str) -> Option<String> {
     Some(out.join("+"))
 }
 
-/// Electron key name -> XKB keysym name.
-fn keysym_name(key: &str) -> String {
-    let mapped = match key.to_ascii_lowercase().as_str() {
+/// The XKB keysym of a key Electron (or the shortcut recorder) names
+/// differently.
+fn named_keysym(key: &str) -> Option<&'static str> {
+    Some(match key.to_ascii_lowercase().as_str() {
         "esc" | "escape" => "Escape",
         "printscreen" | "print" => "Print",
         "up" => "Up",
@@ -107,21 +128,28 @@ fn keysym_name(key: &str) -> String {
         "right" => "Right",
         "space" => "space",
         "plus" => "plus",
+        "minus" | "-" => "minus",
         "enter" | "return" => "Return",
         "backspace" => "BackSpace",
-        "pageup" => "Page_Up",
-        "pagedown" => "Page_Down",
-        "capslock" => "Caps_Lock",
-        "scrolllock" => "Scroll_Lock",
-        "numlock" => "Num_Lock",
+        "pageup" | "page_up" => "Page_Up",
+        "pagedown" | "page_down" => "Page_Down",
+        "capslock" | "caps_lock" => "Caps_Lock",
+        "scrolllock" | "scroll_lock" => "Scroll_Lock",
+        "numlock" | "num_lock" => "Num_Lock",
         "tab" => "Tab",
         "delete" => "Delete",
         "insert" => "Insert",
         "home" => "Home",
         "end" => "End",
-        _ => "",
-    };
-    if !mapped.is_empty() {
+        "pause" => "Pause",
+        "menu" => "Menu",
+        _ => return None,
+    })
+}
+
+/// Electron key name -> XKB keysym name.
+fn keysym_name(key: &str) -> String {
+    if let Some(mapped) = named_keysym(key) {
         return mapped.to_owned();
     }
     // F1..F24 keep their case; single letters are lowercase keysyms.
@@ -251,12 +279,36 @@ impl HyprlandBind {
     pub fn is_ours_as(&self, binding: &HyprlandBinding, description: &str) -> bool {
         self.description.as_deref() == Some(description) && self.is_same_trigger(binding)
     }
+
+    /// The string `hl.unbind` takes for this bind; `None` for one with
+    /// modifiers Heronite never binds (so not one of its own).
+    pub fn keys(&self) -> Option<String> {
+        let key = self.key.as_deref().filter(|k| !k.is_empty())?;
+        let modmask = self.modmask.unwrap_or(0);
+        if modmask & !(MOD_SHIFT | MOD_CTRL | MOD_ALT | MOD_SUPER) != 0 {
+            return None;
+        }
+        let mut names: Vec<&str> = [(MOD_CTRL, "CTRL"), (MOD_SUPER, "SUPER"), (MOD_ALT, "ALT"), (MOD_SHIFT, "SHIFT")]
+            .iter()
+            .filter(|(m, _)| modmask & m != 0)
+            .map(|(_, n)| *n)
+            .collect();
+        names.push(key);
+        Some(names.join(" + "))
+    }
 }
 
-/// The Lua expression that installs the temporary screenshot bind (the game
-/// gets the keys too).
-pub fn hyprland_bind_expression(binding: &HyprlandBinding, pid: u32) -> String {
-    hyprland_bind_expression_as(binding, &format!("kill -USR2 {pid}"), BIND_DESCRIPTION, false)
+/// The shell command a Hyprland bind runs to send the process `pid`, named
+/// `comm` (its `/proc/<pid>/comm`), the signal `signal`. The bind outlives a
+/// Heronite that crashed and process ids are reused: the signal, whose
+/// default action ends the process that gets it, only goes to one still
+/// called `comm`.
+pub fn hyprland_signal_command(signal: &str, pid: u32, comm: &str) -> String {
+    if comm.is_empty() {
+        return format!("kill -{signal} {pid}");
+    }
+    let quoted = format!("'{}'", comm.replace('\'', r"'\''"));
+    format!("grep -qxF -- {quoted} /proc/{pid}/comm 2>/dev/null && kill -{signal} {pid}")
 }
 
 /// A temporary bind that runs `command`. `consume`: the focused window (the
@@ -289,8 +341,24 @@ mod tests {
         );
         assert_eq!(parse_accelerator("F12").unwrap().modifiers.len(), 0);
         assert!(parse_accelerator("").is_none());
-        assert!(parse_accelerator("Ctrl+").map(|a| a.key) == Some("Ctrl".into()));
         assert!(parse_accelerator("Ctrl+?").is_none());
+        // Modifiers alone are not a shortcut (`Ctrl++` is how a recorder
+        // would write Ctrl and the plus key: that key is `Plus`).
+        for only_modifiers in ["Ctrl+", "Ctrl++", "Shift", "CommandOrControl+Alt", "Super+shift"] {
+            assert!(parse_accelerator(only_modifiers).is_none(), "{only_modifiers}");
+        }
+    }
+
+    #[test]
+    fn bindable_accelerators() {
+        for ok in
+            ["F10", "CommandOrControl+Shift+F10", "Alt+PrintScreen", "Super+G", "Ctrl+Plus", "Ctrl+Minus", "Shift+Enter", "Alt+Pageup"]
+        {
+            assert!(is_bindable(ok), "{ok}");
+        }
+        for bad in ["", "Ctrl+", "Ctrl+,", "Alt+/", "Ctrl++", "Hyper+F1", "Shift"] {
+            assert!(!is_bindable(bad), "{bad}");
+        }
     }
 
     #[test]
@@ -309,6 +377,11 @@ mod tests {
         assert_eq!(to_hyprland_binding("Option+Down").unwrap().keys, "ALT + DOWN");
         assert_eq!(to_hyprland_binding("Command+Right").unwrap().modmask, MOD_SUPER);
         assert_eq!(to_hyprland_binding("Control+A").unwrap().keys, "CTRL + A");
+        // What the recorder calls these keys is not their keysym.
+        assert_eq!(to_hyprland_binding("Shift+Enter").unwrap().keys, "SHIFT + Return");
+        assert_eq!(to_hyprland_binding("Alt+Pageup").unwrap().keys, "ALT + Page_Up");
+        assert_eq!(to_hyprland_binding("Ctrl+Minus").unwrap().keys, "CTRL + minus");
+        assert_eq!(to_hyprland_binding("Ctrl+Backspace").unwrap().keys, "CTRL + BackSpace");
         // Unknown modifier / bad key.
         assert!(to_hyprland_binding("Hyper+F1").is_none());
         assert!(to_hyprland_binding("Ctrl+F1+?").is_none());
@@ -325,6 +398,9 @@ mod tests {
         assert_eq!(to_portal_trigger("Alt+PageUp").unwrap(), "ALT+Page_Up");
         assert_eq!(to_portal_trigger("Ctrl+Space").unwrap(), "CTRL+space");
         assert_eq!(to_portal_trigger("f9").unwrap(), "F9");
+        assert_eq!(to_portal_trigger("Ctrl+Minus").unwrap(), "CTRL+minus");
+        assert_eq!(to_portal_trigger("Scroll_lock").unwrap(), "Scroll_Lock");
+        assert_eq!(to_portal_trigger("Pause").unwrap(), "Pause");
         assert!(to_portal_trigger("Hyper+F1").is_none());
     }
 
@@ -405,7 +481,7 @@ mod tests {
     fn hyprland_expressions() {
         let b = to_hyprland_binding("Ctrl+F10").unwrap();
         assert_eq!(
-            hyprland_bind_expression(&b, 4242),
+            hyprland_bind_expression_as(&b, "kill -USR2 4242", BIND_DESCRIPTION, false),
             r#"hl.bind("CTRL + F10", hl.dsp.exec_cmd("kill -USR2 4242"), { non_consuming = true, dont_inhibit = true, allow_input_capture = true, description = "Heronite game screenshot" })"#
         );
         assert_eq!(hyprland_unbind_expression("CTRL + F10"), r#"hl.unbind("CTRL + F10")"#);
@@ -414,6 +490,32 @@ mod tests {
             hyprland_bind_expression_as(&b, "kill -USR1 7", "Heronite overlay", true),
             r#"hl.bind("SUPER + G", hl.dsp.exec_cmd("kill -USR1 7"), { non_consuming = false, dont_inhibit = true, allow_input_capture = true, description = "Heronite overlay" })"#
         );
+    }
+
+    #[test]
+    fn the_signal_only_goes_to_a_process_of_the_same_name() {
+        assert_eq!(
+            hyprland_signal_command("USR2", 4242, "heronite-rs"),
+            "grep -qxF -- 'heronite-rs' /proc/4242/comm 2>/dev/null && kill -USR2 4242"
+        );
+        assert_eq!(hyprland_signal_command("10", 7, "it's"), r"grep -qxF -- 'it'\''s' /proc/7/comm 2>/dev/null && kill -10 7");
+        // The name could not be read: as before.
+        assert_eq!(hyprland_signal_command("USR2", 4242, ""), "kill -USR2 4242");
+    }
+
+    #[test]
+    fn unbind_keys_of_a_listed_bind() {
+        let bind = |key: &str, modmask: u32| HyprlandBind { key: Some(key.into()), modmask: Some(modmask), description: None };
+        assert_eq!(bind("F10", 0).keys().as_deref(), Some("F10"));
+        assert_eq!(bind("G", MOD_SUPER).keys().as_deref(), Some("SUPER + G"));
+        assert_eq!(bind("Print", MOD_CTRL | MOD_SHIFT | MOD_ALT).keys().as_deref(), Some("CTRL + ALT + SHIFT + Print"));
+        // The same trigger as what registered it, whatever order that was written in.
+        let b = to_hyprland_binding("Shift+Ctrl+F9").unwrap();
+        assert!(bind("F9", MOD_CTRL | MOD_SHIFT).is_same_trigger(&b));
+        // Caps Lock or Mod5: not a bind of ours.
+        assert_eq!(bind("F10", 2).keys(), None);
+        assert_eq!(bind("", 0).keys(), None);
+        assert_eq!(HyprlandBind::default().keys(), None);
     }
 
     #[test]
