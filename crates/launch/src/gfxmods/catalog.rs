@@ -131,7 +131,7 @@ fn file(paths: &DataPaths) -> PathBuf {
 /// or on any problem: the cached copy, then the built-in one.
 pub fn load(paths: &DataPaths, net: &dyn Net, refresh: bool) -> Catalog {
     let path = file(paths);
-    if refresh || !fresh(&path) {
+    if (refresh || !fresh(&path)) && net.is_online() {
         let tmp = path.with_extension("new");
         let res = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))
             .map_err(|e| e.to_string())
@@ -143,11 +143,25 @@ pub fn load(paths: &DataPaths, net: &dyn Net, refresh: bool) -> Catalog {
             }
             Ok(()) => {
                 let _ = std::fs::remove_file(&tmp);
+                checked(&path);
             }
-            Err(e) => log::info!("graphics mods catalog not refreshed: {e}"),
+            Err(e) => {
+                log::info!("graphics mods catalog not refreshed: {e}");
+                checked(&path);
+            }
         }
     }
     cached(paths)
+}
+
+/// Marks the cached copy as checked now (the built-in one when there is
+/// none), so a failed or unreadable download is tried again the next day,
+/// not at every look at a game.
+fn checked(path: &Path) {
+    let touched = std::fs::File::options().write(true).open(path).and_then(|f| f.set_modified(std::time::SystemTime::now()));
+    if touched.is_err() {
+        let _ = std::fs::write(path, BUILT_IN);
+    }
 }
 
 /// The cached catalog without asking the network, else the built-in one.
@@ -163,6 +177,41 @@ pub fn built_in() -> Catalog {
 /// `&` as `and`, without ™ and ®.
 pub fn norm(title: &str) -> String {
     title.to_lowercase().replace('&', "and").chars().filter(|c| c.is_alphanumeric()).collect()
+}
+
+/// A catalog title without RenoDX's qualifiers in parentheses ("(Remake)",
+/// "(DX12)", "(2018)"), which store titles do not carry. A year before 2010
+/// stays: "Most Wanted (2005)" is not the 2012 game of the same name.
+fn strip_qualifiers(title: &str) -> String {
+    let (mut depth, mut group, mut out) = (0u32, String::new(), String::new());
+    for c in title.chars() {
+        match c {
+            '(' => {
+                depth += 1;
+                group.clear();
+            }
+            ')' if depth > 0 => {
+                depth -= 1;
+                let old_year = group.len() == 4 && group.parse::<u32>().is_ok_and(|y| y < 2010);
+                if depth == 0 && old_year {
+                    out.push_str(&format!("({group})"));
+                }
+            }
+            _ if depth > 0 => group.push(c),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// The looser keys of a catalog title: without its qualifiers, and each
+/// game of a title that joins several with `&` ("Borderlands 2 & The
+/// Pre-Sequel").
+fn loose_keys(title: &str) -> Vec<String> {
+    let plain = strip_qualifiers(title);
+    let mut keys = vec![norm(&plain)];
+    keys.extend(plain.split('&').map(norm).filter(|k| k.len() >= 6));
+    keys
 }
 
 /// The engine the game's files show: Unreal's `<name>-<platform>-Shipping`
@@ -200,7 +249,11 @@ impl Catalog {
             .filter(|id| !id.is_empty())
             .and_then(|id| by(How::Steam, &|e| e.matcher.steam.iter().any(|s| s == id)))
             .or_else(|| exe_name.as_ref().and_then(|n| by(How::Exe, &|e| e.matcher.exe.iter().any(|x| x.eq_ignore_ascii_case(n)))))
+            // The exact title first, then without RenoDX's qualifiers.
             .or_else(|| (!title.is_empty()).then(|| by(How::Title, &|e| e.matcher.title.iter().any(|t| norm(t) == title))).flatten())
+            .or_else(|| {
+                (!title.is_empty()).then(|| by(How::Title, &|e| e.matcher.title.iter().any(|t| loose_keys(t).contains(&title)))).flatten()
+            })
             .or_else(|| {
                 let engine = exe.and_then(engine)?;
                 let (id, generic) = match engine {
@@ -274,6 +327,30 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn store_titles_match_entries_with_qualifiers() {
+        let c = built_in();
+        let id = |t: &str| c.renodx_for(None, None, t).map(|f| f.id);
+        for (title, entry) in [
+            ("RESIDENT EVIL 2", "re7-2r-3r-village"),
+            ("Resident Evil 4", "re4remake"),
+            ("God of War", "gow2018"),
+            ("Red Dead Redemption 2", "rdr2vk"),
+            ("SILENT HILL 2", "silenthill2remake"),
+            ("Borderlands 2", "borderlands2"),
+            ("The Witcher 3: Wild Hunt", "thewitcher3"),
+            ("Dead Island Definitive Edition", "deadislandde"),
+            ("Atelier Ryza: Ever Darkness & the Secret Hideout", "ryza"),
+            ("Atelier Ryza: Ever Darkness & the Secret Hideout DX", "atelierryzadx"),
+        ] {
+            assert_eq!(id(title).as_deref(), Some(entry), "{title}");
+        }
+        // An old year stays part of the title: the 2012 game is another one.
+        assert_eq!(id("Need for Speed: Most Wanted"), None);
+        assert_eq!(strip_qualifiers("Tomb Raider (2013) - Definitive Edition"), "Tomb Raider  - Definitive Edition");
+        assert_eq!(strip_qualifiers("Need for Speed Most Wanted (2005)"), "Need for Speed Most Wanted (2005)");
+    }
+
+    #[test]
     fn a_newer_or_broken_catalog_is_ignored() {
         assert!(parse(r#"{"schema": 2, "games": []}"#).is_none());
         assert!(parse("not json").is_none());
@@ -301,6 +378,10 @@ pub(crate) mod tests {
         let newer = FakeNet::online().with_file(URL, br#"{"schema": 9, "games": []}"#.to_vec());
         assert_eq!(load(&paths, &newer, true).games.len(), 3);
         assert_eq!(load(&paths, &FakeNet::offline(), true).games.len(), 3);
+        // A failed download waits a day: the copy counts as checked.
+        let failed = DataPaths::at(dir.path().join("failed"));
+        assert_eq!(load(&failed, &FakeNet::online(), false).games.len(), built_in().games.len());
+        assert_eq!(load(&failed, &net, false).games.len(), built_in().games.len());
         let empty = DataPaths::at(dir.path().join("none"));
         assert_eq!(cached(&empty).games.len(), built_in().games.len());
     }

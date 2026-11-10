@@ -51,10 +51,17 @@ pub fn installed(m: &Manifest) -> Option<Installed> {
 }
 
 /// Whether RenoDX files may come from `url`: HTTPS on github.com or a
-/// `*.github.io` page.
+/// `*.github.io` page. The host ends at the first `/`, `?` or `#`, and one
+/// with credentials, a port or a backslash is refused, so the check sees the
+/// host the download connects to (`https://evil.com#@x.github.io/` is not
+/// GitHub).
 pub fn allowed_url(url: &str) -> bool {
     let Some(rest) = url.strip_prefix("https://") else { return false };
-    let host = rest.split('/').next().unwrap_or("").to_ascii_lowercase();
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if host.contains(['@', '\\', ':']) || host.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let host = host.to_ascii_lowercase();
     host == "github.com" || (host.ends_with(".github.io") && host.len() > ".github.io".len())
 }
 
@@ -127,6 +134,13 @@ pub fn install(ops: &Ops, game_id: &str, found: &Found, risk: &Risk, refresh: bo
     let arch = if m.arch == "x86" { Arch::X86 } else { Arch::X64 };
     let url = url_for(found, arch).unwrap_or_default().to_string();
     let name = file_name(&url)?;
+    let ext = match arch {
+        Arch::X64 => ".addon64",
+        Arch::X86 => ".addon32",
+    };
+    if !name.ends_with(ext) {
+        return Err(format!("{name} is not a {}-bit add-on", arch.bits()));
+    }
     (ops.progress)(Step::Addon(found.name.clone()));
     let src = fetch(ops, &url, arch, refresh)?;
     let dir = m.dir();
@@ -216,6 +230,11 @@ mod tests {
         assert!(!allowed_url("https://www.nexusmods.com/x/mods/1"));
         assert!(!allowed_url("https://github.io/x.addon64"));
         assert!(!allowed_url("https://evil.com/github.io/x.addon64"));
+        assert!(!allowed_url("https://evil.com#@x.github.io/f.addon64"));
+        assert!(!allowed_url("https://evil.com?@x.github.io/f.addon64"));
+        assert!(!allowed_url("https://x.github.io@evil.com/f.addon64"));
+        assert!(!allowed_url("https://evil.com\\@x.github.io/f.addon64"));
+        assert!(!allowed_url("https://x.github.io:8443/f.addon64"));
         assert!(file_name("https://x.github.io/../renodx-a.addon64").is_ok());
         assert!(file_name("https://x.github.io/renodx-a.dll").is_err());
     }

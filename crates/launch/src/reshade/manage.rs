@@ -59,6 +59,9 @@ pub fn set_addon(ops: &Ops, game_id: &str, on: bool, risk: &Risk) -> Result<Mani
     if m.addon == on {
         return Ok(m);
     }
+    if m.version.trim().is_empty() {
+        return Err("ReShade's version is not known here: update ReShade first".into());
+    }
     if on && risk.blocks(Policy::Block) {
         return Err("the build with add-on support is not offered for games with anti-cheat".into());
     }

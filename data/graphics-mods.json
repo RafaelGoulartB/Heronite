@@ -43,19 +43,6 @@
    }
   },
   {
-   "id": "_hbr",
-   "match": {
-    "title": [
-     "Heaven Burns Red"
-    ]
-   },
-   "renodx": {
-    "slug": "_hbr",
-    "status": "working",
-    "addon64": "https://pmnoxx.github.io/renodx/renodx-_hbr.addon64"
-   }
-  },
-  {
    "id": "_ksp",
    "match": {
     "title": [
@@ -3075,19 +3062,6 @@
     "slug": "ys10",
     "status": "working",
     "addon64": "https://marat569.github.io/renodx/renodx-ys10.addon64"
-   }
-  },
-  {
-   "id": "ys10pn",
-   "match": {
-    "title": [
-     "Ys X: Proud Nordics"
-    ]
-   },
-   "renodx": {
-    "slug": "ys10pn",
-    "status": "working",
-    "addon64": "https://github.com/Toru77/renodx/releases/download/snapshot/renodx-ys10pn.addon64"
    }
   },
   {

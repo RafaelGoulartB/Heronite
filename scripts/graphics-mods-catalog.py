@@ -26,6 +26,7 @@ import difflib
 import json
 import re
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -48,8 +49,10 @@ def fetch(url):
 
 
 def allowed(url):
-    host = url.split("/")[2].lower()
-    return host == "github.com" or host.endswith(".github.io")
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower()
+    plain = parts.scheme == "https" and parts.username is None and ":" not in parts.netloc and "\\" not in url
+    return plain and (host == "github.com" or (host.endswith(".github.io") and host != "github.io"))
 
 
 def slug(url):
