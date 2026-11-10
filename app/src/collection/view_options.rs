@@ -650,7 +650,14 @@ impl CollectionView {
     /// A slider moved: applied at once, saved when let go.
     fn slide_look(&mut self, field: LookField, v: f32, release: bool, cx: &mut Context<Self>) {
         match field {
-            LookField::Dimming => self.scrim.dim = v / 100.,
+            LookField::Dimming => {
+                self.scrim.dim = v / 100.;
+                // The roll-off is a new raster of the art: it follows when
+                // the slider is let go.
+                if release {
+                    self.rolloff = heronite_images::backdrop_rolloff(self.scrim.dim);
+                }
+            }
             LookField::Scrim => self.scrim.scrim = v / 100.,
             // Each blur and colour intensity is a new raster of the art:
             // they change when the slider is let go.
@@ -790,6 +797,7 @@ impl CollectionView {
         self.blur_px = bg.blur.get() as f32;
         self.saturation = bg.saturation.get() as f32 / 100.;
         self.scrim = super::stage::Scrim { dim: bg.dimming.get() as f32 / 100., scrim: bg.scrim.get() as f32 / 100. };
+        self.rolloff = heronite_images::backdrop_rolloff(self.scrim.dim);
         self.save_background(cx);
         self.save_card_shape(CoverAspect::default(), cx);
         self.set_look(

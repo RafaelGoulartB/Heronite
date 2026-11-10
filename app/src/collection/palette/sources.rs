@@ -92,7 +92,10 @@ pub(super) enum ViewCmd {
     Only(Only, bool),
     /// Selects or clears a category of the filter.
     Category(String),
+    /// Selects or clears a smart category (its id) of the filter.
+    SmartCategory(String),
     ManageCategories,
+    NewSmartCategory,
 }
 
 /// What a game entry can do besides being selected.
@@ -196,6 +199,7 @@ fn section_help(s: Section) -> &'static str {
             tr!("Disk space of games, store tools, caches")
         }
         Section::Storage => tr!("Disk space of games, prefixes, Proton, caches"),
+        Section::Mods => tr!("Nexus Mods account, mod links, applying mods"),
         Section::Overlay => crate::overlay::labels::palette_help(),
         Section::Replay => tr!("Last seconds of a game, saved with Guide + X"),
         Section::Metadata => tr!("Sources of details and pictures, their order and keys"),
@@ -464,8 +468,9 @@ fn facet_keywords(k: FacetKind) -> &'static str {
 }
 
 /// The Collection's View menu (sort, show, grouping, hidden games, facet
-/// filters) as commands, for the state in `ui`.
-pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Categories) -> Vec<Entry> {
+/// filters, categories of both kinds) as commands, for the state in `ui`.
+/// `smart`: the smart categories, `(id, name)`.
+pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Categories, smart: &[(String, String)]) -> Vec<Entry> {
     let mut v = Vec::new();
     let cmd = |c: ViewCmd, id: String, title: &str, sub: &str, icon: Icon, kw: &str| {
         Entry::new(Kind::Action, Act::View(c), id, title, sub, icon, kw)
@@ -554,6 +559,21 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
             ));
         }
     }
+    for (id, name) in smart {
+        let title = if ui.smart_groups.contains(id) {
+            tr!("Remove filter Category: {value}", value = name.as_str())
+        } else {
+            tr!("Filter Category: {value}", value = name.as_str())
+        };
+        v.push(cmd(
+            ViewCmd::SmartCategory(id.clone()),
+            format!("view:smart:{id}"),
+            &title,
+            tr!("Smart category"),
+            Icon::AutoAwesome,
+            "category categories smart rules filter categoria categorias inteligente regras filtro",
+        ));
+    }
     v.push(cmd(
         ViewCmd::ManageCategories,
         "view:categories".into(),
@@ -561,6 +581,14 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         tr!("Add, rename or remove categories"),
         Icon::Label,
         "category categories tags groups new categoria categorias grupos nova",
+    ));
+    v.push(cmd(
+        ViewCmd::NewSmartCategory,
+        "view:smart-new".into(),
+        tr!("New smart category…"),
+        tr!("Games join and leave it as they match its rules"),
+        Icon::AutoAwesome,
+        "category smart rules group new categoria inteligente regras grupo nova",
     ));
     for (f, id, title) in [
         (InstallFilter::All, "all", tr!("Show all games")),
@@ -647,7 +675,7 @@ pub(super) fn view_entries(ui: &UiState, facets: &FacetOptions, categories: &Cat
         Icon::Close,
         "reset filters facets limpar filtros redefinir",
     );
-    if !ui.facet_filters.is_active() && ui.categories.is_empty() && ui.statuses.is_empty() {
+    if !ui.facet_filters.is_active() && ui.categories.is_empty() && ui.statuses.is_empty() && ui.smart_groups.is_empty() {
         clear.disable(tr!("No filter is active"));
     }
     v.push(clear);
@@ -986,7 +1014,7 @@ mod tests {
     #[test]
     fn view_entries_follow_the_ui_state() {
         let ui = UiState { sort: SortMode::Playtime, group_by: GroupBy::Status, ..Default::default() };
-        let v = view_entries(&ui, &FacetOptions::default(), &Categories::default());
+        let v = view_entries(&ui, &FacetOptions::default(), &Categories::default(), &[]);
         let get = |id: &str| v.iter().find(|e| e.id.as_ref() == id).unwrap();
         assert!(get("view:sort:playtime").disabled.is_some());
         assert!(get("view:sort:title").disabled.is_none());
@@ -1000,6 +1028,15 @@ mod tests {
         assert_eq!(get("view:sort:direction").title.as_ref(), "Sort descending");
         assert_eq!(get("view:only:Favourites").act, Act::View(ViewCmd::Only(Only::Favourites, true)));
         assert!(!v.iter().any(|e| e.id.starts_with("view:category:")), "no categories, no category filters");
+        assert!(get("view:smart-new").disabled.is_none(), "a smart category can always be made");
+
+        let ui = UiState { smart_groups: ["g1".to_owned()].into(), ..Default::default() };
+        let smart = [("g1".to_owned(), "Unplayed".to_owned()), ("g2".to_owned(), "Short".to_owned())];
+        let v = view_entries(&ui, &FacetOptions::default(), &Categories::default(), &smart);
+        let get = |id: &str| v.iter().find(|e| e.id.as_ref() == id).unwrap();
+        assert_eq!(get("view:smart:g1").title.as_ref(), "Remove filter Category: Unplayed");
+        assert_eq!(get("view:smart:g2").act, Act::View(ViewCmd::SmartCategory("g2".into())));
+        assert!(get("view:clear").disabled.is_none(), "a smart category filters");
     }
 
     #[test]

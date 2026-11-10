@@ -203,6 +203,7 @@ fn single_instance(cli: &system::cli::Cli) -> SingleInstance {
     let socket = socket_path(&heronite_data::DataPaths::detect().root);
     let msg = Message {
         launch: cli.launch.clone(),
+        mod_link: cli.mod_link.clone(),
         open_client: cli.open_client,
         stop: cli.stop.clone(),
         screenshot: cli.screenshot,

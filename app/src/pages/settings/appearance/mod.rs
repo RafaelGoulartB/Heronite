@@ -76,6 +76,9 @@ pub struct State {
     preview_chain: Vec<ImageRef>,
     preview: Option<Arc<RenderImage>>,
     preview_task: Option<Task<()>>,
+    /// The theme the preview was made for (its highlights are rolled off on
+    /// the dark one only): a switch makes it again.
+    preview_light: bool,
     opts: Opts,
     aspect_open: bool,
     /// Follows the metadata hub while its Cover aspect notice may show.
@@ -165,7 +168,7 @@ impl State {
                     Field::AutoViewWidth => a.ui.auto_view.width = v,
                     Field::InterfaceScale => {}
                 }
-                if matches!(field, Field::Blur | Field::Saturation) {
+                if matches!(field, Field::Blur | Field::Saturation | Field::Dimming) {
                     schedule_preview(d, cx);
                 }
                 if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur | Field::AutoViewWidth) {
@@ -193,6 +196,7 @@ impl State {
             preview_chain,
             preview: None,
             preview_task: None,
+            preview_light: theme::is_light(),
             opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
             aspect_open: false,
             notice_watch: None,
@@ -267,6 +271,7 @@ fn aspect_picked(d: &mut SettingsPage, after: CoverAspect, cx: &mut Context<Sett
 }
 
 fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    d.appearance.preview_light = theme::is_light();
     let a = &d.appearance;
     if a.preview_chain.is_empty() {
         return;
@@ -274,9 +279,11 @@ fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let chain = a.preview_chain.clone();
     let opts = a.opts.clone();
     let (blur, sat) = (a.blur, a.saturation / 100.);
+    // As the Collection draws it (`collection/backdrop.rs`).
+    let rolloff = if a.preview_light { 0. } else { heronite_images::backdrop_rolloff(a.dimming / 100.) };
     d.appearance.preview_task = Some(cx.spawn(async move |this, cx| {
         cx.background_executor().timer(Duration::from_millis(60)).await;
-        let decoded = cx.background_spawn(async move { heronite_images::load_backdrop(&chain, 776, 148, blur, sat, &opts) }).await;
+        let decoded = cx.background_spawn(async move { heronite_images::load_backdrop(&chain, 776, 148, blur, sat, rolloff, &opts) }).await;
         if let Ok(decoded) = decoded {
             let frame = image::Frame::new(decoded.into_image_buffer());
             let img = Arc::new(RenderImage::new(smallvec::smallvec![frame]));
@@ -428,7 +435,7 @@ fn reset_theme(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Setti
 }
 
 pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<SettingsPage>) -> AnyElement {
-    if d.appearance.preview.is_none() && d.appearance.preview_task.is_none() {
+    if (d.appearance.preview.is_none() && d.appearance.preview_task.is_none()) || d.appearance.preview_light != theme::is_light() {
         schedule_preview(d, cx);
     }
     let a = &d.appearance;
@@ -938,6 +945,9 @@ pub(super) fn console_apply(
                 _ => return,
             };
             set_sliders(a, &[(field, v)], window, cx);
+            if matches!(field, Field::Blur | Field::Saturation | Field::Dimming) {
+                schedule_preview(d, cx);
+            }
             if matches!(field, Field::CollectionOpacity | Field::PanelOpacity | Field::PanelBlur) {
                 apply_interface(d, true, cx);
             } else {
@@ -995,6 +1005,7 @@ pub(super) fn console_apply(
                 set_sliders(a, &values, window, cx);
                 apply_interface(d, true, cx);
                 save_background(d, cx);
+                schedule_preview(d, cx);
             }
             "ui-reset" => reset_theme(d, window, cx),
             _ => {}

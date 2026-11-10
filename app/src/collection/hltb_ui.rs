@@ -84,6 +84,7 @@ impl CollectionView {
     /// Reads `wikigameinfo.json` again (new HowLongToBeat times).
     fn reload_wiki(&mut self, cx: &mut Context<Self>) {
         self.wiki = Arc::new(WikiCache::load(&self.data_paths));
+        self.group_members.get_mut().clear();
         self.refresh_focus();
         cx.notify();
     }

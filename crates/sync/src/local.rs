@@ -69,6 +69,12 @@ pub fn shared_group(group: &SmartGroup) -> Value {
     value
 }
 
+/// `value` can be stored here as group `id`: a group this version reads, or
+/// a deletion. [`write_groups`] skips anything else.
+pub fn storable_group(id: &str, value: &Value) -> bool {
+    value.is_null() || SmartGroup::from_value(value).is_some_and(|g| g.id == id)
+}
+
 /// Reads the Collection (hidden games too).
 pub fn read(paths: &DataPaths) -> Result<LocalLibrary> {
     let lib = Library::load_with(paths, true)?;
@@ -221,7 +227,7 @@ fn write_groups(paths: &DataPaths, changes: &[GroupChange]) -> Result<()> {
     let mut groups = SmartGroups::load(paths).groups;
     for c in changes {
         let at = groups.iter().position(|g| g.id == c.id);
-        let theirs = SmartGroup::from_value(&c.value).filter(|g| g.id == c.id);
+        let theirs = SmartGroup::from_value(&c.value).filter(|g| g.id == c.id); // see storable_group
         match (at, theirs) {
             (Some(i), Some(mut g)) => {
                 g.pinned = groups[i].pinned;

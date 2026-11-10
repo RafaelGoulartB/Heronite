@@ -29,7 +29,7 @@
 //!
 //! Debug: `HERONITE_DEBUG_SETTINGS_SEARCH=<text>` types it in the search (`<text>!`: and presses Enter),
 //! `HERONITE_DEBUG_SETTINGS_KEYS=down,down,enter` then presses those keys in it (`lang:pt-BR` switches the language);
-//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
+//! `HERONITE_DEBUG_PAGE=settings[:general|appearance|console-mode|advanced|defaults[:wine|other|advanced|gamescope]|downloads|library|launchers|integrations|storage|mods|overlay|replay|metadata|screenshots|backups|cloud|logs|about]`.
 
 mod about;
 mod achievements;
@@ -44,6 +44,7 @@ mod launchers;
 mod library;
 pub mod logs;
 mod metadata;
+mod mods;
 mod nav_keys;
 mod overlay;
 mod palette;
@@ -149,6 +150,7 @@ pub struct SettingsPage {
     integrations: integrations::State,
     overlay: overlay::State,
     replay: replay::State,
+    mods: mods::State,
     storage: storage::State,
     advanced: advanced::State,
     about: about::State,
@@ -246,6 +248,7 @@ impl SettingsPage {
             integrations: integrations::State::new(window, cx),
             overlay: overlay::State::new(&ctx, cx),
             replay: replay::State::new(&ctx, cx),
+            mods: mods::State::new(window, cx),
             storage,
             advanced: advanced::State::default(),
             about: about::State::default(),
@@ -444,6 +447,7 @@ impl SettingsPage {
             Section::Replay => replay::shown(self, cx),
             Section::Saves => saves::State::shown(self, window, cx),
             Section::Storage => storage::State::shown(self, cx),
+            Section::Mods => mods::shown(cx),
             Section::Backups => backup::shown(self, cx),
             Section::Cloud => cloud::shown(self, window, cx),
             Section::ConsoleMode => console_mode::shown(self, window, cx),
@@ -747,6 +751,7 @@ impl SettingsPage {
             Section::GameDefaults => self.defaults_view(window, cx),
             Section::Library => self.library_section(cx).into_any_element(),
             Section::Storage => storage::render(self, window, cx),
+            Section::Mods => mods::render(self, window, cx),
             Section::Overlay => overlay::render(self, window, cx),
             Section::Launchers => launchers::render(self, cx),
             Section::Integrations => integrations::render(self, window, cx),

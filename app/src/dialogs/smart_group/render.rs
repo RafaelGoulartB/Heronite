@@ -419,7 +419,7 @@ impl Render for SmartGroupDialog {
             .flex()
             .flex_col()
             .gap(px(16.))
-            .child(help_text(tr!("A smart group keeps itself up to date: games join and leave it as they match its rules.")))
+            .child(help_text(tr!("A smart category keeps itself up to date: games join and leave it as they match its rules.")))
             .child(
                 div()
                     .flex()
@@ -469,12 +469,12 @@ impl Render for SmartGroupDialog {
                 );
         } else {
             body = body.child(help_text(tr!(
-                "The rules of this group are nested deeper than this editor shows. They are kept as they are; the name, colour and pin can change."
+                "The rules of this category are nested deeper than this editor shows. They are kept as they are; the name, colour and pin can change."
             )));
         }
         body = body.children(self.render_missing()).child(self.render_count()).child(row(
             tr!("Pin to the Collection header"),
-            Some(tr!("One click away, next to the filters. Unpinned groups are in the View menu.")),
+            Some(tr!("One click away, next to the filters. Unpinned categories are in the View menu.")),
             toggle("sg-pin", self.pinned, false).on_click(cx.listener(|this, _, _, cx| {
                 this.pinned = !this.pinned;
                 cx.notify();
@@ -491,7 +491,12 @@ impl Render for SmartGroupDialog {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(div().text_size(px(13.)).text_color(theme::text_primary()).child(tr!("Delete this group? Its games stay.")))
+                    .child(
+                        div()
+                            .text_size(px(13.))
+                            .text_color(theme::text_primary())
+                            .child(tr!("Delete this smart category? Its games stay.")),
+                    )
                     .child(button("sg-del-no", ButtonKind::Ghost, tr!("Cancel")).on_click(cx.listener(|this, _, _, cx| {
                         this.confirm_delete = false;
                         cx.notify();
@@ -503,7 +508,7 @@ impl Render for SmartGroupDialog {
                 "sg-del",
                 ButtonKind::Danger,
                 Icon::DeleteOutline,
-                tr!("Delete group"),
+                tr!("Delete category"),
                 cx.listener(|this, _, _, cx| {
                     this.confirm_delete = true;
                     cx.notify();
@@ -524,7 +529,7 @@ impl Render for SmartGroupDialog {
                 .child(button("sg-save", ButtonKind::Primary, tr!("Save")).on_click(cx.listener(|this, _, _, cx| this.save(cx))))
             })
             .into_any_element();
-        let title = if self.is_new { tr!("New smart group") } else { tr!("Edit smart group") };
+        let title = if self.is_new { tr!("New smart category") } else { tr!("Edit smart category") };
         dialog(
             DialogProps { id: "smart-group".into(), title: title.into(), width: 720., height: None },
             body.into_any_element(),

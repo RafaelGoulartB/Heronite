@@ -926,6 +926,33 @@ console: a dot after the label, Y resets, a "Reset this tab" row). A new setting
 (`launch_preview.rs`): the command and variables of a launch built from the settings on screen, grouped
 by the setting each comes from (`HERONITE_DEBUG_PREVIEW=1` opens it).
 
+**Mods manager** (`dialogs/mods/`, `docs/MODS.md`): a 720px `drawer` for one game, opened by the game action "Mods" (context
+menu in the group of ReShade, palette; installed PC games, not emulated, not console mode), by the "Mods" row of the facts card
+("12 · 10 on", only once the game has mods) and by the toast's "Open" of a finished install. Header: the "Mods" line (the puzzle icon, the kicker
+and an amber "Experimental" pill; no icon tile beside the game's name), game title, the game's support label ("Should work" green, "Needs extra steps" amber, "Untested game"
+neutral, "Most mods won't work" red; `heronite_mods::support`) before a one-line status, the "Play with mods" switch; both
+labels say why under the pointer (`ui::tooltip_titled`: a title over the sentence). Tabs Installed, Browse, Game, and Plugins
+for Bethesda games. Installed: notices as tinted cards (`render_jobs::tinted`: game folder not found, FUSE problem with "Open
+Settings → Mods", game running, what to expect of the game's mods for every level but "Should work", Steam launch options,
+the `nxm://` handler once a Nexus account is connected; the account itself is only asked for in Settings → Mods), this game's jobs (progress bar, Cancel / Dismiss; a mod installed where the game will
+not see it is an amber job that stays until dismissed), then the load order in
+one card: handle (drag a row onto another; Move up / Move down in its menu for the keyboard), switch, picture or initial, name,
+version, author, source pill, "Check files" (amber; click says why the game will not see the mod, with Open folder, Open mod
+page, Reinstall and Remove), conflict badge ("Overrides 2" accent, "Overridden by 1" amber; click lists the mods and file
+counts), update pill, "⋯" menu (drawn at the dialog's root with `anchored`, never inside the drawer), inline Rename and Remove
+question; then the Overwrite card (Open, Turn into a mod, Empty with inline question). The empty state offers Browse and Add
+from file. Archives or folders dropped on the drawer are installed. Browse searches Nexus Mods and Thunderstore off the UI thread
+(350ms debounce, sort pills, "Load more"; Premium installs, free accounts get "Download on Nexus Mods" with a one-line hint);
+Game holds the links (Nexus game, Thunderstore community, "Mods go into"), the mods folder and "Remove all mods". The FOMOD
+wizard (`dialogs/mod_installer/`) is a modal: step name and "Step 2 of 4", groups as radio rows (pick one) or switches (pick
+any), "Recommended" / "Required" / "Not usable" pills, the hovered option's picture and description on the right, footer Cancel,
+Install without the installer, Back, Next / Install. `dialogs/mod_link_game.rs` asks which game a mod link is for. The wizard
+and the picker replace the manager and give it back when they close (`collection/mods.rs`). Debug:
+`HERONITE_DEBUG_DIALOG=mods:<game key>[:installed|browse|game|plugins]`, `mod-installer[:<step>]` (folder with
+`fomod/ModuleConfig.xml` in `HERONITE_DEBUG_FOMOD`), `mod-link`; `HERONITE_DEBUG_MODS_FIXTURE=1|nodir,steam,account,premium,fuse,jobs,misplaced,warned`
+shows the `mods.json` of the game with invented conflicts, overwrite and jobs while the service has not loaded it;
+`HERONITE_DEBUG_MODS=menu:<n>,expand:<n>,check:<n>,rename:<n>,remove:<n>,overwrite-name,overwrite-clear,forget,running,thunderstore,tip:experimental|support`.
+
 **Settings → Storage** (`pages/settings/storage/`, `heronite_storage`): what the games take on disk, read only while the
 section is on screen (listed when shown, then the sizes no store or manifest gives are walked one by one and cached in
 `install-sizes.json`; showing another section stops the walk). A bar per disk (one device = one disk, btrfs subvolumes

@@ -4,7 +4,7 @@
 //! ratings, categories) and the "sort name" titles are ordered by.
 
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Datelike, Local};
 use heronite_i18n::tr;
@@ -419,6 +419,40 @@ pub fn group_games(filtered: &[Game], by: GroupBy, o: &Organize) -> Vec<GameGrou
     out
 }
 
+/// Start of the id of a smart category's section in [`group_games_with`]
+/// (manual ones start with `category:`).
+pub const SMART_SECTION: &str = "smart-category:";
+
+/// A smart category for [`group_games_with`]: its id, its name and the
+/// keys of the games in it.
+#[derive(Debug, Clone, Default)]
+pub struct SmartSection {
+    pub id: String,
+    pub name: String,
+    /// Shared with the caller's cache: no copy per list build.
+    pub games: std::rc::Rc<HashSet<String>>,
+}
+
+/// [`group_games`], with [`GroupBy::Category`] also splitting by the
+/// `smart` categories: the manual ones A-Z, then the smart ones in their
+/// order, then "Uncategorized" (the games in no manual category, as the
+/// filter of that name).
+pub fn group_games_with(filtered: &[Game], by: GroupBy, o: &Organize, smart: &[SmartSection]) -> Vec<GameGroup> {
+    let mut out = group_games(filtered, by, o);
+    if by != GroupBy::Category || smart.is_empty() {
+        return out;
+    }
+    let without = out.pop_if(|g| g.id == "category:");
+    for s in smart {
+        let games: Vec<Game> = filtered.iter().filter(|g| s.games.contains(&g.key)).cloned().collect();
+        if !games.is_empty() {
+            out.push(GameGroup { id: format!("{SMART_SECTION}{}", s.id), name: s.name.clone(), color: None, games });
+        }
+    }
+    out.extend(without);
+    out
+}
+
 /// Compares two games for `sort`: by its value (bigger and newer first,
 /// `descending` turns it around; games without one stay last), ties and the
 /// title sort by [`sort_name`].
@@ -530,5 +564,39 @@ mod tests {
         assert!(GroupBy::GameMode.many_per_game());
         assert_eq!(GroupBy::parse("gameMode"), Some(GroupBy::GameMode));
         assert!(GroupBy::ALL.contains(&GroupBy::GameMode));
+    }
+
+    #[test]
+    fn group_by_category_has_the_smart_ones_after_the_manual_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::DataPaths::at(dir.path());
+        std::fs::create_dir_all(paths.store_config().parent().unwrap()).unwrap();
+        let games = vec![game("a", "Alpha", |_| {}), game("b", "Beta", |_| {}), game("c", "Gamma", |_| {})];
+        let (ra, rb) = (&games[0], &games[1]);
+        crate::categories::set_in_category(&paths, "RPG", &ra.runner, &ra.app_name, true).unwrap();
+        crate::categories::set_in_category(&paths, "Co-op", &rb.runner, &rb.app_name, true).unwrap();
+        let cats = Categories::load(&paths);
+        let o = Organize { categories: Some(&cats), ..Default::default() };
+        let smart = |id: &str, name: &str, keys: &[&str]| SmartSection {
+            id: id.into(),
+            name: name.into(),
+            games: std::rc::Rc::new(keys.iter().map(|k| k.to_string()).collect()),
+        };
+        let unplayed = smart("g2", "Unplayed", &[&games[0].key, &games[2].key]);
+        let empty = smart("g1", "Empty", &[]);
+        let groups = group_games_with(&games, GroupBy::Category, &o, &[unplayed.clone(), empty]);
+        let summary: Vec<_> = groups.iter().map(|g| (g.id.as_str(), g.name.as_str(), g.games.len())).collect();
+        assert_eq!(
+            summary,
+            [
+                ("category:co-op", "Co-op", 1),
+                ("category:rpg", "RPG", 1),
+                ("smart-category:g2", "Unplayed", 2),
+                ("category:", "Uncategorized", 1)
+            ],
+            "an empty smart category has no section; Uncategorized is the games in no manual one"
+        );
+        let by_genre = group_games_with(&games, GroupBy::Genre, &o, &[unplayed]);
+        assert!(by_genre.iter().all(|g| !g.id.starts_with(SMART_SECTION)), "only Group by Category");
     }
 }

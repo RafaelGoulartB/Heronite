@@ -143,6 +143,7 @@ impl CollectionView {
         self.scrim = stage::Scrim { dim: bg.dimming.get() as f32 / 100., scrim: bg.scrim.get() as f32 / 100. };
         self.blur_px = bg.blur.get() as f32;
         self.saturation = bg.saturation.get() as f32 / 100.;
+        self.rolloff = heronite_images::backdrop_rolloff(self.scrim.dim);
         self.stage_enabled = bg.enabled;
         self.grey_uninstalled = s.grey_uninstalled_games && !s.all_tiles_in_color;
         self.set_card_shape(s.cover_aspect);

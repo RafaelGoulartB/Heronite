@@ -96,7 +96,7 @@ fn sync_blocking(paths: &DataPaths, account: bool) -> Result<(ImportReport, Stea
         return Err(ReadError::Failed(client_error));
     }
     let installed = installed_app_ids(&steam.locator);
-    let owned = heronite_steam::account::read_owned(paths, &Net::default(), &installed).map_err(|e| {
+    let owned = heronite_steam::account::read_owned(paths, &Net::default(), &installed, &steam.locator.installs()).map_err(|e| {
         if e.is::<SignedOut>() {
             ReadError::SignedOut
         } else {
@@ -486,7 +486,7 @@ impl SteamLibrary {
     }
 
     /// Whether the library may be read from the account now: one is signed
-    /// in, and the client's richer read (hidden and Family Sharing games)
+    /// in, and the client's richer read (Family Sharing games)
     /// is not what the cache holds, or the client is stuck. While Steam is
     /// only closed, a library the client read stays as it is.
     fn account_allowed(&self) -> bool {

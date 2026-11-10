@@ -260,6 +260,11 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
     if let Some(client) = msg.open_client {
         open_client(cx, client, false);
     }
+    if let Some(link) = msg.mod_link {
+        show_window(cx);
+        crate::services::mods::open_link(cx, link);
+        return;
+    }
     match msg.launch {
         // A shortcut of a store client asks for the client only.
         None if msg.open_client.is_some() => {}

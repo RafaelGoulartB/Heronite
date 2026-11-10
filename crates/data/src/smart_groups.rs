@@ -212,11 +212,13 @@ impl Op {
 pub struct Cond {
     pub field: Field,
     pub op: Op,
+    /// Keys this version does not read, written back unchanged.
+    pub extra: Map<String, Value>,
 }
 
 impl Cond {
     pub fn new(field: Field, op: Op) -> Self {
-        Self { field, op }
+        Self { field, op, extra: Map::new() }
     }
 
     /// A condition with the field's first value: true, no names, or 0.
@@ -226,7 +228,7 @@ impl Cond {
             ValueKind::Names => Op::In(Vec::new()),
             ValueKind::Number => Op::Lt(0.),
         };
-        Self { field, op }
+        Self::new(field, op)
     }
 
     fn from_value(value: &Value) -> Option<Self> {
@@ -240,7 +242,9 @@ impl Cond {
             "eq" => Op::Eq(v?.as_f64()?),
             _ => return None,
         };
-        (op.kind() == field.kind()).then_some(Self { field, op })
+        let extra = value.as_object()?.iter().filter(|(k, _)| !matches!(k.as_str(), "field" | "op" | "value"));
+        let extra = extra.map(|(k, v)| (k.clone(), v.clone())).collect();
+        (op.kind() == field.kind()).then_some(Self { field, op, extra })
     }
 
     fn to_value(&self) -> Value {
@@ -251,7 +255,11 @@ impl Cond {
             Op::Gt(n) => ("gt", json!(n)),
             Op::Eq(n) => ("eq", json!(n)),
         };
-        json!({ "field": self.field.as_str(), "op": op, "value": value })
+        let mut obj = self.extra.clone();
+        obj.insert("field".into(), json!(self.field.as_str()));
+        obj.insert("op".into(), json!(op));
+        obj.insert("value".into(), value);
+        Value::Object(obj)
     }
 
     fn matches(&self, g: &CollectionGame, facts: &Facts) -> bool {
@@ -316,10 +324,19 @@ fn names_match(field: Field, names: &[String], g: &CollectionGame, facts: &Facts
     }
 }
 
-/// Days from the `YYYY-MM-DD` start of `text` to `today`.
+/// Days from `text` (an RFC 3339 instant, or a `YYYY-MM-DD` date) to the
+/// local `today`.
 fn days_ago(text: &str, today: NaiveDate) -> Option<f64> {
-    let day = NaiveDate::parse_from_str(text.trim().get(..10)?, "%Y-%m-%d").ok()?;
-    Some((today - day).num_days() as f64)
+    Some((today - local_day(text, &chrono::Local)?).num_days() as f64)
+}
+
+/// The day of `text` in `tz`: an instant's own day there, or a plain date.
+fn local_day<Tz: chrono::TimeZone>(text: &str, tz: &Tz) -> Option<NaiveDate> {
+    let text = text.trim();
+    match chrono::DateTime::parse_from_rfc3339(text) {
+        Ok(at) => Some(at.with_timezone(tz).date_naive()),
+        Err(_) => NaiveDate::parse_from_str(text.get(..10)?, "%Y-%m-%d").ok(),
+    }
 }
 
 fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
@@ -332,7 +349,7 @@ fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
         Field::Rating => o.rating(g).map(f64::from),
         Field::CriticScore => g.details.critic_score.filter(|s| *s > 0.),
         Field::InstallSize => o.size(g).filter(|_| g.installed).map(|b| b as f64 / (1024. * 1024. * 1024.)),
-        Field::Hltb => facts.wiki?.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.),
+        Field::Hltb => facts.wiki?.main_story(&g.title, &g.game.title),
         Field::FirstPlayed => g.first_played.as_deref().and_then(|s| days_ago(s, facts.today)),
         Field::TimesPlayed => Some(crate::organize::times_played(g) as f64),
         Field::SessionLength => {
@@ -346,7 +363,7 @@ fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
             Some(seconds / 3600.)
         }
         Field::Progress => {
-            let main = facts.wiki?.hltb(&g.title, &g.game.title).map(|h| h.main_story).filter(|h| *h > 0.)?;
+            let main = facts.wiki?.main_story(&g.title, &g.game.title)?;
             Some(g.playtime_minutes as f64 / 60. / main * 100.)
         }
         Field::AgeRating => g.age_rating.as_ref().and_then(|r| r.min_age()).map(f64::from),
@@ -358,11 +375,14 @@ fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
 pub enum Rule {
     /// Every rule matches (an empty list matches every game).
     All(Vec<Rule>),
-    /// One of the rules matches (an empty list matches none).
+    /// One of the rules matches (an empty list, no condition at all,
+    /// matches every game, as an empty `All`).
     Any(Vec<Rule>),
     Not(Box<Rule>),
     Cond(Cond),
-    /// A rule of a newer version, kept as read; it matches no game.
+    /// A rule of a newer version, kept as read. It never decides a match:
+    /// a group needing its answer (`not` around it, or in an `all`) shows no
+    /// game rather than a guess.
     Unknown(Value),
 }
 
@@ -401,12 +421,39 @@ impl Rule {
     }
 
     pub fn matches(&self, g: &CollectionGame, facts: &Facts) -> bool {
+        self.eval(g, facts) == Some(true)
+    }
+
+    /// Three-valued: `None` where a rule this version can't read decides.
+    fn eval(&self, g: &CollectionGame, facts: &Facts) -> Option<bool> {
         match self {
-            Rule::All(list) => list.iter().all(|r| r.matches(g, facts)),
-            Rule::Any(list) => list.iter().any(|r| r.matches(g, facts)),
-            Rule::Not(rule) => !rule.matches(g, facts),
-            Rule::Cond(c) => c.matches(g, facts),
-            Rule::Unknown(_) => false,
+            Rule::All(list) => {
+                let mut known = true;
+                for r in list {
+                    match r.eval(g, facts) {
+                        Some(false) => return Some(false),
+                        None => known = false,
+                        Some(true) => {}
+                    }
+                }
+                known.then_some(true)
+            }
+            // No conditions limit nothing: every game, as with an empty `all`.
+            Rule::Any(list) if list.is_empty() => Some(true),
+            Rule::Any(list) => {
+                let mut known = true;
+                for r in list {
+                    match r.eval(g, facts) {
+                        Some(true) => return Some(true),
+                        None => known = false,
+                        Some(false) => {}
+                    }
+                }
+                known.then_some(false)
+            }
+            Rule::Not(rule) => rule.eval(g, facts).map(|b| !b),
+            Rule::Cond(c) => Some(c.matches(g, facts)),
+            Rule::Unknown(_) => None,
         }
     }
 
@@ -611,7 +658,7 @@ impl SmartGroups {
 pub fn save(paths: &DataPaths, groups: &[SmartGroup]) -> Result<()> {
     for g in groups {
         if g.name.trim().is_empty() {
-            bail!("{}", heronite_i18n::tr!("The group needs a name"));
+            bail!("{}", heronite_i18n::tr!("The category needs a name"));
         }
     }
     json_store::update_value(&paths.smart_groups(), |doc| {
@@ -662,7 +709,7 @@ pub fn rename_category(groups: &mut [SmartGroup], old: &str, new: Option<&str>) 
         match rule {
             Rule::All(list) | Rule::Any(list) => list.iter_mut().fold(false, |acc, r| walk(r, old, new) | acc),
             Rule::Not(inner) => walk(inner, old, new),
-            Rule::Cond(Cond { field: Field::Category, op: Op::In(names) }) if names.iter().any(|n| n == old) => {
+            Rule::Cond(Cond { field: Field::Category, op: Op::In(names), .. }) if names.iter().any(|n| n == old) => {
                 names.retain(|n| n != old);
                 if let Some(new) = new.filter(|n| !names.iter().any(|x| x == n)) {
                     names.push(new.to_owned());
@@ -682,7 +729,7 @@ pub fn names_used(rule: &Rule, field: Field) -> Vec<&str> {
         match rule {
             Rule::All(list) | Rule::Any(list) => list.iter().for_each(|r| walk(r, field, out)),
             Rule::Not(inner) => walk(inner, field, out),
-            Rule::Cond(Cond { field: f, op: Op::In(names) }) if *f == field => {
+            Rule::Cond(Cond { field: f, op: Op::In(names), .. }) if *f == field => {
                 for n in names {
                     if !out.contains(&n.as_str()) {
                         out.push(n);
@@ -704,7 +751,7 @@ pub fn missing_categories<'r>(rule: &'r Rule, cats: &Categories) -> Vec<&'r str>
         match rule {
             Rule::All(list) | Rule::Any(list) => list.iter().for_each(|r| walk(r, cats, out)),
             Rule::Not(inner) => walk(inner, cats, out),
-            Rule::Cond(Cond { field: Field::Category, op: Op::In(names) }) => {
+            Rule::Cond(Cond { field: Field::Category, op: Op::In(names), .. }) => {
                 out.extend(names.iter().map(String::as_str).filter(|n| *n != crate::categories::UNCATEGORIZED && !cats.exists(n)));
             }
             _ => {}
@@ -834,7 +881,8 @@ mod tests {
         let facts = with(&extras, &ratings, &statuses);
         let g = game("g", "G", |_| {});
         assert!(Rule::All(vec![]).matches(&g, &facts));
-        assert!(!Rule::Any(vec![]).matches(&g, &facts));
+        // No condition limits nothing, with "any" as with "all".
+        assert!(Rule::Any(vec![]).matches(&g, &facts));
         let future = json!({ "field": "deckVerified", "op": "is", "value": true });
         let rule = Rule::from_value(&json!({ "all": [future.clone()] }));
         assert_eq!(rule, Rule::All(vec![Rule::Unknown(future.clone())]));
@@ -963,5 +1011,58 @@ mod tests {
         let a = groups.new_id();
         groups.groups.push(SmartGroup::new(a.clone(), "A", Rule::default()));
         assert_ne!(groups.new_id(), a);
+    }
+
+    #[test]
+    fn except_on_a_newer_rule_shows_no_game_instead_of_every_game() {
+        let statuses = crate::status::default_statuses();
+        let (extras, ratings) = (GameExtras::default(), HashMap::new());
+        let facts = with(&extras, &ratings, &statuses);
+        let installed = game("a", "Installed", |s| s.installed = true);
+        let newer = Rule::from_value(&json!({ "field": "achievementsPercent", "op": "gt", "value": 80 }));
+        assert!(matches!(newer, Rule::Unknown(_)));
+        let except = Rule::All(vec![cond(Field::Installed, Op::Is(true)), Rule::Not(Box::new(newer.clone()))]);
+        assert!(!except.matches(&installed, &facts));
+        assert!(!Rule::Not(Box::new(newer.clone())).matches(&installed, &facts));
+        // An `any` with a known match still matches.
+        assert!(Rule::Any(vec![newer, cond(Field::Installed, Op::Is(true))]).matches(&installed, &facts));
+    }
+
+    #[test]
+    fn a_conditions_unknown_keys_are_kept() {
+        let leaf = json!({ "field": "playtime", "op": "gt", "value": 5.0, "unit": "hours" });
+        let rule = Rule::from_value(&json!({ "all": [leaf.clone()] }));
+        assert!(matches!(&rule, Rule::All(list) if matches!(list[0], Rule::Cond(_))));
+        assert_eq!(rule.to_value(), json!({ "all": [leaf] }));
+    }
+
+    #[test]
+    fn any_with_no_conditions_is_every_game_like_all() {
+        let statuses = crate::status::default_statuses();
+        let (extras, ratings) = (GameExtras::default(), HashMap::new());
+        let facts = with(&extras, &ratings, &statuses);
+        let installed = game("a", "Installed", |s| s.installed = true);
+        let other = game("b", "Other", |_| {});
+        for any in [false, true] {
+            let all = Simple { any, conds: Vec::new(), except: Vec::new() };
+            assert!(all.to_rule().matches(&other, &facts), "any = {any}");
+            assert!(all.to_rule().matches(&installed, &facts), "any = {any}");
+            assert_eq!(Simple::of(&all.to_rule()), Some(all), "the editor shows it as saved");
+            let but = Simple { any, conds: Vec::new(), except: vec![Cond::new(Field::Installed, Op::Is(true))] };
+            assert!(but.to_rule().matches(&other, &facts), "any = {any}");
+            assert!(!but.to_rule().matches(&installed, &facts), "any = {any}");
+            assert_eq!(Simple::of(&but.to_rule()), Some(but), "the editor shows it as saved");
+        }
+    }
+
+    #[test]
+    fn day_counts_use_the_local_day_of_an_instant() {
+        let utc_plus_2 = chrono::FixedOffset::east_opt(2 * 3600).unwrap();
+        let utc_minus_5 = chrono::FixedOffset::west_opt(5 * 3600).unwrap();
+        // 01:30 on the 9th in UTC+2.
+        assert_eq!(local_day("2026-11-08T23:30:00.000Z", &utc_plus_2), NaiveDate::from_ymd_opt(2026, 11, 9));
+        assert_eq!(local_day("2026-11-09T02:00:00Z", &utc_minus_5), NaiveDate::from_ymd_opt(2026, 11, 8));
+        assert_eq!(local_day("2026-11-09", &utc_plus_2), NaiveDate::from_ymd_opt(2026, 11, 9));
+        assert_eq!(local_day("bad", &utc_plus_2), None);
     }
 }

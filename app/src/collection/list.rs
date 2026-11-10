@@ -24,6 +24,8 @@ pub(super) fn group_header(g: &GroupVm, extra: Option<impl IntoElement>) -> Div 
         .font_weight(theme::W_BOLD)
         .text_color(theme::ink_a(0.78))
         .child(match g.icon {
+            // A smart category's sparkle is in its colour, as on its chip.
+            Some(ic) if g.id.starts_with(heronite_data::organize::SMART_SECTION) => icon(ic, px(14.), g.color).into_any_element(),
             Some(ic) => icon(ic, px(14.), theme::ink_a(0.55)).into_any_element(),
             None => div().size(px(7.)).flex_none().rounded_full().bg(g.color).opacity(0.9).into_any_element(),
         })

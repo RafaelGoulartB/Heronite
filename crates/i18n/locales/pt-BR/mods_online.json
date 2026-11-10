@@ -1,0 +1,21 @@
+{
+  "Could not reach {host}: {error}": "Não foi possível acessar {host}: {error}",
+  "Free Nexus Mods accounts download with the \"Mod manager download\" button on the mod's page": "Contas gratuitas do Nexus Mods baixam com o botão \"Mod manager download\" na página do mod",
+  "Nexus Mods asks to wait: the hourly limit of requests was reached": "O Nexus Mods pede para esperar: o limite de requisições por hora foi atingido",
+  "Nexus Mods collections are not supported yet: install their mods one by one": "As coleções do Nexus Mods ainda não são suportadas: instale os mods um a um",
+  "Nexus Mods could not search: {error}": "O Nexus Mods não conseguiu buscar: {error}",
+  "Nexus Mods gave no download link": "O Nexus Mods não deu um link de download",
+  "Nexus Mods refused the API key. Paste it again in Settings → Mods.": "O Nexus Mods recusou a chave de API. Cole-a de novo em Configurações → Mods.",
+  "Not found on {host}": "Não encontrado em {host}",
+  "The download link from Nexus Mods expired or is not valid: use the \"Mod manager download\" button on the mod's page again": "O link de download do Nexus Mods expirou ou não é válido: use o botão \"Mod manager download\" na página do mod outra vez",
+  "The download stopped before the end": "O download parou antes do fim",
+  "The download stopped: {error}": "O download parou: {error}",
+  "The download was cancelled": "O download foi cancelado",
+  "This is not a Nexus Mods download link": "Este não é um link de download do Nexus Mods",
+  "This is not a Thunderstore install link": "Este não é um link de instalação do Thunderstore",
+  "Thunderstore has no version of {name}": "O Thunderstore não tem nenhuma versão de {name}",
+  "{host} answered with HTTP {status}": "{host} respondeu com HTTP {status}",
+  "{host} asks to wait: too many requests": "{host} pede para esperar: requisições demais",
+  "{host} refused the request (HTTP {status})": "{host} recusou a requisição (HTTP {status})",
+  "{host} sent an answer Heronite does not understand: {error}": "{host} enviou uma resposta que o Heronite não entende: {error}"
+}

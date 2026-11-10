@@ -23,6 +23,8 @@ pub enum Section {
     Integrations,
     /// What the games take on disk, and cleaning it up.
     Storage,
+    /// Mods: the Nexus Mods account, the mod links, what applying mods needs.
+    Mods,
     /// The in-game overlay (Guide button).
     Overlay,
     /// The replay buffer: the last seconds of a game, saved on request.
@@ -47,7 +49,7 @@ impl Section {
     /// Left navigation: caption + sections (the caption is translated when drawn).
     pub const GROUPS: [(&'static str, &'static [Section]); 6] = [
         (n_!("App"), &[Section::General, Section::Appearance, Section::ConsoleMode]),
-        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers, Section::Integrations]),
+        (n_!("Games"), &[Section::GameDefaults, Section::Downloads, Section::Launchers, Section::Integrations, Section::Mods]),
         (n_!("Collection"), &[Section::Library, Section::Metadata, Section::Achievements]),
         (n_!("While playing"), &[Section::Overlay, Section::Screenshots, Section::Replay]),
         (n_!("Data"), &[Section::Storage, Section::Saves, Section::Backups, Section::Cloud]),
@@ -55,7 +57,7 @@ impl Section {
     ];
 
     /// Same order as [`Section::GROUPS`].
-    pub const ALL: [Section; 20] = [
+    pub const ALL: [Section; 21] = [
         Section::General,
         Section::Appearance,
         Section::ConsoleMode,
@@ -63,6 +65,7 @@ impl Section {
         Section::Downloads,
         Section::Launchers,
         Section::Integrations,
+        Section::Mods,
         Section::Library,
         Section::Metadata,
         Section::Achievements,
@@ -90,6 +93,7 @@ impl Section {
             Section::Replay => supported(Feature::Replay),
             Section::Screenshots => supported(Feature::Capture),
             Section::Saves => supported(Feature::SaveBackups),
+            Section::Mods => supported(Feature::Mods),
             // Its options are mostly Wine's.
             Section::GameDefaults => supported(Feature::Wine),
             _ => true,
@@ -108,6 +112,7 @@ impl Section {
             Section::Launchers => tr!("Other launchers"),
             Section::Integrations => tr!("Integrations"),
             Section::Storage => tr!("Storage"),
+            Section::Mods => tr!("Mods"),
             Section::Overlay => tr!("Overlay"),
             Section::Replay => tr!("Replay"),
             Section::Metadata => tr!("Metadata"),
@@ -133,6 +138,7 @@ impl Section {
             Section::Launchers => Icon::CallMerge,
             Section::Integrations => Icon::Tv,
             Section::Storage => Icon::FaHardDrive,
+            Section::Mods => Icon::CallMerge,
             Section::Overlay => Icon::SportsEsports,
             Section::Replay => Icon::Videocam,
             Section::Metadata => Icon::TravelExplore,
@@ -162,6 +168,7 @@ impl Section {
             Section::Launchers => tr!("Bring in the games of Heroic, Lutris, Bottles and Faugus. While on, a game added there shows up here too."),
             Section::Integrations => tr!("Sunshine keeps your games in its list, with their covers, so Moonlight can start them from a phone, a TV or another computer."),
             Section::Storage => tr!("What your games take on disk, and what can go."),
+            Section::Mods => tr!("Your Nexus Mods account, the download buttons of the mod sites, and what Heronite needs to apply mods when a game starts. Each game's mods are managed from its own Mods."),
             Section::Overlay => crate::overlay::labels::section_blurb(),
             Section::Replay => tr!("The last seconds of a game kept in memory and saved as a moment with Guide + X, and the memory that takes."),
             Section::Metadata => tr!("Where the details and pictures of your games come from. Sources are asked from the top of each list down; a field stays with the first one that has it."),
@@ -188,6 +195,7 @@ impl Section {
             Section::Launchers => "other launchers import heroic lutris bottles faugus playnite sync bring in outros launchers importar sincronizar trazer",
             Section::Integrations => "integrations sunshine moonlight stream streaming remote play tv phone couch integracoes transmitir transmissao jogar remotamente celular sofa",
             Section::Storage => "storage disk space free up clean cleanup size prefixes proton cache leftovers uninstall armazenamento disco espaco liberar limpar limpeza tamanho prefixos sobras desinstalar",
+            Section::Mods => "mods nexus thunderstore nxm ror2mm api key account premium links fuse overlayfs fomod mod manager modding mods conta chave link modificacoes gerenciador",
             Section::Overlay => "overlay guide button controller gamepad keyboard in-game volume screenshot shortcut botao guia controle teclado sobreposicao no jogo volume captura atalho",
             Section::Replay => "replay clip video record recording buffer last seconds guide gpu-screen-recorder memory ram vram vulkan nvenc vaapi encoder disk gravar gravacao clipe video ultimos segundos memoria codificador disco",
             Section::Achievements => "achievements trophies retroachievements retro emulator rom steam gog epic unlocked rare points hardcore web api key conquistas trofeus emulador desbloqueadas raras pontos chave",
@@ -222,6 +230,7 @@ impl Section {
             "launchers" | "import" => Some(Section::Launchers),
             "integrations" | "sunshine" => Some(Section::Integrations),
             "storage" | "disk" => Some(Section::Storage),
+            "mods" | "nexus" => Some(Section::Mods),
             "overlay" => Some(Section::Overlay),
             "replay" => Some(Section::Replay),
             "metadata" => Some(Section::Metadata),
@@ -256,6 +265,7 @@ mod tests {
         assert_eq!(Section::parse("storage"), Some(Section::Storage));
         assert_eq!(Section::parse("defaults"), Some(Section::GameDefaults));
         assert_eq!(Section::parse("replay"), Some(Section::Replay));
+        assert_eq!(Section::parse("mods"), Some(Section::Mods));
         assert_eq!(Section::parse("console-mode"), Some(Section::ConsoleMode));
         assert_eq!(Section::parse("sunshine"), Some(Section::Integrations));
         assert_eq!(Section::parse("nope"), None);

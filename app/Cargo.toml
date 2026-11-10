@@ -28,6 +28,7 @@ heronite-metadata = { path = "../crates/metadata" }
 heronite-metadata-ext = { path = "../crates/metadata-ext" }
 serde_json.workspace = true
 heronite-media = { path = "../crates/media" }
+heronite-mods = { path = "../crates/mods" }
 heronite-platform = { path = "../crates/platform" }
 heronite-overlay = { path = "../crates/overlay" }
 heronite-emulation = { path = "../crates/emulation" }

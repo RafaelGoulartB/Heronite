@@ -3543,6 +3543,7 @@ dependencies = [
  "heronite-media",
  "heronite-metadata",
  "heronite-metadata-ext",
+ "heronite-mods",
  "heronite-overlay",
  "heronite-platform",
  "heronite-shortcuts",
@@ -3914,6 +3915,24 @@ dependencies = [
  "toml 0.8.23",
  "url",
  "zip",
+]
+
+[[package]]
+name = "heronite-mods"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "heronite-data",
+ "heronite-i18n",
+ "heronite-installer",
+ "libc",
+ "log",
+ "roxmltree 0.21.1",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "ureq",
 ]
 
 [[package]]

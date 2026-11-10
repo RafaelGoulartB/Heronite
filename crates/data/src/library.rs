@@ -41,7 +41,7 @@ use crate::text::DateLocale;
 
 /// Everything the UI needs about one game. Cheap to share: keep it in an
 /// `Arc` ([`Game`](crate::collection::Game)).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CollectionGame {
     /// `runner_appName`: the key the screen uses for focus and de-duplication.
     pub key: String,
@@ -702,7 +702,12 @@ impl Library {
         let recent: HashSet<&str> = config_games.recent.iter().map(|g| g.app_name.as_str()).collect();
 
         let metas = arcs(local_meta.games);
-        let metadatas = arcs(metadata_file.games);
+        let mut metadata_games = metadata_file.games;
+        // Stored records may still say "Macintosh".
+        for md in metadata_games.values_mut() {
+            md.platforms = crate::text::platform_names(std::mem::take(&mut md.platforms));
+        }
+        let metadatas = arcs(metadata_games);
         let arts = arcs(art.games);
         let sessions = arcs(sessions_file.sessions);
         let overrides = overrides.overrides;
@@ -1138,6 +1143,26 @@ mod tests {
         w(paths.collection_settings(), r#"{"metadata":{"steamTags":false}}"#);
         let lib = Library::load(&paths).unwrap();
         assert!(tags(&lib, "sideload_steam_620").is_empty());
+    }
+
+    #[test]
+    fn a_stored_macintosh_platform_reads_as_mac() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path());
+        let w = |p: PathBuf, s: &str| {
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, s).unwrap();
+        };
+        w(paths.sideload_library(), r#"{"games":[{"runner":"sideload","app_name":"portal","title":"Portal","install":{}}]}"#);
+        w(
+            paths.metadata(),
+            r#"{"games":{"sideload:portal":{"appName":"portal","runner":"sideload","platforms":["Linux","Macintosh","Mac","Windows"]}}}"#,
+        );
+        let lib = Library::load(&paths).unwrap();
+        let game = lib.get("sideload_portal").unwrap();
+        assert_eq!(game.metadata.as_ref().unwrap().platforms, ["Linux", "Mac", "Windows"]);
+        let platforms: Vec<&str> = game.facets[FacetKind::Platform.index()].iter().map(|i| i.value.as_str()).collect();
+        assert_eq!(platforms, ["Linux", "Mac", "Windows"]);
     }
 
     #[test]

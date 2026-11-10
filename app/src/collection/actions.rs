@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::organize::{GroupBy, SMART_SECTION};
 use heronite_data::FacetKind;
 use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
@@ -52,7 +53,20 @@ impl CollectionView {
     }
 
     pub(super) fn refresh_groups(&mut self) {
+        self.group_members.get_mut().clear();
+        self.rebuild_list();
+    }
+
+    /// [`refresh_groups`](Self::refresh_groups) for a change of the search
+    /// alone: the smart categories' games stay as worked out (their rules
+    /// don't read the search), so typing doesn't run every rule again.
+    pub(super) fn refresh_search(&mut self) {
+        self.rebuild_list();
+    }
+
+    fn rebuild_list(&mut self) {
         let Some(lib) = self.lib.clone() else { return };
+        self.group_today.set(Some(chrono::Local::now().date_naive()));
         let playing = &self.playing;
         let keep = |g: &heronite_data::CollectionGame| self.keeps_game(g, &lib.statuses);
         let organize = heronite_data::organize::Organize {
@@ -67,21 +81,36 @@ impl CollectionView {
             copies.iter().any(|g| playing.contains_key(&g.app_name))
         };
         let step = |key: &str| lib.get(key).and_then(|g| self.preparing.get(&g.app_name)).map(|s| s.label());
-        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
+        let smart = if self.ui.group_by == GroupBy::Category { self.smart_sections() } else { Vec::new() };
+        let mut groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize, &smart);
+        if self.ui.group_by == GroupBy::Category {
+            // A manual category's header has its colour's dot, a smart one's the sparkle.
+            for g in &mut groups {
+                if let Some(id) = g.id.strip_prefix(SMART_SECTION) {
+                    g.icon = Some(crate::icons::Icon::AutoAwesome);
+                    if let Some(s) = self.smart_groups.get(id) {
+                        g.color = super::smart_groups::group_colour(s);
+                    }
+                } else if g.id.as_ref() != "category:" {
+                    g.icon = None;
+                    g.color = self.manual_colour(&g.name);
+                }
+            }
+        }
+        self.group_today.set(None);
         self.set_groups(groups);
         self.refresh_focus();
         self.prune_selection_to_list();
     }
 
-    /// The list's conditions that live in the app: the selected categories,
-    /// statuses and smart groups, and "Only with an update".
+    /// The list's conditions that live in the app: the selected categories
+    /// (manual and smart), statuses, and "Only with an update".
     pub(super) fn keeps_game(&self, g: &heronite_data::CollectionGame, statuses: &[heronite_data::models::CompletionStatus]) -> bool {
         let ui = &self.ui;
-        self.categories.matches(&ui.categories, &g.runner, &g.app_name)
+        self.in_picked_categories(g)
             && (!ui.only.updates || self.update_apps.contains(&g.app_name))
             && (ui.statuses.is_empty()
                 || ui.statuses.contains(&heronite_data::status::resolve_status_id(g.status_raw.as_deref(), statuses)))
-            && self.in_picked_groups(g, statuses)
     }
 
     /// The focus panel of `game`, whose Play stands for the copy it starts
@@ -188,6 +217,7 @@ impl CollectionView {
             LaunchEvent::Status { message, warning, .. } => self.show_toast(message, warning, cx),
         }
         self.refresh_groups();
+        self.sync_mods_running(cx);
         cx.notify();
     }
 

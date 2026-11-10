@@ -39,14 +39,22 @@ pub fn fit_size(sw: u32, sh: u32, tw: u32, th: u32) -> (u32, u32) {
     (w, h)
 }
 
+/// Blur (px of sigma) a stage raster must keep to be stretched to the window
+/// by the GPU without looking soft: under it, the raster is drawn larger
+/// ([`stage_size`]'s `sharp_max_w`).
+pub const STAGE_SHARP_SIGMA: f32 = 2.0;
+
 /// Size of the (reduced-resolution) stage raster for a full-window target.
 ///
 /// A Gaussian blur of `blur_px` (physical px at target resolution) removes all
 /// detail finer than ~blur_px, so we render at scale `s` and blur with
 /// `blur_px * s`. `s` is chosen so that the blurred raster keeps
 /// `sigma_out` px of sigma (default 8): enough samples per sigma for a smooth
-/// bilinear GPU upscale, while minimising pixels. Never above `max_w` wide.
-pub fn stage_size(tw: u32, th: u32, blur_px: f32, max_w: u32, sigma_out: f32) -> (u32, u32, f32) {
+/// bilinear GPU upscale, while minimising pixels. At most `max_w` wide, unless
+/// the blur is too light to hide the stretch (under [`STAGE_SHARP_SIGMA`] px
+/// left in the raster): unblurred art is then drawn at the window's size, up
+/// to `sharp_max_w` wide.
+pub fn stage_size(tw: u32, th: u32, blur_px: f32, max_w: u32, sharp_max_w: u32, sigma_out: f32) -> (u32, u32, f32) {
     let mut s = 1.0f32;
     if tw > max_w {
         s = max_w as f32 / tw as f32;
@@ -54,6 +62,9 @@ pub fn stage_size(tw: u32, th: u32, blur_px: f32, max_w: u32, sigma_out: f32) ->
     if blur_px > 0.0 {
         s = s.min((sigma_out / blur_px).max(0.05));
     }
+    // Light blur: big enough that the blur still hides the GPU's stretch.
+    let sharp = if blur_px > 0.0 { STAGE_SHARP_SIGMA / blur_px } else { 1.0 };
+    s = s.max(sharp.min(sharp_max_w as f32 / tw as f32).min(1.0));
     // Never go below 160 px wide (nor upscale).
     s = s.max((160.0 / tw as f32).min(1.0)).min(1.0);
     let w = ((tw as f32 * s).round() as u32).max(1);
@@ -111,14 +122,24 @@ mod tests {
 
     #[test]
     fn stage_scales_with_blur_and_width() {
-        let (w, h, s) = stage_size(1920, 1080, 40.0, 960, 8.0);
+        let (w, h, s) = stage_size(1920, 1080, 40.0, 960, 1920, 8.0);
         assert_eq!((w, h), (384, 216));
         assert!((s - 0.2).abs() < 1e-3);
-        // small blur: limited by max width
-        let (w, _, _) = stage_size(3840, 2160, 2.0, 960, 8.0);
+        // A blur that hides a 2x stretch: limited by max width.
+        let (w, _, _) = stage_size(1920, 1080, 6.0, 960, 1920, 8.0);
         assert_eq!(w, 960);
+        let (w, _, _) = stage_size(3840, 2160, 8.0, 960, 1920, 8.0);
+        assert_eq!(w, 960);
+        // Lighter blur: as large as needed to keep 2 px of it, up to the sharp width.
+        let (w, _, _) = stage_size(1920, 1080, 3.0, 960, 1920, 8.0);
+        assert_eq!(w, 1280);
+        let (w, _, _) = stage_size(3840, 2160, 2.0, 960, 1920, 8.0);
+        assert_eq!(w, 1920);
+        // No blur: the window's size, up to the sharp width.
+        assert_eq!(stage_size(1920, 1080, 0.0, 960, 1920, 8.0), (1920, 1080, 1.0));
+        assert_eq!(stage_size(2560, 1440, 0.0, 960, 1920, 8.0).0, 1920);
         // no blur at small target: unchanged
-        let (w, h, s) = stage_size(800, 600, 0.0, 960, 8.0);
+        let (w, h, s) = stage_size(800, 600, 0.0, 960, 1920, 8.0);
         assert_eq!((w, h, s), (800, 600, 1.0));
     }
 }

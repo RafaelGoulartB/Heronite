@@ -188,12 +188,17 @@ pub fn card_cover(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> 
 /// - Collection metadata hero
 /// - cached Steam hero (`local_library/heroes/{id}.jpg`)
 /// - `art_background`
+/// - Steam `library_hero_2x.jpg`, then `library_hero.jpg`, on both CDNs
+///   (needs `meta.steamAppId`; older games only have the 1x one)
 /// - Heroic override `art_cover`
 /// - `art_cover`
-/// - Steam `library_hero_2x.jpg` (needs `meta.steamAppId`)
 /// - `art_square`
 ///
-/// The last five skip `localart:` values. Empty means no stage.
+/// The Steam hero (1920 or 3840 px wide, made to be a background) comes
+/// before the covers: a game's `art_cover` is often Steam's `header.jpg`
+/// (460×215), which a full window would show stretched five times.
+///
+/// The last ones skip `localart:` values. Empty means no stage.
 pub fn stage_art(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> {
     let info = &game.game;
     let mut chain = Vec::new();
@@ -212,15 +217,18 @@ pub fn stage_art(ctx: &ArtContext<'_>, game: &CollectionGame) -> Vec<ImageRef> {
         }
     }
 
-    let steam_hero = game.steam_app_id.as_deref().map(steam_library_hero);
-    let defaults = [
-        present(info.art_background.as_deref()),
+    let background = [present(info.art_background.as_deref())];
+    // The hero URLs; the last download URL is Steam's generated page
+    // background, which is darkened and blurred: not a hero.
+    let steam_id = game.steam_app_id.as_deref().filter(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()));
+    let steam_hero = steam_id.map(steam_hero_download_urls);
+    let steam_hero = steam_hero.iter().flat_map(|urls| urls[..4].iter().map(|u| Some(u.as_str())));
+    let covers = [
         present(game.overrides.as_ref().and_then(|o| o.art_cover.as_deref())),
         present(info.art_cover.as_deref()),
-        present(steam_hero.as_deref()),
         present(info.art_square.as_deref()),
     ];
-    for value in defaults.into_iter().flatten().filter(|v| !is_managed_art(v)) {
+    for value in background.into_iter().chain(steam_hero).chain(covers).flatten().filter(|v| !is_managed_art(v)) {
         if let Some(item) = ctx.resolve(value) {
             push_unique(&mut chain, item);
         }
@@ -403,13 +411,48 @@ mod tests {
                 ImageRef::File(paths.heroes_dir().join("42.jpg")),
                 // no ?h=400 on the stage, even for Epic
                 ImageRef::Url("https://cdn/bg.jpg".into()),
-                ImageRef::Url("https://cdn/cover.jpg".into()),
+                // The Steam hero before the covers (#275), 1x when there is no 2x.
                 ImageRef::Url(steam_library_hero("42")),
+                ImageRef::Url("https://cdn.cloudflare.steamstatic.com/steam/apps/42/library_hero.jpg".into()),
+                ImageRef::Url("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/42/library_hero_2x.jpg".into()),
+                ImageRef::Url("https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/42/library_hero.jpg".into()),
+                ImageRef::Url("https://cdn/cover.jpg".into()),
                 ImageRef::Url("https://cdn/square.jpg".into()),
             ]
         );
         let bare = game_with("y", "sideload", |_, _, _, _, _| {});
         assert!(stage_art(&ctx, &bare).is_empty());
+    }
+
+    /// #275: a game whose covers came from Steam (`art_cover` is the 460x215
+    /// `header.jpg`) and that has no hero yet shows the Steam hero, not the
+    /// header stretched over the window.
+    #[test]
+    fn stage_prefers_the_steam_hero_to_the_header() {
+        let (_d, paths) = setup();
+        let ctx = ArtContext::new(&paths, None);
+        let g = game_with("x", "sideload", |info, _, _, meta, overrides| {
+            info.art_cover = Some(steam_header_image("357190"));
+            info.art_square = Some(steam_library_cover("357190"));
+            overrides.art_cover = Some("https://cdn/override".into());
+            meta.steam_app_id = Some("357190".into());
+        });
+        let heroes = steam_hero_download_urls("357190");
+        let mut expected: Vec<ImageRef> = heroes[..4].iter().map(|u| ImageRef::Url(u.clone())).collect();
+        expected.extend([
+            ImageRef::Url("https://cdn/override".into()),
+            ImageRef::Url(steam_header_image("357190")),
+            ImageRef::Url(steam_library_cover("357190")),
+        ]);
+        assert_eq!(stage_art(&ctx, &g), expected);
+        // No usable Steam id: the covers only.
+        for id in ["", "../x"] {
+            let g = game_with("x", "sideload", |info, _, _, meta, _| {
+                info.art_cover = Some(steam_header_image("357190"));
+                meta.steam_app_id = Some(id.into());
+            });
+            assert_eq!(stage_art(&ctx, &g), vec![ImageRef::Url(steam_header_image("357190"))], "{id:?}");
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! `collection_focused_game`. Loading is as lenient as the `readX` helpers of
 //! `index.tsx`: anything missing or invalid falls back to its default.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use serde_json::{json, Map, Value};
@@ -39,6 +39,9 @@ pub struct UiState {
     /// Ids of the selected smart groups (`heronite_data::smart_groups`),
     /// the games of any of them. Empty: all games.
     pub smart_groups: BTreeSet<String>,
+    /// Colour and pin of each manual category, by name (`categoryLooks`).
+    /// Smart categories keep theirs in `groups.json`; these stay on this PC.
+    pub category_looks: BTreeMap<String, CategoryLook>,
     /// The View menu's views, in menu order.
     pub saved_views: Vec<SavedView>,
     /// The built-in views were added to [`saved_views`](Self::saved_views)
@@ -185,6 +188,7 @@ impl Default for UiState {
             categories: BTreeSet::new(),
             statuses: BTreeSet::new(),
             smart_groups: BTreeSet::new(),
+            category_looks: BTreeMap::new(),
             saved_views: Vec::new(),
             views_seeded: false,
             sidebar_hidden: false,
@@ -224,6 +228,13 @@ impl UiState {
                     let name = v.get("name").and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty())?;
                     Some(SavedView { name: name.to_owned(), filters: ViewFilters::from_value(v), extra: SavedView::extra_of(v) })
                 })
+                .collect();
+        }
+        if let Some(looks) = value.get(CATEGORY_LOOKS).and_then(Value::as_object) {
+            state.category_looks = looks
+                .iter()
+                .filter(|(name, _)| !name.trim().is_empty())
+                .filter_map(|(name, v)| Some((name.clone(), CategoryLook::from_value(v).filter(|l| !l.is_plain())?)))
                 .collect();
         }
         let flag = |key: &str| value.get(key).and_then(Value::as_bool).unwrap_or(false);
@@ -291,6 +302,11 @@ impl UiState {
         if let (Value::Object(doc), Value::Object(view)) = (&mut doc, self.view_filters().to_value()) {
             doc.extend(view);
         }
+        let looks: Map<String, Value> =
+            self.category_looks.iter().filter(|(_, l)| !l.is_plain()).map(|(name, l)| (name.clone(), l.to_value())).collect();
+        if !looks.is_empty() {
+            doc[CATEGORY_LOOKS] = Value::Object(looks);
+        }
         doc
     }
 
@@ -311,6 +327,15 @@ impl UiState {
                 *doc = Value::Object(Default::default());
             }
             let obj = doc.as_object_mut().expect("object");
+            // Not written when no group is picked (see `ViewFilters::to_value`):
+            // the groups picked before would come back on the next start.
+            if !known.contains_key("smartGroups") {
+                obj.remove("smartGroups");
+            }
+            // Likewise: the last look taken off leaves no key behind.
+            if !known.contains_key(CATEGORY_LOOKS) {
+                obj.remove(CATEGORY_LOOKS);
+            }
             for (k, v) in known {
                 obj.insert(k, v);
             }
@@ -360,7 +385,9 @@ impl UiState {
         changed
     }
 
-    /// [`prune_statuses`](Self::prune_statuses) for categories.
+    /// [`prune_statuses`](Self::prune_statuses) for categories. Their looks
+    /// stay (a category that is back, from a sync or an unreadable file,
+    /// keeps its colour); [`forget_category`](Self::forget_category) drops one.
     pub fn prune_categories(&mut self, keep: impl Fn(&str) -> bool) -> bool {
         let before = self.categories.len();
         self.categories.retain(|name| keep(name));
@@ -387,7 +414,45 @@ impl UiState {
         for view in &mut self.saved_views {
             changed |= rename(&mut view.filters.categories);
         }
+        // A merge keeps the colour of the category merged into (the merged
+        // one's when it has none), and its pin when either was pinned.
+        if let Some(look) = self.category_looks.remove(old) {
+            match self.category_looks.get_mut(new) {
+                Some(into) => {
+                    into.pinned |= look.pinned;
+                    if into.colour.is_none() {
+                        into.colour = look.colour;
+                    }
+                }
+                None => {
+                    self.category_looks.insert(new.to_owned(), look);
+                }
+            }
+            changed = true;
+        }
         changed
+    }
+
+    /// The user removed the category `name`: its look goes too.
+    pub fn forget_category(&mut self, name: &str) -> bool {
+        self.category_looks.remove(name).is_some()
+    }
+
+    /// The look of the manual category `name` (plain when it has none).
+    pub fn category_look(&self, name: &str) -> CategoryLook {
+        self.category_looks.get(name).cloned().unwrap_or_default()
+    }
+
+    /// Changes the look of `name`; a plain look is dropped (its unknown
+    /// keys are kept).
+    pub fn set_category_look(&mut self, name: &str, f: impl FnOnce(&mut CategoryLook)) {
+        let mut look = self.category_look(name);
+        f(&mut look);
+        if look.is_plain() {
+            self.category_looks.remove(name);
+        } else {
+            self.category_looks.insert(name.to_owned(), look);
+        }
     }
 
     /// `handleClearFacets`.
@@ -609,6 +674,46 @@ impl ViewFilters {
             doc["smartGroups"] = json!(self.smart_groups);
         }
         doc
+    }
+}
+
+/// Key of [`UiState::category_looks`] in the file.
+const CATEGORY_LOOKS: &str = "categoryLooks";
+
+/// How a manual category shows: its colour (`None`: the one its place in
+/// the list picks) and whether it is pinned to the Collection header.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CategoryLook {
+    /// `#rrggbb`.
+    pub colour: Option<String>,
+    pub pinned: bool,
+    /// Keys a newer version wrote, kept as read.
+    pub extra: Map<String, Value>,
+}
+
+impl CategoryLook {
+    fn from_value(v: &Value) -> Option<Self> {
+        let obj = v.as_object()?;
+        let colour = obj.get("colour").and_then(Value::as_str).filter(|c| crate::smart_groups::is_hex_colour(c)).map(str::to_owned);
+        let pinned = obj.get("pinned").and_then(Value::as_bool).unwrap_or(false);
+        let extra = obj.iter().filter(|(k, _)| !matches!(k.as_str(), "colour" | "pinned")).map(|(k, v)| (k.clone(), v.clone())).collect();
+        Some(Self { colour, pinned, extra })
+    }
+
+    fn to_value(&self) -> Value {
+        let mut obj = self.extra.clone();
+        if let Some(c) = &self.colour {
+            obj.insert("colour".into(), json!(c));
+        }
+        if self.pinned {
+            obj.insert("pinned".into(), json!(true));
+        }
+        Value::Object(obj)
+    }
+
+    /// Nothing to keep: no colour, not pinned, no unknown keys.
+    pub fn is_plain(&self) -> bool {
+        self.colour.is_none() && !self.pinned && self.extra.is_empty()
     }
 }
 
@@ -1065,6 +1170,11 @@ mod tests {
         assert!(!loaded.prune_smart_groups(|_| true));
         loaded.clear_filters();
         assert_eq!(loaded.active_filters(), 0);
+        // No group picked when the app closed: none when it starts again.
+        loaded.save(&paths).unwrap();
+        assert!(UiState::load(&paths).smart_groups.is_empty());
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert!(on_disk.get("smartGroups").is_none());
     }
 
     #[test]
@@ -1250,5 +1360,75 @@ mod tests {
         assert_eq!(window_placement(&paths), None);
         std::fs::write(paths.ui_state(), r#"{"window":{"x":0,"width":800,"height":600}}"#).unwrap();
         assert_eq!(window_placement(&paths), None);
+    }
+
+    /// Colours and pins of manual categories: written under `categoryLooks`,
+    /// unknown keys (in a look and beside it) kept, plain looks left out.
+    #[test]
+    fn category_looks_round_trip_and_keep_unknown_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        std::fs::create_dir_all(&paths.config).unwrap();
+        let newer = json!({
+            "futureKey": { "a": 1 },
+            "categoryLooks": {
+                "RPG": { "colour": "#d55181", "pinned": true, "icon": "sword" },
+                "Co-op": { "colour": "not a colour" },
+                "": { "pinned": true },
+            },
+        });
+        std::fs::write(paths.ui_state(), serde_json::to_string(&newer).unwrap()).unwrap();
+
+        let mut state = UiState::load(&paths);
+        let rpg = state.category_look("RPG");
+        assert_eq!(rpg.colour.as_deref(), Some("#d55181"));
+        assert!(rpg.pinned);
+        assert_eq!(rpg.extra["icon"], "sword");
+        assert!(state.category_look("Co-op").is_plain(), "a bad colour reads as none");
+        assert!(!state.category_looks.contains_key(""), "nameless dropped");
+
+        state.set_category_look("Kids", |l| l.colour = Some("#199e70".into()));
+        state.set_category_look("RPG", |l| l.pinned = false);
+        state.save(&paths).unwrap();
+        let on_disk = json_store::read_value(&paths.ui_state()).unwrap();
+        assert_eq!(on_disk["futureKey"], json!({ "a": 1 }));
+        assert_eq!(on_disk["categoryLooks"], json!({ "RPG": { "colour": "#d55181", "icon": "sword" }, "Kids": { "colour": "#199e70" } }));
+        assert_eq!(UiState::load(&paths).category_looks, state.category_looks);
+
+        // A rename carries the look; a removed category loses it.
+        assert!(state.rename_category("Kids", "Family"));
+        assert_eq!(state.category_look("Family").colour.as_deref(), Some("#199e70"));
+        assert!(!state.prune_categories(|n| n != "Family"), "pruning the filter keeps the looks");
+        // A merge keeps the colour merged into, and a pin of either.
+        state.set_category_look("Family", |l| l.pinned = true);
+        assert!(state.rename_category("Family", "RPG"));
+        let merged = state.category_look("RPG");
+        assert_eq!(merged.colour.as_deref(), Some("#d55181"));
+        assert!(merged.pinned, "the merged category's pin stays");
+        assert!(!state.category_looks.contains_key("Family"));
+        state.set_category_look("RPG", |l| l.pinned = false);
+        state.set_category_look("Family", |l| l.colour = Some("#199e70".into()));
+        assert!(state.forget_category("Family"));
+        state.set_category_look("RPG", |l| {
+            l.colour = None;
+            l.extra.clear();
+        });
+        state.save(&paths).unwrap();
+        assert!(json_store::read_value(&paths.ui_state()).unwrap().get("categoryLooks").is_none(), "no looks, no key");
+    }
+
+    /// A file from before category looks reads with none, and saving it adds
+    /// no key.
+    #[test]
+    fn old_files_have_no_category_looks() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = app_paths(dir.path());
+        std::fs::create_dir_all(&paths.config).unwrap();
+        std::fs::write(paths.ui_state(), r#"{"categories":["RPG"],"sort":"title"}"#).unwrap();
+        let state = UiState::load(&paths);
+        assert!(state.category_looks.is_empty());
+        assert!(state.category_look("RPG").is_plain());
+        state.save(&paths).unwrap();
+        assert!(json_store::read_value(&paths.ui_state()).unwrap().get("categoryLooks").is_none());
     }
 }

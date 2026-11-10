@@ -7,17 +7,24 @@ use heronite_data::json_store;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;
+use heronite_data::text::platform_names;
 use indexmap::IndexMap;
 
 use crate::util::blank_metadata;
 
 pub fn get_game_metadata(paths: &DataPaths, runner: &str, app_name: &str) -> Result<Option<CollectionGameMetadata>> {
     let file: MetadataFile = json_store::read(&paths.metadata())?;
-    Ok(file.games.get(&metadata_key(runner, app_name)).cloned())
+    Ok(file.games.get(&metadata_key(runner, app_name)).cloned().map(tidy))
 }
 
 pub fn get_all_game_metadata(paths: &DataPaths) -> Result<IndexMap<String, CollectionGameMetadata>> {
-    Ok(json_store::read::<MetadataFile>(&paths.metadata())?.games)
+    Ok(json_store::read::<MetadataFile>(&paths.metadata())?.games.into_iter().map(|(key, md)| (key, tidy(md))).collect())
+}
+
+/// A stored record as the app shows it (a stored "Macintosh" reads as "Mac").
+fn tidy(mut md: CollectionGameMetadata) -> CollectionGameMetadata {
+    md.platforms = platform_names(std::mem::take(&mut md.platforms));
+    md
 }
 
 /// `upsertGameMetadata`; returns what was stored.

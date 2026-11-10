@@ -43,7 +43,8 @@ pub(super) enum Flyout {
 }
 
 /// Groups of a game's context menu, in order: play, organize (status,
-/// categories, favourite, hidden), the game, its installation, ReShade, shortcuts,
+/// categories, favourite, hidden), the game, its installation, what is added
+/// to the game (mods, ReShade), shortcuts,
 /// removing it, the log, then "Select multiple".
 const GROUPS: usize = 9;
 
@@ -105,8 +106,9 @@ fn menu_place(action: &GameAction) -> (usize, u8) {
         A::Epic(E::Relocate) => (3, 3),
         A::Epic(E::Eos) => (3, 4),
         A::Epic(E::Forget) => (3, 5),
-        // A group of its own, above the shortcuts.
-        A::Reshade => (4, 0),
+        // What is added to the game: a group of its own, above the shortcuts.
+        A::Mods => (4, 0),
+        A::Reshade => (4, 1),
         A::Shortcuts { .. } => (5, 0),
         A::Steam { .. } => (5, 1),
         A::RemoveRecent => (5, 2),
@@ -133,6 +135,24 @@ pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
         .text_color(theme::text_primary())
         .cursor_pointer()
         .hover(|s| s.bg(theme::menu_item_hover()).text_color(theme::text_bright()))
+}
+
+/// A line that cannot be clicked: the sparkle and "In: …" with the smart
+/// categories `names` (the menus and the dock).
+pub(super) fn smart_in_line(id: impl Into<ElementId>, names: &[String]) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .px(px(12.))
+        .py(px(6.))
+        .min_h(px(34.))
+        .text_size(px(13.))
+        .text_color(theme::text_muted())
+        .child(icon(Icon::AutoAwesome, px(18.), theme::text_dim()))
+        .child(div().flex_1().min_w_0().truncate().child(tr!("In: {names}", names = names.join(", ")).to_string()))
+        .tooltip(crate::ui::tooltip(tr!("Smart categories: their rules put the game in them.")))
 }
 
 /// Inner padding of the menu (and its flyouts).
@@ -232,6 +252,9 @@ impl CollectionView {
         groups[0].push(self.primary_row(&game, &key, playing, open == Some(Flyout::Install), flyout_left, cx).into_any_element());
         groups[1].push(Self::status_row(&lib, &game, &key, open == Some(Flyout::Status), flyout_left, cx).into_any_element());
         groups[1].push(self.categories_row(&game, &key, open == Some(Flyout::Categories), flyout_left, cx).into_any_element());
+        if let Some(row) = self.smart_in_row(&game, cx) {
+            groups[1].push(row.into_any_element());
+        }
         // Everything else comes from the game's action list (shared with the
         // command palette, see `game_actions.rs`).
         let mut actions: Vec<GameActionItem> = self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu).collect();
@@ -319,14 +342,8 @@ impl CollectionView {
         };
         let status =
             sub("cm-b-status", Icon::Flag, tr!("Status").into(), open == Some(Flyout::Status), status_fly, fold(Some(Flyout::Status)));
-        let cats = sub(
-            "cm-b-cats",
-            Icon::Label,
-            tr!("Categories").into(),
-            open == Some(Flyout::Categories),
-            cats_fly,
-            fold(Some(Flyout::Categories)),
-        );
+        let cats =
+            sub("cm-b-cats", Icon::Label, tr!("Add to").into(), open == Some(Flyout::Categories), cats_fly, fold(Some(Flyout::Categories)));
         let meta = sub(
             "cm-b-meta",
             Icon::CloudDownload,
@@ -462,14 +479,27 @@ impl CollectionView {
         status_row
     }
 
-    /// "Categories" row with its flyout: every category with a check (a
+    /// The smart categories the game is in, read only (its rules put it
+    /// there): "In: Unplayed, Short ones". None while it is in none.
+    fn smart_in_row(&self, game: &CollectionGame, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let names: Vec<String> = self.smart_categories_of(game).into_iter().map(|g| g.name.clone()).collect();
+        (!names.is_empty()).then(|| {
+            smart_in_line("cm-smart-in", &names).on_hover(cx.listener(|this, h: &bool, _, cx| {
+                if *h {
+                    this.show_flyout(None, cx);
+                }
+            }))
+        })
+    }
+
+    /// "Add to" row with its flyout: every manual category with a check (a
     /// click puts the game in or out, the menu stays open), then "Manage
     /// categories…".
     fn categories_row(&self, game: &CollectionGame, key: &SharedString, open: bool, flyout_left: bool, cx: &mut Context<Self>) -> Div {
         let mut row = div().relative().child(
             item("cm-categories")
                 .child(icon(Icon::Label, px(18.), theme::text_muted()))
-                .child(tr!("Categories"))
+                .child(tr!("Add to"))
                 .child(div().flex_1())
                 .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
                 .on_hover(cx.listener(|this, h: &bool, _, cx| {
@@ -674,5 +704,18 @@ impl CollectionView {
         )
         .with_priority(20)
         .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{menu_place, GameAction};
+
+    #[test]
+    fn mods_share_the_group_of_reshade_and_come_first() {
+        let (mods, reshade) = (menu_place(&GameAction::Mods), menu_place(&GameAction::Reshade));
+        assert_eq!(mods.0, reshade.0);
+        assert!(mods.1 < reshade.1);
+        assert_ne!(mods.0, menu_place(&GameAction::Settings).0);
     }
 }

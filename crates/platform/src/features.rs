@@ -80,10 +80,13 @@ pub enum Feature {
     /// The Microsoft Store and PC Game Pass games the Xbox app installs
     /// (Windows' own packages): its page and the games it brings in.
     XboxStore,
+    /// The mods of a game (`docs/MODS.md`): its manager, Settings → Mods,
+    /// the mod sites' links and applying the mods when the game starts.
+    Mods,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 22] = [
+    pub const ALL: [Feature; 23] = [
         Feature::Wine,
         Feature::EpicStore,
         Feature::GogStore,
@@ -106,6 +109,7 @@ impl Feature {
         Feature::DesktopShortcuts,
         Feature::Capture,
         Feature::XboxStore,
+        Feature::Mods,
     ];
 
     /// Its name in `HERONITE_FEATURES`.
@@ -133,6 +137,7 @@ impl Feature {
             Feature::DesktopShortcuts => "desktop-shortcuts",
             Feature::Capture => "capture",
             Feature::XboxStore => "xbox",
+            Feature::Mods => "mods",
         }
     }
 }
@@ -149,9 +154,11 @@ pub fn supported(feature: Feature) -> bool {
 }
 
 /// What the Flatpak's sandbox rules out: bubblewrap cannot make the
-/// namespaces of a sandbox inside it, and Flatpak installs the updates.
+/// namespaces of a sandbox inside it, Flatpak installs the updates, and
+/// nothing can be mounted over a game's folder (`fusermount3` needs to be
+/// setuid, which a Flatpak never is), so mods cannot be applied.
 const fn off_in_flatpak(feature: Feature) -> bool {
-    matches!(feature, Feature::Sandbox | Feature::SelfUpdate)
+    matches!(feature, Feature::Sandbox | Feature::SelfUpdate | Feature::Mods)
 }
 
 /// Whether any of the stores Heronite signs in to is on: what they share
@@ -185,7 +192,9 @@ const fn built_in(feature: Feature) -> bool {
         | Feature::SteamGameSettings
         | Feature::XboxStore => true,
         Feature::Overlay => cfg!(windows),
-        Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::Sandbox | Feature::Wrappers => false,
+        // Mods on Windows wait until mod archives open without 7-Zip or
+        // bsdtar on the PATH, and the game folder is put back reliably.
+        Feature::Mods | Feature::Wine | Feature::HeroicMigration | Feature::Replay | Feature::Sandbox | Feature::Wrappers => false,
     }
 }
 
@@ -264,6 +273,7 @@ mod tests {
         if cfg!(windows) {
             assert!(built_in(Feature::XboxStore));
             assert!(built_in(Feature::SteamGameSettings), "the launch options line");
+            assert!(!built_in(Feature::Mods), "the mod manager is Linux only for now");
         }
     }
 

@@ -3,10 +3,11 @@
 //! GetOwnedGames`) when the client on this PC cannot be read: Steam closed,
 //! its debugging interface kept shut, or its port taken by another program.
 //!
-//! The client stays the first choice: only it knows the games hidden in
-//! Steam and the ones borrowed through Family Sharing. The Web API lists the
-//! account's own games, with their play time, whatever the profile's privacy
-//! (the token is the account's own).
+//! The client stays the first choice: only it knows the games borrowed
+//! through Family Sharing. The Web API lists the account's own games, with
+//! their play time, whatever the profile's privacy (the token is the
+//! account's own); which of them are hidden in Steam comes from the client's
+//! files ([`crate::hidden`]).
 //!
 //! The sign-in is kept in `local_library/steam-account.json`, readable only
 //! by the user (on Windows `steam-account.bin`, sealed for this Windows user
@@ -179,9 +180,11 @@ fn fresh(token: &str, now: i64) -> bool {
 
 /// The account's games, as the Web API lists them (only games, as
 /// [`crate::library::read_owned`] keeps them). `installed`: the app ids
-/// installed on this PC. Renews the access token when it ran out.
-pub fn read_owned(paths: &DataPaths, http: &dyn Http, installed: &HashSet<String>) -> Result<Vec<SteamOwnedGame>> {
+/// installed on this PC; `installs`: the Steam folders, for the games hidden
+/// in Steam ([`crate::hidden`]). Renews the access token when it ran out.
+pub fn read_owned(paths: &DataPaths, http: &dyn Http, installed: &HashSet<String>, installs: &[PathBuf]) -> Result<Vec<SteamOwnedGame>> {
     let mut account = load(paths).ok_or(SignedOut)?;
+    let hidden = crate::hidden::hidden_app_ids(installs, &account.steam_id);
     if !fresh(&account.access_token, chrono::Utc::now().timestamp()) {
         renew(paths, http, &mut account)?;
     }
@@ -194,7 +197,7 @@ pub fn read_owned(paths: &DataPaths, http: &dyn Http, installed: &HashSet<String
     if r.status != 200 {
         anyhow::bail!("reading the Steam library: HTTP {}", r.status);
     }
-    parse_owned(&r.body, installed)
+    parse_owned(&r.body, installed, &hidden)
 }
 
 fn owned_request(account: &Account) -> Request {
@@ -206,7 +209,7 @@ fn owned_request(account: &Account) -> Request {
     ))
 }
 
-fn parse_owned(body: &str, installed: &HashSet<String>) -> Result<Vec<SteamOwnedGame>> {
+fn parse_owned(body: &str, installed: &HashSet<String>, hidden: &HashSet<String>) -> Result<Vec<SteamOwnedGame>> {
     let doc: Value = serde_json::from_str(body).context("reading the Steam library: not JSON")?;
     let Some(games) = doc.pointer("/response/games").and_then(Value::as_array) else {
         // An account with no games has `game_count: 0`; nothing at all is an error.
@@ -225,6 +228,7 @@ fn parse_owned(body: &str, installed: &HashSet<String>) -> Result<Vec<SteamOwned
             }
             Some(SteamOwnedGame {
                 installed: installed.contains(&app_id),
+                hidden: hidden.contains(&app_id),
                 playtime_minutes: g.get("playtime_forever").and_then(Value::as_u64).unwrap_or(0),
                 last_played: g.get("rtime_last_played").and_then(Value::as_i64).filter(|t| *t > 0),
                 app_id,
@@ -370,9 +374,15 @@ mod tests {
         save(&paths, &account).unwrap();
         let fake = Fake::new(&[(200, 1, OWNED)]);
         let installed: HashSet<String> = ["400".to_string()].into();
-        let games = read_owned(&paths, &fake, &installed).unwrap();
-        let summary: Vec<_> = games.iter().map(|g| (g.app_id.as_str(), g.installed, g.playtime_minutes, g.last_played)).collect();
-        assert_eq!(summary, [("620", false, 125, Some(1_499_373_907)), ("400", true, 0, None)]);
+        // Portal 2 is hidden in Steam: the client's files say so.
+        let steam = dir.path().join("steam");
+        let collections = steam.join("userdata/22202/config/cloudstorage/cloud-storage-namespace-1.json");
+        std::fs::create_dir_all(collections.parent().unwrap()).unwrap();
+        let hidden = serde_json::json!([["user-collections.hidden", {"key": "user-collections.hidden", "value": r#"{"id":"hidden","added":[620],"removed":[]}"#}]]);
+        std::fs::write(&collections, hidden.to_string()).unwrap();
+        let games = read_owned(&paths, &fake, &installed, &[steam]).unwrap();
+        let summary: Vec<_> = games.iter().map(|g| (g.app_id.as_str(), g.installed, g.hidden, g.playtime_minutes, g.last_played)).collect();
+        assert_eq!(summary, [("620", false, true, 125, Some(1_499_373_907)), ("400", true, false, 0, None)]);
         let url = &fake.sent()[0].url;
         assert!(url.starts_with("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?access_token="), "{url}");
         assert!(url.contains(&format!("steamid={ID}")) && url.contains("include_appinfo=true"), "{url}");
@@ -387,7 +397,7 @@ mod tests {
         let access = jwt(ID, later());
         let fake =
             Fake::new(&[(200, 1, &format!(r#"{{"response":{{"access_token":"{access}","refresh_token":"R2"}}}}"#)), (200, 1, OWNED)]);
-        assert_eq!(read_owned(&paths, &fake, &HashSet::new()).unwrap().len(), 2);
+        assert_eq!(read_owned(&paths, &fake, &HashSet::new(), &[]).unwrap().len(), 2);
         let saved = load(&paths).unwrap();
         assert_eq!((saved.access_token, saved.refresh_token.as_str()), (access, "R2"));
     }
@@ -401,14 +411,14 @@ mod tests {
         save(&paths, &account).unwrap();
         // The access token was taken away, and the refresh token with it.
         let fake = Fake::new(&[(401, 1, ""), (200, 15, r#"{"response":{}}"#)]);
-        assert!(read_owned(&paths, &fake, &HashSet::new()).unwrap_err().is::<SignedOut>());
+        assert!(read_owned(&paths, &fake, &HashSet::new(), &[]).unwrap_err().is::<SignedOut>());
         assert_eq!(load(&paths), None);
-        assert!(read_owned(&paths, &Fake::new(&[]), &HashSet::new()).unwrap_err().is::<SignedOut>());
+        assert!(read_owned(&paths, &Fake::new(&[]), &HashSet::new(), &[]).unwrap_err().is::<SignedOut>());
     }
 
     #[test]
     fn an_empty_answer_is_an_error_but_no_games_is_not() {
-        assert!(parse_owned(r#"{"response":{}}"#, &HashSet::new()).is_err());
-        assert!(parse_owned(r#"{"response":{"game_count":0}}"#, &HashSet::new()).unwrap().is_empty());
+        assert!(parse_owned(r#"{"response":{}}"#, &HashSet::new(), &HashSet::new()).is_err());
+        assert!(parse_owned(r#"{"response":{"game_count":0}}"#, &HashSet::new(), &HashSet::new()).unwrap().is_empty());
     }
 }

@@ -77,7 +77,7 @@ impl CollectionView {
             let value = state.read(cx).value().to_string();
             if value != this.search {
                 this.search = value;
-                this.refresh_groups();
+                this.refresh_search();
                 this.scroll_list_to_top();
                 cx.notify();
             }
