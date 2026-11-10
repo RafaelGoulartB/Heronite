@@ -119,6 +119,19 @@ pub fn unique_names<'a>(items: impl IntoIterator<Item = &'a str>) -> Vec<String>
     out
 }
 
+/// Platform names as the app shows them. Lutris and Playnite call the Mac
+/// "Macintosh"; IGDB and the stores call it "Mac", so one name keeps a single
+/// Platform filter and sorts it with the PC platforms. Keeps the order and
+/// drops a name the renaming makes a repeat of.
+pub fn platform_names(names: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    names
+        .into_iter()
+        .map(|name| if name.trim().eq_ignore_ascii_case("macintosh") { "Mac".to_owned() } else { name })
+        .filter(|name| seen.insert(facet_key(name)))
+        .collect()
+}
+
 /// `toPlainText` of `CollectionFocus.tsx`: tags become spaces, `&nbsp;` too,
 /// whitespace collapsed.
 pub fn to_plain_text(value: &str) -> String {
@@ -287,6 +300,14 @@ mod tests {
         assert_eq!(v, ["10 Dead", "2 Dead", "A b", "Ab", "alpha", "Alpha", "Ao", "okami", "Ōkami", "zeta"]);
         assert_eq!(locale_cmp_base("Alpha", "alpha"), Ordering::Equal);
         assert_eq!(locale_cmp_base("Ōkami", "okami"), Ordering::Equal);
+    }
+
+    #[test]
+    fn macintosh_is_mac() {
+        let names = |v: &[&str]| platform_names(v.iter().map(|s| s.to_string()).collect());
+        assert_eq!(names(&["Linux", "Macintosh", "Windows"]), ["Linux", "Mac", "Windows"]);
+        assert_eq!(names(&["Mac", "macintosh", "Linux"]), ["Mac", "Linux"], "no second Mac");
+        assert_eq!(names(&["Apple Macintosh II"]), ["Apple Macintosh II"], "only the whole name");
     }
 
     #[test]

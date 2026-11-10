@@ -1,6 +1,7 @@
 //! Lutris provider: port of `fetchLutrisMetadata`.
 
 use heronite_data::models::CollectionGameMetadata;
+use heronite_data::text::platform_names;
 use serde_json::Value;
 
 use crate::http::Http;
@@ -43,7 +44,7 @@ pub fn map_lutris_detail(app_name: &str, runner: &str, slug: &str, game: &Value)
     md.title = Some(name.to_owned());
     md.description = clip(Some(&strip_html(game.get("description").and_then(Value::as_str))));
     md.release_date = year;
-    md.platforms = named_list(game.get("platforms"));
+    md.platforms = platform_names(named_list(game.get("platforms")));
     md.genres = named_list(game.get("genres"));
     md.websites = unique_names([s(game, "website")], 2);
     md.cover_url = http_only(cover);
@@ -109,6 +110,7 @@ mod tests {
         assert_eq!(md.release_date.as_deref(), Some("2007"));
         assert!(md.genres.contains(&"Puzzle".to_string()));
         assert!(md.platforms.contains(&"Linux".to_string()));
+        assert!(md.platforms.contains(&"Mac".to_string()) && !md.platforms.contains(&"Macintosh".to_string()));
         assert!(md.cover_url.unwrap().starts_with("https://"));
         assert!(md.hero_url.unwrap().starts_with("https://"));
         assert!(md.description.is_some());

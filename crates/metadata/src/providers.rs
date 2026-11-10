@@ -9,6 +9,7 @@ use std::time::SystemTime;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, GameInfo, LocalMetaFile};
 use heronite_data::paths::DataPaths;
+use heronite_data::text::platform_names;
 use parking_lot::Mutex;
 use serde_json::Value;
 
@@ -147,7 +148,7 @@ pub fn metadata_from_playnite_game(app_name: &str, runner: &str, game: &Playnite
     md.publishers = list(&game.publishers);
     md.genres = list(&game.genres);
     md.themes = list(&game.tags);
-    md.platforms = list(&game.platforms);
+    md.platforms = platform_names(list(&game.platforms));
     md.series = game.series.clone().filter(|s| !s.is_empty());
     md.features = list(&game.features);
     let max = 2 * 1024 * 1024;
