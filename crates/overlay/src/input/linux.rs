@@ -15,6 +15,9 @@ use super::{Button, Controller, ControllerId, Event, Options};
 
 /// How often the thread looks for new controllers while idle.
 const RESCAN: Duration = Duration::from_secs(2);
+/// While Guide is held, how often the thread asks the kernel whether it still
+/// is (its release may never reach us: see [`resync_guide`]).
+const GUIDE_CHECK: Duration = Duration::from_millis(500);
 
 enum Cmd {
     Open,
@@ -86,18 +89,27 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
     let mut seen: HashMap<PathBuf, Option<usize>> = HashMap::new();
     let mut next_id = 0usize;
     let mut last_scan = Instant::now() - RESCAN;
+    let mut last_guide_check = Instant::now();
     log::info!("overlay input: started");
     loop {
         if last_scan.elapsed() >= RESCAN {
             last_scan = Instant::now();
-            if scan(&mut pads, &mut seen, &mut next_id, &core) {
+            let (changed, removed) = scan(&mut pads, &mut seen, &mut next_id, &core);
+            for id in removed {
+                let out = core.removed(id, pads.len());
+                apply(out, &mut pads, &mut core, &mut on_event);
+            }
+            if changed {
                 let mut list: Vec<Controller> = pads.values().map(|p| p.info.clone()).collect();
                 list.sort_by(|a, b| a.id.cmp(&b.id));
                 on_event(Event::Controllers(list));
             }
         }
         let now = Instant::now();
-        let timeout = core.wait(now).unwrap_or(RESCAN).min(RESCAN);
+        let mut timeout = core.wait(now).unwrap_or(RESCAN).min(RESCAN);
+        if core.guide_device().is_some() {
+            timeout = timeout.min(GUIDE_CHECK.saturating_sub(last_guide_check.elapsed()));
+        }
         let ids: Vec<usize> = pads.keys().copied().collect();
         let mut fds: Vec<libc::pollfd> = std::iter::once(wake.as_raw_fd())
             .chain(ids.iter().map(|id| pads[id].dev.as_raw_fd()))
@@ -124,7 +136,7 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
                         Output::default()
                     }
                 };
-                apply(out, &mut pads, &mut on_event);
+                apply(out, &mut pads, &mut core, &mut on_event);
             }
         }
         for (slot, id) in fds[1..].iter().zip(ids) {
@@ -134,19 +146,33 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
             let gone = slot.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0;
             let out = if gone { None } else { read_pad(id, &mut pads, &mut core) };
             match out {
-                Some(out) => apply(out, &mut pads, &mut on_event),
+                Some(events) => events.into_iter().for_each(&mut on_event),
                 None => {
                     if let Some(p) = pads.remove(&id) {
                         log::info!("overlay input: controller gone: {}", p.info.name);
                         seen.retain(|_, v| *v != Some(id));
                         let out = core.removed(id, pads.len());
-                        apply(out, &mut pads, &mut on_event);
+                        apply(out, &mut pads, &mut core, &mut on_event);
                         let mut list: Vec<Controller> = pads.values().map(|p| p.info.clone()).collect();
                         list.sort_by(|a, b| a.id.cmp(&b.id));
                         on_event(Event::Controllers(list));
                     }
                 }
             }
+        }
+        // A Guide whose release never came: another program grabbed the
+        // controller after us, or our grab came after its release.
+        match core.guide_device() {
+            Some(id) if last_guide_check.elapsed() >= GUIDE_CHECK => {
+                last_guide_check = Instant::now();
+                // Read what is queued first: the release may be there.
+                if let Some(events) = read_pad(id, &mut pads, &mut core) {
+                    events.into_iter().for_each(&mut on_event);
+                }
+                resync_guide(id, &mut pads, &mut core);
+            }
+            Some(_) => {}
+            None => last_guide_check = Instant::now(),
         }
         while let Some(ev) = core.tick(Instant::now()) {
             on_event(ev);
@@ -155,17 +181,19 @@ fn run(opts: Options, rx: Receiver<Cmd>, mut wake: UnixStream, mut on_event: imp
     log::info!("overlay input: stopped");
 }
 
-/// Reads what a controller has queued. `None` = it went away.
-fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Option<Output> {
-    let pad = pads.get_mut(&id)?;
-    let mut out = Output::default();
-    let events: Vec<evdev::InputEvent> = match pad.dev.fetch_events() {
+/// Reads what a controller has queued and applies the grabs it asks for at
+/// once (a grab that fails changes how the rest is read). Returns the events
+/// for the overlay; `None` = it went away.
+fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Option<Vec<Event>> {
+    let mut out = Vec::new();
+    let events: Vec<evdev::InputEvent> = match pads.get_mut(&id)?.dev.fetch_events() {
         Ok(evs) => evs.collect(),
         Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Some(out),
         Err(_) => return None,
     };
     let now = Instant::now();
     let mut stick_moved = false;
+    let mut dropped = false;
     for ev in events {
         let (ty, code, value) = (ev.event_type(), ev.code(), ev.value());
         let step = if ty == evdev::EventType::KEY {
@@ -176,13 +204,13 @@ fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Optio
             }
         } else if ty == evdev::EventType::ABSOLUTE {
             match code {
-                ABS_X => {
-                    pad.sx = normalize(value, pad.x);
-                    stick_moved = true;
-                    continue;
-                }
-                ABS_Y => {
-                    pad.sy = -normalize(value, pad.y);
+                ABS_X | ABS_Y => {
+                    let pad = pads.get_mut(&id)?;
+                    if code == ABS_X {
+                        pad.sx = normalize(value, pad.x);
+                    } else {
+                        pad.sy = -normalize(value, pad.y);
+                    }
                     stick_moved = true;
                     continue;
                 }
@@ -190,18 +218,48 @@ fn read_pad(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) -> Optio
                 ABS_HAT0Y => hat(core, id, value, Button::Up, Button::Down, now),
                 _ => continue,
             }
+        } else if ty == evdev::EventType::SYNCHRONIZATION && code == SYN_DROPPED {
+            // Releases may be among what the kernel dropped; what follows is
+            // fresh, so this comes first.
+            core.dropped(id);
+            dropped = true;
+            continue;
         } else {
             continue;
         };
-        out.events.extend(step.events);
-        out.grabs.extend(step.grabs);
+        apply_grabs(step.grabs, pads, core);
+        out.extend(step.events);
     }
     if stick_moved {
+        let pad = pads.get(&id)?;
         let step = core.stick(id, pad.sx, pad.sy, now);
-        out.events.extend(step.events);
-        out.grabs.extend(step.grabs);
+        apply_grabs(step.grabs, pads, core);
+        out.extend(step.events);
+    }
+    // The kernel's queue overflowed: the Guide release may be among what it
+    // dropped.
+    if dropped {
+        resync_guide(id, pads, core);
     }
     Some(out)
+}
+
+/// Forgets the Guide of `id` when the device says it is up although its
+/// release never reached us. `EVIOCGKEY` reads the device itself, whoever
+/// holds the grab. It also drops the key events still queued for us (the
+/// kernel keeps the answer and the queue consistent), so callers read the
+/// queue first.
+fn resync_guide(id: usize, pads: &mut HashMap<usize, Pad>, core: &mut Core) {
+    if !core.guide_held_on(id) {
+        return;
+    }
+    let Some(pad) = pads.get(&id) else { return };
+    let down = pad.dev.get_key_state().map(|keys| GUIDE_CODES.iter().any(|&c| keys.contains(evdev::KeyCode::new(c))));
+    if let Ok(false) = down {
+        log::info!("overlay input: {}: Guide is up but its release never came: forgetting it", pad.info.name);
+        let out = core.lost_guide(id);
+        apply_grabs(out.grabs, pads, core);
+    }
 }
 
 /// A d-pad reported as a hat axis: -1 / 0 / 1.
@@ -213,32 +271,59 @@ fn hat(core: &mut Core, id: usize, value: i32, neg: Button, pos: Button, now: In
     out
 }
 
-fn apply(out: Output, pads: &mut HashMap<usize, Pad>, on_event: &mut impl FnMut(Event)) {
-    for g in out.grabs {
-        match g {
-            Grab::Hold(id) => grab(pads.get_mut(&id), true),
-            Grab::HoldAll => pads.values_mut().for_each(|p| grab(Some(p), true)),
-            Grab::ReleaseAll => pads.values_mut().for_each(|p| grab(Some(p), false)),
-        }
-    }
+fn apply(out: Output, pads: &mut HashMap<usize, Pad>, core: &mut Core, on_event: &mut impl FnMut(Event)) {
+    apply_grabs(out.grabs, pads, core);
     for ev in out.events {
         on_event(ev);
     }
 }
 
-fn grab(pad: Option<&mut Pad>, on: bool) {
-    let Some(pad) = pad else { return };
-    let res = if on { pad.dev.grab() } else { pad.dev.ungrab() };
-    if let Err(e) = res {
-        log::warn!("overlay input: {} {}: {e}", if on { "grabbing" } else { "releasing" }, pad.info.name);
+fn apply_grabs(grabs: Vec<Grab>, pads: &mut HashMap<usize, Pad>, core: &mut Core) {
+    for g in grabs {
+        match g {
+            Grab::Hold(id) => {
+                let busy = grab(pads.get_mut(&id), true).is_err_and(|e| e.raw_os_error() == Some(libc::EBUSY));
+                // Another program holds the controller (another launcher, a
+                // second Heronite, an input remapper): it gets the Guide
+                // release, not us. Left held, the Guide would turn every later
+                // press into a chord.
+                if busy && core.guide_held_on(id) {
+                    log::info!("overlay input: another program holds the controller: its Guide press is not ours");
+                    apply_grabs(core.lost_guide(id).grabs, pads, core);
+                }
+            }
+            Grab::HoldAll => pads.values_mut().for_each(|p| {
+                let _ = grab(Some(p), true);
+            }),
+            Grab::ReleaseAll => pads.values_mut().for_each(|p| {
+                let _ = grab(Some(p), false);
+            }),
+        }
     }
 }
 
+/// Grabs or releases `pad`. Asking for what it already has does nothing
+/// (`RawDevice` remembers its grab).
+fn grab(pad: Option<&mut Pad>, on: bool) -> io::Result<()> {
+    let Some(pad) = pad else { return Ok(()) };
+    let res = if on { pad.dev.grab() } else { pad.dev.ungrab() };
+    if let Err(e) = &res {
+        log::warn!("overlay input: {} {}: {e}", if on { "grabbing" } else { "releasing" }, pad.info.name);
+    }
+    res
+}
+
 /// Opens the controllers that appeared since the last scan. Returns whether
-/// the list changed.
-fn scan(pads: &mut HashMap<usize, Pad>, seen: &mut HashMap<PathBuf, Option<usize>>, next_id: &mut usize, core: &Core) -> bool {
-    let Ok(dir) = std::fs::read_dir("/dev/input") else { return false };
+/// the list changed, and the controllers that went away (for the core).
+fn scan(
+    pads: &mut HashMap<usize, Pad>,
+    seen: &mut HashMap<PathBuf, Option<usize>>,
+    next_id: &mut usize,
+    core: &Core,
+) -> (bool, Vec<usize>) {
+    let Ok(dir) = std::fs::read_dir("/dev/input") else { return (false, Vec::new()) };
     let mut changed = false;
+    let mut removed = Vec::new();
     let mut present = Vec::new();
     for entry in dir.flatten() {
         let path = entry.path();
@@ -262,7 +347,7 @@ fn scan(pads: &mut HashMap<usize, Pad>, seen: &mut HashMap<PathBuf, Option<usize
                 log::info!("overlay input: controller {} ({})", pad.info.name, path.display());
                 // Opened while the overlay is open: hold it like the others.
                 if core.holds(id) {
-                    grab(Some(&mut pad), true);
+                    let _ = grab(Some(&mut pad), true);
                 }
                 seen.insert(path, Some(id));
                 pads.insert(id, pad);
@@ -275,12 +360,15 @@ fn scan(pads: &mut HashMap<usize, Pad>, seen: &mut HashMap<PathBuf, Option<usize
         let keep = present.contains(path);
         if !keep {
             if let Some(id) = id {
-                changed |= pads.remove(id).is_some();
+                if pads.remove(id).is_some() {
+                    changed = true;
+                    removed.push(*id);
+                }
             }
         }
         keep
     });
-    changed
+    (changed, removed)
 }
 
 /// The controllers this app can read now (Settings shows them). Blocking:
@@ -303,6 +391,9 @@ const ABS_X: u16 = 0x00;
 const ABS_Y: u16 = 0x01;
 const ABS_HAT0X: u16 = 0x10;
 const ABS_HAT0Y: u16 = 0x11;
+const SYN_DROPPED: u16 = 0x03;
+/// `BTN_MODE` and `KEY_HOMEPAGE`: what [`map_key`] reads as Guide.
+const GUIDE_CODES: [u16; 2] = [0x13c, 172];
 
 /// Opens `path` when it is a controller: it has a south (A) button. Devices
 /// that only look like gamepads (the "joystick" interface of some wireless
@@ -363,7 +454,7 @@ fn map_key(code: u16) -> Option<Button> {
         0x13a => Button::Select,
         0x13b => Button::Start,
         // BTN_MODE, and KEY_HOMEPAGE (what some controllers report for Guide).
-        0x13c | 172 => Button::Guide,
+        c if GUIDE_CODES.contains(&c) => Button::Guide,
         0x220 => Button::Up,
         0x221 => Button::Down,
         0x222 => Button::Left,
