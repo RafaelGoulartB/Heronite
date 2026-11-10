@@ -153,6 +153,14 @@ pub struct MetadataApplyArgs {
     pub lutris_slug: Option<String>,
     #[serde(default)]
     pub language: Option<String>,
+    /// Only these fields (`METADATA_FIELDS` ids) are merged; the others stay
+    /// exactly as they are, their recorded source too. `None`: all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only_fields: Option<Vec<String>>,
+    /// Only these sources are asked (sources that are off never are).
+    /// `None`: every source that is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only_sources: Option<Vec<String>>,
 }
 
 /// `CollectionMetadataSearchHit`.
@@ -179,7 +187,14 @@ pub struct BulkItem {
     pub steam_app_id: Option<String>,
 }
 
-/// `CollectionMetadataBulkArgs`.
+/// `CollectionMetadataBulkArgs`, plus what to update. The constructors in
+/// [`crate::job`] are the presets.
+///
+/// Without `mode` a job does what the older dialog asked:
+/// `overwrite_existing` not `true` skips the games fetched without error and
+/// fills only empty fields of the others; `true` fetches every game again,
+/// keeping the fields edited by hand unless `preserve_manual` is `false`.
+/// With `mode`, those two are ignored and no game is skipped for being fetched.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BulkArgs {
@@ -188,8 +203,21 @@ pub struct BulkArgs {
     pub overwrite_existing: Option<bool>,
     #[serde(default)]
     pub preserve_manual: Option<bool>,
+    /// `None`: `settings.metadata.downloadImages`.
     #[serde(default)]
     pub download_images: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<crate::job::UpdateMode>,
+    /// Ids of [`crate::job::bulk_fields`]; the others stay exactly as they
+    /// are. `None`: every `METADATA_FIELDS` entry and no extras.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<String>>,
+    /// The sources to ask, among those that are on (one = "only this
+    /// source"). `None`: every source that is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sources: Option<Vec<String>>,
+    #[serde(default)]
+    pub kind: crate::job::JobKind,
 }
 
 /// `CollectionMetadataBulkState`.
@@ -203,7 +231,15 @@ pub enum BulkState {
     Done,
 }
 
-/// `CollectionMetadataBulkProgress`.
+/// `CollectionMetadataBulkProgress` of the running or last job, plus the
+/// jobs waiting and every game's result.
+///
+/// The counters keep the older meaning: `updated` = saved without error
+/// (changed or not), `skipped` = not fetched (already fetched, nothing
+/// missing, no source for it), `failed` = not found, offline or failed;
+/// `processed` is their sum and leaves out the games a Stop left. `errors`
+/// holds the first 8 "title: reason" lines. [`BulkProgress::tally`] counts
+/// the results the newer way.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BulkProgress {
@@ -217,6 +253,30 @@ pub struct BulkProgress {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_title: Option<String>,
     pub errors: Vec<String>,
+    /// The job this is about (1, 2, ... per session; 0 = none yet).
+    #[serde(default)]
+    pub job: u64,
+    #[serde(default)]
+    pub kind: crate::job::JobKind,
+    #[serde(default)]
+    pub mode: Option<crate::job::UpdateMode>,
+    /// When the job started and finished (Unix ms; 0 = not yet).
+    #[serde(default)]
+    pub started_at_ms: i64,
+    #[serde(default)]
+    pub finished_at_ms: i64,
+    /// One per game done so far, in the job's order; a stopped job ends
+    /// with the games it left ([`crate::job::SkipReason::Stopped`]). Never
+    /// capped: a result is a few hundred bytes.
+    #[serde(skip)]
+    pub results: Vec<std::sync::Arc<crate::job::GameResult>>,
+    /// The jobs waiting, first to run first.
+    #[serde(default)]
+    pub queued: Vec<crate::job::QueuedJob>,
+    /// The last finished or stopped job can be undone
+    /// (`MetadataService::undo_bulk_metadata`).
+    #[serde(default)]
+    pub can_undo: bool,
 }
 
 /// `CollectionGameDetailsPatch`. `critic_score`: `None` leaves it, `Some(None)`

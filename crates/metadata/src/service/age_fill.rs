@@ -43,11 +43,12 @@ impl MetadataService {
     /// before each game. Returns how many got a rating. A record whose
     /// sources answered is marked asked, rated or not; one whose source
     /// could not be reached waits for the next pass.
+    /// Gives way to a bulk job like the other idle fills.
     pub fn fill_missing_age_ratings_while(&self, should_stop: &dyn Fn() -> bool) -> Result<usize> {
         if self.rating_fill.swap(true, Ordering::SeqCst) {
             return Ok(0);
         }
-        let result = self.fill_age_ratings(should_stop);
+        let result = if self.job_pending() { Ok(0) } else { self.fill_age_ratings(&|| should_stop() || self.job_pending()) };
         self.rating_fill.store(false, Ordering::SeqCst);
         result
     }
@@ -77,6 +78,9 @@ impl MetadataService {
         if igdb_answered {
             let ids: Vec<i64> = todo.iter().filter_map(|(_, md)| igdb_id(md)).collect();
             for chunk in ids.chunks(RATINGS_BATCH) {
+                if should_stop() {
+                    break;
+                }
                 match self.igdb.age_ratings_by_id(&self.http, &creds, chunk) {
                     Ok(rows) => from_igdb.extend(rows),
                     Err(e) => {

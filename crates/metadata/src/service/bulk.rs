@@ -1,193 +1,230 @@
-//! Bulk metadata jobs and the idle auto-fill.
+//! Bulk metadata jobs: one runs at a time, the others wait in a queue
+//! (FIFO); and the idle auto-fill.
+//!
+//! The idle fills (this one, the age ratings and the Steam tags) never run
+//! with a job: a fill does not start while a job runs or waits, and stops
+//! before its next game when one is started; the job waits for it (at most
+//! [`IDLE_FILL_WAIT`]: one game's lookup in practice) before its first game.
+//! Both would otherwise fetch the same games and write the same records.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use heronite_data::json_store;
 use heronite_data::library::metadata_key;
-use heronite_data::models::{CollectionGameMetadata, LocalMetaFile};
+use heronite_data::models::LocalMetaFile;
 use heronite_data::status::STATUS_ONLY_KEY;
 
-use super::{is_offline, MetadataService};
-use crate::store::{as_runner, get_all_game_metadata};
+use super::undo::UndoLog;
+use super::{is_offline, tag_fill, MetadataService};
+use crate::job::QueuedJob;
+use crate::store::get_all_game_metadata;
 use crate::types::*;
 use crate::util::now_ms;
 
 const WEEK_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// Games filled per idle pass.
 pub const AUTO_FILL_BATCH: usize = 40;
+/// The longest a job waits for an idle fill to stop. Past it the job runs
+/// anyway: each write is a locked read-modify-write, so nothing is lost.
+const IDLE_FILL_WAIT: Duration = Duration::from_secs(30);
+
+pub(super) type OnProgress = Arc<dyn Fn(&BulkProgress) + Send + Sync>;
+
+pub(super) struct Queued {
+    id: u64,
+    args: BulkArgs,
+    on_progress: OnProgress,
+}
+
+/// The jobs' shared state, behind `MetadataService::jobs`.
+#[derive(Default)]
+pub(super) struct Jobs {
+    /// What was last published.
+    pub(super) progress: BulkProgress,
+    queue: VecDeque<Queued>,
+    next_id: u64,
+    /// A thread owns the queue: it runs a job or is about to.
+    pub(super) running: bool,
+    /// The last finished or stopped job's undo, until the next job starts.
+    pub(super) undo: Option<UndoLog>,
+}
+
+impl Jobs {
+    fn queued(&self) -> Vec<QueuedJob> {
+        self.queue.iter().map(|q| QueuedJob { id: q.id, kind: q.args.kind, mode: q.args.mode, games: q.args.games.len() }).collect()
+    }
+
+    fn take_id(&mut self) -> u64 {
+        self.next_id += 1;
+        self.next_id
+    }
+}
+
+/// The progress a job starts with.
+pub(super) fn initial(id: u64, args: &BulkArgs) -> BulkProgress {
+    BulkProgress {
+        state: BulkState::Running,
+        total: args.games.len(),
+        percent: if args.games.is_empty() { 100 } else { 0 },
+        job: id,
+        kind: args.kind,
+        mode: args.mode,
+        started_at_ms: now_ms(),
+        ..Default::default()
+    }
+}
 
 impl MetadataService {
-    /// `getBulkMetadataProgress`.
+    /// `getBulkMetadataProgress`: the running job's, else the last one's.
     pub fn bulk_progress(&self) -> BulkProgress {
-        self.bulk.lock().clone()
+        self.jobs.lock().progress.clone()
     }
 
-    fn publish(&self, next: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) {
-        *self.bulk.lock() = next.clone();
+    /// Stores `next` (with the queue and the undo as they are now) and
+    /// hands it to `on_progress`, outside the lock.
+    pub(super) fn publish(&self, mut next: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
+        {
+            let mut jobs = self.jobs.lock();
+            next.queued = jobs.queued();
+            next.can_undo = jobs.undo.is_some() && !next.is_running();
+            jobs.progress = next.clone();
+        }
         on_progress(&next);
+        next
     }
 
-    /// Publishes the final progress after releasing the job, so a caller that
-    /// reacts to `Done` can start the next job right away.
-    fn finish(&self, done: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
-        *self.bulk.lock() = done.clone();
-        self.bulk_running.store(false, Ordering::SeqCst);
-        self.bulk_cancel.store(false, Ordering::SeqCst);
-        on_progress(&done);
-        done
+    /// Whether a job runs or waits (the idle fills give way to it).
+    pub(super) fn job_pending(&self) -> bool {
+        self.jobs.lock().running
     }
 
-    /// `cancelBulkMetadata`: the job stops before the next game.
+    /// Whether job `id` was asked to stop.
+    pub(super) fn stopping(&self, id: u64) -> bool {
+        self.stop_job.load(Ordering::SeqCst) == id
+    }
+
+    /// `cancelBulkMetadata`: the running job stops before its next game; the
+    /// jobs waiting run after it ([`clear_bulk_queue`](Self::clear_bulk_queue) drops them).
     pub fn cancel_bulk_metadata(&self, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
-        if self.bulk_running.load(Ordering::SeqCst) {
-            self.bulk_cancel.store(true, Ordering::SeqCst);
-            let mut p = self.bulk_progress();
-            p.state = BulkState::Cancelling;
-            self.publish(p, on_progress);
+        let stopping = {
+            let mut jobs = self.jobs.lock();
+            (jobs.progress.state == BulkState::Running && jobs.progress.job != 0).then(|| {
+                self.stop_job.store(jobs.progress.job, Ordering::SeqCst);
+                jobs.progress.state = BulkState::Cancelling;
+                jobs.progress.clone()
+            })
+        };
+        if let Some(p) = stopping {
+            on_progress(&p);
         }
         self.bulk_progress()
     }
 
-    /// `startBulkMetadata`: runs the job on its own thread and returns the
-    /// initial progress; `on_progress` is called after every step (and for
-    /// `cancel_bulk_metadata`) from that thread. Ignored while a job runs.
+    /// Drops the jobs waiting; the running one goes on.
+    pub fn clear_bulk_queue(&self, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
+        let p = {
+            let mut jobs = self.jobs.lock();
+            jobs.queue.clear();
+            jobs.progress.queued.clear();
+            jobs.progress.clone()
+        };
+        on_progress(&p);
+        p
+    }
+
+    /// `startBulkMetadata`: runs the job on its own thread, or queues it
+    /// behind the running one, and returns the progress right away (the new
+    /// job's when it started, else the running one's with this job last in
+    /// `queued`). `on_progress` is called after every step of this job (and
+    /// when it is queued) from the job's thread; it must not wait for the
+    /// service.
     pub fn start_bulk_metadata(
         self: &Arc<Self>,
         args: BulkArgs,
         on_progress: impl Fn(&BulkProgress) + Send + Sync + 'static,
     ) -> BulkProgress {
-        if self.bulk_running.swap(true, Ordering::SeqCst) {
-            return self.bulk_progress();
-        }
-        self.bulk_cancel.store(false, Ordering::SeqCst);
-        let initial = BulkProgress {
-            state: BulkState::Running,
-            total: args.games.len(),
-            percent: if args.games.is_empty() { 100 } else { 0 },
-            ..Default::default()
+        let on_progress: OnProgress = Arc::new(on_progress);
+        let (first, now) = {
+            let mut jobs = self.jobs.lock();
+            let id = jobs.take_id();
+            if jobs.running {
+                jobs.queue.push_back(Queued { id, args, on_progress: on_progress.clone() });
+                (None, jobs.progress.clone())
+            } else {
+                jobs.running = true;
+                let p = initial(id, &args);
+                jobs.progress = p.clone();
+                (Some(Queued { id, args, on_progress: on_progress.clone() }), p)
+            }
         };
-        self.publish(initial.clone(), &on_progress);
-        let this = Arc::clone(self);
-        std::thread::Builder::new()
-            .name("metadata-bulk".into())
-            .spawn(move || this.run_bulk(&args, &on_progress))
-            .expect("spawn bulk thread");
-        initial
+        let now = self.publish(now, &*on_progress);
+        if let Some(first) = first {
+            let this = Arc::clone(self);
+            std::thread::Builder::new().name("metadata-bulk".into()).spawn(move || this.work(first)).expect("spawn bulk thread");
+        }
+        now
     }
 
     /// Blocking variant of [`start_bulk_metadata`](Self::start_bulk_metadata)
-    /// for callers that already have a worker thread (and for tests).
+    /// for callers that already have a worker thread (and for tests). While
+    /// another job runs it does nothing and returns that job's progress.
+    /// Jobs queued while it runs are run after it, before it returns.
     pub fn run_bulk_metadata(&self, args: &BulkArgs, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
-        if self.bulk_running.swap(true, Ordering::SeqCst) {
-            return self.bulk_progress();
+        let id = {
+            let mut jobs = self.jobs.lock();
+            if jobs.running {
+                return jobs.progress.clone();
+            }
+            jobs.running = true;
+            jobs.take_id()
+        };
+        let _release = Release(self);
+        let (done, mut next) = self.finish(self.run_job(id, args, on_progress), on_progress);
+        while let Some(job) = next {
+            next = self.finish(self.run_job(job.id, &job.args, &*job.on_progress), &*job.on_progress).1;
         }
-        self.bulk_cancel.store(false, Ordering::SeqCst);
-        self.run_bulk(args, on_progress)
+        done
     }
 
-    /// `runBulkMetadata` (expects `bulk_running` already set).
-    fn run_bulk(&self, args: &BulkArgs, on_progress: &dyn Fn(&BulkProgress)) -> BulkProgress {
-        // Every normal exit goes through `finish`; this only releases the job
-        // on a panic, so it never clears a job started after `finish`.
-        struct Done<'a>(&'a MetadataService);
-        impl Drop for Done<'_> {
-            fn drop(&mut self) {
-                if std::thread::panicking() {
-                    self.0.bulk_running.store(false, Ordering::SeqCst);
-                    self.0.bulk_cancel.store(false, Ordering::SeqCst);
-                }
-            }
+    /// The job thread: runs `first`, then the queue until it is empty.
+    fn work(&self, first: Queued) {
+        let _release = Release(self);
+        let mut next = Some(first);
+        while let Some(job) = next {
+            next = self.finish(self.run_job(job.id, &job.args, &*job.on_progress), &*job.on_progress).1;
         }
-        let _done = Done(self);
+    }
 
-        let total = args.games.len();
-        let overwrite = args.overwrite_existing == Some(true);
-        let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
-        let mut errors: Vec<String> = Vec::new();
-        let (mut updated, mut skipped, mut failed) = (0usize, 0usize, 0usize);
-        // One read of metadata.json instead of one per game; saves are mirrored
-        // into it below. A read error fails every game, as a read per game did.
-        let mut known = get_all_game_metadata(&self.paths);
-
-        if total == 0 {
-            let done = BulkProgress { state: BulkState::Done, percent: 100, ..Default::default() };
-            return self.finish(done, on_progress);
-        }
-
-        for (index, game) in args.games.iter().enumerate() {
-            if self.bulk_cancel.load(Ordering::SeqCst) {
-                break;
-            }
-            self.publish(
-                BulkProgress {
-                    state: BulkState::Running,
-                    total,
-                    processed: index,
-                    updated,
-                    skipped,
-                    failed,
-                    percent: (index as f64 / total as f64 * 100.0).round() as u32,
-                    current_title: Some(game.title.clone()),
-                    errors: errors.iter().take(8).cloned().collect(),
-                },
-                on_progress,
-            );
-            let step = || -> Result<Option<CollectionGameMetadata>> {
-                let games = known.as_ref().map_err(|e| anyhow::anyhow!("{e}"))?;
-                let current = games.get(&metadata_key(as_runner(&game.runner), &game.app_name));
-                if !overwrite && current.is_some_and(|c| c.fetched_at.as_deref().is_some_and(|f| !f.is_empty()) && c.fetch_error.is_none())
-                {
-                    return Ok(None);
-                }
-                self.apply_game_metadata(&MetadataApplyArgs {
-                    app_name: game.app_name.clone(),
-                    runner: game.runner.clone(),
-                    title: game.title.clone(),
-                    steam_app_id: game.steam_app_id.clone(),
-                    source: Some("auto".into()),
-                    overwrite_existing: Some(overwrite),
-                    preserve_manual: Some(args.preserve_manual != Some(false)),
-                    download_images: Some(download),
-                    ..Default::default()
-                })
-                .map(Some)
-            };
-            match step() {
-                Ok(None) => skipped += 1,
-                Ok(Some(saved)) => {
-                    match &saved.fetch_error {
-                        Some(err) => {
-                            failed += 1;
-                            errors.push(format!("{}: {err}", game.title));
-                        }
-                        None => updated += 1,
-                    }
-                    if let Ok(games) = known.as_mut() {
-                        games.insert(metadata_key(&saved.runner, &saved.app_name), saved);
-                    }
-                }
-                Err(e) => {
-                    failed += 1;
-                    errors.push(format!("{}: {e}", game.title));
-                }
-            }
-        }
-
-        let processed = updated + skipped + failed;
-        let done = BulkProgress {
-            state: BulkState::Done,
-            total,
-            processed,
-            updated,
-            skipped,
-            failed,
-            percent: (processed as f64 / total as f64 * 100.0).round() as u32,
-            current_title: None,
-            errors: errors.into_iter().take(8).collect(),
+    /// Publishes a job's final progress and takes the next job waiting; with
+    /// none, lets the queue go first, so a caller that reacts to `Done` can
+    /// start the next job at once.
+    fn finish(&self, mut done: BulkProgress, on_progress: &dyn Fn(&BulkProgress)) -> (BulkProgress, Option<Queued>) {
+        let next = {
+            let mut jobs = self.jobs.lock();
+            let next = jobs.queue.pop_front();
+            jobs.running = next.is_some();
+            done.queued = jobs.queued();
+            // The next job drops this undo as it starts.
+            done.can_undo = jobs.undo.is_some() && next.is_none();
+            jobs.progress = done.clone();
+            next
         };
-        self.finish(done, on_progress)
+        on_progress(&done);
+        (done, next)
+    }
+
+    /// Before a job's first game: lets a running idle fill stop.
+    pub(super) fn wait_for_idle_fill(&self) {
+        let deadline = Instant::now() + IDLE_FILL_WAIT;
+        while (self.filling.load(Ordering::SeqCst) || self.rating_fill.load(Ordering::SeqCst) || tag_fill::running())
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     /// `refreshMissingCollectionMetadata`: when `autoFillMissing` is on,
@@ -211,6 +248,9 @@ impl MetadataService {
             }
         }
         let _done = Done(&self.filling);
+        if self.job_pending() {
+            return Ok(0);
+        }
 
         let settings = self.metadata_settings();
         if !settings.auto_fill_missing {
@@ -245,7 +285,7 @@ impl MetadataService {
         log::info!("Filling Collection metadata for {} game(s)", missing.len());
         let mut filled = 0;
         for meta in missing.into_iter().take(AUTO_FILL_BATCH) {
-            if should_stop() {
+            if should_stop() || self.job_pending() {
                 break;
             }
             let saved = match self.apply_game_metadata(&MetadataApplyArgs {
@@ -273,5 +313,20 @@ impl MetadataService {
             }
         }
         Ok(filled)
+    }
+}
+
+/// Lets the queue go when the job thread panics, so later jobs can start.
+/// Every normal exit lets it go in `next_job`.
+struct Release<'a>(&'a MetadataService);
+
+impl Drop for Release<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            let mut jobs = self.0.jobs.lock();
+            jobs.running = false;
+            jobs.queue.clear();
+            jobs.progress.state = BulkState::Done;
+        }
     }
 }

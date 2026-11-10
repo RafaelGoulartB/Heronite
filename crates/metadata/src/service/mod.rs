@@ -8,10 +8,16 @@
 
 mod age_fill;
 mod bulk;
+mod counts;
+mod job_run;
 mod source_settings;
 mod tag_fill;
+mod undo;
 
 pub use bulk::AUTO_FILL_BATCH;
+
+/// The `fetchError` of a game no source had.
+const NO_DATA: &str = "No metadata sources returned data";
 
 /// No online provider could be reached, so nothing was saved: the game stays
 /// unfetched and the next fill or manual fetch tries again.
@@ -37,7 +43,7 @@ struct Gathered {
     offline: bool,
 }
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 
 use anyhow::{bail, Result};
@@ -56,7 +62,7 @@ use crate::hltb::{self, HltbClient, HltbLookup, HltbQuery, HowLongToBeat, Search
 use crate::http::{Endpoints, Http};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::images::materialize_metadata_image;
-use crate::merge::{clear_field, merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
+use crate::merge::{clear_field, copy_field, merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
 use crate::providers::{metadata_from_playnite_game, PlayniteGame, PlayniteSource, StoreLibraries};
 use crate::sources::rows::TestResults;
 use crate::sources::{self, ids, is_field_on, is_on, Shared, SourceContext, SourceDescriptor, SourceGame, SourceRegistry};
@@ -75,9 +81,13 @@ pub struct MetadataService {
     playnite: Arc<RwLock<Option<Arc<dyn PlayniteSource>>>>,
     sources: SourceRegistry,
     tests: TestResults,
-    bulk: Mutex<BulkProgress>,
-    bulk_cancel: AtomicBool,
-    bulk_running: AtomicBool,
+    /// Bulk jobs: progress, queue and the last one's undo.
+    jobs: Mutex<bulk::Jobs>,
+    /// The id of the job asked to stop (ids start at 1).
+    stop_job: AtomicU64,
+    /// Held by an Undo while it writes and by a job while it starts, so
+    /// the two never overlap.
+    undo_gate: Mutex<()>,
     filling: AtomicBool,
     rating_fill: AtomicBool,
 }
@@ -107,9 +117,9 @@ impl MetadataService {
             playnite,
             sources,
             tests: TestResults::default(),
-            bulk: Mutex::new(BulkProgress::default()),
-            bulk_cancel: AtomicBool::new(false),
-            bulk_running: AtomicBool::new(false),
+            jobs: Mutex::new(bulk::Jobs::default()),
+            stop_job: AtomicU64::new(0),
+            undo_gate: Mutex::new(()),
             filling: AtomicBool::new(false),
             rating_fill: AtomicBool::new(false),
         }
@@ -199,7 +209,7 @@ impl MetadataService {
                 .map(|source| {
                     let (ctx, game_view) = (&ctx, &game_view);
                     let d = source.descriptor();
-                    let ask = is_on(settings, &d.id) && d.applies_to.matches(game_view);
+                    let ask = is_on(settings, &d.id) && d.applies_to.matches(game_view) && Self::wanted(d, game);
                     (d, ask.then(|| scope.spawn(move || source.lookup(ctx, game_view))))
                 })
                 .collect();
@@ -226,6 +236,12 @@ impl MetadataService {
             })
             .collect();
         Gathered { candidates, offline }
+    }
+
+    /// Whether the arguments' `only_sources` and `only_fields` leave `d` to ask.
+    fn wanted(d: &SourceDescriptor, args: &MetadataApplyArgs) -> bool {
+        args.only_sources.as_ref().is_none_or(|s| s.contains(&d.id))
+            && args.only_fields.as_ref().is_none_or(|f| f.iter().any(|field| d.provides(field)))
     }
 
     /// The candidates the merge may use: those of sources that are on, each
@@ -267,6 +283,7 @@ impl MetadataService {
             overwrite_existing: overwrite,
             preserve_manual,
             field_picks: args.field_picks.as_ref(),
+            fields: args.only_fields.as_deref(),
         });
         // The merge only fills an empty IGDB id, so a game picked on purpose
         // (re-matching a wrong one) has to be carried over here.
@@ -278,6 +295,12 @@ impl MetadataService {
         }
         // Names the user renamed, merged or removed in the fields manager.
         NameRules::load(&self.paths).apply_metadata(&mut proposed);
+        // The rules above touch every field: those not chosen stay as stored.
+        if let Some(fields) = &args.only_fields {
+            for field in METADATA_FIELDS.iter().filter(|f| !fields.iter().any(|c| c == *f)) {
+                copy_field(current, &mut proposed, field);
+            }
+        }
         proposed
     }
 
@@ -301,18 +324,34 @@ impl MetadataService {
     }
 
     /// `persistImages`.
-    fn persist_images(&self, mut md: CollectionGameMetadata, download: bool) -> CollectionGameMetadata {
-        md.cover_url = materialize_metadata_image(
-            &self.paths,
-            &self.http,
-            &md.runner,
-            &md.app_name,
-            ArtKind::Cover,
-            md.cover_url.as_deref(),
-            download,
-        );
-        md.hero_url =
-            materialize_metadata_image(&self.paths, &self.http, &md.runner, &md.app_name, ArtKind::Hero, md.hero_url.as_deref(), download);
+    fn persist_images(&self, md: CollectionGameMetadata, download: bool) -> CollectionGameMetadata {
+        self.persist_chosen_images(md, download, &[ArtKind::Cover, ArtKind::Hero])
+    }
+
+    /// `persistImages` of the pictures in `kinds` only.
+    fn persist_chosen_images(&self, mut md: CollectionGameMetadata, download: bool, kinds: &[ArtKind]) -> CollectionGameMetadata {
+        if kinds.contains(&ArtKind::Cover) {
+            md.cover_url = materialize_metadata_image(
+                &self.paths,
+                &self.http,
+                &md.runner,
+                &md.app_name,
+                ArtKind::Cover,
+                md.cover_url.as_deref(),
+                download,
+            );
+        }
+        if kinds.contains(&ArtKind::Hero) {
+            md.hero_url = materialize_metadata_image(
+                &self.paths,
+                &self.http,
+                &md.runner,
+                &md.app_name,
+                ArtKind::Hero,
+                md.hero_url.as_deref(),
+                download,
+            );
+        }
         md
     }
 
@@ -327,7 +366,7 @@ impl MetadataService {
         }
         if preview.candidates.is_empty() {
             let mut failed = current_or_blank(&self.paths, as_runner(&args.runner), &args.app_name)?;
-            failed.fetch_error = Some("No metadata sources returned data".into());
+            failed.fetch_error = Some(NO_DATA.into());
             failed.fetched_at = Some(now_iso());
             return upsert_game_metadata(&self.paths, failed);
         }
@@ -389,6 +428,7 @@ impl MetadataService {
             overwrite_existing: false,
             preserve_manual: true,
             field_picks: None,
+            fields: None,
         });
         NameRules::load(&self.paths).apply_metadata(&mut merged);
         upsert_game_metadata(&self.paths, self.persist_images(merged, false))

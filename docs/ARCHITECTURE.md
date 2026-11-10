@@ -571,6 +571,18 @@ text size) and applies it.
   `service/source_settings` has the entry points. A source that is off is
   not asked: `gather`, the idle fill, the age ratings fill, and the side paths
   (`covers::steamgrid_key_if_on`, web images, ProtonDB in the app).
+  Updating several games is a bulk job: `job` says what one asks for
+  (`BulkArgs` with an `UpdateMode` — fill what is empty, refresh what
+  sources gave, replace everything — chosen fields and sources; presets
+  such as `BulkArgs::fill_missing`) and what it reports per game
+  (`GameResult`: outcome, fields changed and their source). In `service`,
+  `bulk` runs one job at a time with a FIFO queue (Stop, clear the queue)
+  and keeps the idle fills apart from jobs (a fill gives way to a job);
+  `job_run` maps the mode onto the merge's options and runs each game
+  (Steam tags in one pass, 50 games per request); `undo` puts back what the
+  last job wrote, part by part, leaving what changed after it, and the
+  `metadata-art` pictures it replaced (copies in `local_library/metadata-undo`);
+  `counts` reads, without network, what a set of games lacks.
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

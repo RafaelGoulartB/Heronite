@@ -82,7 +82,9 @@ pub fn materialize_metadata_image(
         }
         let ext = if ext == "jpeg" { "jpg".to_owned() } else { ext };
         let dest = dest_file(paths, runner, app_name, kind, &ext).ok()?;
-        fs::copy(src, &dest).ok()?;
+        // Through a new file, never into the old one: a bulk job's Undo keeps
+        // the old picture as a hard link to it.
+        write_atomic(&dest, &fs::read(src).ok()?).ok()?;
         return Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.as_str())]));
     }
 

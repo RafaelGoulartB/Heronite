@@ -72,7 +72,7 @@ impl MetadataHub {
     }
 
     pub fn running(&self) -> bool {
-        matches!(self.progress.state, BulkState::Running | BulkState::Cancelling)
+        self.progress.is_running()
     }
 
     /// Header chip visible (`running`, `cancelling` or `done` and not dismissed).
@@ -80,25 +80,63 @@ impl MetadataHub {
         self.running() || (self.progress.state == BulkState::Done && !self.dismissed)
     }
 
-    pub fn start(&mut self, args: BulkArgs, cx: &mut Context<Self>) {
+    /// Hands every progress of the service's jobs to the hub's loop.
+    fn sender(&self) -> impl Fn(&BulkProgress) + Send + Sync + 'static {
         let tx = self.tx.clone();
-        self.progress = self.service.start_bulk_metadata(args, move |p| {
+        move |p| {
             if let Ok(tx) = tx.lock() {
                 let _ = tx.unbounded_send(p.clone());
             }
-        });
+        }
+    }
+
+    /// Starts `args`, or queues it behind the running job.
+    pub fn start(&mut self, args: BulkArgs, cx: &mut Context<Self>) {
+        self.progress = self.service.start_bulk_metadata(args, self.sender());
         self.dismissed = false;
         cx.notify();
     }
 
+    /// Stops the running job before its next game; the queued ones follow.
     pub fn cancel(&mut self, cx: &mut Context<Self>) {
-        let tx = self.tx.clone();
-        self.progress = self.service.cancel_bulk_metadata(&move |p| {
-            if let Ok(tx) = tx.lock() {
-                let _ = tx.unbounded_send(p.clone());
-            }
-        });
+        self.progress = self.service.cancel_bulk_metadata(&self.sender());
         cx.notify();
+    }
+
+    /// Drops the jobs waiting behind the running one.
+    #[allow(dead_code, reason = "the update dialog and the header pill call it")]
+    pub fn clear_queue(&mut self, cx: &mut Context<Self>) {
+        self.progress = self.service.clear_bulk_queue(&self.sender());
+        cx.notify();
+    }
+
+    /// Whether "Undo" can be offered for the last job.
+    #[allow(dead_code, reason = "the update dialog and the header pill call it")]
+    pub fn can_undo(&self) -> bool {
+        self.progress.can_undo && !self.running()
+    }
+
+    /// Undoes the last job off the UI thread; the Collection reloads after.
+    #[allow(dead_code, reason = "the update dialog and the header pill call it")]
+    pub fn undo(&mut self, cx: &mut Context<Self>) {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let done = cx.background_spawn(async move { service.undo_bulk_metadata() }).await;
+            this.update(cx, |this, cx| {
+                this.progress = this.service.bulk_progress();
+                match done {
+                    Ok(Some(report)) => {
+                        log::info!("metadata job {} undone: {} game(s), {} later change(s) kept", report.job, report.games, report.kept);
+                        cx.emit(HubEvent::DataChanged);
+                    }
+                    Ok(None) => {}
+                    Err(err) => log::warn!("metadata undo: {err:#}"),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
     }
 
     pub fn request_wizard(&mut self, cx: &mut Context<Self>) {
@@ -208,12 +246,7 @@ impl MetadataWizard {
     }
 
     fn start(&mut self, cx: &mut Context<Self>) {
-        let args = BulkArgs {
-            games: self.games.clone(),
-            overwrite_existing: Some(!self.skip_existing),
-            preserve_manual: Some(self.keep_manual),
-            download_images: Some(self.download_images),
-        };
+        let args = BulkArgs::legacy(self.games.clone(), self.skip_existing, self.keep_manual, self.download_images);
         self.hub.update(cx, |h, cx| h.start(args, cx));
     }
 
@@ -231,7 +264,7 @@ impl MetadataWizard {
 impl Render for MetadataWizard {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = self.hub.read(cx).progress.clone();
-        let running = matches!(p.state, BulkState::Running | BulkState::Cancelling);
+        let running = p.is_running();
         let done = p.state == BulkState::Done;
 
         let status = if running {

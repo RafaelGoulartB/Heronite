@@ -90,9 +90,9 @@ pub fn read_field(metadata: Option<&CollectionGameMetadata>, field: &str) -> Opt
     list_of(md, field).map(|l| FieldValue::List(l.clone()))
 }
 
-/// `writeField`: sets the value and records its source. Mismatched value
-/// types are ignored, like the TS.
-fn write_field(target: &mut CollectionGameMetadata, field: &str, value: FieldValue, source: &str) {
+/// Sets the value of `field`; `false` (nothing set) for a mismatched value
+/// type, ignored like the TS.
+fn set_field(target: &mut CollectionGameMetadata, field: &str, value: FieldValue) -> bool {
     match (field, value) {
         ("description", FieldValue::Text(v)) => target.description = Some(v),
         ("releaseDate", FieldValue::Text(v)) => target.release_date = Some(v),
@@ -104,9 +104,33 @@ fn write_field(target: &mut CollectionGameMetadata, field: &str, value: FieldVal
         (f, FieldValue::List(v)) if list_of(target, f).is_some() => {
             *list_of_mut(target, f).expect("checked") = v;
         }
-        _ => return,
+        _ => return false,
     }
-    target.field_sources.insert(field.to_owned(), source.to_owned());
+    true
+}
+
+/// `writeField`: sets the value and records its source.
+fn write_field(target: &mut CollectionGameMetadata, field: &str, value: FieldValue, source: &str) {
+    if set_field(target, field, value) {
+        target.field_sources.insert(field.to_owned(), source.to_owned());
+    }
+}
+
+/// Makes `field` of `target` what it is in `from` (empty when `from` is
+/// `None`), its recorded source included.
+pub fn copy_field(from: Option<&CollectionGameMetadata>, target: &mut CollectionGameMetadata, field: &str) {
+    clear_field(target, field);
+    if let Some(value) = read_field(from, field) {
+        set_field(target, field, value);
+    }
+    match from.and_then(|f| f.field_sources.get(field)) {
+        Some(source) => {
+            target.field_sources.insert(field.to_owned(), source.clone());
+        }
+        None => {
+            target.field_sources.shift_remove(field);
+        }
+    }
 }
 
 /// Empties `field` of `md` (a `METADATA_FIELDS` entry; others are ignored).
@@ -152,6 +176,9 @@ pub struct MergeArgs<'a> {
     pub preserve_manual: bool,
     /// field -> source | `"keep"` | `"manual"`.
     pub field_picks: Option<&'a IndexMap<String, String>>,
+    /// Only these fields are merged; the others stay as they are, their
+    /// source too. `None`: every field.
+    pub fields: Option<&'a [String]>,
 }
 
 /// `mergeMetadata`.
@@ -160,7 +187,8 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
 
     let by_source: IndexMap<&str, &CollectionGameMetadata> = args.candidates.iter().map(|c| (c.source, c.metadata)).collect();
 
-    for field in METADATA_FIELDS {
+    let chosen = |field: &str| args.fields.is_none_or(|f| f.iter().any(|c| c == field));
+    for field in METADATA_FIELDS.into_iter().filter(|f| chosen(f)) {
         let pick = args.field_picks.and_then(|p| p.get(field)).map(String::as_str);
         if matches!(pick, Some("keep") | Some("manual")) {
             let kept = args.current.and_then(|c| c.field_sources.get(field)).cloned().unwrap_or_else(|| "manual".to_owned());
@@ -237,7 +265,8 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
         }
     }
 
-    if args.candidates.iter().any(|c| matches!(c.source, "igdb" | "steam")) {
+    // Asked only when the ratings were: the age ratings fill skips a record marked asked.
+    if chosen(AGE_RATINGS) && args.candidates.iter().any(|c| matches!(c.source, "igdb" | "steam")) {
         next.extra.insert(AGE_CHECKED.into(), serde_json::Value::String(now_iso()));
     }
     next.app_name = args.app_name.to_owned();
@@ -296,6 +325,7 @@ mod tests {
             overwrite_existing: overwrite,
             preserve_manual: preserve,
             field_picks: picks,
+            fields: None,
         })
     }
 
@@ -464,5 +494,57 @@ mod tests {
         let bare = md(|_| {});
         let cands = [MergeCandidate { source: "igdb", metadata: &bare }, MergeCandidate { source: "steam", metadata: &steam }];
         assert_eq!(merge(None, &cands, &pr, true, false, None).field_sources[AGE_RATINGS], "steam");
+    }
+
+    #[test]
+    fn only_the_chosen_fields_are_merged() {
+        use heronite_data::age_rating::RatingSystem;
+        let current = md(|m| {
+            m.genres = vec!["Old".into()];
+            m.field_sources.insert("genres".into(), "steam".into());
+        });
+        let igdb = md(|m| {
+            m.description = Some("igdb".into());
+            m.genres = vec!["New".into()];
+            m.age_ratings = vec![AgeRating::new(RatingSystem::Esrb, "T", Vec::new()).unwrap()];
+        });
+        let pr = priority();
+        let cands = [MergeCandidate { source: "igdb", metadata: &igdb }];
+        let fields = ["description".to_string()];
+        let out = merge_metadata(MergeArgs {
+            app_name: "a",
+            runner: "sideload",
+            current: Some(&current),
+            candidates: &cands,
+            priority: &pr,
+            overwrite_existing: true,
+            preserve_manual: false,
+            field_picks: None,
+            fields: Some(&fields),
+        });
+        assert_eq!(out.description.as_deref(), Some("igdb"));
+        assert_eq!((out.genres.as_slice(), out.field_sources["genres"].as_str()), (["Old".to_string()].as_slice(), "steam"));
+        assert!(out.age_ratings.is_empty() && !out.field_sources.contains_key(AGE_RATINGS));
+        assert!(!out.extra.contains_key(AGE_CHECKED), "ratings not asked: the age ratings fill still may");
+    }
+
+    #[test]
+    fn copy_field_takes_the_value_and_its_source() {
+        let from = md(|m| {
+            m.series = Some("S".into());
+            m.field_sources.insert("series".into(), "igdb".into());
+        });
+        let mut to = md(|m| {
+            m.series = Some("Other".into());
+            m.field_sources.insert("series".into(), "manual".into());
+            m.genres = vec!["G".into()];
+            m.field_sources.insert("genres".into(), "steam".into());
+        });
+        copy_field(Some(&from), &mut to, "series");
+        assert_eq!((to.series.as_deref(), to.field_sources["series"].as_str()), (Some("S"), "igdb"));
+        copy_field(Some(&from), &mut to, "genres");
+        assert!(to.genres.is_empty() && !to.field_sources.contains_key("genres"));
+        copy_field(None, &mut to, "series");
+        assert!(to.series.is_none() && !to.field_sources.contains_key("series"));
     }
 }

@@ -19,6 +19,7 @@ pub mod hltb;
 pub mod http;
 pub mod igdb;
 pub mod images;
+pub mod job;
 pub mod lutris;
 pub mod merge;
 pub mod protondb;
@@ -34,6 +35,7 @@ pub mod util;
 pub mod web_images;
 
 pub use http::{Endpoints, Http};
+pub use job::*;
 pub use providers::{PlayniteGame, PlayniteSource};
 pub use service::MetadataService;
 pub use sources::{MetadataSource, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};

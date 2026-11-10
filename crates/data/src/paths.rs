@@ -112,6 +112,11 @@ impl DataPaths {
     pub fn metadata_art_dir(&self) -> PathBuf {
         self.j("local_library/metadata-art")
     }
+    /// The pictures of `metadata-art` the last bulk metadata job replaced,
+    /// kept for its Undo until the next job starts.
+    pub fn metadata_undo_dir(&self) -> PathBuf {
+        self.j("local_library/metadata-undo")
+    }
     pub fn steam_details_dir(&self) -> PathBuf {
         self.j("local_library/steam-details")
     }
