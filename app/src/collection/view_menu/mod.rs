@@ -63,6 +63,12 @@ pub(super) struct ViewMenu {
     compact: bool,
     /// `HERONITE_DEBUG_DROPDOWN=view:<text>`: typed on the next frame.
     pub debug_query: Option<String>,
+    /// The Categories section shows every row of chips, not only the first
+    /// [`blocks::CATEGORY_ROWS`].
+    cats_all: bool,
+    /// Height of the first [`blocks::CATEGORY_ROWS`] rows of category chips,
+    /// as laid out on the last frame; `None` while every chip fits in them.
+    cats_cut: std::rc::Rc<std::cell::Cell<Option<f32>>>,
     _sub: Subscription,
 }
 
@@ -106,6 +112,8 @@ impl ViewMenu {
             room: 600.,
             compact: false,
             debug_query: None,
+            cats_all: false,
+            cats_cut: Default::default(),
             _sub: sub,
         }
     }

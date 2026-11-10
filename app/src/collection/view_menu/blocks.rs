@@ -25,6 +25,32 @@ use crate::ui::icon;
 /// Categories have a section of their own.
 const FILTER_BY: [Kind; 3] = [Kind::Facet(FacetKind::Genre), Kind::Facet(FacetKind::Store), Kind::Status];
 
+/// Rows of category chips shown before "Show all": a long list would push
+/// Filter by, Sort and Group by out of the panel.
+pub(super) const CATEGORY_ROWS: usize = 5;
+/// Space between the category chips.
+const CHIP_GAP: f32 = 6.;
+
+/// Height of the first `rows` rows of chips laid out at `bounds`, or `None`
+/// when there are no more rows than that.
+fn rows_height(bounds: &[Bounds<Pixels>], rows: usize) -> Option<f32> {
+    let first = bounds.iter().map(|b| f32::from(b.top())).reduce(f32::min)?;
+    let mut tops: Vec<f32> = Vec::new();
+    for b in bounds {
+        let top = f32::from(b.top());
+        if !tops.iter().any(|t| (t - top).abs() < 1.) {
+            tops.push(top);
+        }
+    }
+    if tops.len() <= rows {
+        return None;
+    }
+    tops.sort_by(f32::total_cmp);
+    let last = tops[rows - 1];
+    let bottom = bounds.iter().filter(|b| (f32::from(b.top()) - last).abs() < 1.).map(|b| f32::from(b.bottom())).reduce(f32::max)?;
+    Some(bottom - first)
+}
+
 impl CollectionView {
     /// A block's title: a short bold word and a line to the panel's edge.
     pub(super) fn vm_block_head(&self, label: &'static str) -> Div {
@@ -102,6 +128,49 @@ impl CollectionView {
                 .child(tr!("Save filters as smart category…"))
                 .on_click(cx.listener(|this, _, window, cx| this.save_filters_as_group(window, cx)))
         });
+        // Past CATEGORY_ROWS rows the chips are cut off until "Show all". The
+        // rows are only known once laid out: each frame measures them, and a
+        // change draws once more.
+        let count = chips.len();
+        let measured = self.view_menu.cats_cut.clone();
+        let cut = measured.get();
+        let all = self.view_menu.cats_all;
+        let wrap = (!chips.is_empty()).then(|| {
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(CHIP_GAP))
+                .children(chips)
+                .on_children_prepainted(move |bounds, window, _| {
+                    let rows = rows_height(&bounds, CATEGORY_ROWS);
+                    if measured.get() != rows {
+                        measured.set(rows);
+                        window.request_animation_frame();
+                    }
+                })
+                .when_some(cut.filter(|_| !all), |el, h| el.max_h(px(h)).overflow_hidden())
+        });
+        let more = cut.is_some().then(|| {
+            div()
+                .id("vm-cats-more")
+                .flex()
+                .items_center()
+                .gap(px(4.))
+                .px(px(4.))
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .hover(|s| s.text_color(theme::text_bright()))
+                .child(if all { tr!("Show fewer").to_string() } else { tr!("Show all ({count})", count = count) })
+                .child(
+                    icon(Icon::ExpandMore, px(14.), theme::accent())
+                        .when(all, |i| i.with_transformation(Transformation::rotate(percentage(0.5)))),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.view_menu.cats_all = !this.view_menu.cats_all;
+                    cx.notify();
+                }))
+        });
         let empty = entries.is_empty().then(|| {
             hint_text(tr!("Sort games your own way: pick them by hand, or let a smart category gather them by its rules.")).px(px(4.))
         });
@@ -111,7 +180,8 @@ impl CollectionView {
             .gap(px(d.head_gap))
             .child(section_head(tr!("Categories")).child(manage))
             .children(empty)
-            .when(!chips.is_empty(), |el| el.child(div().flex().flex_wrap().gap(px(6.)).children(chips)))
+            .children(wrap)
+            .children(more)
             .children(save)
     }
 
