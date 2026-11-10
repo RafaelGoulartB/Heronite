@@ -414,9 +414,20 @@ impl UiState {
         for view in &mut self.saved_views {
             changed |= rename(&mut view.filters.categories);
         }
-        // A merge keeps the look of the category merged into.
+        // A merge keeps the colour of the category merged into (the merged
+        // one's when it has none), and its pin when either was pinned.
         if let Some(look) = self.category_looks.remove(old) {
-            self.category_looks.entry(new.to_owned()).or_insert(look);
+            match self.category_looks.get_mut(new) {
+                Some(into) => {
+                    into.pinned |= look.pinned;
+                    if into.colour.is_none() {
+                        into.colour = look.colour;
+                    }
+                }
+                None => {
+                    self.category_looks.insert(new.to_owned(), look);
+                }
+            }
             changed = true;
         }
         changed
@@ -1388,6 +1399,15 @@ mod tests {
         assert!(state.rename_category("Kids", "Family"));
         assert_eq!(state.category_look("Family").colour.as_deref(), Some("#199e70"));
         assert!(!state.prune_categories(|n| n != "Family"), "pruning the filter keeps the looks");
+        // A merge keeps the colour merged into, and a pin of either.
+        state.set_category_look("Family", |l| l.pinned = true);
+        assert!(state.rename_category("Family", "RPG"));
+        let merged = state.category_look("RPG");
+        assert_eq!(merged.colour.as_deref(), Some("#d55181"));
+        assert!(merged.pinned, "the merged category's pin stays");
+        assert!(!state.category_looks.contains_key("Family"));
+        state.set_category_look("RPG", |l| l.pinned = false);
+        state.set_category_look("Family", |l| l.colour = Some("#199e70".into()));
         assert!(state.forget_category("Family"));
         state.set_category_look("RPG", |l| {
             l.colour = None;
