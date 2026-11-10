@@ -234,12 +234,12 @@ pub fn refresh_local_install_states(paths: &DataPaths, probe: &dyn Probe) -> any
     let owned_changed = refresh_owned_installs(paths, &installed_steam)?;
     let mut new_steam = Vec::new();
     let mut installed_games = list_installed_games(&locator);
-    // Once the client was read, its list says what is a game: tools and
-    // games hidden in Steam stay out (a game bought since is added by the
-    // next read of the library).
+    // Once the client was read, its list says what is a game: tools stay
+    // out (a game bought since is added by the next read of the library).
+    // So do games hidden in Steam: the read of the library adds them, hidden.
     let owned = heronite_data::steam_owned::SteamOwnedFile::read(paths);
     if owned.known() {
-        installed_games.retain(|g| owned.get(&g.app_id).is_some());
+        installed_games.retain(|g| owned.get(&g.app_id).is_some_and(|o| !o.hidden));
     }
     if installed_games.iter().any(|g| !known.contains(&g.app_id)) {
         // Installed through Steam for a game the Collection has from another source.
@@ -511,6 +511,22 @@ mod tests {
         assert_eq!(report, RefreshReport { updated: 1, added: 0 });
         let owned = heronite_data::steam_owned::SteamOwnedFile::read(&paths);
         assert!(owned.games[0].installed);
+        let doc = json_store::read_value(&paths.sideload_library()).unwrap();
+        assert_eq!(doc["games"].as_array().unwrap().len(), 2);
+
+        // Installed, but hidden in Steam: left to the read of the library,
+        // which adds it hidden.
+        std::fs::write(
+            steamapps.join("appmanifest_10.acf"),
+            "\"AppState\"\n{\n\t\"appid\"\t\t\"10\"\n\t\"name\"\t\t\"Counter-Strike\"\n\t\"StateFlags\"\t\t\"4\"\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            paths.steam_owned(),
+            r#"{"games":[{"appId":"870780","name":"Control","installed":true},{"appId":"10","name":"Counter-Strike","hidden":true}],"updatedAt":"x"}"#,
+        )
+        .unwrap();
+        assert_eq!(refresh_local_install_states(&paths, &probe).unwrap().added, 0);
         let doc = json_store::read_value(&paths.sideload_library()).unwrap();
         assert_eq!(doc["games"].as_array().unwrap().len(), 2);
     }

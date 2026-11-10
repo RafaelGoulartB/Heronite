@@ -12,6 +12,9 @@
 //! Games another member of the account's Steam Family shares with it are
 //! kept apart ([`SteamOwnedFile::family`]): they become Steam entries marked
 //! "Family" (never twins), and leave the Collection when sharing ends.
+//!
+//! Games hidden in Steam are listed too, marked [`SteamOwnedGame::hidden`]:
+//! the import adds them hidden in the Collection.
 
 use std::collections::{HashMap, HashSet};
 
@@ -39,10 +42,16 @@ pub fn steamid64(account_id: u32) -> String {
     (STEAMID64_BASE + account_id as u64).to_string()
 }
 
+/// The account id (the name of its `userdata` folder) of a 64-bit Steam id.
+pub fn account_id(steamid64: &str) -> Option<u32> {
+    let id = steamid64.trim().parse::<u64>().ok()?.checked_sub(STEAMID64_BASE)?;
+    u32::try_from(id).ok()
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SteamOwnedFile {
-    /// Only games (no tools, soundtracks, demos or games hidden in Steam).
+    /// Only games (no tools, soundtracks or demos).
     #[serde(default)]
     pub games: Vec<SteamOwnedGame>,
     /// Games another member of the Steam Family shares with the account (each
@@ -89,6 +98,9 @@ pub struct SteamOwnedGame {
     /// Who shares the game: only set on the games of [`SteamOwnedFile::family`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub share: Option<FamilyShare>,
+    /// Hidden in Steam (its "Hidden" collection).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hidden: bool,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -292,6 +304,8 @@ mod tests {
         let c = [cand("legendary_p", "Portal", &["2"])];
         assert!(twins(&c, &o).is_empty());
         assert_eq!(steamid64(42), "76561197960265770");
+        assert_eq!(account_id("76561197960265770"), Some(42));
+        assert_eq!((account_id("42"), account_id("x")), (None, None));
         assert_eq!(share("").unwrap().owner(), "76561197960265770");
         assert_eq!(share(" Riley ").unwrap().owner(), "Riley");
     }
@@ -301,7 +315,7 @@ mod tests {
         let old = r#"{"games":[{"appId":"620","name":"Portal 2","installed":true,"playtimeMinutes":5}],"updatedAt":"x","zz":1}"#;
         let f: SteamOwnedFile = serde_json::from_str(old).unwrap();
         assert!(f.family.is_empty());
-        assert_eq!(f.games[0].share, None);
+        assert_eq!((&f.games[0].share, f.games[0].hidden), (&None, false));
         let back: serde_json::Value = serde_json::to_value(&f).unwrap();
         assert_eq!(back, serde_json::from_str::<serde_json::Value>(old).unwrap());
     }
