@@ -125,17 +125,24 @@ impl MetadataDialog {
         format_value(candidate.map(|c| &c.metadata), field)
     }
 
-    /// The fields with a value now or from some source, in the usual order.
+    /// The fields with a value now or from some source, in the usual order,
+    /// with a cover row per kept family after the tall one (always shown:
+    /// "Choose covers…" sits there).
     pub(super) fn visible_fields(&self) -> Vec<&'static str> {
         let Some(p) = &self.preview else { return Vec::new() };
-        METADATA_FIELDS
-            .iter()
-            .copied()
-            .filter(|f| {
-                !format_value(p.current.as_ref(), f).is_empty()
-                    || p.candidates.iter().any(|c| !format_value(Some(&c.metadata), f).is_empty())
-            })
-            .collect()
+        let mut out = Vec::new();
+        for f in METADATA_FIELDS {
+            if f == "cover" {
+                out.extend(self.kept.iter().map(|family| family.field()));
+                continue;
+            }
+            let has = !format_value(p.current.as_ref(), f).is_empty()
+                || p.candidates.iter().any(|c| !format_value(Some(&c.metadata), f).is_empty());
+            if has {
+                out.push(f);
+            }
+        }
+        out
     }
 
     /// The sources "Everything from…" offers: those that found the game.
@@ -238,6 +245,7 @@ impl MetadataDialog {
                 self.set_pick(field, source);
             }
         }
+        self.scroll_to_covers = state == "covers";
         if state == "change" {
             let first = self.preview.as_ref().and_then(|p| p.sources.first()).map(|s| s.source.clone());
             if let Some(source) = first {

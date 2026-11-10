@@ -158,14 +158,17 @@ pub(super) fn gives(fields: &[String]) -> String {
     if TEXT.iter().any(|f| has(f)) {
         parts.push(tr!("Text"));
     }
+    const COVERS: [&str; 3] = ["cover", "coverSquare", "coverWide"];
     for (field, label) in
         [("criticScore", tr!("Scores")), ("ageRatings", tr!("Age ratings")), ("cover", tr!("Covers")), ("hero", tr!("Backgrounds"))]
     {
-        if has(field) {
+        // Covers of any shape read as covers.
+        let given = if field == "cover" { COVERS.iter().any(|f| has(f)) } else { has(field) };
+        if given {
             parts.push(label);
         }
     }
-    let known = |f: &str| TEXT.contains(&f) || ["criticScore", "ageRatings", "cover", "hero"].contains(&f);
+    let known = |f: &str| TEXT.contains(&f) || COVERS.contains(&f) || ["criticScore", "ageRatings", "hero"].contains(&f);
     parts.extend(fields.iter().filter(|f| !known(f)).map(|f| field_name(f)));
     parts.join(" \u{b7} ")
 }

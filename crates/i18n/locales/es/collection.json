@@ -582,5 +582,11 @@
   "The sources were not sure which game these are.": "Las fuentes no estaban seguras de qué juegos son.",
   "{n} game to review": "{n} juego por revisar",
   "{n} games to review": "{n} juegos por revisar",
-  "{n} to review": "{n} por revisar"
+  "{n} to review": "{n} por revisar",
+  "{n} shows a crop on the desktop and in Console mode": "{n} muestra un recorte en el modo escritorio y en el modo consola",
+  "{n} show a crop on the desktop and in Console mode": "{n} muestran un recorte en el modo escritorio y en el modo consola",
+  "{n} shows a crop in Console mode": "{n} muestra un recorte en el modo consola",
+  "{n} show a crop in Console mode": "{n} muestran un recorte en el modo consola",
+  "{n} shows a crop on the desktop": "{n} muestra un recorte en el modo escritorio",
+  "{n} show a crop on the desktop": "{n} muestran un recorte en el modo escritorio"
 }

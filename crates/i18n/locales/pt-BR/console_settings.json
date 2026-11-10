@@ -212,5 +212,8 @@
   "{n} tabs": "{n} abas",
   "{tabs} · {layouts}": "{tabs} · {layouts}",
   "“On” switches": "Chaves “ligadas”",
-  "Back to {name}": "Voltar ao {name}"
+  "Back to {name}": "Voltar ao {name}",
+  "shape|Tall": "Vertical",
+  "shape|Wide": "Panorâmica",
+  "Download them in Settings → Metadata.": "Baixe-as em Configurações → Metadados."
 }

@@ -1,8 +1,9 @@
 //! Settings → Metadata: where the details and pictures of the games come
 //! from. A summary card (how many games have details, "Update metadata…",
 //! `summary.rs`); the sources as rows that open in place, in three cards by
-//! kind (`sources.rs`, an open row in `source_body.rs`); what happens when
-//! details arrive (`arrive.rs`); the order of each field (`field_order.rs`);
+//! kind (`sources.rs`, an open row in `source_body.rs`); the cover shapes
+//! kept and who draws them (`shapes.rs`); what happens when details arrive
+//! (`arrive.rs`); the order of each field (`field_order.rs`);
 //! console mode's rows (`console.rs`).
 //!
 //! The rows come from the metadata service ([`SourceRow`]). Building them
@@ -16,6 +17,7 @@ mod arrive;
 mod console;
 mod field_order;
 pub(crate) mod labels;
+mod shapes;
 mod source_body;
 mod sources;
 mod summary;
@@ -74,6 +76,8 @@ pub struct State {
     /// The Collection's games that need attention, counted with `coverage`.
     attention: Option<heronite_metadata::service::Attention>,
     coverage_task: Option<Task<()>>,
+    /// The cover families and their counts ("Cover shapes"), counted with `coverage`.
+    shapes: Option<shapes::Shapes>,
     /// `HERONITE_DEBUG_METADATA_OPEN` was applied.
     debug_done: bool,
 }
@@ -306,6 +310,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
         .flex_col()
         .child(summary::card(d))
         .children(sources::cards(d, cx))
+        .children(shapes::card(d, cx))
         .child(arrive::card(d, cx))
         .child(field_order::block(d, cx))
         .into_any_element()

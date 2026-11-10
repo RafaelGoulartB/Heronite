@@ -85,6 +85,13 @@ pub(super) struct LookMenu {
     sliders: Vec<LookSlider>,
 }
 
+impl LookMenu {
+    /// Opens the covers' section (where the Cover aspect and its notice are).
+    pub(super) fn open_covers(&mut self) {
+        self.open = Some(LookGroup::Covers);
+    }
+}
+
 impl Default for LookMenu {
     fn default() -> Self {
         Self { open: Some(LookGroup::Background), more: false, sliders: Vec::new() }
@@ -421,6 +428,7 @@ impl CollectionView {
                 let mut tiles = tiles.into_iter();
                 [0, 1].map(|_| div().flex().gap(px(SHAPE_GAP)).children(tiles.by_ref().take(3)))
             }))
+            .children(crate::dialogs::metadata_update::family_notice::notice("view-notice", cx))
             .child(option_row(
                 tr!("Corners"),
                 segments("cover-corners", &corners, a.cover_corners, false, cx, |this, v, cx| this.set_look(|a| a.cover_corners = v, cx)),
@@ -824,6 +832,10 @@ impl CollectionView {
     fn save_card_shape(&mut self, shape: CoverAspect, cx: &mut Context<Self>) {
         if self.card_shape == shape {
             return;
+        }
+        if cx.has_global::<crate::dialogs::metadata_update::hub::HubGlobal>() {
+            let before = self.card_shape;
+            crate::dialogs::metadata_update::hub::hub(cx).update(cx, |h, cx| h.aspect_picked(before, shape, cx));
         }
         crate::dialogs::metadata_update::families::aspect_changed(self.card_shape, shape);
         self.set_card_shape(shape);

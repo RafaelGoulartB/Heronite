@@ -526,5 +526,12 @@
   "{n} needs attention: {reasons}": "{n} braucht Aufmerksamkeit: {reasons}",
   "{n} without a cover": "{n} ohne Cover",
   "{n} without a description": "{n} ohne Beschreibung",
-  "{n} without a match": "{n} ohne Treffer"
+  "{n} without a match": "{n} ohne Treffer",
+  "Cover shapes": "Cover-Formate",
+  "A shape in use is always kept": "Ein verwendetes Format wird immer behalten",
+  "Not kept": "Nicht behalten",
+  "{real} with their own": "{real} mit eigenem Bild",
+  "{real} with their own · {cropped} cropped": "{real} mit eigenem Bild · {cropped} zugeschnitten",
+  "Download a shape as soon as a view starts using it": "Ein Format laden, sobald eine Ansicht es verwendet",
+  "Picking a square aspect, or a Console mode theme with square or wide tiles, fetches those covers by itself.": "Wenn du ein quadratisches Format oder ein Console-mode-Theme mit quadratischen oder breiten Kacheln wählst, werden diese Cover automatisch geladen."
 }

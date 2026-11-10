@@ -62,8 +62,15 @@ pub(super) fn count(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
         })
         .collect();
     let attention = cx.has_global::<HubGlobal>().then(|| hub(cx).update(cx, |h, cx| h.attention(games, cx)));
+    let service = cx.has_global::<HubGlobal>().then(|| hub(cx).read(cx).service.clone());
+    let paths = d.ctx.data_paths.clone();
     d.metadata.coverage_task = Some(cx.spawn(async move |this, cx| {
-        let coverage = cx.background_spawn(async move { Coverage::of(&lib) }).await;
+        let (coverage, shapes) = cx
+            .background_spawn(async move {
+                let shapes = service.map(|s| super::shapes::Shapes::count(&lib, &paths, &s));
+                (Coverage::of(&lib), shapes)
+            })
+            .await;
         let attention = match attention {
             Some(task) => task.await.map_err(|err| log::warn!("metadata attention: {err:#}")).ok(),
             None => None,
@@ -71,6 +78,7 @@ pub(super) fn count(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
         this.update(cx, |d, cx| {
             d.metadata.coverage = Some(coverage);
             d.metadata.attention = attention;
+            d.metadata.shapes = shapes;
             cx.notify();
         })
         .ok();

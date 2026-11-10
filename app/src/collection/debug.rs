@@ -335,10 +335,10 @@ impl CollectionView {
                 };
                 self.open_game_settings_tab(tab, window, cx);
             }
-            "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage" | "wizard" | "review" => {
+            "metadata" | "gamesettings" | "gamesettings:details" | "gamesettings:launch" | "webimage" | "wizard" | "review" | "covers" => {
                 self.open_metadata_debug(which.as_str(), window, cx)
             }
-            w if w.starts_with("wizard:") || w.starts_with("metadata:") || w.starts_with("review:") => {
+            w if w.starts_with("wizard:") || w.starts_with("metadata:") || w.starts_with("review:") || w.starts_with("covers:") => {
                 self.open_metadata_debug(w, window, cx)
             }
             w if w.starts_with("launch-problem:") => self.debug_launch_problem(&w["launch-problem:".len()..], false, cx),

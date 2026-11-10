@@ -212,5 +212,8 @@
   "{n} tabs": "{n} Tabs",
   "{tabs} · {layouts}": "{tabs} · {layouts}",
   "“On” switches": "„Ein“-Schalter",
-  "Back to {name}": "Zurück zu {name}"
+  "Back to {name}": "Zurück zu {name}",
+  "shape|Tall": "Hochformat",
+  "shape|Wide": "Breitbild",
+  "Download them in Settings → Metadata.": "Lade sie unter Einstellungen → Metadaten herunter."
 }

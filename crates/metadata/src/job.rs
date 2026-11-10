@@ -268,7 +268,8 @@ pub struct GameCounts {
     pub no_cover: usize,
     /// Per cover family in use beside the tall one: the games with details
     /// and no picture of that family, shown cropped from another one
-    /// ([`crate::service::Attention::cropped`]).
+    /// ([`crate::service::Attention::cropped`]). Not part of
+    /// `needs_attention`.
     pub cropped: IndexMap<CoverFamily, usize>,
     /// Marked "in no source" by the user.
     pub in_no_source: usize,

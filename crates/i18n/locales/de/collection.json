@@ -582,5 +582,11 @@
   "The sources were not sure which game these are.": "Die Quellen waren nicht sicher, welche Spiele das sind.",
   "{n} game to review": "{n} Spiel zu prüfen",
   "{n} games to review": "{n} Spiele zu prüfen",
-  "{n} to review": "{n} zu prüfen"
+  "{n} to review": "{n} zu prüfen",
+  "{n} shows a crop on the desktop and in Console mode": "{n} zeigt einen Zuschnitt im Desktop-Modus und im Console mode",
+  "{n} show a crop on the desktop and in Console mode": "{n} zeigen einen Zuschnitt im Desktop-Modus und im Console mode",
+  "{n} shows a crop in Console mode": "{n} zeigt einen Zuschnitt im Console mode",
+  "{n} show a crop in Console mode": "{n} zeigen einen Zuschnitt im Console mode",
+  "{n} shows a crop on the desktop": "{n} zeigt einen Zuschnitt im Desktop-Modus",
+  "{n} show a crop on the desktop": "{n} zeigen einen Zuschnitt im Desktop-Modus"
 }

@@ -4,7 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use heronite_data::settings::FAMILY_COVER_FIELDS;
+use heronite_data::cover_family::CoverFamily;
 use heronite_i18n::{tr, trn};
 use heronite_metadata::{bulk_fields, BulkArgs, UpdateMode};
 
@@ -19,12 +19,13 @@ use crate::ui::icon;
 /// none of them goes to the last one.
 const DETAILS: [&str; 10] =
     ["description", "releaseDate", "developers", "publishers", "genres", "themes", "gameModes", "platforms", "series", "features"];
-const PICTURES: [&str; 2] = ["cover", "hero"];
+/// The pictures: a cover per family (those not kept are left out), then the background.
+const PICTURES: [&str; 4] = ["cover", "coverSquare", "coverWide", "hero"];
 
-fn columns() -> [(&'static str, Vec<String>); 3] {
-    // The square and wide covers have no tick of their own yet: they follow "Cover".
-    let all: Vec<String> = bulk_fields().into_iter().filter(|f| !FAMILY_COVER_FIELDS.contains(&f.as_str())).collect();
-    let pick = |list: &[&str]| all.iter().filter(|f| list.contains(&f.as_str())).cloned().collect::<Vec<_>>();
+/// `kept`: the cover families this installation keeps.
+fn columns(kept: &[CoverFamily]) -> [(&'static str, Vec<String>); 3] {
+    let all: Vec<String> = bulk_fields().into_iter().filter(|f| CoverFamily::from_field(f).is_none_or(|c| kept.contains(&c))).collect();
+    let pick = |list: &[&str]| list.iter().filter(|f| all.iter().any(|a| a == *f)).map(|f| f.to_string()).collect::<Vec<_>>();
     let extras = all.iter().filter(|f| !DETAILS.contains(&f.as_str()) && !PICTURES.contains(&f.as_str())).cloned().collect();
     [(tr!("Details"), pick(&DETAILS)), (tr!("Pictures"), pick(&PICTURES)), (tr!("Extras"), extras)]
 }
@@ -55,10 +56,11 @@ fn mode_short(m: UpdateMode) -> &'static str {
 }
 
 impl MetadataUpdate {
+    /// The fields ticked; the covers of a family that is not kept have no
+    /// tick and are left out (a job would not fill them anyway).
     fn fields_on(&self) -> Vec<String> {
-        let cover_off = self.fields_off.iter().any(|f| f == "cover");
-        let off = |f: &String| self.fields_off.contains(f) || (cover_off && FAMILY_COVER_FIELDS.contains(&f.as_str()));
-        bulk_fields().into_iter().filter(|f| !off(f)).collect()
+        let kept = |f: &String| CoverFamily::from_field(f).is_none_or(|c| self.kept.contains(&c));
+        bulk_fields().into_iter().filter(|f| !self.fields_off.contains(f) && kept(f)).collect()
     }
 
     /// The sources this run asks: on in the dialog and with something for
@@ -139,7 +141,7 @@ impl MetadataUpdate {
             .bg(theme::card_fill())
             .border_1()
             .border_color(theme::card_border());
-        for (c, (title, fields)) in columns().into_iter().enumerate() {
+        for (c, (title, fields)) in columns(&self.kept).into_iter().enumerate() {
             if fields.is_empty() {
                 continue;
             }
@@ -171,7 +173,7 @@ impl MetadataUpdate {
                         })),
                 );
             // The long Details column lays its ticks out in two.
-            let wide = fields.len() > 6;
+            let wide = fields.len() > 6 && c == 0;
             let mut ticks = div().flex().flex_wrap();
             for f in fields {
                 let on = !self.fields_off.contains(&f);

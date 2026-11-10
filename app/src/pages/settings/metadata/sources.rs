@@ -46,7 +46,7 @@ impl Render for DragGhost {
 }
 
 /// The caption of a card, with a dim hint beside it.
-fn caption_hint(text: &str, hint: Option<&str>) -> Div {
+pub(super) fn caption_hint(text: &str, hint: Option<&str>) -> Div {
     div().flex().items_end().gap(px(4.)).child(caption(text.to_string())).children(
         hint.map(|h| div().mb(px(6.)).text_size(px(12.)).line_height(px(CAPTION_H)).text_color(theme::text_dim()).child(h.to_string())),
     )

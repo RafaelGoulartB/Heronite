@@ -68,6 +68,7 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
             }
         }
     }
+    rows.extend(super::shapes::console_rows(d));
     rows.extend([
         Row::header(tr!("When details arrive")),
         Row::toggle("autofill", tr!("Fill missing metadata in the background"), m.auto_fill_missing),
@@ -133,7 +134,8 @@ pub(in crate::pages::settings) fn console_apply(
 ) {
     match outcome {
         Outcome::Activate(id) => {
-            if let Some(source) = id.strip_prefix("test:") {
+            if super::shapes::console_apply(d, &id, None, cx) {
+            } else if let Some(source) = id.strip_prefix("test:") {
                 test(d, source, window, cx);
             } else if let Some((source, key)) = id.strip_prefix("opt:").and_then(|r| r.split_once(':')) {
                 edit_text(d, source.to_string(), key.to_string(), window, cx);
@@ -144,7 +146,8 @@ pub(in crate::pages::settings) fn console_apply(
             "download" => persist(d, cx, |m| m.download_images = on),
             "age-show" => persist(d, cx, |m| m.show_age_ratings = on),
             other => {
-                if let Some(source) = other.strip_prefix("on:") {
+                if super::shapes::console_apply(d, other, Some(on), cx) {
+                } else if let Some(source) = other.strip_prefix("on:") {
                     set_enabled(d, source, on, cx);
                 } else if let Some((source, key)) = other.strip_prefix("opt:").and_then(|r| r.split_once(':')) {
                     set_option(d, source, key, OptionValue::Switch(on), cx);

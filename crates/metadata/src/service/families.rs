@@ -25,30 +25,45 @@ impl MetadataService {
 
     /// The job to queue when a view starts drawing `family` (the desktop's
     /// aspect or the console theme changed): the download of its covers
-    /// ([`BulkArgs::download_covers`]) for the games of `games` (`None`:
-    /// every game of the Collection) that have no picture of it, fetched or
-    /// set by hand, and whose field is not locked or emptied by hand.
-    /// `None` when there is nothing to do: the tall family, the option
-    /// `fillCoverFamilies` off, no source that gives the family can be
+    /// ([`BulkArgs::download_covers`]) for the games [`family_lack`](Self::family_lack)
+    /// finds. `None` when there is nothing to do: the tall family, the
+    /// option `fillCoverFamilies` off, no source that gives the family can be
     /// asked (off, or its key not set), or no game lacks it.
     ///
     /// Reads the records and `art.json`, asks no source: run it off the UI
     /// thread and hand the job to the queue
     /// ([`start_bulk_job`](Self::start_bulk_job)), which never blocks.
     pub fn cover_family_job(&self, family: CoverFamily, games: Option<Vec<BulkItem>>) -> Option<BulkArgs> {
-        let settings = self.metadata_settings();
-        if family == CoverFamily::Tall || !settings.fill_cover_families {
+        if family == CoverFamily::Tall || !self.metadata_settings().fill_cover_families {
             return None;
         }
-        let field = family.field();
-        // A source of the family's order that can be asked now (its key set).
+        let lack = self.family_lack(family, games)?;
+        (lack.can_download && !lack.games.is_empty()).then(|| BulkArgs::download_covers(lack.games, family))
+    }
+
+    /// Whether a source of `family`'s order can be asked now (on, its key
+    /// set): a download of its covers can find something.
+    pub fn can_download_family(&self, family: CoverFamily) -> bool {
+        let settings = self.metadata_settings();
         let ready = |id: &String| {
             self.sources.has_lookup(id)
                 && self.source_status(&settings, id).is_some_and(|s| matches!(s, SourceStatus::On | SourceStatus::Connected))
         };
-        if !self.sources.field_order(&settings, field).iter().any(ready) {
-            return None;
+        self.sources.field_order(&settings, family.field()).iter().any(ready)
+    }
+
+    /// The games of `games` (`None`: every game of the Collection) that have
+    /// no picture of `family`, fetched or set by hand, and whose field is not
+    /// locked or emptied by hand: what a download of the family's covers
+    /// looks for, whatever `fillCoverFamilies` says. Empty for the tall
+    /// family. `None` when the files cannot be read. Reads the records and
+    /// `art.json`, asks no source.
+    pub fn family_lack(&self, family: CoverFamily, games: Option<Vec<BulkItem>>) -> Option<FamilyLack> {
+        let can_download = family != CoverFamily::Tall && self.can_download_family(family);
+        if family == CoverFamily::Tall {
+            return Some(FamilyLack { games: Vec::new(), can_download });
         }
+        let field = family.field();
         let games = match games {
             Some(games) => games,
             None => collection_games(&json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok()?),
@@ -58,15 +73,24 @@ impl MetadataService {
         let kind = ArtKind::cover(family);
         let custom: HashSet<&String> =
             art.games.iter().filter(|(_, a)| kind.of_art(a).is_some_and(|u| !u.is_empty())).map(|(k, _)| k).collect();
-        let lacking: Vec<BulkItem> = games
+        let games = games
             .into_iter()
             .filter(|g| {
                 let key = metadata_key(as_runner(&g.runner), &g.app_name);
                 !custom.contains(&key) && missing_details(records.get(&key), &[field]).next().is_some()
             })
             .collect();
-        (!lacking.is_empty()).then(|| BulkArgs::download_covers(lacking, family))
+        Some(FamilyLack { games, can_download })
     }
+}
+
+/// What [`MetadataService::family_lack`] found.
+#[derive(Debug, Clone, Default)]
+pub struct FamilyLack {
+    /// The games lacking a picture of the family, in the order given.
+    pub games: Vec<BulkItem>,
+    /// A source that gives the family can be asked now.
+    pub can_download: bool,
 }
 
 /// Every game of the Collection's overlay, as the idle fill lists them.

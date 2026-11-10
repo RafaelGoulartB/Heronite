@@ -14,6 +14,7 @@ use heronite_metadata::service::{Attention, Resolution, Resolved};
 use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, BulkState, MetadataService, ReviewItem, UndoReport};
 
 use super::fake::Fake;
+use super::family_notice::FamilyNotice;
 
 pub enum HubEvent {
     /// The metadata job or idle fill changed data on disk: reload the library.
@@ -65,6 +66,8 @@ pub struct MetadataHub {
     /// The idle fill ended: the next read of the queue tells whether it
     /// queued games.
     idle_check: Option<usize>,
+    /// The notice under the Cover aspect pickers (`family_notice.rs`).
+    pub notice: Option<FamilyNotice>,
     /// `HERONITE_DEBUG_METADATA_JOB`: jobs are made up (see `fake.rs`).
     fake: Option<Fake>,
     tx: Arc<Mutex<UnboundedSender<BulkProgress>>>,
@@ -104,6 +107,7 @@ impl MetadataHub {
             queue: Vec::new(),
             idle_review: false,
             idle_check: None,
+            notice: None,
             fake: Fake::from_env(),
             tx: Arc::new(Mutex::new(tx)),
         };
@@ -178,6 +182,7 @@ impl MetadataHub {
         }
         self.progress = p;
         if ended {
+            self.family_job_ended(self.progress.job);
             if self.fake.is_none() {
                 cx.emit(HubEvent::DataChanged);
             }
@@ -239,15 +244,19 @@ impl MetadataHub {
     /// Starts `args`, or queues it behind the running job. Returns the new
     /// job's id.
     pub fn start(&mut self, args: BulkArgs, cx: &mut Context<Self>) -> u64 {
-        if self.fake.is_some() {
-            return self.fake_start(args, cx);
-        }
-        let (id, p) = self.service.start_bulk_job(args, self.sender());
-        if p.job != self.progress.job {
-            self.undone = None;
-        }
-        self.progress = p;
-        cx.notify();
+        let kind = args.kind;
+        let id = if self.fake.is_some() {
+            self.fake_start(args, cx)
+        } else {
+            let (id, p) = self.service.start_bulk_job(args, self.sender());
+            if p.job != self.progress.job {
+                self.undone = None;
+            }
+            self.progress = p;
+            cx.notify();
+            id
+        };
+        self.note_family_job(kind, id);
         id
     }
 

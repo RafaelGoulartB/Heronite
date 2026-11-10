@@ -15,6 +15,7 @@ pub mod add_game;
 pub mod art_images;
 pub mod batch_edit;
 pub mod client_settings;
+pub mod covers;
 pub mod detail_rows;
 pub mod emulator_confirm;
 pub mod emulator_detect;
@@ -103,6 +104,9 @@ pub fn handle_escape(view: &AnyView, window: &mut Window, cx: &mut App) -> bool 
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     if let Ok(d) = view.clone().downcast::<metadata::MetadataDialog>() {
+        return d.update(cx, |d, cx| d.on_escape(cx));
+    }
+    if let Ok(d) = view.clone().downcast::<covers::CoversDialog>() {
         return d.update(cx, |d, cx| d.on_escape(cx));
     }
     false

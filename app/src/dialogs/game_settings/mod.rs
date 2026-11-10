@@ -14,12 +14,14 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
+use heronite_data::cover_family::CoverFamilies;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata};
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{ArtKind, MetadataService};
 
 use super::art_images::{picture, DialogImages};
+use super::covers::CoversDialog;
 use super::metadata::MetadataDialog;
 use super::metadata_wizard::hub;
 use super::save_backups::{self, SaveBackupsView};
@@ -112,6 +114,7 @@ enum Nested {
     Web(Entity<WebImageDialog>, #[allow(dead_code)] Subscription),
     Screenshot(Entity<ScreenshotArtDialog>, #[allow(dead_code)] Subscription),
     Metadata(Entity<MetadataDialog>, #[allow(dead_code)] Subscription),
+    Covers(Entity<CoversDialog>, #[allow(dead_code)] Subscription),
 }
 
 pub struct GameSettingsDialog {
@@ -126,6 +129,10 @@ pub struct GameSettingsDialog {
     art: CollectionGameArt,
     default_cover: Vec<ImageRef>,
     default_hero: Vec<ImageRef>,
+    /// The sources' picture of the family the desktop draws, when not tall.
+    fetched_family: Vec<ImageRef>,
+    /// Which cover families are kept, once read.
+    families: Option<CoverFamilies>,
     busy: Option<Busy>,
     error: String,
     nested: Option<Nested>,
@@ -167,6 +174,13 @@ impl GameSettingsDialog {
     /// question about resetting the tab, else closes once the Details tab
     /// saved what it has pending.
     pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
+        if let Some(Nested::Covers(view, _)) = &self.nested {
+            if !view.update(cx, |v, cx| v.on_escape(cx)) {
+                self.nested = None;
+            }
+            cx.notify();
+            return true;
+        }
         if self.cancel_reset_question(cx) {
             return true;
         }
@@ -180,6 +194,7 @@ impl GameSettingsDialog {
         cx.observe(&images, |_, _, cx| cx.notify()).detach();
 
         let (default_cover, default_hero) = Self::default_art(&ctx, &game);
+        let fetched_family = Self::fetched_of(&ctx, game.metadata.as_deref(), ctx.lib.settings.cover_aspect.family());
         let initial = form_from(&game.title, game.metadata.as_deref(), game.meta.as_deref());
         let details = Self::build_details(&ctx, &initial, game.playtime_minutes, window, cx);
         let launch = Self::build_launch(&game, window, cx);
@@ -219,6 +234,8 @@ impl GameSettingsDialog {
             art: game.art.as_deref().cloned().unwrap_or_default(),
             default_cover,
             default_hero,
+            fetched_family,
+            families: None,
             busy: None,
             error: String::new(),
             nested: None,
@@ -246,6 +263,7 @@ impl GameSettingsDialog {
             this.show_backups(cx);
         }
         this.debug_set_art(cx);
+        this.read_families(cx);
         // `HERONITE_DEBUG_ACTION_EDIT=new|<id>`: the Actions tab's action editor starts open.
         if let Some(which) = crate::env::value("HERONITE_DEBUG_ACTION_EDIT") {
             this.edit_action((which != "new").then_some(which), window, cx);
@@ -422,7 +440,7 @@ impl Render for GameSettingsDialog {
         }
 
         // "Use defaults" only where a reset exists: the custom images.
-        let can_reset = self.tab == Tab::Game && self.busy.is_none() && (self.art.cover_url.is_some() || self.art.hero_url.is_some());
+        let can_reset = self.tab == Tab::Game && self.busy.is_none() && ArtKind::ALL.iter().any(|k| k.of_art(&self.art).is_some());
         let left = div().child(if self.tab == Tab::Game {
             action_button(
                 "gs-defaults",
@@ -489,6 +507,7 @@ impl Render for GameSettingsDialog {
             Some(Nested::Web(v, _)) => Some(v.clone().into()),
             Some(Nested::Screenshot(v, _)) => Some(v.clone().into()),
             Some(Nested::Metadata(v, _)) => Some(v.clone().into()),
+            Some(Nested::Covers(v, _)) => Some(v.clone().into()),
             None => None,
         };
         div().absolute().inset_0().child(main).children(nested).into_any_element()

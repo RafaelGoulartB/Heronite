@@ -80,7 +80,11 @@ impl MetadataDialog {
             return div().text_size(px(12.5)).text_color(theme::text_dim()).child(tr!("Empty")).into_any_element();
         }
         if is_picture(field) {
-            let (w, h) = if field == "cover" { (30., 40.) } else { (71., 40.) };
+            let (w, h) = match field {
+                "cover" => (27., 40.),
+                "coverSquare" => (40., 40.),
+                _ => (71., 40.),
+            };
             return self.thumb(&value, w, h, cx).into_any_element();
         }
         div()
@@ -147,7 +151,26 @@ impl MetadataDialog {
             .border_b_1()
             .border_color(theme::row_separator())
             .child(
-                div().w(px(LABEL_W)).flex_none().truncate().text_size(px(12.5)).text_color(theme::text_muted()).child(field_label(field)),
+                div()
+                    .flex()
+                    .flex_col()
+                    .w(px(LABEL_W))
+                    .flex_none()
+                    .gap(px(2.))
+                    .child(div().truncate().text_size(px(12.5)).text_color(theme::text_muted()).child(field_label(field)))
+                    .when(field == "cover", |d| {
+                        d.child(
+                            div()
+                                .id("md-choose-covers")
+                                .truncate()
+                                .text_size(px(11.5))
+                                .text_color(theme::accent())
+                                .cursor_pointer()
+                                .hover(|s| s.text_color(theme::text_bright()))
+                                .child(tr!("Choose covers\u{2026}"))
+                                .on_click(cx.listener(|this, _, window, cx| this.open_covers(window, cx))),
+                        )
+                    }),
             )
             .child(div().flex().flex_1().min_w_0().items_center().child(self.shown_value(field, cx)))
             .child(pills)
@@ -170,7 +193,12 @@ impl MetadataDialog {
             .child(head(tr!("Take it from")).w(px(PILLS_W)).flex_none())
             .child(div().w(px(LOCK_W)).flex_none());
         let fields = self.visible_fields();
-        let mut list = div().id("md-fields").flex().flex_col().flex_1().min_h_0().overflow_y_scroll();
+        let mut list = div().id("md-fields").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().track_scroll(&self.fields_scroll);
+        if self.scroll_to_covers && self.kept.len() > 1 {
+            if let Some(i) = fields.iter().position(|f| *f == "cover") {
+                self.fields_scroll.scroll_to_item(i + self.kept.len());
+            }
+        }
         if self.preview.is_none() {
             if self.busy == Some(Busy::Preview) {
                 list = list.child(div().p(px(14.)).child(busy_line(tr!("The fields appear when the sources answered."))));

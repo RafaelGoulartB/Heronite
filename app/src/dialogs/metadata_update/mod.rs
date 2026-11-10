@@ -14,6 +14,7 @@
 
 mod fake;
 pub mod families;
+pub mod family_notice;
 mod games;
 pub mod hub;
 mod results;
@@ -24,6 +25,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::cover_family::CoverFamily;
 use heronite_i18n::tr;
 use heronite_images::ImageRef;
 use heronite_metadata::{BulkItem, GameCounts, SourceDescriptor, UpdateMode};
@@ -79,6 +81,8 @@ pub struct MetadataUpdate {
     counts: Option<(Scope, GameCounts)>,
     /// The sources a job may ask, in the user's order, once read.
     sources: Option<Vec<SourceDescriptor>>,
+    /// The cover families this installation keeps (a tick each), once read.
+    kept: Vec<CoverFamily>,
     mode: UpdateMode,
     fields_off: HashSet<String>,
     sources_off: HashSet<String>,
@@ -123,6 +127,7 @@ impl MetadataUpdate {
             all_counts: None,
             counts: None,
             sources: None,
+            kept: vec![CoverFamily::Tall],
             mode: UpdateMode::Fill,
             fields_off: HashSet::new(),
             sources_off: HashSet::new(),
@@ -153,12 +158,13 @@ impl MetadataUpdate {
                     let sources = service.bulk_sources(&service.metadata_settings());
                     let attention = service.needs_attention(&all).unwrap_or_default();
                     let counts = service.bulk_counts(&all).ok();
-                    (sources, attention, counts)
+                    (sources, attention, counts, service.cover_families().kept())
                 })
                 .await;
             this.update(cx, |this, cx| {
-                let (sources, attention, counts) = read;
+                let (sources, attention, counts, kept) = read;
                 this.sources = Some(sources);
+                this.kept = kept;
                 this.attention = Some(attention);
                 this.all_counts = counts;
                 // Counted on the list read before, if any.

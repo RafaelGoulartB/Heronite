@@ -526,5 +526,12 @@
   "{n} needs attention: {reasons}": "{n} necesita atención: {reasons}",
   "{n} without a cover": "{n} sin portada",
   "{n} without a description": "{n} sin descripción",
-  "{n} without a match": "{n} sin coincidencia"
+  "{n} without a match": "{n} sin coincidencia",
+  "Cover shapes": "Formatos de portada",
+  "A shape in use is always kept": "Un formato en uso siempre se conserva",
+  "Not kept": "No se conserva",
+  "{real} with their own": "{real} con imagen propia",
+  "{real} with their own · {cropped} cropped": "{real} con imagen propia · {cropped} recortadas",
+  "Download a shape as soon as a view starts using it": "Descargar un formato en cuanto una vista empiece a usarlo",
+  "Picking a square aspect, or a Console mode theme with square or wide tiles, fetches those covers by itself.": "Al elegir una proporción cuadrada, o un tema del Modo consola con mosaicos cuadrados o anchos, esas portadas se descargan solas."
 }

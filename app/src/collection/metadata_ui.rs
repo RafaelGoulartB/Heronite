@@ -10,6 +10,7 @@ use heronite_i18n::{tr, trn};
 use heronite_metadata::{BulkArgs, BulkItem, BulkProgress, JobKind, UpdateMode};
 
 use super::{CollectionView, ToastAction};
+use crate::dialogs::covers::CoversDialog;
 use crate::dialogs::game_settings::{GameSettingsDialog, Tab as GameTab};
 use crate::dialogs::metadata::MetadataDialog;
 use crate::dialogs::metadata_update::hub::{hub, HubEvent, HubGlobal, MetadataHub};
@@ -94,6 +95,31 @@ impl CollectionView {
     pub(super) fn open_metadata_for(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
         let view = cx.new(|cx| MetadataDialog::new(ctx, game, window, cx));
+        self.open_dialog(view, cx);
+    }
+
+    /// "Covers…": the game's picture of each cover family and its background.
+    pub(super) fn open_covers_for(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        self.open_dialog(view, cx);
+    }
+
+    /// `HERONITE_DEBUG_DIALOG=covers[:<state>]`: "Covers" of the selected
+    /// game over made-up searches (see the dialog's `fake.rs`).
+    fn open_covers_debug(&mut self, state: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(key) = self.selected.clone() else { return };
+        let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(&key)) else { return };
+        let thumbs: Vec<String> = self
+            .lib
+            .as_ref()
+            .map(|lib| {
+                let urls = lib.games.iter().filter_map(|g| g.metadata.as_ref()).flat_map(|m| [m.cover_url.clone(), m.hero_url.clone()]);
+                urls.flatten().filter(|u| u.starts_with("http")).take(24).collect()
+            })
+            .unwrap_or_default();
+        let state = state.to_string();
+        let view = cx.new(|cx| CoversDialog::made_up(ctx, game, &state, thumbs, window, cx));
         self.open_dialog(view, cx);
     }
 
@@ -183,12 +209,13 @@ impl CollectionView {
     /// when `HERONITE_DEBUG_MULTI` made one; see `MetadataUpdate::debug_state`);
     /// `metadata` the selected game's "Metadata" (asking the sources),
     /// `metadata:<state>` the same over a made-up preview; `review[:<state>]`
-    /// a made-up "Review matches".
+    /// a made-up "Review matches"; `covers[:<state>]` a made-up "Covers".
     pub(super) fn open_metadata_debug(&mut self, which: &str, window: &mut Window, cx: &mut Context<Self>) {
         match which {
             "metadata" => self.open_metadata(window, cx),
             w if w.starts_with("metadata:") => self.open_metadata_fake(&w["metadata:".len()..], window, cx),
             w if w == "review" || w.starts_with("review:") => self.open_review_debug(w, window, cx),
+            w if w == "covers" || w.starts_with("covers:") => self.open_covers_debug(w.strip_prefix("covers:").unwrap_or(""), window, cx),
             "gamesettings" => self.open_game_settings_tab(GameTab::Game, window, cx),
             "gamesettings:details" => self.open_game_settings_tab(GameTab::Game, window, cx),
             "gamesettings:launch" => self.open_game_settings_tab(GameTab::Actions, window, cx),
@@ -214,7 +241,10 @@ impl CollectionView {
     /// `HERONITE_DEBUG_METADATA_JOB`: a made-up job over the games on screen
     /// as soon as the library is shown (see the dialog's `fake.rs`).
     pub(super) fn debug_metadata_job(&mut self, cx: &mut Context<Self>) {
-        if !cx.has_global::<HubGlobal>() || !hub(cx).read(cx).faking() {
+        if !cx.has_global::<HubGlobal>() {
+            return;
+        }
+        if self.debug_aspect_notice(cx) || !hub(cx).read(cx).faking() {
             return;
         }
         let Some(games) = self.update_games(false) else { return };
@@ -224,6 +254,28 @@ impl CollectionView {
         }
         let args = BulkArgs::update(games.shown, UpdateMode::Fill, None, None);
         hub(cx).update(cx, |h, cx| h.start(args, cx));
+    }
+}
+
+impl CollectionView {
+    /// `HERONITE_DEBUG_ASPECT_NOTICE=offer[:wide]|started[:wide]`: the
+    /// Cover aspect notice of the square (or wide) family, counted on the
+    /// real data; `started` with a made-up download of the games on screen
+    /// (only while `HERONITE_DEBUG_METADATA_JOB` makes jobs up). True when
+    /// it took the place of the made-up job.
+    fn debug_aspect_notice(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(spec) = crate::env::value("HERONITE_DEBUG_ASPECT_NOTICE") else { return false };
+        let (what, family) = spec.split_once(':').unwrap_or((spec.as_str(), "square"));
+        let family = heronite_data::cover_family::CoverFamily::parse(family).unwrap_or(heronite_data::cover_family::CoverFamily::Square);
+        let games = self.update_games(false).map(|g| g.shown).unwrap_or_default();
+        self.view_look.open_covers();
+        hub(cx).update(cx, |h, cx| {
+            h.show_notice(family, cx);
+            if what == "started" && h.faking() {
+                h.start(BulkArgs::download_covers(games, family), cx);
+            }
+        });
+        true
     }
 }
 

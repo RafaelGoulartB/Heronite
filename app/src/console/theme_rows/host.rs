@@ -124,6 +124,7 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
     if !run(&mut probe, cmd, &st.data) {
         return false;
     }
+    let before = st.prefs.theme.clone();
     st.prefs = match cmd.id.as_str() {
         "startup.open_in" => {
             crate::console::startup::set_open_in(&app, probe.open_in);
@@ -146,8 +147,47 @@ pub fn change<H: Host>(h: &mut H, cmd: &Command, cx: &mut Context<H>) -> bool {
         }
     };
     st.notice = None;
+    let after = st.prefs.theme.clone();
+    covers_notice(&before, &after, cx);
     cx.notify();
     true
+}
+
+/// The theme now draws a cover family the one before did not: the line
+/// under the rows says how many games lack it, or that their download
+/// started (console mode's idiom of the Cover aspect notice).
+fn covers_notice<H: Host>(before: &ConsoleTheme, after: &ConsoleTheme, cx: &mut Context<H>) {
+    use crate::dialogs::covers::words;
+    use crate::dialogs::metadata_update::hub::{hub, HubGlobal};
+    use heronite_data::cover_family::{console_families, CoverFamily};
+    let old = console_families(before);
+    let Some(family) = console_families(after).into_iter().find(|f| *f != CoverFamily::Tall && !old.contains(f)) else { return };
+    if !cx.has_global::<HubGlobal>() {
+        return;
+    }
+    let service = hub(cx).read(cx).service.clone();
+    cx.spawn(async move |this, cx| {
+        let read =
+            cx.background_spawn(async move { (service.family_lack(family, None), service.metadata_settings().fill_cover_families) }).await;
+        let (Some(lack), fill) = read else { return };
+        let n = lack.games.len();
+        if n == 0 {
+            return;
+        }
+        let text = match (lack.can_download, fill) {
+            (true, true) => words::downloading(family, n),
+            (true, false) => format!("{} {}", words::lacking(family, n), tr!("Download them in Settings \u{2192} Metadata.")),
+            (false, _) => format!("{} {}", words::lacking(family, n), words::no_source(family)),
+        };
+        this.update(cx, |h, cx| {
+            if let Some(st) = h.theme_state() {
+                st.notice = Some((text, false));
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
 }
 
 impl ThemeState {

@@ -212,5 +212,8 @@
   "{n} tabs": "{n} pestañas",
   "{tabs} · {layouts}": "{tabs} · {layouts}",
   "“On” switches": "Interruptores “activados”",
-  "Back to {name}": "Volver a {name}"
+  "Back to {name}": "Volver a {name}",
+  "shape|Tall": "Vertical",
+  "shape|Wide": "Panorámica",
+  "Download them in Settings → Metadata.": "Descárgalas en Ajustes → Metadatos."
 }

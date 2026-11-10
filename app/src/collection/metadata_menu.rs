@@ -3,12 +3,15 @@
 //! what is missing" runs at once (the header pill then shows it; Enter does
 //! it while the dock's menu is open); "Fix matches…" opens "Review matches"
 //! on the selection; "More options…" opens the "Update metadata" dialog on
-//! the selection. What "Fill" would look at is counted
+//! the selection; "Download <family> covers" (one per family a view draws
+//! that some of the selection show cropped) downloads them for those games.
+//! What "Fill" would look at is counted
 //! off the UI thread when the menu opens, once per selection and again after
 //! the library reloads (a job, an undo or a settings change was saved).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::cover_family::{CoverFamilies, CoverFamily, FamilyUser};
 use heronite_i18n::{tr, trn};
 use heronite_metadata::{BulkArgs, BulkItem, GameCounts};
 
@@ -16,6 +19,7 @@ use super::context_menu::{item, Flyout};
 use super::metadata_ui::bulk_item;
 use super::selection::DockPop;
 use super::CollectionView;
+use crate::dialogs::covers::words;
 use crate::dialogs::metadata_update::hub::{hub, HubGlobal};
 use crate::icons::Icon;
 use crate::theme;
@@ -27,6 +31,8 @@ use crate::ui::icon;
 pub(super) struct MetaMenu {
     keys: Vec<SharedString>,
     counts: Option<GameCounts>,
+    /// Who draws each cover family, read with the counts.
+    families: Option<CoverFamilies>,
     task: Option<Task<()>>,
     /// The data changed since `counts` were read.
     stale: bool,
@@ -42,6 +48,7 @@ impl MetaMenu {
     fn forget(&mut self) {
         self.stale = true;
         self.counts = None;
+        self.families = None;
         self.task = None;
     }
 }
@@ -50,16 +57,17 @@ impl MetaMenu {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Row {
     FillMissing,
+    /// "Download <family> covers": the selection shows some cropped.
+    DownloadCovers(CoverFamily),
     FixMatches,
     MoreOptions,
 }
 
 impl Row {
-    const ALL: [Row; 3] = [Row::FillMissing, Row::FixMatches, Row::MoreOptions];
-
     fn icon(self) -> Icon {
         match self {
             Self::FillMissing => Icon::AutoAwesome,
+            Self::DownloadCovers(_) => Icon::Collections,
             Self::FixMatches => Icon::TravelExplore,
             Self::MoreOptions => Icon::Tune,
         }
@@ -68,9 +76,31 @@ impl Row {
     fn title(self) -> &'static str {
         match self {
             Self::FillMissing => tr!("Fill what is missing"),
+            Self::DownloadCovers(f) => words::download(f),
             Self::FixMatches => tr!("Fix matches\u{2026}"),
             Self::MoreOptions => tr!("More options\u{2026}"),
         }
+    }
+
+    fn id(self) -> String {
+        match self {
+            Self::DownloadCovers(f) => format!("covers-{}", f.id()),
+            other => format!("{other:?}"),
+        }
+    }
+}
+
+/// "12 show a crop in Console mode": where the cropped covers of `family` show.
+fn crop_hint(n: usize, families: Option<&CoverFamilies>, family: CoverFamily) -> String {
+    let state = families.map(|f| f.state(family));
+    let desktop = state.is_some_and(|s| s.used_by.contains(&FamilyUser::DesktopCovers));
+    let console = state.is_some_and(|s| s.used_by.iter().any(|u| matches!(u, FamilyUser::Console { .. })));
+    match (desktop, console) {
+        (true, true) => {
+            trn!(n, "{n} shows a crop on the desktop and in Console mode", "{n} show a crop on the desktop and in Console mode")
+        }
+        (false, true) => trn!(n, "{n} shows a crop in Console mode", "{n} show a crop in Console mode"),
+        _ => trn!(n, "{n} shows a crop on the desktop", "{n} show a crop on the desktop"),
     }
 }
 
@@ -92,10 +122,13 @@ impl CollectionView {
         let games = self.selection_items();
         let keys = self.sel.keys.clone();
         self.meta_menu.task = Some(cx.spawn(async move |this, cx| {
-            let counts = cx.background_spawn(async move { service.bulk_counts(&games) }).await;
+            let (counts, families) = cx.background_spawn(async move { (service.bulk_counts(&games), service.cover_families()) }).await;
             this.update(cx, |this, cx| {
                 match counts {
-                    Ok(c) if this.meta_menu.keys == keys => this.meta_menu.counts = Some(c),
+                    Ok(c) if this.meta_menu.keys == keys => {
+                        this.meta_menu.counts = Some(c);
+                        this.meta_menu.families = Some(families);
+                    }
                     Ok(_) => {}
                     Err(err) => log::warn!("metadata counts: {err:#}"),
                 }
@@ -161,13 +194,39 @@ impl CollectionView {
         }
     }
 
+    /// The rows shown: a download per family the selection shows cropped
+    /// (counted with the rest) after "Fill what is missing".
+    fn rows(&self) -> Vec<Row> {
+        let cropped = self.meta_menu.counts.iter().flat_map(|c| c.cropped.iter()).filter(|(f, n)| **n > 0 && **f != CoverFamily::Tall);
+        std::iter::once(Row::FillMissing)
+            .chain(cropped.map(|(f, _)| Row::DownloadCovers(*f)))
+            .chain([Row::FixMatches, Row::MoreOptions])
+            .collect()
+    }
+
+    /// "Download <family> covers" on the selection's games that lack one.
+    fn download_selection_covers(&mut self, family: CoverFamily, cx: &mut Context<Self>) {
+        if !cx.has_global::<HubGlobal>() {
+            return;
+        }
+        let games = self.selection_items();
+        self.sel.pop = None;
+        self.context_menu = None;
+        hub(cx).update(cx, |h, cx| h.download_family(family, Some(games), cx));
+        cx.notify();
+    }
+
     /// The menu's rows; `prefix` keeps the dock's and the context menu's ids apart.
     pub(super) fn metadata_rows(&self, prefix: &str, enter: bool, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
-        Row::ALL
+        self.rows()
             .into_iter()
             .map(|row| {
                 let (hint, enabled) = match row {
                     Row::FillMissing => self.fill_hint(),
+                    Row::DownloadCovers(f) => {
+                        let n = self.meta_menu.counts.as_ref().and_then(|c| c.cropped.get(&f)).copied().unwrap_or(0);
+                        (crop_hint(n, self.meta_menu.families.as_ref(), f), true)
+                    }
                     Row::FixMatches => (self.fix_hint(), true),
                     Row::MoreOptions => (tr!("Pick the games, fields and sources").to_string(), true),
                 };
@@ -178,7 +237,7 @@ impl CollectionView {
                     .min_w_0()
                     .child(div().truncate().child(row.title()))
                     .child(div().truncate().text_size(px(11.5)).text_color(theme::text_dim()).child(hint));
-                let el = item(SharedString::from(format!("{prefix}-meta-{row:?}")))
+                let el = item(SharedString::from(format!("{prefix}-meta-{}", row.id())))
                     .py(px(7.))
                     .child(icon(row.icon(), px(18.), if row == Row::FillMissing { theme::accent() } else { theme::text_muted() }))
                     .child(text)
@@ -190,6 +249,7 @@ impl CollectionView {
                     Row::FillMissing => {
                         this.fill_selection(cx);
                     }
+                    Row::DownloadCovers(f) => this.download_selection_covers(f, cx),
                     Row::FixMatches => this.fix_selection_matches(window, cx),
                     Row::MoreOptions => {
                         this.open_metadata_update(true, window, cx);

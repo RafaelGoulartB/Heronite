@@ -74,7 +74,8 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   opens the "Update metadata" dialog on the games on screen, or on the results of the update that runs). When games need
   attention, a muted line under the count says how many and why ("23 need attention: 9 without a match, 4 without a
   cover": without a match = waiting for review, no details at all or the last try found no game; the reasons with no game
-  are left out; read with the count, `MetadataHub::attention`) and "Review 23" sits before "Update metadata…": it opens
+  are left out; read with the count, `MetadataHub::attention`; a cover cropped to a shape in use is not one of them, it is
+what the Cover aspect asks for and the Cover shapes card counts it) and "Review 23" sits before "Update metadata…": it opens
   "Review matches" on the games waiting for review, or, when none waits, "Update metadata" on the games that need
   attention (`summary.rs`). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
   Store, Lutris), Pictures (SteamGridDB, From the web) and Extras (HowLongToBeat, Steam tags, ProtonDB); a kind with no
@@ -89,7 +90,18 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   "Fills": a chip per field the source provides. A chip of a details source can be clicked to stop taking that field
   from it (struck through); the other sources' chips are plain, because only the merge honours the switch. Dragging a
   details row onto another moves it, and the order is what the merge asks first (the hint "Drag to change the order"
-  sits by the caption). Under the cards, "When details arrive" holds the switches that belong to no source: fill
+  sits by the caption). Under them, "Cover shapes" ("A shape in use is always kept", `shapes.rs`) is a card with a row
+  per cover family: its outline, the name and what it serves (Tall "2:3, 3:4, 11:15 and 5:7 share one picture", Square
+  1:1, Wide 16:9), who draws it ("Grid and Focus covers · Game page and lists · Console mode (Minimal)", or "No view
+  uses it"), a count with a bar ("153 with their own"; for a Square or Wide in use "2 with their own · 147 cropped",
+  the bar accent then amber; "Not kept" for a family nobody draws and the user does not keep), an "In use" pill and a
+  switch. The switch keeps the family (`keepCoverFamilies`: fetches and updates fill it, the Covers dialog and the
+  Metadata rows list it); it is locked on while a view draws the family, and the Tall row is always so. Then a switch,
+  "Download a shape as soon as a view starts using it" ("Picking a square aspect, or a Console mode theme with square or
+  wide tiles, fetches those covers by itself", `fillCoverFamilies`, on by default), and, for each family in use that
+  some game shows cropped, a line "147 games show a cropped square cover" with "Download square covers" (the whole
+  Collection, whatever the switch says; dimmed with "No source that gives square covers is on." when none can be asked;
+  the header pill follows the job). Under the cards, "When details arrive" holds the switches that belong to no source: fill
   missing metadata in the background, copy covers to disk, show age ratings, and the rating board shown first. Last,
   "Order for one field (advanced)" is a collapsed block with a line per field and its sources as chips, first to last,
   the first one accented: dragging a chip onto another of the same field puts it there for that field only, and the line
@@ -97,7 +109,9 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
   field is switched off, is not in the line. Console mode lists the same without dragging or chips: per kind a header,
   a switch per source (status and games in its description) followed by its options (text opens the on-screen
   keyboard), "Place in the list" for details sources and "Test"; then "When details arrive", then "Source asked first
-  for each field", one choice per field between "List order" and the details sources that fill it. The Settings search
+  for each field", one choice per field between "List order" and the details sources that fill it; before "When details
+  arrive" it has the same Cover shapes: a header, a switch per family (its aspects and who draws it in the description,
+  locked while in use), the automatic download and a row per "Download <family> covers". The Settings search
   finds the sources, their options and "Order for one field (advanced)" and opens the row that holds them.
 - Command palette (Ctrl K, `app/src/collection/palette/`): it reads the app's own lists, so a new feature reaches it
   without palette code. A game action goes in `collection/game_actions.rs` (`GameAction`, listed by
@@ -295,7 +309,7 @@ rows, the covers' size (Small fits one more per row, Large one less; `focusCover
 in Grid the cover size, what goes under the covers (Nothing, Title, Info, Title and info; `gridLabel`, Info being
 Appearance's "Under the cover" line) and "Open details on select" (`gridOpenOnSelect`; off, a double click or Enter
 opens the drawer); then, in both, the covers' look, the same settings as Appearance (Cover aspect, where Banner
-shows each game's hero art, Corners, Density, Under the pointer, Favourite star, Store icon); then "More in Appearance" and
+draws each game's wide cover, else its background, else its tall cover cropped, with the notice below it, Corners, Density, Under the pointer, Favourite star, Store icon); then "More in Appearance" and
 "Reset to defaults" (the mode's options and the covers' look; dimmed when all are at their default). Header menus
 open on click or after a 140ms hover (`OPEN_DELAY`) and close 180ms after the pointer leaves; the view options open
 on click only and close on a click outside, Esc or a change of mode. The ☰ menu (`nav.rs`) is a list:
@@ -415,7 +429,7 @@ until "Apply". Debug: `HERONITE_DEBUG_MULTI=<n>`, `HERONITE_DEBUG_DOCK=status|ca
 
 The **Metadata popover** (`collection/metadata_menu.rs`, 300px, above the dock's Metadata button; the dock's button
 toggles it and Esc closes it) opens with the selection's count ("12 games") and has three rows, an icon and a title over a
-hint. "Fill what is missing" (accent icon) starts an update of the selected games at once and closes the popover: every
+hint, with one more for each cover family some of the selection show cropped (below). "Fill what is missing" (accent icon) starts an update of the selected games at once and closes the popover: every
 empty field of theirs, extras included, from every source that is on (`BulkArgs::fill_missing`); no dialog opens, the
 header pill follows it. Its hint says what it would write ("34 fields in 12 games"), "Counting…" while that is read off
 the UI thread (once per selection, when the menu first opens), or "Nothing is missing" with the row dimmed and
@@ -423,8 +437,14 @@ disabled. Enter does it while the popover is open (the dock's rows show the key;
 "Fix matches…" (hint "Check which game each one is", or "3 of these wait for review" when some of the selection are in
 the review queue) opens "Review matches" on the selection: the games waiting for review first, then the others, whose
 proposals are asked from the sources live (`fix_selection_matches`). "More options…" (hint "Pick the games, fields and
-sources") opens "Update metadata" on the selection. The selection's context menu has the same three rows in its
+sources") opens "Update metadata" on the selection. The selection's context menu has the same rows in its
 "Metadata" flyout (hover or click, like Status and Categories).
+"Download square covers" (or wide; a row after "Fill what is missing" for each family a view draws, other than the
+tall one, that some of the selection show cropped, `GameCounts::cropped`, read with the counts) has the hint "12 show a
+crop on the desktop", "…in Console mode" or "…on the desktop and in Console mode", by who draws the family. It
+queues the download of that family for the selected games that lack one (`MetadataHub::download_family`; whatever
+the automatic download switch says) and closes the popover, and the header pill follows the job. "Fill what is
+missing" also fills the kept families.
 
 **Update metadata** (`dialogs/metadata_update/`: `mod.rs` the dialog and its stepper, `games.rs`, `what.rs` and
 `results.rs` the three steps, `words.rs` how an outcome reads, shared with the pill, `hub.rs` the owner of the jobs,
@@ -440,12 +460,15 @@ never stops a job.
   now", or "…now, with its filters: “zelda”, Platform: PlayStation 2" when a search or a filter is on; the default
   otherwise), "Whole Collection" and "Games that need attention" ("Waiting for review, or missing details, a description or a cover",
   counted off the UI thread, with a chip per reason that has games under it: "To review 5", "No details 14", "Failed last
-  time 3", "No description 8", "No cover 4"; the Settings summary's "Review" opens the dialog on this card). A strip of the first ten
+  time 3", "No description 8", "No cover 4"; a cover cropped to a shape in use is not counted here nor in the
+  Settings summary: it is what the Cover aspect asks for, and the dock's "Download <family> covers" and the Cover
+  shapes card deal with it; the Settings summary's "Review" opens the dialog on this card). A strip of the first ten
   covers and "N games" sits under the cards. Footer: the count, Cancel, Next (off with no game).
 - **2 · What to update** (`what.rs`): "How", three cards in a row, one picked (Fill what is empty is the default), each
   with its consequence: Fill what is empty ("Nothing you have changes"), Refresh ("What you edited by hand stays"),
-  Replace everything ("Your edits too"). A card of fields in three columns, Details (its ticks in two columns), Pictures and
-  Extras, a round tick per field (all on to start) and an "All" link per column that turns the column off, or on again.
+  Replace everything ("Your edits too"). A card of fields in three columns, Details (its ticks in two columns), Pictures (a tick per kept cover
+  family, "Cover · Tall", "Cover · Square", "Cover · Wide", then "Background"; a family that is not kept has none and no job
+  fills it) and Extras, a round tick per field (all on to start) and an "All" link per column that turns the column off, or on again.
   "From": a chip per source the job may ask, with its mark (`labels::mark`), in the order of Settings → Metadata; a click
   leaves one out (struck through), and a source with nothing for the chosen games (counted without network, off the UI
   thread) is dimmed, cannot be clicked and is named in the line beside "From" ("In your order. Click one to leave it out
@@ -583,7 +606,10 @@ source…"), and again after a match is pinned and after "Search every source ag
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
   Change, then an open select, then the dialog.
 - **The fields** (right): a header (Field, What will be saved, Take it from), then a row per field that has a value now or
-  from some source, in the usual order: the field's name, the value that will be saved (two lines at most, "Empty" when
+  from some source, in the usual order, with a cover row per kept family after the tall one, "Cover · Tall", "Cover ·
+  Square" and "Cover · Wide" (the tall one always, the others even when no source has a picture of that shape), and
+  "Choose covers…" under the tall row's name, which opens "Covers" over this dialog (Esc closes it first; a picture set
+  there reaches the drawer behind): the field's name, the value that will be saved (two lines at most, "Empty" when
   none; a cover or a background as a small picture), a pill per source that has a value ("Take it from": its mark, the
   picked one ringed in the accent, the number inside a score's pill) plus "Keep current" when the game has a value, and
   the lock. A click on a pill picks it; the pill under the pointer shows its value in the middle without picking. With
@@ -599,7 +625,15 @@ source…"), and again after a match is pinned and after "Search every source ag
   answered it saves only the locks.
 `HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
 match, a match left out, a locked field, a field picked from another source), `change` (the same with "Change" open),
-`none` (no source found the game), `offline`, `nokey` (no IGDB key); plain `metadata` asks the sources for real.
+`none` (no source found the game), `offline`, `nokey` (no IGDB key), `covers` (as `fake`, scrolled to the cover rows);
+plain `metadata` asks the sources for real.
+`HERONITE_DEBUG_DIALOG=covers[:<state>]` opens the selected game's "Covers" over made-up searches (pictures the
+Collection already has; nothing asked or written): no state opens on the family the desktop draws, `tall`, `square`,
+`wide`, `background` on that slot, `none` (nothing found), `busy` (searching), `saving` (a picture being
+downloaded), `error` (its download failed). `HERONITE_DEBUG_ASPECT_NOTICE=offer[:wide]|started[:wide]` shows the
+Cover aspect notice of the square (or wide) family over the real counts, with the View options' Covers section open
+(with `HERONITE_DEBUG_DROPDOWN=display`) and in Settings → Appearance; `started` needs
+`HERONITE_DEBUG_METADATA_JOB=running`, which makes the download up.
 
 
 **Menus** (`ui::dropdown`): `menu_panel(min_w)`, `menu_item(id, active)` (radius 10,
@@ -615,6 +649,65 @@ modal (radius 26, title Rubik 22, round close button, Collection darkened by
 `rgba(0,0,0,.55)`); `dialog_scrolled(.., &ScrollHandle, ..)` is the same with a draggable scrollbar on a long body; `drawer(DrawerProps { id, width }, header, body, footer,
 on_close)` = right-hand sheet inset 10px, radius 24, with fixed header/footer
 slots (build the header with `kicker`, `dialog_title`, `close_button`).
+
+**Covers per shape** (`heronite_data::cover_family`, `collection/family_art.rs`, `dialogs/covers/words.rs` for every sentence
+that names a shape): a game has a cover per shape, in three families: Tall (2:3, 3:4, 11:15 and 5:7 share one picture),
+Square (1:1) and Wide (16:9). Each view asks for the family it draws: the grid and Focus cards the Cover aspect's (Steam,
+IGDB, GOG and DVD Tall, Square Square, Banner Wide), the game page, lists and drawer always the tall one, and a Console
+mode theme the shape of its tiles (a theme with the Xbox layout all three). A game with no picture of that shape does
+not go without: a wide view takes its background, else its tall cover, and a square one its tall cover, cropped to the
+shape ("cropped" in every screen, an amber dot or bar). A family is *in use* when some view draws it and *kept* when
+it is in use or the user keeps it anyway (`keepCoverFamilies`); only the kept families are stored, so only they have a
+field in a fetch, a tick in "Update metadata", a row in the one-game Metadata and a slot in "Covers", and a family
+in use is always kept. A cropped cover is a choice of the aspect, not a defect: it is counted per family
+(`Attention::cropped`, `GameCounts::cropped`, `MetadataService::family_lack`) and is not part of "needs attention".
+
+**Covers** (`dialogs/covers/`: `mod.rs` the dialog and its footer, `slots.rs` the left column, `found.rs` the right one,
+`actions.rs` what it searches and saves, `words.rs` how a shape reads, `fake.rs` the debug searches): one dialog,
+1040px at most, titled "Covers · Hades", over the pictures of one game: a slot per family, Tall, Square and Wide, and the
+background. It opens from Game settings → Images' "All covers…" (over the drawer), the one-game Metadata's "Choose
+covers…" (over it) and the palette's "Covers…" (a game action, Actions, palette only; on the selected game), on the family
+the desktop draws. Left, "This game's pictures": a card per slot with the picture in its true shape
+(a wide one at most 84px across), the name, a muted line and a dot. The line says where the picture comes from ("IGDB",
+"SteamGridDB", "From the store", "Your own picture"), or "Cropped from the tall cover", "Cropped from the background", "No
+picture", then "used on the desktop", "used in Console mode" or both ("kept, not shown now" when no view draws the
+family); the dot is green for a picture of its own, amber for a crop and grey for none. A family that is not kept reads
+"Not kept on this PC" with a grey dot and "Keep this shape" under it, which keeps it at once ("Saving…") and picks its
+slot. A click on a card picks the slot. Right: for the picked slot, "Square pictures found · 9 from 2 sources" (or
+"Backgrounds found") and a search field (the game's title; Enter searches), then the picture the slot shows now first,
+labelled "{source} · now" or "Cropped · now", and what SteamGridDB (first) and the web found for that shape, each with its
+source's mark and size ("1024×1024"), 15 at a time with "Load more"; a search already made is not asked again on the way
+back, "Searching…" shows while it runs, "No pictures found. Try another search." when nothing came, and a failure in red
+under the grid. A click picks a picture (a double click uses it). A slot that is not kept shows, in place of all this,
+"Square covers are not kept", why ("No view on this PC draws square covers, so updates do not download them. Keep the shape
+to give games a square picture anyway; a view that starts using it keeps it too.") and "Keep this shape". Footer: "Each
+shape keeps its own picture. A view asks for the shape it draws.", "Choose a file…" and "From a screenshot…" (icon buttons,
+for the picked slot), "Reset" (back to what the sources gave; only when the slot has a picture of the user's), Close and
+the primary "Use for Square" (Tall, Wide, Background; "Downloading…" while it saves), which needs a picture picked. Every
+change is saved at once and the Collection behind shows it; Esc closes the screenshot picker first.
+
+**Game settings → Images** (`dialogs/game_settings/images.rs`): the Cover block is the cover of the family the desktop
+draws, "Custom image · Square" or "Default image · Square" (just "Custom image" or "Default image" for the tall one), its
+preview in that shape, "Shown on the game card", the line "Square: cropped · Wide: not kept" (the other families, each
+"own picture", "cropped" or "not kept") with "All covers…", which opens "Covers" over the drawer, then the picture's
+actions (Change, Search web, Reset), which act on that family. The background block is as it was;
+"Use defaults" resets every picture set by hand.
+
+**The notice under a Cover aspect picker** (`dialogs/metadata_update/family_notice.rs`, under Settings → Appearance's
+Cover aspect and in the View options' Covers section, the same one in both, kept by the hub): picking an aspect whose
+family some games have no picture of (Square or Banner) counts them off the UI thread and says so under the picker.
+With the automatic download off: "238 games have no square cover. They show their tall
+cover cropped until one is downloaded." (for Wide "…show their background or tall cover cropped…") with "Download
+square covers" and "Keep the crop", which dismisses it; when no source that gives the shape is on, the same sentence
+plus "No source that gives square covers is on." with "Open Settings → Metadata" in place of the download. With the
+automatic download on, the download starts by itself and the notice says "Downloading square covers for 238 games" with
+Stop and Hide (while another update runs: "… It starts after the update running now.", Hide only). It goes when
+dismissed, when the aspect goes back to a tall one, when the job it announced ends (the pill says how it went) and
+when no game lacks the shape. Console mode says the same in the line under the theme rows (`ThemeState::notice`, in Settings → Console mode and
+☰ → Customize; `theme_rows/host.rs`), when the theme starts drawing a family the one before did not: the lack and "Download them
+in Settings → Metadata.", or "Downloading …". The downloads by hand (the notice's, Settings', the dock's) are
+`BulkArgs::download_covers` jobs for the games lacking the family and not locked, run like any update: one at a time,
+with the pill.
 
 **Add game** (`dialogs/add_game/`, by user decision): the cover and background previews on the left; a click on one
 opens its menu (Find art while it is empty, Search the web, Choose an image file, Type an address, which shows an

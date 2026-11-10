@@ -137,6 +137,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Steam tags",
             "Steam tags per game",
             "ProtonDB",
+            "Cover shapes",
+            "Download a shape as soon as a view starts using it",
             "When details arrive",
             "Fill missing metadata in the background",
             "Copy covers to disk",

@@ -51,6 +51,8 @@ pub(super) enum GameAction {
     /// An emulated game played as a PC game from now on (a native port).
     PlayAsPc,
     Metadata,
+    /// The game's picture of each cover family and its background.
+    Covers,
     Hide,
     RemoveRecent,
     Log,
@@ -276,6 +278,16 @@ impl CollectionView {
             )
             .palette_only(),
         );
+        v.push(
+            item(
+                A::Covers,
+                "covers",
+                tr!("Covers\u{2026}"),
+                Icon::Collections,
+                "cover art square wide banner picture capa arte imagem quadrada",
+            )
+            .palette_only(),
+        );
         v.push(if game.hidden {
             item(A::Hide, "hide", tr!("Unhide"), Icon::Visibility, "show reexibir mostrar exibir")
         } else {
@@ -369,6 +381,7 @@ impl CollectionView {
             }
             A::PlayAsPc => self.open_play_as_pc(key, window, cx),
             A::Metadata => self.open_metadata_for(key, window, cx),
+            A::Covers => self.open_covers_for(key, window, cx),
             A::Log => self.open_game_log(key, cx),
             A::Troubleshoot => self.troubleshoot_launch(key, None, cx),
             A::Details => self.open_details(key, cx),

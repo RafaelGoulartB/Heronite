@@ -297,6 +297,24 @@ fn a_view_that_starts_using_a_family_queues_one_job() {
 }
 
 #[test]
+fn what_a_family_lacks_is_counted_whatever_the_automatic_download_says() {
+    let s = setup(&[]);
+    put(&s.paths, &record("plain", |m| m.cover_wide_url = Some("https://mine/w.png".into())));
+    heronite_data::settings::set_fill_cover_families(&s.paths, false).unwrap();
+    let lack = s.svc.family_lack(CoverFamily::Square, None).unwrap();
+    let mut names: Vec<_> = lack.games.iter().map(|g| g.app_name.as_str()).collect();
+    names.sort();
+    assert_eq!(names, ["plain", "steam_620"], "the automatic download is off, a download by hand still finds them");
+    assert!(lack.can_download && s.svc.can_download_family(CoverFamily::Square));
+    let wide = s.svc.family_lack(CoverFamily::Wide, Some(vec![portal(), plain()])).unwrap();
+    assert_eq!(wide.games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["steam_620"]);
+    assert!(s.svc.family_lack(CoverFamily::Tall, None).unwrap().games.is_empty());
+    s.svc.set_source_enabled("steamgriddb", false).unwrap();
+    assert!(!s.svc.family_lack(CoverFamily::Square, None).unwrap().can_download, "SteamGridDB is off");
+    assert_eq!(sgdb_requests(&s.server), 0);
+}
+
+#[test]
 fn counts_say_which_games_show_a_cropped_cover() {
     let s = setup(&["wide"]);
     heronite_data::settings::update_metadata(&s.paths, |m| m.cover_aspect = "square".into()).unwrap();
@@ -309,6 +327,22 @@ fn counts_say_which_games_show_a_cropped_cover() {
     assert_eq!(counts.missing_by_field["coverWide"], 2, "a kept family is filled by \"Fill what is missing\"");
     let attention = s.svc.attention(&[portal(), plain()]).unwrap();
     assert_eq!(attention.cropped[&CoverFamily::Square].len(), 1);
+}
+
+#[test]
+fn a_cropped_cover_is_not_a_reason_to_need_attention() {
+    let s = setup(&[]);
+    heronite_data::settings::update_metadata(&s.paths, |m| m.cover_aspect = "square".into()).unwrap();
+    put(&s.paths, &record("plain", |_| {}));
+    put(&s.paths, &record("steam_620", |_| {}));
+    let games = [portal(), plain()];
+    let attention = s.svc.attention(&games).unwrap();
+    assert_eq!(attention.cropped[&CoverFamily::Square].len(), 2, "both show their tall cover cropped");
+    assert!(attention.all().is_empty() && !attention.contains("sideload:plain"));
+    assert_eq!(attention.complete(), 2);
+    let counts = s.svc.bulk_counts(&games).unwrap();
+    assert_eq!((counts.needs_attention, counts.cropped[&CoverFamily::Square]), (0, 2));
+    assert!(s.svc.needs_attention(&games).unwrap().is_empty());
 }
 
 #[test]

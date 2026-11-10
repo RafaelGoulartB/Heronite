@@ -39,7 +39,7 @@ pub struct Attention {
     /// Per cover family a view uses beside the tall one (each family in use
     /// has an entry, maybe empty): details but no picture of that family,
     /// fetched or set by hand, so the view shows another one cropped. Apart
-    /// from `no_cover`.
+    /// from `no_cover`, and not a reason to need attention.
     pub cropped: IndexMap<CoverFamily, IndexSet<String>>,
 }
 
@@ -50,17 +50,16 @@ impl Attention {
         self.to_review.iter().chain(&self.no_details).chain(&self.failed).cloned().collect()
     }
 
-    /// Every game that needs attention, for any reason.
+    /// Every game that needs attention, for any reason. A cropped cover is
+    /// not one: it is a choice of the aspect, listed apart in `cropped`.
     pub fn all(&self) -> IndexSet<String> {
         let mut all = self.without_match();
         all.extend(self.no_description.iter().chain(&self.no_cover).cloned());
-        all.extend(self.cropped.values().flatten().cloned());
         all
     }
 
     pub fn contains(&self, key: &str) -> bool {
         [&self.to_review, &self.no_details, &self.failed, &self.no_description, &self.no_cover].iter().any(|s| s.contains(key))
-            || self.cropped.values().any(|s| s.contains(key))
     }
 
     /// The games that need nothing ("389 of 412 games are complete").
@@ -217,10 +216,24 @@ mod tests {
         assert_eq!(keys(Wide), ["bare", "square", "custom"]);
         assert!(!a.cropped.contains_key(&Tall));
         assert!(a.no_cover.is_empty(), "a cropped cover is not a missing one");
-        assert!(a.contains("sideload:bare") && a.all().len() == 5);
+        assert!(!a.contains("sideload:bare"), "a cropped cover does not need attention");
+        assert_eq!(a.all().into_iter().collect::<Vec<_>>(), ["sideload:nodetails"], "only the game without details");
         // A family in use that every game has: an empty entry.
         let a = classify(&games[1..2], &records, &ReviewFile::default(), &art, &[Tall, Square]);
         assert!(a.cropped[&Square].is_empty() && a.complete() == 1);
+    }
+
+    #[test]
+    fn a_game_with_only_its_tall_cover_is_complete_when_square_is_in_use() {
+        let games = [item("tall")];
+        let mut md = blank_metadata("tall", "sideload");
+        md.description = Some("d".into());
+        md.cover_url = Some("https://c".into());
+        let records = IndexMap::from([("sideload:tall".to_string(), md)]);
+        let a = classify(&games, &records, &ReviewFile::default(), &ArtFile::default(), &[CoverFamily::Tall, CoverFamily::Square]);
+        assert_eq!(a.cropped[&CoverFamily::Square].iter().collect::<Vec<_>>(), ["sideload:tall"]);
+        assert!(a.all().is_empty() && !a.contains("sideload:tall"));
+        assert_eq!(a.complete(), 1);
     }
 
     #[test]

@@ -86,3 +86,59 @@ pub fn picture(src: Option<ImageSource>) -> Div {
         None => d,
     }
 }
+
+/// What a game shows for each of its pictures, with `art` (its pictures set
+/// by hand, maybe changed since the library was read) in place of the ones
+/// the library holds: each chain is the picture set by hand, then what the
+/// game shows without it. Checks local files: build it on a change, not
+/// per frame.
+#[derive(Clone, Default)]
+pub struct GameChains {
+    /// The tall cover (its chain, whatever it holds).
+    pub tall: Vec<ImageRef>,
+    /// The background.
+    pub stage: Vec<ImageRef>,
+    /// The game's own square and wide covers (empty: none).
+    pub square: Vec<ImageRef>,
+    pub wide: Vec<ImageRef>,
+}
+
+impl GameChains {
+    pub fn of(ctx: &DialogCtx, game: &heronite_data::CollectionGame, art: &heronite_data::models::CollectionGameArt) -> Self {
+        use heronite_data::art as data_art;
+        use heronite_data::cover_family::CoverFamily;
+        use heronite_metadata::ArtKind;
+        let shots = ctx.lib.settings.screenshots_folder();
+        let art_ctx = heronite_data::ArtContext::new(&ctx.data_paths, shots);
+        let url_chain = |a: Option<&heronite_data::models::CollectionGameArt>, kind: ArtKind| {
+            a.and_then(|a| kind.of_art(a)).map(|u| chain_for_url(&ctx.data_paths, shots, u)).unwrap_or_default()
+        };
+        let chain = |kind: ArtKind, defaults: Vec<heronite_data::ImageRef>| {
+            let old = url_chain(game.art.as_deref(), kind);
+            let mut out = url_chain(Some(art), kind);
+            for r in crate::images::to_chain(&defaults) {
+                if !old.contains(&r) && !out.contains(&r) {
+                    out.push(r);
+                }
+            }
+            out
+        };
+        Self {
+            tall: chain(ArtKind::Cover, data_art::card_cover(&art_ctx, game)),
+            stage: chain(ArtKind::Hero, data_art::stage_art(&art_ctx, game)),
+            square: chain(ArtKind::CoverSquare, data_art::family_art(&art_ctx, game, CoverFamily::Square)),
+            wide: chain(ArtKind::CoverWide, data_art::family_art(&art_ctx, game, CoverFamily::Wide)),
+        }
+    }
+
+    /// What a view of `family` draws, and where it comes from.
+    pub fn family(&self, family: heronite_data::cover_family::CoverFamily) -> (Vec<ImageRef>, heronite_data::art::CoverOrigin) {
+        use heronite_data::cover_family::CoverFamily;
+        let own = match family {
+            CoverFamily::Tall => &[][..],
+            CoverFamily::Square => &self.square,
+            CoverFamily::Wide => &self.wide,
+        };
+        heronite_data::art::pick_family(family, own, &self.stage, &self.tall)
+    }
+}

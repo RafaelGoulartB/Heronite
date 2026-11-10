@@ -20,6 +20,7 @@ mod undo;
 
 pub use attention::Attention;
 pub use bulk::AUTO_FILL_BATCH;
+pub use families::FamilyLack;
 pub use fetch::{is_sent_to_review, SentToReview};
 pub use review::{MatchUnavailable, Resolution, Resolved, SourceSearch};
 

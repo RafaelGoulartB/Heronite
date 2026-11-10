@@ -1,8 +1,11 @@
-//! The Images tab: custom cover and background, web and screenshot pickers.
+//! The Images tab: custom cover (of the family the desktop draws, with the
+//! state of the others and "All covers…") and background, web and
+//! screenshot pickers.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
+use heronite_data::cover_family::CoverFamily;
 use heronite_data::models::{CollectionGameArt, CollectionGameMetadata};
 use heronite_data::{art, ArtContext};
 use heronite_i18n::tr;
@@ -11,6 +14,7 @@ use heronite_metadata::ArtKind;
 
 use super::{Busy, GameSettingsDialog, Nested};
 use crate::dialogs::art_images::{chain_for_url, picture};
+use crate::dialogs::covers::{words, CoversDialog};
 use crate::dialogs::screenshot_art::ScreenshotArtDialog;
 use crate::dialogs::web_image::{ArtEvent, WebImageDialog};
 use crate::dialogs::{DialogCtx, DialogEvent};
@@ -59,6 +63,84 @@ impl GameSettingsDialog {
             swap(&self.default_cover, chain(old.and_then(|m| m.cover_url.as_deref())), chain(new.and_then(|m| m.cover_url.as_deref())));
         self.default_hero =
             swap(&self.default_hero, chain(old.and_then(|m| m.hero_url.as_deref())), chain(new.and_then(|m| m.hero_url.as_deref())));
+        self.fetched_family = Self::fetched_of(&self.ctx, new, self.desktop_family());
+    }
+
+    /// The family the desktop's covers draw: what the Cover block shows.
+    pub(super) fn desktop_family(&self) -> CoverFamily {
+        self.ctx.lib.settings.cover_aspect.family()
+    }
+
+    /// The picture of `family` the sources gave (none for the tall one,
+    /// whose chain is `default_cover`).
+    pub(super) fn fetched_of(ctx: &DialogCtx, md: Option<&CollectionGameMetadata>, family: CoverFamily) -> Vec<ImageRef> {
+        let shots = ctx.lib.settings.screenshots_folder();
+        match family {
+            CoverFamily::Tall => Vec::new(),
+            f => md.and_then(|m| ArtKind::cover(f).of_record(m)).map(|u| chain_for_url(&ctx.data_paths, shots, u)).unwrap_or_default(),
+        }
+    }
+
+    /// Reads which families are kept and who draws them (the console theme
+    /// included), for the line under the cover.
+    pub(super) fn read_families(&mut self, cx: &mut Context<Self>) {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let families = cx.background_spawn(async move { service.cover_families() }).await;
+            this.update(cx, |this, cx| {
+                this.families = Some(families);
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// "Square: cropped · Wide: not kept": the other families of this game.
+    fn other_families(&self) -> Option<String> {
+        let families = self.families.as_ref()?;
+        let desktop = self.desktop_family();
+        let md = self.metadata.as_deref();
+        let parts: Vec<String> = CoverFamily::ALL
+            .into_iter()
+            .filter(|f| *f != desktop)
+            .map(|f| {
+                let name = words::family_name(f);
+                let kind = ArtKind::cover(f);
+                let own = f == CoverFamily::Tall
+                    || kind.of_art(&self.art).is_some_and(|u| !u.is_empty())
+                    || md.and_then(|m| kind.of_record(m)).is_some_and(|u| !u.is_empty());
+                if !families.is_kept(f) {
+                    tr!("{family}: not kept", family = name)
+                } else if own {
+                    tr!("{family}: own picture", family = name)
+                } else {
+                    tr!("{family}: cropped", family = name)
+                }
+            })
+            .collect();
+        Some(parts.join(" \u{b7} "))
+    }
+
+    /// "All covers…": the Covers dialog over the drawer.
+    fn open_covers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (ctx, game) = (self.ctx.clone(), self.game.clone());
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let sub = cx.subscribe(&view, |this: &mut Self, view, ev: &DialogEvent, cx| {
+            match ev {
+                DialogEvent::Changed | DialogEvent::ChangedAndClose => {
+                    this.art = view.read(cx).art().clone();
+                    cx.emit(DialogEvent::Changed);
+                }
+                DialogEvent::Close => {}
+            }
+            if matches!(ev, DialogEvent::Close | DialogEvent::ChangedAndClose) {
+                this.nested = None;
+            }
+            cx.notify();
+        });
+        self.nested = Some(Nested::Covers(view, sub));
+        cx.notify();
     }
 
     fn art_result(&mut self, res: anyhow::Result<CollectionGameArt>, cx: &mut Context<Self>) {
@@ -177,32 +259,46 @@ impl GameSettingsDialog {
 
     /// Public so debug hooks can open the web image picker directly.
     pub fn debug_open_web(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_web(ArtKind::Cover, window, cx);
+        self.open_web(ArtKind::cover(self.desktop_family()), window, cx);
     }
 
-    /// Custom image first, then what the game shows without one.
+    /// Custom image first, then what the game shows without one (for a
+    /// square or wide cover: the sources' one, else another one cropped).
     pub(super) fn art_chain(&self, kind: ArtKind) -> (Vec<ImageRef>, Option<String>) {
-        let is_cover = kind == ArtKind::Cover;
-        let custom_url = if is_cover { self.art.cover_url.clone() } else { self.art.hero_url.clone() };
+        let custom_url = kind.of_art(&self.art).filter(|u| !u.is_empty()).map(str::to_owned);
         let shots = self.ctx.lib.settings.screenshots_folder().map(|p| p.to_path_buf());
         let mut chain = custom_url.as_deref().map(|u| chain_for_url(&self.ctx.data_paths, shots.as_deref(), u)).unwrap_or_default();
-        chain.extend(if is_cover { self.default_cover.clone() } else { self.default_hero.clone() });
+        match kind {
+            ArtKind::Cover => chain.extend(self.default_cover.iter().cloned()),
+            ArtKind::Hero => chain.extend(self.default_hero.iter().cloned()),
+            other => {
+                let family = other.family().expect("a cover");
+                let (tall, stage) = (self.art_chain(ArtKind::Cover).0, self.art_chain(ArtKind::Hero).0);
+                let (rest, _) = art::pick_family(family, &self.fetched_family, &stage, &tall);
+                chain.extend(rest.into_iter().filter(|r| !chain.contains(r)).collect::<Vec<_>>());
+            }
+        }
         (chain, custom_url)
     }
 
     fn art_slot(&mut self, kind: ArtKind, cx: &mut Context<Self>) -> Div {
-        let is_cover = kind == ArtKind::Cover;
+        let is_cover = kind != ArtKind::Hero;
+        let rounded = if is_cover { 10. } else { 12. };
         let (chain, custom_url) = self.art_chain(kind);
         // Requested at the size the Collection uses; shown scaled into the card.
-        let (w, h) = if is_cover { (132., 198.) } else { (840., 271.) };
-        let (show_w, show_h) = if is_cover { (92., 138.) } else { (HERO_W, HERO_W * 271. / 840.) };
+        let (w, h, show_w, show_h) = match kind {
+            ArtKind::Cover => (132., 198., 92., 138.),
+            ArtKind::CoverSquare => (168., 168., 118., 118.),
+            ArtKind::CoverWide => (256., 144., 176., 99.),
+            ArtKind::Hero => (840., 271., HERO_W, HERO_W * 271. / 840.),
+        };
         let key = chain.first().map(|r| format!("{r:?}")).unwrap_or_default();
         let src = if chain.is_empty() { None } else { self.images.update(cx, |im, _| im.get(&format!("gs:{key}"), chain, w, h)) };
         let preview = picture(src)
             .w(px(show_w))
             .h(px(show_h))
             .flex_none()
-            .rounded(px(if is_cover { 10. } else { 12. }))
+            .rounded(px(rounded))
             .border_1()
             .border_color(theme::ink_a(0.08))
             .into_any_element();
@@ -240,22 +336,46 @@ impl GameSettingsDialog {
             !busy && custom_url.is_some(),
             cx.listener(move |this, _, _, cx| this.reset_image(kind, cx)),
         ));
+        // The cover: the other families of the game, and all of them in the Covers dialog.
+        let others = is_cover.then(|| {
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap_x(px(8.))
+                .mb(px(10.))
+                .mt(px(-6.))
+                .children(self.other_families().map(|line| div().text_size(px(12.)).text_color(theme::text_muted()).child(line)))
+                .child(
+                    div()
+                        .id("gs-all-covers")
+                        .text_size(px(12.))
+                        .text_color(theme::accent())
+                        .cursor_pointer()
+                        .hover(|s| s.text_color(theme::text_bright()))
+                        .child(tr!("All covers\u{2026}"))
+                        .on_click(cx.listener(|this, _, window, cx| this.open_covers(window, cx))),
+                )
+        });
+        let title = match (custom_url.is_some(), kind.family().filter(|f| *f != CoverFamily::Tall)) {
+            (true, None) => tr!("Custom image").to_string(),
+            (false, None) => tr!("Default image").to_string(),
+            (true, Some(f)) => tr!("Custom image \u{b7} {family}", family = words::family_name(f)),
+            (false, Some(f)) => tr!("Default image \u{b7} {family}", family = words::family_name(f)),
+        };
         let copy = div()
             .flex()
             .flex_col()
             .flex_1()
             .min_w_0()
             .gap(px(3.))
-            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(if custom_url.is_some() {
-                tr!("Custom image")
-            } else {
-                tr!("Default image")
-            }))
+            .child(div().text_size(px(14.)).text_color(theme::text_primary()).child(title))
             .child(div().mb(px(10.)).text_size(px(12.)).text_color(theme::text_dim()).child(if is_cover {
                 tr!("Shown on the game card")
             } else {
                 tr!("Shown behind the game in Collection")
             }))
+            .children(others)
             .child(actions);
         if is_cover {
             div().flex().items_center().gap(px(16.)).py(px(14.)).child(preview).child(copy)
@@ -265,7 +385,7 @@ impl GameSettingsDialog {
     }
 
     pub(super) fn images_tab(&mut self, cx: &mut Context<Self>) -> Div {
-        let cover = self.art_slot(ArtKind::Cover, cx);
+        let cover = self.art_slot(ArtKind::cover(self.desktop_family()), cx);
         let hero = self.art_slot(ArtKind::Hero, cx);
         div()
             .flex()

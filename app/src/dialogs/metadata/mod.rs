@@ -28,12 +28,14 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::collection::Game;
-use heronite_data::models::CollectionGameMetadata;
+use heronite_data::cover_family::CoverFamily;
+use heronite_data::models::{CollectionGameArt, CollectionGameMetadata};
 use heronite_i18n::tr;
 use heronite_metadata::{MetadataPreview, MetadataService};
 use indexmap::IndexMap;
 
 use super::art_images::{chain_for_url, picture, DialogImages};
+use super::covers::CoversDialog;
 use super::metadata_update::hub::{hub, MetadataHub};
 use super::{DialogCtx, DialogEvent};
 use crate::icons::Icon;
@@ -57,8 +59,9 @@ pub fn field_label(field: &str) -> &'static str {
         "features" => tr!("Features"),
         "criticScore" => tr!("Score"),
         "ageRatings" => tr!("Age ratings"),
-        // The square and wide covers read as covers until their screens name them.
-        "cover" | "coverSquare" | "coverWide" => tr!("Cover"),
+        "cover" => tr!("Cover \u{b7} Tall"),
+        "coverSquare" => tr!("Cover \u{b7} Square"),
+        "coverWide" => tr!("Cover \u{b7} Wide"),
         "hero" => tr!("Background"),
         _ => "",
     }
@@ -78,6 +81,8 @@ fn format_value(md: Option<&CollectionGameMetadata>, field: &str) -> String {
             .map(|n| if n.get().fract() == 0.0 { format!("{}", n.get() as i64) } else { n.get().to_string() })
             .unwrap_or_default(),
         "cover" => m.cover_url.clone().unwrap_or_default(),
+        "coverSquare" => m.cover_square_url.clone().unwrap_or_default(),
+        "coverWide" => m.cover_wide_url.clone().unwrap_or_default(),
         "hero" => m.hero_url.clone().unwrap_or_default(),
         "developers" => join(&m.developers),
         "publishers" => join(&m.publishers),
@@ -95,7 +100,7 @@ fn format_value(md: Option<&CollectionGameMetadata>, field: &str) -> String {
 
 /// A field drawn as a picture.
 fn is_picture(field: &str) -> bool {
-    field == "cover" || field == "hero"
+    matches!(field, "cover" | "coverSquare" | "coverWide" | "hero")
 }
 
 /// The pick that keeps what the game has.
@@ -136,6 +141,15 @@ pub struct MetadataDialog {
     applied: Option<CollectionGameMetadata>,
     fake: Option<fake::FakePreview>,
     preview_task: Option<Task<()>>,
+    /// The cover families this installation keeps: a row each.
+    kept: Vec<CoverFamily>,
+    /// "Choose covers…": the Covers dialog over this one.
+    covers: Option<(Entity<CoversDialog>, Subscription)>,
+    /// The pictures set by hand there, once it changed one.
+    covers_art: Option<CollectionGameArt>,
+    fields_scroll: ScrollHandle,
+    /// `metadata:covers`: the fields list shows the cover rows.
+    scroll_to_covers: bool,
 }
 
 impl EventEmitter<DialogEvent> for MetadataDialog {}
@@ -143,6 +157,7 @@ impl EventEmitter<DialogEvent> for MetadataDialog {}
 impl MetadataDialog {
     pub fn new(ctx: DialogCtx, game: Game, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut this = Self::build(ctx, game, None, cx);
+        this.read_families(cx);
         this.run_preview(cx);
         this
     }
@@ -152,6 +167,7 @@ impl MetadataDialog {
     /// addresses the made-up sources propose.
     pub fn made_up(ctx: DialogCtx, game: Game, state: &str, thumbs: Vec<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut this = Self::build(ctx, game, Some(fake::FakePreview::new(state, thumbs)), cx);
+        this.read_families(cx);
         this.run_preview(cx);
         this.debug_state(state, window, cx);
         this
@@ -184,7 +200,50 @@ impl MetadataDialog {
             applied: None,
             fake,
             preview_task: None,
+            kept: vec![CoverFamily::Tall],
+            covers: None,
+            covers_art: None,
+            fields_scroll: ScrollHandle::new(),
+            scroll_to_covers: false,
         }
+    }
+
+    /// Reads which cover families are kept (a row each).
+    fn read_families(&mut self, cx: &mut Context<Self>) {
+        let service = self.service.clone();
+        cx.spawn(async move |this, cx| {
+            let kept = cx.background_spawn(async move { service.cover_families().kept() }).await;
+            this.update(cx, |this, cx| {
+                this.kept = kept;
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// The pictures set by hand in "Choose covers…", once it changed one
+    /// (for a host that shows them).
+    pub fn covers_art(&self) -> Option<&CollectionGameArt> {
+        self.covers_art.as_ref()
+    }
+
+    /// "Choose covers…": the Covers dialog over this one.
+    fn open_covers(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (ctx, game) = (self.ctx.clone(), self.game.clone());
+        let view = cx.new(|cx| CoversDialog::new(ctx, game, None, window, cx));
+        let sub = cx.subscribe(&view, |this: &mut Self, view, ev: &DialogEvent, cx| {
+            if matches!(ev, DialogEvent::Changed | DialogEvent::ChangedAndClose) {
+                this.covers_art = Some(view.read(cx).art().clone());
+                cx.emit(DialogEvent::Changed);
+            }
+            if matches!(ev, DialogEvent::Close | DialogEvent::ChangedAndClose) {
+                this.covers = None;
+            }
+            cx.notify();
+        });
+        self.covers = Some((view, sub));
+        cx.notify();
     }
 
     /// The metadata Apply saved (set before `ChangedAndClose`).
@@ -194,7 +253,11 @@ impl MetadataDialog {
 
     /// Esc closes "Change" or the open select first.
     pub fn on_escape(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.everything_open {
+        if let Some((view, _)) = &self.covers {
+            if !view.update(cx, |v, cx| v.on_escape(cx)) {
+                self.covers = None;
+            }
+        } else if self.everything_open {
             self.everything_open = false;
         } else if self.change.is_some() {
             self.change = None;
@@ -331,14 +394,16 @@ impl Render for MetadataDialog {
             .child(div().flex().gap(px(20.)).h(px(columns_h)).child(left.w(px(310.)).flex_none()).child(self.render_fields(cx)));
         let footer = self.render_footer(cx);
         let entity = cx.entity().downgrade();
-        dialog(
+        let main = dialog(
             DialogProps { id: "collection-metadata".into(), title: tr!("Metadata").into(), width: 1060f32.min(vw * 0.94), height: None },
             body.into_any_element(),
             Some(footer.into_any_element()),
             move |_, cx| {
                 entity.update(cx, |_, cx| cx.emit(DialogEvent::Close)).ok();
             },
-        )
+        );
+        let covers: Option<AnyView> = self.covers.as_ref().map(|(v, _)| v.clone().into());
+        div().absolute().inset_0().child(main).children(covers)
     }
 }
 

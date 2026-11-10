@@ -78,6 +78,8 @@ pub struct State {
     preview_task: Option<Task<()>>,
     opts: Opts,
     aspect_open: bool,
+    /// Follows the metadata hub while its Cover aspect notice may show.
+    notice_watch: Option<Subscription>,
     /// The "Under the cover" and background picture selects are open.
     label_open: bool,
     picture_open: bool,
@@ -193,6 +195,7 @@ impl State {
             preview_task: None,
             opts: Opts::new(ctx.data_paths.images_cache_dir(), Some(ctx.app.thumbs_dir())),
             aspect_open: false,
+            notice_watch: None,
             label_open: false,
             picture_open: false,
             more_background: false,
@@ -248,6 +251,21 @@ impl State {
 }
 
 /// Recomputes the blurred preview off the UI thread (debounced 60ms).
+/// The Cover aspect picked here: the notice about the new family (kept by
+/// the metadata hub, which the page follows from now on).
+fn aspect_picked(d: &mut SettingsPage, after: CoverAspect, cx: &mut Context<SettingsPage>) {
+    use crate::dialogs::metadata_update::hub::{hub, HubGlobal};
+    if !cx.has_global::<HubGlobal>() {
+        return;
+    }
+    let h = hub(cx);
+    if d.appearance.notice_watch.is_none() {
+        d.appearance.notice_watch = Some(cx.observe(&h, |_, _, cx| cx.notify()));
+    }
+    let before = d.settings.cover_aspect;
+    h.update(cx, |h, cx| h.aspect_picked(before, after, cx));
+}
+
 fn schedule_preview(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     let a = &d.appearance;
     if a.preview_chain.is_empty() {
@@ -535,11 +553,13 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             d.appearance.aspect_open = false;
             let mut patch = d.settings.metadata.clone();
             patch.cover_aspect = ASPECTS[i].0.as_str().to_string();
+            aspect_picked(d, ASPECTS[i].0, cx);
             crate::dialogs::metadata_update::families::aspect_changed(d.settings.cover_aspect, ASPECTS[i].0);
             let res = settings::save_metadata(&d.ctx.data_paths, &patch);
             d.saved(res, cx);
         },
     );
+    let aspect_notice = crate::dialogs::metadata_update::family_notice::notice("ap-notice", cx);
 
     let grey = d.settings.grey_uninstalled_games;
     let reset = button("bg-reset", ButtonKind::Glass, tr!("Reset background")).on_click(cx.listener(|d, _, window, cx| {
@@ -572,12 +592,16 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
     let cover_rows = look::cover_rows(d, cx);
     let covers = card(
         [
-            row(
-                tr!("Cover aspect"),
-                Some(tr!("Shape of the covers in the grid, the details panel and related games.")),
-                div().w(px(200.)).child(aspect_select),
-            )
-            .into_any_element(),
+            div()
+                .flex()
+                .flex_col()
+                .child(row(
+                    tr!("Cover aspect"),
+                    Some(tr!("Shape of the covers in the grid, the details panel and related games.")),
+                    div().w(px(200.)).child(aspect_select),
+                ))
+                .children(aspect_notice.map(|n| n.mb(px(12.))))
+                .into_any_element(),
             toggle_row("grey-uninstalled", tr!("Show uninstalled games in grey"), None, grey)
                 .on_click(cx.listener(move |d, _, _, cx| {
                     let res = settings::save_grey_uninstalled(&d.ctx.data_paths, !grey);

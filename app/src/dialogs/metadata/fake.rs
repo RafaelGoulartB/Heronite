@@ -3,8 +3,9 @@
 //! pinned, Steam found by its id, Lutris found another game (left out), the
 //! store not for this game, genres locked and the release date picked from
 //! Steam; `none`: no source found the game; `offline`: none could be
-//! reached; `nokey`: as `fake`, without an IGDB key. The pictures are covers
-//! the Collection already has.
+//! reached; `nokey`: as `fake`, without an IGDB key; `covers`: as `fake`,
+//! scrolled to the cover rows. SteamGridDB gives a
+//! cover of each shape. The pictures are covers the Collection already has.
 
 use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameMetadata;
@@ -77,6 +78,13 @@ impl FakePreview {
                     m.critic_score = Some(JsNum(88.));
                     m.cover_url = self.thumb(2);
                 }),
+                // A pictures source: a cover of each shape.
+                self.candidate("steamgriddb", t, "", MatchedBy::SteamId, "5245", |m| {
+                    m.release_date = None;
+                    m.cover_url = self.thumb(3);
+                    m.cover_square_url = self.thumb(1);
+                    m.cover_wide_url = self.thumb(1);
+                }),
                 self.candidate("lutris", &format!("{t}: Subsistence"), "2005", MatchedBy::FuzzyTitle, "subsistence", |m| {
                     m.genres = strings(&["Action"]);
                     m.critic_score = Some(JsNum(90.));
@@ -100,7 +108,7 @@ impl FakePreview {
             vec![
                 SourceState { source: "igdb".into(), answer: found(&candidates[0], true) },
                 SourceState { source: "steam".into(), answer: found(&candidates[1], true) },
-                SourceState { source: "lutris".into(), answer: found(&candidates[2], false) },
+                SourceState { source: "lutris".into(), answer: found(&candidates[3], false) },
                 SourceState { source: "store".into(), answer: SourceAnswer::NotAsked { why: NotAsked::NotForThisGame } },
             ]
         };
