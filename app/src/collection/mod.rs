@@ -235,6 +235,9 @@ pub struct CollectionView {
     scrim: stage::Scrim,
     blur_px: f32,
     saturation: f32,
+    /// How much the stage's highlights are rolled off (0-1): follows the
+    /// Darkening, settled (the slider changes it when let go).
+    rolloff: f32,
     stage_enabled: bool,
     /// The view menu's sections and sliders (`view_options.rs`).
     view_look: view_options::LookMenu,
@@ -424,6 +427,7 @@ impl CollectionView {
             scrim: stage::Scrim { dim: 0.14, scrim: 1. },
             blur_px: 6.,
             saturation: 0.94,
+            rolloff: heronite_images::backdrop_rolloff(0.14),
             stage_enabled: true,
             view_look: Default::default(),
             grey_uninstalled: false,

@@ -187,6 +187,60 @@ fn stage_is_reduced_blurred_saturated() {
 }
 
 #[test]
+fn unblurred_stage_keeps_a_1080p_window_sharp() {
+    // #275: with no blur, the art behind a 1080p window is drawn at the
+    // window's own size, not at half of it and stretched by the GPU.
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("hero.png");
+    // One-pixel stripes: any resampling to a smaller raster greys them out.
+    write_png(&p, 1920, 1080, |x, _| if x % 2 == 0 { [255, 255, 255, 255] } else { [0, 0, 0, 255] });
+    let mut o = opts(dir.path());
+    o.thumbs_dir = None;
+    let d = load_stage(&[ImageRef::File(p)], 1920, 1080, 0.0, 1.0, &o).unwrap();
+    assert_eq!((d.width, d.height), (1920, 1080));
+    assert_eq!(&d.bgra[..8], &[255, 255, 255, 255, 0, 0, 0, 255]);
+    // A blur keeps the raster small, as before.
+    let s = |blur| geometry::stage_size(1920, 1080, blur, o.stage_max_width, o.stage_sharp_max_width, o.stage_sigma_out).0;
+    assert_eq!((s(40.), s(10.)), (384, 960));
+}
+
+#[test]
+fn backdrop_rolloff_follows_the_darkening() {
+    // #267: no darkening, no roll-off; the default darkening (16%) is full.
+    assert_eq!(backdrop_rolloff(0.), 0.);
+    assert_eq!(backdrop_rolloff(-1.), 0.);
+    assert_eq!(backdrop_rolloff(f32::NAN), 0.);
+    assert_eq!(backdrop_rolloff(0.05), 0.3);
+    assert_eq!(backdrop_rolloff(0.10), 0.7);
+    assert_eq!(backdrop_rolloff(0.16), 1.);
+    assert_eq!(backdrop_rolloff(0.9), 1.);
+    assert_eq!(backdrop_knee_cap(0.), (1., 1.));
+    assert_eq!(backdrop_knee_cap(1.), (BACKDROP_KNEE, BACKDROP_CAP));
+
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("white.png");
+    // A white window over a mid-grey wall (most art is not this bright).
+    write_png(&p, 400, 200, |x, _| if x < 200 { [250, 250, 250, 255] } else { [90, 90, 90, 255] });
+    let mut o = opts(dir.path());
+    o.thumbs_dir = None;
+    let chain = [ImageRef::File(p)];
+    let white = |d: &Decoded| d.bgra[(100 * d.width as usize + 20) * 4];
+    let grey = |d: &Decoded| d.bgra[(100 * d.width as usize + d.width as usize - 20) * 4];
+    let stage = load_stage(&chain, 400, 200, 0., 1., &o).unwrap();
+    let off = load_backdrop(&chain, 400, 200, 0., 1., 0., &o).unwrap();
+    let half = load_backdrop(&chain, 400, 200, 0., 1., 0.5, &o).unwrap();
+    let full = load_backdrop(&chain, 400, 200, 0., 1., 1., &o).unwrap();
+    // Off is the art as it is: the same as the plain stage.
+    assert_eq!(off, stage);
+    assert_eq!(white(&off), 250);
+    // Full strength takes white down to the cap (~139); half is in between.
+    assert!((white(&full) as i32 - 139).abs() <= 3, "{}", white(&full));
+    assert!(white(&half) > white(&full) + 20 && white(&half) < 240, "{}", white(&half));
+    // Dark and mid tones are never touched.
+    assert_eq!((grey(&off), grey(&half), grey(&full)), (90, 90, 90));
+}
+
+#[test]
 fn stage_and_glass_are_cached_separately() {
     let dir = tempfile::tempdir().unwrap();
     let p = dir.path().join("s.png");
