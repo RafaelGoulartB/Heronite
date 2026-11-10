@@ -72,7 +72,7 @@ pub(super) fn start(shared: &Shared, log: &Arc<GameLog>, prep: &Prep, spec: &Pre
     if let Some(until) = stopping {
         galaxy::wait_for_port(until.saturating_duration_since(Instant::now()), prep.cancel);
     }
-    // No need to ask gogdl for tokens or download anything when the game
+    // No need to ask GOG for tokens or download anything when the game
     // is served already.
     if let Some(served) = served(&mut shared.comet.lock().unwrap(), log) {
         return served;

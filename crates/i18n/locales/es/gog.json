@@ -26,6 +26,5 @@
   "This game has no cloud saves": "Este juego no tiene guardados en la nube",
   "This game has no Wine prefix yet; choose one in its Wine settings": "Este juego aún no tiene prefijo de Wine; elige uno en sus ajustes de Wine",
   "That folder does not look like this game's install (goggame-{app}.info is missing)": "Esa carpeta no parece la instalación de este juego (falta goggame-{app}.info)",
-  "Your GOG sign-in expired: log in again": "Tu sesión de GOG caducó: vuelve a iniciar sesión",
-  "GOG did not answer in time": "GOG no respondió a tiempo"
+  "Your GOG sign-in expired: log in again": "Tu sesión de GOG caducó: vuelve a iniciar sesión"
 }

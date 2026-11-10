@@ -510,8 +510,7 @@ pub fn gog_sync_saves_flag(paths: &DataPaths, app_name: &str, flag: &str) -> Res
 }
 
 /// The GOG account Comet signs in with while a GOG game runs (see
-/// `heronite_launch::galaxy`): the signed-in one, with its tokens refreshed,
-/// unless Comet is off in Settings → Achievements.
+/// `heronite_launch::galaxy`): the signed-in one, with fresh tokens, unless Comet is off in Settings → Achievements.
 pub struct GogGalaxyAccount(pub DataPaths);
 
 impl heronite_launch::galaxy::GalaxyAccount for GogGalaxyAccount {

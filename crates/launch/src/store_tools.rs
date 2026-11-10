@@ -1,13 +1,12 @@
-//! The command-line tools behind the stores: `nile` (Amazon Games login,
+//! The command-line tools behind a store: `nile` (Amazon Games login,
 //! library and downloads) and `comet` (GOG Galaxy's service for GOG games'
-//! achievements, see [`crate::galaxy`]). Epic and GOG need none
+//! achievements, see [`crate::galaxy`]). Epic and GOG need none otherwise
 //! (`heronite_epic_api`, `heronite_gog_api`). Each is found in the settings,
-//! the data folder or `PATH`, and downloaded into `<data>/tools/bin`
-//! (`nile.exe` there on Windows) from its GitHub release when none is
-//! there. Nile's release is the one Heroic pins (`RELEASE_TAGS` in its
-//! `meta/downloadHelperBinaries.ts`); its Windows build is a standalone
-//! program (PyInstaller), no Python needed. Comet's is newer than Heroic's
-//! pin (v0.2.0).
+//! the data folder or `PATH`, and downloaded into `<data>/tools/bin` from
+//! its GitHub release when none is there. nile's release is the one Heroic
+//! pins (`RELEASE_TAGS` in its `meta/downloadHelperBinaries.ts`); its
+//! Windows build is a standalone program (PyInstaller), no Python needed.
+//! Comet's is newer than Heroic's pin (v0.2.0).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -294,12 +293,12 @@ pub(crate) mod tests {
             Some("https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_windows_x86_64.exe")
         );
         assert_eq!(url(NILE, "windows", "aarch64"), url(NILE, "windows", "x86_64"), "x64 under emulation");
-        assert_eq!(NILE.asset_for("linux", "aarch64"), Some("nile_linux_arm64"));
         assert_eq!(
             url(COMET, "linux", "x86_64").as_deref(),
             Some("https://github.com/imLinguin/comet/releases/download/v0.4.1/comet-x86_64-unknown-linux-gnu")
         );
         assert_eq!(COMET.asset_for("windows", "aarch64"), Some("comet-aarch64-pc-windows-msvc.exe"));
+        assert_eq!(NILE.asset_for("linux", "aarch64"), Some("nile_linux_arm64"));
         assert_eq!(NILE.asset_for("macos", "aarch64"), None);
         for tool in [NILE, COMET] {
             assert!(tool.asset_name().is_some(), "{} has a build for this system", tool.name);
@@ -395,7 +394,7 @@ pub(crate) mod tests {
     /// The real releases, downloaded and run (`--version`) on this system:
     /// `cargo test -p heronite-launch --lib real_releases -- --ignored`.
     #[test]
-    #[ignore = "downloads about 25 MB"]
+    #[ignore = "downloads about 30 MB"]
     fn real_releases_install_and_run_here() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));

@@ -28,7 +28,8 @@ pub struct Account {
 pub struct Credentials {
     pub access_token: String,
     pub user_id: String,
-    /// Comet needs it, see `heronite_launch::galaxy`.
+    /// Empty when the auth file has none (Comet needs it, see
+    /// `heronite_launch::galaxy`).
     pub refresh_token: String,
 }
 
@@ -88,15 +89,22 @@ pub fn credentials(paths: &DataPaths) -> Result<Credentials> {
     }
 }
 
-/// [`credentials`] that gives up after `limit` (a refresh may hang on a bad
-/// network). The refresh then goes on in the background.
+/// [`credentials`] that gives up after `limit` (refreshing the tokens may
+/// hang on a bad network): for what must not hold anything up (a game's
+/// launch). The refresh goes on in the background and still saves the tokens.
 pub fn credentials_within(paths: &DataPaths, limit: std::time::Duration) -> Result<Credentials> {
     let (tx, rx) = std::sync::mpsc::channel();
     let paths = paths.clone();
-    std::thread::spawn(move || {
-        let _ = tx.send(credentials(&paths));
-    });
-    rx.recv_timeout(limit).map_err(|_| anyhow!(tr!("GOG did not answer in time")))?
+    std::thread::Builder::new()
+        .name("gog-credentials".into())
+        .spawn(move || {
+            let _ = tx.send(credentials(&paths));
+        })
+        .context("starting the GOG sign-in")?;
+    match rx.recv_timeout(limit) {
+        Ok(result) => result,
+        Err(_) => bail!("GOG did not answer within {} s", limit.as_secs()),
+    }
 }
 
 /// The account saved in `config.json` for a GOG user document.
@@ -233,8 +241,9 @@ mod tests {
         .unwrap();
         let c = credentials(&paths).unwrap();
         assert_eq!((c.access_token.as_str(), c.user_id.as_str(), c.refresh_token.as_str()), ("tok", "7", "r"));
-        let c = credentials_within(&paths, std::time::Duration::from_secs(30)).unwrap();
-        assert_eq!(c.access_token, "tok");
+        // Comet's: the same tokens, within a limit.
+        let c = credentials_within(&paths, std::time::Duration::from_secs(5)).unwrap();
+        assert_eq!(c.refresh_token, "r");
     }
 
     #[test]

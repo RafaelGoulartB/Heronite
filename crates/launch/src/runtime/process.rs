@@ -203,7 +203,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
-    // For the program that really starts (Epic named it above).
+    // For the program that really starts (Epic's launch completed it above).
     let gpu_exe = plan.gpu_preference.and_then(|p| set_gpu_preference(shared, &*services.gpu_registry, log, &command.program, p));
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));
     log.info("Game Output:");
