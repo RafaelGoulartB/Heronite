@@ -375,7 +375,8 @@ fn number(field: Field, g: &CollectionGame, facts: &Facts) -> Option<f64> {
 pub enum Rule {
     /// Every rule matches (an empty list matches every game).
     All(Vec<Rule>),
-    /// One of the rules matches (an empty list matches none).
+    /// One of the rules matches (an empty list, no condition at all,
+    /// matches every game, as an empty `All`).
     Any(Vec<Rule>),
     Not(Box<Rule>),
     Cond(Cond),
@@ -437,6 +438,8 @@ impl Rule {
                 }
                 known.then_some(true)
             }
+            // No conditions limit nothing: every game, as with an empty `all`.
+            Rule::Any(list) if list.is_empty() => Some(true),
             Rule::Any(list) => {
                 let mut known = true;
                 for r in list {
@@ -547,8 +550,6 @@ impl Simple {
             (false, None) => Rule::All(conds),
             (true, None) => Rule::Any(conds),
             (false, Some(not)) => Rule::All(conds.into_iter().chain([not]).collect()),
-            // No conditions: every game, as with "all".
-            (true, Some(not)) if conds.is_empty() => Rule::All(vec![not]),
             (true, Some(not)) => Rule::All(vec![Rule::Any(conds), not]),
         }
     }
@@ -880,7 +881,8 @@ mod tests {
         let facts = with(&extras, &ratings, &statuses);
         let g = game("g", "G", |_| {});
         assert!(Rule::All(vec![]).matches(&g, &facts));
-        assert!(!Rule::Any(vec![]).matches(&g, &facts));
+        // No condition limits nothing, with "any" as with "all".
+        assert!(Rule::Any(vec![]).matches(&g, &facts));
         let future = json!({ "field": "deckVerified", "op": "is", "value": true });
         let rule = Rule::from_value(&json!({ "all": [future.clone()] }));
         assert_eq!(rule, Rule::All(vec![Rule::Unknown(future.clone())]));
@@ -1035,16 +1037,21 @@ mod tests {
     }
 
     #[test]
-    fn any_with_no_conditions_and_an_except_is_every_game_but_the_except() {
+    fn any_with_no_conditions_is_every_game_like_all() {
         let statuses = crate::status::default_statuses();
         let (extras, ratings) = (GameExtras::default(), HashMap::new());
         let facts = with(&extras, &ratings, &statuses);
         let installed = game("a", "Installed", |s| s.installed = true);
         let other = game("b", "Other", |_| {});
         for any in [false, true] {
-            let rule = Simple { any, conds: Vec::new(), except: vec![Cond::new(Field::Installed, Op::Is(true))] }.to_rule();
-            assert!(rule.matches(&other, &facts), "any = {any}");
-            assert!(!rule.matches(&installed, &facts), "any = {any}");
+            let all = Simple { any, conds: Vec::new(), except: Vec::new() };
+            assert!(all.to_rule().matches(&other, &facts), "any = {any}");
+            assert!(all.to_rule().matches(&installed, &facts), "any = {any}");
+            assert_eq!(Simple::of(&all.to_rule()), Some(all), "the editor shows it as saved");
+            let but = Simple { any, conds: Vec::new(), except: vec![Cond::new(Field::Installed, Op::Is(true))] };
+            assert!(but.to_rule().matches(&other, &facts), "any = {any}");
+            assert!(!but.to_rule().matches(&installed, &facts), "any = {any}");
+            assert_eq!(Simple::of(&but.to_rule()), Some(but), "the editor shows it as saved");
         }
     }
 

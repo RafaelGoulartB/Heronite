@@ -417,6 +417,28 @@ fn a_group_this_pc_cant_read_is_not_a_change_on_every_sync() {
         assert_eq!(windows.sync(&[&linux], at).groups, 0);
     }
     assert!(windows.local.groups.is_empty());
+    // Nor does this PC publish it as deleted.
+    linux.sync(&[&windows], "2026-11-01T13:00:00.000Z");
+    assert_eq!(linux.local.groups["g1"]["name"], "");
+}
+
+#[test]
+fn a_group_this_pc_cant_read_does_not_lose_to_its_older_copy() {
+    let (mut linux, mut windows) = dual_boot();
+    let older = json!({ "id": "g1", "name": "W", "colour": null, "rule": { "all": [] } });
+    linux.local.groups.insert("g1".into(), older.clone());
+    linux.sync(&[], "2026-11-01T10:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T11:00:00.000Z");
+    assert_eq!(windows.local.groups["g1"], older);
+    // A newer version changes it to something this one rejects.
+    let newer = json!({ "id": "g1", "name": "", "rule": { "all": [] } });
+    linux.local.groups.insert("g1".into(), newer.clone());
+    linux.sync(&[&windows], "2026-11-01T12:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T13:00:00.000Z");
+    windows.sync(&[&linux], "2026-11-01T14:00:00.000Z");
+    assert_eq!(windows.local.groups["g1"], older, "kept as this version read it");
+    linux.sync(&[&windows], "2026-11-01T15:00:00.000Z");
+    assert_eq!(linux.local.groups["g1"], newer);
 }
 
 #[test]
