@@ -7,7 +7,7 @@
 //! once the section has loaded (each waits for the previous one), for
 //! captures without clicks: `preset:<file>`, `install`, `adopt`, `replace`,
 //! `off`, `on`, `folder:<dir>`, `repo:<url>`, `remove-source:<name>`,
-//! `addon` / `standard` (the build), `renodx` / `remove-renodx`, `remove`, `tick` / `accept` (the anti-cheat box), and the views
+//! `addon` / `standard` (the build), `renodx` / `remove-renodx`, `renodx-details`, `remove`, `tick` / `accept` (the anti-cheat box), and the views
 //! `confirm-anticheat`, `confirm-remove`,
 //! `confirm-source:<name>`, `add-repo`, `all-packages`, `installing`.
 
@@ -84,6 +84,9 @@ pub(super) struct ReshadeUi {
     pub(super) packages_open: bool,
     /// The installed shaders are listed ("Manage").
     pub(super) manage_shaders: bool,
+    /// The HDR (RenoDX) section is open: the mod, its details and the build
+    /// with add-on support (closed: one line).
+    pub(super) renodx_details: bool,
     /// Scroll the drawer to the install card on its next draw.
     pub(super) reveal: std::rc::Rc<std::cell::Cell<bool>>,
     /// Scroll the drawer to the whole section, its top first.
@@ -401,6 +404,7 @@ impl SettingsPanel {
                     self.reshade.packages_open = true;
                 }
                 "manage" => self.reshade.manage_shaders = true,
+                "renodx-details" => self.reshade.renodx_details = true,
                 "all-packages" => self.reshade.all_packages = true,
                 "installing" => {
                     self.reshade.setup = true;

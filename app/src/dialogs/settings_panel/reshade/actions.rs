@@ -224,8 +224,8 @@ impl SettingsPanel {
         let Some(risk) = self.reshade.overview.as_ref().map(|o| o.risk.clone()) else { return };
         let id = self.reshade_id();
         let line = match on {
-            true => tr!("Switching to the build with add-on support…"),
-            false => tr!("Switching to the standard build…"),
+            true => tr!("Switching ReShade to the add-on version…"),
+            false => tr!("Switching ReShade to the standard version…"),
         };
         self.reshade_op(
             line.to_string(),
@@ -234,8 +234,8 @@ impl SettingsPanel {
             |this, m, _| {
                 this.reshade.message = Some((
                     match m.addon {
-                        true => tr!("ReShade now loads add-ons. Its settings and presets stay."),
-                        false => tr!("ReShade is the standard build again. Its settings and presets stay."),
+                        true => tr!("ReShade now uses the add-on version. Its settings and presets were kept."),
+                        false => tr!("ReShade is back to the standard version. Its settings and presets were kept."),
                     }
                     .into(),
                     false,
@@ -254,7 +254,7 @@ impl SettingsPanel {
             cx,
             move |ops| renodx::install(ops, &id, &found, &risk, refresh),
             move |this, _, _| {
-                this.reshade.message = Some((tr!("RenoDX installed: {name}. Its settings are in ReShade's menu (Home).", name), false))
+                this.reshade.message = Some((tr!("HDR mod installed: {name}. Adjust it in ReShade's menu (Home key).", name), false))
             },
         );
     }
@@ -267,8 +267,8 @@ impl SettingsPanel {
             move |ops| renodx::remove(ops.paths, &id),
             |this, (_, kept), _| {
                 this.reshade.message = Some(match kept.is_empty() {
-                    true => (tr!("RenoDX removed.").into(), false),
-                    false => (tr!("RenoDX removed; {files} stays because it was changed.", files = kept.join(", ")), false),
+                    true => (tr!("HDR mod removed.").into(), false),
+                    false => (tr!("HDR mod removed. {files} was kept because it was changed.", files = kept.join(", ")), false),
                 })
             },
         );
