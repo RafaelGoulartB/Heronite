@@ -326,8 +326,13 @@ pub fn restore(dirs: &GameDirs) -> Result<RestoreSummary, String> {
                 }
             }
         }
-        // Files of ours the game wrote over.
+        // Files of ours the game wrote over. A replaced file whose backup is
+        // gone was put back by an earlier restore that failed further on: what
+        // is there is the game's own file, and it stays.
         for e in &journal.entries {
+            if e.replaced && !dirs.deploy_backup().join(&e.rel).exists() {
+                continue;
+            }
             if rewritten(&game, e) {
                 keep_written(dirs, &game, &e.rel).map_err(|err| format!("{}: {err}", e.rel))?;
                 moved.insert(e.rel.clone());
@@ -716,6 +721,30 @@ mod tests {
         assert!(!e.game.join("Data/.wh.keep.txt").exists());
         drop(d);
         e.vanilla();
+    }
+
+    /// On Windows a file the game still holds open cannot be removed.
+    #[cfg(unix)]
+    #[test]
+    fn a_restore_that_failed_halfway_is_finished_without_taking_the_games_files() {
+        use std::os::unix::fs::PermissionsExt;
+        let e = env();
+        put(e.game.join("a.txt"), "game");
+        put(e.game.join("sub/b.bin"), "game");
+        put(e.dirs.mod_dir("m").join("a.txt"), "mod");
+        put(e.dirs.mod_dir("m").join("sub/c.bin"), "mod");
+        std::mem::forget(deploy(&e.dirs, &e.game, &[e.dirs.mod_dir("m")]).unwrap());
+        let locked = |mode| fs::set_permissions(e.game.join("sub"), fs::Permissions::from_mode(mode)).unwrap();
+        locked(0o555);
+        assert!(restore(&e.dirs).is_err(), "sub/c.bin cannot be removed");
+        assert_eq!(read(e.game.join("a.txt")), "game", "the other files are back already");
+        assert!(is_deployed(&e.dirs));
+        locked(0o755);
+        let done = restore(&e.dirs).unwrap();
+        assert_eq!((done.removed, done.kept), (1, 0));
+        assert_eq!(read(e.game.join("a.txt")), "game", "the game's own file is not taken for one it wrote");
+        assert!(!e.dirs.overwrite().join("a.txt").exists() && !e.game.join("sub/c.bin").exists());
+        assert!(!is_deployed(&e.dirs));
     }
 
     #[test]
