@@ -3,41 +3,6 @@
   "name": "Heronite",
   "extensions": [
     {
-      "id": "pcgamingwiki",
-      "name": "PCGamingWiki",
-      "version": "1.0.0",
-      "api": 1,
-      "author": "Heronite",
-      "homepage": "https://www.pcgamingwiki.com",
-      "kind": "extras",
-      "adult": false,
-      "description": "Controller support, ultra-wide screens, HDR and ray tracing of PC games, and their series, from PCGamingWiki. Found by the Steam id when the game has one, else by its name.",
-      "fields": [
-        "series",
-        "features"
-      ],
-      "applies": {
-        "to": "pc"
-      },
-      "hosts": [
-        "www.pcgamingwiki.com"
-      ],
-      "images": [],
-      "settings": [],
-      "files": {
-        "source.toml": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/pcgamingwiki/source.toml",
-          "sha256": "201680e68ebec152ea9cfdf002582e7cc54ed04780e640332634615ad8303110",
-          "size": 661
-        },
-        "source.js": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/pcgamingwiki/source.js",
-          "sha256": "5dde054ba0f7ecfd42fe3cdc8b914375cbbea1a57605ba4b752b0058709ae2f9",
-          "size": 3283
-        }
-      }
-    },
-    {
       "id": "vndb",
       "name": "VNDB",
       "version": "1.0.0",

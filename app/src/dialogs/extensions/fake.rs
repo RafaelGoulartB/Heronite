@@ -88,15 +88,17 @@ pub(super) const MADE_UP: &str = r#"{
       }
     },
     {
-      "id": "pcgamingwiki", "name": "PCGamingWiki", "version": "1.0.0", "api": 1, "author": "Heronite",
-      "homepage": "https://www.pcgamingwiki.com", "kind": "extras",
-      "description": "Controller support, ultra-wide screens, HDR and ray tracing of PC games, and their series, from PCGamingWiki. Found by the Steam id when the game has one, else by its name.",
-      "fields": ["series", "features"],
-      "applies": { "to": "pc" },
-      "hosts": ["www.pcgamingwiki.com"],
+      "id": "vndb", "name": "VNDB", "version": "1.0.0", "api": 1, "author": "Heronite",
+      "homepage": "https://vndb.org", "kind": "details",
+      "description": "The Visual Novel Database (vndb.org), for visual novels and Japanese titles: found by the Japanese, romaji or English name, or by a VNDB id such as v17. Not affiliated with VNDB.",
+      "fields": ["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"],
+      "applies": { "to": "all", "asked": "fallback", "game_kind": { "name": "Visual novels", "signals": ["Visual Novel"] } },
+      "hosts": ["api.vndb.org"],
+      "images": ["t.vndb.org"],
+      "settings": [{ "label": "Title to show", "required": false }, { "label": "Use a screenshot as background", "required": false }],
       "files": {
-        "source.toml": { "url": "https://lists.example.org/pcgamingwiki/source.toml", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "size": 661 },
-        "source.js": { "url": "https://lists.example.org/pcgamingwiki/source.js", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "size": 3283 }
+        "source.toml": { "url": "https://lists.example.org/vndb/source.toml", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "size": 1373 },
+        "source.js": { "url": "https://lists.example.org/vndb/source.js", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "size": 11129 }
       }
     },
     {

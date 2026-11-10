@@ -23,12 +23,11 @@ icon 256 KB, the zip 2 MB. In a zip the files sit at the top or in one
 folder at the top. Everything the app shows about an extension comes from
 the manifest; no script runs to draw a screen.
 
-The repository has three complete examples: `extensions/wikipedia` (a
-details source asked as a fallback), `extensions/pcgamingwiki` (an
-extras source that finds games by their Steam id) and `extensions/vndb`
-(the Visual Novel Database: a details source asked as a fallback for
-visual novels, with settings, names in several scripts, pictures flagged
-adult one by one, and a service that asks clients to slow down).
+The repository has two complete examples: `extensions/wikipedia` (a
+details source asked as a fallback) and `extensions/vndb` (the Visual
+Novel Database: a details source asked as a fallback for visual novels,
+with settings, names in several scripts, pictures flagged adult one by
+one, and a service that asks clients to slow down).
 
 ## The manifest: `source.toml`
 

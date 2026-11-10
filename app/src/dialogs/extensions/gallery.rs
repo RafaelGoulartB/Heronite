@@ -428,7 +428,7 @@ mod tests {
             .map(|entry| {
                 let state = match entry.id.as_str() {
                     "wikipedia" => OfferState::Update("1.0.0".into()),
-                    "pcgamingwiki" => OfferState::Installed,
+                    "vndb" => OfferState::Installed,
                     _ => OfferState::New,
                 };
                 Offer { list: "https://own".into(), builtin: true, entry, state }
@@ -444,13 +444,15 @@ mod tests {
     fn the_filters_and_the_search_narrow_the_entries() {
         assert_eq!(ids("", Filter::All).len(), offers().len());
         assert_eq!(ids("", Filter::Kind(SourceKind::Pictures)), ["retro-box-art"]);
-        assert_eq!(ids("", Filter::Kind(SourceKind::Extras)), ["critic-scores", "pcgamingwiki"]);
+        assert_eq!(ids("", Filter::Kind(SourceKind::Extras)), ["critic-scores"]);
         assert_eq!(ids("", Filter::Updates), ["wikipedia"]);
-        assert_eq!(ids("WIKI", Filter::All), ["wikipedia", "pcgamingwiki"], "name or id, any case");
+        assert_eq!(ids("WIKI", Filter::All), ["wikipedia"], "the name, any case");
+        assert_eq!(ids("box-art", Filter::All), ["retro-box-art"], "the id");
         assert_eq!(ids("okabe", Filter::All), ["indie-shelf"], "the author");
         assert_eq!(ids("visual novels rj", Filter::All), Vec::<String>::new(), "every word must match");
-        assert_eq!(ids("visual novels", Filter::Kind(SourceKind::Details)), ["doujin-finder"]);
-        assert_eq!(ids("wiki", Filter::Kind(SourceKind::Extras)), ["pcgamingwiki"]);
+        assert_eq!(ids("visual novels", Filter::Kind(SourceKind::Details)), ["doujin-finder", "vndb"]);
+        assert_eq!(ids("pc", Filter::Kind(SourceKind::Extras)), ["critic-scores"]);
+        assert_eq!(ids("wiki", Filter::Kind(SourceKind::Extras)), Vec::<String>::new());
     }
 
     #[test]

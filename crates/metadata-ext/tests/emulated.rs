@@ -19,9 +19,9 @@ use heronite_metadata::sources::{AppliesTo, SourceStatus};
 use heronite_metadata::*;
 use heronite_metadata_ext::ExtensionsExt;
 use serde_json::{json, Value};
-use support::{endpoints, example, fixture, folder, manifest, Req, Resp, Server};
+use support::{endpoints, example, folder, manifest, pc_extras, Req, Resp, Server, PC_EXTRAS_HOST};
 
-const HOSTS: [&str; 3] = ["en.wikipedia.org", "www.pcgamingwiki.com", "api.retrodb.org"];
+const HOSTS: [&str; 3] = ["en.wikipedia.org", PC_EXTRAS_HOST, "api.retrodb.org"];
 const ARCHIVE: &str = "/launchbox/Metadata.zip";
 const SM_ROM: &str = "Super Metroid (Japan, USA) (En,Ja).sfc";
 
@@ -51,7 +51,8 @@ fn launchbox_archive() -> Vec<u8> {
 }
 
 /// LaunchBox's archive; Lutris and RetroDB know Super Metroid; Wikipedia
-/// knows Super Mario World; PCGamingWiki and libretro-thumbnails know nothing.
+/// knows Super Mario World; the PC extras source and libretro-thumbnails
+/// know nothing.
 fn mock() -> Server {
     let archive = launchbox_archive();
     Server::start(move |req: &Req| match req.path() {
@@ -83,7 +84,7 @@ fn mock() -> Server {
             "type": "standard", "title": "Super Mario World", "description": "1990 video game",
             "extract": "Super Mario World is a 1990 platform game developed and published by Nintendo."
         })),
-        "/www.pcgamingwiki.com/w/api.php" => Resp::raw_json(fixture("pcgamingwiki_empty.json")),
+        p if p.starts_with(&format!("/{PC_EXTRAS_HOST}/")) => Resp::json(json!([])),
         _ => Resp::status(404),
     })
 }
@@ -101,8 +102,8 @@ fn write(path: &Path, v: Value) {
 
 /// Super Metroid added from Playnite (no platform id: the emulator and the
 /// dump say it), Super Mario World with its platform id, and a PC game;
-/// LaunchBox's index downloaded; Wikipedia, PCGamingWiki and RetroDB
-/// installed, in that order.
+/// LaunchBox's index downloaded; Wikipedia, an extras source of PC games
+/// ([`pc_extras`]) and RetroDB installed, in that order.
 fn setup() -> Setup {
     let dir = tempfile::tempdir().unwrap();
     let paths = DataPaths::at(dir.path());
@@ -122,9 +123,8 @@ fn setup() -> Setup {
     let server = mock();
     let svc = MetadataService::with_endpoints(paths.clone(), endpoints(&server, &HOSTS));
     svc.download_source("launchbox").unwrap();
-    for name in ["wikipedia", "pcgamingwiki"] {
-        svc.install_extension(&example(name), false).unwrap();
-    }
+    svc.install_extension(&example("wikipedia"), false).unwrap();
+    svc.install_extension(&pc_extras(&dir.path().join("packages")), false).unwrap();
     install_retrodb(&svc, dir.path());
     Setup { dir, server, svc }
 }
@@ -168,7 +168,7 @@ fn extensions_answer_for_emulated_games_beside_launchbox_and_leave_cleanly() {
     let retrodb = s.svc.sources().get("retrodb").cloned().unwrap();
     assert_eq!(retrodb.applies_to, AppliesTo::Platforms(strings(&["nintendo_super_nes"])));
     assert!(retrodb.leads_for.is_none() && retrodb.download.is_none());
-    assert_eq!(s.svc.sources().get("pcgamingwiki").map(|d| d.applies_to.clone()), Some(AppliesTo::Pc));
+    assert_eq!(s.svc.sources().get("pcextras").map(|d| d.applies_to.clone()), Some(AppliesTo::Pc));
     let rows = s.svc.source_rows(&s.svc.metadata_settings());
     let row = rows.iter().find(|r| r.descriptor.id == "retrodb").unwrap();
     assert!(row.status == SourceStatus::On && row.reorderable && row.download.is_none() && row.problem.is_none());
@@ -194,7 +194,7 @@ fn extensions_answer_for_emulated_games_beside_launchbox_and_leave_cleanly() {
         s.svc.field_order(&settings, "description"),
         strings(&["igdb", "steam", "store", "lutris", "playnite", "launchbox", "wikipedia", "retrodb"])
     );
-    assert_eq!(s.svc.field_order(&settings, "series"), strings(&["igdb", "playnite", "pcgamingwiki", "retrodb"]));
+    assert_eq!(s.svc.field_order(&settings, "series"), strings(&["igdb", "playnite", "pcextras", "retrodb"]));
     let saved = s.svc.apply_game_metadata(&args("sm", "Super Metroid")).unwrap();
     for field in ["description", "genres", "releaseDate", "cover"] {
         assert_eq!(saved.field_sources[field], "launchbox", "{field}");
@@ -234,10 +234,12 @@ fn extensions_answer_for_emulated_games_beside_launchbox_and_leave_cleanly() {
     assert!(saved.description.as_deref().unwrap().starts_with("Super Mario World is a 1990 platform game"));
     s.svc.set_source_field_enabled("launchbox", "description", true).unwrap();
 
-    // PCGamingWiki is for PC games: never asked about the emulated ones.
-    assert_eq!(requests("/www.pcgamingwiki.com"), 0);
+    // The extras source is for PC games (`to = "pc"`): never asked about
+    // the emulated ones.
+    let extras = format!("/{PC_EXTRAS_HOST}/");
+    assert_eq!(requests(&extras), 0);
     let preview = s.svc.preview_game_metadata(&args("p2", "Portal 2")).unwrap();
-    assert!(requests("/www.pcgamingwiki.com") > 0);
+    assert!(requests(&extras) > 0);
     assert_eq!(state(&preview, "retrodb"), Some(SourceAnswer::NotAsked { why: NotAsked::NotForThisGame }));
     assert_eq!(state(&preview, "launchbox"), Some(SourceAnswer::NotAsked { why: NotAsked::NotForThisGame }));
 
@@ -251,7 +253,7 @@ fn extensions_answer_for_emulated_games_beside_launchbox_and_leave_cleanly() {
     let rows_after = row_ids(&s.svc);
     assert_eq!(rows_after, rows_before.iter().filter(|id| *id != "retrodb").cloned().collect::<Vec<_>>());
     let settings = s.svc.metadata_settings();
-    assert_eq!(s.svc.field_order(&settings, "series"), strings(&["igdb", "playnite", "pcgamingwiki"]));
+    assert_eq!(s.svc.field_order(&settings, "series"), strings(&["igdb", "playnite", "pcextras"]));
     assert_eq!(s.svc.field_order(&settings, "description").first().map(String::as_str), Some("retrodb"), "kept, never answers");
     assert!(!s.svc.bulk_sources(&settings).iter().any(|d| d.id == "retrodb"));
     let asked_before = requests("/api.retrodb.org");

@@ -347,7 +347,7 @@ mod tests {
     fn offers_say_how_each_entry_stands_here() {
         let own = copy("https://own", true, super::super::fake::MADE_UP);
         let mut snap = Snapshot {
-            installed: vec![installed("wikipedia", "1.0.0", Some("https://own")), installed("pcgamingwiki", "1.0.0", None)],
+            installed: vec![installed("wikipedia", "1.0.0", Some("https://own")), installed("vndb", "1.0.0", None)],
             in_use: vec![("https://own".into(), true)],
             copies: vec![own],
             updates: Vec::new(),
@@ -356,7 +356,7 @@ mod tests {
         let offers = snap.offers();
         let state = |id: &str| offers.iter().find(|o| o.entry.id == id).map(|o| o.state.clone());
         assert_eq!(state("wikipedia"), Some(OfferState::Update("1.0.0".into())));
-        assert_eq!(state("pcgamingwiki"), Some(OfferState::Installed), "installed from a file: never flagged");
+        assert_eq!(state("vndb"), Some(OfferState::Installed), "installed from a file: never flagged");
         assert_eq!(state("indie-shelf"), Some(OfferState::New));
         assert_eq!(state("future-db"), Some(OfferState::Unsupported));
         let (n, single) = snap.more().unwrap();

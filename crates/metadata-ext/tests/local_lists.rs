@@ -29,7 +29,7 @@ fn offline(data: &Path) -> MetadataService {
 /// A copy of the repository's `extensions/` (the list and its folders) in
 /// `dir`; returns the list's path.
 fn copy_of_the_repository_list(dir: &Path) -> PathBuf {
-    for id in ["wikipedia", "pcgamingwiki", "vndb"] {
+    for id in ["wikipedia", "vndb"] {
         std::fs::create_dir_all(dir.join(id)).unwrap();
         for file in ["source.toml", "source.js"] {
             std::fs::copy(example(id).join(file), dir.join(id).join(file)).unwrap();
@@ -70,7 +70,7 @@ fn a_list_on_this_computer_is_read_and_checked_without_the_network_or_a_copy() {
     assert!(copy.builtin && copy.error.is_none() && copy.read_at.is_some(), "{copy:?}");
     assert_eq!(copy.url, key);
     let ids: Vec<&str> = copy.index.as_ref().unwrap().entries.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["pcgamingwiki", "vndb", "wikipedia"]);
+    assert_eq!(ids, ["vndb", "wikipedia"]);
     // Read now when the copies kept are asked for too, and no copy is kept.
     assert_eq!(own.cached(&svc)[0].index, copy.index);
     let kept = std::fs::read_dir(svc.paths.extension_lists_cache_dir()).map(|d| d.count()).unwrap_or(0);
@@ -179,9 +179,9 @@ fn the_repository_list_read_from_this_checkout_installs_every_example() {
     }
     let installed = svc.installed_extensions();
     let ids: Vec<&str> = installed.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["pcgamingwiki", "vndb", "wikipedia"]);
+    assert_eq!(ids, ["vndb", "wikipedia"]);
     assert!(installed.iter().all(|e| e.list.as_deref() == Some(key.as_str()) && own.origin(&svc, e) == Origin::Local(key.clone())));
-    assert!(svc.sources().get("wikipedia").is_some() && svc.sources().get("pcgamingwiki").is_some(), "registered and asked");
+    assert!(svc.sources().get("wikipedia").is_some() && svc.sources().get("vndb").is_some(), "registered and asked");
     // Nothing updates while the list offers the versions installed.
     assert!(lists::updates(&own.refresh(&svc), &installed).is_empty());
 }

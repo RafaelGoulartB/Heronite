@@ -1,5 +1,6 @@
-//! The example extensions of `extensions/` against recorded answers, through
-//! the real install and gather.
+//! The example extensions of `extensions/` against recorded answers, and an
+//! extras source of PC games written for the tests, through the real install
+//! and gather.
 
 mod support;
 
@@ -11,23 +12,23 @@ use heronite_data::paths::DataPaths;
 use heronite_metadata::*;
 use heronite_metadata_ext::ExtensionsExt;
 use serde_json::{json, Value};
-use support::{endpoints, example, fixture, Req, Resp, Server};
+use support::{endpoints, example, fixture, pc_extras, Req, Resp, Server, PC_EXTRAS_HOST};
 
-const HOSTS: [&str; 3] = ["en.wikipedia.org", "pt.wikipedia.org", "www.pcgamingwiki.com"];
+const HOSTS: [&str; 3] = ["en.wikipedia.org", "pt.wikipedia.org", PC_EXTRAS_HOST];
 
-fn cargo_answer(req: &Req) -> Resp {
-    let tables = req.query("tables").unwrap_or_default();
-    let filter = req.query("where").unwrap_or_default();
-    let file = if tables.contains("Input") && filter.contains("\"Portal 2\"") {
-        "pcgamingwiki_fetch_portal2.json"
-    } else if filter.contains("HOLDS \"620\"") {
-        "pcgamingwiki_find_steam_620.json"
-    } else if filter.contains("LIKE \"%Portal 2%\"") {
-        "pcgamingwiki_find_title_portal2.json"
-    } else {
-        "pcgamingwiki_empty.json"
-    };
-    Resp::raw_json(fixture(file))
+/// The service of [`pc_extras`]: Portal 2 by its Steam id or its name.
+fn extras_answer(req: &Req) -> Resp {
+    let portal2 = json!({"page": "Portal 2", "year": 2011});
+    match (req.path().rsplit('/').next(), req.query("steam"), req.query("title"), req.query("page")) {
+        (Some("find"), Some(steam), _, _) => Resp::json(if steam == "620" { json!([portal2]) } else { json!([]) }),
+        (Some("find"), None, Some(title), _) if title == "Portal 2" => {
+            Resp::json(json!([portal2, {"page": "Portal 2: Desolation", "year": 2024}]))
+        }
+        (Some("game"), _, _, Some(page)) if page == "Portal 2" => {
+            Resp::json(json!([{"page": "Portal 2", "series": "Portal", "features": ["Full controller support"]}]))
+        }
+        _ => Resp::json(json!([])),
+    }
 }
 
 fn mock() -> Server {
@@ -42,7 +43,7 @@ fn mock() -> Server {
         "/en.wikipedia.org/w/api.php" if req.query("lllang").as_deref() == Some("pt") => {
             Resp::raw_json(fixture("wikipedia_langlinks_pt_portal2.json"))
         }
-        "/www.pcgamingwiki.com/w/api.php" => cargo_answer(req),
+        p if p.starts_with(&format!("/{PC_EXTRAS_HOST}/")) => extras_answer(req),
         "/lutris/api/games" => Resp::json(json!({"results": []})),
         _ => Resp::status(404),
     })
@@ -71,9 +72,8 @@ fn setup() -> Setup {
     write(&paths.collection_settings(), json!({"metadata": {}}));
     let server = mock();
     let svc = MetadataService::with_endpoints(paths.clone(), endpoints(&server, &HOSTS));
-    for name in ["wikipedia", "pcgamingwiki"] {
-        svc.install_extension(&example(name), false).unwrap();
-    }
+    svc.install_extension(&example("wikipedia"), false).unwrap();
+    svc.install_extension(&pc_extras(&dir.path().join("packages")), false).unwrap();
     Setup { _dir: dir, paths, server, svc }
 }
 
@@ -93,9 +93,10 @@ fn the_examples_install_as_written() {
     let wiki = s.svc.sources().get("wikipedia").cloned().unwrap();
     assert!(wiki.is_fallback() && wiki.kind == SourceKind::Details);
     assert_eq!(wiki.provides, ["description", "releaseDate"]);
-    let pcgw = s.svc.sources().get("pcgamingwiki").cloned().unwrap();
-    assert_eq!((pcgw.kind, pcgw.provides.clone()), (SourceKind::Extras, vec!["series".to_string(), "features".to_string()]));
-    assert!(s.svc.sources().has_test("wikipedia") && !s.svc.sources().has_test("pcgamingwiki"));
+    let extras = s.svc.sources().get("pcextras").cloned().unwrap();
+    assert_eq!((extras.kind, extras.provides.clone()), (SourceKind::Extras, vec!["series".to_string(), "features".to_string()]));
+    assert_eq!(extras.applies_to, sources::AppliesTo::Pc);
+    assert!(s.svc.sources().has_test("wikipedia") && !s.svc.sources().has_test("pcextras"));
     let info = s.svc.inspect_extension(&example("wikipedia")).unwrap();
     assert_eq!(info.hosts, ["*.wikipedia.org"]);
     assert!(info.readme.is_some_and(|r| r.starts_with("# Wikipedia")));
@@ -138,25 +139,25 @@ fn wikipedia_is_searched_by_name() {
 }
 
 #[test]
-fn pcgamingwiki_finds_a_game_by_its_steam_id() {
+fn an_extras_source_finds_a_game_by_its_steam_id() {
     let s = setup();
     let saved = s.svc.apply_game_metadata(&args("steam620", Some("620"))).unwrap();
     assert_eq!(saved.features, ["Full controller support"]);
     assert_eq!(saved.series.as_deref(), Some("Portal"));
-    assert_eq!(saved.field_sources["features"], "pcgamingwiki");
-    let m = heronite_metadata::record::source_match(&saved, "pcgamingwiki").unwrap();
+    assert_eq!(saved.field_sources["features"], "pcextras");
+    let m = heronite_metadata::record::source_match(&saved, "pcextras").unwrap();
     assert_eq!((m.id.as_str(), m.matched_by), ("Portal 2", Some(MatchedBy::SteamId)));
-    assert_eq!(s.server.count(|r| r.query("where").is_some_and(|w| w.contains("LIKE"))), 0, "no title search");
+    assert_eq!(s.server.count(|r| r.path().ends_with("/find") && r.query("title").is_some()), 0, "no title search");
 }
 
 #[test]
-fn pcgamingwiki_finds_a_game_by_its_name_otherwise() {
+fn an_extras_source_finds_a_game_by_its_name_otherwise() {
     let s = setup();
     let ctx = SourceContext::new(&s.paths, &s.svc.http);
     let game = SourceGame { app_name: "portal2".into(), runner: "sideload".into(), title: "Portal 2".into(), ..Default::default() };
     let source = s.svc.sources();
-    let pcgw = source.lookups().find(|l| l.descriptor().id == "pcgamingwiki").unwrap();
-    let Lookup::Found(c) = pcgw.lookup(&ctx, &game) else { panic!() };
+    let extras = source.lookups().find(|l| l.descriptor().id == "pcextras").unwrap();
+    let Lookup::Found(c) = extras.lookup(&ctx, &game) else { panic!() };
     assert_eq!((c.match_id.as_deref(), c.matched_by), (Some("Portal 2"), Some(MatchedBy::ExactTitle)));
     assert_eq!(c.metadata.features, ["Full controller support"]);
     assert!(c.metadata.description.is_none(), "it fills only its own fields");

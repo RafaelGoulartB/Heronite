@@ -31,6 +31,40 @@ pub fn folder(parent: &Path, name: &str, manifest: &str, script: &str) -> PathBu
     dir
 }
 
+/// The host [`pc_extras`] asks.
+pub const PC_EXTRAS_HOST: &str = "api.pcextras.example.org";
+
+/// An extras source of PC games written for the tests: series and features,
+/// found by the game's Steam id when it has one (`matchedBy: steam`), else
+/// by its name. Its service answers `GET /find?steam=…` or `?title=…` with
+/// `[{page, year}]` and `GET /game?page=…` with `[{page, series, features}]`.
+const PC_EXTRAS_JS: &str = r#"
+async function get(ctx, path, query) {
+  const r = await ctx.http.get("https://api.pcextras.example.org/" + path, { query });
+  if (r.status !== 200) throw new Error("answered " + r.status);
+  return r.json();
+}
+export async function find(game, ctx) {
+  if (game.ids.steam) {
+    const rows = await get(ctx, "find", { steam: game.ids.steam });
+    if (rows.length) return rows.map((r) => ({ id: r.page, title: r.page, year: r.year, matchedBy: { id: "steam" } }));
+  }
+  const rows = await get(ctx, "find", { title: game.title });
+  return rows.map((r) => ({ id: r.page, title: r.page, year: r.year }));
+}
+export async function fetch(id, ctx) {
+  const row = (await get(ctx, "game", { page: id }))[0];
+  return row ? { title: row.page, series: row.series, features: row.features } : null;
+}
+"#;
+
+/// Writes the [`PC_EXTRAS_JS`] extension (`pcextras`, for PC games) in
+/// `parent/pcextras`.
+pub fn pc_extras(parent: &Path) -> PathBuf {
+    let body = format!("[applies]\nto = \"pc\"\n\n[network]\nhosts = [\"{PC_EXTRAS_HOST}\"]\nrate = \"10/s\"");
+    folder(parent, "pcextras", &manifest("pcextras", "1.0.0", "extras", &["series", "features"], &body), PC_EXTRAS_JS)
+}
+
 /// Endpoints of `server` whose origins `https://<host>` go to
 /// `<server>/<host>` for each of `hosts`.
 pub fn endpoints(server: &Server, hosts: &[&str]) -> Endpoints {

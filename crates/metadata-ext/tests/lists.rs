@@ -166,7 +166,7 @@ fn a_list_is_read_kept_and_shown_offline_with_its_age() {
     let copy = &copies[0];
     assert!(copy.builtin && copy.error.is_none());
     let ids: Vec<&str> = copy.index.as_ref().unwrap().entries.iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(ids, ["pcgamingwiki", "vndb", "wikipedia"]);
+    assert_eq!(ids, ["vndb", "wikipedia"]);
     let read = s.server.log.lock().iter().find(|r| r.path() == "/lists.example.org/index.json").cloned().unwrap();
     assert!(read.header("user-agent").is_some_and(|ua| ua.starts_with("Heronite/")));
 
@@ -179,7 +179,7 @@ fn a_list_is_read_kept_and_shown_offline_with_its_age() {
     let offline = s.offline();
     let copy = s.lists.read(&offline, LIST);
     assert!(matches!(copy.error, Some(ListError::Unreachable(_))), "{:?}", copy.error);
-    assert_eq!(copy.index.as_ref().unwrap().entries.len(), 3);
+    assert_eq!(copy.index.as_ref().unwrap().entries.len(), 2);
     assert_eq!(copy.read_at, Some(UNIX_EPOCH + Duration::from_secs(three_days_ago)));
     // Without the network at all, the same copy.
     assert_eq!(s.lists.cached(&offline)[0].index, copy.index);
@@ -293,12 +293,12 @@ fn a_manifest_that_is_not_what_its_entry_says_is_refused() {
     }
     // Another id: the files are another extension's.
     let mut list = list_json();
-    let pcgw = entry_mut(&mut list, "pcgamingwiki").clone();
+    let vndb = entry_mut(&mut list, "vndb").clone();
     let w = entry_mut(&mut list, "wikipedia");
-    w["files"] = pcgw["files"].clone();
+    w["files"] = vndb["files"].clone();
     *s.list.lock() = list;
     let err = lists::prepare(&s.svc, LIST, &s.entry("wikipedia")).unwrap_err();
-    assert!(matches!(err, ExtensionError::NotAsListed(ref m) if m.contains("pcgamingwiki")), "{err:?}");
+    assert!(matches!(err, ExtensionError::NotAsListed(ref m) if m.contains("vndb")), "{err:?}");
     assert!(s.svc.installed_extensions().is_empty());
 }
 
@@ -308,12 +308,12 @@ fn updates_are_flagged_from_the_list_an_extension_came_from_only() {
     let prepared = lists::prepare(&s.svc, LIST, &s.entry("wikipedia")).unwrap();
     lists::install_prepared(&s.svc, &prepared, false).unwrap();
     // The same extension from a file says nothing about any list.
-    s.svc.install_extension(&example("pcgamingwiki"), false).unwrap();
+    s.svc.install_extension(&example("vndb"), false).unwrap();
     let installed = s.svc.installed_extensions();
     assert!(lists::updates(&s.lists.refresh(&s.svc), &installed).is_empty(), "the same versions");
 
     let mut list = list_json();
-    for id in ["wikipedia", "pcgamingwiki"] {
+    for id in ["wikipedia", "vndb"] {
         entry_mut(&mut list, id)["version"] = json!("1.1.0");
     }
     *s.list.lock() = list;
@@ -334,7 +334,7 @@ fn a_list_removed_leaves_what_came_from_it() {
     assert!(copies.iter().all(|c| c.error.is_none() && c.index.is_some()));
     assert!(!copies[1].builtin);
 
-    let entry = copies[1].index.as_ref().unwrap().get("pcgamingwiki").cloned().unwrap();
+    let entry = copies[1].index.as_ref().unwrap().get("vndb").cloned().unwrap();
     let prepared = lists::prepare(&s.svc, OTHER, &entry).unwrap();
     let InstallOutcome::Installed(ext) = lists::install_prepared(&s.svc, &prepared, false).unwrap() else { panic!() };
     assert_eq!(s.lists.origin(&s.svc, &ext), Origin::List(OTHER.into()));
@@ -344,9 +344,9 @@ fn a_list_removed_leaves_what_came_from_it() {
     s.lists.remove(&s.svc, LIST).unwrap();
     assert_eq!(s.lists.in_use(&s.svc), [(LIST.to_owned(), true)], "the app's own list stays");
     assert_eq!(s.lists.cached(&s.svc).len(), 1);
-    let ext = s.svc.installed_extensions().into_iter().find(|e| e.id == "pcgamingwiki").unwrap();
+    let ext = s.svc.installed_extensions().into_iter().find(|e| e.id == "vndb").unwrap();
     assert_eq!(s.lists.origin(&s.svc, &ext), Origin::GoneList(OTHER.into()));
-    assert!(s.svc.sources().get("pcgamingwiki").is_some(), "still installed and asked");
+    assert!(s.svc.sources().get("vndb").is_some(), "still installed and asked");
 }
 
 #[test]

@@ -25,12 +25,11 @@ fn lookup(name: &str, game: SourceGame) -> MetadataCandidate {
     }
 }
 
-fn portal2(steam: Option<&str>, language: Option<&str>) -> SourceGame {
+fn portal2(language: Option<&str>) -> SourceGame {
     SourceGame {
         app_name: "a".into(),
         runner: "sideload".into(),
         title: "Portal 2".into(),
-        steam_app_id: steam.map(Into::into),
         language: language.map(Into::into),
         ..Default::default()
     }
@@ -41,21 +40,10 @@ fn live_wikipedia() {
     if !enabled() {
         return;
     }
-    let c = lookup("wikipedia", portal2(None, Some("pt-BR")));
+    let c = lookup("wikipedia", portal2(Some("pt-BR")));
     assert_eq!((c.match_id.as_deref(), c.matched_by), (Some("Portal_2"), Some(MatchedBy::ExactTitle)));
     assert!(c.metadata.description.as_deref().is_some_and(|d| d.contains("Valve")));
     assert_eq!(c.metadata.release_date.as_deref(), Some("2011"));
-}
-
-#[test]
-fn live_pcgamingwiki() {
-    if !enabled() {
-        return;
-    }
-    let c = lookup("pcgamingwiki", portal2(Some("620"), None));
-    assert_eq!((c.match_id.as_deref(), c.matched_by), (Some("Portal 2"), Some(MatchedBy::SteamId)));
-    assert_eq!(c.metadata.series.as_deref(), Some("Portal"));
-    assert!(c.metadata.features.iter().any(|f| f.contains("ontroller support")), "{:?}", c.metadata.features);
 }
 
 #[test]
