@@ -27,6 +27,11 @@ pub trait ProcessHandle: Send {
     fn terminate(&mut self);
     /// SIGKILL to the process tree.
     fn kill(&mut self);
+    /// Ctrl+C to the process alone (SIGINT on Unix): a helper that finishes
+    /// its work on Ctrl+C. Terminates it where that cannot be sent.
+    fn interrupt(&mut self) {
+        self.terminate();
+    }
 }
 
 pub trait Spawner: Send + Sync {
@@ -35,6 +40,15 @@ pub trait Spawner: Send + Sync {
     /// Starts `cmd`; its stdout/stderr are appended to `log` (the game's
     /// Heroic-style log) as they arrive.
     fn spawn_logged(&self, cmd: &Command, _log: Option<Arc<GameLog>>) -> io::Result<Box<dyn ProcessHandle>> {
+        self.spawn(cmd, None)
+    }
+    /// Starts a command-line helper the app runs beside games (Comet), its
+    /// output appended to `log_file` as it is (nothing of the command is
+    /// written: its arguments may be secret). On Windows it gets a console
+    /// of its own without a window, where [`ProcessHandle::interrupt`] sends
+    /// Ctrl+C; on Linux it gets SIGINT when the calling thread dies, so keep
+    /// that thread alive while the helper runs.
+    fn spawn_helper(&self, cmd: &Command, _log_file: Option<&Path>) -> io::Result<Box<dyn ProcessHandle>> {
         self.spawn(cmd, None)
     }
     /// Opens a URI with the desktop handler (`xdg-open`, the shell on
@@ -135,6 +149,10 @@ impl ProcessHandle for SystemHandle {
         signal_tree(&*self.procs, self.pid, Sig::Kill);
         self.signal_group(Signal::Kill);
     }
+
+    fn interrupt(&mut self) {
+        os::interrupt(self.pid);
+    }
 }
 
 /// Where the output of a spawned process goes.
@@ -144,13 +162,16 @@ enum Sink {
     File(PathBuf),
     /// The game's log.
     Log(Arc<GameLog>),
+    /// A file the output is appended to, with no header.
+    Append(PathBuf),
 }
 
 impl SystemSpawner {
     /// The child's stdout and stderr are the file itself (no pipe, no pump
     /// thread): the game keeps working, and keeps logging, if the launcher
     /// exits before it does.
-    fn spawn_with(&self, cmd: &Command, sink: Sink) -> io::Result<Box<dyn ProcessHandle>> {
+    /// `helper`: see [`Spawner::spawn_helper`].
+    fn spawn_with(&self, cmd: &Command, sink: Sink, helper: bool) -> io::Result<Box<dyn ProcessHandle>> {
         use std::process::Stdio;
         let host = if cfg!(windows) { script_host(&cmd.program) } else { None };
         let mut c = match host {
@@ -174,10 +195,21 @@ impl SystemSpawner {
         c.stdin(Stdio::null());
         // A script's console would stay empty (its output goes to the log):
         // Windows opens none for it.
-        if cfg!(windows) && (host.is_some() || is_batch(&cmd.program)) {
+        if cfg!(windows) && (helper || host.is_some() || is_batch(&cmd.program)) {
             os::new_helper_group(&mut c);
         } else {
             os::new_group(&mut c);
+        }
+        #[cfg(target_os = "linux")]
+        if helper {
+            use std::os::unix::process::CommandExt;
+            // SAFETY: only an async-signal-safe prctl between fork and exec.
+            unsafe {
+                c.pre_exec(|| {
+                    libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGINT);
+                    Ok(())
+                });
+            }
         }
         let (out, err) = match &sink {
             Sink::None => (Stdio::null(), Stdio::null()),
@@ -200,6 +232,18 @@ impl SystemSpawner {
                 }
             }
             Sink::Log(log) => (log.child_stdio(), log.child_stdio()),
+            Sink::Append(p) => {
+                if let Some(dir) = p.parent() {
+                    let _ = std::fs::create_dir_all(dir);
+                }
+                match std::fs::OpenOptions::new().create(true).append(true).open(p) {
+                    Ok(f) => match f.try_clone() {
+                        Ok(f2) => (Stdio::from(f), Stdio::from(f2)),
+                        Err(_) => (Stdio::from(f), Stdio::null()),
+                    },
+                    Err(_) => (Stdio::null(), Stdio::null()),
+                }
+            }
         };
         c.stdout(out).stderr(err);
         let child = heronite_data::proc::spawn(&mut c)?;
@@ -232,11 +276,15 @@ fn extension(path: &str) -> String {
 
 impl Spawner for SystemSpawner {
     fn spawn(&self, cmd: &Command, log_path: Option<&Path>) -> io::Result<Box<dyn ProcessHandle>> {
-        self.spawn_with(cmd, log_path.map_or(Sink::None, |p| Sink::File(p.to_path_buf())))
+        self.spawn_with(cmd, log_path.map_or(Sink::None, |p| Sink::File(p.to_path_buf())), false)
     }
 
     fn spawn_logged(&self, cmd: &Command, log: Option<Arc<GameLog>>) -> io::Result<Box<dyn ProcessHandle>> {
-        self.spawn_with(cmd, log.map_or(Sink::None, Sink::Log))
+        self.spawn_with(cmd, log.map_or(Sink::None, Sink::Log), false)
+    }
+
+    fn spawn_helper(&self, cmd: &Command, log_file: Option<&Path>) -> io::Result<Box<dyn ProcessHandle>> {
+        self.spawn_with(cmd, log_file.map_or(Sink::None, |p| Sink::Append(p.to_path_buf())), true)
     }
 
     fn open_uri(&self, uri: &str) -> io::Result<()> {

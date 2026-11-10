@@ -1,11 +1,12 @@
-//! The command-line tool behind a store: `nile` (Amazon Games login,
-//! library and downloads). Epic and GOG need none (`heronite_epic_api`,
-//! `heronite_gog_api`). It is found in the settings, the data folder or
-//! `PATH`, and downloaded into `<data>/tools/bin` (`nile.exe` there on
-//! Windows) from its GitHub release when none is there. The release is the
-//! one Heroic pins (`RELEASE_TAGS` in its `meta/downloadHelperBinaries.ts`);
-//! its Windows build is a standalone program (PyInstaller), no Python
-//! needed.
+//! The command-line tools behind a store: `nile` (Amazon Games login,
+//! library and downloads) and `comet` (GOG Galaxy's service for GOG games'
+//! achievements, see [`crate::galaxy`]). Epic and GOG need none otherwise
+//! (`heronite_epic_api`, `heronite_gog_api`). Each is found in the settings,
+//! the data folder or `PATH`, and downloaded into `<data>/tools/bin` from
+//! its GitHub release when none is there. nile's release is the one Heroic
+//! pins (`RELEASE_TAGS` in its `meta/downloadHelperBinaries.ts`); its
+//! Windows build is a standalone program (PyInstaller), no Python needed.
+//! Comet's is newer than Heroic's pin (v0.2.0).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,9 @@ pub struct StoreTool {
     pub setting: &'static str,
     repo: &'static str,
     version: &'static str,
+    /// Looked for on `PATH` too. Not for a name other programs use
+    /// (`comet`): it would get the account's tokens.
+    on_path: bool,
     /// Release assets: (system, CPU, file), as `std::env::consts` names them.
     assets: &'static [(&'static str, &'static str, &'static str)],
 }
@@ -42,12 +46,29 @@ pub const NILE: StoreTool = StoreTool {
     setting: "altNileBin",
     repo: "imLinguin/nile",
     version: "v1.2.0",
+    on_path: true,
     assets: &[
         ("linux", "x86_64", "nile_linux_x86_64"),
         ("linux", "aarch64", "nile_linux_arm64"),
         ("windows", "x86_64", "nile_windows_x86_64.exe"),
         // No Arm build: Windows on Arm runs x64 programs.
         ("windows", "aarch64", "nile_windows_x86_64.exe"),
+    ],
+};
+
+/// GOG Galaxy's communication service, open source (a Rust program).
+pub const COMET: StoreTool = StoreTool {
+    name: "comet",
+    env: "HERONITE_COMET_BIN",
+    setting: "altCometBin",
+    repo: "imLinguin/comet",
+    version: "v0.4.1",
+    on_path: false,
+    assets: &[
+        ("linux", "x86_64", "comet-x86_64-unknown-linux-gnu"),
+        ("linux", "aarch64", "comet-aarch64-unknown-linux-gnu"),
+        ("windows", "x86_64", "comet-x86_64-pc-windows-msvc.exe"),
+        ("windows", "aarch64", "comet-aarch64-pc-windows-msvc.exe"),
     ],
 };
 
@@ -107,9 +128,10 @@ fn elf_interpreter(head: &[u8]) -> Option<String> {
 
 /// One download of a tool at a time per process: a login and a refresh
 /// can both ask.
-fn busy(_tool: &StoreTool) -> &'static Mutex<()> {
-    static BUSY: Mutex<()> = Mutex::new(());
-    &BUSY
+fn busy(tool: &StoreTool) -> &'static Mutex<()> {
+    static BUSY: [Mutex<()>; 2] = [Mutex::new(()), Mutex::new(())];
+    let i = [NILE.name, COMET.name].iter().position(|n| *n == tool.name).unwrap_or(0);
+    &BUSY[i]
 }
 
 impl StoreTool {
@@ -158,12 +180,13 @@ impl StoreTool {
     /// what NixOS leaves out ([`missing_runtime`]).
     pub fn find(&self, ctx: &PlanContext, probe: &dyn Probe) -> Option<String> {
         let mut candidates = self.candidates(ctx, probe);
+        let which = || if self.on_path { probe.which(self.name) } else { None };
         if probe.exists(NIXOS_MARKER) {
-            if let Some(on_path) = probe.which(self.name) {
+            if let Some(on_path) = which() {
                 candidates.insert(candidates.len() - 1, on_path);
             }
         }
-        candidates.into_iter().find(|p| probe.exists(p)).or_else(|| probe.which(self.name))
+        candidates.into_iter().find(|p| probe.exists(p)).or_else(which)
     }
 
     /// The binary to run: an existing one, else a fresh download into the
@@ -246,19 +269,20 @@ pub(crate) mod tests {
 
     #[test]
     fn downloads_into_the_data_folder_when_none_is_found() {
-        let tool = NILE;
-        let dir = tempfile::tempdir().unwrap();
-        let paths = DataPaths::at(dir.path().join("heronite"));
-        let url = tool.download_url(tool.asset_name().unwrap());
-        let net = FakeNet::online().with_file(&url, fake_bin(true));
-        let got = tool.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap();
-        assert_eq!(got, tool.data_bin(&paths));
-        assert!(got.exists());
-        assert!(!part_file(&got).exists());
+        for tool in [NILE, COMET] {
+            let dir = tempfile::tempdir().unwrap();
+            let paths = DataPaths::at(dir.path().join("heronite"));
+            let url = tool.download_url(tool.asset_name().unwrap());
+            let net = FakeNet::online().with_file(&url, fake_bin(true));
+            let got = tool.ensure(&paths, &FakeProbe::default(), &net, &|| false).unwrap();
+            assert_eq!(got, tool.data_bin(&paths));
+            assert!(got.exists());
+            assert!(!part_file(&got).exists());
 
-        let probe = FakeProbe::default().with_path(got.to_str().unwrap());
-        tool.ensure(&paths, &probe, &net, &|| false).unwrap();
-        assert_eq!(net.requests().len(), 1, "{}", tool.name);
+            let probe = FakeProbe::default().with_path(got.to_str().unwrap());
+            tool.ensure(&paths, &probe, &net, &|| false).unwrap();
+            assert_eq!(net.requests().len(), 1, "{}", tool.name);
+        }
     }
 
     #[test]
@@ -269,9 +293,16 @@ pub(crate) mod tests {
             Some("https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_windows_x86_64.exe")
         );
         assert_eq!(url(NILE, "windows", "aarch64"), url(NILE, "windows", "x86_64"), "x64 under emulation");
+        assert_eq!(
+            url(COMET, "linux", "x86_64").as_deref(),
+            Some("https://github.com/imLinguin/comet/releases/download/v0.4.1/comet-x86_64-unknown-linux-gnu")
+        );
+        assert_eq!(COMET.asset_for("windows", "aarch64"), Some("comet-aarch64-pc-windows-msvc.exe"));
         assert_eq!(NILE.asset_for("linux", "aarch64"), Some("nile_linux_arm64"));
         assert_eq!(NILE.asset_for("macos", "aarch64"), None);
-        assert!(NILE.asset_name().is_some(), "nile has a build for this system");
+        for tool in [NILE, COMET] {
+            assert!(tool.asset_name().is_some(), "{} has a build for this system", tool.name);
+        }
     }
 
     #[test]
@@ -291,6 +322,9 @@ pub(crate) mod tests {
         let probe = FakeProbe::default().with_bin("nile", "/usr/bin/nile");
         assert_eq!(NILE.find(&ctx, &probe).as_deref(), Some("/usr/bin/nile"));
         assert_eq!(NILE.find(&ctx, &FakeProbe::default()), None);
+        // Another program may be called `comet`.
+        let probe = FakeProbe::default().with_bin("comet", "/usr/bin/comet").with_path(NIXOS_MARKER);
+        assert_eq!(COMET.find(&ctx, &probe), None);
     }
 
     #[test]
@@ -360,16 +394,17 @@ pub(crate) mod tests {
     /// The real releases, downloaded and run (`--version`) on this system:
     /// `cargo test -p heronite-launch --lib real_releases -- --ignored`.
     #[test]
-    #[ignore = "downloads about 15 MB"]
+    #[ignore = "downloads about 30 MB"]
     fn real_releases_install_and_run_here() {
         let dir = tempfile::tempdir().unwrap();
         let paths = DataPaths::at(dir.path().join("heronite"));
-        let tool = NILE;
-        let got = tool.ensure(&paths, &FakeProbe::default(), &crate::net::SystemNet, &|| false).unwrap();
-        assert_eq!(got, tool.data_bin(&paths));
-        let out = heronite_data::proc::output(std::process::Command::new(&got).arg("--version")).unwrap();
-        assert!(out.success(), "{}: {}", tool.name, out.stderr_text());
-        let version = tool.version().trim_start_matches('v');
-        assert!(out.stdout_text().contains(version), "{}: {}", tool.name, out.stdout_text());
+        for tool in [NILE, COMET] {
+            let got = tool.ensure(&paths, &FakeProbe::default(), &crate::net::SystemNet, &|| false).unwrap();
+            assert_eq!(got, tool.data_bin(&paths));
+            let out = heronite_data::proc::output(std::process::Command::new(&got).arg("--version")).unwrap();
+            assert!(out.success(), "{}: {}", tool.name, out.stderr_text());
+            let version = tool.version().trim_start_matches('v');
+            assert!(out.stdout_text().contains(version), "{}: {}", tool.name, out.stdout_text());
+        }
     }
 }

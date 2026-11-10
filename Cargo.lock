@@ -3572,6 +3572,7 @@ dependencies = [
  "heronite-backup",
  "heronite-clients",
  "heronite-data",
+ "heronite-display",
  "heronite-emulation",
  "heronite-epic",
  "heronite-gog",
@@ -3627,6 +3628,7 @@ dependencies = [
  "heronite-platform",
  "heronite-steam",
  "log",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3723,6 +3725,18 @@ dependencies = [
  "sha1_smol",
  "sha2 0.10.9",
  "tempfile",
+]
+
+[[package]]
+name = "heronite-display"
+version = "1.5.0"
+dependencies = [
+ "heronite-platform",
+ "log",
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]
@@ -3940,6 +3954,7 @@ name = "heronite-media"
 version = "1.5.0"
 dependencies = [
  "ashpd",
+ "async-io",
  "chrono",
  "crc32fast",
  "futures-channel",

@@ -1,7 +1,9 @@
-//! Whether ReShade is risky for a game. Three sources, strongest first:
+//! Whether a graphics mod is risky for a game. Three sources, strongest
+//! first:
 //!
 //! 1. `Banned=1` in ReShade's `Compatibility.ini`: the game bans or blocks
-//!    ReShade. Installing is refused.
+//!    ReShade. Installing is refused. ([`Risk::banned`] comes only from
+//!    ReShade's list; the other sources apply to any mod.)
 //! 2. AreWeAntiCheatYet (`heronite_data::anticheat`): the anti-cheats the
 //!    game is known to use. A warning the user must accept.
 //! 3. Files of known anti-cheats in the game's folders, for games missing
@@ -37,7 +39,23 @@ pub struct Risk {
     pub findings: Vec<Finding>,
 }
 
+/// What a known anti-cheat means for a mod.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Policy {
+    /// Installed once the user accepts the risk (ReShade's standard build).
+    Warn,
+    /// Not offered while any anti-cheat is known (mods anti-cheats block
+    /// more often, such as ReShade's add-on build).
+    Block,
+}
+
 impl Risk {
+    /// Whether `policy` refuses the mod: always for a game that bans
+    /// ReShade, and for any known anti-cheat under [`Policy::Block`].
+    pub fn blocks(&self, policy: Policy) -> bool {
+        self.banned || (policy == Policy::Block && !self.findings.is_empty())
+    }
+
     pub fn names(&self) -> Vec<String> {
         self.findings.iter().map(|f| f.name.clone()).collect()
     }
@@ -146,6 +164,16 @@ mod tests {
         assert!(r.unacknowledged(&["easy anti-cheat".into()]).is_empty());
         let more = Risk { findings: [r.findings.clone(), vec![Finding { name: "BattlEye".into(), source: Source::List }]].concat(), ..r };
         assert_eq!(more.unacknowledged(&["Easy Anti-Cheat".into()]), ["BattlEye"]);
+    }
+
+    #[test]
+    fn block_refuses_any_anti_cheat_and_warn_only_a_ban() {
+        let none = Risk::default();
+        let listed = Risk { banned: false, findings: vec![Finding { name: "BattlEye".into(), source: Source::List }] };
+        let banned = Risk { banned: true, findings: Vec::new() };
+        assert!(!none.blocks(Policy::Block) && !none.blocks(Policy::Warn));
+        assert!(listed.blocks(Policy::Block) && !listed.blocks(Policy::Warn));
+        assert!(banned.blocks(Policy::Block) && banned.blocks(Policy::Warn));
     }
 
     #[test]

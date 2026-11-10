@@ -509,6 +509,31 @@ pub fn gog_sync_saves_flag(paths: &DataPaths, app_name: &str, flag: &str) -> Res
     heronite_gog::saves::sync_flag(paths, app_name, flag).map_err(|e| format!("{e:#}"))
 }
 
+/// The GOG account Comet signs in with while a GOG game runs (see
+/// `heronite_launch::galaxy`): the signed-in one, with fresh tokens, unless Comet is off in Settings → Achievements.
+pub struct GogGalaxyAccount(pub DataPaths);
+
+impl heronite_launch::galaxy::GalaxyAccount for GogGalaxyAccount {
+    fn login(&self) -> Result<Option<heronite_launch::galaxy::GalaxyLogin>, String> {
+        let app = heronite_data::AppPaths::for_data(&self.0);
+        if !heronite_achievements::prefs::read(&app).gog_comet || !heronite_gog::user::is_logged_in(&self.0) {
+            return Ok(None);
+        }
+        let Some(account) = heronite_gog::user::account(&self.0) else { return Ok(None) };
+        let limit = heronite_launch::galaxy::LOGIN_LIMIT;
+        let c = heronite_gog::user::credentials_within(&self.0, limit).map_err(|e| format!("{e:#}"))?;
+        if c.refresh_token.is_empty() {
+            return Err("there is no refresh token for the GOG account: log in to GOG again".into());
+        }
+        Ok(Some(heronite_launch::galaxy::GalaxyLogin {
+            access_token: c.access_token,
+            refresh_token: c.refresh_token,
+            user_id: c.user_id,
+            username: account.username,
+        }))
+    }
+}
+
 /// The first launch of a GOG game in a prefix asks the GOG crate for the
 /// game's installers and redistributables (the launch crate cannot depend on the
 /// GOG crate).

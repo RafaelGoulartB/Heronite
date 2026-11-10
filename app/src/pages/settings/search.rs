@@ -104,7 +104,7 @@ const INDEX: &[(Section, &[&str])] = &[
             "Automatically update games",
         ],
     ),
-    (Section::Launchers, if cfg!(windows) { &["Playnite"] } else { &["Heroic", "Lutris", "Bottles", "Faugus"] }),
+    (Section::Launchers, if cfg!(windows) { &["Heroic", "Playnite"] } else { &["Heroic", "Lutris", "Bottles", "Faugus"] }),
     (
         Section::Integrations,
         &[
@@ -149,6 +149,8 @@ const INDEX: &[(Section, &[&str])] = &[
             "Read from this PC's Steam",
             "Steam Web API key (optional)",
             "Check Steam games while they run",
+            "GOG",
+            "Unlock GOG achievements while you play",
             "How they show",
             "Show new achievements over the game",
             "Show the description",

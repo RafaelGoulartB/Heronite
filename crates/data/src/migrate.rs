@@ -1,10 +1,17 @@
 //! One-time copy of an existing Heroic setup into this app's data folder.
 //!
+//! Off on every system (`Feature::HeroicMigration`): Heroic's games come in
+//! only when the user turns its import on in Settings → Other launchers
+//! (`heronite_import::heroic`). [`run_if_needed`] still renames the folders
+//! of the app's old name.
+//!
 //! On the first start (the data folder does not exist yet) the parts of
 //! Heroic's config folder this app uses are copied in: library, Collection,
 //! playtime, game settings, Epic login (`legendaryConfig`), Wine tools and
 //! caches, plus the game logs. Absolute paths into Heroic's folder (Wine builds in `tools/`) are
-//! rewritten to the new one. Heroic's files are only read, so Heroic keeps
+//! rewritten to the new one: as they are, and as JSON writes a Windows path
+//! (each `\` doubled). Heroic for Windows keeps the same folder in
+//! `%APPDATA%\heroic`. Heroic's files are only read, so Heroic keeps
 //! working on its own and the two apps never touch each other's data again.
 //!
 //! The copy goes to a sibling staging folder that is renamed into place at
@@ -50,10 +57,11 @@ const NO_REWRITE: &[&str] = &["tools", "images-cache", "icons"];
 /// Where the old data comes from.
 #[derive(Debug, Clone)]
 pub struct Source {
-    /// Heroic's config folder (`~/.config/heroic`).
+    /// Heroic's config folder (`~/.config/heroic`, `%APPDATA%\heroic` on
+    /// Windows).
     pub heroic: PathBuf,
-    /// Heroic's logs folder (`~/.local/state/Heroic/logs`): `games/` and
-    /// `runners/` are copied.
+    /// Heroic's logs folder (`~/.local/state/Heroic/logs`, its config
+    /// folder's `logs` on Windows): `games/` and `runners/` are copied.
     pub logs: Option<PathBuf>,
     /// This app's launcher logs from before the data folder existed.
     pub launcher_logs: Option<PathBuf>,
@@ -63,7 +71,9 @@ impl Source {
     /// The real locations on this machine.
     pub fn detect(app: &AppPaths) -> Option<Self> {
         let heroic = dirs::config_dir()?.join("heroic");
-        Some(Self { heroic, logs: dirs::state_dir().map(|s| s.join("Heroic/logs")), launcher_logs: Some(app.config.join("logs")) })
+        // Electron's logs folder on Windows.
+        let logs = if cfg!(windows) { Some(heroic.join("logs")) } else { dirs::state_dir().map(|s| s.join("Heroic/logs")) };
+        Some(Self { heroic, logs, launcher_logs: Some(app.config.join("logs")) })
     }
 }
 
@@ -218,8 +228,8 @@ fn copy_any(from: &Path, to: &Path, report: &mut Report) -> io::Result<()> {
 /// where it is a whole path prefix (followed by `/`, a quote or the end of a
 /// value).
 fn rewrite_paths(root: &Path, olds: &[PathBuf], new: &Path) -> Result<usize> {
-    let olds: Vec<String> = olds.iter().map(|p| p.to_string_lossy().into_owned()).collect();
     let new = new.to_string_lossy().into_owned();
+    let pairs: Vec<(String, String)> = olds.iter().flat_map(|old| path_forms(&old.to_string_lossy(), &new)).collect();
     let mut count = 0;
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -240,8 +250,8 @@ fn rewrite_paths(root: &Path, olds: &[PathBuf], new: &Path) -> Result<usize> {
             }
             let Ok(text) = fs::read_to_string(&path) else { continue };
             let mut current = text.clone();
-            for old in &olds {
-                if let Some(changed) = replace_path_prefix(&current, old, &new) {
+            for (old, new) in &pairs {
+                if let Some(changed) = replace_path_prefix(&current, old, new) {
                     current = changed;
                 }
             }
@@ -252,6 +262,18 @@ fn rewrite_paths(root: &Path, olds: &[PathBuf], new: &Path) -> Result<usize> {
         }
     }
     Ok(count)
+}
+
+/// `(old, new)` as files may hold them: as they are and, for a Windows
+/// path, with each `\` doubled (JSON) and as `/` (some of Heroic's
+/// settings). None of these forms holds another, so each matches once.
+fn path_forms(old: &str, new: &str) -> Vec<(String, String)> {
+    let mut forms = vec![(old.to_string(), new.to_string())];
+    if old.contains('\\') {
+        forms.push((old.replace('\\', "\\\\"), new.replace('\\', "\\\\")));
+        forms.push((old.replace('\\', "/"), new.replace('\\', "/")));
+    }
+    forms
 }
 
 /// `text` with every `old` that is a whole path (or a path prefix) replaced;
@@ -282,7 +304,7 @@ fn remove_stale_staging(target: &Path, name: &str) {
     for entry in fs::read_dir(parent).into_iter().flatten().flatten() {
         let file_name = entry.file_name().to_string_lossy().into_owned();
         let Some(pid) = file_name.strip_prefix(&prefix) else { continue };
-        if !Path::new("/proc").join(pid).exists() {
+        if !pid.parse().is_ok_and(heronite_platform::process::is_alive) {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
@@ -310,9 +332,70 @@ mod tests {
         assert_eq!(replace_path_prefix("{}", old, new), None);
     }
 
-    // TODO(windows): `rewrite_paths` looks for the raw path, but JSON escapes
-    // the backslashes of a Windows one (`C:\\Users`), so a copy of Heroic for
-    // Windows keeps its old paths.
+    #[test]
+    fn windows_paths_are_replaced_as_json_and_settings_hold_them() {
+        let forms = path_forms(r"C:\Users\u\AppData\Roaming\heroic", r"C:\Users\u\AppData\Roaming\heronite\data");
+        let text = r#"{"bin":"C:\\Users\\u\\AppData\\Roaming\\heroic\\tools\\w.exe","slash":"C:/Users/u/AppData/Roaming/heroic/x","other":"C:\\Users\\u\\AppData\\Roaming\\heroic2"}"#;
+        let mut out = text.to_string();
+        for (old, new) in &forms {
+            if let Some(changed) = replace_path_prefix(&out, old, new) {
+                out = changed;
+            }
+        }
+        assert_eq!(
+            out,
+            r#"{"bin":"C:\\Users\\u\\AppData\\Roaming\\heronite\\data\\tools\\w.exe","slash":"C:/Users/u/AppData/Roaming/heronite/data/x","other":"C:\\Users\\u\\AppData\\Roaming\\heroic2"}"#
+        );
+        assert_eq!(path_forms("/h/.config/heroic", "/h/x").len(), 1, "a Linux path has one form");
+    }
+
+    /// Heroic for Windows: its folder copied with the sign-in files, and the
+    /// paths into it (JSON-escaped) rewritten.
+    #[cfg(windows)]
+    #[test]
+    fn copies_a_windows_heroic_folder_and_rewrites_its_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let heroic = dir.path().join(r"Roaming\heroic");
+        let tool = heroic.join(r"tools\bin\gogdl.exe");
+        let config = json!({"defaultSettings": {"defaultInstallPath": r"D:\Games", "tool": tool}});
+        write(&heroic.join("config.json"), &config.to_string());
+        write(&heroic.join(r"GamesConfig\G.json"), &json!({"G": {"targetExe": r"D:\Games\G\g.exe", "tool": tool}}).to_string());
+        write(&heroic.join(r"store\config.json"), "{}");
+        // Fixture sign-in files: copied as they are.
+        write(&heroic.join(r"legendaryConfig\legendary\user.json"), r#"{"fixture":"epic"}"#);
+        write(&heroic.join(r"gog_store\auth.json"), r#"{"fixture":"gog"}"#);
+        write(&heroic.join(r"nile_config\nile\user.json"), r#"{"fixture":"amazon"}"#);
+        write(&heroic.join(r"Local Storage\leveldb\LOG"), "chromium");
+        write(&heroic.join(r"logs\games\G_sideload\launch.log"), "played");
+        write(&tool, "MZ");
+
+        let data = DataPaths::at(dir.path().join(r"Roaming\heronite\data"));
+        let app = AppPaths { config: dir.path().join(r"Roaming\heronite\config"), cache: dir.path().join(r"Local\heronite\cache") };
+        let source = Source { heroic: heroic.clone(), logs: Some(heroic.join("logs")), launcher_logs: None };
+        let report = migrate(&source, &data, &app).unwrap();
+
+        let root = &data.root;
+        for (file, text) in [
+            (r"legendaryConfig\legendary\user.json", r#"{"fixture":"epic"}"#),
+            (r"gog_store\auth.json", r#"{"fixture":"gog"}"#),
+            (r"nile_config\nile\user.json", r#"{"fixture":"amazon"}"#),
+        ] {
+            assert_eq!(fs::read_to_string(root.join(file)).unwrap(), text, "{file}");
+        }
+        assert!(!root.join("Local Storage").exists());
+        assert!(root.join(r"logs\games\G_sideload\launch.log").exists());
+        let want = root.join(r"tools\bin\gogdl.exe");
+        for file in [data.global_config(), data.game_config("G")] {
+            let doc: serde_json::Value = serde_json::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+            let found = doc.pointer("/defaultSettings/tool").or_else(|| doc.pointer("/G/tool")).and_then(|v| v.as_str()).unwrap();
+            assert_eq!(Path::new(found), want, "{}", file.display());
+        }
+        assert_eq!(report.rewritten, 2);
+        // Paths outside Heroic's folder, and Heroic's own files, stay.
+        assert!(fs::read_to_string(data.global_config()).unwrap().contains(r"D:\\Games"));
+        assert!(fs::read_to_string(heroic.join("config.json")).unwrap().contains(r"Roaming\\heroic\\tools"));
+    }
+
     #[cfg(unix)]
     #[test]
     fn copies_what_the_app_uses_and_rewrites_paths() {

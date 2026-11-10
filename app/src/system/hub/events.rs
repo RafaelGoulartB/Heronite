@@ -1,6 +1,7 @@
 //! Launch events from the runtime, tray commands and second-invocation requests.
 
 use gpui_kit::*;
+use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
 
 use super::hub;
@@ -206,6 +207,31 @@ fn stop_game(cx: &mut App, req: &crate::system::cli::LaunchRequest) {
     }
 }
 
+/// `heronite://screenshot`: captures the running game like the screenshot
+/// shortcut does, and says why when there is nothing to capture (the key
+/// that asked is bound outside the app: silence would look like a broken
+/// bind).
+fn take_screenshot(cx: &mut App) {
+    use heronite_media::capture::{CaptureOutcome, SkipReason};
+    let Some(capture) = crate::services::session::capture_of(cx) else {
+        log::info!("screenshot request: no game was started");
+        crate::system::notify::send("Heronite", tr!("No game to capture"));
+        return;
+    };
+    log::info!("screenshot request");
+    cx.background_spawn(async move {
+        match capture.capture_requested() {
+            // The service shows what it saved and why a capture failed.
+            CaptureOutcome::Saved(_) | CaptureOutcome::Failed(_) | CaptureOutcome::Skipped(SkipReason::Busy) => {}
+            CaptureOutcome::Skipped(SkipReason::FolderNotConfigured) => {
+                crate::system::notify::send("Heronite", tr!("Choose a screenshots folder in Settings → Screenshots"));
+            }
+            CaptureOutcome::Skipped(_) => crate::system::notify::send("Heronite", tr!("No game to capture")),
+        }
+    })
+    .detach();
+}
+
 /// A second invocation reached this instance.
 pub(super) fn on_message(cx: &mut App, msg: Message) {
     if hub(cx).0.borrow().quitting {
@@ -216,6 +242,12 @@ pub(super) fn on_message(cx: &mut App, msg: Message) {
     if let Some(req) = &msg.stop {
         stop_game(cx, req);
         if msg.launch.is_none() {
+            return;
+        }
+    }
+    if msg.screenshot {
+        take_screenshot(cx);
+        if msg.launch.is_none() && msg.open_client.is_none() {
             return;
         }
     }

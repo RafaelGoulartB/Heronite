@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 use heronite_i18n::tr;
 
 use super::{
-    capture_folder, current_game, temporary_name, unique_screenshot_path, ActiveGame, CaptureConfig, CaptureEvent, CaptureOutcome,
+    capture_folder, current_game, temporary_name, unique_screenshot_path, ActiveGame, Asked, CaptureConfig, CaptureEvent, CaptureOutcome,
     CaptureStatus, HotkeySpec, ServiceOptions, SkipReason, BIND_DESCRIPTION,
 };
 use crate::list::resolve_path;
@@ -101,6 +101,7 @@ impl CaptureService {
             accelerator: st.config.accelerator.clone(),
             active_game: current_game(st.games.values()).map(|g| (g.app_name.clone(), g.runner.clone(), g.title.clone())),
             error: st.registration_error.clone(),
+            desktop_trigger: None,
         }
     }
 
@@ -207,22 +208,30 @@ impl CaptureService {
     /// Captures the game's monitor into the active game's folder. Blocking;
     /// also what the shortcut triggers.
     pub fn capture_now(&self) -> CaptureOutcome {
-        self.capture(true)
+        self.capture(Asked::Shortcut)
     }
 
     /// Like [`capture_now`](Self::capture_now) for the in-game overlay, which
     /// has its own switch and shows its own notice: it works with the
     /// shortcut turned off and shows no notice or notification.
     pub fn capture_quiet(&self) -> CaptureOutcome {
-        self.capture(false)
+        self.capture(Asked::Overlay)
     }
 
-    fn capture(&self, shortcut: bool) -> CaptureOutcome {
+    /// Like [`capture_now`](Self::capture_now) for a capture asked for from
+    /// outside the app (`heronite://screenshot`, which a key bound in the
+    /// desktop's settings runs where no shortcut can be registered): it
+    /// works with the shortcut turned off.
+    pub fn capture_requested(&self) -> CaptureOutcome {
+        self.capture(Asked::Command)
+    }
+
+    fn capture(&self, asked: Asked) -> CaptureOutcome {
         let (config, game) = {
             let st = self.inner.state.lock().unwrap();
             (st.config.clone(), current_game(st.games.values()).cloned())
         };
-        if shortcut && !config.enabled {
+        if asked.needs_the_switch() && !config.enabled {
             return CaptureOutcome::Skipped(SkipReason::Disabled);
         }
         let Some(game) = game else { return CaptureOutcome::Skipped(SkipReason::NoActiveGame) };
@@ -237,7 +246,7 @@ impl CaptureService {
                 log::info!("Collection screenshot saved to {}", path.display());
                 self.send(CaptureEvent::Saved { app_name: game.app_name.clone(), runner: game.runner.clone(), path: path.clone() });
                 let m = &self.inner.options.messages;
-                if shortcut && !osd::show(monitor, tr(&m.saved_title), &game.title) {
+                if asked.shows_the_result() && !osd::show(monitor, tr(&m.saved_title), &game.title) {
                     notify(
                         tr(&m.saved_title),
                         &tr(&m.saved_body).replace("{game}", &game.title).replace("{path}", &path.to_string_lossy()),
@@ -247,7 +256,7 @@ impl CaptureService {
             }
             Err(error) => {
                 log::error!("Collection screenshot capture failed: {error}");
-                if shortcut {
+                if asked.shows_the_result() {
                     let m = &self.inner.options.messages;
                     notify(tr(&m.failed_title), &tr(&m.failed_body).replace("{error}", &error));
                 }

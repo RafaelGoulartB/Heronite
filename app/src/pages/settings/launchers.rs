@@ -1,5 +1,5 @@
 //! Settings → Other launchers: Heroic, Lutris, Bottles and Faugus on Linux,
-//! Playnite on Windows, whether each is on this PC and how many games it
+//! Heroic and Playnite on Windows, whether each is on this PC and how many games it
 //! has, and a switch to bring its games into the Collection (kept in sync
 //! while on). Turning one off keeps its games; "Remove them" takes them out.
 //! Games then in the Collection twice (added here by hand, and from a

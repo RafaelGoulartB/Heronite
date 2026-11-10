@@ -20,6 +20,9 @@ pub enum Kind {
     Preset,
     /// `ReShade.ini`.
     Config,
+    /// A ReShade add-on (`.addon64` / `.addon32`), such as a RenoDX mod;
+    /// its source names the mod.
+    Addon,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,6 +57,9 @@ pub struct Manifest {
     /// `fxc2` when Heronite put `d3dcompiler_47.dll` there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compiler: Option<String>,
+    /// The build with add-on support (`false`: the standard build).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub addon: bool,
     /// The DLL has its name (`false`: renamed with the off suffix).
     #[serde(default = "yes")]
     pub enabled: bool,
@@ -170,6 +176,7 @@ mod tests {
             proxy: "dxgi.dll".into(),
             target_dir: "/g".into(),
             adopted: false,
+            addon: false,
             compiler: None,
             enabled: true,
             packages: vec!["Standard effects".into()],

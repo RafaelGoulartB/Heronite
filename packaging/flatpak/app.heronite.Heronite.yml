@@ -25,6 +25,8 @@ finish-args:
   - --talk-name=org.freedesktop.Flatpak
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.freedesktop.ScreenSaver
+  # GNOME displays for per-game display settings (heronite-display).
+  - --talk-name=org.gnome.Mutter.DisplayConfig
   - --system-talk-name=org.freedesktop.UDisks2
   - --system-talk-name=org.freedesktop.UPower
   - --filesystem=home

@@ -178,6 +178,9 @@ impl SettingsPanel {
         if manage {
             card = card.child(div().pb(px(12.)).child(self.reshade_sources(o, m, cx).card()));
         }
+        for r in self.reshade_mod_rows(o, m, cx) {
+            card = card.child(r);
+        }
         if !o.user_overrides.is_empty() {
             let text = tr!(
                 "Your WINEDLLOVERRIDES already sets {dlls}. Heronite adds them by itself while ReShade is on, and nothing once it is off or removed.",

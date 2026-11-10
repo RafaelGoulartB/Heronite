@@ -494,5 +494,9 @@
   "Ribbon": "Schärpe",
   "Show categories on covers": "Kategorien auf Covern zeigen",
   "Strip": "Streifen",
-  "Style": "Stil"
+  "Style": "Stil",
+  "Capture from a key of the desktop": "Mit einer Taste der Desktop-Umgebung aufnehmen",
+  "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings: {command}": "Wo die Desktop-Umgebung kein Tastenkürzel von Heronite annimmt, lege in ihren Tastatureinstellungen eine Taste auf diesen Befehl: {command}",
+  "Shortcut ready on {trigger}. The desktop picks the keys: change them in its keyboard settings.": "Tastenkürzel bereit auf {trigger}. Die Desktop-Umgebung legt die Tasten fest: Ändere sie in ihren Tastatureinstellungen.",
+  "The desktop took the shortcut but names no key for it: assign one in its keyboard settings.": "Die Desktop-Umgebung hat das Tastenkürzel angenommen, nennt aber keine Taste dafür: Weise ihm in ihren Tastatureinstellungen eine zu."
 }

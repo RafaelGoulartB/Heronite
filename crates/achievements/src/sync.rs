@@ -86,7 +86,12 @@ fn read_sources(ctx: &Ctx, runner: &str, app_name: &str, targets: &[SourceTarget
             t.pin = game.local.clone();
         }
         let source = target.source();
-        match sources::fetch(ctx, &target) {
+        let fetched = match (&target, live) {
+            // GOG's servers get a session's unlocks late: Comet has them now.
+            (SourceTarget::Gog { product_id }, Some(_)) => sources::comet::fetch(ctx, product_id, game.set(Source::Gog)),
+            _ => sources::fetch(ctx, &target),
+        };
+        match fetched {
             Fetch::Set(fresh) => {
                 let old = game.sets.iter().position(|s| s.source == source);
                 let old_set = old.map(|i| &game.sets[i]);

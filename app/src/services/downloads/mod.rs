@@ -47,7 +47,7 @@ pub use eos::global as eos_global;
 pub use launch_setup::EpicLaunchSetup;
 pub use library_file::library_entry;
 pub use ops::LAUNCHER_IMPORT;
-pub use stores::{gog_sync_saves_flag, StoreLaunchSetup};
+pub use stores::{gog_sync_saves_flag, GogGalaxyAccount, StoreLaunchSetup};
 pub use types::*;
 
 pub struct Downloads {

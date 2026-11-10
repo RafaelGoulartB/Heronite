@@ -11,6 +11,7 @@ use heronite_data::DataPaths;
 
 use super::{LaunchEvent, LauncherConfig, PrepServices, Spawner, SystemInfoFn};
 use crate::first_launch::{EpicSetup, StoreSetup};
+use crate::galaxy::GalaxyAccount;
 use crate::plan::StopSpec;
 use crate::procs::Procs;
 use crate::record::{Checkpointer, PlayRecord};
@@ -99,6 +100,9 @@ pub(super) struct Shared {
     /// Epic's services at launch time (the real ones when `None`).
     pub(super) epic_service: Mutex<Option<Arc<dyn crate::epic_launch::EpicService>>>,
     pub(super) store_setup: Mutex<Option<Arc<dyn StoreSetup>>>,
+    pub(super) galaxy: Mutex<Option<Arc<dyn GalaxyAccount>>>,
+    /// The Comet the running GOG games share.
+    pub(super) comet: Mutex<super::galaxy::Slot>,
     pub(super) paths: DataPaths,
     pub(super) spawner: Arc<dyn Spawner>,
     pub(super) procs: Arc<dyn Procs>,

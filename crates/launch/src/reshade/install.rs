@@ -13,6 +13,7 @@ use super::detect::{occupant, Arch, Occupant, Target};
 use super::fetch::{is_known_compiler, sha256, sha256_file, Cache};
 use super::ini::Ini;
 use super::manifest::{self, join, Kind, Manifest};
+pub(crate) use crate::gfxmods::journal::Journal;
 use crate::net::{Cancel, Net};
 
 /// What the long operations need besides their arguments.
@@ -30,6 +31,8 @@ pub enum Step {
     Compiler,
     /// Name of a package or extra source.
     Shaders(String),
+    /// Name of a ReShade add-on (a RenoDX mod).
+    Addon(String),
     Config,
 }
 
@@ -48,76 +51,6 @@ pub struct Request {
     /// Add `d3dcompiler_47` (Wine/Proton with Direct3D 9 to 12).
     pub compiler: bool,
     pub compat: Option<Compat>,
-}
-
-/// Files written by one operation, to undo it.
-#[derive(Default)]
-pub(super) struct Journal {
-    created: Vec<PathBuf>,
-    /// Earlier content of files replaced or removed.
-    replaced: Vec<(PathBuf, Vec<u8>)>,
-    dirs: Vec<PathBuf>,
-}
-
-impl Journal {
-    pub(super) fn touched(&self, path: &Path) -> bool {
-        self.created.iter().any(|p| p == path) || self.replaced.iter().any(|(p, _)| p == path)
-    }
-
-    fn mkdirs(&mut self, dir: &Path) -> Result<(), String> {
-        let mut missing = Vec::new();
-        let mut d = Some(dir);
-        while let Some(x) = d.filter(|x| !x.exists()) {
-            missing.push(x.to_path_buf());
-            d = x.parent();
-        }
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-        self.dirs.extend(missing.into_iter().rev());
-        Ok(())
-    }
-
-    fn backup(&mut self, path: &Path) -> Result<(), String> {
-        if self.touched(path) {
-            return Ok(());
-        }
-        match std::fs::read(path) {
-            Ok(old) => self.replaced.push((path.to_path_buf(), old)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => self.created.push(path.to_path_buf()),
-            Err(e) => return Err(format!("{}: {e}", path.display())),
-        }
-        Ok(())
-    }
-
-    pub(super) fn write(&mut self, path: &Path, bytes: &[u8]) -> Result<(), String> {
-        if let Some(dir) = path.parent() {
-            self.mkdirs(dir)?;
-        }
-        self.backup(path)?;
-        heronite_data::temps::write_atomic(path, bytes, None).map_err(|e| format!("{}: {e}", path.display()))
-    }
-
-    pub(super) fn copy(&mut self, from: &Path, to: &Path) -> Result<String, String> {
-        let bytes = std::fs::read(from).map_err(|e| format!("{}: {e}", from.display()))?;
-        self.write(to, &bytes)?;
-        Ok(sha256(&bytes))
-    }
-
-    pub(super) fn remove(&mut self, path: &Path) -> Result<(), String> {
-        self.backup(path)?;
-        std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))
-    }
-
-    pub(super) fn rollback(self) {
-        for p in self.created.iter().rev() {
-            let _ = std::fs::remove_file(p);
-        }
-        for (p, bytes) in &self.replaced {
-            let _ = heronite_data::temps::write_atomic(p, bytes, None);
-        }
-        for d in self.dirs.iter().rev() {
-            let _ = std::fs::remove_dir(d);
-        }
-    }
 }
 
 /// A folder the game can be written to (a test file, removed at once).
@@ -178,6 +111,7 @@ fn write_install(
         proxy: req.proxy.clone(),
         target_dir: dir.to_string_lossy().into_owned(),
         adopted: false,
+        addon: false,
         compiler: None,
         enabled: true,
         packages: Vec::new(),
