@@ -134,6 +134,24 @@ pub(super) fn item(id: impl Into<ElementId>) -> Stateful<Div> {
         .hover(|s| s.bg(theme::menu_item_hover()).text_color(theme::text_bright()))
 }
 
+/// A line that cannot be clicked: the sparkle and "In: …" with the smart
+/// categories `names` (the menus and the dock).
+pub(super) fn smart_in_line(id: impl Into<ElementId>, names: &[String]) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(12.))
+        .px(px(12.))
+        .py(px(6.))
+        .min_h(px(34.))
+        .text_size(px(13.))
+        .text_color(theme::text_muted())
+        .child(icon(Icon::AutoAwesome, px(18.), theme::text_dim()))
+        .child(div().flex_1().min_w_0().truncate().child(tr!("In: {names}", names = names.join(", ")).to_string()))
+        .tooltip(crate::ui::tooltip(tr!("Smart categories: their rules put the game in them.")))
+}
+
 /// Inner padding of the menu (and its flyouts).
 const PAPER_PAD: f32 = 6.;
 
@@ -228,6 +246,9 @@ impl CollectionView {
         groups[0].push(self.primary_row(&game, &key, playing, open == Some(Flyout::Install), flyout_left, cx).into_any_element());
         groups[1].push(Self::status_row(&lib, &game, &key, open == Some(Flyout::Status), flyout_left, cx).into_any_element());
         groups[1].push(self.categories_row(&game, &key, open == Some(Flyout::Categories), flyout_left, cx).into_any_element());
+        if let Some(row) = self.smart_in_row(&game, cx) {
+            groups[1].push(row.into_any_element());
+        }
         // Everything else comes from the game's action list (shared with the
         // command palette, see `game_actions.rs`).
         let mut actions: Vec<GameActionItem> = self.game_actions(&game, cx).into_iter().filter(|a| a.in_menu).collect();
@@ -314,14 +335,8 @@ impl CollectionView {
         };
         let status =
             sub("cm-b-status", Icon::Flag, tr!("Status").into(), open == Some(Flyout::Status), status_fly, fold(Some(Flyout::Status)));
-        let cats = sub(
-            "cm-b-cats",
-            Icon::Label,
-            tr!("Categories").into(),
-            open == Some(Flyout::Categories),
-            cats_fly,
-            fold(Some(Flyout::Categories)),
-        );
+        let cats =
+            sub("cm-b-cats", Icon::Label, tr!("Add to").into(), open == Some(Flyout::Categories), cats_fly, fold(Some(Flyout::Categories)));
         let all_fav = games.iter().all(|g| g.favourite);
         let all_hidden = games.iter().all(|g| g.hidden);
         let removable = !self.removable_selection().0.is_empty();
@@ -453,14 +468,27 @@ impl CollectionView {
         status_row
     }
 
-    /// "Categories" row with its flyout: every category with a check (a
+    /// The smart categories the game is in, read only (its rules put it
+    /// there): "In: Unplayed, Short ones". None while it is in none.
+    fn smart_in_row(&self, game: &CollectionGame, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
+        let names: Vec<String> = self.smart_categories_of(game).into_iter().map(|g| g.name.clone()).collect();
+        (!names.is_empty()).then(|| {
+            smart_in_line("cm-smart-in", &names).on_hover(cx.listener(|this, h: &bool, _, cx| {
+                if *h {
+                    this.show_flyout(None, cx);
+                }
+            }))
+        })
+    }
+
+    /// "Add to" row with its flyout: every manual category with a check (a
     /// click puts the game in or out, the menu stays open), then "Manage
     /// categories…".
     fn categories_row(&self, game: &CollectionGame, key: &SharedString, open: bool, flyout_left: bool, cx: &mut Context<Self>) -> Div {
         let mut row = div().relative().child(
             item("cm-categories")
                 .child(icon(Icon::Label, px(18.), theme::text_muted()))
-                .child(tr!("Categories"))
+                .child(tr!("Add to"))
                 .child(div().flex_1())
                 .child(icon(Icon::ChevronRight, px(18.), theme::text_muted()))
                 .on_hover(cx.listener(|this, h: &bool, _, cx| {

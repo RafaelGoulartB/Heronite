@@ -1,19 +1,20 @@
-//! The View menu's parts that pick what shows: the smart groups select next
-//! to the presets one, the "Filter" block (Show with "Include hidden", the
-//! "Only" switches, "Filter by" with the other kinds and "Ages up to" in its
-//! "More" list) and the footer's "Manage" list.
+//! The View menu's parts that pick what shows: the "Filter" block (Show with
+//! "Include hidden", the "Only" switches, the Categories of both kinds,
+//! "Filter by" with the other kinds and "Ages up to" in its "More" list) and
+//! the footer's "Manage" list.
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::FacetKind;
-use heronite_i18n::{tr, trc, trn};
+use heronite_i18n::{tr, trc};
 
-use super::super::smart_groups::group_colour;
-use super::super::view_filters::Only;
+use heronite_data::categories::UNCATEGORIZED;
+
+use super::super::view_filters::{category_label, Only};
 use super::super::CollectionView;
 use super::choices::{self, Kind};
 use super::organize::More;
-use super::render::{check, control, control_hover, count_label, dot, pill, section_head, Density};
+use super::render::{check, control, control_hover, count_label, dot, hint_text, pill, section_head};
 use super::Pick;
 use crate::icons::Icon;
 use crate::theme;
@@ -21,7 +22,8 @@ use crate::ui::dropdown::{menu_item, menu_panel, menu_separator};
 use crate::ui::icon;
 
 /// Kinds with a pill of their own in "Filter by"; the others are in its "More" list.
-const FILTER_BY: [Kind; 4] = [Kind::Facet(FacetKind::Genre), Kind::Facet(FacetKind::Store), Kind::Status, Kind::Category];
+/// Categories have a section of their own.
+const FILTER_BY: [Kind; 3] = [Kind::Facet(FacetKind::Genre), Kind::Facet(FacetKind::Store), Kind::Status];
 
 impl CollectionView {
     /// A block's title: a short bold word and a line to the panel's edge.
@@ -38,103 +40,79 @@ impl CollectionView {
             .child(div().flex_1().h(px(1.)).bg(theme::ink_a(0.08)))
     }
 
-    /// The smart groups select, beside the presets one: the picked group (or
-    /// how many), and a list to pick, pin, edit and make groups.
-    pub(super) fn vm_groups_select(&self, d: Density, cx: &mut Context<Self>) -> Div {
-        let open = self.view_menu.more == Some(More::Groups);
-        let picked: Vec<_> = self.ui.smart_groups.iter().filter_map(|id| self.smart_groups.get(id)).collect();
-        let label: SharedString = match picked.as_slice() {
-            [] => tr!("None").into(),
-            [one] => one.name.clone().into(),
-            many => trn!(many.len(), "{n} group", "{n} groups").into(),
-        };
-        let trigger = div()
-            .id("vm-groups-select")
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .h(px(d.row_h))
-            .pl(px(12.))
-            .pr(px(9.))
-            .rounded_full()
-            .map(control)
-            .when(open, |s| s.bg(control_hover()))
+    /// The Categories section: a chip for every category, manual ones (their
+    /// colour's dot) then smart ones (the sparkle), each with its games;
+    /// "Uncategorized"; "Manage…" in the title, and "Save filters as smart
+    /// category…" while other filters are on.
+    pub(super) fn vm_categories(&self, cx: &mut Context<Self>) -> Div {
+        let d = self.vm_density();
+        let entries = self.category_entries();
+        let manage = div()
+            .id("vm-cats-manage")
             .cursor_pointer()
-            .hover(|s| s.bg(control_hover()))
-            .text_size(px(d.text))
-            .text_color(if picked.is_empty() { theme::text_muted() } else { theme::text_primary() })
-            .children(picked.first().filter(|_| picked.len() == 1).map(|g| dot(group_colour(g))))
-            .children((picked.len() > 1).then(|| icon(Icon::AutoAwesome, px(14.), theme::accent())))
-            .child(div().flex_1().min_w_0().truncate().child(label))
-            .child(icon(Icon::ExpandMore, px(16.), if open { theme::text_primary() } else { theme::text_dim() }))
-            .on_click(cx.listener(|this, _, _, cx| this.toggle_more(More::Groups, cx)));
-        let list = open.then(|| self.vm_groups_list(cx));
-        div().relative().child(trigger).children(list)
-    }
-
-    /// Every group: a click shows its games (several add up), the pin puts it
-    /// in the header, the pencil edits it. Then "New" and "Save filters as".
-    fn vm_groups_list(&self, cx: &mut Context<Self>) -> Deferred {
-        let mut list = menu_panel(300.).w(px(300.));
-        for (i, g) in self.smart_groups.groups.iter().enumerate() {
-            let on = self.ui.smart_groups.contains(&g.id);
-            let (id, pin_id, edit_id, pinned) = (g.id.clone(), g.id.clone(), g.id.clone(), g.pinned);
-            list = list.child(
-                menu_item(("vm-group", i), false)
-                    .child(check(on))
-                    .child(dot(group_colour(g)))
-                    .child(div().flex_1().min_w_0().truncate().when(on, |d| d.text_color(theme::text_bright())).child(g.name.clone()))
-                    .child(count_label(self.group_count(g)))
-                    .child(
-                        round(("vm-group-pin", i))
-                            .child(if pinned {
-                                icon(Icon::PushPin, px(15.), theme::accent())
-                            } else {
-                                icon(Icon::PushPinOutlined, px(15.), theme::text_dim())
-                            })
-                            .tooltip(crate::ui::tooltip(if pinned { tr!("Unpin from the header") } else { tr!("Pin to the header") }))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                cx.stop_propagation();
-                                this.set_group_pinned(&pin_id, !pinned, cx);
-                            })),
-                    )
-                    .child(
-                        round(("vm-group-edit", i))
-                            .child(icon(Icon::Edit, px(15.), theme::text_muted()))
-                            .tooltip(crate::ui::tooltip(tr!("Edit rules")))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.open_group_editor(Some(&edit_id), None, window, cx);
-                            })),
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_smart_group_filter(&id, cx))),
+            .text_color(theme::accent())
+            .hover(|s| s.text_color(theme::text_bright()))
+            .child(tr!("Manage…"))
+            .on_click(cx.listener(|this, _, window, cx| this.open_manage_categories(window, cx)));
+        let chip = |id: ElementId, on: bool| {
+            pill(id, d).when(on, |s| s.bg(theme::accent_tint()).border_color(theme::accent_tint_border()).text_color(theme::text_bright()))
+        };
+        let mut chips: Vec<Stateful<Div>> = entries
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let on = self.category_on(&c.r);
+                let r = c.r.clone();
+                chip(("vm-cat", i).into(), on)
+                    .child(if c.smart() {
+                        icon(Icon::AutoAwesome, px(13.), c.colour).into_any_element()
+                    } else {
+                        dot(c.colour).into_any_element()
+                    })
+                    .child(div().min_w_0().truncate().child(c.name.clone()))
+                    .child(count_label(self.category_count(&c.r)))
+                    .when(c.smart(), |el| {
+                        el.tooltip(crate::ui::tooltip(tr!("Smart category: games join and leave it as they match its rules.")))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| this.toggle_category_ref(&r, cx)))
+            })
+            .collect();
+        if !self.categories.is_empty() {
+            let on = self.ui.categories.contains(UNCATEGORIZED);
+            chips.push(
+                chip("vm-cat-none".into(), on)
+                    .child(icon(Icon::Label, px(13.), theme::text_muted()))
+                    .child(category_label(UNCATEGORIZED))
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_category_filter(UNCATEGORIZED, cx))),
             );
         }
-        if self.smart_groups.is_empty() {
-            list = list.child(
-                div()
-                    .px(px(10.))
-                    .py(px(6.))
-                    .text_size(px(12.5))
-                    .text_color(theme::text_dim())
-                    .child(tr!("A smart group keeps itself up to date: games join and leave it as they match its rules.")),
-            );
-        }
-        list = list.child(menu_separator()).child(
-            menu_item("vm-group-new", false)
-                .child(icon(Icon::Add, px(16.), theme::text_muted()))
-                .child(div().flex_1().child(tr!("New smart group…")))
-                .on_click(cx.listener(|this, _, window, cx| this.open_group_editor(None, None, window, cx))),
-        );
-        if self.ui.active_filters() > self.ui.smart_groups.len() {
-            list = list.child(
-                menu_item("vm-group-save", false)
-                    .child(icon(Icon::AutoAwesome, px(16.), theme::text_muted()))
-                    .child(div().flex_1().child(tr!("Save filters as smart group…")))
-                    .on_click(cx.listener(|this, _, window, cx| this.save_filters_as_group(window, cx))),
-            );
-        }
-        popover("vm-groups-list", list, |el| el.top(relative(1.)).right_0().pt(px(4.)), cx)
+        let picked = self.ui.categories.len() + self.ui.smart_groups.len();
+        let save = (self.ui.active_filters() > picked).then(|| {
+            div()
+                .id("vm-cats-save")
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .px(px(4.))
+                .cursor_pointer()
+                .text_size(px(12.))
+                .text_color(theme::accent())
+                .hover(|s| s.text_color(theme::text_bright()))
+                .child(icon(Icon::AutoAwesome, px(13.), theme::accent()))
+                .child(tr!("Save filters as smart category…"))
+                .on_click(cx.listener(|this, _, window, cx| this.save_filters_as_group(window, cx)))
+        });
+        let empty = entries.is_empty().then(|| {
+            hint_text(tr!("Sort games your own way: pick them by hand, or let a smart category gather them by its rules.")).px(px(4.))
+        });
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(d.head_gap))
+            .child(section_head(tr!("Categories")).child(manage))
+            .children(empty)
+            .when(!chips.is_empty(), |el| el.child(div().flex().flex_wrap().gap(px(6.)).children(chips)))
+            .children(save)
     }
 
     /// "Include hidden", in the Show row's title.
@@ -179,8 +157,7 @@ impl CollectionView {
     /// them once picked or while it filters.
     pub(super) fn vm_filter_by(&self, cx: &mut Context<Self>) -> Div {
         let d = self.vm_density();
-        let shown = |k: &Kind| *k != Kind::Category || !self.categories.is_empty();
-        let pills = FILTER_BY.into_iter().filter(shown).enumerate().map(|(i, kind)| {
+        let pills = FILTER_BY.into_iter().enumerate().map(|(i, kind)| {
             pill(("vm-filter-by", i), d).child(icon(kind.icon(), px(14.), theme::text_muted())).child(kind.label()).on_click(cx.listener(
                 move |this, _, window, cx| {
                     let text = choices::scoped_query(kind, "");
@@ -208,7 +185,7 @@ impl CollectionView {
     }
 
     fn vm_filter_more_list(&self, cx: &mut Context<Self>) -> Deferred {
-        let kinds = Kind::ALL.into_iter().filter(|k| !matches!(k, Kind::Only | Kind::Group) && !FILTER_BY.contains(k));
+        let kinds = Kind::ALL.into_iter().filter(|k| !matches!(k, Kind::Only | Kind::Group | Kind::Category) && !FILTER_BY.contains(k));
         let mut list = menu_panel(240.).w(px(240.));
         for (i, kind) in kinds.enumerate() {
             list = list.child(
@@ -272,17 +249,15 @@ impl CollectionView {
                         this.open_manage_statuses(window, cx);
                     })),
             );
-            if !self.categories.is_empty() {
-                list = list.child(
-                    menu_item("vm-manage-categories", false)
-                        .child(icon(Icon::Label, px(16.), theme::text_muted()))
-                        .child(tr!("Manage categories…"))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            close(this);
-                            this.open_manage_categories(window, cx);
-                        })),
-                );
-            }
+            list = list.child(
+                menu_item("vm-manage-categories", false)
+                    .child(icon(Icon::Label, px(16.), theme::text_muted()))
+                    .child(tr!("Manage categories…"))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        close(this);
+                        this.open_manage_categories(window, cx);
+                    })),
+            );
             list = list.child(
                 menu_item("vm-manage-fields", false)
                     .child(icon(Icon::CallMerge, px(16.), theme::text_muted()))
@@ -304,12 +279,6 @@ impl CollectionView {
                         })),
                 );
             }
-            list = list.child(
-                menu_item("vm-manage-group", false)
-                    .child(icon(Icon::AutoAwesome, px(16.), theme::text_muted()))
-                    .child(tr!("New smart group…"))
-                    .on_click(cx.listener(|this, _, window, cx| this.open_group_editor(None, None, window, cx))),
-            );
             popover("vm-manage-list", list, |el| el.bottom(relative(1.)).right_0().pb(px(4.)), cx)
         });
         div().relative().child(button).children(list)
@@ -320,20 +289,6 @@ impl CollectionView {
 fn popover(id: &'static str, list: Div, place: impl FnOnce(Stateful<Div>) -> Stateful<Div>, cx: &mut Context<CollectionView>) -> Deferred {
     let el = div().id(id).absolute().occlude().on_hover(cx.listener(|this, hovered: &bool, _, _| this.view_menu.more_hovered = *hovered));
     deferred(place(el).child(list)).with_priority(40)
-}
-
-/// 26px round button inside a list row (the row keeps its own click).
-fn round(id: impl Into<ElementId>) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex()
-        .flex_none()
-        .items_center()
-        .justify_center()
-        .size(px(26.))
-        .rounded_full()
-        .cursor_pointer()
-        .hover(|s| s.bg(theme::ink_a(0.1)))
 }
 
 /// The word over the "Filter" block.

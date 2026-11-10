@@ -48,8 +48,8 @@ pub(super) struct ViewMenu {
     select_open: bool,
     /// The Views section lists the views to rename, update, move or delete.
     editing: bool,
-    /// The "More" list of Group by, Sort or Filter by, the smart groups
-    /// list or the "Manage" list is open.
+    /// The "More" list of Group by, Sort or Filter by, or the "Manage" list
+    /// is open.
     more: Option<organize::More>,
     /// "Ages up to" was picked in Filter by's "More" (it also shows while it filters).
     ages_open: bool,
@@ -192,8 +192,8 @@ impl CollectionView {
                             label: category_label(&name),
                             count: Some(count(&|g| self.categories.matches(&one, &g.runner, &g.app_name))),
                             on: ui.categories.contains(&name),
+                            color: (name != UNCATEGORIZED).then(|| self.manual_colour(&name)),
                             pick: Pick::Category(name),
-                            color: None,
                         }
                     })
                     .collect(),
@@ -262,11 +262,15 @@ impl CollectionView {
         }
         for id in &ui.smart_groups {
             if let Some(g) = self.smart_groups.get(id) {
-                out.push((Some(tr!("Group")), token(Pick::Group(id.clone()), g.name.clone(), Some(super::smart_groups::group_colour(g)))));
+                out.push((
+                    Some(tr!("Category")),
+                    token(Pick::Group(id.clone()), g.name.clone(), Some(super::smart_groups::group_colour(g))),
+                ));
             }
         }
         for name in &ui.categories {
-            out.push((Some(tr!("Category")), token(Pick::Category(name.clone()), category_label(name), None)));
+            let colour = (name != UNCATEGORIZED).then(|| self.manual_colour(name));
+            out.push((Some(tr!("Category")), token(Pick::Category(name.clone()), category_label(name), colour)));
         }
         for kind in FACET_KINDS {
             for value in ui.facet_filters.get(kind) {

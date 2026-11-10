@@ -1,7 +1,7 @@
 //! Y on any tab: the Filters panel along the right edge, the search field
 //! on top (focused when it opens), then what the Library grid shows: Show,
-//! Sort, Favourites only, Status, Category and Smart group (the only way to
-//! the smart groups in console mode). Every change shows at once
+//! Sort, Favourites only, Status and Category (manual categories, then
+//! smart ones). Every change shows at once
 //! behind it, in the tab's grid, else the theme's first Grid tab, else (a
 //! theme without one, like Minimal) a grid of the results over the tab that
 //! B closes (`ConsoleUi::results`). A types the search on the on-screen
@@ -36,7 +36,6 @@ enum Item {
     Favourites,
     Status,
     Category,
-    Group,
 }
 
 /// The panel's focus (index in [`CollectionView::filter_items`]).
@@ -87,11 +86,8 @@ impl CollectionView {
         if self.lib.as_ref().is_some_and(|l| !l.statuses.is_empty()) {
             v.push(Item::Status);
         }
-        if category_options(&self.categories).len() > 1 {
+        if category_options(&self.categories).len() > 1 || !self.smart_groups.is_empty() {
             v.push(Item::Category);
-        }
-        if !self.smart_groups.is_empty() {
-            v.push(Item::Group);
         }
         v
     }
@@ -120,7 +116,7 @@ impl CollectionView {
         }
         let status_n = self.lib.as_ref().map_or(0, |l| l.statuses.len()) + 1;
         let category_n = category_options(&self.categories).len();
-        let group_n = self.smart_groups.groups.len() + 1;
+        let pick_n = category_n + self.smart_groups.groups.len();
         let (target, _) = self.filters_target();
         let before = (self.tab_nav(target).grid.filters.clone(), self.console.search.clone());
         if pad == Pad::X {
@@ -139,8 +135,11 @@ impl CollectionView {
             (Pad::Left | Pad::Right | Pad::A, Item::Show) => turn(&mut f.show, SHOW.len()),
             (Pad::Left | Pad::Right | Pad::A, Item::Sort) => turn(&mut f.sort, SORT.len()),
             (Pad::Left | Pad::Right | Pad::A, Item::Status) => turn(&mut f.status, status_n),
-            (Pad::Left | Pad::Right | Pad::A, Item::Category) => turn(&mut f.category, category_n),
-            (Pad::Left | Pad::Right | Pad::A, Item::Group) => turn(&mut f.group, group_n),
+            (Pad::Left | Pad::Right | Pad::A, Item::Category) => {
+                let mut pick = f.category_pick(category_n);
+                turn(&mut pick, pick_n);
+                f.set_category_pick(pick, category_n);
+            }
             (Pad::Left | Pad::Right | Pad::A, Item::Favourites) => f.favourites = !f.favourites,
             _ => return true,
         }
@@ -243,10 +242,13 @@ impl CollectionView {
         let sort: Vec<(SharedString, Option<usize>)> = SORT.iter().map(|l| (SharedString::from(heronite_i18n::tr(l)), None)).collect();
         let statuses = status_options(&lib);
         let categories = category_options(&self.categories);
-        let category = match categories.get(f.category).cloned().flatten() {
-            None => tr!("Any category").to_string(),
-            Some(name) => crate::collection::view_filters::category_label(&name),
-        };
+        let (pick, pick_n) = (f.category_pick(categories.len()), categories.len() + self.smart_groups.groups.len());
+        let category =
+            match (f.group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)), categories.get(f.category).cloned().flatten()) {
+                (Some(g), _) => g.name.clone(),
+                (None, None) => tr!("Any category").to_string(),
+                (None, Some(name)) => crate::collection::view_filters::category_label(&name),
+            };
         let row = |item: Item, label: String, ic: Icon, value: AnyElement| {
             let on = focus == item;
             kit::row_base(on)
@@ -306,33 +308,11 @@ impl CollectionView {
                 kit::choice_clickable(
                     category,
                     on,
-                    f.category > 0,
-                    f.category + 1 < categories.len(),
+                    pick > 0,
+                    pick + 1 < pick_n,
                     120.,
                     to(Item::Category, &[Pad::Left]),
                     to(Item::Category, &[Pad::Right]),
-                )
-                .into_any_element(),
-            ));
-        }
-        if items.contains(&Item::Group) {
-            let on = focus == Item::Group;
-            let value = match f.group.checked_sub(1).and_then(|i| self.smart_groups.groups.get(i)) {
-                Some(g) => g.name.clone(),
-                None => tr!("Any group").to_string(),
-            };
-            body = body.child(row(
-                Item::Group,
-                tr!("Smart group").to_string(),
-                Icon::AutoAwesome,
-                kit::choice_clickable(
-                    value,
-                    on,
-                    f.group > 0,
-                    f.group < self.smart_groups.groups.len(),
-                    120.,
-                    to(Item::Group, &[Pad::Left]),
-                    to(Item::Group, &[Pad::Right]),
                 )
                 .into_any_element(),
             ));

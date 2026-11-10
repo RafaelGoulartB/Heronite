@@ -3,6 +3,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::organize::{GroupBy, SMART_SECTION};
 use heronite_data::FacetKind;
 use heronite_i18n::tr;
 use heronite_launch::LaunchEvent;
@@ -52,7 +53,7 @@ impl CollectionView {
     }
 
     pub(super) fn refresh_groups(&mut self) {
-        self.group_counts.get_mut().clear();
+        self.group_members.get_mut().clear();
         let Some(lib) = self.lib.clone() else { return };
         self.group_today.set(Some(chrono::Local::now().date_naive()));
         let playing = &self.playing;
@@ -69,7 +70,19 @@ impl CollectionView {
             copies.iter().any(|g| playing.contains_key(&g.app_name))
         };
         let step = |key: &str| lib.get(key).and_then(|g| self.preparing.get(&g.app_name)).map(|s| s.label());
-        let groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize);
+        let smart = if self.ui.group_by == GroupBy::Category { self.smart_sections() } else { Vec::new() };
+        let mut groups = data::build_groups(&lib, &self.ui, &self.search, &keep, &is_playing, &step, &organize, &smart);
+        if self.ui.group_by == GroupBy::Category {
+            // A manual category's header has its colour's dot, a smart one's the sparkle.
+            for g in &mut groups {
+                if g.id.starts_with(SMART_SECTION) {
+                    g.icon = Some(crate::icons::Icon::AutoAwesome);
+                } else if g.id.as_ref() != "category:" {
+                    g.icon = None;
+                    g.color = self.manual_colour(&g.name);
+                }
+            }
+        }
         self.group_today.set(None);
         self.set_groups(groups);
         self.refresh_focus();
