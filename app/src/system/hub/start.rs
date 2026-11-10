@@ -44,6 +44,8 @@ pub fn init(
     std::thread::spawn(move || {
         crate::system::autostart::sync(&autostart_paths, autostart_on);
         crate::system::protocol::sync(&autostart_paths);
+        #[cfg(target_os = "linux")]
+        crate::system::desktop_entry::sync(&autostart_paths);
     });
     let (runtime, events) = GameRuntime::new(data_paths.clone());
     let runtime = Arc::new(runtime);

@@ -29,6 +29,8 @@ pub struct FakeHandleState {
     pub exit: Option<ExitInfo>,
     pub terminated: bool,
     pub killed: bool,
+    /// Got Ctrl+C ([`ProcessHandle::interrupt`]).
+    pub interrupted: bool,
 }
 
 struct FakeHandle {
@@ -56,6 +58,13 @@ impl ProcessHandle for FakeHandle {
         let mut s = self.state.lock().unwrap();
         s.killed = true;
         s.exit = Some(ExitInfo { code: None, signal: Some(9) });
+    }
+    fn interrupt(&mut self) {
+        let mut s = self.state.lock().unwrap();
+        s.interrupted = true;
+        if self.exit_on_terminate {
+            s.exit = Some(ExitInfo { code: None, signal: Some(2) });
+        }
     }
 }
 

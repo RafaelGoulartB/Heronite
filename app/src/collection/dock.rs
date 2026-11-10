@@ -33,6 +33,11 @@ pub(super) fn tri_mark(t: Tri) -> Div {
 }
 
 fn dock_button(id: &'static str, ic: Icon, label: Option<SharedString>, on: bool) -> Stateful<Div> {
+    tinted_dock_button(id, ic, label, on, theme::text_primary(), theme::text_muted())
+}
+
+/// A [`dock_button`] in other colours (the danger red of "Remove").
+fn tinted_dock_button(id: &'static str, ic: Icon, label: Option<SharedString>, on: bool, text: Rgba, ic_color: Rgba) -> Stateful<Div> {
     div()
         .id(id)
         .flex()
@@ -43,11 +48,11 @@ fn dock_button(id: &'static str, ic: Icon, label: Option<SharedString>, on: bool
         .px(px(if label.is_some() { 14. } else { 11. }))
         .rounded_full()
         .text_size(px(13.5))
-        .text_color(theme::text_primary())
+        .text_color(text)
         .cursor_pointer()
         .hover(|s| s.bg(theme::ink_a(0.1)))
         .when(on, |d| d.bg(theme::ink_a(0.1)))
-        .child(icon(ic, px(18.), theme::text_muted()))
+        .child(icon(ic, px(18.), ic_color))
         .children(label)
 }
 
@@ -241,6 +246,7 @@ impl CollectionView {
         let all_shown = shown.iter().all(|k| self.sel.contains(k));
         let all_fav = games.iter().all(|g| g.favourite);
         let all_hidden = games.iter().all(|g| g.hidden);
+        let removable = !self.removable_selection().0.is_empty();
 
         let count = div()
             .flex()
@@ -317,7 +323,21 @@ impl CollectionView {
                 dock_button("dock-edit", Icon::Edit, label(tr!("Edit")), false)
                     .child(kbd("F3"))
                     .on_click(cx.listener(|this, _, window, cx| this.open_batch_edit(window, cx))),
-            );
+            )
+            // Only games added to Heronite can leave the Collection; the dialog asks first.
+            .when(removable, |d| {
+                d.child(div().w(px(1.)).h(px(24.)).mx(px(4.)).flex_none().bg(theme::glass_border())).child(
+                    tinted_dock_button(
+                        "dock-remove",
+                        Icon::DeleteForever,
+                        label(tr!("Remove")),
+                        false,
+                        theme::danger_text(),
+                        theme::danger_text(),
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| this.open_batch_remove(cx))),
+                )
+            });
         let catcher = self.sel.pop.map(|_| {
             div().id("dock-catcher").absolute().inset_0().occlude().on_mouse_down(
                 MouseButton::Left,

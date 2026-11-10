@@ -5,8 +5,8 @@ use std::os::windows::ffi::OsStrExt;
 
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegDeleteKeyValueW, RegDeleteTreeW, RegEnumKeyExW, RegEnumValueW, RegGetValueW, RegOpenKeyExW, RegSetKeyValueW, HKEY,
-    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE, REG_DWORD, REG_EXPAND_SZ, REG_SZ, RRF_RT_REG_DWORD,
-    RRF_RT_REG_SZ,
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ENUMERATE_SUB_KEYS, KEY_QUERY_VALUE, REG_DWORD, REG_EXPAND_SZ, REG_SZ, RRF_RT_REG_BINARY,
+    RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +95,30 @@ pub fn string(hive: Hive, key: &str, name: &str) -> Option<String> {
             }
             // ERROR_MORE_DATA: `bytes` now says how much it needs.
             234 if (bytes as usize) / 2 > buf.len() => buf.resize(bytes as usize / 2 + 1, 0),
+            _ => return None,
+        }
+    }
+}
+
+/// The binary value `name` (a `REG_BINARY`) of the key `key`: a monitor's
+/// `EDID` under `SYSTEM\CurrentControlSet\Enum\DISPLAY\..\Device Parameters`.
+pub fn binary(hive: Hive, key: &str, name: &str) -> Option<Vec<u8>> {
+    let root = root(hive);
+    let (key, name) = (wide(key), wide(name));
+    let mut buf = vec![0u8; 512];
+    loop {
+        let mut bytes = buf.len() as u32;
+        // SAFETY: the strings are NUL-terminated; `buf` holds `bytes` bytes.
+        let r = unsafe {
+            RegGetValueW(root, key.as_ptr(), name.as_ptr(), RRF_RT_REG_BINARY, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut bytes)
+        };
+        match r {
+            0 => {
+                buf.truncate(bytes as usize);
+                return Some(buf);
+            }
+            // ERROR_MORE_DATA: `bytes` now says how much it needs.
+            234 if bytes as usize > buf.len() => buf.resize(bytes as usize, 0),
             _ => return None,
         }
     }
@@ -232,6 +256,16 @@ mod tests {
         assert_eq!(string(Hive::CurrentUser, r"Software\Heronite\Missing", "Nothing"), None);
         let build = dword(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentMajorVersionNumber");
         assert!(build.is_some_and(|v| v >= 10), "{build:?}");
+    }
+
+    #[test]
+    fn reads_a_binary_value() {
+        // A REG_BINARY every Windows user profile has; only read.
+        let mask = binary(Hive::CurrentUser, r"Control Panel\Desktop", "UserPreferencesMask").unwrap();
+        assert!(!mask.is_empty() && mask.len() < 512, "{mask:?}");
+        assert_eq!(binary(Hive::CurrentUser, r"Software\Heronite\Missing", "Nothing"), None);
+        // Another type is not binary.
+        assert_eq!(binary(Hive::LocalMachine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "SystemRoot"), None);
     }
 
     #[test]

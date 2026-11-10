@@ -495,5 +495,9 @@
   "Ribbon": "Fita",
   "Show categories on covers": "Mostrar categorias nas capas",
   "Strip": "Faixa",
-  "Style": "Estilo"
+  "Style": "Estilo",
+  "Capture from a key of the desktop": "Capturar por uma tecla do ambiente",
+  "Where the desktop takes no shortcut from Heronite, bind a key to this command in its keyboard settings: {command}": "Onde o ambiente não aceita atalhos do Heronite, associe uma tecla a este comando nas configurações de teclado dele: {command}",
+  "Shortcut ready on {trigger}. The desktop picks the keys: change them in its keyboard settings.": "Atalho pronto em {trigger}. Quem escolhe as teclas é o ambiente: altere-as nas configurações de teclado dele.",
+  "The desktop took the shortcut but names no key for it: assign one in its keyboard settings.": "O ambiente aceitou o atalho, mas não informa nenhuma tecla para ele: atribua uma nas configurações de teclado dele."
 }

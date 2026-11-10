@@ -153,7 +153,7 @@ mod tests {
     }
 
     fn creds(token: &str) -> Credentials {
-        Credentials { access_token: token.into(), user_id: "42".into() }
+        Credentials { access_token: token.into(), user_id: "42".into(), refresh_token: String::new() }
     }
 
     /// Owns `fresh`, `zero` (never played anywhere) and `played` (played here).

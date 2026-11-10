@@ -1,5 +1,6 @@
 //! Settings → Achievements: the RetroAchievements account and the emulators
-//! (`retro`), the optional Steam Web API key, how achievements show, and
+//! (`retro`), the optional Steam Web API key, Comet for GOG games (and, on
+//! Windows, the GOG Galaxy service it needs), how achievements show, and
 //! "Update now" for every game. Everything goes through
 //! `services::achievements`, which saves it and reads the games that were
 //! waiting.
@@ -24,6 +25,11 @@ use crate::ui::fields::{input_box, labeled, meta_text, on_commit};
 pub struct State {
     retro: retro::State,
     steam_key: Entity<InputState>,
+    /// Windows: GOG Galaxy's service is registered (`None` until the
+    /// section shows).
+    galaxy_service: Option<bool>,
+    /// Registering it.
+    galaxy_busy: bool,
 }
 
 fn masked(window: &mut Window, cx: &mut Context<SettingsPage>, value: &str) -> Entity<InputState> {
@@ -44,7 +50,7 @@ impl State {
         on_commit(&steam_key, window, cx, |_: &mut SettingsPage, value, _, cx| {
             service::get(cx).update(cx, |s, cx| s.set_steam_key(Some(value), cx));
         });
-        Self { retro: retro::State::new(window, cx), steam_key }
+        Self { retro: retro::State::new(window, cx), steam_key, galaxy_service: None, galaxy_busy: false }
     }
 }
 
@@ -56,6 +62,10 @@ pub fn reveal(d: &mut SettingsPage, label: &str) {
 /// Reads the account's points and the emulators' state when the section shows.
 pub fn shown(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
     retro::shown(d, cx);
+    if cfg!(windows) {
+        // A registry read: GOG Galaxy may have been installed meanwhile.
+        d.achievements.galaxy_service = Some(heronite_launch::galaxy::windows_service_registered());
+    }
     service::get(cx).update(cx, |s, cx| s.check_emulators(cx));
 }
 
@@ -80,6 +90,68 @@ fn overlay_test(d: &SettingsPage, cx: &mut App) {
         };
         crate::system::notify::send(tr!("The overlay can't show it"), why);
     }
+}
+
+/// Registers Comet's stand-in for GOG Galaxy's service (Windows asks for the
+/// administrator), then says how it went.
+fn register_galaxy_service(d: &mut SettingsPage, cx: &mut Context<SettingsPage>) {
+    if d.achievements.galaxy_busy {
+        return;
+    }
+    d.achievements.galaxy_busy = true;
+    cx.notify();
+    let paths = d.ctx.data_paths.clone();
+    cx.spawn(async move |this, cx| {
+        let res = cx
+            .background_spawn(async move { heronite_launch::galaxy::install_windows_service(&paths, &heronite_launch::net::SystemNet) })
+            .await;
+        this.update(cx, |d, cx| {
+            d.achievements.galaxy_busy = false;
+            d.achievements.galaxy_service = Some(heronite_launch::galaxy::windows_service_registered());
+            if let Err(e) = res {
+                log::warn!("registering GOG Galaxy's service: {e}");
+                crate::system::notify::send(tr!("GOG Galaxy's service was not registered"), e);
+            }
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+}
+
+/// GOG: Comet beside GOG games, and on Windows the service some games look
+/// for first.
+fn gog_rows(d: &SettingsPage, prefs: &Prefs, cx: &mut Context<SettingsPage>) -> Vec<AnyElement> {
+    let mut rows = vec![toggle_row(
+        "ach-gog-comet",
+        tr!("Unlock GOG achievements while you play"),
+        Some(tr!(
+            "Heronite runs Comet, an open-source stand-in for GOG Galaxy's service, beside each GOG game, signed in with your GOG account: what the game unlocks counts on GOG and shows here while you play. Off, games that need GOG Galaxy for their achievements unlock nothing."
+        )),
+        prefs.gog_comet,
+    )
+    .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.gog_comet = !p.gog_comet)))
+    .into_any_element()];
+    let Some(registered) = d.achievements.galaxy_service.filter(|_| cfg!(windows) && prefs.gog_comet) else { return rows };
+    let action = if registered {
+        status_pill(tr!("Registered"), theme::status_color("playing")).into_any_element()
+    } else {
+        let label = if d.achievements.galaxy_busy { tr!("Registering…") } else { tr!("Register") };
+        button_sm("ach-gog-service", ButtonKind::Glass, label)
+            .on_click(cx.listener(|d, _, _, cx| register_galaxy_service(d, cx)))
+            .into_any_element()
+    };
+    rows.push(
+        row(
+            tr!("GOG Galaxy's service"),
+            Some(tr!(
+                "Some games look for it before they unlock anything. Without GOG Galaxy installed, Heronite can register Comet's stand-in for it; Windows asks for the administrator once."
+            )),
+            action,
+        )
+        .into_any_element(),
+    );
+    rows
 }
 
 pub(super) fn set_prefs(cx: &mut Context<SettingsPage>, change: impl FnOnce(&mut Prefs)) {
@@ -188,6 +260,8 @@ pub fn render(d: &mut SettingsPage, _window: &mut Window, cx: &mut Context<Setti
             .on_click(cx.listener(|_, _, _, cx| set_prefs(cx, |p| p.live_steam = !p.live_steam)))
             .into_any_element(),
         ]))
+        .child(caption("GOG"))
+        .child(card(gog_rows(d, &prefs, cx)))
         .child(caption(tr!("Game files")))
         .child(card([toggle_row(
             "ach-game-files",

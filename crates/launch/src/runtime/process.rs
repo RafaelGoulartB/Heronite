@@ -12,6 +12,7 @@ use super::session::{add_env, apply_mods, fail, finish};
 use super::spawner::ProcessHandle;
 use super::state::{Control, Shared};
 use super::{ExitInfo, LaunchEvent, LaunchRequest};
+use crate::gpu::preference::{self, Applied, Preference, Registry, Restored};
 use crate::keep_awake::Hold;
 use crate::log_writer::{self, GameLog};
 use crate::plan::{Command, ProcessPlan};
@@ -191,8 +192,18 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             None => return,
         }
     }
+    // GOG Galaxy's service, listening before the game looks for it.
+    let mut comet = super::galaxy::start(shared, log, &prep, &plan.prep);
+    if cancelled() {
+        if let Some(comet) = comet {
+            super::galaxy::stop(shared, comet, log);
+        }
+        return finish_aborted(shared, log, req);
+    }
     let live = crate::live_fps::prepare(&mut command, &req.app_name, &*services.probe);
     *control.live_fps.lock().unwrap() = live;
+    // For the program that really starts (legendary named it above).
+    let gpu_exe = plan.gpu_preference.and_then(|p| set_gpu_preference(shared, &*services.gpu_registry, log, &command.program, p));
     log.info(&format!("Launching {}: {}\n", req.title, log_writer::command_line_for_log(&command)));
     log.info("Game Output:");
     let mut handle = match shared.spawner.spawn_logged(&command, Some(log.clone())) {
@@ -201,6 +212,12 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
             false => h,
         },
         Err(e) => {
+            if let Some(comet) = comet.take() {
+                super::galaxy::stop(shared, comet, log);
+            }
+            if let Some(exe) = &gpu_exe {
+                put_back_gpu_preference(shared, &*services.gpu_registry, log, exe);
+            }
             let program = &plan.command.program;
             let notice =
                 Notice::warn(format!("could not start {program}: {e}"), tr!("could not start {program}: {error}", program, error = e));
@@ -214,7 +231,7 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     let _ = record::mark_started(&shared.paths, &req.app_name, started_at);
     // Written down so the next run of the app can pick the game up if this
     // one quits or crashes first.
-    if let Some(tracked) = super::adopt::process_entry(shared, handle.pid(), plan) {
+    if let Some(tracked) = super::adopt::process_entry(shared, handle.pid(), plan, gpu_exe.clone()) {
         super::adopt::remember(shared, control, req, tracked);
     }
     shared.send(LaunchEvent::Running { app_name: req.app_name.clone(), pid: handle.pid() });
@@ -306,11 +323,18 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
     } else {
         companions.stop(shared.cfg.kill_grace, log);
     }
+    // Also when tracking stopped: nothing would stop it later.
+    if let Some(comet) = comet {
+        super::galaxy::stop(shared, comet, log);
+    }
     if let Some(h) = awake.as_mut() {
         h.terminate();
     }
     if let Some(held) = held {
         held.release();
+    }
+    if let Some(exe) = &gpu_exe {
+        put_back_gpu_preference(shared, &*services.gpu_registry, log, exe);
     }
     if !aborted && !control.kill.load(Ordering::SeqCst) {
         if let Some(cmd) = &plan.wait_after_exit {
@@ -332,6 +356,48 @@ pub(super) fn run_process(shared: &Shared, log: &Arc<GameLog>, req: &LaunchReque
 /// (Windows); a refusal goes to the game's log.
 pub(super) fn hold_awake(log: &GameLog, title: &str) -> Option<Hold> {
     Hold::new(title).inspect_err(|e| log.warning(&format!("Could not keep the computer awake: {e}"))).ok()
+}
+
+/// Asks Windows for `preference`'s card for `program`, right before it
+/// starts. Returns the value's name when Heronite wrote it (it is put back
+/// after the game); problems go to the game's log and the game starts anyway.
+pub(super) fn set_gpu_preference(
+    shared: &Shared,
+    reg: &dyn Registry,
+    log: &GameLog,
+    program: &str,
+    preference: Preference,
+) -> Option<String> {
+    let Some(exe) = preference::target_exe(program) else {
+        log.warning(&format!("GPU preference: {program} is not a full path to a program; Windows' own choice applies"));
+        return None;
+    };
+    match preference::apply(reg, &preference::ledger_path(&shared.paths), &exe, preference) {
+        Ok(Applied::Wrote { data, previous }) => {
+            let was = previous.as_deref().map_or_else(|| "no value".to_string(), |p| format!("{p:?}"));
+            log.info(&format!("GPU preference of {exe}: {data:?} until the game ends (was {was})"));
+            Some(exe)
+        }
+        Ok(Applied::AlreadySet) => {
+            log.info(&format!("GPU preference of {exe}: Windows already has this choice"));
+            None
+        }
+        Err(e) => {
+            log.warning(&format!("Could not set the GPU preference of {exe}: {e:#}"));
+            None
+        }
+    }
+}
+
+/// Puts back the value [`set_gpu_preference`] wrote, unless it changed since.
+pub(super) fn put_back_gpu_preference(shared: &Shared, reg: &dyn Registry, log: &GameLog, exe: &str) {
+    match preference::restore(reg, &preference::ledger_path(&shared.paths), exe) {
+        Ok(Restored::PutBack) => log.info(&format!("GPU preference of {exe}: put back")),
+        Ok(Restored::Removed) => log.info(&format!("GPU preference of {exe}: removed again")),
+        Ok(Restored::LeftAlone) => log.info(&format!("GPU preference of {exe}: changed in Windows meanwhile, left as it is")),
+        Ok(Restored::Nothing) => {}
+        Err(e) => log.warning(&format!("Could not put back the GPU preference of {exe}: {e:#}")),
+    }
 }
 
 /// `handle` followed until its sandbox ends, when `cmd` starts one.

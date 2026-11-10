@@ -28,7 +28,13 @@ impl CaptureService {
     pub fn shutdown(&self) {}
 
     pub fn status(&self) -> CaptureStatus {
-        CaptureStatus { registered: false, accelerator: String::new(), active_game: None, error: Some(unavailable()) }
+        CaptureStatus {
+            registered: false,
+            accelerator: String::new(),
+            active_game: None,
+            error: Some(unavailable()),
+            desktop_trigger: None,
+        }
     }
 
     pub fn capture_now(&self) -> CaptureOutcome {
@@ -36,6 +42,10 @@ impl CaptureService {
     }
 
     pub fn capture_quiet(&self) -> CaptureOutcome {
+        CaptureOutcome::Failed(unavailable())
+    }
+
+    pub fn capture_requested(&self) -> CaptureOutcome {
         CaptureOutcome::Failed(unavailable())
     }
 }

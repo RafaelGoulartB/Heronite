@@ -189,7 +189,7 @@ impl OnboardingDialog {
         .on_click(cx.listener(|this, _, _, cx| this.open(View::Games, cx)))
     }
 
-    /// The other launchers (Heroic, Lutris and more; Playnite on Windows):
+    /// The other launchers (Heroic, Lutris and more; Heroic and Playnite on Windows):
     /// the games brought in from them, and a click to Settings → Other
     /// launchers.
     fn launchers_line(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -197,8 +197,7 @@ impl OnboardingDialog {
         let right = if n > 0 {
             done_label(trn!(n, "{n} game", "{n} games")).into_any_element()
         } else {
-            // Names: not translated.
-            dim(if cfg!(windows) { "Playnite" } else { tr!("Heroic, Lutris and more") }).into_any_element()
+            dim(if cfg!(windows) { tr!("Heroic and Playnite") } else { tr!("Heroic, Lutris and more") }).into_any_element()
         };
         line(Icon::CallMerge, tr!("Other launchers"), right)
             .id("onb-line-launchers")

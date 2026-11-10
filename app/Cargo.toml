@@ -20,6 +20,7 @@ heronite-backup = { path = "../crates/backup" }
 heronite-sync = { path = "../crates/sync" }
 heronite-clients = { path = "../crates/clients" }
 heronite-data = { path = "../crates/data" }
+heronite-display = { path = "../crates/display" }
 heronite-i18n = { path = "../crates/i18n" }
 heronite-images = { path = "../crates/images" }
 heronite-launch = { path = "../crates/launch" }

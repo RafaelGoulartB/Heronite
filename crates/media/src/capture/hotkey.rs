@@ -41,7 +41,7 @@ impl GlobalHotkey {
                 (spec.id, spec.description),
                 trigger,
                 on_press,
-                Box::new(move |r| on_ready(r.map(|()| ShortcutBackend::Portal))),
+                Box::new(move |r| on_ready(r.map(|_| ShortcutBackend::Portal))),
             );
             *shared.portal.lock().unwrap() = Some(portal);
         } else {
@@ -68,11 +68,12 @@ fn start_hyprland(shared: &Arc<Shared>, spec: HotkeySpec, on_press: Arc<dyn Fn()
     };
     *shared.signals.lock().unwrap() = Some(signals.handle());
     let weak = Arc::downgrade(shared);
+    let pressed = on_press.clone();
     let listening = std::thread::Builder::new().name("heronite-hotkey-signal".into()).spawn(move || {
         for _ in signals.forever() {
             let Some(shared) = weak.upgrade() else { break };
             if !shared.stopped.load(Ordering::SeqCst) {
-                on_press();
+                pressed();
             }
         }
     });
@@ -82,19 +83,39 @@ fn start_hyprland(shared: &Arc<Shared>, spec: HotkeySpec, on_press: Arc<dyn Fn()
     }
     let shared = shared.clone();
     let spawned = std::thread::Builder::new().name("heronite-hotkey-bind".into()).spawn(move || {
-        let command = format!("kill -{} {}", spec.signal, std::process::id());
-        let result = hyprland::register_as(&binding, &spec.accelerator, &command, spec.description, spec.consume);
-        if result.is_ok() {
-            let mut keys = shared.hyprland.lock().unwrap();
-            if shared.stopped.load(Ordering::SeqCst) {
-                // Dropped while it was being registered.
-                drop(keys);
-                let _ = hyprland::unregister(&binding.keys);
-            } else {
-                *keys = Some(binding.keys.clone());
+        let command = hyprland::signal_command(spec.signal);
+        match hyprland::register_as(&binding, &spec.accelerator, &command, spec.description, spec.consume) {
+            Ok(()) => {
+                let mut keys = shared.hyprland.lock().unwrap();
+                if shared.stopped.load(Ordering::SeqCst) {
+                    // Dropped while it was being registered.
+                    drop(keys);
+                    let _ = hyprland::unregister(&binding.keys);
+                } else {
+                    *keys = Some(binding.keys.clone());
+                }
+                on_ready(Ok(ShortcutBackend::Hyprland));
+            }
+            Err(hyprland::Failure::Refused(e)) => on_ready(Err(e)),
+            // Hyprland's portal may take the shortcut where `hyprctl` cannot.
+            Err(hyprland::Failure::Unavailable(e)) => {
+                log::warn!("Hyprland could not be asked for the shortcut {}; trying the desktop portal: {e}", spec.id);
+                let Some(trigger) = to_portal_trigger(&spec.accelerator) else { return on_ready(Err(e)) };
+                let mut portal = shared.portal.lock().unwrap();
+                // Dropped meanwhile: `Drop` has already emptied this.
+                if shared.stopped.load(Ordering::SeqCst) {
+                    return;
+                }
+                *portal = Some(PortalShortcut::start(
+                    spec.portal_app_id,
+                    (spec.id, spec.description),
+                    trigger,
+                    on_press,
+                    // Hyprland's reason first: that is the session's own way.
+                    Box::new(move |r| on_ready(r.map(|_| ShortcutBackend::Portal).map_err(|_| e))),
+                ));
             }
         }
-        on_ready(result.map(|()| ShortcutBackend::Hyprland));
     });
     if let Err(e) = spawned {
         log::warn!("could not start the shortcut thread: {e}");

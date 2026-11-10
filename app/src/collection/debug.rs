@@ -57,7 +57,8 @@ impl CollectionView {
     /// selection: the dock, the tick circles); `HERONITE_DEBUG_DOCK=status|
     /// categories` opens that dock popover. With a selection,
     /// `HERONITE_DEBUG_MENU` on a selected game opens the batch menu and
-    /// `HERONITE_DEBUG_DIALOG=batchedit` the fields editor and
+    /// `HERONITE_DEBUG_DIALOG=batchedit` the fields editor, `batchremove` the
+    /// removal confirmation, and
     /// `HERONITE_DEBUG_BATCH` runs batch changes (see `open_pending_debug_dialog`).
     pub(super) fn apply_debug_env(&mut self, cx: &mut Context<Self>) {
         if let Some(n) = crate::env::parse::<usize>("HERONITE_DEBUG_MULTI") {
@@ -277,6 +278,7 @@ impl CollectionView {
             "statuses" => self.open_manage_statuses(window, cx),
             "hltb" => self.open_hltb_match(window, cx),
             "batchedit" => self.open_batch_edit(window, cx),
+            "batchremove" => self.open_batch_remove(cx),
             "categories" => self.open_manage_categories(window, cx),
             // smartgroup (a new one), smartgroup:<id> (that one), smartgroup-filters (from the filters on screen)
             "smartgroup" => self.open_group_editor(None, None, window, cx),

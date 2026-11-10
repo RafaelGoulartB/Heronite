@@ -27,10 +27,20 @@ pub struct Account {
     pub username: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Credentials {
     pub access_token: String,
     pub user_id: String,
+    /// Empty when gogdl has none (Comet needs it, see
+    /// `heronite_launch::galaxy`).
+    pub refresh_token: String,
+}
+
+/// Without the tokens: they must not reach a log.
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials").field("user_id", &self.user_id).finish_non_exhaustive()
+    }
 }
 
 /// Names of the caches that depend on the account.
@@ -43,6 +53,12 @@ pub fn is_logged_in(paths: &DataPaths) -> bool {
     let flagged =
         json_store::read_value(&paths.gog_store("config")).is_ok_and(|c| c.get("isLoggedIn").and_then(Value::as_bool) == Some(true));
     has_tokens && flagged
+}
+
+/// The refresh token gogdl keeps in `auth.json`.
+fn stored_refresh_token(paths: &DataPaths) -> Option<String> {
+    let auth = json_store::read_value(&paths.gog_auth()).ok()?;
+    auth.get(CLIENT_ID)?.get("refresh_token")?.as_str().filter(|t| !t.is_empty()).map(str::to_string)
 }
 
 /// The account saved at login (from `config.json`).
@@ -81,7 +97,9 @@ fn parse_credentials(stdout: &str) -> Result<Credentials> {
         _ => None,
     };
     match (text("access_token"), text("user_id")) {
-        (Some(access_token), Some(user_id)) => Ok(Credentials { access_token, user_id }),
+        (Some(access_token), Some(user_id)) => {
+            Ok(Credentials { access_token, user_id, refresh_token: text("refresh_token").unwrap_or_default() })
+        }
         _ => bail!(tr!("You are not logged in to GOG")),
     }
 }
@@ -89,8 +107,25 @@ fn parse_credentials(stdout: &str) -> Result<Credentials> {
 /// Fresh tokens (gogdl refreshes expired ones itself). When gogdl has
 /// tokens but cannot refresh them, the error is a [`SessionExpired`].
 pub fn credentials(paths: &DataPaths, gogdl: &Gogdl) -> Result<Credentials> {
-    let out = gogdl.run(&["auth"])?;
-    parse_credentials(&out.stdout).map_err(|err| {
+    credentials_from(paths, gogdl.run(&["auth"])?)
+}
+
+/// [`credentials`] that gives up after `limit` (gogdl may hang on a bad
+/// network while it refreshes the tokens).
+pub fn credentials_within(paths: &DataPaths, gogdl: &Gogdl, limit: std::time::Duration) -> Result<Credentials> {
+    credentials_from(paths, gogdl.run_within(&["auth"], limit)?)
+}
+
+fn credentials_from(paths: &DataPaths, out: heronite_epic::cmd::Output) -> Result<Credentials> {
+    let parsed = parse_credentials(&out.stdout).map(|mut c| {
+        // gogdl prints what it keeps, refresh token included; its file
+        // has it otherwise.
+        if c.refresh_token.is_empty() {
+            c.refresh_token = stored_refresh_token(paths).unwrap_or_default();
+        }
+        c
+    });
+    parsed.map_err(|err| {
         let refused = last_json_object(&out.stdout).is_some_and(|d| d.get("error").and_then(Value::as_bool) == Some(true));
         if refused && is_logged_in(paths) {
             anyhow!(SessionExpired).context(tr!("Your GOG sign-in expired: log in again"))
@@ -193,8 +228,9 @@ mod tests {
 
     #[test]
     fn credentials_are_parsed_from_gogdl_output() {
-        let c = parse_credentials("{\"access_token\":\"tok\",\"user_id\":\"4242\",\"expires_in\":3600}\n").unwrap();
-        assert_eq!((c.access_token.as_str(), c.user_id.as_str()), ("tok", "4242"));
+        let c =
+            parse_credentials("{\"access_token\":\"tok\",\"user_id\":\"4242\",\"expires_in\":3600,\"refresh_token\":\"ref\"}\n").unwrap();
+        assert_eq!((c.access_token.as_str(), c.user_id.as_str(), c.refresh_token.as_str()), ("tok", "4242", "ref"));
         let numeric = parse_credentials("{\"access_token\":\"t\",\"user_id\":4242}").unwrap();
         assert_eq!(numeric.user_id, "4242");
         assert!(parse_credentials("null\n").is_err());
@@ -243,10 +279,20 @@ mod tests {
         let (dir, paths) = setup();
         let tool = fake_tool(dir.path()).otherwise(Reply::new().out(r#"{"access_token":"tok","user_id":"7"}"#));
         let c = credentials(&paths, &gogdl(&tool, &paths)).unwrap();
-        assert_eq!((c.access_token.as_str(), c.user_id.as_str()), ("tok", "7"));
+        assert_eq!((c.access_token.as_str(), c.user_id.as_str(), c.refresh_token.as_str()), ("tok", "7", ""));
         assert_eq!(calls_of(&tool), ["auth"]);
+        // Without it in the output, the refresh token comes from gogdl's file.
+        std::fs::create_dir_all(paths.gog_auth().parent().unwrap()).unwrap();
+        std::fs::write(paths.gog_auth(), r#"{"46899977096215655":{"access_token":"t","refresh_token":"kept"}}"#).unwrap();
+        assert_eq!(credentials(&paths, &gogdl(&tool, &paths)).unwrap().refresh_token, "kept");
         let none = fake_tool(dir.path()).otherwise(Reply::new().out("null"));
         assert!(credentials(&paths, &gogdl(&none, &paths)).is_err());
+        let hangs = fake_tool(dir.path())
+            .otherwise(Reply::new().out(r#"{"access_token":"tok","user_id":"7"}"#).sleep(std::time::Duration::from_secs(5)));
+        let started = std::time::Instant::now();
+        let err = credentials_within(&paths, &gogdl(&hangs, &paths), std::time::Duration::from_millis(300)).unwrap_err().to_string();
+        assert!(err.contains("did not answer"), "{err}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(4), "gave up on time");
     }
 
     #[test]
