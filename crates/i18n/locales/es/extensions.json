@@ -96,6 +96,7 @@
   "This extension is not installed any more.": "Esta extensión ya no está instalada.",
   "This is not an extension. Choose its .zip, or the source.toml in its folder.": "Esto no es una extensión. Elige su .zip o el source.toml de su carpeta.",
   "This list is in use already.": "Esta lista ya está en uso.",
+  "This list is not a list of metadata sources.": "Esta lista no es una lista de fuentes de metadatos.",
   "This list was made for a newer Heronite.": "Esta lista se hizo para una versión más reciente de Heronite.",
   "This source cannot be installed": "Esta fuente no se puede instalar",
   "Update from a file…": "Actualizar desde un archivo…",

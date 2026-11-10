@@ -1,4 +1,4 @@
-//! The example extensions of `extensions/` against recorded answers, and an
+//! The example extensions of `extensions/metadata/` against recorded answers, and an
 //! extras source of PC games written for the tests, through the real install
 //! and gather.
 

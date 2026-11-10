@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Builds extensions/index.json, the app's own list of metadata extensions
-(heronite_metadata_ext::lists::HERONITE_LIST), from the folders under
-extensions/: each folder's source.toml says what the extension is, and the
-list names its two files (source.toml, source.js) by address and SHA-256.
+"""Builds extensions/metadata/index.json, the app's own list of metadata
+extensions (heronite_metadata_ext::lists::HERONITE_LIST), from the folders
+under extensions/metadata/: each folder's source.toml says what the
+extension is, and the list ("type": "metadata") names its two files
+(source.toml, source.js) by address and SHA-256.
 The format is described in docs/EXTENSIONS.md ("Lists of extensions").
 
 Run after adding or changing an extension, and commit the result with it:
@@ -24,10 +25,11 @@ import tomllib
 from pathlib import Path
 
 INDEX = 1
+TYPE = "metadata"
 API = 1
 ROOT = Path(__file__).resolve().parent.parent
-FOLDER = ROOT / "extensions"
-BASE = "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/"
+FOLDER = ROOT / "extensions" / "metadata"
+BASE = "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/"
 FILES = ("source.toml", "source.js")
 MAX_SIZE = {"source.toml": 64 * 1024, "source.js": 512 * 1024}
 ID = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -87,7 +89,7 @@ def build(base):
     if not base.endswith("/"):
         base += "/"
     folders = sorted(p for p in FOLDER.iterdir() if p.is_dir() and (p / "source.toml").is_file())
-    return {"index": INDEX, "name": "Heronite", "extensions": [entry(f, base) for f in folders]}
+    return {"index": INDEX, "type": TYPE, "name": "Heronite", "extensions": [entry(f, base) for f in folders]}
 
 
 def text(index):

@@ -122,10 +122,12 @@ impl DataPaths {
     pub fn metadata_review(&self) -> PathBuf {
         self.j("local_library/metadata-review.json")
     }
-    /// Installed metadata extensions (`heronite-metadata-ext`): a folder
-    /// per extension id with its files and `install.json`.
+    /// `extensions/metadata/`: installed metadata extensions
+    /// (`heronite-metadata-ext`), a folder per extension id with its files
+    /// and `install.json`. Other kinds of extensions get a folder of their
+    /// own beside `metadata/`.
     pub fn metadata_extensions_dir(&self) -> PathBuf {
-        self.j("metadata-extensions")
+        self.j("extensions/metadata")
     }
     pub fn steam_details_dir(&self) -> PathBuf {
         self.j("local_library/steam-details")
@@ -229,11 +231,11 @@ impl DataPaths {
     pub fn source_cache_dir(&self, id: &str) -> PathBuf {
         self.j("store_cache").join("sources").join(id)
     }
-    /// `store_cache/extension-lists/`: the last good copy of each list of
+    /// `store_cache/extensions/metadata/`: the last good copy of each list of
     /// metadata extensions (`heronite-metadata-ext`), and the files of an
     /// entry while it is checked before installing. A cache.
     pub fn extension_lists_cache_dir(&self) -> PathBuf {
-        self.j("store_cache").join("extension-lists")
+        self.j("store_cache/extensions/metadata")
     }
     /// `gog_store/<name>.json`.
     pub fn gog_store(&self, name: &str) -> PathBuf {

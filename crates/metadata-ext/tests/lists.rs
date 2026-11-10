@@ -1,7 +1,7 @@
-//! The lists of extensions: the committed `extensions/index.json` against
-//! its folders, and the client against the fixture server (fetch, the copy
-//! kept offline, what is refused, updates, a list removed, installing an
-//! entry through to a gather).
+//! The lists of extensions: the committed `extensions/metadata/index.json`
+//! against its folders, and the client against the fixture server (fetch,
+//! the copy kept offline, what is refused, updates, a list removed,
+//! installing an entry through to a gather).
 
 mod support;
 
@@ -26,7 +26,7 @@ const OTHER: &str = "https://other.example.net/heronite.json";
 const FILES: &str = "https://lists.example.org/ext/";
 
 fn repo_extensions() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/metadata")
 }
 
 fn sha(bytes: &[u8]) -> String {
@@ -53,7 +53,9 @@ fn entry_mut<'a>(list: &'a mut Value, id: &str) -> &'a mut Value {
 #[test]
 fn the_committed_list_matches_the_folders() {
     let text = std::fs::read(repo_extensions().join("index.json")).unwrap();
-    let list = index::parse(&text).expect("extensions/index.json reads");
+    let list = index::parse(&text).expect("extensions/metadata/index.json reads");
+    let raw: Value = serde_json::from_slice(&text).unwrap();
+    assert_eq!(raw["type"], "metadata", "the committed list says what it holds");
     let mut folders: Vec<PathBuf> =
         std::fs::read_dir(repo_extensions()).unwrap().flatten().map(|e| e.path()).filter(|p| p.join("source.toml").is_file()).collect();
     folders.sort();
@@ -208,6 +210,11 @@ fn what_a_list_may_not_be() {
     // A later format, or a wrong entry: refused, the copy kept stays.
     *s.list.lock() = json!({"index": 2, "extensions": []});
     assert_eq!(lists::fetch_list(&s.svc.http, LIST).unwrap_err(), ListError::Invalid(IndexError::NewerFormat(2)));
+    // A list of another type of extensions is refused, with its own error.
+    let mut other = list_json();
+    other["type"] = json!("themes");
+    *s.list.lock() = other;
+    assert_eq!(lists::fetch_list(&s.svc.http, LIST).unwrap_err(), ListError::Invalid(IndexError::WrongType("themes".into())));
     let mut wrong = list_json();
     entry_mut(&mut wrong, "wikipedia")["files"]["source.js"]["url"] = json!("http://lists.example.org/ext/wikipedia/source.js");
     *s.list.lock() = wrong;

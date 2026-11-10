@@ -64,6 +64,7 @@ pub fn list_error(e: &ListError) -> String {
         ListError::TooLarge => tr!("The list is larger than a list may be (1 MB).").into(),
         ListError::Invalid(IndexError::NewerFormat(_)) => tr!("This list was made for a newer Heronite.").into(),
         ListError::Invalid(IndexError::NotJson(_)) => tr!("This address does not hold a list of sources.").into(),
+        ListError::Invalid(IndexError::WrongType(_)) => tr!("This list is not a list of metadata sources.").into(),
         ListError::Invalid(IndexError::Invalid(_)) => tr!("The list has mistakes, so it is not used.").into(),
         ListError::AlreadyAdded => tr!("This list is in use already.").into(),
         ListError::Io(_) => tr!("The list could not be saved.").into(),
@@ -252,6 +253,7 @@ mod tests {
             ListError::Invalid(IndexError::NewerFormat(2)),
             ListError::Invalid(IndexError::NotJson("x".into())),
             ListError::Invalid(IndexError::Invalid("wikipedia: no files".into())),
+            ListError::Invalid(IndexError::WrongType("themes".into())),
             ListError::AlreadyAdded,
             ListError::Io("x".into()),
             ListError::NoFile("/x/index.json: No such file or directory".into()),
@@ -272,7 +274,8 @@ mod tests {
         }
         assert_eq!(list_detail(&all[7]).as_deref(), Some("wikipedia: no files"));
         assert!(list_error(&ListError::Status(500)).contains("500"));
-        assert_eq!(list_detail(&all[10]).as_deref(), Some("/x/index.json: No such file or directory"), "which file, and why");
+        assert_eq!(list_detail(&all[11]).as_deref(), Some("/x/index.json: No such file or directory"), "which file, and why");
+        assert_eq!(list_error(&all[8]), "This list is not a list of metadata sources.");
     }
 
     #[test]
@@ -289,7 +292,7 @@ mod tests {
     fn another_address_for_the_apps_own_list_is_not_the_heronite_list() {
         // `HERONITE_EXTENSIONS_INDEX=https://…`: the app's own list, at
         // another address.
-        let branch = "https://raw.githubusercontent.com/someone/Heronite/branch/extensions/index.json";
+        let branch = "https://raw.githubusercontent.com/someone/Heronite/branch/extensions/metadata/index.json";
         let origin = list_origin(branch, true);
         assert_eq!(origin, Origin::List(branch.into()));
         assert!(cautious(&origin) && guarantee(&origin) != guarantee(&Origin::Heronite));
@@ -300,7 +303,7 @@ mod tests {
 
     #[test]
     fn a_list_on_this_computer_is_never_the_heronite_list() {
-        let path = "/src/heronite/extensions/index.json";
+        let path = "/src/heronite/extensions/metadata/index.json";
         // Even as the app's own list (a debug build's).
         assert_eq!(list_origin(path, true), Origin::Local(path.into()));
         let local = Origin::Local(path.into());

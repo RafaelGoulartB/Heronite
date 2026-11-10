@@ -19,8 +19,8 @@ for sure, or when the user asks it by name.
 Try it:
 
 ```sh
-cargo run -p heronite-metadata-ext --example run -- extensions/wikipedia find "Portal 2"
-cargo run -p heronite-metadata-ext --example run -- extensions/wikipedia find "Portal 2" --language pt-BR
+cargo run -p heronite-metadata-ext --example run -- extensions/metadata/wikipedia find "Portal 2"
+cargo run -p heronite-metadata-ext --example run -- extensions/metadata/wikipedia find "Portal 2" --language pt-BR
 ```
 
 Text from Wikipedia is under CC BY-SA 4.0.

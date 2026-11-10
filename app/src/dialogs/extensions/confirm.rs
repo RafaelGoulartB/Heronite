@@ -289,7 +289,7 @@ mod tests {
     use super::{install_label, replacing, title_of, InstallAction, PackageInfo};
 
     fn info(action: InstallAction, installed: Option<&str>) -> PackageInfo {
-        let pkg = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../extensions/wikipedia");
+        let pkg = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../extensions/metadata/wikipedia");
         let svc = heronite_metadata::MetadataService::new(heronite_data::paths::DataPaths::at(tempfile::tempdir().unwrap().path()));
         use heronite_metadata_ext::ExtensionsExt;
         let mut info = svc.inspect_extension(&pkg).unwrap();

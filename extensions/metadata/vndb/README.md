@@ -37,9 +37,9 @@ when the game was already matched with VNDB, or when you ask it by name
 Try it:
 
 ```sh
-cargo run -p heronite-metadata-ext --example run -- extensions/vndb find "Steins;Gate"
-cargo run -p heronite-metadata-ext --example run -- extensions/vndb search "v2002"
-cargo run -p heronite-metadata-ext --example run -- extensions/vndb fetch v97 --set titleOrder=original
+cargo run -p heronite-metadata-ext --example run -- extensions/metadata/vndb find "Steins;Gate"
+cargo run -p heronite-metadata-ext --example run -- extensions/metadata/vndb search "v2002"
+cargo run -p heronite-metadata-ext --example run -- extensions/metadata/vndb fetch v97 --set titleOrder=original
 ```
 
 VNDB's API is free for non-commercial use; its data is under VNDB's data

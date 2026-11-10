@@ -476,7 +476,7 @@ mod tests {
         let elsewhere = ListCopy { url: "https://lists.example.net/own.json".into(), ..own.clone() };
         assert_eq!(source_line(std::slice::from_ref(&elsewhere), now, None).as_deref(), Some("From lists.example.net \u{b7} read today"));
         // A debug build's own list: this repository's, on this computer.
-        let path = "/src/heronite/extensions/index.json";
+        let path = "/src/heronite/extensions/metadata/index.json";
         let checkout = ListCopy { url: path.into(), ..own.clone() };
         assert_eq!(
             source_line(std::slice::from_ref(&checkout), now, Some(path)).as_deref(),

@@ -23,9 +23,14 @@ icon 256 KB, the zip 2 MB. In a zip the files sit at the top or in one
 folder at the top. Everything the app shows about an extension comes from
 the manifest; no script runs to draw a screen.
 
-The repository has two complete examples: `extensions/wikipedia` (a
-details source asked as a fallback) and `extensions/vndb` (the Visual
-Novel Database: a details source asked as a fallback for visual novels,
+Metadata extensions live under `extensions/metadata/` (in the repository
+and in the data folder) because other kinds of extensions may come later,
+each in a folder of its own.
+
+The repository has two complete examples: `extensions/metadata/wikipedia`
+(a details source asked as a fallback) and `extensions/metadata/vndb` (the
+Visual Novel Database: a details source asked as a fallback for visual
+novels,
 with settings, names in several scripts, pictures flagged adult one by
 one, and a service that asks clients to slow down).
 
@@ -402,11 +407,12 @@ SHA-256. An installed extension starts switched on.
 ## Installing, updating, removing
 
 Installed extensions live in the data folder, in
-`metadata-extensions/<id>/`: the package's files as they were and
+`extensions/metadata/<id>/`: the package's files as they were and
 `install.json` (when, from where, the package's SHA-256, the address of the
-list it came from, if any, and the last error while stopped). The SHA-256 is the zip file's, or for a folder the digest of
-its files (each name, a zero byte, its length as 8 little-endian bytes and
-its bytes, in name order).
+list it came from, if any, and the last error while stopped). The SHA-256
+is the zip file's, or for a folder the digest of its files (each name, a
+zero byte, its length as 8 little-endian bytes and its bytes, in name
+order).
 
 Installing a newer version replaces the files and keeps what the user set
 (on or off, settings, order). The same version again, or an older one, asks
@@ -431,11 +437,11 @@ gallery of the lists, and "Install from a file…" takes a `.zip` or the
 
 The gallery ("Get more sources") reads lists: small JSON documents that
 name extensions and where their two files are. Heronite always reads its
-own list, `extensions/index.json` on the repository's main branch; you
-can add others by their address ("Lists…"), and remove them (what you
-installed from a list stays installed). The last good copy of each list is
-kept in `store_cache/extension-lists/`, so the gallery opens offline with
-it and says how old it is.
+own list, `extensions/metadata/index.json` on the repository's main
+branch; you can add others by their address ("Lists…"), and remove them
+(what you installed from a list stays installed). The last good copy of
+each list is kept in `store_cache/extensions/metadata/`, so the gallery
+opens offline with it and says how old it is.
 
 A list can also be a file on this computer: the path of an `index.json`
 (or a `file://` address). It is read as strictly as a downloaded one, and
@@ -469,6 +475,7 @@ a file was checked by nobody.
 ```json
 {
   "index": 1,
+  "type": "metadata",
   "name": "Heronite",
   "extensions": [
     {
@@ -488,12 +495,12 @@ a file was checked by nobody.
       "settings": [{ "label": "API key", "required": true }],
       "files": {
         "source.toml": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.toml",
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/wikipedia/source.toml",
           "sha256": "5d12d1646140a78c7e9614f028aa98178db81d45df879e3f0e26248841e71c54",
           "size": 659
         },
         "source.js": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.js",
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/wikipedia/source.js",
           "sha256": "382556b0935ac6b7c20478b4fe0f1d55c4a039cc331f659d5c4482e3b1c4218e",
           "size": 3199
         }
@@ -504,7 +511,11 @@ a file was checked by nobody.
 ```
 
 - `index` is the version of the format; a list of a later one is refused
-  ("made for a newer Heronite"). `name` is optional.
+  ("made for a newer Heronite"). `type` says what kind of extensions the
+  list holds; only `"metadata"` exists today, and a list of another type
+  is refused ("This list is not a list of metadata sources."). It is
+  optional, so a list written by hand without it is read as a list of
+  metadata extensions; the script writes it. `name` is optional.
 - Each entry copies its manifest: `id`, `name`, `version`, `api`, `author`,
   `homepage` (optional), `kind`, `adult` (optional), `description`,
   `fields` (`[provides] fields`), `applies` (the `[applies]` table, as is;
@@ -522,17 +533,17 @@ a file was checked by nobody.
 ### Getting listed
 
 Open a pull request on the repository that adds your extension's folder
-under `extensions/` (`source.toml`, `source.js`, a `README.md`; the folder
-named after the id) and regenerates the list:
+under `extensions/metadata/` (`source.toml`, `source.js`, a `README.md`;
+the folder named after the id) and regenerates the list:
 
 ```sh
-python3 scripts/extensions-index.py           # rewrites extensions/index.json
+python3 scripts/extensions-index.py           # rewrites extensions/metadata/index.json
 python3 scripts/extensions-index.py --check   # what the tests check
 ```
 
 The script reads each folder's `source.toml`, hashes the two files and
 builds their addresses from a base (`--base`, the raw files of the main
-branch by default). A test fails while `extensions/index.json` does not
+branch by default). A test fails while `extensions/metadata/index.json` does not
 match the folders. To publish a list of your own, run the script with
 `--base <where your folders are served>` and `--out`, and serve the result
 over `https`.
@@ -560,9 +571,10 @@ script's `ctx.log` lines and errors. The path may be the folder or its zip.
 
 To try it in the app, through the gallery as users will install it: a
 debug build (`cargo run -p heronite`) reads the repository's own
-`extensions/index.json` as the app's list, so the folders of `extensions/`
-install before they are merged (the gallery says "From this copy of the
-repository"; a release build always reads the list on GitHub). Add your
+`extensions/metadata/index.json` as the app's list, so the folders of
+`extensions/metadata/` install before they are merged (the gallery says
+"From this copy of the repository"; a release build always reads the list
+on GitHub). Add your
 folder and run `python3 scripts/extensions-index.py` first, or the list
 names other files and the install is refused. To read another list
 instead, in any build, set `HERONITE_EXTENSIONS_INDEX` to its `https`

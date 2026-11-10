@@ -1,4 +1,4 @@
-Answers of the services the example extensions (`extensions/`) ask, served
+Answers of the services the example extensions (`extensions/metadata/`) ask, served
 by the tests' fixture server.
 
 - `wikipedia_*.json`: recorded from Wikipedia (en, pt) once.

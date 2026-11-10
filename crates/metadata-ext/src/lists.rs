@@ -3,14 +3,15 @@
 //! (`settings.metadata.extensionLists`). Each is fetched with the service's
 //! `Http` (so tests point it at a fixture server), checked strictly
 //! (`index.rs`) and its last good copy kept in
-//! `store_cache/extension-lists/` with the time it was read, so the gallery
-//! opens offline with that copy.
+//! `store_cache/extensions/metadata/` with the time it was read, so the
+//! gallery opens offline with that copy.
 //!
 //! A list may also be a file on this computer ([`ListLocation::File`]: a
-//! debug build's own list is the repository's `extensions/index.json`, and
-//! `HERONITE_EXTENSIONS_INDEX` may name one). It is read as strictly, without
-//! the network and without a kept copy, and its entries' files come from
-//! the folders beside it, never from their `url`s.
+//! debug build's own list is the repository's
+//! `extensions/metadata/index.json`, and `HERONITE_EXTENSIONS_INDEX` may
+//! name one). It is read as strictly, without the network and without a kept
+//! copy, and its entries' files come from the folders beside it, never from
+//! their `url`s.
 //!
 //! Installing an entry downloads its two files (or reads them beside a
 //! list on this computer), checks both SHA-256 and sizes against the list,
@@ -39,9 +40,9 @@ use crate::package::{MANIFEST, SCRIPT};
 use crate::service::{self, Approval, ExtensionsExt, InstallOutcome, InstalledExtension, PackageInfo};
 use crate::ExtensionError;
 
-/// The app's own list: `extensions/index.json` on the repository's main
-/// branch (`scripts/extensions-index.py` writes it).
-pub const HERONITE_LIST: &str = "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/index.json";
+/// The app's own list: `extensions/metadata/index.json` on the repository's
+/// main branch (`scripts/extensions-index.py` writes it).
+pub const HERONITE_LIST: &str = "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/index.json";
 
 /// The longest a list or one of an entry's files may take to come.
 const TIMEOUT: Duration = Duration::from_secs(20);

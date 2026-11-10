@@ -74,6 +74,19 @@ fn the_format_version_is_checked_first() {
 }
 
 #[test]
+fn a_list_says_its_type() {
+    let typed = |t: &str| parse(format!(r#"{{"index": 1, "type": {t}, "extensions": []}}"#).as_bytes());
+    assert!(typed(r#""metadata""#).is_ok());
+    assert_eq!(typed(r#""themes""#), Err(IndexError::WrongType("themes".into())));
+    assert_eq!(typed("3"), Err(IndexError::WrongType("3".into())), "a type that is not text is another type");
+    assert_eq!(typed(r#""Metadata""#), Err(IndexError::WrongType("Metadata".into())), "spelt as written");
+    // A list written by hand without one is a list of metadata extensions.
+    assert!(parse(br#"{"index": 1, "extensions": []}"#).is_ok());
+    // The type is asked before the entries: another type's entries are not read as metadata's.
+    assert_eq!(parse(br#"{"index": 1, "type": "themes", "extensions": [{"id": 1}]}"#), Err(IndexError::WrongType("themes".into())));
+}
+
+#[test]
 fn each_wrong_entry_refuses_the_list() {
     let cases: Vec<(&str, Box<dyn FnOnce(&mut Value)>)> = vec![
         ("bad id", Box::new(|e| e["id"] = json!("Bad_Id"))),

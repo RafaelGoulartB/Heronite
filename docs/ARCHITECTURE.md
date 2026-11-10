@@ -837,7 +837,7 @@ text size) and applies it.
   sources already in a field's order); `package` reads a folder or a zip
   (only the expected files, no links, no path out, size caps; SHA-256);
   `store` keeps the
-  installed ones in `<data>/metadata-extensions/<id>/` with `install.json`,
+  installed ones in `<data>/extensions/metadata/<id>/` with `install.json`,
   replaced whole by renames (`.kept/<id>.json`: who made one removed with
   its settings kept, and its hosts); `engine` is the sandbox: QuickJS (`rquickjs`),
   the script compiled once to bytecode, each lookup in a fresh runtime on
@@ -867,20 +867,21 @@ text size) and applies it.
   — the package shown, by its SHA-256, its saved settings kept or not as
   the user chose when its author or its hosts changed —,
   `remove_extension`, `installed_extensions`). `index` reads a list of extensions
-  (`index.json`, format 1, strictly: https only, sizes and ids checked);
+  (`index.json`, format 1, strictly: https only, sizes and ids checked; its
+  `type` is `"metadata"` or absent, any other is refused);
   `lists` is the gallery's client: the app's list (`HERONITE_LIST`) and
   the user's (`settings.metadata.extensionLists`), fetched with the
   service's `Http`, the last good copy kept in
-  `store_cache/extension-lists/`, `prepare` (both files downloaded and
+  `store_cache/extensions/metadata/`, `prepare` (both files downloaded and
   checked against the entry's SHA-256, then `inspect`, then the manifest
   compared with the entry) and `install_prepared` / `install_approved`
   (records the list in `install.json`), `updates` (never applied by itself) and `Origin`
   (file, the app's list, a list added, a list removed).
-  `scripts/extensions-index.py` writes `extensions/index.json` from the
+  `scripts/extensions-index.py` writes `extensions/metadata/index.json` from the
   folders; `tests/lists.rs` fails when it is out of date. The app's
   screens are `app/src/dialogs/extensions/` (gallery and installer) and
   Settings → Metadata's `extension.rs` / `more.rs`. `examples/run.rs` runs an extension against a
-  title. The example extensions are in `extensions/` (Wikipedia, VNDB),
+  title. The example extensions are in `extensions/metadata/` (Wikipedia, VNDB),
   each tested against recorded answers (`tests/examples.rs`,
   `tests/vndb.rs`).
 - **heronite-achievements:** every game's achievements, whatever its store.

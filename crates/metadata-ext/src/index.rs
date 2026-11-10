@@ -1,8 +1,12 @@
 //! A list of extensions (`index.json`): a small JSON document naming
 //! extensions and where their two files are, with the SHA-256 of each, so
 //! an entry is installed only when the files downloaded are the ones the
-//! list names. The repository's `extensions/index.json` is the app's own
+//! list names. The repository's `extensions/metadata/index.json` is the app's own
 //! list (made by `scripts/extensions-index.py`); a user may add others.
+//!
+//! A list says what kind of extensions it holds in `"type"`. Only
+//! `"metadata"` exists; a list without the key is read as one, so a
+//! hand-written list still works, and a list of another type is refused.
 //!
 //! Read strictly: an unknown `index` version, an address that is not
 //! `https`, an id that is not valid or is a built-in source's, a file over
@@ -19,6 +23,9 @@ use crate::manifest::{applies_of, check_text, valid_id, API_VERSION};
 use crate::net::HostRule;
 use crate::package::{MANIFEST, SCRIPT};
 
+/// The `"type"` of a list of metadata extensions: the only one there is,
+/// and the one a list without a `"type"` is read as.
+pub const LIST_TYPE: &str = "metadata";
 /// The version of the list format this build reads.
 pub const INDEX_VERSION: u32 = 1;
 /// The largest list read.
@@ -39,6 +46,8 @@ pub enum IndexError {
     NewerFormat(u64),
     /// A key is missing or wrong; the text says where.
     Invalid(String),
+    /// A list of another type of extensions than metadata (its `"type"`).
+    WrongType(String),
 }
 
 impl std::fmt::Display for IndexError {
@@ -47,6 +56,7 @@ impl std::fmt::Display for IndexError {
             Self::NotJson(m) => write!(f, "not a list of extensions: {m}"),
             Self::NewerFormat(n) => write!(f, "a list of format {n}; this build reads format {INDEX_VERSION}"),
             Self::Invalid(m) => write!(f, "{m}"),
+            Self::WrongType(t) => write!(f, "a list of {t:?} extensions; this build reads lists of {LIST_TYPE:?}"),
         }
     }
 }
@@ -281,6 +291,12 @@ pub fn parse(bytes: &[u8]) -> Result<Index, IndexError> {
         Some(n) if n == u64::from(INDEX_VERSION) => {}
         Some(n) if n > u64::from(INDEX_VERSION) => return Err(IndexError::NewerFormat(n)),
         _ => return Err(IndexError::NotJson(format!("\"index\" must be {INDEX_VERSION}"))),
+    }
+    match top.get("type") {
+        None => {}
+        Some(Value::String(t)) if t == LIST_TYPE => {}
+        Some(Value::String(t)) => return Err(IndexError::WrongType(t.clone())),
+        Some(other) => return Err(IndexError::WrongType(other.to_string())),
     }
     let name = top.get("name").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty()).map(|n| n.chars().take(60).collect());
     let items = top.get("extensions").and_then(Value::as_array).ok_or_else(|| invalid("\"extensions\" is missing"))?;

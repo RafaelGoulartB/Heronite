@@ -1,5 +1,6 @@
 {
   "index": 1,
+  "type": "metadata",
   "name": "Heronite",
   "extensions": [
     {
@@ -50,12 +51,12 @@
       ],
       "files": {
         "source.toml": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/vndb/source.toml",
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/vndb/source.toml",
           "sha256": "793489b77d5b4da349eea542cd89b874a34d7a66387c10588bc678ccb89e08e7",
           "size": 1373
         },
         "source.js": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/vndb/source.js",
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/vndb/source.js",
           "sha256": "7acdc1a6a4ca0a95e3b2298b82a64ddaf63aee2055750937f58b16b909a93832",
           "size": 11129
         }
@@ -86,12 +87,12 @@
       "settings": [],
       "files": {
         "source.toml": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.toml",
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/wikipedia/source.toml",
           "sha256": "5d12d1646140a78c7e9614f028aa98178db81d45df879e3f0e26248841e71c54",
           "size": 659
         },
         "source.js": {
-          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/wikipedia/source.js",
+          "url": "https://raw.githubusercontent.com/RafaelGoulartB/Heronite/main/extensions/metadata/wikipedia/source.js",
           "sha256": "382556b0935ac6b7c20478b4fe0f1d55c4a039cc331f659d5c4482e3b1c4218e",
           "size": 3199
         }

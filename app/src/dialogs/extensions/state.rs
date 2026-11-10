@@ -139,8 +139,8 @@ pub struct ExtensionsState {
     /// `HERONITE_DEBUG_EXTENSIONS`: made-up lists (`fake.rs`).
     pub fake: Option<Fake>,
     /// The app's own list when it is this repository's
-    /// `extensions/index.json` ([`own_list`]), by its key: the gallery says
-    /// it reads "this copy of the repository".
+    /// `extensions/metadata/index.json` ([`own_list`]), by its key: the
+    /// gallery says it reads "this copy of the repository".
     pub checkout: Option<String>,
     /// Bumped by each read, so an older one that ends later is dropped.
     generation: u64,
@@ -157,9 +157,9 @@ pub struct ExtensionsState {
 /// - `HERONITE_EXTENSIONS_INDEX` (`env`) when set: an `https` address or
 ///   the path of an `index.json` (a test list, a branch's list before it
 ///   is merged, an author's own);
-/// - else, in a debug build, the repository's `extensions/index.json`
-///   (`checkout_index`, when it is there), so its examples install before
-///   they are published;
+/// - else, in a debug build, the repository's
+///   `extensions/metadata/index.json` (`checkout_index`, when it is there),
+///   so its examples install before they are published;
 /// - else [`HERONITE_LIST`]: always in a release build.
 pub(crate) fn own_list(debug: bool, env: Option<String>, checkout_index: Option<PathBuf>) -> ListLocation {
     match (env, checkout_index) {
@@ -173,14 +173,14 @@ pub(crate) fn own_list(debug: bool, env: Option<String>, checkout_index: Option<
     }
 }
 
-/// The repository's `extensions/index.json`, beside the `app` crate this
-/// build was made from, when it is still there. A release build neither
+/// The repository's `extensions/metadata/index.json`, beside the `app`
+/// crate this build was made from, when it is still there. A release build neither
 /// looks nor carries the path. Built from the crate's absolute folder,
 /// never canonicalized: on Windows that gives a `\\?\C:\…` path, shown in
 /// the gallery and recorded in `install.json`.
 #[cfg(debug_assertions)]
 fn checkout_index() -> Option<PathBuf> {
-    Some(Path::new(env!("CARGO_MANIFEST_DIR")).parent()?.join("extensions").join("index.json")).filter(|p| p.is_file())
+    Some(Path::new(env!("CARGO_MANIFEST_DIR")).parent()?.join("extensions").join("metadata").join("index.json")).filter(|p| p.is_file())
 }
 
 #[cfg(not(debug_assertions))]
@@ -302,14 +302,14 @@ mod tests {
 
     #[test]
     fn a_debug_build_reads_the_repository_list_and_a_release_build_never_does() {
-        let checkout = Some(PathBuf::from("/src/heronite/extensions/index.json"));
+        let checkout = Some(PathBuf::from("/src/heronite/extensions/metadata/index.json"));
         let heronite = ListLocation::Address(HERONITE_LIST.into());
         assert_eq!(own_list(false, None, checkout.clone()), heronite, "a release build: always the Heronite list");
         assert_eq!(own_list(false, None, None), heronite);
-        assert_eq!(own_list(true, None, checkout.clone()), ListLocation::File("/src/heronite/extensions/index.json".into()));
+        assert_eq!(own_list(true, None, checkout.clone()), ListLocation::File("/src/heronite/extensions/metadata/index.json".into()));
         assert_eq!(own_list(true, None, None), heronite, "a debug build away from its repository");
         // The switch wins in any build: an address or a path.
-        let branch = "https://raw.githubusercontent.com/someone/Heronite/branch/extensions/index.json";
+        let branch = "https://raw.githubusercontent.com/someone/Heronite/branch/extensions/metadata/index.json";
         for debug in [false, true] {
             assert_eq!(own_list(debug, Some(branch.into()), checkout.clone()), ListLocation::Address(branch.into()));
             // Absolute here; on Windows that adds the current drive.
@@ -461,8 +461,8 @@ mod tests {
     #[test]
     fn the_checkouts_list_is_named_by_a_plain_absolute_path() {
         use std::path::Component;
-        let path = super::checkout_index().expect("this checkout has extensions/index.json");
-        assert!(path.is_absolute() && path.ends_with("extensions/index.json"), "{path:?}");
+        let path = super::checkout_index().expect("this checkout has extensions/metadata/index.json");
+        assert!(path.is_absolute() && path.ends_with("extensions/metadata/index.json"), "{path:?}");
         // No `..`, and no `\\?\` prefix on Windows (shown and recorded as is).
         assert!(
             path.components().all(|c| match c {

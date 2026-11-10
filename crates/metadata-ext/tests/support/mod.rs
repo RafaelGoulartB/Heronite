@@ -73,7 +73,7 @@ pub fn endpoints(server: &Server, hosts: &[&str]) -> Endpoints {
     e
 }
 
-/// The repository's `extensions/<name>` folder.
+/// The repository's `extensions/metadata/<name>` folder.
 pub fn example(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions").join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/metadata").join(name)
 }

@@ -1,4 +1,4 @@
-//! The installed extensions: `<data>/metadata-extensions/<id>/` holds the
+//! The installed extensions: `<data>/extensions/metadata/<id>/` holds the
 //! package's files as they were and `install.json`, what the host records
 //! (when, from where, the package's SHA-256, whether it was stopped after
 //! failing). A folder is replaced whole: the new one is written beside it

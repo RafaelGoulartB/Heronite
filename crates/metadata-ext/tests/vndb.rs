@@ -1,4 +1,4 @@
-//! The VNDB example (`extensions/vndb`) through the real install, gather,
+//! The VNDB example (`extensions/metadata/vndb`) through the real install, gather,
 //! review and jobs, against recorded VNDB answers: what it fills, how sure
 //! each match is, when it is asked (only as a fallback), adult covers, a
 //! busy VNDB (429, server errors) and no network.

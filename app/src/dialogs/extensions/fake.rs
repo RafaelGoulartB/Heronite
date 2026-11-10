@@ -3,7 +3,7 @@
 //! Nothing is downloaded; installing an entry fails as a download would.
 //!
 //! - `list` (or nothing else): the app's list, read now, with the two
-//!   examples of `extensions/` and made-up sources (one adult, one made
+//!   examples of `extensions/metadata/` and made-up sources (one adult, one made
 //!   for a newer Heronite).
 //! - `update`: the installed extensions count as installed from the app's
 //!   list, which offers Wikipedia 1.1.0.

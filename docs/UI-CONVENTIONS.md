@@ -1288,7 +1288,7 @@ Replay controls, live Linux FPS controls and Bluetooth disconnect are hidden.
   (the "Lists…" manager open), `pick:<id>`, `busy` / `error` (the picked entry installing, or its install failed;
   installing from a made-up list always fails as a download would). `HERONITE_EXTENSIONS_INDEX=<https address|path
   of an index.json>` replaces the app's own list in any build (an entry of a list on this computer is read from
-  `<its folder>/<id>/`). Without it a debug build reads the repository's `extensions/index.json` (found from the `app`
+  `<its folder>/<id>/`). Without it a debug build reads the repository's `extensions/metadata/index.json` (found from the `app`
   crate's folder; "From this copy of the repository") and a release build
   `heronite_metadata_ext::lists::HERONITE_LIST` (which answers 404 until the list is published on the main branch);
   with `HERONITE_DEBUG_EXTENSIONS` the made-up lists stand for that one.

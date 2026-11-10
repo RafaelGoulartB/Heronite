@@ -2,7 +2,7 @@
 //! `HERONITE_EXTENSIONS_INDEX` names): read and checked like a downloaded
 //! one without the network, its entries' files read beside it and checked
 //! against it, nothing outside its folder read, and the repository's own
-//! `extensions/index.json` installing every example.
+//! `extensions/metadata/index.json` installing every example.
 
 mod support;
 
@@ -16,7 +16,7 @@ use heronite_metadata_ext::{ExtensionError, ExtensionsExt, InstallOutcome};
 use support::example;
 
 fn repo_index() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/index.json").canonicalize().unwrap()
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../extensions/metadata/index.json").canonicalize().unwrap()
 }
 
 /// A service whose network answers nothing: the entries' `url`s (on
@@ -26,8 +26,8 @@ fn offline(data: &Path) -> MetadataService {
     MetadataService::with_endpoints(DataPaths::at(data), e)
 }
 
-/// A copy of the repository's `extensions/` (the list and its folders) in
-/// `dir`; returns the list's path.
+/// A copy of the repository's `extensions/metadata/` (the list and its
+/// folders) in `dir`; returns the list's path.
 fn copy_of_the_repository_list(dir: &Path) -> PathBuf {
     for id in ["wikipedia", "vndb"] {
         std::fs::create_dir_all(dir.join(id)).unwrap();
@@ -44,7 +44,10 @@ fn a_list_is_written_as_an_address_or_a_path() {
     let at = |t: &str| ListLocation::of(t);
     assert_eq!(at("https://lists.example.org/index.json"), ListLocation::Address("https://lists.example.org/index.json".into()));
     assert_eq!(at("http://lists.example.org/index.json"), ListLocation::Address("http://lists.example.org/index.json".into()));
-    assert_eq!(at("/home/me/heronite/extensions/index.json"), ListLocation::File("/home/me/heronite/extensions/index.json".into()));
+    assert_eq!(
+        at("/home/me/heronite/extensions/metadata/index.json"),
+        ListLocation::File("/home/me/heronite/extensions/metadata/index.json".into())
+    );
     // A file address is an absolute path of this system: a drive on Windows.
     #[cfg(unix)]
     assert_eq!(at(" file:///home/me/list/index.json "), ListLocation::File("/home/me/list/index.json".into()));
@@ -83,6 +86,10 @@ fn a_list_on_this_computer_is_read_and_checked_without_the_network_or_a_copy() {
     assert!(copy.index.is_none() && matches!(copy.error, Some(ListError::Invalid(IndexError::Invalid(_)))), "{copy:?}");
     std::fs::write(&list, r#"{"index": 2, "extensions": []}"#).unwrap();
     assert_eq!(lists::read_list_file(&list).unwrap_err(), ListError::Invalid(IndexError::NewerFormat(2)));
+    std::fs::write(&list, r#"{"index": 1, "type": "themes", "extensions": []}"#).unwrap();
+    assert_eq!(lists::read_list_file(&list).unwrap_err(), ListError::Invalid(IndexError::WrongType("themes".into())));
+    std::fs::write(&list, r#"{"index": 1, "extensions": []}"#).unwrap();
+    assert!(lists::read_list_file(&list).is_ok(), "a hand-written list without a type is a list of metadata extensions");
     std::fs::write(&list, vec![b' '; index::MAX_INDEX_BYTES as usize + 1]).unwrap();
     assert_eq!(lists::read_list_file(&list).unwrap_err(), ListError::TooLarge);
 
