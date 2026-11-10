@@ -135,7 +135,9 @@ pub fn merge(local: &LocalLibrary, mut ledger: Ledger, remotes: &[DeviceFile], m
         playtimes.insert(key.clone(), merged);
     }
     for (id, stamped) in &ledger.groups {
-        if local.groups.get(id).unwrap_or(&Value::Null) != &stamped.value {
+        // A group this PC can't read (from a newer version) is never stored
+        // here, so it would count as a change on every sync.
+        if local.groups.get(id).unwrap_or(&Value::Null) != &stamped.value && crate::local::storable_group(id, &stamped.value) {
             changes.groups.push(GroupChange { id: id.clone(), value: stamped.value.clone() });
         }
     }
@@ -179,8 +181,15 @@ fn stamp_local_changes(local: &LocalLibrary, ledger: &mut Ledger, me: &DeviceInf
     };
     let ids: BTreeSet<String> = local.groups.keys().chain(groups.keys()).cloned().collect();
     for id in ids {
+        let held = groups.get(&id);
+        // A group this PC can't read (from a newer version) is never stored
+        // here: the Collection's copy, or its absence, is no edit, and
+        // stamping it would overwrite or delete the group on every PC.
+        if held.is_some_and(|s| !crate::local::storable_group(&id, &s.value)) {
+            continue;
+        }
         let value = local.groups.get(&id).cloned().unwrap_or(Value::Null);
-        if let Some(stamp) = restamp(groups.get(&id), &value, publish_edits, || fresh(clock), &me.id) {
+        if let Some(stamp) = restamp(held, &value, publish_edits, || fresh(clock), &me.id) {
             groups.insert(id, Stamped { value, stamp });
         }
     }
