@@ -54,7 +54,7 @@ app (bin heronite-rs) ── GPUI UI, desktop integration
  │                      kscreen-doctor, Mutter, wlr-randr, hyprctl),
  │                      read-only so far                             → platform
  ├─ heronite-metadata   registry of metadata sources (IGDB, Steam,
- │                      Lutris, HLTB, ...), the merge, the review of
+ │                      Lutris, VNDB, HLTB, ...), the merge, the review of
  │                      unsure matches, artwork                      → data
  ├─ heronite-achievements achievements of Steam (the client's files),
  │                      GOG, Epic and RetroAchievements (ROM hashes
@@ -557,8 +557,36 @@ text size) and applies it.
   network, hidden or offered). Details sources implement `MetadataSource`
   (`lookup` of a `SourceGame` with a `SourceContext`: paths, HTTP,
   settings); thin adapters in `sources/builtin` wrap the provider modules
-  (`igdb`, `steam`, `providers` for the store and Playnite, `lutris`), in
-  the order candidates are merged. SteamGridDB, web images, HowLongToBeat,
+  (`igdb`, `steam`, `providers` for the store and Playnite, `lutris`,
+  `vndb`), in the order candidates are merged. `vndb` is the Visual Novel
+  Database's public API v2 ("Kana", no key): one `POST /vn` searches a
+  title (any script, aliases) with every field, a pinned entry is read by
+  its id (`v17`, or a vndb.org address typed in a search); its client keeps
+  under VNDB's 200 requests per 5 minutes and waits out a 429; its tags
+  (content, no spoilers, rated 2+, 12 at most) are themes, its genre is
+  "Visual Novel", its 10..100 rating the score, a safe landscape screenshot
+  the background. A descriptor may say a source is asked only as a
+  fallback (`Asked::AsFallback`, VNDB) and name the kind of game it is
+  about (`GameKind`: a name for Settings and the genre / theme / Steam tag
+  names that signal it). `service/gather` asks the sources: a fallback
+  source goes with the others when the game is identified with it (a
+  pinned or stored match), when the request names it
+  (`SourceRegistry::names_fallback`: only fallback details sources asked),
+  or when the record or the game's cached Steam tags carry its signal;
+  otherwise it is asked after them, only when no online details source
+  found the game for sure or one of their candidates carries the signal,
+  and never when they were all unreachable (the fetch is offline). A search
+  by hand asks it like any searchable source. Not asked, it says why
+  (`NotAsked::Fallback`); a job's fillable fields leave it out unless the
+  job names it. A candidate may flag pictures as adult
+  (`MetadataCandidate::adult_pictures`, `SourceHit::thumb_adult`; VNDB from
+  its users' votes: above 0.4 sexual or violence, or no vote, is not
+  "safe"): unless `settings.metadata.allowAdultCovers` is on, the gather,
+  `SourceRegistry::lookup_id` / `search` and `review_entry` drop them, so
+  the next source fills the picture and none is shown or downloaded; saved
+  pictures stay. A source added after `fieldPriority` lists were saved is
+  in `heronite_data::settings::ADDED_SOURCES`: the old default list still
+  reads as the default, and a list the user set gets it at its end. SteamGridDB, web images, HowLongToBeat,
   Steam tags and ProtonDB are listed as descriptors only and still run on
   their own paths (`covers`, `web_images`, `hltb`, `steam_tags`,
   `protondb`), but SteamGridDB also has a lookup: a pictures source asked
@@ -608,8 +636,9 @@ text size) and applies it.
   An unsure match is not saved: `confidence` is the rule (sure candidates
   and the guesses that are the same game as one are used; guesses alone
   only when enough sources agree; else nothing is saved), applied by every
-  automatic path (jobs, the idle fill) through `service/fetch` (the
-  gather, the decision, the merge a preview proposes and the saves).
+  automatic path (jobs, the idle fill) through `service/gather` (asking
+  the sources) and `service/fetch` (the decision, the merge a preview
+  proposes and the saves).
   `review` is the queue of the games sent to review with what each source
   proposed (`local_library/metadata-review.json`, safe to delete), and
   `service/review` its entry points (list, read, search the sources by
@@ -625,6 +654,37 @@ text size) and applies it.
   no cover; in no source apart; the games showing a cover family in use
   cropped are listed apart, per family, and are not a reason to need
   attention).
+
+  *Adding a built-in source* (what VNDB needed; no screen code):
+  1. A provider module (`crates/metadata/src/<source>.rs`): the client
+     (base URL in `http::Endpoints`, the API's limits, `http::APP_UA`
+     when it asks clients to say who they are), and the mapping of an
+     answer to a `CollectionGameMetadata` (text through `util::clip` /
+     plain text, lists through `unique_names12`, dates as `YYYY[-MM[-DD]]`,
+     only `http` picture URLs), with unit tests on recorded answers in
+     `tests/fixtures/` and a `HERONITE_LIVE` check in `tests/live.rs`.
+  2. A descriptor in `sources/builtin`'s `BUILTIN`, in merge order: id,
+     name, kind, `provides` (only fields it really fills), `applies_to`,
+     `finds_by`, `needs`, `network`, `searchable`, `asked` and `game_kind`
+     when it is a fallback for a kind of game, `about` (a `n_!` line for
+     its open row), `options` (`n_!` labels and help, defaults). Options
+     not in the legacy keys are stored under `sources.<id>.options` by
+     themselves.
+  3. An adapter implementing `MetadataSource` (`lookup` with an honest
+     `MatchedBy`, and for a searchable source `lookup_id` and `search`),
+     with `match_id` set, and `adult_pictures` / `thumb_adult` when the
+     source rates its pictures; listed in `builtin::registry` (shared
+     client state goes in `Shared`).
+  4. `heronite_data::settings`: the id in `SOURCE_IDS` (a details source),
+     in `default_field_priority` for each field it fills, and in
+     `ADDED_SOURCES` so saved lists take it; the registry tests check the
+     two agree.
+  5. A monogram colour in `theme::source_colour` (or a logo in
+     `pages/settings/metadata/labels::logo`), and the de / es / pt-BR
+     translations of its descriptor's strings.
+  6. Integration tests against the fixture server (`tests/common`: a
+     prefix in `Server::endpoints`): lookup, id, search, when it is asked,
+     offline.
 - **heronite-achievements:** every game's achievements, whatever its store.
   `target` says which sources a Collection game has (its store, its Steam
   twin, RetroAchievements for a ROM). `sources/` reads them: `steam` the

@@ -1,0 +1,2322 @@
+{
+  "more": false,
+  "results": [
+    {
+      "aliases": [
+        "fsn",
+        "f/sn",
+        "フェイト／ステイナイト",
+        "Fate/stay night 20th anniversary edition",
+        "命运之夜"
+      ],
+      "alttitle": null,
+      "description": "In the bustling city of Fuyuki, a secret battle rages in the shadows.\nThe Holy Grail War, a brutal battle royale, pits seven mages, known as Masters, against each other. Each Master summons a formidable warrior from various eras as their Servant, all vying for the ultimate prize: the Holy Grail, a wish-granting artifact.\n\nEmiya Shirou, an ordinary high school student driven by an unwavering sense of justice, finds himself unwillingly pulled into this deadly conflict. One evening, Shirou witnesses a fierce battle between Servants. The clang of steel and the crackle of magic fill the air as they clash. Mortally wounded in the chaos, Shirou is saved by the enigmatic Tohsaka Rin and her Servant Archer. In a desperate attempt to protect himself, Shirou accidentally summons his own Servant, Saber—a noble and beautiful knight with a mysterious past.\n\nAs Shirou and Saber navigate the dangerous Holy Grail War, they form alliances and face numerous adversaries, each with their own ambitions and secrets. The bond between Master and Servant deepens as they confront perilous challenges and uncover hidden truths.",
+      "developers": [
+        {
+          "id": "p6",
+          "name": "TYPE-MOON",
+          "original": null
+        }
+      ],
+      "id": "v11",
+      "image": {
+        "dims": [
+          600,
+          900
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv.t/71/89071.jpg",
+        "url": "https://t.vndb.org/cv/71/89071.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "ja",
+      "platforms": [
+        "win",
+        "lin",
+        "mac",
+        "ios",
+        "and",
+        "nds",
+        "psp",
+        "ps2",
+        "psv",
+        "swi",
+        "vnd",
+        "web"
+      ],
+      "rating": 86.3,
+      "released": "2004-01-30",
+      "screenshots": [
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/04/804.jpg",
+          "violence": 0.07,
+          "votecount": 15
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/06/806.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/07/807.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/10/810.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 1.13,
+          "url": "https://t.vndb.org/sf/13/813.jpg",
+          "violence": 0,
+          "votecount": 15
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0.07,
+          "url": "https://t.vndb.org/sf/04/199104.jpg",
+          "violence": 0.33,
+          "votecount": 15
+        },
+        {
+          "dims": [
+            2880,
+            2160
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/61/207161.jpg",
+          "violence": 0,
+          "votecount": 13
+        },
+        {
+          "dims": [
+            2880,
+            2160
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/63/207163.jpg",
+          "violence": 0.13,
+          "votecount": 15
+        },
+        {
+          "dims": [
+            2880,
+            2160
+          ],
+          "sexual": 2,
+          "url": "https://t.vndb.org/sf/65/207165.jpg",
+          "violence": 0,
+          "votecount": 13
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/68/207168.jpg",
+          "violence": 0,
+          "votecount": 13
+        }
+      ],
+      "tags": [
+        {
+          "category": "cont",
+          "id": "g2",
+          "lie": false,
+          "name": "Fantasy",
+          "rating": 2.70510601997375,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g4",
+          "lie": false,
+          "name": "Magic",
+          "rating": 2.96907210350037,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g6",
+          "lie": false,
+          "name": "Superpowers",
+          "rating": 2.83333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g9",
+          "lie": false,
+          "name": "Identity Crisis",
+          "rating": 2.08695650100708,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g19",
+          "lie": false,
+          "name": "Mystery",
+          "rating": 1.53846156597137,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g32",
+          "lie": false,
+          "name": "ADV",
+          "rating": 0.628571450710297,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g43",
+          "lie": false,
+          "name": "NVL",
+          "rating": 2.84195399284363,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g48",
+          "lie": false,
+          "name": "High School",
+          "rating": 1.87717938423157,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g56",
+          "lie": false,
+          "name": "British Mythology",
+          "rating": 2.6907217502594,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g57",
+          "lie": false,
+          "name": "Norse Mythology",
+          "rating": 1.34735095500946,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g66",
+          "lie": false,
+          "name": "Sword Combat",
+          "rating": 2.7826087474823,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g70",
+          "lie": false,
+          "name": "Combat with Spears",
+          "rating": 2.18626713752747,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g72",
+          "lie": false,
+          "name": "Knife/Dagger Combat",
+          "rating": 1.82620120048523,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g77",
+          "lie": false,
+          "name": "Combat Archery",
+          "rating": 2.04440951347351,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g78",
+          "lie": false,
+          "name": "Combat with Exotic Weapons",
+          "rating": 2.28030300140381,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g79",
+          "lie": false,
+          "name": "Unarmed Combat",
+          "rating": 1.61986660957336,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g80",
+          "lie": false,
+          "name": "Magic/ESP Combat",
+          "rating": 2.66990733146667,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g104",
+          "lie": false,
+          "name": "Comedy",
+          "rating": 1.18814730644226,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g107",
+          "lie": false,
+          "name": "Kuudere Heroine",
+          "rating": 1.43812704086304,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g108",
+          "lie": false,
+          "name": "Genius Heroine",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g114",
+          "lie": false,
+          "name": "Royal Heroine",
+          "rating": 2.21538472175598,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g118",
+          "lie": false,
+          "name": "Knight Heroine",
+          "rating": 2.72413802146912,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g133",
+          "lie": false,
+          "name": "Male Protagonist",
+          "rating": 2.87804889678955,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g135",
+          "lie": false,
+          "name": "Protagonist with Voice Acting",
+          "rating": 2.44367098808289,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g138",
+          "lie": false,
+          "name": "Mage Heroine",
+          "rating": 2.81111121177673,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g139",
+          "lie": false,
+          "name": "Fighting Protagonist",
+          "rating": 2.875,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g142",
+          "lie": false,
+          "name": "Slice of Life Comedy",
+          "rating": 0.131849318742752,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g148",
+          "lie": false,
+          "name": "Multiple Endings",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g149",
+          "lie": false,
+          "name": "Enforced Playing Order",
+          "rating": 2.81498742103577,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g152",
+          "lie": false,
+          "name": "Amnesia",
+          "rating": 1.01333332061768,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g153",
+          "lie": false,
+          "name": "Murder Mystery",
+          "rating": 0.214285716414452,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g158",
+          "lie": false,
+          "name": "Graphic Violence",
+          "rating": 1.78772234916687,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g159",
+          "lie": false,
+          "name": "Descriptions of Violence",
+          "rating": 2.69014096260071,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g164",
+          "lie": false,
+          "name": "Child Abuse",
+          "rating": 1.98692810535431,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g168",
+          "lie": false,
+          "name": "Life and Death Drama",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g175",
+          "lie": false,
+          "name": "Mentor Support Character",
+          "rating": 1.90527391433716,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g180",
+          "lie": false,
+          "name": "Early Branching Plot",
+          "rating": 2.66254854202271,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g192",
+          "lie": false,
+          "name": "Yandere Heroine",
+          "rating": 2.19230771064758,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g193",
+          "lie": false,
+          "name": "Modern Tsundere Heroine",
+          "rating": 2.71764707565308,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g222",
+          "lie": false,
+          "name": "Fictional Modern Day Japanese Town",
+          "rating": 2.74157309532166,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g224",
+          "lie": false,
+          "name": "Christian Church",
+          "rating": 1.93023252487183,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g225",
+          "lie": false,
+          "name": "Mages Association",
+          "rating": 2.19553136825562,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g229",
+          "lie": false,
+          "name": "Irish Mythology",
+          "rating": 2.07058835029602,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g230",
+          "lie": false,
+          "name": "Mesopotamian Mythology",
+          "rating": 2.20779228210449,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g237",
+          "lie": false,
+          "name": "Secret Identity",
+          "rating": 2.53749990463257,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g291",
+          "lie": false,
+          "name": "Heroine with Superpowered Side",
+          "rating": 2.421875,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g292",
+          "lie": false,
+          "name": "Female Protagonist for a Short Time",
+          "rating": 2.29565215110779,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g309",
+          "lie": false,
+          "name": "Western-style Manor",
+          "rating": 2.01265811920166,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g310",
+          "lie": false,
+          "name": "Asian-style Manor",
+          "rating": 2.55172419548035,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g317",
+          "lie": false,
+          "name": "Temple",
+          "rating": 1.95348834991455,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g318",
+          "lie": false,
+          "name": "Church",
+          "rating": 1.91352128982544,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g325",
+          "lie": false,
+          "name": "Battle of Wits",
+          "rating": 1.39259254932404,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g333",
+          "lie": false,
+          "name": "Summoning",
+          "rating": 2.81381583213806,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g334",
+          "lie": false,
+          "name": "Combat Capable Friends",
+          "rating": 2.94339632987976,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g373",
+          "lie": false,
+          "name": "Student Heroine",
+          "rating": 2.67105269432068,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g420",
+          "lie": false,
+          "name": "Under the Same Roof",
+          "rating": 2.81818175315857,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g452",
+          "lie": false,
+          "name": "Skip Scenes",
+          "rating": 2.85542178153992,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g459",
+          "lie": false,
+          "name": "Unlockable Routes",
+          "rating": 2.75824165344238,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g461",
+          "lie": false,
+          "name": "Heroine with Zettai Ryouiki",
+          "rating": 2.59925413131714,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g476",
+          "lie": false,
+          "name": "Mage Protagonist",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g505",
+          "lie": false,
+          "name": "Donkan Protagonist",
+          "rating": 0.171842649579048,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g519",
+          "lie": false,
+          "name": "Forest",
+          "rating": 1.45600879192352,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g544",
+          "lie": false,
+          "name": "Student Protagonist",
+          "rating": 2.49322485923767,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g546",
+          "lie": false,
+          "name": "Narrating Others' Thoughts",
+          "rating": 1.61616158485413,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g553",
+          "lie": false,
+          "name": "Multiple Route Mystery",
+          "rating": 2.17582416534424,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g566",
+          "lie": false,
+          "name": "School Sports Club Member Heroine",
+          "rating": 1.55913972854614,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g567",
+          "lie": false,
+          "name": "Sword Wielding Heroine",
+          "rating": 2.76216220855713,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g570",
+          "lie": false,
+          "name": "Duel",
+          "rating": 2.84444451332092,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g578",
+          "lie": false,
+          "name": "Protagonist's Kouhai as a Heroine",
+          "rating": 2.67142868041992,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g599",
+          "lie": false,
+          "name": "Food Discussions",
+          "rating": 2.55434775352478,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g601",
+          "lie": false,
+          "name": "Unique Routes",
+          "rating": 2.6462996006012,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g602",
+          "lie": false,
+          "name": "Tsundere Heroine",
+          "rating": 2.65151524543762,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g606",
+          "lie": false,
+          "name": "Branching Plot",
+          "rating": 2.90909099578857,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g617",
+          "lie": false,
+          "name": "Hotblooded Protagonist",
+          "rating": 2.07341766357422,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g627",
+          "lie": false,
+          "name": "Depression (obsolete)",
+          "rating": 0.886363625526428,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g631",
+          "lie": false,
+          "name": "Mayadere Heroine",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g633",
+          "lie": false,
+          "name": "Other Perspectives",
+          "rating": 2.40298509597778,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g653",
+          "lie": false,
+          "name": "Priest Support Character",
+          "rating": 2.40789484977722,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g661",
+          "lie": false,
+          "name": "Archery Club",
+          "rating": 1.51946818828583,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g664",
+          "lie": false,
+          "name": "Battle Royale",
+          "rating": 2.49695110321045,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g672",
+          "lie": false,
+          "name": "Bad Ending(s)",
+          "rating": 2.83248448371887,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g676",
+          "lie": false,
+          "name": "Flashback",
+          "rating": 2.05405402183533,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g683",
+          "lie": false,
+          "name": "Infodumping",
+          "rating": 2.43209886550903,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g692",
+          "lie": false,
+          "name": "Proactive Protagonist",
+          "rating": 1.11408495903015,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g728",
+          "lie": false,
+          "name": "Protagonist with a Face",
+          "rating": 2.72093033790588,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g616",
+          "lie": false,
+          "name": "Sword Wielding Protagonist",
+          "rating": 2.79999995231628,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g757",
+          "lie": false,
+          "name": "Winter",
+          "rating": 1.87878787517548,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g775",
+          "lie": false,
+          "name": "Orphan Heroine",
+          "rating": 2.60606050491333,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g790",
+          "lie": false,
+          "name": "Yangire Heroine",
+          "rating": 2.46428561210632,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g794",
+          "lie": false,
+          "name": "Lots of Event CGs",
+          "rating": 2.29675316810608,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g820",
+          "lie": false,
+          "name": "Orphan Protagonist",
+          "rating": 2.75,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g824",
+          "lie": false,
+          "name": "Spontaneous Power-ups",
+          "rating": 2.03333330154419,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g839",
+          "lie": false,
+          "name": "Foreigner Heroine",
+          "rating": 2.71428561210632,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g848",
+          "lie": false,
+          "name": "Death of Heroine",
+          "rating": 2.45734405517578,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g851",
+          "lie": false,
+          "name": "Insert Songs",
+          "rating": 2.33333325386047,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g862",
+          "lie": false,
+          "name": "Heroine with Armor",
+          "rating": 2.542405128479,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g868",
+          "lie": false,
+          "name": "Playtime Counter",
+          "rating": 2.5652174949646,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g873",
+          "lie": false,
+          "name": "Desperation",
+          "rating": 2.63636374473572,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g874",
+          "lie": false,
+          "name": "Pretending Heroine",
+          "rating": 2.49462366104126,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g875",
+          "lie": false,
+          "name": "Twin Tail Heroine",
+          "rating": 2.39393949508667,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g876",
+          "lie": false,
+          "name": "Bad Endings with Story",
+          "rating": 2.87654328346252,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g877",
+          "lie": false,
+          "name": "Game Over",
+          "rating": 2.90140843391418,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g979",
+          "lie": false,
+          "name": "Albino Heroine",
+          "rating": 1.54920637607574,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g980",
+          "lie": false,
+          "name": "Death of Protagonist",
+          "rating": 2.56338024139404,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g982",
+          "lie": false,
+          "name": "Heroine Based on Real Person",
+          "rating": 2.43240308761597,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g991",
+          "lie": false,
+          "name": "Built-in Walkthrough",
+          "rating": 2.20000004768372,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g1005",
+          "lie": false,
+          "name": "Date Display",
+          "rating": 1.90625,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1019",
+          "lie": false,
+          "name": "High Amount of Special Effects",
+          "rating": 2.65217399597168,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1025",
+          "lie": false,
+          "name": "Lots of Choices",
+          "rating": 2.78571438789368,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1053",
+          "lie": false,
+          "name": "Heroine with Ahoge",
+          "rating": 2.39149761199951,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1055",
+          "lie": false,
+          "name": "Resurrection",
+          "rating": 1.625,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g1129",
+          "lie": false,
+          "name": "Sacred Treasure",
+          "rating": 2.90000009536743,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1154",
+          "lie": false,
+          "name": "Philosophy",
+          "rating": 1.6818687915802,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1200",
+          "lie": false,
+          "name": "Homemaker Protagonist",
+          "rating": 2.32608699798584,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1204",
+          "lie": false,
+          "name": "Redemption",
+          "rating": 1.52409899234772,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1234",
+          "lie": false,
+          "name": "Unlockable Choices",
+          "rating": 2.45945954322815,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1246",
+          "lie": false,
+          "name": "Built-in Encyclopedia",
+          "rating": 2.81538462638855,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1260",
+          "lie": false,
+          "name": "Romancing a Family",
+          "rating": 1.57348346710205,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g1275",
+          "lie": false,
+          "name": "Multiple Opening Movies",
+          "rating": 2.14705872535706,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1467",
+          "lie": false,
+          "name": "Meaningless Choices",
+          "rating": 0.150375932455063,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1474",
+          "lie": false,
+          "name": "Ending List",
+          "rating": 2.88235282897949,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1478",
+          "lie": false,
+          "name": "Bonus Side Stories",
+          "rating": 2.36363625526428,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1540",
+          "lie": false,
+          "name": "Threesome Ending",
+          "rating": 1.01999998092651,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g1543",
+          "lie": false,
+          "name": "Interracial/interspecies Romance",
+          "rating": 0.85526317358017,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1646",
+          "lie": false,
+          "name": "Varied Title Screens",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1678",
+          "lie": false,
+          "name": "Homunculus Support Character",
+          "rating": 2.36842107772827,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g1695",
+          "lie": false,
+          "name": "Unlockable Bonus Content",
+          "rating": 2.46153855323792,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1889",
+          "lie": false,
+          "name": "Character Profiles",
+          "rating": 2.88095235824585,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1897",
+          "lie": false,
+          "name": "Urban Fantasy",
+          "rating": 2.86666655540466,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1903",
+          "lie": false,
+          "name": "Protagonist with a Sprite",
+          "rating": 1.50347495079041,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1954",
+          "lie": false,
+          "name": "Parting Ending",
+          "rating": 2.14705872535706,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g1978",
+          "lie": false,
+          "name": "Heroine Based on a Mythological Character",
+          "rating": 2.66666674613953,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g2086",
+          "lie": false,
+          "name": "Drastic Character Development (positive)",
+          "rating": 2.14285707473755,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g2149",
+          "lie": false,
+          "name": "Loli Support Character",
+          "rating": 1.75,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2159",
+          "lie": false,
+          "name": "Unlockable Event",
+          "rating": 2.53846144676208,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2411",
+          "lie": false,
+          "name": "100% Completion Bonus",
+          "rating": 2.26666665077209,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2452",
+          "lie": false,
+          "name": "Music Recollection",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2461",
+          "lie": false,
+          "name": "Changeable Font",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2466",
+          "lie": false,
+          "name": "Unlockable Gallery",
+          "rating": 2.73333334922791,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2619",
+          "lie": false,
+          "name": "In Medias Res",
+          "rating": 2.20000004768372,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2635",
+          "lie": false,
+          "name": "Unlockable Epilogue",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2926",
+          "lie": false,
+          "name": "2000s",
+          "rating": 2.75,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3005",
+          "lie": false,
+          "name": "Major Antagonist",
+          "rating": 2.875,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3106",
+          "lie": false,
+          "name": "Non-Erotic Moral Corruption",
+          "rating": 2,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g3127",
+          "lie": false,
+          "name": "Contemporary Fantasy",
+          "rating": 2.71428561210632,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3129",
+          "lie": false,
+          "name": "Low Fantasy",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3131",
+          "lie": false,
+          "name": "Forced Auto-Read Sections",
+          "rating": 1.33333337306976,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3161",
+          "lie": false,
+          "name": "Non-twin Heroine Sisters",
+          "rating": 2.25,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g3171",
+          "lie": false,
+          "name": "High School Student Heroine",
+          "rating": 2.57142853736877,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3204",
+          "lie": false,
+          "name": "Heroine with Big Breasts",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3324",
+          "lie": false,
+          "name": "Body Horror",
+          "rating": 1.20000004768372,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g3325",
+          "lie": false,
+          "name": "Multiple True Endings",
+          "rating": 1.86666667461395,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3349",
+          "lie": false,
+          "name": "Determinant Antagonist",
+          "rating": 2.25,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g3407",
+          "lie": false,
+          "name": "Short Common Route",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3415",
+          "lie": false,
+          "name": "Heroine with Small Breasts (Non-Loli)",
+          "rating": 1.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3520",
+          "lie": false,
+          "name": "Psychological Horror",
+          "rating": 1.5,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g250",
+          "lie": false,
+          "name": "Alternate Dimensions",
+          "rating": 1.28571426868439,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g500",
+          "lie": false,
+          "name": "Protagonist with Psychological Problems",
+          "rating": 2.66666674613953,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g964",
+          "lie": false,
+          "name": "Hint Corner",
+          "rating": 2.90909099578857,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1182",
+          "lie": false,
+          "name": "High Amount of Bad Endings",
+          "rating": 2.91025638580322,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2075",
+          "lie": false,
+          "name": "Gentle Protagonist",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3998",
+          "lie": false,
+          "name": "Clinical Depression",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3438",
+          "lie": false,
+          "name": "Has Window Transparency Setting",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g454",
+          "lie": false,
+          "name": "Slice of Life",
+          "rating": 0.321428567171097,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g58",
+          "lie": false,
+          "name": "Greek Mythology",
+          "rating": 2.36263728141785,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g312",
+          "lie": false,
+          "name": "Western-style Castle",
+          "rating": 2.11111116409302,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3464",
+          "lie": false,
+          "name": "Ethnically Diverse Cast",
+          "rating": 2,
+          "spoiler": 0
+        }
+      ],
+      "title": "Fate/stay night",
+      "titles": [
+        {
+          "lang": "ja",
+          "latin": null,
+          "main": true,
+          "official": true,
+          "title": "Fate/stay night"
+        }
+      ],
+      "votecount": 19466
+    },
+    {
+      "aliases": [
+        "F/ha",
+        "FHA",
+        "フェイトホロウアタラクシア",
+        "ホロウ"
+      ],
+      "alttitle": null,
+      "description": "Bazett Fraga McRemitz, a member of the Mages' Association and a master in the 5th Holy Grail War, wakes on the fourth day of the 5th Holy Grail war with a new servant, Avenger, and no memory of what happened to her beforehand. She and Avenger set off to fight and win the Holy Grail War.\n\nMeanwhile, Shirou Emiya lives peacefully with all his friends from the 5th Holy Grail War. After her experiment alters the event horizon and changes time and space, Rin Tohsaka leaves for the Mages' Association in England to fix things. The Servants sense a new danger, and dark creatures appear soon afterward. Shirou, as a precaution, sets off to ensure nobody is in danger and instead finds himself frequently meeting a mysterious girl, Caren Hortensia.\n\n[Edited from [url=http://en.wikipedia.org/wiki/Fate/hollow_ataraxia]Wikipedia[/url]]",
+      "developers": [
+        {
+          "id": "p6",
+          "name": "TYPE-MOON",
+          "original": null
+        }
+      ],
+      "id": "v50",
+      "image": {
+        "dims": [
+          683,
+          986
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv.t/13/89213.jpg",
+        "url": "https://t.vndb.org/cv/13/89213.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "ja",
+      "platforms": [
+        "win",
+        "and",
+        "psp",
+        "psv",
+        "swi",
+        "oth"
+      ],
+      "rating": 81.4,
+      "released": "2005-10-28",
+      "screenshots": [
+        {
+          "dims": [
+            800,
+            599
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/26/226.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            599
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/27/227.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            801,
+            602
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/28/228.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            602
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/29/229.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/04/119304.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/05/119305.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/51/223551.jpg",
+          "violence": 0,
+          "votecount": 11
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/55/223555.jpg",
+          "violence": 0,
+          "votecount": 12
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/56/223556.jpg",
+          "violence": 0,
+          "votecount": 13
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/57/223557.jpg",
+          "violence": 0,
+          "votecount": 12
+        }
+      ],
+      "tags": [
+        {
+          "category": "cont",
+          "id": "g4",
+          "lie": false,
+          "name": "Magic",
+          "rating": 2.8125,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g19",
+          "lie": false,
+          "name": "Mystery",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g43",
+          "lie": false,
+          "name": "NVL",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g48",
+          "lie": false,
+          "name": "High School",
+          "rating": 2.40000009536743,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g56",
+          "lie": false,
+          "name": "British Mythology",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g58",
+          "lie": false,
+          "name": "Greek Mythology",
+          "rating": 1.66666662693024,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g66",
+          "lie": false,
+          "name": "Sword Combat",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g70",
+          "lie": false,
+          "name": "Combat with Spears",
+          "rating": 1.66666662693024,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g72",
+          "lie": false,
+          "name": "Knife/Dagger Combat",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g77",
+          "lie": false,
+          "name": "Combat Archery",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g79",
+          "lie": false,
+          "name": "Unarmed Combat",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g80",
+          "lie": false,
+          "name": "Magic/ESP Combat",
+          "rating": 1.48606812953949,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g107",
+          "lie": false,
+          "name": "Kuudere Heroine",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g108",
+          "lie": false,
+          "name": "Genius Heroine",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g133",
+          "lie": false,
+          "name": "Male Protagonist",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g135",
+          "lie": false,
+          "name": "Protagonist with Voice Acting",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g136",
+          "lie": false,
+          "name": "Multiple Protagonists",
+          "rating": 2.63636374473572,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g142",
+          "lie": false,
+          "name": "Slice of Life Comedy",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g146",
+          "lie": false,
+          "name": "Single Ending",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g168",
+          "lie": false,
+          "name": "Life and Death Drama",
+          "rating": 1,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g181",
+          "lie": false,
+          "name": "One True End",
+          "rating": 2.86666655540466,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g193",
+          "lie": false,
+          "name": "Modern Tsundere Heroine",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g194",
+          "lie": false,
+          "name": "Classic Tsundere Heroine",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g222",
+          "lie": false,
+          "name": "Fictional Modern Day Japanese Town",
+          "rating": 2.64285707473755,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g224",
+          "lie": false,
+          "name": "Christian Church",
+          "rating": 1.33333337306976,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g225",
+          "lie": false,
+          "name": "Mages Association",
+          "rating": 1.66666662693024,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g229",
+          "lie": false,
+          "name": "Irish Mythology",
+          "rating": 1.66666662693024,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g272",
+          "lie": false,
+          "name": "Fast Mini-games",
+          "rating": 1.82352936267853,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g297",
+          "lie": false,
+          "name": "Map Movement",
+          "rating": 2.94736838340759,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g309",
+          "lie": false,
+          "name": "Western-style Manor",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g310",
+          "lie": false,
+          "name": "Asian-style Manor",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g312",
+          "lie": false,
+          "name": "Western-style Castle",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g317",
+          "lie": false,
+          "name": "Temple",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g333",
+          "lie": false,
+          "name": "Summoning",
+          "rating": 1.82142853736877,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g349",
+          "lie": false,
+          "name": "Time Loop",
+          "rating": 2.91666674613953,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g420",
+          "lie": false,
+          "name": "Under the Same Roof",
+          "rating": 2.75,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g433",
+          "lie": false,
+          "name": "Photographic Backgrounds",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g451",
+          "lie": false,
+          "name": "Skippable Gameplay",
+          "rating": 2.59999990463257,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g452",
+          "lie": false,
+          "name": "Skip Scenes",
+          "rating": 2.86666655540466,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g505",
+          "lie": false,
+          "name": "Donkan Protagonist",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g519",
+          "lie": false,
+          "name": "Forest",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g544",
+          "lie": false,
+          "name": "Student Protagonist",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g599",
+          "lie": false,
+          "name": "Food Discussions",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g633",
+          "lie": false,
+          "name": "Other Perspectives",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g676",
+          "lie": false,
+          "name": "Flashback",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g728",
+          "lie": false,
+          "name": "Protagonist with a Face",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g737",
+          "lie": false,
+          "name": "Side Portraits",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g820",
+          "lie": false,
+          "name": "Orphan Protagonist",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g852",
+          "lie": false,
+          "name": "Autumn",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g868",
+          "lie": false,
+          "name": "Playtime Counter",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g904",
+          "lie": false,
+          "name": "Super Deformed CGs",
+          "rating": 0.977777779102325,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g943",
+          "lie": false,
+          "name": "Graphic Style Change",
+          "rating": 1.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g952",
+          "lie": false,
+          "name": "Divine Protagonist",
+          "rating": 2.66666674613953,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g985",
+          "lie": false,
+          "name": "Priestess Heroine",
+          "rating": 2.08333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g993",
+          "lie": false,
+          "name": "Maid Support Character",
+          "rating": 1.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1005",
+          "lie": false,
+          "name": "Date Display",
+          "rating": 1.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1019",
+          "lie": false,
+          "name": "High Amount of Special Effects",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1196",
+          "lie": false,
+          "name": "White Haired Heroine",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1200",
+          "lie": false,
+          "name": "Homemaker Protagonist",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1234",
+          "lie": false,
+          "name": "Unlockable Choices",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1236",
+          "lie": false,
+          "name": "Memory Alteration",
+          "rating": 2.72727274894714,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g1478",
+          "lie": false,
+          "name": "Bonus Side Stories",
+          "rating": 2.75,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1555",
+          "lie": false,
+          "name": "Normal Scene Recollection",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1646",
+          "lie": false,
+          "name": "Varied Title Screens",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1869",
+          "lie": false,
+          "name": "Strong Female Protagonist",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1897",
+          "lie": false,
+          "name": "Urban Fantasy",
+          "rating": 2.90000009536743,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1903",
+          "lie": false,
+          "name": "Protagonist with a Sprite",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2040",
+          "lie": false,
+          "name": "Censored Text",
+          "rating": 1.66666662693024,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2159",
+          "lie": false,
+          "name": "Unlockable Event",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2359",
+          "lie": false,
+          "name": "Completion Status Indicator",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2362",
+          "lie": false,
+          "name": "Hanafuda",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2411",
+          "lie": false,
+          "name": "100% Completion Bonus",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2461",
+          "lie": false,
+          "name": "Changeable Font",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3171",
+          "lie": false,
+          "name": "High School Student Heroine",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3176",
+          "lie": false,
+          "name": "Brief Third-person Narrative Sections",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3204",
+          "lie": false,
+          "name": "Heroine with Big Breasts",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3324",
+          "lie": false,
+          "name": "Body Horror",
+          "rating": 1.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3415",
+          "lie": false,
+          "name": "Heroine with Small Breasts (Non-Loli)",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3438",
+          "lie": false,
+          "name": "Has Window Transparency Setting",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g318",
+          "lie": false,
+          "name": "Church",
+          "rating": 0.833333313465118,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g459",
+          "lie": false,
+          "name": "Unlockable Routes",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g138",
+          "lie": false,
+          "name": "Mage Heroine",
+          "rating": 2.38461542129517,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2071",
+          "lie": false,
+          "name": "Lots of Character Sprites",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        }
+      ],
+      "title": "Fate/hollow ataraxia",
+      "titles": [
+        {
+          "lang": "ja",
+          "latin": null,
+          "main": true,
+          "official": true,
+          "title": "Fate/hollow ataraxia"
+        }
+      ],
+      "votecount": 5921
+    }
+  ]
+}

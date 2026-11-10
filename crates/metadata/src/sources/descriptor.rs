@@ -83,6 +83,44 @@ impl AppliesTo {
     }
 }
 
+/// When a source is asked about a game of its audience.
+///
+/// JSON: `"always"` (the default) or `"asFallback"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Asked {
+    #[default]
+    Always,
+    /// Only when the game is already identified with it (a pinned or
+    /// stored match), when the game is of its kind ([`GameKind`]: the
+    /// record, the Steam tags or another source say so), when no other
+    /// online details source found the game for sure, or when the user
+    /// names it (a search of it, a pin, a job of only such sources).
+    AsFallback,
+}
+
+/// The kind of game a source is about (visual novels), and how a game
+/// says it is one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameKind {
+    /// English `tr!` key naming the games ("Visual novels"); Settings shows
+    /// it as the games the source is for.
+    pub name: String,
+    /// A genre, theme or Steam tag with one of these names (compared
+    /// normalized) makes a game of this kind.
+    #[serde(default)]
+    pub signals: Vec<String>,
+}
+
+impl GameKind {
+    /// Whether one of `names` is a signal.
+    pub fn said_by<'a>(&self, names: impl IntoIterator<Item = &'a String>) -> bool {
+        let signals: Vec<String> = self.signals.iter().map(|s| crate::util::normalize_title(s)).collect();
+        names.into_iter().any(|n| signals.contains(&crate::util::normalize_title(n)))
+    }
+}
+
 /// A metadata source as data.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,11 +165,29 @@ pub struct SourceDescriptor {
     /// What the user can set for it, in the order shown.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<SourceOption>,
+    #[serde(default, skip_serializing_if = "is_always")]
+    pub asked: Asked,
+    /// The kind of game it is about, when it is about one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_kind: Option<GameKind>,
+    /// English `tr!` key: a line on what the source is, shown in its open
+    /// row in Settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub about: Option<String>,
+}
+
+fn is_always(a: &Asked) -> bool {
+    *a == Asked::Always
 }
 
 impl SourceDescriptor {
     pub fn provides(&self, field: &str) -> bool {
         self.provides.iter().any(|f| f == field)
+    }
+
+    /// Whether it is asked only as a fallback ([`Asked::AsFallback`]).
+    pub fn is_fallback(&self) -> bool {
+        self.asked == Asked::AsFallback
     }
 
     /// Whether it works on this operating system.

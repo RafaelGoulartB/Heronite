@@ -17,6 +17,7 @@ fn registry() -> SourceRegistry {
         steam: Arc::new(SteamState::default()),
         stores: Arc::new(StoreLibraries::default()),
         playnite: Arc::new(RwLock::new(None)),
+        vndb: Arc::new(crate::vndb::Vndb::new()),
     })
 }
 
@@ -28,10 +29,10 @@ fn ids<'a>(list: impl Iterator<Item = &'a SourceDescriptor>) -> Vec<&'a str> {
 fn lookups_keep_the_provider_order() {
     let reg = registry();
     let lookups: Vec<&str> = reg.lookups().map(|s| s.descriptor().id.as_str()).collect();
-    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "steamgriddb"]);
+    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "vndb", "steamgriddb"]);
     assert_eq!(
         ids(reg.descriptors()),
-        ["igdb", "steam", "store", "lutris", "playnite", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]
+        ["igdb", "steam", "store", "lutris", "playnite", "vndb", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]
     );
     assert_eq!(ids(reg.descriptors()), ids(builtin_descriptors().iter()));
     let unique: BTreeSet<_> = reg.descriptors().map(|d| d.id.as_str()).collect();
@@ -55,17 +56,17 @@ fn details_sources_and_steamgriddb_have_a_lookup() {
 
 #[test]
 fn offered_details_sources_leave_playnite_out() {
-    assert_eq!(ids(offered(SourceKind::Details)), ["igdb", "steam", "store", "lutris"]);
+    assert_eq!(ids(offered(SourceKind::Details)), ["igdb", "steam", "store", "lutris", "vndb"]);
     assert!(registry().get("playnite").is_some_and(|d| d.hidden));
     let names: Vec<&str> = offered(SourceKind::Details).map(|d| d.name.as_str()).collect();
-    assert_eq!(names, ["IGDB", "Steam", "Store", "Lutris"]);
+    assert_eq!(names, ["IGDB", "Steam", "Store", "Lutris", "VNDB"]);
 }
 
 #[test]
-fn network_sources_are_igdb_steam_lutris_and_steamgriddb() {
+fn network_sources_are_igdb_steam_lutris_vndb_and_steamgriddb() {
     let reg = registry();
     let online: Vec<&str> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.network).map(|d| d.id.as_str()).collect();
-    assert_eq!(online, ["igdb", "steam", "lutris", "steamgriddb"]);
+    assert_eq!(online, ["igdb", "steam", "lutris", "vndb", "steamgriddb"]);
 }
 
 #[test]
@@ -75,7 +76,7 @@ fn cover_families_by_source() {
     assert_eq!(gives("coverSquare"), ["steamgriddb"]);
     assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb"]);
     // The tall cover keeps its sources; IGDB and Lutris give only that one.
-    assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "steamgriddb", "webimages"]);
+    assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "vndb", "steamgriddb", "webimages"]);
 }
 
 /// `heronite_data::settings` keeps the ids of the default priorities and of
@@ -148,12 +149,35 @@ fn applies_to_answers_for_a_game() {
 }
 
 #[test]
+fn only_vndb_is_a_fallback_and_its_kind_is_visual_novels() {
+    let reg = registry();
+    let fallbacks: Vec<&str> = reg.descriptors().filter(|d| d.is_fallback()).map(|d| d.id.as_str()).collect();
+    assert_eq!(fallbacks, ["vndb"]);
+    let kind = reg.get("vndb").unwrap().game_kind.as_ref().unwrap();
+    assert!(kind.said_by(&["Adventure".to_string(), "visual novel".to_string()]));
+    assert!(!kind.said_by(&["Novel".to_string()]));
+    // Named by a request of fallback sources only.
+    let only = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert!(reg.names_fallback("vndb", Some(&only(&["vndb"]))));
+    assert!(reg.names_fallback("vndb", Some(&only(&["vndb", "steamtags"]))));
+    assert!(!reg.names_fallback("vndb", Some(&only(&["igdb", "vndb"]))));
+    assert!(!reg.names_fallback("vndb", None));
+    // A manifest says so the same way.
+    let d: SourceDescriptor = serde_json::from_str(
+        r#"{"id":"x","name":"X","kind":"details","asked":"asFallback","gameKind":{"name":"Visual novels","signals":["Visual Novel"]}}"#,
+    )
+    .unwrap();
+    assert!(d.is_fallback() && d.game_kind.is_some());
+}
+
+#[test]
 fn a_manifest_descriptor_takes_defaults() {
     let d: SourceDescriptor = serde_json::from_str(r#"{"id":"vndb","name":"VNDB","kind":"details"}"#).unwrap();
     assert_eq!(d.applies_to, AppliesTo::All);
     assert_eq!(d.needs, Needs::Nothing);
     assert!(d.provides.is_empty() && d.finds_by.is_empty() && !d.network && !d.hidden);
     assert!(d.options.is_empty() && d.only_on.is_empty() && !d.manual_only && d.available_here());
+    assert!(!d.is_fallback() && d.game_kind.is_none() && d.about.is_none());
 
     let d: SourceDescriptor = serde_json::from_str(
         r#"{"id":"x","name":"X","kind":"extras","provides":["timeToBeat"],"appliesTo":{"platforms":["snes"]},

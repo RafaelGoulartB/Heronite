@@ -119,6 +119,8 @@ pub struct MatchChoice {
     pub title: Option<String>,
     pub year: Option<i32>,
     pub platform: Option<String>,
+    /// Its name in another script ([`SourceHit::alt_title`]).
+    pub alt_title: Option<String>,
     pub thumb_url: Option<String>,
     /// One per source, in the order they came.
     pub hits: Vec<SourceHit>,
@@ -134,6 +136,7 @@ impl MatchChoice {
         self.title = self.title.take().or_else(|| hit.title.clone());
         self.year = self.year.or(hit.year);
         self.platform = self.platform.take().or_else(|| hit.platform.clone());
+        self.alt_title = self.alt_title.take().or_else(|| hit.alt_title.clone());
         self.thumb_url = self.thumb_url.take().or_else(|| hit.thumb_url.clone());
     }
 }
@@ -163,7 +166,8 @@ pub fn group_hits(hits: Vec<SourceHit>) -> Vec<MatchChoice> {
                 groups[i].hits.push(hit);
             }
             None => {
-                let mut choice = MatchChoice { title: None, year: None, platform: None, thumb_url: None, hits: Vec::new() };
+                let mut choice =
+                    MatchChoice { title: None, year: None, platform: None, alt_title: None, thumb_url: None, hits: Vec::new() };
                 choice.fill_from(&hit);
                 choice.hits.push(hit);
                 groups.push(choice);
@@ -206,6 +210,8 @@ mod tests {
             platform: None,
             thumb_url: None,
             matched_by: Some(MatchedBy::FuzzyTitle),
+            alt_title: None,
+            thumb_adult: false,
         }
     }
 

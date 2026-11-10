@@ -95,7 +95,11 @@ impl MetadataDialog {
     }
 
     fn hit_row(&self, i: usize, hit: &SourceHit, current: bool, cx: &mut Context<Self>) -> Stateful<Div> {
-        let line = [hit.year.map(|y| y.to_string()), hit.platform.clone()].into_iter().flatten().collect::<Vec<_>>().join(" \u{b7} ");
+        let line = [hit.year.map(|y| y.to_string()), hit.alt_title.clone(), hit.platform.clone()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" \u{b7} ");
         let (source, id) = (hit.source.clone(), hit.id.clone());
         div()
             .id(("md-hit", i))

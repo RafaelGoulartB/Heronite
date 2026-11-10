@@ -1,5 +1,5 @@
 //! Collection metadata and artwork backend: the registry of sources (IGDB,
-//! Steam, Lutris, store and Playnite details, plus pictures and extras), when
+//! Steam, Lutris, VNDB, store and Playnite details, plus pictures and extras), when
 //! a match is sure enough to save (`confidence`) and the review queue of the
 //! others (`review`), the per-field merge, details editing, custom art,
 //! Steam details/hero caches, covers, web image search and HowLongToBeat.
@@ -36,6 +36,7 @@ pub mod steam_tags;
 pub mod store;
 pub mod types;
 pub mod util;
+pub mod vndb;
 pub mod web_images;
 
 pub use http::{Endpoints, Http};

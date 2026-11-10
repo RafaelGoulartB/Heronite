@@ -1,0 +1,2270 @@
+{
+  "more": true,
+  "results": [
+    {
+      "aliases": [
+        "クラナド",
+        "团子大家族"
+      ],
+      "alttitle": null,
+      "description": "Just 200 meters from the school gate, I find myself standing still, sighing as I gaze up at the sky.\n\nBeyond lies the school gate, and I can't help but wonder who in their right mind would choose to place it in such a location. The slope in front of it stretches out like an unending ordeal.\n\nAnother sigh, quieter and shorter than mine, pulls me from my thoughts. I glance over and see a girl standing just as motionless. She's in her third year too, but I don't recognize her. Her short hair catches the breeze, fluttering just above her shoulders.\n\n\"Do you like this school?\" she suddenly asks, not really to me, more like to herself. \n\"I really, really like it. But nothing can stay the same forever. Everything has to change,\" she murmurs, her voice trailing off. \"Can you still like this place, even then?\"\n\n\"You just need to find what you love about it, right?\" I chime in, catching her off guard. \"You haven't really thought about what makes you happy here, have you?\"\n\nBack when we were younger, everything seemed simpler—everyone felt that way at some point.\n\n\"Come on, let's go,\" I say.\n\nAnd together, we begin to climb the long, winding slope.\n\n[Based on [url=https://key.visualarts.gr.jp/product/clannad/story/]the official site[/url]]",
+      "developers": [
+        {
+          "id": "p24",
+          "name": "Key",
+          "original": null
+        }
+      ],
+      "id": "v4",
+      "image": {
+        "dims": [
+          600,
+          900
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv.t/95/75895.jpg",
+        "url": "https://t.vndb.org/cv/95/75895.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "ja",
+      "platforms": [
+        "win",
+        "ios",
+        "and",
+        "psp",
+        "ps2",
+        "ps3",
+        "ps4",
+        "psv",
+        "swi",
+        "vnd",
+        "xb3",
+        "mob"
+      ],
+      "rating": 87.3,
+      "released": "2004-04-28",
+      "screenshots": [
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/67/8367.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/69/8369.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/70/8370.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/72/8372.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/74/8374.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/17/9617.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            800,
+            600
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/18/9618.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/10/175810.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/11/175811.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/12/175812.jpg",
+          "violence": 0,
+          "votecount": 14
+        }
+      ],
+      "tags": [
+        {
+          "category": "tech",
+          "id": "g32",
+          "lie": false,
+          "name": "ADV",
+          "rating": 2.86440682411194,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g48",
+          "lie": false,
+          "name": "High School",
+          "rating": 2.82608699798584,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g96",
+          "lie": false,
+          "name": "Romance",
+          "rating": 2.9240505695343,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g104",
+          "lie": false,
+          "name": "Comedy",
+          "rating": 2.57680487632751,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g107",
+          "lie": false,
+          "name": "Kuudere Heroine",
+          "rating": 1.58558559417725,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g108",
+          "lie": false,
+          "name": "Genius Heroine",
+          "rating": 2.30158734321594,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g142",
+          "lie": false,
+          "name": "Slice of Life Comedy",
+          "rating": 2.40000009536743,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g148",
+          "lie": false,
+          "name": "Multiple Endings",
+          "rating": 2.81952857971191,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g149",
+          "lie": false,
+          "name": "Enforced Playing Order",
+          "rating": 0.899999976158142,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g150",
+          "lie": false,
+          "name": "Family Life Comedy",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g154",
+          "lie": false,
+          "name": "Loli Heroine",
+          "rating": 1.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g168",
+          "lie": false,
+          "name": "Life and Death Drama",
+          "rating": 2.70491814613342,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g172",
+          "lie": false,
+          "name": "Father Support Character",
+          "rating": 2.51351356506348,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g173",
+          "lie": false,
+          "name": "Mother Support Character",
+          "rating": 2.13888883590698,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g176",
+          "lie": false,
+          "name": "Foolish Friend",
+          "rating": 2.83561635017395,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g180",
+          "lie": false,
+          "name": "Early Branching Plot",
+          "rating": 2.61403512954712,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g193",
+          "lie": false,
+          "name": "Modern Tsundere Heroine",
+          "rating": 1.75009632110596,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g196",
+          "lie": false,
+          "name": "Sickly Heroine",
+          "rating": 2.63636374473572,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g201",
+          "lie": false,
+          "name": "Protagonist's Childhood Friend as a Heroine",
+          "rating": 2,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g221",
+          "lie": false,
+          "name": "Modern Day Japan",
+          "rating": 2.2707691192627,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g222",
+          "lie": false,
+          "name": "Fictional Modern Day Japanese Town",
+          "rating": 1.86666667461395,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g257",
+          "lie": false,
+          "name": "Timid Heroine",
+          "rating": 2.23063969612122,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g258",
+          "lie": false,
+          "name": "Shy Heroine",
+          "rating": 2.46031737327576,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g267",
+          "lie": false,
+          "name": "Protagonist's Daughter as a Support Character",
+          "rating": 2.61403512954712,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g281",
+          "lie": false,
+          "name": "Illness",
+          "rating": 2.58461546897888,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g337",
+          "lie": false,
+          "name": "Dramatic Love Triangle",
+          "rating": 2.34999990463257,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g342",
+          "lie": false,
+          "name": "Twin Sister Support Character",
+          "rating": 2.023273229599,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g343",
+          "lie": false,
+          "name": "Twin Sisters as Heroines",
+          "rating": 2.40000009536743,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g373",
+          "lie": false,
+          "name": "Student Heroine",
+          "rating": 2.52597045898438,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g431",
+          "lie": false,
+          "name": "Coming-of-Age Drama",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g454",
+          "lie": false,
+          "name": "Slice of Life",
+          "rating": 2.88461542129517,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g459",
+          "lie": false,
+          "name": "Unlockable Routes",
+          "rating": 2.46153855323792,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g461",
+          "lie": false,
+          "name": "Heroine with Zettai Ryouiki",
+          "rating": 0.952380955219269,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g522",
+          "lie": false,
+          "name": "Bookworm Heroine",
+          "rating": 2.28571438789368,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g578",
+          "lie": false,
+          "name": "Protagonist's Kouhai as a Heroine",
+          "rating": 2.18547630310059,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g596",
+          "lie": false,
+          "name": "Nakige",
+          "rating": 2.9761905670166,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g599",
+          "lie": false,
+          "name": "Food Discussions",
+          "rating": 0.899999976158142,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g710",
+          "lie": false,
+          "name": "Friendship",
+          "rating": 2.42857146263123,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g743",
+          "lie": false,
+          "name": "More Than Seven Heroines",
+          "rating": 2.69230771064758,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g760",
+          "lie": false,
+          "name": "Summer",
+          "rating": 0.307692319154739,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g775",
+          "lie": false,
+          "name": "Orphan Heroine",
+          "rating": 1.82608699798584,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g848",
+          "lie": false,
+          "name": "Death of Heroine",
+          "rating": 2.46315789222717,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g876",
+          "lie": false,
+          "name": "Bad Endings with Story",
+          "rating": 0.722222208976746,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g877",
+          "lie": false,
+          "name": "Game Over",
+          "rating": 1.06060600280762,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g920",
+          "lie": false,
+          "name": "Student Council President Heroine",
+          "rating": 1.93333327770233,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g981",
+          "lie": false,
+          "name": "Passage of Time",
+          "rating": 2.75471687316895,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g1005",
+          "lie": false,
+          "name": "Date Display",
+          "rating": 2.78333330154419,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1025",
+          "lie": false,
+          "name": "Lots of Choices",
+          "rating": 2.58333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1053",
+          "lie": false,
+          "name": "Heroine with Ahoge",
+          "rating": 2.06589150428772,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1184",
+          "lie": false,
+          "name": "High School Student Protagonist",
+          "rating": 2.90909099578857,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1212",
+          "lie": false,
+          "name": "Student Club Member Heroine",
+          "rating": 1.82619047164917,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1234",
+          "lie": false,
+          "name": "Unlockable Choices",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1246",
+          "lie": false,
+          "name": "Built-in Encyclopedia",
+          "rating": 2.70000004768372,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1288",
+          "lie": false,
+          "name": "Perverted Friend",
+          "rating": 0.899999976158142,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1366",
+          "lie": false,
+          "name": "Reunion",
+          "rating": 2,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g1471",
+          "lie": false,
+          "name": "Blind Choices",
+          "rating": 1.66666662693024,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1646",
+          "lie": false,
+          "name": "Varied Title Screens",
+          "rating": 1.77777779102325,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1661",
+          "lie": false,
+          "name": "Boke Heroine",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1802",
+          "lie": false,
+          "name": "Delinquent Protagonist",
+          "rating": 2.20000004768372,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2016",
+          "lie": false,
+          "name": "Achievements",
+          "rating": 2.55555558204651,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2086",
+          "lie": false,
+          "name": "Drastic Character Development (positive)",
+          "rating": 1.04999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2101",
+          "lie": false,
+          "name": "Skip to Choices",
+          "rating": 1.61764705181122,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2253",
+          "lie": false,
+          "name": "Apartment Building",
+          "rating": 0.933333337306976,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g2407",
+          "lie": false,
+          "name": "Save Memo Function",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2446",
+          "lie": false,
+          "name": "Pet Support Character",
+          "rating": 0.800000011920929,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2452",
+          "lie": false,
+          "name": "Music Recollection",
+          "rating": 2.40000009536743,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2466",
+          "lie": false,
+          "name": "Unlockable Gallery",
+          "rating": 2.72727274894714,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2635",
+          "lie": false,
+          "name": "Unlockable Epilogue",
+          "rating": 2.58333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3179",
+          "lie": false,
+          "name": "Widow(er) Protagonist",
+          "rating": 2.18350744247437,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g3265",
+          "lie": false,
+          "name": "Co-worker Support Character",
+          "rating": 1.66666662693024,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g3696",
+          "lie": false,
+          "name": "Mourning",
+          "rating": 0.666666686534882,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g3894",
+          "lie": false,
+          "name": "Family Drama",
+          "rating": 1.35000002384186,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g215",
+          "lie": false,
+          "name": "Family",
+          "rating": 2.93670892715454,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g203",
+          "lie": false,
+          "name": "Nameable Protagonist",
+          "rating": 2.29193830490112,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g728",
+          "lie": false,
+          "name": "Protagonist with a Face",
+          "rating": 1.71428573131561,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g851",
+          "lie": false,
+          "name": "Insert Songs",
+          "rating": 1.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1251",
+          "lie": false,
+          "name": "More Than Seven Endings",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1376",
+          "lie": false,
+          "name": "Joke Endings",
+          "rating": 0.921052634716034,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1923",
+          "lie": false,
+          "name": "Friendship Ending",
+          "rating": 2.57142853736877,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2159",
+          "lie": false,
+          "name": "Unlockable Event",
+          "rating": 2.12121200561523,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2321",
+          "lie": false,
+          "name": "Friendship Route",
+          "rating": 2.5652174949646,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2461",
+          "lie": false,
+          "name": "Changeable Font",
+          "rating": 1.60000002384186,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3108",
+          "lie": false,
+          "name": "Jump to Prior Choices",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3438",
+          "lie": false,
+          "name": "Has Window Transparency Setting",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g147",
+          "lie": false,
+          "name": "Drama",
+          "rating": 2.80974125862122,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g151",
+          "lie": false,
+          "name": "School Life Comedy",
+          "rating": 2.75757575035095,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g195",
+          "lie": false,
+          "name": "Deredere Heroine",
+          "rating": 1.781818151474,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g250",
+          "lie": false,
+          "name": "Alternate Dimensions",
+          "rating": 1.87719297409058,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g282",
+          "lie": false,
+          "name": "Terminal Illness",
+          "rating": 2.41666674613953,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g367",
+          "lie": false,
+          "name": "Crippled Protagonist",
+          "rating": 0.560457527637482,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g534",
+          "lie": false,
+          "name": "Love Overcomes All",
+          "rating": 2.90476179122925,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g603",
+          "lie": false,
+          "name": "Childishly Violent Heroine",
+          "rating": 1.8025209903717,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g867",
+          "lie": false,
+          "name": "Spring",
+          "rating": 2.375,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g933",
+          "lie": false,
+          "name": "Student Club President Heroine",
+          "rating": 2.03448271751404,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g1202",
+          "lie": false,
+          "name": "Dormitory Manager Heroine",
+          "rating": 1.61000001430511,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1269",
+          "lie": false,
+          "name": "Brocon Heroine",
+          "rating": 0.333333343267441,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g1335",
+          "lie": false,
+          "name": "Central Heroine",
+          "rating": 2.30335974693298,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1363",
+          "lie": false,
+          "name": "Fortune-teller Heroine",
+          "rating": 1.1868132352829,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2147",
+          "lie": false,
+          "name": "Unavoidable Heroine Death",
+          "rating": 2.90000009536743,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g2926",
+          "lie": false,
+          "name": "2000s",
+          "rating": 2.42857146263123,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2997",
+          "lie": false,
+          "name": "Heisei Era",
+          "rating": 2.14285707473755,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3003",
+          "lie": false,
+          "name": "Male Friend",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3133",
+          "lie": false,
+          "name": "Human Childbirth",
+          "rating": 2.25,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g3171",
+          "lie": false,
+          "name": "High School Student Heroine",
+          "rating": 2.81818175315857,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g181",
+          "lie": false,
+          "name": "One True End",
+          "rating": 2.81719303131104,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g255",
+          "lie": false,
+          "name": "Physical Problems",
+          "rating": 0.400000005960464,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g757",
+          "lie": false,
+          "name": "Winter",
+          "rating": 0.400000005960464,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3117",
+          "lie": false,
+          "name": "Children Ending",
+          "rating": 3,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g4039",
+          "lie": false,
+          "name": "Snow",
+          "rating": 0.400000005960464,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g133",
+          "lie": false,
+          "name": "Male Protagonist",
+          "rating": 2.8048779964447,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g803",
+          "lie": false,
+          "name": "Pigs",
+          "rating": 0.666666686534882,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g3037",
+          "lie": false,
+          "name": "No \"Keep Voice on Click\" Option",
+          "rating": 1.20000004768372,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g915",
+          "lie": false,
+          "name": "Drama Club",
+          "rating": 2.34210515022278,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g420",
+          "lie": false,
+          "name": "Under the Same Roof",
+          "rating": 2.25287365913391,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g676",
+          "lie": false,
+          "name": "Flashback",
+          "rating": 1.83978497982025,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g1069",
+          "lie": false,
+          "name": "Heroine with Intake Hairstyle",
+          "rating": 1.96216213703156,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1196",
+          "lie": false,
+          "name": "White Haired Heroine",
+          "rating": 1.97568714618683,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1333",
+          "lie": false,
+          "name": "Protagonist's Girlfriend as a Heroine",
+          "rating": 1.89124429225922,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g2296",
+          "lie": false,
+          "name": "Middle School Student Heroine",
+          "rating": 1.625,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g394",
+          "lie": false,
+          "name": "Pregnancy",
+          "rating": 1.99632608890533,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g1173",
+          "lie": false,
+          "name": "Rain",
+          "rating": 0.833333313465118,
+          "spoiler": 0
+        }
+      ],
+      "title": "CLANNAD",
+      "titles": [
+        {
+          "lang": "en",
+          "latin": null,
+          "main": false,
+          "official": true,
+          "title": "CLANNAD"
+        },
+        {
+          "lang": "ja",
+          "latin": null,
+          "main": true,
+          "official": true,
+          "title": "CLANNAD"
+        },
+        {
+          "lang": "ko",
+          "latin": "CLANNAD",
+          "main": false,
+          "official": true,
+          "title": "클라나드"
+        },
+        {
+          "lang": "zh-Hans",
+          "latin": null,
+          "main": false,
+          "official": true,
+          "title": "CLANNAD"
+        }
+      ],
+      "votecount": 11570
+    },
+    {
+      "aliases": [
+        "Clannad: On the Hillside Path that Light Watches Over"
+      ],
+      "alttitle": "CLANNAD -クラナド- 光見守る坂道で",
+      "description": "A \"visual sound novel\" adaption of the Hikari Mimamoru Sakamichi De short stories.",
+      "developers": [
+        {
+          "id": "p24",
+          "name": "Key",
+          "original": null
+        }
+      ],
+      "id": "v4060",
+      "image": {
+        "dims": [
+          600,
+          900
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv.t/04/75904.jpg",
+        "url": "https://t.vndb.org/cv/04/75904.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "ja",
+      "platforms": [
+        "win",
+        "lin",
+        "and",
+        "psp",
+        "ps3",
+        "swi",
+        "vnd",
+        "xb3",
+        "mob"
+      ],
+      "rating": 69,
+      "released": "2008-01-08",
+      "screenshots": [
+        {
+          "dims": [
+            480,
+            272
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/92/10992.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            480,
+            272
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/97/10997.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            480,
+            272
+          ],
+          "sexual": 0.07,
+          "url": "https://t.vndb.org/sf/98/10998.jpg",
+          "violence": 0,
+          "votecount": 15
+        },
+        {
+          "dims": [
+            480,
+            272
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/99/10999.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            480,
+            272
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/00/11000.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/02/175802.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/03/175803.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/04/175804.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/05/175805.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/06/175806.jpg",
+          "violence": 0,
+          "votecount": 14
+        }
+      ],
+      "tags": [
+        {
+          "category": "tech",
+          "id": "g32",
+          "lie": false,
+          "name": "ADV",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g48",
+          "lie": false,
+          "name": "High School",
+          "rating": 1.75,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g60",
+          "lie": false,
+          "name": "Modern Day Earth",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g96",
+          "lie": false,
+          "name": "Romance",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g104",
+          "lie": false,
+          "name": "Comedy",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g133",
+          "lie": false,
+          "name": "Male Protagonist",
+          "rating": 1.75,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g901",
+          "lie": false,
+          "name": "No Saves",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1205",
+          "lie": false,
+          "name": "Literary Adaptation",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g134",
+          "lie": false,
+          "name": "Female Protagonist",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g135",
+          "lie": false,
+          "name": "Protagonist with Voice Acting",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g142",
+          "lie": false,
+          "name": "Slice of Life Comedy",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g143",
+          "lie": false,
+          "name": "Modern Day",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g145",
+          "lie": false,
+          "name": "Linear Plot",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g147",
+          "lie": false,
+          "name": "Drama",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g148",
+          "lie": false,
+          "name": "Multiple Endings",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g172",
+          "lie": false,
+          "name": "Father Support Character",
+          "rating": 1.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g215",
+          "lie": false,
+          "name": "Family",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g222",
+          "lie": false,
+          "name": "Fictional Modern Day Japanese Town",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g453",
+          "lie": false,
+          "name": "Slice of Life Drama",
+          "rating": 2,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g454",
+          "lie": false,
+          "name": "Slice of Life",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g461",
+          "lie": false,
+          "name": "Heroine with Zettai Ryouiki",
+          "rating": 1.66666662693024,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g598",
+          "lie": false,
+          "name": "Episodic Story",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g678",
+          "lie": false,
+          "name": "The Holiday Season",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g709",
+          "lie": false,
+          "name": "Kinetic Novel",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g728",
+          "lie": false,
+          "name": "Protagonist with a Face",
+          "rating": 2.25,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g739",
+          "lie": false,
+          "name": "20th Century",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g791",
+          "lie": false,
+          "name": "No Character Sprites",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g830",
+          "lie": false,
+          "name": "Anthology",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g836",
+          "lie": false,
+          "name": "Voiced Narration",
+          "rating": 2.90909099578857,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g860",
+          "lie": false,
+          "name": "Heroine with Tights",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1554",
+          "lie": false,
+          "name": "Scenario Selection",
+          "rating": 2.85714292526245,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2651",
+          "lie": false,
+          "name": "No Quick Save/Load",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2926",
+          "lie": false,
+          "name": "2000s",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3894",
+          "lie": false,
+          "name": "Family Drama",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1258",
+          "lie": false,
+          "name": "No Backlog",
+          "rating": 2.31111121177673,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g136",
+          "lie": false,
+          "name": "Multiple Protagonists",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g221",
+          "lie": false,
+          "name": "Modern Day Japan",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g741",
+          "lie": false,
+          "name": "80's",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g757",
+          "lie": false,
+          "name": "Winter",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1251",
+          "lie": false,
+          "name": "More Than Seven Endings",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        }
+      ],
+      "title": "CLANNAD - Hikari Mimamoru Sakamichi de",
+      "titles": [
+        {
+          "lang": "en",
+          "latin": null,
+          "main": false,
+          "official": true,
+          "title": "CLANNAD Side Stories"
+        },
+        {
+          "lang": "ja",
+          "latin": "CLANNAD - Hikari Mimamoru Sakamichi de",
+          "main": true,
+          "official": true,
+          "title": "CLANNAD -クラナド- 光見守る坂道で"
+        },
+        {
+          "lang": "tr",
+          "latin": null,
+          "main": false,
+          "official": false,
+          "title": "Klanad Yan Hikâyeleri"
+        },
+        {
+          "lang": "zh-Hans",
+          "latin": "CLANNAD - Bei Guang Shouwangzhe de Podao",
+          "main": false,
+          "official": false,
+          "title": "CLANNAD - 被光守望着的坡道"
+        }
+      ],
+      "votecount": 712
+    },
+    {
+      "aliases": [],
+      "alttitle": null,
+      "description": "It is the year 2022. \nUshio Okazaki, now 22, sees mysterious \"light\" in the town of eternal snow. \nUshio's search for the meaning of the \"light\" leads her to Kotomi's Superstring theory and Yukine's stories of the townspeople - and eventually, the vast expanse of the snow in an ending world. \nAt the end of a never-ending journey, what does she see...?\n\nThis is a fan fiction of Clannad (available online), a continuation of Ushio's path.",
+      "developers": [
+        {
+          "id": "p2837",
+          "name": "A. Takigawa",
+          "original": "瀧川 新惟"
+        }
+      ],
+      "id": "v5698",
+      "image": {
+        "dims": [
+          256,
+          192
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv/07/7107.jpg",
+        "url": "https://t.vndb.org/cv/07/7107.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "ja",
+      "platforms": [
+        "win",
+        "mac"
+      ],
+      "rating": 72,
+      "released": "2010-09-25",
+      "screenshots": [
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/77/14877.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/78/14878.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/79/14879.jpg",
+          "violence": 0,
+          "votecount": 14
+        }
+      ],
+      "tags": [
+        {
+          "category": "tech",
+          "id": "g32",
+          "lie": false,
+          "name": "ADV",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g433",
+          "lie": false,
+          "name": "Photographic Backgrounds",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g709",
+          "lie": false,
+          "name": "Kinetic Novel",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g954",
+          "lie": false,
+          "name": "Science Fantasy",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1056",
+          "lie": false,
+          "name": "Fan-fiction",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3441",
+          "lie": false,
+          "name": "2020s",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g791",
+          "lie": false,
+          "name": "No Character Sprites",
+          "rating": 3,
+          "spoiler": 0
+        }
+      ],
+      "title": "CLANNAD: Lost \"Winter\"",
+      "titles": [
+        {
+          "lang": "ja",
+          "latin": null,
+          "main": true,
+          "official": true,
+          "title": "CLANNAD: Lost \"Winter\""
+        }
+      ],
+      "votecount": 22
+    },
+    {
+      "aliases": [],
+      "alttitle": null,
+      "description": "“A town on the coast…\n A life not lived…\n A lost love…\n A lonely child…\n A world of lights…\n New and fun things…”\n\nThe year is 1985. Okazaki Naoyuki hates his unfair life. A high school student, he has been readmitted to Ushinawa High after a year living as a shut-in. His neighbours, his classmates and his teachers all look down on him and he despises them for it. But, on his first day returning, he meets a girl on his way to school and his life changes in ways he never expected it could…\n\n[From [url=http://clannadppvisualproject.wordpress.com/about/]Official site[/url]]",
+      "developers": [
+        {
+          "id": "p2231",
+          "name": "Scope Games",
+          "original": null
+        }
+      ],
+      "id": "v7983",
+      "image": {
+        "dims": [
+          256,
+          336
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv/33/12133.jpg",
+        "url": "https://t.vndb.org/cv/33/12133.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "en",
+      "platforms": [
+        "win",
+        "lin",
+        "mac",
+        "and"
+      ],
+      "rating": 70.3,
+      "released": "2011-09-16",
+      "screenshots": [
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/56/27856.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/57/27857.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/58/27858.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/59/27859.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/60/27860.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/61/27861.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            640,
+            480
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/62/27862.jpg",
+          "violence": 0,
+          "votecount": 14
+        }
+      ],
+      "tags": [
+        {
+          "category": "tech",
+          "id": "g32",
+          "lie": false,
+          "name": "ADV",
+          "rating": 2.75,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g96",
+          "lie": false,
+          "name": "Romance",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g133",
+          "lie": false,
+          "name": "Male Protagonist",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g180",
+          "lie": false,
+          "name": "Early Branching Plot",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g181",
+          "lie": false,
+          "name": "One True End",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g191",
+          "lie": false,
+          "name": "Heroine with Glasses",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g215",
+          "lie": false,
+          "name": "Family",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g373",
+          "lie": false,
+          "name": "Student Heroine",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g394",
+          "lie": false,
+          "name": "Pregnancy",
+          "rating": 2.5,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g420",
+          "lie": false,
+          "name": "Under the Same Roof",
+          "rating": 2.5,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g596",
+          "lie": false,
+          "name": "Nakige",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g627",
+          "lie": false,
+          "name": "Depression (obsolete)",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g741",
+          "lie": false,
+          "name": "80's",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g848",
+          "lie": false,
+          "name": "Death of Heroine",
+          "rating": 2.5,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g876",
+          "lie": false,
+          "name": "Bad Endings with Story",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g981",
+          "lie": false,
+          "name": "Passage of Time",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1005",
+          "lie": false,
+          "name": "Date Display",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1056",
+          "lie": false,
+          "name": "Fan-fiction",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1182",
+          "lie": false,
+          "name": "High Amount of Bad Endings",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1184",
+          "lie": false,
+          "name": "High School Student Protagonist",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1208",
+          "lie": false,
+          "name": "Past Japan",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1251",
+          "lie": false,
+          "name": "More Than Seven Endings",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1312",
+          "lie": false,
+          "name": "University Student Heroine",
+          "rating": 2.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1335",
+          "lie": false,
+          "name": "Central Heroine",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1967",
+          "lie": false,
+          "name": "Shouwa Era",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2452",
+          "lie": false,
+          "name": "Music Recollection",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2849",
+          "lie": false,
+          "name": "Ladder Structure",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3179",
+          "lie": false,
+          "name": "Widow(er) Protagonist",
+          "rating": 2.5,
+          "spoiler": 2
+        }
+      ],
+      "title": "Clannad -The Past Path-",
+      "titles": [
+        {
+          "lang": "en",
+          "latin": null,
+          "main": true,
+          "official": true,
+          "title": "Clannad -The Past Path-"
+        }
+      ],
+      "votecount": 85
+    },
+    {
+      "aliases": [],
+      "alttitle": null,
+      "description": "Today's Tomoya's 27th birthday and some people he knows are coming to celebrate it!\n\nUshio would have to be on her very best behaviour for Mama's wonderful tonkatsu and cake so she has to try her best to navigate the various conversations with Daddy's friends, family and potentially former crushes.\n\nHopefully it would go all according to plan...\n\n(https://team-iwaki.itch.io/clannad-happy-birthday)",
+      "developers": [
+        {
+          "id": "p26375",
+          "name": "Team Iwaki",
+          "original": null
+        }
+      ],
+      "id": "v54298",
+      "image": {
+        "dims": [
+          1350,
+          1080
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv.t/97/101997.jpg",
+        "url": "https://t.vndb.org/cv/97/101997.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "en",
+      "platforms": [
+        "win",
+        "lin",
+        "mac"
+      ],
+      "rating": null,
+      "released": "2024-04-28",
+      "screenshots": [
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/85/228185.jpg",
+          "violence": 0,
+          "votecount": 13
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/86/228186.jpg",
+          "violence": 0,
+          "votecount": 11
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/87/228187.jpg",
+          "violence": 0,
+          "votecount": 11
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/88/228188.jpg",
+          "violence": 0,
+          "votecount": 12
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/89/228189.jpg",
+          "violence": 0,
+          "votecount": 13
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/90/228190.jpg",
+          "violence": 0,
+          "votecount": 12
+        }
+      ],
+      "tags": [
+        {
+          "category": "tech",
+          "id": "g1056",
+          "lie": false,
+          "name": "Fan-fiction",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3653",
+          "lie": false,
+          "name": "Birthday",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g134",
+          "lie": false,
+          "name": "Female Protagonist",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g145",
+          "lie": false,
+          "name": "Linear Plot",
+          "rating": 3,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g146",
+          "lie": false,
+          "name": "Single Ending",
+          "rating": 3,
+          "spoiler": 0
+        }
+      ],
+      "title": "CLANNAD -Happy Birthday-",
+      "titles": [
+        {
+          "lang": "en",
+          "latin": null,
+          "main": true,
+          "official": true,
+          "title": "CLANNAD -Happy Birthday-"
+        }
+      ],
+      "votecount": 4
+    }
+  ]
+}

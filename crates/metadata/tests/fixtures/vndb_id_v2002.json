@@ -1,0 +1,1080 @@
+{
+  "more": false,
+  "results": [
+    {
+      "aliases": [
+        "シュタインズ・ゲート",
+        "シュタゲ",
+        "S;G",
+        "Science Adventure Series #2",
+        "Shutage",
+        "斯坦因之门",
+        "石头门"
+      ],
+      "alttitle": null,
+      "description": "[b]-Decide The Fate Of All Mankind-[/b]\nCAN YOU CHANGE THE COURSE OF FATE?\nAND SAVE THE ONES CLOSEST TO YOU?\n\nSteins;Gate follows a rag-tag band of tech-savvy young students who discover the means of changing the past via mail, using a modified microwave. Their experiments into how far they can go with their discovery begin to spiral out of control as they become entangled in a conspiracy surrounding SERN, the organisation behind the Large Hadron Collider, and John Titor who claims to be from a dystopian future.\n\n[From [url=https://store.steampowered.com/app/412830/]Steam[/url]]",
+      "developers": [
+        {
+          "id": "p42",
+          "name": "NITRO PLUS",
+          "original": "ニトロプラス"
+        },
+        {
+          "id": "p146",
+          "name": "MAGES.",
+          "original": null
+        },
+        {
+          "id": "p6307",
+          "name": "MAGES. Inc.",
+          "original": "株式会社MAGES."
+        }
+      ],
+      "id": "v2002",
+      "image": {
+        "dims": [
+          786,
+          1125
+        ],
+        "sexual": 0,
+        "thumbnail": "https://t.vndb.org/cv.t/19/77819.jpg",
+        "url": "https://t.vndb.org/cv/19/77819.jpg",
+        "violence": 0,
+        "votecount": 14
+      },
+      "olang": "ja",
+      "platforms": [
+        "win",
+        "lin",
+        "ios",
+        "and",
+        "psp",
+        "ps3",
+        "ps4",
+        "ps5",
+        "psv",
+        "swi",
+        "sw2",
+        "xb3",
+        "xxs"
+      ],
+      "rating": 90.2,
+      "released": "2009-10-15",
+      "screenshots": [
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/23/8523.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/24/8524.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/25/8525.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1280,
+            720
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/31/8531.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1024,
+            576
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/63/67863.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1024,
+            576
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/64/67864.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1024,
+            576
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/65/67865.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1024,
+            576
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/66/67866.jpg",
+          "violence": 0,
+          "votecount": 14
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/31/251231.jpg",
+          "violence": 0,
+          "votecount": 8
+        },
+        {
+          "dims": [
+            1920,
+            1080
+          ],
+          "sexual": 0,
+          "url": "https://t.vndb.org/sf/32/251232.jpg",
+          "violence": 0,
+          "votecount": 9
+        }
+      ],
+      "tags": [
+        {
+          "category": "tech",
+          "id": "g32",
+          "lie": false,
+          "name": "ADV",
+          "rating": 2.61074185371399,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g44",
+          "lie": false,
+          "name": "Pistol Combat",
+          "rating": 0.555555582046509,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g96",
+          "lie": false,
+          "name": "Romance",
+          "rating": 1.913445353508,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g105",
+          "lie": false,
+          "name": "Science Fiction",
+          "rating": 2.5272331237793,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g106",
+          "lie": false,
+          "name": "Hard Science Fiction",
+          "rating": 2.10681819915771,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g112",
+          "lie": false,
+          "name": "Maid Heroine",
+          "rating": 1.63088798522949,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g135",
+          "lie": false,
+          "name": "Protagonist with Voice Acting",
+          "rating": 2.71929836273193,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g137",
+          "lie": false,
+          "name": "Adult Protagonist",
+          "rating": 1.48952376842499,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g147",
+          "lie": false,
+          "name": "Drama",
+          "rating": 2.35306549072266,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g160",
+          "lie": false,
+          "name": "Bloody Scenes",
+          "rating": 1.80676329135895,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g168",
+          "lie": false,
+          "name": "Life and Death Drama",
+          "rating": 2.7173912525177,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g170",
+          "lie": false,
+          "name": "Suicide",
+          "rating": 2.20000004768372,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g172",
+          "lie": false,
+          "name": "Father Support Character",
+          "rating": 1.33779263496399,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g181",
+          "lie": false,
+          "name": "One True End",
+          "rating": 2.867924451828,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g188",
+          "lie": false,
+          "name": "Otaku Heroine",
+          "rating": 2.24242424964905,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g191",
+          "lie": false,
+          "name": "Heroine with Glasses",
+          "rating": 1.4912281036377,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g201",
+          "lie": false,
+          "name": "Protagonist's Childhood Friend as a Heroine",
+          "rating": 2.58333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g246",
+          "lie": false,
+          "name": "Brief Branches Only",
+          "rating": 1.4065934419632,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g249",
+          "lie": false,
+          "name": "Time Travel",
+          "rating": 2.95454549789429,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g250",
+          "lie": false,
+          "name": "Alternate Dimensions",
+          "rating": 2.68421053886414,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g321",
+          "lie": false,
+          "name": "Intrigue",
+          "rating": 0.800000011920929,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g388",
+          "lie": false,
+          "name": "Trap Heroine",
+          "rating": 1.94040191173553,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g470",
+          "lie": false,
+          "name": "Modern Day Tokyo",
+          "rating": 2.13479852676392,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g506",
+          "lie": false,
+          "name": "Gender Bending",
+          "rating": 1.86486482620239,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g543",
+          "lie": false,
+          "name": "Hacking",
+          "rating": 2.27906966209412,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g596",
+          "lie": false,
+          "name": "Nakige",
+          "rating": 1.31358885765076,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g683",
+          "lie": false,
+          "name": "Infodumping",
+          "rating": 2.12195110321045,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g717",
+          "lie": false,
+          "name": "Modern Day Akihabara",
+          "rating": 2.80392146110535,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g728",
+          "lie": false,
+          "name": "Protagonist with a Face",
+          "rating": 2.50943398475647,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g773",
+          "lie": false,
+          "name": "Conspiracy",
+          "rating": 2.83333325386047,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g783",
+          "lie": false,
+          "name": "Cosplay",
+          "rating": 0.782851815223694,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g789",
+          "lie": false,
+          "name": "Thriller",
+          "rating": 2.69047617912292,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g812",
+          "lie": false,
+          "name": "Scientist Heroine",
+          "rating": 2.72727274894714,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g873",
+          "lie": false,
+          "name": "Desperation",
+          "rating": 2.83720922470093,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g1054",
+          "lie": false,
+          "name": "Mad Scientist Support Character",
+          "rating": 1.54751527309418,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1195",
+          "lie": false,
+          "name": "Destiny",
+          "rating": 1.99507391452789,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g1234",
+          "lie": false,
+          "name": "Unlockable Choices",
+          "rating": 1.22222220897675,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1265",
+          "lie": false,
+          "name": "Sacrifice",
+          "rating": 2.25,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g1343",
+          "lie": false,
+          "name": "Homicide",
+          "rating": 2.375,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g1390",
+          "lie": false,
+          "name": "Future Forecasting",
+          "rating": 2.40682792663574,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g1407",
+          "lie": false,
+          "name": "Internet",
+          "rating": 2.41176462173462,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1466",
+          "lie": false,
+          "name": "Inventor Heroine",
+          "rating": 2.71428561210632,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1474",
+          "lie": false,
+          "name": "Ending List",
+          "rating": 2.44033622741699,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1602",
+          "lie": false,
+          "name": "Heroine with Spats",
+          "rating": 2.22727274894714,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1628",
+          "lie": false,
+          "name": "Chuunibyou Protagonist",
+          "rating": 2.92000007629395,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1789",
+          "lie": false,
+          "name": "Paranoia",
+          "rating": 2.28923082351685,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g1800",
+          "lie": false,
+          "name": "Part-time Job",
+          "rating": 0.881118893623352,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2147",
+          "lie": true,
+          "name": "Unavoidable Heroine Death",
+          "rating": 1.84523808956146,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g2411",
+          "lie": false,
+          "name": "100% Completion Bonus",
+          "rating": 1.45454549789429,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2997",
+          "lie": false,
+          "name": "Heisei Era",
+          "rating": 2.14285707473755,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3397",
+          "lie": false,
+          "name": "2010s",
+          "rating": 2.20000004768372,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g324",
+          "lie": false,
+          "name": "Suspense",
+          "rating": 2.86111116409302,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g599",
+          "lie": false,
+          "name": "Food Discussions",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g355",
+          "lie": false,
+          "name": "Brief NVL Scenes",
+          "rating": 1.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3815",
+          "lie": false,
+          "name": "Completely Unavoidable Heroine Death",
+          "rating": 2,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g851",
+          "lie": false,
+          "name": "Insert Songs",
+          "rating": 2.30423283576965,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2466",
+          "lie": false,
+          "name": "Unlockable Gallery",
+          "rating": 1.77777779102325,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g148",
+          "lie": false,
+          "name": "Multiple Endings",
+          "rating": 2.50025844573975,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g349",
+          "lie": false,
+          "name": "Time Loop",
+          "rating": 2.62257170677185,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g2016",
+          "lie": false,
+          "name": "Achievements",
+          "rating": 2.26434779167175,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g104",
+          "lie": false,
+          "name": "Comedy",
+          "rating": 1.92307686805725,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g186",
+          "lie": false,
+          "name": "Ojousama Heroine",
+          "rating": 1.66028094291687,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g459",
+          "lie": false,
+          "name": "Unlockable Routes",
+          "rating": 1.07142853736877,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g2452",
+          "lie": false,
+          "name": "Music Recollection",
+          "rating": 1.5,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2529",
+          "lie": false,
+          "name": "Pretending Protagonist",
+          "rating": 1,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g772",
+          "lie": false,
+          "name": "Dystopia",
+          "rating": 0.5,
+          "spoiler": 1
+        },
+        {
+          "category": "tech",
+          "id": "g2849",
+          "lie": false,
+          "name": "Ladder Structure",
+          "rating": 2.51082253456116,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g19",
+          "lie": false,
+          "name": "Mystery",
+          "rating": 2.34848475456238,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1564",
+          "lie": false,
+          "name": "Lip Sync",
+          "rating": 2.56829261779785,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g692",
+          "lie": false,
+          "name": "Proactive Protagonist",
+          "rating": 2.59999990463257,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g108",
+          "lie": false,
+          "name": "Genius Heroine",
+          "rating": 2.7173912525177,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g115",
+          "lie": false,
+          "name": "Miko Heroine",
+          "rating": 1.52767860889435,
+          "spoiler": 1
+        },
+        {
+          "category": "cont",
+          "id": "g133",
+          "lie": false,
+          "name": "Male Protagonist",
+          "rating": 2.79999995231628,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g190",
+          "lie": false,
+          "name": "Airhead Heroine",
+          "rating": 2.6097559928894,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g258",
+          "lie": false,
+          "name": "Shy Heroine",
+          "rating": 2.19354844093323,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g275",
+          "lie": false,
+          "name": "Protagonist's Rival as a Heroine",
+          "rating": 1.81623935699463,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g447",
+          "lie": false,
+          "name": "Customization",
+          "rating": 1.33333337306976,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g465",
+          "lie": false,
+          "name": "Adult Heroine",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g473",
+          "lie": false,
+          "name": "Nekomimi Heroine",
+          "rating": 2.22580647468567,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g544",
+          "lie": false,
+          "name": "Student Protagonist",
+          "rating": 1.55780935287476,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g598",
+          "lie": false,
+          "name": "Episodic Story",
+          "rating": 2.21848750114441,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g602",
+          "lie": false,
+          "name": "Tsundere Heroine",
+          "rating": 2.66666674613953,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g606",
+          "lie": false,
+          "name": "Branching Plot",
+          "rating": 1.4880952835083,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g811",
+          "lie": false,
+          "name": "Group of Friends",
+          "rating": 2.74418616294861,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g829",
+          "lie": false,
+          "name": "Waitress Heroine",
+          "rating": 2.07142853736877,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g868",
+          "lie": false,
+          "name": "Playtime Counter",
+          "rating": 2.0699999332428,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1005",
+          "lie": false,
+          "name": "Date Display",
+          "rating": 2.67441868782043,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1185",
+          "lie": false,
+          "name": "University Student Protagonist",
+          "rating": 2.13636374473572,
+          "spoiler": 0
+        },
+        {
+          "category": "tech",
+          "id": "g1246",
+          "lie": false,
+          "name": "Built-in Encyclopedia",
+          "rating": 2.72664189338684,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1288",
+          "lie": false,
+          "name": "Perverted Friend",
+          "rating": 1.97727274894714,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2561",
+          "lie": false,
+          "name": "Cat Cosplay",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3003",
+          "lie": false,
+          "name": "Male Friend",
+          "rating": 2,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3520",
+          "lie": false,
+          "name": "Psychological Horror",
+          "rating": 1,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g3959",
+          "lie": false,
+          "name": "Maid Cosplay",
+          "rating": 2.20000004768372,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g153",
+          "lie": false,
+          "name": "Murder Mystery",
+          "rating": 0.20833332836628,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g331",
+          "lie": false,
+          "name": "Catgirl Heroine",
+          "rating": 0.822857141494751,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g848",
+          "lie": false,
+          "name": "Death of Heroine",
+          "rating": 2.68333339691162,
+          "spoiler": 2
+        },
+        {
+          "category": "tech",
+          "id": "g3775",
+          "lie": false,
+          "name": "Interactive Display Devices",
+          "rating": 2.20000004768372,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g855",
+          "lie": false,
+          "name": "Heroine with Shorts",
+          "rating": 2.36363625526428,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g860",
+          "lie": false,
+          "name": "Heroine with Tights",
+          "rating": 2.36363625526428,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1335",
+          "lie": false,
+          "name": "Central Heroine",
+          "rating": 2.47452926635742,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1464",
+          "lie": false,
+          "name": "Child Support Character",
+          "rating": 1.91999995708466,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1600",
+          "lie": false,
+          "name": "Comic Convention",
+          "rating": 1.43440854549408,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1629",
+          "lie": false,
+          "name": "Chuunibyou Heroine",
+          "rating": 1.99540233612061,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g2086",
+          "lie": false,
+          "name": "Drastic Character Development (positive)",
+          "rating": 1.39423072338104,
+          "spoiler": 2
+        },
+        {
+          "category": "cont",
+          "id": "g760",
+          "lie": false,
+          "name": "Summer",
+          "rating": 2.33333325386047,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g831",
+          "lie": false,
+          "name": "Scientist Protagonist",
+          "rating": 2.42172741889954,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g1342",
+          "lie": false,
+          "name": "Otaku Friend",
+          "rating": 2.47826075553894,
+          "spoiler": 0
+        },
+        {
+          "category": "cont",
+          "id": "g534",
+          "lie": false,
+          "name": "Love Overcomes All",
+          "rating": 2.66666674613953,
+          "spoiler": 2
+        }
+      ],
+      "title": "STEINS;GATE",
+      "titles": [
+        {
+          "lang": "en",
+          "latin": null,
+          "main": false,
+          "official": true,
+          "title": "Steins;Gate"
+        },
+        {
+          "lang": "ja",
+          "latin": null,
+          "main": true,
+          "official": true,
+          "title": "STEINS;GATE"
+        },
+        {
+          "lang": "ko",
+          "latin": "STEINS;GATE",
+          "main": false,
+          "official": false,
+          "title": "슈타인즈 게이트"
+        },
+        {
+          "lang": "zh-Hans",
+          "latin": "Mingyun Shi zhi Men",
+          "main": false,
+          "official": true,
+          "title": "命运石之门"
+        },
+        {
+          "lang": "zh-Hant",
+          "latin": "Mingyun Shi zhi Men",
+          "main": false,
+          "official": true,
+          "title": "命運石之門"
+        }
+      ],
+      "votecount": 17166
+    }
+  ]
+}

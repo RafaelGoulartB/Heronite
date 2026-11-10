@@ -5,7 +5,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::source_prefs::ids;
 use heronite_i18n::{tr, trn};
-use heronite_metadata::sources::{extra_fields, AppliesTo, SourceStatus};
+use heronite_metadata::sources::{extra_fields, AppliesTo, SourceDescriptor, SourceStatus};
 
 use crate::dialogs::metadata::field_label as details_field_label;
 use crate::icons::Icon;
@@ -121,9 +121,13 @@ fn store_name(id: &str) -> &str {
     }
 }
 
-/// The games a source is for, in a few words.
-pub(super) fn audience(a: &AppliesTo) -> String {
-    match a {
+/// The games a source is for, in a few words: the kind of game it is
+/// about, else its audience.
+pub(super) fn audience(d: &SourceDescriptor) -> String {
+    if let Some(kind) = &d.game_kind {
+        return tr(&kind.name).to_owned();
+    }
+    match &d.applies_to {
         AppliesTo::All => tr!("All games").into(),
         AppliesTo::HasSteamId => tr!("Games found on Steam").into(),
         AppliesTo::Emulated => tr!("Emulated games").into(),
@@ -173,9 +177,13 @@ pub(super) fn gives(fields: &[String]) -> String {
     parts.join(" \u{b7} ")
 }
 
-/// A few words on what the source is, shown when its row is open.
-pub(super) fn about(id: &str) -> Option<&'static str> {
-    Some(match id {
+/// A few words on what the source is, shown when its row is open: the
+/// descriptor's own line, else one for the sources that have none.
+pub(super) fn about(d: &SourceDescriptor) -> Option<&str> {
+    if let Some(about) = &d.about {
+        return Some(tr(about));
+    }
+    Some(match d.id.as_str() {
         "store" => tr!("What the store a game comes from says about it, read from this PC."),
         ids::STEAMGRIDDB => tr!("Adds SteamGridDB covers and backgrounds to the image search."),
         ids::WEB_IMAGES => tr!("Asked only when you look for a picture by hand."),
@@ -191,12 +199,24 @@ pub(super) fn about(id: &str) -> Option<&'static str> {
 }
 
 /// When the source is asked, for the sources the user cannot tell otherwise.
-pub(super) fn when_asked(id: &str) -> Option<&'static str> {
-    Some(match id {
-        ids::HOW_LONG_TO_BEAT => tr!("Asks HowLongToBeat about the game you select, then again after a month."),
-        ids::STEAM_TAGS => tr!("Asks Steam for the tags of your games now and then."),
-        _ => return None,
-    })
+pub(super) fn when_asked(d: &SourceDescriptor) -> Option<String> {
+    if d.is_fallback() {
+        return Some(match &d.game_kind {
+            Some(kind) => tr!(
+                "Asked when the other sources do not find a game, or when they say it is one of these: {kind}. Pick its match for a game to always ask it.",
+                kind = tr(&kind.name)
+            ),
+            None => tr!("Asked when the other sources do not find a game. Pick its match for a game to always ask it.").into(),
+        });
+    }
+    Some(
+        match d.id.as_str() {
+            ids::HOW_LONG_TO_BEAT => tr!("Asks HowLongToBeat about the game you select, then again after a month."),
+            ids::STEAM_TAGS => tr!("Asks Steam for the tags of your games now and then."),
+            _ => return None,
+        }
+        .into(),
+    )
 }
 
 #[cfg(test)]
@@ -211,6 +231,19 @@ mod tests {
         assert_eq!(monogram("ProtonDB"), "PD");
         assert_eq!(monogram("Lutris"), "Lu");
         assert_eq!(monogram("vndb"), "Vn");
+    }
+
+    #[test]
+    fn a_source_reads_from_its_descriptor_alone() {
+        use heronite_metadata::sources::builtin_descriptors;
+        let vndb = builtin_descriptors().iter().find(|d| d.id == "vndb").unwrap();
+        assert_eq!(super::audience(vndb), "Visual novels");
+        assert_eq!(gives(&vndb.provides), "Text \u{b7} Scores \u{b7} Covers \u{b7} Backgrounds");
+        assert!(super::about(vndb).is_some_and(|a| a.contains("vndb.org")));
+        assert!(super::when_asked(vndb).is_some_and(|w| w.contains("Visual novels")));
+        let igdb = builtin_descriptors().iter().find(|d| d.id == "igdb").unwrap();
+        assert_eq!(super::audience(igdb), "All games");
+        assert!(super::when_asked(igdb).is_none());
     }
 
     #[test]

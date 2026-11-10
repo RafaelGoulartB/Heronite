@@ -416,6 +416,7 @@ fn dead_endpoints() -> (Endpoints, Arc<AtomicUsize>) {
         igdb: format!("{base}/igdb/v4"),
         steam_store: format!("{base}/steam"),
         lutris: format!("{base}/lutris"),
+        vndb: format!("{base}/vndb"),
         ..Endpoints::default()
     };
     (endpoints, accepted)
@@ -510,7 +511,7 @@ fn steam_hero_is_cached_where_heronite_reads_it() {
     let dir = tempfile::tempdir().unwrap();
     let paths = make_root(dir.path());
     let server = Server::start(|req| match req.path() {
-        "/cdn/hero.jpg" => Resp { status: 200, content_type: "image/jpeg", body: png() },
+        "/cdn/hero.jpg" => Resp { content_type: "image/jpeg", ..Resp::image(png()) },
         _ => Resp::status(404),
     });
     let svc = MetadataService::with_endpoints(paths.clone(), server.endpoints());

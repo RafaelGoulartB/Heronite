@@ -1,11 +1,13 @@
 //! A made-up preview for `HERONITE_DEBUG_DIALOG=metadata:<state>`: nothing
 //! is asked or written. `fake` (and `change`, with "Change" open): IGDB
 //! pinned, Steam found by its id, Lutris found another game (left out), the
-//! store not for this game, genres locked and the release date picked from
-//! Steam; `none`: no source found the game; `offline`: none could be
-//! reached; `nokey`: as `fake`, without an IGDB key; `covers`: as `fake`,
-//! scrolled to the cover rows. SteamGridDB gives a
-//! cover of each shape. The pictures are covers the Collection already has.
+//! store not for this game, VNDB not asked (the others found the game),
+//! genres locked and the release date picked from Steam; `vndb`: as `fake`,
+//! with VNDB asked and found by its title; `none`: no source found the
+//! game; `offline`: none could be reached; `nokey`: as `fake`, without an
+//! IGDB key; `covers`: as `fake`, scrolled to the cover rows. SteamGridDB
+//! gives a cover of each shape. The pictures are covers the Collection
+//! already has.
 
 use heronite_data::collection::Game;
 use heronite_data::models::CollectionGameMetadata;
@@ -91,6 +93,18 @@ impl FakePreview {
                 }),
             ]
         };
+        let mut candidates = candidates;
+        if self.state == "vndb" {
+            candidates.push(self.candidate("vndb", t, "2004-11", MatchedBy::ExactTitle, "v2002", |m| {
+                m.description = Some(format!("{t}, as the Visual Novel Database tells it."));
+                m.developers = strings(&["North Studio"]);
+                m.genres = strings(&["Visual Novel"]);
+                m.themes = strings(&["Time Travel", "Conspiracy", "Male Protagonist"]);
+                m.critic_score = Some(JsNum(90.));
+                m.cover_url = self.thumb(4);
+                m.hero_url = self.thumb(5);
+            }));
+        }
         let found = |c: &MetadataCandidate, used: bool| SourceAnswer::Found {
             hit: c.hit(),
             pinned: pins.get(&c.source).map_or(c.source == "igdb", Option::is_some),
@@ -101,8 +115,13 @@ impl FakePreview {
             vec![
                 SourceState { source: "igdb".into(), answer: missing.clone() },
                 SourceState { source: "steam".into(), answer: SourceAnswer::NotAsked { why: NotAsked::NotForThisGame } },
-                SourceState { source: "lutris".into(), answer: missing },
+                SourceState { source: "lutris".into(), answer: missing.clone() },
                 SourceState { source: "store".into(), answer: SourceAnswer::NotAsked { why: NotAsked::NotForThisGame } },
+                // Asked only when the others are reached and find nothing.
+                SourceState {
+                    source: "vndb".into(),
+                    answer: if self.state == "offline" { SourceAnswer::NotAsked { why: NotAsked::Fallback } } else { missing },
+                },
             ]
         } else {
             vec![
@@ -110,6 +129,13 @@ impl FakePreview {
                 SourceState { source: "steam".into(), answer: found(&candidates[1], true) },
                 SourceState { source: "lutris".into(), answer: found(&candidates[3], false) },
                 SourceState { source: "store".into(), answer: SourceAnswer::NotAsked { why: NotAsked::NotForThisGame } },
+                SourceState {
+                    source: "vndb".into(),
+                    answer: match candidates.get(4) {
+                        Some(vndb) => found(vndb, true),
+                        None => SourceAnswer::NotAsked { why: NotAsked::Fallback },
+                    },
+                },
             ]
         };
         let mut proposed = current.clone();
@@ -165,11 +191,14 @@ impl FakePreview {
             platform: Some(platform.into()),
             thumb_url: None,
             matched_by: None,
+            alt_title: None,
+            thumb_adult: false,
         };
         let one = |h: SourceHit| MatchChoice {
             title: h.title.clone(),
             year: h.year,
             platform: h.platform.clone(),
+            alt_title: h.alt_title.clone(),
             thumb_url: None,
             hits: vec![h],
         };

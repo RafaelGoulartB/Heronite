@@ -222,9 +222,11 @@ mod tests {
                 platform: None,
                 thumb_url: None,
                 matched_by: None,
+                alt_title: None,
+                thumb_adult: false,
             })
             .collect();
-        MatchChoice { title: Some(title.into()), year: None, platform: None, thumb_url: None, hits }
+        MatchChoice { title: Some(title.into()), year: None, platform: None, alt_title: None, thumb_url: None, hits }
     }
 
     #[test]

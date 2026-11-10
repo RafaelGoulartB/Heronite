@@ -1,7 +1,8 @@
 //! A made-up review (`HERONITE_DEBUG_DIALOG=review…`, or while
 //! `HERONITE_DEBUG_METADATA_JOB` makes jobs up): proposals and searches are
-//! invented from the game's title, nothing is asked or written. The
-//! pictures are covers the Collection already has.
+//! invented from the game's title, nothing is asked or written (the first
+//! game also has a VNDB proposal, with its original title). The pictures
+//! are covers the Collection already has.
 
 use heronite_metadata::service::SourceSearch;
 use heronite_metadata::{MatchChoice, MatchedBy, ReviewReason, SourceHit};
@@ -23,11 +24,20 @@ fn hit(source: &str, id: &str, title: &str, year: i32, matched_by: Option<Matche
         platform: None,
         thumb_url: None,
         matched_by,
+        alt_title: None,
+        thumb_adult: false,
     }
 }
 
 fn choice(title: &str, year: i32, platform: &str, thumb: Option<&String>, hits: Vec<SourceHit>) -> MatchChoice {
-    MatchChoice { title: Some(title.into()), year: Some(year), platform: Some(platform.into()), thumb_url: thumb.cloned(), hits }
+    MatchChoice {
+        title: Some(title.into()),
+        year: Some(year),
+        platform: Some(platform.into()),
+        alt_title: None,
+        thumb_url: thumb.cloned(),
+        hits,
+    }
 }
 
 /// What a made-up search looks for: the title up to its subtitle.
@@ -62,6 +72,17 @@ impl FakeReview {
                             hit("lutris", "game", t, 1997, Some(MatchedBy::ExactTitle)),
                         ],
                     ),
+                    // A visual novel of the same name, with its original title.
+                    MatchChoice {
+                        alt_title: Some("ビジュアルノベル版".into()),
+                        ..choice(
+                            t,
+                            2009,
+                            "Windows, PS3",
+                            thumb(2),
+                            vec![hit("vndb", "v2002", t, 2009, Some(MatchedBy::ExactTitle)), hit("lutris", "game-vn", t, 2009, None)],
+                        )
+                    },
                     choice(
                         t,
                         1998,

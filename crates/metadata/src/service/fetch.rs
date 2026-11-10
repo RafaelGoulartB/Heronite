@@ -1,6 +1,5 @@
-//! Fetching one game: asking the sources ([`MetadataService::gather`]),
-//! keeping what is sure enough to save ([`decide`], the rule of
-//! [`crate::confidence`]), the merge a preview proposes (with the record's
+//! Fetching one game: what the sources found (`gather`) that is sure
+//! enough to save ([`decide`], the rule of [`crate::confidence`]), the merge a preview proposes (with the record's
 //! locks and per-source matches), and the saves of a fetch and of the
 //! per-game dialog.
 
@@ -11,18 +10,19 @@ use heronite_data::cover_family::CoverFamilies;
 use heronite_data::field_names::NameRules;
 use heronite_data::json_store;
 use heronite_data::library::metadata_key;
-use heronite_data::models::{CollectionGameMetadata, LocalMetaFile, MetadataSettings};
+use heronite_data::models::{CollectionGameMetadata, MetadataSettings};
 use heronite_data::settings::{ALL_FIELDS, METADATA_FIELDS};
 use heronite_i18n::tr;
 use indexmap::IndexMap;
 
+use super::gather::Gathered;
 use super::{MetadataService, Offline, NO_DATA};
 use crate::confidence::{judge, same_game, Guess, Verdict};
 use crate::images::materialize_metadata_image;
 use crate::merge::{clear_field, copy_field, merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
 use crate::record::{self, SourceMatch};
 use crate::review::{ReviewEntry, ReviewReason};
-use crate::sources::{is_field_on, is_on, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind};
+use crate::sources::{is_field_on, is_on, SourceKind};
 use crate::store::{as_runner, current_or_blank, get_game_metadata, upsert_game_metadata};
 use crate::types::*;
 use crate::util::now_iso;
@@ -57,17 +57,6 @@ impl std::error::Error for NoSourceAsked {}
 /// The reason, when `err` is [`SentToReview`].
 pub fn is_sent_to_review(err: &anyhow::Error) -> Option<ReviewReason> {
     err.downcast_ref::<SentToReview>().map(|s| s.0)
-}
-
-/// What the providers returned and whether the online ones answered at all.
-pub(super) struct Gathered {
-    pub(super) candidates: Vec<MetadataCandidate>,
-    pub(super) offline: bool,
-    /// Some source was asked (not every one off, left out or not for this game).
-    pub(super) asked: bool,
-    /// Every source with a lookup, in registry order (hidden ones only when
-    /// they found the game).
-    pub(super) states: Vec<SourceState>,
 }
 
 /// What of a game's candidates may be saved.
@@ -127,19 +116,6 @@ pub(super) fn decide(
     }
 }
 
-/// The games of each source the lookups must use: the record's pinned
-/// ones, changed by the arguments' `pins`.
-fn pins(args: &MetadataApplyArgs, current: Option<&CollectionGameMetadata>) -> IndexMap<String, String> {
-    let mut pins = current.map(record::pinned_ids).unwrap_or_default();
-    for (source, pin) in args.pins.iter().flatten() {
-        match pin.as_deref().map(str::trim).filter(|id| !id.is_empty()) {
-            Some(id) => pins.insert(source.clone(), id.to_owned()),
-            None => pins.shift_remove(source),
-        };
-    }
-    pins
-}
-
 impl MetadataService {
     /// Whether `source` is a pictures source (SteamGridDB): see [`decide`].
     pub(super) fn is_picture_source(&self, source: &str) -> bool {
@@ -167,134 +143,6 @@ impl MetadataService {
                 METADATA_FIELDS.iter().chain(CoverFamilies::load(&self.paths).kept_extra_fields().iter()).map(|f| f.to_string()).collect()
             }
         }
-    }
-
-    /// The fields of `fields` a pictures source is asked for: those it gives
-    /// and is in the order of.
-    fn picture_fields(&self, d: &SourceDescriptor, fields: &[String], settings: &MetadataSettings) -> Vec<String> {
-        fields.iter().filter(|f| d.provides(f) && self.sources.field_order(settings, f).contains(&d.id)).cloned().collect()
-    }
-
-    /// `game` as the sources see it. The overlay is read only when needed:
-    /// for the Steam id the arguments lack, or for a source's audience.
-    pub(super) fn source_game(&self, args: &MetadataApplyArgs) -> SourceGame {
-        let has_steam_id = args.steam_app_id.as_deref().is_some_and(|s| !s.is_empty());
-        let overlay = (!has_steam_id || self.sources.needs_overlay())
-            .then(|| json_store::read::<LocalMetaFile>(&self.paths.local_meta()).ok())
-            .flatten()
-            .and_then(|mut file| file.games.shift_remove(&args.app_name));
-        SourceGame::new(args, overlay.as_ref())
-    }
-
-    /// `gatherCandidates`: asks every provider that is on and applies to the
-    /// game at once (IGDB calls queue among themselves) and keeps those that
-    /// answered, in provider order.
-    pub fn gather_candidates(&self, game: &MetadataApplyArgs) -> Vec<MetadataCandidate> {
-        self.gather(game).candidates
-    }
-
-    /// Asks the sources. A source with a pinned game is asked for that game
-    /// (whatever its audience); IGDB and Lutris otherwise start from the id
-    /// the record has, unless the arguments unpin them.
-    pub(super) fn gather(&self, game: &MetadataApplyArgs) -> Gathered {
-        let current = get_game_metadata(&self.paths, as_runner(&game.runner), &game.app_name).ok().flatten();
-        let pins = pins(game, current.as_ref());
-        let unpinned = |source: &str| game.pins.as_ref().is_some_and(|p| p.get(source).is_some_and(Option::is_none));
-        let mut with_ids = game.clone();
-        with_ids.igdb_id =
-            game.igdb_id.or_else(|| current.as_ref().and_then(|c| c.igdb_id).map(|n| n.get() as i64).filter(|_| !unpinned("igdb")));
-        with_ids.lutris_slug =
-            game.lutris_slug.clone().or_else(|| current.as_ref().and_then(|c| c.lutris_slug.clone()).filter(|_| !unpinned("lutris")));
-        let game_view = self.source_game(&with_ids);
-        let ctx = SourceContext::new(&self.paths, &self.http);
-        let settings = ctx.settings();
-        let fields = self.fetch_fields(game);
-        // A pictures source sees the game with the fields asked of it.
-        let views: Vec<Option<SourceGame>> = self
-            .sources
-            .lookups()
-            .map(|source| {
-                let d = source.descriptor();
-                (d.kind == SourceKind::Pictures)
-                    .then(|| SourceGame { fields: Some(self.picture_fields(d, &fields, settings)), ..game_view.clone() })
-            })
-            .collect();
-        let lookups: Vec<(&SourceDescriptor, Option<NotAsked>, Lookup<MetadataCandidate>)> = std::thread::scope(|scope| {
-            let handles: Vec<_> = self
-                .sources
-                .lookups()
-                .zip(&views)
-                .map(|(source, view)| {
-                    let ctx = &ctx;
-                    let game_view = view.as_ref().unwrap_or(&game_view);
-                    let d = source.descriptor();
-                    let pin = pins.get(&d.id).filter(|_| d.searchable);
-                    let why = if !is_on(settings, &d.id) {
-                        Some(NotAsked::Off)
-                    } else if !Self::wanted(d, game, game_view) {
-                        Some(NotAsked::NotChosen)
-                    } else if pin.is_none() && !d.applies_to.matches(game_view) {
-                        Some(NotAsked::NotForThisGame)
-                    } else {
-                        None
-                    };
-                    let handle = why.is_none().then(|| {
-                        scope.spawn(move || match pin {
-                            Some(id) => source.lookup_id(ctx, game_view, id),
-                            None => source.lookup(ctx, game_view),
-                        })
-                    });
-                    (d, why, handle)
-                })
-                .collect();
-            handles
-                .into_iter()
-                .map(|(source, why, h)| match h.map(|h| h.join()) {
-                    None => (source, why, Lookup::Skipped),
-                    Some(Ok(l)) => (source, why, l),
-                    Some(Err(_)) => {
-                        log::warn!("Metadata source {} failed for {}: panicked", source.id, game.title);
-                        (source, why, Lookup::NotFound)
-                    }
-                })
-                .collect()
-        });
-        // Offline: every online provider that was asked failed to connect.
-        let mut asked = lookups.iter().filter(|(s, _, l)| s.network && !matches!(l, Lookup::Skipped)).peekable();
-        let offline = asked.peek().is_some() && asked.all(|(_, _, l)| matches!(l, Lookup::Unreachable));
-        let any_asked = lookups.iter().any(|(_, _, l)| !matches!(l, Lookup::Skipped));
-        let mut candidates = Vec::new();
-        let mut states = Vec::new();
-        for (d, why, lookup) in lookups {
-            let answer = match lookup {
-                Lookup::Found(c) => {
-                    let answer = SourceAnswer::Found { hit: c.hit(), pinned: pins.contains_key(&d.id) && d.searchable, used: false };
-                    candidates.push(c);
-                    answer
-                }
-                Lookup::NotFound => SourceAnswer::NotFound,
-                Lookup::Unreachable => SourceAnswer::Unreachable,
-                Lookup::Skipped => SourceAnswer::NotAsked {
-                    why: why.unwrap_or(if d.needs == Needs::Nothing { NotAsked::NotForThisGame } else { NotAsked::NeedsKey }),
-                },
-            };
-            // The per-game dialog lists the details sources: a pictures
-            // source has no match to show or change.
-            if d.kind == SourceKind::Details && (!d.hidden || matches!(answer, SourceAnswer::Found { .. })) {
-                states.push(SourceState { source: d.id.clone(), answer });
-            }
-        }
-        Gathered { candidates, offline, asked: any_asked, states }
-    }
-
-    /// Whether the arguments' `only_sources` and `only_fields` leave `d` to
-    /// ask; a pictures source only for the fields of its `view`.
-    fn wanted(d: &SourceDescriptor, args: &MetadataApplyArgs, view: &SourceGame) -> bool {
-        let fields = match &view.fields {
-            Some(fields) => !fields.is_empty(),
-            None => args.only_fields.as_ref().is_none_or(|f| f.iter().any(|field| d.provides(field))),
-        };
-        args.only_sources.as_ref().is_none_or(|s| s.contains(&d.id)) && fields
     }
 
     /// The candidates the merge may use: those of sources that are on, each

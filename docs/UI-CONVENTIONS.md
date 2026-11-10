@@ -78,13 +78,15 @@ dialogs, drawers, pages, settings) follows the **Glass design system** below.
 what the Cover aspect asks for and the Cover shapes card counts it) and "Review 23" sits before "Update metadata…": it opens
   "Review matches" on the games waiting for review, or, when none waits, "Update metadata" on the games that need
   attention (`summary.rs`). Below, the sources are rows in three captioned cards by kind: Game details (IGDB, Steam,
-  Store, Lutris), Pictures (SteamGridDB, From the web) and Extras (HowLongToBeat, Steam tags, ProtonDB); a kind with no
+  Store, Lutris, VNDB), Pictures (SteamGridDB, From the web) and Extras (HowLongToBeat, Steam tags, ProtonDB); a kind with no
   source is left out. A closed row shows a drag handle (details sources only), the source's tile (its logo, else two
   letters in its colour), its name over what it gives ("Text · Scores · Covers"), the games it is for ("All games",
-  "Games found on Steam"…), its status (a dot and a word: Off, On, Connected, Add a key, Could not connect, Sign in,
+  "Games found on Steam"…, or the kind of game it is about: "Visual novels"), its status (a dot and a word: Off, On, Connected, Add a key, Could not connect, Sign in,
   Needs a download, Not on this system, By hand only), its switch and a chevron. A source on but waiting for a key shows
   its switch grey; one not on this system has its switch locked. A click on the row opens it in place (several can be
-  open); the switch does not. An open row has a line about the source, its options as the source's descriptor lists
+  open); the switch does not. An open row has a line about the source (the descriptor's `about`), when it is asked
+  for a source asked only as a fallback ("Asked when the other sources do not find a game, or when they say it is one
+  of these: Visual novels. Pick its match for a game to always ask it."), its options as the source's descriptor lists
   them (text inputs, secrets masked, selects, switches, each with its help or link), "Test" where the source has one
   (it saves what was typed first, runs off the UI thread and shows what came back beside the button: "ProtonDB answered." or the error) and
   "Fills": a chip per field the source provides. A chip of a details source can be clicked to stop taking that field
@@ -102,7 +104,9 @@ what the Cover aspect asks for and the Cover shapes card counts it) and "Review 
   some game shows cropped, a line "147 games show a cropped square cover" with "Download square covers" (the whole
   Collection, whatever the switch says; dimmed with "No source that gives square covers is on." when none can be asked;
   the header pill follows the job). Under the cards, "When details arrive" holds the switches that belong to no source: fill
-  missing metadata in the background, copy covers to disk, show age ratings, and the rating board shown first. Last,
+  missing metadata in the background, copy covers to disk, "Allow adult covers" (off by default: covers and backgrounds a
+  source marks as suggestive or explicit, as VNDB does, are never shown or downloaded and the next source gives the
+  picture; pictures already saved stay; `allowAdultCovers`), show age ratings, and the rating board shown first. Last,
   "Order for one field (advanced)" is a collapsed block with a line per field and its sources as chips, first to last,
   the first one accented: dragging a chip onto another of the same field puts it there for that field only, and the line
   then offers "Reset" (back to following the list above), else it says "List order". A source that is off, or whose
@@ -548,7 +552,8 @@ what the pill announced. It goes through the games one at a time:
   name is not quite the same.", "The sources found different games for this name.", "You asked to check which game
   this is.", "The sources were not sure which game this is.").
 - **The choices** (right, "Which one is it?"): a radio card per game the sources proposed (thumbnail, name, "2011 ·
-  PC, Mac", the marks of the sources that proposed it with their names as tooltips and "3 sources agree" or "1 source
+  PC, Mac", with its name in another script after the year when the source gives one: "2009 · シュタインズ・ゲート ·
+  Windows"; never an adult thumbnail unless adult covers are allowed), the marks of the sources that proposed it with their names as tooltips and "3 sources agree" or "1 source
   found it"), the one most sources agree on first and picked at start (ties keep the sources' order); a click, or ↑ ↓,
   picks another. A green pill ("Hash matches", "Steam id matches", "Id matches") says that a source found that game by
   ROM hash, Steam id or id, so the match is certain; a match by name has none. A game that was queued opens with what the
@@ -577,7 +582,8 @@ is sure and saved; a match by a similar name is saved only when at least two sou
 the same game as a sure one), while a lone similar-name match, or sources that found different games, is not saved: the
 game waits in the review queue (`local_library/metadata-review.json`) and counts as needing attention.
 `HERONITE_DEBUG_DIALOG=review[:<state>]` opens a made-up "Review matches" on the selection, else the first three games on
-screen (nothing asked or written): `review` (three, two and one choices in turn), `review:search` (after a search by
+screen (nothing asked or written): `review` (four, two and one choices in turn; the first game has a VNDB proposal with
+its original title), `review:search` (after a search by
 another name, one source unreachable), `review:empty` (one game, nothing found), `review:done` (the end state),
 `review:busy` (asking the sources), `review:saving`, `review:error` (offline).
 
@@ -594,13 +600,15 @@ source…"), and again after a match is pinned and after "Search every source ag
   a source that found nothing) are on sources that can be searched. A pinned match, one the user chose, has a pin with the
   tooltip "Pinned: every update uses this game". A match the merge ignored because it is another game than the others
   found is amber and reads "(left out: another game)" (not while the game waits for review, where nothing is merged).
-  The sources not asked fold into one muted line per reason under the rows: "Not for this game: Lutris", "Off: …",
-  "Needs a key: …", "Not asked: …". Above the rows: the offline line, the IGDB key hint with
+  A source asked only as a fallback (VNDB) that the others made unnecessary keeps its row, "Not asked: the others
+  found it", with "Search". The other sources not asked fold into one muted line per reason under the rows: "Not for
+  this game: Lutris", "Off: …", "Needs a key: …", "Not asked: …". Above the rows: the offline line, the IGDB key hint with
   "Open Settings → Metadata" (closes the dialog), and, for a game that waits for review, "The sources are not sure which
   game this is: nothing is picked for you. Pick the values, or change a match." The refresh button below ("Search every
   source again") asks again.
 - **Change** replaces the column: a back arrow, "Which game of IGDB is it?", the hits of that source alone for the game's
-  title (a search field, "Search this source", Enter searches again), the one in use checked. A click pins that game and
+  title (a search field, "Search this source", Enter searches again; a VNDB id such as v17 or a vndb.org address finds
+  that entry; each hit's year, its name in another script and platforms under it), the one in use checked. A click pins that game and
   asks every source again; when the match is pinned, "Automatic" ("Let IGDB find the game by itself") comes first and
   unpins it. A line says why there are no hits ("Nothing found for “zelda”.", "This source is off.", "This source needs a
   key: add it in Settings → Metadata.", "Could not reach this source. Check your connection and try again."). Esc closes
@@ -624,7 +632,8 @@ source…"), and again after a match is pinned and after "Search every source ag
   pins and locks of what is on screen without asking the sources again ("Saving…") and closes; with no source having
   answered it saves only the locks.
 `HERONITE_DEBUG_DIALOG=metadata:<state>` opens the selected game's "Metadata" over a made-up preview: `fake` (a pinned
-match, a match left out, a locked field, a field picked from another source), `change` (the same with "Change" open),
+match, a match left out, a locked field, a field picked from another source, VNDB not asked), `vndb` (as `fake`, with
+VNDB found by name), `change` (the same with "Change" open),
 `none` (no source found the game), `offline`, `nokey` (no IGDB key), `covers` (as `fake`, scrolled to the cover rows);
 plain `metadata` asks the sources for real.
 `HERONITE_DEBUG_DIALOG=covers[:<state>]` opens the selected game's "Covers" over made-up searches (pictures the

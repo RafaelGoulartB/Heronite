@@ -129,6 +129,8 @@ fn parse_search(body: &Value) -> Vec<SourceHit> {
             platform: (!platforms.is_empty()).then(|| platforms.iter().take(3).cloned().collect::<Vec<_>>().join(", ")),
             thumb_url: s(r, "coverart").filter(|u| u.starts_with("http")).map(str::to_owned),
             matched_by: None,
+            alt_title: None,
+            thumb_adult: false,
         });
     }
     hits

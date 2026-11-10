@@ -71,24 +71,34 @@ pub const ALL_FIELDS: [&str; 16] = [
 /// `MetadataSourceId`: the built-in ids of a `fieldPriority`. Every one but
 /// `manual` is a details source of `heronite_metadata::sources` (its tests
 /// check the two agree). A saved list keeps other ids too.
-pub const SOURCE_IDS: [&str; 6] = ["igdb", "steam", "store", "playnite", "lutris", "manual"];
+pub const SOURCE_IDS: [&str; 7] = ["igdb", "steam", "store", "playnite", "lutris", "vndb", "manual"];
+
+/// Details sources added after `fieldPriority` lists were already saved in
+/// every settings file (the lists are written whole). A saved list that is
+/// the default without them still reads as the default, and a list the
+/// user set that lacks one gets it at the end where the default names it
+/// (see `heronite_metadata::sources::order`), so a new source fills those
+/// fields without a migration of the file.
+pub const ADDED_SOURCES: [&str; 1] = ["vndb"];
 
 /// `DEFAULT_FIELD_PRIORITY`. Uses only [`SOURCE_IDS`], but for the square
-/// and wide covers, which SteamGridDB gives too.
+/// and wide covers, which SteamGridDB gives too. VNDB, asked only as a
+/// fallback, comes last: it fills what the others left empty.
 pub fn default_field_priority(field: &str) -> Vec<String> {
     let list: &[&str] = match field {
-        "description" | "releaseDate" => &["igdb", "steam", "store", "lutris", "playnite"],
-        "developers" | "genres" => &["igdb", "steam", "store", "playnite", "lutris"],
+        "description" | "releaseDate" => &["igdb", "steam", "store", "lutris", "playnite", "vndb"],
+        "developers" | "genres" => &["igdb", "steam", "store", "playnite", "lutris", "vndb"],
         "publishers" => &["igdb", "steam", "store", "playnite"],
-        "themes" | "series" => &["igdb", "playnite"],
+        "themes" => &["igdb", "playnite", "vndb"],
+        "series" => &["igdb", "playnite"],
         "gameModes" => &["igdb"],
         "platforms" => &["igdb", "store", "playnite", "lutris"],
         "features" => &["igdb", "steam", "playnite"],
-        "criticScore" => &["igdb", "steam"],
+        "criticScore" => &["igdb", "steam", "vndb"],
         // Both are read: the first fills the boards it has, the next the rest.
         "ageRatings" => &["igdb", "steam"],
-        "cover" => &["igdb", "steam", "lutris", "playnite", "store"],
-        "hero" => &["igdb", "steam", "lutris", "playnite"],
+        "cover" => &["igdb", "steam", "lutris", "playnite", "store", "vndb"],
+        "hero" => &["igdb", "steam", "lutris", "playnite", "vndb"],
         // Official art first (Steam's header, the store's wide box art),
         // then SteamGridDB's.
         "coverSquare" => &["steamgriddb"],
@@ -388,6 +398,7 @@ pub fn normalize_metadata(value: Option<&MetadataSettings>) -> MetadataSettings 
         igdb_client_secret: value.map(|v| v.igdb_client_secret.clone()).unwrap_or_default(),
         cover_aspect: CoverAspect::parse(value.map(|v| v.cover_aspect.as_str()).unwrap_or("")).as_str().to_owned(),
         download_images: value.is_some_and(|v| v.download_images),
+        allow_adult_covers: value.is_some_and(|v| v.allow_adult_covers),
         auto_fill_missing: value.map(|v| v.auto_fill_missing).unwrap_or(true),
         show_age_ratings: value.map(|v| v.show_age_ratings).unwrap_or(true),
         steam_tags: value.map(|v| v.steam_tags).unwrap_or(true),
@@ -590,7 +601,8 @@ mod tests {
         assert_eq!(s.cover_aspect, CoverAspect::Steam);
         assert!(s.metadata.auto_fill_missing);
         assert!(!s.metadata.download_images);
-        assert_eq!(s.metadata.field_priority["cover"], ["igdb", "steam", "lutris", "playnite", "store"]);
+        assert_eq!(s.metadata.field_priority["cover"], ["igdb", "steam", "lutris", "playnite", "store", "vndb"]);
+        assert!(!s.metadata.allow_adult_covers);
         assert_eq!(s.metadata.field_priority["coverSquare"], ["steamgriddb"]);
         assert!(s.metadata.keep_cover_families.is_empty() && s.metadata.fill_cover_families);
         assert_eq!(s.backup.interval, "weekly");
@@ -687,7 +699,7 @@ mod tests {
         assert_eq!(s.cover_aspect, CoverAspect::Dvd);
         // An id this build does not know is kept (it never answers).
         assert_eq!(s.metadata.field_priority["cover"], ["steam", "bogus"]);
-        assert_eq!(s.metadata.field_priority["hero"], ["igdb", "steam", "lutris", "playnite"]);
+        assert_eq!(s.metadata.field_priority["hero"], ["igdb", "steam", "lutris", "playnite", "vndb"]);
     }
 
     #[test]

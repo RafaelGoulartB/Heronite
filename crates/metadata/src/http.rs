@@ -11,6 +11,9 @@ use serde::de::DeserializeOwned;
 
 pub const BROWSER_UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
 pub const FIREFOX_UA: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
+/// The app by name and version, for APIs that ask clients to say who they
+/// are (VNDB), as the GOG and Sunshine clients do. Nothing about the user.
+pub const APP_UA: &str = concat!("Heronite/", env!("CARGO_PKG_VERSION"));
 
 /// Base URLs of every remote service.
 #[derive(Debug, Clone)]
@@ -22,6 +25,8 @@ pub struct Endpoints {
     pub steam_api: String,
     pub steam_community: String,
     pub lutris: String,
+    /// VNDB's API v2 ("Kana").
+    pub vndb: String,
     pub steamgriddb: String,
     pub bottles_steamgrid: String,
     pub hltb: String,
@@ -42,6 +47,7 @@ impl Default for Endpoints {
             steam_api: "https://api.steampowered.com".into(),
             steam_community: "https://steamcommunity.com".into(),
             lutris: "https://lutris.net".into(),
+            vndb: "https://api.vndb.org/kana".into(),
             steamgriddb: "https://www.steamgriddb.com/api/v2".into(),
             bottles_steamgrid: "https://steamgrid.usebottles.com".into(),
             hltb: "https://howlongtobeat.com".into(),
@@ -78,6 +84,8 @@ pub struct Response {
     pub status: u16,
     pub content_type: String,
     pub content_length: Option<u64>,
+    /// `Retry-After` in seconds, when the server sent one.
+    pub retry_after: Option<u64>,
     pub body: Vec<u8>,
 }
 
@@ -171,13 +179,14 @@ impl<'a> Request<'a> {
         let header = |name: &str| resp.headers().get(name).and_then(|v| v.to_str().ok()).map(str::to_owned);
         let content_type = header("content-type").unwrap_or_default();
         let content_length = header("content-length").and_then(|v| v.parse().ok());
+        let retry_after = header("retry-after").and_then(|v| v.trim().parse().ok());
         let body = resp
             .body_mut()
             .with_config()
             .limit(self.max_bytes)
             .read_to_vec()
             .map_err(|e| anyhow::Error::new(Unreachable(format!("{}: {e}", self.url))))?;
-        Ok(Response { status, content_type, content_length, body })
+        Ok(Response { status, content_type, content_length, retry_after, body })
     }
 
     /// `send` that fails on a non-2xx status.

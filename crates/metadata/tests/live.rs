@@ -79,3 +79,30 @@ fn live_web_images() {
     assert!(images.iter().all(|i| i.image_url.starts_with("http") && i.thumb_url.starts_with("http")));
     eprintln!("web images: {} (first: {})", images.len(), images[0].image_url);
 }
+
+/// One title lookup of VNDB's public API (no key): the recorded fixtures
+/// still look like today's answers.
+#[test]
+fn live_vndb() {
+    if !enabled() {
+        return;
+    }
+    let (_d, svc) = service();
+    let c = svc
+        .sources()
+        .lookups()
+        .find(|s| s.descriptor().id == "vndb")
+        .unwrap()
+        .lookup(
+            &SourceContext::new(&svc.paths, &svc.http),
+            &SourceGame { app_name: "a".into(), runner: "sideload".into(), title: "Steins;Gate".into(), ..Default::default() },
+        )
+        .into_option()
+        .expect("vndb");
+    assert_eq!((c.match_id.as_deref(), c.matched_by), (Some("v2002"), Some(MatchedBy::ExactTitle)));
+    let md = &c.metadata;
+    assert_eq!(md.release_date.as_deref(), Some("2009-10-15"));
+    assert!(md.description.as_deref().is_some_and(|d| d.contains("Steins;Gate") && !d.contains("[url")));
+    assert!(md.cover_url.as_deref().is_some_and(|u| u.starts_with("https://")) && md.hero_url.is_some());
+    assert!(!md.developers.is_empty() && !md.themes.is_empty() && md.critic_score.is_some());
+}

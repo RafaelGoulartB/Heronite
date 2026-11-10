@@ -36,23 +36,32 @@ pub struct Resp {
     pub status: u16,
     pub content_type: &'static str,
     pub body: Vec<u8>,
+    /// Headers beyond the content type and length.
+    pub headers: Vec<(&'static str, String)>,
 }
 
 impl Resp {
+    fn new(status: u16, content_type: &'static str, body: Vec<u8>) -> Self {
+        Self { status, content_type, body, headers: Vec::new() }
+    }
     pub fn json(v: impl serde::Serialize) -> Self {
-        Self { status: 200, content_type: "application/json", body: serde_json::to_vec(&v).unwrap() }
+        Self::new(200, "application/json", serde_json::to_vec(&v).unwrap())
     }
     pub fn raw_json(s: String) -> Self {
-        Self { status: 200, content_type: "application/json", body: s.into_bytes() }
+        Self::new(200, "application/json", s.into_bytes())
     }
     pub fn html(s: &str) -> Self {
-        Self { status: 200, content_type: "text/html", body: s.as_bytes().to_vec() }
+        Self::new(200, "text/html", s.as_bytes().to_vec())
     }
     pub fn image(bytes: Vec<u8>) -> Self {
-        Self { status: 200, content_type: "image/png", body: bytes }
+        Self::new(200, "image/png", bytes)
     }
     pub fn status(code: u16) -> Self {
-        Self { status: code, content_type: "text/plain", body: b"nope".to_vec() }
+        Self::new(code, "text/plain", b"nope".to_vec())
+    }
+    pub fn with_header(mut self, name: &'static str, value: &str) -> Self {
+        self.headers.push((name, value.to_owned()));
+        self
     }
 }
 
@@ -101,6 +110,7 @@ impl Server {
             steam_api: format!("{b}/steamapi"),
             steam_community: format!("{b}/community"),
             lutris: format!("{b}/lutris"),
+            vndb: format!("{b}/vndb/kana"),
             steamgriddb: format!("{b}/sgdb/api/v2"),
             bottles_steamgrid: format!("{b}/bottles"),
             hltb: format!("{b}/hltb"),
@@ -151,8 +161,9 @@ fn serve(mut stream: TcpStream, handler: &dyn Fn(&Req) -> Resp, log: &Mutex<Vec<
     let req = Req { method, target, headers, body };
     log.lock().push(req.clone());
     let resp = handler(&req);
+    let extra: String = resp.headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect();
     let head = format!(
-        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {} X\r\nContent-Type: {}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
         resp.status,
         resp.content_type,
         resp.body.len()

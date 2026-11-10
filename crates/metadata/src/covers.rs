@@ -300,6 +300,8 @@ pub fn search_steam(http: &Http, query: &str) -> Lookup<Vec<SourceHit>> {
             year: None,
             platform: None,
             matched_by: None,
+            alt_title: None,
+            thumb_adult: false,
         });
     }
     Lookup::Found(hits)

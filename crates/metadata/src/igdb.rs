@@ -436,6 +436,8 @@ impl Igdb {
                         platform: (!platforms.is_empty()).then(|| platforms.join(", ")),
                         thumb_url: igdb_image_url(game.cover.as_ref().and_then(|c| c.image_id.as_deref()), "cover_small"),
                         matched_by: None,
+                        alt_title: None,
+                        thumb_adult: false,
                     })
                 })
                 .collect()

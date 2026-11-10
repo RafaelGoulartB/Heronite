@@ -35,7 +35,7 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
         for (place, r) in sources.iter().enumerate() {
             let id = &r.descriptor.id;
             let name = labels::name(&r.descriptor.name);
-            let desc = format!("{} \u{b7} {}", labels::status_word(r.status), labels::audience(&r.descriptor.applies_to));
+            let desc = format!("{} \u{b7} {}", labels::status_word(r.status), labels::audience(&r.descriptor));
             rows.push(Row::toggle(format!("on:{id}"), name, r.enabled).desc(desc).enabled(r.status != SourceStatus::Unavailable));
             for o in &r.options {
                 let row_id = format!("opt:{id}:{}", o.option.key);
@@ -73,6 +73,7 @@ pub(in crate::pages::settings) fn console_rows(d: &SettingsPage, _cx: &App) -> V
         Row::header(tr!("When details arrive")),
         Row::toggle("autofill", tr!("Fill missing metadata in the background"), m.auto_fill_missing),
         Row::toggle("download", tr!("Copy covers to disk"), m.download_images).desc(tr!("Off keeps the CDN addresses instead")),
+        Row::toggle("adult", tr!("Allow adult covers"), m.allow_adult_covers).desc(super::arrive::adult_help()),
         Row::toggle("age-show", tr!("Show age ratings"), m.show_age_ratings),
         Row::choice(
             "age-board",
@@ -144,6 +145,7 @@ pub(in crate::pages::settings) fn console_apply(
         Outcome::Changed(id, Value::Toggle(on)) => match id.as_ref() {
             "autofill" => persist(d, cx, |m| m.auto_fill_missing = on),
             "download" => persist(d, cx, |m| m.download_images = on),
+            "adult" => persist(d, cx, |m| m.allow_adult_covers = on),
             "age-show" => persist(d, cx, |m| m.show_age_ratings = on),
             other => {
                 if super::shapes::console_apply(d, other, Some(on), cx) {

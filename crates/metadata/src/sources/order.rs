@@ -8,10 +8,11 @@
 //! (SteamGridDB) joins a base order only where the default one names it
 //! (the square and wide covers): the tall cover and the background keep
 //! the details sources they always had. Sources that are off, or have the
-//! field switched off, are then left out.
+//! field switched off, are then left out. A source added after the lists
+//! were saved (`ADDED_SOURCES`, VNDB) joins a saved list at its end.
 
 use heronite_data::models::MetadataSettings;
-use heronite_data::settings::{default_field_priority, ALL_FIELDS};
+use heronite_data::settings::{default_field_priority, ADDED_SOURCES, ALL_FIELDS};
 use heronite_data::source_prefs::{is_field_customised, is_field_on, is_on};
 use indexmap::IndexMap;
 
@@ -57,10 +58,21 @@ impl SourceRegistry {
     }
 
     /// The user's list for `field` when set, else [`Self::base_order`],
-    /// before leaving out the sources that are off.
+    /// before leaving out the sources that are off. A list set before one of
+    /// the [`ADDED_SOURCES`] existed ends with it, where the field's default
+    /// order names it.
     fn field_list(&self, m: &MetadataSettings, field: &str) -> Vec<String> {
         match m.field_priority.get(field) {
-            Some(list) if is_field_customised(m, field) => list.clone(),
+            Some(list) if is_field_customised(m, field) => {
+                let mut list = list.clone();
+                let default = default_field_priority(field);
+                for id in ADDED_SOURCES.iter().filter(|id| default.iter().any(|d| d == *id)) {
+                    if !list.iter().any(|l| l == id) {
+                        list.push(id.to_string());
+                    }
+                }
+                list
+            }
             _ => self.base_order(m, field),
         }
     }
@@ -154,11 +166,11 @@ mod tests {
         m.field_priority.insert("genres".into(), vec!["steam".into(), "igdb".into()]);
         moved(&reg, &mut m, "lutris", 0);
         assert!(reg.is_order_customised(&m));
-        assert_eq!(ids(&reg.ordered(&m, SourceKind::Details)), ["lutris", "igdb", "steam", "store", "playnite"]);
+        assert_eq!(ids(&reg.ordered(&m, SourceKind::Details)), ["lutris", "igdb", "steam", "store", "playnite", "vndb"]);
         for field in METADATA_FIELDS {
             let order = reg.field_order(&m, field);
             if field == "genres" {
-                assert_eq!(order, ["steam", "igdb"], "a field the user set keeps its order");
+                assert_eq!(order, ["steam", "igdb", "vndb"], "a field the user set keeps its order, VNDB joins its end");
             } else if reg.get("lutris").unwrap().provides(field) {
                 assert_eq!(order.first().map(String::as_str), Some("lutris"), "{field}");
             } else {
@@ -168,10 +180,10 @@ mod tests {
             let base = reg.base_order(&m, field);
             assert!(base.iter().all(|id| reg.has_lookup(id) && reg.get(id).unwrap().provides(field)), "{field}");
         }
-        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "igdb", "steam", "store", "playnite"]);
+        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "igdb", "steam", "store", "playnite", "vndb"]);
         assert_eq!(reg.field_order(&m, "gameModes"), ["igdb"]);
         // SteamGridDB joins only the families whose default names it.
-        assert_eq!(reg.field_order(&m, "hero"), ["lutris", "igdb", "steam", "store", "playnite"]);
+        assert_eq!(reg.field_order(&m, "hero"), ["lutris", "igdb", "steam", "store", "playnite", "vndb"]);
         assert_eq!(reg.field_order(&m, "coverWide"), ["steam", "store", "steamgriddb"]);
         assert_eq!(reg.field_order(&m, "coverSquare"), ["steamgriddb"]);
 
@@ -182,26 +194,26 @@ mod tests {
         assert_eq!(reg.field_order(&m, "cover"), default_field_priority("cover"));
         // A hidden or unknown source cannot be moved.
         assert!(reg.order_after_move(&m, "playnite", 0).is_none());
-        assert!(reg.order_after_move(&m, "vndb", 0).is_none());
+        assert!(reg.order_after_move(&m, "elsewhere", 0).is_none());
     }
 
     #[test]
     fn moves_stay_within_a_kind_and_keep_unknown_ids() {
         let reg = SourceRegistry::for_tests();
         let mut m = untouched();
-        m.source_order = vec!["vndb".into(), "igdb".into()];
+        m.source_order = vec!["elsewhere".into(), "igdb".into()];
         assert!(!reg.is_order_customised(&m), "an unknown id alone is not a move");
         moved(&reg, &mut m, "webimages", 0);
         assert_eq!(ids(&reg.ordered(&m, SourceKind::Pictures)), ["webimages", "steamgriddb"]);
-        assert_eq!(ids(&reg.ordered(&m, SourceKind::Details)), ["igdb", "steam", "store", "lutris", "playnite"]);
-        assert_eq!(m.source_order.first().map(String::as_str), Some("vndb"));
+        assert_eq!(ids(&reg.ordered(&m, SourceKind::Details)), ["igdb", "steam", "store", "lutris", "playnite", "vndb"]);
+        assert_eq!(m.source_order.first().map(String::as_str), Some("elsewhere"));
         // Back in order, the unknown id still keeps the list.
         moved(&reg, &mut m, "webimages", 1);
-        assert_eq!(m.source_order.first().map(String::as_str), Some("vndb"));
+        assert_eq!(m.source_order.first().map(String::as_str), Some("elsewhere"));
         assert!(!reg.is_order_customised(&m));
         // Past the end: last.
         moved(&reg, &mut m, "igdb", 99);
-        assert_eq!(ids(&reg.ordered(&m, SourceKind::Details)), ["steam", "store", "lutris", "igdb", "playnite"]);
+        assert_eq!(ids(&reg.ordered(&m, SourceKind::Details)), ["steam", "store", "lutris", "vndb", "playnite", "igdb"]);
     }
 
     #[test]
@@ -210,13 +222,13 @@ mod tests {
         let mut m = untouched();
         set_on(&mut m, "igdb", false);
         set_field_on(&mut m, "steam", "description", false);
-        assert_eq!(reg.field_order(&m, "description"), ["store", "lutris", "playnite"]);
-        assert_eq!(reg.field_order(&m, "releaseDate"), ["steam", "store", "lutris", "playnite"]);
+        assert_eq!(reg.field_order(&m, "description"), ["store", "lutris", "playnite", "vndb"]);
+        assert_eq!(reg.field_order(&m, "releaseDate"), ["steam", "store", "lutris", "playnite", "vndb"]);
         assert!(reg.field_order(&m, "gameModes").is_empty());
         // Also from a list the user set, which keeps them for later.
-        m.field_priority.insert("description".into(), vec!["steam".into(), "igdb".into(), "vndb".into()]);
-        assert_eq!(reg.field_order(&m, "description"), ["vndb"], "an unknown id stays and never answers");
-        assert_eq!(m.field_priority["description"], ["steam", "igdb", "vndb"]);
+        m.field_priority.insert("description".into(), vec!["steam".into(), "igdb".into(), "elsewhere".into()]);
+        assert_eq!(reg.field_order(&m, "description"), ["elsewhere", "vndb"], "an unknown id stays and never answers");
+        assert_eq!(m.field_priority["description"], ["steam", "igdb", "elsewhere"]);
     }
 
     #[test]
@@ -225,16 +237,34 @@ mod tests {
         let mut m = untouched();
         set_on(&mut m, "store", false);
         let shown = reg.field_order(&m, "cover");
-        assert_eq!(shown, ["igdb", "steam", "lutris", "playnite"]);
+        assert_eq!(shown, ["igdb", "steam", "lutris", "playnite", "vndb"]);
         let list = reg.field_list_to_save(&m, "cover", &["lutris".into(), "steam".into()]);
-        assert_eq!(list, ["lutris", "steam", "igdb", "playnite", "store"]);
+        assert_eq!(list, ["lutris", "steam", "igdb", "playnite", "store", "vndb"]);
         m.field_priority.insert("cover".into(), list);
         assert!(is_field_customised(&m, "cover"));
-        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "steam", "igdb", "playnite"]);
+        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "steam", "igdb", "playnite", "vndb"]);
         set_on(&mut m, "store", true);
-        assert_eq!(reg.field_order(&m, "cover").last().map(String::as_str), Some("store"));
+        assert_eq!(reg.field_order(&m, "cover"), ["lutris", "steam", "igdb", "playnite", "store", "vndb"]);
         reset_field(&mut m, "cover");
         assert!(!is_field_customised(&m, "cover"));
         assert_eq!(reg.field_order(&m, "cover"), default_field_priority("cover"));
+    }
+
+    #[test]
+    fn a_list_saved_before_vndb_still_follows_the_default_and_gets_it() {
+        let reg = SourceRegistry::for_tests();
+        let mut m = untouched();
+        // What every settings file saved before VNDB: the default of then.
+        m.field_priority.insert("cover".into(), ["igdb", "steam", "lutris", "playnite", "store"].map(String::from).to_vec());
+        assert!(!is_field_customised(&m, "cover"));
+        assert_eq!(reg.field_order(&m, "cover"), default_field_priority("cover"));
+        // A list the user set then: VNDB joins its end, and only where it fills.
+        m.field_priority.insert("cover".into(), ["store", "igdb"].map(String::from).to_vec());
+        assert_eq!(reg.field_order(&m, "cover"), ["store", "igdb", "vndb"]);
+        m.field_priority.insert("series".into(), ["playnite", "igdb"].map(String::from).to_vec());
+        assert_eq!(reg.field_order(&m, "series"), ["playnite", "igdb"]);
+        // Placed by the user: kept where it is.
+        m.field_priority.insert("cover".into(), ["vndb", "igdb"].map(String::from).to_vec());
+        assert_eq!(reg.field_order(&m, "cover"), ["vndb", "igdb"]);
     }
 }

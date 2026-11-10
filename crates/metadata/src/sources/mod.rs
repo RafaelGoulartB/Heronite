@@ -2,7 +2,10 @@
 //! source is asked about a game ([`MetadataSource`]) and the built-in ones in
 //! one place ([`SourceRegistry`]).
 //!
-//! Details sources have a lookup and feed the merge. Pictures and extras
+//! Details sources have a lookup and feed the merge. A source may be asked
+//! only as a fallback ([`Asked`]; the rule is `service/gather`'s), and may
+//! flag the pictures it gives as adult: they are dropped unless the user
+//! allows adult covers (`settings.metadata.allowAdultCovers`). Pictures and extras
 //! sources (SteamGridDB, web images, HowLongToBeat, Steam tags, ProtonDB) are
 //! registered as descriptors only: they still run on their own paths, which
 //! ask [`is_on`] first.
@@ -28,7 +31,7 @@ use heronite_data::settings;
 
 pub(crate) use builtin::Shared;
 pub use builtin::{builtin_descriptors, offered};
-pub use descriptor::{extra_fields, AppliesTo, Needs, SourceDescriptor, SourceGame, SourceKind};
+pub use descriptor::{extra_fields, AppliesTo, Asked, GameKind, Needs, SourceDescriptor, SourceGame, SourceKind};
 pub use heronite_data::source_prefs::{ids, is_field_on, is_on};
 pub use options::{OptionChoice, OptionKind, OptionValue, SourceOption};
 pub use rows::{FieldRow, OptionRow, SourceRow, SourceStatus};
@@ -103,7 +106,7 @@ pub trait MetadataSource: Send + Sync {
 enum Entry {
     Lookup(Box<dyn MetadataSource>),
     /// Known (listed, has settings) but fetched elsewhere.
-    DescriptorOnly(SourceDescriptor),
+    DescriptorOnly(Box<SourceDescriptor>),
 }
 
 impl Entry {
@@ -152,20 +155,43 @@ impl SourceRegistry {
         self.lookups().find(|s| s.descriptor().id == id)
     }
 
-    /// Asks `source` for its game `id` (see [`MetadataSource::lookup_id`]).
+    /// Asks `source` for its game `id` (see [`MetadataSource::lookup_id`]),
+    /// without the pictures flagged adult unless the user allows them.
     pub fn lookup_id(&self, ctx: &SourceContext<'_>, source: &str, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
         match self.lookup(source) {
-            Some(s) if s.descriptor().searchable => s.lookup_id(ctx, game, id),
+            Some(s) if s.descriptor().searchable => s.lookup_id(ctx, game, id).map(|mut c| {
+                if !ctx.settings().allow_adult_covers {
+                    c.drop_adult();
+                }
+                c
+            }),
             _ => Lookup::Skipped,
         }
     }
 
-    /// Searches `source` by name (see [`MetadataSource::search`]).
+    /// Searches `source` by name (see [`MetadataSource::search`]), without
+    /// the thumbnails flagged adult unless the user allows them.
     pub fn search(&self, ctx: &SourceContext<'_>, source: &str, query: &str) -> Lookup<Vec<SourceHit>> {
         match self.lookup(source) {
-            Some(s) if s.descriptor().searchable => s.search(ctx, query),
+            Some(s) if s.descriptor().searchable => s.search(ctx, query).map(|mut hits| {
+                if !ctx.settings().allow_adult_covers {
+                    hits.iter_mut().for_each(SourceHit::drop_adult);
+                }
+                hits
+            }),
             _ => Lookup::Skipped,
         }
+    }
+
+    /// Whether a request asking only `sources` names fallback source `id`:
+    /// it is among them, and every details source among them is a fallback
+    /// one ("only this source"). A job that leaves another source out
+    /// still asks a fallback source only as a fallback.
+    pub fn names_fallback(&self, id: &str, sources: Option<&[String]>) -> bool {
+        sources.is_some_and(|list| {
+            list.iter().any(|s| s == id)
+                && list.iter().filter_map(|s| self.get(s)).all(|d| d.kind != SourceKind::Details || d.is_fallback())
+        })
     }
 
     /// Whether `id` has a test (Settings shows "Test" for it).
@@ -187,6 +213,7 @@ impl SourceRegistry {
             steam: Arc::new(crate::steam::SteamState::default()),
             stores: Arc::new(crate::providers::StoreLibraries::default()),
             playnite: Arc::new(parking_lot::RwLock::new(None)),
+            vndb: Arc::new(crate::vndb::Vndb::new()),
         })
     }
 

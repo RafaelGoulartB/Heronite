@@ -290,6 +290,7 @@ fn dead_endpoints() -> Endpoints {
         igdb: format!("{base}/igdb/v4"),
         steam_store: format!("{base}/steam"),
         lutris: format!("{base}/lutris"),
+        vndb: format!("{base}/vndb"),
         ..Endpoints::default()
     }
 }
@@ -643,7 +644,7 @@ fn fill_what_is_missing_does_what_the_counts_say() {
     assert!(after.fields_missing < counts.fields_missing);
     assert_eq!(
         s.svc.bulk_sources(&s.svc.metadata_settings()).iter().map(|d| d.id.as_str()).collect::<Vec<_>>(),
-        ["igdb", "steam", "store", "lutris"]
+        ["igdb", "steam", "store", "lutris", "vndb"]
     );
 }
 

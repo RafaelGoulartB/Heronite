@@ -1,7 +1,9 @@
 //! "Found as": a row per details source and what it matched. A match the
 //! merge left out (another game than the others found) is amber; a pinned
-//! one has a pin; "Change" searches the source for another game. Sources
-//! that were not asked fold into one muted line per reason. Below, "Search
+//! one has a pin; "Change" searches the source for another game. A source
+//! asked only as a fallback, which the others made unnecessary, keeps its
+//! row with "Search"; the other sources that were not asked fold into one
+//! muted line per reason. Below, "Search
 //! every source again"; above, the busy line, the offline line and the hint
 //! of a missing IGDB key.
 
@@ -61,6 +63,10 @@ impl MetadataDialog {
             }
             SourceAnswer::NotFound => (tr!("Not found").into(), false, searchable.then_some(tr!("Search"))),
             SourceAnswer::Unreachable => (tr!("Could not be reached").into(), false, None),
+            // A fallback source the others made unnecessary: it can still be searched.
+            SourceAnswer::NotAsked { why: NotAsked::Fallback } => {
+                (tr!("Not asked: the others found it").into(), false, searchable.then_some(tr!("Search")))
+            }
             // Folded into the line under the rows.
             SourceAnswer::NotAsked { .. } => (String::new(), false, None),
         };
@@ -140,7 +146,7 @@ impl MetadataDialog {
                     NotAsked::NotForThisGame => tr!("Not for this game: {sources}", sources),
                     NotAsked::Off => tr!("Off: {sources}", sources),
                     NotAsked::NeedsKey => tr!("Needs a key: {sources}", sources),
-                    NotAsked::NotChosen => tr!("Not asked: {sources}", sources),
+                    NotAsked::NotChosen | NotAsked::Fallback => tr!("Not asked: {sources}", sources),
                 }))
             })
             .collect()
@@ -160,7 +166,10 @@ impl MetadataDialog {
                 );
             }
             Some(p) => {
-                for state in p.sources.iter().filter(|s| !matches!(s.answer, SourceAnswer::NotAsked { .. })) {
+                let row = |s: &&SourceState| {
+                    !matches!(s.answer, SourceAnswer::NotAsked { .. }) || s.answer == SourceAnswer::NotAsked { why: NotAsked::Fallback }
+                };
+                for state in p.sources.iter().filter(row) {
                     list = list.child(self.source_row(state, cx));
                 }
                 let folded = self.not_asked();

@@ -106,6 +106,12 @@ pub struct MetadataCandidate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub match_id: Option<String>,
     pub metadata: CollectionGameMetadata,
+    /// The pictures of `metadata` the source flags as adult, by field id
+    /// (`cover`, `hero`, `coverSquare`, `coverWide`). Unless
+    /// `settings.metadata.allowAdultCovers` is on, the gather drops them
+    /// ([`MetadataCandidate::drop_adult`]) so the next source fills them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adult_pictures: Vec<String>,
 }
 
 impl MetadataCandidate {
@@ -113,7 +119,24 @@ impl MetadataCandidate {
     /// are the match shown to the user.
     pub fn new(source: &str, metadata: CollectionGameMetadata, matched_by: Option<MatchedBy>) -> Self {
         let match_year = release_year(metadata.release_date.as_deref());
-        Self { source: source.to_owned(), match_name: metadata.title.clone(), match_year, matched_by, match_id: None, metadata }
+        Self {
+            source: source.to_owned(),
+            match_name: metadata.title.clone(),
+            match_year,
+            matched_by,
+            match_id: None,
+            metadata,
+            adult_pictures: Vec::new(),
+        }
+    }
+
+    /// Clears the pictures flagged adult.
+    pub fn drop_adult(&mut self) {
+        for field in std::mem::take(&mut self.adult_pictures) {
+            if let Some(kind) = ArtKind::from_field(&field) {
+                *kind.of_record_mut(&mut self.metadata) = None;
+            }
+        }
     }
 
     /// Says which game of the source this is.
@@ -135,6 +158,8 @@ impl MetadataCandidate {
             platform,
             thumb_url: md.cover_url.clone().filter(|u| u.starts_with("http")),
             matched_by: self.matched_by,
+            alt_title: None,
+            thumb_adult: self.adult_pictures.iter().any(|f| f == "cover"),
         }
     }
 }
@@ -161,6 +186,23 @@ pub struct SourceHit {
     /// How the source found it for the game; `None` for a search hit.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub matched_by: Option<MatchedBy>,
+    /// Its name in another script (the original Japanese of a visual
+    /// novel), shown after the year.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt_title: Option<String>,
+    /// The source flags the thumbnail as adult: it is left out unless
+    /// adult covers are allowed ([`crate::sources::SourceRegistry::search`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub thumb_adult: bool,
+}
+
+impl SourceHit {
+    /// Clears the thumbnail when it is flagged adult.
+    pub fn drop_adult(&mut self) {
+        if std::mem::take(&mut self.thumb_adult) {
+            self.thumb_url = None;
+        }
+    }
 }
 
 /// Why a source was not asked about a game.
@@ -175,6 +217,9 @@ pub enum NotAsked {
     NeedsKey,
     /// Left out by the request (other fields or sources were chosen).
     NotChosen,
+    /// Asked only as a fallback, and nothing called for it: the other
+    /// sources found the game ([`crate::sources::Asked::AsFallback`]).
+    Fallback,
 }
 
 /// What one source answered about a game.

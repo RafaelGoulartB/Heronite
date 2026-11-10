@@ -200,9 +200,14 @@ mod tests {
         set_field_on(&mut m, "steam", "cover", false);
         let rows = reg.rows(&paths, &m, &TestResults::default());
         let ids: Vec<&str> = rows.iter().map(|r| r.descriptor.id.as_str()).collect();
-        assert_eq!(ids, ["igdb", "steam", "store", "lutris", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]);
+        assert_eq!(ids, ["igdb", "steam", "store", "lutris", "vndb", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]);
         let status = |id| row(&rows, id).status;
         assert_eq!(status("steam"), SourceStatus::On);
+        assert_eq!(status("vndb"), SourceStatus::On);
+        let vndb = row(&rows, "vndb");
+        assert!(vndb.reorderable && !vndb.can_test && vndb.fields.iter().all(|f| f.switchable && f.on));
+        let options: Vec<(&str, &OptionValue)> = vndb.options.iter().map(|o| (o.option.key.as_str(), &o.value)).collect();
+        assert_eq!(options, [("titleOrder", &OptionValue::Text("latin".into())), ("screenshotBackground", &OptionValue::Switch(true))]);
         assert_eq!(status("steamgriddb"), SourceStatus::NeedsKey);
         assert_eq!(status("webimages"), SourceStatus::ByHandOnly);
         assert_eq!(status("protondb"), SourceStatus::On);

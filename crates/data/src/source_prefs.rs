@@ -32,7 +32,7 @@
 //! Ids this build does not know are kept everywhere.
 
 use crate::models::{MetadataSettings, SourcePrefs};
-use crate::settings::default_field_priority;
+use crate::settings::{default_field_priority, ADDED_SOURCES};
 
 /// Ids of the built-in sources whose state is read outside the metadata
 /// service (legacy switches, fetch paths of their own, the app).
@@ -95,10 +95,15 @@ pub fn set_option(m: &mut MetadataSettings, id: &str, key: &str, value: Option<s
     });
 }
 
-/// Whether the user set an order for `field` (its saved `fieldPriority`
-/// differs from the default one).
+/// Whether the user set an order for `field`: its saved `fieldPriority`
+/// differs from the default one, and from the default as it was before the
+/// [`ADDED_SOURCES`] (what every settings file saved until then).
 pub fn is_field_customised(m: &MetadataSettings, field: &str) -> bool {
-    m.field_priority.get(field).is_some_and(|list| *list != default_field_priority(field))
+    m.field_priority.get(field).is_some_and(|list| {
+        let default = default_field_priority(field);
+        let before: Vec<String> = default.iter().filter(|id| !ADDED_SOURCES.contains(&id.as_str())).cloned().collect();
+        *list != default && *list != before
+    })
 }
 
 /// Back to the default order for `field`, stored as the default list so
@@ -145,6 +150,9 @@ mod tests {
         for field in METADATA_FIELDS {
             assert!(is_field_on(&m, "igdb", field));
         }
+        // A list saved before VNDB was a source is still the default.
+        let m = read(r#"{"metadata":{"fieldPriority":{"cover":["igdb","steam","lutris","playnite","store"],"hero":["vndb","igdb"]}}}"#);
+        assert!(!is_field_customised(&m, "cover") && is_field_customised(&m, "hero"));
         // No metadata at all: defaults, nothing customised.
         let m = read("{}");
         assert!(METADATA_FIELDS.iter().all(|f| !is_field_customised(&m, f)));

@@ -1,5 +1,5 @@
 //! "When details arrive": what belongs to no single source (filling in the
-//! background, copying covers, age ratings and their board).
+//! background, copying covers, adult covers, age ratings and their board).
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -56,15 +56,25 @@ fn board_select(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> AnyElement 
     .into_any_element()
 }
 
+/// What "Allow adult covers" does, under it.
+pub(super) fn adult_help() -> &'static str {
+    tr!(
+        "Covers and backgrounds a source marks as suggestive or explicit (VNDB does). Off, they are never shown or downloaded and the next source gives the picture; pictures already saved stay."
+    )
+}
+
 pub(super) fn card(d: &SettingsPage, cx: &mut Context<SettingsPage>) -> Div {
     let m = &d.settings.metadata;
-    let (auto_fill, download, show_age) = (m.auto_fill_missing, m.download_images, m.show_age_ratings);
+    let (auto_fill, download, show_age, adult) = (m.auto_fill_missing, m.download_images, m.show_age_ratings, m.allow_adult_covers);
     let card = rows([
         toggle_row("md-autofill", tr!("Fill missing metadata in the background"), None, auto_fill)
             .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.auto_fill_missing = !auto_fill)))
             .into_any_element(),
         toggle_row("md-download", tr!("Copy covers to disk"), Some(tr!("Off keeps the CDN URLs instead of storing the images.")), download)
             .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.download_images = !download)))
+            .into_any_element(),
+        toggle_row("md-adult", tr!("Allow adult covers"), Some(adult_help()), adult)
+            .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.allow_adult_covers = !adult)))
             .into_any_element(),
         toggle_row("md-age-show", tr!("Show age ratings"), Some(tr!("In a game's facts and Details.")), show_age)
             .on_click(cx.listener(move |d, _, _, cx| persist(d, cx, |m| m.show_age_ratings = !show_age)))

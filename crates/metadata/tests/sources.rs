@@ -128,7 +128,7 @@ fn a_field_switched_off_is_never_taken_from_its_source() {
     svc.set_source_field_enabled("igdb", "description", false).unwrap();
     svc.set_source_field_enabled("igdb", "cover", false).unwrap();
     let s = svc.metadata_settings();
-    assert_eq!(svc.field_order(&s, "description"), ["steam", "store", "lutris", "playnite"]);
+    assert_eq!(svc.field_order(&s, "description"), ["steam", "store", "lutris", "playnite", "vndb"]);
     let preview = svc.preview_game_metadata(&args()).unwrap();
     assert_eq!(preview.proposed.field_sources["description"], "steam");
     assert_eq!(preview.proposed.field_sources["cover"], "steam");
@@ -225,5 +225,5 @@ fn testing_igdb_sets_its_status() {
     assert_eq!(status(&svc), Some(SourceStatus::NeedsKey));
     assert!(!svc.test_source("igdb").unwrap().ok);
     assert_eq!(status(&svc), Some(SourceStatus::NeedsKey), "a missing key says so before a failed test");
-    assert_eq!(svc.source_status(&svc.metadata_settings(), "vndb"), None);
+    assert_eq!(svc.source_status(&svc.metadata_settings(), "elsewhere"), None);
 }

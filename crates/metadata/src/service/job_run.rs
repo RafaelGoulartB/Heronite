@@ -22,7 +22,7 @@ use indexmap::IndexMap;
 
 use super::bulk::initial;
 use super::counts::{missing_details, tag_steam_id};
-use super::fetch::Gathered;
+use super::gather::Gathered;
 use super::undo::{clear_backups, UndoLog};
 use super::{tag_fill, MetadataService, Offline, NO_DATA};
 use crate::job::{FieldChange, GameOutcome, GameResult, JobKind, NoChangeReason, SkipReason, UpdateMode};

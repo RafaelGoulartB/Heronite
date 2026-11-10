@@ -11,19 +11,27 @@ use parking_lot::RwLock;
 
 use super::descriptor::extra_fields::{LINUX_RATING, STEAM_TAGS as STEAM_TAGS_FIELD, TIME_TO_BEAT};
 use super::options::{OptionChoice, OptionKind, OptionValue, SourceOption};
-use super::{AppliesTo, Entry, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry, SourceTest};
+use super::{
+    AppliesTo, Asked, Entry, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry,
+    SourceTest,
+};
 use crate::covers::{find_steamgrid_game, search_steam, steamgrid_api_key, steamgrid_pictures};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
 use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
+use crate::vndb::{self, Vndb, VndbOptions};
 
 const IGDB: &str = "igdb";
 const STEAM: &str = "steam";
 const STORE: &str = "store";
 const LUTRIS: &str = "lutris";
 const PLAYNITE: &str = "playnite";
+const VNDB: &str = vndb::SOURCE;
+/// VNDB's options.
+const TITLE_ORDER: &str = "titleOrder";
+const SCREENSHOT_BACKGROUND: &str = "screenshotBackground";
 
 /// The service's state the adapters share with its other entry points
 /// (IGDB token and queue, Steam caches, parsed store libraries, Playnite).
@@ -32,6 +40,7 @@ pub(crate) struct Shared {
     pub steam: Arc<SteamState>,
     pub stores: Arc<StoreLibraries>,
     pub playnite: Arc<RwLock<Option<Arc<dyn PlayniteSource>>>>,
+    pub vndb: Arc<Vndb>,
 }
 
 fn strings(list: &[&str]) -> Vec<String> {
@@ -53,6 +62,9 @@ fn source(id: &str, name: &str, kind: SourceKind, provides: &[&str]) -> SourceDe
         searchable: false,
         only_on: Vec::new(),
         options: Vec::new(),
+        asked: Asked::Always,
+        game_kind: None,
+        about: None,
     }
 }
 
@@ -144,6 +156,39 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                 ],
             )
         },
+        // Last of the details sources: asked as a fallback, it fills what
+        // the others left empty.
+        SourceDescriptor {
+            finds_by: vec![SourceId, ExactTitle, FuzzyTitle],
+            searchable: true,
+            asked: Asked::AsFallback,
+            game_kind: Some(GameKind { name: n_!("Visual novels").into(), signals: strings(&["Visual Novel"]) }),
+            about: Some(n_!(
+                "The Visual Novel Database (vndb.org), for visual novels and Japanese titles: search it by the Japanese, romaji or English name, or by a VNDB id such as v17. Heronite is not affiliated with VNDB."
+            )
+            .into()),
+            options: vec![
+                SourceOption {
+                    choices: vec![
+                        OptionChoice { value: "latin".into(), label: n_!("Romaji / English first").into() },
+                        OptionChoice { value: "original".into(), label: n_!("Original (Japanese) first").into() },
+                    ],
+                    help: Some(n_!("The name of the match it shows; your game keeps its own.").into()),
+                    ..option(TITLE_ORDER, n_!("Title to show"), OptionKind::Select)
+                },
+                SourceOption {
+                    default: Some(OptionValue::Switch(true)),
+                    help: Some(n_!("VNDB has no background art.").into()),
+                    ..option(SCREENSHOT_BACKGROUND, n_!("Use a screenshot as background"), OptionKind::Switch)
+                },
+            ],
+            ..source(
+                VNDB,
+                "VNDB",
+                Details,
+                &["description", "releaseDate", "developers", "genres", "themes", "criticScore", "cover", "hero"],
+            )
+        },
         SourceDescriptor {
             finds_by: vec![SteamId, FuzzyTitle],
             needs: Needs::ApiKey,
@@ -198,8 +243,9 @@ pub(super) fn registry(shared: Shared) -> SourceRegistry {
             STORE => Entry::Lookup(Box::new(StoreSource { d, stores: shared.stores.clone() })),
             LUTRIS => Entry::Lookup(Box::new(LutrisSource { d })),
             PLAYNITE => Entry::Lookup(Box::new(PlayniteDump { d, source: shared.playnite.clone() })),
+            VNDB => Entry::Lookup(Box::new(VndbSource { d, client: shared.vndb.clone() })),
             STEAMGRIDDB => Entry::Lookup(Box::new(SteamGridSource { d })),
-            _ => Entry::DescriptorOnly(d.clone()),
+            _ => Entry::DescriptorOnly(Box::new(d.clone())),
         })
         .collect();
     SourceRegistry { entries }
@@ -419,7 +465,54 @@ impl MetadataSource for SteamGridSource {
                 matched_by: Some(found.matched_by),
                 match_id: Some(found.id.to_string()),
                 metadata: md,
+                adult_pictures: Vec::new(),
             }
         })
+    }
+}
+
+/// VNDB: the pinned entry by its id, else a search of the game's title.
+/// Pictures VNDB's users flag as suggestive or explicit come flagged adult.
+struct VndbSource {
+    d: &'static SourceDescriptor,
+    client: Arc<Vndb>,
+}
+
+impl VndbSource {
+    fn options(&self, ctx: &SourceContext<'_>) -> VndbOptions {
+        let value = |key: &str| {
+            let opt = self.d.options.iter().find(|o| o.key == key).expect("a VNDB option");
+            super::options::option_value(ctx.paths, ctx.settings(), self.d, opt)
+        };
+        VndbOptions {
+            original_title: value(TITLE_ORDER).as_text() == "original",
+            screenshot_background: value(SCREENSHOT_BACKGROUND).as_bool(),
+        }
+    }
+
+    fn candidate(&self, ctx: &SourceContext<'_>, game: &SourceGame, vn: &vndb::Vn, matched_by: MatchedBy) -> MetadataCandidate {
+        let (md, adult) = vndb::map_vn(&game.app_name, &game.runner, vn, self.options(ctx));
+        let mut c = candidate(self.d, matched_by)(md).with_id(Some(vn.id.clone()));
+        c.adult_pictures = adult;
+        c
+    }
+}
+
+impl MetadataSource for VndbSource {
+    fn descriptor(&self) -> &SourceDescriptor {
+        self.d
+    }
+
+    fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
+        self.client.by_title(ctx.http, &game.title).map(|(vn, by)| self.candidate(ctx, game, &vn, by))
+    }
+
+    fn lookup_id(&self, ctx: &SourceContext<'_>, game: &SourceGame, id: &str) -> Lookup<MetadataCandidate> {
+        self.client.by_id(ctx.http, id).map(|vn| self.candidate(ctx, game, &vn, MatchedBy::SourceId))
+    }
+
+    fn search(&self, ctx: &SourceContext<'_>, query: &str) -> Lookup<Vec<SourceHit>> {
+        let options = self.options(ctx);
+        self.client.search(ctx.http, query).map(|rows| rows.iter().filter_map(|vn| vndb::hit(vn, options)).collect())
     }
 }

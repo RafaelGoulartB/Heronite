@@ -56,7 +56,15 @@ impl MetadataService {
         fields: &[&'static str],
         sources: Option<&[String]>,
     ) -> Vec<&'static str> {
-        let asked = |id: &String| self.sources.has_lookup(id) && sources.is_none_or(|s| s.contains(id));
+        // A fallback source counts only when the job names it: otherwise it
+        // is not asked about games the others found, and counting its
+        // fields would fetch every game lacking them for nothing.
+        let fallback = |id: &String| self.sources.get(id).is_some_and(|d| d.is_fallback());
+        let asked = |id: &String| {
+            self.sources.has_lookup(id)
+                && sources.is_none_or(|s| s.contains(id))
+                && (!fallback(id) || self.sources.names_fallback(id, sources))
+        };
         fields.iter().copied().filter(|f| self.sources.field_order(settings, f).iter().any(asked)).collect()
     }
 

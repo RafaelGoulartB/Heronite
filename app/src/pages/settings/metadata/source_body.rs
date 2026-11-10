@@ -24,7 +24,8 @@ const FIELD_MAX_W: f32 = 420.;
 pub(super) fn body(d: &SettingsPage, r: &SourceRow, indent: f32, cx: &mut Context<SettingsPage>) -> Div {
     let id = r.descriptor.id.as_str();
     let mut col = div().flex().flex_col().gap(px(14.)).pl(px(indent)).pt(px(2.)).pb(px(16.));
-    let about = [labels::about(id), labels::when_asked(id)].into_iter().flatten().collect::<Vec<_>>();
+    let about =
+        [labels::about(&r.descriptor).map(str::to_owned), labels::when_asked(&r.descriptor)].into_iter().flatten().collect::<Vec<_>>();
     if !about.is_empty() {
         col = col.child(div().flex().flex_col().gap(px(4.)).children(about.into_iter().map(meta_text)));
     }

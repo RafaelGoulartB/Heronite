@@ -1,5 +1,6 @@
 //! "Which one is it?": a radio card per game the sources proposed (its
-//! picture, name, year and platform, the sources that agree on it and a
+//! picture, name, year, its name in another script and platform, the
+//! sources that agree on it and a
 //! pill when one found it by id or hash), then the search of every source by
 //! another name. While the game's proposals load, a busy line; a load that
 //! failed (offline) says so plainly.
@@ -40,7 +41,11 @@ impl MetadataReview {
                 .bg(theme::ink_a(0.04))
                 .child(icon(Icon::Image, px(18.), theme::text_dim())),
         };
-        let line = [c.year.map(|y| y.to_string()), c.platform.clone()].into_iter().flatten().collect::<Vec<_>>().join(" \u{b7} ");
+        let line = [c.year.map(|y| y.to_string()), c.alt_title.clone(), c.platform.clone()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" \u{b7} ");
         let service = self.hub.read(cx).service.clone();
         let marks = c.hits.iter().map(|h| {
             let name = words::source_name(&service, &h.source);

@@ -12,6 +12,7 @@ mod bulk;
 mod counts;
 mod families;
 mod fetch;
+mod gather;
 mod job_run;
 mod review;
 mod source_settings;
@@ -90,6 +91,8 @@ pub struct MetadataService {
     rating_fill: AtomicBool,
     /// Bumped on every change of the review queue this service makes.
     review_revision: AtomicU64,
+    /// The Steam tags file, read when a fallback source looks for its kind of game.
+    steam_tags: gather::SteamTagsCache,
 }
 
 impl MetadataService {
@@ -107,6 +110,7 @@ impl MetadataService {
             steam: steam.clone(),
             stores: Arc::new(StoreLibraries::default()),
             playnite: playnite.clone(),
+            vndb: Arc::new(crate::vndb::Vndb::new()),
         });
         Self {
             paths,
@@ -123,6 +127,7 @@ impl MetadataService {
             filling: AtomicBool::new(false),
             rating_fill: AtomicBool::new(false),
             review_revision: AtomicU64::new(0),
+            steam_tags: Default::default(),
         }
     }
 

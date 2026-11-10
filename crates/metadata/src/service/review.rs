@@ -13,7 +13,7 @@ use crate::record;
 use crate::review::{self, group_hits, MatchChoice, MatchPick, ReviewEntry, ReviewItem, ReviewReason};
 use crate::sources::{is_on, SourceContext};
 use crate::store::{as_runner, current_or_blank, get_game_metadata, upsert_game_metadata};
-use crate::types::{BulkItem, Lookup, MetadataApplyArgs, SourceAnswer};
+use crate::types::{BulkItem, Lookup, MetadataApplyArgs, SourceAnswer, SourceHit};
 
 /// The user's answer for a game of the review.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,7 +92,12 @@ impl MetadataService {
     /// One game of the queue (`runner:appName`), with what each source
     /// proposed ([`ReviewEntry::choices`]). No network.
     pub fn review_entry(&self, key: &str) -> Option<ReviewEntry> {
-        review::load(&self.paths).games.shift_remove(key)
+        let mut entry = review::load(&self.paths).games.shift_remove(key)?;
+        // Queued while adult covers were allowed: not shown now they are not.
+        if !self.metadata_settings().allow_adult_covers {
+            entry.hits.iter_mut().for_each(SourceHit::drop_adult);
+        }
+        Some(entry)
     }
 
     /// What the sources propose for `game` now (asks them), as an entry of
