@@ -109,7 +109,7 @@ impl CollectionView {
         self.open_dialog(view, cx);
     }
 
-    /// Focus footer / context menu: "Collection metadata".
+    /// The focus panel's button, the context menu and the palette: "Metadata".
     pub(super) fn open_metadata_for(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) {
         let (Some(ctx), Some(game)) = (self.dialog_ctx(), self.game_for(key)) else { return };
         let view = cx.new(|cx| MetadataDialog::new(ctx, game, window, cx));

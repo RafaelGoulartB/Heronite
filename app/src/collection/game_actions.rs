@@ -267,17 +267,13 @@ impl CollectionView {
                 "native port pc version executable linux windows nativo versao pc executavel",
             ));
         }
-        // Game settings has its own button; the palette keeps it.
-        v.push(
-            item(
-                A::Metadata,
-                "metadata",
-                tr!("Collection metadata"),
-                Icon::TravelExplore,
-                "igdb cover art genre description metadados capa arte genero descricao",
-            )
-            .palette_only(),
-        );
+        v.push(item(
+            A::Metadata,
+            "metadata",
+            tr!("Metadata"),
+            Icon::TravelExplore,
+            "igdb cover art genre description source match metadados capa arte genero descricao fonte",
+        ));
         v.push(
             item(
                 A::Covers,

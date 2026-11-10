@@ -625,7 +625,7 @@ another name, one source unreachable), `review:empty` (one game, nothing found),
 **Metadata of one game** (`dialogs/metadata/`: `mod.rs` the dialog, its head and footer, `found_as.rs` the left column,
 `change.rs` "Change", `fields.rs` the field rows, `actions.rs` what it asks, picks and saves, `fake.rs` the debug
 preview): one dialog, 1060px, with two columns 470px high that scroll inside, titled "Metadata". It opens from the
-palette's "Collection metadata" (a game action) and from Game settings → Game → Details' "Fetch metadata", which opens
+context menu's and the palette's "Metadata" (a game action) and from Game settings → Game → Details' "Fetch metadata", which opens
 it over the drawer (Apply then updates the drawer's details). It asks every source when it opens ("Asking every
 source…"), and again after a match is pinned and after "Search every source again". The head has the cover, the title and
 "Steam · last updated 3 weeks ago".
@@ -686,9 +686,9 @@ Cover aspect notice of the square (or wide) family over the real counts, with th
 14px, hover .07, active = accent tint), `menu_separator()`, `dropdown(..)`. The
 Collection's context menu (`collection/context_menu.rs::item`/`paper`) uses the
 same look and groups a game's rows with separators (`menu_place`): Play (and the other ways to play or install);
-Status, Categories, favourite, hide, recent; Settings, the folder, "Saves ›" (back up now and the game's automatic backup switch, which keeps the flyout open); "Manage installation ›" (the store's verify,
+Status, Categories, favourite, hide, recent; Settings, Edit game, Metadata (the game's Metadata dialog), the folder, "Saves ›" (back up now and the game's automatic backup switch, which keeps the flyout open); "Manage installation ›" (the store's verify,
 modify, move, relocate, EOS in a flyout; a single one stays a plain row); shortcuts; uninstall / remove; View log; Select multiple. A new menu action gets a
-place there; rare ones (store page, metadata, playtime, cloud sync) stay in the palette only (`palette_only`); other context-menu rows must call `context_menu::item`.
+place there; rare ones (store page, covers, playtime, cloud sync) stay in the palette only (`palette_only`); other context-menu rows must call `context_menu::item`.
 
 **Dialogs** (`ui::dialog`): `dialog(DialogProps, body, footer, on_close)` = glass
 modal (radius 26, title Rubik 22, round close button, Collection darkened by
