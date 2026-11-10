@@ -26,5 +26,6 @@
   "This game has no cloud saves": "Dieses Spiel hat keine Cloud-Speicherstände",
   "This game has no Wine prefix yet; choose one in its Wine settings": "Dieses Spiel hat noch kein Wine-Prefix; wähle eins in den Wine-Einstellungen des Spiels",
   "That folder does not look like this game's install (goggame-{app}.info is missing)": "Dieser Ordner sieht nicht nach der Installation dieses Spiels aus (goggame-{app}.info fehlt)",
-  "Your GOG sign-in expired: log in again": "Deine GOG-Anmeldung ist abgelaufen: Melde dich erneut an"
+  "Your GOG sign-in expired: log in again": "Deine GOG-Anmeldung ist abgelaufen: Melde dich erneut an",
+  "GOG did not answer in time": "GOG hat nicht rechtzeitig geantwortet"
 }
