@@ -239,8 +239,20 @@ pub fn started(cx: &App) -> Option<Entity<ModsService>> {
     cx.try_global::<ModsGlobal>().map(|g| g.0.clone())
 }
 
+/// Whether this system can apply mods (`Feature::Mods`: not in a Flatpak,
+/// where nothing can be laid over a game's folder). Without it the manager
+/// and Settings → Mods are not shown, links are dropped and games start as
+/// they are.
+pub fn available() -> bool {
+    heronite_platform::supported(heronite_platform::Feature::Mods)
+}
+
 /// An `nxm://` / `ror2mm://` link from the command line or another invocation.
 pub fn open_link(cx: &mut App, link: String) {
+    if !available() {
+        log::warn!("mods: {link} was not opened: mods are not available here");
+        return;
+    }
     service(cx).update(cx, |s, cx| s.open_link(link, cx));
 }
 

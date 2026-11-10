@@ -10,6 +10,10 @@ a file), and whatever the game writes while it runs lands in the game's
 vanilla again. Turning a mod off or on, reordering, removing: nothing is
 reinstalled or copied, the next launch simply mounts other layers.
 
+Mods are a part of the app a system may lack (`Feature::Mods`): a Flatpak
+cannot mount, so there the manager, Settings → Mods and the links are not
+offered and games start as they are (`services::mods::available`).
+
 Crate: `heronite-mods` (no GPUI, blocking functions). App: `services::mods`
 (the service: jobs, links, account), `dialogs/mods/` (the manager), Settings →
 Mods.

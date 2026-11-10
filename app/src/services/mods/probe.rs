@@ -24,7 +24,7 @@ impl ModsProbe {
     /// Reads the game's list; without mods that apply it adds nothing.
     pub fn for_game(paths: &DataPaths, game: &CollectionGame) -> Self {
         let dirs = ModsRoot::default_for(paths).game(&game.key);
-        if !dirs.list_file().is_file() {
+        if !super::available() || !dirs.list_file().is_file() {
             return Self { game_dir: None, layers: Vec::new() };
         }
         let list = store::load(&dirs);

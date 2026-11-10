@@ -33,7 +33,7 @@ impl CollectionView {
 
     /// The Focus panel's "Mods" row needs the counts: asked once the library is here.
     pub(super) fn mods_library_loaded(&mut self, cx: &mut Context<Self>) {
-        if std::mem::replace(&mut self.mods.counts_asked, true) {
+        if !mods::available() || std::mem::replace(&mut self.mods.counts_asked, true) {
             return;
         }
         mods::service(cx).update(cx, |s, cx| s.load_counts(cx));

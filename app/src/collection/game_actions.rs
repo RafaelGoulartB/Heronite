@@ -237,7 +237,11 @@ impl CollectionView {
             }
         }
         // Emulated games have no mods; console mode builds no manager.
-        if game.installed && game.launch_kind.as_deref() != Some("emulator") && !crate::console::active() {
+        if crate::services::mods::available()
+            && game.installed
+            && game.launch_kind.as_deref() != Some("emulator")
+            && !crate::console::active()
+        {
             v.push(item(
                 A::Mods,
                 "mods",

@@ -96,6 +96,9 @@ fn apply_to(paths: &DataPaths, game_key: &str, status: &mut dyn FnMut(&str)) -> 
 /// `unmount_stale` off when a game is about to start: its own mount is
 /// being made.
 pub fn startup(paths: &DataPaths, running: &[String], unmount_stale: bool) {
+    if !super::available() {
+        return;
+    }
     let root = ModsRoot::default_for(paths);
     for entry in std::fs::read_dir(root.path()).into_iter().flatten().flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
