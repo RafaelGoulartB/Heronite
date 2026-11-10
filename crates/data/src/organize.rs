@@ -429,7 +429,8 @@ pub const SMART_SECTION: &str = "smart-category:";
 pub struct SmartSection {
     pub id: String,
     pub name: String,
-    pub games: HashSet<String>,
+    /// Shared with the caller's cache: no copy per list build.
+    pub games: std::rc::Rc<HashSet<String>>,
 }
 
 /// [`group_games`], with [`GroupBy::Category`] also splitting by the
@@ -579,7 +580,7 @@ mod tests {
         let smart = |id: &str, name: &str, keys: &[&str]| SmartSection {
             id: id.into(),
             name: name.into(),
-            games: keys.iter().map(|k| k.to_string()).collect(),
+            games: std::rc::Rc::new(keys.iter().map(|k| k.to_string()).collect()),
         };
         let unplayed = smart("g2", "Unplayed", &[&games[0].key, &games[2].key]);
         let empty = smart("g1", "Empty", &[]);

@@ -152,7 +152,7 @@ impl CollectionView {
         self.smart_groups
             .groups
             .iter()
-            .map(|g| SmartSection { id: g.id.clone(), name: g.name.clone(), games: (*self.group_members(g)).clone() })
+            .map(|g| SmartSection { id: g.id.clone(), name: g.name.clone(), games: self.group_members(g) })
             .collect()
     }
 

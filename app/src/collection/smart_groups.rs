@@ -45,13 +45,16 @@ impl CollectionView {
         }
     }
 
-    /// The game is in one of the picked groups (or none is picked).
-    pub(super) fn in_picked_groups(&self, g: &CollectionGame, statuses: &[CompletionStatus]) -> bool {
-        if self.ui.smart_groups.is_empty() {
+    /// The game is in one of the picked categories, manual or smart (or
+    /// none is picked): they share one section, so they add up as the
+    /// manual ones do among themselves.
+    pub(super) fn in_picked_categories(&self, g: &CollectionGame) -> bool {
+        let (manual, smart) = (&self.ui.categories, &self.ui.smart_groups);
+        if manual.is_empty() && smart.is_empty() {
             return true;
         }
-        let facts = self.group_facts(statuses);
-        self.ui.smart_groups.iter().filter_map(|id| self.smart_groups.get(id)).any(|group| group.matches(g, &facts))
+        (!manual.is_empty() && self.categories.matches(manual, &g.runner, &g.app_name))
+            || smart.iter().filter_map(|id| self.smart_groups.get(id)).any(|group| self.group_members(group).contains(&g.key))
     }
 
     /// Keys of the library's games in `group`, worked out once until the
