@@ -370,22 +370,47 @@ fn removing_a_game_deletes_its_family_files() {
 #[test]
 fn a_game_only_steamgriddb_finds_counts_as_found_by_no_source() {
     // The idle fill: a game of no store library (imported, emulated) that
-    // only SteamGridDB has, by its exact name.
+    // only SteamGridDB has, by its exact name. No details source found it:
+    // marked as failed and tried again in a week; the sure picture found
+    // beside is saved with the mark, never as fetched details.
     let elsewhere = item("elsewhere", "Plain Game", None);
     let s = setup(&["square"]);
     let saved = s.svc.apply_game_metadata(&args(&elsewhere)).unwrap();
     assert!(sgdb_requests(&s.server) > 0, "SteamGridDB was asked");
     assert_eq!(saved.fetch_error.as_deref(), Some("No metadata sources returned data"));
-    assert!(saved.cover_square_url.is_none() && !saved.field_sources.contains_key("coverSquare"));
+    assert!(saved.cover_square_url.is_some() && saved.field_sources["coverSquare"] == "steamgriddb");
+    assert!(saved.description.is_none() && !saved.field_sources.contains_key("description"));
     assert_eq!(s.svc.bulk_counts(std::slice::from_ref(&elsewhere)).unwrap().failed_last_time, 1, "failed last time, tried again in a week");
 
-    // A job asking for everything: not found, marked the same way.
+    // A job asking for everything: marked the same way, and the picture is
+    // what changed.
     let s = setup(&["square"]);
-    let done = s.svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![elsewhere]), &|_| {});
-    assert_eq!(done.results[0].outcome, GameOutcome::NotFound);
+    let done = s.svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![elsewhere.clone()]), &|_| {});
+    assert_eq!(done.results[0].outcome, GameOutcome::Updated);
+    assert_eq!(
+        done.results[0].changes.iter().map(|c| (c.field.as_str(), c.source.as_str())).collect::<Vec<_>>(),
+        [("coverSquare", "steamgriddb")]
+    );
     let md = get(&s.svc, "elsewhere");
     assert_eq!(md.fetch_error.as_deref(), Some("No metadata sources returned data"));
-    assert!(md.cover_square_url.is_none());
+    assert!(md.cover_square_url.is_some());
+    // Undone, the game is as before: no record.
+    s.svc.undo_bulk_metadata().unwrap();
+    assert!(s.svc.get_game_metadata("sideload", "elsewhere").unwrap().is_none());
+
+    // An unsure picture alone (a similar name) is not saved.
+    let similar = item("similar", "Plain Gam", None);
+    let s = setup(&["square"]);
+    let saved = s.svc.apply_game_metadata(&args(&similar)).unwrap();
+    assert!(saved.fetch_error.is_some() && saved.cover_square_url.is_none());
+
+    // A job that does not ask every source: a game never fetched gets no
+    // record holding only a picture (it would keep the idle fill away).
+    let s = setup(&["square"]);
+    let some = BulkArgs::update(vec![elsewhere], UpdateMode::Fill, None, Some(vec!["steamgriddb".into(), "igdb".into()]));
+    let done = s.svc.run_bulk_metadata(&some, &|_| {});
+    assert_eq!(done.results[0].outcome, GameOutcome::NotFound);
+    assert!(s.svc.get_game_metadata("sideload", "elsewhere").unwrap().is_none());
 }
 
 #[test]
@@ -393,7 +418,7 @@ fn a_covers_download_leaves_games_without_details_and_the_fetch_marks_as_they_we
     let s = setup(&[]);
     // Details, and the last fetch of them failed: only the picture changes.
     put(&s.paths, &record("steam_620", |m| m.fetch_error = Some("x".into())));
-    // Never fetched, and failed with no details: left to the idle fill.
+    // No details, found in no source: its sure picture is asked, its mark stays.
     put(
         &s.paths,
         &record("plain", |m| {
@@ -403,19 +428,24 @@ fn a_covers_download_leaves_games_without_details_and_the_fetch_marks_as_they_we
             m.fetch_error = Some("No metadata sources returned data".into());
         }),
     );
+    // Never fetched: left to the idle fill.
     let ghost = item("ghost", "Ghost Game", None);
     let lack = s.svc.family_lack(CoverFamily::Square, Some(vec![portal(), plain(), ghost.clone()])).unwrap();
-    assert_eq!(lack.games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["steam_620"], "what the download will do");
+    assert_eq!(lack.games.iter().map(|g| g.app_name.as_str()).collect::<Vec<_>>(), ["steam_620", "plain"], "what the download will do");
 
     let done = s.svc.run_bulk_metadata(&BulkArgs::download_covers(vec![portal(), plain(), ghost], CoverFamily::Square), &|_| {});
     let outcomes: Vec<&GameOutcome> = done.results.iter().map(|r| &r.outcome).collect();
-    let skipped = GameOutcome::Skipped(SkipReason::NoDetails);
-    assert_eq!(outcomes, [&GameOutcome::Updated, &skipped, &skipped]);
+    assert_eq!(outcomes, [&GameOutcome::Updated, &GameOutcome::Updated, &GameOutcome::Skipped(SkipReason::NoDetails)]);
     let md = get(&s.svc, "steam_620");
     assert!(md.cover_square_url.is_some());
     assert_eq!((md.fetched_at.as_deref(), md.fetch_error.as_deref()), (Some("2020-01-01T00:00:00.000Z"), Some("x")));
     let plain_md = get(&s.svc, "plain");
-    assert!(plain_md.cover_square_url.is_none() && plain_md.fetch_error.is_some());
+    assert!(plain_md.cover_square_url.is_some());
+    assert_eq!(
+        (plain_md.fetched_at.as_deref(), plain_md.fetch_error.as_deref()),
+        (Some("2020-01-01T00:00:00.000Z"), Some("No metadata sources returned data")),
+        "still found in no source: the idle fill asks it again in a week"
+    );
     assert!(s.svc.get_game_metadata("sideload", "ghost").unwrap().is_none(), "no record is made for it");
 }
 
@@ -447,4 +477,47 @@ fn a_family_download_is_queued_once_while_one_runs_or_waits() {
         std::thread::yield_now();
     }
     assert!(!s.svc.bulk_progress().is_running(), "the jobs ended");
+}
+
+/// A pictures source installed as an extension that takes itself out of
+/// the service while it is asked, as a removal in the middle of a job does.
+struct Leaving {
+    d: sources::SourceDescriptor,
+    svc: OnceLock<Arc<MetadataService>>,
+}
+
+impl sources::MetadataSource for Leaving {
+    fn descriptor(&self) -> &sources::SourceDescriptor {
+        &self.d
+    }
+
+    fn lookup(&self, _ctx: &sources::SourceContext<'_>, game: &sources::SourceGame) -> Lookup<MetadataCandidate> {
+        assert!(self.svc.get().unwrap().remove_source(&self.d.id));
+        let mut md = heronite_metadata::util::blank_metadata(&game.app_name, &game.runner);
+        md.cover_url = Some("https://fanart.example/cover.png".into());
+        let mut c = MetadataCandidate::new(&self.d.id, md, Some(MatchedBy::ExactTitle));
+        c.match_name = Some(game.title.clone());
+        Lookup::Found(c)
+    }
+}
+
+#[test]
+fn a_pictures_source_removed_while_it_is_asked_still_counts_as_one() {
+    let s = setup(&[]);
+    let mut d = sources::builtin_descriptors().iter().find(|d| d.id == "steamgriddb").unwrap().clone();
+    d.id = "fanart".into();
+    d.needs = sources::Needs::Nothing;
+    d.options.clear();
+    d.provides = vec!["cover".into()];
+    d.network = false;
+    d.extension = Some(sources::ExtensionInfo { version: "1.0.0".into(), author: "a".into(), homepage: None, adult: false });
+    let leaving = Arc::new(Leaving { d, svc: OnceLock::new() });
+    leaving.svc.set(s.svc.clone()).ok().unwrap();
+    s.svc.add_source(leaving).unwrap();
+    let saved = s.svc.apply_game_metadata(&args(&item("elsewhere", "Plain Game", None))).unwrap();
+    assert!(s.svc.sources().get("fanart").is_none(), "it left during the fetch");
+    // Decided with the registry it was asked from: a pictures source alone
+    // does not find a game.
+    assert_eq!(saved.fetch_error.as_deref(), Some("No metadata sources returned data"));
+    assert_eq!(saved.cover_url.as_deref(), Some("https://fanart.example/cover.png"), "a sure picture is kept with the mark");
 }

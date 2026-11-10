@@ -35,6 +35,15 @@ pub(super) fn missing_details<'a>(
     })
 }
 
+/// Whether a game whose record is `md` waits for the idle fill to fetch its
+/// details: it has none and was never found in no source. A job asking for
+/// pictures only leaves it (a record holding only a picture would keep the
+/// idle fill away); one marked as found in no source keeps its mark, so its
+/// pictures can be asked.
+pub(super) fn waits_for_details(md: Option<&CollectionGameMetadata>) -> bool {
+    !METADATA_FIELDS.iter().any(|f| has_field_value(md, f)) && md.is_none_or(|m| m.fetch_error.is_none())
+}
+
 /// The Steam app id a game's tags are asked with: the game's, else its
 /// record's (digits only).
 pub(super) fn tag_steam_id(game: &BulkItem, md: Option<&CollectionGameMetadata>) -> Option<String> {

@@ -51,7 +51,10 @@ impl FakeDownload {
             "preparing" => (missing, SourceDownloadUi { progress: Some(snapshot(Phase::Preparing, 580_584_091)), error: None }),
             "ready" => {
                 let refreshed = SystemTime::now() - Duration::from_secs(2 * 86_400);
-                (Some(DownloadState { ready: true, refreshed_at: Some(refreshed), size_on_disk: 79_822_848 }), SourceDownloadUi::default())
+                (
+                    Some(DownloadState { ready: true, refreshed_at: Some(refreshed), size_on_disk: 79_822_848, retry_at: None }),
+                    SourceDownloadUi::default(),
+                )
             }
             "failed" => (missing, SourceDownloadUi { progress: None, error: Some("Could not reach gamesdb.launchbox-app.com".into()) }),
             _ => (missing, SourceDownloadUi::default()),

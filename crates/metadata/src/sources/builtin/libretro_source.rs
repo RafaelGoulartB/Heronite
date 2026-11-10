@@ -11,6 +11,8 @@ use crate::util::blank_metadata;
 /// to ([`libretro::family_of`]), when that family is one asked.
 pub(super) struct LibretroSource {
     pub(super) d: &'static SourceDescriptor,
+    /// Kept while extensions come and go: the registry keeps this source.
+    pub(super) client: libretro::Libretro,
 }
 
 impl MetadataSource for LibretroSource {
@@ -21,7 +23,7 @@ impl MetadataSource for LibretroSource {
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
         let asked = |field: &String| game.fields.as_ref().is_none_or(|list| list.contains(field));
         let wanted: Vec<CoverFamily> = self.d.provides.iter().filter(|f| asked(f)).filter_map(|f| CoverFamily::from_field(f)).collect();
-        libretro::find(ctx.http, game, heronite_i18n::current(), &wanted).map(|found| {
+        self.client.find(ctx.http, game, heronite_i18n::current(), &wanted).map(|found| {
             // No title: the record keeps the one the details sources give.
             let mut md = blank_metadata(&game.app_name, &game.runner);
             *ArtKind::cover(found.family).of_record_mut(&mut md) = Some(found.url);

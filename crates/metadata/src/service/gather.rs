@@ -22,6 +22,7 @@ use heronite_data::models::{CollectionGameMetadata, LocalMetaFile, MetadataSetti
 use heronite_data::steam_tags::SteamTagsFile;
 use indexmap::IndexMap;
 
+use super::fetch::{asks_details, is_picture_source};
 use super::MetadataService;
 use crate::record;
 use crate::sources::{is_on, GameKind, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry};
@@ -37,6 +38,46 @@ pub(super) struct Gathered {
     /// Every source with a lookup, in registry order (hidden ones only when
     /// they found the game).
     pub(super) states: Vec<SourceState>,
+    /// The registry the sources were asked from: what is decided about
+    /// their answers reads their kinds there, whatever was installed or
+    /// removed meanwhile.
+    pub(super) sources: Arc<SourceRegistry>,
+    /// The online sources asked that did not answer (offline, or throttled).
+    pub(super) unreachable: Vec<String>,
+}
+
+impl Gathered {
+    /// Whether a source that could have answered a fetch of `fields` did
+    /// not answer ([`missed`]).
+    pub(super) fn missed(&self, fields: Option<&[String]>) -> bool {
+        missed(&self.sources, &self.unreachable, fields)
+    }
+}
+
+/// What a preview passes on of its gather to the fetch that saves it.
+pub(super) struct Asked {
+    /// Some source was asked.
+    pub(super) any: bool,
+    pub(super) sources: Arc<SourceRegistry>,
+    pub(super) unreachable: Vec<String>,
+    /// The decision uses some candidate.
+    pub(super) used: bool,
+}
+
+impl Asked {
+    /// See [`missed`].
+    pub(super) fn missed(&self, fields: Option<&[String]>) -> bool {
+        missed(&self.sources, &self.unreachable, fields)
+    }
+}
+
+/// Whether one of `unreachable` could have answered a fetch of `fields`: a
+/// details source for a fetch of the details ([`asks_details`]), any source
+/// for one of pictures only. A pictures source that did not answer does not
+/// keep a game from being marked as found in no source.
+fn missed(sources: &SourceRegistry, unreachable: &[String], fields: Option<&[String]>) -> bool {
+    let details = asks_details(fields);
+    unreachable.iter().any(|id| !details || !is_picture_source(sources, id))
 }
 
 /// `store_cache/steam_tags.json` as last read, with its modification time.
@@ -130,8 +171,8 @@ impl MetadataService {
     /// source from the match the record has.
     pub(super) fn gather(&self, game: &MetadataApplyArgs) -> Gathered {
         // One registry for the whole gather, whatever is installed meanwhile.
-        let sources = self.sources();
-        let sources = sources.as_ref();
+        let registry = self.sources();
+        let sources = registry.as_ref();
         let current = get_game_metadata(&self.paths, as_runner(&game.runner), &game.app_name).ok().flatten();
         let pins = pins(game, current.as_ref());
         let unpinned = |source: &str| game.pins.as_ref().is_some_and(|p| p.get(source).is_some_and(Option::is_none));
@@ -266,6 +307,8 @@ impl MetadataService {
         let mut asked = lookups_done.iter().filter(|(s, _, l)| s.network && !matches!(l, Lookup::Skipped)).peekable();
         let offline = asked.peek().is_some() && asked.all(|(_, _, l)| matches!(l, Lookup::Unreachable));
         let any_asked = lookups_done.iter().any(|(_, _, l)| !matches!(l, Lookup::Skipped));
+        let unreachable =
+            lookups_done.iter().filter(|(d, _, l)| d.network && matches!(l, Lookup::Unreachable)).map(|(d, _, _)| d.id.clone()).collect();
         let mut candidates = Vec::new();
         let mut states = Vec::new();
         for (d, why, lookup) in lookups_done {
@@ -291,7 +334,7 @@ impl MetadataService {
                 states.push(SourceState { source: d.id.clone(), answer });
             }
         }
-        Gathered { candidates, offline, asked: any_asked, states }
+        Gathered { candidates, offline, asked: any_asked, states, sources: registry.clone(), unreachable }
     }
 
     /// Runs the lookups of `which` (source index, the game of it to look
@@ -354,5 +397,23 @@ impl MetadataService {
             None => args.only_fields.as_ref().is_none_or(|f| f.iter().any(|field| d.provides(field))),
         };
         args.only_sources.as_ref().is_none_or(|s| s.contains(&d.id)) && fields
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_source_that_did_not_answer_holds_the_mark_only_when_it_could_have_found_the_game() {
+        let sources = SourceRegistry::for_tests();
+        let ids = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let pictures = ["coverSquare".to_string()];
+        // A fetch of the details: a details source, not a pictures one.
+        assert!(missed(&sources, &ids(&["vndb"]), None));
+        assert!(!missed(&sources, &ids(&["steamgriddb", "libretro"]), None));
+        assert!(!missed(&sources, &[], None));
+        // A fetch of pictures only: any source.
+        assert!(missed(&sources, &ids(&["steamgriddb"]), Some(&pictures)));
     }
 }

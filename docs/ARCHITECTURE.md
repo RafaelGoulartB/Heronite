@@ -566,7 +566,8 @@ text size) and applies it.
   title (any script, aliases) with every field, a pinned entry is read by
   its id (`v17`, or a vndb.org address typed in a search); its client keeps
   under VNDB's 200 requests per 5 minutes and waits out a 429, a few
-  seconds at most (longer, VNDB counts as unreachable); its tags
+  seconds at most (longer, VNDB counts as unreachable, and a game
+  only it could have found is not marked as found in no source); its tags
   (content, no spoilers, rated 2+, 12 at most) are themes, its genre is
   "Visual Novel", its 10..100 rating the score, a safe landscape screenshot
   the background. `launchbox` is the LaunchBox Games Database: no API, the
@@ -581,14 +582,23 @@ text size) and applies it.
   file names, the overviews deflated 64 games a block; ~80 MB for all
   190,000 games, built in ~8 s with ~50 MB of memory, a lookup ~0.15 ms),
   built as `index.sqlite.part` and renamed over the old one only once it
-  opens with games, so a failed or cancelled refresh keeps the old one.
+  opens with games, so a failed or cancelled refresh keeps the old one; a
+  failed refresh is recorded in `state.json` and the idle maintenance waits
+  a day, two, four, then a week before the next (`DownloadState::retry_at`),
+  the archive is kept for it unless it does not read (`BadArchive`), and a
+  record whose text does not read is left out and counted. An index that
+  no longer opens is not ready (the source is not asked) and is downloaded
+  again whole at the next idle pass.
   A lookup of an emulated game stays on its platform's LaunchBox
   platforms (`platforms`): the dump's file in LaunchBox's file table,
-  then the dump name cleaned, then the title (exact and alone →
-  `ExactTitle`; a longer name or a shorter one, or two games → `FuzzyTitle`);
+  then the dump name cleaned, then the title (exact and alone on all of
+  the platform's LaunchBox platforms → `ExactTitle`; a longer name or a
+  shorter one, or two games, the Famicom Disk System's beside the NES's
+  among them → `FuzzyTitle`);
   a PC game (the "Also for PC games" option) is looked up on Windows / DOS,
   by its Steam id first; a search by hand spans every platform and shows
-  which. `map` fills the record (box art by the "Box art region" option,
+  which: the names that are the query, then those starting with it, then
+  those holding it (shortest first), digits a name and an id too. `map` fills the record (box art by the "Box art region" option,
   automatic from the interface language; the fan art background; the
   square cover; the 0..5 rating as a score from 5 votes; game modes from
   the players). `platforms` is the table of the app's platform ids (the
@@ -614,14 +624,17 @@ text size) and applies it.
   the file has no tags) with each region of the interface language, the title
   alone (RetroArch's own tries are the file's name, the playlist label and the
   title before the first ` (`). A try is one `Range: bytes=0-31` GET: 404 for a
-  missing file, 206 with the PNG's header for a picture, whose size picks the
+  missing file (404 or 410, remembered for an hour so another family's pass
+  does not ask again), 206 with the PNG's header for a picture, whose size picks the
   cover family (`family_of`: width/height under 0.85 tall, under 1.33 square,
   else wide: Genesis and NES boxes are tall, PlayStation, Game Boy Advance and
   Dreamcast square, Super Nintendo and Nintendo 64 landscape); the dump's own
   name is asked on each folder the ROM's extension may be of, the others on
   the first, and a game costs 8 requests at most (`MAX_REQUESTS`). The dump's
-  own name is `ExactTitle`, any other `FuzzyTitle`; a 429 or 5xx is
-  unreachable. It has no background (its screenshots are 240 to 512 px wide).
+  own name is `ExactTitle` (only a ROM's: a title alone is a guess), any
+  other `FuzzyTitle`; any other status is unreachable for the game (a 429's
+  `Retry-After` of 5 s at most is waited out once), and requests go 100 ms
+  apart (`Libretro`, the client the source keeps). It has no background (its screenshots are 240 to 512 px wide).
   It leads for emulated games like LaunchBox (after it in each order). A descriptor
   may say a source needs a download (`needs: download`, `download`:
   its size and refresh days); `sources/download` is the contract
@@ -670,15 +683,18 @@ text size) and applies it.
   `cover.*`); a fetch fills the kept families only, and
   `BulkArgs::download_covers` / `service/families` (`cover_family_job`, what a
   view that starts using a family queues, once while one runs or waits)
-  fill one for the games with details lacking it (a game without details is
-  left to the idle fill: a fetch of pictures only neither marks a game as
-  fetched nor as failed, and only a details source's answer counts as
-  finding a game); `family_lack` lists those games (and whether a source
+  fill one for the games with details, or found in no source, lacking it
+  (a game never fetched is left to the idle fill, `counts::waits_for_details`:
+  a fetch of pictures only neither marks a game as fetched nor as failed,
+  and only a details source's answer counts as finding a game); `family_lack` lists those games (and whether a source
   that gives the family can be asked now) whatever the automatic download
   says, for the notices and the "Download <family> covers" rows (a source
   counts only when it is for some game: a Collection without emulated games
   is not offered libretro's covers). `service` asks the sources that apply to a game in parallel,
-  marks a fetch offline when every network source asked was unreachable,
+  marks a fetch offline when every network source asked was unreachable
+  (what a fetch writes in each case, found, unsure, in no source with its
+  sure pictures, or not answered, is the rule of `service/fetch`'s docs,
+  decided with the registry the gather used),
   and `merge` combines the candidates field by field
   (`settings.metadata.fieldPriority`, whose defaults stay in
   `heronite_data::settings`; a registry test checks the two agree). Each

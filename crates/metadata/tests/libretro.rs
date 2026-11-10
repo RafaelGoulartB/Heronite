@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 
 use common::{png_of, Req, Resp, Server};
+use heronite_data::cover_family::CoverFamily;
 use heronite_data::json_store;
 use heronite_data::paths::DataPaths;
 use heronite_metadata::sources::{SourceContext, SourceGame};
@@ -56,6 +57,8 @@ struct Mock {
     files: Files,
     /// A status every picture request gets instead (0: the normal answers).
     outage: Arc<AtomicU16>,
+    /// That many picture requests are answered 429 with `Retry-After: 1` first.
+    throttled: Arc<AtomicU16>,
 }
 
 impl Mock {
@@ -69,9 +72,14 @@ impl Mock {
 fn mock(files: &[(&str, u32, u32)]) -> Mock {
     let files: Files = Arc::new(Mutex::new(files.iter().map(|(n, w, h)| (n.to_string(), (*w, *h))).collect()));
     let outage = Arc::new(AtomicU16::new(0));
-    let (f, o) = (files.clone(), outage.clone());
+    let throttled = Arc::new(AtomicU16::new(0));
+    let (f, o, t) = (files.clone(), outage.clone(), throttled.clone());
     let server = Server::start(move |req: &Req| {
         if let Some(key) = asked(req) {
+            if t.load(Ordering::SeqCst) > 0 {
+                t.fetch_sub(1, Ordering::SeqCst);
+                return Resp::status(429).with_header("Retry-After", "1");
+            }
             return match (o.load(Ordering::SeqCst), f.lock().get(&key)) {
                 (0, Some(&(w, h))) => match req.header("Range") {
                     Some("bytes=0-31") => {
@@ -99,7 +107,7 @@ fn mock(files: &[(&str, u32, u32)]) -> Mock {
             _ => Resp::status(404),
         }
     });
-    Mock { server, files, outage }
+    Mock { server, files, outage, throttled }
 }
 
 fn emulated(platform: &str, rom: Option<&str>, title: &str) -> SourceGame {
@@ -366,7 +374,8 @@ fn it_is_not_asked_for_pc_games_nor_platforms_without_a_folder() {
 fn a_server_that_cannot_answer_is_unreachable_and_a_page_is_not_a_picture() {
     let s = setup(&[("Sega - Mega Drive - Genesis/Sonic The Hedgehog (USA, Europe)", 512, 731)], &[]);
     let game = emulated("sega_genesis", Some("Sonic The Hedgehog (USA, Europe).md"), "Sonic The Hedgehog");
-    for status in [429, 500, 503] {
+    // Any status but 404 / 410 is no answer for the game, a block (403) too.
+    for status in [429, 500, 503, 400, 401, 403] {
         s.mock.outage.store(status, Ordering::SeqCst);
         let before = s.mock.requests().len();
         assert!(matches!(lookup(&s, &game), Lookup::Unreachable), "{status}");
@@ -490,4 +499,94 @@ fn a_family_download_is_offered_only_where_the_source_applies() {
     assert!(!s.svc.can_download_family(square), "no emulated game in the Collection");
     assert!(s.svc.cover_family_job(square, None).is_none());
     assert!(s.mock.requests().is_empty(), "deciding asks no source");
+}
+
+#[test]
+fn only_404_and_410_say_a_name_is_missing() {
+    let s = setup(&[], &[]);
+    let game = emulated("sega_genesis", Some("Sonic The Hedgehog (Europe) (En,Fr,De) (Rev A).md"), "Sonic The Hedgehog");
+    for status in [404, 410] {
+        s.mock.outage.store(status, Ordering::SeqCst);
+        let client = heronite_metadata::libretro::Libretro::new();
+        let before = s.mock.requests().len();
+        assert!(matches!(client.find(&s.svc.http, &game, heronite_i18n::Lang::En, &CoverFamily::ALL), Lookup::NotFound), "{status}");
+        assert_eq!(s.mock.requests().len(), before + heronite_metadata::libretro::MAX_REQUESTS, "{status}: the next names are asked");
+    }
+}
+
+#[test]
+fn a_short_retry_after_is_waited_out_once() {
+    let s = setup(&[("Sega - Mega Drive - Genesis/Sonic The Hedgehog (USA, Europe)", 512, 731)], &[]);
+    let game = emulated("sega_genesis", Some("Sonic The Hedgehog (USA, Europe).md"), "Sonic The Hedgehog");
+    s.mock.throttled.store(1, Ordering::SeqCst);
+    let started = std::time::Instant::now();
+    assert!(lookup(&s, &game).into_option().is_some_and(|c| c.matched_by == Some(MatchedBy::ExactTitle)));
+    assert!(started.elapsed() >= std::time::Duration::from_secs(1), "Retry-After: 1 was honoured");
+    assert_eq!(s.mock.requests().len(), 2, "refused once, then answered");
+    // Refused again after the wait: no answer for this game, no more names asked.
+    s.mock.throttled.store(2, Ordering::SeqCst);
+    assert!(matches!(lookup(&s, &game), Lookup::Unreachable));
+    assert_eq!(s.mock.requests().len(), 4);
+}
+
+#[test]
+fn requests_are_spaced_and_missing_names_are_not_asked_twice() {
+    let s = setup(&[], &[]);
+    let game = emulated("sega_genesis", Some("Sonic The Hedgehog (Europe) (En,Fr,De) (Rev A).md"), "Sonic The Hedgehog");
+    let started = std::time::Instant::now();
+    assert!(matches!(lookup(&s, &game), Lookup::NotFound));
+    assert_eq!(s.mock.requests().len(), heronite_metadata::libretro::MAX_REQUESTS);
+    assert!(started.elapsed() >= std::time::Duration::from_millis(700), "about 100 ms apart: {:?}", started.elapsed());
+    // A second pass (another family's download): the names are known missing.
+    let only_square = SourceGame { fields: Some(vec!["coverSquare".into()]), ..game.clone() };
+    assert!(matches!(lookup(&s, &only_square), Lookup::NotFound));
+    assert_eq!(s.mock.requests().len(), heronite_metadata::libretro::MAX_REQUESTS, "no request again");
+    // A picture is asked again each time: only missing names are remembered.
+    s.mock.files.lock().insert(format!("{GENESIS}/Sonic The Hedgehog (Europe) (En,Fr,De) (Rev A)"), (512, 731));
+    assert!(matches!(lookup(&s, &game), Lookup::NotFound), "still remembered as missing");
+}
+
+#[test]
+fn a_title_without_a_rom_is_a_guess() {
+    // The server has a picture named after the title itself.
+    let s = setup(&[("Nintendo - Super Nintendo Entertainment System/Super Metroid", 512, 357)], &["wide"]);
+    let c = lookup(&s, &emulated("nintendo_super_nes", None, "Super Metroid")).into_option().unwrap();
+    assert_eq!(c.matched_by, Some(MatchedBy::FuzzyTitle));
+    assert_eq!(s.mock.requests(), [format!("{SNES}/Super Metroid")]);
+    // The same name as a ROM's file is the dump's own: sure.
+    let c = lookup(&s, &emulated("nintendo_super_nes", Some("Super Metroid.sfc"), "Super Metroid")).into_option().unwrap();
+    assert_eq!(c.matched_by, Some(MatchedBy::ExactTitle));
+}
+
+/// An emulated game no details source has (Lutris off, no IGDB keys, no
+/// LaunchBox download): it is found in no source and its sure box art is
+/// saved with that mark, by the idle fill and by a job.
+#[test]
+fn the_box_art_of_a_game_no_details_source_has_is_saved_with_the_mark() {
+    let files = [("Sega - Mega Drive - Genesis/Sonic The Hedgehog (USA, Europe)", 512, 731)];
+    let s = setup(&files, &[]);
+    s.svc.set_source_enabled("lutris", false).unwrap();
+    let saved = s.svc.apply_game_metadata(&args("sonic", "Sonic The Hedgehog")).unwrap();
+    assert_eq!(saved.fetch_error.as_deref(), Some("No metadata sources returned data"), "tried again in a week");
+    assert_eq!(saved.field_sources["cover"], "libretro");
+    assert_eq!(saved.cover_url.as_deref(), Some(url(&s, GENESIS, "Sonic The Hedgehog (USA, Europe)").as_str()));
+    assert!(saved.description.is_none());
+    // A renamed ROM: only a guess, not saved.
+    let saved = s.svc.apply_game_metadata(&args("renamed", "Sonic The Hedgehog")).unwrap();
+    assert!(saved.fetch_error.is_some() && saved.cover_url.is_none());
+
+    let s = setup(&files, &[]);
+    s.svc.set_source_enabled("lutris", false).unwrap();
+    let item = BulkItem { app_name: "sonic".into(), runner: "sideload".into(), title: "Sonic The Hedgehog".into(), steam_app_id: None };
+    let done = s.svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![item]), &|_| {});
+    assert_eq!(done.results[0].outcome, GameOutcome::Updated);
+    let md = s.svc.get_game_metadata("sideload", "sonic").unwrap().unwrap();
+    assert_eq!((md.field_sources["cover"].as_str(), md.fetch_error.is_some()), ("libretro", true));
+
+    // libretro down, the only source asked: offline, nothing written.
+    let s = setup(&files, &[]);
+    s.svc.set_source_enabled("lutris", false).unwrap();
+    s.mock.outage.store(503, Ordering::SeqCst);
+    assert!(service::is_offline(&s.svc.apply_game_metadata(&args("sonic", "Sonic The Hedgehog")).unwrap_err()));
+    assert!(s.svc.get_game_metadata("sideload", "sonic").unwrap().is_none());
 }

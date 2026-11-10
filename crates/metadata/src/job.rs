@@ -131,7 +131,8 @@ pub enum GameOutcome {
     /// No source asked had the game. When the job asked every source for
     /// every field, the record says so (`fetchError`: "failed last time").
     NotFound,
-    /// No source could be reached; nothing was saved.
+    /// No source found the game and one that could have did not answer
+    /// (offline, or it asked to wait); nothing was saved or marked.
     Offline,
     /// The sources were not sure which game it is: nothing was saved and the
     /// game waits in the review queue.

@@ -182,9 +182,79 @@ fn several_games_of_one_name_are_a_guess() {
     let hit = |game, platform, alt| NameHit { game, platform, alt };
     assert_eq!(choose(&[hit(5, 1, false)], &[1]), Some((5, true)));
     assert_eq!(choose(&[hit(5, 1, true), hit(6, 1, false)], &[1]), Some((6, true)), "a game's own name before another's alternate one");
-    assert_eq!(choose(&[hit(5, 2, false), hit(6, 1, false)], &[1, 2]), Some((6, true)), "the main platform first");
+    assert_eq!(choose(&[hit(5, 2, false), hit(6, 1, false)], &[1, 2]), Some((6, false)), "the main platform first, but not sure");
+    assert_eq!(choose(&[hit(5, 2, true), hit(6, 1, false)], &[1, 2]), Some((6, true)), "another's alternate name leaves it sure");
     assert_eq!(choose(&[hit(7, 1, false), hit(6, 1, false)], &[1]), Some((6, false)), "two games: not sure");
     assert_eq!(choose(&[], &[1]), None);
+}
+
+/// An index of `games` (`(id, name, platform)`), each with a few votes.
+fn index_of(games: &[(i64, &str, &str)]) -> (tempfile::TempDir, DataPaths) {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = DataPaths::at(dir.path());
+    let files = LaunchBox::files(&paths);
+    std::fs::create_dir_all(files.dir()).unwrap();
+    let mut xml = String::from("<?xml version=\"1.0\"?>\n<LaunchBox>\n");
+    for (id, name, platform) in games {
+        xml.push_str(&format!(
+            "<Game><Name>{name}</Name><DatabaseID>{id}</DatabaseID><Platform>{platform}</Platform><CommunityRatingCount>{}</CommunityRatingCount></Game>\n",
+            id % 7
+        ));
+    }
+    xml.push_str("</LaunchBox>\n");
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    zip.start_file("Metadata.xml", zip::write::SimpleFileOptions::default()).unwrap();
+    zip.write_all(xml.as_bytes()).unwrap();
+    let archive = dir.path().join("Metadata.zip");
+    std::fs::write(&archive, zip.finish().unwrap().into_inner()).unwrap();
+    build(&archive, &files.index(), &DownloadProgress::new()).unwrap();
+    (dir, paths)
+}
+
+const NES: &str = "Nintendo Entertainment System";
+const FDS: &str = "Nintendo Famicom Disk System";
+
+/// The NES list holds the Famicom Disk System too: a game of the same name
+/// on both is not known for sure from its name.
+#[test]
+fn a_game_of_the_same_name_on_another_platform_of_the_list_makes_a_guess() {
+    let (_dir, paths) = index_of(&[(1, "The Legend of Zelda", NES), (2, "The Legend of Zelda", FDS), (3, "Excitebike", NES)]);
+    let lb = LaunchBox::new();
+    let nes = emulated("nintendo_nes", Some("Legend of Zelda, The (USA).nes"), "The Legend of Zelda");
+    assert_eq!(found(&lb, &paths, &nes), Some((1, MatchedBy::FuzzyTitle)));
+    let fds = emulated("nintendo_nes", Some("Legend of Zelda, The (Japan).fds"), "The Legend of Zelda");
+    assert_eq!(found(&lb, &paths, &fds), Some((1, MatchedBy::FuzzyTitle)), "a guess: it cannot lead the order");
+    assert_eq!(found(&lb, &paths, &emulated("nintendo_nes", None, "Excitebike")), Some((3, MatchedBy::ExactTitle)), "alone: sure");
+    assert!(crate::platforms::by_id("nintendo_nes").unwrap().names_in(Database::LaunchBox).contains(&FDS));
+}
+
+/// A search by hand: the names that are the query, then those that start
+/// with it, then those that hold it, however many come before on other
+/// platforms; digits search names and an id.
+#[test]
+fn a_search_ranks_exact_then_start_then_inside() {
+    let mut games: Vec<(i64, String, &str)> =
+        (0..400).map(|i| (10_000 + i, format!("Mario Party Collection Volume {i}"), "Arcade")).collect();
+    games.extend((0..400).map(|i| (20_000 + i, format!("Tribute to Mario Fans Number {i}"), "Arcade")));
+    games.push((5, "Super Mario World".into(), "Super Nintendo Entertainment System"));
+    games.push((6, "Mario".into(), "Nintendo Entertainment System"));
+    games.push((7, "1942".into(), "Arcade"));
+    games.push((1942, "Commando".into(), "Arcade"));
+    games.push((8, "19420 Remix".into(), "Arcade"));
+    let refs: Vec<(i64, &str, &str)> = games.iter().map(|(id, n, p)| (*id, n.as_str(), *p)).collect();
+    let (_dir, paths) = index_of(&refs);
+    let lb = LaunchBox::new();
+    let hits = lb.search(&paths, "mario").into_option().unwrap();
+    assert_eq!(hits.len(), SEARCH_RESULTS);
+    assert_eq!((hits[0].id, hits[1].name.starts_with("Mario Party")), (6, true), "the name itself, then names starting with it");
+    let hits = lb.search(&paths, "super mario").into_option().unwrap();
+    assert_eq!(hits[0].id, 5);
+    // Inside a name: the shortest first, past 300 longer ones.
+    let hits = lb.search(&paths, "ario world").into_option().unwrap();
+    assert_eq!(hits.first().map(|g| (g.id, g.platform.as_str())), Some((5, "Super Nintendo Entertainment System")));
+    // Digits: the game named so, the game of that id, then longer names.
+    let ids: Vec<i64> = lb.search(&paths, "1942").into_option().unwrap().iter().map(|g| g.id).collect();
+    assert_eq!(ids, [7, 1942, 8]);
 }
 
 #[test]

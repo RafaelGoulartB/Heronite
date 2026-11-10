@@ -47,6 +47,20 @@ pub struct DownloadState {
     pub refreshed_at: Option<SystemTime>,
     /// Bytes it takes on disk.
     pub size_on_disk: u64,
+    /// Set after a refresh failed, or when the copy no longer opens: the
+    /// idle maintenance tries again from then on (whatever the refresh
+    /// days say), not before. `None`: on the usual schedule.
+    pub retry_at: Option<SystemTime>,
+}
+
+impl DownloadState {
+    /// Whether the idle maintenance refreshes a copy in this state at `now`.
+    pub fn refresh_due(&self, download: &SourceDownload, now: SystemTime) -> bool {
+        match self.retry_at {
+            Some(at) => download.refresh_days > 0 && now >= at,
+            None => self.ready && download.due(self.refreshed_at, now),
+        }
+    }
 }
 
 /// The step a download is at.
@@ -154,6 +168,21 @@ mod tests {
         assert!(d.due(None, now), "never refreshed");
         assert!(!d.due(Some(now + Duration::from_secs(60)), now), "a clock that went back does not refresh");
         assert!(!SourceDownload { refresh_days: 0, ..d }.due(None, now));
+    }
+
+    #[test]
+    fn a_failed_or_broken_copy_is_tried_again_from_its_retry_time() {
+        let d = SourceDownload { size_mb: 105, refresh_days: 7 };
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(100 * 86_400);
+        let fresh = DownloadState { ready: true, refreshed_at: Some(now - Duration::from_secs(86_400)), ..Default::default() };
+        assert!(!fresh.refresh_due(&d, now));
+        let failed = DownloadState { retry_at: Some(now + Duration::from_secs(60)), ..fresh.clone() };
+        assert!(!failed.refresh_due(&d, now), "waits for its retry time");
+        assert!(failed.refresh_due(&d, now + Duration::from_secs(60)));
+        let broken = DownloadState { ready: false, retry_at: Some(SystemTime::UNIX_EPOCH), ..fresh };
+        assert!(broken.refresh_due(&d, now), "a copy that no longer opens is downloaded again");
+        assert!(!broken.refresh_due(&SourceDownload { refresh_days: 0, ..d }, now), "only by hand");
+        assert!(!DownloadState::default().refresh_due(&d, now), "never downloaded");
     }
 
     #[test]

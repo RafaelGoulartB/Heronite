@@ -8,13 +8,11 @@ use heronite_data::cover_family::{CoverFamilies, CoverFamily};
 use heronite_data::json_store;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{ArtFile, LocalMetaFile};
-use heronite_data::settings::METADATA_FIELDS;
 use heronite_data::status::STATUS_ONLY_KEY;
 
-use super::counts::missing_details;
+use super::counts::{missing_details, waits_for_details};
 use super::MetadataService;
 use crate::job::JobKind;
-use crate::merge::has_field_value;
 use crate::sources::{AppliesTo, SourceDescriptor, SourceGame, SourceStatus};
 use crate::store::{as_runner, get_all_game_metadata};
 use crate::types::{ArtKind, BulkArgs, BulkItem, MetadataApplyArgs};
@@ -95,10 +93,11 @@ impl MetadataService {
     }
 
     /// The games of `games` (`None`: every game of the Collection) with
-    /// details that have no picture of `family`, fetched or set by hand, and
-    /// whose field is not locked or emptied by hand: what a download of the
-    /// family's covers looks for, whatever `fillCoverFamilies` says (a game
-    /// without details is left to the idle fill, as the download does).
+    /// details, or found in no source, that have no picture of `family`,
+    /// fetched or set by hand, and whose field is not locked or emptied by
+    /// hand: what a download of the family's covers looks for, whatever
+    /// `fillCoverFamilies` says (a game whose details were never fetched is
+    /// left to the idle fill, as the download does: [`waits_for_details`]).
     /// Empty for the tall family. `None` when the files cannot be read.
     /// Reads the records and `art.json`, asks no source.
     pub fn family_lack(&self, family: CoverFamily, games: Option<Vec<BulkItem>>) -> Option<FamilyLack> {
@@ -121,9 +120,7 @@ impl MetadataService {
             .filter(|g| {
                 let key = metadata_key(as_runner(&g.runner), &g.app_name);
                 let md = records.get(&key);
-                !custom.contains(&key)
-                    && METADATA_FIELDS.iter().any(|f| has_field_value(md, f))
-                    && missing_details(md, &[field]).next().is_some()
+                !custom.contains(&key) && !waits_for_details(md) && missing_details(md, &[field]).next().is_some()
             })
             .collect();
         Some(FamilyLack { games, can_download })

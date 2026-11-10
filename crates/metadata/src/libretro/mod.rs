@@ -16,13 +16,22 @@
 //!
 //! Only the dump's own name is a sure match; any other name is the same
 //! title, and a fuzzy one.
+//!
+//! The source's client ([`Libretro`]) spaces its requests ([`GAP`]), waits
+//! out a short `Retry-After`, and remembers for a while ([`MISSING_FOR`])
+//! the names a system folder lacks, so the next pass over the same games
+//! (another cover family's download) does not ask for them again.
 
 pub mod names;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use heronite_data::cover_family::CoverFamily;
 use heronite_i18n::Lang;
+use parking_lot::Mutex;
 
 use crate::http::{Http, APP_UA};
 use crate::platforms::{self, Database, Platform};
@@ -34,6 +43,15 @@ pub const SOURCE: &str = "libretro";
 /// Requests one game costs at most, whatever the platform has: its own
 /// name on each system of the platform, then the shorter and guessed ones.
 pub const MAX_REQUESTS: usize = 8;
+/// The pause between two requests of the source's client.
+const GAP: Duration = Duration::from_millis(100);
+/// The longest `Retry-After` of a 429 that is waited out (once); a longer
+/// one, or a second 429, and the server counts as unreachable for the game.
+const MAX_WAIT: Duration = Duration::from_secs(5);
+/// How long a name found missing (404, 410) is not asked again.
+const MISSING_FOR: Duration = Duration::from_secs(3600);
+/// Names remembered at most; past it the memory starts over.
+const MISSING_CAP: usize = 50_000;
 
 /// The system a file extension says, for the platforms with several
 /// folders (a `.gbc` game is on the Game Boy Color's, a `.gb` one on the
@@ -128,13 +146,15 @@ pub struct Found {
     pub matched_by: MatchedBy,
     /// The title the file is named after (article first, no tags).
     pub title: String,
-    /// Requests the lookup made.
+    /// Names the lookup tried (a name known to be missing is no request).
     pub requests: usize,
 }
 
 enum Probe {
+    /// 404 or 410: no picture of that name.
     Missing,
-    /// The server could not answer (no network, 429, 5xx).
+    /// The server could not answer for this game: no network, 5xx, a 429
+    /// past [`MAX_WAIT`], or any other 4xx (a block).
     Down,
     Hit(u32, u32),
 }
@@ -148,51 +168,129 @@ fn picture_url(http: &Http, system: &str, name: &str) -> String {
     )
 }
 
-fn probe(http: &Http, url: &str) -> Probe {
-    let sent = http.get(url).header("Range", "bytes=0-31").header("User-Agent", APP_UA).timeout_secs(15).max_bytes(4 * 1024 * 1024).send();
-    match sent {
-        Err(_) => Probe::Down,
-        Ok(r) if r.ok() => png_size(&r.body).map_or(Probe::Missing, |(w, h)| Probe::Hit(w, h)),
-        Ok(r) if r.status == 429 || r.status >= 500 => Probe::Down,
-        Ok(_) => Probe::Missing,
-    }
+/// The client: shared by every lookup of the source (the per-game dialog and
+/// a job may ask at once).
+#[derive(Default)]
+pub struct Libretro {
+    /// When the next request may go.
+    next: Mutex<Option<Instant>>,
+    /// The picture addresses answered 404 or 410, and when.
+    missing: Mutex<HashMap<String, Instant>>,
 }
 
-/// The box art of an emulated game, when it is of one of `wanted`'s
-/// families. [`Lookup::Skipped`] for a game without a platform that has a
-/// system folder; [`Lookup::NotFound`] when no name exists, the cap was
-/// reached, or the picture found is of a shape nobody asked for.
-pub fn find(http: &Http, game: &SourceGame, lang: Lang, wanted: &[CoverFamily]) -> Lookup<Found> {
-    let Some(platform) = game.platform.as_deref().and_then(platforms::by_id) else { return Lookup::Skipped };
-    let systems = systems_for(platform, game.rom_file.as_deref());
-    if systems.is_empty() || wanted.is_empty() {
-        return Lookup::Skipped;
+impl Libretro {
+    pub fn new() -> Self {
+        Self::default()
     }
-    let mut requests = 0;
-    for (i, attempt) in names::attempts(game.rom_file.as_deref(), &game.title, names::regions_for(lang)).into_iter().enumerate() {
-        // The dump's own name is asked on every system the ROM can be of (a
-        // PC Engine CD game is on another folder than a cartridge); the
-        // others, and a game without a ROM, on the first.
-        let tried = if i == 0 && game.rom_file.is_some() { &systems[..] } else { &systems[..1] };
-        for &system in tried {
-            if requests == MAX_REQUESTS {
-                return Lookup::NotFound;
-            }
-            requests += 1;
-            let url = picture_url(http, system, &attempt.name);
-            match probe(http, &url) {
-                Probe::Missing => {}
-                Probe::Down => return Lookup::Unreachable,
-                Probe::Hit(w, h) => {
-                    let family = family_of(w, h);
-                    if !wanted.contains(&family) {
-                        return Lookup::NotFound;
+
+    /// Waits for this request's turn, [`GAP`] after the one before
+    /// (outside the lock: the other lookups take their turns meanwhile).
+    fn pace(&self) {
+        let wait = {
+            let mut next = self.next.lock();
+            let now = Instant::now();
+            let at = next.map_or(now, |n| n.max(now));
+            *next = Some(at + GAP);
+            at - now
+        };
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+        }
+    }
+
+    fn known_missing(&self, url: &str) -> bool {
+        self.missing.lock().get(url).is_some_and(|at| at.elapsed() < MISSING_FOR)
+    }
+
+    fn remember_missing(&self, url: &str) {
+        let mut missing = self.missing.lock();
+        if missing.len() >= MISSING_CAP {
+            missing.clear();
+        }
+        missing.insert(url.to_owned(), Instant::now());
+    }
+
+    fn probe(&self, http: &Http, url: &str) -> Probe {
+        if self.known_missing(url) {
+            return Probe::Missing;
+        }
+        for waited in [false, true] {
+            self.pace();
+            let sent =
+                http.get(url).header("Range", "bytes=0-31").header("User-Agent", APP_UA).timeout_secs(15).max_bytes(4 * 1024 * 1024).send();
+            let r = match sent {
+                Err(_) => return Probe::Down,
+                Ok(r) => r,
+            };
+            match r.status {
+                _ if r.ok() => return png_size(&r.body).map_or(Probe::Missing, |(w, h)| Probe::Hit(w, h)),
+                404 | 410 => {
+                    self.remember_missing(url);
+                    return Probe::Missing;
+                }
+                429 if !waited => match r.retry_after.map(Duration::from_secs).filter(|w| *w <= MAX_WAIT) {
+                    Some(wait) => {
+                        log::info!("libretro-thumbnails asked to slow down; trying again in {}s", wait.as_secs());
+                        std::thread::sleep(wait);
                     }
-                    let matched_by = if attempt.exact { MatchedBy::ExactTitle } else { MatchedBy::FuzzyTitle };
-                    return Lookup::Found(Found { system, name: attempt.name, url, family, matched_by, title: attempt.title, requests });
+                    None => return Probe::Down,
+                },
+                _ => return Probe::Down,
+            }
+        }
+        Probe::Down
+    }
+
+    /// The box art of an emulated game, when it is of one of `wanted`'s
+    /// families. [`Lookup::Skipped`] for a game without a platform that has a
+    /// system folder; [`Lookup::NotFound`] when no name exists, the cap was
+    /// reached, or the picture found is of a shape nobody asked for. A name
+    /// known to be missing counts towards the cap without a request.
+    pub fn find(&self, http: &Http, game: &SourceGame, lang: Lang, wanted: &[CoverFamily]) -> Lookup<Found> {
+        let Some(platform) = game.platform.as_deref().and_then(platforms::by_id) else { return Lookup::Skipped };
+        let systems = systems_for(platform, game.rom_file.as_deref());
+        if systems.is_empty() || wanted.is_empty() {
+            return Lookup::Skipped;
+        }
+        let mut requests = 0;
+        for (i, attempt) in names::attempts(game.rom_file.as_deref(), &game.title, names::regions_for(lang)).into_iter().enumerate() {
+            // The dump's own name is asked on every system the ROM can be of (a
+            // PC Engine CD game is on another folder than a cartridge); the
+            // others, and a game without a ROM, on the first.
+            let tried = if i == 0 && game.rom_file.is_some() { &systems[..] } else { &systems[..1] };
+            for &system in tried {
+                if requests == MAX_REQUESTS {
+                    return Lookup::NotFound;
+                }
+                requests += 1;
+                let url = picture_url(http, system, &attempt.name);
+                match self.probe(http, &url) {
+                    Probe::Missing => {}
+                    Probe::Down => return Lookup::Unreachable,
+                    Probe::Hit(w, h) => {
+                        let family = family_of(w, h);
+                        if !wanted.contains(&family) {
+                            return Lookup::NotFound;
+                        }
+                        let matched_by = if attempt.exact { MatchedBy::ExactTitle } else { MatchedBy::FuzzyTitle };
+                        return Lookup::Found(Found {
+                            system,
+                            name: attempt.name,
+                            url,
+                            family,
+                            matched_by,
+                            title: attempt.title,
+                            requests,
+                        });
+                    }
                 }
             }
         }
+        Lookup::NotFound
     }
-    Lookup::NotFound
+}
+
+/// [`Libretro::find`] with a client of its own (nothing remembered).
+pub fn find(http: &Http, game: &SourceGame, lang: Lang, wanted: &[CoverFamily]) -> Lookup<Found> {
+    Libretro::new().find(http, game, lang, wanted)
 }

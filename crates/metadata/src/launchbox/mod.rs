@@ -33,7 +33,7 @@ use anyhow::Result;
 use heronite_data::paths::DataPaths;
 use parking_lot::Mutex;
 
-pub use build::{build, Built};
+pub use build::{build, BadArchive, Built};
 use fetch::{drop_archive, fetch_archive, now_secs, Archive, Files, Stored};
 use index::{Index, LbGame, NameHit};
 
@@ -50,7 +50,7 @@ pub const SOURCE: &str = "launchbox";
 pub const ARCHIVE: &str = "Metadata.zip";
 /// Games a search by hand shows at most.
 const SEARCH_RESULTS: usize = 20;
-/// Names a search looks through before ranking them.
+/// Names of each kind (exact, start, inside) a search ranks at most.
 const SEARCH_SCAN: usize = 300;
 /// The shortest key a loose match starts from: shorter ones begin too many names.
 const MIN_LOOSE_KEY: usize = 5;
@@ -82,8 +82,17 @@ impl LaunchBox {
     }
 
     /// Whether the database is downloaded, when, and how big its index is.
+    /// An index that no longer opens (damaged, or of another schema after
+    /// an update) is not ready: the source is not asked, and the idle
+    /// maintenance downloads the database again (at once, or after the
+    /// back-off of the refreshes that failed).
     pub fn state(&self, paths: &DataPaths) -> DownloadState {
-        Self::files(paths).download_state()
+        let mut state = Self::files(paths).download_state();
+        if state.ready && !matches!(self.with_index(paths, |_| Ok(())), Some(Ok(()))) {
+            state.ready = false;
+            state.retry_at = Some(state.retry_at.unwrap_or(SystemTime::UNIX_EPOCH));
+        }
+        state
     }
 
     /// Runs `f` on the index; `None` when there is none (not downloaded).
@@ -119,22 +128,36 @@ impl LaunchBox {
         answer(self.with_index(paths, |index| index.game(id)), &id.to_string())
     }
 
-    /// Games of any platform whose name is like `query`, best first; a
-    /// number is a DatabaseID.
+    /// Games of any platform whose name is like `query`, best first: those
+    /// named so, then those whose name starts so, then those whose name holds
+    /// it (each by how close the name is, then by votes). Digits are a name
+    /// too, and the game with that DatabaseID comes right after those named
+    /// so ("1942").
     pub fn search(&self, paths: &DataPaths, query: &str) -> Lookup<Vec<LbGame>> {
         let query = query.trim();
         if query.is_empty() {
             return Lookup::Found(Vec::new());
         }
-        if query.bytes().all(|b| b.is_ascii_digit()) {
-            return self.by_id(paths, query).map(|g| vec![g]);
-        }
         let found = self.with_index(paths, |index| {
-            let mut games: Vec<LbGame> =
-                index.containing(&match_key(query), SEARCH_SCAN)?.into_iter().filter_map(|id| index.game(id).ok().flatten()).collect();
-            games.sort_by_key(|g| (std::cmp::Reverse(score_title(query, &g.name)), std::cmp::Reverse(g.detail.votes), g.id));
-            games.truncate(SEARCH_RESULTS);
-            Ok(games)
+            let mut ranked: Vec<(u8, i64)> = Vec::new();
+            let mut add = |tier: u8, ids: Vec<i64>| {
+                for id in ids {
+                    if !ranked.iter().any(|(_, g)| *g == id) {
+                        ranked.push((tier, id));
+                    }
+                }
+            };
+            let key = match_key(query);
+            add(0, index.named(&key, SEARCH_SCAN)?);
+            if let Some(id) = query.parse::<i64>().ok().filter(|_| query.bytes().all(|b| b.is_ascii_digit())) {
+                add(1, index.game(id)?.map(|g| g.id).into_iter().collect());
+            }
+            add(2, index.starting(&key, SEARCH_SCAN)?);
+            add(3, index.containing(&key, SEARCH_SCAN)?);
+            let mut games: Vec<(u8, LbGame)> =
+                ranked.into_iter().filter_map(|(tier, id)| Some((tier, index.game(id).ok().flatten()?))).collect();
+            games.sort_by_key(|(tier, g)| (*tier, std::cmp::Reverse(score_title(query, &g.name)), std::cmp::Reverse(g.detail.votes), g.id));
+            Ok(games.into_iter().take(SEARCH_RESULTS).map(|(_, g)| g).collect())
         });
         match found {
             None => Lookup::Skipped,
@@ -148,14 +171,27 @@ impl LaunchBox {
 
     /// Downloads the archive (only when it changed since the index in use
     /// was built), builds a new index and swaps it in. The old index stays
-    /// until then: a failed or cancelled download changes nothing. Blocking.
+    /// until then: a failed or cancelled download changes nothing, but a
+    /// failure is recorded, and the idle maintenance waits before it tries
+    /// again ([`fetch::Stored::retry_at`]). Blocking.
     pub fn download(&self, paths: &DataPaths, http: &Http, progress: &DownloadProgress) -> Result<()> {
         let files = Self::files(paths);
-        let current = files.stored().filter(|_| files.index().exists());
+        let result = self.refresh(&files, http, progress);
+        if let Err(e) = &result {
+            if !is_cancelled(e) {
+                files.note_failure();
+            }
+        }
+        result
+    }
+
+    fn refresh(&self, files: &Files, http: &Http, progress: &DownloadProgress) -> Result<()> {
+        // An index that no longer opens is built again, whatever the archive's ETag says.
+        let current = files.stored().filter(|_| Index::open(&files.index()).is_ok());
         let url = format!("{}/{ARCHIVE}", http.endpoints.launchbox.trim_end_matches('/'));
-        let (etag, last_modified) = match fetch_archive(&files, http, &url, current.as_ref().and_then(|s| s.etag.as_deref()), progress)? {
+        let (etag, last_modified) = match fetch_archive(files, http, &url, current.as_ref().and_then(|s| s.etag.as_deref()), progress)? {
             Archive::Unchanged => {
-                let stored = Stored { refreshed_at: now_secs(), ..current.unwrap_or_default() };
+                let stored = Stored { refreshed_at: now_secs(), failures: 0, failed_at: None, ..current.unwrap_or_default() };
                 return files.store(&stored);
             }
             Archive::Whole { etag, last_modified } => (etag, last_modified),
@@ -171,10 +207,11 @@ impl LaunchBox {
             Ok(built) => built,
             Err(e) => {
                 let _ = std::fs::remove_file(&part);
-                // A cancelled build keeps the whole archive for the next try;
-                // one that does not read is downloaded again.
-                if !is_cancelled(&e) {
-                    drop_archive(&files);
+                // An archive that does not read is downloaded again; one
+                // whose index could not be written (a full disk) or that
+                // was cancelled is kept for the next try.
+                if e.is::<BadArchive>() {
+                    drop_archive(files);
                 }
                 return Err(e);
             }
@@ -184,14 +221,15 @@ impl LaunchBox {
             *open = None;
             std::fs::rename(&part, files.index())?;
         }
-        files.store(&Stored { refreshed_at: now_secs(), etag, last_modified, games: built.games })?;
-        drop_archive(&files);
+        files.store(&Stored { refreshed_at: now_secs(), etag, last_modified, games: built.games, ..Stored::default() })?;
+        drop_archive(files);
         log::info!(
-            "LaunchBox Games Database: {} games, {} names, {} files, {} pictures",
+            "LaunchBox Games Database: {} games, {} names, {} files, {} pictures, {} records skipped",
             built.games,
             built.names,
             built.files,
-            built.images
+            built.images,
+            built.skipped
         );
         Ok(())
     }
@@ -228,11 +266,14 @@ fn platform_names(game: &SourceGame) -> Vec<&'static str> {
 }
 
 /// The game among `hits`: own names before alternate names, then the
-/// platform first in `order`; and whether it is the only game at that rank.
+/// platform first in `order`; and whether it is the only game of that kind
+/// of name on all of `order`'s platforms (a game of the same name on the
+/// platform's other LaunchBox platform, as the Famicom Disk System's is on
+/// the NES list, makes it a guess).
 fn choose(hits: &[NameHit], order: &[i64]) -> Option<(i64, bool)> {
     let rank = |h: &NameHit| (h.alt, order.iter().position(|p| *p == h.platform).unwrap_or(order.len()));
     let best = hits.iter().min_by_key(|h| (rank(h), h.game))?;
-    let alone = !hits.iter().any(|h| h.game != best.game && rank(h) == rank(best));
+    let alone = !hits.iter().any(|h| h.game != best.game && h.alt == best.alt);
     Some((best.game, alone))
 }
 

@@ -3,10 +3,14 @@
 //!
 //! - `index.sqlite`: the index in use; `state.json`: when it was
 //!   downloaded, the archive's ETag (a refresh asks for the archive only if
-//!   it changed) and how many games it has.
+//!   it changed), how many games it has, and the refreshes that failed
+//!   since the last one that worked.
 //! - `Metadata.zip.part` (+ `.json`, its ETag): the archive while it comes.
-//!   An interrupted download resumes from where it stopped; it is removed
-//!   once the index is built, or when it turns out not to be a zip.
+//!   An interrupted download resumes from where it stopped; a whole one
+//!   whose index could not be built is kept for the next try (asked for
+//!   again only from its end: the server answers 416 while it is current).
+//!   It is removed once the index is built, or when it turns out not to be
+//!   one that reads ([`super::build::BadArchive`]).
 //! - `index.sqlite.part`: an index being built, renamed over `index.sqlite`
 //!   only once it is complete and opens. A failed or cancelled refresh
 //!   leaves the old index as it was.
@@ -62,11 +66,24 @@ impl Files {
         Ok(heronite_data::temps::write_atomic(&self.state(), &serde_json::to_vec_pretty(stored)?, None)?)
     }
 
-    /// Where the download stands: ready once an index is in place.
+    /// Where the download stands: ready once an index is in place (whether
+    /// it opens is the caller's to check).
     pub fn download_state(&self) -> DownloadState {
         let Ok(meta) = std::fs::metadata(self.index()) else { return DownloadState::default() };
-        let refreshed_at = self.stored().map(|s| UNIX_EPOCH + Duration::from_secs(s.refreshed_at)).or_else(|| meta.modified().ok());
-        DownloadState { ready: true, refreshed_at, size_on_disk: meta.len() }
+        let stored = self.stored();
+        let refreshed_at = stored.as_ref().map(|s| UNIX_EPOCH + Duration::from_secs(s.refreshed_at)).or_else(|| meta.modified().ok());
+        DownloadState { ready: true, refreshed_at, size_on_disk: meta.len(), retry_at: stored.and_then(|s| s.retry_at()) }
+    }
+
+    /// Records a refresh that failed: the next automatic one waits
+    /// ([`Stored::retry_at`]).
+    pub fn note_failure(&self) {
+        let mut stored = self.stored().unwrap_or_default();
+        stored.failures += 1;
+        stored.failed_at = Some(now_secs());
+        if let Err(e) = std::fs::create_dir_all(self.dir()).map_err(anyhow::Error::from).and_then(|()| self.store(&stored)) {
+            log::warn!("LaunchBox: cannot record the failed refresh: {e:#}");
+        }
     }
 
     /// Everything but the folder.
@@ -94,6 +111,27 @@ pub(super) struct Stored {
     pub last_modified: Option<String>,
     #[serde(default)]
     pub games: u64,
+    /// Refreshes that failed in a row since the last one that worked.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub failures: u32,
+    /// When the last of them failed, in seconds since 1970.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failed_at: Option<u64>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl Stored {
+    /// When the idle maintenance may try again after [`Self::failures`]
+    /// failed refreshes: a day after the first, then two, four, and a week
+    /// after each from the fourth on. `None` without failures.
+    pub fn retry_at(&self) -> Option<SystemTime> {
+        let at = self.failed_at.filter(|_| self.failures > 0)?;
+        let days = (1u64 << (self.failures - 1).min(3)).min(7);
+        Some(UNIX_EPOCH + Duration::from_secs(at + days * 86_400))
+    }
 }
 
 pub(super) fn now_secs() -> u64 {

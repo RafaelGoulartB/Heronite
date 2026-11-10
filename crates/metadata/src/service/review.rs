@@ -8,6 +8,7 @@ use heronite_data::library::metadata_key;
 use heronite_data::models::CollectionGameMetadata;
 use indexmap::IndexMap;
 
+use super::fetch::{decide_in, review_candidates};
 use super::{MetadataService, Offline};
 use crate::record;
 use crate::review::{self, group_hits, MatchChoice, MatchPick, ReviewEntry, ReviewItem, ReviewReason};
@@ -118,8 +119,8 @@ impl MetadataService {
             return Err(Offline.into());
         }
         let current = get_game_metadata(&self.paths, runner, &game.app_name)?;
-        let reason = self.decide(&gathered.candidates, current.as_ref()).review.unwrap_or(ReviewReason::Requested);
-        Ok(ReviewEntry::new(&game.app_name, runner, &game.title, reason, &self.review_candidates(&gathered.candidates)))
+        let reason = decide_in(&gathered.sources, &gathered.candidates, current.as_ref()).review.unwrap_or(ReviewReason::Requested);
+        Ok(ReviewEntry::new(&game.app_name, runner, &game.title, reason, &review_candidates(&gathered.sources, &gathered.candidates)))
     }
 
     /// Searches every source that can search, is on, is healthy and has its

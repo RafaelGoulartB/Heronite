@@ -379,7 +379,7 @@
   "Nothing was missing": "Es fehlte nichts",
   "The sources had nothing new": "Die Quellen hatten nichts Neues",
   "No source found this game": "Keine Quelle hat dieses Spiel gefunden",
-  "Could not reach the sources": "Die Quellen waren nicht erreichbar",
+  "A source did not answer: try again later": "Eine Quelle hat nicht geantwortet: später erneut versuchen",
   "Could not be saved": "Konnte nicht gespeichert werden",
   "Already had details": "Hatte schon Details",
   "No source is for this game": "Keine Quelle gilt für dieses Spiel",

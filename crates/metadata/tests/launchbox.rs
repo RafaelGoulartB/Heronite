@@ -59,7 +59,9 @@ fn mock(published: Arc<Mutex<Published>>) -> Server {
                 req.header("Range").and_then(|r| r.strip_prefix("bytes=")).and_then(|r| r.trim_end_matches('-').parse::<usize>().ok());
             let same = req.header("If-Range").is_none_or(|e| e == p.etag);
             match range {
-                Some(from) if same && from < p.body.len() => {
+                // Asked from its end: the part is whole.
+                Some(from) if same && from >= p.body.len() => Resp::status(416),
+                Some(from) if same => {
                     let mut r = Resp::image(p.body[from..].to_vec()).with_header("ETag", &p.etag);
                     r.status = 206;
                     r
@@ -338,4 +340,92 @@ fn a_cancelled_download_changes_nothing() {
         }
     }
     assert!(svc.source_download_progress("launchbox").is_none());
+}
+
+fn stored_state(paths: &DataPaths) -> Value {
+    serde_json::from_slice(&fs::read(index_dir(paths).join("state.json")).unwrap()).unwrap()
+}
+
+/// Moves the last failed refresh `days` back.
+fn set_failed(paths: &DataPaths, days_ago: u64) {
+    let path = index_dir(paths).join("state.json");
+    let mut v = stored_state(paths);
+    v["failedAt"] = json!(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - days_ago * 86_400);
+    fs::write(path, serde_json::to_vec(&v).unwrap()).unwrap();
+}
+
+/// A refresh that fails is recorded: the idle maintenance waits a day, then
+/// two, four, a week, instead of downloading 105 MB at every idle pass;
+/// the old index answers meanwhile.
+#[test]
+fn a_failed_refresh_waits_before_the_next_try() {
+    let s = setup();
+    s.svc.download_source("launchbox").unwrap();
+    set_refreshed(&s.paths, 8);
+    *s.published.lock() = Published { body: b"<html>busy</html>".to_vec(), etag: "\"v2\"".into() };
+    assert_eq!(s.svc.refresh_due_source_downloads(), 0);
+    assert_eq!(archive_requests(&s.server), 2);
+    assert_eq!(stored_state(&s.paths)["failures"], 1);
+    let db = s.svc.source_download_state("launchbox").unwrap();
+    let day = Duration::from_secs(86_400);
+    assert!(db.ready && db.retry_at.is_some_and(|at| at > SystemTime::now() + day - Duration::from_secs(60)), "{db:?}");
+    for _ in 0..3 {
+        assert_eq!(s.svc.refresh_due_source_downloads(), 0);
+    }
+    assert_eq!(archive_requests(&s.server), 2, "not asked again at the next idle passes");
+    let preview = s.svc.preview_game_metadata(&args("sm", "Super Metroid")).unwrap();
+    assert!(matches!(state(&preview), SourceAnswer::Found { .. }), "the old index answers");
+
+    // A day later: tried again, failed again, then two days.
+    set_failed(&s.paths, 1);
+    s.svc.refresh_due_source_downloads();
+    assert_eq!((archive_requests(&s.server), stored_state(&s.paths)["failures"].as_u64()), (3, Some(2)));
+    set_failed(&s.paths, 1);
+    s.svc.refresh_due_source_downloads();
+    assert_eq!(archive_requests(&s.server), 3, "the second wait is two days");
+    // Mended: the next try works and the failures are forgotten.
+    *s.published.lock() = Published { body: archive(), etag: "\"v3\"".into() };
+    set_failed(&s.paths, 2);
+    assert_eq!(s.svc.refresh_due_source_downloads(), 1);
+    let v = stored_state(&s.paths);
+    assert!(v.get("failures").is_none() && v.get("failedAt").is_none() && v["etag"] == "\"v3\"");
+    assert_eq!(s.svc.source_download_state("launchbox").unwrap().retry_at, None);
+}
+
+/// An index that cannot be written (here its file's place is taken; a full
+/// disk alike) keeps the whole archive: the next try builds from it after
+/// one small request, without downloading it again.
+#[test]
+fn an_index_that_cannot_be_written_keeps_the_archive() {
+    let s = setup();
+    let dir = index_dir(&s.paths);
+    fs::create_dir_all(dir.join("index.sqlite.part").join("x")).unwrap();
+    assert!(s.svc.download_source("launchbox").is_err());
+    assert!(dir.join("Metadata.zip.part").exists(), "the archive read: kept");
+    fs::remove_dir_all(dir.join("index.sqlite.part")).unwrap();
+    s.svc.download_source("launchbox").unwrap();
+    assert!(s.svc.source_download_state("launchbox").unwrap().ready);
+    let last = s.server.log.lock().iter().rev().find(|r| r.path() == ARCHIVE).cloned().unwrap();
+    assert_eq!(last.header("Range"), Some(format!("bytes={}-", archive().len()).as_str()), "asked from its end only");
+    assert!(!dir.join("Metadata.zip.part").exists(), "dropped once used");
+}
+
+/// An index that no longer opens (damaged, or of another schema after an
+/// update) is not ready, is not asked, and is downloaded again whole at the
+/// next idle pass, whatever the archive's ETag.
+#[test]
+fn an_index_that_no_longer_opens_is_built_again() {
+    let s = setup();
+    s.svc.download_source("launchbox").unwrap();
+    fs::write(index_dir(&s.paths).join("index.sqlite"), b"not an index").unwrap();
+    let db = s.svc.source_download_state("launchbox").unwrap();
+    assert!(!db.ready, "{db:?}");
+    let preview = s.svc.preview_game_metadata(&args("sm", "Super Metroid")).unwrap();
+    assert_eq!(state(&preview), SourceAnswer::NotAsked { why: NotAsked::NeedsDownload });
+    assert_eq!(s.svc.refresh_due_source_downloads(), 1, "due at once");
+    let last = s.server.log.lock().iter().rev().find(|r| r.path() == ARCHIVE).cloned().unwrap();
+    assert_eq!(last.header("If-None-Match"), None, "the same archive is asked for whole");
+    assert!(s.svc.source_download_state("launchbox").unwrap().ready);
+    let preview = s.svc.preview_game_metadata(&args("sm", "Super Metroid")).unwrap();
+    assert!(matches!(state(&preview), SourceAnswer::Found { .. }));
 }

@@ -88,7 +88,7 @@ pub(crate) fn reason(o: &GameOutcome) -> &'static str {
         GameOutcome::NoChange(NoChangeReason::Locked) => tr!("Its fields are locked"),
         GameOutcome::ToReview(r) => review_short(*r),
         GameOutcome::NotFound => tr!("No source found this game"),
-        GameOutcome::Offline => tr!("Could not reach the sources"),
+        GameOutcome::Offline => tr!("A source did not answer: try again later"),
         GameOutcome::Failed(_) => tr!("Could not be saved"),
         GameOutcome::Skipped(SkipReason::AlreadyFetched) => tr!("Already had details"),
         GameOutcome::Skipped(SkipReason::NoSource) => tr!("No source is for this game"),

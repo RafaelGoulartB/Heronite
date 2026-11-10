@@ -165,14 +165,15 @@ pub struct Attempt {
     /// The game's title as people write it (article first, no tags).
     pub title: String,
     /// The dump's own name: a hit is that game on its platform. Only the
-    /// first attempt.
+    /// first attempt, and only when it is a file's name.
     pub exact: bool,
 }
 
 /// The names to ask for, best first, for a game whose ROM is `file` (its
 /// title when it has none):
 ///
-/// 1. the file's own name, without its extension;
+/// 1. the file's own name, without its extension (the only sure one;
+///    without a file, the title as it is, a guess);
 /// 2. without the revision and other tags after the region and the
 ///    languages (`Super Metroid (Europe) (En,Fr,De) (Rev 1)` →
 ///    `Super Metroid (Europe) (En,Fr,De)`);
@@ -185,7 +186,8 @@ pub struct Attempt {
 /// tags); a file without any (`sonic.md`) says nothing of the game, so it
 /// is the game's `title`. Names that repeat an earlier one are left out.
 pub fn attempts(file: Option<&str>, title: &str, regions: &[&str]) -> Vec<Attempt> {
-    let stem = strip_extension(file.map(str::trim).filter(|f| !f.is_empty()).unwrap_or(title.trim()));
+    let file = file.map(str::trim).filter(|f| !f.is_empty());
+    let stem = strip_extension(file.unwrap_or(title.trim()));
     let parts = split(stem);
     let mut out: Vec<Attempt> = Vec::new();
     let mut add = |name: String, exact: bool| {
@@ -195,7 +197,8 @@ pub fn attempts(file: Option<&str>, title: &str, regions: &[&str]) -> Vec<Attemp
             out.push(Attempt { name, title, exact });
         }
     };
-    add(stem.to_owned(), true);
+    // Only a real file's name is the dump's own: a title is a guess.
+    add(stem.to_owned(), file.is_some());
     let kept = parts.groups.iter().take_while(|g| is_region_group(g) || is_language_group(g)).count();
     if kept > 0 {
         add(tagged(parts.title, &parts.groups[..kept]), false);

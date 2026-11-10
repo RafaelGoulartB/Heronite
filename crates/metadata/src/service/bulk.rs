@@ -18,7 +18,7 @@ use heronite_data::library::metadata_key;
 use heronite_data::models::LocalMetaFile;
 use heronite_data::status::STATUS_ONLY_KEY;
 
-use super::fetch::NoSourceAsked;
+use super::fetch::{NoSourceAsked, SourceUnreachable};
 use super::job_run::result_of;
 use super::undo::UndoLog;
 use super::{is_offline, is_sent_to_review, tag_fill, MetadataService};
@@ -257,8 +257,8 @@ impl MetadataService {
     /// source (under their title), are left alone, as are those no source
     /// that is on is for; a game the sources are not sure about goes to
     /// review. Stops at the first game when offline
-    /// (nothing is saved, so the next call tries again). Call it when the
-    /// app is idle.
+    /// (nothing is saved, so the next call tries again); a game some source
+    /// could not answer for is left as it was. Call it when the app is idle.
     pub fn refresh_missing_collection_metadata(&self) -> Result<usize> {
         self.refresh_missing_while(&|| false)
     }
@@ -349,6 +349,8 @@ impl MetadataService {
                     break;
                 }
                 Err(e) if is_sent_to_review(&e).is_some() => continue,
+                // Left as it was: asked again at the next pass.
+                Err(e) if e.is::<SourceUnreachable>() => continue,
                 Err(e) => return Err(e),
             };
             if saved.fetch_error.is_none() {

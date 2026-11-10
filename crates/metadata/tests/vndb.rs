@@ -356,6 +356,34 @@ fn a_429_is_waited_out_and_one_that_lasts_saves_nothing() {
     assert_eq!(vndb_asked(&s.server, "CLANNAD"), 3, "the request and two tries after waiting");
 }
 
+/// VNDB throttled while the others answer that they have no such game:
+/// nothing is marked as found in no source, the job goes on and says the
+/// source did not answer, and the next pass asks again.
+#[test]
+fn a_throttled_vndb_marks_nothing_as_found_in_no_source() {
+    let s = setup();
+    s.throttle.store(usize::MAX / 2, Ordering::SeqCst);
+    let err = s.svc.apply_game_metadata(&args("clannad")).unwrap_err();
+    assert!(!heronite_metadata::service::is_offline(&err), "Lutris answered: {err:#}");
+    assert!(s.svc.get_game_metadata("sideload", "clannad").unwrap().is_none(), "not marked as found in no source");
+
+    let started = std::time::Instant::now();
+    let done = s.svc.run_bulk_metadata(&BulkArgs::fill_missing(vec![item("clannad"), item("saya"), item("portal")]), &|_| {});
+    let outcomes: Vec<&GameOutcome> = done.results.iter().map(|r| &r.outcome).collect();
+    assert_eq!(outcomes, [&GameOutcome::Offline, &GameOutcome::Offline, &GameOutcome::Updated], "Portal is Lutris's");
+    assert!(started.elapsed() < std::time::Duration::from_secs(20), "the job goes on: {:?}", started.elapsed());
+    for app in ["clannad", "saya"] {
+        assert!(s.svc.get_game_metadata("sideload", app).unwrap().is_none(), "{app}");
+    }
+    // The idle fill: left as they were, and asked again once VNDB answers.
+    s.svc.refresh_missing_collection_metadata().unwrap();
+    assert!(s.svc.get_game_metadata("sideload", "clannad").unwrap().is_none());
+    s.throttle.store(0, Ordering::SeqCst);
+    s.svc.refresh_missing_collection_metadata().unwrap();
+    let clannad = s.svc.get_game_metadata("sideload", "clannad").unwrap().unwrap();
+    assert!(clannad.fetch_error.is_none() && clannad.field_sources["description"] == "vndb");
+}
+
 #[test]
 fn offline_it_is_not_asked_after_the_others_and_a_pinned_game_stays_offline() {
     let dir = tempfile::tempdir().unwrap();

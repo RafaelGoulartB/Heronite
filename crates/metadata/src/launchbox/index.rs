@@ -270,13 +270,39 @@ impl Index {
         Ok(rows.filter_map(|r| r.ok()).filter(|(_, p)| platforms.contains(p)).map(|(g, _)| g).collect())
     }
 
-    /// Games of any platform whose name or alternate name holds `key`, at
-    /// most `limit` (a scan of the names: for a search by hand).
-    pub fn containing(&self, key: &str, limit: usize) -> Result<Vec<i64>> {
+    /// Games of any platform with a name or alternate name that is `key`,
+    /// at most `limit` (for a search by hand).
+    pub fn named(&self, key: &str, limit: usize) -> Result<Vec<i64>> {
+        // Every platform named, so the key's primary index is used.
+        self.games_where("platform IN (SELECT id FROM platforms) AND key = ?1", "game", key, limit)
+    }
+
+    /// Games of any platform with a longer name that starts with `key`,
+    /// shortest names first, at most `limit`.
+    pub fn starting(&self, key: &str, limit: usize) -> Result<Vec<i64>> {
         if key.is_empty() {
             return Ok(Vec::new());
         }
-        let mut stmt = self.conn.prepare_cached("SELECT DISTINCT game FROM names WHERE instr(key, ?) > 0 LIMIT ?")?;
+        // Past every key that starts with `key` (U+10FFFF sorts after any text).
+        let upper = format!("{key}\u{10FFFF}");
+        let sql = "SELECT game FROM names WHERE platform IN (SELECT id FROM platforms) AND key > ?1 AND key < ?3 ORDER BY length(key), game LIMIT ?2";
+        let mut stmt = self.conn.prepare_cached(sql)?;
+        let rows = stmt.query_map(params![key, limit as i64, upper], |r| r.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Games of any platform with a name that holds `key` past its start,
+    /// shortest names first, at most `limit` (a scan of every name).
+    pub fn containing(&self, key: &str, limit: usize) -> Result<Vec<i64>> {
+        self.games_where("instr(key, ?1) > 1", "length(key), game", key, limit)
+    }
+
+    fn games_where(&self, filter: &str, order: &str, key: &str, limit: usize) -> Result<Vec<i64>> {
+        if key.is_empty() {
+            return Ok(Vec::new());
+        }
+        let sql = format!("SELECT game FROM names WHERE {filter} ORDER BY {order} LIMIT ?2");
+        let mut stmt = self.conn.prepare_cached(&sql)?;
         let rows = stmt.query_map(params![key, limit as i64], |r| r.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }

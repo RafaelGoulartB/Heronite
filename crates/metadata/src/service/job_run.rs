@@ -21,10 +21,10 @@ use heronite_data::steam_tags::SteamTagsFile;
 use indexmap::IndexMap;
 
 use super::bulk::initial;
-use super::counts::{missing_details, tag_steam_id};
-use super::fetch::{asks_details, mark_not_found};
+use super::counts::{missing_details, tag_steam_id, waits_for_details};
+use super::fetch::{asks_details, decide_in, found, mark_not_found, review_candidates, SourceUnreachable};
 use super::gather::Gathered;
-use super::undo::{clear_backups, UndoLog};
+use super::undo::{clear_backups, Pictures, UndoLog};
 use super::{tag_fill, MetadataService, Offline, NO_DATA};
 use crate::job::{FieldChange, GameOutcome, GameResult, JobKind, NoChangeReason, SkipReason, UpdateMode};
 use crate::merge::{has_field_value, read_field};
@@ -327,8 +327,8 @@ impl MetadataService {
         // A game whose details were never fetched gets its pictures with
         // them, from the idle fill: a job asking only for pictures leaves it
         // (a record holding only a picture would keep the idle fill away).
-        let no_details =
-            ask.as_ref().is_some_and(|a| !asks_details(a.fields.as_deref())) && !METADATA_FIELDS.iter().any(|f| has_field_value(stored, f));
+        // One found in no source is asked: its mark stays.
+        let no_details = ask.as_ref().is_some_and(|a| !asks_details(a.fields.as_deref())) && waits_for_details(stored);
         let ask = ask.filter(|_| !in_no_source && !all_locked && !no_details);
         let details = ask.map(|ask| self.job_details(plan, &ask, game, &key, known, undo));
 
@@ -380,7 +380,8 @@ impl MetadataService {
             Ok(before) => before,
             Err(e) => return Details::failed(game, format!("{e:#}")),
         };
-        let Gathered { candidates, offline, asked, .. } = self.gather(&args);
+        let gathered = self.gather(&args);
+        let Gathered { candidates, offline, asked, sources, .. } = &gathered;
         let mut write = |md: CollectionGameMetadata, pictures, undo: &mut UndoLog| -> anyhow::Result<CollectionGameMetadata> {
             let saved = upsert_game_metadata(&self.paths, md)?;
             undo.record(key.to_owned(), before.clone(), saved.clone(), pictures);
@@ -389,26 +390,50 @@ impl MetadataService {
             }
             Ok(saved)
         };
-        if offline {
+        if *offline {
             return Details { outcome: GameOutcome::Offline, changes: Vec::new(), error: Some(format!("{}: {Offline}", game.title)) };
         }
         // Every source is off or not for this game: nothing is written.
         if !asked {
             return Details { outcome: GameOutcome::Skipped(SkipReason::NoSource), changes: Vec::new(), error: None };
         }
-        if !self.found(ask.fields.as_deref(), &candidates) {
-            if ask.full {
-                let mut failed = before.clone().unwrap_or_else(|| blank_metadata(&game.app_name, runner));
-                mark_not_found(&mut failed, &game.title);
-                if let Err(e) = write(failed, None, undo) {
-                    return Details::failed(game, format!("{e:#}"));
+        let decision = decide_in(sources, candidates, before.as_ref());
+        if !found(sources, ask.fields.as_deref(), candidates) {
+            // Not found while a source that could have it did not answer:
+            // nothing is marked, the next pass asks again.
+            if gathered.missed(ask.fields.as_deref()) {
+                let error = Some(format!("{}: {SourceUnreachable}", game.title));
+                return Details { outcome: GameOutcome::Offline, changes: Vec::new(), error };
+            }
+            // The sure pictures found beside are saved with the mark, or
+            // into a record the idle fill no longer needs to fetch (one
+            // with details, or marked already): never into a record that
+            // would stop it from fetching the details.
+            let looked_up = !waits_for_details(before.as_ref());
+            let pictures_too = !decision.used.is_empty() && (ask.full || looked_up);
+            let mut changes = Vec::new();
+            if ask.full || pictures_too {
+                let (mut md, kept) = if pictures_too {
+                    let kept = (!pictures.is_empty()).then(|| undo.pictures_before(&self.paths, runner, &game.app_name));
+                    let proposed = self.propose(sources, &args, before.as_ref(), &decision.used);
+                    (self.persist_chosen_images(proposed, plan.download, &pictures), kept)
+                } else {
+                    (before.clone().unwrap_or_else(|| blank_metadata(&game.app_name, runner)), None)
+                };
+                if ask.full {
+                    mark_not_found(&mut md, &game.title);
+                }
+                let kept = kept.map(|k| k.after(&self.paths));
+                let rewritten = rewritten_pictures(kept.as_ref(), &md);
+                match write(md, kept, undo) {
+                    Ok(saved) => changes = changed_fields(before.as_ref(), &saved, &plan.fields, &rewritten),
+                    Err(e) => return Details::failed(game, format!("{e:#}")),
                 }
             }
-            return Details { outcome: GameOutcome::NotFound, changes: Vec::new(), error: Some(format!("{}: {NO_DATA}", game.title)) };
+            return Details { outcome: GameOutcome::NotFound, changes, error: Some(format!("{}: {NO_DATA}", game.title)) };
         }
-        let decision = self.decide(&candidates, before.as_ref());
         if let Some(reason) = decision.review {
-            let entry = ReviewEntry::new(&game.app_name, runner, &game.title, reason, &self.review_candidates(&candidates));
+            let entry = ReviewEntry::new(&game.app_name, runner, &game.title, reason, &review_candidates(sources, candidates));
             return match self.queue_review(entry.clone()) {
                 Ok(was) => {
                     undo.record_review(key.to_owned(), was, Some(entry));
@@ -417,15 +442,11 @@ impl MetadataService {
                 Err(e) => Details::failed(game, format!("{e:#}")),
             };
         }
-        let proposed = self.propose(&args, before.as_ref(), &decision.used);
+        let proposed = self.propose(sources, &args, before.as_ref(), &decision.used);
         let kept = (!pictures.is_empty()).then(|| undo.pictures_before(&self.paths, runner, &game.app_name));
         let saved = self.persist_chosen_images(proposed, plan.download, &pictures);
         let pictures = kept.map(|p| p.after(&self.paths));
-        let rewritten: Vec<&'static str> = ArtKind::ALL
-            .into_iter()
-            .filter(|k| pictures.as_ref().is_some_and(|p| p.rewrote(k.of_record(&saved))))
-            .map(ArtKind::as_str)
-            .collect();
+        let rewritten = rewritten_pictures(pictures.as_ref(), &saved);
         match write(saved, pictures, undo) {
             Ok(saved) => {
                 // Saved with a sure match: it no longer waits for review.
@@ -441,6 +462,11 @@ impl MetadataService {
             Err(e) => Details::failed(game, format!("{e:#}")),
         }
     }
+}
+
+/// The pictures of `saved` the job wrote over files `pictures` kept.
+fn rewritten_pictures(pictures: Option<&Pictures>, saved: &CollectionGameMetadata) -> Vec<&'static str> {
+    ArtKind::ALL.into_iter().filter(|k| pictures.is_some_and(|p| p.rewrote(k.of_record(saved)))).map(ArtKind::as_str).collect()
 }
 
 pub(super) fn result_of(game: &BulkItem, outcome: GameOutcome, changes: Vec<FieldChange>) -> GameResult {

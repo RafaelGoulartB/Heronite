@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read, Write};
 use std::path::Path;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use flate2::write::DeflateEncoder;
 use flate2::Compression;
 use rusqlite::{params, Connection, Transaction};
@@ -25,6 +25,31 @@ pub struct Built {
     pub names: u64,
     pub files: u64,
     pub images: u64,
+    /// Records left out because their text does not read (a reference that
+    /// is not closed, an impossible character).
+    pub skipped: u64,
+}
+
+/// The archive itself does not read: not a zip, no `Metadata.xml`, its XML
+/// cut short or not well formed, no games. Only another download mends
+/// it; any other failure of a build (writing the index) keeps the archive.
+#[derive(Debug)]
+pub struct BadArchive;
+
+impl std::fmt::Display for BadArchive {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the LaunchBox archive does not read")
+    }
+}
+
+/// An error of the index being written, told apart from the archive's.
+#[derive(Debug)]
+struct Written;
+
+impl std::fmt::Display for Written {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "writing the LaunchBox index")
+    }
 }
 
 /// Counts the bytes read through it, for the progress.
@@ -205,15 +230,16 @@ impl Writer<'_> {
 /// Builds the index at `out` (replaced if there) from the archive at
 /// `archive`, reporting the bytes of XML read to `progress`
 /// ([`Phase::Preparing`]). Fails on an archive that is not a zip, lacks
-/// `Metadata.xml`, or is cut short; `out` is then incomplete and the caller
-/// drops it.
+/// `Metadata.xml`, or is cut short ([`BadArchive`]); `out` is then
+/// incomplete and the caller drops it. A record whose text does not read is
+/// left out and counted ([`Built::skipped`]).
 pub fn build(archive: &Path, out: &Path, progress: &DownloadProgress) -> Result<Built> {
     let file = std::fs::File::open(archive).with_context(|| format!("cannot open {}", archive.display()))?;
-    let mut zip = zip::ZipArchive::new(BufReader::new(file)).context("the LaunchBox archive is not a zip file")?;
+    let mut zip = zip::ZipArchive::new(BufReader::new(file)).context("the LaunchBox archive is not a zip file").context(BadArchive)?;
     let size = |zip: &mut zip::ZipArchive<_>, name: &str| zip.by_name(name).map(|f| f.size()).unwrap_or(0);
     let metadata_size = size(&mut zip, "Metadata.xml");
     if metadata_size == 0 {
-        bail!("the LaunchBox archive has no Metadata.xml");
+        return Err(anyhow!("the LaunchBox archive has no Metadata.xml").context(BadArchive));
     }
     let total = metadata_size + size(&mut zip, "Files.xml");
     progress.set_phase(Phase::Preparing);
@@ -238,18 +264,21 @@ pub fn build(archive: &Path, out: &Path, progress: &DownloadProgress) -> Result<
         };
         let stream =
             |zip: &mut zip::ZipArchive<BufReader<std::fs::File>>, name: &str, base: u64, f: &mut dyn FnMut(&Record) -> Result<()>| {
-                let entry = zip.by_name(name)?;
+                let entry = zip.by_name(name).context(BadArchive)?;
                 let counted = Counted { inner: entry, read: 0, base, total, progress };
-                each_record(BufReader::with_capacity(256 * 1024, counted), |r| f(r)).map_err(|e| {
+                each_record(BufReader::with_capacity(256 * 1024, counted), |r| f(r).context(Written)).map_err(|e| {
                     // The reader stops with an I/O error once cancelled.
                     if progress.cancelled() {
                         anyhow!(Cancelled)
+                    } else if e.is::<Written>() {
+                        e
                     } else {
-                        e.context(format!("reading {name}"))
+                        e.context(format!("reading {name}")).context(BadArchive)
                     }
                 })
             };
-        stream(&mut zip, "Metadata.xml", 0, &mut |r| match r.kind.as_str() {
+        let mut skipped = 0;
+        skipped += stream(&mut zip, "Metadata.xml", 0, &mut |r| match r.kind.as_str() {
             "Game" => w.game(r),
             "GameAlternateName" => w.alternate(r),
             "GameImage" => w.image(r),
@@ -257,11 +286,15 @@ pub fn build(archive: &Path, out: &Path, progress: &DownloadProgress) -> Result<
         })?;
         w.flush_block()?;
         if zip.by_name("Files.xml").is_ok() {
-            stream(&mut zip, "Files.xml", metadata_size, &mut |r| if r.kind == "File" { w.file(r) } else { Ok(()) })?;
+            skipped += stream(&mut zip, "Files.xml", metadata_size, &mut |r| if r.kind == "File" { w.file(r) } else { Ok(()) })?;
         }
         if w.built.games == 0 {
-            bail!("the LaunchBox archive has no games");
+            return Err(anyhow!("the LaunchBox archive has no games").context(BadArchive));
         }
+        if skipped > 0 {
+            log::warn!("LaunchBox archive: {skipped} records whose text does not read were left out");
+        }
+        w.built.skipped = skipped;
         let Writer { tx, built, .. } = w;
         tx.execute("INSERT INTO meta (key, value) VALUES ('schema', ?)", [SCHEMA_VERSION])?;
         tx.execute("INSERT INTO meta (key, value) VALUES ('games', ?)", [built.games.to_string()])?;

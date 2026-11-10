@@ -338,7 +338,7 @@ pub(super) fn registry(shared: Shared) -> SourceRegistry {
             VNDB => Entry::Lookup(Arc::new(VndbSource { d, client: shared.vndb.clone() })),
             LAUNCHBOX => Entry::Lookup(Arc::new(LaunchBoxSource { d, db: shared.launchbox.clone() })),
             STEAMGRIDDB => Entry::Lookup(Arc::new(SteamGridSource { d })),
-            LIBRETRO => Entry::Lookup(Arc::new(LibretroSource { d })),
+            LIBRETRO => Entry::Lookup(Arc::new(LibretroSource { d, client: libretro::Libretro::new() })),
             _ => Entry::DescriptorOnly(Arc::new(d.clone())),
         })
         .collect();

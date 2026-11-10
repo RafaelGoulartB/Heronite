@@ -185,9 +185,11 @@ impl MetadataService {
     }
 
     /// The idle maintenance's part: refreshes the database of every source
-    /// that is on, has one, and whose copy is older than its refresh days.
-    /// A source never downloaded is left alone (only the user starts the
-    /// first download). Returns how many were refreshed. Blocking.
+    /// that is on, has one, and whose copy is older than its refresh days,
+    /// or whose last refresh failed or copy no longer opens once its retry
+    /// time came ([`DownloadState::refresh_due`]). A source never downloaded
+    /// is left alone (only the user starts the first download). Returns how
+    /// many were refreshed. Blocking.
     pub fn refresh_due_source_downloads(&self) -> usize {
         let settings = self.metadata_settings();
         let now = SystemTime::now();
@@ -198,7 +200,7 @@ impl MetadataService {
             .filter(|d| source_prefs::is_on(&settings, &d.id))
             .filter(|d| {
                 let (Some(download), Some(state)) = (&d.download, sources.download_state(&self.paths, &d.id)) else { return false };
-                state.ready && download.due(state.refreshed_at, now)
+                state.refresh_due(download, now)
             })
             .map(|d| d.id.clone())
             .collect();
