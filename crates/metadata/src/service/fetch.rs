@@ -7,21 +7,22 @@
 use std::collections::HashSet;
 
 use anyhow::{bail, Result};
+use heronite_data::cover_family::CoverFamilies;
 use heronite_data::field_names::NameRules;
 use heronite_data::json_store;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{CollectionGameMetadata, LocalMetaFile, MetadataSettings};
-use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::settings::{ALL_FIELDS, METADATA_FIELDS};
 use heronite_i18n::tr;
 use indexmap::IndexMap;
 
 use super::{MetadataService, Offline, NO_DATA};
-use crate::confidence::{judge, Guess, Verdict};
+use crate::confidence::{judge, same_game, Guess, Verdict};
 use crate::images::materialize_metadata_image;
 use crate::merge::{clear_field, copy_field, merge_metadata, with_preferred_source, MergeArgs, MergeCandidate};
 use crate::record::{self, SourceMatch};
 use crate::review::{ReviewEntry, ReviewReason};
-use crate::sources::{is_field_on, is_on, Needs, SourceContext, SourceDescriptor, SourceGame};
+use crate::sources::{is_field_on, is_on, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind};
 use crate::store::{as_runner, current_or_blank, get_game_metadata, upsert_game_metadata};
 use crate::types::*;
 use crate::util::now_iso;
@@ -76,13 +77,22 @@ pub(super) struct Decision {
     pub(super) review: Option<ReviewReason>,
 }
 
-/// [`judge`] over `candidates`, anchored by the matches `current` has of
-/// sources that did not answer this time: the sure ones, and those of
-/// records from before matches were recorded (an IGDB id or a Lutris slug
-/// alone), named and dated as the record is.
-pub(super) fn decide(candidates: &[MetadataCandidate], current: Option<&CollectionGameMetadata>) -> Decision {
+/// [`judge`] over the candidates of details sources, anchored by the
+/// matches `current` has of sources that did not answer this time: the
+/// sure ones, and those of records from before matches were recorded (an
+/// IGDB id or a Lutris slug alone), named and dated as the record is.
+///
+/// A pictures source (`is_picture`) never sends a game to review: its
+/// candidate is used when it is sure, or the same game as a candidate used
+/// or a match the record has, and left out otherwise.
+pub(super) fn decide(
+    candidates: &[MetadataCandidate],
+    current: Option<&CollectionGameMetadata>,
+    is_picture: &dyn Fn(&str) -> bool,
+) -> Decision {
+    let (pictures, details): (Vec<&MetadataCandidate>, Vec<&MetadataCandidate>) = candidates.iter().partition(|c| is_picture(&c.source));
     let guesses: Vec<Guess<'_>> =
-        candidates.iter().map(|c| Guess { matched_by: c.matched_by, title: c.match_name.as_deref(), year: c.match_year }).collect();
+        details.iter().map(|c| Guess { matched_by: c.matched_by, title: c.match_name.as_deref(), year: c.match_year }).collect();
     let known: Vec<SourceMatch> = current
         .map(|md| {
             record::source_matches(md)
@@ -99,7 +109,20 @@ pub(super) fn decide(candidates: &[MetadataCandidate], current: Option<&Collecti
     let anchors: Vec<Guess<'_>> =
         known.iter().map(|m| Guess { matched_by: Some(MatchedBy::SourceId), title: m.title.as_deref(), year: m.year }).collect();
     match judge(&guesses, &anchors) {
-        Verdict::Save(used) => Decision { used: used.into_iter().map(|i| candidates[i].clone()).collect(), review: None },
+        Verdict::Save(used) => {
+            let used: Vec<&MetadataCandidate> = used.into_iter().map(|i| details[i]).collect();
+            let known: Vec<(&str, Option<i32>)> = used
+                .iter()
+                .filter_map(|c| Some((c.match_name.as_deref()?, c.match_year)))
+                .chain(anchors.iter().filter_map(|a| Some((a.title?, a.year))))
+                .collect();
+            let agrees = |c: &MetadataCandidate| {
+                c.matched_by.is_none_or(MatchedBy::is_sure)
+                    || c.match_name.as_deref().is_some_and(|name| known.iter().any(|(t, y)| same_game(name, c.match_year, t, *y)))
+            };
+            let pictures = pictures.into_iter().filter(|c| agrees(c));
+            Decision { used: used.into_iter().chain(pictures).cloned().collect(), review: None }
+        }
         Verdict::Review(reason) => Decision { used: Vec::new(), review: Some(reason) },
     }
 }
@@ -118,6 +141,40 @@ fn pins(args: &MetadataApplyArgs, current: Option<&CollectionGameMetadata>) -> I
 }
 
 impl MetadataService {
+    /// Whether `source` is a pictures source (SteamGridDB): see [`decide`].
+    pub(super) fn is_picture_source(&self, source: &str) -> bool {
+        self.sources.get(source).is_some_and(|d| d.kind == SourceKind::Pictures)
+    }
+
+    /// [`decide`] with this service's sources.
+    pub(super) fn decide(&self, candidates: &[MetadataCandidate], current: Option<&CollectionGameMetadata>) -> Decision {
+        decide(candidates, current, &|s| self.is_picture_source(s))
+    }
+
+    /// The candidates a review entry lists: those of details sources (a
+    /// pictures source has no match to pick).
+    pub(super) fn review_candidates(&self, candidates: &[MetadataCandidate]) -> Vec<MetadataCandidate> {
+        candidates.iter().filter(|c| !self.is_picture_source(&c.source)).cloned().collect()
+    }
+
+    /// The fields a fetch with `args` merges: its `only_fields`, else every
+    /// `METADATA_FIELDS` entry and the covers of the families this
+    /// installation keeps ([`CoverFamilies`]).
+    pub(super) fn fetch_fields(&self, args: &MetadataApplyArgs) -> Vec<String> {
+        match &args.only_fields {
+            Some(fields) => fields.clone(),
+            None => {
+                METADATA_FIELDS.iter().chain(CoverFamilies::load(&self.paths).kept_extra_fields().iter()).map(|f| f.to_string()).collect()
+            }
+        }
+    }
+
+    /// The fields of `fields` a pictures source is asked for: those it gives
+    /// and is in the order of.
+    fn picture_fields(&self, d: &SourceDescriptor, fields: &[String], settings: &MetadataSettings) -> Vec<String> {
+        fields.iter().filter(|f| d.provides(f) && self.sources.field_order(settings, f).contains(&d.id)).cloned().collect()
+    }
+
     /// `game` as the sources see it. The overlay is read only when needed:
     /// for the Steam id the arguments lack, or for a source's audience.
     pub(super) fn source_game(&self, args: &MetadataApplyArgs) -> SourceGame {
@@ -151,17 +208,30 @@ impl MetadataService {
         let game_view = self.source_game(&with_ids);
         let ctx = SourceContext::new(&self.paths, &self.http);
         let settings = ctx.settings();
+        let fields = self.fetch_fields(game);
+        // A pictures source sees the game with the fields asked of it.
+        let views: Vec<Option<SourceGame>> = self
+            .sources
+            .lookups()
+            .map(|source| {
+                let d = source.descriptor();
+                (d.kind == SourceKind::Pictures)
+                    .then(|| SourceGame { fields: Some(self.picture_fields(d, &fields, settings)), ..game_view.clone() })
+            })
+            .collect();
         let lookups: Vec<(&SourceDescriptor, Option<NotAsked>, Lookup<MetadataCandidate>)> = std::thread::scope(|scope| {
             let handles: Vec<_> = self
                 .sources
                 .lookups()
-                .map(|source| {
-                    let (ctx, game_view) = (&ctx, &game_view);
+                .zip(&views)
+                .map(|(source, view)| {
+                    let ctx = &ctx;
+                    let game_view = view.as_ref().unwrap_or(&game_view);
                     let d = source.descriptor();
                     let pin = pins.get(&d.id).filter(|_| d.searchable);
                     let why = if !is_on(settings, &d.id) {
                         Some(NotAsked::Off)
-                    } else if !Self::wanted(d, game) {
+                    } else if !Self::wanted(d, game, game_view) {
                         Some(NotAsked::NotChosen)
                     } else if pin.is_none() && !d.applies_to.matches(game_view) {
                         Some(NotAsked::NotForThisGame)
@@ -208,17 +278,23 @@ impl MetadataService {
                     why: why.unwrap_or(if d.needs == Needs::Nothing { NotAsked::NotForThisGame } else { NotAsked::NeedsKey }),
                 },
             };
-            if !d.hidden || matches!(answer, SourceAnswer::Found { .. }) {
+            // The per-game dialog lists the details sources: a pictures
+            // source has no match to show or change.
+            if d.kind == SourceKind::Details && (!d.hidden || matches!(answer, SourceAnswer::Found { .. })) {
                 states.push(SourceState { source: d.id.clone(), answer });
             }
         }
         Gathered { candidates, offline, asked: any_asked, states }
     }
 
-    /// Whether the arguments' `only_sources` and `only_fields` leave `d` to ask.
-    fn wanted(d: &SourceDescriptor, args: &MetadataApplyArgs) -> bool {
-        args.only_sources.as_ref().is_none_or(|s| s.contains(&d.id))
-            && args.only_fields.as_ref().is_none_or(|f| f.iter().any(|field| d.provides(field)))
+    /// Whether the arguments' `only_sources` and `only_fields` leave `d` to
+    /// ask; a pictures source only for the fields of its `view`.
+    fn wanted(d: &SourceDescriptor, args: &MetadataApplyArgs, view: &SourceGame) -> bool {
+        let fields = match &view.fields {
+            Some(fields) => !fields.is_empty(),
+            None => args.only_fields.as_ref().is_none_or(|f| f.iter().any(|field| d.provides(field))),
+        };
+        args.only_sources.as_ref().is_none_or(|s| s.contains(&d.id)) && fields
     }
 
     /// The candidates the merge may use: those of sources that are on, each
@@ -229,7 +305,7 @@ impl MetadataService {
             .filter(|c| is_on(settings, &c.source))
             .map(|c| {
                 let mut md = c.metadata.clone();
-                for field in METADATA_FIELDS.iter().filter(|f| !is_field_on(settings, &c.source, f)) {
+                for field in ALL_FIELDS.iter().filter(|f| !is_field_on(settings, &c.source, f)) {
                     clear_field(&mut md, field);
                 }
                 (c.source.clone(), md)
@@ -253,6 +329,13 @@ impl MetadataService {
         let priority = with_preferred_source(&self.sources.field_orders(&settings), args.source.as_deref());
         let usable = Self::usable(&settings, candidates);
         let merge_candidates: Vec<MergeCandidate<'_>> = usable.iter().map(|(source, md)| MergeCandidate { source, metadata: md }).collect();
+        // A field the user picked a source for is merged, kept family or not.
+        let mut fields = self.fetch_fields(args);
+        for picked in args.field_picks.iter().flat_map(|p| p.keys()) {
+            if ALL_FIELDS.contains(&picked.as_str()) && !fields.contains(picked) {
+                fields.push(picked.clone());
+            }
+        }
         let mut proposed = merge_metadata(MergeArgs {
             app_name: &args.app_name,
             runner: &args.runner,
@@ -262,12 +345,12 @@ impl MetadataService {
             overwrite_existing: overwrite,
             preserve_manual,
             field_picks: args.field_picks.as_ref(),
-            fields: args.only_fields.as_deref(),
+            fields: Some(&fields),
         });
         // Names the user renamed, merged or removed in the fields manager.
         NameRules::load(&self.paths).apply_metadata(&mut proposed);
         // The rules above touch every field: those not chosen stay as stored.
-        if let Some(fields) = &args.only_fields {
+        if args.only_fields.is_some() {
             for field in METADATA_FIELDS.iter().filter(|f| !fields.iter().any(|c| c == *f)) {
                 copy_field(current, &mut proposed, field);
             }
@@ -276,7 +359,7 @@ impl MetadataService {
         // (the per-game dialog saves the user's pick, then the lock).
         let named = |f: &str| args.locks.as_ref().is_some_and(|l| l.contains_key(f));
         for field in current.map(record::locked_fields).unwrap_or_default() {
-            if METADATA_FIELDS.contains(&field.as_str()) && !named(&field) {
+            if ALL_FIELDS.contains(&field.as_str()) && !named(&field) {
                 copy_field(current, &mut proposed, &field);
             }
         }
@@ -305,7 +388,7 @@ impl MetadataService {
         let mut args = args.clone();
         args.runner = runner;
         let Gathered { candidates, offline, asked, mut states } = self.gather(&args);
-        let decision = decide(&candidates, current.as_ref());
+        let decision = self.decide(&candidates, current.as_ref());
         for state in &mut states {
             if let SourceAnswer::Found { used, .. } = &mut state.answer {
                 *used = decision.used.iter().any(|c| c.source == state.source);
@@ -326,9 +409,10 @@ impl MetadataService {
         Ok((preview, asked))
     }
 
-    /// `persistImages`.
+    /// `persistImages`: every picture of the record (each cover family and
+    /// the background).
     pub(super) fn persist_images(&self, md: CollectionGameMetadata, download: bool) -> CollectionGameMetadata {
-        self.persist_chosen_images(md, download, &[ArtKind::Cover, ArtKind::Hero])
+        self.persist_chosen_images(md, download, &ArtKind::ALL)
     }
 
     /// `persistImages` of the pictures in `kinds` only.
@@ -338,27 +422,10 @@ impl MetadataService {
         download: bool,
         kinds: &[ArtKind],
     ) -> CollectionGameMetadata {
-        if kinds.contains(&ArtKind::Cover) {
-            md.cover_url = materialize_metadata_image(
-                &self.paths,
-                &self.http,
-                &md.runner,
-                &md.app_name,
-                ArtKind::Cover,
-                md.cover_url.as_deref(),
-                download,
-            );
-        }
-        if kinds.contains(&ArtKind::Hero) {
-            md.hero_url = materialize_metadata_image(
-                &self.paths,
-                &self.http,
-                &md.runner,
-                &md.app_name,
-                ArtKind::Hero,
-                md.hero_url.as_deref(),
-                download,
-            );
+        for kind in kinds {
+            let url = kind.of_record(&md).map(str::to_owned);
+            *kind.of_record_mut(&mut md) =
+                materialize_metadata_image(&self.paths, &self.http, &md.runner, &md.app_name, *kind, url.as_deref(), download);
         }
         md
     }
@@ -386,7 +453,8 @@ impl MetadataService {
             return upsert_game_metadata(&self.paths, failed);
         }
         if let Some(reason) = preview.review {
-            self.queue_review(ReviewEntry::new(&args.app_name, runner, &args.title, reason, &preview.candidates))?;
+            let candidates = self.review_candidates(&preview.candidates);
+            self.queue_review(ReviewEntry::new(&args.app_name, runner, &args.title, reason, &candidates))?;
             return Err(SentToReview(reason).into());
         }
         let download = args.download_images.unwrap_or(self.metadata_settings().download_images);
@@ -413,7 +481,7 @@ impl MetadataService {
         let current = get_game_metadata(&self.paths, &runner, &args.app_name)?;
         let mut args = args.clone();
         args.runner = runner;
-        let decision = decide(&preview.candidates, current.as_ref());
+        let decision = self.decide(&preview.candidates, current.as_ref());
         let chosen: HashSet<&str> = args
             .field_picks
             .iter()
@@ -491,21 +559,49 @@ mod tests {
         MetadataCandidate::new(source, md, Some(MatchedBy::FuzzyTitle))
     }
 
+    fn decide_details(candidates: &[MetadataCandidate], current: Option<&CollectionGameMetadata>) -> Decision {
+        decide(candidates, current, &|s| s == "steamgriddb")
+    }
+
+    #[test]
+    fn a_pictures_source_never_sends_a_game_to_review() {
+        let picture = |title: &str, by: MatchedBy| {
+            let mut c = guess("steamgriddb", title, "2011");
+            c.matched_by = Some(by);
+            c
+        };
+        // Alone and unsure: left out, not asked.
+        let alone = decide_details(&[picture("Portal 2", MatchedBy::FuzzyTitle)], None);
+        assert_eq!((alone.used.len(), alone.review), (0, None));
+        // Alone and sure (its Steam id): used.
+        assert_eq!(decide_details(&[picture("Portal 2", MatchedBy::SteamId)], None).used.len(), 1);
+        // A guess that is the game a details source is sure of: used; another game: left out.
+        let mut steam = guess("steam", "Portal 2", "2011");
+        steam.matched_by = Some(MatchedBy::SteamId);
+        let d = decide_details(&[steam.clone(), picture("Portal 2", MatchedBy::FuzzyTitle)], None);
+        assert_eq!(d.used.iter().map(|c| c.source.as_str()).collect::<Vec<_>>(), ["steam", "steamgriddb"]);
+        let d = decide_details(&[steam, picture("Portal Knights", MatchedBy::FuzzyTitle)], None);
+        assert_eq!(d.used.len(), 1);
+        // A lone details guess still goes to review, the picture with it.
+        let d = decide_details(&[guess("lutris", "Doom 64", "1997"), picture("Doom 64", MatchedBy::ExactTitle)], None);
+        assert_eq!((d.used.len(), d.review), (0, Some(ReviewReason::LoneGuess)));
+    }
+
     #[test]
     fn a_record_from_before_anchors_a_source_asked_alone() {
         let mut old = blank_metadata("a", "sideload");
         old.igdb_id = Some(heronite_data::num::JsNum(700.0));
         old.title = Some("The Witcher 3: Wild Hunt".into());
         old.release_date = Some("2015-05-19".into());
-        let same = decide(&[guess("lutris", "The Witcher 3: Wild Hunt", "2015")], Some(&old));
+        let same = decide_details(&[guess("lutris", "The Witcher 3: Wild Hunt", "2015")], Some(&old));
         assert_eq!((same.used.len(), same.review), (1, None));
-        let other = decide(&[guess("lutris", "Doom 64", "1997")], Some(&old));
+        let other = decide_details(&[guess("lutris", "Doom 64", "1997")], Some(&old));
         assert_eq!((other.used.len(), other.review), (0, None), "left out, not asked");
         // No record: a lone guess is asked.
-        assert_eq!(decide(&[guess("lutris", "Doom 64", "1997")], None).review, Some(ReviewReason::LoneGuess));
+        assert_eq!(decide_details(&[guess("lutris", "Doom 64", "1997")], None).review, Some(ReviewReason::LoneGuess));
         // A record without any match does not anchor.
         assert_eq!(
-            decide(&[guess("lutris", "Doom 64", "1997")], Some(&blank_metadata("a", "sideload"))).review,
+            decide_details(&[guess("lutris", "Doom 64", "1997")], Some(&blank_metadata("a", "sideload"))).review,
             Some(ReviewReason::LoneGuess)
         );
     }

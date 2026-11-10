@@ -3,12 +3,15 @@
 //! A field's order is the user's own list (`fieldPriority`) when they set
 //! one, else its base order: [`default_field_priority`] while the sources
 //! are in the registry's order, and once the user has moved one, the
-//! details sources that provide the field in the user's order (so a move
-//! shows in every field they did not set by hand). Sources that are off,
-//! or have the field switched off, are then left out.
+//! sources with a lookup that provide the field in the user's order (so a
+//! move shows in every field they did not set by hand). A pictures source
+//! (SteamGridDB) joins a base order only where the default one names it
+//! (the square and wide covers): the tall cover and the background keep
+//! the details sources they always had. Sources that are off, or have the
+//! field switched off, are then left out.
 
 use heronite_data::models::MetadataSettings;
-use heronite_data::settings::{default_field_priority, METADATA_FIELDS};
+use heronite_data::settings::{default_field_priority, ALL_FIELDS};
 use heronite_data::source_prefs::{is_field_customised, is_field_on, is_on};
 use indexmap::IndexMap;
 
@@ -48,7 +51,9 @@ impl SourceRegistry {
         if !self.is_order_customised(m) {
             return default_field_priority(field);
         }
-        self.order(m).into_iter().filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.provides(field))).collect()
+        let default = default_field_priority(field);
+        let joins = |d: &SourceDescriptor| d.kind != SourceKind::Pictures || default.contains(&d.id);
+        self.order(m).into_iter().filter(|id| self.has_lookup(id) && self.get(id).is_some_and(|d| d.provides(field) && joins(d))).collect()
     }
 
     /// The user's list for `field` when set, else [`Self::base_order`],
@@ -68,9 +73,9 @@ impl SourceRegistry {
         list
     }
 
-    /// [`Self::field_order`] of every `METADATA_FIELDS` entry.
+    /// [`Self::field_order`] of every `ALL_FIELDS` entry.
     pub fn field_orders(&self, m: &MetadataSettings) -> IndexMap<String, Vec<String>> {
-        METADATA_FIELDS.iter().map(|f| (f.to_string(), self.field_order(m, f))).collect()
+        ALL_FIELDS.iter().map(|f| (f.to_string(), self.field_order(m, f))).collect()
     }
 
     /// The `sourceOrder` to save after moving `id` to place `to` among the
@@ -109,7 +114,7 @@ impl SourceRegistry {
 
 #[cfg(test)]
 mod tests {
-    use heronite_data::settings::normalize_metadata;
+    use heronite_data::settings::{normalize_metadata, METADATA_FIELDS};
     use heronite_data::source_prefs::{reset_field, set_field_on, set_on};
 
     use super::*;
@@ -133,7 +138,7 @@ mod tests {
         let reg = SourceRegistry::for_tests();
         for m in [untouched(), normalize_metadata(Some(&MetadataSettings::default()))] {
             assert!(!reg.is_order_customised(&m));
-            for field in METADATA_FIELDS {
+            for field in ALL_FIELDS {
                 assert_eq!(reg.field_order(&m, field), default_field_priority(field), "{field}");
                 assert_eq!(reg.base_order(&m, field), default_field_priority(field), "{field}");
             }
@@ -165,6 +170,10 @@ mod tests {
         }
         assert_eq!(reg.field_order(&m, "cover"), ["lutris", "igdb", "steam", "store", "playnite"]);
         assert_eq!(reg.field_order(&m, "gameModes"), ["igdb"]);
+        // SteamGridDB joins only the families whose default names it.
+        assert_eq!(reg.field_order(&m, "hero"), ["lutris", "igdb", "steam", "store", "playnite"]);
+        assert_eq!(reg.field_order(&m, "coverWide"), ["steam", "store", "steamgriddb"]);
+        assert_eq!(reg.field_order(&m, "coverSquare"), ["steamgriddb"]);
 
         // Pictures and extras keep their own places; moving back is the default again.
         assert_eq!(m.source_order.len(), reg.descriptors().count());

@@ -26,7 +26,7 @@ pub fn remove_metadata_art(paths: &DataPaths, runner: &str, app_name: &str) {
 fn dest_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> std::io::Result<PathBuf> {
     let dir = paths.metadata_art_dir().join(folder_name(runner, app_name));
     fs::create_dir_all(&dir)?;
-    Ok(dir.join(format!("{}.{ext}", kind.as_str())))
+    Ok(dir.join(format!("{}.{ext}", kind.file_stem())))
 }
 
 pub fn is_remote_image(url: Option<&str>) -> bool {
@@ -52,6 +52,7 @@ fn write_atomic(dest: &Path, bytes: &[u8]) -> std::io::Result<()> {
 ///
 /// - `localart://` URLs are kept;
 /// - a local file path is copied to `metadata-art/<runner_app>/<kind>.<ext>`
+///   ([`ArtKind::file_stem`]: `cover`, `hero`, `cover-square`, `cover-wide`)
 ///   and becomes a `localart://metadata-art/...` URL (`None` if missing or not
 ///   an image);
 /// - a remote URL is downloaded the same way when `download` is set (max
@@ -85,7 +86,7 @@ pub fn materialize_metadata_image(
         // Through a new file, never into the old one: a bulk job's Undo keeps
         // the old picture as a hard link to it.
         write_atomic(&dest, &fs::read(src).ok()?).ok()?;
-        return Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.as_str())]));
+        return Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.file_stem())]));
     }
 
     if !download || !is_remote_image(Some(source)) {
@@ -103,7 +104,7 @@ pub fn materialize_metadata_image(
         }
         let dest = dest_file(paths, runner, app_name, kind, ext)?;
         write_atomic(&dest, &resp.body)?;
-        Ok(Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.as_str())])))
+        Ok(Some(local_art_url("metadata-art", &[&folder, &format!("{}.{ext}", kind.file_stem())])))
     })();
     match fetched {
         Ok(Some(url)) => Some(url),
@@ -144,6 +145,12 @@ mod tests {
             Some("localart://heroes/1.jpg")
         );
         assert!(materialize_metadata_image(&paths, &http, "sideload", "x", ArtKind::Hero, None, true).is_none());
+        // Each cover family has its own file next to the tall one.
+        let sq = materialize_metadata_image(&paths, &http, "sideload", "steam_1", ArtKind::CoverSquare, src.to_str(), false).unwrap();
+        assert_eq!(sq, "localart://metadata-art/sideload_steam_1/cover-square.jpg");
+        let wide = materialize_metadata_image(&paths, &http, "sideload", "steam_1", ArtKind::CoverWide, src.to_str(), false).unwrap();
+        assert_eq!(wide, "localart://metadata-art/sideload_steam_1/cover-wide.jpg");
+        assert!(paths.metadata_art_dir().join("sideload_steam_1/cover.jpg").exists());
         remove_metadata_art(&paths, "sideload", "steam_1");
         assert!(!paths.metadata_art_dir().join("sideload_steam_1").exists());
     }

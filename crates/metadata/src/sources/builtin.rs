@@ -12,12 +12,12 @@ use parking_lot::RwLock;
 use super::descriptor::extra_fields::{LINUX_RATING, STEAM_TAGS as STEAM_TAGS_FIELD, TIME_TO_BEAT};
 use super::options::{OptionChoice, OptionKind, OptionValue, SourceOption};
 use super::{AppliesTo, Entry, MetadataSource, Needs, SourceContext, SourceDescriptor, SourceGame, SourceKind, SourceRegistry, SourceTest};
-use crate::covers::search_steam;
+use crate::covers::{find_steamgrid_game, search_steam, steamgrid_api_key, steamgrid_pictures};
 use crate::igdb::{Igdb, IgdbCredentials};
 use crate::lutris::{fetch_lutris_metadata, search_lutris};
 use crate::providers::{fetch_playnite_metadata, metadata_from_store_game, PlayniteSource, StoreLibraries};
 use crate::steam::{self, SteamState};
-use crate::types::{Lookup, MatchedBy, MetadataCandidate, SourceHit};
+use crate::types::{ArtKind, Lookup, MatchedBy, MetadataCandidate, SourceHit};
 
 const IGDB: &str = "igdb";
 const STEAM: &str = "steam";
@@ -104,13 +104,14 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                     "ageRatings",
                     "cover",
                     "hero",
+                    "coverWide",
                 ],
             )
         },
         SourceDescriptor {
             finds_by: vec![Game],
             network: false,
-            ..source(STORE, n_!("Store"), Details, &["description", "releaseDate", "developers", "genres", "cover", "hero"])
+            ..source(STORE, n_!("Store"), Details, &["description", "releaseDate", "developers", "genres", "cover", "hero", "coverWide"])
         },
         SourceDescriptor {
             finds_by: vec![SourceId, ExactTitle, FuzzyTitle],
@@ -153,7 +154,7 @@ static BUILTIN: LazyLock<Vec<SourceDescriptor>> = LazyLock::new(|| {
                 Some(n_!("Optional. Get a key at steamgriddb.com/profile/preferences/api")),
                 Some("https://www.steamgriddb.com/profile/preferences/api"),
             )],
-            ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero"])
+            ..source(STEAMGRIDDB, "SteamGridDB", Pictures, &["cover", "hero", "coverSquare", "coverWide"])
         },
         SourceDescriptor {
             finds_by: vec![FuzzyTitle],
@@ -197,6 +198,7 @@ pub(super) fn registry(shared: Shared) -> SourceRegistry {
             STORE => Entry::Lookup(Box::new(StoreSource { d, stores: shared.stores.clone() })),
             LUTRIS => Entry::Lookup(Box::new(LutrisSource { d })),
             PLAYNITE => Entry::Lookup(Box::new(PlayniteDump { d, source: shared.playnite.clone() })),
+            STEAMGRIDDB => Entry::Lookup(Box::new(SteamGridSource { d })),
             _ => Entry::DescriptorOnly(d.clone()),
         })
         .collect();
@@ -374,5 +376,50 @@ impl MetadataSource for PlayniteDump {
     fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
         let src = self.source.read().clone();
         local(fetch_playnite_metadata(ctx.paths, src.as_deref(), &game.app_name, &game.runner)).map(candidate(self.d, MatchedBy::SourceId))
+    }
+}
+
+/// SteamGridDB as a pictures source: the game by its Steam id or its title,
+/// then the first picture it ranks of each field asked (the covers by
+/// dimension, see [`crate::covers`]). It is asked only for the fields it is
+/// in the order of, so a fetch with the default orders asks it for the
+/// square and wide covers only when those are kept.
+struct SteamGridSource {
+    d: &'static SourceDescriptor,
+}
+
+impl MetadataSource for SteamGridSource {
+    fn descriptor(&self) -> &SourceDescriptor {
+        self.d
+    }
+
+    fn lookup(&self, ctx: &SourceContext<'_>, game: &SourceGame) -> Lookup<MetadataCandidate> {
+        let Some(key) = steamgrid_api_key(ctx.paths) else { return Lookup::Skipped };
+        let wanted = |f: &String| game.fields.as_ref().is_none_or(|list| list.contains(f));
+        let kinds: Vec<ArtKind> = self.d.provides.iter().filter(|f| wanted(f)).filter_map(|f| ArtKind::from_field(f)).collect();
+        if kinds.is_empty() {
+            return Lookup::Skipped;
+        }
+        let found = match find_steamgrid_game(ctx.http, &key, game.steam_app_id.as_deref(), &game.title) {
+            Lookup::Found(found) => found,
+            Lookup::NotFound => return Lookup::NotFound,
+            Lookup::Unreachable => return Lookup::Unreachable,
+            Lookup::Skipped => return Lookup::Skipped,
+        };
+        steamgrid_pictures(ctx.http, &key, found.id, &kinds).map(|pictures| {
+            // No title: the record keeps the one the details sources give.
+            let mut md = crate::util::blank_metadata(&game.app_name, &game.runner);
+            for (kind, url) in pictures {
+                *kind.of_record_mut(&mut md) = Some(url);
+            }
+            MetadataCandidate {
+                source: self.d.id.clone(),
+                match_name: found.name.clone(),
+                match_year: found.year,
+                matched_by: Some(found.matched_by),
+                match_id: Some(found.id.to_string()),
+                metadata: md,
+            }
+        })
     }
 }

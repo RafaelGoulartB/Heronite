@@ -10,6 +10,7 @@ mod age_fill;
 mod attention;
 mod bulk;
 mod counts;
+mod families;
 mod fetch;
 mod job_run;
 mod review;
@@ -240,12 +241,15 @@ impl MetadataService {
         art::get_all_collection_art(&self.paths)
     }
 
-    /// Custom cover/hero from a local file.
+    /// Custom art from a local file (or a screenshot): `kind` is the
+    /// background or a cover family ([`ArtKind::cover`]; `Cover` is the tall
+    /// one).
     pub fn set_art_from_file(&self, runner: &str, app_name: &str, kind: ArtKind, source_path: &str) -> Result<CollectionGameArt> {
         art::set_collection_game_art(&self.paths, runner, app_name, kind, source_path)
     }
 
-    /// Custom cover/hero downloaded from a URL (`thumb_url` is the fallback).
+    /// Custom art of `kind` downloaded from a URL (`thumb_url` is the
+    /// fallback).
     pub fn set_art_from_url(
         &self,
         runner: &str,
@@ -257,7 +261,8 @@ impl MetadataService {
         art::set_collection_game_art_from_url(&self.paths, &self.http, runner, app_name, kind, image_url, thumb_url)
     }
 
-    /// Back to the default art for `kind`.
+    /// Back to the default art for `kind` (one cover family, or the
+    /// background); its file is removed.
     pub fn reset_art(&self, runner: &str, app_name: &str, kind: ArtKind) -> Result<CollectionGameArt> {
         art::clear_collection_game_art(&self.paths, runner, app_name, kind)
     }
@@ -284,16 +289,25 @@ impl MetadataService {
 
     /// `searchCollectionWebImages`; nothing while web images are off.
     pub fn search_web_images(&self, query: &str, transparent: bool) -> Result<Vec<WebImage>> {
+        self.search_web_images_shaped(query, transparent, None)
+    }
+
+    /// [`search_web_images`](Self::search_web_images) favouring pictures of
+    /// a cover family's shape (`None`, or the tall family: no filter, as
+    /// the search always was).
+    pub fn search_web_images_shaped(&self, query: &str, transparent: bool, family: Option<CoverFamily>) -> Result<Vec<WebImage>> {
         if !self.source_on(ids::WEB_IMAGES) {
             return Ok(Vec::new());
         }
-        web_images::search_web_images(&self.http, query, transparent)
+        web_images::search_web_images_shaped(&self.http, query, transparent, family)
     }
 
     /// The art picker's image search: SteamGridDB's art when it is on and an
     /// API key is set (not for transparent images, which it does not have)
     /// and the web's (when on), apart. A failing SteamGridDB only leaves its part empty; the web's
-    /// results leave out the images SteamGridDB already gave.
+    /// results leave out the images SteamGridDB already gave. `kind` names
+    /// the cover family ([`ArtKind::cover`]): SteamGridDB gives grids of
+    /// that shape and the web search favours it.
     pub fn search_art_images(&self, query: &str, kind: ArtKind, transparent: bool) -> Result<ArtImages> {
         let key = if transparent { None } else { covers::steamgrid_key_if_on(&self.paths) };
         let title = web_images::title_of_query(query);
@@ -305,7 +319,7 @@ impl MetadataService {
                 }),
                 _ => Vec::new(),
             });
-            let web = self.search_web_images(query, transparent);
+            let web = self.search_web_images_shaped(query, transparent, kind.family());
             (sgdb.join().unwrap_or_default(), web)
         });
         let web = match web {

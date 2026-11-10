@@ -57,7 +57,8 @@ pub fn field_label(field: &str) -> &'static str {
         "features" => tr!("Features"),
         "criticScore" => tr!("Score"),
         "ageRatings" => tr!("Age ratings"),
-        "cover" => tr!("Cover"),
+        // The square and wide covers read as covers until their screens name them.
+        "cover" | "coverSquare" | "coverWide" => tr!("Cover"),
         "hero" => tr!("Background"),
         _ => "",
     }

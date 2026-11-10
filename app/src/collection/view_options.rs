@@ -825,6 +825,7 @@ impl CollectionView {
         if self.card_shape == shape {
             return;
         }
+        crate::dialogs::metadata_update::families::aspect_changed(self.card_shape, shape);
         self.set_card_shape(shape);
         if let Some(lib) = &self.lib {
             let mut patch = lib.settings.metadata.clone();

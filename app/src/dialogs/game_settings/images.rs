@@ -96,13 +96,14 @@ impl GameSettingsDialog {
         cx.notify();
     }
 
-    /// `HERONITE_DEBUG_SET_ART=<cover|hero>:<file>@<ms>`: after `ms`, sets that
-    /// image as if picked with "Change" (fixtures only: it writes the art).
+    /// `HERONITE_DEBUG_SET_ART=<cover|hero|coverSquare|coverWide>:<file>@<ms>`:
+    /// after `ms`, sets that image as if picked with "Change" (fixtures only:
+    /// it writes the art).
     pub(super) fn debug_set_art(&mut self, cx: &mut Context<Self>) {
         let Some(spec) = crate::env::value("HERONITE_DEBUG_SET_ART") else { return };
         let (what, delay) = spec.rsplit_once('@').map(|(w, d)| (w.to_string(), d.parse().unwrap_or(0))).unwrap_or((spec.clone(), 0));
         let Some((kind, file)) = what.split_once(':') else { return };
-        let kind = if kind == "hero" { ArtKind::Hero } else { ArtKind::Cover };
+        let kind = ArtKind::from_field(kind).unwrap_or(ArtKind::Cover);
         let file = file.to_string();
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(std::time::Duration::from_millis(delay)).await;
@@ -125,10 +126,8 @@ impl GameSettingsDialog {
 
     /// "Use defaults": drops every custom image of the game.
     pub(super) fn reset_all_images(&mut self, cx: &mut Context<Self>) {
-        let kinds: Vec<ArtKind> = [(ArtKind::Cover, self.art.cover_url.is_some()), (ArtKind::Hero, self.art.hero_url.is_some())]
-            .into_iter()
-            .filter_map(|(k, custom)| custom.then_some(k))
-            .collect();
+        // Every cover family's too.
+        let kinds: Vec<ArtKind> = ArtKind::ALL.into_iter().filter(|k| k.of_art(&self.art).is_some()).collect();
         let Some(&first) = kinds.first() else { return };
         self.busy = Some(Busy::Art(first));
         self.error.clear();

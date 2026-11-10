@@ -7,7 +7,8 @@
 
 use std::sync::Arc;
 
-use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::cover_family::CoverFamily;
+use heronite_data::settings::ALL_FIELDS;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -41,7 +42,7 @@ impl UpdateMode {
 }
 
 /// What asked for a job; the header pill and the results name it. Later
-/// presets ("download a cover shape", "fix matches") add theirs.
+/// presets ("fix matches") add theirs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum JobKind {
@@ -50,6 +51,9 @@ pub enum JobKind {
     Custom,
     /// "Fill what is missing".
     FillMissing,
+    /// "Download the <family> covers" ([`BulkArgs::download_covers`]); also
+    /// what a view that starts using a family queues.
+    Covers(CoverFamily),
 }
 
 /// The fields a job can update besides `METADATA_FIELDS`: the extras with a
@@ -60,9 +64,12 @@ pub enum JobKind {
 /// app per game, with its own cache.
 pub const BULK_EXTRA_FIELDS: [&str; 1] = [extra_fields::STEAM_TAGS];
 
-/// Every field a job can update: `METADATA_FIELDS`, then [`BULK_EXTRA_FIELDS`].
+/// Every field a job can update: `METADATA_FIELDS`, the covers of the
+/// other families (`coverSquare`, `coverWide`), then [`BULK_EXTRA_FIELDS`].
+/// A job fills a family's covers only while the family is kept
+/// (`heronite_data::cover_family`), unless it is that family's download.
 pub fn bulk_fields() -> Vec<String> {
-    METADATA_FIELDS.iter().chain(BULK_EXTRA_FIELDS.iter()).map(|f| f.to_string()).collect()
+    ALL_FIELDS.iter().chain(BULK_EXTRA_FIELDS.iter()).map(|f| f.to_string()).collect()
 }
 
 impl BulkArgs {
@@ -76,6 +83,14 @@ impl BulkArgs {
     /// `sources` (source ids) `None`: all of them.
     pub fn update(games: Vec<BulkItem>, mode: UpdateMode, fields: Option<Vec<String>>, sources: Option<Vec<String>>) -> Self {
         Self { games, mode: Some(mode), fields: Some(fields.unwrap_or_else(bulk_fields)), sources, ..Default::default() }
+    }
+
+    /// "Download the <family> covers": the covers of `family` for the games
+    /// of `games` that have no picture of it (fetched or set by hand), from
+    /// the sources that give that family only. Leaves every other field,
+    /// the tall cover and its source included, as it is.
+    pub fn download_covers(games: Vec<BulkItem>, family: CoverFamily) -> Self {
+        Self { kind: JobKind::Covers(family), ..Self::update(games, UpdateMode::Fill, Some(vec![family.field().to_owned()]), None) }
     }
 
     /// Every field `source` gives, from that source only.
@@ -251,6 +266,10 @@ pub struct GameCounts {
     pub no_description: usize,
     /// Details but no cover.
     pub no_cover: usize,
+    /// Per cover family in use beside the tall one: the games with details
+    /// and no picture of that family, shown cropped from another one
+    /// ([`crate::service::Attention::cropped`]).
+    pub cropped: IndexMap<CoverFamily, usize>,
     /// Marked "in no source" by the user.
     pub in_no_source: usize,
     /// Games with any reason of [`crate::service::Attention`]; the others

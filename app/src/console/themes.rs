@@ -43,13 +43,16 @@ pub fn remember_tab(app: &AppPaths, tab: usize) {
 
 /// Changes the prefs, installs the theme while console mode is on and saves.
 pub fn update(app: &AppPaths, change: impl FnOnce(&mut ConsolePrefs)) -> ConsolePrefs {
-    let next = {
+    let (before, next) = {
         let mut cur = PREFS.lock().unwrap_or_else(|e| e.into_inner());
         let p = cur.get_or_insert_with(|| ConsolePrefs::load(app));
+        let before = p.theme.clone();
         change(p);
         p.theme = std::mem::take(&mut p.theme).normalized();
-        p.clone()
+        (before, p.clone())
     };
+    // Covers of a shape the new theme draws and the old one did not.
+    crate::dialogs::metadata_update::families::console_theme_changed(&before, &next.theme);
     if super::active() {
         super::look::set(next.theme.clone());
     }

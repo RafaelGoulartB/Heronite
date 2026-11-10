@@ -14,7 +14,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::http::{Http, FIREFOX_UA};
-use crate::types::WebImage;
+use crate::types::{CoverFamily, WebImage};
 use crate::util::re;
 
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(25);
@@ -120,11 +120,65 @@ fn deadline_secs(deadline: Instant) -> u64 {
     deadline.saturating_duration_since(Instant::now()).as_secs().clamp(1, 12)
 }
 
-fn ddg_images(http: &Http, query: &str, transparent: bool, deadline: Instant) -> Result<Vec<WebImage>> {
+/// A shape filter of the image searches, for a cover family (the tall one
+/// has none: its search stays as it always was).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Shape {
+    Square,
+    Wide,
+}
+
+impl Shape {
+    pub fn of(family: Option<CoverFamily>) -> Option<Self> {
+        match family? {
+            CoverFamily::Tall => None,
+            CoverFamily::Square => Some(Self::Square),
+            CoverFamily::Wide => Some(Self::Wide),
+        }
+    }
+
+    /// DuckDuckGo's `layout:` filter.
+    fn ddg(self) -> &'static str {
+        match self {
+            Self::Square => "layout:Square",
+            Self::Wide => "layout:Wide",
+        }
+    }
+
+    /// Bing's `qft` aspect filter.
+    fn bing(self) -> &'static str {
+        match self {
+            Self::Square => "+filterui:aspect-square",
+            Self::Wide => "+filterui:aspect-wide",
+        }
+    }
+
+    /// Google's `tbs` image aspect ratio.
+    fn google(self) -> &'static str {
+        match self {
+            Self::Square => "iar:s",
+            Self::Wide => "iar:w",
+        }
+    }
+}
+
+/// DuckDuckGo's `f` filters (`size,color,type,layout,license` and more,
+/// read by their name).
+fn ddg_filters(transparent: bool, shape: Option<Shape>) -> String {
+    match (transparent, shape) {
+        (false, None) => ",,,,,".into(),
+        (true, None) => ",type:transparent,,,,".into(),
+        (t, Some(s)) => format!(",{},,{},,", if t { "type:transparent" } else { "" }, s.ddg()),
+    }
+}
+
+fn ddg_images(http: &Http, query: &str, transparent: bool, shape: Option<Shape>, deadline: Instant) -> Result<Vec<WebImage>> {
     let base = &http.endpoints.duckduckgo;
     let mut params = vec![("ia", "images"), ("iax", "images"), ("q", query)];
     if transparent {
         params.push(("iaf", "type:transparent"));
+    } else if let Some(s) = shape {
+        params.push(("iaf", s.ddg()));
     }
     let page = http
         .get(format!("{base}/"))
@@ -135,10 +189,10 @@ fn ddg_images(http: &Http, query: &str, transparent: bool, deadline: Instant) ->
         .send_ok()?
         .text();
     let vqd = extract_vqd(&page).ok_or_else(|| anyhow!("DuckDuckGo did not return a vqd token"))?;
-    let filters = if transparent { ",type:transparent,,,," } else { ",,,,," };
+    let filters = ddg_filters(transparent, shape);
     let resp = http
         .get(format!("{base}/i.js"))
-        .query(&[("l", "us-en"), ("o", "json"), ("q", query), ("vqd", &vqd), ("f", filters), ("p", "1")])
+        .query(&[("l", "us-en"), ("o", "json"), ("q", query), ("vqd", &vqd), ("f", &filters), ("p", "1")])
         .header("User-Agent", FIREFOX_UA)
         .header("Referer", "https://duckduckgo.com/")
         .header("Accept", "application/json, text/javascript, */*; q=0.01")
@@ -149,10 +203,14 @@ fn ddg_images(http: &Http, query: &str, transparent: bool, deadline: Instant) ->
     Ok(parse_ddg_images(&resp.json()?))
 }
 
-fn bing_images(http: &Http, query: &str, deadline: Instant) -> Result<Vec<WebImage>> {
+fn bing_images(http: &Http, query: &str, shape: Option<Shape>, deadline: Instant) -> Result<Vec<WebImage>> {
+    let mut params = vec![("q", query), ("form", "HDRSC2")];
+    if let Some(s) = shape {
+        params.push(("qft", s.bing()));
+    }
     let html = http
         .get(format!("{}/images/search", http.endpoints.bing))
-        .query(&[("q", query), ("form", "HDRSC2")])
+        .query(&params)
         .header("User-Agent", FIREFOX_UA)
         .header("Accept-Language", "en-US,en;q=0.9")
         .timeout_secs(deadline_secs(deadline))
@@ -162,10 +220,16 @@ fn bing_images(http: &Http, query: &str, deadline: Instant) -> Result<Vec<WebIma
     Ok(parse_bing_html(&html))
 }
 
-fn google_images(http: &Http, query: &str, transparent: bool, deadline: Instant) -> Result<Vec<WebImage>> {
+fn google_images(http: &Http, query: &str, transparent: bool, shape: Option<Shape>, deadline: Instant) -> Result<Vec<WebImage>> {
     let mut params = vec![("tbm", "isch"), ("client", "firefox-b-d"), ("source", "lnt"), ("q", query)];
-    if transparent {
-        params.push(("tbs", "ic:trans"));
+    let tbs = match (transparent, shape) {
+        (true, Some(s)) => Some(format!("ic:trans,{}", s.google())),
+        (true, None) => Some("ic:trans".to_owned()),
+        (false, Some(s)) => Some(s.google().to_owned()),
+        (false, None) => None,
+    };
+    if let Some(tbs) = &tbs {
+        params.push(("tbs", tbs));
     }
     let html = http
         .get(format!("{}/search", http.endpoints.google))
@@ -181,12 +245,12 @@ fn google_images(http: &Http, query: &str, transparent: bool, deadline: Instant)
     Ok(parse_google_html(&html))
 }
 
-fn fetch_web_images(http: &Http, query: &str, transparent: bool, deadline: Instant) -> Result<Vec<WebImage>> {
+fn fetch_web_images(http: &Http, query: &str, transparent: bool, shape: Option<Shape>, deadline: Instant) -> Result<Vec<WebImage>> {
     let mut last_error: Option<anyhow::Error> = None;
     let mut attempts: Vec<(&str, Box<dyn Fn() -> Result<Vec<WebImage>> + '_>)> = vec![
-        ("DuckDuckGo", Box::new(|| ddg_images(http, query, transparent, deadline))),
-        ("Bing", Box::new(|| bing_images(http, query, deadline))),
-        ("Google", Box::new(|| google_images(http, query, transparent, deadline))),
+        ("DuckDuckGo", Box::new(|| ddg_images(http, query, transparent, shape, deadline))),
+        ("Bing", Box::new(|| bing_images(http, query, shape, deadline))),
+        ("Google", Box::new(|| google_images(http, query, transparent, shape, deadline))),
     ];
     for (name, attempt) in attempts.drain(..) {
         if Instant::now() >= deadline {
@@ -214,16 +278,28 @@ static SEARCH_LOCK: Mutex<()> = Mutex::new(());
 /// failed search is retried once without the filter. Errors read
 /// "Could not search images. Try another term.", like Heronite's.
 pub fn search_web_images(http: &Http, query: &str, transparent: bool) -> Result<Vec<WebImage>> {
+    search_web_images_shaped(http, query, transparent, None)
+}
+
+/// [`search_web_images`] favouring pictures of `family`'s shape: each
+/// engine's aspect filter for the square and wide covers (none for the tall
+/// one, whose search is as it always was). A shaped search that finds
+/// nothing is tried once without the shape.
+pub fn search_web_images_shaped(http: &Http, query: &str, transparent: bool, family: Option<CoverFamily>) -> Result<Vec<WebImage>> {
     let query = re!(r"\s+").replace_all(query, " ").trim().to_owned();
     if query.is_empty() {
         return Ok(Vec::new());
     }
+    let shape = Shape::of(family);
     let _serial = SEARCH_LOCK.lock();
     log::info!("Web image search starting for \"{query}\"");
-    let mut result = fetch_web_images(http, &query, transparent, Instant::now() + SEARCH_TIMEOUT);
+    let mut result = fetch_web_images(http, &query, transparent, shape, Instant::now() + SEARCH_TIMEOUT);
+    if shape.is_some() && result.as_ref().is_ok_and(Vec::is_empty) {
+        result = fetch_web_images(http, &query, transparent, None, Instant::now() + SEARCH_TIMEOUT);
+    }
     if result.is_err() && transparent {
         log::warn!("Transparent web image search failed, retrying without filter");
-        result = fetch_web_images(http, &query, false, Instant::now() + SEARCH_TIMEOUT);
+        result = fetch_web_images(http, &query, false, shape, Instant::now() + SEARCH_TIMEOUT);
     }
     result.map_err(|e| {
         log::warn!("Web image search failed: {e}");
@@ -323,6 +399,17 @@ mod tests {
         assert_eq!(images[0].thumb_url, "https://encrypted-tbn0.gstatic.com/images?q=tbn:AAA=");
         // regex groups: (thumb w,h) then (image h?,w?): Playnite reads group 3 as height, 4 as width.
         assert_eq!((images[0].width, images[0].height), (1000, 1500));
+    }
+
+    #[test]
+    fn a_shape_adds_each_engines_aspect_filter() {
+        assert_eq!(Shape::of(Some(CoverFamily::Tall)), None);
+        assert_eq!(Shape::of(None), None);
+        assert_eq!(ddg_filters(false, None), ",,,,,");
+        assert_eq!(ddg_filters(true, None), ",type:transparent,,,,");
+        assert_eq!(ddg_filters(false, Shape::of(Some(CoverFamily::Square))), ",,,layout:Square,,");
+        assert_eq!(ddg_filters(true, Some(Shape::Wide)), ",type:transparent,,layout:Wide,,");
+        assert_eq!((Shape::Square.bing(), Shape::Wide.google()), ("+filterui:aspect-square", "iar:w"));
     }
 
     #[test]

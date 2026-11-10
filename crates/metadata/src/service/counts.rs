@@ -5,6 +5,7 @@
 //! `art.json`), no network.
 
 use anyhow::Result;
+use heronite_data::cover_family::CoverFamilies;
 use heronite_data::json_store;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{ArtFile, CollectionGameMetadata, LocalMetaFile, MetadataSettings};
@@ -15,7 +16,7 @@ use super::attention::classify;
 use super::MetadataService;
 use crate::job::{bulk_fields, GameCounts};
 use crate::merge::has_field_value;
-use crate::sources::{extra_fields, ids, is_on, SourceDescriptor, SourceGame};
+use crate::sources::{extra_fields, ids, is_on, SourceDescriptor, SourceGame, SourceKind};
 use crate::store::{as_runner, get_all_game_metadata};
 use crate::types::{BulkItem, MetadataApplyArgs};
 use crate::{record, review};
@@ -60,14 +61,15 @@ impl MetadataService {
     }
 
     /// The sources a job may ask, in the user's order: the details sources
-    /// that are on and offered, and Steam tags when on.
+    /// that are on and offered, and Steam tags when on. A pictures source
+    /// (SteamGridDB) is asked by the fields it gives, not listed here.
     pub fn bulk_sources(&self, settings: &MetadataSettings) -> Vec<SourceDescriptor> {
         self.sources
             .order(settings)
             .iter()
             .filter_map(|id| self.sources.get(id))
             .filter(|d| is_on(settings, &d.id) && !d.hidden && !d.manual_only && d.available_here())
-            .filter(|d| self.sources.has_lookup(&d.id) || d.id == ids::STEAM_TAGS)
+            .filter(|d| (self.sources.has_lookup(&d.id) && d.kind == SourceKind::Details) || d.id == ids::STEAM_TAGS)
             .cloned()
             .collect()
     }
@@ -78,7 +80,9 @@ impl MetadataService {
         let settings = self.metadata_settings();
         let records = get_all_game_metadata(&self.paths)?;
         let sources = self.bulk_sources(&settings);
-        let fillable = self.fillable_fields(&settings, &METADATA_FIELDS, None);
+        let families = CoverFamilies::load(&self.paths);
+        let fields: Vec<&'static str> = METADATA_FIELDS.iter().copied().chain(families.kept_extra_fields()).collect();
+        let fillable = self.fillable_fields(&settings, &fields, None);
         let tags = is_on(&settings, ids::STEAM_TAGS).then(|| SteamTagsFile::load(&self.paths));
         let overlay = sources
             .iter()
@@ -87,7 +91,7 @@ impl MetadataService {
             .flatten();
 
         let art: ArtFile = json_store::read(&self.paths.art())?;
-        let attention = classify(games, &records, &review::load(&self.paths), &art);
+        let attention = classify(games, &records, &review::load(&self.paths), &art, &families.in_use());
 
         let mut counts = GameCounts {
             games: games.len(),
@@ -96,6 +100,7 @@ impl MetadataService {
             to_review: attention.to_review.len(),
             no_description: attention.no_description.len(),
             no_cover: attention.no_cover.len(),
+            cropped: attention.cropped.iter().map(|(f, keys)| (*f, keys.len())).collect(),
             in_no_source: attention.in_no_source.len(),
             without_match: attention.without_match().len(),
             needs_attention: attention.all().len(),

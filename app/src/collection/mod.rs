@@ -18,6 +18,7 @@ mod downloads_pill;
 mod emulation;
 mod epic;
 mod extras;
+mod family_art;
 mod focus;
 mod focus_left;
 mod folder_size;
@@ -196,6 +197,8 @@ pub struct CollectionView {
     images: ImageStore,
     cover_chains: HashMap<SharedString, Vec<ImageRef>>,
     stage_chains: HashMap<SharedString, Vec<ImageRef>>,
+    /// The games' own square and wide covers (`family_art.rs`).
+    family_chains: family_art::FamilyChains,
     /// Last stage texture shown, kept while the next one loads.
     shown_stage: Option<(SharedString, Arc<RenderImage>)>,
     /// Last glass backdrop (blurred art behind menus and dialogs), kept while
@@ -400,6 +403,7 @@ impl CollectionView {
             images,
             cover_chains: HashMap::new(),
             stage_chains: HashMap::new(),
+            family_chains: Default::default(),
             shown_stage: None,
             shown_glass: None,
             groups: Vec::new(),

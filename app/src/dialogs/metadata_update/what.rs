@@ -4,6 +4,7 @@
 
 use gpui_kit::prelude::*;
 use gpui_kit::*;
+use heronite_data::settings::FAMILY_COVER_FIELDS;
 use heronite_i18n::{tr, trn};
 use heronite_metadata::{bulk_fields, BulkArgs, UpdateMode};
 
@@ -21,7 +22,8 @@ const DETAILS: [&str; 10] =
 const PICTURES: [&str; 2] = ["cover", "hero"];
 
 fn columns() -> [(&'static str, Vec<String>); 3] {
-    let all = bulk_fields();
+    // The square and wide covers have no tick of their own yet: they follow "Cover".
+    let all: Vec<String> = bulk_fields().into_iter().filter(|f| !FAMILY_COVER_FIELDS.contains(&f.as_str())).collect();
     let pick = |list: &[&str]| all.iter().filter(|f| list.contains(&f.as_str())).cloned().collect::<Vec<_>>();
     let extras = all.iter().filter(|f| !DETAILS.contains(&f.as_str()) && !PICTURES.contains(&f.as_str())).cloned().collect();
     [(tr!("Details"), pick(&DETAILS)), (tr!("Pictures"), pick(&PICTURES)), (tr!("Extras"), extras)]
@@ -54,7 +56,9 @@ fn mode_short(m: UpdateMode) -> &'static str {
 
 impl MetadataUpdate {
     fn fields_on(&self) -> Vec<String> {
-        bulk_fields().into_iter().filter(|f| !self.fields_off.contains(f)).collect()
+        let cover_off = self.fields_off.iter().any(|f| f == "cover");
+        let off = |f: &String| self.fields_off.contains(f) || (cover_off && FAMILY_COVER_FIELDS.contains(&f.as_str()));
+        bulk_fields().into_iter().filter(|f| !off(f)).collect()
     }
 
     /// The sources this run asks: on in the dialog and with something for

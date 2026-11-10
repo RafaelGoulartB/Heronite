@@ -108,6 +108,7 @@ impl MetadataHub {
             tx: Arc::new(Mutex::new(tx)),
         };
         this.read_queue(cx);
+        Self::listen_families(cx);
         this
     }
 

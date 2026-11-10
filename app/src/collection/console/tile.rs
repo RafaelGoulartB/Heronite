@@ -7,7 +7,9 @@
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::CategoryStyle;
+use heronite_data::art::CoverOrigin;
 use heronite_data::console_theme::{Badges, FocusStyle, TileShape, TileTitles};
+use heronite_data::cover_family::CoverFamily;
 use heronite_i18n::tr;
 use heronite_images::Variant;
 
@@ -92,8 +94,43 @@ impl CollectionView {
         look::tile_size(t.tiles.shape, t.tiles.size, self.cover_aspect)
     }
 
+    /// The art of a tile of `shape` for `key`, `w`×`h` design px: the
+    /// family the shape draws (`family_art.rs`), with the background or
+    /// the cover when that fails to load. `true` with it: the family's own
+    /// picture (a wide cover carries the game's name: no logo over it).
+    pub(super) fn console_shaped_art(
+        &mut self,
+        key: &SharedString,
+        shape: TileShape,
+        w: f32,
+        h: f32,
+        priority: i32,
+        window: &Window,
+    ) -> (Option<ImageSource>, bool) {
+        let family = shape.family();
+        let origin = self.family_origin(key, key, family);
+        let (k, sf) = (kit::scale(), window.scale_factor());
+        let tall = |this: &mut Self| this.cover(key, w * k, h * k, sf, priority);
+        match origin {
+            CoverOrigin::Tall => (tall(self), family == CoverFamily::Tall),
+            // The sizes each request had before families, so cached art is found.
+            CoverOrigin::Background => (self.console_wide_art(key, w, h, priority, window), false),
+            CoverOrigin::Own if family == CoverFamily::Tall => (tall(self), true),
+            CoverOrigin::Own => {
+                let s = k * sf;
+                let size = ((w * s).round() as u32, (h * s).round() as u32);
+                let pick = self.family_art(key, key, family, size, priority, "cw");
+                if pick.failed {
+                    return (tall(self), false);
+                }
+                (pick.src, true)
+            }
+        }
+    }
+
     /// Wide art of `key` cropped to `w`×`h` design px (its cover when it has
-    /// none or it fails to load).
+    /// none or it fails to load): the background, for the panels that put
+    /// the game's logo and facts over it.
     pub(super) fn console_wide_art(&mut self, key: &SharedString, w: f32, h: f32, priority: i32, window: &Window) -> Option<ImageSource> {
         let s = kit::scale() * window.scale_factor();
         let (pw, ph) = ((w * s).round() as u32, (h * s).round() as u32);
@@ -132,11 +169,9 @@ impl CollectionView {
         let (has_header, has_bar) = (theme.tiles.header, theme.tiles.titles == TileTitles::Bar);
         // The strip and the bar are part of the tile: the art takes what is left.
         let art_h = h - if has_header { HEADER_H } else { 0. } - if has_bar { BAR_H } else { 0. };
-        let src = match shape {
-            TileShape::Landscape => self.console_wide_art(key, w, art_h, priority, window),
-            _ => self.cover(key, w * kit::scale(), art_h * kit::scale(), window.scale_factor(), priority),
-        };
-        let landscape_art = shape == TileShape::Landscape && theme.tiles.titles == TileTitles::Never;
+        let (src, own) = self.console_shaped_art(key, shape, w, art_h, priority, window);
+        // A wide cover of its own already shows the game's name.
+        let landscape_art = shape == TileShape::Landscape && theme.tiles.titles == TileTitles::Never && !own;
         let logo = landscape_art.then(|| self.console_logo(key, w * 0.62, art_h * 0.36, true, window)).flatten();
         let game = self.lib.as_ref().and_then(|l| l.get(key)).cloned();
         let title = game.as_ref().map_or(String::new(), |g| g.title.clone());

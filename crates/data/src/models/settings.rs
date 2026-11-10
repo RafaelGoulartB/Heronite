@@ -210,8 +210,22 @@ pub struct MetadataSettings {
     /// registry's order. Ids this build does not know are kept.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub source_order: Vec<String>,
+    /// Cover families (`square`, `wide`; see [`crate::cover_family`]) the
+    /// fetches fill even while no view uses them. Ids this build does not
+    /// know are kept.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keep_cover_families: Vec<String>,
+    /// When a view starts using a family (the aspect or the console theme
+    /// changes), its covers are fetched for the games that lack them.
+    /// Written only when off.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub fill_cover_families: bool,
     #[serde(flatten)]
     pub extra: Extra,
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
 }
 
 /// One source's entry in `settings.metadata.sources`. Every key is optional;

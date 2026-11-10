@@ -326,8 +326,7 @@ impl CollectionView {
             let Some(g) = self.lib.as_ref().and_then(|l| l.get(&key)).cloned() else { continue };
             let near = i.abs_diff(index);
             let priority = if near == 0 { 200 } else { 90 - 10 * near as i32 };
-            let src =
-                if landscape { self.console_wide_art(&key, cw, ch, priority, window) } else { self.cover(&key, cwp, chp, dpr, priority) };
+            let src = self.console_shaped_art(&key, theme.tiles.shape, cw, ch, priority, window).0;
             let floor = (reflect && near <= 3).then(|| self.carousel_floor(&key, landscape, pw, ph, priority - 30)).flatten();
             let ring = i == index && !pills_focus;
             let grey = grey && !g.installed;

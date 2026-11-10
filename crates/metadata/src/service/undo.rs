@@ -36,16 +36,18 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use anyhow::Result;
+use heronite_data::cover_family::CoverFamily;
 use heronite_data::json_store;
 use heronite_data::models::{CollectionGameMetadata, MetadataFile};
 use heronite_data::paths::DataPaths;
-use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::settings::ALL_FIELDS;
 use indexmap::IndexMap;
 use serde_json::{Map, Value};
 
 use super::MetadataService;
 use crate::job::UndoReport;
 use crate::review::ReviewEntry;
+use crate::types::ArtKind;
 use crate::util::{blank_metadata, folder_name, local_art_url};
 
 const FIELD_SOURCES: &str = "fieldSources";
@@ -226,12 +228,14 @@ fn to_map(md: &CollectionGameMetadata) -> Result<Map<String, Value>> {
     }
 }
 
-/// The JSON key of a `METADATA_FIELDS` entry.
+/// The JSON key of an `ALL_FIELDS` entry.
 fn json_key(field: &str) -> &str {
     match field {
-        "cover" => "coverUrl",
         "hero" => "heroUrl",
-        f => f,
+        f => match CoverFamily::from_field(f) {
+            Some(family) => family.json_key(),
+            None => f,
+        },
     }
 }
 
@@ -282,8 +286,8 @@ impl Part {
 
 /// The parts of the three records.
 fn parts(maps: [&Map<String, Value>; 3]) -> Vec<Part> {
-    let field_keys: HashSet<&str> = METADATA_FIELDS.iter().map(|f| json_key(f)).collect();
-    let mut out: Vec<Part> = METADATA_FIELDS.into_iter().map(Part::Field).collect();
+    let field_keys: HashSet<&str> = ALL_FIELDS.iter().map(|f| json_key(f)).collect();
+    let mut out: Vec<Part> = ALL_FIELDS.into_iter().map(Part::Field).collect();
     let mut keys: Vec<&String> = maps.iter().flat_map(|m| m.keys()).collect();
     keys.sort();
     keys.dedup();
@@ -292,7 +296,7 @@ fn parts(maps: [&Map<String, Value>; 3]) -> Vec<Part> {
         maps.iter().filter_map(|m| m.get(FIELD_SOURCES).and_then(Value::as_object)).flat_map(|s| s.keys()).collect();
     sources.sort();
     sources.dedup();
-    out.extend(sources.into_iter().filter(|s| !METADATA_FIELDS.contains(&s.as_str())).map(|s| Part::Source(s.clone())));
+    out.extend(sources.into_iter().filter(|s| !ALL_FIELDS.contains(&s.as_str())).map(|s| Part::Source(s.clone())));
     out
 }
 
@@ -403,7 +407,7 @@ fn restore_pictures(paths: &DataPaths, p: &Pictures, record: Option<&CollectionG
     let backup: PathBuf = paths.metadata_undo_dir().join(&p.folder);
     let used = |name: &str| {
         let url = local_art_url("metadata-art", &[&p.folder, name]);
-        record.is_some_and(|r| r.cover_url.as_deref() == Some(&url) || r.hero_url.as_deref() == Some(&url))
+        record.is_some_and(|r| ArtKind::ALL.iter().any(|k| k.of_record(r) == Some(url.as_str())))
     };
     for name in p.created.iter().filter(|n| !used(n)) {
         match fs::remove_file(dir.join(name)) {

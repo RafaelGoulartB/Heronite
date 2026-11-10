@@ -139,7 +139,6 @@ impl CollectionView {
         let room = name_room(look.name_w);
         let view = f32::from(crate::ui::content_size(window).width) / k;
         let theme = look::theme();
-        let landscape = theme.tiles.shape == TileShape::Landscape;
         let radius = look::tile_radius();
         let ring_colour: Hsla = theme::console_focus().into();
         let mut row = div().relative().flex_none().w_full().h(u(row_height(on)));
@@ -156,11 +155,7 @@ impl CollectionView {
                 Some(key) => {
                     let priority = if i == index { 200 } else { 90 - 10 * (d.abs() as i32).min(8) };
                     // Requested once at the focused size; smaller, it is scaled.
-                    let src = if landscape {
-                        self.console_wide_art(key, on.0, on.1, priority, window)
-                    } else {
-                        self.cover(key, on.0 * k, on.1 * k, dpr, priority)
-                    };
+                    let src = self.console_shaped_art(key, theme.tiles.shape, on.0, on.1, priority, window).0;
                     let g = self.lib.as_ref().and_then(|l| l.get(key));
                     let grey = theme.tiles.grey_uninstalled && g.is_some_and(|g| !g.installed);
                     let running = g.and_then(|g| {

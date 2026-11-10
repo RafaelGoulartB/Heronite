@@ -353,18 +353,110 @@ pub fn covers_from_steamgrid(http: &Http, api_key: &str, sgdb_id: i64) -> Result
     Ok(Covers { art_square: grid.clone(), art_cover: hero.or(grid) })
 }
 
-/// SteamGridDB's art of the first game matching `title`, for the image
-/// search: portrait grids for a cover, heroes for a background, in the order
-/// SteamGridDB ranks them.
-pub fn steamgrid_images(http: &Http, api_key: &str, title: &str, kind: ArtKind) -> Result<Vec<WebImage>> {
-    let Some(game_id) = sgdb_search_first_id(http, api_key, title)? else { return Ok(Vec::new()) };
-    let (path, dimensions) = match kind {
+/// Where SteamGridDB keeps a kind of picture and the sizes that are that
+/// kind: grids by dimension for the covers (portrait for the tall one, the
+/// square sizes, the 460x215 header and its double), heroes for a
+/// background (any size, as ranked).
+fn steamgrid_query(kind: ArtKind) -> (&'static str, &'static str) {
+    match kind {
         ArtKind::Cover => ("grids", "600x900,342x482,660x930"),
+        ArtKind::CoverSquare => ("grids", "512x512,1024x1024"),
+        ArtKind::CoverWide => ("grids", "460x215,920x430"),
         ArtKind::Hero => ("heroes", ""),
-    };
+    }
+}
+
+fn steamgrid_art(http: &Http, api_key: &str, game_id: i64, kind: ArtKind) -> Result<Vec<WebImage>> {
+    let (path, dimensions) = steamgrid_query(kind);
     let params: &[(&str, &str)] = if dimensions.is_empty() { &[] } else { &[("dimensions", dimensions)] };
     let body = sgdb_get(http, api_key, &format!("/{path}/game/{game_id}"), params)?;
     Ok(parse_steamgrid_images(&body))
+}
+
+/// SteamGridDB's art of the first game matching `title`, for the image
+/// search: the grids of a cover family ([`ArtKind::cover`]), heroes for a
+/// background, in the order SteamGridDB ranks them.
+pub fn steamgrid_images(http: &Http, api_key: &str, title: &str, kind: ArtKind) -> Result<Vec<WebImage>> {
+    let Some(game_id) = sgdb_search_first_id(http, api_key, title)? else { return Ok(Vec::new()) };
+    steamgrid_art(http, api_key, game_id, kind)
+}
+
+/// The SteamGridDB game a game is, and how it was found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SteamGridGame {
+    pub id: i64,
+    pub name: Option<String>,
+    pub year: Option<i32>,
+    pub matched_by: crate::types::MatchedBy,
+}
+
+fn steamgrid_game(data: &Value, matched_by: crate::types::MatchedBy) -> Option<SteamGridGame> {
+    let id = data.get("id").and_then(Value::as_i64).filter(|i| *i != 0)?;
+    let name = data.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).map(str::to_owned);
+    let year = data
+        .get("release_date")
+        .and_then(Value::as_i64)
+        .filter(|t| *t > 0)
+        .and_then(|t| chrono::DateTime::from_timestamp(t, 0).map(|d| chrono::Datelike::year(&d)));
+    Some(SteamGridGame { id, name, year, matched_by })
+}
+
+/// Finds a game on SteamGridDB: by its Steam app id, else by its title
+/// (the first hit of the search; an exact title when the names agree, a
+/// guess otherwise).
+pub fn find_steamgrid_game(http: &Http, api_key: &str, steam_app_id: Option<&str>, title: &str) -> Lookup<SteamGridGame> {
+    use crate::types::MatchedBy;
+    if let Some(steam_id) = steam_app_id.filter(|s| !s.is_empty()) {
+        match sgdb_get(http, api_key, &format!("/games/steam/{steam_id}"), &[]) {
+            Ok(body) => {
+                if let Some(game) = body.get("data").and_then(|d| steamgrid_game(d, MatchedBy::SteamId)) {
+                    return Lookup::Found(game);
+                }
+            }
+            Err(e) if crate::http::is_unreachable(&e) => return Lookup::Unreachable,
+            // Not on SteamGridDB under its Steam id: the title may still be.
+            Err(e) => log::info!("SteamGridDB has no game for Steam app {steam_id}: {e}"),
+        }
+    }
+    let query = title.trim();
+    if query.is_empty() {
+        return Lookup::NotFound;
+    }
+    match sgdb_get(http, api_key, &format!("/search/autocomplete/{}", encode_uri_component(query)), &[]) {
+        Ok(body) => {
+            let first = body.get("data").and_then(Value::as_array).and_then(|a| a.first());
+            let by = |d: &Value| MatchedBy::by_title(title, d.get("name").and_then(Value::as_str));
+            first.and_then(|d| steamgrid_game(d, by(d))).map_or(Lookup::NotFound, Lookup::Found)
+        }
+        Err(e) => Lookup::from_error(&e),
+    }
+}
+
+/// The first picture SteamGridDB ranks for each of `kinds` of its game
+/// `game_id`; a kind it has none of is left out.
+pub fn steamgrid_pictures(http: &Http, api_key: &str, game_id: i64, kinds: &[ArtKind]) -> Lookup<Vec<(ArtKind, String)>> {
+    let answers: Vec<(ArtKind, Result<Vec<WebImage>>)> = std::thread::scope(|s| {
+        let handles: Vec<_> = kinds.iter().map(|k| (*k, s.spawn(move || steamgrid_art(http, api_key, game_id, *k)))).collect();
+        handles.into_iter().map(|(k, h)| (k, h.join().unwrap_or_else(|_| Err(anyhow!("SteamGridDB lookup panicked"))))).collect()
+    });
+    if !answers.is_empty() && answers.iter().all(|(_, a)| a.as_ref().is_err_and(crate::http::is_unreachable)) {
+        return Lookup::Unreachable;
+    }
+    let found: Vec<(ArtKind, String)> = answers
+        .into_iter()
+        .filter_map(|(k, a)| match a {
+            Ok(images) => images.into_iter().next().map(|img| (k, img.image_url)),
+            Err(e) => {
+                log::warn!("SteamGridDB {} of game {game_id}: {e}", k.as_str());
+                None
+            }
+        })
+        .collect();
+    if found.is_empty() {
+        Lookup::NotFound
+    } else {
+        Lookup::Found(found)
+    }
 }
 
 /// The `data` of a grids/heroes answer: `url`, `thumb`, `width`, `height`.

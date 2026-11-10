@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use heronite_data::models::LocalGameMeta;
-use heronite_data::settings::{default_field_priority, METADATA_FIELDS, SOURCE_IDS};
+use heronite_data::settings::{default_field_priority, ALL_FIELDS, SOURCE_IDS};
 use parking_lot::RwLock;
 
 use super::*;
@@ -28,7 +28,7 @@ fn ids<'a>(list: impl Iterator<Item = &'a SourceDescriptor>) -> Vec<&'a str> {
 fn lookups_keep_the_provider_order() {
     let reg = registry();
     let lookups: Vec<&str> = reg.lookups().map(|s| s.descriptor().id.as_str()).collect();
-    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite"]);
+    assert_eq!(lookups, ["igdb", "steam", "store", "lutris", "playnite", "steamgriddb"]);
     assert_eq!(
         ids(reg.descriptors()),
         ["igdb", "steam", "store", "lutris", "playnite", "steamgriddb", "webimages", "howlongtobeat", "steamtags", "protondb"]
@@ -39,10 +39,10 @@ fn lookups_keep_the_provider_order() {
 }
 
 #[test]
-fn only_details_sources_have_a_lookup_for_now() {
+fn details_sources_and_steamgriddb_have_a_lookup() {
     let reg = registry();
     for d in reg.descriptors() {
-        assert_eq!(reg.has_lookup(&d.id), d.kind == SourceKind::Details, "{}", d.id);
+        assert_eq!(reg.has_lookup(&d.id), d.kind == SourceKind::Details || d.id == "steamgriddb", "{}", d.id);
     }
     for id in ["steamgriddb", "webimages"] {
         assert_eq!(reg.get(id).map(|d| d.kind), Some(SourceKind::Pictures));
@@ -62,10 +62,20 @@ fn offered_details_sources_leave_playnite_out() {
 }
 
 #[test]
-fn network_sources_are_igdb_steam_and_lutris() {
+fn network_sources_are_igdb_steam_lutris_and_steamgriddb() {
     let reg = registry();
     let online: Vec<&str> = reg.lookups().map(|s| s.descriptor()).filter(|d| d.network).map(|d| d.id.as_str()).collect();
-    assert_eq!(online, ["igdb", "steam", "lutris"]);
+    assert_eq!(online, ["igdb", "steam", "lutris", "steamgriddb"]);
+}
+
+#[test]
+fn cover_families_by_source() {
+    let reg = registry();
+    let gives = |field: &str| reg.descriptors().filter(|d| d.provides(field)).map(|d| d.id.as_str()).collect::<Vec<_>>();
+    assert_eq!(gives("coverSquare"), ["steamgriddb"]);
+    assert_eq!(gives("coverWide"), ["steam", "store", "steamgriddb"]);
+    // The tall cover keeps its sources; IGDB and Lutris give only that one.
+    assert_eq!(gives("cover"), ["igdb", "steam", "store", "lutris", "playnite", "steamgriddb", "webimages"]);
 }
 
 /// `heronite_data::settings` keeps the ids of the default priorities and of
@@ -76,13 +86,13 @@ fn data_crate_ids_match_the_details_sources() {
     let details: BTreeSet<&str> = reg.descriptors().filter(|d| d.kind == SourceKind::Details).map(|d| d.id.as_str()).collect();
     let saved: BTreeSet<&str> = SOURCE_IDS.iter().copied().filter(|id| *id != "manual").collect();
     assert_eq!(details, saved);
-    for field in METADATA_FIELDS {
+    for field in ALL_FIELDS {
         for id in default_field_priority(field) {
             assert!(reg.has_lookup(&id), "default priority of {field} names {id}, not a details source");
         }
     }
     for d in reg.descriptors().filter(|d| d.kind == SourceKind::Details) {
-        assert!(d.provides.iter().all(|f| METADATA_FIELDS.contains(&f.as_str())), "{}", d.id);
+        assert!(d.provides.iter().all(|f| ALL_FIELDS.contains(&f.as_str())), "{}", d.id);
     }
 }
 

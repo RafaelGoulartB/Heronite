@@ -1,7 +1,8 @@
 //! Argument and result types: ports of the Collection types in
 //! `src/common/types/local-library.ts` that the metadata/art backend uses.
 
-use heronite_data::models::{CollectionGameMetadata, LocalGameMeta};
+pub use heronite_data::cover_family::CoverFamily;
+use heronite_data::models::{CollectionGameArt, CollectionGameMetadata, LocalGameMeta};
 use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -449,19 +450,101 @@ pub struct DetailsResult {
     pub meta: Option<LocalGameMeta>,
 }
 
-/// `CollectionArtKind`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// `CollectionArtKind`: a picture of a game. `Cover` is the tall cover;
+/// the other cover families ([`CoverFamily`]) have their own kinds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ArtKind {
     Cover,
     Hero,
+    #[serde(rename = "coverSquare")]
+    CoverSquare,
+    #[serde(rename = "coverWide")]
+    CoverWide,
 }
 
 impl ArtKind {
+    /// Every kind, the tall cover and the background first.
+    pub const ALL: [ArtKind; 4] = [Self::Cover, Self::Hero, Self::CoverSquare, Self::CoverWide];
+
+    /// Its field id (`cover`, `hero`, `coverSquare`, `coverWide`).
     pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hero => "hero",
+            cover => cover.family().expect("a cover").field(),
+        }
+    }
+
+    /// The kind of a field id (`cover`, `hero`, `coverSquare`, `coverWide`).
+    pub fn from_field(field: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|k| k.as_str() == field)
+    }
+
+    /// The cover of `family`.
+    pub fn cover(family: CoverFamily) -> Self {
+        match family {
+            CoverFamily::Tall => Self::Cover,
+            CoverFamily::Square => Self::CoverSquare,
+            CoverFamily::Wide => Self::CoverWide,
+        }
+    }
+
+    /// The family of a cover; `None` for the background.
+    pub fn family(self) -> Option<CoverFamily> {
+        match self {
+            Self::Cover => Some(CoverFamily::Tall),
+            Self::CoverSquare => Some(CoverFamily::Square),
+            Self::CoverWide => Some(CoverFamily::Wide),
+            Self::Hero => None,
+        }
+    }
+
+    /// The start of its file names in `metadata-art/<game>/` and
+    /// `art/<game>/` (`cover.jpg`, `cover-square.jpg`, `hero-<ms>.png`).
+    pub fn file_stem(self) -> &'static str {
         match self {
             Self::Cover => "cover",
             Self::Hero => "hero",
+            Self::CoverSquare => "cover-square",
+            Self::CoverWide => "cover-wide",
+        }
+    }
+
+    /// The address of this picture in a record.
+    pub fn of_record(self, md: &CollectionGameMetadata) -> Option<&str> {
+        match self {
+            Self::Cover => md.cover_url.as_deref(),
+            Self::Hero => md.hero_url.as_deref(),
+            Self::CoverSquare => md.cover_square_url.as_deref(),
+            Self::CoverWide => md.cover_wide_url.as_deref(),
+        }
+    }
+
+    pub fn of_record_mut(self, md: &mut CollectionGameMetadata) -> &mut Option<String> {
+        match self {
+            Self::Cover => &mut md.cover_url,
+            Self::Hero => &mut md.hero_url,
+            Self::CoverSquare => &mut md.cover_square_url,
+            Self::CoverWide => &mut md.cover_wide_url,
+        }
+    }
+
+    /// The address of this picture in an `art.json` entry.
+    pub fn of_art(self, art: &CollectionGameArt) -> Option<&str> {
+        match self {
+            Self::Cover => art.cover_url.as_deref(),
+            Self::Hero => art.hero_url.as_deref(),
+            Self::CoverSquare => art.cover_square_url.as_deref(),
+            Self::CoverWide => art.cover_wide_url.as_deref(),
+        }
+    }
+
+    pub fn of_art_mut(self, art: &mut CollectionGameArt) -> &mut Option<String> {
+        match self {
+            Self::Cover => &mut art.cover_url,
+            Self::Hero => &mut art.hero_url,
+            Self::CoverSquare => &mut art.cover_square_url,
+            Self::CoverWide => &mut art.cover_wide_url,
         }
     }
 }
@@ -510,6 +593,19 @@ mod tests {
         assert_eq!(MatchedBy::by_title("Portal 2", Some("Portal 2: Complete")), MatchedBy::FuzzyTitle);
         assert_eq!(MatchedBy::by_title("Portal 2", None), MatchedBy::FuzzyTitle);
         assert!(MatchedBy::ExactTitle.is_sure() && MatchedBy::Game.is_sure() && !MatchedBy::FuzzyTitle.is_sure());
+    }
+
+    #[test]
+    fn art_kinds_name_their_family_field_and_files() {
+        for family in CoverFamily::ALL {
+            let kind = ArtKind::cover(family);
+            assert_eq!((kind.family(), kind.as_str()), (Some(family), family.field()));
+        }
+        assert_eq!(ArtKind::Hero.family(), None);
+        let stems: Vec<&str> = ArtKind::ALL.iter().map(|k| k.file_stem()).collect();
+        assert_eq!(stems, ["cover", "hero", "cover-square", "cover-wide"]);
+        assert_eq!(serde_json::to_value(ArtKind::Cover).unwrap(), "cover");
+        assert_eq!(serde_json::to_value(ArtKind::CoverWide).unwrap(), "coverWide");
     }
 
     #[test]

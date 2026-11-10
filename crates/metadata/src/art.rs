@@ -66,11 +66,10 @@ fn remove_managed(paths: &DataPaths, url: Option<&str>) {
 fn hydrate(paths: &DataPaths, art: Option<&CollectionGameArt>) -> CollectionGameArt {
     let mut next = CollectionGameArt::default();
     let Some(art) = art else { return next };
-    if let Some(p) = file_from_url(paths, art.cover_url.as_deref()).filter(|p| p.exists()) {
-        next.cover_url = Some(display_url(paths, &p));
-    }
-    if let Some(p) = file_from_url(paths, art.hero_url.as_deref()).filter(|p| p.exists()) {
-        next.hero_url = Some(display_url(paths, &p));
+    for kind in ArtKind::ALL {
+        if let Some(p) = file_from_url(paths, kind.of_art(art)).filter(|p| p.exists()) {
+            *kind.of_art_mut(&mut next) = Some(display_url(paths, &p));
+        }
     }
     next
 }
@@ -93,7 +92,7 @@ fn write_art(paths: &DataPaths, runner: &str, app_name: &str, art: &CollectionGa
     let key = art_key(runner, app_name);
     let cleaned = hydrate(paths, Some(art));
     json_store::update::<ArtFile, _>(&paths.art(), |file| {
-        if cleaned.cover_url.is_none() && cleaned.hero_url.is_none() {
+        if ArtKind::ALL.iter().all(|k| k.of_art(&cleaned).is_none()) {
             file.games.shift_remove(&key);
         } else {
             let mut entry = cleaned.clone();
@@ -110,27 +109,20 @@ fn write_art(paths: &DataPaths, runner: &str, app_name: &str, art: &CollectionGa
 fn dest_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, ext: &str) -> Result<PathBuf> {
     let dir = paths.art_dir().join(folder_name(runner, app_name));
     fs::create_dir_all(&dir)?;
-    Ok(dir.join(format!("{}-{}.{ext}", kind.as_str(), now_ms())))
+    Ok(dir.join(format!("{}-{}.{ext}", kind.file_stem(), now_ms())))
 }
 
 fn apply_art_file(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind, dest: &Path) -> Result<CollectionGameArt> {
     let mut current = get_collection_game_art(paths, runner, app_name)?;
-    match kind {
-        ArtKind::Cover => {
-            remove_managed(paths, current.cover_url.as_deref());
-            current.cover_url = Some(display_url(paths, dest));
-        }
-        ArtKind::Hero => {
-            remove_managed(paths, current.hero_url.as_deref());
-            current.hero_url = Some(display_url(paths, dest));
-        }
-    }
+    remove_managed(paths, kind.of_art(&current));
+    *kind.of_art_mut(&mut current) = Some(display_url(paths, dest));
     write_art(paths, runner, app_name, &current)
 }
 
 /// `setCollectionGameArt`: copies a local image (or a `localart://` one) into
 /// `local_library/art/<runner_app>/<kind>-<ms>.<ext>` and points `art.json`
-/// at it, deleting the previous managed file of that kind.
+/// at it, deleting the previous managed file of that kind. `kind` names the
+/// cover family too ([`ArtKind::cover`]); [`ArtKind::Cover`] is the tall one.
 pub fn set_collection_game_art(
     paths: &DataPaths,
     runner: &str,
@@ -225,26 +217,20 @@ pub fn set_collection_game_art_from_url(
     Err(anyhow!(tr!("Could not download image: {error}", error = last.map(|e| e.to_string()).unwrap_or_else(|| "undefined".into()))))
 }
 
-/// `clearCollectionGameArt`: reset one kind to the default art.
+/// `clearCollectionGameArt`: reset one kind (a cover family or the
+/// background) to the default art.
 pub fn clear_collection_game_art(paths: &DataPaths, runner: &str, app_name: &str, kind: ArtKind) -> Result<CollectionGameArt> {
     let mut current = get_collection_game_art(paths, runner, app_name)?;
-    match kind {
-        ArtKind::Cover => {
-            remove_managed(paths, current.cover_url.as_deref());
-            current.cover_url = None;
-        }
-        ArtKind::Hero => {
-            remove_managed(paths, current.hero_url.as_deref());
-            current.hero_url = None;
-        }
-    }
+    remove_managed(paths, kind.of_art(&current));
+    *kind.of_art_mut(&mut current) = None;
     write_art(paths, runner, app_name, &current)
 }
 
-/// `removeAllCollectionGameArt`.
+/// `removeAllCollectionGameArt`: every kind, every cover family.
 pub fn remove_all_collection_game_art(paths: &DataPaths, runner: &str, app_name: &str) -> Result<()> {
-    clear_collection_game_art(paths, runner, app_name, ArtKind::Cover)?;
-    clear_collection_game_art(paths, runner, app_name, ArtKind::Hero)?;
+    for kind in ArtKind::ALL {
+        clear_collection_game_art(paths, runner, app_name, kind)?;
+    }
     Ok(())
 }
 
@@ -304,6 +290,33 @@ mod tests {
         assert_eq!(raw["games"]["sideload:other"], json!({"heroUrl": "x"}));
         let left: Vec<_> = fs::read_dir(paths.art_dir().join("sideload_steam_9")).unwrap().collect();
         assert!(left.is_empty());
+    }
+
+    #[test]
+    fn each_cover_family_has_its_own_slot_and_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = DataPaths::at(dir.path().join("cfg"));
+        let src = dir.path().join("pic.png");
+        fs::write(&src, png()).unwrap();
+        let tall = set_collection_game_art(&paths, "sideload", "g", ArtKind::Cover, src.to_str().unwrap()).unwrap();
+        let square = set_collection_game_art(&paths, "sideload", "g", ArtKind::CoverSquare, src.to_str().unwrap()).unwrap();
+        let url = square.cover_square_url.clone().unwrap();
+        assert!(url.starts_with("localart://art/sideload_g/cover-square-"), "{url}");
+        assert_eq!(square.cover_url, tall.cover_url, "the tall cover stays");
+        let wide = set_collection_game_art(&paths, "sideload", "g", ArtKind::CoverWide, src.to_str().unwrap()).unwrap();
+        assert!(wide.cover_wide_url.as_deref().is_some_and(|u| u.contains("/cover-wide-")));
+        let raw = json_store::read_value(&paths.art()).unwrap();
+        assert_eq!(raw["games"]["sideload:g"]["coverSquareUrl"], url);
+
+        // Reset of one family leaves the others and removes only its file.
+        let square_file = paths.resolve_localart(&url, None).unwrap();
+        let after = clear_collection_game_art(&paths, "sideload", "g", ArtKind::CoverSquare).unwrap();
+        assert!(after.cover_square_url.is_none() && after.cover_url.is_some() && after.cover_wide_url.is_some());
+        assert!(!square_file.exists());
+        // Removing the game's art removes every family's file.
+        remove_all_collection_game_art(&paths, "sideload", "g").unwrap();
+        assert!(json_store::read_value(&paths.art()).unwrap()["games"].get("sideload:g").is_none());
+        assert_eq!(fs::read_dir(paths.art_dir().join("sideload_g")).unwrap().count(), 0);
     }
 
     #[test]

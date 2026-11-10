@@ -6,6 +6,7 @@ use std::sync::Arc;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use heronite_data::appearance::CoverLabel;
+use heronite_data::cover_family::CoverFamily;
 use heronite_data::settings::CoverAspect;
 use heronite_images::Variant;
 
@@ -44,11 +45,6 @@ impl CollectionView {
         self.card_w * self.card_aspect
     }
 
-    /// Wide cards (Banner) show the game's hero art, the cover when it has none.
-    fn wide_cards(&self) -> bool {
-        self.card_aspect < 1.
-    }
-
     /// Settings → Appearance → "Cover aspect" of the cards.
     pub(super) fn set_card_shape(&mut self, shape: CoverAspect) {
         self.card_shape = shape;
@@ -76,20 +72,17 @@ impl CollectionView {
         (w, w * self.card_aspect)
     }
 
-    /// The art of a wide card for the game `key`: its hero art cropped to
-    /// the card, or its cover when it has none.
-    fn banner(&mut self, key: &SharedString, cover_key: &SharedString, w: f32, h: f32, scale: f32) -> (Option<ImageSource>, bool) {
-        let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
-        let id: SharedString = format!("b:{key}:{pw}x{ph}").into();
-        let chain = match self.stage_chains.get(key).filter(|c| !c.is_empty()) {
-            Some(stage) => stage.clone(),
-            None => self.cover_chains.get(cover_key).cloned().unwrap_or_default(),
-        };
-        let img = self.images.get_or_request(&id, || chain, pw, ph, Variant::Cover, 100).map(ImageSource::Render);
-        let failed = img.is_none() && self.images.is_failed(&id);
-        (img, failed)
+    /// The art of a card of the Cover aspect's family for the game `key`:
+    /// its own square or wide cover, else (Banner) its background, else its
+    /// cover cropped to the card (see `family_art.rs`).
+    fn card_art(&mut self, key: &SharedString, cover_key: &SharedString, w: f32, h: f32, scale: f32) -> (Option<ImageSource>, bool) {
+        let size = ((w * scale).round() as u32, (h * scale).round() as u32);
+        let pick = self.family_art(key, cover_key, self.card_shape.family(), size, 100, "b");
+        (pick.src, pick.failed)
     }
-    /// Cover texture for `key` at `w`×`h` logical px (requested on demand).
+
+    /// The tall cover's texture for `key` at `w`×`h` logical px (requested
+    /// on demand): what every view of the tall family draws.
     pub(super) fn cover(&mut self, key: &SharedString, w: f32, h: f32, scale: f32, priority: i32) -> Option<ImageSource> {
         let (pw, ph) = ((w * scale).round() as u32, (h * scale).round() as u32);
         let id = cover_id(key, w, h, scale);
@@ -159,8 +152,8 @@ impl CollectionView {
         let key = c.key.clone();
         let cover_h = self.cover_h();
         let (rw, rh) = self.cover_request();
-        let (cover, no_art) = if self.wide_cards() {
-            self.banner(&key, &c.cover_key, rw, rh, scale)
+        let (cover, no_art) = if self.card_shape.family() != CoverFamily::Tall {
+            self.card_art(&key, &c.cover_key, rw, rh, scale)
         } else {
             let cover = self.cover(&c.cover_key, rw, rh, scale, 100);
             let failed = cover.is_none() && self.images.is_failed(&cover_id(&c.cover_key, rw, rh, scale));

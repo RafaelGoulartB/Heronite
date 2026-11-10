@@ -13,6 +13,7 @@
 //! runs goes straight to step 3 of that job.
 
 mod fake;
+pub mod families;
 mod games;
 pub mod hub;
 mod results;

@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use super::options::SourceOption;
 use crate::types::{MatchedBy, MetadataApplyArgs};
 
-/// [`SourceDescriptor::provides`] ids beyond `heronite_data::settings::METADATA_FIELDS`
-/// (whose `cover` and `hero` pictures sources name too). The list is open:
-/// any string is a valid id.
+/// [`SourceDescriptor::provides`] ids beyond `heronite_data::settings::ALL_FIELDS`
+/// (whose `cover`, `hero`, `coverSquare` and `coverWide` pictures sources
+/// name too). The list is open: any string is a valid id.
 pub mod extra_fields {
     /// HowLongToBeat's main / extras / completionist times.
     pub const TIME_TO_BEAT: &str = "timeToBeat";
@@ -93,7 +93,9 @@ pub struct SourceDescriptor {
     /// `tr!` key the interface translates ("Store").
     pub name: String,
     pub kind: SourceKind,
-    /// Field ids it can fill: `METADATA_FIELDS` entries and [`extra_fields`].
+    /// Field ids it can fill: `ALL_FIELDS` entries (`cover` is the tall
+    /// cover; `coverSquare` and `coverWide` the other families) and
+    /// [`extra_fields`].
     #[serde(default)]
     pub provides: Vec<String>,
     #[serde(default)]
@@ -158,6 +160,10 @@ pub struct SourceGame {
     pub emulated: bool,
     /// The overlay's `platformId` of an emulated game.
     pub platform: Option<String>,
+    /// The fields asked of this source (`None`: every field it gives). Set
+    /// for pictures sources, which fetch one picture per field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fields: Option<Vec<String>>,
 }
 
 impl SourceGame {
@@ -175,6 +181,7 @@ impl SourceGame {
             store: overlay.map(|m| m.source.clone()).filter(|s| !s.is_empty()),
             emulated: overlay.is_some_and(|m| m.launch_kind == "emulator"),
             platform: non_empty(overlay.and_then(|m| m.platform_id.as_ref())),
+            fields: None,
         }
     }
 }

@@ -535,6 +535,7 @@ pub fn render(d: &mut SettingsPage, window: &mut Window, cx: &mut Context<Settin
             d.appearance.aspect_open = false;
             let mut patch = d.settings.metadata.clone();
             patch.cover_aspect = ASPECTS[i].0.as_str().to_string();
+            crate::dialogs::metadata_update::families::aspect_changed(d.settings.cover_aspect, ASPECTS[i].0);
             let res = settings::save_metadata(&d.ctx.data_paths, &patch);
             d.saved(res, cx);
         },
@@ -944,6 +945,7 @@ pub(super) fn console_apply(
             "aspect" => {
                 let mut patch = d.settings.metadata.clone();
                 patch.cover_aspect = ASPECTS[index].0.as_str().to_string();
+                crate::dialogs::metadata_update::families::aspect_changed(d.settings.cover_aspect, ASPECTS[index].0);
                 let res = settings::save_metadata(&d.ctx.data_paths, &patch);
                 d.saved(res, cx);
             }

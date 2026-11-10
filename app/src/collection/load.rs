@@ -24,6 +24,7 @@ struct Loaded {
     actions: HashMap<String, Vec<heronite_data::game_actions::Action>>,
     covers: HashMap<SharedString, Vec<ImageRef>>,
     stages: HashMap<SharedString, Vec<ImageRef>>,
+    families: super::family_art::FamilyChains,
 }
 
 fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: bool) -> anyhow::Result<Loaded> {
@@ -38,13 +39,15 @@ fn load_all(data_paths: &DataPaths, cache: &std::path::Path, include_hidden: boo
     let ctx = ArtContext::new(data_paths, shots.as_deref());
     let mut covers = HashMap::new();
     let mut stages = HashMap::new();
+    let mut families = super::family_art::FamilyChains::default();
     for g in &lib.games {
         let key: SharedString = g.key.clone().into();
         covers.insert(key.clone(), to_chain(&art::card_cover(&ctx, g)));
+        families.add(&ctx, &key, g);
         stages.insert(key, to_chain(&art::stage_art(&ctx, g)));
     }
     log::info!("library: {} games loaded in {:?}", lib.games.len(), t.elapsed());
-    Ok(Loaded { lib, wiki, categories, smart_groups, extras, actions, covers, stages })
+    Ok(Loaded { lib, wiki, categories, smart_groups, extras, actions, covers, stages, families })
 }
 
 /// A first load started just before the window opens, so it runs while the
@@ -156,11 +159,13 @@ impl CollectionView {
                 stale.extend([format!("s:{key}:"), format!("g:{key}:"), format!("b:{key}:")]);
             }
         }
+        stale.extend(self.family_chains.stale(&l.families));
         if !stale.is_empty() {
             self.images.invalidate(&stale);
         }
         self.cover_chains = l.covers;
         self.stage_chains = l.stages;
+        self.family_chains = l.families;
         self.wiki = Arc::new(l.wiki);
         self.categories = l.categories;
         self.smart_groups = l.smart_groups;

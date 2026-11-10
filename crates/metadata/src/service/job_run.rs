@@ -12,19 +12,20 @@ use std::collections::HashSet;
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 
+use heronite_data::cover_family::{CoverFamilies, CoverFamily};
 use heronite_data::focus::steam_language;
 use heronite_data::library::metadata_key;
 use heronite_data::models::{CollectionGameMetadata, MetadataSettings};
-use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::settings::{ALL_FIELDS, METADATA_FIELDS};
 use heronite_data::steam_tags::SteamTagsFile;
 use indexmap::IndexMap;
 
 use super::bulk::initial;
 use super::counts::{missing_details, tag_steam_id};
-use super::fetch::{decide, Gathered};
+use super::fetch::Gathered;
 use super::undo::{clear_backups, UndoLog};
 use super::{tag_fill, MetadataService, Offline, NO_DATA};
-use crate::job::{FieldChange, GameOutcome, GameResult, NoChangeReason, SkipReason, UpdateMode};
+use crate::job::{FieldChange, GameOutcome, GameResult, JobKind, NoChangeReason, SkipReason, UpdateMode};
 use crate::merge::{has_field_value, read_field};
 use crate::record;
 use crate::review::ReviewEntry;
@@ -43,7 +44,7 @@ struct Plan {
     preserve_manual: bool,
     /// The older "Skip games that already have metadata".
     skip_fetched: bool,
-    /// The chosen `METADATA_FIELDS`, in that order.
+    /// The chosen `ALL_FIELDS`, in that order.
     fields: Vec<&'static str>,
     /// Those some chosen source can fill.
     fillable: Vec<&'static str>,
@@ -58,6 +59,9 @@ struct Plan {
     full: bool,
     download: bool,
     pictures: Vec<ArtKind>,
+    /// A family's download: the games (`runner:appName`) with a picture of
+    /// it set by hand, which need none.
+    custom: HashSet<String>,
 }
 
 /// What the Steam tags pass did, by Steam app id.
@@ -116,9 +120,21 @@ impl MetadataService {
             Some(mode) => mode.merge_flags(),
             None => (args.overwrite_existing == Some(true), args.preserve_manual != Some(false)),
         };
-        let chosen = |f: &str| args.fields.as_ref().is_none_or(|list| list.iter().any(|c| c == f));
-        let fields: Vec<&'static str> = METADATA_FIELDS.into_iter().filter(|f| chosen(f)).collect();
-        let only_fields = (fields.len() < METADATA_FIELDS.len()).then(|| fields.iter().map(|f| f.to_string()).collect());
+        // Every field by default: `METADATA_FIELDS` and the kept families'
+        // covers. A family no view uses and the user does not keep is never
+        // filled, unless the job is the download of that family.
+        let families = CoverFamilies::load(&self.paths);
+        let every: Vec<&'static str> = METADATA_FIELDS.iter().copied().chain(families.kept_extra_fields()).collect();
+        let allowed = |f: &str| match CoverFamily::from_field(f) {
+            Some(family) if family != CoverFamily::Tall => families.is_kept(family) || args.kind == JobKind::Covers(family),
+            _ => true,
+        };
+        let chosen = |f: &str| match &args.fields {
+            Some(list) => list.iter().any(|c| c == f),
+            None => every.contains(&f),
+        };
+        let fields: Vec<&'static str> = ALL_FIELDS.into_iter().filter(|f| chosen(f) && allowed(f)).collect();
+        let only_fields = (fields != every).then(|| fields.iter().map(|f| f.to_string()).collect());
         // Naming every details source offered is asking every source.
         let offered: Vec<String> =
             self.bulk_sources(settings).into_iter().filter(|d| self.sources.has_lookup(&d.id)).map(|d| d.id).collect();
@@ -126,8 +142,7 @@ impl MetadataService {
         let tags = args.fields.as_ref().is_some_and(|list| list.iter().any(|f| f == extra_fields::STEAM_TAGS))
             && is_on(settings, ids::STEAM_TAGS)
             && args.sources.as_ref().is_none_or(|list| list.iter().any(|s| s == ids::STEAM_TAGS));
-        let pictures =
-            [("cover", ArtKind::Cover), ("hero", ArtKind::Hero)].into_iter().filter(|(f, _)| chosen(f)).map(|(_, k)| k).collect();
+        let pictures = ArtKind::ALL.into_iter().filter(|k| fields.contains(&k.as_str())).collect();
         Plan {
             mode: args.mode,
             overwrite,
@@ -141,7 +156,17 @@ impl MetadataService {
             tags,
             download: args.download_images.unwrap_or(settings.download_images),
             pictures,
+            custom: match args.kind {
+                JobKind::Covers(family) => self.custom_art_of(ArtKind::cover(family)),
+                _ => HashSet::new(),
+            },
         }
+    }
+
+    /// The games (`runner:appName`) with a picture of `kind` set by hand.
+    fn custom_art_of(&self, kind: ArtKind) -> HashSet<String> {
+        let art: heronite_data::models::ArtFile = heronite_data::json_store::read(&self.paths.art()).unwrap_or_default();
+        art.games.into_iter().filter(|(_, a)| kind.of_art(a).is_some_and(|u| !u.is_empty())).map(|(k, _)| k).collect()
     }
 
     /// `runBulkMetadata`: runs job `id` (the caller owns the queue) and
@@ -270,6 +295,9 @@ impl MetadataService {
         if plan.skip_fetched && stored.is_some_and(|c| c.fetched_at.as_deref().is_some_and(|f| !f.is_empty()) && c.fetch_error.is_none()) {
             return (result_of(game, GameOutcome::Skipped(SkipReason::AlreadyFetched), Vec::new()), None);
         }
+        if plan.custom.contains(&key) {
+            return (result_of(game, GameOutcome::NoChange(NoChangeReason::NothingMissing), Vec::new()), None);
+        }
         // The user said no source has it: its details are not asked again.
         let in_no_source = stored.is_some_and(|c| record::marked_no_match(c, &game.title));
         // Every field the job could change is locked.
@@ -287,7 +315,7 @@ impl MetadataService {
             None => Some(Ask { fields: plan.only_fields.clone(), full: plan.full }),
             Some(UpdateMode::Fill) => {
                 let missing: Vec<&str> = missing_details(stored, &plan.fillable).collect();
-                let all = missing.len() == METADATA_FIELDS.len();
+                let all = plan.only_fields.is_none() && missing.len() == plan.fields.len();
                 (!missing.is_empty()).then(|| Ask {
                     fields: (!all).then(|| missing.iter().map(|f| f.to_string()).collect()),
                     full: plan.full && missing.len() == plan.fillable.len(),
@@ -372,9 +400,9 @@ impl MetadataService {
             }
             return Details { outcome: GameOutcome::NotFound, changes: Vec::new(), error: Some(format!("{}: {NO_DATA}", game.title)) };
         }
-        let decision = decide(&candidates, before.as_ref());
+        let decision = self.decide(&candidates, before.as_ref());
         if let Some(reason) = decision.review {
-            let entry = ReviewEntry::new(&game.app_name, runner, &game.title, reason, &candidates);
+            let entry = ReviewEntry::new(&game.app_name, runner, &game.title, reason, &self.review_candidates(&candidates));
             return match self.queue_review(entry.clone()) {
                 Ok(was) => {
                     undo.record_review(key.to_owned(), was, Some(entry));
@@ -387,10 +415,10 @@ impl MetadataService {
         let kept = (!pictures.is_empty()).then(|| undo.pictures_before(&self.paths, runner, &game.app_name));
         let saved = self.persist_chosen_images(proposed, plan.download, &pictures);
         let pictures = kept.map(|p| p.after(&self.paths));
-        let rewritten: Vec<&'static str> = [("cover", saved.cover_url.as_deref()), ("hero", saved.hero_url.as_deref())]
+        let rewritten: Vec<&'static str> = ArtKind::ALL
             .into_iter()
-            .filter(|(_, url)| pictures.as_ref().is_some_and(|p| p.rewrote(*url)))
-            .map(|(f, _)| f)
+            .filter(|k| pictures.as_ref().is_some_and(|p| p.rewrote(k.of_record(&saved))))
+            .map(ArtKind::as_str)
             .collect();
         match write(saved, pictures, undo) {
             Ok(saved) => {

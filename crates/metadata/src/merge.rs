@@ -3,7 +3,7 @@
 use heronite_data::age_rating::{self, AgeRating};
 use heronite_data::models::CollectionGameMetadata;
 use heronite_data::num::JsNum;
-use heronite_data::settings::METADATA_FIELDS;
+use heronite_data::settings::{ALL_FIELDS, METADATA_FIELDS};
 use indexmap::IndexMap;
 
 use crate::util::{blank_metadata, now_iso};
@@ -56,6 +56,8 @@ fn text_of<'a>(md: &'a CollectionGameMetadata, field: &str) -> Option<&'a Option
         "series" => &md.series,
         "cover" => &md.cover_url,
         "hero" => &md.hero_url,
+        "coverSquare" => &md.cover_square_url,
+        "coverWide" => &md.cover_wide_url,
         _ => return None,
     })
 }
@@ -100,6 +102,8 @@ fn set_field(target: &mut CollectionGameMetadata, field: &str, value: FieldValue
         ("criticScore", FieldValue::Number(v)) => target.critic_score = Some(JsNum(v)),
         ("cover", FieldValue::Text(v)) => target.cover_url = Some(v),
         ("hero", FieldValue::Text(v)) => target.hero_url = Some(v),
+        ("coverSquare", FieldValue::Text(v)) => target.cover_square_url = Some(v),
+        ("coverWide", FieldValue::Text(v)) => target.cover_wide_url = Some(v),
         (AGE_RATINGS, FieldValue::AgeRatings(v)) => target.age_ratings = v,
         (f, FieldValue::List(v)) if list_of(target, f).is_some() => {
             *list_of_mut(target, f).expect("checked") = v;
@@ -155,6 +159,8 @@ fn text_of_mut<'a>(md: &'a mut CollectionGameMetadata, field: &str) -> Option<&'
         "series" => &mut md.series,
         "cover" => &mut md.cover_url,
         "hero" => &mut md.hero_url,
+        "coverSquare" => &mut md.cover_square_url,
+        "coverWide" => &mut md.cover_wide_url,
         _ => return None,
     })
 }
@@ -177,7 +183,8 @@ pub struct MergeArgs<'a> {
     /// field -> source | `"keep"` | `"manual"`.
     pub field_picks: Option<&'a IndexMap<String, String>>,
     /// Only these fields are merged; the others stay as they are, their
-    /// source too. `None`: every field.
+    /// source too. `None`: every `METADATA_FIELDS` entry (the square and
+    /// wide covers only when named).
     pub fields: Option<&'a [String]>,
 }
 
@@ -187,8 +194,11 @@ pub fn merge_metadata(args: MergeArgs<'_>) -> CollectionGameMetadata {
 
     let by_source: IndexMap<&str, &CollectionGameMetadata> = args.candidates.iter().map(|c| (c.source, c.metadata)).collect();
 
-    let chosen = |field: &str| args.fields.is_none_or(|f| f.iter().any(|c| c == field));
-    for field in METADATA_FIELDS.into_iter().filter(|f| chosen(f)) {
+    let chosen = |field: &str| match args.fields {
+        Some(f) => f.iter().any(|c| c == field),
+        None => METADATA_FIELDS.contains(&field),
+    };
+    for field in ALL_FIELDS.into_iter().filter(|f| chosen(f)) {
         let pick = args.field_picks.and_then(|p| p.get(field)).map(String::as_str);
         if matches!(pick, Some("keep") | Some("manual")) {
             let kept = args.current.and_then(|c| c.field_sources.get(field)).cloned().unwrap_or_else(|| "manual".to_owned());
@@ -283,7 +293,7 @@ pub fn with_preferred_source(priority: &IndexMap<String, Vec<String>>, source: O
         return priority.clone();
     };
     let mut next = priority.clone();
-    for field in METADATA_FIELDS {
+    for field in ALL_FIELDS {
         let rest: Vec<String> =
             priority.get(field).map(|l| l.iter().filter(|s| s.as_str() != source).cloned().collect()).unwrap_or_default();
         let mut list = vec![source.to_owned()];
@@ -456,7 +466,9 @@ mod tests {
             m.cover_url = Some("c".into());
             m.title = Some("T".into());
         });
-        for field in METADATA_FIELDS {
+        m.cover_square_url = Some("s".into());
+        m.cover_wide_url = Some("w".into());
+        for field in ALL_FIELDS {
             clear_field(&mut m, field);
             assert!(!has_field_value(Some(&m), field), "{field}");
         }
@@ -526,6 +538,40 @@ mod tests {
         assert_eq!((out.genres.as_slice(), out.field_sources["genres"].as_str()), (["Old".to_string()].as_slice(), "steam"));
         assert!(out.age_ratings.is_empty() && !out.field_sources.contains_key(AGE_RATINGS));
         assert!(!out.extra.contains_key(AGE_CHECKED), "ratings not asked: the age ratings fill still may");
+    }
+
+    #[test]
+    fn each_cover_family_is_a_field_of_its_own() {
+        let pr: IndexMap<String, Vec<String>> = ALL_FIELDS.iter().map(|f| (f.to_string(), default_field_priority(f))).collect();
+        let current = md(|m| {
+            m.cover_url = Some("tall".into());
+            m.field_sources.insert("cover".into(), "igdb".into());
+        });
+        let sgdb = md(|m| {
+            m.cover_url = Some("sgdb tall".into());
+            m.cover_square_url = Some("sq".into());
+            m.cover_wide_url = Some("sgdb wide".into());
+        });
+        let steam = md(|m| m.cover_wide_url = Some("header".into()));
+        let cands = [MergeCandidate { source: "steamgriddb", metadata: &sgdb }, MergeCandidate { source: "steam", metadata: &steam }];
+        // Without naming them, the families are left alone.
+        let out = merge(Some(&current), &cands, &pr, true, false, None);
+        assert!(out.cover_square_url.is_none() && out.cover_wide_url.is_none());
+        let fields = ["coverSquare".to_string(), "coverWide".to_string()];
+        let out = merge_metadata(MergeArgs {
+            app_name: "a",
+            runner: "sideload",
+            current: Some(&current),
+            candidates: &cands,
+            priority: &pr,
+            overwrite_existing: false,
+            preserve_manual: true,
+            field_picks: None,
+            fields: Some(&fields),
+        });
+        assert_eq!((out.cover_square_url.as_deref(), out.field_sources["coverSquare"].as_str()), (Some("sq"), "steamgriddb"));
+        assert_eq!((out.cover_wide_url.as_deref(), out.field_sources["coverWide"].as_str()), (Some("header"), "steam"));
+        assert_eq!((out.cover_url.as_deref(), out.field_sources["cover"].as_str()), (Some("tall"), "igdb"), "the tall cover stays");
     }
 
     #[test]

@@ -74,7 +74,7 @@ impl EventEmitter<ArtEvent> for WebImageDialog {}
 
 pub fn default_query(title: &str, kind: ArtKind) -> String {
     let name = title.split_whitespace().collect::<Vec<_>>().join(" ");
-    let suffix = if kind == ArtKind::Cover { "cover" } else { "wallpaper" };
+    let suffix = if kind == ArtKind::Hero { "wallpaper" } else { "cover" };
     if name.is_empty() {
         suffix.to_string()
     } else {
@@ -257,8 +257,13 @@ impl WebImageDialog {
 impl Render for WebImageDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.images.update(cx, |im, _| im.frame(window));
-        let kind_label = if self.kind == ArtKind::Cover { tr!("Cover") } else { tr!("Background") };
-        let (tw, th) = if self.kind == ArtKind::Cover { (120., 180.) } else { (240., 90.) };
+        let kind_label = if self.kind == ArtKind::Hero { tr!("Background") } else { tr!("Cover") };
+        // Thumbnails in the shape of what is picked.
+        let (tw, th) = match self.kind {
+            ArtKind::Cover => (120., 180.),
+            ArtKind::CoverSquare => (150., 150.),
+            ArtKind::CoverWide | ArtKind::Hero => (240., 90.),
+        };
 
         let toolbar = div()
             .flex()

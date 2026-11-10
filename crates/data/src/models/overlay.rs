@@ -204,6 +204,14 @@ pub struct CollectionGameMetadata {
     pub cover_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hero_url: Option<String>,
+    /// The square cover (`crate::cover_family::CoverFamily::Square`); its
+    /// source is `fieldSources.coverSquare`. `coverUrl` stays the tall cover.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_square_url: Option<String>,
+    /// The wide cover (16:9, Steam's header); its source is
+    /// `fieldSources.coverWide`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_wide_url: Option<String>,
     #[serde(default)]
     pub field_sources: IndexMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -225,6 +233,10 @@ pub struct ArtFile {
     pub extra: Extra,
 }
 
+/// A game's pictures set by hand. JSON (every key optional): `coverUrl`
+/// (the tall cover), `heroUrl`, and the other cover families beside them,
+/// `coverSquareUrl` and `coverWideUrl` (`crate::cover_family`), each a
+/// `localart://art/...` URL.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollectionGameArt {
@@ -232,6 +244,10 @@ pub struct CollectionGameArt {
     pub cover_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hero_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_square_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover_wide_url: Option<String>,
     #[serde(flatten)]
     pub extra: Extra,
 }

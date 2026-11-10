@@ -316,6 +316,9 @@ pub fn metadata_from_details(app_name: &str, runner: &str, steam_app_id: &str, d
     md.websites = unique_names([d.website.as_deref(), Some(d.store_url.as_str())], 3);
     md.cover_url = steam_cdn_cover(Some(steam_app_id));
     md.hero_url = steam_cdn_hero(Some(steam_app_id));
+    // The wide cover: the store's header (hashed for newer apps), else the
+    // CDN's. Steam has no square cover.
+    md.cover_wide_url = d.header_image.clone().or_else(|| Some(heronite_data::art::steam_header_image(steam_app_id)));
     md.age_ratings = d.age_ratings.clone().unwrap_or_default();
     // The Metacritic score the store page shows: the "steam" source of the
     // critic score. No score stays empty (never 0).
